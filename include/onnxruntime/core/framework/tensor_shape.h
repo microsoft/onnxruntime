@@ -55,13 +55,17 @@ class TensorShape {
 
   TensorShape(const TensorShape& other) : TensorShape(other.GetDims()) {}
   TensorShape& operator=(const TensorShape& other);
+  TensorShape& operator=(const gsl::span<const int64_t>& dims) { 
+    *this = TensorShape(dims);
+    return *this;
+  }
 
   TensorShape(TensorShape&& other) noexcept { operator=(std::move(other)); }
   TensorShape& operator=(TensorShape&& other) noexcept;
 
   TensorShape(gsl::span<const int64_t> dims);
   TensorShape(const TensorShapeVector& dims) : TensorShape(gsl::make_span(dims)) {}
-  TensorShape(const std::initializer_list<int64_t>& dims) : TensorShape(gsl::make_span(dims.begin(), dims.end())) {}
+  TensorShape(std::initializer_list<int64_t> dims) : TensorShape(gsl::make_span(dims.begin(), dims.end())) {}
   TensorShape(const int64_t* dimension_sizes, size_t dimension_count) : TensorShape(gsl::span<const int64_t>(dimension_sizes, dimension_count)) {}
   TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end) : TensorShape(gsl::span<const int64_t>(&dims[start], end - start)) {}
 
@@ -77,7 +81,7 @@ class TensorShape {
   int64_t& operator[](size_t idx) { return values_[idx]; }
 
   bool operator==(const TensorShape& other) const noexcept { return GetDims() == other.GetDims(); }
-  bool operator!=(const TensorShape& other) const noexcept { return GetDims() != other.GetDims(); }
+  bool operator!=(const TensorShape& other) const noexcept { return !(*this == other); }
 
   size_t NumDimensions() const noexcept {
     return values_.size();

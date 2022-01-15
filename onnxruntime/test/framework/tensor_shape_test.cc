@@ -15,7 +15,7 @@ static void TestShapeWithVector(const TensorShapeVector& vector) {
 
   // Test constructing from a vector
   TensorShape shape{vector};
-  EXPECT_EQ(shape, vector);
+  EXPECT_EQ(shape, gsl::make_span(vector));
 
   // Test copying to a new shape
   TensorShape shape_copy{shape};

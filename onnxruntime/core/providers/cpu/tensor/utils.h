@@ -173,7 +173,7 @@ struct SliceSkips : TensorShapeVector {
 // The base class is type agnostic to minimize binary size. The derived class provides any type specific logic.
 struct SliceIteratorBase {
  private:
-  using byte = std::byte;
+  enum class byte : unsigned char {};
 
   // Initialize initial skip and inner_extent.
   void Init(gsl::span<const int64_t> dims, gsl::span<const int64_t> starts, gsl::span<const int64_t> steps) {

@@ -91,7 +91,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   //set X
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
-  const auto x_dims = x_shape.GetDims();
+  const auto x_dims = x_shape.AsShapeVector();
   s_.x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   s_.element_size = X->DataType()->Size();
   //set W
@@ -114,8 +114,8 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   } else {
     s_.z_data = nullptr;
   }
-  bool input_dims_changed = (s_.last_x_dims.GetDims() != x_dims);
-  bool w_dims_changed = (s_.last_w_dims != w_dims);
+  bool input_dims_changed = (s_.last_x_dims != x_dims);
+  bool w_dims_changed = (s_.last_w_dims.AsShapeVector() != w_dims);
   if (input_dims_changed || w_dims_changed) {
     if (input_dims_changed)
       s_.last_x_dims = x_dims;

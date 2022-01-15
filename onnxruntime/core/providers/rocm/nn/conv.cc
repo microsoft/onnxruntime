@@ -95,7 +95,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   //set W
   const Tensor* W = context->Input<Tensor>(1);
   const TensorShape& w_shape = W->Shape();
-  auto w_dims = w_shape.GetDimsAsVector();
+  auto w_dims = w_shape.GetDims();
   s_.w_data = reinterpret_cast<const HipT*>(W->template Data<T>());
   //set B
   if (context->InputCount() >= 3) {
@@ -112,8 +112,8 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   } else {
     s_.z_data = nullptr;
   }
-  bool input_dims_changed = (s_.last_x_dims != x_dims);
-  bool w_dims_changed = (s_.last_w_dims != w_dims);
+  bool input_dims_changed = (s_.last_x_dims.GetDims() != x_dims);
+  bool w_dims_changed = (s_.last_w_dims.GetDims() != w_dims);
   if (input_dims_changed || w_dims_changed) {
     if (input_dims_changed)
       s_.last_x_dims = x_dims;

@@ -58,12 +58,12 @@ MiopenTensorDescriptor::~MiopenTensorDescriptor() {
   }
 }
 
-Status MiopenTensorDescriptor::Set(const std::vector<int64_t>& filter_dims, miopenDataType_t data_type) {
+Status MiopenTensorDescriptor::Set(const gsl::span<const int64_t>& filter_dims, miopenDataType_t data_type) {
   if (!desc_)
     MIOPEN_RETURN_IF_ERROR(miopenCreateTensorDescriptor(&desc_));
 
   int rank = gsl::narrow_cast<int>(filter_dims.size());
-  std::vector<int> w_dims(rank);
+  TensorVectorShape w_dims(rank);
   for (int i = 0; i < rank; i++) {
     w_dims[i] = gsl::narrow_cast<int>(filter_dims[i]);
   }

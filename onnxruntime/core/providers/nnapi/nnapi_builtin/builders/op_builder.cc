@@ -2791,8 +2791,8 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     // the end, for example, dim = 5, and end = -1, the end will be normalized to 4, which will cause
     // incorrect result, so here we have to make the end = -dim - 1 such that it will not be treated as
     // an index counting from the end.
-    std::vector<int64_t> ends = compute_metadata.ends_;
-    for (size_t i = 0; i < ends.size(); ++i) {
+    auto ends = compute_metadata.ends_;
+    for (size_t i = 0, limit = ends.size(); i < limit; ++i) {
       if (ends[i] == -1) {
         ends[i] = -static_cast<int32_t>(input_shape[i] + 1);
       }
