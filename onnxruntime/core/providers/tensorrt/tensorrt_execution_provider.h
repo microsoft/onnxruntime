@@ -169,7 +169,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool engine_decryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*);
   int (*engine_encryption_)(const char*, char*, size_t);
-  bool timing_cache_enable_ = true;
+  bool timing_cache_enable_ = false;
 
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>> engines_;
