@@ -1,5 +1,5 @@
 if (onnxruntime_USE_STVM)
-  message(STATUS "onnxruntime_USE_NUPHAR: Fetch tvm for STVM.")
+  message(STATUS "onnxruntime_USE_STVM: Fetch tvm for STVM.")
 
   FetchContent_Declare(
     tvm
@@ -13,6 +13,9 @@ if (onnxruntime_USE_STVM)
   endif()
 
   set(tvm_INCLUDE_DIRS ${tvm_SOURCE_DIR}/include)
+  set(onnxruntime_STVM_HOME ${tvm_SOURCE_DIR})
+  message(STATUS Define onnxruntime_STVM_HOME.)
+  message(STATUS ${onnxruntime_STVM_HOME})
 
 endif()
 
