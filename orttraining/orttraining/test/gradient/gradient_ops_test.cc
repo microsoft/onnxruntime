@@ -90,8 +90,8 @@ static void RunReductionTests(const OpDef& op_def,
   float max_error;
   for (size_t i = 0; i < x_shapes.size(); i++) {
     max_error = 0;
-    TensorShape x_shape = gsl::make_span(x_shapes[i]);
-    TensorShape y_shape = gsl::make_span(y_shapes[i]);
+    TensorShape x_shape(gsl::make_span(x_shapes[i]));
+    TensorShape y_shape(gsl::make_span(y_shapes[i]));
     std::vector<int64_t> axes = axes_vec[i];
     std::vector<std::vector<float>> x_datas;
     RandomValueGenerator random{};
@@ -1328,8 +1328,8 @@ static void RunSqueezeUnsqueezeTests(const OpDef& op_def,
   float error_tolerance = 1e-3f;
 
   for (size_t i = 0; i < x_shapes.size(); i++) {
-    TensorShape x_shape = gsl::make_span(x_shapes[i]);
-    TensorShape y_shape = gsl::make_span(y_shapes[i]);
+    TensorShape x_shape(gsl::make_span(x_shapes[i]));
+    TensorShape y_shape(gsl::make_span(y_shapes[i]));
     std::vector<int64_t> axes = axes_ip[i];
     std::vector<std::vector<float>> x_datas;
     RandomValueGenerator random{};

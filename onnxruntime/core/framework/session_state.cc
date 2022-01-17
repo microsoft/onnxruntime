@@ -557,7 +557,7 @@ Status SessionState::GeneratePatternGroupCache(const gsl::span<const OrtValue>& 
         // Store all valid resolved shapes. They will be queried in, for example,
         // Recv operator to bypass the dependency of output shapes on inputs.
         if (is_resolved != 0) {
-          resolved_shapes[ml_value_idx] = resolved_shape;
+          resolved_shapes[ml_value_idx] = gsl::make_span(resolved_shape);
         }
       } else {
         LOGS(logger_, INFO) << "[Static memory planning] Could not resolve shape for tensor with ML index "

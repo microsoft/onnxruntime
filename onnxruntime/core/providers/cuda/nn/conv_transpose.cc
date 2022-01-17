@@ -74,7 +74,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
         s_.last_x_dims = gsl::make_span(x_dims);
 
       if (w_dims_changed) {
-        s_.last_w_dims = w_dims;
+        s_.last_w_dims = gsl::make_span(w_dims);
         s_.cached_benchmark_results.clear();
       }
 
@@ -90,7 +90,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
         p.strides.insert(p.strides.begin(), 1);
         p.dilations.insert(p.dilations.begin(), 1);
       }
-      s_.y_dims = y_dims;
+      s_.y_dims = gsl::make_span(y_dims);
 
       if (w_dims_changed)
         ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));

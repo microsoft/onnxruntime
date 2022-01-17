@@ -118,10 +118,10 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   bool w_dims_changed = (s_.last_w_dims.AsShapeVector() != w_dims);
   if (input_dims_changed || w_dims_changed) {
     if (input_dims_changed)
-      s_.last_x_dims = x_dims;
+      s_.last_x_dims = gsl::make_span(x_dims);
 
     if (w_dims_changed) {
-      s_.last_w_dims = w_dims;
+      s_.last_w_dims = gsl::make_span(w_dims);
       s_.cached_benchmark_results.clear();
     }
 
@@ -168,7 +168,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
                                                                      strides, dilations, pads, y_dims, y_dims_with_adjusted_pads,
                                                                      post_slicing_required, slice_starts, slice_ends, slice_axes));
     ORT_ENFORCE(y_dims.size() == y_dims_with_adjusted_pads.size());
-    s_.y_dims = y_dims;
+    s_.y_dims = gsl::make_span(y_dims);
     s_.y_dims_with_adjusted_pads = y_dims_with_adjusted_pads;
     s_.post_slicing_required = post_slicing_required;
     s_.slice_starts = slice_starts;
