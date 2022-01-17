@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>My First JavaScript Treemap Chart</title>
+    <script type="text/javascript" src="https://cdn.anychart.com/releases/v8/js/anychart-core.min.js"></script>
+    <script src="https://cdn.anychart.com/releases/8.11.0/js/anychart-ui.min.js"></script>
+    <script type="text/javascript" src="https://cdn.anychart.com/releases/v8/js/anychart-treemap.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="https://cdn.anychart.com/releases/8.11.0/css/anychart-ui.min.css"/>
+    <style>
+      html, body {
+        width: 100%;
+        height: 100%;
+      }
+      .view {
+        width: 100%;
+        height: 100%;
+      }
+      .half_view {
+        width: 100%;
+        height: 70%;
+      }
+      .no_view {
+        width: 100%;
+        height: 0%;
+      }
+      .modal {
+        display: block;
+        position: fixed;
+        background-color: gray;
+        left: 40%;
+        top: 50%;
+        height: 10;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="view" id="cpu"></div>
+    <div class="half_view" id="gpu"></div>
+    <div class="modal">
+    <label id="file-label">Choose ort profiling json file to </label>
+    <input id="file-button" type="button" value="open ...">
+    <input id="file-selector" type="file" accept=".json" style="display:none"/>
+    </div>
+    <script>
+      var raw_data_in_json = null;
+      
+      const fileButton = document.getElementById('file-button');
+      fileButton.addEventListener('click', (event) => {
+        document.getElementById('file-selector').click();
+      });
+      
+      const fileSelector = document.getElementById('file-selector');
+      fileSelector.addEventListener('change', (event) => {
+        document.getElementById('file-label').style.display = 'none';
+        document.getElementById('file-button').style.display = 'none';
+        document.getElementById('file-selector').style.display = 'none';
+        preloader = anychart.ui.preloader();
+        preloader.render();
+        preloader.visible(true);
+
+        const fileList = event.target.files;
+        console.log(fileList);
+        const reader = new FileReader();
+        reader.addEventListener('load', (event) => {
+          raw_data_in_json = JSON.parse(event.target.result);
+          summarized_cpu = JSON.parse("{}");
+          summarized_gpu = JSON.parse("{}");
+          for (var i = 0; i < raw_data_in_json.length; i++) {
+            var node = raw_data_in_json[i];
+            if (node.cat == null ||node.name == null || node.args == null || node.args.op_name == null) continue;
+            var category = node.cat;
+            if (category == "Node") {
+                if ( summarized_cpu[node.args.op_name] == null) {
+                  summarized_cpu[node.args.op_name] = {all:0,children:[]};
+                }
+                summarized_cpu[node.args.op_name].all += node.dur;
+                summarized_cpu[node.args.op_name].children.push({name: node.name, value:node.dur})
+            } else if (category == "Kernel") {
+                var op_name = node.args.op_name == "" ? "Session" : node.args.op_name;
+                if (summarized_gpu[op_name] == null) {
+                  
+                  summarized_gpu[op_name] = {all:0,children:[]};
+                }
+                summarized_gpu[op_name].all += node.dur;
+                summarized_gpu[op_name].children.push({name: node.name, value:node.dur})
+            }
+          }
+          var array_cpu = JSON.parse("[]");
+          array_cpu.push({Xname:"all", children:[]});
+          for (var op in summarized_cpu) {
+            array_cpu[0].children.push({name:op, children: summarized_cpu[op].children});
+          }
+          var chart_cpu = anychart.treeMap(anychart.data.tree(array_cpu, "as-tree"));
+          chart_cpu.title("CPU perf overview");
+
+          var array_gpu = JSON.parse("[]");
+          array_gpu.push({Xname:"all", children:[]});
+          var has_gpu_info = false;
+          for (var op in summarized_gpu) {
+            array_gpu[0].children.push({name:op, children: summarized_gpu[op].children});
+            has_gpu_info = true;
+          }
+
+          chart_cpu.listen("drillchange", function(e){
+              console.log('cpu drillchange');
+              document.body.style.cursor = "wait";
+              return true;
+          });
+          chart_cpu.listen("chartDraw", function(e){
+              console.log('cpu refreshed');
+              document.body.style.cursor = "default";
+              return true;
+          });
+
+          //todo: resolve performance issue to enable hint, which improves rendering
+          //chart_cpu.hintDepth(1);
+          //chart_cpu.hintOpacity(0.8);
+          chart_cpu.container("cpu");
+          chart_cpu.draw();
+
+           if (has_gpu_info) {
+            document.getElementById("cpu").className = "half_view";
+            var chart_gpu = anychart.treeMap(anychart.data.tree(array_gpu, "as-tree"));
+            chart_gpu.title("GPU perf overview");
+            //todo: resolve performance issue to enable hint, which improves rendering
+            //chart_gpu.hintDepth(1);
+            //chart_gpu.hintOpacity(0.8);
+            chart_gpu.container("gpu");
+            chart_gpu.draw();
+          } else {
+            document.getElementById("gpu").className = "no_view";
+          }
+          
+          preloader.visible(false);
+        });
+        reader.readAsText(fileList[0]);
+      });
+    </script>
+  </body>
+</html>

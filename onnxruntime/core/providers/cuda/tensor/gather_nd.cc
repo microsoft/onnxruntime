@@ -112,35 +112,12 @@ Status GatherNDBase::PrepareCompute(
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()),   \
       GatherND<TIndex>);
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-#define GATHER_ND_T_TENSOR_TYPES              \
-  { DataTypeImpl::GetTensorType<float>(),     \
-    DataTypeImpl::GetTensorType<double>(),    \
-    DataTypeImpl::GetTensorType<MLFloat16>(), \
-    DataTypeImpl::GetTensorType<BFloat16>(),  \
-    DataTypeImpl::GetTensorType<bool>(),      \
-    DataTypeImpl::GetTensorType<int64_t>() }
-#define GATHER_ND_T_DATA_TYPES float, MLFloat16, double, int64_t, BFloat16, bool
-#else
-#define GATHER_ND_T_TENSOR_TYPES              \
-  { DataTypeImpl::GetTensorType<float>(),     \
-    DataTypeImpl::GetTensorType<double>(),    \
-    DataTypeImpl::GetTensorType<MLFloat16>(), \
-    DataTypeImpl::GetTensorType<bool>(),      \
-    DataTypeImpl::GetTensorType<int64_t>() }
-#define GATHER_ND_T_DATA_TYPES float, MLFloat16, double, int64_t, bool
-#endif
-
-#define REGISTER_KERNEL_TYPED_GATHER_ND(TIndex, ver)                      \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                          \
-      GatherND,                                                           \
-      kOnnxDomain,                                                        \
-      ver,                                                                \
-      TIndex,                                                             \
-      kCudaExecutionProvider,                                             \
-      (*KernelDefBuilder::Create())                                       \
-          .TypeConstraint("T", GATHER_ND_T_TENSOR_TYPES)                  \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()), \
+#define REGISTER_KERNEL_TYPED_GATHER_ND(TIndex, ver)                                                           \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                               \
+      GatherND, kOnnxDomain, ver, TIndex, kCudaExecutionProvider,                                              \
+      (*KernelDefBuilder::Create())                                                                            \
+          .TypeConstraint("T", BuildKernelDefConstraints<float, MLFloat16, double, int64_t, BFloat16, bool>()) \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()),                                      \
       GatherND<TIndex>);
 
 // TODO: decprecate GatherND-1 after updating training models to opset-12
@@ -211,9 +188,9 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
 
   const void* const kernel_input_data = input_tensor->DataRaw();
   void* const kernel_output_data = output_tensor->MutableDataRaw();
-  utils::MLTypeCallDispatcher<GATHER_ND_T_DATA_TYPES> t_disp(input_tensor->GetElementType());
-  t_disp.Invoke<GatherNDComputeImpl>(
-      Stream(), num_slices, slice_size, kernel_input_data, kernel_output_data, input_slice_offsets_buffer.get());
+  utils::MLTypeCallDispatcher<float, MLFloat16, double, int64_t, BFloat16, bool> t_disp(input_tensor->GetElementType());
+  t_disp.Invoke<GatherNDComputeImpl>(Stream(), num_slices, slice_size, kernel_input_data, kernel_output_data,
+                                     input_slice_offsets_buffer.get());
 
   return Status::OK();
 }

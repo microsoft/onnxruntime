@@ -1,10 +1,15 @@
 #!/bin/bash 
 
-if [ ! "$1" = "8.0" ]
+echo "$1"
+if [ ! "$1" = "8.2" ]
 then
     CUR_PWD=$(pwd)
     cd cmake/external/onnx-tensorrt/
     git remote update
+    if [ "$1" = "8.0" ]
+    then 
+        git checkout "$1"'-GA'
+    fi
     if [ "$1" = "7.2" ]
     then 
         git checkout "$1"'.1'
