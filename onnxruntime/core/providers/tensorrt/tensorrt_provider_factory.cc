@@ -70,7 +70,7 @@ struct Tensorrt_Provider : Provider {
     info.engine_decryption_enable = options.trt_engine_decryption_enable != 0;
     info.engine_decryption_lib_path = options.trt_engine_decryption_lib_path == nullptr ? "" : options.trt_engine_decryption_lib_path;
     info.force_sequential_engine_build = options.trt_force_sequential_engine_build != 0;
-    info.timing_cache_enable = options.trt_timing_cache_enable; 
+    info.timing_cache_enable = options.trt_timing_cache_enable != 0;
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
