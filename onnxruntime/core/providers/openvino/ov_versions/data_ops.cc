@@ -282,19 +282,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"ArgMin", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               // ceil_mode attribute is not supported in nGraph
-                               const auto& attributes = node->GetAttributes();
-                               auto ceil_attr = attributes.find("ceil_mode");
-                               // default value of ceil_mode (0) is supported.
-                               if (ceil_attr != attributes.end() && ceil_attr->second().i() != 0) return true;
-                               return (!dimension_unsupported(node));
-                             }};
-    op_list_.insert({"AveragePool", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3, V_2021_4, V_2022_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                //auto pad null value is not supported
                                const auto& attributes = node->GetAttributes();
@@ -597,7 +585,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Loop", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_3, V_2021_4, V_2022_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                //MaxPool "indices" output is not currently supported.
                                //if (node->OutputDefs().size() > 1)
@@ -894,7 +882,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"ScatterElements", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4, V_2022_1},
                              [this](const Node* node, const InitializedTensorSet& initializers) {
                                //start, end, axes need to be a initializer
                                bool cond_for_slice = false;
@@ -951,14 +939,14 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Transpose", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2020_4, V_2021_2, V_2021_3, V_2021_4, V_2022_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                return (!this->dimension_unsupported(node));
                              }};
     op_list_.insert({"Unsqueeze", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3, V_2021_4, V_2022_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                //check for attributes
                                auto& upsample_attr = node->GetAttributes();

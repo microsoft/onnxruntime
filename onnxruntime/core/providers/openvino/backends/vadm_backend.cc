@@ -9,7 +9,7 @@
 
 #include <inference_engine.hpp>
 
-#ifdef OPENVINO_2021_4
+#if defined (OPENVINO_2021_4) || (OPENVINO_2022_1)
 using Exception = InferenceEngine::Exception;
 using WaitMode = InferenceEngine::InferRequest::WaitMode;
 #else
@@ -99,11 +99,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   else {
     i = GetFirstAvailableDevice(global_context);
     LOGS_DEFAULT(INFO) << log_tag << "Device Tag is: " << i;
-#if defined(OPENVINO_2020_3)
-    config[VPU_HDDL_CONFIG_KEY(DEVICE_TAG)] = global_context_.deviceTags[i];
-#else
     config[InferenceEngine::HDDL_DEVICE_TAG] = global_context_.deviceTags[i];
-#endif
     InferenceEngine::ExecutableNetwork exe_network;
     try {
       exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, hw_target, config);
