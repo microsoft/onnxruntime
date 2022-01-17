@@ -96,3 +96,12 @@ static const char* const kOrtSessionOptionsConfigSaveRuntimeOptimizations = "opt
 // If not specified, the default set of stop ops is used. To specify an empty stop ops types list and disable stop op
 // exclusion, set the value to "".
 static const char* const kOrtSessionOptionsConfigNnapiEpPartitioningStopOps = "ep.nnapi.partitioning_stop_ops";
+
+// Enabling dynamic block-sizing for multithreading.
+// With a positive value, thread pool will split a task of N iterations to blocks of size starting from:
+// N / (num_of_threads * dynamic_block_base)
+// As execution progresses, the size will decrease according to the diminishing residual of N, 
+// meaning the task will be distributed in smaller granularity for better parallelism.
+// For some models, it helps to reduce the variance of E2E inference latency and boost performane.
+// The feature will not function by default, specify any positive integer, e.g. "4", to enable it.
+static const char* const kOrtSessionOptionsConfigDynamicBlockBase = "session.dynamic_block_base";

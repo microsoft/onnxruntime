@@ -109,9 +109,7 @@ template void dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, true>(
 SPECIALIZED_WRAPWISE_SOFTMAX_IMPL(float, float, float)
 SPECIALIZED_WRAPWISE_SOFTMAX_IMPL(half, half, float)
 SPECIALIZED_WRAPWISE_SOFTMAX_IMPL(double, double, double)
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-SPECIALIZED_WRAPWISE_SOFTMAX_IMPL(nv_bfloat16, nv_bfloat16, float)
-#endif
+SPECIALIZED_WRAPWISE_SOFTMAX_IMPL(BFloat16, BFloat16, float)
 
 template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>
 void dispatch_blockwise_softmax_forward(cudaStream_t stream, output_t* output, const input_t* input, int softmax_elements, int softmax_elements_stride, int batch_count) {
@@ -127,17 +125,17 @@ void dispatch_blockwise_softmax_forward(cudaStream_t stream, output_t* output, c
   }
 }
 
-#define SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(input_t, output_t, acc_t) \
-template void dispatch_blockwise_softmax_forward<input_t, output_t, acc_t, false>(cudaStream_t stream, output_t* output, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count); \
-template void dispatch_blockwise_softmax_forward<input_t, output_t, acc_t, true>(cudaStream_t stream, output_t* output, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count);
+#define SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(input_t, output_t, acc_t)                                                 \
+  template void dispatch_blockwise_softmax_forward<input_t, output_t, acc_t, false>(                                 \
+      cudaStream_t stream, output_t * output, const input_t* src, int softmax_elements, int softmax_elements_stride, \
+      int batch_count);                                                                                              \
+  template void dispatch_blockwise_softmax_forward<input_t, output_t, acc_t, true>(                                  \
+      cudaStream_t stream, output_t * output, const input_t* src, int softmax_elements, int softmax_elements_stride, \
+      int batch_count);
 
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(float, float, float)
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(half, half, float)
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(double, double, double)
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(nv_bfloat16, nv_bfloat16, float)
-#endif
-
-
+SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(BFloat16, BFloat16, float)
 }
 }
