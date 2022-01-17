@@ -29,6 +29,16 @@ parameters:
   type: boolean
   default: true
 
+- name: enable_olive_windows_cpu
+  displayName: 'Whether OLive Windows CPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_olive_linux_cpu
+  displayName: 'Whether OLive Linux CPU package is built.'
+  type: boolean
+  default: true
+
 trigger: none
 
 stages:
@@ -40,3 +50,5 @@ stages:
     enable_windows_gpu: ${{ parameters.enable_windows_gpu }}
     enable_mac_cpu: ${{ parameters.enable_mac_cpu }}
     enable_linux_arm: ${{ parameters.enable_linux_arm }}
+    enable_olive_windows_cpu: ${{ parameters.enable_olive_windows_cpu }}
+    enable_olive_linux_cpu: ${{ parameters.enable_olive_linux_cpu }}
