@@ -35,23 +35,17 @@ void InPlaceAccumulatorImpl(
       N);
 }
 
-#define SPECIALIZED_IMPL_InPlaceAccumulator(T, T_GRAD) \
-  template void InPlaceAccumulatorImpl(                \
-      cudaStream_t stream,                       \
-      const T* gradient_buffer,                        \
-      const T_GRAD* gradient,                          \
-      T* accumulated_gradient,                         \
-      size_t count);
+#define SPECIALIZED_IMPL_InPlaceAccumulator(T, T_GRAD)                                                        \
+  template void InPlaceAccumulatorImpl(cudaStream_t stream, const T* gradient_buffer, const T_GRAD* gradient, \
+                                       T* accumulated_gradient, size_t count);
 
 SPECIALIZED_IMPL_InPlaceAccumulator(float, float)
 SPECIALIZED_IMPL_InPlaceAccumulator(float, half)
 SPECIALIZED_IMPL_InPlaceAccumulator(half, half)
 SPECIALIZED_IMPL_InPlaceAccumulator(half, float)
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-SPECIALIZED_IMPL_InPlaceAccumulator(float, nv_bfloat16)
-SPECIALIZED_IMPL_InPlaceAccumulator(nv_bfloat16, nv_bfloat16)
-SPECIALIZED_IMPL_InPlaceAccumulator(nv_bfloat16, float)
-#endif
+SPECIALIZED_IMPL_InPlaceAccumulator(float, BFloat16)
+SPECIALIZED_IMPL_InPlaceAccumulator(BFloat16, BFloat16)
+SPECIALIZED_IMPL_InPlaceAccumulator(BFloat16, float)
 
 }  // namespace cuda
 }  // namespace onnxruntime

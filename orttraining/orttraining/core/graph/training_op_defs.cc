@@ -2814,7 +2814,7 @@ Return true if all elements are true and false otherwise.
       .Output(0, "dX", "Gradient of the input.", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 

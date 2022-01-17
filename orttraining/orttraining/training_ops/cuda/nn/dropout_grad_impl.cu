@@ -123,9 +123,7 @@ void DropoutGradientKernelImpl(
 SPECIALIZED_DROPOUT_GRAD_IMPL(float)
 SPECIALIZED_DROPOUT_GRAD_IMPL(double)
 SPECIALIZED_DROPOUT_GRAD_IMPL(half)
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-SPECIALIZED_DROPOUT_GRAD_IMPL(nv_bfloat16)
-#endif
+SPECIALIZED_DROPOUT_GRAD_IMPL(BFloat16)
 
 }  // namespace cuda
 }  // namespace onnxruntime
