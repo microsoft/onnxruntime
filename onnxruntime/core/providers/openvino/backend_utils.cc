@@ -9,7 +9,7 @@
 
 #include <inference_engine.hpp>
 
-#ifdef OPENVINO_2021_4
+#if defined (OPENVINO_2021_4) || (OPENVINO_2022_1)
 using Exception = InferenceEngine::Exception;
 #else
 using Exception = InferenceEngine::details::InferenceEngineException;
