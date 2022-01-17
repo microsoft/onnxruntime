@@ -422,7 +422,7 @@ TEST_F(DataTypeTest, BFloat16Test) {
     constexpr float sample = 1.0f;
     BFloat16 flt16(sample);
     auto int_rep = flt16.val;
-    BFloat16 flt_from_int(int_rep);
+    BFloat16 flt_from_int(int_rep, BFloat16::FromBits());
     const double diff = std::fabs(sample - flt_from_int.ToFloat());
     if (diff > FLT_EPSILON || (std::isnan(diff) && !std::isnan(sample))) {
       EXPECT_TRUE(false);
