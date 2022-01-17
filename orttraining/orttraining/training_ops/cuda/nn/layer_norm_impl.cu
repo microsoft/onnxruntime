@@ -613,10 +613,8 @@ LAYERNORMGRAD_IMPL(float, float, float, false)
 LAYERNORMGRAD_IMPL(double, double, double, false)
 LAYERNORMGRAD_IMPL(half, float, half, false)
 LAYERNORMGRAD_IMPL(float, float, half, false)
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-LAYERNORMGRAD_IMPL(nv_bfloat16, float, nv_bfloat16, true)
-LAYERNORMGRAD_IMPL(nv_bfloat16, float, nv_bfloat16, false)
-#endif
+LAYERNORMGRAD_IMPL(BFloat16, float, BFloat16, true)
+LAYERNORMGRAD_IMPL(BFloat16, float, BFloat16, false)
 
 }  // namespace cuda
 }  // namespace onnxruntime

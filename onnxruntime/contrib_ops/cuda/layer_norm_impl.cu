@@ -395,11 +395,8 @@ LAYERNORM_LINEAR_IMPL(float, float, float, false)
 LAYERNORM_LINEAR_IMPL(half, float, half, false)
 LAYERNORM_LINEAR_IMPL(double, double, double, false)
 LAYERNORM_LINEAR_IMPL(float, float, half, false)
-
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-LAYERNORM_LINEAR_IMPL(nv_bfloat16, float, nv_bfloat16, true)
-LAYERNORM_LINEAR_IMPL(nv_bfloat16, float, nv_bfloat16, false)
-#endif
+LAYERNORM_LINEAR_IMPL(BFloat16, float, BFloat16, true)
+LAYERNORM_LINEAR_IMPL(BFloat16, float, BFloat16, false)
 
 }  // namespace cuda
 }  // namespace contrib

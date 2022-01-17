@@ -28,9 +28,7 @@ REGISTER_KERNEL_TYPED(float, float, float)
 REGISTER_KERNEL_TYPED(double, double, double)
 REGISTER_KERNEL_TYPED(MLFloat16, float, MLFloat16)
 REGISTER_KERNEL_TYPED(float, float, MLFloat16)
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 REGISTER_KERNEL_TYPED(BFloat16, float, BFloat16)
-#endif
 
 template <typename T, typename U, typename V, bool simplified>
 LayerNorm<T, U, V, simplified>::LayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
