@@ -4,11 +4,20 @@
 using System;
 using Xunit;
 using Microsoft.ML.OnnxRuntime.Tensors;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Microsoft.ML.OnnxRuntime.Tests.ArrayTensorExtensions
 {
     public class ArrayTensorExtensionsTests
     {
+        static void CheckValues(IEnumerable<int> expected, DenseTensor<int> tensor) 
+        {
+            foreach (var pair in expected.Zip(tensor.Buffer.ToArray(), Tuple.Create))
+            {
+                Assert.Equal(pair.Item1, pair.Item2);
+            }
+        }
 
         [Fact]
         public void ConstructFrom1D()
@@ -19,6 +28,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests.ArrayTensorExtensions
             var expectedDims = new int[] { 4 };
             Assert.Equal(tensor.Length, array.Length);
             Assert.Equal(expectedDims, tensor.Dimensions.ToArray());
+            CheckValues(array.Cast<int>(), tensor);
         }
 
         [Fact]
@@ -30,6 +40,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests.ArrayTensorExtensions
             var expectedDims = new int[] { 2, 2 };
             Assert.Equal(tensor.Length, array.Length);
             Assert.Equal(expectedDims, tensor.Dimensions.ToArray());
+            CheckValues(array.Cast<int>(), tensor);
         }
 
         [Fact]
@@ -42,6 +53,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests.ArrayTensorExtensions
             var expectedDims = new int[] { 2, 2, 2 };
             Assert.Equal(tensor.Length, array.Length);
             Assert.Equal(expectedDims, tensor.Dimensions.ToArray());
+            CheckValues(array.Cast<int>(), tensor);
         }
 
         [Fact]
@@ -54,6 +66,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests.ArrayTensorExtensions
             var expectedDims = new int[] { 2, 1, 2 };
             Assert.Equal(tensor.Length, array.Length);
             Assert.Equal(expectedDims, tensor.Dimensions.ToArray());
+            CheckValues(array.Cast<int>(), tensor);
         }
 
         [Fact]
@@ -68,6 +81,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests.ArrayTensorExtensions
             var expectedDims = new int[] { 1, 2, 2, 2 };
             Assert.Equal(tensor.Length, array.Length);
             Assert.Equal(expectedDims, tensor.Dimensions.ToArray());
+            CheckValues(array.Cast<int>(), tensor);
         }
 
         [Fact]
@@ -85,6 +99,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests.ArrayTensorExtensions
             var expectedDims = new int[] { 1, 1, 2, 2, 2 };
             Assert.Equal(tensor.Length, array.Length);
             Assert.Equal(expectedDims, tensor.Dimensions.ToArray());
+            CheckValues(array.Cast<int>(), tensor);
         }
     }
 }
