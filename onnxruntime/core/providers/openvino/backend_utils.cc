@@ -163,13 +163,23 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalCont
     ngraph::pass::ConstantFolding().run_on_function(ng_function);
     auto& results = const_cast<::ngraph::ResultVector&>(ng_function->get_results());
     size_t index = results.size() - 1;
-    for (auto it = results.rbegin(); it != results.rend(); ++it) {
+    #if defined (OPENVINO_2022_1)
+      for (auto it = results.rbegin(); it != results.rend(); ++it) {
       if (auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>((*it)->input_value(0).get_node_shared_ptr())) {
-        const_outputs_map[result_to_output.at((*it)->get_friendly_name())] = const_node;
+        const_outputs_map[(*it)->get_friendly_name()] = const_node;
         results.erase(results.begin() + index);
       }
       --index;
     }
+    #else
+      for (auto it = results.rbegin(); it != results.rend(); ++it) {
+        if (auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>((*it)->input_value(0).get_node_shared_ptr())) {
+          const_outputs_map[result_to_output.at((*it)->get_friendly_name())] = const_node;
+          results.erase(results.begin() + index);
+        }
+        --index;
+      }
+    #endif
   }
 
   try {
@@ -278,6 +288,14 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context,
                 std::unordered_map<std::string, int> output_names,
                 std::shared_ptr<ngraph::Node> node) {
   OrtValue* output_tensor;
+
+  #if (defined OPENVINO_2022_1)
+    // Find position of '/' in the output_name
+    int pos = output_name.find("/");
+    // Copy the substring from start to pos
+    output_name = output_name.substr(0 , pos);
+  #endif
+
   auto it = output_names.find(output_name);
   if (it == output_names.end()) {
     ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
