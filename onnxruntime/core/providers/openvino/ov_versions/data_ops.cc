@@ -141,6 +141,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Relu", V_2020_4, {"All"}},
     {"Resize", V_2020_4, {"CPU"}},
     {"Resize", V_2021_3, {"MYRIAD"}},
+    {"Resize", V_2022_1, {"All"}},
     {"Reshape", V_2020_4, {"All"}},
     {"RoiAlign", V_2021_1, {"All"}},
     {"Round", V_2021_2, {"MYRIAD"}},
@@ -224,6 +225,7 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"ArgMin", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Max", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Add", V_2021_2, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"Add", V_2022_1, {"All"}});
   no_dimension_supported_.push_back({"Less", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Greater", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Clip", V_2021_2, {"MYRIAD"}});
