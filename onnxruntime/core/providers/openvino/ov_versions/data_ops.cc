@@ -446,20 +446,6 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"ConvTranspose", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_2},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               if (device_id_.find("MYRIAD") != std::string::npos) {
-                                 const auto& input_arg = node->InputDefs()[0];
-                                 auto shape = input_arg->Shape();
-                                 if ((shape != nullptr) && (shape->dim(0).value_case() != shape->dim(0).kDimValue)) {
-                                   return true;
-                                 }
-                               }
-                               return false;
-                             }};
-    op_list_.insert({"ConvTranspose", obj});
-  }
-  {
     UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
                              [this](const Node* node, const InitializedTensorSet& initializers) {
                                // all ConvInteger zero points need to be constants
@@ -472,41 +458,6 @@ void DataOps::populate_op_mode_supported() {
                                return false;
                              }};
     op_list_.insert({"ConvInteger", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               using onnx_dtype = ONNX_NAMESPACE::TensorProto_DataType;
-                               auto supportedOps = std::set<std::vector<onnx_dtype>>{
-                                   {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT},
-                                   {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_FLOAT},
-                                   {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_INT8},
-                                   {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT},
-                                   {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8},
-                                   {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8},
-                                   {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_UINT8},
-                                   {onnx_dtype::TensorProto_DataType_INT8, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT8},
-                                   {onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32},
-                                   {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT},
-                                   {onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_UINT8}};
-
-                               if (node->OpType() == "Equal") {
-                                 supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_INT32, onnx_dtype::TensorProto_DataType_INT32}),
-                                     supportedOps.insert(std::vector<onnx_dtype>{onnx_dtype::TensorProto_DataType_UINT8, onnx_dtype::TensorProto_DataType_FLOAT, onnx_dtype::TensorProto_DataType_FLOAT});
-                               }
-
-                               onnx_dtype input_0_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-                               onnx_dtype input_1_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
-                               onnx_dtype output_data_type = (ONNX_NAMESPACE::TensorProto_DataType)node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-                               const std::vector<onnx_dtype> typePair{output_data_type, input_0_data_type, input_1_data_type};
-                               const auto match = supportedOps.find(typePair);
-                               if (match == supportedOps.end())
-                                 return true;
-                               else
-                                 return false;
-                             }};
-    op_list_.insert({"Equal", obj});
-    op_list_.insert({"And", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3},
@@ -651,32 +602,6 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Sum", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1},
-                             [this](const Node* node, const InitializedTensorSet& initializers) {
-                               if (GetInputCount(node, initializers) == 1)
-                                 return true;
-                               return false;
-                             }};
-    op_list_.insert({"Mean", obj});
-    op_list_.insert({"Sum", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1},
-                             [this](const Node* node, const InitializedTensorSet& initializers) {
-                               if (GetInputCount(node, initializers) == 1)
-                                 return true;
-                               for (size_t i = 0; i < node->InputDefs().size(); i++) {
-                                 auto dtype = node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type();
-                                 if (dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
-                                     dtype == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16)
-                                   return true;
-                               }
-                               return false;
-                             }};
-    op_list_.insert({"Max", obj});
-    op_list_.insert({"Min", obj});
-  }
-  {
     UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                //All matmuls except float have computation missmatch
@@ -744,16 +669,6 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"NonMaxSuppression", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               //Only supported if the data type of both inputs is same
-                               auto x_data_type = node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-                               auto y_data_type = node->InputDefs()[1]->TypeAsProto()->tensor_type().elem_type();
-                               return x_data_type != y_data_type;
-                             }};
-    op_list_.insert({"Pow", obj});
-  }
-  {
     UnsupportedOpMode obj = {{V_2021_2, V_2021_3, V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("GPU") != std::string::npos) {
@@ -801,27 +716,6 @@ void DataOps::populate_op_mode_supported() {
                                return non_const_zero_point;
                              }};
     op_list_.insert({"QLinearMatMul", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               //Only FP32, INT32 and U8 data types are supported
-                               const bool data_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
-                               const bool data_is_int32 = node->InputDefs()[0]->Type()->find("int32") != std::string::npos;
-                               const bool data_is_u8 = node->InputDefs()[0]->Type()->find("uint8") != std::string::npos;
-                               return !(data_is_float || data_is_int32 || data_is_u8);
-                             }};
-    op_list_.insert({"ReduceMin", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               //Resize opset 11 is not supported
-                               if (node->InputDefs().size() > 2)
-                                 return true;
-                               return false;
-                             }};
-    op_list_.insert({"Resize", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2021_4},
@@ -919,13 +813,6 @@ void DataOps::populate_op_mode_supported() {
                                return false;
                              }};
     op_list_.insert({"Squeeze", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2020_4},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               return node->InputDefs().size() > 1;
-                             }};
-    op_list_.insert({"TopK", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2021_4},
