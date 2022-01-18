@@ -18,7 +18,7 @@
 #endif
 #endif
 
-#if defined(CPUIDINFO_ARCH_ARM) && defined(CPUINFO_SUPPORTED)
+#if defined(CPUIDINFO_ARCH_ARM) && defined(CPUINFO_SUPPORTED) && defined(__linux__)
 #include <sys/auxv.h>
 #include <asm/hwcap.h>
 // N.B. Support building with older versions of asm/hwcap.h that do not define
@@ -109,7 +109,7 @@ CPUIDInfo::CPUIDInfo() {
 #endif
 
 #if defined(CPUIDINFO_ARCH_ARM)
-#ifdef CPUINFO_SUPPORTED
+#ifdef HWCAP_ASIMDDP
 
     // only works on ARM linux or android, does not work on Windows
     if (pytorch_cpuinfo_init_) {
