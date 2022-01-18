@@ -58,7 +58,7 @@ MiopenTensorDescriptor::~MiopenTensorDescriptor() {
   }
 }
 
-Status MiopenTensorDescriptor::Set(const gsl::span<const int64_t>& filter_dims, miopenDataType_t data_type) {
+Status MiopenTensorDescriptor::Set(gsl::span<const int64_t> filter_dims, miopenDataType_t data_type) {
   if (!desc_)
     MIOPEN_RETURN_IF_ERROR(miopenCreateTensorDescriptor(&desc_));
 
