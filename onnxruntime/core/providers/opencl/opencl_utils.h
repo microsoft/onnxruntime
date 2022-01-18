@@ -24,14 +24,11 @@
 #define OPENCL_EXEC_PROVIDER_FROM_INFO(info) \
   const_cast<OpenCLExecutionProvider*>(static_cast<const OpenCLExecutionProvider*>((info).GetExecutionProvider()))
 
-#define TO_STRING_(T) #T
-#define TO_STRING(T) TO_STRING_(T)
-
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define ORT_RETURN_IF_CL_ERROR(error_code, ...)                                          \
   if ((error_code) != CL_SUCCESS) {                                                      \
     std::ostringstream oss;                                                              \
-    oss << __FILE__ ":" TO_STRING(__LINE__)                                              \
+    oss << __FILE__ ":" << __LINE__                                                      \
         << "\nOpenCL Error Code  : " << (int)(error_code)                                \
         << "\n       Error String: " << onnxruntime::opencl::GetErrorString(error_code); \
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, oss.str(),                              \
@@ -41,7 +38,7 @@
 #define ORT_THROW_IF_CL_ERROR(error_code, ...)                                           \
   if ((error_code) != CL_SUCCESS) {                                                      \
     std::ostringstream oss;                                                              \
-    oss << __FILE__ ":" TO_STRING(__LINE__)                                              \
+    oss << __FILE__ ":" << __LINE__                                                      \
         << "\nOpenCL Error Code  : " << (int)(error_code)                                \
         << "\n       Error String: " << onnxruntime::opencl::GetErrorString(error_code); \
     ORT_THROW(oss.str(), ::onnxruntime::MakeString(__VA_ARGS__));                        \
