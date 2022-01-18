@@ -356,7 +356,8 @@ class Conv : public OpenCLKernel {
     bool K1 = K[0] == 1 && K[1] == 1 && P[0] == 0 && P[1] == 0;
     bool S1 = S[0] == 1 && S[1] == 1 && D[0] == 1 && D[1] == 1;
     bool K3 = K[0] == 3 && K[1] == 3;
-
+    bool winograd_req = S1 && K3 && C_out >= 32 &&
+                        C_in >= 32 && (H_in * 1.0 / C_in) <= 4;
     if (K1 && S1) {
       ZoneScopedN("Conv2DK1S1 (kernel launch)");
       ORT_RETURN_IF_ERROR(
@@ -389,7 +390,7 @@ class Conv : public OpenCLKernel {
               .setArg<cl_float>(act_info_.param0)
               .setArg<cl_float>(act_info_.param1)
               .Launch(*exec_, {gsx, gsy}));
-    } else if (S1 && K3) {
+    } else if (winograd_req) {
         return WinogradConv2D(X, W, B, Y, K, S, P, D, attrs_.group);
     } else {
       ZoneScopedN("Conv2D (kernel launch)");
