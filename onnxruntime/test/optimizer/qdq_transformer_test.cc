@@ -819,6 +819,45 @@ TEST(QDQTransformerTests, ResizeReshape) {
   test_case({1, 2, 26, 42}, {4});
 }
 
+TEST(QDQTransformerTests, ArgMax) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape,
+                       int axis,
+                       int keepdims,
+                       int select_last_index) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
+                                                   std::numeric_limits<uint8_t>::min(),
+                                                   std::numeric_limits<uint8_t>::max());
+      auto* output_arg = builder.MakeOutput();
+
+      // add DQ
+      auto* dq_output = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, .003f, 1, dq_output);
+
+      // add ArgMax
+      Node& argmax_node = builder.AddNode("ArgMax", {dq_output}, {output_arg});
+      argmax_node.AddAttribute("axis", static_cast<int64_t>(axis));
+      argmax_node.AddAttribute("keepdims", static_cast<int64_t>(keepdims));
+      argmax_node.AddAttribute("select_last_index", static_cast<int64_t>(select_last_index));
+    };
+
+    auto check_argmax_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["ArgMax"], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+    };
+
+    TransformerTester(build_test_case, check_argmax_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      /* opset_version */ 13);
+  };
+
+  test_case({2, 13, 12, 37}, 1, 0, 0);
+  test_case({2, 13, 12, 37}, 0, 1, 0);
+  test_case({2, 13, 12, 37}, 0, 0, 1);
+}
+
 TEST(QDQTransformerTests, QLinearMatMul) {
   auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& input2_shape) {
     auto build_test_case = [&](ModelTestBuilder& builder) {

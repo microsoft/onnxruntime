@@ -8,6 +8,7 @@
 #include <core/framework/tensorprotoutils.h>
 #include <core/graph/graph.h>
 #include <core/providers/common.h>
+#include "core/providers/shared/node_unit/node_unit.h"
 
 namespace onnxruntime {
 
@@ -80,6 +81,9 @@ bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
 
 NodeAttrHelper::NodeAttrHelper(const onnxruntime::Node& node)
     : node_attributes_(node.GetAttributes()) {}
+
+NodeAttrHelper::NodeAttrHelper(const NodeUnit& node_unit)
+    : node_attributes_(node_unit.GetNode().GetAttributes()) {}
 
 float NodeAttrHelper::Get(const std::string& key, float def_val) const {
   if (!HasAttr(key))
