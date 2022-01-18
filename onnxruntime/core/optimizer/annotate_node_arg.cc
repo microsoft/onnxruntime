@@ -35,6 +35,13 @@ TensorUsage ClassifyTensorUsage(const Node* node, const NodeArg* node_arg, int n
     ORT_ENFORCE(it != attrs.end());
     auto group = it->second.i();
 
+    const auto* strides_attr = graph_utils::GetNodeAttribute(*node, "strides");
+    const auto* dilations_attr = graph_utils::GetNodeAttribute(*node, "dilations");
+    ORT_ENFORCE(strides_attr!=nullptr);
+    ORT_ENFORCE(dilations_attr != nullptr);
+    auto strides = RetrieveValues<int64_t>(*strides_attr);
+    auto dilations = RetrieveValues<int64_t>(*dilations_attr);
+
     // get number of output channel
     auto dim_channel_out = node_arg->Shape()->dim(0);
     ORT_ENFORCE(utils::HasDimValue(dim_channel_out));
@@ -46,9 +53,30 @@ TensorUsage ClassifyTensorUsage(const Node* node, const NodeArg* node_arg, int n
     ORT_ENFORCE(utils::HasDimValue(dim_channel_in));
     auto ci_per_group = dim_channel_in.dim_value();
 
+    // get number of input channel
+    auto dim_kernel_h = node_arg->Shape()->dim(2);
+    ORT_ENFORCE(utils::HasDimValue(dim_kernel_h));
+    auto kernel_h = dim_kernel_h.dim_value();
+
+    // get number of input channel
+    auto dim_kernel_w = node_arg->Shape()->dim(3);
+    ORT_ENFORCE(utils::HasDimValue(dim_kernel_w));
+    auto kernel_w = dim_kernel_w.dim_value();
+
+    auto input_arg = node->InputDefs()[0];
+    auto dim_in_heigth = input_arg->Shape()->dim(3);
+    ORT_ENFORCE(utils::HasDimValue(dim_in_heigth));
+    auto in_heigth = dim_in_heigth.dim_value();
+
+
     if (ci_per_group == 1 && co_per_group == 1) {
       // TODO: relax co_per_group requirement
       return TensorUsage::DepthwiseConvWeight;
+    } else if (kernel_w == 3 && kernel_h == 3 && strides.size() == 2 
+        && strides[0] == 1 && strides[1] == 1 && strides.size() == 2 
+        && strides[0] == 1 && strides[1] == 1 && co_total >= 32 && 
+        ci_per_group >= 32 && (in_heigth * 1.0 / ci_per_group) <= 4) {
+      return TensorUsage::WinogradWeight;
     }
     return TensorUsage::ConvWeight;
   }

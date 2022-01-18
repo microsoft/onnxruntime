@@ -4,6 +4,7 @@
 #include "opencl_utils.h"
 #include "opencl_kernel_holder.h"
 #include "opencl_data_transfer.h"
+#include "core/providers/winograd_generator.h"
 
 #include "core/framework/ortdevice.h"
 #include "core/framework/tensor.h"
@@ -37,6 +38,8 @@ Status OpenCLDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int exec_q
     switch (dst.Usage()) {
       case TensorUsage::ConvWeight:
         return CopyConvWeight(src, dst);
+      case TensorUsage::WinogradWeight:
+        return CopyWinogradConvWeight(src, dst);
       case TensorUsage::DepthwiseConvWeight:
         return CopyDepthwiseConvWeight(src, dst);
       default:
@@ -356,6 +359,48 @@ Status OpenCLDataTransfer::CopyConvWeight(const Tensor& src, Tensor& dst) const 
                           .setImage2D(dst_image2d)
                           .Launch(*exec_, desc.AsNDRange()));
   ORT_RETURN_IF_CL_ERROR(clFinish(exec_->GetCommandQueue())); // do sync copy, since we cannot extend the lifetime of src or tmp
+  return Status::OK();
+}
+
+Status OpenCLDataTransfer::CopyWinogradConvWeight(const Tensor& src, Tensor& dst) const {
+  ZoneScopedN("CopyConvWeight");
+  auto dst_image2d = CL_IMAGE2D_FROM_TENSOR(dst);
+  //wino initialize
+  auto shape = src.Shape();
+  ORT_ENFORCE(shape[2] == 3);
+  ORT_ENFORCE(shape[3] == 3);
+  int64_t output_channel = shape[0];
+  int64_t input_channel = shape[1];
+  const int kernel_size = shape[3];
+#define UNIT 2
+  int unit_output = UNIT;
+  int unit_input = UNIT + kernel_size - 1;
+  WinogradGenerator generator(unit_output, kernel_size, 1.0f);
+  auto transform_weight = generator.allocTransformWeight(output_channel, input_channel, kernel_size, kernel_size, 4, 4);
+  //we assume the weight data is float, not half.
+  generator.transformWeight(transform_weight, src.Data<float>(), output_channel, input_channel, kernel_size, kernel_size);
+  auto dims = std::get<1>(transform_weight);
+  int result = sizeof(float);
+  for (int index = 0; index < dims.size(); ++index) {
+    result *= dims[index];
+  }
+  //wino end====
+
+  auto desc = Image2DDesc::PackFromWinogradTransform(dst.Shape());
+  VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), dst_image2d);
+
+ 
+
+  auto tmp = exec_->GetScratchBuffer(result);
+  ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), tmp.get(), /*blocking_write=*/CL_FALSE, /*offset=*/0, result, 
+      std::get<0>(transform_weight).get(), 0, nullptr, nullptr));
+  ORT_RETURN_IF_ERROR(KernelLauncher{kernels_->GetKernel("CopyBufferToImage2d")}
+                          .setBuffer(tmp.get())
+                          .setImage2D(dst_image2d)
+                          .setArg<cl_int>(desc.Width())
+                          .setArg<cl_int>(desc.Height())
+                          .Launch(*exec_, desc.AsNDRange()));
+  ORT_RETURN_IF_CL_ERROR(clFinish(exec_->GetCommandQueue()));  // do sync copy, since we cannot extend the lifetime of src or tmp
   return Status::OK();
 }
 

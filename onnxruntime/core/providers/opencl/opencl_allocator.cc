@@ -129,6 +129,11 @@ TensorShape OpenCLImage2DAllocator::AdaptWeightShape(const TensorShape& shape, T
     case TensorUsage::Generic:
       desc = Image2DDesc::PackFromTensor(shape);
       break;
+    case TensorUsage::WinogradWeight:
+      desc = Image2DDesc::PackFromWinogradTransform(shape);
+      break;
+    default:
+      ORT_NOT_IMPLEMENTED("weight usage");
   }
   // Image2DDesc::Pack* has implicit RGBA 4 channel, the adapted shape should
   // make it explicit

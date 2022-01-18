@@ -52,6 +52,7 @@ class OpenCLDataTransfer : public IDataTransfer {
 
   // tensor that we should specially handled, only support copy from cpu to image2
   Status CopyConvWeight(const Tensor& src, Tensor& dst) const;
+  Status CopyWinogradConvWeight(const Tensor& src, Tensor& dst) const;
   Status CopyDepthwiseConvWeight(const Tensor& src, Tensor& dst) const;
 
  private:

@@ -4,7 +4,7 @@
 
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/providers/opencl/opencl_kernel.h"
-
+#include "core/providers/opencl/opencl_execution_provider.h"
 namespace {
 #define CONTENT_NAME conv_kernel_src
 #include "opencl_generated/nn/kernels/conv_image2d.cl.inc"
@@ -21,6 +21,11 @@ enum ActivationKind {
   ActivationKind_Clip = 5,
 };
 
+
+struct KernelUnitParam {
+  std::vector<uint32_t> global_work_size = {};
+  std::vector<uint32_t> local_work_size = {};
+};
 struct FusedConvAct {
   ActivationKind kind;
   float param0;
@@ -55,6 +60,57 @@ struct FusedConvAct {
     return Status::OK();
   }
 };
+// local size 2d calculate, special for conv default.
+std::vector<uint32_t> Conv2dCommonLocalWS2D(std::vector<uint32_t>& gws,
+                                            const uint32_t max_workgroup_size,
+                                            const uint32_t subgroup_size) {
+  //uint32_t compute_units = OpenCLRuntime::GetInstance()->DeviceComputeUnits();
+
+  std::vector<uint32_t> lws;
+  lws.clear();
+
+  //if (ADRENO == gpu_info_.type) {
+  //  lws = AdrenoLocalSize2D(gws, gpu_info_, compute_units, max_workgroup_size, subgroup_size);
+  //}
+
+  return lws;
+}
+Status CalWGSizeForWino(const Tensor* X, const Tensor* Y, const std::vector<int64_t>& P, std::vector<KernelUnitParam>& winokernel) {
+  const auto& input_dims = X->Shape();
+  const auto& output_dims = Y->Shape();
+
+  const int batch = output_dims[0];
+  const int output_channel = output_dims[1];
+  const int output_height = output_dims[2];
+  const int output_width = output_dims[3];
+
+  const int input_channel = input_dims[1];
+  const int input_height = input_dims[2];
+  const int input_width = input_dims[3];
+
+  const int round_up_ouptut_width = CeilDiv(output_width, 2);
+  const int round_up_output_height = CeilDiv(output_height, 2);
+  const int batch_round_h = batch * round_up_output_height;
+  const int output_channel_blocks = CeilDiv(output_channel, 4);
+  const int input_channel_blocks = CeilDiv(input_channel, 4);
+  const int round_up_4x4_ouptut_width = CeilDiv(round_up_ouptut_width, 4);
+
+  int padding_shape[2] = {P[0], P[1]};
+
+  winokernel[0].global_work_size = {static_cast<uint32_t>(input_channel_blocks * round_up_ouptut_width),
+                                    static_cast<uint32_t>(batch_round_h)};
+  winokernel[0].local_work_size = Conv2dCommonLocalWS2D(
+      winokernel[0].global_work_size, 0, 0);
+
+  winokernel[1].global_work_size = {static_cast<uint32_t>(output_channel_blocks * round_up_4x4_ouptut_width),
+                                    static_cast<uint32_t>(16 * batch_round_h)};
+
+  winokernel[2].global_work_size = {static_cast<uint32_t>(output_channel_blocks * round_up_ouptut_width),
+                                    static_cast<uint32_t>(batch_round_h)};
+  winokernel[2].local_work_size = Conv2dCommonLocalWS2D(
+      winokernel[2].global_work_size, 0, 0);
+  return Status::OK();
+}
 
 class Conv : public OpenCLKernel {
  public:
@@ -68,6 +124,9 @@ class Conv : public OpenCLKernel {
     LoadKernel("Conv2DK1S1");
     LoadKernel("DepthwiseConv2D");
     LoadKernel("DepthwiseConv2DS1");
+    LoadKernel("TransformToMatrixV");
+    LoadKernel("MatrixInnerProduct");
+    LoadKernel("TransformFromMatrixM");
   };
 
   Status Compute(OpKernelContext* context) const override {
@@ -194,6 +253,78 @@ class Conv : public OpenCLKernel {
     return Status::OK();
   }
 
+
+    Status WinogradConv2D(const Tensor* X,
+                        const Tensor* W,
+                        const Tensor* B,
+                        Tensor* Y,
+                        const std::vector<int64_t>& K,
+                        const std::vector<int64_t>& S,
+                        const std::vector<int64_t>& P,
+                        const std::vector<int64_t>& D,
+                        const int group) const {
+    cl_int ret = CL_SUCCESS;
+    const auto& xshape = X->Shape();
+    const auto& yshape = Y->Shape();
+    const int output_channel = yshape[1];
+    const int output_height = yshape[2];
+    const int output_width = yshape[3];
+
+    const int batch = yshape[0];
+    const int input_channel = xshape[1];
+    const int input_height = xshape[2];
+    const int input_width = xshape[3];
+
+    const int round_up_ouptut_width = CeilDiv(output_width, 2);
+    const int round_up_output_height = CeilDiv(output_height, 2);
+    const int batch_round_h = batch * round_up_output_height;
+    const int output_channel_blocks = CeilDiv(output_channel, 4);
+    const int input_channel_blocks = CeilDiv(input_channel, 4);
+    const int round_up_4x4_ouptut_width = CeilDiv(round_up_ouptut_width, 4);
+
+    opencl::Image2DDesc desc{input_channel_blocks * round_up_ouptut_width*4, 16 * batch * round_up_output_height};
+    auto ocl_v_ = exec_->GetScratchImage2D(desc);
+    desc = {output_channel_blocks * round_up_ouptut_width * 4, 16 * batch * round_up_output_height};
+    auto ocl_m_ = exec_->GetScratchImage2D(desc);
+    std::vector<KernelUnitParam> winokernel(3);
+    ORT_RETURN_IF_ERROR(CalWGSizeForWino(X, Y, P, winokernel));
+    ORT_RETURN_IF_ERROR(KernelLauncher{GetKernel("TransformToMatrixV")}
+         .setArg<cl_int>(winokernel[0].global_work_size[0])
+         .setArg<cl_int>(winokernel[0].global_work_size[1])
+         .setImage2D(*X)
+         .setImage2D(ocl_v_.get())
+         .setInt2(input_height, input_width)
+         .setArg<cl_int>(input_channel)
+         .setArg<cl_int>(round_up_output_height)
+         .setArg<cl_int>(round_up_ouptut_width)
+         .setInt2<cl_int>(P[0], P[1])
+        .Launch(*exec_, {winokernel[0].global_work_size[0], winokernel[0].global_work_size[1]}));
+    ORT_RETURN_IF_ERROR(KernelLauncher{GetKernel("MatrixInnerProduct")}
+         .setArg<cl_int>(winokernel[1].global_work_size[0])
+         .setArg<cl_int>(winokernel[1].global_work_size[1])
+         .setImage2D(ocl_v_.get())
+         .setImage2D(*W)
+         .setImage2D(ocl_m_.get())
+         .setArg(round_up_ouptut_width)
+         .setArg(round_up_4x4_ouptut_width)
+         .setArg<cl_int>(batch_round_h)
+         .setArg<cl_int>(output_channel_blocks)
+         .setArg<cl_int>(input_channel_blocks)
+         .Launch(*exec_, {winokernel[1].global_work_size[0], winokernel[1].global_work_size[1]}));
+    ORT_RETURN_IF_ERROR(KernelLauncher{GetKernel("TransformFromMatrixM")}
+         .setArg<cl_int>(winokernel[2].global_work_size[0])
+         .setArg<cl_int>(winokernel[2].global_work_size[1])
+         .setImage2D(ocl_m_.get())
+         .setImage2Ds((B ? *B : *W), *Y)
+         .setArg(round_up_ouptut_width)
+         .setArg(round_up_output_height)
+         .setArg<cl_int>(output_width)
+         .setArg<cl_int>(output_height)
+        .setArg<cl_int>(act_info_.kind)
+        .setArg<cl_int>(B!=nullptr)
+        .Launch(*exec_, {winokernel[2].global_work_size[0], winokernel[2].global_work_size[1]}));
+    return Status::OK();
+  }
   Status Conv2D(const Tensor* X,
                 const Tensor* W,
                 const Tensor* B,
@@ -224,6 +355,7 @@ class Conv : public OpenCLKernel {
 
     bool K1 = K[0] == 1 && K[1] == 1 && P[0] == 0 && P[1] == 0;
     bool S1 = S[0] == 1 && S[1] == 1 && D[0] == 1 && D[1] == 1;
+    bool K3 = K[0] == 3 && K[1] == 3;
 
     if (K1 && S1) {
       ZoneScopedN("Conv2DK1S1 (kernel launch)");
@@ -257,6 +389,8 @@ class Conv : public OpenCLKernel {
               .setArg<cl_float>(act_info_.param0)
               .setArg<cl_float>(act_info_.param1)
               .Launch(*exec_, {gsx, gsy}));
+    } else if (S1 && K3) {
+        return WinogradConv2D(X, W, B, Y, K, S, P, D, attrs_.group);
     } else {
       ZoneScopedN("Conv2D (kernel launch)");
       ORT_RETURN_IF_ERROR(
