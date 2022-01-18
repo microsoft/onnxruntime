@@ -219,7 +219,7 @@ std::unique_ptr<float, std::function<void(float*)>> mapImage2dToHost(const OpenC
 
 std::unique_ptr<float, std::function<void(float*)>> mapImage2dToHost(const OpenCLExecutionProvider& exec, cl_mem image, int width, int height, bool write ) {
   size_t origin[3] = {0, 0, 0};
-  size_t region[3] = {width, height, 1};
+  size_t region[3] = {static_cast<size_t>(width), static_cast<size_t>(height), 1};
   size_t image_row_pitch = width;
   size_t image_slice_pitch = width * height;
   cl_int err;

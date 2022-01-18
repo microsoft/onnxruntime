@@ -101,7 +101,7 @@ __kernel void MatrixInnerProduct(GLOBAL_SIZE_2_DIMS __read_only image2d_t matrix
                                  __private const int batch_round_h,
                                  __private const int out_channel_block,
                                  __private const int in_channel_block) {
-  
+
   const int output_cw_block_idx = get_global_id(0);  //c/4  w/2/4
   const int output_16_bh_idx = get_global_id(1);     //16 b h/2
 
@@ -151,7 +151,7 @@ __kernel void MatrixInnerProduct(GLOBAL_SIZE_2_DIMS __read_only image2d_t matrix
     m3 = mad(v_in3.s2, u_in2, m3);
     m3 = mad(v_in3.s3, u_in3, m3);
   }
-  
+
   const int output_cw_idx = mad24(c_block_idx, round_w, w_idx.s0);
   WI_F(matrix_m, (int2)(output_cw_idx, output_16_bh_idx), m0);
   if (w_idx.s1 < round_w) {
@@ -201,11 +201,11 @@ __kernel void TransformFromMatrixM(GLOBAL_SIZE_2_DIMS __read_only image2d_t matr
   const int batch = output_bh_idx / round_h;
   const int h_block_idx = output_bh_idx - mul24(batch, round_h);
 
-  FLOAT4 bias_value = (float4)(0.0f);
+  FLOAT4 bias_value = (FLOAT4)(0.0f);
   if (has_bias){
     bias_value = RI_F(bias, (int2)(c_block_idx, 0));
   }
-  
+
 
   FLOAT4 m00 = RI_F(matrix_m, (int2)(output_cw_idx, output_bh_idx));
   FLOAT4 m10 = RI_F(matrix_m, (int2)(output_cw_idx, mad24(1, global_size_dim1, output_bh_idx)));

@@ -85,8 +85,6 @@ Status CalWGSizeForWino(const Tensor* X, const Tensor* Y, const std::vector<int6
   const int output_width = output_dims[3];
 
   const int input_channel = input_dims[1];
-  const int input_height = input_dims[2];
-  const int input_width = input_dims[3];
 
   const int round_up_ouptut_width = CeilDiv(output_width, 2);
   const int round_up_output_height = CeilDiv(output_height, 2);
@@ -95,7 +93,6 @@ Status CalWGSizeForWino(const Tensor* X, const Tensor* Y, const std::vector<int6
   const int input_channel_blocks = CeilDiv(input_channel, 4);
   const int round_up_4x4_ouptut_width = CeilDiv(round_up_ouptut_width, 4);
 
-  int padding_shape[2] = {P[0], P[1]};
 
   winokernel[0].global_work_size = {static_cast<uint32_t>(input_channel_blocks * round_up_ouptut_width),
                                     static_cast<uint32_t>(batch_round_h)};
