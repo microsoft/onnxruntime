@@ -104,6 +104,30 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   return IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
 }
 
+bool DropDQNodeGroupSelector::CheckDQNodes(const Node& node, const std::vector<const Node*>& dq_nodes) const {
+  int num_dq_inputs = NumActualValues(node, true);
+
+  return num_dq_inputs == gsl::narrow_cast<int>(dq_nodes.size());
+}
+
+bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                    const Node& node,
+                                    const std::vector<const Node*>& dq_nodes,
+                                    const std::vector<const Node*>& q_nodes) const {
+  if (!CheckDQNodes(node, dq_nodes)) {
+    return false;
+  }
+
+  (void)q_nodes;
+  const Node& dq_node = *dq_nodes.front();
+
+  auto get_const_initializer = [&graph_viewer](const std::string& initializer_name) {
+    return graph_viewer.GetConstantInitializer(initializer_name, true);
+  };
+
+  return IsDQSupported(dq_node, get_const_initializer);
+}
+
 bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
                                    const std::vector<const Node*>& dq_nodes,
                                    const std::vector<const Node*>& q_nodes) const {
