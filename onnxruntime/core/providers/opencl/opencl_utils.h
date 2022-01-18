@@ -213,7 +213,16 @@ class Image2DDesc : private std::pair<int64_t, int64_t> {
     int64_t K_w = shape[3];
     return {C_i, CeilDiv(C_o, 4) * K_h * K_w};
   }
-
+  static Image2DDesc PackFromWinogradTransform(const TensorShape& shape) {
+    ORT_ENFORCE(shape.NumDimensions() == 4);
+    int64_t C_o = shape[0];
+    int64_t C_i = shape[1];
+    //FIXME: asumme we only surpport window-size=4
+    int64_t K_h = 4;
+    int64_t K_w = 4;
+    return {CeilDiv(C_i, 4) * K_h, 16*CeilDiv(C_o, 4)};
+  }
+  
   static Image2DDesc PackFromDepthwiseConv2DWeight(const TensorShape& shape) {
     ORT_ENFORCE(shape.NumDimensions() == 4);
     int64_t C_o = shape[0];
@@ -364,5 +373,7 @@ class KernelLauncher {
   cl_uint err_index_;
 };
 
+std::unique_ptr<float, std::function<void(float*)>> mapImage2dToHost(const OpenCLExecutionProvider& exec, const Tensor& tensor, int width, int height, bool write=false);
+std::unique_ptr<float, std::function<void(float*)>> mapImage2dToHost(const OpenCLExecutionProvider& exec, cl_mem image, int width, int height, bool write = false);
 }  // namespace opencl
 }  // namespace onnxruntime

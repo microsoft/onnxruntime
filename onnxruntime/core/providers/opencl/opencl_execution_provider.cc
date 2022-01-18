@@ -264,6 +264,7 @@ void OpenCLExecutionProvider::InitCopyKernels() {
   copy_kernels_ = std::make_unique<opencl::OpenCLKernelHolder>();
   copy_kernels_->LoadProgram(this, copy_tensors_src, copy_tensors_src_len);
   copy_kernels_->LoadKernel("CopyBuffer1DToImage2D");
+  copy_kernels_->LoadKernel("CopyBufferToImage2d");
   copy_kernels_->LoadKernel("CopyImage2DToBuffer1D");
   copy_kernels_->LoadKernel("CopyBufferNCHWToImage2D");
   copy_kernels_->LoadKernel("CopyImage2DToBufferNCHW");

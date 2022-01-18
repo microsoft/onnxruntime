@@ -1,4 +1,6 @@
 #include "opencl_utils.h"
+#include <functional>
+#include <memory>
 
 namespace onnxruntime {
 namespace opencl {
@@ -208,6 +210,37 @@ Status KernelLauncher::Launch(const OpenCLExecutionProvider& exec, const NDRange
     ORT_RETURN_IF_CL_ERROR(clEnqueueNDRangeKernel(exec.GetCommandQueue(), kernel_, global.Size(), nullptr, global.Data(), local.Data(), 0, nullptr, nullptr));
 #endif
     return exec.AfterCLLaunch();
+}
+
+std::unique_ptr<float, std::function<void(float*)>> mapImage2dToHost(const OpenCLExecutionProvider& exec, const Tensor& tensor, int width, int height,bool write) {
+  cl_mem image = CL_IMAGE2D_FROM_TENSOR(tensor);
+  return mapImage2dToHost(exec, image, width, height, write);
+}
+
+std::unique_ptr<float, std::function<void(float*)>> mapImage2dToHost(const OpenCLExecutionProvider& exec, cl_mem image, int width, int height, bool write ) {
+  size_t origin[3] = {0, 0, 0};
+  size_t region[3] = {width, height, 1};
+  size_t image_row_pitch = width;
+  size_t image_slice_pitch = width * height;
+  cl_int err;
+  bool flag = CL_MAP_READ;
+  if (write) {
+    flag = CL_MAP_WRITE;
+  }
+  float* hostptr = static_cast<float*>(clEnqueueMapImage(exec.GetCommandQueue(), image, CL_TRUE, flag, origin, region,
+                                   &image_row_pitch, &image_slice_pitch,
+                                   0, NULL, NULL, &err));
+  if (err != CL_SUCCESS) {
+    printf("map error\n ");
+  }
+  auto climage_deleter = [](cl_command_queue q, cl_mem image, float* p) {
+    cl_int ret = clEnqueueUnmapMemObject(q, image, p, 0, NULL, NULL);
+    if (ret != CL_SUCCESS) {
+      printf(" ");
+    }
+  };
+  std::function<void(float*)> delete_binded = std::bind(climage_deleter, exec.GetCommandQueue(), image, std::placeholders::_1);
+  return std::unique_ptr<float, std::function<void(float*)>>(hostptr, delete_binded);
 }
 
 }  // namespace opencl
