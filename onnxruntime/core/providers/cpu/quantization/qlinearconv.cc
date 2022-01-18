@@ -11,6 +11,22 @@
 #include "core/util/qmath.h"
 #include "core/mlas/inc/mlas.h"
 
+#if defined(_M_ARM64) || defined(__aarch64__)
+
+//
+// TODO!! Hack! need to move this to MLAS
+// 
+// We use a different job partition with mobile devices
+// where the model tends to be smaller. When the entire
+// weight matrix fits in the cache, we process a thin
+// horizontal slice of the result matrix at a time. The
+// thickness of this slice depend on micro-kernel M
+// stride.
+//
+#define GEMM_KERNEL_STRIDE_M 4
+
+#endif
+
 namespace onnxruntime {
 
 template <typename ActType>
@@ -105,7 +121,7 @@ class QLinearConv : public OpKernel {
     return output_scales;
   }
 
-  static int32_t ComputeThreadCount(int64_t output_image_size, int64_t group_output_channels, int64_t kernel_dim) {
+  static int32_t ComputeTaskCount(int64_t output_image_size, int64_t group_output_channels, int64_t kernel_dim) {
     // Replicate the logic from MlasGemmU8X8Schedule to control the number of
     // worker threads used for the convolution.
     int32_t maximum_thread_count;
@@ -120,16 +136,16 @@ class QLinearConv : public OpKernel {
                               static_cast<double>(group_output_channels) *
                               static_cast<double>(kernel_dim);
 
-    int32_t thread_count = maximum_thread_count;
+    int32_t task_count = maximum_thread_count;
     if (complexity < thread_complexity * maximum_thread_count) {
-      thread_count = static_cast<int32_t>(complexity / thread_complexity) + 1;
+      task_count = static_cast<int32_t>(complexity / thread_complexity) + 1;
     }
-    if (thread_count > output_image_size) {
+    if (task_count > output_image_size) {
       // Ensure that every thread produces at least one output.
-      thread_count = static_cast<int32_t>(output_image_size);
+      task_count = static_cast<int32_t>(output_image_size);
     }
 
-    return thread_count;
+    return task_count;
   }
 
   bool TryConvSymPrepack(const uint8_t* Wdata,
@@ -597,7 +613,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
 
   // Allocate temporary buffers for transposing to channels last format.
   if (!channels_last_) {
-    auto* transpose_input = alloc->Alloc(SafeInt<size_t>(sizeof(ActType)) * X_offset);
+    auto* transpose_input = alloc->Alloc(SafeInt<size_t>(sizeof(ActType)) * (X_offset + MLAS_SYMM_QGEMM_BUF_OVERRUN));
     transpose_input_buffer = BufferUniquePtr(transpose_input, BufferDeleter(alloc));
     auto* transpose_output = alloc->Alloc(SafeInt<size_t>(sizeof(ActType)) * Y_offset);
     transpose_output_buffer = BufferUniquePtr(transpose_output, BufferDeleter(alloc));
@@ -617,6 +633,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
       // Pointwise convolutions can use the original input tensor in place,
       // otherwise a temporary buffer is required for the im2col transform.
       int64_t group_col_buffer_size = (kernel_rank > 2) ? group_count * col_buffer_size : col_buffer_size;
+      group_col_buffer_size += MLAS_SYMM_QGEMM_BUF_OVERRUN;
       auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(ActType)) * group_col_buffer_size);
       col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
     }
@@ -631,10 +648,10 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
 
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 #if defined(_M_ARM64) || defined(__aarch64__)
-  int32_t thread_count = (output_image_size + 3) / 4;
+  int32_t task_count = (output_image_size + (GEMM_KERNEL_STRIDE_M - 1)) / GEMM_KERNEL_STRIDE_M;
 #else
-  int32_t thread_count = ComputeThreadCount(output_image_size, group_output_channels, kernel_dim);
-  thread_count = std::min(thread_count, concurrency::ThreadPool::DegreeOfParallelism(thread_pool));
+  int32_t task_count = ComputeTaskCount(output_image_size, group_output_channels, kernel_dim);
+  task_count = std::min(task_count, concurrency::ThreadPool::DegreeOfParallelism(thread_pool));
 #endif
 
   for (int64_t image_id = 0; image_id < N; ++image_id) {
@@ -674,10 +691,10 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
 
     auto conv_worker = [&](ptrdiff_t batch) {
 #if defined(_M_ARM64) || defined(__aarch64__)
-      int64_t output_start = batch * 4;
-      int64_t output_count = std::min((int64_t)4, output_image_size - output_start);
+      int64_t output_start = batch * GEMM_KERNEL_STRIDE_M;
+      int64_t output_count = std::min((int64_t)GEMM_KERNEL_STRIDE_M, output_image_size - output_start);
 #else
-      auto work = concurrency::ThreadPool::PartitionWork(batch, thread_count, static_cast<ptrdiff_t>(output_image_size));
+      auto work = concurrency::ThreadPool::PartitionWork(batch, task_count, static_cast<ptrdiff_t>(output_image_size));
       int64_t output_start = static_cast<int64_t>(work.start);
       int64_t output_count = static_cast<int64_t>(work.end) - work.start;
 #endif
@@ -855,7 +872,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
           static_cast<size_t>(M));
     };
 
-    concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, thread_count, conv_worker);
+    concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, task_count, conv_worker);
 
     if (!channels_last_) {
       // Transpose the output from channels last (NHWC) to channels first (NCHW).

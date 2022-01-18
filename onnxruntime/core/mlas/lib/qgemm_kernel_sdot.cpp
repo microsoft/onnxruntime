@@ -802,8 +802,8 @@ MlasGemmQuantCopyPackB<MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT>(
     //
     //      [ A0 A1 A2 A3 B0 B1 B2 B3 C0 C1 C2 C3 D0 D1 D2 D3 ]
     //      [ E0 E1 E2 E3 F0 F1 F2 F3 G0 G1 G2 G3 H0 H1 H2 H3 ]
-    //      [ H4 H5 H6 H7 I4 I5 I6 I7 J4 J5 J6 J7 K4 K5 K6 K7 ]
-    //      [ L4 L5 L6 L7 M4 M5 M6 M7 N4 N5 N6 N7 O4 O5 O6 O7 ]
+    //      [ I4 I5 I6 I7 J4 J5 J6 J7 K4 K5 K6 K7 L4 L5 L6 L7 ]
+    //      [ M4 M5 M6 M7 N4 N5 N6 N7 O4 O5 O6 O7 P4 P5 P6 P7 ]
     //      .... repeat 4 times on K dimension ....
     //
     // If CountK is not aligned to a multiple of 16, then the packed buffer
@@ -867,8 +867,7 @@ MlasGemmQuantCopyPackB<MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT>(
         }
 
         //
-        // Zero pad the output buffer to a multiple of PackedK if the above
-        // processed an odd number of four row bundles.
+        // Zero pad the output buffer to a multiple of PackedK
         //
         constexpr size_t mask = MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT::PackedK - 1;
         size_t remain = (MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT::PackedK - (CountK & mask)) & mask;
@@ -970,8 +969,7 @@ MlasGemmQuantCopyPackB<MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT>(
         }
 
         //
-        // Zero pad the output buffer to a multiple of PackedK if the above
-        // processed an odd number of four row bundles.
+        // Zero pad the output buffer to a multiple of PackedK
         //
         constexpr size_t mask = MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT::PackedK - 1;
         size_t remain = (MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT::PackedK - (CountK & mask)) & mask;

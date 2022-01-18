@@ -592,6 +592,16 @@ MlasGemm(
     MlasGemmBatch(Shape, &DataParams, 1, ThreadPool);
 }
 
+//
+// Symmetric QGEMM has limited buffer overrun.
+// Currently only supported in ARM64
+//
+#if defined(MLAS_TARGET_ARM64)
+constexpr size_t MLAS_SYMM_QGEMM_BUF_OVERRUN = 15;
+#else
+constexpr size_t MLAS_SYMM_QGEMM_BUF_OVERRUN = 0;
+#endif
+
 /**
  * @brief Supply data parameters for symmetric quantized GEMM.
  *        B matrix zero point must be zero, and it must be
