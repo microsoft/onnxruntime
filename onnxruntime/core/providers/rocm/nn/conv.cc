@@ -96,7 +96,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   //set W
   const Tensor* W = context->Input<Tensor>(1);
   const TensorShape& w_shape = W->Shape();
-  auto w_dims = w_shape.GetDims();
+  auto w_dims = w_shape.AsShapeVector();
   s_.w_data = reinterpret_cast<const HipT*>(W->template Data<T>());
   //set B
   if (context->InputCount() >= 3) {
@@ -114,13 +114,13 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     s_.z_data = nullptr;
   }
   bool input_dims_changed = (s_.last_x_dims.GetDims() != x_dims);
-  bool w_dims_changed = (s_.last_w_dims.GetDims() != w_dims);
+  bool w_dims_changed = (s_.last_w_dims.GetDims() != gsl::make_span(w_dims));
   if (input_dims_changed || w_dims_changed) {
     if (input_dims_changed)
       s_.last_x_dims = x_dims;
 
     if (w_dims_changed) {
-      s_.last_w_dims = w_dims;
+      s_.last_w_dims = gsl::make_span(w_dims);
       s_.cached_benchmark_fwd_results.clear();
     }
 
@@ -167,7 +167,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
                                                                      strides, dilations, pads, y_dims, y_dims_with_adjusted_pads,
                                                                      post_slicing_required, slice_starts, slice_ends, slice_axes));
     ORT_ENFORCE(y_dims.size() == y_dims_with_adjusted_pads.size());
-    s_.y_dims = y_dims;
+    s_.y_dims = gsl::make_span(y_dims);
     s_.y_dims_with_adjusted_pads = y_dims_with_adjusted_pads;
     s_.post_slicing_required = post_slicing_required;
     s_.slice_starts = slice_starts;

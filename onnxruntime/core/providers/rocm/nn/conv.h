@@ -118,7 +118,7 @@ struct MiopenConvState {
 
   // these would be recomputed if x/w dims change
   TensorShape y_dims;
-  std::vector<int64_t> y_dims_with_adjusted_pads;
+  TensorShapeVector y_dims_with_adjusted_pads;
   size_t workspace_bytes;
   decltype(AlgoPerfType().bwd_data_algo) bwd_data_algo;
   decltype(AlgoPerfType().fwd_algo) fwd_algo;
