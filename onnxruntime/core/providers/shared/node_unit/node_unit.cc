@@ -90,8 +90,8 @@ const std::vector<const Node*> GetQDQOutputNodes(const GraphViewer& graph_viewer
 }
 
 // Get the input or output NodeUnitIODef(s) for the given QDQ NodeGroup
-void GetQDQIODef(const Node& target_node, const QDQ::NodeGroup& node_group,
-                 std::vector<NodeUnitIODef>& io_defs, bool is_input) {
+void GetQDQIODefs(const Node& target_node, const QDQ::NodeGroup& node_group,
+                  std::vector<NodeUnitIODef>& io_defs, bool is_input) {
   const auto& dq_or_q_nodes = is_input ? node_group.dq_nodes : node_group.q_nodes;
   const auto target_node_io_defs = is_input ? target_node.InputDefs() : target_node.OutputDefs();
   const size_t target_node_io_defs_size = target_node_io_defs.size();
@@ -245,8 +245,8 @@ void NodeUnit::InitForSingleNode() {
 
 void NodeUnit::InitForQDQGroup(const QDQ::NodeGroup& node_group) {
   // Get inputs and outputs
-  GetQDQIODef(target_node_, node_group, inputs_, true /* is_input */);
-  GetQDQIODef(target_node_, node_group, outputs_, false /* is_input */);
+  GetQDQIODefs(target_node_, node_group, inputs_, true /* is_input */);
+  GetQDQIODefs(target_node_, node_group, outputs_, false /* is_input */);
 }
 
 }  // namespace onnxruntime

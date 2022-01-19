@@ -11,7 +11,6 @@
 
 namespace onnxruntime {
 
-class Graph;
 class GraphViewer;
 class Node;
 class NodeArg;
