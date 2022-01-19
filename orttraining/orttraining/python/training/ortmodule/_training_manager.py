@@ -16,6 +16,7 @@ from .debug_options import DebugOptions
 from ._fallback import (ORTModuleFallbackException,
                         _FallbackPolicy,
                         _FallbackManager)
+from .torch_cpp_extensions.cpu.torch_interop_utils import clear_all_grad_fns
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
@@ -38,6 +39,10 @@ class TrainingManager(GraphExecutionManager):
     @staticmethod
     def execution_session_run_forward(execution_session, onnx_model, device, gradient_accumulation_manager, *inputs):
         """Runs the forward graph on execution_session with given model inputs and device"""
+
+        # Clear all gradient functions, to avoid a deadlock issue.
+        # Check the called function for more detailed comments.
+        clear_all_grad_fns()
 
         # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
         #   especially the backward graph outputs.
