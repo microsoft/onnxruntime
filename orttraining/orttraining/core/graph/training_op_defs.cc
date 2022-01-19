@@ -3169,8 +3169,12 @@ Return true if all elements are true and false otherwise.
           ORT_ENFORCE(inferred_input_type, "PythonOp's ", i, "th input type is missing.");
           ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
                       "PythonOp's ", i, "th input type must be a tensor.");
-          ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_tensor_types_proto->ints().at(i),
-                      "PythonOp's ", i, "th input type must be ", input_tensor_types_proto->ints().at(i));
+          // We can't enforce element type because under mix-precision training mode
+	  // a PythonOp can receive float16 or float32 tensors depending on the context.
+	  //
+	  // TODO: uncomment the following line when static schema is required.
+          // ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_tensor_types_proto->ints().at(i),
+          //             "PythonOp's ", i, "th input type must be ", input_tensor_types_proto->ints().at(i));
         }
 
         // The first output is a pointer which points to
@@ -3189,7 +3193,11 @@ Return true if all elements are true and false otherwise.
         size_t rank_count = 0;
         // Set inferred output types.
         for (auto i = 1; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
-          updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i - 1)));
+          // We can't specify element type because under mix-precision training mode
+	  // a PythonOp can generate float16 or float32 tensors depending on its inputs.
+	  //
+	  // TODO: uncomment the following line when static schema is required.
+          // updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i - 1)));
 
           // Create symbolic shape.
           const auto output_tensor_ranks = ctx.getAttribute("output_tensor_ranks");
@@ -3310,8 +3318,12 @@ Return true if all elements are true and false otherwise.
           ORT_ENFORCE(inferred_input_type, "PythonOpGrad's ", i, "th input type is missing.");
           ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
                       "PythonOpGrad's ", i, "th input type must be a tensor.");
-          ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_tensor_types_proto->ints().at(i - 1),
-                      "PythonOpGrad's ", i, "th input type must be ", input_tensor_types_proto->ints().at(i - 1));
+          // We can't enforce element type because under mix-precision training mode
+	  // a PythonOpGrad can receive float16 or float32 tensors depending on the context.
+	  //
+	  // TODO: uncomment the following line when static schema is required.
+          // ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_tensor_types_proto->ints().at(i - 1),
+          //             "PythonOpGrad's ", i, "th input type must be ", input_tensor_types_proto->ints().at(i - 1));
         }
 
         // Load expected output types.
@@ -3323,7 +3335,11 @@ Return true if all elements are true and false otherwise.
         // Set inferred output types.
         size_t rank_count = 0;
         for (auto i = 0; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
-          updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i)));
+          // We can't specify element type because under mix-precision training mode
+	  // a PythonOpGrad can produce float16 or float32 tensors depending on the context.
+	  //
+	  // TODO: uncomment the following line when static schema is required.
+          // updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i)));
           const auto output_tensor_ranks = ctx.getAttribute("output_tensor_ranks");
           ONNX_NAMESPACE::TensorShapeProto rank_only_shape;
           for (int64_t j = 0; j < output_tensor_ranks->ints().at(i); ++j) {
