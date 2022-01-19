@@ -49,6 +49,7 @@ class NodeUnit {
 
  public:
   explicit NodeUnit(const Node& node);
+  explicit NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group);
 
   Type UnitType() const noexcept { return type_; }
 
@@ -64,7 +65,7 @@ class NodeUnit {
   ProviderType GetExecutionProviderType() const noexcept;
 
   const Node& GetNode() const noexcept { return target_node_; }
-  const std::vector<const Node*> GetOutputNodes() const noexcept { return output_nodes_; }
+  const std::vector<const Node*>& GetOutputNodes() const noexcept { return output_nodes_; }
 
  private:
   std::vector<NodeUnitIODef> inputs_;
@@ -74,7 +75,11 @@ class NodeUnit {
   const Node& target_node_;
   Type type_;
 
-  void InitForNode();  // Initializing for single Node
+  // Initializing for a single Node
+  void InitForSingleNode();
+
+  // Initializing for a QDQ group
+  void InitForQDQGroup(const QDQ::NodeGroup& node_group);
 };
 
 }  // namespace onnxruntime
