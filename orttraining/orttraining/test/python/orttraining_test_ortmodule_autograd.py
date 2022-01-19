@@ -1041,11 +1041,14 @@ def test_non_differentiable_autograd_function():
     def run():
         m = Foo().to('cuda')
         x = torch.rand((2, 2), dtype=torch.float).to('cuda')
+        x_fp16 = torch.rand((2, 2), dtype=torch.float16).to('cuda')
 
         # Baseline.
         y_ref = m(x)
+        y_ref_fp16 = m(x_fp16)
         print('Ref:')
         print(y_ref)
+        print(y_ref_fp16)
 
         m = ORTModule(m)
 
@@ -1059,5 +1062,12 @@ def test_non_differentiable_autograd_function():
         y_train = m(x)
         print('Train:')
         assert torch.allclose(y_ref, y_train)
+
+        # Feed fp16 to model exported with fp32 inputs.
+        # Passing this test means the exported model support
+        # different input types.
+        y_train_fp16 = m(x_fp16)
+        print('Train (fp16):')
+        assert torch.allclose(y_ref_fp16, y_train_fp16)
 
     run()
