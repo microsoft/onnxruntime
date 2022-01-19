@@ -48,9 +48,14 @@ class PyNodeSharedPointerPool {
     grad_fns_.erase(ctx_address);
   };
 
+  void ClearAll(){
+    grad_fns_.clear();
+  }
+
  private:
   PyNodeSharedPointerPool(){};
-  ~PyNodeSharedPointerPool(){};
+  ~PyNodeSharedPointerPool(){
+  };
 
   PyNodeSharedPointerPool(const PyNodeSharedPointerPool&) = delete;
   PyNodeSharedPointerPool& operator=(const PyNodeSharedPointerPool&) = delete;
@@ -109,8 +114,22 @@ void unregister_grad_fn(size_t ctx_address)
   PyNodeSharedPointerPool::GetInstance().UnRegisterGradFunc(ctx_address);
 }
 
+// Supposed to be cleared on python program exit or before every forward run to resolve following issues:
+// 1. When training program exits, PyNodeSharedPointerPool destructor is called, if grad_fns_ is not empty,
+//    PyNode::release_variables() will be called.
+//    (https://github.com/pytorch/pytorch/blob/15532595209d2daf34d35e10f8d3d3b64966aea2/torch/csrc/autograd/python_function.cpp#L168)
+//    The other hand, there is known issue when acquiring GIL in pybind11 destructors, there will be probabbly deadlock issue.
+//    (https://github.com/pybind/pybind11/issues/1446)
+//    The resolution here, we remove all maintained states before program exits.
+// 2. When forward functions is called repeated without corresponding backward calls, grad functions keeps accumulating without releasing
+//    (happening in backward)
+void clear_all_grad_fns(){
+  PyNodeSharedPointerPool::GetInstance().ClearAll();
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("register_grad_fn", &register_grad_fn, "increase grad_fn shared pointer reference.");
   m.def("unregister_grad_fn", &unregister_grad_fn, "release grad_fn shared pointer referece.");
+  m.def("clear_all_grad_fns", &clear_all_grad_fns, "clear all grad_fn shared pointer refereces.");
   m.def("clear_grad_fns_for_next_edges", &clear_grad_fns_for_next_edges, "remove reference on next edges' gradident funtions.");
 }

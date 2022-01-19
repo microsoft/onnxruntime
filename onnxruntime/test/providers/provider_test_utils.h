@@ -1088,6 +1088,12 @@ inline std::vector<MLFloat16> FloatsToMLFloat16s(const std::vector<float>& f) {
   return m;
 }
 
+inline std::vector<BFloat16> MakeBFloat16(const std::initializer_list<float>& input) {
+  std::vector<BFloat16> output;
+  std::transform(input.begin(), input.end(), std::back_inserter(output), [](float f) { return BFloat16(f); });
+  return output;
+}
+
 inline CheckParams MakeCheckParams(const OpTester::Data& d) {
   return CheckParams{d.sort_output_, d.absolute_error_, d.relative_error_};
 }
