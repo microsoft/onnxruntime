@@ -26,7 +26,7 @@ class OnnxRuntimeTestSession : public TestSession {
   }
 
   bool PopulateGeneratedInputTestData();
-
+  bool InitInputTensor(Ort::Value& input_tensor, const std::vector<int64_t>& input_node_dim);
   ~OnnxRuntimeTestSession() = default;
 
   std::chrono::duration<double> Run() override;

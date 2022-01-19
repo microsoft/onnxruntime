@@ -5,7 +5,7 @@
 #include "providers.h"
 #include "TestCase.h"
 #include "Tracy.hpp"
-
+#include <cstdlib>
 #ifdef _WIN32
 #define strdup _strdup
 #endif
@@ -363,7 +363,20 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
 #ifdef USE_NNAPI
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, 0));
+    const std::map<std::string, std::string>& session_conf = performance_test_config.run_config.session_sub_opts;
+    uint32_t nnapi_flags = 0;
+    for (auto& [k, v] : session_conf) {
+      if (k == "NNAPI_FLAG_USE_FP16" && v == "true") {
+        nnapi_flags |= NNAPI_FLAG_USE_FP16;
+      } else if (k == "NNAPI_FLAG_USE_NCHW" && v == "true") {
+        nnapi_flags |= NNAPI_FLAG_USE_NCHW;
+      } else if (k == "NNAPI_FLAG_CPU_DISABLED" && v == "true") {
+        nnapi_flags |= NNAPI_FLAG_CPU_DISABLED;
+      } else if (k == "NNAPI_FLAG_CPU_ONLY" && v == "true") {
+        nnapi_flags |= NNAPI_FLAG_CPU_ONLY;
+      }
+    }
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, nnapi_flags));
 #else
     ORT_THROW("NNAPI is not supported in this build\n");
 #endif
@@ -484,6 +497,23 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     input_names_[i] = input_names_str_[i].c_str();
   }
 }
+int mrand() {
+  static int state = time(0);
+  int const a = 1103515245;
+  int const c = 12345;
+  state = a * state + c;
+  return (state >> 16) & 0x7FFF;
+}
+bool OnnxRuntimeTestSession::InitInputTensor(Ort::Value& input_tensor, const std::vector<int64_t>& input_node_dim) {
+  //std::srand(0);
+  float* pdata = input_tensor.GetTensorMutableData<float>();
+  size_t ele_count = input_node_dim[0] * input_node_dim[1] * input_node_dim[2] * input_node_dim[3];
+  for (size_t i = 0; i < ele_count; ++i) {
+    pdata[i] = (float)(mrand() % 256) / 128.0f;
+  }
+  return true;
+}
+
 
 bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData() {
   ZoneScopedN("OnnxRuntimeTestSession::PopulateGeneratedInputTestData");
@@ -505,6 +535,7 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData() {
       auto allocator = static_cast<OrtAllocator*>(Ort::AllocatorWithDefaultOptions());
       Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
                                                          input_node_dim.size(), tensor_info.GetElementType());
+      //InitInputTensor(input_tensor, input_node_dim);
       PreLoadTestData(0, i, std::move(input_tensor));
     }
   }

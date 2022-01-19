@@ -22,12 +22,56 @@
 
 namespace onnxruntime {
 namespace perftest {
+//split string into substring-array
+template <typename ITR>
+static inline void SplitStringToIteratorUsing(const std::string& full,
+                                              const char* delim,
+                                              ITR& result) {
+  // Optimize the common case where delim is a single character.
+  if (delim[0] != '\0' && delim[1] == '\0') {
+    char c = delim[0];
+    const char* p = full.data();
+    const char* end = p + full.size();
+    while (p != end) {
+      if (*p == c) {
+        ++p;
+      } else {
+        const char* start = p;
+        while (++p != end && *p != c)
+          ;
+        *result++ = std::string(start, p - start);
+      }
+    }
+    return;
+  }
+
+  std::string::size_type begin_index, end_index;
+  begin_index = full.find_first_not_of(delim);
+  while (begin_index != std::string::npos) {
+    end_index = full.find_first_of(delim, begin_index);
+    if (end_index == std::string::npos) {
+      *result++ = full.substr(begin_index);
+      return;
+    }
+    *result++ = full.substr(begin_index, (end_index - begin_index));
+    begin_index = full.find_first_not_of(delim, end_index);
+  }
+}
+
+std::vector<std::string> SplitStringUsing(const std::string& full,
+                                          const char* delim) {
+  std::vector<std::string> result;
+  std::back_insert_iterator<std::vector<std::string> > it(result);
+  SplitStringToIteratorUsing(full, delim, it);
+  return result;
+}
 
 /*static*/ void CommandLineParser::ShowUsage() {
   printf(
       "perf_test [options...] model_path [result_file]\n"
       "Options:\n"
       "\t-m [test_mode]: Specifies the test mode. Value could be 'duration' or 'times'.\n"
+      "\t-a [test_mode]: Specifies the additional config, like nnapi_flag/gpu_flag. Value could be like 'NNAPI_FLAG_USE_FP16=true', refer https://onnxruntime.ai/docs/execution-providers/NNAPI-ExecutionProvider.html#configuration-options .\n"
       "\t\tProvide 'duration' to run the test for a fix duration, and 'times' to repeated for a certain times. \n"
       "\t-M: Disable memory pattern.\n"
       "\t-A: Disable memory arena\n"
@@ -104,11 +148,32 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
   }
   return true;
 }
+/*static*/
+bool CommandLineParser::ParseSubArguments(PerformanceTestConfig& test_config, const ORTCHAR_T* optarg_) {
+  if (optarg == nullptr) {
+    return false;
+  }
+  std::basic_string<ORTCHAR_T> free_dim_str(optarg_);
+  std::string optv(free_dim_str.size(),0);
+  for (int i = 0; i < free_dim_str.size(); ++i) {
+    optv[i] = free_dim_str[i];
+  } 
+  auto arg_arr = SplitStringUsing(optv, "=");
+  if (arg_arr.size() != 2) {
+    return false;
+  }
+  test_config.run_config.session_sub_opts[arg_arr[0]] = arg_arr[1];
+  return true;
+}
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:AMPIvhsqz"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("a:b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:AMPIvhsqz"))) != -1) {
     switch (ch) {
+      case 'a': {
+        CommandLineParser::ParseSubArguments(test_config, optarg);
+        break;
+      }
       case 'f': {
         std::basic_string<ORTCHAR_T> dim_name;
         int64_t override_val;
