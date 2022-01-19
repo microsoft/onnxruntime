@@ -1,5 +1,9 @@
 set(abseil_cpp_root_dir ${PROJECT_SOURCE_DIR}/external/abseil-cpp)
 
+execute_process(COMMAND  git apply --ignore-space-change --ignore-whitespace ${PROJECT_SOURCE_DIR}/patches/abseil/Fix_Nvidia_Build_Break.patch
+                    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+                   )
+
 set(ABSL_PROPAGATE_CXX_STD 1)
 set(BUILD_TESTING 0)
 add_subdirectory(${abseil_cpp_root_dir} EXCLUDE_FROM_ALL)
