@@ -31,8 +31,8 @@ Status MiopenTensor::Set(gsl::span<const int64_t> input_dims, miopenDataType_t d
 
   int rank = gsl::narrow_cast<int>(input_dims.size());
   TensorPitches pitches(input_dims);
-  std::vector<int> dims(rank);
-  std::vector<int> strides(rank);
+  InlinedVectorShapeCap<int> dims(rank);
+  InlinedVectorShapeCap<int> strides(rank);
   for (int i = 0; i < rank; i++) {
     dims[i] = gsl::narrow_cast<int>(input_dims[i]);
     strides[i] = gsl::narrow_cast<int>(pitches[i]);

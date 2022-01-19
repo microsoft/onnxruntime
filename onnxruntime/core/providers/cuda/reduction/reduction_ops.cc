@@ -205,7 +205,7 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
   }
 
   CudnnReduceDescriptor reduce_desc;
-  if constexpr (std::is_same<T, MLFloat16>::value)
+  ORT_IF_CONSTEXPR (std::is_same<T, MLFloat16>::value)
     ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnn_reduce_op, CudnnTensor::GetDataType<float>(), ReduceTensorIndices));
   else
     ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnn_reduce_op, cudnn_type_X, ReduceTensorIndices));
