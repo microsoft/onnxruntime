@@ -17,6 +17,8 @@ if (onnxruntime_USE_STVM)
   message(STATUS Define onnxruntime_STVM_HOME.)
   message(STATUS ${onnxruntime_STVM_HOME})
 
+  add_subdirectory(${tvm_SOURCE_DIR} ${tvm_BINARY_DIR})
+
 endif()
 
 if (onnxruntime_USE_NUPHAR)

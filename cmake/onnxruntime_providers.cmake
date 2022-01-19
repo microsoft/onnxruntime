@@ -1293,20 +1293,16 @@ if (onnxruntime_USE_STVM)
           ${onnxruntime_STVM_HOME}/3rdparty/dlpack/include
           ${onnxruntime_STVM_HOME}/3rdparty/dmlc-core/include
           ${PYTHON_INLCUDE_DIRS})
-  onnxruntime_add_include_to_target(onnxruntime_providers_stvm onnxruntime_common onnx)
+  onnxruntime_add_include_to_target(onnxruntime_providers_stvm onnxruntime_common onnx tvm)
 
   add_dependencies(onnxruntime_providers_stvm ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
   target_link_libraries(onnxruntime_providers_stvm PRIVATE
       onnx
+      tvm
       onnxruntime_common
       onnxruntime_framework
   )
-  if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(onnxruntime_providers_stvm PRIVATE ${onnxruntime_STVM_HOME}/build/libtvm.dylib)
-  else()
-    target_link_libraries(onnxruntime_providers_stvm PRIVATE ${onnxruntime_STVM_HOME}/build/libtvm.so)
-  endif()
 
   set_target_properties(onnxruntime_providers_stvm PROPERTIES FOLDER "ONNXRuntime")
   set_target_properties(onnxruntime_providers_stvm PROPERTIES LINKER_LANGUAGE CXX)
