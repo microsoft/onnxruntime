@@ -81,3 +81,6 @@
 [submodule "cmake/external/tvm_update"]
 	path = cmake/external/tvm_update
 	url = https://github.com/apache/tvm
+[submodule "cmake/external/abseil-cpp"]
+	path = cmake/external/abseil-cpp
+	url = https://github.com/abseil/abseil-cpp.git
