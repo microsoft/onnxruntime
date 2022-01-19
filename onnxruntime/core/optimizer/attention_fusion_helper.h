@@ -737,17 +737,26 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const No
       {0, 0, "Reshape", {1, 5, 13}, kOnnxDomain},
       {0, 0, "Equal", {1, 7, 11, 13}, kOnnxDomain}};
 
+  std::vector<graph_utils::EdgeEndToMatch> mask_path_1{ // add cast operator for mask path
+      {0, 0, "Softmax", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Where", {9}, kOnnxDomain},
+      {0, 0, "Cast", {1, 6, 9, 13}, kOnnxDomain},
+      {0, 0, "Expand", {8, 13}, kOnnxDomain},
+      {0, 0, "Reshape", {1, 5, 13}, kOnnxDomain},
+      {0, 0, "Equal", {1, 7, 11, 13}, kOnnxDomain}};
+
   std::vector<const Node::EdgeEnd*> edges;
-  if (!graph_utils::FindPath(qkv_matmul, true, mask_path, edges, logger)) {
+  if (!graph_utils::FindPath(qkv_matmul, true, mask_path, edges, logger) &&
+      !graph_utils::FindPath(qkv_matmul, true, mask_path_1, edges, logger)) {
     DEBUG_LOG("Failed to find mask path");
     return false;
   }
 
   const Node& softmax = edges[0]->GetNode();
   const Node& where = edges[1]->GetNode();
-  const Node& expand = edges[2]->GetNode();
-  const Node& reshape = edges[3]->GetNode();
-  const Node& equal = edges[4]->GetNode();
+  const Node& expand = edges[edges.size() - 3]->GetNode();
+  const Node& reshape = edges[edges.size() - 2]->GetNode();
+  const Node& equal = edges[edges.size() - 1]->GetNode();
 
   if (!optimizer_utils::CheckOutputEdges(graph, softmax, 1) ||
       !optimizer_utils::CheckOutputEdges(graph, where, 1) ||
