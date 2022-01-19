@@ -263,18 +263,15 @@ SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half, half, half)
 SPECIALIZED_AdamOptimizerImpl(half, int64_t, float, half, half, float, half)
 SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, half, half)
 SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, half, half, float, half)
-
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, float, float, nv_bfloat16)
-SPECIALIZED_AdamOptimizerImpl(nv_bfloat16, int64_t, float, nv_bfloat16, float, float, nv_bfloat16)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, nv_bfloat16, float, float, nv_bfloat16)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, nv_bfloat16, nv_bfloat16, nv_bfloat16)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, nv_bfloat16, float, nv_bfloat16)
-SPECIALIZED_AdamOptimizerImpl(nv_bfloat16, int64_t, float, nv_bfloat16, nv_bfloat16, nv_bfloat16, nv_bfloat16)
-SPECIALIZED_AdamOptimizerImpl(nv_bfloat16, int64_t, float, nv_bfloat16, nv_bfloat16, float, nv_bfloat16)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, nv_bfloat16, nv_bfloat16, nv_bfloat16, nv_bfloat16)
-SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, nv_bfloat16, nv_bfloat16, float, nv_bfloat16)
-#endif
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, float, float, BFloat16)
+SPECIALIZED_AdamOptimizerImpl(BFloat16, int64_t, float, BFloat16, float, float, BFloat16)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, BFloat16, float, float, BFloat16)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, BFloat16, BFloat16, BFloat16)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, float, BFloat16, float, BFloat16)
+SPECIALIZED_AdamOptimizerImpl(BFloat16, int64_t, float, BFloat16, BFloat16, BFloat16, BFloat16)
+SPECIALIZED_AdamOptimizerImpl(BFloat16, int64_t, float, BFloat16, BFloat16, float, BFloat16)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, BFloat16, BFloat16, BFloat16, BFloat16)
+SPECIALIZED_AdamOptimizerImpl(float, int64_t, float, BFloat16, BFloat16, float, BFloat16)
 
 }  // namespace cuda
 }  // namespace onnxruntime
