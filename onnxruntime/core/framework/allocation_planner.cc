@@ -12,7 +12,6 @@
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/inlined_containers.h"
-#include "core/framework/ort_stl_allocator.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"

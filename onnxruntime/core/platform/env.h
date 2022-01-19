@@ -39,25 +39,6 @@ class ThreadPoolInterface;
 }
 namespace onnxruntime {
 
-// Default stack size on Windows - 320K(32-bit) or 1MB (64-bit), Linux - 8 MB
-// MacOS - main - 1MB and other threads 512Kb
-#if defined(__GNUC__) || defined(__clang__) || defined(alloca)
-#define ORT_ALLOCA(s) alloca(s)
-constexpr size_t kOrtStackAllocationLimitBytes = 1024;
-#elif defined(_WIN32) && defined(_MSC_VER)
-// _ALLOCA_S_THRESHOLD is 1024 although many allocate much more
-#define ORT_ALLOCA(s) _alloca(s)
-constexpr size_t kOrtStackAllocationLimitBytes = 1024;
-#else
-// always on the heap
-#define ORT_ALLOCA(s) nullptr
-constexpr size_t kOrtStackAllocationLimitBytes = 0;
-#endif
-
-inline constexpr bool IsSizeOverStackAllocationLimit(size_t size) {
-  return size > kOrtStackAllocationLimitBytes;
-}
-
 #ifdef _WIN32
 using PIDType = unsigned long;
 using FileOffsetType = int64_t;
