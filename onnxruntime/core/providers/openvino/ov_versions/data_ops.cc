@@ -166,12 +166,12 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Sum", V_2020_4, {"All"}},
     {"Tan", V_2020_4, {"CPU", "GPU"}},
     {"Tanh", V_2020_4, {"All"}},
-    {"Tile", V_2021_3, {"MYRIAD"}},
     {"Tile", V_2021_3, {"All"}},
     {"Transpose", V_2020_4, {"All"}},
     {"TopK", V_2020_4, {"All"}},
     {"Unsqueeze", V_2020_4, {"All"}},
     {"Upsample", V_2021_1, {"CPU"}},
+    {"Upsample", V_2021_4, {"All"}},
     {"Where", V_2021_2, {"MYRIAD"}},
 };
 
@@ -268,7 +268,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Abs", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4, V_2022_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                //tensor type does not support select last index
                                auto& attributes = node->GetAttributes();
@@ -477,7 +477,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Gather", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4, V_2022_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("GPU") != std::string::npos) {
                                  const auto& input = node->InputDefs()[0];
@@ -740,7 +740,7 @@ void DataOps::populate_op_mode_supported() {
                              [this](const Node* node, const InitializedTensorSet&) {
                                 if (device_id_.find("GPU") != std::string::npos) {
                                  auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-                                 //If the output of Transpose op is INT8 or UINT8, it is rejected for GPU.
+                                 //If the output of ReduceMax op is INT8 or UINT8, it is rejected for GPU.
                                  if (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8 || 
                                    output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8)
                                    return true;
@@ -877,7 +877,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Where", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_3, V_2021_4, V_2022_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                return (!this->dimension_unsupported(node));
                              }};
