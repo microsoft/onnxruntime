@@ -87,6 +87,7 @@ class HierarchicalORTModule(torch.nn.Module):
             # forward functions of classes in _force_exportable_set may not be called
             # thus not in module_arg_pool
             if type(module) in _force_exportable_set:
+                exportable_list[module] = True
                 return True
             sub_dict = module._modules
             if not sub_dict:
