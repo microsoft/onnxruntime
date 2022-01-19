@@ -22,49 +22,6 @@
 
 namespace onnxruntime {
 namespace perftest {
-//split string into substring-array
-template <typename ITR>
-static inline void SplitStringToIteratorUsing(const std::string& full,
-                                              const char* delim,
-                                              ITR& result) {
-  // Optimize the common case where delim is a single character.
-  if (delim[0] != '\0' && delim[1] == '\0') {
-    char c = delim[0];
-    const char* p = full.data();
-    const char* end = p + full.size();
-    while (p != end) {
-      if (*p == c) {
-        ++p;
-      } else {
-        const char* start = p;
-        while (++p != end && *p != c)
-          ;
-        *result++ = std::string(start, p - start);
-      }
-    }
-    return;
-  }
-
-  std::string::size_type begin_index, end_index;
-  begin_index = full.find_first_not_of(delim);
-  while (begin_index != std::string::npos) {
-    end_index = full.find_first_of(delim, begin_index);
-    if (end_index == std::string::npos) {
-      *result++ = full.substr(begin_index);
-      return;
-    }
-    *result++ = full.substr(begin_index, (end_index - begin_index));
-    begin_index = full.find_first_not_of(delim, end_index);
-  }
-}
-
-std::vector<std::string> SplitStringUsing(const std::string& full,
-                                          const char* delim) {
-  std::vector<std::string> result;
-  std::back_insert_iterator<std::vector<std::string> > it(result);
-  SplitStringToIteratorUsing(full, delim, it);
-  return result;
-}
 
 /*static*/ void CommandLineParser::ShowUsage() {
   printf(
@@ -156,13 +113,16 @@ bool CommandLineParser::ParseSubArguments(PerformanceTestConfig& test_config, co
   std::basic_string<ORTCHAR_T> free_dim_str(optarg_);
   std::string optv(free_dim_str.size(),0);
   for (int i = 0; i < free_dim_str.size(); ++i) {
-    optv[i] = free_dim_str[i];
-  } 
-  auto arg_arr = SplitStringUsing(optv, "=");
-  if (arg_arr.size() != 2) {
+    optv[i] = static_cast<char>(free_dim_str[i]);
+  }
+  std::string delm = "=";
+  size_t delimiter_location = optv.find(delm);
+  if (delimiter_location == free_dim_str.npos) {
     return false;
   }
-  test_config.run_config.session_sub_opts[arg_arr[0]] = arg_arr[1];
+  std::string k = optv.substr(0, delimiter_location);
+  std::string v = optv.substr(delimiter_location + delm.size());
+  test_config.run_config.session_sub_opts[k] = v;
   return true;
 }
 
