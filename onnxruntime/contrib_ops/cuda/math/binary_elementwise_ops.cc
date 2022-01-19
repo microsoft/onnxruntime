@@ -61,7 +61,8 @@ namespace cuda {
 #define CONTRIB_BINARY_OP_HFD(name, ver)        \
   CONTRIB_BINARY_OP_TYPED(name, ver, MLFloat16) \
   CONTRIB_BINARY_OP_TYPED(name, ver, float)     \
-  CONTRIB_BINARY_OP_TYPED(name, ver, double)
+  CONTRIB_BINARY_OP_TYPED(name, ver, double)    \
+  CONTRIB_BINARY_OP_TYPED(name, ver, BFloat16)
 
 CONTRIB_BINARY_OP_HFD(BiasGelu, 1)
 

@@ -177,13 +177,10 @@ SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, half, half)
 SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, half, float)
 SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, float, half)
 SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, half, float, float)
-
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, nv_bfloat16, nv_bfloat16, nv_bfloat16)
-SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, nv_bfloat16, nv_bfloat16, float)
-SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, nv_bfloat16, float, nv_bfloat16)
-SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, nv_bfloat16, float, float)
-#endif
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, BFloat16, BFloat16, BFloat16)
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, BFloat16, BFloat16, float)
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, BFloat16, float, BFloat16)
+SPECIALIZED_LAMB_COMPUTE_DIRECTION(float, BFloat16, float, float)
 
 template <typename T1, typename T2, typename T3, typename T_MIXED_PRECISION_FP>
 __device__ __forceinline__ void _LambUpdateRule(
@@ -305,13 +302,10 @@ INSTANTIATE_LAMB_UPDATE(float, float, float, half)
 INSTANTIATE_LAMB_UPDATE(double, double, double, half)
 INSTANTIATE_LAMB_UPDATE(half, float, half, half)
 INSTANTIATE_LAMB_UPDATE(float, float, half, half)
-
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-INSTANTIATE_LAMB_UPDATE(float, float, float, nv_bfloat16)
-INSTANTIATE_LAMB_UPDATE(double, double, double, nv_bfloat16)
-INSTANTIATE_LAMB_UPDATE(nv_bfloat16, float, nv_bfloat16, nv_bfloat16)
-INSTANTIATE_LAMB_UPDATE(float, float, nv_bfloat16, nv_bfloat16)
-#endif
+INSTANTIATE_LAMB_UPDATE(float, float, float, BFloat16)
+INSTANTIATE_LAMB_UPDATE(double, double, double, BFloat16)
+INSTANTIATE_LAMB_UPDATE(BFloat16, float, BFloat16, BFloat16)
+INSTANTIATE_LAMB_UPDATE(float, float, BFloat16, BFloat16)
 
 template <typename T1, typename T2, typename T3, typename T_GRAD_NORM>
 __global__ void LambMultiTensorComputeDirectionImpl(
@@ -406,13 +400,10 @@ INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, half, half)
 INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, half, float)
 INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, half)
 INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, half, float, float)
-
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, nv_bfloat16, nv_bfloat16, nv_bfloat16)
-INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, nv_bfloat16, nv_bfloat16, float)
-INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, nv_bfloat16, float, nv_bfloat16)
-INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, nv_bfloat16, float, float)
-#endif
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, BFloat16, BFloat16, BFloat16)
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, BFloat16, BFloat16, float)
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, BFloat16, float, BFloat16)
+INSTANTIATE_LAMB_STAGE1_MULTI_TENSOR_FUNCTOR(float, BFloat16, float, float)
 
 template <typename T1, typename T2, typename T3, typename T_MIXED_PRECISION_FP>
 __global__ void LambMultiTensorUpdateImpl(
@@ -477,13 +468,10 @@ INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, float, half)
 INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(double, double, double, half)
 INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(half, float, half, half)
 INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, half, half)
-
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, float, nv_bfloat16)
-INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(double, double, double, nv_bfloat16)
-INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(nv_bfloat16, float, nv_bfloat16, nv_bfloat16)
-INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, nv_bfloat16, nv_bfloat16)
-#endif
+INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, float, BFloat16)
+INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(double, double, double, BFloat16)
+INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(BFloat16, float, BFloat16, BFloat16)
+INSTANTIATE_LAMB_MULTI_TENSOR_UPDATE_FUNCTOR(float, float, BFloat16, BFloat16)
 
 // w_buffer[i], d_buffer[i] is used to store the squared sum of all elements processed by the i-th block.
 // sync_range_and_lock is used for a well ordered reduction over blocks spanning the same tensor
@@ -655,12 +643,9 @@ INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(double, double, double, double, 
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, half, float, half, float)
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, half, float, float, float)
 INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(half, half, half, half, float)
-
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, nv_bfloat16, float, nv_bfloat16, float)
-INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, nv_bfloat16, float, float, float)
-INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(nv_bfloat16, nv_bfloat16, nv_bfloat16, nv_bfloat16, float)
-#endif
+INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, BFloat16, float, BFloat16, float)
+INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(float, BFloat16, float, float, float)
+INSTANTIATE_LAMB_MULTI_TENSOR_REDUCTION_FUNCTOR(BFloat16, BFloat16, BFloat16, BFloat16, float)
 
 }  // namespace cuda
 }  // namespace onnxruntime
