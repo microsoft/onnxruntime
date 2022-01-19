@@ -21,6 +21,20 @@ namespace QDQ {
 struct NodeGroup;
 }
 
+// Definition of one input or output
+// If the optional quant_param is present, then this is a quantized input,
+// otherwise this is a regular input
+struct NodeUnitIODef {
+  // The quantization parameter, scale is manadatory, and zero_point is optional
+  struct QuantParam {
+    const NodeArg& scale;
+    const NodeArg* zero_point{nullptr};
+  };
+
+  const NodeArg& node_arg;
+  const std::optional<QuantParam> quant_param;
+};
+
 /**
 @class NodeUnit
 Class to represent a single node or a QDQ group of nodes, which will be used as a single unit.
@@ -33,27 +47,13 @@ class NodeUnit {
     QDQGroup,    // The NodeUnit contain a QDQ group of nodes, such as "DQ->Sigmoid->Q"
   };
 
-  // Definition of one input or output
-  // If the optional quant_param is present, then this is a quantized input,
-  // otherwise this is a regular input
-  struct IODef {
-    // The quantization parmeter, scale is manadatory, and zero_point is optional
-    struct QuantParam {
-      const NodeArg& scale;
-      const NodeArg* zero_point{nullptr};
-    };
-
-    const NodeArg& node_arg;
-    const std::optional<QuantParam> quant_param;
-  };
-
  public:
   explicit NodeUnit(const Node& node);
 
   Type UnitType() const noexcept { return type_; }
 
-  const std::vector<IODef>& Inputs() const noexcept { return input_defs_; }
-  const std::vector<IODef>& Outputs() const noexcept { return output_defs_; }
+  const std::vector<NodeUnitIODef>& Inputs() const noexcept { return inputs_; }
+  const std::vector<NodeUnitIODef>& Outputs() const noexcept { return outputs_; }
 
   const std::string& Domain() const noexcept;
   const std::string& OpType() const noexcept;
@@ -63,16 +63,15 @@ class NodeUnit {
   const Path& ModelPath() const noexcept;
   ProviderType GetExecutionProviderType() const noexcept;
 
-  const Node& GetNode() const noexcept { return node_; }
-
-  const std::vector<const Node*> GetAllNodes() const noexcept { return nodes_; }
+  const Node& GetNode() const noexcept { return target_node_; }
+  const std::vector<const Node*> GetOutputNodes() const noexcept { return output_nodes_; }
 
  private:
-  std::vector<IODef> input_defs_;
-  std::vector<IODef> output_defs_;
+  std::vector<NodeUnitIODef> inputs_;
+  std::vector<NodeUnitIODef> outputs_;
 
-  const std::vector<const Node*> nodes_;  // all nodes in this NodeUnit
-  const Node& node_;                      // target Node
+  const std::vector<const Node*> output_nodes_;  // all the nodes producing outputs for this NodeUnit
+  const Node& target_node_;
   Type type_;
 
   void InitForNode();  // Initializing for single Node

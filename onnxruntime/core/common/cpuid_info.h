@@ -37,6 +37,9 @@ class CPUIDInfo {
   bool has_sse4_1_{false};
   bool is_hybrid_{false};
 
+#if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED)
+  bool pytorch_cpuinfo_init_{false};
+#endif
   bool has_arm_neon_dot_{false};
 
   static CPUIDInfo instance_;

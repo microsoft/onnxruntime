@@ -1,7 +1,6 @@
 
 import onnx
 import numpy as np
-from six import string_types
 import onnxruntime
 from pathlib import Path
 from onnxruntime.quantization import CalibrationDataReader
@@ -35,7 +34,7 @@ def InputFeedsNegOneZeroOne(n, name2shape):
     return dr
 
 def check_op_type_order(testcase, model_to_check, ops):
-    if isinstance(model_to_check, string_types):
+    if isinstance(model_to_check, str):
         model = onnx.load(model_to_check)
     elif isinstance(model_to_check, onnx.ModelProto):
         model = model_to_check
@@ -79,7 +78,7 @@ def check_op_nodes(testcase, model_path, node_checker):
         testcase.assertTrue(node_checker(node))
 
 def check_qtype_by_node_type(testcase, model_to_check, check_list):
-    if isinstance(model_to_check, string_types):
+    if isinstance(model_to_check, str):
         model = onnx.load(model_to_check)
     elif isinstance(model_to_check, onnx.ModelProto):
         model = model_to_check

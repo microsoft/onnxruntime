@@ -440,7 +440,8 @@ if(onnxruntime_USE_DML)
 endif()
 
 if(onnxruntime_USE_MIGRAPHX)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_migraphx)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx onnxruntime_providers_shared)
 endif()
 
 if(onnxruntime_USE_ROCM)
@@ -483,8 +484,7 @@ set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_session
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
-    # CUDA, ROCM, TENSORRT, DNNL, and OpenVINO are dynamically loaded at runtime
-    ${PROVIDERS_MIGRAPHX}
+    # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_RKNPU}
@@ -1170,6 +1170,9 @@ if (onnxruntime_USE_CUDA)
   onnxruntime_add_shared_library_module(custom_op_library ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu
                                                           ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
   target_include_directories(custom_op_library PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  if (HAS_QSPECTRE)
+    target_compile_options(custom_op_library PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Qspectre>")
+  endif()
 else()
   onnxruntime_add_shared_library_module(custom_op_library ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
 endif()
