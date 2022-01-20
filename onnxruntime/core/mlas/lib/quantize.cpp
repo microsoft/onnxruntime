@@ -248,7 +248,7 @@ MlasQuantizeLinear<int8_t>(
     )
 {
 #if defined(MLAS_TARGET_AMD64)
-    MlasPlatform.QuantizeLinearS8Kernel(
+    GetMlasPlatform().QuantizeLinearS8Kernel(
 #else
     MlasQuantizeLinearS8Kernel(
 #endif
@@ -267,7 +267,7 @@ MlasQuantizeLinear<uint8_t>(
     )
 {
 #if defined(MLAS_TARGET_AMD64)
-    MlasPlatform.QuantizeLinearU8Kernel(
+    GetMlasPlatform().QuantizeLinearU8Kernel(
 #else
     MlasQuantizeLinearU8Kernel(
 #endif
@@ -989,7 +989,7 @@ Return Value:
 --*/
 {
 #if defined(MLAS_TARGET_AMD64)
-    MlasPlatform.ReduceMinimumMaximumF32Kernel(Input, Min, Max, N);
+    GetMlasPlatform().ReduceMinimumMaximumF32Kernel(Input, Min, Max, N);
 #else
     MlasReduceMinimumMaximumF32Kernel(Input, Min, Max, N);
 #endif

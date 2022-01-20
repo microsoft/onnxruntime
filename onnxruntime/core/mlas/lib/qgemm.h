@@ -710,21 +710,21 @@ MlasGemmQuantGetDispatch(
 #if defined(MLAS_TARGET_AMD64_IX86)
     if (!AIsSigned) {
         if (BIsSigned) {
-            GemmQuantDispatch = MlasPlatform.GemmU8S8Dispatch;
+            GemmQuantDispatch = GetMlasPlatform().GemmU8S8Dispatch;
         }
         else {
-            GemmQuantDispatch = MlasPlatform.GemmU8U8Dispatch;
+            GemmQuantDispatch = GetMlasPlatform().GemmU8U8Dispatch;
         }
     }
 #elif defined(MLAS_TARGET_ARM64)
     if(BIsSigned) {
-        if(MlasPlatform.GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
+        if(GetMlasPlatform().GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
             GemmQuantDispatch = &MlasGemmX8S8DispatchNeon;
         } else {
             GemmQuantDispatch = AIsSigned? &MlasGemmS8S8DispatchSdot : &MlasGemmU8X8DispatchUdot;
         }
     } else if(!AIsSigned) {
-        GemmQuantDispatch = MlasPlatform.GemmU8X8Dispatch;
+        GemmQuantDispatch = GetMlasPlatform().GemmU8X8Dispatch;
     }
 #elif defined(MLAS_TARGET_ARM64EC) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
     if(BIsSigned || !AIsSigned) {

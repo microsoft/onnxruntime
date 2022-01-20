@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/common/cpuid_info.h"
+#include "core/common/logging/logging.h"
+#include "core/common/logging/severity.h"
 
 #if defined(CPUIDINFO_ARCH_X86)
 #include <memory>
@@ -60,8 +62,9 @@ static inline int XGETBV() {
 CPUIDInfo::CPUIDInfo() {
 #if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED)
   pytorch_cpuinfo_init_ = cpuinfo_initialize();
-  // Note: Failing to init pytorch cpuinfo library may cause CPU EP performance degradation due to undetected CPU features.
-  // TODO: Default logger is not set up yet at this time. Refine the logger logic to support to log here.
+  if (!pytorch_cpuinfo_init_) {
+    LOGS_DEFAULT(WARNING) << "Failed to init pytorch cpuinfo library, may cause CPU EP performance degradation due to undetected CPU features.";
+  }
 #endif
 
 #if defined(CPUIDINFO_ARCH_X86)

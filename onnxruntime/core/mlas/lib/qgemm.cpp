@@ -165,10 +165,10 @@ MlasGemmBatch(
 
     ptrdiff_t TargetThreadCount;
 
-    if (Complexity < double(MLAS_QGEMM_THREAD_COMPLEXITY * MlasPlatform.MaximumThreadCount)) {
+    if (Complexity < double(MLAS_QGEMM_THREAD_COMPLEXITY * GetMlasPlatform().MaximumThreadCount)) {
         TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_QGEMM_THREAD_COMPLEXITY)) + 1;
     } else {
-        TargetThreadCount = MlasPlatform.MaximumThreadCount;
+        TargetThreadCount = GetMlasPlatform().MaximumThreadCount;
     }
 
     ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
