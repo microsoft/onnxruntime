@@ -589,12 +589,24 @@ void SetMaskNodesToRemove(const Graph& graph, AttentionMaskNodes& mask_nodes, st
 }
 
 void SetMaskNodesToRemove(const Graph&, AttentionMaskNodesDistilBert& mask_nodes, std::vector<NodeIndex>& nodes_to_remove) {
-  nodes_to_remove.push_back(mask_nodes.softmax->Index());
-  nodes_to_remove.push_back(mask_nodes.where->Index());
-  nodes_to_remove.push_back(mask_nodes.expand->Index());
-  nodes_to_remove.push_back(mask_nodes.reshape->Index());
-  nodes_to_remove.push_back(mask_nodes.equal->Index());
-  nodes_to_remove.push_back(mask_nodes.shape->Index());
+  if (mask_nodes.softmax != nullptr) {
+    nodes_to_remove.push_back(mask_nodes.softmax->Index());
+  }
+  if (mask_nodes.where != nullptr) {
+    nodes_to_remove.push_back(mask_nodes.where->Index());
+  }
+  if (mask_nodes.expand != nullptr) {
+    nodes_to_remove.push_back(mask_nodes.expand->Index());
+  }
+  if (mask_nodes.reshape != nullptr) {
+    nodes_to_remove.push_back(mask_nodes.reshape->Index());
+  }
+  if (mask_nodes.equal != nullptr) {
+    nodes_to_remove.push_back(mask_nodes.equal->Index());
+  }
+  if (mask_nodes.shape != nullptr) {
+    nodes_to_remove.push_back(mask_nodes.shape->Index());
+  }
 }
 
 /**  Match Input Mask subgraph:
