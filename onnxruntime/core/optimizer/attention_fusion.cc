@@ -364,10 +364,13 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
   }
 
   // Now everything is ready, we will start fusing subgraph.
-  NodeArg* mask_int32 = ConvertMaskToInt32(graph, mask_input, mask_int32_map, layer_norm.GetExecutionProviderType(), logger);
+  NodeArg* mask_int32 = nullptr;
+  if (mask_input != nullptr){
+    mask_int32 = ConvertMaskToInt32(graph, mask_input, mask_int32_map, layer_norm.GetExecutionProviderType(), logger);
+  }
   if (nullptr == mask_int32) {
-    DEBUG_LOG("Failed to convert mask to int32");
-    return false;
+    DEBUG_LOG("Failed to convert mask to int32 if model type is BERT, otherwise ignore");
+    //return false;
   }
 
   // Merge Q, K and V weights
@@ -375,7 +378,12 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
   NodeArg& qkv_bias = MergeQkvWeights(graph, hidden_size, q_bias_tensor, k_bias_tensor, v_bias_tensor, false);
   // Create Attention Node.
   const Node& reshape = parent_path_nodes[0];
-  const std::vector<NodeArg*> input_defs{layer_norm.MutableOutputDefs()[0], &qkv_weights, &qkv_bias, mask_int32};
+  std::vector<NodeArg*> input_defs_tmp{layer_norm.MutableOutputDefs()[0], &qkv_weights, &qkv_bias};
+  if (mask_int32 != nullptr)
+  {
+    input_defs_tmp.push_back(mask_int32);
+  }
+  const std::vector<NodeArg*> input_defs(input_defs_tmp);
   const std::vector<NodeArg*> output_defs{graph.GetNode(reshape.Index())->MutableOutputDefs()[0]};
   Node& attention_node = graph.AddNode(
       graph.GenerateNodeName("Attention"),
@@ -681,7 +689,15 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
     NodeArg* mask_input = graph.GetNode(mask_nodes.unsqueeze_1->Index())->MutableInputDefs()[0];
     return FuseSubGraphQK(layer_norm, graph, mask_nodes, mask_input, parent_path_nodes, hidden_size, num_heads, head_size, mask_int32_map, logger);
   } else if (AttentionFusionHelper::MatchInputMaskSubgraph(graph, layer_norm, qkv_matmul, mask_nodes_distilbert, record_node_idx, logger)) {
-    NodeArg* mask_input = graph.GetNode(mask_nodes_distilbert.equal->Index())->MutableInputDefs()[0];
+    NodeArg* mask_input = nullptr;
+    if (mask_nodes_distilbert.softmax != nullptr &&
+        mask_nodes_distilbert.where != nullptr &&
+        mask_nodes_distilbert.expand != nullptr &&
+        mask_nodes_distilbert.reshape != nullptr &&
+        mask_nodes_distilbert.equal != nullptr &&
+        mask_nodes_distilbert.shape != nullptr){
+          mask_input = graph.GetNode(mask_nodes_distilbert.equal->Index())->MutableInputDefs()[0];
+        }
     return FuseSubGraphQKDistilBert(layer_norm, graph, mask_nodes_distilbert, mask_input, parent_path_nodes, hidden_size, num_heads, head_size, mask_int32_map, logger);
   } else {
     DEBUG_LOG("Failed in match input mask subgraph");

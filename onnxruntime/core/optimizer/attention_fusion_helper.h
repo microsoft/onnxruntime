@@ -744,25 +744,25 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const No
       {0, 0, "Expand", {8, 13}, kOnnxDomain},
       {0, 0, "Reshape", {1, 5, 13}, kOnnxDomain},
       {0, 0, "Equal", {1, 7, 11, 13}, kOnnxDomain}};
+  std::vector<graph_utils::EdgeEndToMatch> mask_path_2{ // add path for fused where
+      {0, 0, "Softmax", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Where", {9}, kOnnxDomain},
+      {0, 2, "MatMul", {1, 9, 13}, kOnnxDomain}
+  };
 
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(qkv_matmul, true, mask_path, edges, logger) &&
-      !graph_utils::FindPath(qkv_matmul, true, mask_path_1, edges, logger)) {
+      !graph_utils::FindPath(qkv_matmul, true, mask_path_1, edges, logger) &&
+      !graph_utils::FindPath(qkv_matmul, true, mask_path_2, edges, logger)) {
     DEBUG_LOG("Failed to find mask path");
     return false;
   }
 
   const Node& softmax = edges[0]->GetNode();
   const Node& where = edges[1]->GetNode();
-  const Node& expand = edges[edges.size() - 3]->GetNode();
-  const Node& reshape = edges[edges.size() - 2]->GetNode();
-  const Node& equal = edges[edges.size() - 1]->GetNode();
 
   if (!optimizer_utils::CheckOutputEdges(graph, softmax, 1) ||
-      !optimizer_utils::CheckOutputEdges(graph, where, 1) ||
-      !optimizer_utils::CheckOutputEdges(graph, expand, 1) ||
-      !optimizer_utils::CheckOutputEdges(graph, reshape, 1) ||
-      !optimizer_utils::CheckOutputEdges(graph, equal, 1)) {
+      !optimizer_utils::CheckOutputEdges(graph, where, 1)) {
     DEBUG_LOG("Output edge count not expected for mask nodes");
     return false;
   }
@@ -775,6 +775,28 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const No
   //check where has X=-Infinity
   if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(where.InputDefs()[1]), -INFINITY, true)) {
     DEBUG_LOG("where const not matched.");
+    return false;
+  }
+
+  if (edges.size() == 3)
+  {
+    result.softmax = &softmax;
+    result.where = &where;
+    result.expand = nullptr;
+    result.reshape = nullptr;
+    result.equal = nullptr;
+    result.shape = nullptr;
+    return true;
+  }
+
+  const Node& expand = edges[edges.size() - 3]->GetNode();
+  const Node& reshape = edges[edges.size() - 2]->GetNode();
+  const Node& equal = edges[edges.size() - 1]->GetNode();
+
+  if (!optimizer_utils::CheckOutputEdges(graph, expand, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, reshape, 1) ||
+      !optimizer_utils::CheckOutputEdges(graph, equal, 1)) {
+    DEBUG_LOG("Output edge count not expected for mask nodes");
     return false;
   }
 
