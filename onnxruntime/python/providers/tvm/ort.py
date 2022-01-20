@@ -5,8 +5,6 @@
 # --------------------------------------------------------------------------
 
 import os
-import timeit
-import numpy as np
 import collections
 import copy
 
@@ -19,34 +17,6 @@ from tvm import autotvm
 
 ANSOR_TYPE = "Ansor"
 AUTO_TVM_TYPE = "AutoTVM"
-
-
-@tvm.register_func("tvm_run_with_benchmark")
-def run_with_benchmark(mod):
-    run = mod.get_function("run")
-
-    def benchmark(name):
-        t = timeit.Timer(lambda: run()).repeat(repeat=5, number=5)
-        ts = np.array(t) * 1000
-        print("{} benchmark results: {:.2f}ms mean, {:.2f}ms median, {:.2f}ms std".format(
-            name, np.mean(ts), np.median(ts), np.std(ts)
-        ))
-    if os.getenv("AUTOTVM_TUNING_LOG"):
-        benchmark("Tuned")
-    else:
-        benchmark("Baseline")
-
-
-@tvm.register_func("tvm_run")
-def run_without_benchmark(mod):
-    run = mod.get_function("run")
-    run()
-
-
-@tvm.register_func("tvm_vm_run")
-def run_vm_without_benchmark(mod):
-    run = mod.get_function("invoke")
-    run("main")
 
 
 @tvm.register_func("tvm_onnx_import_and_compile")

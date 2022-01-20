@@ -166,8 +166,7 @@ class TVMRunner {
         tvm::TVM_VM_SetInputs(*mod_, dl_tensors_inputs);
         // Infer once for calculating of output shapes
         if(!probe_infer_) {
-          ::tvm::runtime::TVMRetValue probe_rvalue;
-          tvm::TVM_VM_Run(*mod_, &probe_rvalue);
+          tvm::TVM_VM_Run(*mod_);
           size_t num_outputs = tensors_outputs_.size();
           tvm::TVMGetOutputShapes(*mod_, num_outputs, output_shapes_);
           probe_infer_ = true;
@@ -196,11 +195,10 @@ class TVMRunner {
         tensors_outputs_[i].data = ort.GetTensorMutableData<void>(output_tensor);
       }
 
-      ::tvm::runtime::TVMRetValue rvalue;
       if (use_vm_) {
-        tvm::TVM_VM_Run(*mod_, &rvalue);
+        tvm::TVM_VM_Run(*mod_);
       } else {
-        tvm::TVMRun(*mod_, &rvalue);
+        tvm::TVMRun(*mod_);
       }
       tvm::TVMGetOutputs(*mod_, tensors_outputs_);
 

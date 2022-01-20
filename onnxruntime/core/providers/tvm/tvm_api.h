@@ -30,8 +30,8 @@ namespace tvm {
     void TVMGetOutputShapes(TvmModule& mod,
                             size_t num_outputs,
                             std::vector<std::vector<int64_t>>& output_shapes);
-    void TVMRun(TvmModule& mod, ::tvm::runtime::TVMRetValue *ret);
-    void TVM_VM_Run(TvmModule& mod, ::tvm::runtime::TVMRetValue *ret);
+    void TVMRun(TvmModule& mod);
+    void TVM_VM_Run(TvmModule& mod);
 }  // namespace tvm
 }  // namespace onnxruntime
 

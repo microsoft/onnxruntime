@@ -111,20 +111,18 @@ void TVMGetOutputShapes(TvmModule& mod,
   }
 }
 
-void TVMRun(TvmModule& mod,
-            [[maybe_unused]] ::tvm::runtime::TVMRetValue *ret)
+void TVMRun(TvmModule& mod)
 {
-  const TvmPackedFunc* run = ::tvm::runtime::Registry::Get("tvm_run");
-  ORT_ENFORCE(run != nullptr, "Unable to retrieve 'tvm_run'.");
-  (*run)(mod);
+  TvmPackedFunc run = mod.GetFunction("run", false);
+  ORT_ENFORCE(run != nullptr, "Unable to retrieve graph executor run.");
+  run();
 }
 
-void TVM_VM_Run(TvmModule& mod,
-                [[maybe_unused]] ::tvm::runtime::TVMRetValue *ret)
+void TVM_VM_Run(TvmModule& mod)
 {
-  const TvmPackedFunc* run = ::tvm::runtime::Registry::Get("tvm_vm_run");
-  ORT_ENFORCE(run != nullptr, "Unable to retrieve 'tvm_vm_run'.");
-  (*run)(mod);
+  TvmPackedFunc run = mod.GetFunction("invoke", false);
+  ORT_ENFORCE(run != nullptr, "Unable to retrieve virtual machine invoke.");
+  run("main");
 }
 
 }  // namespace tvm
