@@ -63,7 +63,10 @@ def onnx_compile(model_string,
                  tuning_logfile="",
                  tuning_type=AUTO_TVM_TYPE):
     def get_tvm_executor(irmod, executor, target, target_host, params):
+        # TODO(vvchernov): replace prints by logger, but investigate ORT logging system for python before
+        # see lines 69, 77, 119, 136
         if executor == "vm":
+            # print("Build TVM virtual machine")
             lib = vm.compile(
                 copy.deepcopy(irmod),
                 target,
@@ -71,6 +74,7 @@ def onnx_compile(model_string,
                 target_host=target_host,
             )
         elif executor == "graph":
+            # print("Build TVM graph executor")
             lib = relay.build(irmod, target=target, target_host=target_host, params=params)
         else:
             print("ERROR: Executor type {} is unsupported. ".format(executor),
@@ -100,10 +104,6 @@ def onnx_compile(model_string,
     irmod, params = relay.frontend.from_onnx(model, feed_shape_dict, opset=opset, freeze_params=freeze_params)
     irmod = relay.transform.DynamicToStatic()(irmod)
 
-    # TODO(vvchernov): replace prints by logger, but investigate ORT logging system for python before
-    # Also see lines 91, 106
-    # print("Build TVM graph executor")
-    # print("Build TVM virtual machine")
     # Tuning file can be set by client through ep options
     if tuning_logfile == "":
         tuning_logfile = os.getenv("AUTOTVM_TUNING_LOG")

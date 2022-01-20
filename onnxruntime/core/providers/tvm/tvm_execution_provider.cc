@@ -164,6 +164,15 @@ class TVMRunner {
       }
       if (use_vm_) {
         tvm::TVM_VM_SetInputs(*mod_, dl_tensors_inputs);
+        // Infer once for calculating of output shapes
+        if(!probe_infer_) {
+          ::tvm::runtime::TVMRetValue probe_rvalue;
+          tvm::TVM_VM_Run(*mod_, &probe_rvalue);
+          size_t num_outputs = tensors_outputs_.size();
+          tvm::TVMGetOutputShapes(*mod_, num_outputs, output_shapes_);
+          probe_infer_ = true;
+        }
+
       } else {
         tvm::TVMSetInputs(*mod_, inds, dl_tensors_inputs);
       }
@@ -232,6 +241,7 @@ class TVMRunner {
   private:
     TvmModule* mod_;
     bool use_vm_ = true;
+    bool probe_infer_ = false;
     InputsInfoMap inputs_info_{};
     bool update_output_shapes_ = false;
     TVMTensorShapes output_shapes_;
