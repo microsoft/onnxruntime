@@ -26,7 +26,7 @@ DIVGRAD_REGISTER_KERNEL_TYPED(float)
 TensorShapeVector prepended_dimension_1(const TensorShape& shape, size_t total_rank) {
   size_t input_rank = shape.NumDimensions();
   if (input_rank == total_rank)
-    return shape.GetDimsAsVector();
+    return shape.AsShapeVector();
 
   TensorShapeVector dims(total_rank, 1);
 
