@@ -26,8 +26,8 @@ struct ConvParams {
 
 struct ConvArgs {
   // Update needed if x or w's dims changed.
-  std::vector<int64_t> last_x_dims;
-  std::vector<int64_t> last_w_dims;
+  TensorShapeVector last_x_dims;
+  TensorShapeVector last_w_dims;
 
   miopenHandle_t handle;
   ConvParams params;
