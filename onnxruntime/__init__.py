@@ -44,17 +44,14 @@ try:
 except ImportError:
     pass
 
-if "StvmExecutionProvider" in get_available_providers():
-    try:
-        # Working between the C++ and Python parts in TVM EP is done using the PackedFunc and Registry classes.
-        # In order to use a Python function in C++ code, it must be registered in the global table of functions.
-        # Registration is carried out through the JIT interface, so it is necessary to call
-        # special functions for registration. To do this, we need to make the following import.
-        import onnxruntime.providers.stvm
-    except ImportError as e:
-        onnxruntime_validation.warnings.warn(
-            f"WARNING: Failed to register python functions to work with TVM EP. More details: {e}"
-        )
+try:
+    # Working between the C++ and Python parts in TVM EP is done using the PackedFunc and Registry classes.
+    # In order to use a Python function in C++ code, it must be registered in the global table of functions.
+    # Registration is carried out through the JIT interface, so it is necessary to call
+    # special functions for registration. To do this, we need to make the following import.
+    import onnxruntime.providers.stvm
+except ImportError:
+    pass
 
 from onnxruntime.capi.onnxruntime_validation import package_name, version, cuda_version
 if version:
