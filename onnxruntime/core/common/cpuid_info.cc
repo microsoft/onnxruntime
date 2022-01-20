@@ -1,14 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(_M_IX86) || (defined(_M_X64) && !defined(_M_ARM64EC)) || defined(__i386__) || defined(__x86_64__)
-#define CPUIDINFO_ARCH_X86
-#endif
-
-#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
-#define CPUIDINFO_ARCH_ARM
-#endif
-
 #if defined(CPUIDINFO_ARCH_X86)
 #include <memory>
 #if defined(_MSC_VER)
@@ -31,8 +23,6 @@
 
 #include <mutex>
 #include "core/common/cpuid_info.h"
-#include "core/common/logging/logging.h"
-#include "core/common/logging/severity.h"
 
 #if _WIN32
 #define HAS_WINDOWS_DESKTOP WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
@@ -65,15 +55,12 @@ static inline int XGETBV() {
 }
 #endif  // CPUIDINFO_ARCH_X86
 
-CPUIDInfo CPUIDInfo::instance_;
-
 
 CPUIDInfo::CPUIDInfo() {
 #if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED)
   pytorch_cpuinfo_init_ = cpuinfo_initialize();
-  if (!pytorch_cpuinfo_init_) {
-    LOGS_DEFAULT(WARNING) << "Failed to init pytorch cpuinfo library, may cause CPU EP performance degradation due to undetected CPU features.";
-  }
+  // Note: Failing to init pytorch cpuinfo library may cause CPU EP performance degradation due to undetected CPU features.
+  // TODO: Default logger is not set up yet at this time. Refine the logger logic to support to log here.
 #endif
 
 #if defined(CPUIDINFO_ARCH_X86)
