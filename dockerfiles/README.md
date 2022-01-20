@@ -295,7 +295,7 @@ git submodule update --init
   ```
 
 ## MIGraphX 
-**Ubuntu 16.04, rocm3.3, AMDMIGraphX v0.7**
+**Ubuntu 18.04, rocm4.5, AMDMIGraphX v1.2**
 
 1. Build the docker image from the Dockerfile in this repository.
   ```

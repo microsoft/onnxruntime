@@ -90,6 +90,20 @@ static void CreateModelFromIStream() {
   WINML_EXPECT_EQUAL(L"onnx-caffe2", author);
 }
 
+static void CreateModelFromIBuffer() {
+  std::wstring path = FileHelpers::GetModulePath() + L"squeezenet_modifiedforruntimestests.onnx";
+  auto storageFile = ws::StorageFile::GetFileFromPathAsync(path).get();
+  IBuffer buffer = FileIO::ReadBufferAsync(storageFile).get();
+
+  LearningModel learningModel = nullptr;
+  WINML_EXPECT_NO_THROW(learningModel = LearningModel::LoadFromBufferAsync(buffer).get());
+  WINML_EXPECT_TRUE(learningModel != nullptr);
+
+  // check the author so we know the model was populated correctly.
+  std::wstring author(learningModel.Author());
+  WINML_EXPECT_EQUAL(L"onnx-caffe2", author);
+}
+
 static void ModelGetAuthor() {
   LearningModel learningModel = nullptr;
   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"squeezenet_modifiedforruntimestests.onnx", learningModel));
@@ -323,6 +337,7 @@ const LearningModelApiTestsApi& getapi() {
     CreateModelFromIStorage,
     CreateModelFromIStorageOutsideCwd,
     CreateModelFromIStream,
+    CreateModelFromIBuffer,
     ModelGetAuthor,
     ModelGetName,
     ModelGetDomain,
