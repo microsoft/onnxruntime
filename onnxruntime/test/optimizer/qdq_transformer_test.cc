@@ -7,6 +7,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
@@ -816,6 +817,45 @@ TEST(QDQTransformerTests, ResizeReshape) {
   };
 
   test_case({1, 2, 26, 42}, {4});
+}
+
+TEST(QDQTransformerTests, ArgMax) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape,
+                       int axis,
+                       int keepdims,
+                       int select_last_index) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
+                                                   std::numeric_limits<uint8_t>::min(),
+                                                   std::numeric_limits<uint8_t>::max());
+      auto* output_arg = builder.MakeOutput();
+
+      // add DQ
+      auto* dq_output = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, .003f, 1, dq_output);
+
+      // add ArgMax
+      Node& argmax_node = builder.AddNode("ArgMax", {dq_output}, {output_arg});
+      argmax_node.AddAttribute("axis", static_cast<int64_t>(axis));
+      argmax_node.AddAttribute("keepdims", static_cast<int64_t>(keepdims));
+      argmax_node.AddAttribute("select_last_index", static_cast<int64_t>(select_last_index));
+    };
+
+    auto check_argmax_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["ArgMax"], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+    };
+
+    TransformerTester(build_test_case, check_argmax_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      /* opset_version */ 13);
+  };
+
+  test_case({2, 13, 12, 37}, 1, 0, 0);
+  test_case({2, 13, 12, 37}, 0, 1, 0);
+  test_case({2, 13, 12, 37}, 0, 0, 1);
 }
 
 TEST(QDQTransformerTests, QLinearMatMul) {
@@ -1789,7 +1829,7 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
   ASSERT_TRUE(nullptr != conv_node);
   ASSERT_EQ("Conv", conv_node->OpType());
 
-  onnxruntime::QDQ::ConvSelector conv_selector;
+  onnxruntime::QDQ::ConvNodeGroupSelector conv_selector;
 
   // Create a GraphViewer covers the whole graph
   const GraphViewer whole_graph_viewer(graph);
@@ -1826,5 +1866,38 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
     ASSERT_FALSE(result.has_value());
   }
 }
+
+TEST(QDQTransformerTests, QDQ_Shared_GetSelectors_Test) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/transform/qdq_conv.onnx");
+
+  SessionOptions so;
+  so.graph_optimization_level = TransformerLevel::Default;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  const Graph& graph = session_object.GetGraph();
+  const auto* conv_node = graph.GetNode(3);
+
+  // Make sure node 3 is the conv node
+  ASSERT_TRUE(nullptr != conv_node);
+  ASSERT_EQ("Conv", conv_node->OpType());
+
+  const GraphViewer graph_viewer(graph);
+
+  // Initialize SelectorManager
+  QDQ::SelectorManager selector_mgr;
+  selector_mgr.Initialize();
+
+  // Check if SelectorManager get a conv qdq group selection as expected
+  {
+    const auto result = selector_mgr.GetQDQSelections(graph_viewer);
+    ASSERT_EQ(false, result.empty());
+    const auto& qdq_group = result.at(0);
+    ASSERT_EQ(std::vector<NodeIndex>({0, 1, 2}), qdq_group.dq_nodes);
+    ASSERT_EQ(NodeIndex(3), qdq_group.target_node);
+    ASSERT_EQ(std::vector<NodeIndex>({4}), qdq_group.q_nodes);
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -321,6 +321,20 @@ std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) {
 }
 #endif
 
+#ifdef USE_MIGRAPHX
+std::unique_ptr<IAllocator> CreateHIPAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateHIPAllocator(device_id, name);
+}
+
+std::unique_ptr<IAllocator> CreateHIPPinnedAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateHIPPinnedAllocator(device_id, name);
+}
+
+std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) {
+  return g_host->CreateGPUDataTransfer(stream);
+}
+#endif
+
 std::string GetEnvironmentVar(const std::string& var_name) {
   return g_host->GetEnvironmentVar(var_name);
 }

@@ -198,7 +198,7 @@ Status CheckQuantizedInputs(OpKernelContext* context, bool* is_signed_inputs) {
   const Tensor* gamma_zero_point_tensor = context->Input<Tensor>(16);
   const Tensor* beta_zero_point_tensor = context->Input<Tensor>(17);
 
-  bool word_embedding_is_signed_inputs = word_embedding_scale_tensor->IsDataType<int8_t>();
+  bool word_embedding_is_signed_inputs = word_embedding_zero_point_tensor->IsDataType<int8_t>();
   bool has_segment_embedding = context->Input<Tensor>(1) != nullptr;
 
   if (!IsScalarOr1ElementVector(word_embedding_scale_tensor)) {
