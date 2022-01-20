@@ -357,10 +357,10 @@ class Node {
   /** Gets the Node's attributes. */
   const NodeAttributes& GetAttributes() const noexcept { return attributes_; }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   /** Remove the specified attribute from this Node */
   bool ClearAttribute(const std::string& attr_name);
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
   /** Gets the Node's mutable attributes. */
@@ -833,13 +833,13 @@ class Graph {
     return *(result.first->second);
   }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   /** Generate a unique name in this Graph for a NodeArg */
   std::string GenerateNodeArgName(const std::string& base_name);
 
   /** Generate a unique name in this Graph for a Node */
   std::string GenerateNodeName(const std::string& base_name);
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
   /** Copy a Node and add it to this Graph.
@@ -1080,7 +1080,7 @@ class Graph {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   const Node* GetProducerNode(const std::string& node_arg_name) const {
     return GetProducerNodeImpl(*this, node_arg_name);
   }
@@ -1112,7 +1112,7 @@ class Graph {
   void RemoveConsumerNode(const std::string& node_arg_name, Node* consumer) {
     node_arg_to_consumer_nodes_[node_arg_name].erase(consumer->Index());
   }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
   std::vector<Node*> GetMutableConsumerNodes(const std::string& node_arg_name) {
@@ -1386,7 +1386,7 @@ class Graph {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   Status PopulateNodeArgToProducerConsumerLookupsFromNodes();
 
   template <typename TInstance>
@@ -1413,7 +1413,9 @@ class Graph {
     }
     return nullptr;
   }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   gsl::not_null<Node*> AllocateNode();
 
   // Release the node.
@@ -1511,7 +1513,7 @@ class Graph {
   // All node args owned by <*this> graph. Key is node arg name.
   std::unordered_map<std::string, std::unique_ptr<NodeArg>> node_args_;
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   int name_generator_ = 0;
 
   // Strings which have been used as node names.
@@ -1527,7 +1529,7 @@ class Graph {
 
   // node arg to its consumer nodes
   std::unordered_map<std::string, std::unordered_set<NodeIndex>> node_arg_to_consumer_nodes_;
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
   const std::unordered_map<std::string, int> domain_to_version_;
 

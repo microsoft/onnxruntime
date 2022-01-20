@@ -33,7 +33,7 @@
 using namespace ONNX_NAMESPACE::checker;
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 #include "onnx/defs/shape_inference.h"
 #endif
 
@@ -103,7 +103,7 @@ static TypeProto TypeProtoFromTensorProto(const TensorProto& tensor) {
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 static Status MergeShapeInfo(const std::string& output_name,
                              const TypeProto& source, TypeProto& target,
                              bool strict, const logging::Logger& logger) {
@@ -186,7 +186,9 @@ static Status MergeShapeInfo(const std::string& output_name,
 
   return status;
 }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type) {
   node_arg_info_.set_name(name);
   // If the name is empty, it means the arg does not exist.
@@ -294,7 +296,7 @@ bool NodeArg::HasTensorOrScalarShape() const {
   }
 }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 void NodeArg::SetShape(const TensorShapeProto& shape) {
   const auto type_case = node_arg_info_.type().value_case();
   switch (type_case) {
@@ -513,7 +515,7 @@ void NodeArg::SetType(const TypeProto& type_proto) {
   *(node_arg_info_.mutable_type()) = type_proto;
 }
 
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
 bool NodeArg::Exists() const noexcept {
   return exists_;
@@ -942,13 +944,13 @@ ADD_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_At
 ADD_LIST_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSORS, sparse_tensors)
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 bool Node::ClearAttribute(const std::string& attr_name) {
   graph_->SetGraphResolveNeeded();
   graph_->SetGraphProtoSyncNeeded();
   return attributes_.erase(attr_name) > 0;
 }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status Node::UpdateInputArgCount() {
@@ -3175,7 +3177,7 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 std::string Graph::GenerateNodeArgName(const std::string& base_name) {
   std::string new_name = base_name;
   // Check if new_name has been used in as any of node_args_' names.
@@ -3231,7 +3233,9 @@ std::string Graph::GenerateNodeName(const std::string& base_name) {
 
   return new_name;
 }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 Node& Graph::AddNode(const std::string& name,
                      const std::string& op_type,
                      const std::string& description,
@@ -3787,7 +3791,7 @@ bool Graph::SetOpSchemaFromRegistryForNode(Node& node) {
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 Status Graph::PopulateNodeArgToProducerConsumerLookupsFromNodes() {
   node_arg_to_producer_node_.clear();
   node_arg_to_consumer_nodes_.clear();
@@ -3804,7 +3808,9 @@ Status Graph::PopulateNodeArgToProducerConsumerLookupsFromNodes() {
 
   return Status::OK();
 }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 // calling private ctor
 GSL_SUPPRESS(r .11)
 gsl::not_null<Node*> Graph::AllocateNode() {
@@ -4410,12 +4416,10 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
 
   ORT_RETURN_IF_ERROR(add_node_args(fbs_graph.outputs(), graph_outputs_));
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   // populate NodeArg lookups after loading Nodes and NodeArgs
   ORT_RETURN_IF_ERROR(PopulateNodeArgToProducerConsumerLookupsFromNodes());
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   // runtime optimizations
   if (const auto* fbs_runtime_optimizations = fbs_graph.runtime_optimizations()) {
     if (const auto* fbs_runtime_optimization_records = fbs_runtime_optimizations->records()) {
