@@ -98,7 +98,7 @@ Status SoftMaxGradComputeHelper(
 
 template <typename T>
 Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
-  const Tensor* dY = ctx->Input<Tensor>(0);
+  // const Tensor* dY = ctx->Input<Tensor>(0);
   const TensorShape& input_shape{dY->Shape()};
   const Tensor* Y = ctx->Input<Tensor>(1);
   Tensor* dX = ctx->Output(0, input_shape);
