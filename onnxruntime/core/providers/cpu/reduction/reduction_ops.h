@@ -55,7 +55,7 @@ constexpr TensorOpCost ParallelReduceFastCost(int64_t n_row, int64_t n_col, int6
   *  KR - reduction on the last dimensions
   *  RK - reduction on the first dimensions
   *  KRK - reduction on the middle dimensions.
-  *  RKR - reduction on the middle dimensions on all dimensions but the middle one
+  *  RKR - reduction on all dimensions but the middle ones
 
   For these three configuration, the reduction may be optimized
   with vectors operations. Method WhichFastReduce() returns which case
