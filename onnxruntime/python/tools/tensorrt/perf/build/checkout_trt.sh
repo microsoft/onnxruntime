@@ -1,5 +1,6 @@
 #!/bin/bash 
 
+echo "checking out onnx-tensorrt for correct version"
 echo "$1"
 if [ ! "$1" = "8.2" ]
 then
@@ -8,7 +9,7 @@ then
     git remote update
     if [ "$1" = "8.0" ]
     then 
-        git checkout 1f416bb
+        git checkout "$1"'-GA'
     fi
     if [ "$1" = "7.2" ]
     then 
