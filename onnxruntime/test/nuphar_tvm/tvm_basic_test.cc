@@ -13,7 +13,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/framework/test_utils.h"
 #include "test/test_environment.h"
-#include "test/tvm/tvm_demo/demo_compiler.h"
+#include "test/nuphar_tvm/tvm_demo/demo_compiler.h"
 
 #include <tvm/runtime/ndarray.h>
 
