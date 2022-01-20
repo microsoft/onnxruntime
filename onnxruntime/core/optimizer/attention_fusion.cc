@@ -541,15 +541,30 @@ static bool FuseSubGraphQKDistilBert(Node& layer_norm,
   }
 
   const Node& reshape_1 = parent_path_nodes[0];
-  const Node& reshape_2 = *(mask_nodes.reshape);
 
   const Node* p_concat_1 = graph_utils::GetInputNode(reshape_1, 1);
-  const Node* p_concat_2 = graph_utils::GetInputNode(reshape_2, 1);
-  if (p_concat_1 != nullptr && p_concat_2 != nullptr) {
+  if (p_concat_1 != nullptr) {
     graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *p_concat_1);
-    graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *p_concat_2);
   } else {
-    return false;
+    int input_nodes_count = 0;
+    for (auto iter = reshape_1.InputEdgesBegin(); iter != reshape_1.InputEdgesEnd(); iter ++)
+    {
+      input_nodes_count ++;
+    }
+    if (input_nodes_count >= 2) {
+      return false;
+    }
+  }
+  if (mask_nodes.reshape != nullptr)  // when not fused where
+  {
+    const Node& reshape_2 = *(mask_nodes.reshape);
+    const Node* p_concat_2 = graph_utils::GetInputNode(reshape_2, 1);
+    if (p_concat_2 != nullptr)
+    {
+      graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *p_concat_2);
+    } else {
+      return false;
+    }
   }
 
   AttentionFusionHelper::SetMaskNodesToRemove(graph, mask_nodes, nodes_to_remove);
