@@ -56,6 +56,16 @@ class DropQDQNodeGroupSelector : public NodeGroupSelector {
              const std::vector<const Node*>& q_nodes) const override;
 };
 
+// Single DQ -> node.
+class DropDQNodeGroupSelector : public NodeGroupSelector {
+  // base check that we have the expected number of DQ inputs.
+  bool CheckDQNodes(const Node& node, const std::vector<const Node*>& dq_nodes) const;
+
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+};
+
 // single input. default is to only support uint8.
 class UnaryNodeGroupSelector : public NodeGroupSelector {
   bool Check(const GraphViewer& graph_viewer, const Node& node,
@@ -140,6 +150,11 @@ class BaseSelector : public NodeSelector {
 class DropQDQNodesSelector : public BaseSelector {
  public:
   DropQDQNodesSelector() : BaseSelector(std::make_unique<DropQDQNodeGroupSelector>()) {}
+};
+
+class DropDQNodesSelector : public BaseSelector {
+ public:
+  DropDQNodesSelector() : BaseSelector(std::make_unique<DropDQNodeGroupSelector>()) {}
 };
 
 class UnarySelector : public BaseSelector {
