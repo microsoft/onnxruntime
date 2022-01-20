@@ -105,11 +105,11 @@ def get_session(session, model_group):
     session = adjust_columns(session, session_columns, session_db_columns, model_group)
     return session
 
-def write_table(ingest_client, table, table_name, trt_version, upload_time):
+def write_table(ingest_client, table, table_name, upload_time, identifier):
     if table.empty:
         return
-    table = table.assign(TrtVersion=trt_version) # add TrtVersion
     table = table.assign(UploadTime=upload_time) # add UploadTime
+    table = table.assign(Identifier=identifier) # add Identifier
     ingestion_props = IngestionProperties(
       database=database,
       table=table_name,
@@ -123,6 +123,9 @@ def get_time():
     date_time = time.strftime(time_string_format)
     return date_time
 
+def get_identifier(commit_id, trt_version, branch):
+    return commit_id[:9] + '_' + trt_version + '_' + branch
+
 def main():
     
     args = parse_arguments()
@@ -131,7 +134,8 @@ def main():
     kcsb_ingest = KustoConnectionStringBuilder.with_az_cli_authentication(cluster_ingest)
     ingest_client = QueuedIngestClient(kcsb_ingest)
     date_time = get_time()
-
+    identifier = get_identifier(args.commit_hash, args.trt_version, args.branch)
+    
     try:
         result_file = args.report_folder
 
@@ -164,7 +168,7 @@ def main():
         for table in tables: 
             print('writing ' + table + ' to database')
             db_table_name = 'ep_model_' + table
-            write_table(ingest_client, table_results[table], db_table_name, args.trt_version, date_time)
+            write_table(ingest_client, table_results[table], db_table_name, date_time, identifier)
 
     except BaseException as e: 
         print(str(e))
