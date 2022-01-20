@@ -11,6 +11,9 @@
 #include "asserts.h"
 #include <core/platform/path_lib.h>
 #include "default_providers.h"
+#include <string>
+#include <codecvt>
+#include <locale>
 
 // test infrastructure
 #include "test/onnx/TestCase.h"
@@ -1005,8 +1008,9 @@ auto ExpandModelName  = [](const ::testing::TestParamInfo<ModelTest::ParamType>&
   }
 
   // Note: test name only accepts '_' and alphanumeric
-  // replace '/' with '_'
+  // replace '/' or '\' with '_'
   std::replace(name.begin(), name.end(), '/', '_');
+  std::replace(name.begin(), name.end(), '\\', '_');
 
   // Note: test name only accepts '_' and alphanumeric
   // remove '.' and '-'
@@ -1014,19 +1018,18 @@ auto ExpandModelName  = [](const ::testing::TestParamInfo<ModelTest::ParamType>&
   for (unsigned int i = 0; i < strlen(chars); ++i) {
     name.erase(std::remove(name.begin(), name.end(), chars[i]), name.end());
   }
-
+#ifdef _WIN32
+  // Note: The return value of INSTANTIATE_TEST_SUITE_P accpets std::basic_string<char...>.
+  // Need conversion of wchar_t to char.
+  return std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(name);
+#else
   return name;
+#endif
 };
 
 // The optional last argument is a function or functor that generates custom test name suffixes based on the test parameters.
 // Specify the last argument to make test name more meaningful and clear instead of just the sequential number.
-#ifdef _WIN32
-// Note: The return value of INSTANTIATE_TEST_SUITE_P accpets std::basic_string<char...>. We use wchar_t on Windows and will encounter error.
-// So, we don't provide custom test name on Windows now.
-INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::ValuesIn(GetParameterStrings()));
-#else
 INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::ValuesIn(GetParameterStrings()), ExpandModelName);
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime
