@@ -118,5 +118,12 @@ bool IsSupportedType(c10::optional<int64_t> val, const std::vector<at::ScalarTyp
 
 bool IsSupportedType(at::TensorList tensors, const std::vector<at::ScalarType>& valid_types);
 
+c10::optional<at::ScalarType> PromoteScalarTypesWithCategory(
+    const std::vector<at::ScalarType>& typesFromTensors,
+    const std::vector<at::ScalarType>& typesFromScalars);
+
+ONNX_NAMESPACE::TensorProto_DataType GetONNXTensorProtoDataType(at::ScalarType dtype);
+
+OrtValue CastToType(onnxruntime::ORTInvoker& invoker, const OrtValue& input, at::ScalarType type);
 } // namespace eager
 } // namespace torch_ort
