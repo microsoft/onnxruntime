@@ -4,9 +4,8 @@
 #pragma once
 
 #include <string>
+#include "core/common/common.h"
 #include "core/graph/basic_types.h"
-#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
-#include "core/optimizer/selectors_actions/helpers.h"
 
 namespace onnxruntime {
 
@@ -14,6 +13,9 @@ class GraphViewer;
 class Node;
 
 namespace QDQ {
+
+struct NodeGroup;
+class NodeGroupSelector;
 
 // struct that provides a join between selector and op versions supported
 struct OpVersionsAndSelector {

@@ -96,7 +96,7 @@ void GetQDQIODefs(const Node& target_node, const QDQ::NodeGroup& node_group,
   const auto target_node_io_defs = is_input ? target_node.InputDefs() : target_node.OutputDefs();
   const size_t target_node_io_defs_size = target_node_io_defs.size();
 
-  // Find all the quantized IO defs and its index (for the input to the target node)
+  // Find all the quantized IO defs and indices (for the input to the target node)
   std::unordered_map<size_t, NodeUnitIODef> quantized_io_defs;
   quantized_io_defs.reserve(target_node_io_defs_size);
 
@@ -109,23 +109,17 @@ void GetQDQIODefs(const Node& target_node, const QDQ::NodeGroup& node_group,
     if (std::find(dq_or_q_nodes.cbegin(), dq_or_q_nodes.cend(), node.Index()) != dq_or_q_nodes.cend()) {
       auto idx = cur->GetDstArgIndex();
       const auto node_inputs = node.InputDefs();
+      // quantization scale and zp are always the input[1, 2]
+      NodeUnitIODef::QuantParam quant_param{
+          *node_inputs[1],
+          node_inputs.size() == 3 ? node_inputs[2] : nullptr};
       if (is_input) {
-        // This is a DQ node, we are using x, x_scale, x_zp (input[0,1,2])
-        quantized_io_defs.insert(
-            {idx,
-             NodeUnitIODef{*node_inputs[0],
-                           NodeUnitIODef::QuantParam{
-                               *node_inputs[1],
-                               node_inputs.size() == 3 ? node_inputs[2] : nullptr}}});
+        // This is a DQ node, we are using x, x_scale, x_zp (input[0, 1, 2])
+        quantized_io_defs.insert({idx, NodeUnitIODef{*node_inputs[0], quant_param}});
       } else {
-        // This is a Q node, we are using y (output[0]), y_scale, y_zp (input[1,2])
+        // This is a Q node, we are using y (output[0]), y_scale, y_zp (input[1, 2])
         const auto node_outputs = node.OutputDefs();
-        quantized_io_defs.insert(
-            {idx,
-             NodeUnitIODef{*node_outputs[0],
-                           NodeUnitIODef::QuantParam{
-                               *node_inputs[1],
-                               node_inputs.size() == 3 ? node_inputs[2] : nullptr}}});
+        quantized_io_defs.insert({idx, NodeUnitIODef{*node_outputs[0], quant_param}});
       }
     }
   }
