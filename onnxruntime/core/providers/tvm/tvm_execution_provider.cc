@@ -169,9 +169,12 @@ class TVMRunner {
           tvm::TVM_VM_Run(*mod_);
           size_t num_outputs = tensors_outputs_.size();
           tvm::TVMGetOutputShapes(*mod_, num_outputs, output_shapes_);
+          for (size_t i = 0; i < num_outputs; ++i) {
+            tensors_outputs_[i].ndim = output_shapes_[i].size();
+            tensors_outputs_[i].shape = output_shapes_[i].data();
+          }
           probe_infer_ = true;
         }
-
       } else {
         tvm::TVMSetInputs(*mod_, inds, dl_tensors_inputs);
       }
@@ -197,10 +200,11 @@ class TVMRunner {
 
       if (use_vm_) {
         tvm::TVM_VM_Run(*mod_);
+        tvm::TVMGet_VM_Outputs(*mod_, tensors_outputs_);
       } else {
         tvm::TVMRun(*mod_);
+        tvm::TVMGetOutputs(*mod_, tensors_outputs_);
       }
-      tvm::TVMGetOutputs(*mod_, tensors_outputs_);
 
       return Status::OK();
     }

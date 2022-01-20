@@ -93,6 +93,18 @@ void TVMGetOutputs(TvmModule& mod,
   }
 }
 
+void TVMGet_VM_Outputs(TvmModule& mod,
+                       std::vector<DLTensor>& outputs)
+{
+  TvmPackedFunc get_output = mod.GetFunction("get_output", false);
+  for (size_t i = 0; i < outputs.size(); ++i)
+  {
+    // TODO(vvchernov): think about improvement of memory management
+    ::tvm::runtime::NDArray output_array = get_output(i);
+    output_array.CopyTo(&outputs[i]);
+  }
+}
+
 void TVMGetOutputShapes(TvmModule& mod,
                         size_t num_outputs,
                         std::vector<std::vector<int64_t>>& output_shapes)
