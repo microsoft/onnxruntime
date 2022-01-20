@@ -13,21 +13,6 @@
 namespace onnxruntime {
 namespace QDQ {
 
-namespace {
-
-bool IsScalar(const NodeArg& input_arg) {
-  auto shape = input_arg.Shape();
-  if (shape == nullptr) {
-    // shape inferencing wasn't able to populate shape information for this NodeArg
-    return false;
-  }
-
-  auto dim_size = shape->dim_size();
-  return dim_size == 0 || (dim_size == 1 && shape->dim(0).has_dim_value() && shape->dim(0).dim_value() == 1);
-}
-
-}  // namespace
-
 bool IsQDQPairSupported(
     const Node& q_node, const Node& dq_node,
     const std::function<const ONNX_NAMESPACE::TensorProto*(const std::string&)>& get_const_initializer,
@@ -39,10 +24,10 @@ bool IsQDQPairSupported(
   // non-scalar Q/DQ scale and zero point needs are not supported
   if (dq_input_defs.size() != InputIndex::TOTAL_COUNT ||
       q_input_defs.size() != InputIndex::TOTAL_COUNT ||
-      !IsScalar(*q_input_defs[InputIndex::SCALE_ID]) ||
-      !IsScalar(*q_input_defs[InputIndex::ZERO_POINT_ID]) ||
-      !IsScalar(*dq_input_defs[InputIndex::SCALE_ID]) ||
-      !IsScalar(*dq_input_defs[InputIndex::ZERO_POINT_ID])) {
+      !optimizer_utils::IsScalar(*q_input_defs[InputIndex::SCALE_ID]) ||
+      !optimizer_utils::IsScalar(*q_input_defs[InputIndex::ZERO_POINT_ID]) ||
+      !optimizer_utils::IsScalar(*dq_input_defs[InputIndex::SCALE_ID]) ||
+      !optimizer_utils::IsScalar(*dq_input_defs[InputIndex::ZERO_POINT_ID])) {
     return false;
   }
 
@@ -81,8 +66,8 @@ bool IsDQSupported(
   // DQ contains optional input is not supported
   // non-scalar DQ scale and zero point needs are not supported
   if (dq_input_defs.size() != InputIndex::TOTAL_COUNT ||
-      !IsScalar(*dq_input_defs[InputIndex::SCALE_ID]) ||
-      !IsScalar(*dq_input_defs[InputIndex::ZERO_POINT_ID])) {
+      !optimizer_utils::IsScalar(*dq_input_defs[InputIndex::SCALE_ID]) ||
+      !optimizer_utils::IsScalar(*dq_input_defs[InputIndex::ZERO_POINT_ID])) {
     return false;
   }
 
