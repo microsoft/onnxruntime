@@ -7,6 +7,10 @@
 #include "core/common/common.h"
 #include "core/graph/basic_types.h"
 
+#if !defined(ORT_MINIMAL_BUILD)
+#include "onnx/defs/schema.h"
+#endif
+
 namespace onnxruntime {
 
 class GraphViewer;

@@ -72,7 +72,7 @@ class NodeUnit {
 
   const std::vector<const Node*> output_nodes_;  // all the nodes producing outputs for this NodeUnit
   const Node& target_node_;
-  Type type_;
+  const Type type_;
 
   // Initializing for a single Node
   void InitForSingleNode();

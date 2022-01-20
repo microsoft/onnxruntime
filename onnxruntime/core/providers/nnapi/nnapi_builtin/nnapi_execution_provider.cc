@@ -149,10 +149,13 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
       node_unit_supported_result[node_unit] = supported;
     }
 
-    LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node_unit->OpType()
+    LOGS_DEFAULT(VERBOSE) << "Node supported: [" << supported
+                          << "] Operator type: [" << node.OpType()
+                          << "] index: [" << node.Index()
+                          << "] name: [" << node.Name()
+                          << "] as part of the NodeUnit type: [" << node_unit->OpType()
                           << "] index: [" << node_unit->Index()
                           << "] name: [" << node_unit->Name()
-                          << "] supported: [" << supported
                           << "]";
 
     if (supported) {
