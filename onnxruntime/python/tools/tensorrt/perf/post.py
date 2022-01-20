@@ -93,9 +93,10 @@ def get_status(status, model_group):
     status = adjust_columns(status, status_columns, status_db_columns, model_group)
     return status
 
-def get_specs(specs, branch, commit_id):
+def get_specs(specs, branch, commit_id, upload_time):
     specs = specs.append({'.': 6, 'Spec': 'Branch', 'Version' : branch}, ignore_index=True)
     specs = specs.append({'.': 7, 'Spec': 'CommitId', 'Version' : commit_id}, ignore_index=True)
+    specs = specs.append({'.': 8, 'Spec': 'UploadTime', 'Version' : upload_time}, ignore_index=True)
     return specs
 
 def get_session(session, model_group):
@@ -150,7 +151,7 @@ def main():
                 if session in csv: 
                     table_results[session] = table_results[session].append(get_session(table, model_group), ignore_index=True)
                 if specs in csv: 
-                    table_results[specs] = table_results[specs].append(get_specs(table, args.branch, args.commit_hash), ignore_index=True)
+                    table_results[specs] = table_results[specs].append(get_specs(table, args.branch, args.commit_hash, date_time), ignore_index=True)
                 if fail in csv:
                     table_results[fail] = table_results[fail].append(get_failures(table, model_group), ignore_index=True)
                 if latency in csv:
