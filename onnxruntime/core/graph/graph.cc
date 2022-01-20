@@ -1107,7 +1107,7 @@ Graph::Graph(const Model& owning_model,
              const logging::Logger& logger)
     : owning_model_(owning_model),
       graph_proto_(graph_proto),
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
       runtime_optimizations_ptr_(std::make_unique<RuntimeOptimizationRecordContainer>()),
       runtime_optimizations_(*runtime_optimizations_ptr_),
 #endif
@@ -3146,7 +3146,7 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto nodes = builder.CreateVector(nodes_vec);
   auto node_edges = builder.CreateVector(node_edges_vec);
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   auto runtime_optimizations = flatbuffers::Offset<fbs::RuntimeOptimizations>{};  // null value
   if (!RuntimeOptimizations().IsEmpty()) {
     flatbuffers::Offset<RuntimeOptimizationRecordContainer::FbsRuntimeOptimizationRecordContainer>
@@ -3167,7 +3167,7 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 #if !defined(DISABLE_SPARSE_TENSORS)
   gb.add_sparse_initializers(sparse_initializers);
 #endif
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   gb.add_runtime_optimizations(runtime_optimizations);
 #endif
   fbs_graph = gb.Finish();
@@ -4263,7 +4263,7 @@ Graph::Graph(const Model& owning_model,
              const logging::Logger& logger)
     : owning_model_(owning_model),
       graph_proto_(&deserialized_proto_data_),
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
       runtime_optimizations_ptr_(std::make_unique<RuntimeOptimizationRecordContainer>()),
       runtime_optimizations_(*runtime_optimizations_ptr_),
 #endif
@@ -4415,14 +4415,14 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
   ORT_RETURN_IF_ERROR(PopulateNodeArgToProducerConsumerLookupsFromNodes());
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   // runtime optimizations
   if (const auto* fbs_runtime_optimizations = fbs_graph.runtime_optimizations()) {
     if (const auto* fbs_runtime_optimization_records = fbs_runtime_optimizations->records()) {
       ORT_RETURN_IF_ERROR(MutableRuntimeOptimizations().LoadFromOrtFormat(*fbs_runtime_optimization_records));
     }
   }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
   return Status::OK();
 }

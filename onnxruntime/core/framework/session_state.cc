@@ -982,9 +982,9 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
 
   const bool original_nodes_should_exist =
       compiled_kernel_hashes.empty()
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
       && graph_.RuntimeOptimizationReplayCtx().num_replayed_optimizations == 0
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
       ;
 
   // process the nodes that existed when the model was created
@@ -1003,7 +1003,7 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
     ORT_RETURN_IF_ERROR(add_kernel_by_hash(*node, node_kernel_info.kernel_def_hash));
   }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   // process the nodes that were added by replaying any loaded runtime optimizations
   for (const auto& [node_index, kernel_def_hash] :
        graph_.RuntimeOptimizationReplayCtx().produced_node_index_to_kernel_def_hash) {
@@ -1013,7 +1013,7 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
 
     ORT_RETURN_IF_ERROR(add_kernel_by_hash(*node, kernel_def_hash));
   }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
   // lookup the hashes for any nodes we compiled. the nodes indexes for compiled nodes are not in node_indices
   // as they were created at runtime.
@@ -1239,7 +1239,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     CreateGraphInfo();
   }
 
-#if defined(ORT_MINIMAL_BUILD) && defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#if defined(ORT_MINIMAL_BUILD) && defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   // remove any unused initializers
   // not needed in a full build because unused initializers should have been removed earlier by Graph::Resolve()
   // not needed in a minimal build with runtime optimizations disabled because only runtime optimizations are expected
@@ -1258,7 +1258,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       graph_.RemoveInitializedTensor(name);
     }
   }
-#endif  // defined(ORT_MINIMAL_BUILD) && defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#endif  // defined(ORT_MINIMAL_BUILD) && defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
   // ignore any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
   std::vector<const NodeArg*> valid_outer_scope_node_args;

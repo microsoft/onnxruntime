@@ -11,7 +11,7 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/optimizer/graph_transformer.cc"
   )
 
-  if (onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+  if (onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
     list(APPEND onnxruntime_optimizer_src_patterns
       "${ONNXRUNTIME_INCLUDE_DIR}/core/optimizer/graph_transformer_utils.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/graph_transformer_utils.cc"
