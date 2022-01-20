@@ -1074,7 +1074,7 @@ void Node::ForEachDef(std::function<void(const onnxruntime::NodeArg&, bool is_in
 
 // Constructor: Given a <GraphProto> loaded from model file, construct
 // a <Graph> object and Resolve() it.
-//Status Graph::LoadGraph(const GraphProto& graph_proto,
+// Status Graph::LoadGraph(const GraphProto& graph_proto,
 //                        const std::unordered_map<std::string, int>& domain_to_version,
 //                        Version ir_version,
 //                        std::unique_ptr<Graph>& new_graph) {
@@ -2642,7 +2642,7 @@ void Graph::InitFunctionBodyForNode(Node& node) {
                            << node.Name() << "' optype " << node.OpType()
 #ifndef ORT_NO_EXCEPTIONS
                            << ". Error message " << e.what()
-#endif  //ORT_NO_EXCEPTIONS
+#endif  // ORT_NO_EXCEPTIONS
                            << ". Execution will fail if ORT does not have a specialized kernel for this op";
     // Return without using this function op's expansion. No need to fail just yet.
     // If ORT has a specialized kernel for this op then execution will proceed
@@ -3470,7 +3470,7 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
   std::unordered_set<const NodeArg*> used_args;
   used_args.reserve(node_args_.size());
 
-  //Node Args we want to preserved even not being used
+  // Node Args we want to preserved even not being used
   std::unordered_set<const NodeArg*> node_args_to_preserve;
   if (initializer_names_to_preserve) {
     node_args_to_preserve.reserve(initializer_names_to_preserve->size());

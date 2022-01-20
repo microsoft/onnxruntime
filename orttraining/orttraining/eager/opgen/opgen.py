@@ -22,7 +22,7 @@ parser.add_argument('--custom_ops', action='store_true', help='Whether we are ge
 args = parser.parse_args()
 ops_module = SourceFileLoader("opgen.customop", args.ops_module).load_module()
 
-ortgen = ORTGen(ops_module.ops, custom_ops=args.custom_ops)
+ortgen = ORTGen(ops_module.ops, type_promotion_ops=ops_module.type_promotion_ops, custom_ops=args.custom_ops)
 
 regdecs_path = args.header_file
 print(f"INFO: Using ATen RegistrationDeclations from: {regdecs_path}")

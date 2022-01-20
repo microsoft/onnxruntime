@@ -26,6 +26,7 @@ class GeluGrad(ONNXOp):
     self.domain = kMSDomain
 
 ops = {}
+type_promotion_ops = []
 
 for binary_op, onnx_op in {
   'add': Add('self', Mul('alpha', 'other')),
@@ -37,6 +38,7 @@ for binary_op, onnx_op in {
       name = f'aten::{binary_op}{variant}.{dtype}'
       if name not in ops:
         ops[f'aten::{binary_op}{variant}.{dtype}'] = deepcopy(onnx_op)
+        type_promotion_ops.append(f'aten::{binary_op}{variant}.{dtype}')
 
 for unary_op in [
   'abs','acos','acosh', 'asinh', 'atanh', 'asin', 'atan', 'ceil', 'cos',
@@ -92,3 +94,8 @@ hand_implemented = {
 }
 
 ops = {**ops, **hand_implemented} 
+# TODO: this is a temporary whitelist for ops need type promotion
+# Need to enhance the support for onnx type constrains to automatically
+# resolve whether the op need type promotion.
+# Will remove this list in the future.
+type_promotion_ops = (*type_promotion_ops, 'aten::gelu_backward')
