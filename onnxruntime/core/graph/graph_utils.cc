@@ -188,6 +188,10 @@ static void MoveAllNodeOutputs(Graph& graph, Node& src_node, Node& target_node) 
   GraphEdge::RemoveGraphEdges(graph, output_edges);
 }
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+
 static int GetIndexFromName(const Node& node, const std::string& name, bool is_input) {
   const auto& node_args = is_input ? node.InputDefs() : node.OutputDefs();
   auto itr = std::find_if(node_args.begin(), node_args.end(),
@@ -198,7 +202,7 @@ static int GetIndexFromName(const Node& node, const std::string& name, bool is_i
   return static_cast<int>(index);
 }
 
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
 //----------------------------
 //--- end of local helpers ---
