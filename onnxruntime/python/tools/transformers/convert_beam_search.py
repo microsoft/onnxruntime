@@ -131,12 +131,13 @@ def parse_arguments(argv=None):
     beam_search_group.add_argument('--vocab_size',
                                     type=int,
                                     required=False,
+                                    default=-1,
                                     help="Vocab_size of the underlying model")
 
     beam_search_group.add_argument('--prefix_vocab_mask',
                                     required=False,
                                     action='store_true',
-                                    help="This vocab mask applies only to first iteration, enable if last work in query might need auto complete")
+                                    help="This vocab mask applies only to first iteration, enable if last word in query might need auto complete")
     beam_search_group.set_defaults(prefix_vocab_mask=False)
 
     mixed_precision_option_group = parser.add_argument_group(
@@ -241,6 +242,10 @@ def convert_model(args):
     pad_token_id = config.eos_token_id
     vocab_size = config.vocab_size
 
+    # if vocab_size is given in parameters use that.
+    if args.vocab_size != -1:
+        vocab_size = args.vocab_size
+
     model = onnx.load(args.gpt2_onnx)
     model.graph.name = "gpt2 subgraph"
     inputs = [
@@ -287,7 +292,7 @@ def convert_model(args):
     ]
 
     if args.prefix_vocab_mask:
-        prefix_vocab_mask = helper.make_tensor_value_info('prefix_vocab_mask', TensorProto.INT32, [vocab_size])
+        prefix_vocab_mask = helper.make_tensor_value_info('prefix_vocab_mask', TensorProto.INT32, ['batch_size', vocab_size])
         graph_inputs.append(prefix_vocab_mask)
 
     # graph outputs
@@ -318,6 +323,11 @@ def convert_model(args):
 
 
 def test_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
+
+    if args.prefix_vocab_mask:
+        print("Skipping parity test as prefix vocab mask is not implemented by Huggin Face")
+        return
+
     from transformers import GPT2Tokenizer, GPT2LMHeadModel
 
     tokenizer = GPT2Tokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
