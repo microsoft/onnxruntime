@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/cpuid_info.h"
+
 #if defined(CPUIDINFO_ARCH_X86)
 #include <memory>
 #if defined(_MSC_VER)
@@ -22,7 +24,6 @@
 #endif
 
 #include <mutex>
-#include "core/common/cpuid_info.h"
 
 #if _WIN32
 #define HAS_WINDOWS_DESKTOP WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
