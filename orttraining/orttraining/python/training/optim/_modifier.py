@@ -133,6 +133,10 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type,
                                         op=torch.distributed.ReduceOp.SUM,
                                         group=get_horizontal_model_parallel_group())
         total_norm = total_norm.item() ** (1.0 / norm_type)
+        clip_coef = max_norm / (total_norm + 1e-6)
+        if clip_coef < 1:
+            for p in parameters:
+                p.grad.data.mul_(clip_coef)
 
     return total_norm
 
