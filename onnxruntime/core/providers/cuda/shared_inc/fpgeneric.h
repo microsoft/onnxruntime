@@ -122,21 +122,16 @@ inline cublasStatus_t cublasGemmHelper(cublasHandle_t handle,
                                        const BFloat16* beta,
                                        BFloat16* C, int ldc,
                                        const cudaDeviceProp& /*prop*/) {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   float h_a = alpha->ToFloat();
   float h_b = beta->ToFloat();
 
   // accumulating in FP32
-  return cublasGemmEx(handle,
-                      transa,
-                      transb,
-                      m, n, k,
-                      &h_a,
-                      A, CUDA_R_16BF, lda,
-                      B, CUDA_R_16BF, ldb,
-                      &h_b,
-                      C, CUDA_R_16BF, ldc,
-                      CUBLAS_COMPUTE_32F,
-                      CUBLAS_GEMM_DEFAULT);
+  return cublasGemmEx(handle, transa, transb, m, n, k, &h_a, A, CUDA_R_16BF, lda, B, CUDA_R_16BF, ldb, &h_b, C,
+                      CUDA_R_16BF, ldc, CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT);
+#else
+  return CUBLAS_STATUS_NOT_SUPPORTED;
+#endif
 }
 
 // batched gemm
@@ -247,22 +242,17 @@ inline cublasStatus_t cublasGemmBatchedHelper(cublasHandle_t handle,
                                               BFloat16* Carray[], int ldc,
                                               int batch_count,
                                               const cudaDeviceProp& /*prop*/) {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   float h_a = alpha->ToFloat();
   float h_b = beta->ToFloat();
 
   // accumulating in FP32
-  return cublasGemmBatchedEx(handle,
-                             transa,
-                             transb,
-                             m, n, k,
-                             &h_a,
-                             (const void**)Aarray, CUDA_R_16BF, lda,
-                             (const void**)Barray, CUDA_R_16BF, ldb,
-                             &h_b,
-                             (void**)Carray, CUDA_R_16BF, ldc,
-                             batch_count,
-                             CUDA_R_32F,
-                             CUBLAS_GEMM_DEFAULT);
+  return cublasGemmBatchedEx(handle, transa, transb, m, n, k, &h_a, (const void**)Aarray, CUDA_R_16BF, lda,
+                             (const void**)Barray, CUDA_R_16BF, ldb, &h_b, (void**)Carray, CUDA_R_16BF, ldc,
+                             batch_count, CUDA_R_32F, CUBLAS_GEMM_DEFAULT);
+#else
+  return CUBLAS_STATUS_NOT_SUPPORTED;
+#endif
 }
 
 // strided batched gemm
@@ -439,21 +429,16 @@ inline cublasStatus_t cublasGemmStridedBatchedHelper(cublasHandle_t handle,
                                                      long long int strideC,
                                                      int batch_count,
                                                      const cudaDeviceProp& /*prop*/) {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   float h_a = alpha->ToFloat();
   float h_b = beta->ToFloat();
   // accumulating in FP32
-  return cublasGemmStridedBatchedEx(handle,
-                                    transa,
-                                    transb,
-                                    m, n, k,
-                                    &h_a,
-                                    A, CUDA_R_16BF, lda, strideA,
-                                    B, CUDA_R_16BF, ldb, strideB,
-                                    &h_b,
-                                    C, CUDA_R_16BF, ldc, strideC,
-                                    batch_count,
-                                    CUDA_R_32F,
+  return cublasGemmStridedBatchedEx(handle, transa, transb, m, n, k, &h_a, A, CUDA_R_16BF, lda, strideA, B, CUDA_R_16BF,
+                                    ldb, strideB, &h_b, C, CUDA_R_16BF, ldc, strideC, batch_count, CUDA_R_32F,
                                     CUBLAS_GEMM_DEFAULT);
+#else
+  return CUBLAS_STATUS_NOT_SUPPORTED;
+#endif
 }
 
 // transpose using geam
