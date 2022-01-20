@@ -397,7 +397,7 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
    `debug.keystore` must be generated ahead for Android example.
 
    ```sh
-   keytool -genkey -v -keystore <ORT_ROOT>/js/react_native/example/android/debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
+   keytool -genkey -v -keystore <ORT_ROOT>/js/react_native/e2e/android/debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
    ```
 
    From `<ORT_ROOT>/js/react_native,
@@ -406,9 +406,9 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
    yarn bootstrap
    ```
    
-   When testing with a custom built ONNX Runtime Android package, copy `<BUILD_DIRECTORY>/aar_out/MinSizeRel/com/microsoft/onnxruntime/onnxruntime-mobile/<version>/onnxruntime-mobile-<version>.aar` into `<ORT_ROOT>/js/react_native/example/node_modules/onnxruntime-react-native/android/libs` directory.
+   When testing with a custom built ONNX Runtime Android package, copy `<BUILD_DIRECTORY>/aar_out/MinSizeRel/com/microsoft/onnxruntime/onnxruntime-mobile/<version>/onnxruntime-mobile-<version>.aar` into `<ORT_ROOT>/js/react_native/e2e/node_modules/onnxruntime-react-native/android/libs` directory.
 
-   From `<ORT_ROOT>/js/react_native/example/android`, run e2e Android tests as follows,
+   From `<ORT_ROOT>/js/react_native/e2e/android`, run e2e Android tests as follows,
 
    ```sh
    ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
@@ -417,7 +417,7 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
    adb shell am instrument -w com.example.reactnativeonnxruntimemodule.test/androidx.test.runner.AndroidJUnitRunner
    ```
 
-   From `<ORT_ROOT>/js/react_native/example/ios`, run e2e iOS tests as follows,
+   From `<ORT_ROOT>/js/react_native/e2e/ios`, run e2e iOS tests as follows,
 
    ```sh
    xcrun xcodebuild test -workspace OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -destination 'platform=iOS Simulator,OS=latest,name=iPhone 13'
