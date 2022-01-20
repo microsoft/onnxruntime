@@ -13,3 +13,5 @@ from opgen.onnxops import *
 ops = {
     'gemm': Gemm('A', 'B', 'C', 'alpha', 'beta', 'transA', 'transB')
 }
+
+type_promotion_ops = {}
