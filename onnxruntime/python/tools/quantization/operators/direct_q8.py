@@ -29,7 +29,7 @@ class Direct8BitOp(QuantOperatorBase):
             self.quantizer.new_nodes += [node]
 
         else:
-            # Force quantize those ops if possible, use black list on node if this is not you want
+            # Force quantize those ops if possible, use exclude node list if this is not you want
             if (not self.quantizer.is_valid_quantize_weight(node.input[0])):
                 super().quantize()
                 return

@@ -8,26 +8,14 @@
 namespace onnxruntime {
 namespace cuda {
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-#define ALL_IEEE_FLOAT_TENSOR_TYPES           \
-  { DataTypeImpl::GetTensorType<float>(),     \
-    DataTypeImpl::GetTensorType<double>(),    \
-    DataTypeImpl::GetTensorType<MLFloat16>(), \
-    DataTypeImpl::GetTensorType<BFloat16>() }
-#define ALL_IEEE_FLOAT_DATA_TYPES float, MLFloat16, double, BFloat16
-#else
-#define ALL_IEEE_FLOAT_TENSOR_TYPES DataTypeImpl::AllIEEEFloatTensorTypes()
-#define ALL_IEEE_FLOAT_DATA_TYPES float, MLFloat16, double
-#endif
-
-#define REGISTER_KERNEL_TYPED_GATHER_ND_GRAD(TIndex)                                                                                                                                                                                                    \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                                                                                                                                        \
-      GatherNDGrad,                                                                                                                                                                                                                                     \
-      kMSDomain,                                                                                                                                                                                                                                        \
-      1,                                                                                                                                                                                                                                                \
-      TIndex,                                                                                                                                                                                                                                           \
-      kCudaExecutionProvider,                                                                                                                                                                                                                           \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", ALL_IEEE_FLOAT_TENSOR_TYPES).TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()).InputMemoryType(OrtMemTypeCPUInput, 0), \
+#define REGISTER_KERNEL_TYPED_GATHER_ND_GRAD(TIndex)                                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                \
+      GatherNDGrad, kMSDomain, 1, TIndex, kCudaExecutionProvider,                               \
+      (*KernelDefBuilder::Create())                                                             \
+          .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>()) \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>())                        \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())                         \
+          .InputMemoryType(OrtMemTypeCPUInput, 0),                                              \
       GatherNDGrad<TIndex>);
 
 REGISTER_KERNEL_TYPED_GATHER_ND_GRAD(int64_t)
@@ -94,7 +82,7 @@ Status GatherNDGrad<TIndex>::ComputeInternal(OpKernelContext* context) const {
 
   const void* const kernel_input_data = update_tensor->DataRaw();
   void* const kernel_output_data = output_tensor->MutableDataRaw();
-  utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(update_tensor->GetElementType());
+  utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(update_tensor->GetElementType());
   t_disp.Invoke<GatherNDGradComputeImpl>(
       Stream(), num_slices, slice_size, kernel_input_data, kernel_output_data, input_slice_offsets_buffer.get());
 

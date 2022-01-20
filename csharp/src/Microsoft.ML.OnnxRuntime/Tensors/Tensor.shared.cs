@@ -429,12 +429,16 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         }
 
         /// <summary>
-        /// Creates a n+1-dimension tensor using the specified n-dimension diagonal at the specified offset from the center.  Values not on the diagonal will be filled with zeros.
+        /// Creates a n+1-dimension tensor using the specified n-dimension diagonal at the specified offset 
+        /// from the center.  Values not on the diagonal will be filled with zeros.
         /// </summary>
-        /// <typeparam name="T">type contained within the Tensor.  Typically a value type such as int, double, float, etc.</typeparam>
+        /// <typeparam name="T">
+        /// type contained within the Tensor. Typically a value type such as int, double, float, etc.</typeparam>
         /// <param name="diagonal">Tensor representing the diagonal to build the new tensor from.</param>
-        /// <param name="offset">Offset of diagonal to set in returned tensor.  0 for the main diagonal, less than zero for diagonals below, greater than zero from diagonals above.</param>
-        /// <returns>A new tensor of the same layout and order as <paramref name="diagonal"/> of one higher rank, with the values of <paramref name="diagonal"/> along the specified diagonal and zeros elsewhere.</returns>
+        /// <param name="offset">Offset of diagonal to set in returned tensor.  0 for the main diagonal, 
+        /// less than zero for diagonals below, greater than zero from diagonals above.</param>
+        /// <returns>A new tensor of the same layout and order as <paramref name="diagonal"/> of one higher rank, 
+        /// with the values of <paramref name="diagonal"/> along the specified diagonal and zeros elsewhere.</returns>
         public static Tensor<T> CreateFromDiagonal<T>(Tensor<T> diagonal, int offset)
         {
             if (diagonal.Rank < 1)
@@ -678,10 +682,16 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         }
 
         /// <summary>
-        /// Initializes tensor with same dimensions as array, content of array is ignored.  ReverseStride=true gives a stride of 1-element width to the first dimension (0).  ReverseStride=false gives a stride of 1-element width to the last dimension (n-1).
+        /// Initializes tensor with same dimensions as array, content of array is ignored.  
+        /// ReverseStride=true gives a stride of 1-element width to the first dimension (0).  
+        /// ReverseStride=false gives a stride of 1-element width to the last dimension (n-1).
         /// </summary>
         /// <param name="fromArray">Array from which to derive dimensions.</param>
-        /// <param name="reverseStride">False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): akin to column-major in a rank-2 tensor.</param>
+        /// <param name="reverseStride">
+        /// False (default) to indicate that the first dimension is most major (farthest apart) and the 
+        /// last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  
+        /// True to indicate that the last dimension is most major (farthest apart) and the first dimension 
+        /// is most minor (closest together): akin to column-major in a rank-2 tensor.</param>
         protected Tensor(Array fromArray, bool reverseStride) : base(typeof(T))
         {
             if (fromArray == null)
