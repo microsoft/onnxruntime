@@ -2197,7 +2197,7 @@ TEST(ReductionOpTest, ArgMax_int32_neg_axis) {
 }
 
 TEST(ReductionOpTest, ArgMax_int8) {
-  OpTester test("ArgMax", 13);
+  OpTester test("ArgMax");
   test.AddAttribute("axis", static_cast<int64_t>(1));
   test.AddAttribute("keepdims", static_cast<int64_t>(1));
   test.AddInput<int8_t>("data", {3, 2, 2},
@@ -2219,7 +2219,7 @@ TEST(ReductionOpTest, ArgMax_int8) {
 }
 
 TEST(ReductionOpTest, ArgMax_uint8) {
-  OpTester test("ArgMax", 13);
+  OpTester test("ArgMax");
   test.AddAttribute("axis", static_cast<int64_t>(1));
   test.AddAttribute("keepdims", static_cast<int64_t>(1));
   test.AddInput<uint8_t>("data", {3, 2, 2},

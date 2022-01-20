@@ -43,8 +43,6 @@ private:
   std::unordered_map<at::DeviceIndex, ProviderInfoMap> device_ep_info_;
 };
 
-ORTBackendsManager& GetORTBackendsManager();
-
 onnxruntime::ORTInvoker& GetORTInvoker(const at::Device device);
 
 } // namespace eager
