@@ -12,7 +12,6 @@ namespace eager {
 void copy(onnxruntime::ORTInvoker& invoker,
           const OrtValue& src, OrtValue& dst){
   auto& ort_ep = invoker.GetCurrentExecutionProvider();
-
   const auto& src_tensor = src.Get<onnxruntime::Tensor>();
   auto* dst_tensor = dst.GetMutable<onnxruntime::Tensor>();
   if (!dst_tensor)
