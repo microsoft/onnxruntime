@@ -247,7 +247,7 @@ static Status DoUntypedTranspose(const gsl::span<const size_t>& permutations, co
   const auto element_size = input.DataType()->Size();
   const bool is_string_type = input.IsDataTypeString();
 
-  InlinedVectorShapeCap<size_t> stride(rank);
+  InlinedShapeVectorT<size_t> stride(rank);
   for (size_t i = 0; i < rank; i++) {
     size_t inpdim = permutations[i];
     if (inpdim + 1 < rank)
@@ -709,8 +709,8 @@ Status Transpose::Compute(OpKernelContext* ctx) const {
   size_t rank = input_dims.size();
 
   TensorShapeVector output_dims(rank);
-  const InlinedVectorShapeCap<size_t>* p_perm;
-  InlinedVectorShapeCap<size_t> default_perm(rank);
+  const InlinedShapeVectorT<size_t>* p_perm;
+  InlinedShapeVectorT<size_t> default_perm(rank);
   Status status = ComputeOutputShape(X, output_dims, default_perm, p_perm);
   if (!status.IsOK())
     return status;

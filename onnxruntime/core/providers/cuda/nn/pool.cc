@@ -90,9 +90,9 @@ class CudnnPoolingDescriptor final {
       CUDNN_RETURN_IF_ERROR(cudnnCreatePoolingDescriptor(&desc_));
 
     int rank = gsl::narrow_cast<int>(kernel_shape.size());
-    InlinedVectorShapeCap<int> window(rank);
-    InlinedVectorShapeCap<int> padding(rank);
-    InlinedVectorShapeCap<int > stride(rank);
+    InlinedShapeVectorT<int> window(rank);
+    InlinedShapeVectorT<int> padding(rank);
+    InlinedShapeVectorT<int> stride(rank);
     for (int i = 0; i < rank; i++) {
       window[i] = gsl::narrow_cast<int>(kernel_shape[i]);
     }

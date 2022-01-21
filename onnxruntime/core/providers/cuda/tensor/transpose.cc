@@ -98,7 +98,7 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   // flatten the adjacent dimensions which are contiguous
   // for example: permutations[0, 2, 3, 1] -> [0, 2, 1], permutations[0, 3, 1, 2] -> [0, 2, 1]
   auto new_rank = rank;
-  InlinedVectorShapeCap<size_t> new_permutations(permutations.cbegin(), permutations.cend());
+  InlinedShapeVectorT<size_t> new_permutations(permutations.cbegin(), permutations.cend());
   TensorShapeVector new_input_dims = ToShapeVector(input_dims);
   TensorShapeVector new_output_dims = ToShapeVector(output_dims);
 
@@ -265,8 +265,8 @@ Status Transpose::ComputeInternal(OpKernelContext* ctx) const {
   int32_t rank = gsl::narrow_cast<int32_t>(input_shape.NumDimensions());
 
   TensorShapeVector output_dims(rank);
-  InlinedVectorShapeCap<size_t> default_perm(rank);
-  const InlinedVectorShapeCap<size_t>* p_perm = nullptr;
+  InlinedShapeVectorT<size_t> default_perm(rank);
+  const InlinedShapeVectorT<size_t>* p_perm = nullptr;
   const auto& status = ComputeOutputShape(X, output_dims, default_perm, p_perm);
   if (!status.IsOK())
     return status;

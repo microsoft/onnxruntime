@@ -58,8 +58,8 @@ class TransposeBase {
     }
   }
 
-  Status ComputeOutputShape(const Tensor& X, TensorShapeVector& output_dims, InlinedVectorShapeCap<size_t>& default_perm,
-                            const InlinedVectorShapeCap<size_t>*& p_perm) const {
+  Status ComputeOutputShape(const Tensor& X, TensorShapeVector& output_dims, InlinedShapeVectorT<size_t>& default_perm,
+                            const InlinedShapeVectorT<size_t>*& p_perm) const {
     size_t rank = X.Shape().NumDimensions();
     const auto& input_dims = X.Shape().GetDims();
 
@@ -93,7 +93,7 @@ class TransposeBase {
   }
 
   bool perm_specified_ = false;
-  InlinedVectorShapeCap<size_t> perm_;
+  InlinedShapeVectorT<size_t> perm_;
 };
 
 class Transpose final : public OpKernel, public TransposeBase {

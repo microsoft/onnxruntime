@@ -333,9 +333,9 @@ Status MiopenConvolutionDescriptor::Set(
   if (!desc_)
     MIOPEN_RETURN_IF_ERROR(miopenCreateConvolutionDescriptor(&desc_));
 
-  InlinedVectorShapeCap<int> pad_dims(rank);
-  InlinedVectorShapeCap<int> stride_dims(rank);
-  InlinedVectorShapeCap<int> dilation_dims(rank);
+  InlinedShapeVectorT<int> pad_dims(rank);
+  InlinedShapeVectorT<int> stride_dims(rank);
+  InlinedShapeVectorT<int> dilation_dims(rank);
   for (size_t i = 0; i < rank; i++) {
     pad_dims[i] = gsl::narrow_cast<int>(pads[i]);
     stride_dims[i] = gsl::narrow_cast<int>(strides[i]);

@@ -300,7 +300,7 @@ OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& 
 };
 
 void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t axis,
-                                      InlinedVectorShapeCap<size_t>& permutations, TensorShapeVector& transposed_shape) {
+                                      InlinedShapeVectorT<size_t>& permutations, TensorShapeVector& transposed_shape) {
   int64_t rank = original_shape.NumDimensions();
   const auto& dims = original_shape.GetDims();
 
@@ -319,7 +319,7 @@ void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t
 }
 
 void CalculateTransposedShapeForOutput(const TensorShape& original_shape, int64_t axis,
-                                       InlinedVectorShapeCap<size_t>& permutations, TensorShapeVector& transposed_shape) {
+                                       InlinedShapeVectorT<size_t>& permutations, TensorShapeVector& transposed_shape) {
   int64_t rank = original_shape.NumDimensions();
   const auto& dims = original_shape.GetDims();
 

@@ -32,10 +32,12 @@ namespace onnxruntime {
 
 constexpr size_t kTensorShapeSmallBufferElementsSize = 5;
 
+// Use this type to build a shape and then create TensorShape.
 using TensorShapeVector = absl::InlinedVector<int64_t, kTensorShapeSmallBufferElementsSize>;
 
-template<typename T>
-using InlinedVectorShapeCap = absl::InlinedVector<T, kTensorShapeSmallBufferElementsSize>;
+// Use this for inlined shape size where different types are needed.
+template <typename T>
+using InlinedShapeVectorT = absl::InlinedVector<T, kTensorShapeSmallBufferElementsSize>;
 
 inline TensorShapeVector ToShapeVector(const gsl::span<const int64_t>& span) {
   TensorShapeVector out;
