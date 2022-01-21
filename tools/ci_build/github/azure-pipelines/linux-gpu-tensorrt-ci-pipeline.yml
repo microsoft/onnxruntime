@@ -39,7 +39,7 @@ jobs:
               --enable_onnx_tests --use_cuda --cuda_version=11.4 --cuda_home=/usr/local/cuda-11.4 --cudnn_home=/usr/local/cuda-11.4 \
               --enable_pybind --build_java --build_nodejs \
               --use_tensorrt --tensorrt_home /usr \
-              --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc  CMAKE_CUDA_ARCHITECTURES=52
+              --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc  CMAKE_CUDA_ARCHITECTURES=52;70;75
         workingDirectory: $(Build.SourcesDirectory)
     - task: PublishTestResults@2
       displayName: 'Publish unit test results'
