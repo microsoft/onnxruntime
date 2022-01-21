@@ -66,6 +66,9 @@ bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedT
 /** Gets the index of an input arg with the specified input arg name. */
 int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name);
 
+/** Returns the attribute of a Node with a given name. */
+const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name);
+
 /** Retrieves the values for a repeated attribute of a node and place them to the values vector. */
 template <typename T>
 bool GetRepeatedNodeAttributeValues(const Node& node,
@@ -336,9 +339,6 @@ NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_ini
 
 /** Gets the index of an output arg with the specified output arg name. */
 int GetNodeOutputIndexFromOutputName(const Node& node, const std::string& output_name);
-
-/** Returns the attribute of a Node with a given name. */
-const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name);
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 

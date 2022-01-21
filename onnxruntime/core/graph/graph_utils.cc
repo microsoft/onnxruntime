@@ -251,6 +251,12 @@ bool IsSupportedProvider(const Node& node,
            compatible_providers.find(node.GetExecutionProviderType()) == compatible_providers.end());
 }
 
+const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name) {
+  const auto& attrs = node.GetAttributes();
+  const auto iter = attrs.find(attr_name);
+  return iter == attrs.end() ? nullptr : &iter->second;
+}
+
 /** Checks for nodes with >= 1 outputs, if only one of the outputs is input to downstream Operators.
 Returns the name of the single used output in output_name. */
 static bool IsOnlyOneOutputUsed(const Graph& graph, const Node& node, const std::string*& output_name) {
@@ -878,12 +884,6 @@ NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_ini
 
 int GetNodeOutputIndexFromOutputName(const Node& node, const std::string& output_name) {
   return GetIndexFromName(node, output_name, false);
-}
-
-const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name) {
-  const auto& attrs = node.GetAttributes();
-  const auto iter = attrs.find(attr_name);
-  return iter == attrs.end() ? nullptr : &iter->second;
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
