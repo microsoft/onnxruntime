@@ -273,7 +273,7 @@ class ReduceAggregatorSum : public ReduceAggregator<T, T> {
 
   static void FastReduceRKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
-    CommonFastReduceRKR(
+    ReduceAggregator<T, T>::CommonFastReduceRKR(
         input, fast_shape, output, tp,
         [=](const T*) -> T { return 0; },
         [=](T& value, const T* p, int64_t size) {
@@ -433,7 +433,7 @@ class ReduceAggregatorMax : public ReduceAggregator<T> {
 
   static void FastReduceRKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
-    CommonFastReduceRKR(
+    ReduceAggregator<T, T>::CommonFastReduceRKR(
         input, fast_shape, output, tp,
         [=](const T* p) -> T { return p[0]; },
         [=](T& value, const T* p, int64_t size) {
@@ -608,7 +608,7 @@ class ReduceAggregatorMin : public ReduceAggregator<T, T> {
 
   static void FastReduceRKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
-    CommonFastReduceRKR(
+    ReduceAggregator<T, T>::CommonFastReduceRKR(
         input, fast_shape, output, tp,
         [=](const T* p) -> T { return p[0]; },
         [=](T& value, const T* p, int64_t size) {
