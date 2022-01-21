@@ -3220,7 +3220,7 @@ struct OrtApi {
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   *
-  * \version New in version 1.11.
+  * \since Version 1.11.
   */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_CUDA_V2,
                   _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptionsV2* cuda_options);
@@ -3235,7 +3235,7 @@ struct OrtApi {
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   *
-  * \version New in version 1.11.
+  * \since Version 1.11.
   */
   ORT_API2_STATUS(CreateCUDAProviderOptions, _Outptr_ OrtCUDAProviderOptionsV2** out);
 
@@ -3254,7 +3254,7 @@ struct OrtApi {
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   *
-  * \version New in version 1.11.
+  * \since Version 1.11.
   */
   ORT_API2_STATUS(UpdateCUDAProviderOptions, _Inout_ OrtCUDAProviderOptionsV2* cuda_options,
                   _In_reads_(num_keys) const char* const* provider_options_keys,
@@ -3273,7 +3273,7 @@ struct OrtApi {
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   *
-  * \version New in version 1.11.
+  * \since Version 1.11.
   */
   ORT_API2_STATUS(GetCUDAProviderOptionsAsString, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 
@@ -3281,7 +3281,7 @@ struct OrtApi {
   *
   * \note This is an exception in the naming convention of other Release* functions, as the name of the method does not have the V2 suffix, but the type does
   *
-  * \version New in version 1.11.
+  * \since Version 1.11.
   */
   void(ORT_API_CALL* ReleaseCUDAProviderOptions)(_Frees_ptr_opt_ OrtCUDAProviderOptionsV2* input);
 
@@ -3296,7 +3296,7 @@ struct OrtApi {
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   *
-  * \version New in version 1.11.
+  * \since Version 1.11.
   */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_MIGraphX,
                   _In_ OrtSessionOptions* options, _In_ const OrtMIGraphXProviderOptions* migraphx_options);

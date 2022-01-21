@@ -104,5 +104,5 @@ static const char* const kOrtSessionOptionsConfigNnapiEpPartitioningStopOps = "e
 // meaning the task will be distributed in smaller granularity for better parallelism.
 // For some models, it helps to reduce the variance of E2E inference latency and boost performance.
 // The feature will not function by default, specify any positive integer, e.g. "4", to enable it.
-// New in version 1.11.
+// Available since version 1.11.
 static const char* const kOrtSessionOptionsConfigDynamicBlockBase = "session.dynamic_block_base";
