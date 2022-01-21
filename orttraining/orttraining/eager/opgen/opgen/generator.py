@@ -105,11 +105,13 @@ class ORTGen:
   def __init__(
     self,
     ops: Optional[Dict[str, ONNXOp]] = None,
-    custom_ops : bool = False):
+    custom_ops : bool = False,
+    type_promotion_ops : List = ()):
     self._mapped_ops = {}    
     if ops:
       self.register_many(ops)
-    self._custom_ops = custom_ops      
+    self._custom_ops = custom_ops  
+    self.type_promotion_ops = type_promotion_ops    
 
   def register(self, aten_name: str, onnx_op: ONNXOp):
     self._mapped_ops[aten_name] = onnx_op
@@ -310,6 +312,28 @@ class ORTGen:
 
     # Perform kernel fission on the ATen op to yield a chain of ORT Invokes
     # e.g. aten::add(x, y, α) -> onnx::Add(x, onnx::Mul(α, y))
+    
+    # whether need type promotion
+    need_type_promotion = False
+    if mapped_func.mapped_op_name in self.type_promotion_ops:
+      types_from_tensor = []
+      types_from_scalar = []
+      for onnx_op_index, onnx_op in enumerate(ctx.ops):
+        for op_input in onnx_op.inputs:
+          if isinstance(op_input, Outputs):
+            continue
+        cpp_param = cpp_func.get_parameter(op_input)
+        if cpp_param:
+          if cpp_param.parameter_type.desugar().identifier_tokens[0].value == 'Tensor':
+            types_from_tensor.append(f'{op_input}.scalar_type()')
+          elif cpp_param.parameter_type.desugar().identifier_tokens[0].value == 'Scalar':
+            types_from_scalar.append(f'{op_input}.type()')
+      if len(types_from_tensor) > 0 or len(types_from_scalar) > 0 :
+        need_type_promotion = True
+        writer.writeline('auto promoted_type = PromoteScalarTypesWithCategory({%s}, {%s});'
+                         % (','.join(types_from_tensor), ','.join(types_from_scalar)))
+        writer.writeline()
+
     for onnx_op_index, onnx_op in enumerate(ctx.ops):
       # Torch -> ORT inputs
       for op_input in onnx_op.inputs:
@@ -324,6 +348,14 @@ class ORTGen:
 
         writer.write(f'auto ort_input_{op_input} = ')
         writer.writeline(f'create_ort_value(invoker, {op_input});')
+        if need_type_promotion:
+          type_func_str = 'type()' if cpp_param.parameter_type.desugar().identifier_tokens[0].value == 'Scalar' else 'scalar_type()'
+          writer.write(f'if ({op_input}.{type_func_str} != *promoted_type)')
+          writer.writeline('{')
+          writer.push_indent()
+          writer.writeline(f'ort_input_{op_input} = CastToType(invoker, ort_input_{op_input}, *promoted_type);')
+          writer.pop_indent()
+          writer.writeline('}')
 
       # Torch kwargs -> ORT attributes
       attrs = { k:v for k, v in onnx_op.attributes.items() if v and v.value }
@@ -403,17 +435,23 @@ class ORTGen:
     # TODO: Assert return type
 
     if not return_alias_info:     
+      # tensor options
+      writer.write(f'at::TensorOptions tensor_options = {first_param.identifier.value}')
+      if first_param.parameter_type.desugar().identifier_tokens[0].value == 'TensorList':
+        writer.write('[0]')
+      writer.write('.options()')
+      if need_type_promotion:
+        writer.write('.dtype(*promoted_type)')
+      writer.writeline(';')
+
       writer.writeline('return aten_tensor_from_ort(')
       writer.push_indent()
       if isinstance(cpp_func.return_type, ast.TemplateType) and cpp_func.return_type.identifier_tokens[-1].value == 'std::vector':
         writer.writeline(f'{return_outputs},')
-        writer.writeline(f'{first_param.identifier.value}.options());')
+        writer.writeline('tensor_options);')
       else:
         writer.writeline(f'std::move({return_outputs}[0]),')
-        writer.write(first_param.identifier.value)
-        if first_param.parameter_type.desugar().identifier_tokens[0].value == 'TensorList':
-          writer.write('[0]')
-        writer.writeline('.options());')
+        writer.writeline('tensor_options);')
       writer.pop_indent()
       return
 

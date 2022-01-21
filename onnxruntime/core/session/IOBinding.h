@@ -100,8 +100,10 @@ class IOBinding {
 
   const SessionState& session_state_;
   std::vector<std::string> feed_names_;
+  std::unordered_map<std::string, size_t> mapped_feed_names_;
   std::vector<OrtValue> feeds_;
   std::vector<std::string> output_names_;
+  std::unordered_map<std::string, size_t> mapped_output_names_;
   std::vector<OrtValue> outputs_;
   std::vector<OrtDevice> outputs_device_info_;
 

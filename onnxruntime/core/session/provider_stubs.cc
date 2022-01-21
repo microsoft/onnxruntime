@@ -202,4 +202,11 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
   ORT_UNUSED_PARAMETER(ptr);
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX,
+                    _In_ OrtSessionOptions* options, _In_ const OrtMIGraphXProviderOptions* migraphx_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(migraphx_options);
+  return CreateNotEnabledStatus("MIGraphX");
+}
+
 #endif

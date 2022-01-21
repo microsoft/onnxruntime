@@ -27,5 +27,6 @@
     "FallbackPolicy":
     [
         "FALLBACK_DISABLE"
-    ]
+    ],
+    "OnnxOpsetVersion": 13
 }
