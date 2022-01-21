@@ -889,7 +889,7 @@ jobs:
       scriptLocation: inlineScript
       scriptType: batch
       inlineScript: |
-        python.exe -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_to_dashboard.requirements.txt && ^
+        python.exe -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_to_dashboard\requirements.txt && ^
         python.exe $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=$(Build.SourceVersion) --size_data_file=binary_size_data.txt --build_project=Lotus --build_id=$(Build.BuildId)
       workingDirectory: '$(Build.BinariesDirectory)'
 
