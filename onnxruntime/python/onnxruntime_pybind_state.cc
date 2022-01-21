@@ -383,6 +383,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             nullptr,
             0,
             nullptr,
+            0,
             0};
         for (auto option : it->second) {
           if (option.first == "device_id") {
@@ -499,6 +500,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
               params.trt_force_sequential_engine_build = false;
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_force_sequential_engine_build' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
+            }
+          } else if (option.first == "trt_cuda_graph_enable") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_cuda_graph_enable = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_cuda_graph_enable = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_cuda_graph_enable' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
             }
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);

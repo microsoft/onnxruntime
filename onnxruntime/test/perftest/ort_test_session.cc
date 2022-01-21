@@ -74,6 +74,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     bool trt_engine_decryption_enable = false;
     std::string trt_engine_decryption_lib_path = "";
     bool trt_force_sequential_engine_build = false;
+    bool trt_cuda_graph_enable = false;
 
     #ifdef _MSC_VER
     std::string ov_string = ToMBString(performance_test_config.run_config.ep_runtime_config_string);
@@ -205,8 +206,16 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_force_sequential_engine_build' should be a boolean i.e. true or false. Default value is false.\n");
         }
+      } else if (key == "trt_cuda_graph_enable") {
+        if (value == "true" || value == "True") {
+          trt_cuda_graph_enable = true;
+        } else if (value == "false" || value == "False") {
+          trt_cuda_graph_enable = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_cuda_graph_enable' should be a boolean i.e. true or false. Default value is false.\n");
+        }
       } else {
-        ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['device_id', 'trt_max_partition_iterations', 'trt_min_subgraph_size', 'trt_max_workspace_size', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_dla_enable', 'trt_dla_core', 'trt_dump_subgraphs', 'trt_engine_cache_enable', 'trt_engine_cache_path', 'trt_engine_decryption_enable', 'trt_engine_decryption_lib_path', 'trt_force_sequential_engine_build'] \n");
+        ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['device_id', 'trt_max_partition_iterations', 'trt_min_subgraph_size', 'trt_max_workspace_size', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_dla_enable', 'trt_dla_core', 'trt_dump_subgraphs', 'trt_engine_cache_enable', 'trt_engine_cache_path', 'trt_engine_decryption_enable', 'trt_engine_decryption_lib_path', 'trt_force_sequential_engine_build', 'trt_cuda_graph_enable'] \n");
       }
     }
     OrtTensorRTProviderOptions tensorrt_options;
@@ -228,6 +237,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     tensorrt_options.trt_engine_decryption_enable = trt_engine_decryption_enable;
     tensorrt_options.trt_engine_decryption_lib_path = trt_engine_decryption_lib_path.c_str();
     tensorrt_options.trt_force_sequential_engine_build = trt_force_sequential_engine_build;
+    tensorrt_options.trt_cuda_graph_enable = trt_cuda_graph_enable;
     session_options.AppendExecutionProvider_TensorRT(tensorrt_options);
 
     OrtCUDAProviderOptions cuda_options;

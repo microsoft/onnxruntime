@@ -1466,6 +1466,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRT
   (*out)->trt_engine_decryption_enable = false;
   (*out)->trt_engine_decryption_lib_path = nullptr;
   (*out)->trt_force_sequential_engine_build = false;
+  (*out)->trt_cuda_graph_enable = false;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);

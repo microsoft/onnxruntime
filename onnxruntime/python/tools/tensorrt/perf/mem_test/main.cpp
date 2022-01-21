@@ -27,6 +27,7 @@ std::unique_ptr<OrtTensorRTProviderOptions> get_default_trt_provider_options() {
   tensorrt_options->trt_engine_decryption_enable = false;
   tensorrt_options->trt_engine_decryption_lib_path = "";
   tensorrt_options->trt_force_sequential_engine_build = false;
+  tensorrt_options->trt_cuda_graph_enable = false;
 
   return tensorrt_options;
 }
