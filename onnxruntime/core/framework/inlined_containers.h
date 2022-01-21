@@ -7,6 +7,7 @@
 
 #ifdef _MSC_VER
 #pragma warning(push)
+// C4127: conditional expression is constant
 #pragma warning(disable : 4127)
 #endif
 
