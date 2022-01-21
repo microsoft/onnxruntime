@@ -426,7 +426,8 @@ class ReduceAggregatorMax : public ReduceAggregator<T, TVAL> {
             out[d] = p[0];
             for (int64_t i = 0; i < d0; ++i) {
               for (int64_t k = 0; k < d2; ++k) {
-                out[d] = p[k] > out[d] ? p[k] : out[d];
+                if (p[k] > out[d])
+                  out[d] = p[k];
               }
               p += inc;
             }
@@ -610,7 +611,8 @@ class ReduceAggregatorMin : public ReduceAggregator<T, TVAL> {
             out[d] = p[0];
             for (int64_t i = 0; i < d0; ++i) {
               for (int64_t k = 0; k < d2; ++k) {
-                out[d] = p[k] < out[d] ? p[k] : out[d];
+                if (p[k] < out[d])
+                  out[d] = p[k];
               }
               p += inc;
             }
