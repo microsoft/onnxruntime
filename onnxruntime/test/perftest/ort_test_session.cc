@@ -323,17 +323,53 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
 #ifdef USE_NNAPI
-    const std::map<std::string, std::string>& session_conf = performance_test_config.run_config.session_sub_opts;
     uint32_t nnapi_flags = 0;
-    for (auto& [k, v] : session_conf) {
-      if (k == "NNAPI_FLAG_USE_FP16" && v == "true") {
-        nnapi_flags |= NNAPI_FLAG_USE_FP16;
-      } else if (k == "NNAPI_FLAG_USE_NCHW" && v == "true") {
-        nnapi_flags |= NNAPI_FLAG_USE_NCHW;
-      } else if (k == "NNAPI_FLAG_CPU_DISABLED" && v == "true") {
-        nnapi_flags |= NNAPI_FLAG_CPU_DISABLED;
-      } else if (k == "NNAPI_FLAG_CPU_ONLY" && v == "true") {
-        nnapi_flags |= NNAPI_FLAG_CPU_ONLY;
+#ifdef _MSC_VER
+    std::string ov_string = ToMBString(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+    std::istringstream ss(ov_string);
+    std::string token;
+    while (ss >> token) {
+      if (token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW("[ERROR] [TensorRT] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
+      }
+
+      auto key = token.substr(0, pos);
+      auto value = token.substr(pos + 1);
+      if (key == "NNAPI_FLAG_USE_FP16") {
+        if (value == "true") {
+          nnapi_flags |= NNAPI_FLAG_USE_FP16;
+        } else if (value == "false") {
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'NNAPI_FLAG_USE_FP16' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "NNAPI_FLAG_USE_NCHW") {
+        if (value == "true") {
+          nnapi_flags |= NNAPI_FLAG_USE_NCHW;
+        } else if (value == "false") {
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'NNAPI_FLAG_USE_NCHW' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "NNAPI_FLAG_CPU_DISABLED") {
+        if (value == "true") {
+          nnapi_flags |= NNAPI_FLAG_CPU_DISABLED;
+        } else if (value == "false") {
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'NNAPI_FLAG_CPU_DISABLED' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "NNAPI_FLAG_CPU_ONLY") {
+        if (value == "true") {
+          nnapi_flags |= NNAPI_FLAG_CPU_ONLY;
+        } else if (value == "false") {
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'NNAPI_FLAG_CPU_ONLY' should be a boolean i.e. true or false. Default value is false.\n");
+        }
       }
     }
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, 0));

@@ -105,35 +105,10 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
   return true;
 }
 
-/*static*/
-bool CommandLineParser::ParseSubArguments(PerformanceTestConfig& test_config, const char* optarg_) {
-  if (optarg == nullptr) {
-    return false;
-  }
-  std::basic_string<ORTCHAR_T> free_dim_str(optarg_);
-  std::string optv(free_dim_str.size(), 0);
-  for (size_t i = 0; i < free_dim_str.size(); ++i) {
-    optv[i] = static_cast<char>(free_dim_str[i]);
-  }
-  std::string delm = "=";
-  size_t delimiter_location = optv.find(delm);
-  if (delimiter_location == free_dim_str.npos) {
-    return false;
-  }
-  std::string k = optv.substr(0, delimiter_location);
-  std::string v = optv.substr(delimiter_location + delm.size());
-  test_config.run_config.session_sub_opts[k] = v;
-  return true;
-}
-
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
   while ((ch = getopt(argc, argv, ORT_TSTR("a:b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:AMPIvhsqz"))) != -1) {
     switch (ch) {
-      case 'a': {
-        CommandLineParser::ParseSubArguments(test_config, optarg);
-        break;
-      }
       case 'f': {
         std::basic_string<ORTCHAR_T> dim_name;
         int64_t override_val;

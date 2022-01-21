@@ -41,7 +41,6 @@ struct RunConfig {
   size_t repeated_times{1000};
   size_t duration_in_seconds{600};
   size_t concurrent_session_runs{1};
-  std::map<std::string, std::string> session_sub_opts;
   bool f_dump_statistics{false};
   bool f_verbose{false};
   bool enable_memory_pattern{true};
