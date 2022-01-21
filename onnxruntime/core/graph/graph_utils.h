@@ -16,6 +16,13 @@ namespace onnxruntime {
 
 namespace graph_utils {
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+
+/** Returns the attribute of a Node with a given name. */
+const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name);
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+
 #if !defined(ORT_MINIMAL_BUILD)
 /** Checks if the operator's type, version, and domain of the given node match the given values. */
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
@@ -65,9 +72,6 @@ bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedT
 
 /** Gets the index of an input arg with the specified input arg name. */
 int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name);
-
-/** Returns the attribute of a Node with a given name. */
-const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name);
 
 /** Retrieves the values for a repeated attribute of a node and place them to the values vector. */
 template <typename T>
