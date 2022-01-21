@@ -267,6 +267,7 @@ jobs:
     displayName: 7. Extended minimal build with NNAPI EP and skip tests.
     inputs:
       script: |
+        NDK_HOME=$(realpath $ANDROID_NDK_HOME)
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
@@ -274,7 +275,6 @@ jobs:
           --volume $NDK_HOME:/ndk_home \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
-          -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
             /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build/7 \
