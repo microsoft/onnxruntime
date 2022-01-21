@@ -366,9 +366,7 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
    5. To verify, open Android Emulator and run this command from `<ORT_ROOT>/js/react_native/android`
 
       ```sh
-      ./gradlew :assembleDebugAndroidTest
-      adb install -t build/outputs/apk/androidTest/debug/android-debug-androidTest.apk
-      adb shell am instrument -w ai.onnxruntime.reactnative.test/androidx.test.runner.AndroidJUnitRunner
+      ./gradlew connectedDebugAndroidTest
       ```
 
 3. Build iOS ONNX Runtime package
@@ -415,10 +413,7 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
    From `<ORT_ROOT>/js/react_native/e2e/android`, run e2e Android tests as follows,
 
    ```sh
-   ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
-   adb install -t app/build/outputs/apk/debug/app-debug.apk
-   adb install -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk 
-   adb shell am instrument -w com.example.reactnativeonnxruntimemodule.test/androidx.test.runner.AndroidJUnitRunner
+   ./gradlew connectedDebugAndroidTest
    ```
 
    From `<ORT_ROOT>/js/react_native/e2e/ios`, run e2e iOS tests as follows,
