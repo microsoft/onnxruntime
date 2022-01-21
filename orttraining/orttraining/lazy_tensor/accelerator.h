@@ -1,5 +1,6 @@
 #include <torch/csrc/jit/ir/ir.h>
 #include <torch/csrc/jit/runtime/argument_spec.h>
+#include "core/session/onnxruntime_cxx_api.h"
 
 using CompiledCode = std::function<std::vector<c10::IValue>(
     at::ArrayRef<c10::IValue>&)>;
@@ -7,7 +8,7 @@ using CompiledCode = std::function<std::vector<c10::IValue>(
 class Accelerator {
  public:
   Accelerator(const torch::jit::Node* node)
-      : subgraph_(node->g(torch::jit::attr::Subgraph)) {}
+      : subgraph_(node->g(torch::jit::attr::Subgraph)) { std::cout << "JIT see\n" << *node << std::endl; }
   void run(torch::jit::Stack& stack);
   static bool supported(const torch::jit::Node* node);
 
