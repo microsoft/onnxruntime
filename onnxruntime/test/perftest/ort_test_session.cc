@@ -323,6 +323,19 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
 #ifdef USE_NNAPI
+    const std::map<std::string, std::string>& session_conf = performance_test_config.run_config.session_sub_opts;
+    uint32_t nnapi_flags = 0;
+    for (auto& [k, v] : session_conf) {
+      if (k == "NNAPI_FLAG_USE_FP16" && v == "true") {
+        nnapi_flags |= NNAPI_FLAG_USE_FP16;
+      } else if (k == "NNAPI_FLAG_USE_NCHW" && v == "true") {
+        nnapi_flags |= NNAPI_FLAG_USE_NCHW;
+      } else if (k == "NNAPI_FLAG_CPU_DISABLED" && v == "true") {
+        nnapi_flags |= NNAPI_FLAG_CPU_DISABLED;
+      } else if (k == "NNAPI_FLAG_CPU_ONLY" && v == "true") {
+        nnapi_flags |= NNAPI_FLAG_CPU_ONLY;
+      }
+    }
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, 0));
 #else
     ORT_THROW("NNAPI is not supported in this build\n");
