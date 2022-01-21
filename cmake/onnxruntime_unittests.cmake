@@ -15,7 +15,7 @@ endif()
 
 set(disabled_warnings)
 function(AddTest)
-  cmake_parse_arguments(_UT "DYN" "TARGET" "LIBS;SOURCES;DEPENDS" ${ARGN})
+  cmake_parse_arguments(_UT "DYN" "TARGET" "LIBS;SOURCES;DEPENDS;TEST_ARGS" ${ARGN})
   list(REMOVE_DUPLICATES _UT_SOURCES)
 
   if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
@@ -93,7 +93,7 @@ function(AddTest)
     target_compile_options(${_UT_TARGET} PRIVATE "-Wno-error=uninitialized")
   endif()
 
-  set(TEST_ARGS)
+  set(TEST_ARGS ${_UT_TEST_ARGS})
   if (onnxruntime_GENERATE_TEST_REPORTS)
     # generate a report file next to the test program
     if (onnxruntime_BUILD_WEBASSEMBLY)
@@ -682,6 +682,11 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
   endif()
 endif()
 
+set(test_all_args)
+if (onnxruntime_USE_TENSORRT)
+    list(APPEND test_all_args "--gtest_filter=-*cpu__*:*cuda__*" )
+endif ()
+
 AddTest(
   TARGET onnxruntime_test_all
   SOURCES ${all_tests} ${onnxruntime_unittest_main_src}
@@ -689,6 +694,7 @@ AddTest(
     onnx_test_runner_common ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
     onnx_test_data_proto nlohmann_json::nlohmann_json
   DEPENDS ${all_dependencies}
+  TEST_ARGS ${test_all_args} 
 )
 if (MSVC)
   # The warning means the type of two integral values around a binary operator is narrow than their result.
