@@ -1,7 +1,15 @@
 [
     [
+        "ATenOp com.microsoft CPUExecutionProvider",
+        17593662355339083768
+    ],
+    [
         "AdamOptimizer com.microsoft CPUExecutionProvider",
         13275719513674142848
+    ],
+    [
+        "AdasumAllReduce com.microsoft CPUExecutionProvider",
+        4004306346655745088
     ],
     [
         "AveragePoolGrad ai.onnx CPUExecutionProvider",
@@ -72,6 +80,14 @@
         3065626784130845072
     ],
     [
+        "GistBinarizeDecoder com.microsoft CPUExecutionProvider",
+        5389564603964362296
+    ],
+    [
+        "GistBinarizeEncoder com.microsoft CPUExecutionProvider",
+        11857180779465860328
+    ],
+    [
         "Group com.microsoft CPUExecutionProvider",
         488667512000820344
     ],
@@ -110,6 +126,14 @@
     [
         "PassThrough com.microsoft CPUExecutionProvider",
         15753758832962034552
+    ],
+    [
+        "RecordEvent com.microsoft CPUExecutionProvider",
+        6549266856245281600
+    ],
+    [
+        "Recv com.microsoft CPUExecutionProvider",
+        4436045202684253440
     ],
     [
         "ReduceAllL2 com.microsoft CPUExecutionProvider",
@@ -170,6 +194,10 @@
     [
         "Scale com.microsoft CPUExecutionProvider",
         17615601449933173216
+    ],
+    [
+        "Send com.microsoft CPUExecutionProvider",
+        3897319872413131808
     ],
     [
         "SigmoidGrad com.microsoft CPUExecutionProvider",
@@ -260,8 +288,32 @@
         12689204749897364688
     ],
     [
+        "SummaryHistogram com.microsoft CPUExecutionProvider",
+        767488277747109312
+    ],
+    [
+        "SummaryMerge com.microsoft CPUExecutionProvider",
+        4932002476046151768
+    ],
+    [
+        "SummaryScalar com.microsoft CPUExecutionProvider",
+        7590480939640976904
+    ],
+    [
+        "SummaryText com.microsoft CPUExecutionProvider",
+        10393121855172119072
+    ],
+    [
         "TanhGrad com.microsoft CPUExecutionProvider",
         7147744030478490408
+    ],
+    [
+        "WaitEvent com.microsoft CPUExecutionProvider",
+        8684251629700648368
+    ],
+    [
+        "YieldOp com.microsoft CPUExecutionProvider",
+        17558108993730948168
     ],
     [
         "ZeroGradient com.microsoft CPUExecutionProvider",
