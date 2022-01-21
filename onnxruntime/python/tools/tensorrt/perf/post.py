@@ -124,7 +124,7 @@ def get_time():
     return date_time
 
 def get_identifier(commit_id, trt_version, branch):
-    return commit_id[:9] + '_' + trt_version + '_' + branch
+    return commit_id + '_' + trt_version + '_' + branch
 
 def main():
     
