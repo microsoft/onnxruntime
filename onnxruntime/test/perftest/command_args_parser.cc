@@ -77,7 +77,7 @@ namespace perftest {
       "\t    [TensorRT only] [trt_engine_cache_enable]: Enable engine caching.\n"
       "\t    [TensorRT only] [trt_engine_cache_path]: Specify engine cache path.\n"
       "\t    [TensorRT only] [trt_force_sequential_engine_build]: Force TensorRT engines to be built sequentially.\n"
-      "\t [Example] [For NNAPI EP] -e nnapi -i \" NNAPI_FLAG_USE_FP16|true NNAPI_FLAG_USE_NCHW|true NNAPI_FLAG_CPU_DISABLED|true\"\n"
+      "\t [Example] [For NNAPI EP] -e nnapi -i \" NNAPI_FLAG_USE_FP16 NNAPI_FLAG_USE_NCHW NNAPI_FLAG_CPU_DISABLED \"\n"
       "\t    [NNAPI only] [NNAPI_FLAG_USE_FP16]: Use fp16 relaxation in NNAPI EP..\n"
       "\t    [NNAPI only] [NNAPI_FLAG_USE_NCHW]: Use the NCHW layout in NNAPI EP.\n"
       "\t    [NNAPI only] [NNAPI_FLAG_CPU_DISABLED]: Prevent NNAPI from using CPU devices.\n"

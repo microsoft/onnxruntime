@@ -331,44 +331,22 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       if (token == "") {
         continue;
       }
-      auto pos = token.find("|");
-      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
-        ORT_THROW("[ERROR] [TensorRT] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
-      }
 
-      auto key = token.substr(0, pos);
-      auto value = token.substr(pos + 1);
+      auto key = token;
       if (key == "NNAPI_FLAG_USE_FP16") {
-        if (value == "true") {
-          nnapi_flags |= NNAPI_FLAG_USE_FP16;
-        } else if (value == "false") {
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'NNAPI_FLAG_USE_FP16' should be a boolean i.e. true or false. Default value is false.\n");
-        }
+        nnapi_flags |= NNAPI_FLAG_USE_FP16;
       } else if (key == "NNAPI_FLAG_USE_NCHW") {
-        if (value == "true") {
-          nnapi_flags |= NNAPI_FLAG_USE_NCHW;
-        } else if (value == "false") {
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'NNAPI_FLAG_USE_NCHW' should be a boolean i.e. true or false. Default value is false.\n");
-        }
+        nnapi_flags |= NNAPI_FLAG_USE_NCHW;
       } else if (key == "NNAPI_FLAG_CPU_DISABLED") {
-        if (value == "true") {
-          nnapi_flags |= NNAPI_FLAG_CPU_DISABLED;
-        } else if (value == "false") {
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'NNAPI_FLAG_CPU_DISABLED' should be a boolean i.e. true or false. Default value is false.\n");
-        }
+        nnapi_flags |= NNAPI_FLAG_CPU_DISABLED;
       } else if (key == "NNAPI_FLAG_CPU_ONLY") {
-        if (value == "true") {
           nnapi_flags |= NNAPI_FLAG_CPU_ONLY;
-        } else if (value == "false") {
-        } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'NNAPI_FLAG_CPU_ONLY' should be a boolean i.e. true or false. Default value is false.\n");
-        }
+      }
+      if (nnapi_flags & (NNAPI_FLAG_CPU_ONLY | NNAPI_FLAG_CPU_DISABLED) == (NNAPI_FLAG_CPU_ONLY | NNAPI_FLAG_CPU_DISABLED)) {
+        ORT_THROW("[ERROR] [NNAPI] The key 'NNAPI_FLAG_CPU_DISABLED' and 'NNAPI_FLAG_CPU_ONLY' should not be set the same time.\n");
       }
     }
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, 0));
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, nnapi_flags));
 #else
     ORT_THROW("NNAPI is not supported in this build\n");
 #endif
