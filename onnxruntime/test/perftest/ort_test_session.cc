@@ -326,13 +326,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     uint32_t nnapi_flags = 0;
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
     std::istringstream ss(ov_string);
-    std::string token;
-    while (ss >> token) {
-      if (token == "") {
-        continue;
-      }
-
-      auto key = token;
+    std::string key;
+    while (ss >> key) {
       if (key == "NNAPI_FLAG_USE_FP16") {
         nnapi_flags |= NNAPI_FLAG_USE_FP16;
       } else if (key == "NNAPI_FLAG_USE_NCHW") {
@@ -340,10 +335,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       } else if (key == "NNAPI_FLAG_CPU_DISABLED") {
         nnapi_flags |= NNAPI_FLAG_CPU_DISABLED;
       } else if (key == "NNAPI_FLAG_CPU_ONLY") {
-          nnapi_flags |= NNAPI_FLAG_CPU_ONLY;
-      }
-      if (nnapi_flags & (NNAPI_FLAG_CPU_ONLY | NNAPI_FLAG_CPU_DISABLED) == (NNAPI_FLAG_CPU_ONLY | NNAPI_FLAG_CPU_DISABLED)) {
-        ORT_THROW("[ERROR] [NNAPI] The key 'NNAPI_FLAG_CPU_DISABLED' and 'NNAPI_FLAG_CPU_ONLY' should not be set the same time.\n");
+        nnapi_flags |= NNAPI_FLAG_CPU_ONLY;
+      } else if (key.empty()) {
+      } else {
+        ORT_THROW("[ERROR] [NNAPI] wrong key type entered. Choose from the following runtime key options that are available for NNAPI. ['NNAPI_FLAG_USE_FP16', 'NNAPI_FLAG_USE_NCHW', 'NNAPI_FLAG_CPU_DISABLED', 'NNAPI_FLAG_CPU_ONLY'] \n");
       }
     }
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, nnapi_flags));
