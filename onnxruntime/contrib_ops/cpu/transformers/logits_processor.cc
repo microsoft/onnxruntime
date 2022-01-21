@@ -149,7 +149,7 @@ void VocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
 }
 
 template <typename T>
-PrefixVocabMaskLogitsProcessor<T>::PrefixVocabMaskLogitsProcessor(const gsl::span<const int32_t>& prefix_vocab_mask) : prefix_vocab_mask_(prefix_vocab_mask) {
+PrefixVocabMaskLogitsProcessor<T>::PrefixVocabMaskLogitsProcessor(const gsl::span<const int32_t>& prefix_vocab_mask, int batch_size) : prefix_vocab_mask_(prefix_vocab_mask), batch_size_(batch_size) {
 }
 
 template <typename T>
@@ -162,12 +162,18 @@ void PrefixVocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
 
   // Process vocabulary mask and set tokens with mask value 0 to -inf.
   T* p = next_token_scores.scores.data();
+
   // next_token_scores shape (batch_size * num_beams, vocab_size)
-  // vocab_mask shape (vocab_size). TODO: support shape (batch_size, vocab_size)
-  for (int i = 0; i < next_token_scores.batch_beam_size; i++) {
-    for (int j = 0; j < next_token_scores.vocab_size; j++, p++) {
-      if (prefix_vocab_mask_[j] == 0) {
-        *p = std::numeric_limits<T>::lowest();
+  int num_beams = next_token_scores.batch_beam_size / batch_size_;
+  assert(num_beams*batch_size_ == next_token_scores.batch_beam_size);
+
+  for (int i = 0; i < batch_size_; i++) {
+    int batch_vocab_mask_offset = i * next_token_scores.vocab_size;
+    for (int j = 0; j < num_beams; j++) {
+      for (int k = batch_vocab_mask_offset; k < next_token_scores.vocab_size; k++, p++) {
+        if (prefix_vocab_mask_[k] == 0) {
+          *p = std::numeric_limits<T>::lowest();
+        }
       }
     }
   }
@@ -197,7 +203,7 @@ void LogitsProcessorList<T>::Init(const BeamSearchParameters& parameters) {
   }
 
   if (!parameters.prefix_vocab_mask.empty()) {
-    prefix_vocab_mask_processor_ = std::make_unique<PrefixVocabMaskLogitsProcessor<T>>(parameters.prefix_vocab_mask);
+    prefix_vocab_mask_processor_ = std::make_unique<PrefixVocabMaskLogitsProcessor<T>>(parameters.prefix_vocab_mask, parameters.batch_size);
     processor_list_.push_back(prefix_vocab_mask_processor_.get());
   }
 

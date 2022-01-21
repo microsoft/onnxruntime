@@ -79,13 +79,14 @@ class VocabMaskLogitsProcessor : public ILogitsProcessor<T> {
 template <typename T>
 class PrefixVocabMaskLogitsProcessor : public ILogitsProcessor<T> {
  public:
-  PrefixVocabMaskLogitsProcessor(const gsl::span<const int32_t>& vocab_mask);
+  PrefixVocabMaskLogitsProcessor(const gsl::span<const int32_t>& vocab_mask, int batch_size);
 
   void Process(const ISequences* sequences,
                NextTokenScores<T>& next_token_scores) override;
 
  private:
   gsl::span<const int32_t> prefix_vocab_mask_;
+  const int batch_size_;
 };
 
 template <typename T>
