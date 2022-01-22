@@ -996,6 +996,7 @@ void OpTester::Run(
     // Run the model
 #if defined(USE_TENSORRT)
     static const std::string all_provider_types[] = {
+        kCpuExecutionProvider,
         kTensorrtExecutionProvider
     };
 #else
