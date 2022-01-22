@@ -256,6 +256,8 @@ TEST(NnapiExecutionProviderTest, TestQDQModel) {
   RunAndVerifyOutputsWithEPViaModelData(model_data, "NnapiExecutionProviderTest.TestQDQModel",
                                         std::make_unique<NnapiExecutionProvider>(0),
                                         helper.feeds_);
+
+  // TODO: can add test load only verfication here later
 }
 #endif  // defined(__ANDROID__)
 

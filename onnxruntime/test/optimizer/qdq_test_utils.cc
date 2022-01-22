@@ -35,6 +35,8 @@ AddQDQNodePair(ModelTestBuilder& builder, NodeArg* q_input, float scale) {
   return dq_output;
 }
 
+// TODO: for now it just builds a conv qdq graph. 
+// can be modified and made it shared among different qdq test graphs associated with other operators
 template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
 BuildTestCaseFn BuildTestCase(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
   return [&](ModelTestBuilder& builder) {
