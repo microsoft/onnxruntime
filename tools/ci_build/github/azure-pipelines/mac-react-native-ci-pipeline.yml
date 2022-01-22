@@ -93,10 +93,9 @@ jobs:
 
   - task: PublishTestResults@2
     inputs:
-      testResultsFiles: '**/outputs/androidTest-results/**/TEST*.xml'
+      testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/android/**/outputs/androidTest-results/**/TEST*.xml'
       failTaskOnFailedTests: true
       testRunTitle: 'React Native Android Instrumented Test results'
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/android'
     condition: succeededOrFailed()
     displayName: Publish React Native Android Instrumented Test Results
 
@@ -114,16 +113,15 @@ jobs:
       destinationPlatformOption: 'iOS'
       signingOption: "auto"
       useXcpretty: true
-      publishJUnitResults: 'build/reports/test-results.xml'
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
+      workingDirectory: $(Build.Sources.Directory)/js/react_native/ios
+      publishJUnitResults: true
     displayName: Run React Native iOS Tests
 
   - task: PublishTestResults@2
     inputs:
-      testResultsFiles: 'build/reports/test-results.xml'
+      testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/ios/build/reports/test-results.xml'
       failTaskOnFailedTests: true
       testRunTitle: 'React Native iOS Instrumented Test results'
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
     condition: succeededOrFailed()
     displayName: Publish React Native iOS Instrumented Test Results
 
