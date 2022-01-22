@@ -994,12 +994,6 @@ void OpTester::Run(
     std::vector<std::string> output_names;
     FillFeedsAndOutputNames(feeds, output_names);
     // Run the model
-#if defined(USE_TENSORRT)
-    static const std::string all_provider_types[] = {
-        kCpuExecutionProvider,
-        kTensorrtExecutionProvider
-    };
-#else
     static const std::string all_provider_types[] = {
         kCpuExecutionProvider,
         kCudaExecutionProvider,
@@ -1014,7 +1008,6 @@ void OpTester::Run(
         kRocmExecutionProvider,
         kCoreMLExecutionProvider,
     };
-#endif
 
     bool has_run = false;
 
