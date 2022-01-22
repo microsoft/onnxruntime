@@ -4,6 +4,7 @@
 #include "node_unit.h"
 #include "core/graph/graph_viewer.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 
 namespace onnxruntime {
 
@@ -241,6 +242,50 @@ void NodeUnit::InitForQDQGroup(const QDQ::NodeGroup& node_group) {
   // Get inputs and outputs
   GetQDQIODefs(target_node_, node_group, inputs_, true /* is_input */);
   GetQDQIODefs(target_node_, node_group, outputs_, false /* is_input */);
+}
+
+std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
+GetAllNodeUnits(const GraphViewer& graph_viewer) {
+  std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
+  std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
+
+  const auto add_node_unit_to_map = [&](const std::vector<NodeIndex>& node_indices, const NodeUnit* node_unit) {
+    for (const auto& node_idx : node_indices) {
+      const auto* node = graph_viewer.GetNode(node_idx);
+      node_unit_map.insert({node, node_unit});
+    }
+  };
+
+  // Get QDQ NodeUnits first
+  QDQ::SelectorManager selector_mgr;
+  const auto qdq_selections = selector_mgr.GetQDQSelections(graph_viewer);
+
+  for (const auto& qdq_selection : qdq_selections) {
+    auto qdq_unit = std::make_unique<NodeUnit>(graph_viewer, qdq_selection);
+
+    // Fill the node to node_unit map for all nodes in the QDQ Group
+    add_node_unit_to_map(qdq_selection.dq_nodes, qdq_unit.get());
+    add_node_unit_to_map(qdq_selection.q_nodes, qdq_unit.get());
+    add_node_unit_to_map({qdq_selection.target_node}, qdq_unit.get());
+
+    node_unit_holder.push_back(std::move(qdq_unit));
+  }
+
+  // Get the left over SingleNode NodeUnits
+  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
+  for (const auto node_idx : node_indices) {
+    const auto* node(graph_viewer.GetNode(node_idx));
+
+    // This is already part of a QDQ NodeUnit
+    if (node_unit_map.find(node) != node_unit_map.cend())
+      continue;
+
+    auto node_unit = std::make_unique<NodeUnit>(*node);
+    node_unit_map[node] = node_unit.get();
+    node_unit_holder.push_back(std::move(node_unit));
+  }
+
+  return std::make_pair(std::move(node_unit_holder), std::move(node_unit_map));
 }
 
 }  // namespace onnxruntime

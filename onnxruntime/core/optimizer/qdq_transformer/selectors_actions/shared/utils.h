@@ -58,9 +58,7 @@ class Selectors {
 // class that manages qdq node group selections
 class SelectorManager {
  public:
-  SelectorManager() = default;
-
-  void Initialize();
+  SelectorManager();
 
   // Methods that finds and returns a vector of QDQ::NodeGroup in a given graph
   // Can be used in QDQ support in different EPs

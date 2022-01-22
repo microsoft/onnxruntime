@@ -102,7 +102,7 @@ void SelectorManager::InitializeSelectorsMap() {
   }
 }
 
-void SelectorManager::Initialize() {
+SelectorManager::SelectorManager() {
   CreateSelectors();
   InitializeSelectorsMap();
 }

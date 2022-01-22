@@ -81,4 +81,10 @@ class NodeUnit {
   void InitForQDQGroup(const QDQ::NodeGroup& node_group);
 };
 
+// Get all the nodes in the given graph_viewer as NodeUnits (SingleNode or QDQGroup)
+// And return a map to quick query the NodeUnit which contains the given Node
+// TODO, share this when there is another EP can use this
+std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
+GetAllNodeUnits(const GraphViewer& graph_viewer);
+
 }  // namespace onnxruntime

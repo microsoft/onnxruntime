@@ -156,11 +156,5 @@ std::string Shape2String(const std::vector<uint32_t>& shape);
 bool CheckIsInitializer(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                         const std::string& input_name, const char* input_description);
 
-// Get all the nodes in the given graph_viewer as NodeUnits (SingleNode or QDQGroup)
-// And return a map to quick query the NodeUnit which contains the given Node
-// TODO, share this when there is another EP can use this
-std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
-GetAllNodeUnits(const GraphViewer& graph_viewer);
-
 }  // namespace nnapi
 }  // namespace onnxruntime
