@@ -1878,6 +1878,7 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
 
     ASSERT_EQ(3, qdq_node_unit.Inputs().size());
     ASSERT_EQ(1, qdq_node_unit.Outputs().size());
+    ASSERT_EQ(conv_node, &qdq_node_unit.GetNode());
 
     const auto verify_io_def = [](const NodeUnitIODef& io_def, const Node& node) {
       const auto& op_type = node.OpType();
