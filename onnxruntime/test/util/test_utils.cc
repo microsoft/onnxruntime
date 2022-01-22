@@ -117,6 +117,57 @@ void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
   VerifyOutputs(output_names, expected_fetches, fetches);
 }
 
+void RunAndVerifyOutputsWithEPViaModelData(std::string model_data, const char* log_id,
+                                           std::unique_ptr<IExecutionProvider> execution_provider,
+                                           const NameMLValMap& feeds) {
+  SessionOptions so;
+  so.session_logid = log_id;
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+
+  //
+  // get expected output from CPU EP
+  //
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  const auto& graph = session_object.GetGraph();
+  const auto& outputs = graph.GetOutputs();
+
+  // fetch all outputs
+  std::vector<std::string> output_names;
+  output_names.reserve(outputs.size());
+  for (const auto* node_arg : outputs) {
+    if (node_arg->Exists()) {
+      output_names.push_back(node_arg->Name());
+    }
+  }
+
+  std::vector<OrtValue> expected_fetches;
+  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &expected_fetches));
+
+  auto provider_type = execution_provider->Type();  // copy string so the std::move doesn't affect us
+
+  //
+  // get output with EP enabled
+  //
+  InferenceSessionWrapper session_object2{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object2.RegisterExecutionProvider(std::move(execution_provider)));
+  ASSERT_STATUS_OK(session_object2.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session_object2.Initialize());
+
+  // make sure that some nodes are assigned to the EP, otherwise this test is pointless...
+  const auto& graph2 = session_object2.GetGraph();
+  auto ep_nodes = CountAssignedNodes(graph2, provider_type);
+  ASSERT_GT(ep_nodes, 0) << "No nodes were assigned to " << provider_type;
+
+  // Run with EP and verify the result
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(session_object2.Run(run_options, feeds, output_names, &fetches));
+  VerifyOutputs(output_names, expected_fetches, fetches);
+}
+
 #if !defined(DISABLE_SPARSE_TENSORS)
 void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl::span<const int64_t> expected_indicies) {
   using namespace ONNX_NAMESPACE;
@@ -178,7 +229,7 @@ void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl:
   ASSERT_THAT(ind_span, testing::ContainerEq(expected_indicies));
 }
 
-#endif // DISABLE_SPARSE_TENSORS
+#endif  // DISABLE_SPARSE_TENSORS
 
 }  // namespace test
 }  // namespace onnxruntime

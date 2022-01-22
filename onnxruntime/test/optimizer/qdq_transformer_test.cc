@@ -21,6 +21,8 @@
 #include "gtest/gtest.h"
 #include "graph_transform_test_builder.h"
 
+#include "qdq_test_utils.cc"
+
 #if defined(_MSC_VER)
 #pragma warning(disable : 4127)
 #endif
@@ -28,95 +30,13 @@
 namespace onnxruntime {
 namespace test {
 
-template <typename T>
-typename std::enable_if<IsTypeQuantLinearCompatible<T>::value, NodeArg*>::type
-AddQDQNodePair(ModelTestBuilder& builder, NodeArg* q_input, float scale, T zp) {
-  auto* q_output = builder.MakeIntermediate();
-  auto* dq_output = builder.MakeIntermediate();
-  builder.AddQuantizeLinearNode<T>(q_input, scale, zp, q_output);
-  builder.AddDequantizeLinearNode<T>(q_output, scale, zp, dq_output);
-  return dq_output;
-}
-
-template <typename T>
-typename std::enable_if<IsTypeQuantLinearCompatible<T>::value, NodeArg*>::type
-AddQDQNodePair(ModelTestBuilder& builder, NodeArg* q_input, float scale) {
-  auto* q_output = builder.MakeIntermediate();
-  auto* dq_output = builder.MakeIntermediate();
-  builder.AddQuantizeLinearNode(q_input, scale, q_output);
-  builder.AddDequantizeLinearNode<T>(q_output, scale, dq_output);
-  return dq_output;
-}
-
 #ifndef DISABLE_CONTRIB_OPS
 
 template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
 void QDQTransformerConvTests() {
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
-    auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
-      auto* output_arg = builder.MakeOutput();
-
-      typedef std::numeric_limits<InputType> InputLimits;
-      typedef std::numeric_limits<WeightType> WeightLimits;
-      typedef std::numeric_limits<OutputType> OutputLimits;
-
-      InputType input_min_value = InputLimits::min();
-      InputType input_max_value = InputLimits::max();
-
-      WeightType weight_min_value = WeightLimits::min();
-      WeightType weight_max_value = WeightLimits::max();
-      if (std::is_same<WeightType, int8_t>::value) {
-        weight_min_value /= 2;
-        weight_max_value /= 2;
-      }
-
-      auto* dq_w_output = builder.MakeIntermediate();
-      auto* weight = builder.MakeInitializer<WeightType>(weights_shape, weight_min_value, weight_max_value);
-      builder.AddDequantizeLinearNode<WeightType>(weight, .03f,
-                                                  (weight_min_value + weight_max_value) / 2 + 1,
-                                                  dq_w_output);
-
-      auto* dq_bias_output = builder.MakeIntermediate();
-      auto* bias = builder.MakeInitializer<BiasType>({weights_shape[0]}, static_cast<BiasType>(0), static_cast<BiasType>(127));
-      builder.AddDequantizeLinearNode<BiasType>(bias, .0012f,
-                                                0,
-                                                dq_bias_output);
-
-      auto* conv_output = builder.MakeIntermediate();
-      auto* dq_output = AddQDQNodePair<InputType>(builder, input_arg, .04f,
-                                                  (input_min_value + input_max_value) / 2 + 1);
-      builder.AddNode("Conv", {dq_output, dq_w_output, dq_bias_output}, {conv_output});
-
-      auto* q_output = builder.MakeIntermediate();
-      builder.AddQuantizeLinearNode<OutputType>(conv_output, .039f,
-                                                (OutputLimits::min() + OutputLimits::max()) / 2 + 1,
-                                                q_output);
-
-      builder.AddDequantizeLinearNode<OutputType>(q_output, .039f,
-                                                  (OutputLimits::min() + OutputLimits::max()) / 2 + 1,
-                                                  output_arg);
-    };
-
-    auto check_conv_graph = [&](InferenceSessionWrapper& session) {
-      auto op_to_count = CountOpsInGraph(session.GetGraph());
-      if constexpr (std::is_same<InputType, OutputType>::value &&
-                    std::is_same<BiasType, int32_t>::value &&
-                    (std::is_same<InputType, uint8_t>::value ||
-                     QDQIsInt8Allowed() && std::is_same<WeightType, int8_t>::value)) {
-        EXPECT_EQ(op_to_count["QLinearConv"], 1);
-        EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
-        EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
-      } else {
-        EXPECT_EQ(op_to_count["Conv"], 1);
-        EXPECT_EQ(op_to_count["QLinearConv"], 0);
-        EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
-        EXPECT_EQ(op_to_count["DequantizeLinear"], 4);
-      }
-    };
-
-    TransformerTester(build_test_case,
-                      check_conv_graph,
+    TransformerTester(BuildTestCase<InputType, WeightType, BiasType, OutputType>(input_shape, weights_shape),
+                      CheckTestGraph<InputType, WeightType, BiasType, OutputType>(),
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       12 /*opset_version*/,

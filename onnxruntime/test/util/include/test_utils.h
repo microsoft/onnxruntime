@@ -24,5 +24,12 @@ void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path,
                                const char* log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds);
+
+// same verification function that takes in model_data instead of a model_path
+// used in nnapi qdq model tests
+void RunAndVerifyOutputsWithEPViaModelData(std::string model_data,
+                                           const char* log_id,
+                                           std::unique_ptr<IExecutionProvider> execution_provider,
+                                           const NameMLValMap& feeds);
 }  // namespace test
 }  // namespace onnxruntime

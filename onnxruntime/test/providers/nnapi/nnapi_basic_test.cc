@@ -26,6 +26,8 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
+#include "test/optimizer/qdq_test_utils.cc"
+
 using namespace std;
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
@@ -235,7 +237,29 @@ TEST(NnapiExecutionProviderTest, TestNoShapeInputModel) {
       << "No node should be taken by the NNAPI EP";
 }
 
-#endif  // !(ORT_MINIMAL_BUILD
+#if defined(__ANDROID__)
+TEST(NnapiExecutionProviderTest, TestQDQModel) {
+  onnxruntime::Model model("nnapi_qdq_test_graph", false, DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+
+  auto build_test_case = BuildTestCase<uint8_t, uint8_t, int32_t, uint8_t>({1, 12, 37} /*input_shape*/,
+                                                                           {32, 12, 5} /*weights_shape*/);
+  build_test_case(helper);
+  helper.SetGraphOutputs();
+  ASSERT_TRUE(model.MainGraph().Resolve().IsOK());
+
+  // Serialize the model to a string.
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  RunAndVerifyOutputsWithEPViaModelData(model_data, "NnapiExecutionProviderTest.TestQDQModel",
+                                        std::make_unique<NnapiExecutionProvider>(0),
+                                        helper.feeds_);
+}
+#endif  // defined(__ANDROID__)
+
+#endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
   uint32_t nnapi_flags = NNAPI_FLAG_USE_NONE;
