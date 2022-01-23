@@ -2035,6 +2035,9 @@ def main():
     if args.use_tensorrt:
         args.use_cuda = True
 
+    if args.use_migraphx:
+        args.use_rocm = True
+
     if args.build_wheel or args.gen_doc:
         args.enable_pybind = True
 
