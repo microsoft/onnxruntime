@@ -60,7 +60,7 @@ Status GridSample<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_ENFORCE(dims_grid[0] == dims_input[0], "Grid batch size ", dims_grid[0], " does not match input batch size ", dims_input[0]);
   ORT_ENFORCE(dims_grid[3] == 2, "Last dimension of grid: ", dims_grid[3], ", expect 2");
 
-  std::vector<int64_t> dims_output(4);
+  TensorShapeVector dims_output(4);
   dims_output[0] = dims_input[0];
   dims_output[1] = dims_input[1];
   dims_output[2] = dims_grid[1];

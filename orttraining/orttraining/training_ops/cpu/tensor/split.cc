@@ -118,7 +118,7 @@ Status SplitTraining::ComputeImpl(OpKernelContext& context, const Tensor& input)
                                                 split_sizes));
 
   // copy dimensions so we can update the selected axis in place
-  std::vector<int64_t> output_dimensions{input_shape.GetDimsAsVector()};
+  auto output_dimensions{input_shape.AsShapeVector()};
 
   int64_t input_offset = 0;
   const T* input_data = input.template Data<T>();
