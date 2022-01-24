@@ -44,7 +44,7 @@ class MiopenTensorDescriptor final {
   ~MiopenTensorDescriptor();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MiopenTensorDescriptor);
 
-  Status Set(const std::vector<int64_t>& filter_dims, miopenDataType_t data_typ);
+  Status Set(gsl::span<const int64_t> filter_dims, miopenDataType_t data_typ);
 
   operator miopenTensorDescriptor_t() const { return desc_; }
 

@@ -13,6 +13,8 @@
 
 namespace onnxruntime {
 
+using ConvPadVector = ConvAttributes::ConvPadVector;
+
 template <typename ActType>
 class QLinearConv : public OpKernel {
  public:
@@ -440,20 +442,20 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
 
   ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X->Shape(), W_shape, channels_last_));
 
-  std::vector<int64_t> kernel_shape;
+  TensorShapeVector kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W_shape, kernel_shape));
 
   const size_t kernel_rank = kernel_shape.size();
 
-  std::vector<int64_t> pads(conv_attrs_.pads);
+  ConvPadVector pads(conv_attrs_.pads);
   if (pads.empty()) {
     pads.resize(kernel_rank * 2, 0);
   }
-  std::vector<int64_t> dilations(conv_attrs_.dilations);
+  TensorShapeVector dilations(conv_attrs_.dilations);
   if (dilations.empty()) {
     dilations.resize(kernel_rank, 1);
   }
-  std::vector<int64_t> strides(conv_attrs_.strides);
+  TensorShapeVector strides(conv_attrs_.strides);
   if (strides.empty()) {
     strides.resize(kernel_rank, 1);
   }
@@ -462,7 +464,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
   const size_t spatial_dim_start = channels_last_ ? 1 : 2;
   const size_t spatial_dim_end = spatial_dim_start + kernel_rank;
 
-  std::vector<int64_t> Y_dims({N});
+  TensorShapeVector Y_dims({N});
   if (!channels_last_) {
     Y_dims.push_back(M);
   }
