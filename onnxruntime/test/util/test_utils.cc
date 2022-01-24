@@ -66,20 +66,12 @@ int CountAssignedNodes(const Graph& current_graph, const std::string& ep_type) {
   return count;
 }
 
-void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
-                               std::unique_ptr<IExecutionProvider> execution_provider,
-                               const NameMLValMap& feeds) {
-  SessionOptions so;
-  so.session_logid = log_id;
-  RunOptions run_options;
-  run_options.run_tag = so.session_logid;
-
+const auto run_and_verify_outputs_helper = [](InferenceSessionWrapper& session_object, InferenceSessionWrapper& session_object2,
+                                              RunOptions& run_options, const NameMLValMap& feeds,
+                                              const std::string& provider_type) {
   //
   // get expected output from CPU EP
   //
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(model_path));
-  ASSERT_STATUS_OK(session_object.Initialize());
 
   const auto& graph = session_object.GetGraph();
   const auto& outputs = graph.GetOutputs();
@@ -96,66 +88,9 @@ void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
   std::vector<OrtValue> expected_fetches;
   ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &expected_fetches));
 
-  auto provider_type = execution_provider->Type();  // copy string so the std::move doesn't affect us
-
   //
   // get output with EP enabled
   //
-  InferenceSessionWrapper session_object2{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object2.RegisterExecutionProvider(std::move(execution_provider)));
-  ASSERT_STATUS_OK(session_object2.Load(model_path));
-  ASSERT_STATUS_OK(session_object2.Initialize());
-
-  // make sure that some nodes are assigned to the EP, otherwise this test is pointless...
-  const auto& graph2 = session_object2.GetGraph();
-  auto ep_nodes = CountAssignedNodes(graph2, provider_type);
-  ASSERT_GT(ep_nodes, 0) << "No nodes were assigned to " << provider_type << " for " << model_path;
-
-  // Run with EP and verify the result
-  std::vector<OrtValue> fetches;
-  ASSERT_STATUS_OK(session_object2.Run(run_options, feeds, output_names, &fetches));
-  VerifyOutputs(output_names, expected_fetches, fetches);
-}
-
-void RunAndVerifyOutputsWithEPViaModelData(std::string model_data, const char* log_id,
-                                           std::unique_ptr<IExecutionProvider> execution_provider,
-                                           const NameMLValMap& feeds) {
-  SessionOptions so;
-  so.session_logid = log_id;
-  RunOptions run_options;
-  run_options.run_tag = so.session_logid;
-
-  //
-  // get expected output from CPU EP
-  //
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
-  ASSERT_STATUS_OK(session_object.Initialize());
-
-  const auto& graph = session_object.GetGraph();
-  const auto& outputs = graph.GetOutputs();
-
-  // fetch all outputs
-  std::vector<std::string> output_names;
-  output_names.reserve(outputs.size());
-  for (const auto* node_arg : outputs) {
-    if (node_arg->Exists()) {
-      output_names.push_back(node_arg->Name());
-    }
-  }
-
-  std::vector<OrtValue> expected_fetches;
-  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &expected_fetches));
-
-  auto provider_type = execution_provider->Type();  // copy string so the std::move doesn't affect us
-
-  //
-  // get output with EP enabled
-  //
-  InferenceSessionWrapper session_object2{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object2.RegisterExecutionProvider(std::move(execution_provider)));
-  ASSERT_STATUS_OK(session_object2.Load(model_data.data(), static_cast<int>(model_data.size())));
-  ASSERT_STATUS_OK(session_object2.Initialize());
 
   // make sure that some nodes are assigned to the EP, otherwise this test is pointless...
   const auto& graph2 = session_object2.GetGraph();
@@ -166,6 +101,62 @@ void RunAndVerifyOutputsWithEPViaModelData(std::string model_data, const char* l
   std::vector<OrtValue> fetches;
   ASSERT_STATUS_OK(session_object2.Run(run_options, feeds, output_names, &fetches));
   VerifyOutputs(output_names, expected_fetches, fetches);
+};
+
+void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
+                               std::unique_ptr<IExecutionProvider> execution_provider,
+                               const NameMLValMap& feeds) {
+  SessionOptions so;
+  so.session_logid = log_id;
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+
+  //
+  // initialize first session_object for cpu ep
+  //
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_path));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  //
+  // initialize second session_object for other ep
+  //
+  auto provider_type = execution_provider->Type();  // copy string so the std::move doesn't affect us
+
+  InferenceSessionWrapper session_object2{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object2.RegisterExecutionProvider(std::move(execution_provider)));
+  ASSERT_STATUS_OK(session_object2.Load(model_path));
+  ASSERT_STATUS_OK(session_object2.Initialize());
+
+  run_and_verify_outputs_helper(session_object, session_object2, run_options, feeds, provider_type);
+}
+
+void RunAndVerifyOutputsWithEPViaModelData(const std::string& model_data, const char* log_id,
+                                           std::unique_ptr<IExecutionProvider> execution_provider,
+                                           const NameMLValMap& feeds) {
+  SessionOptions so;
+  so.session_logid = log_id;
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+
+  //
+  // initialize first session_object for cpu ep
+  //
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  //
+  // initialize second session_object for other ep
+  //
+  auto provider_type = execution_provider->Type();  // copy string so the std::move doesn't affect us
+
+  InferenceSessionWrapper session_object2{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object2.RegisterExecutionProvider(std::move(execution_provider)));
+  ASSERT_STATUS_OK(session_object2.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session_object2.Initialize());
+
+  run_and_verify_outputs_helper(session_object, session_object2, run_options, feeds, provider_type);
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)

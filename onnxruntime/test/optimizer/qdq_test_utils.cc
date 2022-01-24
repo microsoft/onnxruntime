@@ -13,7 +13,6 @@ namespace onnxruntime {
 namespace test {
 
 using BuildTestCaseFn = std::function<void(ModelTestBuilder& builder)>;
-using CheckTestGraphFn = std::function<void(InferenceSessionWrapper& session)>;
 
 template <typename T>
 typename std::enable_if<IsTypeQuantLinearCompatible<T>::value, NodeArg*>::type
@@ -35,7 +34,7 @@ AddQDQNodePair(ModelTestBuilder& builder, NodeArg* q_input, float scale) {
   return dq_output;
 }
 
-// TODO: for now it just builds a conv qdq graph. 
+// TODO: for now it just builds a conv qdq graph.
 // can be modified and made it shared among different qdq test graphs associated with other operators
 template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
 BuildTestCaseFn BuildTestCase(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
@@ -82,26 +81,6 @@ BuildTestCaseFn BuildTestCase(const std::vector<int64_t>& input_shape, const std
     builder.AddDequantizeLinearNode<OutputType>(q_output, .039f,
                                                 (OutputLimits::min() + OutputLimits::max()) / 2 + 1,
                                                 output_arg);
-  };
-}
-
-template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
-CheckTestGraphFn CheckTestGraph() {
-  return [&](InferenceSessionWrapper& session) {
-    auto op_to_count = CountOpsInGraph(session.GetGraph());
-    if constexpr (std::is_same<InputType, OutputType>::value &&
-                  std::is_same<BiasType, int32_t>::value &&
-                  (std::is_same<InputType, uint8_t>::value ||
-                   QDQIsInt8Allowed() && std::is_same<WeightType, int8_t>::value)) {
-      EXPECT_EQ(op_to_count["QLinearConv"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
-    } else {
-      EXPECT_EQ(op_to_count["Conv"], 1);
-      EXPECT_EQ(op_to_count["QLinearConv"], 0);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 4);
-    }
   };
 }
 
