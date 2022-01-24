@@ -713,40 +713,42 @@ TEST_P(ModelTest, Run) {
 // TODO: all providers
 ::std::vector<::std::basic_string<ORTCHAR_T>> GetParameterStrings() {
   std::vector<const ORTCHAR_T*> provider_names;
-  provider_names.push_back(ORT_TSTR("cpu"));
 #ifdef USE_TENSORRT
+  // If TRT EP is built, we want to test TRT EP only to save CI time.
   provider_names.push_back(ORT_TSTR("tensorrt"));
-#endif
-#ifdef USE_MIGRAPHX
-  provider_names.push_back(ORT_TSTR("migraphx"));
-#endif
-#ifdef USE_OPENVINO
-  provider_names.push_back(ORT_TSTR("openvino"));
-#endif
-#ifdef USE_CUDA
-  provider_names.push_back(ORT_TSTR("cuda"));
-#endif
-#ifdef USE_ROCM
-  provider_names.push_back(ORT_TSTR("rocm"));
-#endif
-#ifdef USE_DNNL
-  provider_names.push_back(ORT_TSTR("dnnl"));
-#endif
-#ifdef USE_NUPHAR
-  provider_names.push_back(ORT_TSTR("nuphar"));
-#endif
-// For any non-Android system, NNAPI will only be used for ort model converter
-#if defined(USE_NNAPI) && defined(__ANDROID__)
-  provider_names.push_back(ORT_TSTR("nnapi"));
-#endif
-#ifdef USE_RKNPU
-  provider_names.push_back(ORT_TSTR("rknpu"));
-#endif
-#ifdef USE_ACL
-  provider_names.push_back(ORT_TSTR("acl"));
-#endif
-#ifdef USE_ARMNN
-  provider_names.push_back(ORT_TSTR("armnn"));
+#else
+  provider_names.push_back(ORT_TSTR("cpu"));
+  #ifdef USE_MIGRAPHX
+    provider_names.push_back(ORT_TSTR("migraphx"));
+  #endif
+  #ifdef USE_OPENVINO
+    provider_names.push_back(ORT_TSTR("openvino"));
+  #endif
+  #ifdef USE_CUDA
+    provider_names.push_back(ORT_TSTR("cuda"));
+  #endif
+  #ifdef USE_ROCM
+    provider_names.push_back(ORT_TSTR("rocm"));
+  #endif
+  #ifdef USE_DNNL
+    provider_names.push_back(ORT_TSTR("dnnl"));
+  #endif
+  #ifdef USE_NUPHAR
+    provider_names.push_back(ORT_TSTR("nuphar"));
+  #endif
+  // For any non-Android system, NNAPI will only be used for ort model converter
+  #if defined(USE_NNAPI) && defined(__ANDROID__)
+    provider_names.push_back(ORT_TSTR("nnapi"));
+  #endif
+  #ifdef USE_RKNPU
+    provider_names.push_back(ORT_TSTR("rknpu"));
+  #endif
+  #ifdef USE_ACL
+    provider_names.push_back(ORT_TSTR("acl"));
+  #endif
+  #ifdef USE_ARMNN
+    provider_names.push_back(ORT_TSTR("armnn"));
+  #endif
 #endif
   std::vector<std::basic_string<ORTCHAR_T>> v;
   // Permanently exclude following tests because ORT support only opset starting from 7,

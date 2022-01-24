@@ -683,9 +683,9 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
 endif()
 
 set(test_all_args)
-if (onnxruntime_USE_TENSORRT)
-    list(APPEND test_all_args "--gtest_filter=-*cpu__*:*cuda__*" )
-endif ()
+#if (onnxruntime_USE_TENSORRT)
+    #list(APPEND test_all_args "--gtest_filter=-*cpu__*:*cuda__*" )
+#endif ()
 
 AddTest(
   TARGET onnxruntime_test_all
