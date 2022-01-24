@@ -186,6 +186,65 @@ OrtValue create_ort_scalar_value(const at::Scalar& scalar) {
   return ort_value;
 }
 
+
+c10::ScalarType create_torch_element_type(const onnxruntime::PrimitiveDataTypeBase* elem_type) {
+  ORT_ENFORCE(elem_type, "Element type pointer cannot be NULL.");
+  switch (static_cast<ONNX_NAMESPACE::TensorProto_DataType>(elem_type->GetDataType())) {
+    case onnxruntime::data_types_internal::ToTensorDataType<float>() : {
+      return c10::kFloat;  
+    }
+    case onnxruntime::data_types_internal::ToTensorDataType<double>() : {
+      return c10::kDouble;
+    }
+    case onnxruntime::data_types_internal::ToTensorDataType<onnxruntime::BFloat16>() : {
+      return c10::kBFloat16;
+    }
+    default:
+      ORT_THROW("Unsupport ORT scalar type.");
+  }
+}
+
+c10::DeviceType create_torch_device_type(const OrtDevice::DeviceType& device_type) {
+  switch (device_type) {
+    case OrtDevice::CPU:
+      return c10::DeviceType::CPU;
+    case OrtDevice::GPU:
+      return c10::DeviceType::CUDA;
+    default:
+      ORT_THROW("Unsupport ORT device.");
+  }
+}
+
+c10::DeviceIndex create_torch_device_index(const OrtDevice::DeviceId& device_id) {
+  return static_cast<c10::DeviceIndex>(device_id);
+}
+
+at::Tensor create_at_tensor(const onnxruntime::Tensor& tensor) {
+  const OrtDevice& device = tensor.Location().device;
+  auto options = torch::TensorOptions()
+    .dtype(create_torch_element_type(tensor.DataType()->AsPrimitiveDataType()))
+    .layout(torch::kStrided)
+    .device(create_torch_device_type(device.Type()), create_torch_device_index(device.Type()))
+    .requires_grad(false);
+
+  at::Tensor new_tensor = torch::empty(tensor.Shape().GetDimsAsVector(), options);
+
+  switch (device.Type()) {
+    case OrtDevice::CPU:
+      //auto tensor = torch::from_blob(
+      //  v.data(),
+      //  v.size(),
+      //  /*deleter=*/[&called](void* data) { called = true; },
+      //  torch::kInt32);
+      std::memcpy(new_tensor.data_ptr(), tensor.DataRaw(), tensor.SizeInBytes());
+      break;
+    // TODO: Add GPU.
+    default:
+      ORT_THROW("Unsupport ORT device.");
+  }
+  return new_tensor;
+}
+
 //OrtValue create_ort_tensor_value() {
 //  OrtDevice device;
 //  float* data_ptr = new float[2];
@@ -326,54 +385,70 @@ CompiledCode Accelerator::compile(
         "Compiler can only handle pointwise operations without broadcasting.");
   }
 
-  onnxruntime::Environment& pybind_default_env = GetLtcEnv();
-  onnxruntime::SessionOptions sess_opts;
-  onnxruntime::InferenceSession sess(sess_opts, pybind_default_env);
-  std::string model_path;
-  {
-    //const at::ArrayRef<torch::jit::Value*>& graph_inputs = subgraph_->inputs();
-    const auto num_inputs = subgraph_->inputs().size();
-    for (size_t i = 0; i < num_inputs; ++i) {
-        auto input_symbol = subgraph_->inputs()[i];
-        auto input_value = inputs[i];
-        input_symbol->setType(input_value.type());
-    }
+  //onnxruntime::Environment& pybind_default_env = GetLtcEnv();
+  //onnxruntime::SessionOptions sess_opts;
+  //onnxruntime::InferenceSession sess(sess_opts, pybind_default_env);
+  //std::string model_path;
+  //{
+  //  //const at::ArrayRef<torch::jit::Value*>& graph_inputs = subgraph_->inputs();
+  //  const auto num_inputs = subgraph_->inputs().size();
+  //  for (size_t i = 0; i < num_inputs; ++i) {
+  //      auto input_symbol = subgraph_->inputs()[i];
+  //      auto input_value = inputs[i];
+  //      input_symbol->setType(input_value.type());
+  //  }
 
-    std::cout << "[ext] gil_scoped_acquire" << std::endl;
-    pybind11::gil_scoped_acquire guard{};
-    std::cout << "[ext] create to_onnx" << std::endl;
-    pybind11::function to_onnx =
-        pybind11::reinterpret_borrow<pybind11::function>(   // cast from 'object' to 'function - use `borrow` (copy) or `steal` (move)
-            pybind11::module::import("torch.onnx.utils").attr("_optimize_graph_1")  // import method "min_rosen" from python "module"
-        );
-    std::cout << "[ext] print JIT graph in Python:" << std::endl;
-    pybind11::print(subgraph_);
-    std::cout << "[ext] call to_onnx" << std::endl;
-    auto result = to_onnx(subgraph_, ::torch::onnx::OperatorExportTypes::ONNX_ATEN_FALLBACK);
-    std::cout << "[ext] print ONNX graph:" << std::endl;
-    pybind11::print(subgraph_);
+  //  std::cout << "[ext] gil_scoped_acquire" << std::endl;
+  //  pybind11::gil_scoped_acquire guard{};
+  //  std::cout << "[ext] create to_onnx" << std::endl;
+  //  pybind11::function to_onnx =
+  //      pybind11::reinterpret_borrow<pybind11::function>(   // cast from 'object' to 'function - use `borrow` (copy) or `steal` (move)
+  //          pybind11::module::import("torch.onnx.utils").attr("_optimize_graph_1")  // import method "min_rosen" from python "module"
+  //      );
+  //  std::cout << "[ext] print JIT graph in Python:" << std::endl;
+  //  pybind11::print(subgraph_);
+  //  std::cout << "[ext] call to_onnx" << std::endl;
+  //  auto result = to_onnx(subgraph_, ::torch::onnx::OperatorExportTypes::ONNX_ATEN_FALLBACK);
+  //  std::cout << "[ext] print ONNX graph:" << std::endl;
+  //  pybind11::print(subgraph_);
 
-    //std::stringstream ss;
-    //ss << "Oops-" << n;
-    //++n;
-    //Ort::SessionOptions sessionOptions;
-    //Ort::Session session(env, "/bert_ort/wechi/model_QI4C.onnx", sessionOptions);
+  //  //std::stringstream ss;
+  //  //ss << "Oops-" << n;
+  //  //++n;
+  //  //Ort::SessionOptions sessionOptions;
+  //  //Ort::Session session(env, "/bert_ort/wechi/model_QI4C.onnx", sessionOptions);
 
-    ORT_THROW_IF_ERROR(sess.Load(result.cast<std::string>()));
-    ORT_THROW_IF_ERROR(sess.Initialize());
-    auto a = create_2();
-    // //auto b = create_ort_bool_tensor_value();
+  //  ORT_THROW_IF_ERROR(sess.Load(result.cast<std::string>()));
+  //  ORT_THROW_IF_ERROR(sess.Initialize());
+  //  auto a = create_2();
+  //  // //auto b = create_ort_bool_tensor_value();
 
-    onnxruntime::RunOptions run_options;
-    std::vector<std::string> feed_names{"0"};
-    std::vector<OrtValue> feeds{a};
-    std::vector<std::string> output_names{"2", "1"};
-    std::vector<OrtValue> fetches;
-    std::cout << "[ORT] run sess" << std::endl;
-    ORT_THROW_IF_ERROR(sess.Run(run_options, feed_names, feeds, output_names, &fetches));
-    std::cout << "[ORT] run sess done" << std::endl;
-    model_path = result.cast<std::string>();
+  //  onnxruntime::RunOptions run_options;
+  //  std::vector<std::string> feed_names{"0"};
+  //  std::vector<OrtValue> feeds{a};
+  //  std::vector<std::string> output_names{"2", "1"};
+  //  std::vector<OrtValue> fetches;
+  //  std::cout << "[ORT] run sess" << std::endl;
+  //  ORT_THROW_IF_ERROR(sess.Run(run_options, feed_names, feeds, output_names, &fetches));
+  //  std::cout << "[ORT] run sess done" << std::endl;
+  //  model_path = result.cast<std::string>();
+  //}
+
+  //const at::ArrayRef<torch::jit::Value*>& graph_inputs = subgraph_->inputs();
+  const auto num_inputs = subgraph_->inputs().size();
+  for (size_t i = 0; i < num_inputs; ++i) {
+      auto input_symbol = subgraph_->inputs()[i];
+      auto input_value = inputs[i];
+      input_symbol->setType(input_value.type());
   }
+
+  pybind11::gil_scoped_acquire guard{};
+  pybind11::function to_onnx =
+      pybind11::reinterpret_borrow<pybind11::function>(   // cast from 'object' to 'function - use `borrow` (copy) or `steal` (move)
+          pybind11::module::import("torch.onnx.utils").attr("_optimize_graph_1")  // import method "min_rosen" from python "module"
+      );
+  auto result = to_onnx(subgraph_, ::torch::onnx::OperatorExportTypes::ONNX_ATEN_FALLBACK);
+  std::string  model_path = result.cast<std::string>();
 
   // This function wraps the function pointer we bound our assembly to
   // Adheres to the CompiledCode interface defined in compiler.h
@@ -408,79 +483,89 @@ CompiledCode Accelerator::compile(
     std::cout << "[accelerator.cpp] Run" << std::endl;
     ORT_THROW_IF_ERROR(sess.Run(run_options, feed_names, feeds, output_names, &fetches));
     std::cout << "[accelerator.cpp] Run done" << std::endl;
-    // __value__ is the symbol of arena[__value__] tensor.
-    std::map<torch::jit::Value*, c10::IValue> arena;
-    for (auto value : subgraph_->inputs()) {
-      arena[value] = inputs[value->offset()];
-    }
-
-    for (auto node : subgraph_->nodes()) {
-      switch (node->kind()) {
-        case aten::relu: {
-          std::cout << "[compiler.cc] see aten::relu" << std::endl;
-          auto x = arena[node->inputs()[0]].toTensor().contiguous();
-          auto y = at::relu(x);
-          arena[node->outputs()[0]] = y;
-          break;
-        }
-        case aten::mul: {
-          std::cout << "[compiler.cc] see aten::mul" << std::endl;
-          auto x = arena[node->inputs()[0]].toTensor().contiguous();
-          auto y = arena[node->inputs()[1]].toTensor().contiguous();
-          auto z = at::mul(x, y);
-          arena[node->outputs()[0]] = z;
-          break;
-        }
-        case aten::gt: {
-          std::cout << "[compiler.cc] see aten::gt" << std::endl;
-          auto x = arena[node->inputs()[0]].toTensor().contiguous();
-          int y = arena[node->inputs()[1]].toInt();
-          arena[node->outputs()[0]] = at::gt(x, y);
-          break;
-        }
-        case aten::eq: {
-          std::cout << "[compiler.cc] see aten::eq" << std::endl;
-          auto x = arena[node->inputs()[0]].toTensor().contiguous();
-          auto y = arena[node->inputs()[0]].toTensor().contiguous();
-          auto z = at::eq(x, y);
-          arena[node->outputs()[0]] = z;
-          break;
-        }
-        case aten::type_as: {
-          std::cout << "[compiler.cc] see aten::type_as" << std::endl;
-          auto x = arena[node->inputs()[0]].toTensor().contiguous();
-          auto y = arena[node->inputs()[1]].toTensor();
-          auto z = x.to(y.options());
-          arena[node->outputs()[0]] = z;
-          break;
-        }
-        case prim::Constant: {
-          std::cout << "[compiler.cc] see prim::Constant" << std::endl;
-          arena[node->outputs()[0]] = torch::jit::toIValue(node->outputs()[0]).value();
-          break;
-        }
-        case aten::threshold_backward: {
-          std::cout << "[compiler.cc] see aten::threshold_backward" << std::endl;
-          auto x = arena[node->inputs()[0]].toTensor().contiguous();
-          auto y = arena[node->inputs()[1]].toTensor();
-          //auto z = arena[node->inputs()[2]].to<at::Scalar>();
-          auto z = arena[node->inputs()[2]].toTensor().contiguous();
-          auto z_data = z.data_ptr<int64_t>();
-          std::cout << "To call\n";
-          auto w = at::_ops::threshold_backward::call(x, y, at::Scalar(*z_data));
-          std::cout << "Done call\n";
-          arena[node->outputs()[0]] = w;
-          break;
-        }
-      }
-    }
 
     std::vector<c10::IValue> outputs;
-    for (auto value : subgraph_->outputs()) {
-      outputs.push_back(arena[value]);
+    for (auto value : fetches) {
+        onnxruntime::Tensor* tensor = value.GetMutable<onnxruntime::Tensor>();
+        at::Tensor new_tensor = create_at_tensor(*tensor);
+        outputs.push_back(new_tensor);
     }
 
     return outputs;
+
+    //// __value__ is the symbol of arena[__value__] tensor.
+    //std::map<torch::jit::Value*, c10::IValue> arena;
+    //for (auto value : subgraph_->inputs()) {
+    //  arena[value] = inputs[value->offset()];
+    //}
+
+    //for (auto node : subgraph_->nodes()) {
+    //  switch (node->kind()) {
+    //    case aten::relu: {
+    //      std::cout << "[compiler.cc] see aten::relu" << std::endl;
+    //      auto x = arena[node->inputs()[0]].toTensor().contiguous();
+    //      auto y = at::relu(x);
+    //      arena[node->outputs()[0]] = y;
+    //      break;
+    //    }
+    //    case aten::mul: {
+    //      std::cout << "[compiler.cc] see aten::mul" << std::endl;
+    //      auto x = arena[node->inputs()[0]].toTensor().contiguous();
+    //      auto y = arena[node->inputs()[1]].toTensor().contiguous();
+    //      auto z = at::mul(x, y);
+    //      arena[node->outputs()[0]] = z;
+    //      break;
+    //    }
+    //    case aten::gt: {
+    //      std::cout << "[compiler.cc] see aten::gt" << std::endl;
+    //      auto x = arena[node->inputs()[0]].toTensor().contiguous();
+    //      int y = arena[node->inputs()[1]].toInt();
+    //      arena[node->outputs()[0]] = at::gt(x, y);
+    //      break;
+    //    }
+    //    case aten::eq: {
+    //      std::cout << "[compiler.cc] see aten::eq" << std::endl;
+    //      auto x = arena[node->inputs()[0]].toTensor().contiguous();
+    //      auto y = arena[node->inputs()[0]].toTensor().contiguous();
+    //      auto z = at::eq(x, y);
+    //      arena[node->outputs()[0]] = z;
+    //      break;
+    //    }
+    //    case aten::type_as: {
+    //      std::cout << "[compiler.cc] see aten::type_as" << std::endl;
+    //      auto x = arena[node->inputs()[0]].toTensor().contiguous();
+    //      auto y = arena[node->inputs()[1]].toTensor();
+    //      auto z = x.to(y.options());
+    //      arena[node->outputs()[0]] = z;
+    //      break;
+    //    }
+    //    case prim::Constant: {
+    //      std::cout << "[compiler.cc] see prim::Constant" << std::endl;
+    //      arena[node->outputs()[0]] = torch::jit::toIValue(node->outputs()[0]).value();
+    //      break;
+    //    }
+    //    case aten::threshold_backward: {
+    //      std::cout << "[compiler.cc] see aten::threshold_backward" << std::endl;
+    //      auto x = arena[node->inputs()[0]].toTensor().contiguous();
+    //      auto y = arena[node->inputs()[1]].toTensor();
+    //      //auto z = arena[node->inputs()[2]].to<at::Scalar>();
+    //      auto z = arena[node->inputs()[2]].toTensor().contiguous();
+    //      auto z_data = z.data_ptr<int64_t>();
+    //      std::cout << "To call\n";
+    //      auto w = at::_ops::threshold_backward::call(x, y, at::Scalar(*z_data));
+    //      std::cout << "Done call\n";
+    //      arena[node->outputs()[0]] = w;
+    //      break;
+    //    }
+    //  }
+    //}
+
+    //std::vector<c10::IValue> outputs;
+    //for (auto value : subgraph_->outputs()) {
+    //  outputs.push_back(arena[value]);
+    //}
+
+    //return outputs;
   };
 
   return compiled_func;
