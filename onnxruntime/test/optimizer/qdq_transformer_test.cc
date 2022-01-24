@@ -1927,7 +1927,7 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
     const GraphViewer partial_graph_viewer(graph, *compute_capability->sub_graph);
     ASSERT_EQ(3, partial_graph_viewer.NumberOfNodes());
 
-    // Check there is no qdq seletion for the given nodes
+    // Check there is no qdq selection for the given nodes
     {
       const auto result = conv_selector.GetQDQSelection(partial_graph_viewer, *conv_node);
       ASSERT_FALSE(result.has_value());

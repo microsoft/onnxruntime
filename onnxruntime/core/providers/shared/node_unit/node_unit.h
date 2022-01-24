@@ -67,22 +67,20 @@ class NodeUnit {
   const std::vector<const Node*>& GetOutputNodes() const noexcept { return output_nodes_; }
 
  private:
-  std::vector<NodeUnitIODef> inputs_;
-  std::vector<NodeUnitIODef> outputs_;
-
   const std::vector<const Node*> output_nodes_;  // all the nodes producing outputs for this NodeUnit
   const Node& target_node_;
   const Type type_;
 
+  std::vector<NodeUnitIODef> inputs_;
+  std::vector<NodeUnitIODef> outputs_;
+
   // Initializing for a single Node
   void InitForSingleNode();
-
-  // Initializing for a QDQ group
-  void InitForQDQGroup(const QDQ::NodeGroup& node_group);
 };
 
 // Get all the nodes in the given graph_viewer as NodeUnits (SingleNode or QDQGroup)
-// And return a map to quick query the NodeUnit which contains the given Node
+// And return a map to quick query the NodeUnit which contains the given Node,
+// Note, the value of the map is owned by the vector of std::unique_ptr<NodeUnit>
 std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
 GetAllNodeUnits(const GraphViewer& graph_viewer);
 

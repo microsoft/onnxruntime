@@ -138,8 +138,9 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     bool supported = false;
 
     // If we have visited one of the nodes in the node_unit, use the result directly
-    if (Contains(node_unit_supported_result, node_unit)) {
-      supported = node_unit_supported_result.at(node_unit);
+    const auto it = node_unit_supported_result.find(node_unit);
+    if (it != node_unit_supported_result.cend()) {
+      supported = it->second;
     } else {
       // We only check the target node of the node unit for exclusion
       const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node_unit->GetNode());

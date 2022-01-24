@@ -107,7 +107,7 @@ class BaseOpSupportChecker : public IOpSupportChecker {
 
   // Check if this node_unit's type is supported
   // SingleNode type NodeUnit is supported
-  // QDQGroup type NodeUnit is by default unsupported, and this an be individual overwritten by inherited classes
+  // QDQGroup type NodeUnit is by default unsupported, and this can be individually overwritten by inherited classes
   virtual bool IsNodeUnitTypeSupported(const NodeUnit& node_unit) const;
 
  private:

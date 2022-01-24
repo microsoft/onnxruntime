@@ -91,8 +91,8 @@ const std::vector<const Node*> GetQDQOutputNodes(const GraphViewer& graph_viewer
 }
 
 // Get the input or output NodeUnitIODef(s) for the given QDQ NodeGroup
-void GetQDQIODefs(const Node& target_node, const QDQ::NodeGroup& node_group,
-                  std::vector<NodeUnitIODef>& io_defs, bool is_input) {
+std::vector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::NodeGroup& node_group,
+                                        bool is_input) {
   const auto& dq_or_q_nodes = is_input ? node_group.dq_nodes : node_group.q_nodes;
   const auto target_node_io_defs = is_input ? target_node.InputDefs() : target_node.OutputDefs();
   const size_t target_node_io_defs_size = target_node_io_defs.size();
@@ -108,16 +108,19 @@ void GetQDQIODefs(const Node& target_node, const QDQ::NodeGroup& node_group,
 
     // If we can find the node index in the dq or q nodes, then this is a quantize node (can be DQ or Q depends on is_input)
     if (std::find(dq_or_q_nodes.cbegin(), dq_or_q_nodes.cend(), node.Index()) != dq_or_q_nodes.cend()) {
-      auto idx = cur->GetDstArgIndex();
       const auto node_inputs = node.InputDefs();
       // quantization scale and zp are always the input[1, 2]
       NodeUnitIODef::QuantParam quant_param{
           *node_inputs[1],
           node_inputs.size() == 3 ? node_inputs[2] : nullptr};
       if (is_input) {
+        // DQ is input to the target node, use the DstArgIndex
+        auto idx = cur->GetDstArgIndex();
         // This is a DQ node, we are using x, x_scale, x_zp (input[0, 1, 2])
         quantized_io_defs.insert({idx, NodeUnitIODef{*node_inputs[0], quant_param}});
       } else {
+        // Q is output of the target node, use the SrcArgIndex
+        auto idx = cur->GetSrcArgIndex();
         // This is a Q node, we are using y (output[0]), y_scale, y_zp (input[1, 2])
         const auto node_outputs = node.OutputDefs();
         quantized_io_defs.insert({idx, NodeUnitIODef{*node_outputs[0], quant_param}});
@@ -126,6 +129,7 @@ void GetQDQIODefs(const Node& target_node, const QDQ::NodeGroup& node_group,
   }
 
   // Construct the IODefs for this QDQ NodeGroup
+  std::vector<NodeUnitIODef> io_defs;
   io_defs.reserve(target_node_io_defs_size);
   for (size_t i = 0; i < target_node_io_defs_size; i++) {
     // If we can find the NodeUnitIODef for this index, this is a quantized input
@@ -136,6 +140,8 @@ void GetQDQIODefs(const Node& target_node, const QDQ::NodeGroup& node_group,
       io_defs.push_back({*target_node_io_defs[i], std::nullopt});
     }
   }
+
+  return io_defs;
 }
 
 }  // namespace
@@ -150,8 +156,9 @@ NodeUnit::NodeUnit(const Node& node)
 NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group)
     : output_nodes_{GetQDQOutputNodes(graph_viewer, node_group)},
       target_node_(*graph_viewer.GetNode(node_group.target_node)),
-      type_(Type::QDQGroup) {
-  InitForQDQGroup(node_group);
+      type_(Type::QDQGroup),
+      inputs_{GetQDQIODefs(target_node_, node_group, true /* is_input */)},
+      outputs_{GetQDQIODefs(target_node_, node_group, false /* is_input */)} {
 }
 
 const std::string& NodeUnit::Domain() const noexcept { return target_node_.Domain(); }
@@ -236,12 +243,6 @@ void NodeUnit::InitForSingleNode() {
   } else {
     ORT_THROW("The QLinear op [", static_cast<uint8_t>(qlinear_type), "] is not supported");
   }
-}
-
-void NodeUnit::InitForQDQGroup(const QDQ::NodeGroup& node_group) {
-  // Get inputs and outputs
-  GetQDQIODefs(target_node_, node_group, inputs_, true /* is_input */);
-  GetQDQIODefs(target_node_, node_group, outputs_, false /* is_input */);
 }
 
 std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
