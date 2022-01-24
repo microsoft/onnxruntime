@@ -23,6 +23,8 @@ aux_links:
     - "/docs/tutorials/"
   "API Docs":
     - "/docs/api/"
+  "YouTube":
+    - "https://www.youtube.com/channel/UC_SJk17KdRvDulXz-nc1uFg/featured"
   "GitHub":
     - "https://github.com/microsoft/onnxruntime"
 ga_tracking: UA-156955408-1    
