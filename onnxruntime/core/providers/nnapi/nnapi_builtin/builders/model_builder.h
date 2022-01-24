@@ -42,8 +42,7 @@ class ModelBuilder {
   // Add an NNAPI operation (operator)
   Status AddOperation(int op, const std::vector<uint32_t>& input_indices,
                       const std::vector<std::string>& output_names,
-                      const std::vector<android::nn::wrapper::OperandType>& types,
-                      const std::vector<bool>& is_nhwc_vec) ORT_MUST_USE_RESULT;
+                      const std::vector<android::nn::wrapper::OperandType>& types) ORT_MUST_USE_RESULT;
 
   // Find if an output has a fuseable activation (Relu)
   int32_t FindActivation(const Node& node, const NodeArg& output);
@@ -63,8 +62,7 @@ class ModelBuilder {
 
   // Register informations for a particular operand
   void RegisterOperand(const std::string& name, uint32_t index,
-                       const android::nn::wrapper::OperandType& operand_type,
-                       bool is_nhwc);
+                       const android::nn::wrapper::OperandType& operand_type);
 
   // Generate an unique name for intermediate result
   std::string GetUniqueName(const std::string& base_name);
@@ -72,6 +70,10 @@ class ModelBuilder {
   // Enable and disable using NCHW
   void SetUseNCHW(bool use_nchw) { use_nchw_ = use_nchw; }
   bool UseNCHW() const { return use_nchw_; }
+
+  DataLayout GetPreferredLayout() const {
+    return use_nchw_ ? DataLayout::NCHW : DataLayout::NHWC;
+  }
 
   // Relax fp32 computation to fp16
   // It is off by default
@@ -100,17 +102,6 @@ class ModelBuilder {
 
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
 
-  void RegisterNHWCOperand(const std::string& name);
-  bool IsOperandNHWC(const std::string& name) const;
-
-  // Get the operand transposed to nchw/nhwc from given nhwc/nchw operand, if it exists
-  bool GetNCHWOperand(const std::string& nhwc_name, std::string& nchw_name);
-  bool GetNHWCOperand(const std::string& nchw_name, std::string& nhwc_name);
-
-  Status SetNHWCToNCHWOperandMap(const std::string& nhwc_name,
-                                 const std::string& nchw_name) ORT_MUST_USE_RESULT;
-  Status SetNCHWToNHWCOperandMap(const std::string& nchw_name,
-                                 const std::string& nhwc_name) ORT_MUST_USE_RESULT;
 
  private:
   const NnApi* nnapi_{nullptr};
@@ -139,12 +130,6 @@ class ModelBuilder {
 
   std::unordered_map<std::string, std::shared_ptr<IOpSupportChecker>> op_support_checkers_;
 
-  // Operands in nhwc
-  std::unordered_set<std::string> nhwc_operands_;
-
-  // Maps between nhwc and nchw, and vice versa
-  std::unordered_map<std::string, std::string> nhwc_to_nchw_map_;
-  std::unordered_map<std::string, std::string> nchw_to_nhwc_map_;
 
   std::vector<uint32_t> input_index_vec_;
   std::vector<uint32_t> output_index_vec_;
@@ -186,7 +171,6 @@ class ModelBuilder {
   Status AddNewNNAPIOperand(const android::nn::wrapper::OperandType& type, uint32_t& index) ORT_MUST_USE_RESULT;
   Status AddNewOperand(const std::string& name,
                        const android::nn::wrapper::OperandType& operand_type,
-                       bool is_nhwc,
                        uint32_t& index) ORT_MUST_USE_RESULT;
 
   static const IOpBuilder* GetOpBuilder(const Node& node);

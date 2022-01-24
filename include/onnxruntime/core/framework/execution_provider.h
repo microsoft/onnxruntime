@@ -13,7 +13,7 @@
 #include "core/framework/data_transfer.h"
 
 namespace onnxruntime {
-
+enum class DataLayout;
 class GraphViewer;
 class Node;
 struct ComputeCapability;
@@ -270,6 +270,12 @@ class IExecutionProvider {
 
   virtual std::unique_ptr<profiling::EpProfiler> GetProfiler() {
     return {};
+  }
+
+  virtual DataLayout GetPreferredLayout() const {
+    // NCHW is the default ONNX standard data layout. So default to it.
+    // EPs which prefer a different layout should override to return their preferred layout.
+    return static_cast<DataLayout>(0);
   }
 
  private:

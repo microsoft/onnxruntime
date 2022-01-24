@@ -193,7 +193,7 @@ static void TestNnapiPartitioning(const std::string& test_name, const std::strin
   }
 
   ASSERT_STATUS_OK(session->RegisterExecutionProvider(
-      std::make_unique<InternalTestingExecutionProvider>(ops, stop_ops, debug_output)));
+      std::make_unique<InternalTestingExecutionProvider>(ops, stop_ops, debug_output, DataLayout::NHWC)));
 
   ASSERT_STATUS_OK(session->Load(model_uri));
   const auto& graph = session->GetGraph();
@@ -300,14 +300,14 @@ static void TestNnapiPartitioning(const std::string& test_name, const std::strin
 }
 
 // DISABLED - manually update model_paths and enable to test coverage as needed
-TEST(InternalTestingEP, DISABLED_TestNnapiPartitioningMlPerfModels) {
+TEST(InternalTestingEP, TestNnapiPartitioningMlPerfModels) {
   const auto supported_ops = GetNnapiSupportedOps();
 
   // list the models you want to test here
   std::vector<std::string> model_paths = {
-      "deeplabv3_mnv2_ade20k_float.onnx",
-      "mobilebert.onnx",
-      "mobiledet.onnx",
+      "C:\\Users\\askhade\\Downloads\\NHWC\\deeplabv3_optimized.onnx",
+      "C:\\Users\\askhade\\Downloads\\mobile_models\\mobile_models\\mobile\\mobilebert\\mobilebert.onnx",
+      "C:\\Users\\askhade\\Downloads\\NHWC\\mobiledet_shapes.onnx",
   };
 
   for (const auto& model_uri : model_paths) {

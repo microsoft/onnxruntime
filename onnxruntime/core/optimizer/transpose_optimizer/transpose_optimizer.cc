@@ -16,6 +16,8 @@ struct OptimizerCtx {
   api::GraphRef& graph;
   bool allow_extended_ops;
   bool skip_cost_check;
+  const std::string provider_type;
+  OptimizerMode mode;
 };
 
 // Each op handler points to a (potentially shared) function for determining which input indices are eligible for
@@ -33,6 +35,7 @@ struct HandlerArgs {
   const std::vector<int64_t>& perm_inv;
   // Cached result from calling transposible_inputs_fn
   std::vector<size_t>& transposible_inputs;
+  bool wrap_transpose_ops = true;
 };
 
 using HandlerFunction = bool (*)(HandlerArgs& args);
@@ -226,6 +229,10 @@ static bool IsIdentityPerm(const std::vector<int64_t>& perm) {
 // Computes permutation from channel last to channel first ordering of given rank. Nearly all handlers work for any
 // permutation, but some are restricted. Also used for layout transformation. Rank must be >= 1.
 std::vector<int64_t> ChannelLastToFirstPerm(size_t rank) {
+  if (rank == 0) {
+    return {};
+  }
+
   std::vector<int64_t> p(rank);
   p[0] = 0;
   p[1] = rank - 1;
@@ -456,6 +463,31 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
   node.SetInput(i, unsq_out);
 }
 
+static void Permute1DConstant(api::GraphRef& graph, api::NodeRef& node, api::TensorRef& constant, 
+                              size_t i, const std::string_view& input_name, const std::vector<int64_t>& perm) {
+  // Create new transposed initializer
+  auto rank = perm.size();
+  auto shape = constant.Shape();
+  std::vector<uint8_t> data = constant.Data();
+  std::vector<uint8_t> new_data(data.size());
+  size_t bytes_per_val = data.size() / rank;
+
+  uint8_t* dst = new_data.data();
+  for (size_t j = 0; j < rank; ++j) {
+    uint8_t* src = data.data() + perm[j] * bytes_per_val;
+    for (size_t k = 0; k < bytes_per_val; ++k) {
+      *dst++ = *src++;
+    }
+  }
+
+  std::string_view new_initializer = graph.AddInitializer(constant.DType(), shape, new_data);
+  node.SetInput(i, new_initializer);
+  if (!graph.HasValueConsumers(input_name)) {
+    graph.RemoveInitializer(input_name);
+  }
+
+}
+
 // Replaces ith input to node with transposed value. Might create a new Transpose node, find an existing one,
 // or transpose an initializer.
 static void TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i,
@@ -469,6 +501,10 @@ static void TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i,
 
   // Case 1: input is a constant with a known list of consumer nodes
   if (constant != nullptr && consumers->comprehensive) {
+    if (constant->Shape().size() == 1 && (constant->Shape()[0] == gsl::narrow_cast<int64_t>(perm.size()) || constant->Shape()[0] == 0)) {
+      Permute1DConstant(graph, node, *constant, i, input, perm);
+      return;
+    }
     if (consumers->nodes.size() > 0) {
       // Transpose the initializer. If there are existing consumers, add Transpose nodes to them using perm_inv
       // to counteract the effect. These Transposes will hopefully be optimized out later.
@@ -495,6 +531,10 @@ static void TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i,
           graph.RemoveNode(*inp_node);
         }
         node.SetInput(i, pre_transpose_value);
+        return;
+      } else if (*perm2 == perm) {
+        // we are trying to add a duplicate transpose. 
+        // do nothing and return
         return;
       }
 
@@ -900,7 +940,7 @@ static bool HandleShape(HandlerArgs& args) {
 constexpr HandlerInfo shape_handler = {&FirstInput, &HandleShape, /*transposes_outputs*/ false};
 
 // Permutes a 1D node input by creating a new initializer or inserting a Gather op
-void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, const std::vector<int64_t>& perm) {
+static void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, const std::vector<int64_t>& perm) {
   size_t rank = perm.size();
   int64_t rank_int = gsl::narrow_cast<int64_t>(rank);
 
@@ -909,25 +949,7 @@ void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, const std:
   if (constant != nullptr) {
     auto shape = constant->Shape();
     if (shape.size() == 1 && (shape[0] == rank_int || shape[0] == 0)) {
-      // Create new transposed initializer
-      std::vector<uint8_t> data = constant->Data();
-      std::vector<uint8_t> new_data(data.size());
-      size_t bytes_per_val = data.size() / rank;
-
-      uint8_t* dst = new_data.data();
-      for (size_t j = 0; j < rank; ++j) {
-        uint8_t* src = data.data() + perm[j] * bytes_per_val;
-        for (size_t k = 0; k < bytes_per_val; ++k) {
-          *dst++ = *src++;
-        }
-      }
-
-      std::string_view new_initializer = graph.AddInitializer(constant->DType(), shape, new_data);
-      node.SetInput(i, new_initializer);
-      if (!graph.HasValueConsumers(input)) {
-        graph.RemoveInitializer(input);
-      }
-
+      Permute1DConstant(graph, node, *constant, i, input, perm);
       return;
     }
   }
@@ -942,35 +964,43 @@ void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, const std:
   node.SetInput(i, gather_output);
 }
 
-//static bool HandleResize(HandlerArgs& args) {
-//  auto inputs = args.node.Inputs();
-//  int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
-//
-//  if (args.ctx.opset < 11) {
-//    PermuteInput(args.ctx.graph, args.node, 1, args.perm_inv);
-//  } else {
-//    if (inputs[1] != "") {
-//      std::vector<int64_t> double_perm_inv = args.perm_inv;
-//      double_perm_inv.reserve(2 * args.perm_inv.size());
-//      for (int64_t p : args.perm_inv) {
-//        double_perm_inv.push_back(p + rank_int);
-//      }
-//      PermuteInput(args.ctx.graph, args.node, 1, double_perm_inv);
-//    }
-//    for (size_t i = 2; i < inputs.size(); ++i) {
-//      if (inputs[i] != "") {
-//        PermuteInput(args.ctx.graph, args.node, i, args.perm_inv);
-//      }
-//    }
-//  }
-//
-//  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
-//  TransposeOutputs(args.ctx, args.node, args.perm);
-//
-//  return true;
-//}
+static bool HandleResize(HandlerArgs& args) {
+ auto inputs = args.node.Inputs();
+ int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
 
-// constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
+ auto p = ChannelFirstToLastPerm(rank_int);
+ auto& perm = p == args.perm ? args.perm : args.perm_inv;
+ auto& perm_inv = p == args.perm ? args.perm_inv : args.perm;
+
+ if (args.ctx.opset < 11) {
+    PermuteInput(args.ctx.graph, args.node, 1, perm);
+  } else {
+    if (inputs[1] != "") {
+      std::vector<int64_t> double_perm_inv = perm;
+      double_perm_inv.reserve(2 * args.perm.size());
+      for (int64_t p1 : perm) {
+        double_perm_inv.push_back(p1 + rank_int);
+      }
+      PermuteInput(args.ctx.graph, args.node, 1, double_perm_inv);
+    }
+    for (size_t i = 2; i < inputs.size(); ++i) {
+      if (inputs[i] != "") {
+        PermuteInput(args.ctx.graph, args.node, i, perm);
+      }
+    }
+  }
+
+ if (args.wrap_transpose_ops) {
+   TransposeFirstInput(args.ctx, args.node, perm);
+   TransposeOutputs(args.ctx, args.node, perm_inv);
+  }
+
+  SwapNodeOpTypeAndDomain(args.ctx.graph, args.node, args.node.OpType(), "com.microsoft.nhwc");
+
+  return true;
+}
+
+ constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
 
 static bool HandlePad(HandlerArgs& args) {
   size_t rank = args.perm.size();
@@ -1398,7 +1428,7 @@ static bool HandleTranspose(HandlerArgs& args) {
 
   if (args.perm_inv == *node_perm) {
     // Case 1: Permutations cancel.
-    auto consumers = args.ctx.graph.GetValueConsumers(args.node.Outputs()[0]);
+    auto consumers = args.ctx.graph.GetValueConsumers(node_output);
     if (consumers->comprehensive) {
       // If possible, replace references to output of 2nd transpose with input to 1st
       ReplaceValueReferences(consumers->nodes, node_output, transpose_input);
@@ -1432,7 +1462,6 @@ static bool HandleTranspose(HandlerArgs& args) {
         identity.SetInput(0, transpose_input);
       }
     }
-
     // In any case, the 2nd transpose can be removed.
     args.ctx.graph.RemoveNode(args.node);
   } else {
@@ -1442,7 +1471,7 @@ static bool HandleTranspose(HandlerArgs& args) {
     args.node.SetInput(0, transpose_input);
   }
 
-  // 2nd transpose no longer references 1st. Remove 2nd if possible.
+  // 2nd transpose no longer references 1st. Remove first if possible.
   if (!args.ctx.graph.HasValueConsumers(args.transpose.Outputs()[0])) {
     args.ctx.graph.RemoveNode(args.transpose);
   }
@@ -1484,7 +1513,7 @@ constexpr HandlerInfo q_linear_binary_op_handler = {&QLinearBinaryOpInputs, &Han
 
 static bool HandleQLinearPoolOp(HandlerArgs& args) {
   // Swap between channel first/last variants. Only works for applicable values of perm.
-  int64_t channels_last = args.node.GetAttributeIntDefault("channels_last", 1);
+  int64_t channels_last = args.node.GetAttributeIntDefault("channels_last", 0);
   size_t rank = args.perm.size();
   if (rank < 2) return false;
   auto p = ChannelLastToFirstPerm(rank);
@@ -1500,7 +1529,11 @@ static bool HandleQLinearPoolOp(HandlerArgs& args) {
 constexpr HandlerInfo q_linear_pool_op_handler = {&FirstInput, &HandleQLinearPoolOp};
 
 static bool HandleMaxPool(HandlerArgs& args) {
-  // Replace with NhwcMaxPool if possible. Only int8 and uint8 dtypes are supported by NhwcMaxPool.
+  // For CPU EP replace with NhwcMaxPool if possible. Only int8 and uint8 dtypes are supported by NhwcMaxPool.
+  if (args.node.GetExecutionProviderType() != "CPUExecutionProvider") {
+    return false;
+  }
+
   auto outputs = args.node.Outputs();
   if (outputs.size() == 2 && outputs[1] != "") {
     // Can't optimize if optional "indices" output is provided
@@ -1520,7 +1553,6 @@ static bool HandleMaxPool(HandlerArgs& args) {
 
   auto new_node = SwapNodeOpTypeAndDomain(args.ctx.graph, args.node, "NhwcMaxPool", "com.microsoft");
   new_node->ClearAttribute("storage_order");  // Only relevant for indices output. Prohibited for NhwcMaxPool.
-
   TransposeFirstInput(args.ctx, *new_node, args.perm_inv);
   TransposeOutputs(args.ctx, *new_node, args.perm);
   return true;
@@ -1563,9 +1595,10 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
   {"Split", split_handler},
   {"Shape", shape_handler},
   {"Pad", pad_handler},
+  // Only enabled during layout transform mode for NNAPI.
   // Todo: renable resize handler after adding NHWC support in upsample op on cpu
   // https://github.com/microsoft/onnxruntime/issues/9857
-  //{"Resize", resize_handler},
+  {"Resize", resize_handler},
   {"ReduceSum", reduce_sum_handler},
 
   {"ReduceLogSum", reduce_op_handler}, {"ReduceLogSumExp", reduce_op_handler}, {"ReduceMax", reduce_op_handler},
@@ -1595,6 +1628,10 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> extended_h
   {"com.microsoft.QLinearGlobalAveragePool", q_linear_pool_op_handler},
   {"MaxPool", max_pool_op_handler},
 };
+
+static const std::unordered_set<std::string_view> layout_sensitive_ops {
+    "Resize", "Conv", "QLinearConv", "AveragePool", "QLinearAveragePool", 
+    "GlobalAveragePool", "QLinearGlobalAveragePool", "MaxPool", "GlobalMaxPool", "LRN"};
 
 static const HandlerInfo* GetHandler(api::NodeRef& node, bool allow_extended_ops) {
   std::string key;
@@ -1668,13 +1705,19 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& 
     }
   }
 
+  // no need to wrap transposes around this op when mode is optimize layout transform and this is a layout
+  // sensitive op. This is becasue layout transformer already did this.
+  bool wrap_transposes =
+      ctx.mode == OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM && layout_sensitive_ops.count(node.OpType()) != 0
+          ? false
+          : true;
   std::vector<int64_t> perm_inv = InvertPerm(perm);
-  HandlerArgs args = {ctx, transpose, node, perm, perm_inv, input_indices};
+  HandlerArgs args = {ctx, transpose, node, perm, perm_inv, input_indices, wrap_transposes};
   return info->handler_fn(args);
 }
 
 // Returns nullopt if graph opset is unsupported.
-std::optional<OptimizerCtx> MakeOptimizerContext(api::GraphRef& graph, bool allow_extended_ops) {
+std::optional<OptimizerCtx> MakeOptimizerContext(api::GraphRef& graph, bool allow_extended_ops, const std::string& provider_type, OptimizerMode mode) {
   auto opset = graph.Opset("");
   if (opset == std::nullopt) {
     opset = graph.Opset("ai.onnx");
@@ -1688,7 +1731,11 @@ std::optional<OptimizerCtx> MakeOptimizerContext(api::GraphRef& graph, bool allo
       allow_extended_ops = false;
     }
   }
-  OptimizerCtx ctx{*opset, graph, allow_extended_ops, /*skip_cost_check*/ false};
+
+  // during layout transformation we want to push the transposes as far out as possible.
+  // it is important that the EP gets the entire graph in the layout it prefers.
+  bool skip_cost_check = mode == OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM ? true : false;
+  OptimizerCtx ctx{*opset, graph, allow_extended_ops, skip_cost_check, provider_type, mode};
   return ctx;
 }
 
@@ -1703,7 +1750,6 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
   // First iterate over sorted nodes in reverse order to find which outputs have paths through supported ops to
   // transpose nodes. We pull push transposes towards these outputs.
   for (size_t i = 0; i < nodes.size(); ++i) {
-
     api::NodeRef& node = *nodes[nodes.size() - i - 1];
     if (node.IsOp("Transpose")) {
       outputs_leading_to_transpose.insert(std::string(node.Inputs()[0]));
@@ -1731,6 +1777,18 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
   // New transpose nodes are inserted, but always as an input to an existing node.
   for (size_t i = 0; i < nodes.size(); ++i) {
     api::NodeRef& node = *nodes[i];
+    if (ctx.mode == OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM &&
+        layout_sensitive_ops.count(node.OpType()) && node.GetExecutionProviderType() != ctx.provider_type) {
+      // If the current op is layout sensitive and it is not assigned to the given provider
+      // then do not process transpose.
+      continue;
+    } 
+    
+    // Remove this once CPU Upsample op can handle NHWC.
+    if(ctx.mode == OptimizerMode::OPTIMIZE_TRANSPOSE && node.OpType() == "Resize") {
+      continue;
+    }
+
     std::vector<std::string_view> inputs = node.Inputs();
     for (size_t j = 0; j < inputs.size(); ++j) {
       std::string_view inp = inputs[j];
@@ -1741,7 +1799,6 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
       if (transpose != nullptr && transpose->IsOp("Transpose")) {
         std::optional<std::vector<int64_t>> perm = GetPermAttrIfValid(*transpose);
         if (perm != std::nullopt) {
-          std::vector<int64_t> perm_inv = InvertPerm(*perm);
           if (ProcessTranspose(ctx, *transpose, node, *perm, j, outputs_leading_to_transpose)) {
             changed = true;
             // Subsequent inputs may have changed and node may have been removed.
@@ -1754,8 +1811,8 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
   return changed;
 }
 
-bool Optimize(api::GraphRef& graph, bool allow_extended_ops) {
-  auto ctx = MakeOptimizerContext(graph, allow_extended_ops);
+bool Optimize(api::GraphRef& graph, bool allow_extended_ops, const std::string& provider_type, OptimizerMode mode) {
+  auto ctx = MakeOptimizerContext(graph, allow_extended_ops, provider_type, mode);
   if (ctx == std::nullopt) {
     return false;
   }
@@ -1781,15 +1838,14 @@ void WrapTransposesAroundNode(api::GraphRef& graph, api::NodeRef& node,
 
 std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api::NodeRef& node,
                                                       std::string_view op_type, std::string_view domain) {
-  auto inputs = node.Inputs();
   auto outputs = node.Outputs();
-  auto new_node = graph.AddNode(op_type, inputs, outputs.size(), domain);
+  auto new_node = graph.CopyNode(node, op_type, domain);
+
   for (size_t j = 0; j < outputs.size(); ++j) {
     if (outputs[j] != "") {
       graph.MoveOutput(node, j, *new_node, j);
     }
   }
-  new_node->CopyAttributes(node);
   graph.RemoveNode(node);
   return new_node;
 }

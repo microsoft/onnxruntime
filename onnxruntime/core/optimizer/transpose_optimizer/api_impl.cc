@@ -21,7 +21,7 @@ class ApiValueInfo final : public api::ValueInfoRef {
   NodeArg& node_arg_;
 
  public:
-  explicit ApiValueInfo(NodeArg& node_arg) : node_arg_(node_arg){}
+  explicit ApiValueInfo(NodeArg& node_arg) : node_arg_(node_arg) {}
   std::string_view Name() const override;
   std::optional<std::vector<int64_t>> Shape() const override;
   api::DataType DType() const override;
@@ -41,7 +41,7 @@ class ApiTensor final : public api::TensorRef {
   AllocatorPtr cpu_allocator_;
 
  public:
-  explicit ApiTensor(const onnx::TensorProto& tensor_proto, const Path& model_path, AllocatorPtr cpu_allocator) 
+  explicit ApiTensor(const onnx::TensorProto& tensor_proto, const Path& model_path, AllocatorPtr cpu_allocator)
       : tensor_proto_(tensor_proto), model_path_(model_path), cpu_allocator_(std::move(cpu_allocator)) {}
 
   const onnx::TensorProto& TensorProto() {
@@ -63,7 +63,7 @@ class ApiNode final : public api::NodeRef {
   Graph& graph_;
 
  public:
-  explicit ApiNode(onnxruntime::Node& node, Graph& graph) : node_(node), graph_(graph){}
+  explicit ApiNode(onnxruntime::Node& node, Graph& graph) : node_(node), graph_(graph) {}
 
   onnxruntime::Node& Node() {
     return node_;
@@ -84,6 +84,8 @@ class ApiNode final : public api::NodeRef {
   void CopyAttributes(const api::NodeRef& node) override;
   void ClearAttribute(std::string_view name) override;
   void SetInput(size_t i, std::string_view name) override;
+  const std::string& GetExecutionProviderType() const override;
+  virtual int SinceVersion() const override;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiNode);
@@ -99,7 +101,7 @@ class ApiGraph final : public api::GraphRef {
  public:
   explicit ApiGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const logging::Logger& logger,
                     const char* new_node_ep) : graph_(graph), cpu_allocator_(std::move(cpu_allocator)),
-                    logger_(logger), new_node_ep_(new_node_ep){}
+                    logger_(logger), new_node_ep_(new_node_ep) {}
 
   onnxruntime::Graph& Graph() {
     return graph_;
@@ -115,7 +117,9 @@ class ApiGraph final : public api::GraphRef {
   void TransposeInitializer(std::string_view name, const std::vector<int64_t>& perm) override;
   void ReshapeInitializer(std::string_view name, const std::vector<int64_t>& shape) override;
   std::unique_ptr<api::NodeRef> AddNode(std::string_view op_type, const std::vector<std::string_view>& inputs,
-                                     size_t num_outputs = 1, std::string_view domain = "") override;
+                                        size_t num_outputs = 1, std::string_view domain = "") override;
+
+  std::unique_ptr<api::NodeRef> CopyNode(const api::NodeRef& source_node, std::string_view op_type, std::string_view domain = "") override;
   void RemoveNode(api::NodeRef& node) override;
   void RemoveInitializer(std::string_view name) override;
   std::string_view AddInitializer(api::DataType dtype, const std::vector<int64_t>& shape,
@@ -376,6 +380,15 @@ void ApiNode::SetInput(size_t i, std::string_view name) {
     }
   }
 }
+
+const std::string& ApiNode::GetExecutionProviderType() const {
+  return node_.GetExecutionProviderType();
+}
+
+int ApiNode::SinceVersion() const {
+  return node_.SinceVersion();
+}
+
 // </ApiNode>
 
 std::optional<int64_t> ApiGraph::Opset(std::string_view domain) const {
@@ -561,11 +574,12 @@ void ApiGraph::ReshapeInitializer(std::string_view name, const std::vector<int64
   node_arg->SetShape(new_shape);
 }
 
-std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
-                                                const std::vector<std::string_view>& inputs, size_t num_outputs,
-                                                std::string_view domain) {
+static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_type,
+                              const std::vector<std::string_view>& inputs, size_t num_outputs,
+                              std::string_view domain, std::string_view node_ep) {
+
   const std::string op_type_str(op_type);
-  std::string name = graph_.GenerateNodeName(op_type_str);
+  std::string name = graph.GenerateNodeName(op_type_str);
   std::vector<NodeArg*> input_args;
   std::vector<NodeArg*> output_args;
 
@@ -573,46 +587,71 @@ std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
   for (const auto& input : inputs) {
     NodeArg* arg;
     if (input == "") {
-      arg = &graph_.GetOrCreateNodeArg("", nullptr);
+      arg = &graph.GetOrCreateNodeArg("", nullptr);
     } else {
-      arg = graph_.GetNodeArg(std::string(input));
+      arg = graph.GetNodeArg(std::string(input));
     }
     input_args.push_back(arg);
   }
 
   output_args.reserve(num_outputs);
   for (size_t i = 0; i < num_outputs; ++i) {
-    std::string output = graph_.GenerateNodeArgName(name + "_out" + std::to_string(i));
-    NodeArg* arg = &graph_.GetOrCreateNodeArg(output, nullptr);
+    std::string output = graph.GenerateNodeArgName(name + "_out" + std::to_string(i));
+    NodeArg* arg = &graph.GetOrCreateNodeArg(output, nullptr);
     output_args.push_back(arg);
   }
 
   std::vector<NodeArg*> outputs;
-  Node& node = graph_.AddNode(name, op_type_str, "Added in transpose optimizer", input_args, output_args, nullptr,
+  Node& node = graph.AddNode(name, op_type_str, "Added in transpose optimizer", input_args, output_args, nullptr,
                               std::string(domain));
 
-  if (new_node_ep_ != nullptr) {
-    node.SetExecutionProviderType(new_node_ep_);
-  }
+  graph.SetOpSchemaFromRegistryForNode(node);
+
+  node.SetExecutionProviderType(std::string(node_ep));
+
 
   for (size_t i = 0; i < input_args.size(); ++i) {
     NodeArg* arg = input_args[i];
     if (arg->Exists()) {
       const std::string& name_str = arg->Name();
-      graph_.AddConsumerNode(name_str, &node);
-      const auto* inp_node = graph_.GetProducerNode(name_str);
+      graph.AddConsumerNode(name_str, &node);
+      const auto* inp_node = graph.GetProducerNode(name_str);
       if (inp_node != nullptr) {
         int inp_node_out_index = graph_utils::GetNodeOutputIndexFromOutputName(*inp_node, name_str);
-        graph_.AddEdge(inp_node->Index(), node.Index(), inp_node_out_index, gsl::narrow_cast<int>(i));
+        graph.AddEdge(inp_node->Index(), node.Index(), inp_node_out_index, gsl::narrow_cast<int>(i));
       }
     }
   }
 
   for (NodeArg* arg : output_args) {
-    graph_.UpdateProducerNode(arg->Name(), node.Index());
+    graph.UpdateProducerNode(arg->Name(), node.Index());
   }
 
+  return node;
+}
+
+std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
+                                                const std::vector<std::string_view>& inputs, size_t num_outputs,
+                                                std::string_view domain) {
+  
+  Node& node = CreateNodeHelper(graph_, op_type, inputs, num_outputs, 
+                                domain, new_node_ep_ != nullptr ? new_node_ep_ : "");
   return std::make_unique<ApiNode>(node, graph_);
+}
+
+std::unique_ptr<api::NodeRef> ApiGraph::CopyNode(const api::NodeRef& source_node, std::string_view op_type,
+    std::string_view domain) {
+  Node& node = CreateNodeHelper(graph_, op_type, source_node.Inputs(),
+                                source_node.Outputs().size(), domain, source_node.GetExecutionProviderType());
+
+  if (node.SinceVersion() == -1) {
+    node.SetSinceVersion(source_node.SinceVersion());
+  }
+
+  std::unique_ptr<api::NodeRef> new_node = std::make_unique<ApiNode>(node, graph_);
+  new_node->CopyAttributes(source_node);
+
+  return new_node;
 }
 
 void ApiGraph::RemoveNode(api::NodeRef& node) {
@@ -690,6 +729,10 @@ void ApiGraph::CopyValueInfo(std::string_view src_name, std::string_view dst_nam
 std::unique_ptr<api::GraphRef> MakeApiGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator,
                                             const logging::Logger& logger, const char* new_node_ep) {
   return std::make_unique<ApiGraph>(graph, std::move(cpu_allocator), logger, new_node_ep);
+}
+
+std::unique_ptr<api::NodeRef> MakeApiNode(onnxruntime::Graph& graph, onnxruntime::Node& node) {
+  return std::make_unique<ApiNode>(node, graph);
 }
 
 onnxruntime::Graph& GraphFromApiGraph(onnx_layout_transformation::api::GraphRef& graph) {

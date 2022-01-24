@@ -217,6 +217,19 @@ class NodeRef {
     return GetAttributeInt(name).value_or(default_value);
   }
 
+  /// <summary>
+  /// Returns the Execution Provider assigned to this node. Any empty string means this node is
+  /// not assigned to any EP.
+  /// </summary>
+  /// <returns>EP type or empty string</returns>
+  virtual const std::string& GetExecutionProviderType() const = 0;
+
+  /// <summary>
+  /// Returns the schema since version for the op_type of this node. Value os -1 means it is not set.
+  /// </summary>
+  /// <returns>since version or default value -1</returns>
+  virtual int SinceVersion() const = 0;
+
   virtual ~NodeRef(){};
 };
 
@@ -335,6 +348,8 @@ class GraphRef {
   virtual std::unique_ptr<NodeRef> AddNode(std::string_view op_type, const std::vector<std::string_view>& inputs,
                                            size_t num_outputs, std::string_view domain = "") = 0;
 
+  virtual std::unique_ptr<NodeRef> CopyNode(const api::NodeRef& source_node, std::string_view op_type, std::string_view domain = "") = 0;
+
   /// <summary>
   /// Deletes a node from the graph. Behavior is undefined if node has any consumers.
   /// </summary>
@@ -409,6 +424,11 @@ class GraphRef {
 constexpr int64_t kMinSupportedOpset = 7;
 constexpr int64_t kMaxSupportedOpset = 15;
 
+enum class OptimizerMode {
+  OPTIMIZE_TRANSPOSE,        // simple transpose optimization
+  OPTIMIZE_LAYOUT_TRANSFORM  // transpose optimization post layout transformation
+};
+
 /// <summary>
 /// Performs transpose optimization on a graph. Returns true if the graph was modified.
 ///
@@ -421,7 +441,7 @@ constexpr int64_t kMaxSupportedOpset = 15;
 /// <param name="graph">The graph to optimize (or a portion of a graph, see api::GraphRef docs)</param>
 /// <param name="allow_extended_ops">Whether com.microsoft ops can be used for optimization</param>
 /// <returns>true if the graph was modified</returns>
-bool Optimize(api::GraphRef& graph, bool allow_extended_ops);
+bool Optimize(api::GraphRef& graph, bool allow_extended_ops, const std::string& provider_type = "", OptimizerMode mode = OptimizerMode::OPTIMIZE_TRANSPOSE);
 
 /* Layout Transformation Tools
  * These methods help change the channel ordering of layout sensitive ops (like Conv). ONNX currently only supports

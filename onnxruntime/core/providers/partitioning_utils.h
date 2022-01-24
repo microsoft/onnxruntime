@@ -54,6 +54,7 @@ Create the supported partitions for the execution provider.
 @param on_group_closed_fn Callback to indicate a completed partition node group.
 @param generate_metadef_name_fn Callback to create the name for the MetaDef.
 @param execution_provider_name Name of execution provider creating the ComputeCapability instance.
+@param current_ep ExecutionProviderType of the EP creating this ComputeCapability instance.
 @param debug_output Print diagnostic output about the partitions and reasons for partition breaks.
                     No-op in a release build.
 
@@ -65,6 +66,7 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const OnGroupClosedFn& on_group_closed_fn,
                           const GenerateMetadefNameFn& generate_metadef_name_fn,
                           const std::string& execution_provider_name,
+                          const std::string& current_ep,
                           bool debug_output = false);
 
 /** 
@@ -75,6 +77,7 @@ Create the supported partitions for the execution provider.
 @param stop_ops Set of operator names at which we stop considering nodes for assignment to this execution provider.
 @param generate_metadef_name Functor to create the name for the MetaDef.
 @param execution_provider_name Name of execution provider creating the ComputeCapability instance.
+@param current_ep ExecutionProviderType of the EP creating this ComputeCapability instance.
 @param debug_output Print diagnostic output about the partitions and reasons for partition breaks.
                     No-op in a release build.
 
@@ -86,6 +89,7 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const std::unordered_set<std::string>& stop_ops,
                           const GenerateMetadefNameFn& generate_metadef_name,
                           const std::string& execution_provider_name,
+                          const std::string& current_ep,
                           bool debug_output = false);
 
 /**
@@ -96,6 +100,7 @@ Will automatically determine the inputs and outputs required.
 @param group Group of nodes to include in the ComputeCapability instance.
 @param generate_metadef_name Functor to create the name for the MetaDef.
 @param execution_provider_name Name of execution provider creating the ComputeCapability instance.
+@param current_ep ExecutionProviderType of the EP creating this ComputeCapability instance.
 
 @returns New ComputeCapability instance.
 
