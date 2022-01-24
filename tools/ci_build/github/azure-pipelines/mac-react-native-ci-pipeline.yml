@@ -27,7 +27,7 @@ jobs:
 
   - script: |
       python -m pip install -q flatbuffers
-    workingDirectory: '$(Build.BinariesDirectory'
+    workingDirectory: '$(Build.BinariesDirectory)'
     displayName: Install python modules
 
   - script: |
