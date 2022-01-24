@@ -26,6 +26,11 @@ jobs:
     displayName: Setup gradle wrapper to use gradle 6.8.3
 
   - script: |
+      python -m pip install -q flatbuffers
+    workingDirectory: '$(Build.BinariesDirectory'
+    displayName: Install python modules
+
+  - script: |
       python3 tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
         --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
