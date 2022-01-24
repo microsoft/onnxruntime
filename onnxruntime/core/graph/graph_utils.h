@@ -21,6 +21,16 @@ namespace graph_utils {
 /** Returns the attribute of a Node with a given name. */
 const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name);
 
+/** Add a new initializer to 'graph'.
+Checks that new_initializer does not already exist in 'graph' before adding it.
+@returns The NodeArg for the new initializer.
+@remarks No matching graph input is created, so the initializer will be constant.
+*/
+NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
+
+/** Gets the index of an output arg with the specified output arg name. */
+int GetNodeOutputIndexFromOutputName(const Node& node, const std::string& output_name);
+
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -331,20 +341,6 @@ struct GraphEdge {
 };
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
-
-/** Add a new initializer to 'graph'.
-Checks that new_initializer does not already exist in 'graph' before adding it.
-@returns The NodeArg for the new initializer.
-@remarks No matching graph input is created, so the initializer will be constant.
-*/
-NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
-
-/** Gets the index of an output arg with the specified output arg name. */
-int GetNodeOutputIndexFromOutputName(const Node& node, const std::string& output_name);
-
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
 }  // namespace graph_utils
 }  // namespace onnxruntime
