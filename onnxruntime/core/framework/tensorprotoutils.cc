@@ -389,7 +389,7 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
     if (v < 0 || v > max_value) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "data overflow");
     }
-    p_data[i] = BFloat16(static_cast<uint16_t>(v));
+    p_data[i] = BFloat16(static_cast<uint16_t>(v), BFloat16::FromBits());
   }
 
   return Status::OK();
@@ -533,7 +533,9 @@ ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enu
     ptr[i].~string();
   }
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26409)
+#endif
 class AutoDelete {
  public:
   OrtCallback d{nullptr, nullptr};
@@ -594,7 +596,7 @@ static Status GetFileContent(
  * @param tensor_proto  tensor data in protobuf format
  * @param tensorp       pre-allocated tensor object, where we store the data
  * @return
-*/
+ */
 Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
                            const ONNX_NAMESPACE::TensorProto& tensor_proto,
                            Tensor& tensor) {
@@ -830,7 +832,7 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
       break;
     }
 #else
-  ORT_UNUSED_PARAMETER(model_path);
+      ORT_UNUSED_PARAMETER(model_path);
 #endif
     default:
       ORT_THROW("Unsupported attribute value type of ", constant_attribute.type(),
@@ -1098,7 +1100,6 @@ inline void CopyElement<uint8_t>(void* dst, const void* src, int64_t dst_index, 
   reinterpret_cast<uint8_t*>(dst)[dst_index] = reinterpret_cast<const uint8_t*>(src)[src_index];
 }
 
-
 template <typename T>
 static void SetIndices(gsl::span<int64_t> gathered_indices,
                        std::string& raw_indices,
@@ -1109,7 +1110,8 @@ static void SetIndices(gsl::span<int64_t> gathered_indices,
   for (auto src_index : gathered_indices) {
     ORT_IF_CONSTEXPR(sizeof(T) == sizeof(int8_t)) {
       ind_dest[dest_index] = static_cast<T>(src_index);
-    } else {
+    }
+    else {
       auto* dst = ind_dest + dest_index;
       T v = static_cast<T>(src_index);
       memcpy(dst, &v, sizeof(T));

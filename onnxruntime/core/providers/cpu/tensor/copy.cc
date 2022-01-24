@@ -8,9 +8,9 @@
 
 namespace onnxruntime {
 
-std::vector<int64_t> StridesForTensor(const Tensor& tensor) {
-  auto shape = tensor.Shape();
-  auto strides = std::vector<int64_t>(shape.NumDimensions());
+TensorShapeVector StridesForTensor(const Tensor& tensor) {
+  const auto& shape = tensor.Shape();
+  TensorShapeVector strides(shape.NumDimensions());
   int64_t running_size = 1;
   for (auto i = shape.NumDimensions(); i > 0; i--) {
     strides[i - 1] = running_size;
@@ -29,8 +29,8 @@ namespace {
       * strides[dim + 1] * shape[dim + 1] = strides[dim] (for all tensors)
 */
 inline bool CanCoalesce(
-    std::initializer_list<std::reference_wrapper<std::vector<int64_t>>>& tensors_strides,
-    const std::vector<int64_t>& shape,
+    std::initializer_list<std::reference_wrapper<TensorShapeVector>>& tensors_strides,
+    const gsl::span<const int64_t>& shape,
     std::size_t dim,
     std::size_t ndim) {
   auto shape_dim = shape[dim];
@@ -40,7 +40,7 @@ inline bool CanCoalesce(
   }
 
   for (const auto& cur_stride : tensors_strides) {
-    std::vector<int64_t>& strides = cur_stride.get();
+    auto& strides = cur_stride.get();
     if (shape_ndim * strides[ndim] != strides[dim]) {
       return false;
     }
@@ -52,10 +52,10 @@ inline bool CanCoalesce(
     Copy the stride from ndim to dim in all tensors.
 */
 inline void CopyStride(
-    std::initializer_list<std::reference_wrapper<std::vector<int64_t>>>& tensors_strides,
+    std::initializer_list<std::reference_wrapper<TensorShapeVector>>& tensors_strides,
     std::size_t dim, std::size_t ndim) {
   for (const auto& cur_stride : tensors_strides) {
-    std::vector<int64_t>& strides = cur_stride.get();
+    auto& strides = cur_stride.get();
     strides[dim] = strides[ndim];
   }
 }
@@ -65,8 +65,8 @@ inline void CopyStride(
 /*
     Coalesce contiguous dimensions in the tensors. Operates inplace on the function arguments.
 */
-void CoalesceDimensions(std::initializer_list<std::reference_wrapper<std::vector<int64_t>>>&& tensors_strides,
-                        std::vector<int64_t>& shape) {
+void CoalesceDimensions(std::initializer_list<std::reference_wrapper<TensorShapeVector>>&& tensors_strides,
+                        TensorShapeVector& shape) {
   const std::size_t dims = shape.size();
 
   // the current dimension is the one we are attempting to "coalesce onto"
@@ -92,7 +92,7 @@ void CoalesceDimensions(std::initializer_list<std::reference_wrapper<std::vector
 
   shape.resize(current_dim + 1);
   for (const auto& cur_stride : tensors_strides) {
-    std::vector<int64_t>& strides = cur_stride.get();
+    auto& strides = cur_stride.get();
     strides.resize(current_dim + 1);
   }
 }

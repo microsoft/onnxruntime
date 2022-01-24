@@ -42,8 +42,8 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
     return false;
   }
 
-  const float atol = 1e-8f;
-  const float rtol = 1e-5f;
+  constexpr float atol = 1e-8f;
+  constexpr float rtol = 1e-5f;
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
   if (is_constant) {
     tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());
@@ -76,7 +76,7 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
 
     const double expected_val = static_cast<double>(expected_value);
     double diff = std::abs(val[0] - expected_val);
-    if (diff > (atol + rtol * std::abs(expected_value))) {
+    if (diff > (atol + static_cast<double>(rtol) * std::abs(expected_value))) {
       return false;
     }
   } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {

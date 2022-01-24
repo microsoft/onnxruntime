@@ -56,10 +56,24 @@ std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const O
 
 std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
 #ifdef USE_MIGRAPHX
-  return CreateExecutionProviderFactory_MIGraphX(0)->CreateProvider();
+  OrtMIGraphXProviderOptions params{
+      0,
+      0,
+      0};
+  return CreateExecutionProviderFactory_MIGraphX(&params)->CreateProvider();
 #else
   return nullptr;
 #endif
+}
+
+std::unique_ptr<IExecutionProvider> MIGraphXExecutionProviderWithOptions(const OrtMIGraphXProviderOptions* params) {
+#ifdef USE_MIGRAPHX
+  if (auto factory = CreateExecutionProviderFactory_MIGraphX(params))
+    return factory->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(params);
+#endif
+  return nullptr;
 }
 
 std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
@@ -99,6 +113,14 @@ std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider(bool allow_un
   return nullptr;
 #endif
 }
+
+// std::unique_ptr<IExecutionProvider> DefaultStvmExecutionProvider() {
+// #ifdef USE_STVM
+//   return CreateExecutionProviderFactory_Stvm("")->CreateProvider();
+// #else
+//   return nullptr;
+// #endif
+// }
 
 std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
 // For any non - Android system, NNAPI will only be used for ort model converter

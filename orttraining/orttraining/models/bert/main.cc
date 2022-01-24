@@ -800,7 +800,7 @@ static Status RunPerformanceTest(const BertParameters& params, const Environment
 }
 
 static Status RunTraining(const BertParameters& params, const Environment& env) {
-  const size_t max_num_files_preload = 2;
+  constexpr size_t max_num_files_preload = 2;
 
   auto runner = std::make_unique<TrainingRunner>(params, env, session_options);
   ORT_RETURN_IF_ERROR(runner->Initialize());

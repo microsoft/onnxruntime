@@ -24,7 +24,9 @@ using onnxruntime::MLFloat16;
 using onnxruntime::SparseTensor;
 #endif
 using onnxruntime::Tensor;
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26409)
+#endif
 ORT_API_STATUS_IMPL(OrtApis::CreateTensorTypeAndShapeInfo, _Outptr_ OrtTensorTypeAndShapeInfo** out) {
   API_IMPL_BEGIN
   *out = new OrtTensorTypeAndShapeInfo();
@@ -84,10 +86,10 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorShapeElementCount, _In_ const OrtTensorTyp
 
 struct OrtValue;
 
-ONNXTensorElementDataType TensorDataTypeToOnnxRuntimeTensorElementDataType(
+constexpr ONNXTensorElementDataType TensorDataTypeToOnnxRuntimeTensorElementDataType(
     int32_t dtype) {
   namespace o = ONNX_NAMESPACE;
-  ONNXTensorElementDataType type;
+  ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   switch (dtype) {
     case o::TensorProto_DataType_FLOAT:
       type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
@@ -317,10 +319,10 @@ ORT_API_STATUS_IMPL(OrtApis::GetValueType, _In_ const OrtValue* v, _Out_ ONNXTyp
 }
 
 /**
-* Get the type information of an OrtValue
-* \param value
-* \return The returned value should be freed by OrtReleaseTypeInfo after use
-*/
+ * Get the type information of an OrtValue
+ * \param value
+ * \return The returned value should be freed by OrtReleaseTypeInfo after use
+ */
 ORT_API_STATUS_IMPL(OrtApis::GetTypeInfo, _In_ const OrtValue* v, _Outptr_result_maybenull_ struct OrtTypeInfo** out) {
   API_IMPL_BEGIN
   // TODO: This is consistent with the previous implementation but inconsistent with GetValueType which returns

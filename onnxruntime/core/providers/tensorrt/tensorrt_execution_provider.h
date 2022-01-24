@@ -39,10 +39,16 @@ class TensorrtLogger : public nvinfer1::ILogger {
   void log(Severity severity, const char* msg) noexcept override {
     if (severity <= verbosity_) {
       time_t rawtime = std::time(0);
+      struct tm stm;
+#ifdef _MSC_VER
+      gmtime_s(&stm, &rawtime);
+#else
+      gmtime_r(&rawtime, &stm);
+#endif
       char buf[256];
       strftime(&buf[0], 256,
                "%Y-%m-%d %H:%M:%S",
-               std::gmtime(&rawtime));
+               &stm);
       const char* sevstr = (severity == Severity::kINTERNAL_ERROR ? "    BUG" : severity == Severity::kERROR ? "  ERROR"
                                                                             : severity == Severity::kWARNING ? "WARNING"
                                                                             : severity == Severity::kINFO    ? "   INFO"
@@ -81,9 +87,9 @@ struct TensorrtFuncState {
   tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>* context = nullptr;
   tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>* builder = nullptr;
   tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>* network = nullptr;
-  std::vector<std::unordered_map<std::string, int>> input_info;
-  std::vector<std::unordered_map<std::string, int>> output_info;
-  std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> input_shape_ranges;
+  std::vector<std::unordered_map<std::string, size_t>> input_info;
+  std::vector<std::unordered_map<std::string, size_t>> output_info;
+  std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> input_shape_ranges;
   OrtMutex* tensorrt_mu_ptr = nullptr;
   bool fp16_enable;
   bool int8_enable;
@@ -140,7 +146,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool external_stream_ = false;
   cudaStream_t stream_ = nullptr;
   int max_partition_iterations_ = 1000;
-  int min_subgraph_size_ = 1;
+  size_t min_subgraph_size_ = 1;
   size_t max_workspace_size_ = 1 << 30;  // 1GB
   bool fp16_enable_ = false;
   bool int8_enable_ = false;
@@ -167,9 +173,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>> contexts_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::IBuilder>> builders_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::INetworkDefinition>> networks_;
-  std::unordered_map<std::string, std::vector<std::unordered_map<std::string, int>>> input_info_;
-  std::unordered_map<std::string, std::vector<std::unordered_map<std::string, int>>> output_info_;
-  std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
+  std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> input_info_;
+  std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> output_info_;
+  std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
 
   /**Get IndexedSubGraph based on node list of the subgraph*/
   std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index,

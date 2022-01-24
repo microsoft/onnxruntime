@@ -43,16 +43,22 @@ function(setup_mlas_source_for_windows)
       target_sources(onnxruntime_mlas PRIVATE
         ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
+        ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
       )
 
       set(mlas_platform_preprocess_srcs
+        ${MLAS_SRC_DIR}/arm64/ConvSymU8KernelDot.asm
+        ${MLAS_SRC_DIR}/arm64/ConvSymU8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/DepthwiseConvsymKernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/DepthwiseQConvKernelSize9Neon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmU8X8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmS8S8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmU8X8KernelUdot.asm
+        ${MLAS_SRC_DIR}/arm64/QgemmS8S8KernelSdot.asm
         ${MLAS_SRC_DIR}/arm64/SgemmKernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/SgemvKernelNeon.asm
+        ${MLAS_SRC_DIR}/arm64/SymQgemmS8KernelNeon.asm
+        ${MLAS_SRC_DIR}/arm64/SymQgemmS8KernelSDot.asm
       )
     else()
       target_sources(onnxruntime_mlas PRIVATE
@@ -172,7 +178,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
     )
   else()
     file(GLOB_RECURSE mlas_platform_srcs
-      "${MLAS_SRC_DIR}/wasm/*.cpp"
+      "${MLAS_SRC_DIR}/scalar/*.cpp"
     )
   endif()
   target_sources(onnxruntime_mlas PRIVATE ${mlas_platform_srcs})
@@ -266,15 +272,21 @@ else()
     if(ARM64 AND MLAS_SOURCE_IS_NOT_SET )
         enable_language(ASM)
         set(mlas_platform_srcs
+          ${MLAS_SRC_DIR}/aarch64/ConvSymU8KernelDot.S
+          ${MLAS_SRC_DIR}/aarch64/ConvSymU8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/DepthwiseConvSymKernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/DepthwiseQConvKernelSize9Neon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUdot.S
+          ${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSdot.S
           ${MLAS_SRC_DIR}/aarch64/SgemmKernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/SgemvKernelNeon.S
+          ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelNeon.S
+          ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelSdot.S
           ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
+          ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
         )
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
             onnxruntime_add_static_library(onnxruntime_mlas_arm64 ${mlas_platform_srcs})
@@ -328,7 +340,7 @@ else()
               ${mlas_platform_srcs_power10}
             )
           endif()
-    endif()
+        endif()
         if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
           set(MLAS_SOURCE_IS_NOT_SET 0)
         endif()
@@ -351,6 +363,16 @@ else()
           ${mlas_platform_srcs_sse2}
           ${mlas_platform_srcs_avx}
         )
+
+        # In r23, NDK remove __x86.get_pc_thunk.* from libatomic. Add our own
+        # implementation to avoid external dependency.
+        if(ANDROID)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+            ${MLAS_SRC_DIR}/x86/x86.get_pc_thunk.S
+          )
+        endif()
+
         if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
           set(MLAS_SOURCE_IS_NOT_SET 0)
         endif()
@@ -444,9 +466,12 @@ else()
           list(APPEND ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas_x86_64)
           set(mlas_platform_srcs )
         else()
-          set(MLAS_SOURCE_IS_NOT_SET 1)
+          set(MLAS_SOURCE_IS_NOT_SET 0)
         endif()
-
+    endif()
+    if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH AND MLAS_SOURCE_IS_NOT_SET)
+        file(GLOB_RECURSE mlas_platform_srcs
+          "${MLAS_SRC_DIR}/scalar/*.cpp")
     endif()
     target_sources(onnxruntime_mlas PRIVATE ${mlas_platform_srcs})
 endif()
@@ -457,4 +482,7 @@ endforeach()
 set_target_properties(onnxruntime_mlas PROPERTIES FOLDER "ONNXRuntime")
 if (WIN32)
   target_compile_options(onnxruntime_mlas PRIVATE "/wd6385" "/wd4127")
+  if (onnxruntime_ENABLE_STATIC_ANALYSIS)
+    target_compile_options(onnxruntime_mlas PRIVATE  "/analyze:stacksize 131072")
+  endif()
 endif()

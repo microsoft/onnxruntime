@@ -30,7 +30,7 @@ class CudaKernel : public OpKernel {
     if (s.IsOK()) {
       auto err = cudaGetLastError();
       if (err != cudaSuccess) {
-        s = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA error ", cudaGetErrorName(err), ":", cudaGetErrorString(err));
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA error ", cudaGetErrorName(err), ":", cudaGetErrorString(err));
       }
     }
 
@@ -89,6 +89,10 @@ class CudaKernel : public OpKernel {
     }
 
     CudaAsyncBuffer(const CudaKernel* op_kernel, const std::vector<T>& vec) : CudaAsyncBuffer(op_kernel, vec.size()) {
+      memcpy(CpuPtr(), vec.data(), vec.size() * sizeof(T));
+    }
+
+    CudaAsyncBuffer(const CudaKernel* op_kernel, const TensorShapeVector& vec) : CudaAsyncBuffer(op_kernel, vec.size()) {
       memcpy(CpuPtr(), vec.data(), vec.size() * sizeof(T));
     }
 

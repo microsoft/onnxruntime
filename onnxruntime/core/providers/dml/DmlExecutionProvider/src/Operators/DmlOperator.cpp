@@ -389,34 +389,6 @@ namespace Dml
             ));
     }
 
-    void DmlOperator::Remap64bitDmlDataTypesTo32bit()
-    {
-        for (auto& tensor : m_inputTensorDescs)
-        {
-            tensor.Remap64bitDmlDataTypeTo32bit();
-        }
-
-        for (auto& tensor : m_outputTensorDescs)
-        {
-            tensor.Remap64bitDmlDataTypeTo32bit();
-        }
-    }
-
-    void DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded()
-    {
-        // Conditionally remap 64-bit data types to strided 32-bit if DML does not
-        // support 64-bit data types directly on the device.
-
-        uint32_t deviceTypeMask = Dml::GetSupportedDeviceDataTypeMask(m_dmlDevice.Get());
-        uint32_t deviceTypeMask64bit = (1 << DML_TENSOR_DATA_TYPE_INT64) | (1 << DML_TENSOR_DATA_TYPE_UINT64);
-
-        // If the device doesn't support 64-bit tensors, fall back to 32-bit with strides.
-        if (!(deviceTypeMask & deviceTypeMask64bit))
-        {
-            Remap64bitDmlDataTypesTo32bit();
-        }
-    }
-
     TensorDesc DmlOperator::CreateTensorDescFromInput(
         const MLOperatorKernelCreationContext& kernelInfo,
         uint32_t index,

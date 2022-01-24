@@ -1,10 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef _WIN32
-// disable some warnings from protobuf to pass Windows build
-#pragma warning(disable : 4244)
-#endif
+#include "core/graph/graph.h"
 
 #include <cassert>
 #include <fstream>
@@ -705,7 +702,7 @@ flatbuffers::Offset<fbs::NodeEdge> Node::SaveEdgesToOrtFormat(flatbuffers::FlatB
 
 Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, Graph& graph,
                                const logging::Logger& logger, std::unique_ptr<Node>& node) {
-  node.reset(new Node(fbs_node.index(), graph));
+  node = std::make_unique<Node>(fbs_node.index(), graph);
   return node->LoadFromOrtFormat(fbs_node, logger);
 }
 
@@ -860,9 +857,9 @@ void Node::CreateSubgraph(const std::string& attr_name) {
 
   if (attr != attributes_.cend() && utils::HasGraph(attr->second)) {
     GraphProto& mutable_graph = *attr->second.mutable_g();
-    std::unique_ptr<Graph> subgraph{new Graph(*graph_, *this, mutable_graph)};
+    std::unique_ptr<Graph> subgraph = std::make_unique<Graph>(*graph_, *this, mutable_graph);
     attr_to_subgraph_map_.insert({std::string(attr_name), gsl::not_null<Graph*>{subgraph.get()}});
-    subgraphs_.push_back(std::move(subgraph));
+    subgraphs_.emplace_back(std::move(subgraph));
   }
 }
 
@@ -1069,7 +1066,7 @@ void Node::ForEachDef(std::function<void(const onnxruntime::NodeArg&, bool is_in
 
 // Constructor: Given a <GraphProto> loaded from model file, construct
 // a <Graph> object and Resolve() it.
-//Status Graph::LoadGraph(const GraphProto& graph_proto,
+// Status Graph::LoadGraph(const GraphProto& graph_proto,
 //                        const std::unordered_map<std::string, int>& domain_to_version,
 //                        Version ir_version,
 //                        std::unique_ptr<Graph>& new_graph) {
@@ -1104,7 +1101,7 @@ Graph::Graph(const Model& owning_model,
              const logging::Logger& logger)
     : owning_model_(owning_model),
       graph_proto_(graph_proto),
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
       runtime_optimizations_ptr_(std::make_unique<RuntimeOptimizationRecordContainer>()),
       runtime_optimizations_(*runtime_optimizations_ptr_),
 #endif
@@ -1610,16 +1607,19 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
   // now build connections within this Graph instance
   node_arg_to_producer_node_.clear();
   node_arg_to_consumer_nodes_.clear();
+
   for (auto& node : Nodes()) {
     // Need mutable input defs to be able to set any outer scope NodeArg implicit inputs
     auto& input_args = node.MutableInputDefs();
     auto& output_args = node.MutableOutputDefs();
 
-    if (!output_args.empty()) {
-      for (const auto* output_arg : output_args) {
-        if (output_arg->Exists()) {
-          node_arg_to_producer_node_.insert({output_arg->Name(), node.Index()});
-        }
+    for (const auto* implicit_input : node.ImplicitInputDefs()) {
+      node_arg_to_consumer_nodes_[implicit_input->Name()].insert(node.Index());
+    }
+
+    for (const auto* output_arg : output_args) {
+      if (output_arg->Exists()) {
+        node_arg_to_producer_node_.insert({output_arg->Name(), node.Index()});
       }
     }
 
@@ -2587,6 +2587,15 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     }
   }
 
+  // verify subgraphs
+  for (auto node_index : nodes_in_topological_order_) {
+    auto& node = *GetNode(node_index);
+    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+      Graph* subgraph = entry.second;
+      ORT_RETURN_IF_ERROR(subgraph->VerifyNodeAndOpMatch(options));
+    }
+  }
+
   return Status::OK();
 }
 
@@ -2644,7 +2653,7 @@ void Graph::InitFunctionBodyForNode(Node& node) {
                            << node.Name() << "' optype " << node.OpType()
 #ifndef ORT_NO_EXCEPTIONS
                            << ". Error message " << e.what()
-#endif  //ORT_NO_EXCEPTIONS
+#endif  // ORT_NO_EXCEPTIONS
                            << ". Execution will fail if ORT does not have a specialized kernel for this op";
     // Return without using this function op's expansion. No need to fail just yet.
     // If ORT has a specialized kernel for this op then execution will proceed
@@ -2858,7 +2867,7 @@ static void RemoveRepeatedFieldEntry(T& repeated_field, const TIter& entry_to_re
     // we do this so we don't have to move all the entries past the one being deleted down one.
     auto slot = entry_to_remove - repeated_field.begin();
     auto last_entry = repeated_field.end() - 1;
-    repeated_field.SwapElements(slot, num_entries - 1);
+    repeated_field.SwapElements(gsl::narrow<int>(slot), gsl::narrow<int>(num_entries - 1));
     repeated_field.erase(last_entry);
   } else {
     repeated_field.erase(entry_to_remove);
@@ -3167,7 +3176,7 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto nodes = builder.CreateVector(nodes_vec);
   auto node_edges = builder.CreateVector(node_edges_vec);
 
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
   auto runtime_optimizations = flatbuffers::Offset<fbs::RuntimeOptimizations>{};  // null value
   if (!RuntimeOptimizations().IsEmpty()) {
     flatbuffers::Offset<RuntimeOptimizationRecordContainer::FbsRuntimeOptimizationRecordContainer>
@@ -3188,7 +3197,7 @@ common::Status Graph::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 #if !defined(DISABLE_SPARSE_TENSORS)
   gb.add_sparse_initializers(sparse_initializers);
 #endif
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
   gb.add_runtime_optimizations(runtime_optimizations);
 #endif
   fbs_graph = gb.Finish();
@@ -3470,7 +3479,7 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
   std::unordered_set<const NodeArg*> used_args;
   used_args.reserve(node_args_.size());
 
-  //Node Args we want to preserved even not being used
+  // Node Args we want to preserved even not being used
   std::unordered_set<const NodeArg*> node_args_to_preserve;
   if (initializer_names_to_preserve) {
     node_args_to_preserve.reserve(initializer_names_to_preserve->size());
@@ -3990,7 +3999,7 @@ Status Graph::InlineFunction(Node& node) {
   // main graph.
   const Graph& subgraph = node.GetFunctionBody()->Body();
   auto output_edges = node.GetRelationships().output_edges;
-  for (auto output_edge : output_edges) {
+  for (const auto& output_edge : output_edges) {
     RemoveEdge(node.Index(), output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());
   }
 
@@ -4121,7 +4130,7 @@ void Graph::SetNodeArgType(NodeArg& arg, const ONNX_NAMESPACE::TypeProto& type_p
   GraphResolveNeeded(true);
 }
 
-#endif  //  !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 Graph::~Graph() {
   // nothing to do, but we put it here so we don't need to fully define types in Graph that are held in unique_ptr
@@ -4207,12 +4216,11 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                 IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
 #endif
                                 const logging::Logger& logger, std::unique_ptr<Graph>& graph) {
-  // can't use make_unique as we're calling a private ctor
-  graph.reset(new Graph(owning_model, domain_to_version,
+  graph = std::make_unique<Graph>(owning_model, domain_to_version,
 #if !defined(ORT_MINIMAL_BUILD)
-                        schema_registry,
+                                  schema_registry,
 #endif
-                        nullptr, nullptr, logger));
+                                  nullptr, nullptr, logger);
 
   ORT_RETURN_IF_ERROR(graph->LoadFromOrtFormat(fbs_graph));
 
@@ -4231,14 +4239,13 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
 Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                 Graph& parent_graph, const Node& parent_node,
                                 const logging::Logger& logger, std::unique_ptr<Graph>& graph) {
-  // can't use make_unique as we're calling a private ctor
-  graph.reset(new Graph(parent_graph.owning_model_,
-                        parent_graph.domain_to_version_,
+  graph = std::make_unique<Graph>(parent_graph.owning_model_,
+                                  parent_graph.domain_to_version_,
 #if !defined(ORT_MINIMAL_BUILD)
-                        parent_graph.schema_registry_,
+                                  parent_graph.schema_registry_,
 #endif
-                        &parent_graph, &parent_node,
-                        logger));
+                                  &parent_graph, &parent_node,
+                                  logger);
 
   return graph->LoadFromOrtFormat(fbs_graph);
 }
@@ -4252,7 +4259,7 @@ Graph::Graph(const Model& owning_model,
              const logging::Logger& logger)
     : owning_model_(owning_model),
       graph_proto_(&deserialized_proto_data_),
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
       runtime_optimizations_ptr_(std::make_unique<RuntimeOptimizationRecordContainer>()),
       runtime_optimizations_(*runtime_optimizations_ptr_),
 #endif
@@ -4339,8 +4346,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
       ORT_RETURN_IF(nullptr == fbs_value_info, "NodeArg is missing. Invalid ORT format model.");
       NodeArgInfo node_arg_info;
       ORT_RETURN_IF_ERROR(fbs::utils::LoadValueInfoOrtFormat(*fbs_value_info, node_arg_info));
-      // NodeArg ctor is private, cannot use make_unique
-      node_args_[fbs_value_info->name()->str()] = std::unique_ptr<NodeArg>(new NodeArg(std::move(node_arg_info)));
+      node_args_[fbs_value_info->name()->str()] = std::make_unique<NodeArg>(std::move(node_arg_info));
     }
   }
 
@@ -4400,14 +4406,14 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
 
   ORT_RETURN_IF_ERROR(add_node_args(fbs_graph.outputs(), graph_outputs_));
 
-#if defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
   // runtime optimizations
   if (const auto* fbs_runtime_optimizations = fbs_graph.runtime_optimizations()) {
     if (const auto* fbs_runtime_optimization_records = fbs_runtime_optimizations->records()) {
       ORT_RETURN_IF_ERROR(MutableRuntimeOptimizations().LoadFromOrtFormat(*fbs_runtime_optimization_records));
     }
   }
-#endif  // defined(ORT_ENABLE_ORT_FORMAT_RUNTIME_GRAPH_OPTIMIZATION)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
 
   return Status::OK();
 }
