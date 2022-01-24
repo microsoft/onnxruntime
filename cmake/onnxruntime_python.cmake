@@ -678,7 +678,19 @@ if (onnxruntime_USE_STVM)
     COMMAND ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:onnxruntime_providers_stvm>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${tvm_BINARY_DIR}/libtvm*
+        ${tvm_SOURCE_DIR}/python/tvm
+  )
+
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+      WORKING_DIRECTORY ${tvm_SOURCE_DIR}/python
+      COMMAND ${Python_EXECUTABLE} setup.py build_ext --inplace
+      COMMAND ${CMAKE_COMMAND} -E env CONDA_BUILD=ON
+        ${Python_EXECUTABLE} setup.py bdist_wheel
     )
+
 endif()
 
 if (onnxruntime_USE_DML)

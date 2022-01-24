@@ -439,8 +439,6 @@ def parse_arguments():
     parser.add_argument(
         "--use_stvm", action='store_true', help="Build with standalone TVM")
     parser.add_argument(
-        "--stvm_home", help="Path to TVM installation for the standalone TVM execution provider.")
-    parser.add_argument(
         "--use_tensorrt", action='store_true', help="Build with TensorRT")
     parser.add_argument(
         "--tensorrt_home", help="Path to TensorRT installation dir")

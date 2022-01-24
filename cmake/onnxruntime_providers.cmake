@@ -1272,7 +1272,7 @@ endif()
 
 if (onnxruntime_USE_STVM)
   if (NOT TARGET tvm)
-    message(STATUS "include tvm.")
+    message(STATUS "Include TVM.")
     include(tvm)
   endif()
   add_definitions(-DUSE_STVM=1)
