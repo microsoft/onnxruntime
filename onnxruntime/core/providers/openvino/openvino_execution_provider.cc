@@ -25,22 +25,24 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   } else {
     openvino_ep::BackendManager::GetGlobalContext().num_of_threads = info.num_of_threads_;
   }
-
-bool device_found = false;
-auto available_devices = openvino_ep::BackendManager::GetGlobalContext().ie_core.GetAvailableDevices();
+  //to check if target device is available
+  //using ie_core capability GetAvailableDevices to fetch list of devices plugged in
+  bool device_found = false;
+  auto available_devices = openvino_ep::BackendManager::GetGlobalContext().ie_core.GetAvailableDevices();
   for (auto device : available_devices) {
     if (device == info.device_type_) {
       device_found = true;
       break;
     }
   }
-    if (!device_found || info.device_type_ == "") {
-      std::string err_msg = std::string("Device not found : ") + info.device_id_ + "\nChoose one of:\n";
-      for (auto device : available_devices) {
-        err_msg = err_msg + device + "\n";
-      }
-      ORT_THROW(err_msg);
+  //stop execution if target device field is empty or not available in list of available devices
+  if (!device_found || info.device_type_ == "") {
+  std::string err_msg = std::string("Device not found : ") + info.device_id_ + "\nChoose one of:\n";
+    for (auto device : available_devices) {
+      err_msg = err_msg + device + "\n";
     }
+    ORT_THROW(err_msg);
+  }
   openvino_ep::BackendManager::GetGlobalContext().device_id = info.device_id_;
 
   AllocatorCreationInfo device_info(
