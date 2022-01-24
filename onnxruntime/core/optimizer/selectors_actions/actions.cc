@@ -13,13 +13,17 @@ namespace onnxruntime {
 
 namespace {
 
+bool IsSafe(const Node& node_to_remove) {
+  return true;
+}
+
 // Check if a node involved in an optimization can be safely removed due to it only having outputs consumed by nodes
 // in the removal_set. If it has an output edge to a node outside of that set it must remain.
 // As we can't easily remove a NodeArg from the Node::OutputDefs for the node being removed, we do not check if the
 // node provides graph outputs here. The optimizer must correctly handle nodes producing graph outputs
 // and not attempt to delete one of those nodes unless it has created a new source for the graph output.
 bool CanSafelyRemoveNode(const Node& node_to_remove, const std::unordered_set<const Node*>& removal_set) {
-  bool safe = true;
+  bool safe = IsSafe(node_to_remove);
   for (auto iter = node_to_remove.OutputEdgesBegin(), end = node_to_remove.OutputEdgesEnd(); iter != end; ++iter) {
     if (removal_set.find(&iter->GetNode()) == removal_set.cend()) {
       safe = false;
