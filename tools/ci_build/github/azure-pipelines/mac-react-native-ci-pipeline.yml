@@ -19,6 +19,8 @@ jobs:
 - job: ReactNative_CI
   pool:
     vmImage: 'macOS-11'
+  dependsOn:
+  - Android_Aar_Packaging
   timeoutInMinutes: 60
   steps:
   # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
