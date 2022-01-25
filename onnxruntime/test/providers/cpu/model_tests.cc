@@ -995,43 +995,44 @@ TEST_P(ModelTest, Run) {
   return v;
 }
 
-auto ExpandModelName  = [](const ::testing::TestParamInfo<ModelTest::ParamType>& info) {
-  // use info.param here to generate the test suffix
-  std::basic_string<ORTCHAR_T> name = info.param;
+//auto ExpandModelName  = [](const ::testing::TestParamInfo<ModelTest::ParamType>& info) {
+  //// use info.param here to generate the test suffix
+  //std::basic_string<ORTCHAR_T> name = info.param;
 
-  // the original name here is the combination of provider name and model path name
-  // remove the trailing 'xxxxxxx/model.onnx' of name
-  if (name.size() > 11 && name.substr(name.size() - 11) == ORT_TSTR("/model.onnx")) {
-    name = name.substr(0, info.param.size() - 11);
-  }
-  // remove the trailing 'xxxxxx.onnx' of name
-  else if (name.size() > 5 && name.substr(name.size() - 5) == ORT_TSTR(".onnx")) {
-    name = name.substr(0, info.param.size() - 5);
-  }
+  //// the original name here is the combination of provider name and model path name
+  //// remove the trailing 'xxxxxxx/model.onnx' of name
+  //if (name.size() > 11 && name.substr(name.size() - 11) == ORT_TSTR("/model.onnx")) {
+    //name = name.substr(0, info.param.size() - 11);
+  //}
+  //// remove the trailing 'xxxxxx.onnx' of name
+  //else if (name.size() > 5 && name.substr(name.size() - 5) == ORT_TSTR(".onnx")) {
+    //name = name.substr(0, info.param.size() - 5);
+  //}
 
-  // Note: test name only accepts '_' and alphanumeric
-  // replace '/' or '\' with '_'
-  std::replace(name.begin(), name.end(), '/', '_');
-  std::replace(name.begin(), name.end(), '\\', '_');
+  //// Note: test name only accepts '_' and alphanumeric
+  //// replace '/' or '\' with '_'
+  //std::replace(name.begin(), name.end(), '/', '_');
+  //std::replace(name.begin(), name.end(), '\\', '_');
 
-  // Note: test name only accepts '_' and alphanumeric
-  // remove '.' and '-'
-  char chars[] = ".-";
-  for (unsigned int i = 0; i < strlen(chars); ++i) {
-    name.erase(std::remove(name.begin(), name.end(), chars[i]), name.end());
-  }
-#ifdef _WIN32
-  // Note: The return value of INSTANTIATE_TEST_SUITE_P accpets std::basic_string<char...>.
-  // Need conversion of wchar_t to char.
-  return std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(name);
-#else
-  return name;
-#endif
-};
+  //// Note: test name only accepts '_' and alphanumeric
+  //// remove '.' and '-'
+  //char chars[] = ".-";
+  //for (unsigned int i = 0; i < strlen(chars); ++i) {
+    //name.erase(std::remove(name.begin(), name.end(), chars[i]), name.end());
+  //}
+//#ifdef _WIN32
+  //// Note: The return value of INSTANTIATE_TEST_SUITE_P accpets std::basic_string<char...>.
+  //// Need conversion of wchar_t to char.
+  //return std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(name);
+//#else
+  //return name;
+//#endif
+//};
 
 // The optional last argument is a function or functor that generates custom test name suffixes based on the test parameters.
 // Specify the last argument to make test name more meaningful and clear instead of just the sequential number.
-INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::ValuesIn(GetParameterStrings()), ExpandModelName);
+//INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::ValuesIn(GetParameterStrings()), ExpandModelName);
+INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::ValuesIn(GetParameterStrings()));
 
 }  // namespace test
 }  // namespace onnxruntime
