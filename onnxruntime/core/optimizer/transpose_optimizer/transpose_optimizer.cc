@@ -35,7 +35,6 @@ struct HandlerArgs {
   const std::vector<int64_t>& perm_inv;
   // Cached result from calling transposible_inputs_fn
   std::vector<size_t>& transposible_inputs;
-  bool wrap_transpose_ops = true;
 };
 
 using HandlerFunction = bool (*)(HandlerArgs& args);
@@ -964,43 +963,41 @@ static void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, con
   node.SetInput(i, gather_output);
 }
 
-static bool HandleResize(HandlerArgs& args) {
- auto inputs = args.node.Inputs();
- int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
+//static bool HandleResize(HandlerArgs& args) {
+// auto inputs = args.node.Inputs();
+// int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
+//
+// auto p = ChannelFirstToLastPerm(rank_int);
+// auto& perm = p == args.perm ? args.perm : args.perm_inv;
+// auto& perm_inv = p == args.perm ? args.perm_inv : args.perm;
+//
+// if (args.ctx.opset < 11) {
+//    PermuteInput(args.ctx.graph, args.node, 1, perm);
+//  } else {
+//    if (inputs[1] != "") {
+//      std::vector<int64_t> double_perm_inv = perm;
+//      double_perm_inv.reserve(2 * args.perm.size());
+//      for (int64_t p1 : perm) {
+//        double_perm_inv.push_back(p1 + rank_int);
+//      }
+//      PermuteInput(args.ctx.graph, args.node, 1, double_perm_inv);
+//    }
+//    for (size_t i = 2; i < inputs.size(); ++i) {
+//      if (inputs[i] != "") {
+//        PermuteInput(args.ctx.graph, args.node, i, perm);
+//      }
+//    }
+//  }
+//
+//  TransposeFirstInput(args.ctx, args.node, perm);
+//  TransposeOutputs(args.ctx, args.node, perm_inv);
+//
+//  SwapNodeOpTypeAndDomain(args.ctx.graph, args.node, args.node.OpType(), "com.microsoft.nhwc");
+//
+//  return true;
+//}
 
- auto p = ChannelFirstToLastPerm(rank_int);
- auto& perm = p == args.perm ? args.perm : args.perm_inv;
- auto& perm_inv = p == args.perm ? args.perm_inv : args.perm;
-
- if (args.ctx.opset < 11) {
-    PermuteInput(args.ctx.graph, args.node, 1, perm);
-  } else {
-    if (inputs[1] != "") {
-      std::vector<int64_t> double_perm_inv = perm;
-      double_perm_inv.reserve(2 * args.perm.size());
-      for (int64_t p1 : perm) {
-        double_perm_inv.push_back(p1 + rank_int);
-      }
-      PermuteInput(args.ctx.graph, args.node, 1, double_perm_inv);
-    }
-    for (size_t i = 2; i < inputs.size(); ++i) {
-      if (inputs[i] != "") {
-        PermuteInput(args.ctx.graph, args.node, i, perm);
-      }
-    }
-  }
-
- if (args.wrap_transpose_ops) {
-   TransposeFirstInput(args.ctx, args.node, perm);
-   TransposeOutputs(args.ctx, args.node, perm_inv);
-  }
-
-  SwapNodeOpTypeAndDomain(args.ctx.graph, args.node, args.node.OpType(), "com.microsoft.nhwc");
-
-  return true;
-}
-
- constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
+//constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
 
 static bool HandlePad(HandlerArgs& args) {
   size_t rank = args.perm.size();
@@ -1595,10 +1592,9 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
   {"Split", split_handler},
   {"Shape", shape_handler},
   {"Pad", pad_handler},
-  // Only enabled during layout transform mode for NNAPI.
   // Todo: renable resize handler after adding NHWC support in upsample op on cpu
   // https://github.com/microsoft/onnxruntime/issues/9857
-  {"Resize", resize_handler},
+//  {"Resize", resize_handler},
   {"ReduceSum", reduce_sum_handler},
 
   {"ReduceLogSum", reduce_op_handler}, {"ReduceLogSumExp", reduce_op_handler}, {"ReduceMax", reduce_op_handler},
@@ -1705,14 +1701,8 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& 
     }
   }
 
-  // no need to wrap transposes around this op when mode is optimize layout transform and this is a layout
-  // sensitive op. This is becasue layout transformer already did this.
-  bool wrap_transposes =
-      ctx.mode == OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM && layout_sensitive_ops.count(node.OpType()) != 0
-          ? false
-          : true;
   std::vector<int64_t> perm_inv = InvertPerm(perm);
-  HandlerArgs args = {ctx, transpose, node, perm, perm_inv, input_indices, wrap_transposes};
+  HandlerArgs args = {ctx, transpose, node, perm, perm_inv, input_indices};
   return info->handler_fn(args);
 }
 
@@ -1783,11 +1773,6 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
       // then do not process transpose.
       continue;
     } 
-    
-    // Remove this once CPU Upsample op can handle NHWC.
-    if(ctx.mode == OptimizerMode::OPTIMIZE_TRANSPOSE && node.OpType() == "Resize") {
-      continue;
-    }
 
     std::vector<std::string_view> inputs = node.Inputs();
     for (size_t j = 0; j < inputs.size(); ++j) {

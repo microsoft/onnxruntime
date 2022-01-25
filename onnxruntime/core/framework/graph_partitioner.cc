@@ -145,6 +145,9 @@ static Status TransformLayout(Graph& graph, bool& modified,
       // cannot be made empty inputs. To handle this case we need to jump a few extra hoops
       // to make sure its inputs are correctly handled.
       if (node->OpType() == "Resize") {
+        // Current code skips handling ROI.
+        // ROI needs special handling. Enable it when an EP which supports ROI starts using 
+        // layout transformer. NNAPI which currently used layout transformer does not support it.
         std::vector<const std::vector<int64_t>*> input_perms{&input_perm, nullptr};
         for (size_t i = 2; i < node->Inputs().size(); i++) {
           auto constant = api_graph->GetConstant(node->Inputs()[i]);
@@ -159,8 +162,6 @@ static Status TransformLayout(Graph& graph, bool& modified,
         onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
       }
 
-      // Resize node needs more work. It's domain will be converted during transpose optimization
-      // by the ResizeHandler.
       if (!has_channel_last_attr) {
         onnx_layout_transformation::SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSNHWCDomain);
       }
