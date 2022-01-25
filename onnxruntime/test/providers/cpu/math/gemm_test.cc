@@ -45,7 +45,7 @@ TEST(GemmOpTest, GemmNoTrans_double) {
   TestGemmNoTrans<double>();
 }
 
-// Only CUDA kernel has float 16 support
+// Only CUDA and ROCM kernel has float 16 support
 #if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(GemmOpTest, GemmNoTrans_f16) {
 #ifdef USE_CUDA
@@ -86,7 +86,7 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
 }
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(GemmOpTest, GemmNoTrans_bfloat16) {
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
