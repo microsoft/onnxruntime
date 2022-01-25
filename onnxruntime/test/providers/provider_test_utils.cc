@@ -1062,10 +1062,8 @@ void OpTester::Run(
 
     } else {
       for (const std::string& provider_type : all_provider_types) {
-#ifndef USE_TENSORRT
         if (excluded_provider_types.count(provider_type) > 0)
           continue;
-#endif
 
         cur_provider = provider_type;
 
@@ -1180,8 +1178,12 @@ void OpTester::Run(
         cur_provider = "not set";
       }
 
+#ifdef USE_TENSORRT
+      ORT_UNUSED_PARAMETER(has_run);
+#else
       EXPECT_TRUE(has_run)
           << "No registered execution providers were able to run the model.";
+#endif
     }
   }
   ORT_CATCH(const std::exception& ex) {
