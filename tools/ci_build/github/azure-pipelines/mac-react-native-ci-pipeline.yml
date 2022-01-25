@@ -6,6 +6,13 @@ jobs:
   pool: Linux-CPU-2019
   timeoutInMinutes: 60
   steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+  
+  - script: /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
+    displayName: Setup gradle wrapper to use gradle 6.8.3
+
   - script: |
       python $(Build.SourcesDirectory)/tools/ci_build/github/android/build_aar_package.py \
         --config ${{variables.build_config}} \
