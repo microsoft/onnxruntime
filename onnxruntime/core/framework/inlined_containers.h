@@ -30,6 +30,7 @@ namespace onnxruntime {
 //     int32_t -> 11 
 //     int64_t -> 6
 //     std::string 40 -> 1
+template<typename T>
 struct CalculateInlinedVectorDefaultInlinedElements {
   // Parameter controlling the default number of inlined elements
   // for `InlinedVector<T>`.
