@@ -1,4 +1,4 @@
-umport os
+import os
 import csv
 import timeit
 from datetime import datetime
@@ -122,7 +122,6 @@ def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_s
     # parse trtexec output
     tmp = out.split("\n")
     target_list = []
-    logger.info(tmp)
     for t in tmp:
         if 'mean' in t:
             target_list.append(t)
@@ -1004,11 +1003,17 @@ def run_onnxruntime(args, models):
             model_path = model_info["model_path"]
             test_data_dir = model_info["test_data_path"]
 
-            fp16 = False
-            os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1" if "Fp16" in ep else "0"
             logger.info("[Initialize]  model = {}, ep = {} ...".format(name, ep))
+
+            # Set environment variables for ort-trt benchmarking 
+            if "ORT-TRT" in ep:
+                os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1" if "Fp16" in ep else "0"
+                os.environ["ORT_TENSORRT_ENGINE_CACHE_ENABLE"] = "1"
+                os.environ["ORT_TENSORRT_MAX_WORKSPACE_SIZE"] = "4294967296"
            
-            # use float16.py for cuda fp16 only
+            fp16 = False
+            
+            # use float16.py for cuda fp16 only            
             if cuda_fp16 == ep: 
                 
                 # handle model
@@ -1047,7 +1052,7 @@ def run_onnxruntime(args, models):
                 if is_standalone(ep): 
                     providers = ep_to_provider_list[trt]
                 else: 
-                    providers = ep_to_provider_list[ep]
+                    providers = ep_to_provider_list[ep] 
 
                 options = onnxruntime.SessionOptions()
                 options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
