@@ -13,6 +13,7 @@
 namespace onnxruntime {
 
 class GraphViewer;
+enum class DataLayout;
 class NodeUnit;
 class Node;
 class NodeArg;
@@ -77,9 +78,8 @@ class ModelBuilder {
   void SetUseNCHW(bool use_nchw) { use_nchw_ = use_nchw; }
   bool UseNCHW() const { return use_nchw_; }
 
-  DataLayout GetPreferredLayout() const {
-    return use_nchw_ ? DataLayout::NCHW : DataLayout::NHWC;
-  }
+  // Returns the preferred layout for this EP.
+  DataLayout GetPreferredLayout() const;
 
   // Relax fp32 computation to fp16
   // It is off by default

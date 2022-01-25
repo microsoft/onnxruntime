@@ -1535,7 +1535,7 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
       }
       const float* scales_data = reinterpret_cast<const float*>(unpacked_tensor.data());
       float scale_n = scales_data[0];
-      float scale_c = node.Domain() == kMSNHWCDomain ? scales_data[3] : scales_data[1];
+      float scale_c = node_unit.Domain() == kMSNHWCDomain ? scales_data[3] : scales_data[1];
       if (scale_n != 1.0f || scale_c != 1.0f) {
         LOGS_DEFAULT(VERBOSE) << "Scales of N/C channel should be 1"
                               << "Resize of N/C channels are not supported"
@@ -1553,7 +1553,7 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
         return false;
       }
 
-      int channel_idx = node.Domain() == kMSNHWCDomain ? 3 : 1;
+      int channel_idx = node_unit.Domain() == kMSNHWCDomain ? 3 : 1;
       const int64_t* sizes_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
       uint32_t size_n = SafeInt<uint32_t>(sizes_data[0]);
       uint32_t size_c = SafeInt<uint32_t>(sizes_data[channel_idx]);

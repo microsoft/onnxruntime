@@ -695,6 +695,10 @@ std::string ModelBuilder::GetUniqueName(const std::string& base_name) {
   return unique_name;
 }
 
+DataLayout ModelBuilder::GetPreferredLayout() const {
+    return use_nchw_ ? DataLayout::NCHW : DataLayout::NHWC;
+}
+
 const InitializedTensorSet& ModelBuilder::GetInitializerTensors() const {
   return graph_viewer_.GetAllInitializedTensors();
 }

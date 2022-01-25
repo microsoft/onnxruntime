@@ -659,14 +659,14 @@ Status ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
 
-  const auto& input = node.InputDefs()[0]->Name();
-  const auto& output = node.OutputDefs()[0]->Name();
+  const auto& input = node_unit.Inputs()[0].node_arg.Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
   ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
   const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
 
   // skip this relu if it is some op's fuse output
   if (Contains(model_builder.GetFusedActivations(), input)) {
-    LOGS_DEFAULT(VERBOSE) << "Relu Node [" << node.Name() << "] fused";
+    LOGS_DEFAULT(VERBOSE) << "Relu Node [" << node_unit.Name() << "] fused";
     model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type);
   } else {
     std::vector<uint32_t> input_indices;
@@ -841,7 +841,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   auto& shaper(model_builder.GetShaper());
   const auto& initializers(model_builder.GetInitializerTensors());
 
-  auto input = node.InputDefs()[0]->Name();
+  auto input = node_unit.Inputs()[0].node_arg.Name();
 
   const auto& shape_tensor = *initializers.at(node_unit.Inputs()[1].node_arg.Name());
   std::vector<uint8_t> unpacked_tensor;
@@ -1393,8 +1393,8 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto& operand_indices(model_builder.GetOperandIndices());
   NodeAttrHelper helper(node_unit);
 
-  const auto& input = node.InputDefs()[0]->Name();
-  const auto& output = node.OutputDefs()[0]->Name();
+  const auto& input = node_unit.Inputs()[0].node_arg.Name();
+  const auto& output = node_unit.Outputs()[0].node_arg.Name();
 
   auto to = helper.Get("to", 0);
   Type type;
@@ -1965,7 +1965,7 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
 
   auto input = node_unit.Inputs()[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
-  bool is_op_nhwc = node.Domain() == kMSNHWCDomain;
+  bool is_op_nhwc = node_unit.Domain() == kMSNHWCDomain;
   bool use_nchw = model_builder.UseNCHW();
   ORT_ENFORCE(use_nchw != is_op_nhwc, 
               "The input is NHWC but the OP Domain is not. This is a bug in layout optimizer.");
@@ -2103,10 +2103,10 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   auto input = inputs[0].node_arg.Name();
   bool use_nchw = model_builder.UseNCHW();
-  bool is_op_nhwc = node.Domain() == kMSNHWCDomain;
+  bool is_op_nhwc = node_unit.Domain() == kMSNHWCDomain;
   if(is_op_nhwc && use_nchw) {
     ORT_ENFORCE(use_nchw != is_op_nhwc, 
-              "The input and op both are not NHWC. This is a bug in layout optimizer. Op Doain is : ", node.Domain());
+              "The input and op both are not NHWC. This is a bug in layout optimizer. Op Doain is : ", node_unit.Domain());
   }
 
   bool is_linear_resize = helper.Get("mode", "nearest") == "linear";
@@ -2124,7 +2124,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   int w_idx = is_op_nhwc ? 2 : 3;
 
   if (inputs.size() == 3) {  // we are using scales
-    const auto& scales_name = inputs[2]->Name();
+    const auto& scales_name = inputs[2].node_arg.Name();
     const auto& scales_tensor = *initializers.at(scales_name);
     std::vector<uint8_t> unpacked_tensor;
     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(scales_tensor, unpacked_tensor));
@@ -2211,8 +2211,7 @@ class MinMaxOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
   static Status AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
-                                  const std::string& input1, const std::string& input2,
-                                  bool output_is_nhwc);
+                                  const std::string& input1, const std::string& input2);
 };
 
 /* static */ void MinMaxOpBuilder::CreateSharedOpBuilder(
@@ -2226,8 +2225,7 @@ class MinMaxOpBuilder : public BaseOpBuilder {
 }
 
 /* static */ Status MinMaxOpBuilder::AddMinMaxOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
-                                                       const std::string& input1, const std::string& input2,
-                                                       bool output_is_nhwc) {
+                                                       const std::string& input1, const std::string& input2) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -2260,7 +2258,7 @@ Status MinMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   std::string input1 = inputs[0].node_arg.Name();
   std::string input2 = inputs[1].node_arg.Name();
 
-  return AddMinMaxOperator(model_builder, node_unit, input1, input2, output_is_nhwc);
+  return AddMinMaxOperator(model_builder, node_unit, input1, input2);
 }
 
 #pragma endregion
