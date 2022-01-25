@@ -38,7 +38,7 @@ jobs:
         --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
     displayName: Start Android emulator
 
-  - template: android-java-api-aar.yml
+  - template: template/android-java-api-aar.yml
     parameters:
       buildConfig: 'Release'
       buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_mobile_aar_build_settings.json'
