@@ -31,6 +31,7 @@ namespace test {
 // it would be possible to use ORT format models but the same partitioning code would run either way
 #if !defined(ORT_MINIMAL_BUILD)
 
+#define ORT_MODEL_FOLDER ORT_TSTR("testdata/")
 // model has an unsupported node between the supported nodes after the initial topo sort.
 // the partition aware topo sort should result in the unsupported node moving to earlier in the order,
 // and allow a single partition of supported nodes to be created.
@@ -44,7 +45,7 @@ TEST(InternalTestingEP, TestSortResultsInSinglePartition) {
     ASSERT_STATUS_OK(session->RegisterExecutionProvider(
         std::make_unique<InternalTestingExecutionProvider>(supported_ops)));
 
-    const ORTCHAR_T* model_path = ORT_TSTR("testdata/ep_partitioning_test_1.onnx");
+    const ORTCHAR_T* model_path = ORT_MODEL_FOLDER "ep_partitioning_test_1.onnx";
     ASSERT_STATUS_OK(session->Load(model_path));
     const auto& graph = session->GetGraph();
     GraphViewer viewer{graph};
@@ -89,7 +90,7 @@ TEST(InternalTestingEP, TestDependenciesCorrectlyHandled) {
   ASSERT_STATUS_OK(session->RegisterExecutionProvider(
       std::make_unique<InternalTestingExecutionProvider>(supported_ops)));
 
-  const ORTCHAR_T* model_path = ORT_TSTR("testdata/ep_partitioning_test_2.onnx");
+  const ORTCHAR_T* model_path = ORT_MODEL_FOLDER "ep_partitioning_test_2.onnx";
   ASSERT_STATUS_OK(session->Load(model_path));
   const auto& graph = session->GetGraph();
   GraphViewer viewer{graph};
@@ -302,14 +303,15 @@ static void TestNnapiPartitioning(const std::string& test_name, const std::strin
 }
 
 // DISABLED - manually update model_paths and enable to test coverage as needed
-TEST(InternalTestingEP, TestNnapiPartitioningMlPerfModels) {
+TEST(InternalTestingEP, DISABLED_TestNnapiPartitioningMlPerfModels) {
   const auto supported_ops = GetNnapiSupportedOps();
 
   // list the models you want to test here
   std::vector<std::string> model_paths = {
-      "C:\\Users\\askhade\\Downloads\\NHWC\\deeplabv3_optimized.onnx",
-      "C:\\Users\\askhade\\Downloads\\mobile_models\\mobile_models\\mobile\\mobilebert\\mobilebert.onnx",
-      "C:\\Users\\askhade\\Downloads\\NHWC\\mobiledet_shapes.onnx",
+      "deeplabv3_mnv2_ade20k_float.onnx",
+      "mobilebert.onnx",
+      "mobiledet.onnx",
+
   };
 
   for (const auto& model_uri : model_paths) {
