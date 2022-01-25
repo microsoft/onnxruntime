@@ -274,10 +274,10 @@ class IExecutionProvider {
     return {};
   }
 
-  virtual DataLayout GetPreferredLayout() const {
+  virtual onnxruntime::DataLayout GetPreferredLayout() const {
     // NCHW is the default ONNX standard data layout. So default to it.
     // EPs which prefer a different layout should override to return their preferred layout.
-    return static_cast<DataLayout>(0);
+    return static_cast<onnxruntime::DataLayout>(0);
   }
 
  private:

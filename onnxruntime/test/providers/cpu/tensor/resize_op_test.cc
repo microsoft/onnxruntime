@@ -745,7 +745,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization_Scales) {
 
 TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization_Sizes) {
   auto run_test = [](bool sizes_in_initializer) {
-    ResizeOpTester test(true, sizes_in_initializer);
+    ResizeOpTester test(sizes_in_initializer, sizes_in_initializer);
 
     std::vector<float> roi{};
     std::vector<float> scales{};

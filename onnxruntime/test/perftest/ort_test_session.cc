@@ -324,7 +324,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
 #ifdef USE_NNAPI
     uint32_t nnapi_flags = 0;
+#ifdef _MSC_VER
+    std::string ov_string = ToMBString(performance_test_config.run_config.ep_runtime_config_string);
+#else
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
     std::istringstream ss(ov_string);
     std::string key;
     while (ss >> key) {

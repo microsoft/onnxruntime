@@ -54,12 +54,12 @@ static void BuildFusedKernelDef(KernelDefBuilder& builder, const IndexedSubGraph
       .Provider(provider_type);
 }
 
-static void PrintNodes(Graph& graph) {
-  // remove the following 2 for loops:
-  for (const auto& node : graph.Nodes()) {
-    std::cout << node.OpType() << "    " << node.GetExecutionProviderType() << "   " << node.Index() << "       " << node.Domain() << std::endl;
-  }
-}
+//static void PrintNodes(Graph& graph) {
+//  // remove the following 2 for loops:
+//  for (const auto& node : graph.Nodes()) {
+//    std::cout << node.OpType() << "    " << node.GetExecutionProviderType() << "   " << node.Index() << "       " << node.Domain() << std::endl;
+//  }
+//}
 
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -70,9 +70,8 @@ static void PrintNodes(Graph& graph) {
 /// <param name="graph">Graph in question.</param>
 /// <param name="capability">Indexed subgraph which needs to be assigned</param>
 /// <param name="provider_type">The EP to assign the Indexed subgraph to</param>
-static void AssignNodes(Graph& graph, const IndexedSubGraph& capability, 
+static void AssignNodes(Graph& graph, const IndexedSubGraph& capability,
                         const std::string& provider_type) {
-
   // Before assigning the ep to any node, first walk through all the nodes and ensure
   // none of the nodes have already been assigned. If a node is assigned, simply return.
   for (auto node_index : capability.nodes) {
@@ -92,7 +91,7 @@ static void AssignNodes(Graph& graph, const IndexedSubGraph& capability,
 
 /// <summary>
 /// Transforms data layout from NCHW to NHWC. Applies transforms to layout senstive nodes
-/// assigned to current_ep and any other non-layout sensitive nodes in order to optimize 
+/// assigned to current_ep and any other non-layout sensitive nodes in order to optimize
 /// the transposes as much as possible.
 /// </summary>
 /// <param name="graph"></param>
@@ -100,12 +99,12 @@ static void AssignNodes(Graph& graph, const IndexedSubGraph& capability,
 /// <param name="current_ep"></param>
 /// <param name="logger"></param>
 /// <returns></returns>
-static Status TransformLayout(Graph& graph, bool& modified, 
+static Status TransformLayout(Graph& graph, bool& modified,
                               IExecutionProvider& current_ep, const logging::Logger& logger) {
   // sub graph recurse will be added later
   auto api_graph = MakeApiGraph(graph, current_ep.GetAllocator(0, OrtMemTypeDefault), logger, nullptr);
   std::unordered_set<std::string_view> layout_sensitive_ops{
-      "Resize", "Conv", "QLinearConv", "FusedConv", "AveragePool", "QLinearAveragePool", "GlobalAveragePool", 
+      "Resize", "Conv", "QLinearConv", "FusedConv", "AveragePool", "QLinearAveragePool", "GlobalAveragePool",
       "QLinearGlobalAveragePool", "MaxPool", "GlobalMaxPool", "LRN"};
 
   for (std::unique_ptr<onnx_layout_transformation::api::NodeRef>& node : api_graph->Nodes()) {
@@ -172,14 +171,14 @@ static Status TransformLayout(Graph& graph, bool& modified,
   modified = onnx_layout_transformation::Optimize(*api_graph,
                                                   /*allow_extended_ops*/ true,
                                                   current_ep.Type(),
-                                                  onnx_layout_transformation::OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM) 
-             || modified;
+                                                  onnx_layout_transformation::OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM) ||
+             modified;
 
   return Status::OK();
 }
 
 static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_registry_mgr, IExecutionProvider& current_ep,
-                                 GraphPartitioner::Mode mode, std::vector<std::unique_ptr<ComputeCapability>> & capabilities,
+                                 GraphPartitioner::Mode mode, std::vector<std::unique_ptr<ComputeCapability>>& capabilities,
                                  const logging::Logger& logger) {
   {
     GraphViewer graph_viewer(graph);
@@ -499,7 +498,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
   }
 
   //TODO remove after testing
-  PrintNodes(graph);
+  //PrintNodes(graph);
 
   // if this is the main graph call Resolve to put the Graph back into a guaranteed good state
   // TODO: Graph::FuseSubGraph and Graph::FinalizeFuseSubGraph should now create valid edges so this call to
@@ -652,11 +651,9 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     const IndexedSubGraph& indexed_sub_graph = *cur_capability->sub_graph;
     const IndexedSubGraph::MetaDef& metadef = *indexed_sub_graph.GetMetaDef();
 
-    ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(
-        KernelCreateInfo(std::move(kernel_def),
-                          [](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-                            return FunctionKernel::Create(func_mgr, info, out);
-                          })));
+    KernelDefBuilder builder;
+    BuildFusedKernelDef(builder, metadef, type);
+    auto kernel_def = builder.Build();
 
     // save hash so SessionState can find the kernel. each kernel name should be unique
     if (compiled_kernel_hashes.insert({metadef.name, kernel_def->GetHash()}).second == false) {
@@ -665,10 +662,10 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     }
 
     ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(
-        KernelCreateInfo(std::move(kernel_def), static_cast<KernelCreatePtrFn>(
-                                                    [](const OpKernelInfo& info) -> OpKernel* {
-                                                      return new FunctionKernel(info);
-                                                    }))));
+        KernelCreateInfo(std::move(kernel_def),
+                         [](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                           return FunctionKernel::Create(func_mgr, info, out);
+                         })));
 
     // now that we're done compiling we can remove the original nodes from the Graph and wire in the new one
     graph.FinalizeFuseSubGraph(indexed_sub_graph, node);
