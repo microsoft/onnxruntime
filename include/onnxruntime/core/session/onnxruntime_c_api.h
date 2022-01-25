@@ -7,11 +7,11 @@
 *
 * <h1>C</h1>
 *
-* ::OrtApi - Click here to jump to the structure with all C API functions.
+* ::OrtApi - Click here to go to the structure with all C API functions.
 *
 * <h1>C++</h1>
 *
-* ::Ort - Click here to jump to the namespace holding all of the C++ wrapper classes
+* ::Ort - Click here to go to the namespace holding all of the C++ wrapper classes
 *
 * It is a set of header only wrapper classes around the C API. The goal is to turn the C style return value error codes into C++ exceptions, and to
 * automate memory management through standard C++ RAII principles.
@@ -30,7 +30,7 @@
 *
 * This value is used by some API functions to behave as this version of the header expects.
 */
-#define ORT_API_VERSION 10
+#define ORT_API_VERSION 11
 
 #ifdef __cplusplus
 extern "C" {
@@ -256,6 +256,7 @@ ORT_RUNTIME_CLASS(ThreadingOptions);
 ORT_RUNTIME_CLASS(ArenaCfg);
 ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
 ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
+ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -266,7 +267,7 @@ typedef OrtStatus* OrtStatusPtr;
 /** \brief Memory allocation interface
 *
 * Structure of function pointers that defines a memory allocator. This can be created and filled in by the user for custom allocators.
-* 
+*
 * When an allocator is passed to any function, be sure that the allocator object is not destroyed until the last allocated object using it is freed.
 */
 typedef struct OrtAllocator {
@@ -375,7 +376,7 @@ typedef struct OrtCUDAProviderOptions {
   */
   int arena_extend_strategy;
 
-  /** \brief Flag indicating if copying needs to take place on the same stream as the compute stream in the CUDA EP   
+  /** \brief Flag indicating if copying needs to take place on the same stream as the compute stream in the CUDA EP
   *   0 = Use separate streams for copying and compute.
   *   1 = Use the same stream for copying and compute.
   *   Defaults to 1.
@@ -389,7 +390,7 @@ typedef struct OrtCUDAProviderOptions {
   */
   int has_user_compute_stream;
 
-  /** \brief User provided compute stream. 
+  /** \brief User provided compute stream.
   *   If provided, please set `has_user_compute_stream` to 1.
   */
   void* user_compute_stream;
@@ -433,7 +434,7 @@ typedef struct OrtROCMProviderOptions {
   */
   int arena_extend_strategy;
 
-  /** \brief Flag indicating if copying needs to take place on the same stream as the compute stream in the ROCM EP   
+  /** \brief Flag indicating if copying needs to take place on the same stream as the compute stream in the ROCM EP
   *   0 = Use separate streams for copying and compute.
   *   1 = Use the same stream for copying and compute.
   *   Defaults to 1.
@@ -447,7 +448,7 @@ typedef struct OrtROCMProviderOptions {
   */
   int has_user_compute_stream;
 
-  /** \brief User provided compute stream. 
+  /** \brief User provided compute stream.
   *   If provided, please set `has_user_compute_stream` to 1.
   */
   void* user_compute_stream;
@@ -482,6 +483,16 @@ typedef struct OrtTensorRTProviderOptions {
   const char* trt_engine_decryption_lib_path;   // specify engine decryption library path
   int trt_force_sequential_engine_build;        // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
 } OrtTensorRTProviderOptions;
+
+/** \brief MIGraphX Provider Options
+*
+* \see OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
+*/
+typedef struct OrtMIGraphXProviderOptions {
+  int device_id;                                // hip device id.
+  int migraphx_fp16_enable;                     // enable MIGraphX FP16 precision. Default 0 = false, nonzero = true
+  int migraphx_int8_enable;                     // enable MIGraphX INT8 precision. Default 0 = false, nonzero = true
+} OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options
 *
@@ -536,7 +547,7 @@ ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION;
 */
 typedef void (*OrtThreadWorkerFn)(void* ort_worker_fn_param);
 
-typedef const struct OrtCustomHandleType{ char __place_holder; }* OrtCustomThreadHandle;
+typedef const struct OrtCustomHandleType { char __place_holder; } * OrtCustomThreadHandle;
 
 /** \brief Ort custom thread creation function
 *
@@ -3048,12 +3059,15 @@ struct OrtApi {
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(GetSparseTensorIndices, _In_ const OrtValue* ort_value, enum OrtSparseIndicesFormat indices_format, _Out_ size_t* num_indices, _Outptr_ const void** indices);
+  /// @}
+  /// \name OrtSessionOptions
+  /// @{
 
   /**
    * \brief Sets out to 1 iff an optional type OrtValue has an element, 0 otherwise (OrtValue is None)
    * Use this API to find if the optional type OrtValue is None or not.
    * If the optional type OrtValue is not None, use the OrtValue just like any other OrtValue.
-   * For example, if you get an OrtValue that corresponds to Optional(tensor) and 
+   * For example, if you get an OrtValue that corresponds to Optional(tensor) and
    * if HasValue() returns true, use it as tensor and so on.
 
    * \param[in] value Input OrtValue.
@@ -3065,7 +3079,7 @@ struct OrtApi {
   /// @}
   /// \name OrtKernelContext
   /// @{
-  /** \brief Used for custom operators, gets the GPU compute stream to use to launch the custom a GPU kernel     
+  /** \brief Used for custom operators, gets the GPU compute stream to use to launch the custom a GPU kernel
   *   \see ::OrtCustomOp
   * \param[in]  context OrtKernelContext instance
   * \param[out] out Returns pointer to a GPU compute stream that can be used to launch the custom GPU kernel.
@@ -3074,7 +3088,7 @@ struct OrtApi {
   *             Do not free or mutate the returned pointer as it refers to internal data owned by the underlying session.
   *             Only use it for custom kernel launching.
   *
-  * \snippet{doc} snippets.dox OrtStatus Return Value 
+  * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(KernelContext_GetGPUComputeStream, _In_ const OrtKernelContext* context, _Outptr_ void** out);
 
@@ -3093,7 +3107,7 @@ struct OrtApi {
   /// \name GetExecutionProviderApi
   /// @{
   /** \brief Get a pointer to the requested version of the Execution Provider specific
-   * API extensions to the OrtApi 
+   * API extensions to the OrtApi
    * \param[in] provider_name The name of the execution provider name. Currently only the following
    * values are supported: "DML".
    * \param[in] version Must be ::ORT_API_VERSION.
@@ -3112,16 +3126,16 @@ struct OrtApi {
   *
   * \param[in] options Session options
   * \param[in] ort_custom_create_thread_fn Custom thread creation function
-  * 
+  *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(SessionOptionsSetCustomCreateThreadFn, _Inout_ OrtSessionOptions* options, _In_ OrtCustomCreateThreadFn ort_custom_create_thread_fn);
 
-  /** \brief Set creation options for custom thread 
+  /** \brief Set creation options for custom thread
   *
   * \param[in] options Session options
   * \param[in] ort_custom_thread_creation_options Custom thread creation options (can be nullptr)
-  * 
+  *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(SessionOptionsSetCustomThreadCreationOptions, _Inout_ OrtSessionOptions* options, _In_ void* ort_custom_thread_creation_options);
@@ -3130,7 +3144,7 @@ struct OrtApi {
   *
   * \param[in] options Session options
   * \param[in] ort_custom_join_thread_fn Custom join thread function, must not be nullptr when ort_custom_create_thread_fn is set
-  * 
+  *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSessionOptions* options, _In_ OrtCustomJoinThreadFn ort_custom_join_thread_fn);
@@ -3142,7 +3156,7 @@ struct OrtApi {
   *
   * \param[inout] tp_options
   * \param[in] ort_custom_create_thread_fn Custom thread creation function
-  * 
+  *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(SetGlobalCustomCreateThreadFn, _Inout_ OrtThreadingOptions* tp_options, _In_ OrtCustomCreateThreadFn ort_custom_create_thread_fn);
@@ -3151,7 +3165,7 @@ struct OrtApi {
   *
   * \param[inout] tp_options
   * \param[in] ort_custom_thread_creation_options Custom thread creation options (can be nullptr)
-  * 
+  *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(SetGlobalCustomThreadCreationOptions, _Inout_ OrtThreadingOptions* tp_options, _In_ void* ort_custom_thread_creation_options);
@@ -3160,7 +3174,7 @@ struct OrtApi {
   *
   * \param[inout] tp_options
   * \param[in] ort_custom_join_thread_fn Custom thread join function, must not be nullptr when global ort_custom_create_thread_fn is set
-  * 
+  *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(SetGlobalCustomJoinThreadFn, _Inout_ OrtThreadingOptions* tp_options, _In_ OrtCustomJoinThreadFn ort_custom_join_thread_fn);
@@ -3171,7 +3185,7 @@ struct OrtApi {
   *   operation is provider specific and could be a no-op.
   *
   * \param[inout] binding_ptr
-  * 
+  *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(SynchronizeBoundInputs, _Inout_ OrtIoBinding* binding_ptr);
@@ -3181,10 +3195,111 @@ struct OrtApi {
   *   operation is provider specific and could be a no-op.
   *
   * \param[inout] binding_ptr
-  * 
+  *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
   ORT_API2_STATUS(SynchronizeBoundOutputs, _Inout_ OrtIoBinding* binding_ptr);
+
+  /// \name OrtSessionOptions
+  /// @{
+
+  /** \brief Append CUDA execution provider to the session options
+  *
+  * If CUDA is not available (due to a non CUDA enabled build), this function will return failure.
+  *
+  * This is slightly different from OrtApi::SessionOptionsAppendExecutionProvider_CUDA, it takes an
+  * ::OrtCUDAProviderOptions which is publicly defined. This takes an opaque ::OrtCUDAProviderOptionsV2
+  * which must be created with OrtApi::CreateCUDAProviderOptions.
+  *
+  * For OrtApi::SessionOptionsAppendExecutionProvider_CUDA, the user needs to instantiate ::OrtCUDAProviderOptions
+  * as well as allocate/release buffers for some members of ::OrtCUDAProviderOptions.
+  * Here, OrtApi::CreateCUDAProviderOptions and Ortapi::ReleaseCUDAProviderOptions will do the memory management for you.
+  *
+  * \param[in] options
+  * \param[in] cuda_options
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.11.
+  */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_CUDA_V2,
+                  _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptionsV2* cuda_options);
+
+  /// @}
+  /// \name OrtCUDAProviderOptionsV2
+  /// @{
+
+  /** \brief Create an OrtCUDAProviderOptionsV2
+  *
+  * \param[out] out Newly created ::OrtCUDAProviderOptionsV2. Must be released with OrtApi::ReleaseCudaProviderOptions
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.11.
+  */
+  ORT_API2_STATUS(CreateCUDAProviderOptions, _Outptr_ OrtCUDAProviderOptionsV2** out);
+
+  /** \brief Set options in a CUDA Execution Provider.
+  *
+  * Please refer to https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#configuration-options
+  * to know the available keys and values. Key should be in null terminated string format of the member of ::OrtCUDAProviderOptionsV2
+  * and value should be its related range.
+  *
+  * For example, key="device_id" and value="0"
+  *
+  * \param[in] cuda_options
+  * \param[in] provider_options_keys Array of UTF-8 null-terminated string for provider options keys
+  * \param[in] provider_options_values Array of UTF-8 null-terminated string for provider options values
+  * \param[in] num_keys Number of elements in the `provider_option_keys` and `provider_options_values` arrays
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.11.
+  */
+  ORT_API2_STATUS(UpdateCUDAProviderOptions, _Inout_ OrtCUDAProviderOptionsV2* cuda_options,
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
+
+  /**
+  * Get serialized CUDA provider options string.
+  *
+  * For example, "device_id=0;arena_extend_strategy=0;......"
+  *
+  * \param cuda_options - OrtCUDAProviderOptionsV2 instance
+  * \param allocator - a ptr to an instance of OrtAllocator obtained with CreateAllocator() or GetAllocatorWithDefaultOptions()
+  *                      the specified allocator will be used to allocate continuous buffers for output strings and lengths.
+  * \param ptr - is a UTF-8 null terminated string allocated using 'allocator'. The caller is responsible for using the same allocator to free it.
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.11.
+  */
+  ORT_API2_STATUS(GetCUDAProviderOptionsAsString, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
+
+  /** \brief Release an ::OrtCUDAProviderOptionsV2
+  *
+  * \note This is an exception in the naming convention of other Release* functions, as the name of the method does not have the V2 suffix, but the type does
+  *
+  * \since Version 1.11.
+  */
+  void(ORT_API_CALL* ReleaseCUDAProviderOptions)(_Frees_ptr_opt_ OrtCUDAProviderOptionsV2* input);
+
+  /// @}
+
+  /** \brief Append MIGraphX provider to session options
+  *
+  * If MIGraphX is not available (due to a non MIGraphX enabled build, or if MIGraphX is not installed on the system), this function will return failure.
+  *
+  * \param[in] options
+  * \param[in] migraphx_options
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.11.
+  */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_MIGraphX,
+                  _In_ OrtSessionOptions* options, _In_ const OrtMIGraphXProviderOptions* migraphx_options);
 };
 
 /*
@@ -3244,6 +3359,17 @@ struct OrtCustomOp {
  * \param device_id CUDA device id, starts from zero.
 */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id);
+
+/*
+ * This is the old way to add the MIGraphX provider to the session, please use
+ * SessionOptionsAppendExecutionProvider_MIGraphX above to access the latest functionality
+ * This function always exists, but will only succeed if Onnxruntime was built with
+ * HIP support and the MIGraphX provider shared library exists
+ *
+ * \param device_id HIP device id, starts from zero.
+*/
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, int device_id);
+
 
 #ifdef __cplusplus
 }

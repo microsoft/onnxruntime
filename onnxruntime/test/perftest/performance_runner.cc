@@ -20,10 +20,18 @@ using onnxruntime::Status;
 
 // TODO: Temporary, while we bring up the threadpool impl...
 #include "core/platform/threadpool.h"
+#include "onnxruntime_config.h"
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wunused-result"
+// cmake/external/eigen/unsupported/Eigen/CXX11/../../../Eigen/src/Core/arch/NEON/PacketMath.h:1633:9:
+// error: ‘void* memcpy(void*, const void*, size_t)’ copying an object of non-trivial type ‘Eigen::internal::Packet4c’
+// {aka ‘struct Eigen::internal::eigen_packet_wrapper<int, 2>’} from an array of ‘const int8_t’
+// {aka ‘const signed char’} [-Werror=class-memaccess]
+#ifdef HAS_CLASS_MEMACCESS
+#pragma GCC diagnostic ignored "-Wclass-memaccess"
+#endif
 #endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
 #if defined(__GNUC__)

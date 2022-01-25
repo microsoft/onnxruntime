@@ -355,6 +355,7 @@ def parse_arguments():
 
     # WebAssembly build
     parser.add_argument("--build_wasm", action='store_true', help="Build for WebAssembly")
+    parser.add_argument("--build_wasm_static_lib", action='store_true', help="Build for WebAssembly static library")
     parser.add_argument("--enable_wasm_simd", action='store_true', help="Enable WebAssembly SIMD")
     parser.add_argument(
         "--disable_wasm_exception_catching", action='store_true',
@@ -822,6 +823,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + ("ON" if args.enable_memory_profile else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=" + ("ON" if args.enable_cuda_line_info else "OFF"),
         "-Donnxruntime_BUILD_WEBASSEMBLY=" + ("ON" if args.build_wasm else "OFF"),
+        "-Donnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB=" + ("ON" if args.build_wasm_static_lib else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING=" + ("OFF" if args.disable_wasm_exception_catching
                                                                   else "ON"),
@@ -1078,6 +1080,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     if args.build_eager_mode:
         import torch
         cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
+        cmake_args += ['-D_GLIBCXX_USE_CXX11_ABI=' + str(int(torch._C._GLIBCXX_USE_CXX11_ABI))]
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
@@ -2055,6 +2058,9 @@ def main():
             raise BuildError("Using --nnapi_min_api requires --use_nnapi")
         if args.nnapi_min_api < 27:
             raise BuildError("--nnapi_min_api should be 27+")
+
+    if args.build_wasm_static_lib:
+        args.build_wasm = True
 
     if args.build_wasm:
         if not args.disable_wasm_exception_catching and args.disable_exceptions:

@@ -34,7 +34,7 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets) {
 }
 
 // CUDA EP specific Transpose helper
-Status Transpose(const std::vector<size_t>& permutation, const Tensor& input,
+Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* einsum_cuda_assets) {
   return cuda::Transpose::DoTranspose(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetDeviceProp(),
                                       static_cast<cudaStream_t>(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetComputeStream()),
@@ -108,7 +108,7 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
   }
 
   // Make a copy - we are going to mutate the dims
-  std::vector<int64_t> output_dims = input_shape.GetDimsAsVector();
+  TensorShapeVector output_dims = input_shape.AsShapeVector();
 
   // Remove the dim value in `second_dim` -
   // The diagonal values are stored along `first_dim`

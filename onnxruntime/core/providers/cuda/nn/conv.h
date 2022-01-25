@@ -10,6 +10,9 @@
 #include <list>
 
 namespace onnxruntime {
+
+using ConvPadVector = ConvAttributes::ConvPadVector;
+
 namespace cuda {
 
 class CudnnConvolutionDescriptor final {
@@ -18,9 +21,9 @@ class CudnnConvolutionDescriptor final {
   ~CudnnConvolutionDescriptor();
 
   Status Set(size_t rank,
-             const std::vector<int64_t>& pads,
-             const std::vector<int64_t>& strides,
-             const std::vector<int64_t>& dilations,
+             const gsl::span<const int64_t>& pads,
+             const gsl::span<const int64_t>& strides,
+             const gsl::span<const int64_t>& dilations,
              int groups,
              cudnnConvolutionMode_t mode,
              cudnnDataType_t data_type);
@@ -37,6 +40,15 @@ struct vector_hash {
     std::size_t seed = values.size();
     for (auto& val : values)
       seed ^= std::hash<T>()(val) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    return seed;
+  }
+};
+
+struct tensor_shape_vector_hash {
+  std::size_t operator()(const TensorShapeVector& values) const {
+    std::size_t seed = values.size();
+    for (auto& val : values)
+      seed ^= std::hash<int64_t>()(val) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
     return seed;
   }
 };
@@ -119,7 +131,7 @@ struct CudnnConvState {
 
   // these would be recomputed if x/w dims change
   TensorShape y_dims;
-  std::vector<int64_t> y_dims_with_adjusted_pads;
+  TensorShapeVector y_dims_with_adjusted_pads;
   size_t workspace_bytes;
   decltype(AlgoPerfType().algo) algo;
   CudnnTensor x_tensor;
@@ -143,13 +155,13 @@ struct CudnnConvState {
     decltype(AlgoPerfType().mathType) mathType;
   };
 
-  lru_unordered_map<std::vector<int64_t>, PerfResultParams, vector_hash<int64_t>> cached_benchmark_results{MAX_CACHED_ALGO_PERF_RESULTS};
+  lru_unordered_map<TensorShapeVector, PerfResultParams, tensor_shape_vector_hash> cached_benchmark_results{MAX_CACHED_ALGO_PERF_RESULTS};
 
   // Some properties needed to support asymmetric padded Conv nodes
   bool post_slicing_required;
-  std::vector<int64_t> slice_starts;
-  std::vector<int64_t> slice_ends;
-  std::vector<int64_t> slice_axes;
+  TensorShapeVector slice_starts;
+  TensorShapeVector slice_ends;
+  TensorShapeVector slice_axes;
 
   // note that conv objects are shared between execution frames, and a lock is needed to avoid multi-thread racing
   OrtMutex mutex;
@@ -196,10 +208,10 @@ Status SliceOutUnwantedOutputSection(cudaStream_t stream,
                                      const void* input_data,
                                      gsl::span<const int64_t> input_dims,
                                      void* output_data,
-                                     gsl::span<const int64_t> output_dims,
-                                     std::vector<int64_t> starts,
-                                     const std::vector<int64_t>& ends,
-                                     const std::vector<int64_t>& axes,
+                                     const gsl::span<const int64_t>& output_dims,
+                                     const gsl::span<const int64_t>& starts,
+                                     const gsl::span<const int64_t>& ends,
+                                     const gsl::span<const int64_t>& axes,
                                      size_t element_size);
 }  // namespace cuda
 }  // namespace onnxruntime
