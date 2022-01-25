@@ -90,7 +90,8 @@ Status ParseArguments(int argc, char* argv[], ZcodeParameters& params, OrtParame
       ("data_parallel_size", "Data parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("enable_grad_norm_clip", "Specify whether to enable gradient clipping for optimizers.",
-        cxxopts::value<bool>()->default_value("true"));
+        cxxopts::value<bool>()->default_value("true"))
+      ("max_grad_norm", "Max norm value for gradient clipping.", cxxopts::value<float>()->default_value("1.0"));
   options
     .add_options("ORT configuration")
       ("ort_log_severity", "ORT minimum logging severity (see onnxruntime::logging::Severity values)",
@@ -214,6 +215,7 @@ Status ParseArguments(int argc, char* argv[], ZcodeParameters& params, OrtParame
     float beta = flags["beta"].as<float>();
     float lambda = flags["lambda"].as<float>();
     float epsilon = flags["epsilon"].as<float>();
+    float max_norm = flags["max_grad_norm"].as<float>();
     ORT_RETURN_IF_NOT(alpha >= 0.f && alpha <= 1.f, "alpha is not in valid range [0.0, 1.0]");
     ORT_RETURN_IF_NOT(beta >= 0.f && beta <= 1.f, "alpha is not in valid range [0.0, 1.0]");
     std::vector<std::string> no_decay{"bias", "gamma", "beta", "LayerNorm"};
@@ -229,6 +231,7 @@ Status ParseArguments(int argc, char* argv[], ZcodeParameters& params, OrtParame
           {"beta", beta},
           {"lambda", zero_lambda ? 0.f : lambda},
           {"epsilon", epsilon},
+          {"max_norm_clip", max_norm},
       };
     };
 
