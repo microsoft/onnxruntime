@@ -80,7 +80,7 @@ class TestIOBinding(unittest.TestCase):
                     producer_version="0",
                     opset_imports=[helper.make_operatorsetid('', opset)])
 
-                sess = onnxrt.InferenceSession(model_def.SerializeToString())
+                sess = onnxrt.InferenceSession(model_def.SerializeToString(), providers=onnxrt.get_available_providers())
 
                 bind = SessionIOBinding(sess._sess)
                 ort_value = C_OrtValue.ortvalue_from_numpy(x, device)
