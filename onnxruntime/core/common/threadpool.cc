@@ -444,7 +444,7 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
         }
       }
     };
-    RunInParallel(run_work, d_of_p, base_block_size);
+    RunInParallel(run_work, std::min(NumThreads() + 1, num_of_blocks), base_block_size);
   }
 }
 
