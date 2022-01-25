@@ -994,6 +994,11 @@ void OpTester::Run(
     std::vector<std::string> output_names;
     FillFeedsAndOutputNames(feeds, output_names);
     // Run the model
+#ifdef USE_TENSORRT
+    static const std::string all_provider_types[] = {
+        kTensorrtExecutionProvider,
+    };
+#else
     static const std::string all_provider_types[] = {
         kCpuExecutionProvider,
         kCudaExecutionProvider,
@@ -1008,6 +1013,7 @@ void OpTester::Run(
         kRocmExecutionProvider,
         kCoreMLExecutionProvider,
     };
+#endif
 
     bool has_run = false;
 
@@ -1056,8 +1062,10 @@ void OpTester::Run(
 
     } else {
       for (const std::string& provider_type : all_provider_types) {
+#ifndef USE_TENSORRT
         if (excluded_provider_types.count(provider_type) > 0)
           continue;
+#endif
 
         cur_provider = provider_type;
 
@@ -1146,6 +1154,10 @@ void OpTester::Run(
         has_run = true;
 
         ASSERT_PROVIDER_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
+#ifdef USE_TENSORRT
+        std::unique_ptr<IExecutionProvider> fallback_execution_provider = DefaultCudaExecutionProvider();
+        ASSERT_PROVIDER_STATUS_OK(session_object.RegisterExecutionProvider(std::move(fallback_execution_provider)));
+#endif
         fetches_ = ExecuteModel<InferenceSession>(
             *p_model, session_object, expect_result, expected_failure_string,
             run_options, feeds, output_names, provider_type, allow_released_onnx_opset_only);
