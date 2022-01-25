@@ -43,12 +43,6 @@ MLASCPUIDInfo::MLASCPUIDInfo() { has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWC
 #endif
 #endif // MLAS_TARGET_ARM64
 
-//
-// Stores the platform information.
-//
-
-MLAS_PLATFORM MlasPlatform;
-
 #ifdef MLAS_TARGET_AMD64_IX86
 
 //
@@ -359,6 +353,7 @@ Return Value:
 
     this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
     this->ConvSymU8S8Dispatch = &MlasConvSymDispatchNeon;
+    this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchNeon;
 
     //
     // Check if the processor supports ASIMD dot product instructions.
@@ -377,6 +372,7 @@ Return Value:
     if (HasDotProductInstructions) {
         this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchUdot;
         this->ConvSymU8S8Dispatch = &MlasConvSymDispatchDot;
+        this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchSdot;
     }
 
 #endif // MLAS_TARGET_ARM64
@@ -422,7 +418,7 @@ Return Value:
 --*/
 {
 #if defined(MLAS_TARGET_AMD64)
-    return MlasPlatform.PreferredBufferAlignment;
+    return GetMlasPlatform().PreferredBufferAlignment;
 #else
     return MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
 #endif

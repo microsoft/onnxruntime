@@ -108,7 +108,7 @@ void addOrtValueMethods(pybind11::module& m) {
 
         auto ml_value = std::make_unique<OrtValue>();
         auto ml_type = NumpyTypeToOnnxRuntimeType(type_num);
-        Tensor::InitOrtValue(ml_type, shape, std::move(allocator), *ml_value);
+        Tensor::InitOrtValue(ml_type, gsl::make_span(shape), std::move(allocator), *ml_value);
         return ml_value;
       })
 

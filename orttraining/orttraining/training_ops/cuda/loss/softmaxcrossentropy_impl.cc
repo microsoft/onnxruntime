@@ -71,7 +71,7 @@ Status SoftmaxCrossEntropy<T>::ComputeInternal(OpKernelContext* ctx) const {
       temp_X.get(),      // -(label * log(softmax))
       N * D);
 
-  std::vector<int64_t> output_dims(2, 1);
+  TensorShapeVector output_dims(2, 1);
   Tensor* Y = ctx->Output(0, TensorShape({}));
   // Sum((label * log(softmax)) using Reduction
   return ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
