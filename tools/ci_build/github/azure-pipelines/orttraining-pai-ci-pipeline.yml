@@ -33,7 +33,16 @@ jobs:
   #    sed -i 's|session_options.use_deterministic_compute = False|session_options.use_deterministic_compute = True|g' \
   #       orttraining/orttraining/python/training/ortmodule/_graph_execution_manager.py
   #  displayName: 'Toggle ON deterministic compute mode for ORTModule'
-  
+
+
+  - task: CmdLine@2
+    displayName: 'Check Variable'
+    inputs:
+      script: |-
+        echo $(Agent.Name)
+        bash ./tools/ci_build/github/pai/pai_get_thread.sh $(Agent.Name)
+    target: host
+
   - script: |-
       export ROCM_HOME=/opt/rocm
       python tools/ci_build/build.py \
@@ -55,12 +64,12 @@ jobs:
   - bash: |-
       echo "##vso[task.setvariable variable=onnxruntimeBuildSucceeded]true"
     displayName: 'Set Onnxruntime Build Succeeded'
-
+  
   - script: |-
       cd ./build/RelWithDebInfo &&\
       ../../tools/ci_build/github/pai/pai_test_launcher.sh
     displayName: 'Run onnxruntime unit tests'
-
+    
   - script: |-
       cd ./build/RelWithDebInfo
       export PYTHONPATH=$PWD
