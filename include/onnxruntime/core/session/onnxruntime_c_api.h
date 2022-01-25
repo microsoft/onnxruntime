@@ -1164,12 +1164,12 @@ struct OrtApi {
    * Create a tensor with user's buffer. You can fill the buffer either before calling this function or after.
    * p_data is owned by caller. ReleaseValue won't release p_data.
    *
-   * \param[in] info
-   * \param[in] p_data
-   * \param[in] p_data_len
-   * \param[in] shape
-   * \param[in] shape_len
-   * \param[in] type
+   * \param[in] info Memory description of where the p_data buffer resides (CPU vs GPU etc).
+   * \param[in] p_data Pointer to the data buffer.
+   * \param[in] p_data_len The number of bytes in the data buffer.
+   * \param[in] shape Pointer to the tensor shape values.
+   * \param[in] shape_len The tensor shape length.
+   * \param[in] type The data type.
    * \param[out] out Returns newly created ::OrtValue. Must be freed with OrtApi::ReleaseValue
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
