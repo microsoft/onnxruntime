@@ -64,9 +64,17 @@ def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_s
     # load inputs
     input_shape = []
     loaded_inputs = []
+    
+ #   logger.info("we are in running")
+ #   logger.info(os.getcwd())
+#    test_data_dir_list = find_test_data_directory(os.getcwd())
+    output = get_output(["find", "-L", os.getcwd(), "-name", "test_data*", "-type", "d"])
+    test_data_dir = split_and_sort_output(output)
+
     for i in range(len(ort_inputs)):
         name = ort_inputs[i].name
-        loaded_input = name + ':' + str(i) + '.bin'
+        loaded_input = name + ':' + test_data_dir[0] + '/' + str(i) + '.bin'
+        logger.info(loaded_input)
         shape = []
         for j in all_inputs_shape[i]:
             shape.append(str(j))
@@ -79,7 +87,7 @@ def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_s
     inputs_arg = '--loadInputs=' + ','.join(loaded_inputs)
     result = {}
     command = [trtexec, onnx_model_path, "--duration=50", "--percentile=90", "--workspace=4096"]
-    #command.extend([inputs_arg]) TODO: rebind IO inputs in TRT 8.2
+    command.extend([inputs_arg]) #TODO: rebind IO inputs in TRT 8.2
     
     # add benchmarking flags
     model = onnx.load(model_path)

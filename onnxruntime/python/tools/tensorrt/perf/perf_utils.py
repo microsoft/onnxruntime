@@ -26,6 +26,8 @@ standalone_trt_fp16 = "TRTFp16"
 acl = "ORT-ACLFp32"
 
 # table names
+metrics_name = 'metrics'
+success_name = 'success'
 fail_name = 'fail'
 memory_name = 'memory'
 latency_name = 'latency'
