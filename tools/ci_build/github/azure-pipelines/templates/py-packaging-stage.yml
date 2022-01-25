@@ -1051,9 +1051,6 @@ stages:
           ARM64_Py37:
             PYTHON_EXE: '/opt/python/cp37-cp37m/bin/python3'
             Image: 'manylinux2014_aarch64'
-          ARM64_Py36:
-            PYTHON_EXE: '/opt/python/cp36-cp36m/bin/python3'
-            Image: 'manylinux2014_aarch64'
           # Uncomment the following lines to generate packages for PowerPC
           # POWERPC_Py39:
           #   PYTHON_EXE: '/opt/python/cp39-cp39/bin/python3'
@@ -1063,9 +1060,6 @@ stages:
           #   Image: 'manylinux2014_ppc64le'
           # POWERPC_Py37:
           #   PYTHON_EXE: '/opt/python/cp37-cp37m/bin/python3'
-          #   Image: 'manylinux2014_ppc64le'
-          # POWERPC_Py36:
-          #   PYTHON_EXE: '/opt/python/cp36-cp36m/bin/python3'
           #   Image: 'manylinux2014_ppc64le'
       steps:
       - checkout: self
