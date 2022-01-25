@@ -942,35 +942,35 @@ void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, const std:
   node.SetInput(i, gather_output);
 }
 
-static bool HandleResize(HandlerArgs& args) {
-  auto inputs = args.node.Inputs();
-  int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
+//static bool HandleResize(HandlerArgs& args) {
+//  auto inputs = args.node.Inputs();
+//  int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
+//
+//  if (args.ctx.opset < 11) {
+//    PermuteInput(args.ctx.graph, args.node, 1, args.perm_inv);
+//  } else {
+//    if (inputs[1] != "") {
+//      std::vector<int64_t> double_perm_inv = args.perm_inv;
+//      double_perm_inv.reserve(2 * args.perm_inv.size());
+//      for (int64_t p : args.perm_inv) {
+//        double_perm_inv.push_back(p + rank_int);
+//      }
+//      PermuteInput(args.ctx.graph, args.node, 1, double_perm_inv);
+//    }
+//    for (size_t i = 2; i < inputs.size(); ++i) {
+//      if (inputs[i] != "") {
+//        PermuteInput(args.ctx.graph, args.node, i, args.perm_inv);
+//      }
+//    }
+//  }
+//
+//  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+//  TransposeOutputs(args.ctx, args.node, args.perm);
+//
+//  return true;
+//}
 
-  if (args.ctx.opset < 11) {
-    PermuteInput(args.ctx.graph, args.node, 1, args.perm_inv);
-  } else {
-    if (inputs[1] != "") {
-      std::vector<int64_t> double_perm_inv = args.perm_inv;
-      double_perm_inv.reserve(2 * args.perm_inv.size());
-      for (int64_t p : args.perm_inv) {
-        double_perm_inv.push_back(p + rank_int);
-      }
-      PermuteInput(args.ctx.graph, args.node, 1, double_perm_inv);
-    }
-    for (size_t i = 2; i < inputs.size(); ++i) {
-      if (inputs[i] != "") {
-        PermuteInput(args.ctx.graph, args.node, i, args.perm_inv);
-      }
-    }
-  }
-
-  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
-  TransposeOutputs(args.ctx, args.node, args.perm);
-
-  return true;
-}
-
-constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
+// constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
 
 static bool HandlePad(HandlerArgs& args) {
   size_t rank = args.perm.size();
@@ -1563,7 +1563,9 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
   {"Split", split_handler},
   {"Shape", shape_handler},
   {"Pad", pad_handler},
-  {"Resize", resize_handler},
+  // Todo: renable resize handler after adding NHWC support in upsample op on cpu
+  // https://github.com/microsoft/onnxruntime/issues/9857
+  //{"Resize", resize_handler},
   {"ReduceSum", reduce_sum_handler},
 
   {"ReduceLogSum", reduce_op_handler}, {"ReduceLogSumExp", reduce_op_handler}, {"ReduceMax", reduce_op_handler},

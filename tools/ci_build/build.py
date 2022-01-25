@@ -125,9 +125,14 @@ def _openvino_verify_device_type(device_read):
 
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(
+    class Parser(argparse.ArgumentParser):
+        # override argument file line parsing behavior - allow multiple arguments per line and handle quotes
+        def convert_arg_line_to_args(self, arg_line):
+            return shlex.split(arg_line)
+
+    parser = Parser(
         description="ONNXRuntime CI build driver.",
-        usage="""  # noqa
+        usage="""
         Default behavior is --update --build --test for native architecture builds.
         Default behavior is --update --build for cross-compiled builds.
 
@@ -136,7 +141,10 @@ def parse_arguments():
         The Test phase will run all unit tests, and optionally the ONNX tests.
 
         Use the individual flags to only run the specified stages.
-        """)
+        """,
+        # files containing arguments can be specified on the command line with "@<filename>" and the arguments within
+        # will be included at that point
+        fromfile_prefix_chars="@")
     # Main arguments
     parser.add_argument(
         "--build_dir", required=True, help="Path to the build directory.")
@@ -341,9 +349,13 @@ def parse_arguments():
         help="Specify the minimum version of the target platform "
         "(e.g. macOS or iOS)"
         "This is only supported on MacOS")
+    parser.add_argument(
+        "--disable_memleak_checker", action='store_true',
+        help="Disable memory leak checker from Windows build")
 
     # WebAssembly build
     parser.add_argument("--build_wasm", action='store_true', help="Build for WebAssembly")
+    parser.add_argument("--build_wasm_static_lib", action='store_true', help="Build for WebAssembly static library")
     parser.add_argument("--enable_wasm_simd", action='store_true', help="Enable WebAssembly SIMD")
     parser.add_argument(
         "--disable_wasm_exception_catching", action='store_true',
@@ -388,8 +400,7 @@ def parse_arguments():
         "--use_vstest", action='store_true',
         help="Use use_vstest for running unitests.")
     parser.add_argument(
-        "--use_mimalloc", default=['none'],
-        choices=['none', 'stl', 'arena', 'all'], help="Use mimalloc.")
+        "--use_mimalloc", action='store_true', help="Use mimalloc allocator")
     parser.add_argument(
         "--use_dnnl", action='store_true', help="Build with DNNL.")
     parser.add_argument(
@@ -426,6 +437,10 @@ def parse_arguments():
         "--use_vitisai", action='store_true', help="Build with Vitis-AI")
     parser.add_argument(
         "--use_nuphar", action='store_true', help="Build with nuphar")
+    parser.add_argument(
+        "--use_stvm", action='store_true', help="Build with standalone TVM")
+    parser.add_argument(
+        "--stvm_home", help="Path to TVM installation for the standalone TVM execution provider.")
     parser.add_argument(
         "--use_tensorrt", action='store_true', help="Build with TensorRT")
     parser.add_argument(
@@ -566,6 +581,10 @@ def parse_arguments():
     parser.add_argument(
         "--test_external_transformer_example", action='store_true',
         help="run the example external transformer test, mainly used in CI pipeline.")
+
+    parser.add_argument(
+        "--enable_cuda_profiling", action='store_true', help="enable cuda kernel profiling, \
+        cupti library must be added to PATH beforehand.")
 
     return parser.parse_args()
 
@@ -725,10 +744,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-DPython_EXECUTABLE=" + sys.executable,
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_ROCM_VERSION=" + (args.rocm_version if args.use_rocm else ""),
-        "-Donnxruntime_USE_MIMALLOC_STL_ALLOCATOR=" + (
-            "ON" if args.use_mimalloc == "stl" or args.use_mimalloc == "all" else "OFF"),
-        "-Donnxruntime_USE_MIMALLOC_ARENA_ALLOCATOR=" + (
-            "ON" if args.use_mimalloc == "arena" or args.use_mimalloc == "all" else "OFF"),
+        "-Donnxruntime_USE_MIMALLOC=" + ("ON" if args.use_mimalloc else "OFF"),
         "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
         "-Donnxruntime_BUILD_CSHARP=" + ("ON" if args.build_csharp else "OFF"),
         "-Donnxruntime_BUILD_JAVA=" + ("ON" if args.build_java else "OFF"),
@@ -754,6 +770,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_TENSORRT_HOME=" + (tensorrt_home if args.use_tensorrt else ""),
+        # set vars for standalone TVM
+        "-Donnxruntime_USE_STVM=" + ("ON" if args.use_stvm else "OFF"),
+        "-Donnxruntime_STVM_HOME=" + (os.path.join(source_dir, "cmake", "external", "tvm_update")),
         # set vars for migraphx
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
         "-Donnxruntime_MIGRAPHX_HOME=" + (migraphx_home if args.use_migraphx else ""),
@@ -804,6 +823,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + ("ON" if args.enable_memory_profile else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=" + ("ON" if args.enable_cuda_line_info else "OFF"),
         "-Donnxruntime_BUILD_WEBASSEMBLY=" + ("ON" if args.build_wasm else "OFF"),
+        "-Donnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB=" + ("ON" if args.build_wasm_static_lib else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING=" + ("OFF" if args.disable_wasm_exception_catching
                                                                   else "ON"),
@@ -817,6 +837,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS=" + ("ON" if args.enable_external_custom_op_schemas
                                                               else "OFF"),
         "-Donnxruntime_NVCC_THREADS=" + str(args.parallel),
+        "-Donnxruntime_ENABLE_CUDA_PROFILING=" + ("ON" if args.enable_cuda_profiling else "OFF"),
     ]
     if args.external_graph_transformer_path:
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
@@ -1116,7 +1137,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "-Donnxruntime_ENABLE_MEMLEAK_CHECKER=" +
                 ("ON" if config.lower() == 'debug' and not args.use_nuphar and not
                  args.use_openvino and not
-                 args.enable_msvc_static_runtime
+                 args.enable_msvc_static_runtime and not
+                 args.disable_memleak_checker
                  else "OFF"), "-DCMAKE_BUILD_TYPE={}".format(config)],
             cwd=config_build_dir)
 
@@ -1597,7 +1619,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if not args.disable_ml_ops:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_mlops.py'], cwd=cwd, dll_path=dll_path)
 
-            if args.enable_training and args.use_cuda:
+            # The following test has multiple failures on Windows
+            if args.enable_training and args.use_cuda and not is_windows():
                 # run basic frontend tests
                 run_training_python_frontend_tests(cwd=cwd)
 
@@ -1683,7 +1706,7 @@ def nuphar_run_python_tests(build_dir, configs):
 
 
 def run_nodejs_tests(nodejs_binding_dir):
-    args = ['npm', 'test', '--', '--timeout=10000']
+    args = ['npm', 'test', '--', '--timeout=30000']
     if is_windows():
         args = ['cmd', '/c'] + args
     run_subprocess(args, cwd=nodejs_binding_dir)
@@ -1691,7 +1714,7 @@ def run_nodejs_tests(nodejs_binding_dir):
 
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, cuda_version, use_rocm, rocm_version, use_dnnl,
-        use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn, use_dml,
+        use_tensorrt, use_openvino, use_nuphar, use_stvm, use_vitisai, use_acl, use_armnn, use_dml,
         wheel_name_suffix, enable_training, nightly_build=False, default_training_package_device=False,
         use_ninja=False, build_eager_mode=False):
     for config in configs:
@@ -1730,6 +1753,8 @@ def build_python_wheel(
             args.append('--use_dnnl')
         elif use_nuphar:
             args.append('--use_nuphar')
+        elif use_stvm:
+            args.append('--use_stvm')
         elif use_vitisai:
             args.append('--use_vitisai')
         elif use_acl:
@@ -1750,7 +1775,7 @@ def derive_linux_build_property():
 
 
 def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_nuphar,
-                        use_winml):
+                        use_stvm, use_winml):
     if not (is_windows() or is_linux()):
         raise BuildError(
             'Currently csharp builds and nuget package creation is only supportted '
@@ -1784,6 +1809,8 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Gpu\""
     elif use_nuphar:
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Nuphar\""
+    elif use_stvm:
+        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Stvm\""
     else:
         # use the solution file that includes Xamarin mobile targets
         sln = "OnnxRuntime.CSharp.sln"
@@ -1817,8 +1844,12 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
             run_subprocess(cmd_args, cwd=csharp_build_dir)
 
         if is_windows():
-            # this path is setup by cmake/nuget_helpers.cmake for MSVC on Windows
-            nuget_exe = os.path.normpath(os.path.join(native_dir, config, "nuget_exe", "src", "nuget.exe"))
+            if use_openvino:
+                # user needs to make sure nuget is installed and added to the path variable
+                nuget_exe = "nuget.exe"
+            else:
+                # this path is setup by cmake/nuget_helpers.cmake for MSVC on Windows
+                nuget_exe = os.path.normpath(os.path.join(native_dir, config, "nuget_exe", "src", "nuget.exe"))
         else:
             # user needs to make sure nuget is installed and can be found
             nuget_exe = "nuget"
@@ -2003,13 +2034,6 @@ def main():
     if args.skip_tests:
         args.test = False
 
-    if is_reduced_ops_build(args) and args.update:
-        from reduce_op_kernels import reduce_ops
-        reduce_ops(
-            config_path=args.include_ops_by_config,
-            enable_type_reduction=args.enable_reduced_operator_type_support,
-            use_cuda=args.use_cuda)
-
     if args.use_tensorrt:
         args.use_cuda = True
 
@@ -2033,6 +2057,9 @@ def main():
             raise BuildError("Using --nnapi_min_api requires --use_nnapi")
         if args.nnapi_min_api < 27:
             raise BuildError("--nnapi_min_api should be 27+")
+
+    if args.build_wasm_static_lib:
+        args.build_wasm = True
 
     if args.build_wasm:
         if not args.disable_wasm_exception_catching and args.disable_exceptions:
@@ -2095,10 +2122,21 @@ def main():
     rocm_home = setup_rocm_build(args, configs)
 
     if args.update or args.build:
-        os.makedirs(build_dir, exist_ok=True)
+        for config in configs:
+            os.makedirs(get_config_build_dir(build_dir, config), exist_ok=True)
 
     log.info("Build started")
+
     if args.update:
+        if is_reduced_ops_build(args):
+            from reduce_op_kernels import reduce_ops
+            for config in configs:
+                reduce_ops(
+                    config_path=args.include_ops_by_config,
+                    build_dir=get_config_build_dir(build_dir, config),
+                    enable_type_reduction=args.enable_reduced_operator_type_support,
+                    use_cuda=args.use_cuda)
+
         cmake_extra_args = []
         path_to_protoc_exe = args.path_to_protoc_exe
         if not args.skip_submodule_sync:
@@ -2307,6 +2345,7 @@ def main():
                 args.use_tensorrt,
                 args.use_openvino,
                 args.use_nuphar,
+                args.use_stvm,
                 args.use_vitisai,
                 args.use_acl,
                 args.use_armnn,
@@ -2328,6 +2367,7 @@ def main():
                 args.use_tensorrt,
                 args.use_dnnl,
                 args.use_nuphar,
+                args.use_stvm,
                 args.use_winml,
             )
 

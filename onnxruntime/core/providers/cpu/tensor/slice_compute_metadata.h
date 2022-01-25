@@ -6,6 +6,8 @@
 
 #include <cstdint>
 #include <vector>
+#include <gsl/gsl>
+#include "core/framework/tensor_shape.h"
 
 namespace onnxruntime {
 
@@ -21,12 +23,12 @@ struct PrepareForComputeMetadata {
   }
 
   gsl::span<const int64_t> input_dimensions_;
-  std::vector<int64_t> starts_;
-  std::vector<int64_t> ends_;
-  std::vector<int64_t> steps_;
-  std::vector<int64_t> output_dims_;
-  std::vector<int64_t> flattened_output_dims_;
-  std::vector<int64_t>* p_flattened_output_dims_ = &flattened_output_dims_;
+  TensorShapeVector starts_;
+  TensorShapeVector ends_;
+  TensorShapeVector steps_;
+  TensorShapeVector output_dims_;
+  TensorShapeVector flattened_output_dims_;
+  TensorShapeVector* p_flattened_output_dims_ = &flattened_output_dims_;
 };
 
 }  // namespace SliceOp

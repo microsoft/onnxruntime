@@ -13,6 +13,7 @@
 #include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "core/providers/partitioning_utils.h"
+#include "core/providers/shared/node_unit/node_unit.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
 #ifdef __ANDROID__
@@ -123,12 +124,14 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
   const auto is_node_supported = [&](const Node& node) -> bool {
     const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node);
+    // TODO, cache NodeUnit(s) and not generate new instance every time
+    const NodeUnit node_unit(node);
     const bool supported = !excluded &&
-                           nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
+                           nnapi::IsNodeSupportedInGroup(node_unit, graph_viewer, params,
                                                          node_outputs_in_current_group);
-    LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node.OpType()
-                          << "] index: [" << node.Index()
-                          << "] name: [" << node.Name()
+    LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node_unit.OpType()
+                          << "] index: [" << node_unit.Index()
+                          << "] name: [" << node_unit.Name()
                           << "] supported: [" << supported
                           << "]";
 
@@ -150,7 +153,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   };
 
   const auto gen_metadef_name = [&]() {
-    uint64_t model_hash;
+    HashValue model_hash;
     int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
     return MakeString(NNAPI, "_", model_hash, "_", metadef_id);
   };
@@ -184,14 +187,6 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 }
 
 #ifdef __ANDROID__
-static Status GetOutputBuffer(Ort::CustomOpApi& ort,
-                              OrtKernelContext* context,
-                              const nnapi::Model& model,
-                              const std::string& output_name,
-                              const std::vector<uint32_t>& output_shape,
-                              const android::nn::wrapper::Type output_type,
-                              void** output_buffer) ORT_MUST_USE_RESULT;
-
 static Status GetOutputBuffer(Ort::CustomOpApi& ort,
                               OrtKernelContext* context,
                               const nnapi::Model& model,

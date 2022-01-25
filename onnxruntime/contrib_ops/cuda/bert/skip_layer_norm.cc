@@ -41,6 +41,14 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   Tensor* output = ctx->Output(0, input->Shape());
 
+  if (input->SizeInBytes() == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'input' has no data from upstream nodes");
+  }
+
+  if (skip->SizeInBytes() == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'skip' has no data from upstream nodes");
+  }
+
   const auto& input_dims = input->Shape().GetDims();
   if (input_dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

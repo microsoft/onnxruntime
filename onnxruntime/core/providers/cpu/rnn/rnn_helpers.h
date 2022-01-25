@@ -56,7 +56,7 @@ gsl::span<TAlloc> Allocate(std::shared_ptr<IAllocator> allocator,
                            size_t size,
                            IAllocatorUniquePtr<TAlloc>& unique_ptr,
                            bool fill = false, TAlloc fill_value = TAlloc{}) {
-  unique_ptr = IAllocator::MakeUniquePtr<TAlloc>(allocator, size);
+  unique_ptr = IAllocator::MakeUniquePtr<TAlloc>(std::move(allocator), size);
   auto span = gsl::make_span(unique_ptr.get(), size);
 
   if (fill) {
@@ -110,7 +110,7 @@ void ReverseSequence(gsl::span<const T> inputs,
   for (int i = 0; i < batch_size; i++) {
     int seq_len = sequence_lengths[i];
 
-    for (int j = 0; j < seq_len; j++) {
+    for (ptrdiff_t j = 0; j < seq_len; j++) {
       gsl::span<const T> src = inputs.subspan(j * batch_size * input_size + i * input_size, input_size);
       gsl::span<T> dest = inputs_reverse.subspan(num_directions * (seq_len - j - 1) * batch_size * input_size + i * input_size, input_size);
 

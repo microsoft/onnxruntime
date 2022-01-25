@@ -141,6 +141,14 @@
     ],
     [
         "ArgMax ai.onnx CPUExecutionProvider",
+        725939091209285112
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
+        1506815612154586624
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
         2317240841713684752
     ],
     [
@@ -161,7 +169,19 @@
     ],
     [
         "ArgMax ai.onnx CPUExecutionProvider",
+        4620340115180881848
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
+        10486830423259333928
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
         12157492629288967928
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
+        12195502223979275536
     ],
     [
         "ArgMax ai.onnx CPUExecutionProvider",
@@ -170,6 +190,10 @@
     [
         "ArgMax ai.onnx CPUExecutionProvider",
         14910778597193697496
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
+        18394842867298045376
     ],
     [
         "ArgMin ai.onnx CPUExecutionProvider",
@@ -1157,6 +1181,10 @@
     ],
     [
         "MatMulInteger ai.onnx CPUExecutionProvider",
+        10315437332566125928
+    ],
+    [
+        "MatMulInteger ai.onnx CPUExecutionProvider",
         8304157459354278720
     ],
     [
@@ -1517,11 +1545,19 @@
     ],
     [
         "QLinearConv ai.onnx CPUExecutionProvider",
+        1301685544574905024
+    ],
+    [
+        "QLinearConv ai.onnx CPUExecutionProvider",
         6630340551594954312
     ],
     [
         "QLinearMatMul ai.onnx CPUExecutionProvider",
         17071666635484846840
+    ],
+    [
+        "QLinearMatMul ai.onnx CPUExecutionProvider",
+        7936962119982759552
     ],
     [
         "QuantizeLinear ai.onnx CPUExecutionProvider",
@@ -2084,6 +2120,18 @@
         16654410418270805888
     ],
     [
+        "Resize ai.onnx CPUExecutionProvider",
+        11612050915202267528
+    ],
+    [
+        "Resize ai.onnx CPUExecutionProvider",
+        17391179092212899176
+    ],
+    [
+        "Resize ai.onnx CPUExecutionProvider",
+        18197536715869401872
+    ],
+    [
         "ReverseSequence ai.onnx CPUExecutionProvider",
         777686786711298232
     ],
@@ -2530,6 +2578,14 @@
     [
         "Upsample ai.onnx CPUExecutionProvider",
         17854969343220970496
+    ],
+    [
+        "Upsample ai.onnx CPUExecutionProvider",
+        4881414272874428968
+    ],
+    [
+        "Upsample ai.onnx CPUExecutionProvider",
+        7886741677344006832
     ],
     [
         "Where ai.onnx CPUExecutionProvider",

@@ -28,14 +28,19 @@ from onnxruntime.training.ortmodule import (ORTModule,
                                             LogLevel,
                                             _fallback,
                                             _graph_execution_manager)
+import onnxruntime.training.ortmodule as ortmodule_module
 
-from onnxruntime.training.optim import FusedAdam
+from onnxruntime.training.optim import FusedAdam, AdamWMode
 from transformers import AdamW
 
 import _test_helpers
 
 # Import autocasting libs
 from torch.cuda import amp
+
+
+DEFAULT_OPSET = 14
+
 
 # PyTorch model definitions for tests
 
@@ -658,6 +663,34 @@ def test_gradient_correctness():
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
+@pytest.mark.parametrize("device", ['cpu', 'cuda'])
+@pytest.mark.parametrize("indices", ([[ 2, 3, -1, -1],[0, 1, -1, -1]],
+                                     [[ 2, 3, 4, 4],[ 0, 1, 4, 4]]))
+def test_scatternd_correctness(device, indices):
+    class NeuralNetScatterND(torch.nn.Module):
+        def __init__(self):
+            super(NeuralNetScatterND, self).__init__()
+
+        def forward(self, rerouted_output, dispatch_mask, expert_output):
+            rerouted_output[dispatch_mask] = expert_output
+            return rerouted_output
+
+    pt_model = NeuralNetScatterND().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, rerouted_output, dispatch_mask, expert_output):
+        prediction = model(rerouted_output, dispatch_mask, expert_output)
+        return prediction
+
+    rerouted_output = torch.tensor([[0.],[0.],[0.],[0.],[0.]], device=device)
+    dispatch_mask = torch.tensor(indices, device=device)
+    expert_output = torch.tensor([[[0.3817],[0.9625],[0.9625],[0.9625]],[[0.3817],[0.9625],[0.9625],[0.9625]]], device=device)
+
+    pt_prediction = run_step(pt_model, rerouted_output, dispatch_mask, expert_output)
+    ort_prediction = run_step(ort_model, rerouted_output, dispatch_mask, expert_output)
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-5)
+
+
 @pytest.mark.parametrize("use_fp16", [False, True])
 @pytest.mark.parametrize("input_requires_grad", [False, True])
 def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
@@ -1001,6 +1034,35 @@ def test_gradient_correctness_argmax_unfold():
 
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+
+@pytest.mark.parametrize("high", [1, 2, 10])
+def test_correctness_argmax_bitwise_or(high):
+    N, D, H, M = 16, 256, 128, 4
+    device = 'cuda'
+
+    class NeuralNetBitwiseOr(torch.nn.Module):
+        def __init__(self, high):
+            super(NeuralNetBitwiseOr, self).__init__()
+            self.other = torch.randint(0, high, (N, D, H), device=device)
+
+        def forward(self, input):
+            return torch.bitwise_or(self.other, input)
+
+    pt_model = NeuralNetBitwiseOr(high).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        return prediction
+
+    for _ in range(10):
+        # this also tests broadcasting
+        pt_input = torch.randint(-10, 10, (M, N, D, H), device=device)
+        ort_input = copy.deepcopy(pt_input)
+        pt_prediction = run_step(pt_model, pt_input)
+        ort_prediction = run_step(ort_model, ort_input)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
 
 @pytest.mark.parametrize("offset", [-1, 0, 1])
 @pytest.mark.parametrize("dim1, dim2", ([0, 1], [0, 2], [1, 2], [2, 0]))
@@ -4366,6 +4428,57 @@ def test_ortmodule_fused_adam_optimizer_correctness():
         for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
             _test_helpers.assert_values_are_close(pt_param, ort_param, atol=1e-4, rtol=1e-5)
 
+def test_ortmodule_fused_adam_optimizer_correctness_torch():
+
+    torch.manual_seed(8888)
+
+    device = 'cuda'
+    N, D_in, H, D_out = 4, 4, 8, 4
+
+    pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    adamw_optimizer = torch.optim.AdamW(pt_model.parameters(), lr=1e-3)
+
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    ort_fused_adam_optimizer = FusedAdam(ort_model.parameters(), lr=1e-3,
+                                         adam_w_mode=AdamWMode.ADAMW_TORCH,
+                                         weight_decay=0.01,
+                                         eps=1e-8)
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+
+        return loss
+
+    def run_optim_step(optimizer):
+        optimizer.step()
+        optimizer.zero_grad()
+
+    ga_steps = 2
+    pt_model.zero_grad()
+    ort_model.zero_grad()
+
+    for step in range(1000):
+        x1 = torch.randn(N, D_in, device=device, dtype=torch.float32)
+        x2 = copy.deepcopy(x1)
+
+        pt_loss = run_step(pt_model, x1)
+        ort_loss = run_step(ort_model, x2)
+
+        for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
+            ort_param.grad = copy.deepcopy(pt_param.grad)
+
+        _test_helpers.assert_values_are_close(pt_loss, ort_loss, atol=1e-4, rtol=1e-5)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-4, rtol=1e-5, reset_gradient=False)
+
+        if (step+1) % ga_steps == 0:
+            run_optim_step(adamw_optimizer)
+            run_optim_step(ort_fused_adam_optimizer)
+
+        for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
+            _test_helpers.assert_values_are_close(pt_param, ort_param, atol=1e-4, rtol=1e-5)
+
 def test_sigmoid_grad():
     class NeuralNetSigmoid(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
@@ -4473,7 +4586,7 @@ def test_sigmoid_grad_opset13():
     old_opst_cst = ortmodule.ONNX_OPSET_VERSION
     old_opset = os.getenv("ORTMODULE_ONNX_OPSET_VERSION", None)
     os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = '13'
-    assert ortmodule.ONNX_OPSET_VERSION == 12
+    assert ortmodule.ONNX_OPSET_VERSION == 14
 
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
@@ -4501,8 +4614,8 @@ def test_sigmoid_grad_opset13():
         os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = old_opset
     assert ortmodule.ONNX_OPSET_VERSION == 13
     ortmodule.ONNX_OPSET_VERSION = old_opst_cst
- 
-@pytest.mark.parametrize("opset_version", [12, 13])
+
+@pytest.mark.parametrize("opset_version", [12, 13, 14])
 def test_opset_version_change(opset_version):
     device = 'cuda'
 
@@ -4623,3 +4736,35 @@ def test_softmax(M, N):
     _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
     _test_helpers.assert_values_are_close(pt_loss, ort_loss)
     _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
+
+
+def test_check_opset_is_default_opset_after_training():
+    M, N = 24, 6
+
+    class NeuralNetSoftmax(torch.nn.Module):
+        def __init__(self):
+            super(NeuralNetSoftmax, self).__init__()
+            self.m = torch.nn.Softmax(dim=1)
+
+        def forward(self, x):
+            return self.m(x)
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+
+    device = 'cuda'
+    pt_model = NeuralNetSoftmax().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.rand((M, N), requires_grad=True, device=device)
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_prediction, pt_loss = run_step(pt_model, pt_x)
+    ort_prediction, ort_loss = run_step(ort_model, ort_x)
+    _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
+    _test_helpers.assert_values_are_close(pt_loss, ort_loss)
+    _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
+    assert ortmodule_module.ONNX_OPSET_VERSION == DEFAULT_OPSET

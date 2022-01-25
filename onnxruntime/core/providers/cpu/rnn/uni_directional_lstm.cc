@@ -4,7 +4,11 @@
 #include "uni_directional_lstm.h"
 
 #include "core/platform/threadpool.h"
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
 namespace onnxruntime {
 namespace lstm {
 
@@ -82,7 +86,7 @@ UniDirectionalLstm<T>::UniDirectionalLstm(
 template <typename T>
 void UniDirectionalLstm<T>::AllocateBuffers() {
   // allocate and fill with zeroes
-  const bool fill = true;
+  constexpr bool fill = true;
   hidden0_ = Allocate(allocator_, hidden_size_, hidden0_ptr_, fill);
   internal_memory_prev_ = Allocate(allocator_, hidden_size_, internal_memory_prev_ptr_, fill);
   batched_hidden0_ = Allocate(allocator_, batch_size_ * hidden_size_, batched_hidden0_ptr_);

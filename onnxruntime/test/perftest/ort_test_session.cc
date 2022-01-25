@@ -29,7 +29,7 @@ std::chrono::duration<double> OnnxRuntimeTestSession::Run() {
 OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device& rd,
                                                const PerformanceTestConfig& performance_test_config,
                                                const TestModelInfo& m)
-    : rand_engine_(rd()), input_names_(m.GetInputCount()), input_length_(m.GetInputCount()) {
+    : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
   Ort::SessionOptions session_options;
   const std::string& provider_name = performance_test_config.machine_config.provider_type_name;
   if (provider_name == onnxruntime::kDnnlExecutionProvider) {
@@ -323,7 +323,25 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
 #ifdef USE_NNAPI
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, 0));
+    uint32_t nnapi_flags = 0;
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+    std::istringstream ss(ov_string);
+    std::string key;
+    while (ss >> key) {
+      if (key == "NNAPI_FLAG_USE_FP16") {
+        nnapi_flags |= NNAPI_FLAG_USE_FP16;
+      } else if (key == "NNAPI_FLAG_USE_NCHW") {
+        nnapi_flags |= NNAPI_FLAG_USE_NCHW;
+      } else if (key == "NNAPI_FLAG_CPU_DISABLED") {
+        nnapi_flags |= NNAPI_FLAG_CPU_DISABLED;
+      } else if (key == "NNAPI_FLAG_CPU_ONLY") {
+        nnapi_flags |= NNAPI_FLAG_CPU_ONLY;
+      } else if (key.empty()) {
+      } else {
+        ORT_THROW("[ERROR] [NNAPI] wrong key type entered. Choose from the following runtime key options that are available for NNAPI. ['NNAPI_FLAG_USE_FP16', 'NNAPI_FLAG_USE_NCHW', 'NNAPI_FLAG_CPU_DISABLED', 'NNAPI_FLAG_CPU_ONLY'] \n");
+      }
+    }
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, nnapi_flags));
 #else
     ORT_THROW("NNAPI is not supported in this build\n");
 #endif
@@ -438,9 +456,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     output_names_raw_ptr[i] = output_names_[i].c_str();
   }
 
-  size_t input_count = static_cast<size_t>(m.GetInputCount());
+  const size_t input_count = static_cast<size_t>(m.GetInputCount());
   for (size_t i = 0; i != input_count; ++i) {
-    input_names_[i] = strdup(m.GetInputName(i).c_str());
+    input_names_str_[i] = m.GetInputName(i);
+    input_names_[i] = input_names_str_[i].c_str();
   }
 }
 

@@ -32,18 +32,18 @@ struct PoolAttributes {
       return;
     }
 
-    ORT_ENFORCE(info.GetAttrs<int64_t>("kernel_shape", kernel_shape).IsOK(),
+    ORT_ENFORCE(info.GetAttrs("kernel_shape", kernel_shape).IsOK(),
                 "No kernel shape is set.");
 
     std::string auto_padding;
     ORT_ENFORCE(info.GetAttr<std::string>("auto_pad", &auto_padding).IsOK());
     auto_pad = StringToAutoPadType(auto_padding);
 
-    if (!info.GetAttrs<int64_t>("pads", pads).IsOK() || pads.empty()) {
+    if (!info.GetAttrs("pads", pads).IsOK() || pads.empty()) {
       pads.resize(kernel_shape.size() * 2, 0);
     }
 
-    if (!info.GetAttrs<int64_t>("strides", strides).IsOK() || strides.empty()) {
+    if (!info.GetAttrs("strides", strides).IsOK() || strides.empty()) {
       strides.resize(kernel_shape.size(), 1);
     }
 
@@ -52,7 +52,7 @@ struct PoolAttributes {
     }
 
     default_dilations = false;
-    if (!info.GetAttrs<int64_t>("dilations", dilations).IsOK() || dilations.empty()) {
+    if (!info.GetAttrs("dilations", dilations).IsOK() || dilations.empty()) {
       dilations.resize(kernel_shape.size(), 1);
       default_dilations = true;
     } else {
@@ -87,20 +87,20 @@ struct PoolAttributes {
   bool count_include_pad{};
   int64_t storage_order{0};  // MaxPool_8 only. 0 is row major, and 1 is column major. Default is 0.
   int64_t ceil_mode{0};      // Introduced in MaxPool_10
-  std::vector<int64_t> kernel_shape;
-  std::vector<int64_t> pads;
-  std::vector<int64_t> strides;
-  std::vector<int64_t> dilations;  // Introduced in MaxPool_10
+  TensorShapeVector kernel_shape;
+  TensorShapeVector pads;
+  TensorShapeVector strides;
+  TensorShapeVector dilations;  // Introduced in MaxPool_10
   // default_dilations is true if dilations is not set or all dilations are 1
   bool default_dilations;
   AutoPadType auto_pad;
 
-  std::vector<int64_t> SetOutputSize(const TensorShape& input_shape,
+  TensorShapeVector SetOutputSize(const TensorShape& input_shape,
                                      int64_t output_channel,
-                                     std::vector<int64_t>* actual_pads) const {
+                                     TensorShapeVector* actual_pads) const {
     ORT_ENFORCE(input_shape.Size() > 0 || input_shape[0] == 0,
                 "Invalid input shape. Only N can be zero. Got:", input_shape);
-    std::vector<int64_t> output_dims;
+    TensorShapeVector output_dims;
     int64_t N = input_shape[0];
     InferOutputSize(input_shape.GetDims(), &output_dims, actual_pads);
 
@@ -110,8 +110,8 @@ struct PoolAttributes {
   }
 
   void InferOutputSize(gsl::span<const int64_t> input_dims,
-                       std::vector<int64_t>* output_dims,
-                       std::vector<int64_t>* actual_pads) const {
+                       TensorShapeVector* output_dims,
+                       TensorShapeVector* actual_pads) const {
     ORT_ENFORCE(input_dims.size() >= 2);
     if (global_pooling) {
       output_dims->assign(input_dims.size() - 2, 1);
@@ -168,7 +168,11 @@ struct PoolAttributes {
       *out_size = ComputeOutputSize(in_size, stride, kernel, *pad_head + *pad_tail, dilation);
     }
   }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
   int64_t ComputeOutputSize(int64_t in_size,
                             int64_t stride,
                             int64_t kernel,
@@ -180,6 +184,9 @@ struct PoolAttributes {
     return static_cast<int64_t>(
         std::ceil(static_cast<float>(in_size + pad_needed - dilation * (kernel - 1) - 1) / stride + 1));
   }
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 };
 
 }  // namespace onnxruntime

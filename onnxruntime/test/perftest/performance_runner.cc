@@ -20,10 +20,18 @@ using onnxruntime::Status;
 
 // TODO: Temporary, while we bring up the threadpool impl...
 #include "core/platform/threadpool.h"
+#include "onnxruntime_config.h"
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wunused-result"
+// cmake/external/eigen/unsupported/Eigen/CXX11/../../../Eigen/src/Core/arch/NEON/PacketMath.h:1633:9:
+// error: ‘void* memcpy(void*, const void*, size_t)’ copying an object of non-trivial type ‘Eigen::internal::Packet4c’
+// {aka ‘struct Eigen::internal::eigen_packet_wrapper<int, 2>’} from an array of ‘const int8_t’
+// {aka ‘const signed char’} [-Werror=class-memaccess]
+#ifdef HAS_CLASS_MEMACCESS
+#pragma GCC diagnostic ignored "-Wclass-memaccess"
+#endif
 #endif
 #include <unsupported/Eigen/CXX11/ThreadPool>
 #if defined(__GNUC__)
@@ -35,7 +43,7 @@ static std::once_flag default_pool_init;
 Eigen::ThreadPoolInterface* GetDefaultThreadPool(const onnxruntime::Env& env) {
   std::call_once(default_pool_init, [&env] {
     int core_num = env.GetNumCpuCores();
-    default_pool.reset(new DefaultThreadPoolType(core_num));
+    default_pool = std::make_unique<DefaultThreadPoolType>(core_num);
   });
   return default_pool.get();
 }
@@ -258,8 +266,7 @@ static std::unique_ptr<TestSession> CreateSession(Ort::Env& env, std::random_dev
                                                   const PerformanceTestConfig& performance_test_config_,
                                                   const TestModelInfo& test_model_info) {
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort")) == 0) {
-    return std::unique_ptr<TestSession>(
-        new OnnxRuntimeTestSession(env, rd, performance_test_config_, test_model_info));
+    return std::make_unique<OnnxRuntimeTestSession>(env, rd, performance_test_config_, test_model_info);
   }
 #ifdef HAVE_TENSORFLOW
   if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
