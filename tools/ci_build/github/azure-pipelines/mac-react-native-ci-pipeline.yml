@@ -9,7 +9,12 @@ jobs:
   - checkout: self
     clean: true
     submodules: recursive
-  
+
+  - script: |
+      python -m pip install -q flatbuffers pathlib
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: Install python modules
+
   - script: /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
     displayName: Setup gradle wrapper to use gradle 6.8.3
 
