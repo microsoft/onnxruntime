@@ -11,7 +11,7 @@ jobs:
     submodules: recursive
 
   - script: |
-      python -m pip install -q flatbuffers pathlib
+      python3 -m pip install -q flatbuffers pathlib
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: Install python modules
 
@@ -19,7 +19,7 @@ jobs:
     displayName: Setup gradle wrapper to use gradle 6.8.3
 
   - script: |
-      python $(Build.SourcesDirectory)/tools/ci_build/github/android/build_aar_package.py \
+      python3 $(Build.SourcesDirectory)/tools/ci_build/github/android/build_aar_package.py \
         --config ${{variables.build_config}} \
         --android_sdk_path ${ANDROID_SDK_ROOT} \
         --android_ndk_path ${ANDROID_NDK_HOME} \
@@ -54,7 +54,7 @@ jobs:
     displayName: Setup gradle wrapper to use gradle 6.8.3
 
   - script: |
-      python -m pip install -q flatbuffers
+      python3 -m pip install -q flatbuffers
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: Install python modules
 
@@ -85,7 +85,7 @@ jobs:
   #  displayName: Build Android package
 
   - script: |
-      python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_ios_framework.py \
+      python3 $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_ios_framework.py \
         $(Build.SourcesDirectory)/tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json \
         --config ${{variables.build_config}} \
         --build_dir $(Build.BinariesDirectory) \
