@@ -26,7 +26,7 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
-#include "test/optimizer/qdq_test_utils.cc"
+#include "test/optimizer/qdq_test_utils.h"
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
