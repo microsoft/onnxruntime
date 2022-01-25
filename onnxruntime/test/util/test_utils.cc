@@ -114,7 +114,7 @@ void RunAndVerifyOutputsWithEPViaModelData(const std::string& model_data, const 
   //
   InferenceSessionWrapper session_object2{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object2.RegisterExecutionProvider(std::move(execution_provider)));
-  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session_object2.Load(model_data.data(), static_cast<int>(model_data.size())));
   ASSERT_STATUS_OK(session_object2.Initialize());
 
   // make sure that some nodes are assigned to the EP, otherwise this test is pointless...
