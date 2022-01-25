@@ -93,6 +93,7 @@ jobs:
       value: $(environment) -e "$(epList)"
 
   steps:
+    - script: echo "https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(Build.BuildId)"
 
     - ${{ if eq(parameters.BuildORT, true) }}:
 
