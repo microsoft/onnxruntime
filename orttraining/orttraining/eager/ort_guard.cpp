@@ -65,7 +65,7 @@ struct ORTGuardImpl final : public c10::impl::DeviceGuardImplInterface {
 
   at::DeviceIndex deviceCount() const noexcept override {
     ORT_LOG_FN();
-    const std::string ort_virtual_device_count = onnxruntime::GetEnvironmentVar(kORTVirtualDeviceCount);
+    const std::string ort_virtual_device_count = onnxruntime::Env::Default().GetEnvironmentVar(kORTVirtualDeviceCount);
     // by default set device count to 1
     return ort_virtual_device_count.empty() ? 1 : std::stoi(ort_virtual_device_count);
   }
