@@ -25,7 +25,7 @@ void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds);
 
-// same verification function that takes in model_data instead of a model_path
+// helper function that takes in serialized model_data
 // used in nnapi qdq model tests
 void RunAndVerifyOutputsWithEPViaModelData(const std::string& model_data,
                                            const char* log_id,
