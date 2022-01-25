@@ -204,7 +204,7 @@ MlasSymmQgemmBatch(
     const size_t M = Shape.M;
     const size_t N = Shape.N;
     const size_t K = Shape.K;
-    const MLAS_SYMM_QGEMM_DISPATCH* dispatch = MlasPlatform.SymmQgemmDispatch;
+    const MLAS_SYMM_QGEMM_DISPATCH* dispatch = GetMlasPlatform().SymmQgemmDispatch;
     MLAS_SYMM_QGEMM_OPERATION* operation = dispatch->Operation;
 
     if (ThreadPool == nullptr) {
@@ -472,7 +472,7 @@ MlasSymmQgemmPackBSize(
         return 0;
     }
 
-    const auto* Dispatch = MlasPlatform.SymmQgemmDispatch;
+    const auto* Dispatch = GetMlasPlatform().SymmQgemmDispatch;
 
     size_t PackedK = Dispatch->PackedK;
 
@@ -512,7 +512,7 @@ MlasSymmQgemmPackB(
 {
     MLAS_UNREFERENCED_PARAMETER(AIsSigned);
 
-    const MLAS_SYMM_QGEMM_DISPATCH* SymmQgemmDispatch = MlasPlatform.SymmQgemmDispatch;
+    const MLAS_SYMM_QGEMM_DISPATCH* SymmQgemmDispatch = GetMlasPlatform().SymmQgemmDispatch;
 
     const size_t AlignedN =
         (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1);
