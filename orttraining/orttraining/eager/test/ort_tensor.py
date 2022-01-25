@@ -19,19 +19,25 @@ class OrtTensorTests(unittest.TestCase):
     ort_ones = cpu_ones.to('ort')
     assert ort_ones.is_ort
     assert torch.allclose(cpu_ones, ort_ones.cpu())
-  
+
   def test_reshape(self):
     cpu_ones = torch.ones(10, 10)
     ort_ones = cpu_ones.to('ort')
     y = ort_ones.reshape(-1)
     assert len(y.size()) == 1
     assert y.size()[0] == 100
-  
+
   def test_view(self):
     cpu_ones = torch.ones(2048)
     ort_ones = cpu_ones.to('ort')
     y = ort_ones.view(4, 512)
     assert y.size() == (4, 512)
+
+  def test_view_neg1(self):
+    cpu_ones = torch.ones(784, 256)
+    ort_ones = cpu_ones.to('ort')
+    y = ort_ones.view(-1)
+    assert y.size()[0] == 200704
 
 if __name__ == '__main__':
   unittest.main()
