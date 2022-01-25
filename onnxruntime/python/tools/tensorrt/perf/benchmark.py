@@ -42,6 +42,7 @@ trt_native_fp16_gain = 'TRT_Standalone_fp16_gain(%)'
 FAIL_MODEL_FILE = ".fail_model_map"
 LATENCY_FILE = ".latency_map"
 METRICS_FILE = ".metrics_map"
+SESSION_FILE = ".session_map"
 MEMORY_FILE = './temp_memory.csv'
 
 def split_and_sort_output(string_list):
@@ -612,7 +613,6 @@ def update_metrics_map_ori(model_to_metrics, name, ep_to_operator):
         logger.info('TRT FP16 operator map:')
         pp.pprint(trt_fp16_op_map)
 
-
 ###################################################################################################
 #
 # model: {ep1: {error_type: xxx, error_message: xxx}, ep2: {error_type: xx, error_message: xx}}
@@ -910,13 +910,18 @@ def run_symbolic_shape_inference(model_path, new_model_path):
         logger.error(e)
         return False, "Symbolic shape inference error"
 
+def time_and_create_session(model_path, providers, session_options):
+    start = datetime.now()
+    session = onnxruntime.InferenceSession(model_path, providers=providers, sess_options=session_options)
+    end = datetime.now()
+    creation_time = (end - start).total_seconds()
+    return session, creation_time
+
 def create_session(model_path, providers, session_options):
     logger.info(model_path)
 
     try:
-        session = onnxruntime.InferenceSession(model_path, providers=providers, sess_options=session_options)
-        return session
-
+        return time_and_create_session(model_path, providers, session_options)
     except Exception as e:
         # shape inference required on model
         if "shape inference" in str(e):
@@ -926,9 +931,8 @@ def create_session(model_path, providers, session_options):
                 status = run_symbolic_shape_inference(model_path, new_model_path)
                 if not status[0]: # symbolic shape inference error
                     e = status[1]
-                    raise Exception(e)
-            session = onnxruntime.InferenceSession(new_model_path, providers=providers, sess_options=session_options)
-            return session
+                    raise Exception(e)            
+            return time_and_create_session(new_model_path, providers, session_options)
         else:
             raise Exception(e) 
 
@@ -938,7 +942,8 @@ def run_onnxruntime(args, models):
     model_to_latency = {} # model -> cuda and tensorrt latency
     model_to_metrics = {} # model -> metrics from profiling file
     model_to_fail_ep = {} # model -> failing ep
-
+    model_to_session = {} # models -> session creation time 
+    
     ep_list = []
     if args.ep:
         ep_list.append(args.ep)
@@ -1021,7 +1026,6 @@ def run_onnxruntime(args, models):
             if standalone_trt_fp16 == ep: 
                 fp16 = True
             
-            print(fp16)
             inputs, ref_outputs = get_test_data(fp16, test_data_dir, all_inputs_shape)
             # generate random input data
             if args.input_data == "random":
@@ -1045,7 +1049,7 @@ def run_onnxruntime(args, models):
                 
                 # create onnxruntime inference session
                 try:
-                    sess = create_session(model_path, providers, options)
+                    sess, _ = create_session(model_path, providers, options)
 
                 except Exception as e:
                     logger.error(e)
@@ -1133,11 +1137,15 @@ def run_onnxruntime(args, models):
 
                 # create onnxruntime inference session
                 try:
-                    sess = create_session(model_path, ep_to_provider_list[ep], options)
+                    sess, creation_time = create_session(model_path, ep_to_provider_list[ep], options)
+
                 except Exception as e:
                     logger.error(e)
                     update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
                     continue
+
+                if creation_time:                     
+                    model_to_session[name] = copy.deepcopy({ep: creation_time})
 
                 sess.disable_fallback()
 
@@ -1199,7 +1207,7 @@ def run_onnxruntime(args, models):
 
         # end of model
 
-    return success_results, model_to_latency, model_to_fail_ep, model_to_metrics
+    return success_results, model_to_latency, model_to_fail_ep, model_to_metrics, model_to_session
 
 def calculate_gain(value, ep1, ep2): 
     ep1_latency = float(value[ep1]['average_latency_ms'])
@@ -1355,6 +1363,54 @@ def output_specs(info, csv_filename):
                         'Spec': ['CPU', 'GPU', 'TensorRT', 'CUDA', 'CuDNN'], 
                         'Version': [cpu_version, gpu_version, tensorrt_version, cuda_version, cudnn_version]})
     table.to_csv(csv_filename, index=False)   
+
+def output_session_creation(results, csv_filename):
+    need_write_header = True 
+    if os.path.exists(csv_filename):
+        need_write_header = False 
+
+    with open(csv_filename, mode="a", newline='') as csv_file:
+        column_names = [model_title]
+        for provider in ort_provider_list: 
+            column_names.append(provider + session_ending)
+
+        csv_writer = csv.writer(csv_file)
+
+            
+        csv_writer = csv.writer(csv_file)
+
+        if need_write_header:
+            csv_writer.writerow(column_names)
+    
+        cpu_time = ""
+        cuda_fp32_time = ""
+        trt_fp32_time = ""
+        cuda_fp16_time = ""
+        trt_fp16_time = ""
+
+        for model_name, ep_dict in results.items():
+            for ep, time in ep_dict.items():
+                if ep == cpu: 
+                    cpu_time = time 
+                elif ep == cuda: 
+                    cuda_fp32_time = time
+                elif ep == trt: 
+                    trt_fp32_time = time
+                elif ep == cuda_fp16: 
+                    cuda_fp16_time = time
+                elif ep == trt_fp16:
+                    trt_fp16_time = time
+                else: 
+                    continue
+                    
+            row = [model_name,
+                   cpu_time, 
+                   cuda_fp32_time, 
+                   trt_fp32_time, 
+                   cuda_fp16_time, 
+                   trt_fp16_time] 
+            csv_writer.writerow(row)
+
 
 def output_latency(results, csv_filename):
     need_write_header = True 
@@ -1657,7 +1713,7 @@ def main():
     parse_models_helper(args, models)
 
     perf_start_time = datetime.now()
-    success_results, model_to_latency, model_to_fail_ep, model_to_metrics = run_onnxruntime(args, models)
+    success_results, model_to_latency, model_to_fail_ep, model_to_metrics, model_to_session = run_onnxruntime(args, models)
     perf_end_time = datetime.now()
 
     logger.info("Done running the perf.")
@@ -1719,6 +1775,9 @@ def main():
             csv_filename = args.benchmark_metrics_csv if args.benchmark_metrics_csv else f"benchmark_metrics_{time_stamp}.csv"
             csv_filename = os.path.join(path, csv_filename)
             output_metrics(model_to_metrics, csv_filename)
+
+    if len(model_to_session) > 0:
+        write_map_to_file(model_to_session, SESSION_FILE)
 
 if __name__ == "__main__":
     main()

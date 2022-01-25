@@ -56,7 +56,7 @@ class CudnnFilterDescriptor final {
   ~CudnnFilterDescriptor();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudnnFilterDescriptor);
 
-  Status Set(const std::vector<int64_t>& filter_dims, cudnnDataType_t data_typ);
+  Status Set(gsl::span<const int64_t> filter_dims, cudnnDataType_t data_typ);
 
   operator cudnnFilterDescriptor_t() const { return desc_; }
 

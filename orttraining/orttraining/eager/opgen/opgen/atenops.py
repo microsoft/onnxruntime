@@ -94,7 +94,7 @@ hand_implemented = {
 }
 
 ops = {**ops, **hand_implemented} 
-# TODO: this is a temporary whitelist for ops need type promotion
+# TODO: this is a temporary allowlist for ops need type promotion
 # Need to enhance the support for onnx type constrains to automatically
 # resolve whether the op need type promotion.
 # Will remove this list in the future.

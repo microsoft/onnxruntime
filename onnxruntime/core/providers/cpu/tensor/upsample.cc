@@ -1027,7 +1027,7 @@ template <typename T>
 Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 const std::vector<float>& roi,
                                 const std::vector<float>& scales,
-                                const std::vector<int64_t>& output_dims) const {
+                                const gsl::span<const int64_t>& output_dims) const {
   const auto* X = context->Input<Tensor>(0);
   ORT_ENFORCE(X != nullptr);
   auto dims = X->Shape().GetDims();
@@ -1152,7 +1152,7 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
   ORT_ENFORCE(X != nullptr);
 
-  std::vector<int64_t> output_dims(X->Shape().GetDims().size());
+  TensorShapeVector output_dims(X->Shape().GetDims().size());
 
   // Get roi data
   // Initialize the roi array to all zeros as this will be the most common case

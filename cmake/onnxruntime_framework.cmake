@@ -68,6 +68,10 @@ if (onnxruntime_USE_MIMALLOC)
     target_link_libraries(onnxruntime_framework mimalloc-static)
 endif()
 
+if (onnxruntime_BUILD_WEBASSEMBLY)
+  target_link_libraries(onnxruntime_framework absl::raw_hash_set absl::hash absl::city)
+endif()
+
 set_target_properties(onnxruntime_framework PROPERTIES FOLDER "ONNXRuntime")
 # need onnx to build to create headers that this project includes
 add_dependencies(onnxruntime_framework ${onnxruntime_EXTERNAL_DEPENDENCIES})
