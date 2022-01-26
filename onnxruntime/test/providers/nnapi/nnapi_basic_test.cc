@@ -26,7 +26,9 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
+#if !defined(ORT_MINIMAL_BUILD)
 #include "test/optimizer/qdq_test_utils.h"
+#endif
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -276,7 +278,7 @@ TEST(NnapiExecutionProviderTest, TestQDQModel) {
 }
 #endif  // defined(__ANDROID__)
 
-#endif  // !(ORT_MINIMAL_BUILD
+#endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
   uint32_t nnapi_flags = NNAPI_FLAG_USE_NONE;

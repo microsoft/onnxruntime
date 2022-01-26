@@ -831,10 +831,10 @@ class Graph {
     return *(result.first->second);
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   /** Generate a unique name in this Graph for a NodeArg */
   std::string GenerateNodeArgName(const std::string& base_name);
 
-#if !defined(ORT_MINIMAL_BUILD)
   /** Generate a unique name in this Graph for a Node */
   std::string GenerateNodeName(const std::string& base_name);
 
