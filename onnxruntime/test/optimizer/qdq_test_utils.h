@@ -16,21 +16,11 @@ using GetQDQConvTestCaseFn = std::function<void(ModelTestBuilder& builder)>;
 
 template <typename T>
 typename std::enable_if<IsTypeQuantLinearCompatible<T>::value, NodeArg*>::type
-AddQDQNodePair(ModelTestBuilder& builder, NodeArg* q_input, float scale, T zp) {
+AddQDQNodePair(ModelTestBuilder& builder, NodeArg* q_input, float scale, T zp = T()) {
   auto* q_output = builder.MakeIntermediate();
   auto* dq_output = builder.MakeIntermediate();
   builder.AddQuantizeLinearNode<T>(q_input, scale, zp, q_output);
   builder.AddDequantizeLinearNode<T>(q_output, scale, zp, dq_output);
-  return dq_output;
-}
-
-template <typename T>
-typename std::enable_if<IsTypeQuantLinearCompatible<T>::value, NodeArg*>::type
-AddQDQNodePair(ModelTestBuilder& builder, NodeArg* q_input, float scale) {
-  auto* q_output = builder.MakeIntermediate();
-  auto* dq_output = builder.MakeIntermediate();
-  builder.AddQuantizeLinearNode(q_input, scale, q_output);
-  builder.AddDequantizeLinearNode<T>(q_output, scale, dq_output);
   return dq_output;
 }
 
@@ -42,15 +32,17 @@ GetQDQConvTestCaseFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shap
     auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
     auto* output_arg = builder.MakeOutput();
 
-    typedef std::numeric_limits<InputType> InputLimits;
-    typedef std::numeric_limits<WeightType> WeightLimits;
-    typedef std::numeric_limits<OutputType> OutputLimits;
+    using std::numeric_limits<InputType> InputLimits;
+    using std::numeric_limits<WeightType> WeightLimits;
+    using std::numeric_limits<OutputType> OutputLimits;
 
     InputType input_min_value = InputLimits::min();
     InputType input_max_value = InputLimits::max();
 
     WeightType weight_min_value = WeightLimits::min();
     WeightType weight_max_value = WeightLimits::max();
+
+    // initializer values are given as random here (i.e. /=2 is arbitrary.)
     if (std::is_same<WeightType, int8_t>::value) {
       weight_min_value /= 2;
       weight_max_value /= 2;
