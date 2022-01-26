@@ -1153,8 +1153,10 @@ void OpTester::Run(
 
         ASSERT_PROVIDER_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
 #ifdef USE_TENSORRT
-        std::unique_ptr<IExecutionProvider> fallback_execution_provider = DefaultCudaExecutionProvider();
-        ASSERT_PROVIDER_STATUS_OK(session_object.RegisterExecutionProvider(std::move(fallback_execution_provider)));
+        if (excluded_provider_types.count(onnxruntime::kCudaExecutionProvider) == 0) {
+            std::unique_ptr<IExecutionProvider> fallback_execution_provider = DefaultCudaExecutionProvider();
+            ASSERT_PROVIDER_STATUS_OK(session_object.RegisterExecutionProvider(std::move(fallback_execution_provider)));
+        }
 #endif
         fetches_ = ExecuteModel<InferenceSession>(
             *p_model, session_object, expect_result, expected_failure_string,
