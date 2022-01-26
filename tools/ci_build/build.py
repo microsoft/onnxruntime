@@ -1533,9 +1533,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             continue
         dll_path_list = []
         if args.use_nuphar:
-            dll_path_list.append(os.path.join(
-                build_dir, config, "external", "tvm", config))
-        if args.use_stvm or args.use_stvm:
             dll_path_list.append(os.path.join(build_dir, "_deps", "tvm-build"))
         if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, 'lib'))
