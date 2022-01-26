@@ -4,9 +4,12 @@
 #pragma once
 
 #include <string>
+#include "core/common/common.h"
 #include "core/graph/basic_types.h"
-#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
-#include "core/optimizer/selectors_actions/helpers.h"
+
+#if !defined(ORT_MINIMAL_BUILD)
+#include "onnx/defs/schema.h"
+#endif
 
 namespace onnxruntime {
 
@@ -14,6 +17,9 @@ class GraphViewer;
 class Node;
 
 namespace QDQ {
+
+struct NodeGroup;
+class NodeGroupSelector;
 
 // struct that provides a join between selector and op versions supported
 struct OpVersionsAndSelector {
@@ -52,9 +58,7 @@ class Selectors {
 // class that manages qdq node group selections
 class SelectorManager {
  public:
-  SelectorManager() = default;
-
-  void Initialize();
+  SelectorManager();
 
   // Methods that finds and returns a vector of QDQ::NodeGroup in a given graph
   // Can be used in QDQ support in different EPs
