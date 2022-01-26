@@ -323,12 +323,12 @@ std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) {
 #endif
 
 #ifdef USE_MIGRAPHX
-std::unique_ptr<IAllocator> CreateHIPAllocator(int16_t device_id, const char* name) {
-  return g_host->CreateHIPAllocator(device_id, name);
+std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateROCMAllocator(device_id, name);
 }
 
-std::unique_ptr<IAllocator> CreateHIPPinnedAllocator(int16_t device_id, const char* name) {
-  return g_host->CreateHIPPinnedAllocator(device_id, name);
+std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateROCMPinnedAllocator(device_id, name);
 }
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) {
