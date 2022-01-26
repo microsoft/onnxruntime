@@ -791,7 +791,7 @@ class Graph {
   /** Gets the maximum NodeIndex value used in the Graph.
   WARNING: This actually returns the max index value used + 1.
   */
-  int MaxNodeIndex() const noexcept { return static_cast<int>(nodes_.size()); }  // assume the casting won't overflow
+  int MaxNodeIndex() const noexcept { return static_cast<int>(nodes_.size()); }  //assume the casting won't overflow
 
   /** Gets the number of valid Nodes in the Graph.
   @remarks This may be smaller than MaxNodeIndex(), as Nodes may be removed during optimization.
