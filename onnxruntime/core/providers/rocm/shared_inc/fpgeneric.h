@@ -263,6 +263,37 @@ inline rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle,
                                          rocblas_gemm_algo_standard, 0, 0);
 }
 
+inline rocblas_status cublasGemmStridedBatchedHelper(rocblas_handle handle, 
+                                                     rocblas_operation transa,
+                                                     rocblas_operation transb, 
+                                                     int m, int n, int k,
+                                                     const BFloat16* alpha, 
+                                                     const BFloat16* A, int lda,
+                                                     long long int strideA, 
+                                                     const BFloat16* B, int ldb,
+                                                     long long int strideB, 
+                                                     const BFloat16* beta, 
+                                                     BFloat16* C, int ldc,
+                                                     long long int strideC, 
+                                                     int batch_count) {
+  float h_a = alpha->ToFloat();
+  float h_b = beta->ToFloat();
+  // accumulating in FP32
+  return rocblas_gemm_strided_batched_ex(handle, 
+                                         transa, 
+                                         transb, 
+                                         m, n, k, 
+                                         &h_a, 
+                                         A, rocblas_datatype_bf16_r, lda, strideA, 
+                                         B, rocblas_datatype_bf16_r, ldb, strideB, 
+                                         &h_b, 
+                                         C, rocblas_datatype_bf16_r, ldc, strideC,
+                                         C, rocblas_datatype_bf16_r, ldc, strideC,
+                                         batch_count, 
+                                         rocblas_datatype_f32_r,
+                                         rocblas_gemm_algo_standard, 0, 0);
+}
+
 // transpose using geam
 inline rocblas_status rocblasTransposeHelper(hipStream_t /*stream*/, rocblas_handle handle, rocblas_operation  transa, rocblas_operation  transb, int m, int n, const float* alpha, const float* A, int lda, const float* beta, const float* B, int ldb, float* C, int ldc) {
   return rocblas_sgeam(handle, transa, transb, m, n, alpha, A, lda, beta, B, ldb, C, ldc);
