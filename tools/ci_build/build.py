@@ -1127,8 +1127,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         os.makedirs(config_build_dir, exist_ok=True)
         if args.use_nuphar or args.use_stvm:
             os.environ["PATH"] = (
-                os.path.join(config_build_dir, "_deps", "tvm-build") + os.pathsep + 
-                os.path.join(config_build_dir, "_deps", "tvm-src") + os.pathsep + 
+                os.path.join(config_build_dir, "_deps", "tvm-build") + os.pathsep +
+                os.path.join(config_build_dir, "_deps", "tvm-src") + os.pathsep +
                 os.path.dirname(sys.executable) + os.pathsep + os.environ["PATH"])
 
         run_subprocess(
