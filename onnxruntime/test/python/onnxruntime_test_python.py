@@ -42,7 +42,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testTvmImported(self):
-        if "StvmExecutionProvider" in onnxrt.get_available_providers():
+        if "StvmExecutionProvider" not in onnxrt.get_available_providers():
             return
         self.assertTrue(tvm is not None)
 

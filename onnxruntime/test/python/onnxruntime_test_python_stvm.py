@@ -24,11 +24,12 @@ onnx_model = make_model(graph)
 a = numpy.random.randn(2, 2).astype(numpy.float32)
 b = numpy.random.randn(1, 2).astype(numpy.float32)
 x = numpy.random.randn(1, 2).astype(numpy.float32)
+data = {'A': a, 'B': b, 'X': x}
 
 sess = onnxruntime.InferenceSession(
     onnx_model.SerializeToString(), providers=['CPUExecutionProvider'])
 
-y = sess.run(None, {'A': a, 'B': b, 'X': x})[0]
+y = sess.run(None, data)[0]
 
 provider_options = dict(
     target="llvm -mcpu=core-avx2",
@@ -36,7 +37,10 @@ provider_options = dict(
     opt_level=3,
     freeze_weights=True,
     tuning_file_path="",
-    tuning_type="Ansor")
+    tuning_type="Ansor",
+    input_names=" ".join(i.name for i in sess.get_inputs()),
+    input_shapes=" ".join(str(numpy.array(data[i.name].shape)) 
+                          for i in sess.get_inputs()))
 
 so = onnxruntime.SessionOptions()
 so.log_severity_level = 0
@@ -48,14 +52,6 @@ sess = onnxruntime.InferenceSession(
     providers=["StvmExecutionProvider"],
     provider_options=[provider_options])
 
-y_tvm = sess.run(None, {'A': a, 'B': b, 'X': x})[0]
+y_tvm = sess.run(None, data)[0]
 
 assert_almost_equal(y, y_tvm)
-
-"""
-AssertionError: 
-Arrays are not almost equal to 7 decimals
-  (shapes (1, 2), (1, 1) mismatch)
-    x: array([[2.2854233, 0.6363953]], dtype=float32)
-    y: array([[1.9743297]], dtype=float32)
-"""
