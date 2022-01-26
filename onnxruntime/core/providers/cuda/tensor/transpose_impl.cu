@@ -29,8 +29,8 @@ __global__ void Transpose3DKernel(const TArray<int64_t> input_shape,
 
 bool CanDoTranspose3D(const cudaDeviceProp& prop,
                       int32_t rank,
-                      const std::vector<int64_t>& input_dims,
-                      const std::vector<size_t>& permutations,
+                      const gsl::span<const int64_t>& input_dims,
+                      const gsl::span<const size_t>& permutations,
                       dim3& grid_size, dim3& block_size) {
   if (rank == 3 &&
       // permutation is done in the last two dimensions.
@@ -124,8 +124,8 @@ __global__ void Transpose4DKernelParallelizeMultipleElementsPerThreadInInnermost
 bool CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim(const cudaDeviceProp& prop,
                                                                         size_t element_size,
                                                                         int32_t rank,
-                                                                        const std::vector<int64_t>& input_dims,
-                                                                        const std::vector<size_t>& permutations,
+                                                                        const gsl::span<const int64_t>& input_dims,
+                                                                        const gsl::span<const size_t>& permutations,
                                                                         dim3& grid_size, dim3& block_size) {
   if (rank == 4 &&
       // the permutations is not on the last dimension.
@@ -245,8 +245,8 @@ __global__ void Transpose4DKernelParallelizeOneElementPerThread(
 bool CanDoTranspose4DParallelizeOneElementPerThread(const cudaDeviceProp& prop,
                                                     size_t element_size,
                                                     int32_t rank,
-                                                    const std::vector<int64_t>& input_dims,
-                                                    const std::vector<size_t>& permutations,
+                                                    const gsl::span<const int64_t>& input_dims,
+                                                    const gsl::span<const size_t>& permutations,
                                                     dim3& grid_size, dim3& block_size) {
   if (rank == 4) {
     // dims[3]: block.x
@@ -261,7 +261,7 @@ bool CanDoTranspose4DParallelizeOneElementPerThread(const cudaDeviceProp& prop,
       // 2. block_size_y * num_block_ext >= input_dims[2]
       int64_t block_size_x = input_dims[3];
       int64_t max_block_size_y = prop.maxThreadsPerBlock / block_size_x;
-      int64_t block_size_y = min(input_dims[2], max_block_size_y);
+      int64_t block_size_y = std::min(input_dims[2], max_block_size_y);
       int64_t num_block_ext = CeilDiv(input_dims[2], block_size_y);
 
       if (num_block_ext <= prop.maxGridSize[0]) {

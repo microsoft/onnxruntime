@@ -1,16 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma once
+
+#include <memory>
+#include "core/framework/allocator.h"
+
 namespace onnxruntime {
 
-// An STL wrapper for ORT allocators. This enables overriding the 
+// An STL wrapper for ORT allocators. This enables overriding the
 // std::allocator used in STL containers for better memory performance.
 template <class T>
 class OrtStlAllocator {
-  template <class U> friend class OrtStlAllocator;
+  template <class U>
+  friend class OrtStlAllocator;
   AllocatorPtr allocator_;
 
-public:
+ public:
   typedef T value_type;
   using propagate_on_container_copy_assignment = std::true_type;
   using propagate_on_container_move_assignment = std::true_type;
@@ -41,11 +47,10 @@ public:
 
 template <class T1, class T2>
 bool operator==(const OrtStlAllocator<T1>& lhs, const OrtStlAllocator<T2>& rhs) noexcept {
-  return lhs.allocator_ == rhs.allocator_; 
+  return lhs.allocator_ == rhs.allocator_;
 }
 template <class T1, class T2>
 bool operator!=(const OrtStlAllocator<T1>& lhs, const OrtStlAllocator<T2>& rhs) noexcept {
-  return lhs.allocator_ != rhs.allocator_; 
+  return lhs.allocator_ != rhs.allocator_;
 }
-
-} // namespace onnxruntime
+}  // namespace onnxruntime

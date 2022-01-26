@@ -99,7 +99,7 @@ std::vector<OrtValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th, Alloc
     const Tensor& first_tensor = data_[0]->at(input_index).Get<Tensor>();
 
     MLDataType element_type = first_tensor.DataType();
-    std::vector<int64_t> shape_vector = first_tensor.Shape().GetDimsAsVector();
+    auto shape_vector = first_tensor.Shape().AsShapeVector();
     if (first_tensor.Shape().Size() > 1) {
       shape_vector.insert(shape_vector.begin(), batch_size);
     } else {
@@ -108,7 +108,7 @@ std::vector<OrtValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th, Alloc
     }
 
     AllocatorPtr alloc = allocator ? allocator : TrainingUtil::GetCpuAllocator();
-    auto p_tensor = std::make_unique<Tensor>(element_type, shape_vector, alloc);
+    auto p_tensor = std::make_unique<Tensor>(element_type, shape_vector, std::move(alloc));
     void* buffer = p_tensor->MutableDataRaw();
     size_t memory_size_per_sample = first_tensor.SizeInBytes();
 

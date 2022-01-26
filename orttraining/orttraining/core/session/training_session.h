@@ -34,7 +34,7 @@ class TrainingSession : public InferenceSession {
    */
   struct PartitionInfo {
     // value of the original shape of the weight
-    std::vector<int64_t> original_dim;
+    TensorShapeVector original_dim;
     // indicates whether weight was megatron partitioned or not.
     // -1: not partitioned; 0: column partitioned; 1: row partitioned
     int megatron_row_partition = -1;

@@ -167,6 +167,34 @@ MlasGemmQuantKernel(
     bool ZeroMode
 );
 
+/**
+ * @brief Usually a wrapper of assembly/intrinsic kernel
+ *        of symmetric quant gemm 
+ * @tparam KernelType 
+ * @param A                   Left hand side matrix
+ * @param B                   Prepacked right hand side matrix
+ * @param C                   Result matrix
+ * @param PackedCountK        Number of packed rows from B
+ * @param CountM              Number of rows to process
+ * @param CountN              Number of columns to process
+ * @param ldc                 Row stride of C
+ * @param lda                 Row stride of A
+ * @param ColumnSumVector     Column sum of B scaled by zero point A
+ * @return                    Number of rows processed
+*/
+template<typename KernelType>
+size_t
+MlasSymmQGemmKernel(
+    const int8_t* A,
+    const int8_t* B,
+    int32_t* C,
+    size_t PackedCountK,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    size_t lda,
+    const int32_t* ColumnSumVector
+);
 
 inline
 void
@@ -658,6 +686,75 @@ Return Value:
     }
 }
 
+/**
+ * @brief Operation for Quantized GEMM where B is symmetrically
+ *          quantized and packed matrix
+ * @param Shape 
+ * @param Data 
+ * @param RangeStartM 
+ * @param RangeCountM 
+ * @param RangeStartN 
+ * @param RangeCountN 
+*/
+template<typename KernelType>
+void
+MlasSymmQGemmPackedOperation(
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
+    const MLAS_SYMM_QGEMM_DATA_PARAMS* Data,
+    const size_t RangeStartM,
+    const size_t RangeCountM,
+    const size_t RangeStartN,
+    const size_t RangeCountN
+    )
+{
+
+    const size_t K = Shape->K;
+
+    const size_t lda = Data->lda;
+    const size_t ldc = Data->ldc;
+
+    const int8_t* PanelA = (const int8_t*)(Data->A) + RangeStartM * lda;
+    const int8_t* PackedB = (const int8_t*)Data->B;
+    int32_t* C = (int32_t*)(Data->C) + RangeStartM * ldc + RangeStartN;
+
+    //
+    // Extract the pointer to the column sum buffer from the packed matrix.
+    //
+    const size_t AlignedN =
+        (Shape->N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1);
+    const int32_t* PackedColumnSumBuffer = (const int32_t*)PackedB;
+    PackedB = (const int8_t*)(PackedColumnSumBuffer + AlignedN);
+    PackedColumnSumBuffer += RangeStartN;
+    
+    const size_t PackedCountK = (K + KernelType::PackedK - 1) / KernelType::PackedK;
+
+    //
+    // Apply the global depth value constant without the ZeroPointB scaling from:
+    //
+    //     (A[i] - ZeroPointA) * (B[i] - ZeroPointB)
+    //              ==>
+    //     A[i] * B[i] - A[i] * ZeroPointB - B[i] * ZeroPointA + ZeroPointA * ZeroPointB
+    //
+    // ZeroPointB is zero, which makes this much simpler
+    //
+
+    const int8_t* b = PackedB + RangeStartN * KernelType::PackedK * PackedCountK;
+    int32_t* c = C;
+
+    auto pa = PanelA;
+    size_t RowsRemaining = RangeCountM;
+
+    while (RowsRemaining > 0) {
+        size_t RowsHandled = MlasSymmQGemmKernel<KernelType>(
+            pa, b, c, PackedCountK, RowsRemaining, RangeCountN, ldc, lda, PackedColumnSumBuffer);
+
+        c += ldc * RowsHandled;
+        pa += lda * RowsHandled;
+        RowsRemaining -= RowsHandled;
+    }
+}
+
+
 //
 // Quantized integer matrix/matrix dispatch structure.
 //
@@ -667,6 +764,17 @@ void
 (MLAS_GEMM_QUANT_OPERATION)(
     const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
     const MLAS_GEMM_QUANT_DATA_PARAMS* Data,
+    const size_t RangeStartM,
+    const size_t RangeCountM,
+    const size_t RangeStartN,
+    const size_t RangeCountN
+    );
+
+typedef
+void
+(MLAS_SYMM_QGEMM_OPERATION)(
+    const MLAS_GEMM_QUANT_SHAPE_PARAMS* Shape,
+    const MLAS_SYMM_QGEMM_DATA_PARAMS* Data,
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
@@ -693,6 +801,12 @@ struct MLAS_GEMM_QUANT_DISPATCH {
     size_t PackedStrideK;
 };
 
+struct MLAS_SYMM_QGEMM_DISPATCH {
+    MLAS_SYMM_QGEMM_OPERATION* Operation;
+    MLAS_GEMM_QUANT_COPY_PACKB_ROUTINE* CopyPackBRoutine;
+    size_t StrideM; /**< num of rows processed by kernel at a time */
+    size_t PackedK;
+};
 
 MLAS_FORCEINLINE
 const MLAS_GEMM_QUANT_DISPATCH*
@@ -710,21 +824,21 @@ MlasGemmQuantGetDispatch(
 #if defined(MLAS_TARGET_AMD64_IX86)
     if (!AIsSigned) {
         if (BIsSigned) {
-            GemmQuantDispatch = MlasPlatform.GemmU8S8Dispatch;
+            GemmQuantDispatch = GetMlasPlatform().GemmU8S8Dispatch;
         }
         else {
-            GemmQuantDispatch = MlasPlatform.GemmU8U8Dispatch;
+            GemmQuantDispatch = GetMlasPlatform().GemmU8U8Dispatch;
         }
     }
 #elif defined(MLAS_TARGET_ARM64)
     if(BIsSigned) {
-        if(MlasPlatform.GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
+        if(GetMlasPlatform().GemmU8X8Dispatch == &MlasGemmU8X8DispatchNeon) {
             GemmQuantDispatch = &MlasGemmX8S8DispatchNeon;
         } else {
             GemmQuantDispatch = AIsSigned? &MlasGemmS8S8DispatchSdot : &MlasGemmU8X8DispatchUdot;
         }
     } else if(!AIsSigned) {
-        GemmQuantDispatch = MlasPlatform.GemmU8X8Dispatch;
+        GemmQuantDispatch = GetMlasPlatform().GemmU8X8Dispatch;
     }
 #elif defined(MLAS_TARGET_ARM64EC) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
     if(BIsSigned || !AIsSigned) {

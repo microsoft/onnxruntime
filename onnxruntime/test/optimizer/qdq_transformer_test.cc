@@ -23,7 +23,11 @@
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4127)
-#endif
+#endif  // #if defined(_MSC_VER)
+
+#ifdef USE_NNAPI
+#include "core/providers/shared/node_unit/node_unit.h"
+#endif  // #ifdef USE_NNAPI
 
 namespace onnxruntime {
 namespace test {
@@ -1831,6 +1835,9 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
 
   onnxruntime::QDQ::ConvNodeGroupSelector conv_selector;
 
+  // Initialize SelectorManager
+  QDQ::SelectorManager selector_mgr;
+
   // Create a GraphViewer covers the whole graph
   const GraphViewer whole_graph_viewer(graph);
 
@@ -1843,6 +1850,63 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
     ASSERT_EQ(NodeIndex(3), qdq_group.target_node);
     ASSERT_EQ(std::vector<NodeIndex>({4}), qdq_group.q_nodes);
   }
+
+  // Check if SelectorManager get a conv qdq group selection as expected
+  {
+    const auto result = selector_mgr.GetQDQSelections(whole_graph_viewer);
+    ASSERT_FALSE(result.empty());
+    const auto& qdq_group = result.at(0);
+    ASSERT_EQ(std::vector<NodeIndex>({0, 1, 2}), qdq_group.dq_nodes);
+    ASSERT_EQ(NodeIndex(3), qdq_group.target_node);
+    ASSERT_EQ(std::vector<NodeIndex>({4}), qdq_group.q_nodes);
+  }
+
+// The function GetAllNodeUnits is enabled for NNAPI EP only for now
+#ifdef USE_NNAPI
+  {
+    // Get all the NodeUnits in the graph_viewer
+    std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
+    std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
+
+    std::tie(node_unit_holder, node_unit_map) = GetAllNodeUnits(whole_graph_viewer);
+
+    // We should get a single QDQ Node unit in the result
+    ASSERT_EQ(1, node_unit_holder.size());
+    ASSERT_EQ(5, node_unit_map.size());
+    const auto& qdq_node_unit = *node_unit_holder[0];
+    ASSERT_EQ(NodeUnit::Type::QDQGroup, qdq_node_unit.UnitType());
+
+    ASSERT_EQ(3, qdq_node_unit.Inputs().size());
+    ASSERT_EQ(1, qdq_node_unit.Outputs().size());
+    ASSERT_EQ(conv_node, &qdq_node_unit.GetNode());
+
+    const auto verify_io_def = [](const NodeUnitIODef& io_def, const Node& node) {
+      const auto& op_type = node.OpType();
+      const bool is_dq = op_type == "DequantizeLinear";
+      const bool is_q = op_type == "QuantizeLinear";
+      ASSERT_TRUE(is_dq || is_q);
+      const auto input_defs = node.InputDefs();
+      if (is_dq) {
+        ASSERT_EQ(&io_def.node_arg, input_defs[0]);
+      } else {  // is_q
+        ASSERT_EQ(&io_def.node_arg, node.OutputDefs()[0]);
+      }
+
+      ASSERT_EQ(&io_def.quant_param->scale, input_defs[1]);
+
+      // [optional] zero point should be consistent between NodeUnitIODef and Input/OutputDefs
+      ASSERT_EQ(input_defs.size() == 3, !!io_def.quant_param->zero_point);
+      if (input_defs.size() == 3)  // we have zero point
+        ASSERT_EQ(io_def.quant_param->zero_point, input_defs[2]);
+    };
+
+    // We know the graph has 5 nodes, DQ_input, DQ_weight, DQ_bias, Conv, Q_output (index 0-4)
+    verify_io_def(qdq_node_unit.Inputs()[0], *whole_graph_viewer.GetNode(0));   // DQ_input
+    verify_io_def(qdq_node_unit.Inputs()[1], *whole_graph_viewer.GetNode(1));   // DQ_weight
+    verify_io_def(qdq_node_unit.Inputs()[2], *whole_graph_viewer.GetNode(2));   // DQ_bias
+    verify_io_def(qdq_node_unit.Outputs()[0], *whole_graph_viewer.GetNode(4));  // Q_output
+  }
+#endif  // #ifdef USE_NNAPI
 
   // Create a graph viewer covers part of the graph
   // Make sure the qdq conv selector will fail for the partial graph
@@ -1862,40 +1926,18 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
 
     const GraphViewer partial_graph_viewer(graph, *compute_capability->sub_graph);
     ASSERT_EQ(3, partial_graph_viewer.NumberOfNodes());
-    const auto result = conv_selector.GetQDQSelection(partial_graph_viewer, *conv_node);
-    ASSERT_FALSE(result.has_value());
-  }
-}
 
-TEST(QDQTransformerTests, QDQ_Shared_GetSelectors_Test) {
-  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/transform/qdq_conv.onnx");
+    // Check there is no qdq selection for the given nodes
+    {
+      const auto result = conv_selector.GetQDQSelection(partial_graph_viewer, *conv_node);
+      ASSERT_FALSE(result.has_value());
+    }
 
-  SessionOptions so;
-  so.graph_optimization_level = TransformerLevel::Default;
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(model_file_name));
-  ASSERT_STATUS_OK(session_object.Initialize());
-  const Graph& graph = session_object.GetGraph();
-  const auto* conv_node = graph.GetNode(3);
-
-  // Make sure node 3 is the conv node
-  ASSERT_TRUE(nullptr != conv_node);
-  ASSERT_EQ("Conv", conv_node->OpType());
-
-  const GraphViewer graph_viewer(graph);
-
-  // Initialize SelectorManager
-  QDQ::SelectorManager selector_mgr;
-  selector_mgr.Initialize();
-
-  // Check if SelectorManager get a conv qdq group selection as expected
-  {
-    const auto result = selector_mgr.GetQDQSelections(graph_viewer);
-    ASSERT_EQ(false, result.empty());
-    const auto& qdq_group = result.at(0);
-    ASSERT_EQ(std::vector<NodeIndex>({0, 1, 2}), qdq_group.dq_nodes);
-    ASSERT_EQ(NodeIndex(3), qdq_group.target_node);
-    ASSERT_EQ(std::vector<NodeIndex>({4}), qdq_group.q_nodes);
+    // Check SelectorManager will get empty result
+    {
+      const auto result = selector_mgr.GetQDQSelections(partial_graph_viewer);
+      ASSERT_TRUE(result.empty());
+    }
   }
 }
 

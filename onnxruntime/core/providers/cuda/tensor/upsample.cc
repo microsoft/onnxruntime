@@ -41,7 +41,7 @@ template <typename T>
 Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 const std::vector<float>& roi,
                                 const std::vector<float>& scales,
-                                const std::vector<int64_t>& output_dims) const {
+                                const gsl::span<const int64_t>& output_dims) const {
   const Tensor* X = context->Input<Tensor>(0);
   auto X_dims = X->Shape().GetDims();
   int32_t rank = static_cast<int32_t>(X_dims.size());
@@ -122,7 +122,7 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   ORT_ENFORCE(X != nullptr);
 
-  std::vector<int64_t> output_dims(X->Shape().GetDims().size());
+  TensorShapeVector output_dims(X->Shape().GetDims().size());
   std::vector<float> roi_array(X->Shape().GetDims().size() * 2, 0.0f);
   if (!roi_cached_) {
     bool use_default_roi = true;
@@ -137,7 +137,7 @@ Status Upsample<T>::ComputeInternal(OpKernelContext* context) const {
     if (use_default_roi) {
       // default roi includes ensures all the values in that axis are included in the roi
       // normalized roi is thus : [start, end] = [0, 1]
-      const auto& input_dims = X->Shape().GetDims();
+      const auto input_dims = X->Shape().GetDims();
       size_t input_rank = input_dims.size();
       roi_array.resize(input_rank * 2);
       for (size_t i = 0; i < input_rank; ++i) {
