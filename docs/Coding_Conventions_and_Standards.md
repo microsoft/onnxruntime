@@ -30,7 +30,7 @@ Other
   * Use 'InlinedHashSet<T>' and 'InlinedHashMap<T>' typedefs from core/framework/inlined_containers.h. These are drop-in replacements for 'std::unordered_set/map' that store their keys and values in one continuous buffer and reduce the number of allocations. They also do not allocate an 'end' node. Note, that these Hash containers do not provide pointer stability.
   * Consider using 'std::string_view' to use in maps and sets to reduce the number of allocations and avoid string duplication. Keep in mind that the strings referred to must be alive.
   * We have selected to use Abseil library for the above typedefs. Abseil container documentation is [here](https://abseil.io/docs/cpp/guides/container#abseil-containers).
-* Prefer using `reserve()` and not `resize()` on vectors.
+* Prefer using `reserve()` and not `resize()` on vectors. 'resize()' default constructs all the elements for the size which can be expensive/noticible even if the type is trivial. Default values are rarely used in practice and it becomes a waste. Construction like 'std::vector<int>(10, 0)' is the same as 'resize()' and is potentially wasteful.
 * Use `reserve()` on hash containers or pass the number of items in the constructor.  
 * Don't use else after return. see: [https://llvm.org/docs/CodingStandards.html#don-t-use-else-after-a-return](https://llvm.org/docs/CodingStandards.html#don-t-use-else-after-a-return)
 * Don't overuse std::shared\_ptr. Use std::shared\_ptr only if it's not clear when and where the object will be deallocated. See also: [https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#Rf-shared_ptr)
