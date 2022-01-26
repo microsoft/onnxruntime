@@ -70,14 +70,12 @@ void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds) {
   // read raw data from model provided by the model_path
-  ONNX_NAMESPACE::ModelProto model_proto;
-  ASSERT_STATUS_OK(onnxruntime::Model::Load(model_path, model_proto));
-  std::string model_data;
-  model_proto.SerializeToString(&model_data);
+  std::ifstream stream(model_path, std::ios::in | std::ios::binary);
+  std::vector<uint8_t> model_data((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
   RunAndVerifyOutputsWithEPViaModelData(model_data, log_id, std::move(execution_provider), feeds);
 }
 
-void RunAndVerifyOutputsWithEPViaModelData(const std::string& model_data, const char* log_id,
+void RunAndVerifyOutputsWithEPViaModelData(const gsl::span<uint8_t>& model_data, const char* log_id,
                                            std::unique_ptr<IExecutionProvider> execution_provider,
                                            const NameMLValMap& feeds) {
   SessionOptions so;

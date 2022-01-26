@@ -249,9 +249,7 @@ TEST(NnapiExecutionProviderTest, TestQDQModel) {
   helper.SetGraphOutputs();
   ASSERT_TRUE(model.MainGraph().Resolve().IsOK());
 
-  // Serialize the model to a string.
-  std::string model_data;
-  model.ToProto().SerializeToString(&model_data);
+  std::vector<uint8_t> model_data((std::istreambuf_iterator<char>(model)), std::istreambuf_iterator<char>());
 
   RunAndVerifyOutputsWithEPViaModelData(model_data, "NnapiExecutionProviderTest.TestQDQModel",
                                         std::make_unique<NnapiExecutionProvider>(0),

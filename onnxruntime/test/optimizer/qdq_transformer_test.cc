@@ -52,7 +52,7 @@ void QDQTransformerConvTests() {
       }
     };
 
-    TransformerTester(BuildTestCase<InputType, WeightType, BiasType, OutputType>(input_shape, weights_shape),
+    TransformerTester(BuildQDQConvTestCase<InputType, WeightType, BiasType, OutputType>(input_shape, weights_shape),
                       check_conv_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
