@@ -4,9 +4,9 @@
 #pragma once
 
 #include <functional>
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 #include <optional>
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #include "core/framework/kernel_registry_manager.h"
 #include "core/optimizer/graph_transformer.h"
@@ -19,7 +19,7 @@ class Graph;
 class GraphViewer;
 class Node;
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 // Base class for a selector which checks for a match and returns the set of nodes involved.
 struct NodeSelector {
@@ -33,7 +33,7 @@ struct NodeSelector {
   NodeSelector() = default;
 };
 
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 // class to manage a set of selector and associated actions
 class SelectorActionRegistry {
