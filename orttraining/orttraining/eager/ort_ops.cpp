@@ -4,6 +4,7 @@
 #include "ort_ops.h"
 #include "ort_util.h"
 #include "ort_log.h"
+#include "core/providers/cpu/tensor/reshape_helper.h"
 
 namespace torch_ort {
 namespace eager {
@@ -21,21 +22,10 @@ void copy(onnxruntime::ORTInvoker& invoker,
 template <template<class> class V>
 void createInplaceOutputValue(OrtValue& input, const V<int64_t>& shape, OrtValue* p_mlvalue){
   auto* input_ort_tensor = input.GetMutable<onnxruntime::Tensor>();
-  // the ort TensorShape class only accept std::vector, so have to conversion.
-  std::vector<int64_t> new_shape;
-  new_shape.assign(shape.begin(), shape.end());
+  onnxruntime::TensorShapeVector new_shape(shape.begin(), shape.end());
+  onnxruntime::ReshapeHelper helper(input_ort_tensor->Shape(), new_shape);
   CreateMLValue(input_ort_tensor->MutableDataRaw(),
                 input_ort_tensor->DataType(), new_shape, p_mlvalue);
-}
-
-template <typename T>
-using Vector = std::vector<T, std::allocator<T>>;
-
-template <>
-void createInplaceOutputValue<Vector>(OrtValue& input, const std::vector<int64_t>& shape, OrtValue* p_mlvalue){
-  auto* input_ort_tensor = input.GetMutable<onnxruntime::Tensor>();
-  CreateMLValue(input_ort_tensor->MutableDataRaw(),
-                input_ort_tensor->DataType(), gsl::make_span(shape), p_mlvalue);
 }
 
 template void createInplaceOutputValue<c10::ArrayRef>(OrtValue& input, const c10::ArrayRef<int64_t>& shape, OrtValue* p_mlvalue);
