@@ -1340,22 +1340,36 @@ if (onnxruntime_USE_TVM)
   endif()
 
   if (onnxruntime_USE_STVM)
-    set(USE_OPENMP gnu CACHE BOOL "Only defined for TVM")
-    set(USE_MICRO ON CACHE BOOL "Only defined for TVM")
+    set(USE_OPENMP gnu CACHE STRING "Only defined for TVM")
+    set(USE_MICRO OFF CACHE BOOL "Only defined for TVM")
   endif()
-  message(STATUS "TVM BEFORE USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} USE_MICRO=${USE_MICRO} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA}")
+  message(STATUS "TVM BEFORE USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} USE_MICRO=${USE_MICRO} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
+  message(STATUS "tvm_SOURCE_DIR=${tvm_SOURCE_DIR}")
+  message(STATUS "tvm_BINARY_DIR=${tvm_BINARY_DIR}")
   add_subdirectory(${tvm_SOURCE_DIR} ${tvm_BINARY_DIR} EXCLUDE_FROM_ALL)
-  message(STATUS "TVM AFTER USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} USE_MICRO=${USE_MICRO} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA}")
+  message(STATUS "TVM AFTER USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} USE_MICRO=${USE_MICRO} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
 
-  set_target_properties(tvm PROPERTIES FOLDER "External/tvm")
-  set_target_properties(tvm_topi PROPERTIES FOLDER "External/tvm")
-  set_target_properties(tvm_runtime PROPERTIES FOLDER "External/tvm")
+  if (onnxruntime_USE_NUPHAR)
+    set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
+    set_target_properties(tvm_topi PROPERTIES FOLDER ${tvm_SOURCE_DIR})
+    set_target_properties(tvm_runtime PROPERTIES FOLDER ${tvm_SOURCE_DIR})
 
-  set(TVM_INCLUDES ${tvm_SOURCE_DIR}/include
-    ${tvm_SOURCE_DIR}/3rdparty/dmlc-core/include
-    ${tvm_SOURCE_DIR}/3rdparty/dlpack/include
-    $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:tvm_topi,INTERFACE_INCLUDE_DIRECTORIES>)
+    set(TVM_INCLUDES ${tvm_SOURCE_DIR}/include
+      ${tvm_SOURCE_DIR}/3rdparty/dmlc-core/include
+      ${tvm_SOURCE_DIR}/3rdparty/dlpack/include
+      $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>
+      $<TARGET_PROPERTY:tvm_topi,INTERFACE_INCLUDE_DIRECTORIES>)
+  endif()
+
+  if (onnxruntime_USE_STVM)
+    set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
+
+    set(TVM_INCLUDES ${tvm_SOURCE_DIR}/include
+      ${tvm_SOURCE_DIR}/3rdparty/dmlc-core/include
+      ${tvm_SOURCE_DIR}/3rdparty/dlpack/include
+      $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>)
+  endif()
+
   add_definitions(-DUSE_TVM)
 
   if (onnxruntime_USE_NUPHAR)

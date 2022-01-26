@@ -36,6 +36,15 @@
          "component": {
             "type": "git",
             "git": {
+               "commitHash": "7b3a22e465dd6aca4729504a19beb4bc23312755",
+               "repositoryUrl": "https://github.com/apache/tvm.git"
+            }
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
                "commitHash": "e4a4c02764d37c9c3db0d64c4996651a3ef9513c",
                "repositoryUrl": "https://github.com/dmlc/HalideIR.git"
             }

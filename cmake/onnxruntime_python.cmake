@@ -642,19 +642,16 @@ if (onnxruntime_USE_ROCM)
     )
 endif()
 
-if (onnxruntime_USE_TVM)
+if (onnxruntime_USE_NUPHAR)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:tvm>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
-endif()
-
-if (onnxruntime_USE_NUPHAR)
   file(GLOB onnxruntime_python_nuphar_python_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/nuphar/scripts/*"
-  )
+      "${ONNXRUNTIME_ROOT}/core/providers/nuphar/scripts/*"
+    )
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/nuphar
