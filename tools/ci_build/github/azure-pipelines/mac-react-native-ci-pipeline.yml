@@ -86,26 +86,18 @@ jobs:
   - script: /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
     displayName: Setup gradle wrapper to use gradle 6.8.3
 
-  - script: |
-      python3 -m pip install -q flatbuffers
-    workingDirectory: '$(Build.BinariesDirectory)'
-    displayName: Install python modules
-
-  - script: |
-      python3 tools/python/run_android_emulator.py \
-        --android-sdk-root $(ANDROID_SDK_ROOT) \
-        --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
-        --start --emulator-extra-args="-partition-size 4096" \
-        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-    displayName: Start Android emulator
+  #- script: |
+  #    python3 -m pip install -q flatbuffers
+  #  workingDirectory: '$(Build.BinariesDirectory)'
+  #  displayName: Install python modules
 
   # Start switching to jdk 11 after the Android Emulator is started since Android SDK manager requires java 8
-  - task: JavaToolInstaller@0
-    displayName: Use jdk 11
-    inputs:
-      versionSpec: '11'
-      jdkArchitectureOption: 'x64'
-      jdkSourceOption: 'PreInstalled'
+  #- task: JavaToolInstaller@0
+  #  displayName: Use jdk 11
+  #  inputs:
+  #    versionSpec: '11'
+  #    jdkArchitectureOption: 'x64'
+  #    jdkSourceOption: 'PreInstalled'
 
   #- script: |
   #    python $(Build.SourcesDirectory)/tools/ci_build/github/android/build_aar_package.py \
@@ -127,10 +119,17 @@ jobs:
       zip -r onnxruntime-mobile-c.zip .
     displayName: Build iOS package
 
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      buildType: 'current'
+      artifactName: 'onnxruntime-android-mobile-aar'
+      targetPath: '$(Build.BinariesDirectory)\android-mobile-aar'
+    displayName: 'Download Android Aar artifacts'
+   
   - script: |
       export ORT_VERSION=$(cat $(Build.SourcesDirectory)/VERSION_NUMBER)
       mkdir $(Build.SourcesDirectory)/js/react_native/android/libs
-      cp $(Build.BinariesDirectory)/aar_out/${{variables.bild_config}}/com/microsoft/onnxruntime/onnxruntime-mobile/${ORT_VERSION}/onnxruntime-mobile-${ORT_VERSION}.aar $(Build.SourcesDirectory)/js/react_native/android/libs
+      cp $(Build.BinariesDirectory)/android-mobile-aar/onnxruntime-mobile-${ORT_VERSION}.aar $(Build.SourcesDirectory)/js/react_native/android/libs
       mkdir $(Build.SourcesDirectory)/js/react_native/local_pods
       cp $(Build.BinariesDirectory)/iOS_framework/framework_out/onnxruntime-mobile-c.zip $(Build.SourcesDirectory)/js/react_native/local_pods
     displayName: Copy Android and iOS package to React Native directory
@@ -149,6 +148,14 @@ jobs:
       yarn
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
     displayName: yarn js/react_native
+
+  - script: |
+      python3 tools/python/run_android_emulator.py \
+        --android-sdk-root $(ANDROID_SDK_ROOT) \
+        --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
+        --start --emulator-extra-args="-partition-size 4096" \
+        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+    displayName: Start Android emulator
 
   - script: |
       ./gradlew connectedDebugAndroidTest --stacktrace 
