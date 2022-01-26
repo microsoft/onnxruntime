@@ -2,44 +2,70 @@ variables:
   build_config: Release
 
 jobs:
-- job: Android_Aar_Packaging
+- job: Android_Aar_Packaging_For_React_Native
   pool: Linux-CPU-2019
   timeoutInMinutes: 60
+  workspace:
+    clean: all
+  variables:
+    artifacts_directory: $(Build.BinariesDirectory)/.artifacts
+
   steps:
   - checkout: self
     clean: true
     submodules: recursive
 
-  - script: |
-      python3 -m pip install -q flatbuffers pathlib
-    workingDirectory: '$(Build.BinariesDirectory)'
-    displayName: Install python modules
-
-  - task: JavaToolInstaller@0
-    displayName: Use jdk 8
+  - task: CmdLine@2
+    displayName: Create artifacts directory
     inputs:
-      versionSpec: '8'
-      jdkArchitectureOption: 'x64'
-      jdkSourceOption: 'PreInstalled'
+      script: |
+        # Create a folder for artifacts
+        mkdir -p $(artifacts_directory)
+      workingDirectory: $(Build.BinariesDirectory)
 
-  #- script: /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-  #  displayName: Setup gradle wrapper to use gradle 6.8.3
+  - template: set-version-number-variables-step.yml
+  - template: get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecpubuild
 
-  - script: |
-      python3 $(Build.SourcesDirectory)/tools/ci_build/github/android/build_aar_package.py \
-        --config ${{variables.build_config}} \
-        --android_sdk_path $(ANDROID_SDK_ROOT) \
-        --android_ndk_path $(ANDROID_NDK_HOME) \
-        --build_dir $(Build.BinariesDirectory) \
-        --include_ops_by_config $(Build.SourcesDirectory)/tools/ci_build/github/android/mobile_package.required_operators.config \
-        $(Build.SourcesDirectory)/tools/ci_build/github/android/default_mobile_aar_build_settings.json 
-    displayName: Build Android package
+  - task: CmdLine@2
+    displayName: Build Android AAR Packages
+    inputs:
+      script: |
+        set -e -x
+        NDK_HOME=$(realpath $ANDROID_NDK_HOME)
+        mkdir $(Build.BinariesDirectory)/.build_settings
+        cp $(Build.SourcesDirectory)/tools/ci_build/github/android/default_mobile_aar_build_settings.json $(Build.BinariesDirectory)/.build_settings/build_settings.json
+        cp $(Build.SourcesDirectory)/tools/ci_build/github/android/mobile_package.required_operators.config $(Build.BinariesDirectory)/.build_settings/include_ops_and_types.config
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $ANDROID_HOME:/android_home \
+          --volume $NDK_HOME:/ndk_home \
+          --volume $(artifacts_directory):/home/onnxruntimedev/.artifacts \
+          --volume $(Build.BinariesDirectory)/.build_settings:/home/onnxruntimedev/.build_settings \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          -e BUILD_CONFIG=${{variables.build_config}} \
+          -e ORT_VERSION=$(OnnxRuntimeVersion) \
+          -e PUBLISH_EXECUTABLES=0 \
+          onnxruntimecpubuild \
+            /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathtoPublish: '$(artifacts_directory)'
+      artifactName: 'onnxruntime-android-mobile-aar'
 
 - job: ReactNative_CI
   pool:
     vmImage: 'macOS-11'
   dependsOn:
-  - Android_Aar_Packaging
+  - Android_Aar_Packaging_For_React_Native
   timeoutInMinutes: 120
   steps:
   # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
