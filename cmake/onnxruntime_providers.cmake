@@ -236,6 +236,10 @@ if (onnxruntime_REDUCED_OPS_BUILD)
   add_op_reduction_include_dirs(onnxruntime_providers)
 endif()
 
+if (HAS_BITWISE_INSTEAD_OF_LOGICAL)
+  target_compile_options(onnxruntime_providers PRIVATE "-Wno-bitwise-instead-of-logical")
+endif()
+
 if (MSVC)
    target_compile_options(onnxruntime_providers PRIVATE "/bigobj")
    if(onnxruntime_DEV_MODE AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
