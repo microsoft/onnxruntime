@@ -17,6 +17,16 @@ class OrtOpTests(unittest.TestCase):
     cpu_twos = cpu_ones + cpu_ones
     ort_twos = ort_ones + ort_ones
     assert torch.allclose(cpu_twos, ort_twos.cpu())
+  
+  def test_type_promotion_add(self):
+    device = self.get_device()
+    x = torch.ones(2, 5, dtype = torch.int64)
+    y = torch.ones(2, 5, dtype = torch.float32)
+    ort_x = x.to(device)
+    ort_y = y.to(device)
+    ort_z = ort_x + ort_y
+    assert ort_z.dtype == torch.float32
+    assert torch.allclose(ort_z.cpu(), (x + y))
 
   def test_add_alpha(self):
     device = self.get_device()

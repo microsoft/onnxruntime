@@ -205,7 +205,7 @@ MLAS_FORCEINLINE
 const
 MLAS_CONV_SYM_DISPATCH*
 GetConvSymDispatch(bool InputIsSigned){
-    return InputIsSigned ? MlasPlatform.ConvSymS8S8Dispatch : MlasPlatform.ConvSymU8S8Dispatch;
+    return InputIsSigned ? GetMlasPlatform().ConvSymS8S8Dispatch : GetMlasPlatform().ConvSymU8S8Dispatch;
 }
 
 size_t

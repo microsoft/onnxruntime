@@ -204,17 +204,19 @@ class SessionState {
 
   /**
   Get cached memory pattern based on input shapes
+  Must be called only when all values contain tensors
   */
   const MemoryPatternGroup* GetMemoryPatternGroup(
-      const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
+      const gsl::span<const OrtValue>& tensor_inputs,
       const std::vector<int>& feed_mlvalue_idxs,
       std::unordered_map<int, TensorShape>& inferred_shapes) const;
 
   /**
   Set generated memory pattern with a given input shapes.
   Const as it's an internal cache update only.
+  All inputs must represent Tensors
   */
-  Status UpdateMemoryPatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
+  Status UpdateMemoryPatternGroupCache(const gsl::span<const OrtValue>& tensor_inputs,
                                        std::unique_ptr<MemoryPatternGroup> mem_patterns) const;
 
   bool GetUseDeterministicCompute() const { return use_deterministic_compute_; }
@@ -380,7 +382,7 @@ class SessionState {
 
 #ifdef ENABLE_TRAINING
   Status GeneratePatternGroupCache(
-      const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
+      const gsl::span<const OrtValue>& inputs,
       const std::vector<int>& feed_mlvalue_idxs,
       MemoryPatternGroup* output,
       std::unordered_map<int, TensorShape>& inferred_shapes) const;

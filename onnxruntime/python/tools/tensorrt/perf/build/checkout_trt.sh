@@ -1,5 +1,6 @@
 #!/bin/bash 
 
+echo "checking out onnx-tensorrt for correct version"
 echo "$1"
 if [ ! "$1" = "8.2" ]
 then
