@@ -582,6 +582,25 @@ TEST(TopKOperator, Top3ExplicitAxisSmallestElements) {
   top_3_explicit_axis_smallest<double>(11, 0);  //unsorted
 }
 
+template<typename T>
+static void top_3_explicit_aix_infinity(int opset_version, bool positive) {
+  T inf = positive ? std::numeric_limits<T>::infinity() : -std::numeric_limits<T>::infinity();
+  std::vector<T> input_vals = {inf, inf, inf, inf, inf, inf, inf, inf};
+  std::vector<int64_t> input_dimensions = {4, 2};
+  std::vector<T> expected_vals = {inf, inf, inf, inf, inf, inf};
+  std::vector<int64_t> expected_indices = {0, 0, 1, 1, 2, 2};
+  std::vector<int64_t> expected_dimensions = {3, 2};
+  int64_t axis = 0;
+  RunTest(opset_version, 3, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, true, axis, 0, 1);
+}
+
+TEST(TopKOperator, Top3ExplicitAxisInfinity) {
+  top_3_explicit_aix_infinity<float>(11, true);
+  top_3_explicit_aix_infinity<float>(11, false);
+  top_3_explicit_aix_infinity<double>(11, true);
+  top_3_explicit_aix_infinity<double>(11, false);
+}
+
 template <typename T>
 static void top_1_explicit_axis_MultiD_input_smallest(int opset_version, int64_t sorted = 1) {
   std::vector<T> input_vals = {1, 2, 3, 4, 5, 6, 7, 8};

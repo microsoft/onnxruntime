@@ -89,6 +89,9 @@
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Tensors\TensorTests.cs">
       <Link>TensorTests.cs</Link>
     </Compile>
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Tensors\ArrayTensorExtensionsTests.cs">
+      <Link>ArrayTensorExtensionsTests.cs</Link>
+    </Compile>
   </ItemGroup>
 
   <ItemGroup>

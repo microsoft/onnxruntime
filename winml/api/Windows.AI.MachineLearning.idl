@@ -33,7 +33,7 @@ import "windows.storage.idl";
 
 namespace ROOT_NS.AI.MachineLearning 
 {
-    [contractversion(5)]
+    [contractversion(6)]
     apicontract MachineLearningContract{};
 
     //! Forward declarations
@@ -104,22 +104,42 @@ namespace ROOT_NS.AI.MachineLearning
         //! Loads an ONNX model from a stream asynchronously.
         [remote_async]
         static Windows.Foundation.IAsyncOperation<LearningModel> LoadFromStreamAsync(Windows.Storage.Streams.IRandomAccessStreamReference modelStream);
+        //! Loads an ONNX model from a buffer asynchronously.
+        [contract(MachineLearningContract, 6)]
+        {
+                [remote_async]
+                static Windows.Foundation.IAsyncOperation<LearningModel> LoadFromBufferAsync(Windows.Storage.Streams.IBuffer modelBuffer);
+        }
         //! Loads an ONNX model from a file on disk.
         static LearningModel LoadFromFilePath(String filePath);
         //! Loads an ONNX model from a stream.
         static LearningModel LoadFromStream(Windows.Storage.Streams.IRandomAccessStreamReference modelStream);
-
+        //! Loads an ONNX model from a buffer.
+        [contract(MachineLearningContract, 6)]
+        {
+                static LearningModel LoadFromBuffer(Windows.Storage.Streams.IBuffer modelBuffer);
+        }
         //! Loads an ONNX model from a StorageFile asynchronously.
         [remote_async]
         [method_name("LoadFromStorageFileWithOperatorProviderAsync")] static Windows.Foundation.IAsyncOperation<LearningModel> LoadFromStorageFileAsync(Windows.Storage.IStorageFile modelFile, ILearningModelOperatorProvider operatorProvider);
         //! Loads an ONNX model from a stream asynchronously.
         [remote_async]
         [method_name("LoadFromStreamWithOperatorProviderAsync")] static Windows.Foundation.IAsyncOperation<LearningModel> LoadFromStreamAsync(Windows.Storage.Streams.IRandomAccessStreamReference modelStream, ILearningModelOperatorProvider operatorProvider);
-        //! Loads an ONNX model from a file on disk.
+        //! Loads an ONNX model from a buffer asynchronously.
+        [contract(MachineLearningContract, 6)]
+        {
+                [remote_async]
+                [method_name("LoadFromBufferWithOperatorProviderAsync")] static Windows.Foundation.IAsyncOperation<LearningModel> LoadFromBufferAsync(Windows.Storage.Streams.IBuffer modelBuffer, ILearningModelOperatorProvider operatorProvider);
+        }
+		//! Loads an ONNX model from a file on disk.
         [method_name("LoadFromFilePathWithOperatorProvider")] static LearningModel LoadFromFilePath(String filePath, ILearningModelOperatorProvider operatorProvider);
         //! Loads an ONNX model from a stream.
         [method_name("LoadFromStreamWithOperatorProvider")] static LearningModel LoadFromStream(Windows.Storage.Streams.IRandomAccessStreamReference modelStream, ILearningModelOperatorProvider operatorProvider);
-
+        //! Loads an ONNX model from a buffer.
+        [contract(MachineLearningContract, 6)]
+        {
+                [method_name("LoadFromBufferWithOperatorProvider")] static LearningModel LoadFromBuffer(Windows.Storage.Streams.IBuffer modelBuffer, ILearningModelOperatorProvider operatorProvider);
+        }
         //! The name of the model author.
         String Author{ get; };
         //! The name of the model.

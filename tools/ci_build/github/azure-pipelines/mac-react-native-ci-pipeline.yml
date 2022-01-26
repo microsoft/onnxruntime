@@ -1,0 +1,207 @@
+variables:
+  build_config: Release
+
+jobs:
+- job: Android_Aar_Packaging_For_React_Native
+  pool: Linux-CPU-2019
+  timeoutInMinutes: 60
+  workspace:
+    clean: all
+  variables:
+    artifacts_directory: $(Build.BinariesDirectory)/.artifacts
+
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+
+  - task: CmdLine@2
+    displayName: Create artifacts directory
+    inputs:
+      script: |
+        # Create a folder for artifacts
+        mkdir -p $(artifacts_directory)
+      workingDirectory: $(Build.BinariesDirectory)
+
+  - template: templates/set-version-number-variables-step.yml
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecpubuild
+
+  - task: CmdLine@2
+    displayName: Build Android AAR Packages
+    inputs:
+      script: |
+        set -e -x
+        NDK_HOME=$(realpath $ANDROID_NDK_HOME)
+        mkdir $(Build.BinariesDirectory)/.build_settings
+        cp $(Build.SourcesDirectory)/tools/ci_build/github/android/default_mobile_aar_build_settings.json $(Build.BinariesDirectory)/.build_settings/build_settings.json
+        cp $(Build.SourcesDirectory)/tools/ci_build/github/android/mobile_package.required_operators.config $(Build.BinariesDirectory)/.build_settings/include_ops_and_types.config
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $ANDROID_HOME:/android_home \
+          --volume $NDK_HOME:/ndk_home \
+          --volume $(artifacts_directory):/home/onnxruntimedev/.artifacts \
+          --volume $(Build.BinariesDirectory)/.build_settings:/home/onnxruntimedev/.build_settings \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          -e BUILD_CONFIG=${{variables.build_config}} \
+          -e ORT_VERSION=$(OnnxRuntimeVersion) \
+          -e PUBLISH_EXECUTABLES=0 \
+          onnxruntimecpubuild \
+            /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathtoPublish: '$(artifacts_directory)'
+      artifactName: 'onnxruntime-android-mobile-aar'
+
+- job: ReactNative_CI
+  pool:
+    vmImage: 'macOS-11'
+  dependsOn:
+  - Android_Aar_Packaging_For_React_Native
+  timeoutInMinutes: 120
+  steps:
+  # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
+  # pythonVersion can be updated in Azure pipeline settings
+  # https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=53
+  - task: UsePythonVersion@0
+    displayName: Use Python $(pythonVersion)
+    inputs:
+      versionSpec: $(pythonVersion)
+
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '16.x'
+
+  - script: brew install coreutils ninja npm yarn
+    displayName: Install coreutils, ninja, npm, and yarn
+
+  - script: /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
+    displayName: Setup gradle wrapper to use gradle 6.8.3
+
+  - script: |
+      python3 -m pip install -q flatbuffers
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: Install python modules
+
+  # Start switching to jdk 11 after the Android Emulator is started since Android SDK manager requires java 8
+  #- task: JavaToolInstaller@0
+  #  displayName: Use jdk 11
+  #  inputs:
+  #    versionSpec: '11'
+  #    jdkArchitectureOption: 'x64'
+  #    jdkSourceOption: 'PreInstalled'
+
+  #- script: |
+  #    python $(Build.SourcesDirectory)/tools/ci_build/github/android/build_aar_package.py \
+  #      --config ${{variables.build_config}} \
+  #      --android_sdk_path ${ANDROID_SDK_ROOT} \
+  #      --android_ndk_path ${ANDROID_NDK_HOME} \
+  #      --build_dir $(Build.BinariesDirectory) \
+  #      --include_ops_by_config $(Build.SourcesDirectory)/tools/ci_build/github/android/mobile_package.required_operators.config \
+  #      $(Build.SourcesDirectory)/tools/ci_build/github/android/default_mobile_aar_build_settings.json 
+  #  displayName: Build Android package
+
+  - script: |
+      python3 $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_ios_framework.py \
+        $(Build.SourcesDirectory)/tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json \
+        --config ${{variables.build_config}} \
+        --build_dir $(Build.BinariesDirectory)/ios_framework \
+        --include_ops_by_config $(Build.SourcesDirectory)/tools/ci_build/github/android/mobile_package.required_operators.config
+      cd $(Build.BinariesDirectory)/ios_framework/framework_out
+      zip -r onnxruntime-mobile-c.zip .
+    displayName: Build iOS package
+
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      buildType: 'current'
+      artifactName: 'onnxruntime-android-mobile-aar'
+      targetPath: '$(Build.BinariesDirectory)/android-mobile-aar'
+    displayName: 'Download Android Aar artifacts'
+   
+  - script: |
+      export ORT_VERSION=$(cat $(Build.SourcesDirectory)/VERSION_NUMBER)
+      mkdir $(Build.SourcesDirectory)/js/react_native/android/libs
+      cp $(Build.BinariesDirectory)/android-mobile-aar/onnxruntime-mobile-${ORT_VERSION}.aar $(Build.SourcesDirectory)/js/react_native/android/libs
+      mkdir $(Build.SourcesDirectory)/js/react_native/local_pods
+      cp $(Build.BinariesDirectory)/ios_framework/framework_out/onnxruntime-mobile-c.zip $(Build.SourcesDirectory)/js/react_native/local_pods
+    displayName: Copy Android and iOS package to React Native directory
+
+  - script: |
+      npm ci
+    workingDirectory: '$(Build.SourcesDirectory)/js'
+    displayName: npm ci js
+  
+  - script: |
+      npm ci
+    workingDirectory: '$(Build.SourcesDirectory)/js/common'
+    displayName: npm ci js/common
+
+  - script: |
+      yarn
+    workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
+    displayName: yarn js/react_native
+
+  - script: |
+      python3 tools/python/run_android_emulator.py \
+        --android-sdk-root $(ANDROID_SDK_ROOT) \
+        --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
+        --start --emulator-extra-args="-partition-size 4096" \
+        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+    displayName: Start Android emulator
+
+  - script: |
+      ./gradlew connectedDebugAndroidTest --stacktrace 
+      ./gradlew --stop 
+    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/android'
+    displayName: Run React Native Android Instrumented Tests
+    continueOnError: true
+
+  - task: PublishTestResults@2
+    inputs:
+      testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/android/**/outputs/androidTest-results/**/TEST*.xml'
+      failTaskOnFailedTests: true
+      testRunTitle: 'React Native Android Instrumented Test results'
+    condition: succeededOrFailed()
+    displayName: Publish React Native Android Instrumented Test Results
+
+  - task: Xcode@5
+    inputs:
+      actions: 'test'
+      scheme: 'OnnxruntimeModuleTest'
+      sdk: 'iphonesimulator'
+      configuration: 'Debug'
+      xcodeVersion: 'default'
+      packageApp: false
+      xcWorkspacePath: 'OnnxruntimeModule.xcworkspace'
+      destinationSimulators: 'iPhone 11'
+      destinationTypeOption: 'simulators'
+      destinationPlatformOption: 'iOS'
+      signingOption: "auto"
+      useXcpretty: true
+      workingDirectory: $(Build.Sources.Directory)/js/react_native/ios
+      publishJUnitResults: true
+    displayName: Run React Native iOS Tests
+
+  - task: PublishTestResults@2
+    inputs:
+      testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/ios/build/reports/test-results.xml'
+      failTaskOnFailedTests: true
+      testRunTitle: 'React Native iOS Instrumented Test results'
+    condition: succeededOrFailed()
+    displayName: Publish React Native iOS Instrumented Test Results
+
+  - script: |
+      python3 tools/python/run_android_emulator.py \
+        --android-sdk-root $(ANDROID_SDK_ROOT) \
+        --stop \
+        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+    displayName: Stop Android emulator
+    condition: always()

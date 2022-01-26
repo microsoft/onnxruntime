@@ -85,11 +85,6 @@ namespace Dml
 
         void ExecuteZeroInt64Tensor(IDMLCompiledOperator* compiledOperator, IMLOperatorTensor* tensor);
 
-        // Remap 64-bit data types to 32-bit via doubled strides.
-        // These should be called before GetDmlInputDescs or GetDmlOutputDescs.
-        void Remap64bitDmlDataTypesTo32bit();
-        void Remap64bitDmlDataTypesTo32bitIfNeeded();
-
         TensorDesc CreateTensorDescFromInput(
             const MLOperatorKernelCreationContext& kernelInfo,
             uint32_t index,

@@ -141,6 +141,14 @@
     ],
     [
         "ArgMax ai.onnx CPUExecutionProvider",
+        725939091209285112
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
+        1506815612154586624
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
         2317240841713684752
     ],
     [
@@ -161,7 +169,19 @@
     ],
     [
         "ArgMax ai.onnx CPUExecutionProvider",
+        4620340115180881848
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
+        10486830423259333928
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
         12157492629288967928
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
+        12195502223979275536
     ],
     [
         "ArgMax ai.onnx CPUExecutionProvider",
@@ -170,6 +190,10 @@
     [
         "ArgMax ai.onnx CPUExecutionProvider",
         14910778597193697496
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
+        18394842867298045376
     ],
     [
         "ArgMin ai.onnx CPUExecutionProvider",

@@ -301,6 +301,7 @@ It should be able to consumed by both from projects that uses NPM packages (thro
 #### Reduced WebAssembly artifacts
 
 By default, the WebAssembly artifacts from onnxruntime-web package allows use of both standard ONNX models (.onnx) and ORT format models (.ort). There is an option to use a minimal build of ONNX Runtime to reduce the binary size, which only supports ORT format models. See also [ORT format model](https://onnxruntime.ai/docs/tutorials/mobile/overview.html) for more information.
+
 #### Reduced JavaScript bundle file fize
 
 By default, the main bundle file `ort.min.js` of ONNX Runtime Web contains all features. However, its size is over 500kB and for some scenarios we want a smaller sized bundle file, if we don't use all the features. The following table lists all available bundles with their support status of features.
@@ -313,6 +314,9 @@ By default, the main bundle file `ort.min.js` of ONNX Runtime Web contains all f
 |ort.wasm.min.js|148.56|44KB|X|O|O|O|X|
 |ort.wasm-core.min.js|40.56KB|12.74KB|X|O|X|X|X|
 
+#### Build ONNX Runtime as a WebAssembly static library
+
+When `--build_wasm_static_lib` is given instead of `--build_wasm`, it builds a WebAssembly static library of ONNX Runtime and creates a `libonnxruntime_webassembly.a` file at a build output directory. Developers who have their own C/C++ project and build it as WebAssembly with ONNX Runtime, this build option would be useful. This static library is not published by a pipeline, so a manual build is required if necessary.
 
 ## onnxruntime-react-native
 
@@ -362,9 +366,7 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
    5. To verify, open Android Emulator and run this command from `<ORT_ROOT>/js/react_native/android`
 
       ```sh
-      ./gradlew :assembleDebugAndroidTest
-      adb install -t build/outputs/apk/androidTest/debug/android-debug-androidTest.apk
-      adb shell am instrument -w ai.onnxruntime.reactnative.test/androidx.test.runner.AndroidJUnitRunner
+      ./gradlew connectedDebugAndroidTest
       ```
 
 3. Build iOS ONNX Runtime package
@@ -411,10 +413,7 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
    From `<ORT_ROOT>/js/react_native/e2e/android`, run e2e Android tests as follows,
 
    ```sh
-   ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
-   adb install -t app/build/outputs/apk/debug/app-debug.apk
-   adb install -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk 
-   adb shell am instrument -w com.example.reactnativeonnxruntimemodule.test/androidx.test.runner.AndroidJUnitRunner
+   ./gradlew connectedDebugAndroidTest
    ```
 
    From `<ORT_ROOT>/js/react_native/e2e/ios`, run e2e iOS tests as follows,

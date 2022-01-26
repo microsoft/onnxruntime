@@ -34,7 +34,7 @@ def test_GeLU():
                         0.1070322243 * x * x)) + 0.5 * (1 + tanh_out)
         return ff*g
 
-    class GeLUFunction(torch.autograd.Function):
+    class GeLUFunction1(torch.autograd.Function):
         @staticmethod
         def forward(ctx, input, bias):
             ctx.save_for_backward(input, bias)
@@ -49,7 +49,7 @@ def test_GeLU():
     class GeLUModel(torch.nn.Module):
         def __init__(self, output_size):
             super(GeLUModel, self).__init__()
-            self.relu = GeLUFunction.apply
+            self.relu = GeLUFunction1.apply
             self.bias = Parameter(torch.empty(
                 output_size,
                 device=torch.cuda.current_device(),
@@ -90,7 +90,7 @@ def test_GeLU_custom_func_rets_not_as_module_output():
                         0.1070322243 * x * x)) + 0.5 * (1 + tanh_out)
         return ff*g
 
-    class GeLUFunction(torch.autograd.Function):
+    class GeLUFunction2(torch.autograd.Function):
         @staticmethod
         def forward(ctx, input, bias):
             ctx.save_for_backward(input, bias)
@@ -105,7 +105,7 @@ def test_GeLU_custom_func_rets_not_as_module_output():
     class GeLUModel(torch.nn.Module):
         def __init__(self, output_size):
             super(GeLUModel, self).__init__()
-            self.relu = GeLUFunction.apply
+            self.relu = GeLUFunction2.apply
             self.bias = Parameter(torch.empty(
                 output_size,
                 device=torch.cuda.current_device(),
@@ -635,7 +635,7 @@ def test_EvalTest():
 @pytest.mark.skipif(torch_version_lower_than("1.10.0"),
                     reason='PyTorch older than 1.10.0 has bugs for exporting multiple output custom function')
 def test_TwoOutputFunction():
-    class TwoOutputFunction(torch.autograd.Function):
+    class TwoOutputFunction1(torch.autograd.Function):
         @staticmethod
         # bias is an optional argument
         def forward(ctx, x, y):
@@ -669,7 +669,7 @@ def test_TwoOutputFunction():
     class TwoOutputModel(torch.nn.Module):
         def __init__(self, output_size):
             super(TwoOutputModel, self).__init__()
-            self.fun = TwoOutputFunction.apply
+            self.fun = TwoOutputFunction1.apply
             self.bias = Parameter(torch.empty(
                 output_size,
                 device=torch.cuda.current_device(),
@@ -772,7 +772,7 @@ def test_InnerModuleCall():
 @pytest.mark.skipif(torch_version_lower_than("1.10.0"),
                     reason='PyTorch older than 1.10.0 has bugs for exporting multiple output custom function')
 def test_Share_Input():
-    class TwoOutputFunction(torch.autograd.Function):
+    class TwoOutputFunction2(torch.autograd.Function):
         @staticmethod
         # bias is an optional argument
         def forward(ctx, x, y):
@@ -791,7 +791,7 @@ def test_Share_Input():
     class TwoOutputModel(torch.nn.Module):
         def __init__(self, output_size):
             super(TwoOutputModel, self).__init__()
-            self.fun = TwoOutputFunction.apply
+            self.fun = TwoOutputFunction2.apply
             self.bias = Parameter(torch.empty(
                 output_size,
                 device=torch.cuda.current_device(),
@@ -827,7 +827,7 @@ def test_Share_Input():
 
 
 def test_MultipleStream_InForwardFunction():
-    class MultipleStreamFunction(torch.autograd.Function):
+    class MultipleStreamFunction1(torch.autograd.Function):
         @staticmethod
         def forward(ctx, input):
             default_stream = torch.cuda.current_stream()
@@ -850,7 +850,7 @@ def test_MultipleStream_InForwardFunction():
     class MultipleStreamModel(torch.nn.Module):
         def __init__(self, output_size):
             super(MultipleStreamModel, self).__init__()
-            self.relu = MultipleStreamFunction.apply
+            self.relu = MultipleStreamFunction1.apply
 
         def forward(self, model_input):
             b = model_input * 0.2
@@ -874,7 +874,7 @@ def test_MultipleStream_InForwardFunction():
 
 
 def test_NonDefaultStream_InForwardFunction1():
-    class MultipleStreamFunction(torch.autograd.Function):
+    class MultipleStreamFunction2(torch.autograd.Function):
         @staticmethod
         def forward(ctx, input):
             default_stream = torch.cuda.current_stream()
@@ -896,7 +896,7 @@ def test_NonDefaultStream_InForwardFunction1():
     class MultipleStreamModel(torch.nn.Module):
         def __init__(self, output_size):
             super(MultipleStreamModel, self).__init__()
-            self.relu = MultipleStreamFunction.apply
+            self.relu = MultipleStreamFunction2.apply
 
         def forward(self, model_input):
             model_input = model_input * 0.2
@@ -921,7 +921,7 @@ def test_NonDefaultStream_InForwardFunction1():
 
 
 def test_NonDefaultStream_InForwardFunction2():
-    class MultipleStreamFunction(torch.autograd.Function):
+    class MultipleStreamFunction3(torch.autograd.Function):
         @staticmethod
         def forward(ctx, input):
             ctx.save_for_backward(input)
@@ -937,7 +937,7 @@ def test_NonDefaultStream_InForwardFunction2():
     class MultipleStreamModel(torch.nn.Module):
         def __init__(self, output_size):
             super(MultipleStreamModel, self).__init__()
-            self.relu = MultipleStreamFunction.apply
+            self.relu = MultipleStreamFunction3.apply
 
         def forward(self, model_input):
             model_input = model_input * 0.2
@@ -967,7 +967,7 @@ def test_NonDefaultStream_InForwardFunction2():
 
 
 def test_NonDefaultStreamInplaceUpdate_InForwardFunction():
-    class MultipleStreamFunction(torch.autograd.Function):
+    class MultipleStreamFunction4(torch.autograd.Function):
         @staticmethod
         def forward(ctx, input):
             default_stream = torch.cuda.current_stream()
@@ -990,7 +990,7 @@ def test_NonDefaultStreamInplaceUpdate_InForwardFunction():
     class MultipleStreamModel(torch.nn.Module):
         def __init__(self, output_size):
             super(MultipleStreamModel, self).__init__()
-            self.relu = MultipleStreamFunction.apply
+            self.relu = MultipleStreamFunction4.apply
 
         def forward(self, model_input):
             model_input = model_input * 0.2
