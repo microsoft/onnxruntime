@@ -168,9 +168,8 @@ void PrefixVocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
   assert(num_beams*batch_size_ == next_token_scores.batch_beam_size);
 
   for (int i = 0; i < batch_size_; i++) {
-    int batch_vocab_mask_offset = i * next_token_scores.vocab_size;
     for (int j = 0; j < num_beams; j++) {
-      for (int k = batch_vocab_mask_offset; k < next_token_scores.vocab_size; k++, p++) {
+      for (int k = 0; k < next_token_scores.vocab_size; k++, p++) {
         if (prefix_vocab_mask_[k] == 0) {
           *p = std::numeric_limits<T>::lowest();
         }
