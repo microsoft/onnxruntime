@@ -2,15 +2,6 @@
 # Licensed under the MIT License.
 
 # -*- coding: UTF-8 -*-
-try:
-    # needs to be imported before onnxruntime
-    import tvm
-except ImportError:
-    # TVM not installed.
-    tvm = None
-if tvm is not None:
-    import onnxruntime
-    import onnxruntime.providers.stvm
 import gc
 import numpy as np
 import onnxruntime as onnxrt
@@ -44,6 +35,7 @@ class TestInferenceSession(unittest.TestCase):
     def testTvmImported(self):
         if "StvmExecutionProvider" not in onnxrt.get_available_providers():
             return
+        import tvm
         self.assertTrue(tvm is not None)
 
     def testModelSerialization(self):
