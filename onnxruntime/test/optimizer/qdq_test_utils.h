@@ -32,9 +32,9 @@ GetQDQConvTestCaseFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shap
     auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
     auto* output_arg = builder.MakeOutput();
 
-    using std::numeric_limits<InputType> InputLimits;
-    using std::numeric_limits<WeightType> WeightLimits;
-    using std::numeric_limits<OutputType> OutputLimits;
+    using InputLimits = std::numeric_limits<InputType>;
+    using WeightLimits = std::numeric_limits<WeightType>;
+    using OutputLimits = std::numeric_limits<OutputType>;
 
     InputType input_min_value = InputLimits::min();
     InputType input_max_value = InputLimits::max();
