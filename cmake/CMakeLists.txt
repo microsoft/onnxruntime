@@ -1202,7 +1202,7 @@ function(onnxruntime_configure_target target_name)
   endif()
   
   # Keep BinSkim happy
-  if(WIN32)
+  if(MSVC)
     target_link_options(${target_name} PRIVATE "/CETCOMPAT")
   endif()
 endfunction()
