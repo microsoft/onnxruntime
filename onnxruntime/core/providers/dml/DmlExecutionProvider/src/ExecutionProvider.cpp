@@ -97,6 +97,12 @@ namespace Dml
     {
         m_context->Close();
     }
+
+    void ExecutionProviderImpl::WaitForOutstandingWork() 
+    {
+        Flush();
+        m_context->GetCurrentCompletionEvent().WaitForSignal();
+    }
     
     HRESULT __stdcall ExecutionProviderImpl::AllocatePooledResource(
         size_t size, 
