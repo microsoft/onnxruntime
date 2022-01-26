@@ -434,7 +434,11 @@ bool IsValidSupportedNodeGroup(const std::vector<const Node*>& supported_node_pa
   return true;
 }
 
-bool IsInternalQuantizedNode(const Node& node) {
+static bool IsInternalQuantizedNodeUnit(const NodeUnit& node_unit) {
+  // First, ignore QDQ NodeUnit which is not internal quantized node
+  if (node_unit.UnitType() == NodeUnit::Type::QDQGroup)
+    return false;
+
   // These operators can use uint8 input without specific QLinear version of it
   // However, the mode has to be internal to the graph/partition (they cannot consume graph inputs)
   static const std::unordered_set<std::string> internal_quantized_op_types =
@@ -445,6 +449,7 @@ bool IsInternalQuantizedNode(const Node& node) {
           "MaxPool",
       };
 
+  const auto& node = node_unit.GetNode();
   if (!Contains(internal_quantized_op_types, node.OpType()))
     return false;
 
@@ -493,13 +498,11 @@ bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_
   if (!IsNodeSupported(node_unit, graph_viewer, params))
     return false;
 
-  // TODO, ignore this step if the node_unit is qdq node_unit
-  // We also want to check if the node is supported as an internal quantized node
-  const auto& node = node_unit.GetNode();
-  if (IsInternalQuantizedNode(node))
-    return IsInternalQuantizationSupported(node, node_outputs_in_group);
-  else  // This is not a internal quantized node, it is supported
-    return true;
+  // We also want to check if the node is supported as an internal quantized node_unit
+  if (IsInternalQuantizedNodeUnit(node_unit))
+    return IsInternalQuantizationSupported(node_unit.GetNode(), node_outputs_in_group);
+
+  return true;
 }
 
 bool IsInputSupported(const NodeArg& input, const std::string& parent_name) {
