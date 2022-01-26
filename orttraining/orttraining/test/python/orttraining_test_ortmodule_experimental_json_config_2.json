@@ -31,5 +31,6 @@
         "FALLBACK_UNSUPPORTED_TORCH_MODEL",
         "FALLBACK_UNSUPPORTED_ONNX_MODEL",
         "FALLBACK_BAD_INITIALIZATION"
-    ]
+    ],
+    "OnnxOpsetVersion": 12
 }

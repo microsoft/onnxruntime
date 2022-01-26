@@ -857,19 +857,10 @@ jobs:
     parameters:
       packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
 
-  - task: PowerShell@2
-    displayName: 'Get Current Date'
-    inputs:
-      targetType: 'inline'
-      script: |
-          $date = $(Get-Date -Format "yyyy-MM-dd")
-          Write-Host "##vso[task.setvariable variable=CurrentDate]$date"
-
   - task: CmdLine@2
     displayName: 'Post binary sizes to the dashboard database using command line'
     inputs:
       script: |
-          python.exe -m pip install azure-kusto-data[pandas] azure-kusto-ingest[pandas]
           echo changing directory to artifact download path
           cd $(Build.BinariesDirectory)/nuget-artifact/final-package
           echo processing nupkg
@@ -888,8 +879,9 @@ jobs:
             7z.exe l -slt %%~ni.zip runtimes\osx.10.14-x64\native\libonnxruntime.dylib | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo osx,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
             7z.exe l -slt %%~ni.zip runtimes\win-x64\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
             7z.exe l -slt %%~ni.zip runtimes\win-x86\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x86,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
-             )
-           )
+            )
+          )
+
   - task: AzureCLI@2
     displayName: 'Azure CLI'
     inputs:
@@ -897,6 +889,7 @@ jobs:
       scriptLocation: inlineScript
       scriptType: batch
       inlineScript: |
+        python.exe -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_to_dashboard\requirements.txt && ^
         python.exe $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=$(Build.SourceVersion) --size_data_file=binary_size_data.txt --build_project=Lotus --build_id=$(Build.BuildId)
       workingDirectory: '$(Build.BinariesDirectory)'
 

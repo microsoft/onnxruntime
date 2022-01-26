@@ -75,7 +75,6 @@
 [submodule "cmake/external/pytorch_cpuinfo"]
 	path = cmake/external/pytorch_cpuinfo
 	url = https://github.com/pytorch/cpuinfo.git
-
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/onnx/onnx-tensorrt.git

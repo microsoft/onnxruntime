@@ -121,7 +121,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   std::vector<int64_t> kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
 
-  std::vector<int64_t> pads(conv_attrs_.pads);
+  ConvAttributes::ConvPadVector pads(conv_attrs_.pads);
   if (pads.empty()) {
     pads.resize(kernel_shape.size() * 2, 0);
   }

@@ -147,6 +147,7 @@ option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 
 # build WebAssembly
 option(onnxruntime_BUILD_WEBASSEMBLY "Enable this option to create WebAssembly byte codes" OFF)
+option(onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB "Enable this option to create WebAssembly static library" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_THREADS "Enable this option to create WebAssembly byte codes with multi-threads support" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to turn on exception catching" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING "Enable this option to turn on exception throwing even if the build disabled exceptions support" OFF)
@@ -301,6 +302,10 @@ endif()
 if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
   string(APPEND CMAKE_CXX_FLAGS " -ffunction-sections -fdata-sections")
   string(APPEND CMAKE_C_FLAGS " -ffunction-sections -fdata-sections")
+endif()
+
+if (onnxruntime_ENABLE_EAGER_MODE)
+  string(APPEND CMAKE_CXX_FLAGS " -D_GLIBCXX_USE_CXX11_ABI=${_GLIBCXX_USE_CXX11_ABI}")
 endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)

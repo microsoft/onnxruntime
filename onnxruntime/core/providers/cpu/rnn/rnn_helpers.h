@@ -56,7 +56,7 @@ gsl::span<TAlloc> Allocate(std::shared_ptr<IAllocator> allocator,
                            size_t size,
                            IAllocatorUniquePtr<TAlloc>& unique_ptr,
                            bool fill = false, TAlloc fill_value = TAlloc{}) {
-  unique_ptr = IAllocator::MakeUniquePtr<TAlloc>(allocator, size);
+  unique_ptr = IAllocator::MakeUniquePtr<TAlloc>(std::move(allocator), size);
   auto span = gsl::make_span(unique_ptr.get(), size);
 
   if (fill) {

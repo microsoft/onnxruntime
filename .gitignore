@@ -49,10 +49,6 @@ java/gradle
 java/.gradle
 java/hs_*.log
 onnxruntime/python/version_info.py
-/tools/perf_util/target/classes/com/msft/send_perf_metrics
-/tools/perf_util/send_perf_metrics.iml
-/tools/perf_util/target/classes
-/tools/perf_util/src/main/resources
 /orttraining/orttraining/eager/ort_aten.g.cpp
 /orttraining/orttraining/eager/ort_customops.g.cpp
 /csharp/**/packages

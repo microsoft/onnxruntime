@@ -58,5 +58,31 @@ bool IsQDQPairSupported(
          *q_scale.data<float>() == *dq_scale.data<float>();
 }
 
+bool IsDQSupported(
+    const Node& dq_node,
+    const std::function<const ONNX_NAMESPACE::TensorProto*(const std::string&)>& get_const_initializer) {
+  ConstPointerContainer<std::vector<NodeArg*>> dq_input_defs = dq_node.InputDefs();
+
+  // DQ contains optional input is not supported
+  // non-scalar DQ scale and zero point needs are not supported
+  if (dq_input_defs.size() != InputIndex::TOTAL_COUNT ||
+      !optimizer_utils::IsScalar(*dq_input_defs[InputIndex::SCALE_ID]) ||
+      !optimizer_utils::IsScalar(*dq_input_defs[InputIndex::ZERO_POINT_ID])) {
+    return false;
+  }
+
+  // if DQ scale and zero point are not constant, return false
+  const ONNX_NAMESPACE::TensorProto* dq_scale_tensor_proto =
+      get_const_initializer(dq_input_defs[InputIndex::SCALE_ID]->Name());
+  const ONNX_NAMESPACE::TensorProto* dq_zp_tensor_proto =
+      get_const_initializer(dq_input_defs[InputIndex::ZERO_POINT_ID]->Name());
+  if (nullptr == dq_zp_tensor_proto ||
+      nullptr == dq_scale_tensor_proto) {
+    return false;
+  }
+
+  return true;
+}
+
 }  // namespace QDQ
 }  // namespace onnxruntime

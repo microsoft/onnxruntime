@@ -16,11 +16,11 @@ namespace onnxruntime {
 class SqueezeBase {
  protected:
   explicit SqueezeBase(const OpKernelInfo& info) {
-    std::vector<int64_t> axes;
+    TensorShapeVector axes;
     size_t numInputs = info.GetInputCount();
     if (numInputs == 1) {
       // Parse attribute 'axes'
-      Status status = info.GetAttrs<int64_t>("axes", axes);
+      Status status = info.GetAttrs("axes", axes);
 
       // Handle out of order and repeating dims when 'axes' exists.
       if (status.IsOK()) {
@@ -31,15 +31,15 @@ class SqueezeBase {
     }
   }
 
-  static std::vector<int64_t> ComputeOutputShape(
+  static TensorShapeVector ComputeOutputShape(
       const TensorShape& input_shape,
-      const std::vector<int64_t>& axes) {
+      const TensorShapeVector& axes) {
     size_t j = 0;
-    std::vector<int64_t> output_shape;
+    TensorShapeVector output_shape;
     auto num_dimensions = input_shape.NumDimensions();
 
     // Handle negtive axis, then resort and uniq.
-    std::vector<int64_t> axes_corrected(axes.size());
+    TensorShapeVector axes_corrected(axes.size());
     for (size_t i = 0; i < axes.size(); i++) {
       axes_corrected[i] = HandleNegativeAxis(axes[i], num_dimensions);
     }
@@ -59,7 +59,7 @@ class SqueezeBase {
     return output_shape;
   }
 
-  std::vector<int64_t> axes_;
+  TensorShapeVector axes_;
 };
 
 class Squeeze final : public OpKernel, public SqueezeBase {
@@ -70,7 +70,7 @@ class Squeeze final : public OpKernel, public SqueezeBase {
     const auto* X = context->Input<Tensor>(0);
     const TensorShape& X_shape = X->Shape();
 
-    std::vector<int64_t> axes;
+    TensorShapeVector axes;
     size_t num_inputs = context->InputCount();
     if (num_inputs == 2) {  //axes is an input
       const Tensor* axes_tensor = context->Input<Tensor>(1);
@@ -84,7 +84,7 @@ class Squeeze final : public OpKernel, public SqueezeBase {
       axes.assign(axes_.begin(), axes_.end());
     }
 
-    std::vector<int64_t> output_shape = ComputeOutputShape(X_shape, axes);
+    TensorShapeVector output_shape = ComputeOutputShape(X_shape, axes);
 
     Tensor* Y = context->Output(0, TensorShape(output_shape));
 
