@@ -258,12 +258,12 @@ static void ValidateFastReduceRK(const gsl::span<const int64_t>& fast_shape, con
   ORT_ENFORCE(fast_shape[1] == output.Shape().Size(), "Output size mismatch.");
 }
 
-static void ValidateFastReduceKRK(const gsl::span<int64_t>& fast_shape, const Tensor& output) {
+static void ValidateFastReduceKRK(const gsl::span<const int64_t>& fast_shape, const Tensor& output) {
   ORT_ENFORCE(fast_shape.size() == 3, "Only works on matrices with three dimensions.");
   ORT_ENFORCE(fast_shape[0] * fast_shape[2] == output.Shape().Size(), "Output size mismatch.");
 }
 
-static void ValidateFastReduceRKR(const gsl::span<int64_t>& fast_shape, const Tensor& output) {
+static void ValidateFastReduceRKR(const gsl::span<const int64_t>& fast_shape, const Tensor& output) {
   ORT_ENFORCE(fast_shape.size() == 3, "Only works on matrices with three dimensions.");
   ORT_ENFORCE(fast_shape[1] == output.Shape().Size(), "Output size mismatch.");
 }

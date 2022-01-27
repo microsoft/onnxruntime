@@ -3096,16 +3096,16 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_KRK) {
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_RKR) {
   FastReduceKind fast_kind;
-  std::vector<int64_t> fast_shape, fast_output_shape, fast_axes;
-  std::vector<int64_t> expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+  TensorShapeVector fast_shape, fast_output_shape, fast_axes;
+  TensorShapeVector expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
 
   // RKR - keep_dims=1
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{0, 2},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{9, 10, 11};
-  expected_fast_output_shape = std::vector<int64_t>{1, 10, 1};
-  expected_fast_axes = std::vector<int64_t>{0, 2};
+  expected_fast_shape = TensorShapeVector{9, 10, 11};
+  expected_fast_output_shape = TensorShapeVector{1, 10, 1};
+  expected_fast_axes = TensorShapeVector{0, 2};
   ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -3114,8 +3114,8 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_RKR) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{0, 3},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{7, 90, 11};
-  expected_fast_output_shape = std::vector<int64_t>{1, 9, 10, 1};
+  expected_fast_shape = TensorShapeVector{7, 90, 11};
+  expected_fast_output_shape = TensorShapeVector{1, 9, 10, 1};
   ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -3124,8 +3124,8 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_RKR) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{0, 2, 3},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{7, 9, 110};
-  expected_fast_output_shape = std::vector<int64_t>{1, 9, 1, 1};
+  expected_fast_shape = TensorShapeVector{7, 9, 110};
+  expected_fast_output_shape = TensorShapeVector{1, 9, 1, 1};
   ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -3134,8 +3134,8 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_RKR) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{0, 1, 3},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = std::vector<int64_t>{63, 10, 11};
-  expected_fast_output_shape = std::vector<int64_t>{1, 1, 10, 1};
+  expected_fast_shape = TensorShapeVector{63, 10, 11};
+  expected_fast_output_shape = TensorShapeVector{1, 1, 10, 1};
   ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -3145,9 +3145,9 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_RKR) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{0, 2},
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{9, 10, 11};
-  expected_fast_output_shape = std::vector<int64_t>{10};
-  expected_fast_axes = std::vector<int64_t>{0, 2};
+  expected_fast_shape = TensorShapeVector{9, 10, 11};
+  expected_fast_output_shape = TensorShapeVector{10};
+  expected_fast_axes = TensorShapeVector{0, 2};
   ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -3156,8 +3156,8 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_RKR) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{0, 3},
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{7, 90, 11};
-  expected_fast_output_shape = std::vector<int64_t>{9, 10};
+  expected_fast_shape = TensorShapeVector{7, 90, 11};
+  expected_fast_output_shape = TensorShapeVector{9, 10};
   ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -3166,8 +3166,8 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_RKR) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{0, 2, 3},
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{7, 9, 110};
-  expected_fast_output_shape = std::vector<int64_t>{9};
+  expected_fast_shape = TensorShapeVector{7, 9, 110};
+  expected_fast_output_shape = TensorShapeVector{9};
   ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -3176,8 +3176,8 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_RKR) {
   fast_kind = OptimizeShapeForFastReduce(
       std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{0, 1, 3},
       fast_shape, fast_output_shape, fast_axes, false);
-  expected_fast_shape = std::vector<int64_t>{63, 10, 11};
-  expected_fast_output_shape = std::vector<int64_t>{10};
+  expected_fast_shape = TensorShapeVector{63, 10, 11};
+  expected_fast_output_shape = TensorShapeVector{10};
   ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
