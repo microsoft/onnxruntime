@@ -1553,18 +1553,17 @@ void test_apex_reduce_sum(
 }
 
 TEST(ReductionOpTest, ReduceSum_apex_matrix_large) {
+#ifdef USE_TENSORRT 
+  // Reduction op takes much longer time for TRT 8.2, so we test smaller range of inputs.
+  int64_t threshold = 4096;
+#else
+  int64_t threshold = 32768; 
+#endif
   for (int64_t m = 1; m < 2049; m *= 8) {
     for (int64_t n = 2; n < 2049; n *= 8) {
-#ifdef USE_TENSORRT 
-      // Reduction op takes much longer time for TRT 8.2, so we test smaller range of inputs.
-      if (m * n > 4096) {
+      if (m * n > threshold) {
         continue;
       }
-#else
-      if (m * n > 32768) {
-        continue;
-      }
-#endif
       test_apex_reduce_sum(m, n);
       test_apex_reduce_sum(m + 1, n);
       test_apex_reduce_sum(m + 3, n);

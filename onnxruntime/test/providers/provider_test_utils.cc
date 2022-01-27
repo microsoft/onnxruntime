@@ -995,6 +995,7 @@ void OpTester::Run(
     FillFeedsAndOutputNames(feeds, output_names);
     // Run the model
 #ifdef USE_TENSORRT
+    // Only include trt ep to reduce test time (with cuda ep as fallback ep if cuda ep is not in the excluded_provider_types)
     static const std::string all_provider_types[] = {
         kTensorrtExecutionProvider,
     };
@@ -1153,6 +1154,7 @@ void OpTester::Run(
 
         ASSERT_PROVIDER_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
 #ifdef USE_TENSORRT
+        // make cuda ep as fallback ep for trt ep if cuda ep is not in the excluded_provider_types
         if (excluded_provider_types.count(onnxruntime::kCudaExecutionProvider) == 0) {
             std::unique_ptr<IExecutionProvider> fallback_execution_provider = DefaultCudaExecutionProvider();
             ASSERT_PROVIDER_STATUS_OK(session_object.RegisterExecutionProvider(std::move(fallback_execution_provider)));
