@@ -260,8 +260,8 @@ TEST(NnapiExecutionProviderTest, TestQDQModel) {
   Graph& graph = model.MainGraph();
   ModelTestBuilder helper(graph);
 
-  auto build_test_case = BuildQDQConvTestCase<uint8_t, uint8_t, int32_t, uint8_t>({1, 12, 37} /*input_shape*/,
-                                                                                  {32, 12, 5} /*weights_shape*/);
+  auto build_test_case = BuildQDQConvTestCase<uint8_t, uint8_t, int32_t, uint8_t>({1, 1, 5, 5} /*input_shape*/,
+                                                                                  {1, 1, 3, 3} /*weights_shape*/);
   build_test_case(helper);
   helper.SetGraphOutputs();
   ASSERT_TRUE(model.MainGraph().Resolve().IsOK());
@@ -270,9 +270,9 @@ TEST(NnapiExecutionProviderTest, TestQDQModel) {
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
 
-  RunAndVerifyOutputsWithEPViaModelData(model_data, "NnapiExecutionProviderTest.TestQDQModel",
-                                        std::make_unique<NnapiExecutionProvider>(0),
-                                        helper.feeds_);
+  RunAndVerifyOutputsWithEP(model_data, "NnapiExecutionProviderTest.TestQDQModel",
+                            std::make_unique<NnapiExecutionProvider>(0),
+                            helper.feeds_);
 
   // TODO: can add test load only verfication here later
 }
