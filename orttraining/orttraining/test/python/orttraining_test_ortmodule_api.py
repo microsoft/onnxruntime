@@ -1305,6 +1305,33 @@ def test_aten_multinomial(input_shape, num_samples, replacement):
 
     _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
 
+@pytest.mark.parametrize("input_shape", ([], [5], [2,5], [3,2,5]))
+def test_numpy_T(input_shape):
+    class NeuralNet(torch.nn.Module):
+        def __init__(self):
+            super(NeuralNet, self).__init__()
+
+        def forward(self, input):
+            return input.T
+
+    torch.backends.cudnn.deterministic = True
+    device = 'cuda'
+    pt_model = NeuralNet().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(log_level=LogLevel.VERBOSE))
+
+    def run_step(model, input):
+        prediction = model(input)
+        return prediction
+
+    # reset manual seed to reset the generator
+    torch.manual_seed(5032)
+    pt_input = torch.rand(input_shape, dtype=torch.float, device=device)
+    ort_input = copy.deepcopy(pt_input)
+    pt_prediction = run_step(pt_model, pt_input)
+    ort_prediction = run_step(ort_model, ort_input)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+
 def test_gradient_correctness_bce_with_logits():
     class NeuralNetBCEWithLogitsLoss(torch.nn.Module):
         def __init__(self, input_size, hidden_size):

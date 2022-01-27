@@ -376,7 +376,7 @@ def parse_arguments():
     parser.add_argument(
         "--wasm_malloc", default="dlmalloc", help="Specify memory allocator for WebAssembly")
     parser.add_argument(
-        "--emsdk_version", default="2.0.26", help="Specify version of emsdk")
+        "--emsdk_version", default="2.0.34", help="Specify version of emsdk")
 
     # Enable onnxruntime-extensions
     parser.add_argument(
@@ -2037,6 +2037,9 @@ def main():
 
     if args.use_tensorrt:
         args.use_cuda = True
+
+    if args.use_migraphx:
+        args.use_rocm = True
 
     if args.build_wheel or args.gen_doc:
         args.enable_pybind = True
