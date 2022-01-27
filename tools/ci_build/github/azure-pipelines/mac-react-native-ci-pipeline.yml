@@ -195,7 +195,7 @@ jobs:
     displayName: Stop Android emulator
     condition: always()
 
-  - script |
+  - script: |
       git restore .
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
     displayName: Restore changes for e2e tests
