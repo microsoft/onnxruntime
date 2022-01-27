@@ -230,7 +230,7 @@ jobs:
       targetPath: '$(Build.ArtifactStagingDirectory)'
     displayName: Publish Pipeline Artifact
 
-  - template: component-governance-component-detection-steps.yml
+  - template: templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
 
