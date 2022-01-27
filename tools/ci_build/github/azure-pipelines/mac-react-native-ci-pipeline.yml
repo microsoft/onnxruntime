@@ -173,7 +173,7 @@ jobs:
     displayName: Publish React Native Android Instrumented Test Results
 
   - script: |
-      cd $(Build.SourceDirectory)/js/react_native/ios
+      cd $(Build.SourcesDirectory)/js/react_native/ios
       pod install
     displayName: Pod install for onnxruntime react native ios bridge library
 
