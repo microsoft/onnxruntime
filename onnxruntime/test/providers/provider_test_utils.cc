@@ -1153,13 +1153,6 @@ void OpTester::Run(
         has_run = true;
 
         ASSERT_PROVIDER_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
-#ifdef USE_TENSORRT
-        // make cuda ep as fallback ep for trt ep if cuda ep is not in the excluded_provider_types
-        if (excluded_provider_types.count(onnxruntime::kCudaExecutionProvider) == 0) {
-            std::unique_ptr<IExecutionProvider> fallback_execution_provider = DefaultCudaExecutionProvider();
-            ASSERT_PROVIDER_STATUS_OK(session_object.RegisterExecutionProvider(std::move(fallback_execution_provider)));
-        }
-#endif
         fetches_ = ExecuteModel<InferenceSession>(
             *p_model, session_object, expect_result, expected_failure_string,
             run_options, feeds, output_names, provider_type, allow_released_onnx_opset_only);

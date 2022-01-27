@@ -684,6 +684,8 @@ endif()
 
 set(test_all_args)
 if (onnxruntime_USE_TENSORRT)
+    # TRT EP CI takes much longer time when updating to TRT 8.2
+    # So, we only run trt ep and exclude other eps to reduce CI test time.  
     list(APPEND test_all_args "--gtest_filter=-*cpu__*:*cuda__*" )
 endif ()
 
