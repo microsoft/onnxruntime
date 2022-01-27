@@ -10,9 +10,6 @@ namespace onnxruntime {
 
 namespace {
 
-// The QLinearOpType GetQLinearOpType, is very similar to the one in NNAPI
-// However, the NNAPI ones are only the subset of the ones here,
-// TODO, make these shared
 enum class QLinearOpType : uint8_t {
   Unknown,  // Unknown or not a linear quantized op
   DequantizeLinear,
@@ -81,13 +78,15 @@ bool IsVariadicQLinearOp(QLinearOpType type) {
   return type == QLinearOpType::QLinearConcat;
 }
 
-const std::vector<const Node*> GetQDQOutputNodes(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group) {
-  std::vector<const Node*> output_nodes;
-  output_nodes.reserve(node_group.q_nodes.size());
-  for (const auto& node_idx : node_group.q_nodes) {
-    output_nodes.push_back(graph_viewer.GetNode(node_idx));
+const std::vector<const Node*> GetQDQIONodes(const GraphViewer& graph_viewer,
+                                             const QDQ::NodeGroup& node_group, bool is_input) {
+  std::vector<const Node*> io_nodes;
+  const auto& src_nodes = is_input ? node_group.dq_nodes : node_group.q_nodes;
+  io_nodes.reserve(src_nodes.size());
+  for (const auto& node_idx : src_nodes) {
+    io_nodes.push_back(graph_viewer.GetNode(node_idx));
   }
-  return output_nodes;
+  return io_nodes;
 }
 
 // Get the input or output NodeUnitIODef(s) for the given QDQ NodeGroup
@@ -154,7 +153,7 @@ NodeUnit::NodeUnit(const Node& node)
 }
 
 NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group)
-    : output_nodes_{GetQDQOutputNodes(graph_viewer, node_group)},
+    : output_nodes_{GetQDQIONodes(graph_viewer, node_group, false /* is_input */)},
       target_node_(*graph_viewer.GetNode(node_group.target_node)),
       type_(Type::QDQGroup),
       inputs_{GetQDQIODefs(target_node_, node_group, true /* is_input */)},

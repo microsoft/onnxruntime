@@ -1260,8 +1260,9 @@ class ConvOpBuilder : public BaseOpBuilder {
 };
 
 /* static */ bool ConvOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
-  // TODO, add support for QDQ NodeUnit
-  return node_unit.OpType() == "QLinearConv";
+  auto quant_op_type = GetQuantizedOpType(node_unit);
+  return (quant_op_type == QuantizedOpType::QLinearConv) ||
+         (quant_op_type == QuantizedOpType::QDQConv);
 }
 
 /* static */ void
@@ -1296,7 +1297,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto& initializers(model_builder.GetInitializerTensors());
   NodeAttrHelper helper(node_unit);
   const auto inputs = node_unit.Inputs();
-  bool is_qlinear_conv = IsQuantizedOp(node_unit);
+  bool is_quant_conv = IsQuantizedOp(node_unit);
 
   // onnx strides are in the order height, width
   // while nnapi strides are in the order width, height
@@ -1341,7 +1342,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   // this is for per-channel quantization weights
   optional<std::vector<float>> w_scales;
   bool is_per_tensor_u8s8 = false;
-  if (is_qlinear_conv) {
+  if (is_quant_conv) {
     ORT_RETURN_IF_ERROR(GetConvMatMulOpQuantizationScaleAndZeroPoint(model_builder, node_unit,
                                                                      x_scale, w_scale, y_scale,
                                                                      x_zero_point, w_zero_point, y_zero_point,
@@ -1379,7 +1380,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   // Get weight operand type
   // Per-channel quantized weight is handled differently
   OperandType onnx_weight_operand_type =
-      (is_qlinear_conv && w_scales.has_value())
+      (is_quant_conv && w_scales.has_value())
           ? OperandType{onnx_weight_type, onnx_weight_shape,
                         SymmPerChannelQuantParams{w_scales.value(),
                                                   depthwise_conv_2d ? 3u : 0u}}  // channelDim is 3 for depthwise-conv
@@ -1392,7 +1393,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight, onnx_weight_operand_type, L_1230, is_per_tensor_u8s8));
   }
 
-  if (is_qlinear_conv) {
+  if (is_quant_conv) {
     // Verify if the scale and zero point matchs from onnx input/weight and nnapi input/weight
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
     ORT_RETURN_IF_ERROR(IsValidConvWeightQuantizedType(model_builder, weight, w_scale, w_zero_point, w_scales));
@@ -1420,7 +1421,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unknown weight type ", TypeToStr(weight_type));
     }
-  } else if (is_qlinear_conv) {
+  } else if (is_quant_conv) {
     // QLinearConv's bias type need special handling to add scale for quantization input
     const auto& bias_tensor = *model_builder.GetInitializerTensors().at(bias);
     ORT_RETURN_IF_NOT(bias_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32,
