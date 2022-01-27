@@ -188,7 +188,7 @@ if (APPLE)
     if (NOT CMAKE_OSX_ARCHITECTURES)
         message("Building ONNX Runtime for ${CMAKE_HOST_SYSTEM_PROCESSOR}")
     endif()
-else()
+elseif (NOT WIN32 AND NOT APPLE)
     message("Building ONNX Runtime for ${CMAKE_SYSTEM_PROCESSOR}")
 endif()
 
@@ -1204,7 +1204,7 @@ function(onnxruntime_configure_target target_name)
   endif()
   
   # Keep BinSkim happy
-  if(MSVC)
+  if(MSVC AND NOT CMAKE_GENERATOR MATCHES "ARM")
     target_link_options(${target_name} PRIVATE "/CETCOMPAT")
   endif()
 endfunction()
