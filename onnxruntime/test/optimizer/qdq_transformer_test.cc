@@ -640,7 +640,7 @@ void QDQTransformerGemmTests(bool has_output_q, bool has_bias, bool beta_not_one
       if (has_bias) {
         auto* dq_bias_output = builder.MakeIntermediate();
         auto* bias = builder.MakeInitializer<BiasType>({input2_shape[1]}, static_cast<BiasType>(0), static_cast<BiasType>(127));
-        builder.AddDequantizeLinearNode<BiasType>(bias, 0.00156,
+        builder.AddDequantizeLinearNode<BiasType>(bias, 0.00156f,
                                                   0,
                                                   dq_bias_output);
         input_args.push_back(dq_bias_output);

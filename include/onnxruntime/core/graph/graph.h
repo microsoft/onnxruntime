@@ -357,10 +357,10 @@ class Node {
   /** Gets the Node's attributes. */
   const NodeAttributes& GetAttributes() const noexcept { return attributes_; }
 
-#if !defined(ORT_MINIMAL_BUILD)
   /** Remove the specified attribute from this Node */
   bool ClearAttribute(const std::string& attr_name);
 
+#if !defined(ORT_MINIMAL_BUILD)
   /** Gets the Node's mutable attributes. */
   NodeAttributes& GetMutableAttributes() noexcept { return attributes_; }
 

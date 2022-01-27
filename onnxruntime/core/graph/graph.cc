@@ -938,13 +938,13 @@ ADD_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_At
 ADD_LIST_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSORS, sparse_tensors)
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD)
 bool Node::ClearAttribute(const std::string& attr_name) {
   graph_->SetGraphResolveNeeded();
   graph_->SetGraphProtoSyncNeeded();
   return attributes_.erase(attr_name) > 0;
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 Status Node::UpdateInputArgCount() {
   // The node refers to a primitive operator.
   // Infer and verify node input arg type information.
