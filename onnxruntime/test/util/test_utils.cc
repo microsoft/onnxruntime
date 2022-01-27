@@ -72,12 +72,12 @@ void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
   // read raw data from model provided by the model_path
   std::ifstream stream(model_path, std::ios::in | std::ios::binary);
   std::string model_data((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
-  RunAndVerifyOutputsWithEPViaModelData(model_data, log_id, std::move(execution_provider), feeds);
+  RunAndVerifyOutputsWithEP(model_data, log_id, std::move(execution_provider), feeds);
 }
 
-void RunAndVerifyOutputsWithEPViaModelData(const std::string& model_data, const char* log_id,
-                                           std::unique_ptr<IExecutionProvider> execution_provider,
-                                           const NameMLValMap& feeds) {
+void RunAndVerifyOutputsWithEP(const std::string& model_data, const char* log_id,
+                               std::unique_ptr<IExecutionProvider> execution_provider,
+                               const NameMLValMap& feeds) {
   SessionOptions so;
   so.session_logid = log_id;
   RunOptions run_options;
