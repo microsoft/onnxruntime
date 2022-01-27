@@ -84,6 +84,9 @@ function(AddTest)
       # Raw new and delete. A lot of such things came from googletest.
       target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26409>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
+      # "Global initializer calls a non-constexpr function."
+      target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26426>"
+                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26426>")
     endif()
     target_compile_options(${_UT_TARGET} PRIVATE ${disabled_warnings})
   else()
@@ -877,6 +880,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
                         "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26814>")
       target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26814>"
                         "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26497>")
+      target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26426>"
+                        "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26426>")
       target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
               "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     endif()
@@ -893,6 +898,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE debug Dbghelp)
       # Avoid using new and delete. But this is a benchmark program, it's ok if it has a chance to leak.
       target_compile_options(onnxruntime_mlas_benchmark PRIVATE /wd26409)
+      # "Global initializer calls a non-constexpr function." BENCHMARK_CAPTURE macro needs this.
+      target_compile_options(onnxruntime_mlas_benchmark PRIVATE /wd26426)
     else()
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE nsync_cpp ${CMAKE_DL_LIBS})
     endif()
@@ -1141,6 +1148,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd6326>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
+    target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26426>"
+                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26426>")
   endif()
   if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
     set_target_properties(onnxruntime_mlas_test PROPERTIES

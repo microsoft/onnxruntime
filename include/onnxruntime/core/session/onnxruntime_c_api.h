@@ -936,7 +936,7 @@ struct OrtApi {
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
-  ORT_API2_STATUS(RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path, void** library_handle);
+  ORT_API2_STATUS(RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path, _Outptr_ void** library_handle);
 
   /// @}
   /// \name OrtSession
