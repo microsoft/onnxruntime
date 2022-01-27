@@ -286,8 +286,8 @@ class InferenceSession(Session):
         :param sess_options: session options
         :param providers: Optional sequence of providers in order of decreasing
             precedence. Values can either be provider names or tuples of
-            (provider name, options dict). If not provided, then all available
-            providers are used with the default precedence.
+            (provider name, options dict). If not provided, then 'CPUExecutionProvider'
+            will used by default.
         :param provider_options: Optional sequence of options dicts corresponding
             to the providers listed in 'providers'.
 
@@ -322,9 +322,6 @@ class InferenceSession(Session):
             self._model_bytes = path_or_bytes  # TODO: This is bad as we're holding the memory indefinitely
         else:
             raise TypeError("Unable to load from type '{0}'".format(type(path_or_bytes)))
-
-        if providers is None:
-            providers = C.get_available_providers()
 
         self._sess_options = sess_options
         self._sess_options_initial = sess_options
