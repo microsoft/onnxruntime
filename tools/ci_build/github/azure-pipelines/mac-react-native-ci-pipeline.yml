@@ -138,17 +138,18 @@ jobs:
       destinationPlatformOption: 'iOS'
       destinationSimulators: 'iPhone 13,OS=latest'
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
+      xcprettyArgs: '--output build/reports/test-results.xml'
       publishJUnitResults: true
       testRunTitle: 'React Native iOS Instrumented Test Results'
     displayName: Run React Native iOS Instrumented Tests
 
-  #- task: PublishTestResults@2
-  #  inputs:
-  #    testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/ios/build/reports/test-results.xml'
-  #    failTaskOnFailedTests: true
-  #    testRunTitle: 'React Native iOS Instrumented Test results'
-  #  condition: succeededOrFailed()
-  #  displayName: Publish React Native iOS Instrumented Test Results
+  - task: PublishTestResults@2
+    inputs:
+      testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/ios/build/reports/test-results.xml'
+      failTaskOnFailedTests: true
+      testRunTitle: 'React Native iOS Instrumented Test results'
+    condition: succeededOrFailed()
+    displayName: Publish React Native iOS Instrumented Test Results
 
   - script: |
       python3 tools/python/run_android_emulator.py \
