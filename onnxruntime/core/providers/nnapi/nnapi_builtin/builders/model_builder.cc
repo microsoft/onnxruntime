@@ -490,14 +490,13 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
 
 Status ModelBuilder::AddOperations() {
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
-  std::unordered_set<const NodeUnit*> processed_node_units;
-  processed_node_units.reserve(node_unit_holder_.size());
-  for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_viewer_.GetNode(node_indices[i]));
+  for (const auto node_idx : node_indices) {
+    LOGS_DEFAULT(VERBOSE) << "Adding node [" << node_idx << "]";
+    const auto* node(graph_viewer_.GetNode(node_idx));
     const NodeUnit& node_unit = GetNodeUnit(node);
 
-    // Since a NodeUnit may contain multiple nodes, avoid processing the same NodeUnit multiple times
-    if (Contains(processed_node_units, &node_unit))
+    // We only insert the NodeUnit once when we hit the target node
+    if (node != &node_unit.GetNode())
       continue;
 
     if (const auto* op_builder = GetOpBuilder(node_unit)) {
@@ -506,8 +505,6 @@ Status ModelBuilder::AddOperations() {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Node [", node_unit.Name(), "], type [", node_unit.OpType(), "] is not supported");
     }
-
-    processed_node_units.insert(&node_unit);
   }
 
   return Status::OK();
