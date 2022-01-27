@@ -22,6 +22,7 @@ set(CMAKE_C_STANDARD 99)
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 include(CMakeDependentOption)
+include(FetchContent)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -1019,6 +1020,7 @@ else()
   check_cxx_compiler_flag(-Wdeprecated-anon-enum-enum-conversion HAS_DEPRECATED_ANON_ENUM_ENUM_CONVERSION)
   check_cxx_compiler_flag(-Wundefined-var-template HAS_UNDEFINED_VAR_TEMPLATE)
   check_cxx_compiler_flag(-Wformat-truncation HAS_FORMAT_TRUNCATION)
+  check_cxx_compiler_flag(-Wbitwise-instead-of-logical HAS_BITWISE_INSTEAD_OF_LOGICAL)
 
   if (HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
@@ -1200,6 +1202,11 @@ function(onnxruntime_configure_target target_name)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
   endif()
+  
+  # Keep BinSkim happy
+  if(MSVC)
+    target_link_options(${target_name} PRIVATE "/CETCOMPAT")
+  endif()
 endfunction()
 
 function(onnxruntime_add_shared_library target_name)
@@ -1324,27 +1331,65 @@ endif()
 
 # TVM
 if (onnxruntime_USE_TVM)
+  if (NOT TARGET tvm)
+    message(STATUS "Include TVM(*).")
+    include(tvm)
+  endif()
   if (onnxruntime_USE_CUDA)
-    set(USE_CUDA ON)
+    if (onnxruntime_USE_STVM)
+      set(USE_CUDA ${onnxruntime_CUDA_HOME} CACHE BOOL "Only defined for TVM")
+      set(USE_MKLDNN ON CACHE BOOL "Only defined for TVM")
+      set(USE_CUDNN ON CACHE BOOL "Only defined for TVM")
+    endif()
+    if (onnxruntime_USE_NUPHAR)
+      set(USE_CUDA ON CACHE BOOL "Only defined for TVM")
+    endif()
   endif()
   if (onnxruntime_USE_LLVM)
-    set(USE_LLVM ON)
+    set(USE_LLVM ON CACHE BOOL "Only defined for TVM")
     add_definitions(-DUSE_TVM_WITH_LLVM)
   endif()
 
-  add_subdirectory(${PROJECT_SOURCE_DIR}/external/tvm EXCLUDE_FROM_ALL)
-  set_target_properties(tvm PROPERTIES FOLDER "External/tvm")
-  set_target_properties(tvm_topi PROPERTIES FOLDER "External/tvm")
-  set_target_properties(tvm_runtime PROPERTIES FOLDER "External/tvm")
+  if (onnxruntime_USE_STVM)
+    set(USE_OPENMP gnu CACHE STRING "Only defined for TVM")
+    set(USE_MICRO OFF CACHE BOOL "Only defined for TVM")
+  endif()
+  message(STATUS "TVM BEFORE USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} USE_MICRO=${USE_MICRO} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
+  message(STATUS "tvm_SOURCE_DIR=${tvm_SOURCE_DIR}")
+  message(STATUS "tvm_BINARY_DIR=${tvm_BINARY_DIR}")
+  add_subdirectory(${tvm_SOURCE_DIR} ${tvm_BINARY_DIR} EXCLUDE_FROM_ALL)
+  message(STATUS "TVM AFTER USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} USE_MICRO=${USE_MICRO} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
 
-  set(TVM_INCLUDES ${PROJECT_SOURCE_DIR}/external/tvm/include
-    ${PROJECT_SOURCE_DIR}/external/tvm/3rdparty/dmlc-core/include
-    ${PROJECT_SOURCE_DIR}/external/tvm/3rdparty/dlpack/include
-    $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>
-    $<TARGET_PROPERTY:tvm_topi,INTERFACE_INCLUDE_DIRECTORIES>)
+  if (onnxruntime_USE_NUPHAR)
+    set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
+    set_target_properties(tvm_topi PROPERTIES FOLDER ${tvm_SOURCE_DIR})
+    set_target_properties(tvm_runtime PROPERTIES FOLDER ${tvm_SOURCE_DIR})
+
+    set(TVM_INCLUDES ${tvm_SOURCE_DIR}/include
+      ${tvm_SOURCE_DIR}/3rdparty/dmlc-core/include
+      ${tvm_SOURCE_DIR}/3rdparty/dlpack/include
+      $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>
+      $<TARGET_PROPERTY:tvm_topi,INTERFACE_INCLUDE_DIRECTORIES>)
+  endif()
+
+  if (onnxruntime_USE_STVM)
+    set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
+
+    set(TVM_INCLUDES ${tvm_SOURCE_DIR}/include
+      ${tvm_SOURCE_DIR}/3rdparty/dmlc-core/include
+      ${tvm_SOURCE_DIR}/3rdparty/dlpack/include
+      $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>)
+  endif()
+
   add_definitions(-DUSE_TVM)
 
-  set(onnxruntime_tvm_libs onnxruntime_codegen_tvm)
+  if (onnxruntime_USE_NUPHAR)
+    set(onnxruntime_tvm_libs onnxruntime_codegen_tvm)
+  endif()
+  if (onnxruntime_USE_STVM)
+    set(onnxruntime_tvm_libs onnxruntime_providers_stvm)
+  endif()
+
   # needs to link with stdc++fs in Linux
   if (UNIX)
     if (NOT APPLE)
@@ -1677,7 +1722,9 @@ if (onnxruntime_USE_TVM)
       list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error=catch-value")
     endif()
   endif()
-  include(onnxruntime_codegen.cmake)
+  if (onnxruntime_USE_NUPHAR)
+    include(onnxruntime_codegen.cmake)
+  endif()
 endif()
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)

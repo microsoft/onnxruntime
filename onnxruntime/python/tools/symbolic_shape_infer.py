@@ -201,6 +201,7 @@ class SymbolicShapeInference:
             'aten::avg_pool2d': self._infer_aten_pool2d,
             'aten::_adaptive_avg_pool2d': self._infer_aten_pool2d,
             'aten::binary_cross_entropy_with_logits': self._infer_aten_bce,
+            'aten::numpy_T': self._infer_Transpose,
         }
         self.run_ = True
         self.suggested_merge_ = {}

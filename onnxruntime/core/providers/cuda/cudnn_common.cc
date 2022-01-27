@@ -100,7 +100,7 @@ Status CudnnFilterDescriptor::Set(gsl::span<const int64_t> filter_dims, cudnnDat
     CUDNN_RETURN_IF_ERROR(cudnnCreateFilterDescriptor(&desc_));
 
   int rank = gsl::narrow_cast<int>(filter_dims.size());
-  InlinedShapeVectorT<int> w_dims(rank);
+  InlinedShapeVector<int> w_dims(rank);
   for (int i = 0; i < rank; i++) {
     w_dims[i] = gsl::narrow_cast<int>(filter_dims[i]);
   }

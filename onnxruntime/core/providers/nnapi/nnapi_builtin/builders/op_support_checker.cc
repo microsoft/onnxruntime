@@ -1244,7 +1244,7 @@ class ConcatOpSupportChecker : public BaseOpSupportChecker {
 bool ConcatOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                                const OpSupportCheckParams& /* params */) const {
   Shape input_shape;
-  if (GetShape(node_unit.Inputs()[0].node_arg, input_shape))
+  if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
     return false;
 
   const auto input_size = input_shape.size();

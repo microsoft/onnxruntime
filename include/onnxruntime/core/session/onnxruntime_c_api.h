@@ -936,7 +936,7 @@ struct OrtApi {
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
-  ORT_API2_STATUS(RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path, void** library_handle);
+  ORT_API2_STATUS(RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path, _Outptr_ void** library_handle);
 
   /// @}
   /// \name OrtSession
@@ -1149,8 +1149,8 @@ struct OrtApi {
   * Create a tensor using a supplied ::OrtAllocator
   *
   * \param[in] allocator
-  * \param[in] shape Tensor shape
-  * \param[in] shape_len Number of elements in `shape`
+  * \param[in] shape Pointer to the tensor shape dimensions.
+  * \param[in] shape_len The number of tensor shape dimensions.
   * \param[in] type
   * \param[out] out Returns newly created ::OrtValue. Must be freed with OrtApi::ReleaseValue
   *
@@ -1160,20 +1160,20 @@ struct OrtApi {
                   ONNXTensorElementDataType type, _Outptr_ OrtValue** out);
 
   /** \brief Create a tensor backed by a user supplied buffer
-   *
-   * Create a tensor with user's buffer. You can fill the buffer either before calling this function or after.
-   * p_data is owned by caller. ReleaseValue won't release p_data.
-   *
-   * \param[in] info
-   * \param[in] p_data
-   * \param[in] p_data_len
-   * \param[in] shape
-   * \param[in] shape_len
-   * \param[in] type
-   * \param[out] out Returns newly created ::OrtValue. Must be freed with OrtApi::ReleaseValue
+  *
+  * Create a tensor with user's buffer. You can fill the buffer either before calling this function or after.
+  * p_data is owned by caller. ReleaseValue won't release p_data.
+  *
+  * \param[in] info Memory description of where the p_data buffer resides (CPU vs GPU etc).
+  * \param[in] p_data Pointer to the data buffer.
+  * \param[in] p_data_len The number of bytes in the data buffer.
+  * \param[in] shape Pointer to the tensor shape dimensions.
+  * \param[in] shape_len The number of tensor shape dimensions.
+  * \param[in] type The data type.
+  * \param[out] out Returns newly created ::OrtValue. Must be freed with OrtApi::ReleaseValue
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
-   */
+  */
   ORT_API2_STATUS(CreateTensorWithDataAsOrtValue, _In_ const OrtMemoryInfo* info, _Inout_ void* p_data,
                   size_t p_data_len, _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type,
                   _Outptr_ OrtValue** out);
