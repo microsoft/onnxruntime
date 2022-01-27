@@ -188,7 +188,7 @@ if (APPLE)
     if (NOT CMAKE_OSX_ARCHITECTURES)
         message("Building ONNX Runtime for ${CMAKE_HOST_SYSTEM_PROCESSOR}")
     endif()
-elseif (NOT WIN32 AND NOT APPLE)
+else()
     message("Building ONNX Runtime for ${CMAKE_SYSTEM_PROCESSOR}")
 endif()
 
