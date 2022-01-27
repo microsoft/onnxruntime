@@ -52,6 +52,7 @@ def main():
     benchmark_success_csv = 'success.csv'  
     benchmark_latency_csv = 'latency.csv' 
     benchmark_status_csv = 'status.csv' 
+    benchmark_session_csv = 'session.csv'
     specs_csv = 'specs.csv'
 
     for model, model_info in models.items():
@@ -118,6 +119,16 @@ def main():
             model_to_metrics = read_map_from_file(METRICS_FILE)
             output_metrics(model_to_metrics, os.path.join(path, benchmark_metrics_csv))
             logger.info("\nSaved model metrics results to {}".format(benchmark_metrics_csv)) 
+    
+        logger.info("\n=========================================")
+        logger.info("======= Models/EPs session creation =======")
+        logger.info("=========================================")
+
+        if os.path.exists(SESSION_FILE):
+            model_to_session = read_map_from_file(SESSION_FILE)
+            pretty_print(pp, model_to_session)
+            output_session_creation(model_to_session, os.path.join(path, benchmark_session_csv))
+            logger.info("\nSaved session creation results to {}".format(benchmark_session_csv)) 
     
     elif args.running_mode == "benchmark":
         logger.info("\n=========================================================")

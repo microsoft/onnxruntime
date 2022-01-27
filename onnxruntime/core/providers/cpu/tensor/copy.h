@@ -13,9 +13,9 @@
 namespace onnxruntime {
 
 void CoalesceDimensions(
-    std::initializer_list<std::reference_wrapper<std::vector<int64_t>>>&& tensors_strides, std::vector<int64_t>& shape);
+    std::initializer_list<std::reference_wrapper<TensorShapeVector>>&& tensors_strides, TensorShapeVector& shape);
 
-std::vector<int64_t> StridesForTensor(const Tensor& tensor);
+TensorShapeVector StridesForTensor(const Tensor& tensor);
 
 namespace strided_copy_detail {
 
@@ -52,7 +52,7 @@ void Copy1D(T* dst, int64_t dst_stride, const T* src, int64_t src_stride, std::p
 }
 
 struct NdCounter {
-  NdCounter(const std::vector<int64_t>& shape, std::ptrdiff_t first, std::ptrdiff_t last)
+  NdCounter(const TensorShapeVector& shape, std::ptrdiff_t first, std::ptrdiff_t last)
       : dims(shape.size()),
         last_dim_size(shape[dims - 1]),
         current_offset(first),
@@ -98,22 +98,22 @@ struct NdCounter {
   const int64_t last_dim_size;
   ptrdiff_t current_offset;
   const ptrdiff_t last;
-  std::vector<int64_t> current_index;
-  const std::vector<int64_t>& shape;
+  TensorShapeVector current_index;
+  const TensorShapeVector& shape;
 };
 }  // namespace strided_copy_detail
 
 template <typename T>
 void StridedCopy(concurrency::ThreadPool* thread_pool,
                  T* dst,
-                 const std::vector<int64_t>& dst_strides_in,
+                 const TensorShapeVector& dst_strides_in,
                  const TensorShape& copy_shape_in,
                  const T* src,
-                 const std::vector<int64_t>& src_strides_in) {
+                 const TensorShapeVector& src_strides_in) {
   // Coalesce dimensions
-  std::vector<int64_t> dst_strides = dst_strides_in;
-  std::vector<int64_t> src_strides = src_strides_in;
-  std::vector<int64_t> copy_shape(copy_shape_in.GetDimsAsVector());
+  TensorShapeVector dst_strides(dst_strides_in);
+  TensorShapeVector src_strides(src_strides_in);
+  TensorShapeVector copy_shape = copy_shape_in.AsShapeVector();
 
   CoalesceDimensions({dst_strides, src_strides}, copy_shape);
   ORT_ENFORCE(dst_strides.size() == src_strides.size() &&
@@ -190,9 +190,9 @@ void StridedCopy(concurrency::ThreadPool* thread_pool,
         });
   } else {
     // enforce that the lambda doesn't change anything
-    const std::vector<int64_t>& const_dst_strides = dst_strides;
-    const std::vector<int64_t>& const_src_strides = src_strides;
-    const std::vector<int64_t>& const_copy_shape = copy_shape;
+    const TensorShapeVector& const_dst_strides = dst_strides;
+    const TensorShapeVector& const_src_strides = src_strides;
+    const TensorShapeVector& const_copy_shape = copy_shape;
 
     concurrency::ThreadPool::TryParallelFor(
         thread_pool, num_iterations,
@@ -230,10 +230,10 @@ template <typename EnabledTypes, typename T>
 inline bool StridedCopyIfEnabled(concurrency::ThreadPool* thread_pool,
                                  Tensor& dst,
                                  std::ptrdiff_t dst_offset,
-                                 const std::vector<int64_t>& dst_strides,
+                                 const TensorShapeVector& dst_strides,
                                  const TensorShape& copy_shape,
                                  const Tensor& src,
-                                 const std::vector<int64_t>& src_strides) {
+                                 const TensorShapeVector& src_strides) {
   constexpr bool enabled = utils::HasTypeWithSameSize<EnabledTypes, T>();
   if constexpr (enabled) {
     // T doesn't necessarily match the data type in src or dst so use reinterpret_cast.
@@ -255,10 +255,10 @@ template <typename EnabledDataTypes>
 Status DispatchStridedCopy(concurrency::ThreadPool* thread_pool,
                            Tensor& dst,
                            std::ptrdiff_t dst_offset,
-                           const std::vector<int64_t>& dst_strides,
+                           const TensorShapeVector& dst_strides,
                            const TensorShape& copy_shape,
                            const Tensor& src,
-                           const std::vector<int64_t>& src_strides) {
+                           const TensorShapeVector& src_strides) {
   ORT_ENFORCE(dst.DataType() == src.DataType(), "src and dst types must match");
 
   bool supported = false;

@@ -236,7 +236,8 @@ void TransformerMemcpyImpl::ProcessDefs(onnxruntime::Node& node, const KernelReg
       else
         provider_output_defs_.insert(arg);
     }
-  } else if (node_provider_type != kCudaExecutionProvider && node_provider_type != kTensorrtExecutionProvider) {
+  } else if (node_provider_type != kCudaExecutionProvider && node_provider_type != kTensorrtExecutionProvider &&
+             node_provider_type != kRocmExecutionProvider && node_provider_type != kMIGraphXExecutionProvider) {
     // TODO: copy between devices? i.e. multiple GPUs
     if (node_provider_type != onnxruntime::kCpuExecutionProvider &&
         node_provider_type != onnxruntime::kVitisAIExecutionProvider &&

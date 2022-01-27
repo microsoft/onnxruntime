@@ -353,6 +353,7 @@ Return Value:
 
     this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
     this->ConvSymU8S8Dispatch = &MlasConvSymDispatchNeon;
+    this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchNeon;
 
     //
     // Check if the processor supports ASIMD dot product instructions.
@@ -371,6 +372,7 @@ Return Value:
     if (HasDotProductInstructions) {
         this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchUdot;
         this->ConvSymU8S8Dispatch = &MlasConvSymDispatchDot;
+        this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchSdot;
     }
 
 #endif // MLAS_TARGET_ARM64
