@@ -857,9 +857,21 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
 // onnxruntime::nnapi::Model.
 /* static */ bool ReshapeOpBuilder::CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
                                                    size_t input_rank, size_t output_rank) {
+  // Since we know this is a Reshape NodeUnit, so we can safely assume there is only 1 output
+  // and the node_unit has only one output node.
   const auto& output_node_arg = node_unit.Outputs()[0].node_arg;
   const auto& output_name = output_node_arg.Name();
   const auto& output_node = *node_unit.GetOutputNodes()[0];
+
+  // Check if the Reshape output is a graph output, if so we cannot skip the Reshape
+  // We do not care the case where the Reshape output is a dead end
+  for (const auto* node_arg : model_builder.GetGraphViewer().GetOutputs()) {
+    if (node_arg == &output_node_arg) {
+      LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can not be skipped when the output is a graph output"
+                            << ", output name, " << output_name;
+      return false;
+    }
+  }
 
   // We will go through all the output edges
   for (auto it = output_node.OutputEdgesBegin(), end = output_node.OutputEdgesEnd(); it != end; ++it) {
@@ -893,17 +905,6 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
                             << ", output name, " << output_name
                             << ", the actual input_rank, " << input_rank
                             << ", the actual output_rank, " << output_rank;
-      return false;
-    }
-  }
-
-  // If we reach here, we have all the Reshape outputs are used by gemm/matmul, or Reshape has no output edge
-  // Check if the Reshape output is a graph output, if so we cannot skip the Reshape
-  // We do not care the case where the Reshape output is a dead end
-  for (const auto* node_arg : model_builder.GetGraphViewer().GetOutputs()) {
-    if (node_arg == &output_node_arg) {
-      LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can not be skipped when the output is a graph output"
-                            << ", output name, " << output_name;
       return false;
     }
   }
@@ -2512,7 +2513,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& inputs = node_unit.Inputs();
   const auto& input_shape = shaper[inputs[0].node_arg.Name()];
-  std::vector<int64_t> input_shape_64(input_shape.cbegin(), input_shape.cend());
+  TensorShapeVector input_shape_64(input_shape.cbegin(), input_shape.cend());
   SliceOp::PrepareForComputeMetadata compute_metadata(input_shape_64);
 
   {
@@ -2520,12 +2521,12 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     // to be used in shared PrepareForCompute function to calculate the output shape
     // and normalize inputs, for example, input can be starts/ends/steps for certain axes,
     // PrepareForCompute can generate standard starts/ends/steps/axes for each axes
-    std::vector<int64_t> input_starts;
-    std::vector<int64_t> input_ends;
-    std::vector<int64_t> input_axes;
-    std::vector<int64_t> input_steps;
+    TensorShapeVector input_starts;
+    TensorShapeVector input_ends;
+    TensorShapeVector input_axes;
+    TensorShapeVector input_steps;
 
-    const auto CopyInputData = [&inputs, &model_builder](size_t input_idx, std::vector<int64_t>& data) {
+    const auto CopyInputData = [&inputs, &model_builder](size_t input_idx, TensorShapeVector& data) {
       data.clear();
 
       // This is an optional input, return empty vector
@@ -2591,7 +2592,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
   // helper function to add begin/end/strides of ANEURALNETWORKS_STRIDED_SLICE
   const auto AddOperand = [&model_builder, &node_unit, &input_indices, &operand_indices](
-                              const char* name, const Shape& shape, const std::vector<int64_t>& param_raw_data) {
+                              const char* name, const Shape& shape, const gsl::span<const int64_t>& param_raw_data) {
     std::vector<int32_t> param_data;
     param_data.reserve(param_raw_data.size());
     std::transform(param_raw_data.cbegin(), param_raw_data.cend(),
@@ -2637,8 +2638,8 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     // the end, for example, dim = 5, and end = -1, the end will be normalized to 4, which will cause
     // incorrect result, so here we have to make the end = -dim - 1 such that it will not be treated as
     // an index counting from the end.
-    std::vector<int64_t> ends = compute_metadata.ends_;
-    for (size_t i = 0; i < ends.size(); ++i) {
+    auto ends = compute_metadata.ends_;
+    for (size_t i = 0, limit = ends.size(); i < limit; ++i) {
       if (ends[i] == -1) {
         ends[i] = -static_cast<int32_t>(input_shape[i] + 1);
       }

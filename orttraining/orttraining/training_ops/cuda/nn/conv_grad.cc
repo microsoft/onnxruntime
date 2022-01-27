@@ -249,15 +249,15 @@ template <typename T>
 Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor& w, Tensor* dB, Tensor* dX,
                                 Tensor* dW) const {
   const TensorShape& x_shape = x.Shape();
-  std::vector<int64_t> x_dims = x_shape.GetDimsAsVector();
+  auto x_dims = x_shape.AsShapeVector();
   args_.x_data = reinterpret_cast<const CudaT*>(x.template Data<T>());
 
   const TensorShape& dy_shape = dY.Shape();
-  std::vector<int64_t> dy_dims = dy_shape.GetDimsAsVector();
+  auto dy_dims = dy_shape.AsShapeVector();
   args_.dy_data = reinterpret_cast<const CudaT*>(dY.template Data<T>());
 
   const TensorShape& w_shape = w.Shape();
-  std::vector<int64_t> w_dims = w_shape.GetDimsAsVector();
+  auto w_dims = w_shape.AsShapeVector();
   args_.w_data = reinterpret_cast<const CudaT*>(w.template Data<T>());
 
   args_.db_data = dB ? reinterpret_cast<CudaT*>(dB->template MutableData<T>()) : nullptr;
@@ -273,21 +273,21 @@ Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor&
     // Update Attributes
     ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(&x, &w));
 
-    std::vector<int64_t> kernel_shape;
+    TensorShapeVector kernel_shape;
     ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(w_shape, kernel_shape));
     auto rank = kernel_shape.size();
 
-    std::vector<int64_t> pads(conv_attrs_.pads);
+    ConvPadVector pads(conv_attrs_.pads);
     if (pads.empty()) {
       pads.resize(rank * 2, 0);
     }
 
-    std::vector<int64_t> dilations(conv_attrs_.dilations);
+    TensorShapeVector dilations(conv_attrs_.dilations);
     if (dilations.empty()) {
       dilations.resize(rank, 1);
     }
 
-    std::vector<int64_t> strides(conv_attrs_.strides);
+    TensorShapeVector strides(conv_attrs_.strides);
     if (strides.empty()) {
       strides.resize(rank, 1);
     }

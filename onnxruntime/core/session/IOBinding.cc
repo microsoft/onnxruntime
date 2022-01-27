@@ -52,7 +52,7 @@ static common::Status SyncProviders(const SessionState::NameNodeInfoMapType& nod
   std::set<std::string> providers;
   for (auto& pair : node_info_map) {
     for (auto& node_info : pair.second) {
-      if (node_info.p_node->GetExecutionProviderType() != onnxruntime::kCpuExecutionProvider) {
+      if (node_info.p_node && node_info.p_node->GetExecutionProviderType() != onnxruntime::kCpuExecutionProvider) {
         providers.insert(node_info.p_node->GetExecutionProviderType());
       }
     }

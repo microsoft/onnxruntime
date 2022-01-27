@@ -271,18 +271,24 @@ void DnnlReduce::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     for (size_t i = 0; i < ndim; ++i) {
       if ((j < axes.size() && axes[j] == static_cast<int64_t>(i)) ||
           (axes.size() == 0 && src_dims[i] == 1)) {
-        ORT_ENFORCE(src_dims[i] == 1, "Dimension of input ", i, " must be 1 instead of ", src_dims[i],
-                    ". shape=", src_dims);
+        if (src_dims[i] != 1) {
+          auto dims_span = gsl::make_span(src_dims);
+          ORT_ENFORCE(src_dims[i] == 1, "Dimension of input ", i, " must be 1 instead of ", src_dims[i],
+                      ". shape=", dims_span);
+        }
         ++j;
         continue;
       }
 
       if ((j < axes.size() && axes[j] == static_cast<int64_t>(i) && src_dims[i] == 0) ||
           (axes.size() == 0 && src_dims[i] == 0)) {
+        if (!keepdims) {
+          auto dims = src_md.dims();
           ORT_ENFORCE(keepdims,
-              "Can't reduce on dim with value of 0 if 'keepdims' is false. "
-              "Invalid output shape would be produced. input_shape:",
-              TensorShape(src_md.dims()));
+                      "Can't reduce on dim with value of 0 if 'keepdims' is false. "
+                      "Invalid output shape would be produced. input_shape:",
+                      TensorShape(gsl::make_span(dims)));
+        }
       }
       output_shape.push_back(src_dims[i]);
     }

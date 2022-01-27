@@ -376,7 +376,7 @@ def parse_arguments():
     parser.add_argument(
         "--wasm_malloc", default="dlmalloc", help="Specify memory allocator for WebAssembly")
     parser.add_argument(
-        "--emsdk_version", default="2.0.26", help="Specify version of emsdk")
+        "--emsdk_version", default="2.0.34", help="Specify version of emsdk")
 
     # Enable onnxruntime-extensions
     parser.add_argument(
@@ -1080,6 +1080,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     if args.build_eager_mode:
         import torch
         cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
+        cmake_args += ['-D_GLIBCXX_USE_CXX11_ABI=' + str(int(torch._C._GLIBCXX_USE_CXX11_ABI))]
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
@@ -2036,6 +2037,9 @@ def main():
 
     if args.use_tensorrt:
         args.use_cuda = True
+
+    if args.use_migraphx:
+        args.use_rocm = True
 
     if args.build_wheel or args.gen_doc:
         args.enable_pybind = True
