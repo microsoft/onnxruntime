@@ -1420,6 +1420,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     output_info_[fused_node->Name()].push_back(output_types);
     input_shape_ranges_[fused_node->Name()] = input_shape_ranges;
 
+    //cudaGraph_t graph;
+    cudaGraphExec_t* instance = nullptr;
+    cuda_graphs_[fused_node->Name()] = instance;
+
     // Create function state
     // TODO: remove default capture
     NodeComputeInfo compute_info;
@@ -1429,7 +1433,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
             &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
-            dla_enable_, dla_core_, cuda_graph_enable_, nullptr, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
+            dla_enable_, dla_core_, cuda_graph_enable_, cuda_graphs_[context->node_name], &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
             runtime_.get(), nullptr, allocator_, dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_};
       *state = p.release();
       return 0;
@@ -1453,7 +1457,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       auto trt_engine = trt_state->engine->get();
       auto trt_context = trt_state->context->get();
       auto trt_profile = &(trt_state->trt_profile);
-      auto cuda_graph = &(trt_state->cuda_graph);
+      //auto cuda_graph = &(trt_state->cuda_graph);
+      auto cuda_graph = trt_state->cuda_graph;
       auto alloc = trt_state->scratch_allocator;
       int num_inputs = static_cast<int>(input_indexes.size());
       int num_outputs = static_cast<int>(output_indexes.size());
@@ -2021,10 +2026,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       if (trt_state->cuda_graph_enable)
       {
           ///cudaGraphExec_t instance;
-          if (*cuda_graph == nullptr) {
+          if (cuda_graph == nullptr) {
             cudaGraph_t graph;
             cudaGraphExec_t instance;
-			*cuda_graph = &instance;
+			cuda_graph = &instance;
+			////*cuda_graph = &instance;
 			//warm up
             ///std::cout << "cuda graph: enqueueV2 warm up before capturing" << std::endl;
             if (!trt_context->enqueueV2(&buffers[0], stream, nullptr)) {
@@ -2045,11 +2051,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
             //}
 		    
             cudaStreamEndCapture(stream, &graph);
-			cudaStreamSynchronize(stream);//doesn't matter
+			//////cudaStreamSynchronize(stream);//doesn't matter
             //gpuErrChk(cudaStreamSynchronize(mStream));
 		    
             ///cudaGraphInstantiate(&instance, graph, NULL, NULL, 0);
-            cudaGraphInstantiate(*cuda_graph, graph, NULL, NULL, 0);	  
+            ////cudaGraphInstantiate(*cuda_graph, graph, NULL, NULL, 0);
+            cudaGraphInstantiate(cuda_graph, graph, NULL, NULL, 0);
             //mExecGraph = exec;
             //std::cout << "Capturing graph done." << std::endl;
 			
@@ -2062,9 +2069,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           //std::cout << "cuda_graph addr: " << &instance << std::endl;
           //cudaGraphLaunch(instance, stream);	  
 
-          ///std::cout << "cuda_graph addr: " << cuda_graph << std::endl;
-          cudaGraphLaunch(**cuda_graph, stream);
-          cudaStreamSynchronize(stream);
+          //std::cout << "cuda_graph addr: " << *cuda_graph << std::endl;
+          ////cudaGraphLaunch(**cuda_graph, stream);
+          cudaGraphLaunch(*cuda_graph, stream);
+          /////cudaStreamSynchronize(stream);//seg fault here???
 
           ///std::cout << "cuda graph: inference done" << std::endl;
       } else {	
