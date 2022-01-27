@@ -40,7 +40,7 @@ jobs:
   timeoutInMinutes: 120
   workspace:
     clean: all
-  pool: {{parameters.pool_name}}
+  pool: ${{parameters.pool_name}}
 
   variables:
     artifacts_directory: $(Build.BinariesDirectory)/.artifacts
