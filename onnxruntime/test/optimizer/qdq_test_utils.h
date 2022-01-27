@@ -42,8 +42,10 @@ GetQDQConvTestCaseFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shap
     WeightType weight_min_value = WeightLimits::min();
     WeightType weight_max_value = WeightLimits::max();
 
-    // initializer values are given as random here (i.e. /=2 is arbitrary.)
-    if (std::is_same<WeightType, int8_t>::value) {
+    // the reason that we reduce weight range by half for int8 weight type comes from the case when
+    // running on cpu, MLAS kernel will overflow for uint8 activation and int8 weight with avx2 and avx512 extension
+    // reduced weight range can prevent the overflow.
+    if constexpr (std::is_same<WeightType, int8_t>::value) {
       weight_min_value /= 2;
       weight_max_value /= 2;
     }

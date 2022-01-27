@@ -264,7 +264,7 @@ TEST(NnapiExecutionProviderTest, TestQDQModel) {
                                                                                   {1, 1, 3, 3} /*weights_shape*/);
   build_test_case(helper);
   helper.SetGraphOutputs();
-  ASSERT_TRUE(model.MainGraph().Resolve().IsOK());
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
 
   // Serialize the model to a string.
   std::string model_data;
