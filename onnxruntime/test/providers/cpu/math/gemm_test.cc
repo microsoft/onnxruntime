@@ -105,12 +105,11 @@ TEST(GemmOpTest, GemmNoTrans_bfloat16) {
   test.AddInput<BFloat16>("C", {2, 3}, MakeBFloat16({1.f, 1.f, 1.f, 1.f, 1.f, 1.f}));
   test.AddOutput<BFloat16>("Y", {2, 3}, MakeBFloat16({11.0f, 11.0f, 11.0f, -9.0f, -9.0f, -9.0f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  #ifdef USE_CUDA
+#ifdef USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
-  #endif 
-  #ifdef USE_ROCM
+#elif USE_ROCM
     execution_providers.push_back(DefaultRocmExecutionProvider());
-  #endif 
+#endif 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif
