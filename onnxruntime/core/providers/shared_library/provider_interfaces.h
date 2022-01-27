@@ -113,6 +113,13 @@ struct Node__EdgeIterator {
 // a specific implementation of a virtual class member. Trying to get a pointer to member of a virtual function will return a thunk that
 // calls the virtual function (which will lead to infinite recursion in the bridge). There is no known way to get the non virtual member
 // function pointer implementation in this case.
+//The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
+//However, we do not allocate this type on heap.
+//Please do not new or delete this type(and subtypes).
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26436)
+#endif
 struct ProviderHost {
   virtual const OrtApiBase* OrtGetApiBase() = 0;
 
@@ -821,5 +828,7 @@ struct ProviderHost {
 
   virtual ProviderHostCPU& GetProviderHostCPU() = 0;
 };
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 }  // namespace onnxruntime

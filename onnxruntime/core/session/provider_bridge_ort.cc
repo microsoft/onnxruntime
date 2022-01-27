@@ -143,6 +143,8 @@ struct Node__EdgeIterator_Impl : Node__EdgeIterator {
   Node::EdgeConstIterator v_;
 };
 #if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26436)
 #pragma warning(disable : 26409)
 #endif
 // wrapped = The internal object is exposed as an opaque pointer, so we wrap it in a class that forwards every call to the real calls. No members are ever directly accessed
@@ -933,7 +935,9 @@ struct ProviderHostImpl : ProviderHost {
 
   ProviderHostCPU& GetProviderHostCPU() override { return onnxruntime::GetProviderHostCPU(); }
 } provider_host_;
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 struct ProviderSharedLibrary {
   bool Ensure() {
     if (handle_)
