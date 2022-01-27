@@ -9,6 +9,7 @@ jobs:
     includedOpsConfig: '$(Build.SourcesDirectory)/tools/ci_build/github/android/mobile_package.required_operators.config'
     artifactName: 'onnxruntime-android-mobile-aar'
     job_name_suffix: 'For_React_Native'
+    pool_name: 'Linux-CPU-2019'
 
 #- job: Android_Aar_Packaging_For_React_Native
 #  pool: Linux-CPU-2019
