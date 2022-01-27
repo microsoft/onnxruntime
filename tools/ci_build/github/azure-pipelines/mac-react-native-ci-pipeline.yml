@@ -195,7 +195,7 @@ jobs:
     displayName: Stop Android emulator
     condition: always()
 
-  - task: script |
+  - script |
       git restore .
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
     displayName: Restore changes for e2e tests
@@ -207,7 +207,7 @@ jobs:
       errorActionPreference: stop
     displayName: 'Pack NPM packages'
 
-   - task: CopyFiles@2
+  - task: CopyFiles@2
     inputs:
       sourceFolder: $(Build.SourcesDirectory)/js/react_native
       contents: onnxruntime-react_native-*.tgz
