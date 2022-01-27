@@ -235,6 +235,21 @@ TEST(NnapiExecutionProviderTest, TestNoShapeInputModel) {
       << "No node should be taken by the NNAPI EP";
 }
 
+// For now since we don't support QDQ in NNAPI, even the infrastructure is there
+// Need to verify a model with QDQ groups only will not be supported by NNAPI at all
+// This may need to be changed when we gradually add support for different ops for QDQ
+TEST(NnapiExecutionProviderTest, TestQDQConvModel) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/transform/qdq_conv.onnx");
+  // test load only
+  SessionOptions so;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  ASSERT_EQ(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
+      << "No nodes should have been taken by the NNAPI EP";
+}
+
 #endif  // !(ORT_MINIMAL_BUILD
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {

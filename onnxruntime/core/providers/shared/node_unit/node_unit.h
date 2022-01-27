@@ -11,7 +11,6 @@
 
 namespace onnxruntime {
 
-class Graph;
 class GraphViewer;
 class Node;
 class NodeArg;
@@ -49,6 +48,7 @@ class NodeUnit {
 
  public:
   explicit NodeUnit(const Node& node);
+  explicit NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group);
 
   Type UnitType() const noexcept { return type_; }
 
@@ -64,17 +64,24 @@ class NodeUnit {
   ProviderType GetExecutionProviderType() const noexcept;
 
   const Node& GetNode() const noexcept { return target_node_; }
-  const std::vector<const Node*> GetOutputNodes() const noexcept { return output_nodes_; }
+  const std::vector<const Node*>& GetOutputNodes() const noexcept { return output_nodes_; }
 
  private:
+  const std::vector<const Node*> output_nodes_;  // all the nodes producing outputs for this NodeUnit
+  const Node& target_node_;
+  const Type type_;
+
   std::vector<NodeUnitIODef> inputs_;
   std::vector<NodeUnitIODef> outputs_;
 
-  const std::vector<const Node*> output_nodes_;  // all the nodes producing outputs for this NodeUnit
-  const Node& target_node_;
-  Type type_;
-
-  void InitForNode();  // Initializing for single Node
+  // Initializing for a single Node
+  void InitForSingleNode();
 };
+
+// Get all the nodes in the given graph_viewer as NodeUnits (SingleNode or QDQGroup)
+// And return a map to quick query the NodeUnit which contains the given Node,
+// Note, the value of the map is owned by the vector of std::unique_ptr<NodeUnit>
+std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
+GetAllNodeUnits(const GraphViewer& graph_viewer);
 
 }  // namespace onnxruntime

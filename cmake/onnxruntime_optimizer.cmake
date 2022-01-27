@@ -11,6 +11,21 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/optimizer/graph_transformer.cc"
   )
 
+  if (onnxruntime_EXTENDED_MINIMAL_BUILD AND onnxruntime_USE_NNAPI_BUILTIN)
+    list(APPEND onnxruntime_optimizer_src_patterns
+      "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/selectors_actions/shared/utils.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/qdq_util.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/qdq_util.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/initializer.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/initializer.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/utils.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/utils.cc"
+    )
+  endif()
+
   if (onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
     list(APPEND onnxruntime_optimizer_src_patterns
       "${ONNXRUNTIME_INCLUDE_DIR}/core/optimizer/graph_transformer_utils.h"

@@ -1,6 +1,15 @@
 {
    "Registrations": [
       {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "9336be04a242237cd41a525bedfcf3be1bb55377",
+               "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
+            }
+         }
+      },   
+      {
         "component": {
           "Type": "maven",
           "maven": { "GroupId": "org.junit.platform", "ArtifactId": "junit-platform-console-standalone", "Version": "1.6.2" },
