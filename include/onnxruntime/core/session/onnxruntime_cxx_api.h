@@ -507,8 +507,8 @@ struct Value : Base<OrtValue> {
    * \param info Memory description of where the p_data buffer resides (CPU vs GPU etc).
    * \param p_data Pointer to the data buffer.
    * \param p_data_element_count The number of elements in the data buffer.
-   * \param shape Pointer to the tensor shape values.
-   * \param shape_len The tensor shape length.
+   * \param shape Pointer to the tensor shape dimensions.
+   * \param shape_len The number of tensor shape dimensions.
    */
   template <typename T>
   static Value CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len);
@@ -517,8 +517,8 @@ struct Value : Base<OrtValue> {
    * \param info Memory description of where the p_data buffer resides (CPU vs GPU etc).
    * \param p_data Pointer to the data buffer.
    * \param p_data_byte_count The number of bytes in the data buffer.
-   * \param shape Pointer to the tensor shape values.
-   * \param shape_len The tensor shape length.
+   * \param shape Pointer to the tensor shape dimensions.
+   * \param shape_len The number of tensor shape dimensions.
    * \param type The data type.
    */
   static Value CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
@@ -595,16 +595,16 @@ struct Value : Base<OrtValue> {
   /** \brief Creates a tensor using a supplied OrtAllocator. Wraps OrtApi::CreateTensorAsOrtValue.
    * \tparam T The numeric datatype. This API is not suitable for strings.
    * \param allocator The allocator to use.
-   * \param shape Pointer to the tensor shape values.
-   * \param shape_len The tensor shape length.
+   * \param shape Pointer to the tensor shape dimensions.
+   * \param shape_len The number of tensor shape dimensions.
    */
   template <typename T>
   static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len);
 
   /** \brief Creates a tensor using a supplied OrtAllocator. Wraps OrtApi::CreateTensorAsOrtValue.
    * \param allocator The allocator to use.
-   * \param shape Pointer to the tensor shape values.
-   * \param shape_len The tensor shape length.
+   * \param shape Pointer to the tensor shape dimensions.
+   * \param shape_len The number of tensor shape dimensions.
    * \param type The data type.
    */
   static Value CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
