@@ -172,6 +172,10 @@ jobs:
     condition: succeededOrFailed()
     displayName: Publish React Native Android Instrumented Test Results
 
+  - script: |
+      cd $(Build.SourceDirectory)/js/react_native/ios
+      pod install
+    displayName: Pod install for onnxruntime react native ios bridge library
 
   - task: Xcode@5
     inputs:
@@ -187,7 +191,7 @@ jobs:
       useXcpretty: false
       publishJUnitResults: true
       testRunTitle: 'React Native iOS Instrumented Test Results'
-    displayName: Run React Native iOS Tests
+    displayName: Run React Native iOS Instrumented Tests
 
   - task: PublishTestResults@2
     inputs:
