@@ -459,12 +459,12 @@ if(onnxruntime_USE_COREML)
   endif()
 endif()
 
-file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
-  "${TEST_SRC_DIR}/tvm/*.h"
-  "${TEST_SRC_DIR}/tvm/*.cc"
-  )
-
 if(onnxruntime_USE_NUPHAR)
+  file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/tvm/*.h"
+    "${TEST_SRC_DIR}/tvm/*.cc"
+    )
+
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/framework/nuphar/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nuphar)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nuphar)
@@ -644,7 +644,7 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND all_tests ${onnxruntime_test_training_src})
 endif()
 
-if (onnxruntime_USE_TVM)
+if (onnxruntime_USE_NUPHAR)
   list(APPEND all_tests ${onnxruntime_test_tvm_src})
 endif()
 
