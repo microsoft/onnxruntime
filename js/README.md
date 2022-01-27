@@ -391,10 +391,10 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
 
       ```sh
       pod install
-      xcodebuild test -workspace OnnxruntimeModule.xcworkspace -scheme OnnxruntimeModuleTest -destination 'platform=iOS Simulator,name=iPhone 11,OS=15.0'
+      xcodebuild test -workspace OnnxruntimeModule.xcworkspace -scheme OnnxruntimeModuleTest -destination 'platform=iOS Simulator,OS=latest,name=iPhone 13'
       ```
 
-4. Test an example for Android and iOS. In Windows, open Android Emulator first.
+4. Test Android and iOS apps. In Windows, open Android Emulator first.
 
    `debug.keystore` must be generated ahead for Android example.
 
@@ -420,6 +420,13 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
 
    ```sh
    xcrun xcodebuild test -workspace OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -destination 'platform=iOS Simulator,OS=latest,name=iPhone 13'
+   ```
+
+5. Run Android and iOS apps.
+
+   ```sh
+   yarn e2e android
+   yarn e2e ios
    ```
 
 ### NPM Packaging

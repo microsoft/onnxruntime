@@ -1,15 +1,15 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-# This script makes NPM packages for onnxruntime-common and onnxruntime-(node|web)
+# This script makes NPM packages for onnxruntime-common and onnxruntime-(node|web|react_native)
 #
 # Release Mode (release):
 #   Do not update version number. Version number should be matching $(ORT_ROOT)/VERSION_NUMBER
-#   Always generate packages for onnxruntime-common and onnxruntime-(node|web)
+#   Always generate packages for onnxruntime-common and onnxruntime-(node|web|react_native)
 #
 # Release Candidate Mode (rc):
 #   Update version number to {VERSION_BASE}-rc.{YYYYMMDD}-{COMMIT}
-#   Always generate packages for onnxruntime-common and onnxruntime-(node|web)
+#   Always generate packages for onnxruntime-common and onnxruntime-(node|web|react_native)
 #
 # Dev Mode (dev):
 #   Compare current content with latest @dev package for onnxruntime-common. If no change, we
@@ -19,7 +19,7 @@
 #
 # Custom Mode:
 #   Use first commandline parameter as version number suffix.
-#   Always generate packages for onnxruntime-common and onnxruntime-(node|web)
+#   Always generate packages for onnxruntime-common and onnxruntime-(node|web|react_native)
 #
 
 if ($Args.Count -ne 3) {
@@ -27,7 +27,7 @@ if ($Args.Count -ne 3) {
 }
 $MODE=$Args[0] # "dev" or "release" or "rc"; otherwise it is considered as a version number
 $ORT_ROOT=$Args[1] # eg. D:\source\onnxruntime
-$TARGET=$Args[2] # "node" or "web"
+$TARGET=$Args[2] # "node" or "web" or "react_native"
 
 Function Generate-Package-Version-Number {
     pushd $ORT_ROOT
@@ -60,8 +60,8 @@ if ($MODE -eq "dev") {
     # - 'latest': the latest @dev version from npm.js repository.
     #
     # If the contents of the 2 versions are identical, we don't publish a new version. Instead,
-    # we only publish onnxruntime-node/onnxruntime-web and set its dependency's version to the
-    # 'latest'.
+    # we only publish onnxruntime-node/onnxruntime-web/onnxruntime-react-native and
+    # set its dependency's version to the 'latest'.
 
     # check latest @dev version
     Write-Host "Start checking version for onnxruntime-common@dev"
