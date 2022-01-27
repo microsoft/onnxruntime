@@ -268,7 +268,7 @@ static void ValidateFastReduceRKR(const gsl::span<int64_t>& fast_shape, const Te
   ORT_ENFORCE(fast_shape[1] == output.Shape().Size(), "Output size mismatch.");
 }
 
-void ReduceAggregatorBase::FastReduceKR(const Tensor&, const gsl::span<int64_t>&, Tensor&, concurrency::ThreadPool*) {
+void ReduceAggregatorBase::FastReduceKR(const Tensor&, const gsl::span<const int64_t>&, Tensor&, concurrency::ThreadPool*) {
   ValidateMustBeOverloaded();
 }
 void ReduceAggregatorBase::FastReduceRK(const Tensor&, const gsl::span<const int64_t>&, Tensor&, concurrency::ThreadPool*) {
@@ -277,7 +277,7 @@ void ReduceAggregatorBase::FastReduceRK(const Tensor&, const gsl::span<const int
 void ReduceAggregatorBase::FastReduceKRK(const Tensor&, const gsl::span<const int64_t>&, Tensor&, concurrency::ThreadPool*) {
   ValidateMustBeOverloaded();
 }
-void ReduceAggregatorBase::FastReduceRKR(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*) {
+void ReduceAggregatorBase::FastReduceRKR(const Tensor&, const gsl::span<const int64_t>&, Tensor&, concurrency::ThreadPool*) {
   ValidateMustBeOverloaded();
 }
 

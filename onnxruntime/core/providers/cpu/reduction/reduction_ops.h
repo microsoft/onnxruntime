@@ -156,7 +156,7 @@ class ReduceAggregatorBase {
   static void FastReduceKR(const Tensor&, const gsl::span<const int64_t>&, Tensor&, concurrency::ThreadPool*);
   static void FastReduceRK(const Tensor&, const gsl::span<const int64_t>&, Tensor&, concurrency::ThreadPool*);
   static void FastReduceKRK(const Tensor&, const gsl::span<const int64_t>&, Tensor&, concurrency::ThreadPool*);
-  static void FastReduceRKR(const Tensor&, const gsl::span<int64_t>&, Tensor&, concurrency::ThreadPool*);
+  static void FastReduceRKR(const Tensor&, const gsl::span<const int64_t>&, Tensor&, concurrency::ThreadPool*);
 };
 
 template <typename T, typename TVAL = T>
@@ -180,7 +180,7 @@ class ReduceAggregator : public ReduceAggregatorBase {
   inline TVAL get_value() { return accumulator_; }
 
  protected:
-  static void CommonFastReduceRKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
+  static void CommonFastReduceRKR(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                                   Tensor& output, concurrency::ThreadPool* tp,
                                   std::function<TVAL(const T*)> f_init,
                                   std::function<void(TVAL&, const T*, int64_t)> f_update) {
@@ -271,7 +271,7 @@ class ReduceAggregatorSum : public ReduceAggregator<T, T> {
         });
   }
 
-  static void FastReduceRKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
+  static void FastReduceRKR(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
     ReduceAggregator<T, T>::CommonFastReduceRKR(
         input, fast_shape, output, tp,
@@ -346,7 +346,7 @@ class ReduceAggregatorMean : public ReduceAggregatorSum<T> {
     }
   }
 
-  static void FastReduceRKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
+  static void FastReduceRKR(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
     ReduceAggregatorSum<T>::FastReduceRKR(input, fast_shape, output, tp);
     T* out = output.MutableData<T>();
@@ -431,7 +431,7 @@ class ReduceAggregatorMax : public ReduceAggregator<T> {
         });
   }
 
-  static void FastReduceRKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
+  static void FastReduceRKR(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
     ReduceAggregator<T, T>::CommonFastReduceRKR(
         input, fast_shape, output, tp,
@@ -606,7 +606,7 @@ class ReduceAggregatorMin : public ReduceAggregator<T, T> {
         });
   }
 
-  static void FastReduceRKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
+  static void FastReduceRKR(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
     ReduceAggregator<T, T>::CommonFastReduceRKR(
         input, fast_shape, output, tp,
