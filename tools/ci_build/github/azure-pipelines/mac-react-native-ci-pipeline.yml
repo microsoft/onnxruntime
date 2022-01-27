@@ -30,10 +30,12 @@ jobs:
     inputs:
       versionSpec: '16.x'
 
-  - script: brew install coreutils ninja npm yarn
+  - script:
+      brew install coreutils ninja npm yarn
     displayName: Install coreutils, ninja, npm, and yarn
 
-  - script: /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
+  - script:
+      /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
     displayName: Setup gradle wrapper to use gradle 6.8.3
 
   - script: |
@@ -56,15 +58,21 @@ jobs:
       buildType: 'current'
       artifactName: 'onnxruntime-android-mobile-aar'
       targetPath: '$(Build.BinariesDirectory)/android-mobile-aar'
-    displayName: 'Download Android Aar artifacts'
-   
-  - script: |
-      export ORT_VERSION=$(cat $(Build.SourcesDirectory)/VERSION_NUMBER)
-      mkdir $(Build.SourcesDirectory)/js/react_native/android/libs
-      cp $(Build.BinariesDirectory)/android-mobile-aar/onnxruntime-mobile-${ORT_VERSION}.aar $(Build.SourcesDirectory)/js/react_native/android/libs
-      mkdir $(Build.SourcesDirectory)/js/react_native/local_pods
-      cp $(Build.BinariesDirectory)/ios_framework/framework_out/onnxruntime-mobile-c.zip $(Build.SourcesDirectory)/js/react_native/local_pods
-    displayName: Copy Android and iOS package to React Native directory
+    displayName: Download Android Aar artifacts
+
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Build.BinariesDirectory)/android-mobile-aar
+      contents: onnxruntime-mobile-*.aar
+      targetFolder: $(Build.SourcesDirectory)/js/react_native/android/libs
+    displayName: Copy Android package to React Native directory
+
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Build.BinariesDirectory)/ios_framework/framework_out
+      contents: onnxruntime-mobile-c.zip
+      targetFolder: $(Build.SourcesDirectory)/js/react_native/local_pods
+    displayName: Copy iOS package to React Native directory
 
   - script: |
       npm ci
@@ -133,19 +141,21 @@ jobs:
     condition: succeededOrFailed()
     displayName: Publish React Native iOS Instrumented Test Results
 
-  - task: script |
+  - script: |
       yarn bootstrap
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
     displayName: Bootstrap Android and iOS e2e tests
 
-  - task: script |
+  - script: |
       keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
     displayName: Generate a debug keystore
 
-  - script: |
-      mkdir $(Build.SourcesDirectory)/js/react_native/e2e/node_modules/onnxruntime-react-native/android/libs
-      cp $(Build.BinariesDirectory)/android-mobile-aar/onnxruntime-mobile-${ORT_VERSION}.aar $(Build.SourcesDirectory)/js/react_native/e2e/node_modules/onnxruntime-react-native/android/libs
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Build.BinariesDirectory)/android-mobile-aar
+      contents: onnxruntime-mobile-*.aar
+      targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/node_modules/onnxruntime-react-native/android/libs
     displayName: Copy Android package to React Native e2e directory
 
   - script: |
@@ -205,25 +215,25 @@ jobs:
       filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/js/pack-npm-packages.ps1'
       arguments: '$(NpmPackagingMode) $(Build.SourcesDirectory) react_native'
       errorActionPreference: stop
-    displayName: 'Pack NPM packages'
+    displayName: Pack NPM packages
 
   - task: CopyFiles@2
     inputs:
       sourceFolder: $(Build.SourcesDirectory)/js/react_native
       contents: onnxruntime-react_native-*.tgz
       targetFolder: $(Build.ArtifactStagingDirectory)
-    displayName: 'Create Artifacts onnxruntime-react-native'
+    displayName: Create Artifacts onnxruntime-react-native
   
   - task: PublishPipelineArtifact@0
     inputs:
       artifactName: 'NPM_packages'
       targetPath: '$(Build.ArtifactStagingDirectory)'
-    displayName: 'Publish Pipeline Artifact'
+    displayName: Publish Pipeline Artifact
 
   - template: component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
 
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
+    displayName: Clean Agent Directories
     condition: always()
