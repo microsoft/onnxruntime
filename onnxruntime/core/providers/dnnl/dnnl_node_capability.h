@@ -252,7 +252,7 @@ class DnnlPowNodeCapability : public DnnlDefaultMultiInputNodeCapability {
  public:
   DnnlPowNodeCapability()
     : DnnlDefaultMultiInputNodeCapability({/*T */{type_float32},
-                                           /*T1*/{type_uint8, type_int8, type_int32, type_float32}}) {}
+                                           /*T1*/{type_float32}}) {}
 
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
 

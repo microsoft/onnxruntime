@@ -352,21 +352,37 @@ void RunMatMulIntegerU8X8Test(const int M, const int N, const int K, bool non_ze
 }
 
 void RunMatMulIntegerU8X8TestBatch(const int M, const int N, const int K) {
+  std::cout << "RunMatMulIntegerU8X8Test: int8 " << M << "x" << N << "x" << K << " false,false,false\n";
   RunMatMulIntegerU8X8Test<int8_t>(M, N, K, false /*non_zero_zp*/, false /*B_is_initializer*/, false /*per_column_zp*/);
+  std::cout << "RunMatMulIntegerU8X8Test: int8 " << M << "x" << N << "x" << K << " false,true,false\n";
   RunMatMulIntegerU8X8Test<int8_t>(M, N, K, false /*non_zero_zp*/, true /*B_is_initializer*/, false /*per_column_zp*/);
+  std::cout << "RunMatMulIntegerU8X8Test: int8 " << M << "x" << N << "x" << K << " true,false,false\n";
   RunMatMulIntegerU8X8Test<int8_t>(M, N, K, true /*non_zero_zp*/, false /*B_is_initializer*/, false /*per_column_zp*/);
+  std::cout << "RunMatMulIntegerU8X8Test: int8 " << M << "x" << N << "x" << K << " true,true,false\n";
   RunMatMulIntegerU8X8Test<int8_t>(M, N, K, true /*non_zero_zp*/, true /*B_is_initializer*/, false /*per_column_zp*/);
+  std::cout << "RunMatMulIntegerU8X8Test: uint8 " << M << "x" << N << "x" << K << " false,false,false\n";
   RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, false /*non_zero_zp*/, false /*B_is_initializer*/, false /*per_column_zp*/);
+  std::cout << "RunMatMulIntegerU8X8Test: uint8 " << M << "x" << N << "x" << K << " false,true,false\n";
   RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, false /*non_zero_zp*/, true /*B_is_initializer*/, false /*per_column_zp*/);
+  std::cout << "RunMatMulIntegerU8X8Test: uint8 " << M << "x" << N << "x" << K << " true,false,false\n";
   RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, true /*non_zero_zp*/, false /*B_is_initializer*/, false /*per_column_zp*/);
+  std::cout << "RunMatMulIntegerU8X8Test: uint8 " << M << "x" << N << "x" << K << " true,true,false\n";
   RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, true /*non_zero_zp*/, true /*B_is_initializer*/, false /*per_column_zp*/);
+  std::cout << "RunMatMulIntegerU8X8Test: int8 " << M << "x" << N << "x" << K << " false,false,true\n";
   RunMatMulIntegerU8X8Test<int8_t>(M, N, K, false /*non_zero_zp*/, false /*B_is_initializer*/, true /*per_column_zp*/);
+  std::cout << "RunMatMulIntegerU8X8Test: int8 " << M << "x" << N << "x" << K << " false,true,true\n";
   RunMatMulIntegerU8X8Test<int8_t>(M, N, K, false /*non_zero_zp*/, true /*B_is_initializer*/, true /*per_column_zp*/);
+  std::cout << "RunMatMulIntegerU8X8Test: int8 " << M << "x" << N << "x" << K << " true,false,true\n";
   RunMatMulIntegerU8X8Test<int8_t>(M, N, K, true /*non_zero_zp*/, false /*B_is_initializer*/, true /*per_column_zp*/);
+  std::cout << "RunMatMulIntegerU8X8Test: int8 " << M << "x" << N << "x" << K << " true,true,true\n";
   RunMatMulIntegerU8X8Test<int8_t>(M, N, K, true /*non_zero_zp*/, true /*B_is_initializer*/, true /*per_column_zp*/);
+  std::cout << "RunMatMulIntegerU8X8Test: uint8 " << M << "x" << N << "x" << K << " false,false,true\n";
   RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, false /*non_zero_zp*/, false /*B_is_initializer*/, true /*per_column_zp*/);
+  std::cout << "RunMatMulIntegerU8X8Test: uint8 " << M << "x" << N << "x" << K << " false,true,true\n";
   RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, false /*non_zero_zp*/, true /*B_is_initializer*/, true /*per_column_zp*/);
+  std::cout << "RunMatMulIntegerU8X8Test: uint8 " << M << "x" << N << "x" << K << " true,false,true\n";
   RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, true /*non_zero_zp*/, false /*B_is_initializer*/, true /*per_column_zp*/);
+  std::cout << "RunMatMulIntegerU8X8Test: uint8 " << M << "x" << N << "x" << K << " true,true,true\n";
   RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, true /*non_zero_zp*/, true /*B_is_initializer*/, true /*per_column_zp*/);
 }
 

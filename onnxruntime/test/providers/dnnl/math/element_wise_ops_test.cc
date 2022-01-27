@@ -36,35 +36,6 @@ TEST(MathOpTest, DNNL_Pow_Broadcast_Scalar1_12) {
   test.Run();
 }
 
-TEST(MathOpTest, DNNL_Pow_Broadcast_Scalar1_float_int32_12) {
-  OpTester test("Pow", 12);
-
-  std::vector<int64_t> dims{3};
-  test.AddInput<float>("X", dims, {1.0f, 2.0f, 3.0f});
-  test.AddInput<int32_t>("Y", {}, {3}, true);
-  test.AddOutput<float>("Z", dims, {1.0f, 8.0f, 27.0f});
-  test.Run();
-}
-
-TEST(MathOpTest, DNNL_Pow_Broadcast_Scalar1_float_int8_12) {
-  OpTester test("Pow", 12);
-
-  std::vector<int64_t> dims{3};
-  test.AddInput<float>("X", dims, {1.0f, 2.0f, 3.0f});
-  test.AddInput<int8_t>("Y", {}, {3}, true);
-  test.AddOutput<float>("Z", dims, {1.0f, 8.0f, 27.0f});
-  test.Run();
-}
-
-TEST(MathOpTest, DNNL_Pow_Broadcast_Scalar1_float_uint8_12) {
-  OpTester test("Pow", 12);
-
-  std::vector<int64_t> dims{3};
-  test.AddInput<float>("X", dims, {1.0f, 2.0f, 3.0f});
-  test.AddInput<uint8_t>("Y", {}, {3}, true);
-  test.AddOutput<float>("Z", dims, {1.0f, 8.0f, 27.0f});
-  test.Run();
-}
 #endif  // USE_DNNL
 
 }  // namespace test
