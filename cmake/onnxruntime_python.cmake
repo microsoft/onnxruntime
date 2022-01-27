@@ -643,19 +643,16 @@ if (onnxruntime_USE_ROCM)
     )
 endif()
 
-if (onnxruntime_USE_TVM)
+if (onnxruntime_USE_NUPHAR)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:tvm>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
-endif()
-
-if (onnxruntime_USE_NUPHAR)
   file(GLOB onnxruntime_python_nuphar_python_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/nuphar/scripts/*"
-  )
+      "${ONNXRUNTIME_ROOT}/core/providers/nuphar/scripts/*"
+    )
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/nuphar
@@ -679,7 +676,24 @@ if (onnxruntime_USE_STVM)
     COMMAND ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:onnxruntime_providers_stvm>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${tvm_BINARY_DIR}/libtvm*
+        ${tvm_SOURCE_DIR}/python/tvm
+  )
+
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+      WORKING_DIRECTORY ${tvm_SOURCE_DIR}/python
+      COMMAND ${Python_EXECUTABLE} setup.py build_ext --inplace
+      COMMAND ${CMAKE_COMMAND} -E rm
+        ${tvm_SOURCE_DIR}/python/tvm/*.so
+      COMMAND ${CMAKE_COMMAND} -E env TVM_LIBRARY_PATH=${tvm_BINARY_DIR}
+          ${Python_EXECUTABLE} setup.py bdist_wheel
+      COMMAND ${CMAKE_COMMAND} -E copy
+        ${tvm_BINARY_DIR}/libtvm*
+        ${tvm_SOURCE_DIR}/python/tvm
     )
+
 endif()
 
 if (onnxruntime_USE_DML)

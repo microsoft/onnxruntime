@@ -235,7 +235,7 @@ try:
                 self._rewrite_ld_preload(to_preload)
                 self._rewrite_ld_preload_cuda(to_preload_cuda)
                 self._rewrite_ld_preload_tensorrt(to_preload_tensorrt)
-            if package_name == 'onnxruntime-tvm':
+            if package_name == 'onnxruntime-stvm':
                 self._rewrite_ld_preload_tvm()
             _bdist_wheel.run(self)
             if is_manylinux and not disable_auditwheel_repair:
