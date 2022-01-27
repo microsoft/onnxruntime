@@ -21,6 +21,13 @@ def get_beta(gemm_node):
 
     return 1.0
 
+def set_default_beta(gemm_node):
+    beta_attribute = [attr for attr in gemm_node.attribute if attr.name == 'beta']
+    if len(beta_attribute):
+        beta_attribute[0].f = 1.0
+
+    return 1.0
+
 class QLinearGemm(QuantOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
@@ -101,7 +108,8 @@ class QDQGemm(QDQOperatorBase):
 
         if len(node.input) == 3:
             if self.quantizer.is_input_a_weight(node.input[2]):
-                self.quantizer.quantize_bias_tensor(node.input[2], node.input[0], node.input[1], 1.0)
+                self.quantizer.quantize_bias_tensor(node.input[2], node.input[0], node.input[1], get_beta(self.node))
+                set_default_beta(self.node)
             else:
                 logging.warning(
                     "Bias of Gemm node '{}' is not constant. Please exclude this node for better performance."

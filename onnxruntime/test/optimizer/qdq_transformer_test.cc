@@ -596,6 +596,173 @@ TEST(QDQTransformerTests, MatMul_S8S8U8) {
   QDQTransformerMatMulTests<int8_t, int8_t, uint8_t>(true);
 }
 
+template <typename Input1Type, typename Input2Type, typename OutputType, typename BiasType = int32_t>
+void QDQTransformerGemmTests(bool has_output_q, bool has_bias, bool beta_not_one = false) {
+  auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& input2_shape) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<float>(input1_shape, -1.f, 1.f);
+      auto* input2_arg = builder.MakeInput<float>(input2_shape, -1.f, 1.f);
+      auto* output_arg = builder.MakeOutput();
+
+      typedef std::numeric_limits<Input1Type> Input1Limits;
+      typedef std::numeric_limits<Input2Type> Input2Limits;
+      typedef std::numeric_limits<OutputType> OutputTypeLimits;
+
+      std::vector<NodeArg*> input_args;
+
+      // add QDQ A
+      auto* q1_output = builder.MakeIntermediate();
+      auto* dq1_output = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<Input1Type>(input1_arg,
+                                                .039f,
+                                                (Input1Limits::max() + Input1Limits::min()) / 2 + 1,
+                                                q1_output);
+      builder.AddDequantizeLinearNode<Input1Type>(q1_output,
+                                                  .039f,
+                                                  (Input2Limits::max() + Input1Limits::min()) / 2 + 1,
+                                                  dq1_output);
+
+      input_args.push_back(dq1_output);
+
+      // add QDQ B
+      auto* q2_output = builder.MakeIntermediate();
+      auto* dq2_output = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<Input2Type>(input2_arg,
+                                                .04f,
+                                                (Input2Limits::max() + Input2Limits::min()) / 2 + 1,
+                                                q2_output);
+      builder.AddDequantizeLinearNode<Input2Type>(q2_output,
+                                                  .04f,
+                                                  (Input2Limits::max() + Input2Limits::min()) / 2 + 1,
+                                                  dq2_output);
+      input_args.push_back(dq2_output);
+
+      if (has_bias) {
+        auto* dq_bias_output = builder.MakeIntermediate();
+        auto* bias = builder.MakeInitializer<BiasType>({input2_shape[1]}, static_cast<BiasType>(0), static_cast<BiasType>(127));
+        builder.AddDequantizeLinearNode<BiasType>(bias, 0.00156,
+                                                  0,
+                                                  dq_bias_output);
+        input_args.push_back(dq_bias_output);
+      }
+
+      Node* gemm_node = nullptr;
+
+      if (has_output_q) {
+        auto* gemm_op_output = builder.MakeIntermediate();
+        gemm_node = &builder.AddNode("Gemm", input_args, {gemm_op_output});
+
+        // add QDQ output
+        auto* q3_output = builder.MakeIntermediate();
+        builder.AddQuantizeLinearNode<OutputType>(gemm_op_output,
+                                                  .039f,
+                                                  (OutputTypeLimits::max() + OutputTypeLimits::min()) / 2 + 1,
+                                                  q3_output);
+        builder.AddDequantizeLinearNode<OutputType>(q3_output,
+                                                    .039f,
+                                                    (OutputTypeLimits::max() + OutputTypeLimits::min()) / 2 + 1,
+                                                    output_arg);
+      } else {
+        gemm_node = &builder.AddNode("Gemm", input_args, {output_arg});
+      }
+
+      if (beta_not_one) {
+        gemm_node->AddAttribute("beta", 2.0f);
+      }
+    };
+
+    auto check_binary_op_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      if ((!has_output_q || std::is_same_v<Input1Type, OutputType>)&&
+          (!has_bias || (std::is_same_v<BiasType, int32_t> && !beta_not_one)) &&
+          (std::is_same_v<Input1Type, uint8_t> || std::is_same_v<Input2Type, int8_t>)) {
+        EXPECT_EQ(op_to_count["com.microsoft.QGemm"], 1);
+        EXPECT_EQ(op_to_count["Gemm"], 0);
+        EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
+        EXPECT_EQ(op_to_count["DequantizeLinear"], has_output_q ? 1 : 0);
+      } else {
+        int q_count = 2;   // Q for A and B
+        int dq_count = 2;  // DQ for A and B
+        if (has_bias) {
+          dq_count++;
+        }
+        if (has_output_q) {
+          q_count++;
+          dq_count++;
+        }
+        EXPECT_EQ(op_to_count["com.microsoft.QGemm"], 0);
+        EXPECT_EQ(op_to_count["Gemm"], 1);
+        EXPECT_EQ(op_to_count["QuantizeLinear"], q_count);
+        EXPECT_EQ(op_to_count["DequantizeLinear"], dq_count);
+      }
+    };
+
+    TransformerTester(build_test_case,
+                      check_binary_op_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/,
+                      0.01 /*per_sample_tolerance*/,
+                      0.01 /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQSelectorActionTransformer>());
+  };
+
+  test_case({2, 2}, {2, 4});
+  test_case({13, 15}, {15, 15});
+}
+
+template <typename Input1Type, typename Input2Type, typename OutputType, typename BiasType = int32_t>
+void QDQTransformerGemmTests() {
+  QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(false, false);
+  QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(false, true);
+  QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, false);
+  QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, true);
+  QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(false, false, true);
+  QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(false, true, true);
+  QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, false, true);
+  QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, true, true);
+}
+
+TEST(QDQTransformerTests, Gemm_U8U8U8) {
+  QDQTransformerGemmTests<uint8_t, uint8_t, uint8_t>();
+  QDQTransformerGemmTests<uint8_t, uint8_t, uint8_t, uint8_t>();
+}
+
+TEST(QDQTransformerTests, Gemm_U8S8S8) {
+  QDQTransformerGemmTests<uint8_t, int8_t, int8_t>();
+  QDQTransformerGemmTests<uint8_t, int8_t, int8_t, uint8_t>();
+}
+
+TEST(QDQTransformerTests, Gemm_U8U8S8) {
+  QDQTransformerGemmTests<uint8_t, uint8_t, int8_t>();
+  QDQTransformerGemmTests<uint8_t, uint8_t, int8_t, uint8_t>();
+}
+
+TEST(QDQTransformerTests, Gemm_U8S8U8) {
+  QDQTransformerGemmTests<uint8_t, int8_t, uint8_t>();
+  QDQTransformerGemmTests<uint8_t, int8_t, uint8_t, uint8_t>();
+}
+
+TEST(QDQTransformerTests, Gemm_S8S8S8) {
+  QDQTransformerGemmTests<int8_t, int8_t, int8_t>();
+  QDQTransformerGemmTests<int8_t, int8_t, int8_t, uint8_t>();
+}
+
+TEST(QDQTransformerTests, Gemm_S8U8U8) {
+  QDQTransformerGemmTests<int8_t, uint8_t, uint8_t>();
+  QDQTransformerGemmTests<int8_t, uint8_t, uint8_t, uint8_t>();
+}
+
+TEST(QDQTransformerTests, Gemm_S8U8S8) {
+  QDQTransformerGemmTests<int8_t, uint8_t, int8_t>();
+  QDQTransformerGemmTests<int8_t, uint8_t, int8_t, uint8_t>();
+}
+
+TEST(QDQTransformerTests, Gemm_S8S8U8) {
+  QDQTransformerGemmTests<int8_t, int8_t, uint8_t>();
+  QDQTransformerGemmTests<int8_t, int8_t, uint8_t, uint8_t>();
+}
+
 TEST(QDQTransformerTests, Gather) {
   auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& weights_shape) {
     auto build_test_case = [&](ModelTestBuilder& builder) {

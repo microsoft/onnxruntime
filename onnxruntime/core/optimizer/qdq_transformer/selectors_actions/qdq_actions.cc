@@ -212,5 +212,67 @@ Status MatMulReplaceWithQLinear::Run(Graph& graph, const NodesToOptimize& select
   }
 }
 
+static std::vector<NodeAndMoveInfo> GetGemmMoveInfo(bool does_q_node_exist) {
+  NTO::NodeLocation dq_A{NTO::NodeType::kInput, 0};
+  NTO::NodeLocation dq_B{NTO::NodeType::kInput, 1};
+  NTO::NodeLocation dq_bias{NTO::NodeType::kInput, 2};
+  NTO::NodeLocation target{NTO::NodeType::kTarget, 0};
+  NTO::NodeLocation q{NTO::NodeType::kOutput, 0};
+
+  std::vector<NodeAndMoveInfo> moves{
+      MoveAll(dq_A, ArgType::kInput),                                            // append all inputs from DQ of A
+      MoveAll(dq_B, ArgType::kInput),                                            // append all inputs from DQ of B
+      MoveAndAppend(dq_bias, ArgType::kInput, 0, ArgType::kInput, true, true)};  // (optional) append bias
+
+  if (does_q_node_exist) {
+    moves.push_back(MoveAndAppend(q, ArgType::kInput, 1, ArgType::kInput));  // append scale (input 1) from Q
+    moves.push_back(MoveAndAppend(q, ArgType::kInput, 2, ArgType::kInput));  // append zp (input 2) from Q
+    moves.push_back(MoveAll(q, ArgType::kOutput));                           // and use the outputs from Q
+  } else {
+    moves.push_back(MoveAll(target, ArgType::kOutput));
+  }
+
+  return moves;
+}
+
+GemmReplaceWithQuant::GemmReplaceWithQuant()
+    : qgemm_with_float_as_output_replacer_(kMSDomain, GetGemmMoveInfo(false), "QGemm"),
+      qgemm_with_8bits_as_output_replacer_(kMSDomain, GetGemmMoveInfo(true), "QGemm") {
+}
+
+Status GemmReplaceWithQuant::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
+  RemoveAttrBeta(selected_nodes);
+  bool is_output_float = selected_nodes.num_outputs == 0;
+  if (is_output_float) {
+    return qgemm_with_float_as_output_replacer_.Run(graph, selected_nodes);
+  }
+
+  return qgemm_with_8bits_as_output_replacer_.Run(graph, selected_nodes);
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
+Status GemmReplaceWithQuant::RunForSave(Graph& graph,
+                                        const NodesToOptimize& selected_nodes,
+                                        const SatRuntimeOptimizationSaveContext& save_context,
+                                        SavedState& saved_state,
+                                        bool& graph_modified) const {
+  RemoveAttrBeta(selected_nodes);
+  bool is_output_float = selected_nodes.num_outputs == 0;
+  if (is_output_float) {
+    return qgemm_with_float_as_output_replacer_.RunForSave(graph,
+                                                           selected_nodes,
+                                                           save_context,
+                                                           saved_state,
+                                                           graph_modified);
+  }
+
+  return qgemm_with_8bits_as_output_replacer_.RunForSave(graph,
+                                                         selected_nodes,
+                                                         save_context,
+                                                         saved_state,
+                                                         graph_modified);
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 }  // namespace QDQ
 }  // namespace onnxruntime
