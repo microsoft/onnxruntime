@@ -1201,6 +1201,11 @@ function(onnxruntime_configure_target target_name)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
   endif()
+  
+  # Keep BinSkim happy
+  if(MSVC)
+    target_link_options(${target_name} PRIVATE "/CETCOMPAT")
+  endif()
 endfunction()
 
 function(onnxruntime_add_shared_library target_name)
