@@ -995,7 +995,7 @@ void OpTester::Run(
     FillFeedsAndOutputNames(feeds, output_names);
     // Run the model
 #ifdef USE_TENSORRT
-    // Only include trt ep to reduce test time (with cuda ep as fallback ep if cuda ep is not in the excluded_provider_types)
+    // only run trt ep to reduce test time
     static const std::string all_provider_types[] = {
         kTensorrtExecutionProvider,
     };
