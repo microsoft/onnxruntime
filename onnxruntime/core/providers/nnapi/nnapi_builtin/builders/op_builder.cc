@@ -857,9 +857,21 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
 // onnxruntime::nnapi::Model.
 /* static */ bool ReshapeOpBuilder::CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
                                                    size_t input_rank, size_t output_rank) {
+  // Since we know this is a Reshape NodeUnit, so we can safely assume there is only 1 output
+  // and the node_unit has only one output node.
   const auto& output_node_arg = node_unit.Outputs()[0].node_arg;
   const auto& output_name = output_node_arg.Name();
   const auto& output_node = *node_unit.GetOutputNodes()[0];
+
+  // Check if the Reshape output is a graph output, if so we cannot skip the Reshape
+  // We do not care the case where the Reshape output is a dead end
+  for (const auto* node_arg : model_builder.GetGraphViewer().GetOutputs()) {
+    if (node_arg == &output_node_arg) {
+      LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can not be skipped when the output is a graph output"
+                            << ", output name, " << output_name;
+      return false;
+    }
+  }
 
   // We will go through all the output edges
   for (auto it = output_node.OutputEdgesBegin(), end = output_node.OutputEdgesEnd(); it != end; ++it) {
@@ -893,17 +905,6 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
                             << ", output name, " << output_name
                             << ", the actual input_rank, " << input_rank
                             << ", the actual output_rank, " << output_rank;
-      return false;
-    }
-  }
-
-  // If we reach here, we have all the Reshape outputs are used by gemm/matmul, or Reshape has no output edge
-  // Check if the Reshape output is a graph output, if so we cannot skip the Reshape
-  // We do not care the case where the Reshape output is a dead end
-  for (const auto* node_arg : model_builder.GetGraphViewer().GetOutputs()) {
-    if (node_arg == &output_node_arg) {
-      LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can not be skipped when the output is a graph output"
-                            << ", output name, " << output_name;
       return false;
     }
   }
