@@ -263,19 +263,19 @@ inline rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle,
                                          rocblas_gemm_algo_standard, 0, 0);
 }
 
-inline rocblas_status cublasGemmStridedBatchedHelper(rocblas_handle handle, 
-                                                     rocblas_operation transa,
-                                                     rocblas_operation transb, 
-                                                     int m, int n, int k,
-                                                     const BFloat16* alpha, 
-                                                     const BFloat16* A, int lda,
-                                                     long long int strideA, 
-                                                     const BFloat16* B, int ldb,
-                                                     long long int strideB, 
-                                                     const BFloat16* beta, 
-                                                     BFloat16* C, int ldc,
-                                                     long long int strideC, 
-                                                     int batch_count) {
+inline rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle, 
+                                                      rocblas_operation transa,
+                                                      rocblas_operation transb, 
+                                                      int m, int n, int k,
+                                                      const BFloat16* alpha, 
+                                                      const BFloat16* A, int lda,
+                                                      long long int strideA, 
+                                                      const BFloat16* B, int ldb,
+                                                      long long int strideB, 
+                                                      const BFloat16* beta, 
+                                                      BFloat16* C, int ldc,
+                                                      long long int strideC, 
+                                                      int batch_count) {
   float h_a = alpha->ToFloat();
   float h_b = beta->ToFloat();
   // accumulating in FP32
