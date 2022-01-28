@@ -448,30 +448,30 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "1e5d33e9b9b8631b36f061103a30208b206fd03a",
+               "commitHash": "f2f3f537829ab0ef6948be5ee7f46b8ce8213ff2",
                "repositoryUrl": "https://github.com/python/cpython"
             },
-            "comments": "Python 3.9.1"
+            "comments": "Python 3.9.10"
          }
       },
       {
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "6503f05dd59e26a9986bdea097b3da9b3546f45b",
+               "commitHash": "07119dd38c9a6e5da84ca8a0a46acdf8a3e60ecf",
                "repositoryUrl": "https://github.com/python/cpython"
             },
-            "comments": "Python 3.8.7"
+            "comments": "Python 3.8.12"
          }
       },
       {
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "13c94747c74437e594b7fc242ff7da668e81887c",
+               "commitHash": "1f97973f630fda109039b2a8c8024a70eb92932f",
                "repositoryUrl": "https://github.com/python/cpython"
             },
-            "comments": "Python 3.7.9"
+            "comments": "Python 3.7.12"
          }
       },
       {
