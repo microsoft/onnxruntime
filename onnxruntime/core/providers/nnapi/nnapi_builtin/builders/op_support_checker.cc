@@ -728,7 +728,7 @@ class ConvOpSupportChecker : public BaseOpSupportChecker {
   }
 
   bool HasSupportedInputsImpl(const NodeUnit& node_unit) const override;
-  bool IsNodeUnitTypeSupported(const NodeUnit& node_unit) const override { return true; }
+  bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
   static bool IsQuantizedOp(const NodeUnit& node_unit);
 };
 
