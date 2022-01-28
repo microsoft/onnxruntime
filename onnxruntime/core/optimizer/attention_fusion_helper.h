@@ -1147,8 +1147,6 @@ bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& tran
   if (!optimizer_utils::AppendTensorFromInitializer(graph, *(v_reshape.InputDefs()[1]), v_reshape_shape) ||
       v_reshape_shape.size() != 4 ||
       (v_reshape_shape[0] == -1 && v_reshape_shape[1] == -1) ||  //first two shape values cannot all be -1, support for real shapes, like (16, 512, 12, 64)
-      //v_reshape_shape[0] != 0 ||
-      //(v_reshape_shape[1] != 0 && v_reshape_shape[1] != -1) ||  //v_reshape_shape[1] != -1 added for supporting distilbert
       v_reshape_shape[2] <= 0 ||
       v_reshape_shape[2] > hidden_size ||
       (head_size < 0 && v_reshape_shape[3] != -1) ||
@@ -1175,8 +1173,6 @@ bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& tran
 
   if (reshape_shape.size() != 3 ||
       (reshape_shape[0] == -1 && reshape_shape[1] == -1) ||  //first two shape values cannot all be -1, support for real shapes
-      //reshape_shape[0] != 0 ||
-      //(reshape_shape[1] != 0) ||
       (reshape_shape[2] != num_heads * head_size && reshape_shape[2] != -1)) {
     DEBUG_LOG("reshape initializer value is not expected");
     return false;
@@ -1250,8 +1246,6 @@ bool CheckNodesInPathK(const Graph& graph, const Node& k_reshape, const Node& k_
   if (!optimizer_utils::AppendTensorFromInitializer(graph, *(k_reshape.InputDefs()[1]), k_reshape_shape) ||
       k_reshape_shape.size() != 4 ||
       (k_reshape_shape[0] == -1 && k_reshape_shape[1] == -1) ||  //first two shape values cannot all be -1, support for real shapes
-      //k_reshape_shape[0] != 0 ||
-      //(k_reshape_shape[1] != 0 && k_reshape_shape[1] != -1) ||  //k_reshape_shape[1] != -1 added for supporting distilbert
       k_reshape_shape[2] != num_heads ||
       k_reshape_shape[3] != head_size) {
     DEBUG_LOG("k_reshape const not matched");
