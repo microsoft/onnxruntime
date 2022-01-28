@@ -98,8 +98,8 @@ struct TensorrtFuncState {
   bool dla_enable;
   int dla_core;
   bool cuda_graph_enable;
-  ////cudaGraphExec_t* cuda_graph = nullptr;
   cudaGraphExec_t* cuda_graph = nullptr;
+  cudaGraphExec_t cuda_graph_instance;
   size_t* max_workspace_size_ptr = nullptr;
   std::string trt_node_name_with_precision;
   bool engine_cache_enable;
@@ -172,6 +172,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   int (*engine_decryption_)(const char*, char*, size_t*);
   int (*engine_encryption_)(const char*, char*, size_t);
   bool cuda_graph_enable_ = false;
+  std::vector<cudaGraphExec_t> cuda_graphs_;
 
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>> engines_;
@@ -181,7 +182,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> input_info_;
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> output_info_;
   std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
-  std::unordered_map<std::string, cudaGraphExec_t*> cuda_graphs_;
+  std::unordered_map<std::string, cudaGraphExec_t> cuda_graph_instances_;
 
   /**Get IndexedSubGraph based on node list of the subgraph*/
   std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index,
