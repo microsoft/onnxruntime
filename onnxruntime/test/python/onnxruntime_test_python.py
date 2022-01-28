@@ -18,6 +18,10 @@ from onnxruntime.capi.onnxruntime_pybind11_state import Fail
 if platform.system() == 'Windows' and sys.version_info.major >= 3 and sys.version_info.minor >= 8:
     os.add_dll_directory(os.getcwd())
 
+available_providers = [
+    provider for provider in onnxrt.get_available_providers()
+    if provider not in {'StvmExecutionProvider'}]
+
 
 class TestInferenceSession(unittest.TestCase):
 
@@ -27,6 +31,12 @@ class TestInferenceSession(unittest.TestCase):
         res = session_object.run([], {input_name: x}, run_options=run_options)
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+
+    def testTvmImported(self):
+        if "StvmExecutionProvider" not in onnxrt.get_available_providers():
+            return
+        import tvm
+        self.assertTrue(tvm is not None)
 
     def testModelSerialization(self):
         try:
@@ -308,7 +318,7 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(['CPUExecutionProvider'], sess.get_providers())
 
     def testRunModel(self):
-        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=available_providers)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -416,7 +426,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertTrue('CPU' in device or 'GPU' in device)
 
     def testRunModelSymbolicInput(self):
-        sess = onnxrt.InferenceSession(get_name("matmul_2.onnx"), providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(get_name("matmul_2.onnx"), providers=available_providers)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "X")
@@ -433,7 +443,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testBooleanInputs(self):
-        sess = onnxrt.InferenceSession(get_name("logicaland.onnx"), providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(get_name("logicaland.onnx"), providers=available_providers)
         a = np.array([[True, True], [False, False]], dtype=bool)
         b = np.array([[True, False], [True, False]], dtype=bool)
 
@@ -507,7 +517,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(x, res[0])
 
     def testInputBytes(self):
-        sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers)
         x = np.array([b'this', b'is', b'identity', b'test']).reshape((2, 2))
 
         x_name = sess.get_inputs()[0].name
@@ -528,7 +538,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(x, res[0].astype('|S8'))
 
     def testInputObject(self):
-        sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers)
         x = np.array(['this', 'is', 'identity', 'test'], object).reshape((2, 2))
 
         x_name = sess.get_inputs()[0].name
@@ -549,7 +559,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(x, res[0])
 
     def testInputVoid(self):
-        sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers)
         # numpy 1.20+ doesn't automatically pad the bytes based entries in the array when dtype is np.void,
         # so we use inputs where that is the case
         x = np.array([b'must', b'have', b'same', b'size'], dtype=np.void).reshape((2, 2))
@@ -636,7 +646,7 @@ class TestInferenceSession(unittest.TestCase):
         opt.graph_optimization_level = onnxrt.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
         self.assertEqual(opt.graph_optimization_level, onnxrt.GraphOptimizationLevel.ORT_ENABLE_EXTENDED)
         sess = onnxrt.InferenceSession(get_name("logicaland.onnx"), sess_options=opt,
-                                       providers=onnxrt.get_available_providers())
+                                       providers=available_providers)
         a = np.array([[True, True], [False, False]], dtype=bool)
         b = np.array([[True, False], [True, False]], dtype=bool)
 
@@ -666,7 +676,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def testSequenceConstruct(self):
         sess = onnxrt.InferenceSession(get_name("sequence_construct.onnx"),
-                                       providers=onnxrt.get_available_providers())
+                                       providers=available_providers)
 
         self.assertEqual(sess.get_inputs()[0].type, 'tensor(int64)')
         self.assertEqual(sess.get_inputs()[1].type, 'tensor(int64)')
@@ -1129,4 +1139,4 @@ class TestInferenceSession(unittest.TestCase):
         print("Create session with customize execution provider successfully!")
 
 if __name__ == '__main__':
-    unittest.main()
+    unittest.main(verbosity=1)
