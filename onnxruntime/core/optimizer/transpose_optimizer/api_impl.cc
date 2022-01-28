@@ -688,7 +688,7 @@ void ApiGraph::CopyValueInfo(std::string_view src_name, std::string_view dst_nam
 
   if (auto* dst_type = dst_arg.TypeAsProto(); dst_type != nullptr) {
     int32_t src_data_element_type;
-    const bool src_data_element_type_present = utils::TryGetElementDataType(*src_type, src_data_element_type);
+    utils::TryGetElementDataType(*src_type, src_data_element_type);
     int32_t dst_data_element_type;
     const bool dst_data_element_type_present = utils::TryGetElementDataType(*dst_type, dst_data_element_type);
 
