@@ -18,6 +18,7 @@
 #include "test/onnx/heap_buffer.h"
 #include "test/onnx/onnx_model_info.h"
 #include "test/onnx/callback.h"
+#include "core/providers/tensorrt/tensorrt_provider_options.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -587,29 +588,36 @@ TEST_P(ModelTest, Run) {
       } else if (provider_name == "nuphar") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultNupharExecutionProvider()));
       } else if (provider_name == "tensorrt") {
-        if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
-          OrtTensorRTProviderOptions params{
+        OrtTensorRTProviderOptionsV2 params{
               0,
               0,
               nullptr,
               1000,
               1,
               1 << 30,
-              1, // enable fp16
-              0,
-              nullptr,
-              0,
-              0,
-              0,
               0,
               0,
               nullptr,
               0,
+              0,
+              0,
+              0,
+              0,
+#ifdef _WIN32
+              "C:\\local\\trt_timing_cache", // directory where timing caches locate in CI Windows image
+#else
+              "/data/trt_timing_cache",      // directory where timing caches locate in CI Linux image
+#endif
+              0,
               nullptr,
-              0};
+              0,
+              1 // enable trt timing cache to reduce CI testing time for trt ep
+            };
+        if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
+          params.trt_fp16_enable = 1;
           ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(TensorrtExecutionProviderWithOptions(&params)));
         } else {
-          ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
+          ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider(&params)));
         }
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
       } else if (provider_name == "migraphx") {
