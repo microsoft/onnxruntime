@@ -47,7 +47,7 @@ public class OnnxruntimeModuleExampleUITests {
                 }
                 waitTime += sleepTime;
             }
-        } while (waitTime < 600000);
+        } while (waitTime < 180000);
 
         ViewInteraction view = onView(allOf(withContentDescription("output"), isDisplayed()));
         Assert.assertEquals(getText(view), "Result: 3");

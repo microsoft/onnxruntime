@@ -17,7 +17,7 @@
   XCUIApplication *app = [[XCUIApplication alloc] init];
   [app launch];
 
-  XCTAssert([app.textFields[@"output"] waitForExistenceWithTimeout:600]);
+  XCTAssert([app.textFields[@"output"] waitForExistenceWithTimeout:180]);
   NSString* value = app.textFields[@"output"].value;
   XCTAssertEqualObjects(value, @"Result: 3");
 }
