@@ -47,9 +47,12 @@ function(setup_mlas_source_for_windows)
       )
 
       set(mlas_platform_preprocess_srcs
+        ${MLAS_SRC_DIR}/arm64/ConvSymS8KernelDot.asm
         ${MLAS_SRC_DIR}/arm64/ConvSymU8KernelDot.asm
+        ${MLAS_SRC_DIR}/arm64/ConvSymS8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/ConvSymU8KernelNeon.asm
-        ${MLAS_SRC_DIR}/arm64/DepthwiseConvsymKernelNeon.asm
+        ${MLAS_SRC_DIR}/arm64/DepthwiseQConvSymS8KernelNeon.asm
+        ${MLAS_SRC_DIR}/arm64/DepthwiseQConvSymU8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/DepthwiseQConvKernelSize9Neon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmU8X8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmS8S8KernelNeon.asm
@@ -272,9 +275,12 @@ else()
     if(ARM64 AND MLAS_SOURCE_IS_NOT_SET )
         enable_language(ASM)
         set(mlas_platform_srcs
+          ${MLAS_SRC_DIR}/aarch64/ConvSymS8KernelDot.S
           ${MLAS_SRC_DIR}/aarch64/ConvSymU8KernelDot.S
+          ${MLAS_SRC_DIR}/aarch64/ConvSymS8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/ConvSymU8KernelNeon.S
-          ${MLAS_SRC_DIR}/aarch64/DepthwiseConvSymKernelNeon.S
+          ${MLAS_SRC_DIR}/aarch64/DepthwiseQConvSymS8KernelNeon.S
+          ${MLAS_SRC_DIR}/aarch64/DepthwiseQConvSymU8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/DepthwiseQConvKernelSize9Neon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelNeon.S
