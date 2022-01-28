@@ -3,6 +3,7 @@ package com.example.reactnativeonnxruntimemodule;
 import android.view.View;
 import android.widget.TextView;
 
+import androidx.test.espresso.NoMatchingViewException;
 import androidx.test.espresso.UiController;
 import androidx.test.espresso.ViewAction;
 import androidx.test.espresso.ViewInteraction;
@@ -30,10 +31,27 @@ public class OnnxruntimeModuleExampleUITests {
 
     @Test
     public void testExample() {
+        // Wait for a view displayed
+        int waitTime = 0;
+        boolean found = true;
+        do {
+            try {
+                found = true;
+                onView(allOf(withContentDescription("output")));
+            } catch (NoMatchingViewException ne) {
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ie) {
+                }
+                waitTime += 1000;
+                found = false;
+            }
+        } while (!found && waitTime < 180000);
+
+        // Wait for a model running
         try {
-            Thread.sleep(1500);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
+            Thread.sleep(5000);
+        } catch (InterruptedException ie) {
         }
 
         ViewInteraction view = onView(allOf(withContentDescription("output"), isDisplayed()));
