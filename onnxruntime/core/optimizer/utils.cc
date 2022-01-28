@@ -276,19 +276,14 @@ bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_outp
 // so we have to assume that they are not deterministic, to be on the safe side.
 // We could also allow other known domains (kMSDomain, kMSNchwcDomain, kMSFeaturizersDomain),
 // as long as we verify which of their operations are non-deterministic and add them in the map below.
-static const std::unordered_map<std::string, std::unordered_set<std::string>> kNonDeterministicOps =
-    {
-        {kOnnxDomain, {"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"}},
-};
-
+constexpr std::array kOnnxDomainNonDeterministicOps{"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"};
 bool IsOperationDeterministic(const std::string& domain, const std::string& op) {
-  auto itDomain = kNonDeterministicOps.find(domain);
-  if (itDomain == kNonDeterministicOps.end()) {
-    // Unknown domain. Assume the op is not deterministic.
-    return false;
-  }
-
-  return itDomain->second.count(op) == 0;
+  if (domain.compare(kOnnxDomain) == 0) {
+    auto iter = std::find(kOnnxDomainNonDeterministicOps.begin(), kOnnxDomainNonDeterministicOps.end(), op);
+    return iter == kOnnxDomainNonDeterministicOps.end();
+  } 
+  // Unknown domain. Assume the op is not deterministic.
+  return false;  
 }
 
 #endif  // #if !defined(ORT_MINIMAL_BUILD)

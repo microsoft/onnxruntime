@@ -46,7 +46,11 @@
 #include "cpu_provider_shared.h"
 
 namespace onnxruntime {
-
+//The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26436)
+#endif
 struct ProviderHostCPUImpl : ProviderHostCPU {
   // From cpu/tensor/gatherbase.h (direct)
   Status GatherBase__PrepareForCompute(const GatherBase* p, OpKernelContext* context, GatherBase__Prepare& prepare) override { return p->GatherBase::PrepareForCompute(context, reinterpret_cast<GatherBase::Prepare&>(prepare)); }
@@ -184,7 +188,11 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
 #endif
 #endif
 };
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 
+//We don't new this type on heap, so it's ok to not have a virtual destructor.
 ProviderHostCPUImpl provider_host_cpu_;
 ProviderHostCPU& GetProviderHostCPU() { return provider_host_cpu_; }
 

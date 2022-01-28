@@ -50,15 +50,15 @@ void TestElementwiseGradientOp(
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {});
 }
 
-float ReluGrad(float dy, float x) {
+constexpr float ReluGrad(float dy, float x) {
   return x > 0 ? dy : 0;
 }
 
-float SigmoidGrad(float dy, float y) {
+constexpr float SigmoidGrad(float dy, float y) {
   return dy * y * (1 - y);
 }
 
-float TanhGrad(float dy, float y) {
+constexpr float TanhGrad(float dy, float y) {
   return dy * (1 - y * y);
 }
 }  // namespace
