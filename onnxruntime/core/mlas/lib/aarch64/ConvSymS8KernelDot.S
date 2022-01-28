@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    ConvSymKernelNeonDot.asm
+    ConvSymS8KernelDot.S
 
 Abstract:
 
@@ -15,27 +15,27 @@ Abstract:
 
 --*/
 
-#include "kxarm64.h"
+#include "asmmacro.h"
+#include "AssembleDotProduct.h"
 
-#define     MLAS_CONV_SYM_FLAG_INPUT_DIRECT      1
-#define     MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE 2
+        .equ    .LMLAS_CONV_SYM_FLAG_INPUT_DIRECT,      1
+        .equ    .LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE, 2
 
 //
 // Stack frame layout for the symmetric convolution kernel.
 // d8-d15, x19-x30 need to be preserved if used
 //
-#define     ConvSymFrame_SavedNeonRegisters   (8 * 8)
-#define     ConvSymFrame_SavedRegisters           ConvSymFrame_SavedNeonRegisters
-#define     ConvSymFrame_PostProcessParams    0 + ConvSymFrame_SavedRegisters
-#define     ConvSymFrame_KernelFlags          8 + ConvSymFrame_SavedRegisters
+        .equ    .LConvSymFrame_SavedRegisters,       (6 * 8)
+        .equ    .LConvSymFrame_PostProcessParams,    0 + .LConvSymFrame_SavedRegisters
+        .equ    .LConvSymFrame_KernelFlags,          8 + .LConvSymFrame_SavedRegisters
 
-#define     ConvSymPostProcessParams_Bias      0
-#define     ConvSymPostProcessParams_Scale     8
-#define     ConvSymPostProcessParams_Min       16
-#define     ConvSymPostProcessParams_Max       20
-#define     ConvSymPostProcessParams_ZeroPoint 24
+        .equ    .LConvSymPostProcessParams_Bias,      0
+        .equ    .LConvSymPostProcessParams_Scale,     8
+        .equ    .LConvSymPostProcessParams_Min,       16
+        .equ    .LConvSymPostProcessParams_Max,       20
+        .equ    .LConvSymPostProcessParams_ZeroPoint, 24
 
-        TEXTAREA
+        .text
 
 /*++
 
@@ -84,16 +84,14 @@ Return Value:
     None.
 
 --*/
-        NESTED_ENTRY MlasConvSymU8KernelDot
+        FUNCTION_ENTRY MlasConvSymS8KernelDot
 
-        PROLOG_SAVE_REG_PAIR  d8,d9,#-64!
-        PROLOG_NOP    ldr     x8,[sp,#ConvSymFrame_PostProcessParams]
-        PROLOG_NOP    ldr     w10,[sp,#ConvSymFrame_KernelFlags]
-        PROLOG_SAVE_REG_PAIR  d10,d11,#16
-        PROLOG_SAVE_REG_PAIR  d12,d13,#32
-        PROLOG_SAVE_REG_PAIR  x19,x20,#48
+        stp     d8,d9,[sp,#-.LConvSymFrame_SavedRegisters]!
+        ldr     x8,[sp,#.LConvSymFrame_PostProcessParams]
+        ldr     w10,[sp,#.LConvSymFrame_KernelFlags]
+        stp     d10,d11,[sp,#16]
+        stp     x19,x20,[sp,#32]
 
-        // compute C pointers: x2, x16, x17, x5
         cmp     x7,2                    // OutputCount < 2 ?
         add     x16,x2,x5               // x16 -> C1
         lsl     x3,x3,#3                // KernelSize * sizeof(int8_t*)
@@ -101,16 +99,17 @@ Return Value:
         mov     x20,x4
         add     x4,x4,3                 // InputChannels align to 4
         add     x17,x16,x5              // x17 -> C2
-        ldr     x11,[x8,#ConvSymPostProcessParams_Bias]
+        ldr     x11,[x8,#.LConvSymPostProcessParams_Bias]
         csel    x17,x16,x17,ls          // if OutputCount <= 2  x17/C2 -> C1
         bic     x4,x4,3
         cmp     x7,4                    // OutputCount < 4 ?
         add     x5,x17,x5               // x5 -> C3
-        ldr     x19,[x8,#ConvSymPostProcessParams_Scale]
+        ldr     x19,[x8,#.LConvSymPostProcessParams_Scale]
         csel    x5,x17,x5,lo            // if OutputCount < 4  x5/C3 -> C2
-        movi    v12.16b,128             // for top bit flipping
 
-OutputChannelLoop
+        // TODO!! tiptoe around loading biases if we need to support
+        // output channels none divisible by 16
+OutputChannelLoop:
         ldp     q16,q20,[x11],32        // Init accumulators with biases
         mov     v17.16b,v16.16b
         mov     v18.16b,v16.16b
@@ -127,11 +126,11 @@ OutputChannelLoop
         mov     v31.16b,v28.16b
         mov     x9,x3                   // restore KernelSize * sizeof(int8_t*)
 
-KernelSizeLoop
-        tst     w10,#MLAS_CONV_SYM_FLAG_INPUT_DIRECT
+KernelSizeLoop:
+        tst     w10,#.LMLAS_CONV_SYM_FLAG_INPUT_DIRECT
         beq     InputIndirection
 
-InputDirect
+InputDirect:
         cmp     x16,x2
         mov     x12,x0                  // x12 -> A0
         add     x13,x0,x20              // x13 -> A1 = A0 + input channels
@@ -144,7 +143,7 @@ InputDirect
         csel    x15,x14,x15,eq
         b       FinishLoadAPtr
 
-InputIndirection
+InputIndirection:
         ldr     x12,[x0]                // x12 -> A0
         cmp     x16,x2
         b.eq    SkipLoadA1              // C1==C0 -> A0=A1=A2=A3
@@ -158,11 +157,11 @@ InputIndirection
         b.eq    SkipLoadA3              // C3==C2 -> A2=A3
         ldr     x15,[x0,x15]            // x15 -> A3
         b       FinishLoadAPtr
-SkipLoadA1
+SkipLoadA1:
         mov     x13,x12
-SkipLoadA2
+SkipLoadA2:
         mov     x14,x13
-SkipLoadA3
+SkipLoadA3:
         mov     x15,x14
 
 // Register Usage
@@ -179,7 +178,7 @@ SkipLoadA3
 // x15 |v3.b[0]..v3.b[3]| |v19.s[0]_v19.s[3] v23.s[0]_v23.s[3]  v27.s[0]_v27.s[3]   v31.s[0]_v31.s[3]|  x5
 //     ------------------ ----------------------------------------------------------------------------
 
-FinishLoadAPtr
+FinishLoadAPtr:
         subs    x7,x4,16                // Need 16 input channels for loop
         add     x0,x0,8                 // indirect A advance to next pointer, prepare for kernel size loop
         b.lo    InChannels8
@@ -195,217 +194,201 @@ FinishLoadAPtr
         ldr     q7,[x1],16
         b.lo    InChLoopEpilogue        // Need 32 input channels for main loop
 
-InputChannelLoop
-        eor     v0.8b,v0.8b,v12.8b
-        eor     v1.8b,v1.8b,v12.8b
-        sdot    v16.4s,v4.16b,v0.4b[0]
-        eor     v2.8b,v2.8b,v12.8b
-        sdot    v17.4s,v4.16b,v1.4b[0]
-        eor     v3.8b,v3.8b,v12.8b
+InputChannelLoop:
+        SdotByElement    16, 4, 0,0
+        SdotByElement    17, 4, 1,0
         ldr     d8,[x12],8
-        sdot    v18.4s,v4.16b,v2.4b[0]
-        sdot    v19.4s,v4.16b,v3.4b[0]
+        SdotByElement    18, 4, 2,0
+        SdotByElement    19, 4, 3,0
         ldr     q4,[x1],16
-        sdot    v20.4s,v5.16b,v0.4b[0]
-        sdot    v21.4s,v5.16b,v1.4b[0]
+        SdotByElement    20, 5, 0,0
+        SdotByElement    21, 5, 1,0
         ldr     d9,[x13],8
-        sdot    v22.4s,v5.16b,v2.4b[0]
-        sdot    v23.4s,v5.16b,v3.4b[0]
+        SdotByElement    22, 5, 2,0
+        SdotByElement    23, 5, 3,0
         ldr     q5,[x1],16
-        sdot    v24.4s,v6.16b,v0.4b[0]
-        sdot    v25.4s,v6.16b,v1.4b[0]
+        SdotByElement    24, 6, 0,0
+        SdotByElement    25, 6, 1,0
         ldr     d10,[x14],8
-        sdot    v26.4s,v6.16b,v2.4b[0]
-        sdot    v27.4s,v6.16b,v3.4b[0]
+        SdotByElement    26, 6, 2,0
+        SdotByElement    27, 6, 3,0
         ldr     q6,[x1],16
-        sdot    v28.4s,v7.16b,v0.4b[0]
-        sdot    v29.4s,v7.16b,v1.4b[0]
+        SdotByElement    28, 7, 0,0
+        SdotByElement    29, 7, 1,0
         ldr     d11,[x15],8
-        sdot    v30.4s,v7.16b,v2.4b[0]
-        sdot    v31.4s,v7.16b,v3.4b[0]
+        SdotByElement    30, 7, 2,0
+        SdotByElement    31, 7, 3,0
         ldr     q7,[x1],16
-        sdot    v16.4s,v4.16b,v0.4b[1]
-        sdot    v17.4s,v4.16b,v1.4b[1]
-        sdot    v18.4s,v4.16b,v2.4b[1]
-        sdot    v19.4s,v4.16b,v3.4b[1]
+        SdotByElement    16, 4, 0,1
+        SdotByElement    17, 4, 1,1
+        SdotByElement    18, 4, 2,1
+        SdotByElement    19, 4, 3,1
         ldr     q4,[x1],16
-        sdot    v20.4s,v5.16b,v0.4b[1]
-        sdot    v21.4s,v5.16b,v1.4b[1]
-        sdot    v22.4s,v5.16b,v2.4b[1]
-        sdot    v23.4s,v5.16b,v3.4b[1]
+        SdotByElement    20, 5, 0,1
+        SdotByElement    21, 5, 1,1
+        SdotByElement    22, 5, 2,1
+        SdotByElement    23, 5, 3,1
         ldr     q5,[x1],16
-        sdot    v24.4s,v6.16b,v0.4b[1]
-        sdot    v25.4s,v6.16b,v1.4b[1]
-        sdot    v26.4s,v6.16b,v2.4b[1]
-        sdot    v27.4s,v6.16b,v3.4b[1]
+        SdotByElement    24, 6, 0,1
+        SdotByElement    25, 6, 1,1
+        SdotByElement    26, 6, 2,1
+        SdotByElement    27, 6, 3,1
         ldr     q6,[x1],16
-        sdot    v28.4s,v7.16b,v0.4b[1]
-        sdot    v29.4s,v7.16b,v1.4b[1]
-        sdot    v30.4s,v7.16b,v2.4b[1]
-        sdot    v31.4s,v7.16b,v3.4b[1]
-        eor     v8.8b,v8.8b,v12.8b
+        SdotByElement    28, 7, 0,1
+        SdotByElement    29, 7, 1,1
+        SdotByElement    30, 7, 2,1
+        SdotByElement    31, 7, 3,1
         ldr     q7,[x1],16
-        eor     v9.8b,v9.8b,v12.8b
-        sdot    v16.4s,v4.16b,v8.4b[0]
-        eor     v10.8b,v10.8b,v12.8b
-        sdot    v17.4s,v4.16b,v9.4b[0]
+        SdotByElement    16, 4, 8,0
+        SdotByElement    17, 4, 9,0
         ldr     d0,[x12],8
-        eor     v11.8b,v11.8b,v12.8b
-        sdot    v18.4s,v4.16b,v10.4b[0]
-        sdot    v19.4s,v4.16b,v11.4b[0]
+        SdotByElement    18, 4,10,0
+        SdotByElement    19, 4,11,0
         ldr     q4,[x1],16
-        sdot    v20.4s,v5.16b,v8.4b[0]
-        sdot    v21.4s,v5.16b,v9.4b[0]
+        SdotByElement    20, 5, 8,0
+        SdotByElement    21, 5, 9,0
         ldr     d1,[x13],8
-        sdot    v22.4s,v5.16b,v10.4b[0]
-        sdot    v23.4s,v5.16b,v11.4b[0]
+        SdotByElement    22, 5,10,0
+        SdotByElement    23, 5,11,0
         ldr     q5,[x1],16
-        sdot    v24.4s,v6.16b,v8.4b[0]
-        sdot    v25.4s,v6.16b,v9.4b[0]
+        SdotByElement    24, 6, 8,0
+        SdotByElement    25, 6, 9,0
         ldr     d2,[x14],8
-        sdot    v26.4s,v6.16b,v10.4b[0]
-        sdot    v27.4s,v6.16b,v11.4b[0]
+        SdotByElement    26, 6,10,0
+        SdotByElement    27, 6,11,0
         ldr     q6,[x1],16
-        sdot    v28.4s,v7.16b,v8.4b[0]
-        sdot    v29.4s,v7.16b,v9.4b[0]
+        SdotByElement    28, 7, 8,0
+        SdotByElement    29, 7, 9,0
         ldr     d3,[x15],8
-        sdot    v30.4s,v7.16b,v10.4b[0]
-        sdot    v31.4s,v7.16b,v11.4b[0]
+        SdotByElement    30, 7,10,0
+        SdotByElement    31, 7,11,0
         ldr     q7,[x1],16
-        sdot    v16.4s,v4.16b,v8.4b[1]
-        sdot    v17.4s,v4.16b,v9.4b[1]
-        sdot    v18.4s,v4.16b,v10.4b[1]
-        sdot    v19.4s,v4.16b,v11.4b[1]
+        SdotByElement    16, 4, 8,1
+        SdotByElement    17, 4, 9,1
+        SdotByElement    18, 4,10,1
+        SdotByElement    19, 4,11,1
         ldr     q4,[x1],16
-        sdot    v20.4s,v5.16b,v8.4b[1]
-        sdot    v21.4s,v5.16b,v9.4b[1]
-        sdot    v22.4s,v5.16b,v10.4b[1]
-        sdot    v23.4s,v5.16b,v11.4b[1]
+        SdotByElement    20, 5, 8,1
+        SdotByElement    21, 5, 9,1
+        SdotByElement    22, 5,10,1
+        SdotByElement    23, 5,11,1
         ldr     q5,[x1],16
-        sdot    v24.4s,v6.16b,v8.4b[1]
-        sdot    v25.4s,v6.16b,v9.4b[1]
-        sdot    v26.4s,v6.16b,v10.4b[1]
-        sdot    v27.4s,v6.16b,v11.4b[1]
+        SdotByElement    24, 6, 8,1
+        SdotByElement    25, 6, 9,1
+        SdotByElement    26, 6,10,1
+        SdotByElement    27, 6,11,1
         ldr     q6,[x1],16
-        sdot    v28.4s,v7.16b,v8.4b[1]
-        sdot    v29.4s,v7.16b,v9.4b[1]
+        SdotByElement    28, 7, 8,1
+        SdotByElement    29, 7, 9,1
         subs    x7,x7,16                // InputChannels -= 16
-        sdot    v30.4s,v7.16b,v10.4b[1]
-        sdot    v31.4s,v7.16b,v11.4b[1]
+        SdotByElement    30, 7,10,1
+        SdotByElement    31, 7,11,1
         ldr     q7,[x1],16
         b.hs    InputChannelLoop
 
-InChLoopEpilogue
-        eor     v0.8b,v0.8b,v12.8b
-        eor     v1.8b,v1.8b,v12.8b
-        sdot    v16.4s,v4.16b,v0.4b[0]
-        eor     v2.8b,v2.8b,v12.8b
-        sdot    v17.4s,v4.16b,v1.4b[0]
-        eor     v3.8b,v3.8b,v12.8b
+InChLoopEpilogue:
+        SdotByElement    16, 4, 0,0
+        SdotByElement    17, 4, 1,0
         ldr     d8,[x12],8
-        sdot    v18.4s,v4.16b,v2.4b[0]
-        sdot    v19.4s,v4.16b,v3.4b[0]
+        SdotByElement    18, 4, 2,0
+        SdotByElement    19, 4, 3,0
         ldr     q4,[x1],16
-        sdot    v20.4s,v5.16b,v0.4b[0]
-        sdot    v21.4s,v5.16b,v1.4b[0]
+        SdotByElement    20, 5, 0,0
+        SdotByElement    21, 5, 1,0
         ldr     d9,[x13],8
-        sdot    v22.4s,v5.16b,v2.4b[0]
-        sdot    v23.4s,v5.16b,v3.4b[0]
+        SdotByElement    22, 5, 2,0
+        SdotByElement    23, 5, 3,0
         ldr     q5,[x1],16
-        sdot    v24.4s,v6.16b,v0.4b[0]
-        sdot    v25.4s,v6.16b,v1.4b[0]
+        SdotByElement    24, 6, 0,0
+        SdotByElement    25, 6, 1,0
         ldr     d10,[x14],8
-        sdot    v26.4s,v6.16b,v2.4b[0]
-        sdot    v27.4s,v6.16b,v3.4b[0]
+        SdotByElement    26, 6, 2,0
+        SdotByElement    27, 6, 3,0
         ldr     q6,[x1],16
-        sdot    v28.4s,v7.16b,v0.4b[0]
-        sdot    v29.4s,v7.16b,v1.4b[0]
+        SdotByElement    28, 7, 0,0
+        SdotByElement    29, 7, 1,0
         ldr     d11,[x15],8
-        sdot    v30.4s,v7.16b,v2.4b[0]
-        sdot    v31.4s,v7.16b,v3.4b[0]
+        SdotByElement    30, 7, 2,0
+        SdotByElement    31, 7, 3,0
         ldr     q7,[x1],16
-        sdot    v16.4s,v4.16b,v0.4b[1]
-        sdot    v17.4s,v4.16b,v1.4b[1]
-        sdot    v18.4s,v4.16b,v2.4b[1]
-        sdot    v19.4s,v4.16b,v3.4b[1]
+        SdotByElement    16, 4, 0,1
+        SdotByElement    17, 4, 1,1
+        SdotByElement    18, 4, 2,1
+        SdotByElement    19, 4, 3,1
         ldr     q4,[x1],16
-        sdot    v20.4s,v5.16b,v0.4b[1]
-        sdot    v21.4s,v5.16b,v1.4b[1]
-        sdot    v22.4s,v5.16b,v2.4b[1]
-        sdot    v23.4s,v5.16b,v3.4b[1]
+        SdotByElement    20, 5, 0,1
+        SdotByElement    21, 5, 1,1
+        SdotByElement    22, 5, 2,1
+        SdotByElement    23, 5, 3,1
         ldr     q5,[x1],16
-        sdot    v24.4s,v6.16b,v0.4b[1]
-        sdot    v25.4s,v6.16b,v1.4b[1]
-        sdot    v26.4s,v6.16b,v2.4b[1]
-        sdot    v27.4s,v6.16b,v3.4b[1]
+        SdotByElement    24, 6, 0,1
+        SdotByElement    25, 6, 1,1
+        SdotByElement    26, 6, 2,1
+        SdotByElement    27, 6, 3,1
         ldr     q6,[x1],16
-        sdot    v28.4s,v7.16b,v0.4b[1]
-        sdot    v29.4s,v7.16b,v1.4b[1]
-        sdot    v30.4s,v7.16b,v2.4b[1]
-        sdot    v31.4s,v7.16b,v3.4b[1]
-        eor     v8.8b,v8.8b,v12.8b
+        SdotByElement    28, 7, 0,1
+        SdotByElement    29, 7, 1,1
+        SdotByElement    30, 7, 2,1
+        SdotByElement    31, 7, 3,1
         ldr     q7,[x1],16
-        eor     v9.8b,v9.8b,v12.8b
-        sdot    v16.4s,v4.16b,v8.4b[0]
-        eor     v10.8b,v10.8b,v12.8b
-        sdot    v17.4s,v4.16b,v9.4b[0]
-        eor     v11.8b,v11.8b,v12.8b
-        sdot    v18.4s,v4.16b,v10.4b[0]
-        sdot    v19.4s,v4.16b,v11.4b[0]
+        SdotByElement    16, 4, 8,0
+        SdotByElement    17, 4, 9,0
+        SdotByElement    18, 4,10,0
+        SdotByElement    19, 4,11,0
         ldr     q4,[x1],16
-        sdot    v20.4s,v5.16b,v8.4b[0]
-        sdot    v21.4s,v5.16b,v9.4b[0]
-        sdot    v22.4s,v5.16b,v10.4b[0]
-        sdot    v23.4s,v5.16b,v11.4b[0]
+        SdotByElement    20, 5, 8,0
+        SdotByElement    21, 5, 9,0
+        SdotByElement    22, 5,10,0
+        SdotByElement    23, 5,11,0
         ldr     q5,[x1],16
-        sdot    v24.4s,v6.16b,v8.4b[0]
-        sdot    v25.4s,v6.16b,v9.4b[0]
-        sdot    v26.4s,v6.16b,v10.4b[0]
-        sdot    v27.4s,v6.16b,v11.4b[0]
+        SdotByElement    24, 6, 8,0
+        SdotByElement    25, 6, 9,0
+        SdotByElement    26, 6,10,0
+        SdotByElement    27, 6,11,0
         ldr     q6,[x1],16
-        sdot    v28.4s,v7.16b,v8.4b[0]
-        sdot    v29.4s,v7.16b,v9.4b[0]
-        sdot    v30.4s,v7.16b,v10.4b[0]
-        sdot    v31.4s,v7.16b,v11.4b[0]
+        SdotByElement    28, 7, 8,0
+        SdotByElement    29, 7, 9,0
+        SdotByElement    30, 7,10,0
+        SdotByElement    31, 7,11,0
         ldr     q7,[x1],16
-        sdot    v16.4s,v4.16b,v8.4b[1]
-        sdot    v17.4s,v4.16b,v9.4b[1]
-        sdot    v18.4s,v4.16b,v10.4b[1]
-        sdot    v19.4s,v4.16b,v11.4b[1]
-        sdot    v20.4s,v5.16b,v8.4b[1]
-        sdot    v21.4s,v5.16b,v9.4b[1]
-        sdot    v22.4s,v5.16b,v10.4b[1]
-        sdot    v23.4s,v5.16b,v11.4b[1]
-        sdot    v24.4s,v6.16b,v8.4b[1]
-        sdot    v25.4s,v6.16b,v9.4b[1]
-        sdot    v26.4s,v6.16b,v10.4b[1]
-        sdot    v27.4s,v6.16b,v11.4b[1]
-        sdot    v28.4s,v7.16b,v8.4b[1]
-        sdot    v29.4s,v7.16b,v9.4b[1]
-        sdot    v30.4s,v7.16b,v10.4b[1]
-        sdot    v31.4s,v7.16b,v11.4b[1]
+        SdotByElement    16, 4, 8,1
+        SdotByElement    17, 4, 9,1
+        SdotByElement    18, 4,10,1
+        SdotByElement    19, 4,11,1
+        SdotByElement    20, 5, 8,1
+        SdotByElement    21, 5, 9,1
+        SdotByElement    22, 5,10,1
+        SdotByElement    23, 5,11,1
+        SdotByElement    24, 6, 8,1
+        SdotByElement    25, 6, 9,1
+        SdotByElement    26, 6,10,1
+        SdotByElement    27, 6,11,1
+        SdotByElement    28, 7, 8,1
+        SdotByElement    29, 7, 9,1
+        SdotByElement    30, 7,10,1
+        SdotByElement    31, 7,11,1
 
-        TST     x7,15
-        B.NE    InChannels8             // 4 ~ 12 InputChannels
+        tst     x7,15
+        b.ne    InChannels8             // 4 ~ 12 InputChannels
 
         subs    x9,x9,8                 // KernelSize-=1
         b.hi    KernelSizeLoop
 
-Requantize
-        tst     w10,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        ldr     w13,[x8,#ConvSymPostProcessParams_ZeroPoint]
+Requantize:
+        tst     w10,#.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
+        ldr     w13,[x8,#.LConvSymPostProcessParams_ZeroPoint]
         beq     BroadcastScaleValue
         ldp     q0,q1,[x19],32          // load scale vector
         ldp     q2,q3,[x19],32
         b       AccumulatorsToFloat
 
-BroadcastScaleValue
+BroadcastScaleValue:
         ld1r    {v0.4s},[x19]           // load scale Value
         mov     v1.16b, v0.16b
         mov     v2.16b, v0.16b
         mov     v3.16b, v0.16b
 
-AccumulatorsToFloat
+AccumulatorsToFloat:
         scvtf   v16.4s,v16.4s           // convert to float
         scvtf   v17.4s,v17.4s
         scvtf   v18.4s,v18.4s
@@ -480,15 +463,15 @@ AccumulatorsToFloat
         sqadd   v25.8h,v25.8h,v4.8h
         sqadd   v26.8h,v26.8h,v4.8h
         sqadd   v27.8h,v27.8h,v4.8h
-        sqxtun   v0.8b,v16.8h
-        sqxtun   v1.8b,v17.8h
-        sqxtun   v2.8b,v18.8h
-        sqxtun   v3.8b,v19.8h
-        sqxtun2  v0.16b,v24.8h
-        sqxtun2  v1.16b,v25.8h
+        sqxtn   v0.8b,v16.8h
+        sqxtn   v1.8b,v17.8h
+        sqxtn   v2.8b,v18.8h
+        sqxtn   v3.8b,v19.8h
+        sqxtn2  v0.16b,v24.8h
+        sqxtn2  v1.16b,v25.8h
         subs    x6,x6,16            // processed 16 output channels
-        sqxtun2  v2.16b,v26.8h
-        sqxtun2  v3.16b,v27.8h
+        sqxtn2  v2.16b,v26.8h
+        sqxtn2  v3.16b,v27.8h
         b.lo    PartialStore
 
         st1     {v3.16b},[x5],16    // Store full 4 x 16
@@ -498,97 +481,88 @@ AccumulatorsToFloat
         st1     {v0.16b},[x2],16
         b.hi    OutputChannelLoop
 
-ExitKernel
-        EPILOG_RESTORE_REG_PAIR  x19,x20,#48
-        EPILOG_RESTORE_REG_PAIR  d12,d13,#32
-        EPILOG_RESTORE_REG_PAIR  d10,d11,#16
-        EPILOG_RESTORE_REG_PAIR  d8,d9,#64!
-        EPILOG_RETURN
+ExitKernel:
+        ldp     x19,x20,[sp,#32]
+        ldp     d10,d11,[sp,#16]
+        ldp     d8,d9,[sp],#.LConvSymFrame_SavedRegisters
+        ret
 
-InChannels8
+InChannels8:
         tbz     x7,3,InChannels4
         ldr     d0,[x12],8
         ldr     q4,[x1],16
         ldr     d1,[x13],8
         ldr     d2,[x14],8
         ldr     d3,[x15],8
-        eor     v0.8b,v0.8b,v12.8b
         ldr     q5,[x1],16
-        eor     v1.8b,v1.8b,v12.8b
-        sdot    v16.4s,v4.16b,v0.4b[0]
-        sdot    v17.4s,v4.16b,v1.4b[0]
-        eor     v2.8b,v2.8b,v12.8b
-        ldp     q6,q7,[x1],32
-        eor     v3.8b,v3.8b,v12.8b
-        sdot    v18.4s,v4.16b,v2.4b[0]
-        sdot    v19.4s,v4.16b,v3.4b[0]
-        sdot    v20.4s,v5.16b,v0.4b[0]
-        sdot    v21.4s,v5.16b,v1.4b[0]
-        sdot    v22.4s,v5.16b,v2.4b[0]
-        sdot    v23.4s,v5.16b,v3.4b[0]
-        sdot    v24.4s,v6.16b,v0.4b[0]
-        sdot    v25.4s,v6.16b,v1.4b[0]
-        ldp     q4,q5,[x1],32
-        sdot    v26.4s,v6.16b,v2.4b[0]
-        sdot    v27.4s,v6.16b,v3.4b[0]
-        sdot    v28.4s,v7.16b,v0.4b[0]
-        sdot    v29.4s,v7.16b,v1.4b[0]
-        sdot    v30.4s,v7.16b,v2.4b[0]
-        sdot    v31.4s,v7.16b,v3.4b[0]
-        sdot    v16.4s,v4.16b,v0.4b[1]
-        sdot    v17.4s,v4.16b,v1.4b[1]
-        ldp     q6,q7,[x1],32
-        sdot    v18.4s,v4.16b,v2.4b[1]
-        sdot    v19.4s,v4.16b,v3.4b[1]
-        sdot    v20.4s,v5.16b,v0.4b[1]
-        sdot    v21.4s,v5.16b,v1.4b[1]
-        sdot    v22.4s,v5.16b,v2.4b[1]
-        sdot    v23.4s,v5.16b,v3.4b[1]
-        sdot    v24.4s,v6.16b,v0.4b[1]
-        sdot    v25.4s,v6.16b,v1.4b[1]
-        sdot    v26.4s,v6.16b,v2.4b[1]
-        sdot    v27.4s,v6.16b,v3.4b[1]
-        sdot    v28.4s,v7.16b,v0.4b[1]
-        sdot    v29.4s,v7.16b,v1.4b[1]
-        sdot    v30.4s,v7.16b,v2.4b[1]
-        sdot    v31.4s,v7.16b,v3.4b[1]
+        SdotByElement    16, 4, 0,0
+        SdotByElement    17, 4, 1,0
+        ldp     q6, q7, [x1], 32
+        SdotByElement    18, 4, 2,0
+        SdotByElement    19, 4, 3,0
+        SdotByElement    20, 5, 0,0
+        SdotByElement    21, 5, 1,0
+        SdotByElement    22, 5, 2,0
+        SdotByElement    23, 5, 3,0
+        SdotByElement    24, 6, 0,0
+        SdotByElement    25, 6, 1,0
+        ldp     q4, q5, [x1], 32
+        SdotByElement    26, 6, 2,0
+        SdotByElement    27, 6, 3,0
+        SdotByElement    28, 7, 0,0
+        SdotByElement    29, 7, 1,0
+        SdotByElement    30, 7, 2,0
+        SdotByElement    31, 7, 3,0
+        SdotByElement    16, 4, 0,1
+        SdotByElement    17, 4, 1,1
+        ldp     q6, q7, [x1], 32
+        SdotByElement    18, 4, 2,1
+        SdotByElement    19, 4, 3,1
+        SdotByElement    20, 5, 0,1
+        SdotByElement    21, 5, 1,1
+        SdotByElement    22, 5, 2,1
+        SdotByElement    23, 5, 3,1
+        SdotByElement    24, 6, 0,1
+        SdotByElement    25, 6, 1,1
+        SdotByElement    26, 6, 2,1
+        SdotByElement    27, 6, 3,1
+        SdotByElement    28, 7, 0,1
+        SdotByElement    29, 7, 1,1
+        SdotByElement    30, 7, 2,1
+        SdotByElement    31, 7, 3,1
         tbz     x7,2,SkipInCh4
 
-InChannels4
+InChannels4:
         ldr     s0,[x12],4
         ldr     q4,[x1],16
         ldr     s1,[x13],4
         ldr     s2,[x14],4
         ldr     s3,[x15],4
-        eor     v0.8b,v0.8b,v12.8b
-        ldr     q5,[x1],16
-        eor     v1.8b,v1.8b,v12.8b
-        sdot    v16.4s,v4.16b,v0.4b[0]
-        sdot    v17.4s,v4.16b,v1.4b[0]
-        eor     v2.8b,v2.8b,v12.8b
-        ldp     q6,q7,[x1],32
-        eor     v3.8b,v3.8b,v12.8b
-        sdot    v18.4s,v4.16b,v2.4b[0]
-        sdot    v19.4s,v4.16b,v3.4b[0]
-        sdot    v20.4s,v5.16b,v0.4b[0]
-        sdot    v21.4s,v5.16b,v1.4b[0]
-        sdot    v22.4s,v5.16b,v2.4b[0]
-        sdot    v23.4s,v5.16b,v3.4b[0]
-        sdot    v24.4s,v6.16b,v0.4b[0]
-        sdot    v25.4s,v6.16b,v1.4b[0]
-        sdot    v26.4s,v6.16b,v2.4b[0]
-        sdot    v27.4s,v6.16b,v3.4b[0]
-        sdot    v28.4s,v7.16b,v0.4b[0]
-        sdot    v29.4s,v7.16b,v1.4b[0]
-        sdot    v30.4s,v7.16b,v2.4b[0]
-        sdot    v31.4s,v7.16b,v3.4b[0]
+        ldr     q5, [x1], 16
+        SdotByElement    16, 4, 0,0
+        SdotByElement    17, 4, 1,0
+        ldp     q6, q7, [x1], 32
+        SdotByElement    18, 4, 2,0
+        SdotByElement    19, 4, 3,0
+        SdotByElement    20, 5, 0,0
+        SdotByElement    21, 5, 1,0
+        SdotByElement    22, 5, 2,0
+        SdotByElement    23, 5, 3,0
+        SdotByElement    24, 6, 0,0
+        SdotByElement    25, 6, 1,0
+        SdotByElement    26, 6, 2,0
+        SdotByElement    27, 6, 3,0
+        SdotByElement    28, 7, 0,0
+        SdotByElement    29, 7, 1,0
+        SdotByElement    30, 7, 2,0
+        SdotByElement    31, 7, 3,0
 
-SkipInCh4
+SkipInCh4:
         subs    x9,x9,8             // ks -= 1
         b.hi    KernelSizeLoop
         b       Requantize
 
-PartialStore
+PartialStore:
         tbz     x6,3,LT8Store
         str     d3,[x5],8           // no less than 8 channels
         str     d2,[x17],8
@@ -598,7 +572,7 @@ PartialStore
         str     d0,[x2],8
         dup     d1,v1.d[1]
         dup     d0,v0.d[1]
-LT8Store
+LT8Store:
         tbz     x6,2,LT4Store
         str     s3,[x5],4
         str     s2,[x17],4
@@ -608,7 +582,7 @@ LT8Store
         str     s0,[x2],4
         dup     s1,v1.s[1]
         dup     s0,v0.s[1]
-LT4Store
+LT4Store:
         tbz     x6,1, LT2Store
         str     h3,[x5],2
         str     h2,[x17],2
@@ -618,7 +592,7 @@ LT4Store
         str     h0,[x2],2
         dup     h1,v1.h[1]
         dup     h0,v0.h[1]
-LT2Store
+LT2Store:
         tbz     x6,0,ExitKernel
         str     b3,[x5]
         str     b2,[x17]
@@ -626,6 +600,4 @@ LT2Store
         str     b0,[x2]
         b       ExitKernel
 
-        NESTED_END MlasConvSymU8KernelDot
-
-        END
+        .end
