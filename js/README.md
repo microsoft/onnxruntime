@@ -413,7 +413,7 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
    From `<ORT_ROOT>/js/react_native/e2e/android`, run e2e Android tests as follows,
 
    ```sh
-   ./gradlew connectedDebugAndroidTest
+   ./gradlew :app:connectedDebugAndroidTest
    ```
 
    From `<ORT_ROOT>/js/react_native/e2e/ios`, run e2e iOS tests as follows,
