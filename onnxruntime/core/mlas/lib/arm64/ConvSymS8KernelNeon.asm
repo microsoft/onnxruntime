@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    ConvSymU8KernelNeon.asm
+    ConvSymS8KernelNeon.asm
 
 Abstract:
 
@@ -88,7 +88,7 @@ Return Value:
     None.
 
 --*/
-        NESTED_ENTRY MlasConvSymU8KernelNeon
+        NESTED_ENTRY MlasConvSymS8KernelNeon
 
         PROLOG_SAVE_REG_PAIR  d8,d9,#-64!
         PROLOG_NOP    ldr     x8,[sp,#ConvSymFrame_PostProcessParams]
@@ -161,7 +161,6 @@ BlockLoopPrologue
         add     x0,x0,8                 // indirect A advance to next pointer, prepare for kernel size loop
         csel    x15,x13,x15,lo          // if OutputCount < 2  x15 -> A0
         subs    x14,x4,16               // input channel - 16
-        movi    v12.8b,128
         blo     InputChannel8           // less than 16 deep, no unroll
 
         ldr     d0,[x13],8
@@ -174,16 +173,12 @@ BlockLoopPrologue
         blo     BlockLoopEpilogue       // need 32 input channel for full unrolled loop
 
 Blockloop
-        eor     v0.8b,v0.8b,v12.8b
-        eor     v1.8b,v1.8b,v12.8b
         smull   v2.8h,v4.8b,v0.8b
         smull   v3.8h,v4.8b,v1.8b
         ldr     d4,[x1,16]
         smull   v10.8h,v5.8b,v0.8b
         smull   v11.8h,v5.8b,v1.8b
         ldr     d5,[x1,24]
-        eor     v6.8b,v6.8b,v12.8b
-        eor     v7.8b,v7.8b,v12.8b
         smlal   v2.8h,v8.8b,v6.8b
         smlal   v3.8h,v8.8b,v7.8b
         ldr     d8,[x1,80]
@@ -247,21 +242,16 @@ Blockloop
         sadalp  v29.4s,v13.8h
         subs    x14,x14,16
         sadalp  v30.4s,v14.8h
-        movi    v12.8b,128
         sadalp  v31.4s,v15.8h
         b.hs    Blockloop
 
 BlockLoopEpilogue            // remaining 16 input channels
-        eor     v0.8b,v0.8b,v12.8b
-        eor     v1.8b,v1.8b,v12.8b
         smull   v2.8h,v4.8b,v0.8b
         smull   v3.8h,v4.8b,v1.8b
         ldr     d4,[x1,16]
         smull   v10.8h,v5.8b,v0.8b
         smull   v11.8h,v5.8b,v1.8b
         ldr     d5,[x1,24]
-        eor     v6.8b,v6.8b,v12.8b
-        eor     v7.8b,v7.8b,v12.8b
         smlal   v2.8h,v8.8b,v6.8b
         smlal   v3.8h,v8.8b,v7.8b
         ldr     d8,[x1,80]
@@ -318,7 +308,6 @@ BlockLoopEpilogue            // remaining 16 input channels
         sadalp  v29.4s,v13.8h
         sadalp  v30.4s,v14.8h
         sadalp  v31.4s,v15.8h
-        movi    v12.8b,128
         tbnz    x14,3,InputChannel8
 
         subs    x9,x9,1
@@ -367,8 +356,8 @@ AccumulatorsToFloat
         sqxtn2  v2.8h,v3.4s
         sqadd   v0.8h,v0.8h,v9.8h
         sqadd   v2.8h,v2.8h,v9.8h
-        sqxtun  v0.8b,v0.8h             // shorten to int8
-        sqxtun2 v0.16b,v2.8h
+        sqxtn  v0.8b,v0.8h             // shorten to int8
+        sqxtn2 v0.16b,v2.8h
         st1     {v0.d}[1],[x5]          // full 2x8 store to c 
         st1     {v0.8b},[x2]
 
@@ -386,8 +375,6 @@ InputChannel8
         ldr     d5,[x1,8]
         ldr     d6,[x1,16]
         ldr     d7,[x1,24]
-        eor     v0.8b,v0.8b,v12.8b
-        eor     v1.8b,v1.8b,v12.8b
         smull   v2.8h,v4.8b,v0.8b
         smull   v3.8h,v4.8b,v1.8b
         ldr     d4,[x1,32]
@@ -431,6 +418,6 @@ InputChannel8
         b.hi    KernelSizeLoop
         b       Requantize
 
-        NESTED_END MlasConvSymU8KernelNeon
+        NESTED_END MlasConvSymS8KernelNeon
 
         END

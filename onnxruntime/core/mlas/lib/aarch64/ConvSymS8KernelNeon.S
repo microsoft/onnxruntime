@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    ConvSymU8KernelNeon.asm
+    ConvSymS8KernelNeon.S
 
 Abstract:
 
@@ -15,27 +15,27 @@ Abstract:
 
 --*/
 
-#include "kxarm64.h"
+#include "asmmacro.h"
 
-#define     MLAS_CONV_SYM_FLAG_INPUT_DIRECT      1
-#define     MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE 2
+        .equ    .LMLAS_CONV_SYM_FLAG_INPUT_DIRECT,      1
+        .equ    .LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE, 2
 
 //
 // Stack frame layout for the symmetric convolution kernel.
 // d8-d15, x19-x30 need to be preserved if used
 //
-#define     ConvSymFrame_SavedNeonRegisters   (8 * 8)
-#define     ConvSymFrame_SavedRegisters           ConvSymFrame_SavedNeonRegisters
-#define     ConvSymFrame_PostProcessParams    0 + ConvSymFrame_SavedRegisters
-#define     ConvSymFrame_KernelFlags          8 + ConvSymFrame_SavedRegisters
+        .equ    .LConvSymFrame_SavedNeonRegisters, (8 * 8)
+        .equ    .LConvSymFrame_SavedRegisters, .LConvSymFrame_SavedNeonRegisters
+        .equ    .LConvSymFrame_PostProcessParams, 0 + .LConvSymFrame_SavedRegisters
+        .equ    .LConvSymFrame_KernelFlags, 8 + .LConvSymFrame_SavedRegisters
 
-#define     ConvSymPostProcessParams_Bias      0
-#define     ConvSymPostProcessParams_Scale     8
-#define     ConvSymPostProcessParams_Min       16
-#define     ConvSymPostProcessParams_Max       20
-#define     ConvSymPostProcessParams_ZeroPoint 24
+        .equ    .LConvSymPostProcessParams_Bias,      0
+        .equ    .LConvSymPostProcessParams_Scale,     8
+        .equ    .LConvSymPostProcessParams_Min,       16
+        .equ    .LConvSymPostProcessParams_Max,       20
+        .equ    .LConvSymPostProcessParams_ZeroPoint, 24
 
-        TEXTAREA
+        .text
 
 /*++
 
@@ -88,18 +88,18 @@ Return Value:
     None.
 
 --*/
-        NESTED_ENTRY MlasConvSymU8KernelNeon
+        FUNCTION_ENTRY MlasConvSymS8KernelNeon
 
-        PROLOG_SAVE_REG_PAIR  d8,d9,#-64!
-        PROLOG_NOP    ldr     x8,[sp,#ConvSymFrame_PostProcessParams]
-        PROLOG_NOP    ldrb    w10,[sp,#ConvSymFrame_KernelFlags]
-        PROLOG_SAVE_REG_PAIR  d10,d11,#16
-        PROLOG_SAVE_REG_PAIR  d12,d13,#32
-        PROLOG_SAVE_REG_PAIR  d14,d15,#48
+        stp     d8,d9,[sp,#-64]!
+        ldr     x8,[sp,#.LConvSymFrame_PostProcessParams]
+        ldrb    w10,[sp,#.LConvSymFrame_KernelFlags]
+        stp     d10,d11,[sp,#16]
+        stp     d12,d13,[sp,#32]
+        stp     d14,d15,[sp,#48]
         mov     x9,x3                   // save kernel size
-        ldr     x11,[x8,#ConvSymPostProcessParams_Bias]
+        ldr     x11,[x8,#.LConvSymPostProcessParams_Bias]
         mov     x16,x4                  // save input channels
-        ldr     x12,[x8,#ConvSymPostProcessParams_Scale]
+        ldr     x12,[x8,#.LConvSymPostProcessParams_Scale]
         cmp     x7,2                    // if OutputCount < 2
         add     x5,x2,x5                // c1 = c0 + ldc
         add     x4,x4,7                 // kc = (kc + 7) & ~7
@@ -136,33 +136,32 @@ Return Value:
 // B registers v8 v9
 //
 
-KernelSizeLoop
+.LConvSym.KernelSizeLoop:
 
-        // Load next 2 A pointers
-        tst     w10,#MLAS_CONV_SYM_FLAG_INPUT_DIRECT
+        # Load next 2 A pointers
+        tst     w10,#.LMLAS_CONV_SYM_FLAG_INPUT_DIRECT
         ldr     d4,[x1]
         ldr     d5,[x1,8]
-        beq     InputIndirection
+        beq     .LConvSym.InputIndirection
 
-InputDirect
+.LConvSym.InputDirect:
         mov     x13,x0                  // x13 -> A0
         add     x15,x0,x16              // x15 -> A1 = A0 + input channels
-        b       BlockLoopPrologue
+        b       .LConvSym.BlockLoopPrologue
 
-InputIndirection
+.LConvSym.InputIndirection:
         cmp     x7,2                    // test if OutputCount < 2
         ldr     x13,[x0]                // x13 -> A0
-        blo     SkipLoadA1
+        blo     .LConvSym.SkipLoadA1
         ldr     x15,[x0,x3,lsl#3]       // x15 -> A1
-SkipLoadA1
+.LConvSym.SkipLoadA1:
 
-BlockLoopPrologue
+.LConvSym.BlockLoopPrologue:
         cmp     x7,2                    // test if OutputCount < 2
         add     x0,x0,8                 // indirect A advance to next pointer, prepare for kernel size loop
         csel    x15,x13,x15,lo          // if OutputCount < 2  x15 -> A0
         subs    x14,x4,16               // input channel - 16
-        movi    v12.8b,128
-        blo     InputChannel8           // less than 16 deep, no unroll
+        blo     .LConvSym.8InputChannels     // less than 16 deep, no unroll
 
         ldr     d0,[x13],8
         ldr     d1,[x15],8
@@ -171,19 +170,15 @@ BlockLoopPrologue
         ldr     d6,[x13],8
         subs    x14,x14,16              // input channel - 16
         ldr     d7,[x15],8
-        blo     BlockLoopEpilogue       // need 32 input channel for full unrolled loop
+        blo     .LConvSym.BlockLoopEpilogue  // need 32 input channel for full unrolled loop
 
-Blockloop
-        eor     v0.8b,v0.8b,v12.8b
-        eor     v1.8b,v1.8b,v12.8b
+.LConvSym.Blockloop:
         smull   v2.8h,v4.8b,v0.8b
         smull   v3.8h,v4.8b,v1.8b
         ldr     d4,[x1,16]
         smull   v10.8h,v5.8b,v0.8b
         smull   v11.8h,v5.8b,v1.8b
         ldr     d5,[x1,24]
-        eor     v6.8b,v6.8b,v12.8b
-        eor     v7.8b,v7.8b,v12.8b
         smlal   v2.8h,v8.8b,v6.8b
         smlal   v3.8h,v8.8b,v7.8b
         ldr     d8,[x1,80]
@@ -247,21 +242,16 @@ Blockloop
         sadalp  v29.4s,v13.8h
         subs    x14,x14,16
         sadalp  v30.4s,v14.8h
-        movi    v12.8b,128
         sadalp  v31.4s,v15.8h
-        b.hs    Blockloop
+        b.hs    .LConvSym.Blockloop
 
-BlockLoopEpilogue            // remaining 16 input channels
-        eor     v0.8b,v0.8b,v12.8b
-        eor     v1.8b,v1.8b,v12.8b
+.LConvSym.BlockLoopEpilogue:            // remaining 16 input channels
         smull   v2.8h,v4.8b,v0.8b
         smull   v3.8h,v4.8b,v1.8b
         ldr     d4,[x1,16]
         smull   v10.8h,v5.8b,v0.8b
         smull   v11.8h,v5.8b,v1.8b
         ldr     d5,[x1,24]
-        eor     v6.8b,v6.8b,v12.8b
-        eor     v7.8b,v7.8b,v12.8b
         smlal   v2.8h,v8.8b,v6.8b
         smlal   v3.8h,v8.8b,v7.8b
         ldr     d8,[x1,80]
@@ -318,24 +308,23 @@ BlockLoopEpilogue            // remaining 16 input channels
         sadalp  v29.4s,v13.8h
         sadalp  v30.4s,v14.8h
         sadalp  v31.4s,v15.8h
-        movi    v12.8b,128
-        tbnz    x14,3,InputChannel8
+        tbnz    x14,3,.LConvSym.8InputChannels
 
         subs    x9,x9,1
-        b.hi    KernelSizeLoop
+        b.hi    .LConvSym.KernelSizeLoop
 
-Requantize
-        ldr     w11,[x8,#ConvSymPostProcessParams_ZeroPoint]
-        tst     w10,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        beq     BroadcastScaleValue
+.LConvSym.Requantize:
+        ldr     w11, [x8, #.LConvSymPostProcessParams_ZeroPoint]
+        tst     w10,#.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
+        beq     .LConvSym.BroadcastScaleValue
         ld1     {v4.4s,v5.4s},[x12]     // load scale vector
-        b       AccumulatorsToFloat
+        b       .LConvSym.AccumulatorsToFloat
 
-BroadcastScaleValue
+.LConvSym.BroadcastScaleValue:
         ld1r    {v4.4s},[x12]           // load scale Value
         mov     v5.16b, v4.16b
 
-AccumulatorsToFloat
+.LConvSym.AccumulatorsToFloat:
         addp    v16.4s,v16.4s,v18.4s
         addp    v20.4s,v20.4s,v22.4s
         addp    v24.4s,v24.4s,v26.4s
@@ -365,29 +354,30 @@ AccumulatorsToFloat
         sqxtn2  v0.8h,v1.4s
         sqxtn   v2.4h,v2.4s
         sqxtn2  v2.8h,v3.4s
+        subs    x6, x6, 8
         sqadd   v0.8h,v0.8h,v9.8h
         sqadd   v2.8h,v2.8h,v9.8h
-        sqxtun  v0.8b,v0.8h             // shorten to int8
-        sqxtun2 v0.16b,v2.8h
+        sqxtn  v0.8b,v0.8h             // shorten to int8
+        sqxtn2 v0.16b,v2.8h
+        b.lo    .LConvSym.PartialStore
+
         st1     {v0.d}[1],[x5]          // full 2x8 store to c 
         st1     {v0.8b},[x2]
 
-ExitKernel
-        EPILOG_RESTORE_REG_PAIR  d14,d15,#48
-        EPILOG_RESTORE_REG_PAIR  d12,d13,#32
-        EPILOG_RESTORE_REG_PAIR  d10,d11,#16
-        EPILOG_RESTORE_REG_PAIR  d8,d9,#64!
-        EPILOG_RETURN
+.LConvSym.ExitKernel:
+        ldp     d14,d15,[sp,#48]
+        ldp     d12,d13,[sp,#32]
+        ldp     d10,d11,[sp,#16]
+        ldp     d8,d9,[sp],#64
+        ret
 
-InputChannel8
+.LConvSym.8InputChannels:
         ldr     d0,[x13]
         ldr     d1,[x15]
         ldr     d4,[x1]
         ldr     d5,[x1,8]
         ldr     d6,[x1,16]
         ldr     d7,[x1,24]
-        eor     v0.8b,v0.8b,v12.8b
-        eor     v1.8b,v1.8b,v12.8b
         smull   v2.8h,v4.8b,v0.8b
         smull   v3.8h,v4.8b,v1.8b
         ldr     d4,[x1,32]
@@ -426,11 +416,26 @@ InputChannel8
         sadalp  v30.4s,v14.8h
         sadalp  v31.4s,v15.8h
 
-        // ks loop
+        # ks loop
         subs    x9,x9,1
-        b.hi    KernelSizeLoop
-        b       Requantize
+        b.hi    .LConvSym.KernelSizeLoop
+        b       .LConvSym.Requantize
 
-        NESTED_END MlasConvSymU8KernelNeon
+.LConvSym.PartialStore:
+        tbz     x6,2,.LConvSym.Store2
+        st1     {v0.s}[2],[x5],4
+        str     s0,[x2],4
+        EXT     v0.16b,v0.16b,v0.16b,4
 
-        END
+.LConvSym.Store2:
+        tbz     x6, 1, .LConvSym.Store1
+        st1     {v0.h}[4], [x5], 2
+        str     h0, [x2], 2
+        EXT     v0.16b,v0.16b,v0.16b,2
+.LConvSym.Store1:
+        tbz     x6,0,.LConvSym.ExitKernel
+        st1     {v0.b}[8],[x5]
+        str     b0,[x2]
+        b       .LConvSym.ExitKernel
+
+        .end
