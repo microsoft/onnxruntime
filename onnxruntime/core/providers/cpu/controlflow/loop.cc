@@ -378,9 +378,10 @@ LoopImpl::LoopImpl(OpKernelContextInternal& context,
       stream_(stream) {
   auto* max_trip_count_tensor = context.Input<Tensor>(0);
   max_trip_count_ = max_trip_count_tensor ? *max_trip_count_tensor->Data<int64_t>() : INT64_MAX;
-
+  std::cout << "cpu loop.cc 381" << std::endl;
   auto cond_tensor = context.Input<Tensor>(1);
   condition_ = cond_tensor ? *cond_tensor->Data<bool>() : true;
+  std::cout << "cpu loop.cc 384" << std::endl;
 }
 
 Status LoopImpl::Initialize() {

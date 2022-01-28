@@ -21,7 +21,7 @@
 
 #ifdef ENABLE_NVTX_PROFILE
 // This header is for profile using Nvidia's visual profilier.
-#include "core/providers/cuda/nvtx_profile.h" 
+#include "core/providers/cuda/nvtx_profile.h"
 #include "core/profile/context.h"
 #endif
 
@@ -319,8 +319,9 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
           ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&op_kernel_context));
         }
 #endif
-
+        std::cout << "executing node: " << node.Name() << "....." << std::endl;
         compute_status = p_op_kernel->Compute(&op_kernel_context);
+        std::cout << " done!!" << std::endl;
       }
       ORT_CATCH(const std::exception& ex) {
         ORT_HANDLE_EXCEPTION([&]() {
