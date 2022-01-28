@@ -784,7 +784,7 @@ if (onnxruntime_USE_COREML)
 
   # Compile CoreML proto definition to ${CMAKE_CURRENT_BINARY_DIR}/coreml
   if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    set(COREML_PROTO_ROOT ${PROJECT_SOURCE_DIR}/external/coremltools/mlmodel/format)
+    set(COREML_PROTO_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime/core/providers/coreml/mlmodel_format)
     file(GLOB coreml_proto_srcs
       "${COREML_PROTO_ROOT}/*.proto"
     )
