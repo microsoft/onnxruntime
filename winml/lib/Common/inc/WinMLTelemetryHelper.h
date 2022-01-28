@@ -107,6 +107,8 @@ class WinMLTelemetryHelper {
   void SetNamedDimensionOverride(
       winrt::hstring name,
       uint32_t value);
+  void SetLearningModelDevice(
+      int device_kind);
   void EndRuntimeSession() { ++runtime_session_id_; };
   bool IsMeasureSampled();
   int GetRuntimeSessionId() { return runtime_session_id_; }

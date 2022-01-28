@@ -179,3 +179,19 @@ void WinMLTelemetryHelper::SetNamedDimensionOverride(
       TraceLoggingInt32(value, "overrideValue"),
       TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
 }
+
+void WinMLTelemetryHelper::SetLearningModelDevice(
+    int device_kind) {
+  if (!telemetry_enabled_)
+    return;
+  WinMLTraceLoggingWrite(
+      provider_,
+      "SetLearningModelDevice",
+      TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+      TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+      //Telemetry info
+      TraceLoggingUInt8(WINML_TLM_NATIVE_API_INTRAOP_THREAD_SPINNING_VERSION, "schemaVersion"),
+      // thread spinning info
+      TraceLoggingInt32(device_kind, "deviceKind"),
+      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+}
