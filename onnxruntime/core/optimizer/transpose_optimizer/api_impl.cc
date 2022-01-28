@@ -139,11 +139,11 @@ const onnx::TensorShapeProto* GetNodeArgShape(const NodeArg* node_arg) {
   }
 
   const auto* type = node_arg->TypeAsProto();
-  if (type == nullptr || !utils::HasShape(*type)) {
+  if (type == nullptr) {
     return nullptr;
   }
 
-  return &utils::GetShape(*type);
+  return utils::TryGetShape(*type);
 }
 
 std::optional<std::vector<int64_t>> ApiValueInfo::Shape() const {
@@ -677,18 +677,25 @@ void ApiGraph::MoveOutput(api::NodeRef& src_node, size_t src_idx, api::NodeRef& 
 }
 
 void ApiGraph::CopyValueInfo(std::string_view src_name, std::string_view dst_name) {
-  NodeArg* src_arg = graph_.GetNodeArg(std::string(src_name));
-  if (src_arg != nullptr) {
-    NodeArg& dst_arg = graph_.GetOrCreateNodeArg(std::string(dst_name), src_arg->TypeAsProto());
-    const TensorShapeProto* shape = src_arg->Shape();
-    if (shape == nullptr) {
-      dst_arg.ClearShape();
-    } else {
-      dst_arg.SetShape(*shape);
-    }
-
-    ORT_THROW_IF_ERROR(dst_arg.UpdateTypeAndShape(*src_arg, /*strict*/ false, /*override_types*/ false, logger_));
+  const NodeArg* src_arg = graph_.GetNodeArg(std::string(src_name));
+  if (!src_arg) {
+    return;
   }
+
+  const TypeProto* src_type = src_arg->TypeAsProto();
+  if (!src_type) {
+    return;
+  }
+
+  NodeArg& dst_arg = graph_.GetOrCreateNodeArg(std::string(dst_name), nullptr);
+
+  if (auto* dst_type = dst_arg.TypeAsProto(); dst_type != nullptr) {
+    ORT_ENFORCE(dst_type->value_case() == src_type->value_case() &&
+                    utils::TryGetElementDataType(*dst_type) == utils::TryGetElementDataType(*src_type),
+                "Existing destination type is not compatible with source type.");
+  }
+
+  graph_.SetNodeArgType(dst_arg, *src_type);
 }
 
 std::unique_ptr<api::GraphRef> MakeApiGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator,

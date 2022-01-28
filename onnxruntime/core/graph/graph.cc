@@ -33,10 +33,6 @@
 using namespace ONNX_NAMESPACE::checker;
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
-#include "onnx/defs/shape_inference.h"
-#endif
-
 using namespace ONNX_NAMESPACE;
 using namespace ONNX_NAMESPACE::Utils;
 using namespace ::onnxruntime::common;
@@ -67,43 +63,6 @@ static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
   return is_latest_opset;
 }
 
-static bool GraphLoadedFromModelFile(const GraphProto* graph_proto) {
-  return graph_proto && (graph_proto->node_size() != 0 ||
-                         graph_proto->output_size() != 0);
-}
-
-// there are some known invalid usages of dim_param and dim_value. remove them from the TypeProto so that
-// they don't affect shape inferencing or the allocation planner
-static void RemoveInvalidValues(ONNX_NAMESPACE::TypeProto& type) {
-  if (utils::HasTensorType(type) && utils::HasShape(type.tensor_type())) {
-    auto* shape = type.mutable_tensor_type()->mutable_shape();
-    for (int i = 0, end = shape->dim_size(); i < end; ++i) {
-      auto& dim = *shape->mutable_dim(i);
-      if (utils::HasDimParam(dim)) {
-        if (dim.dim_param().empty()) {
-          dim.clear_dim_param();
-        }
-      } else if (utils::HasDimValue(dim)) {
-        if (dim.dim_value() < 0) {
-          dim.clear_dim_value();
-        }
-      }
-    }
-  }
-}
-
-static TypeProto TypeProtoFromTensorProto(const TensorProto& tensor) {
-  TypeProto t;
-  t.mutable_tensor_type()->set_elem_type(tensor.data_type());
-  auto shape = t.mutable_tensor_type()->mutable_shape();
-  for (auto dim : tensor.dims())
-    shape->add_dim()->set_dim_value(dim);
-
-  return t;
-}
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 static Status MergeShapeInfo(const std::string& output_name,
                              const TypeProto& source, TypeProto& target,
                              bool strict, const logging::Logger& logger) {
@@ -186,7 +145,42 @@ static Status MergeShapeInfo(const std::string& output_name,
 
   return status;
 }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+
+static bool GraphLoadedFromModelFile(const GraphProto* graph_proto) {
+  return graph_proto && (graph_proto->node_size() != 0 ||
+                         graph_proto->output_size() != 0);
+}
+
+// there are some known invalid usages of dim_param and dim_value. remove them from the TypeProto so that
+// they don't affect shape inferencing or the allocation planner
+static void RemoveInvalidValues(ONNX_NAMESPACE::TypeProto& type) {
+  if (utils::HasTensorType(type) && utils::HasShape(type.tensor_type())) {
+    auto* shape = type.mutable_tensor_type()->mutable_shape();
+    for (int i = 0, end = shape->dim_size(); i < end; ++i) {
+      auto& dim = *shape->mutable_dim(i);
+      if (utils::HasDimParam(dim)) {
+        if (dim.dim_param().empty()) {
+          dim.clear_dim_param();
+        }
+      } else if (utils::HasDimValue(dim)) {
+        if (dim.dim_value() < 0) {
+          dim.clear_dim_value();
+        }
+      }
+    }
+  }
+}
+
+static TypeProto TypeProtoFromTensorProto(const TensorProto& tensor) {
+  TypeProto t;
+  t.mutable_tensor_type()->set_elem_type(tensor.data_type());
+  auto shape = t.mutable_tensor_type()->mutable_shape();
+  for (auto dim : tensor.dims())
+    shape->add_dim()->set_dim_value(dim);
+
+  return t;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type) {
@@ -360,6 +354,10 @@ void NodeArg::ClearShape() {
   }
 }
 
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD)
+
 common::Status NodeArg::OverrideTypesHelper(const ONNX_NAMESPACE::TypeProto& input_type,
                                             int32_t input_tensor_elem_type,
                                             int32_t current_tensor_elem_type,
@@ -389,8 +387,7 @@ common::Status NodeArg::OverrideTypesHelper(const ONNX_NAMESPACE::TypeProto& inp
 common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict,
                                            bool override_types, const logging::Logger& logger) {
   if (!utils::HasType(node_arg_info_)) {
-    *node_arg_info_.mutable_type() = input_type;
-    type_ = DataTypeUtils::ToType(node_arg_info_.type());
+    SetType(input_type);
     return Status::OK();
   }
 
@@ -509,6 +506,10 @@ void NodeArg::SetType(DataType p_type) {
   type_ = p_type;
   *(node_arg_info_.mutable_type()) = DataTypeUtils::ToTypeProto(p_type);
 }
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
 void NodeArg::SetType(const TypeProto& type_proto) {
   type_ = DataTypeUtils::ToType(type_proto);
@@ -4135,12 +4136,14 @@ void Graph::SetOutputs(const std::vector<const NodeArg*>& outputs) {
   GraphResolveNeeded(true);
 }
 
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 void Graph::SetNodeArgType(NodeArg& arg, const ONNX_NAMESPACE::TypeProto& type_proto) {
   arg.SetType(type_proto);
   GraphResolveNeeded(true);
 }
-
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
 Graph::~Graph() {
   // nothing to do, but we put it here so we don't need to fully define types in Graph that are held in unique_ptr

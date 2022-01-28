@@ -34,7 +34,7 @@ else()
   endif()
 endif()
 
-# For reference, this would be the full ONNX source include. We only need a subset in this build.
+# For reference, this would be the full ONNX source include. We only need data_type_utils in this build.
 # file(GLOB_RECURSE onnx_src CONFIGURE_DEPENDS
 #     "${ONNX_SOURCE_ROOT}/onnx/*.h"
 #     "${ONNX_SOURCE_ROOT}/onnx/*.cc"
@@ -51,8 +51,6 @@ set(onnx_src
   "${ONNX_SOURCE_ROOT}/onnx/common/common.h"
   "${ONNX_SOURCE_ROOT}/onnx/defs/data_type_utils.h"
   "${ONNX_SOURCE_ROOT}/onnx/defs/data_type_utils.cc"
-  "${ONNX_SOURCE_ROOT}/onnx/defs/shape_inference.h"
-  "${ONNX_SOURCE_ROOT}/onnx/defs/shape_inference.cc"
 )
 
 add_library(onnx ${onnx_src})

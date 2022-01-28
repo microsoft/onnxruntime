@@ -1075,12 +1075,12 @@ class Graph {
   */
   void SetOutputs(const std::vector<const NodeArg*>& outputs);
 
-  /** Sets the type of a NodeArg, replacing existing type/shape if any */
-  void SetNodeArgType(NodeArg& arg, const ONNX_NAMESPACE::TypeProto& type_proto);
-
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+  /** Sets the type of a NodeArg, replacing existing type/shape if any */
+  void SetNodeArgType(NodeArg& arg, const ONNX_NAMESPACE::TypeProto& type_proto);
+
   const Node* GetProducerNode(const std::string& node_arg_name) const {
     return GetProducerNodeImpl(*this, node_arg_name);
   }
