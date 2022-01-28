@@ -63,6 +63,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var inputShape = Array.ConvertAll<int, long>(inputMeta[inputName].Dimensions, d => d);
                 PopulateNativeBufferFloat(ortAllocationInput, inputData);
 
+                // Re-use ORT allocated CPU buffer to present this as external allocation
+                var externalInputAllocation = new OrtExternalAllocation(ortAllocationInput.Info, inputShape,
+                    Tensors.TensorElementType.Float, ortAllocationInput.Pointer);
+
                 var ortAllocationOutput = allocator.Allocate((uint)outputData.Length * sizeof(float));
                 dispList.Add(ortAllocationOutput);
 
@@ -102,6 +106,23 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         Assert.Equal(outputData, tensor.ToArray<float>(), new FloatComparer());
                     }
                 }
+                // 3. Pretend we are using external allocation which is currently on CPU
+                {
+                    ioBinding.BindInput(inputName, externalInputAllocation);
+                    ioBinding.BindOutput(outputName, Tensors.TensorElementType.Float, outputShape, ortAllocationOutput);
+                    ioBinding.SynchronizeBoundInputs();
+                    using (var outputs = session.RunWithBindingAndNames(runOptions, ioBinding))
+                    {
+                        ioBinding.SynchronizeBoundOutputs();
+                        Assert.Equal(1, outputs.Count);
+                        var output = outputs.ElementAt(0);
+                        Assert.Equal(outputName, output.Name);
+                        var tensor = output.AsTensor<float>();
+                        Assert.True(tensor.IsFixedSize);
+                        Assert.Equal(outputData, tensor.ToArray<float>(), new FloatComparer());
+                    }
+                }
+
             }
         }
     }
