@@ -10,9 +10,6 @@
 [submodule "cmake/external/onnx"]
 	path = cmake/external/onnx
 	url = https://github.com/onnx/onnx.git
-[submodule "cmake/external/tvm"]
-	path = cmake/external/tvm
-	url = https://github.com/microsoft/onnxruntime-tvm.git
 [submodule "cmake/external/date"]
 	path = cmake/external/date
 	url = https://github.com/HowardHinnant/date.git
@@ -59,26 +56,19 @@
 [submodule "cmake/external/mp11"]
 	path = cmake/external/mp11
 	url = https://github.com/boostorg/mp11.git
-[submodule "cmake/external/coremltools"]
-	path = cmake/external/coremltools
-	url = https://github.com/apple/coremltools.git
 [submodule "cmake/external/dlpack"]
 	path = cmake/external/dlpack
 	url = https://github.com/dmlc/dlpack.git
 [submodule "cmake/external/emsdk"]
 	path = cmake/external/emsdk
 	url = https://github.com/emscripten-core/emsdk.git
-	branch = 2.0.26
+	branch = 2.0.34
 [submodule "cmake/external/onnxruntime-extensions"]
 	path = cmake/external/onnxruntime-extensions
 	url = https://github.com/microsoft/onnxruntime-extensions.git
 [submodule "cmake/external/pytorch_cpuinfo"]
 	path = cmake/external/pytorch_cpuinfo
 	url = https://github.com/pytorch/cpuinfo.git
-
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/onnx/onnx-tensorrt.git
-[submodule "cmake/external/tvm_update"]
-	path = cmake/external/tvm_update
-	url = https://github.com/apache/tvm

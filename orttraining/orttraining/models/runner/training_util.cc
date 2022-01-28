@@ -51,7 +51,7 @@ common::Status DataSet::AddData(const vector<ONNX_NAMESPACE::TensorProto>& featu
     ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &cpu_tensor_length));
     OrtValue ort_value;
     OrtMemoryInfo info("Cpu", OrtDeviceAllocator, OrtDevice{}, 0, OrtMemTypeDefault);
-    std::unique_ptr<char[]> buffer(new char[cpu_tensor_length]);
+    std::unique_ptr<char[]> buffer = std::make_unique<char[]>(cpu_tensor_length);
     ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(
         Env::Default(), nullptr, tensor_proto, MemBuffer(buffer.get(), cpu_tensor_length, info), ort_value));
 
@@ -99,7 +99,7 @@ std::vector<OrtValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th, Alloc
     const Tensor& first_tensor = data_[0]->at(input_index).Get<Tensor>();
 
     MLDataType element_type = first_tensor.DataType();
-    std::vector<int64_t> shape_vector = first_tensor.Shape().GetDimsAsVector();
+    auto shape_vector = first_tensor.Shape().AsShapeVector();
     if (first_tensor.Shape().Size() > 1) {
       shape_vector.insert(shape_vector.begin(), batch_size);
     } else {
@@ -108,7 +108,7 @@ std::vector<OrtValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th, Alloc
     }
 
     AllocatorPtr alloc = allocator ? allocator : TrainingUtil::GetCpuAllocator();
-    auto p_tensor = std::make_unique<Tensor>(element_type, shape_vector, alloc);
+    auto p_tensor = std::make_unique<Tensor>(element_type, shape_vector, std::move(alloc));
     void* buffer = p_tensor->MutableDataRaw();
     size_t memory_size_per_sample = first_tensor.SizeInBytes();
 

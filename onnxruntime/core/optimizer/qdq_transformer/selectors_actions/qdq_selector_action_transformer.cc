@@ -45,6 +45,29 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
 #endif
 }
 
+// create rules for ops that don't change the data
+void DropDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
+  // 2 nodes. DQ, target. Merge into target and remove DQ.
+  const std::string action_name{"dropDQ"};
+  NTO::NodeLocation dq{NTO::NodeType::kInput, 0};
+
+  // Move DQ input 0 to target input 0.
+  std::vector<NodeAndMoveInfo> moves{
+      MoveToSlot(dq, ArgType::kInput, 0, ArgType::kInput, 0)};
+
+  std::unique_ptr<Action> action = std::make_unique<MergeIntoTarget>(std::move(moves));
+
+#if !defined(ORT_MINIMAL_BUILD)
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DropDQNodesSelector>();
+  qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
+                                                         {{"ArgMax", {}}},
+                                                         std::move(selector),
+                                                         std::move(action));
+#else
+  qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
+#endif
+}
+
 void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   // 3 nodes. DQ, target, Q
   // Replace with internal QLinear version of operator. Delete all original nodes.
@@ -148,6 +171,7 @@ SelectorActionRegistry CreateSelectorActionRegistry(bool is_int8_allowed) {
   SelectorActionRegistry qdq_selector_action_registry;
 
   DropQDQNodesRules(qdq_selector_action_registry);
+  DropDQNodesRules(qdq_selector_action_registry);
   UnaryOpQDQRules(qdq_selector_action_registry);
   BinaryOpQDQRules(qdq_selector_action_registry);
   VariadicOpQDQRules(qdq_selector_action_registry);
