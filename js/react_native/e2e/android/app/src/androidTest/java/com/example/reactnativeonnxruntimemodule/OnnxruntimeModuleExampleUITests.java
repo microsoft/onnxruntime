@@ -33,26 +33,21 @@ public class OnnxruntimeModuleExampleUITests {
     public void testExample() {
         // Wait for a view displayed
         int waitTime = 0;
-        boolean found = true;
+        final int sleepTime = 1000;
         do {
             try {
-                found = true;
-                onView(allOf(withContentDescription("output")));
+                ViewInteraction view = onView(allOf(withContentDescription("output"), isDisplayed()));
+                if (getText(view) != null) {
+                    break;
+                }
             } catch (NoMatchingViewException ne) {
                 try {
-                    Thread.sleep(1000);
+                    Thread.sleep(sleepTime);
                 } catch (InterruptedException ie) {
                 }
-                waitTime += 1000;
-                found = false;
+                waitTime += sleepTime;
             }
-        } while (!found && waitTime < 180000);
-
-        // Wait for a model running
-        try {
-            Thread.sleep(5000);
-        } catch (InterruptedException ie) {
-        }
+        } while (waitTime < 180000);
 
         ViewInteraction view = onView(allOf(withContentDescription("output"), isDisplayed()));
         Assert.assertEquals(getText(view), "Result: 3");
