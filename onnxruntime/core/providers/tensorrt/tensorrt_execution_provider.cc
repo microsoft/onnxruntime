@@ -1458,8 +1458,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       auto trt_context = trt_state->context->get();
       auto trt_profile = &(trt_state->trt_profile);
       auto cuda_graph = &(trt_state->cuda_graph);
-      /////auto cuda_graph = trt_state->cuda_graph;
-      //////auto cuda_graph = trt_state->cuda_graph->get();
 
       auto alloc = trt_state->scratch_allocator;
       int num_inputs = static_cast<int>(input_indexes.size());
