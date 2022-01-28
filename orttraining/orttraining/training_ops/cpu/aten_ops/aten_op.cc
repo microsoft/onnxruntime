@@ -51,12 +51,11 @@ Status ExecuteReduceSumATenOp(OpKernelContext* p_ctx, const gsl::span<const int6
   TensorShapeVector keepdims_tensor_shape(1, 1);
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   OrtMemoryInfo info("Cpu", OrtDeviceAllocator);
-  axes_tensor.Init(new Tensor(DataTypeImpl::GetType<int64_t>(), axes_tensor_shape,
-                              const_cast<void*>(reinterpret_cast<const void*>(&axes[0])), info),
-                   ml_tensor, ml_tensor->GetDeleteFunc());
-  keepdims_tensor.Init(
-      new Tensor(DataTypeImpl::GetType<bool>(), keepdims_tensor_shape, reinterpret_cast<void*>(&keepdims), info),
-      ml_tensor, ml_tensor->GetDeleteFunc());
+  auto axes_tensor_obj = std::make_unique<Tensor>(DataTypeImpl::GetType<int64_t>(), axes_tensor_shape,
+                              const_cast<void*>(reinterpret_cast<const void*>(&axes[0])), info);
+  axes_tensor.Init(axes_tensor_obj.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+  auto keepdims_tensor_obj = std::make_unique<Tensor>(DataTypeImpl::GetType<bool>(), keepdims_tensor_shape, reinterpret_cast<void*>(&keepdims), info);
+  keepdims_tensor.Init(keepdims_tensor_obj.release(), ml_tensor, ml_tensor->GetDeleteFunc());
   dlpacks.emplace_back(dlpack::OrtValueToDlpack(axes_tensor));
   dlpacks.emplace_back(dlpack::OrtValueToDlpack(keepdims_tensor));
   dlpacks.emplace_back(nullptr);

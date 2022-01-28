@@ -84,6 +84,9 @@ function(AddTest)
       # Raw new and delete. A lot of such things came from googletest.
       target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26409>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
+      # "Global initializer calls a non-constexpr function."
+      target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26426>"
+                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26426>")
     endif()
     target_compile_options(${_UT_TARGET} PRIVATE ${disabled_warnings})
   else()
@@ -456,12 +459,12 @@ if(onnxruntime_USE_COREML)
   endif()
 endif()
 
-file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
-  "${TEST_SRC_DIR}/tvm/*.h"
-  "${TEST_SRC_DIR}/tvm/*.cc"
-  )
-
 if(onnxruntime_USE_NUPHAR)
+  file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/tvm/*.h"
+    "${TEST_SRC_DIR}/tvm/*.cc"
+    )
+
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/framework/nuphar/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nuphar)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nuphar)
@@ -641,7 +644,7 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND all_tests ${onnxruntime_test_training_src})
 endif()
 
-if (onnxruntime_USE_TVM)
+if (onnxruntime_USE_NUPHAR)
   list(APPEND all_tests ${onnxruntime_test_tvm_src})
 endif()
 
@@ -877,6 +880,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
                         "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26814>")
       target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26814>"
                         "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26497>")
+      target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26426>"
+                        "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26426>")
       target_compile_options(onnxruntime_benchmark PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
               "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     endif()
@@ -893,6 +898,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE debug Dbghelp)
       # Avoid using new and delete. But this is a benchmark program, it's ok if it has a chance to leak.
       target_compile_options(onnxruntime_mlas_benchmark PRIVATE /wd26409)
+      # "Global initializer calls a non-constexpr function." BENCHMARK_CAPTURE macro needs this.
+      target_compile_options(onnxruntime_mlas_benchmark PRIVATE /wd26426)
     else()
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE nsync_cpp ${CMAKE_DL_LIBS})
     endif()
@@ -1141,6 +1148,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd6326>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
+    target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26426>"
+                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26426>")
   endif()
   if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
     set_target_properties(onnxruntime_mlas_test PROPERTIES

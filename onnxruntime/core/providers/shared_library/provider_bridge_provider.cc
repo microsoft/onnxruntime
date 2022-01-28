@@ -60,10 +60,16 @@ void operator delete(void* p, size_t /*size*/) noexcept { return Provider_GetHos
 #endif
 
 namespace onnxruntime {
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// "Global initializer calls a non-constexpr function." 
+#pragma warning(disable : 26426)
+#endif
 ProviderHost* g_host = Provider_GetHost();
 ProviderHostCPU& g_host_cpu = g_host->GetProviderHostCPU();
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
 
 void RunOnUnload(std::function<void()> function) {

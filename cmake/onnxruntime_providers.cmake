@@ -784,7 +784,7 @@ if (onnxruntime_USE_COREML)
 
   # Compile CoreML proto definition to ${CMAKE_CURRENT_BINARY_DIR}/coreml
   if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    set(COREML_PROTO_ROOT ${PROJECT_SOURCE_DIR}/external/coremltools/mlmodel/format)
+    set(COREML_PROTO_ROOT ${PROJECT_SOURCE_DIR}/../onnxruntime/core/providers/coreml/mlmodel_format)
     file(GLOB coreml_proto_srcs
       "${COREML_PROTO_ROOT}/*.proto"
     )
@@ -1275,6 +1275,10 @@ if (onnxruntime_USE_ROCM)
 endif()
 
 if (onnxruntime_USE_STVM)
+  if (NOT TARGET tvm)
+    message(STATUS "Include TVM.")
+    include(tvm)
+  endif()
   add_definitions(-DUSE_STVM=1)
 
   file (GLOB_RECURSE onnxruntime_providers_stvm_cc_srcs CONFIGURE_DEPENDS
@@ -1293,20 +1297,16 @@ if (onnxruntime_USE_STVM)
           ${onnxruntime_STVM_HOME}/3rdparty/dlpack/include
           ${onnxruntime_STVM_HOME}/3rdparty/dmlc-core/include
           ${PYTHON_INLCUDE_DIRS})
-  onnxruntime_add_include_to_target(onnxruntime_providers_stvm onnxruntime_common onnx)
+  onnxruntime_add_include_to_target(onnxruntime_providers_stvm onnxruntime_common onnx tvm)
 
   add_dependencies(onnxruntime_providers_stvm ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
   target_link_libraries(onnxruntime_providers_stvm PRIVATE
       onnx
+      tvm
       onnxruntime_common
       onnxruntime_framework
   )
-  if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    target_link_libraries(onnxruntime_providers_stvm PRIVATE ${onnxruntime_STVM_HOME}/build/libtvm.dylib)
-  else()
-    target_link_libraries(onnxruntime_providers_stvm PRIVATE ${onnxruntime_STVM_HOME}/build/libtvm.so)
-  endif()
 
   set_target_properties(onnxruntime_providers_stvm PROPERTIES FOLDER "ONNXRuntime")
   set_target_properties(onnxruntime_providers_stvm PROPERTIES LINKER_LANGUAGE CXX)

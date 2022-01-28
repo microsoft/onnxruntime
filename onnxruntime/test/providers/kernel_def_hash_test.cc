@@ -107,7 +107,7 @@ KernelDefHashes ParseKernelDefHashes(std::istream& in) {
 
 void AppendKernelDefHashesFromFile(const PathString& path, KernelDefHashes& kernel_def_hashes) {
   std::ifstream in{path};
-  ORT_ENFORCE(in, "Failed to open file: ", ToMBString(path));
+  ORT_ENFORCE(in, "Failed to open file: ", ToUTF8String(path));
   const auto file_kernel_def_hashes = ParseKernelDefHashes(in);
   kernel_def_hashes.insert(
       kernel_def_hashes.end(), file_kernel_def_hashes.begin(), file_kernel_def_hashes.end());
