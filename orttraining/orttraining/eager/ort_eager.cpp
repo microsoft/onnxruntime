@@ -12,6 +12,7 @@
 #include "ort_customops.h"
 #include "torch/csrc/autograd/python_variable.h"
 #include "core/framework/tensor.h"
+#include "orttraining/python/orttraining_python_module_eager.h"
 
 namespace onnxruntime{
 namespace python{
@@ -49,7 +50,7 @@ OrtValue ORTTensor_toORTValue(const at::Tensor& data)
 at::Tensor OrtValue_To_ATen_Tensor(OrtValue& ortvalue)
 {
   auto& ort_tensor = ortvalue.Get<Tensor>();
-  size_t ort_device_idx = torch_ort::eager::GetORTBackendsManager().GetOrtDeviceIndex(ort_tensor.Location());
+  size_t ort_device_idx = GetORTBackendsManager().GetOrtDeviceIndex(ort_tensor.Location());
   return torch_ort::eager::aten_tensor_from_ort(
     std::move(ortvalue),
     at::TensorOptions()
@@ -78,15 +79,15 @@ void addObjectMethodsForEager(py::module& m){
   m.def("set_device", [](size_t device_index, 
                                           const std::string& provider_type,
                                           const std::unordered_map<std::string, std::string>& arguments){
-      auto status = torch_ort::eager::GetORTBackendsManager().set_device(device_index, provider_type, arguments);
+      auto status = GetORTBackendsManager().set_device(device_index, provider_type, arguments);
       if (!status.IsOK())
         throw std::runtime_error(status.ErrorMessage());
     });
   m.def("get_ort_device", [](size_t torch_device_index){
-    return torch_ort::eager::GetORTBackendsManager().GetOrtDeviceInfo(torch_device_index);
+    return GetORTBackendsManager().GetOrtDeviceInfo(torch_device_index);
   });
   m.def("get_ort_device_provider_info", [](size_t torch_device_index){
-    return torch_ort::eager::GetORTBackendsManager().GetOrtDeviceProviderInfo(torch_device_index);
+    return GetORTBackendsManager().GetOrtDeviceProviderInfo(torch_device_index);
   });
 
   auto customop_module = m.def_submodule("custom_ops");

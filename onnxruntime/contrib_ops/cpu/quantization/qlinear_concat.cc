@@ -98,7 +98,7 @@ Status QLinearConcat::Compute(OpKernelContext* ctx) const {
   std::vector<std::vector<uint8_t>> dynamic_lookup_tables(input_count);
   std::vector<int> dynamic_table_attrs(input_count, 0);
 
-  std::vector<const Tensor*> input_tensors(input_count);
+  InlinedTensorsVector input_tensors(input_count);
   for (auto input_index = 0; input_index < input_count; ++input_index) {
     auto tuple_start = 2 + input_index * 3;
     input_tensors[input_index] = ctx->Input<Tensor>(static_cast<int>(tuple_start));

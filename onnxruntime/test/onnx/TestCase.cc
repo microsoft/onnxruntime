@@ -150,7 +150,7 @@ static void SortFileNames(std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_
       oss << input_pb_files[0];
       for (size_t j = 1; j != input_pb_files.size(); ++j)
         oss << ORT_TSTR(" ") << input_pb_files[j];
-      ORT_THROW("illegal input file name:", ToMBString(oss.str()));
+      ORT_THROW("illegal input file name:", ToUTF8String(oss.str()));
     }
   }
 }
@@ -423,12 +423,12 @@ static void LoadTensor(const PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::TensorPr
   int tensor_fd;
   auto st = Env::Default().FileOpenRd(pb_file, tensor_fd);
   if (!st.IsOK()) {
-    ORT_THROW("open file '", ToMBString(pb_file), "' failed:", st.ErrorMessage());
+    ORT_THROW("open file '", ToUTF8String(pb_file), "' failed:", st.ErrorMessage());
   }
   google::protobuf::io::FileInputStream f(tensor_fd, protobuf_block_size_in_bytes);
   f.SetCloseOnDelete(true);
   if (!input_pb.ParseFromZeroCopyStream(&f)) {
-    ORT_THROW("parse file '", ToMBString(pb_file), "' failed");
+    ORT_THROW("parse file '", ToUTF8String(pb_file), "' failed");
   }
 }
 
@@ -438,12 +438,12 @@ static void LoadSequenceTensor(const PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::
   int tensor_fd;
   auto st = Env::Default().FileOpenRd(pb_file, tensor_fd);
   if (!st.IsOK()) {
-    ORT_THROW("open file '", ToMBString(pb_file), "' failed:", st.ErrorMessage());
+    ORT_THROW("open file '", ToUTF8String(pb_file), "' failed:", st.ErrorMessage());
   }
   google::protobuf::io::FileInputStream f(tensor_fd, protobuf_block_size_in_bytes);
   f.SetCloseOnDelete(true);
   if (!input_pb.ParseFromZeroCopyStream(&f)) {
-    ORT_THROW("parse file '", ToMBString(pb_file), "' failed");
+    ORT_THROW("parse file '", ToUTF8String(pb_file), "' failed");
   }
 }
 
@@ -454,12 +454,12 @@ static void LoadOptional(const PATH_STRING_TYPE& pb_file,
   int tensor_fd;
   auto st = Env::Default().FileOpenRd(pb_file, tensor_fd);
   if (!st.IsOK()) {
-    ORT_THROW("open file '", ToMBString(pb_file), "' failed:", st.ErrorMessage());
+    ORT_THROW("open file '", ToUTF8String(pb_file), "' failed:", st.ErrorMessage());
   }
   google::protobuf::io::FileInputStream f(tensor_fd, protobuf_block_size_in_bytes);
   f.SetCloseOnDelete(true);
   if (!input_pb.ParseFromZeroCopyStream(&f)) {
-    ORT_THROW("parse file '", ToMBString(pb_file), "' failed");
+    ORT_THROW("parse file '", ToUTF8String(pb_file), "' failed");
   }
 }
 #endif
@@ -487,7 +487,7 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {
         std::ostringstream oss2;
-        oss2 << "parse data file \"" << ToMBString(test_data_pb) << "\" failed:" << ex.what();
+        oss2 << "parse data file \"" << ToUTF8String(test_data_pb) << "\" failed:" << ex.what();
         ORT_THROW(oss.str());
       });
     }
@@ -719,7 +719,7 @@ OnnxTestCase::OnnxTestCase(const std::string& test_case_name, _In_ std::unique_p
     if (f_type == OrtFileType::TYPE_DIR) {
       std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(test_case_dir, filename);
       test_data_dirs_.push_back(p);
-      debuginfo_strings_.push_back(ToMBString(p));
+      debuginfo_strings_.push_back(ToUTF8String(p));
     }
     return true;
   });
@@ -778,10 +778,10 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       } else if (is_ort_format) {
         model_info = TestModelInfo::LoadOrtModel(p.c_str());
       } else {
-        ORT_NOT_IMPLEMENTED(ToMBString(filename_str), " is not supported");
+        ORT_NOT_IMPLEMENTED(ToUTF8String(filename_str), " is not supported");
       }
 
-      std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToMBString(test_case_name), std::move(model_info),
+      std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToUTF8String(test_case_name), std::move(model_info),
                                                         default_per_sample_tolerance,
                                                         default_relative_per_sample_tolerance);
       process_function(std::move(l));

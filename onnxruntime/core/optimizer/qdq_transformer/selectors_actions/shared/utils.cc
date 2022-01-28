@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 #include "utils.h"
 
 #include <iostream>
@@ -10,7 +12,6 @@
 #include <core/graph/graph_viewer.h>
 #include <core/providers/common.h>
 
-#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 
 namespace onnxruntime {
@@ -101,7 +102,7 @@ void SelectorManager::InitializeSelectorsMap() {
   }
 }
 
-void SelectorManager::Initialize() {
+SelectorManager::SelectorManager() {
   CreateSelectors();
   InitializeSelectorsMap();
 }
@@ -142,3 +143,5 @@ std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& grap
 
 }  // namespace QDQ
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

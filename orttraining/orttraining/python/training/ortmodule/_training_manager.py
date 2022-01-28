@@ -52,6 +52,9 @@ class TrainingManager(GraphExecutionManager):
         forward_inputs = C.OrtValueVector()
         forward_inputs.reserve(len(inputs))
         for input in inputs:
+            # TODO: Non-contiguous tensor input in execution_session_run_forward, need tensor copy.
+            if not input.is_contiguous():
+                input = input.contiguous()
             if input.device.type == 'ort':
                 forward_inputs.push_back(C.aten_ort_tensor_to_ort_value(input))
             else:
