@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {WebGLBackend} from './backends/backend-webgl';
+import {WebGpuBackend} from './backends/backend-webgpu';
 import {Graph} from './graph';
 import {Operator} from './operators';
 import {OpSet} from './opset';
@@ -79,6 +80,7 @@ const backendsCache: Map<string, Backend> = new Map();
 
 export const backend: {[name: string]: Backend} = {
   webgl: new WebGLBackend(),
+  webgpu: new WebGpuBackend()
 };
 
 /**
