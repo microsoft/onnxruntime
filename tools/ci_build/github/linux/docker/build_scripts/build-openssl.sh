@@ -18,8 +18,10 @@ check_var ${OPENSSL_DOWNLOAD_URL}
 OPENSSL_VERSION=${OPENSSL_ROOT#*-}
 OPENSSL_MIN_VERSION=1.1.1
 
-INSTALLED=$(openssl version | head -1 | awk '{ print $2 }')
-SMALLEST=$(echo -e "${INSTALLED}\n${OPENSSL_MIN_VERSION}" | sort -t. -k 1,1n -k 2,2n -k 3,3n -k 4,4n | head -1)
+# || test $? -eq 141 is there to ignore SIGPIPE with set -o pipefail
+# c.f. https://stackoverflow.com/questions/22464786/ignoring-bash-pipefail-for-error-code-141#comment60412687_33026977
+INSTALLED=$((openssl version | head -1 || test $? -eq 141) | awk '{ print $2 }')
+SMALLEST=$(echo -e "${INSTALLED}\n${OPENSSL_MIN_VERSION}" | sort -t. -k 1,1n -k 2,2n -k 3,3n -k 4,4n | head -1 || test $? -eq 141)
 
 # Ignore letters in version numbers
 if [ "${SMALLEST}" = "${OPENSSL_MIN_VERSION}" ]; then

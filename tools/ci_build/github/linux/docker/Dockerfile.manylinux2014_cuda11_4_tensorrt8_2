@@ -65,15 +65,9 @@ RUN export LIBTOOL_ROOT=libtool-2.4.6 && \
     export LIBTOOL_DOWNLOAD_URL=http://ftp.gnu.org/gnu/libtool && \
     manylinux-entrypoint /build_scripts/install-libtool.sh
 
-COPY build_scripts/install-patchelf.sh /build_scripts/
-RUN export PATCHELF_VERSION=0.13 && \
-    export PATCHELF_HASH=60c6aeadb673de9cc1838b630c81f61e31c501de324ef7f1e8094a2431197d09 && \
-    export PATCHELF_DOWNLOAD_URL=https://github.com/NixOS/patchelf/archive && \
-    manylinux-entrypoint /build_scripts/install-patchelf.sh
-
 COPY build_scripts/install-libxcrypt.sh /build_scripts/
-RUN export LIBXCRYPT_VERSION=4.4.26 && \
-    export LIBXCRYPT_HASH=e8a544dd19171c1e6191a6044c96cc31496d781ba08b5a00f53310d001d58114 && \
+RUN export LIBXCRYPT_VERSION=4.4.27 && \
+    export LIBXCRYPT_HASH=e4ff47b7fa5370fa08e27258f8a0de5cb7e9b09c297ec7ab56a8a82e229a1c84 && \
     export LIBXCRYPT_DOWNLOAD_URL=https://github.com/besser82/libxcrypt/archive && \
     export PERL_ROOT=perl-5.34.0 && \
     export PERL_HASH=551efc818b968b05216024fb0b727ef2ad4c100f8cb6b43fab615fa78ae5be9a && \
@@ -87,8 +81,8 @@ RUN manylinux-entrypoint /build_scripts/install-build-packages.sh
 
 FROM build_base AS build_git
 COPY build_scripts/build-git.sh /build_scripts/
-RUN export GIT_ROOT=git-2.33.1 && \
-    export GIT_HASH=02047f8dc8934d57ff5e02aadd8a2fe8e0bcf94a7158da375e48086cc46fce1d && \
+RUN export GIT_ROOT=git-2.34.1 && \
+    export GIT_HASH=fc4eb5ecb9299db91cdd156c06cdeb41833f53adc5631ddf8c0cb13eaa2911c1 && \
     export GIT_DOWNLOAD_URL=https://www.kernel.org/pub/software/scm/git && \
     manylinux-entrypoint /build_scripts/build-git.sh
 
@@ -106,14 +100,14 @@ RUN export SWIG_ROOT=swig-4.0.2 && \
 
 FROM build_base AS build_cpython
 COPY build_scripts/build-sqlite3.sh /build_scripts/
-RUN export SQLITE_AUTOCONF_ROOT=sqlite-autoconf-3360000 && \
-    export SQLITE_AUTOCONF_HASH=bd90c3eb96bee996206b83be7065c9ce19aef38c3f4fb53073ada0d0b69bbce3 && \
-    export SQLITE_AUTOCONF_DOWNLOAD_URL=https://www.sqlite.org/2021 && \
+RUN export SQLITE_AUTOCONF_ROOT=sqlite-autoconf-3370200 && \
+    export SQLITE_AUTOCONF_HASH=4089a8d9b467537b3f246f217b84cd76e00b1d1a971fe5aca1e30e230e46b2d8 && \
+    export SQLITE_AUTOCONF_DOWNLOAD_URL=https://www.sqlite.org/2022 && \
     manylinux-entrypoint /build_scripts/build-sqlite3.sh
 
 COPY build_scripts/build-openssl.sh /build_scripts/
-RUN export OPENSSL_ROOT=openssl-1.1.1l && \
-    export OPENSSL_HASH=0b7a3e5e59c34827fe0c3a74b7ec8baef302b98fa80088d7f9153aa16fa76bd1 && \
+RUN export OPENSSL_ROOT=openssl-1.1.1m && \
+    export OPENSSL_HASH=f89199be8b23ca45fc7cb9f1d8d3ee67312318286ad030f5316aca6462db6c96 && \
     export OPENSSL_DOWNLOAD_URL=https://www.openssl.org/source && \
     manylinux-entrypoint /build_scripts/build-openssl.sh
 
@@ -137,17 +131,19 @@ RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.8.12
 
 FROM build_cpython AS build_cpython39
 COPY build_scripts/ambv-pubkey.txt /build_scripts/cpython-pubkeys.txt
-RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.9.8
+RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.9.10
 
 
 FROM build_cpython AS build_cpython310
 COPY build_scripts/cpython-pubkey-310-311.txt /build_scripts/cpython-pubkeys.txt
-RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.10.0
+RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.10.2
 
 
 FROM build_cpython AS all_python
-COPY build_scripts/install-pypy.sh /build_scripts/install-pypy.sh
-COPY build_scripts/pypy.sha256 /build_scripts/pypy.sha256
+COPY build_scripts/install-pypy.sh \
+     build_scripts/pypy.sha256 \
+     build_scripts/finalize-python.sh \
+     /build_scripts/
 RUN manylinux-entrypoint /build_scripts/install-pypy.sh 3.7 7.3.7
 RUN manylinux-entrypoint /build_scripts/install-pypy.sh 3.8 7.3.7
 COPY --from=build_cpython36 /opt/_internal /opt/_internal/
@@ -155,7 +151,7 @@ COPY --from=build_cpython37 /opt/_internal /opt/_internal/
 COPY --from=build_cpython38 /opt/_internal /opt/_internal/
 COPY --from=build_cpython39 /opt/_internal /opt/_internal/
 COPY --from=build_cpython310 /opt/_internal /opt/_internal/
-RUN hardlink -cv /opt/_internal
+RUN manylinux-entrypoint /build_scripts/finalize-python.sh
 
 
 FROM runtime_base
