@@ -61,11 +61,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var ortAllocationInput = allocator.Allocate((uint)inputData.Length * sizeof(float));
                 dispList.Add(ortAllocationInput);
                 var inputShape = Array.ConvertAll<int, long>(inputMeta[inputName].Dimensions, d => d);
+                var shapeSize = ArrayUtilities.GetSizeForShape(inputShape);
+                Assert.Equal(shapeSize, inputData.Length);
                 PopulateNativeBufferFloat(ortAllocationInput, inputData);
 
                 // Re-use ORT allocated CPU buffer to present this as external allocation
+                var sizeInBytes = shapeSize * sizeof(float);
                 var externalInputAllocation = new OrtExternalAllocation(ortAllocationInput.Info, inputShape,
-                    Tensors.TensorElementType.Float, ortAllocationInput.Pointer);
+                    Tensors.TensorElementType.Float, ortAllocationInput.Pointer, sizeInBytes);
 
                 var ortAllocationOutput = allocator.Allocate((uint)outputData.Length * sizeof(float));
                 dispList.Add(ortAllocationOutput);

@@ -191,12 +191,11 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="isInput">whether this is an input or output</param>
         private void BindExternalAllocation(string name, OrtExternalAllocation allocation, bool isInput)
         {
-            var size = ArrayUtilities.GetSizeForShape(allocation.Shape);
             using (var ortValue = OrtValue.CreateTensorValueWithData(allocation.Info,
                                                         allocation.ElementType,
                                                         allocation.Shape,
                                                         allocation.Pointer,
-                                                        size))
+                                                        allocation.Size))
                 BindInputOrOutput(name, ortValue.Handle, isInput);
         }
 

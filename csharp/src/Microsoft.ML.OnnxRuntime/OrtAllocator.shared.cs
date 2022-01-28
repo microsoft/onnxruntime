@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -312,8 +313,11 @@ namespace Microsoft.ML.OnnxRuntime
 
     /// <summary>
     /// This class represents an arbitrary buffer of memory
-    /// allocated and owned by the user. It can be either a CPU or GPU memory.
+    /// allocated and owned by the user. It can be either a CPU, GPU or other device memory
+    /// that can be suitably represented by IntPtr.
     /// This is just a composite of the buffer related information.
+    /// The memory is assumed to be pinned if necessary and usable immediately
+    /// in the native code.
     /// </summary>
     public class OrtExternalAllocation
     {
@@ -324,12 +328,28 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="shape">shape of this buffer</param>
         /// <param name="elementType">element type</param>
         /// <param name="pointer">the actual pointer to memory</param>
-        public OrtExternalAllocation(OrtMemoryInfo memInfo, long[] shape, Tensors.TensorElementType elementType, IntPtr pointer)
+        /// <param name="sizeInBytes">size of the allocation in bytes</param>
+        public OrtExternalAllocation(OrtMemoryInfo memInfo, long[] shape, Tensors.TensorElementType elementType, IntPtr pointer, long sizeInBytes)
         {
+            Type type;
+            int width;
+            TensorElementTypeConverter.GetTypeAndWidth(elementType, out type, out width);
+            if (width < 1)
+            {
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Unsupported data type (such as string)");
+            }
+
+            var shapeSize = ArrayUtilities.GetSizeForShape(shape);
+            if ((shapeSize * width) > sizeInBytes)
+            {
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Shape of this type exceeds the declared buffer size");
+            }
+
             Info = memInfo;
             Shape = shape;
             ElementType = elementType;
             Pointer = pointer;
+            Size = sizeInBytes;
         }
 
         /// <summary>
@@ -348,6 +368,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// Actual memory ptr
         /// </summary>
         public IntPtr Pointer { get; private set; }
+        /// <summary>
+        /// Size of the allocation in bytes
+        /// </summary>
+        public long Size { get; private set; }
     }
 
     /// <summary>
