@@ -1204,7 +1204,7 @@ function(onnxruntime_configure_target target_name)
   endif()
   
   # Keep BinSkim happy
-  if(MSVC)
+  if(MSVC AND NOT onnxruntime_target_platform MATCHES "ARM")
     target_link_options(${target_name} PRIVATE "/CETCOMPAT")
   endif()
 endfunction()
