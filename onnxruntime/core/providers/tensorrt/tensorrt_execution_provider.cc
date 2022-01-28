@@ -1166,9 +1166,9 @@ std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetEngineBuildLock() const
 
 common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fused_nodes,
                                                   std::vector<NodeComputeInfo>& node_compute_funcs) {
-  int fused_nodes_size = fused_nodes.size();
+  size_t fused_nodes_size = fused_nodes.size();
   cuda_graphs_.reserve(fused_nodes_size);
-  for (int node_idx = 0; node_idx < fused_nodes_size; node_idx++) {
+  for (size_t node_idx = 0; node_idx < fused_nodes_size; node_idx++) {
     const auto* fused_node = fused_nodes[node_idx];
     // Build map from input name to its index in input definitions
     std::unordered_map<std::string, size_t> input_map;
@@ -1457,7 +1457,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       auto trt_engine = trt_state->engine->get();
       auto trt_context = trt_state->context->get();
       auto trt_profile = &(trt_state->trt_profile);
-      auto cuda_graph = &(trt_state->cuda_graph);
+      auto cuda_graph_ptr = &(trt_state->cuda_graph_ptr);
 
       auto alloc = trt_state->scratch_allocator;
       int num_inputs = static_cast<int>(input_indexes.size());
@@ -2023,21 +2023,23 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       // Run TRT inference			  
       if (trt_state->cuda_graph_enable)
       {
-          if (*cuda_graph == nullptr) {
+          if (*cuda_graph_ptr == nullptr) {
             cudaGraph_t graph;
-            *cuda_graph = &(trt_state->cuda_graph_instance);
+            *cuda_graph_ptr = &(trt_state->cuda_graph_instance);
             //warm up for cuda graph capturing
             if (!trt_context->enqueueV2(&buffers[0], stream, nullptr)) {
               return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
-            }   
-            cudaStreamBeginCapture(stream, cudaStreamCaptureModeRelaxed );
+            }
+            CUDA_CALL_THROW(cudaStreamBeginCapture(stream, cudaStreamCaptureModeRelaxed));
             if (!trt_context->enqueueV2(&buffers[0], stream, nullptr)) {
               return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
-            }	    
-            cudaStreamEndCapture(stream, &graph);
-            cudaGraphInstantiate(*cuda_graph, graph, NULL, NULL, 0);
+            }
+            CUDA_CALL_THROW(cudaStreamEndCapture(stream, &graph));
+            CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+            CUDA_CALL_THROW(cudaGraphInstantiate(*cuda_graph_ptr, graph, NULL, NULL, 0));
+            CUDA_CALL_THROW(cudaGraphDestroy(graph));
           }
-          cudaGraphLaunch(**cuda_graph, stream);
+          cudaGraphLaunch(**cuda_graph_ptr, stream);
       } else {
         if (!trt_context->enqueueV2(&buffers[0], stream, nullptr)) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");

@@ -98,7 +98,7 @@ struct TensorrtFuncState {
   bool dla_enable;
   int dla_core;
   bool cuda_graph_enable;
-  cudaGraphExec_t* cuda_graph = nullptr;
+  cudaGraphExec_t* cuda_graph_ptr = nullptr;
   cudaGraphExec_t cuda_graph_instance;
   size_t* max_workspace_size_ptr = nullptr;
   std::string trt_node_name_with_precision;
