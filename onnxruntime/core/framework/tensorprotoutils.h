@@ -206,25 +206,29 @@ inline bool HasElementType(const ONNX_NAMESPACE::TypeProto& type_proto) {
 
 // Try to get the element data type.
 // The element data type value corresponds to TensorProto_DataType. It is applicable to types with shapes.
-inline std::optional<int32_t> TryGetElementDataType(const ONNX_NAMESPACE::TypeProto& type_proto) {
+inline bool TryGetElementDataType(const ONNX_NAMESPACE::TypeProto& type_proto, int32_t& element_data_type) {
   if (HasTensorType(type_proto) && HasElemType(type_proto.tensor_type())) {
-    return type_proto.tensor_type().elem_type();
+    element_data_type = type_proto.tensor_type().elem_type();
+    return true;
   }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   if (HasSparseTensorType(type_proto) && HasElemType(type_proto.sparse_tensor_type())) {
-    return type_proto.sparse_tensor_type().elem_type();
+    element_data_type = type_proto.sparse_tensor_type().elem_type();
+    return true;
   }
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 #if !defined(DISABLE_OPTIONAL_TYPE)
   if (HasOptionalTensorType(type_proto) &&
       HasElemType(GetOptionalTypeProto(type_proto).tensor_type())) {
-    return GetOptionalTypeProto(type_proto).tensor_type().elem_type();
+    element_data_type = GetOptionalTypeProto(type_proto).tensor_type().elem_type();
+    return true;
   }
 #endif
 
-  return std::nullopt;
+  element_data_type = ONNX_NAMESPACE::TensorProto::UNDEFINED;
+  return false;
 }
 
 inline bool HasShape(const ONNX_NAMESPACE::TypeProto& type_proto) {
