@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <optional>
 #include <vector>
 #include <type_traits>
 
