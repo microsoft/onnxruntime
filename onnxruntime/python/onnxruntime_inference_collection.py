@@ -286,8 +286,9 @@ class InferenceSession(Session):
         :param sess_options: session options
         :param providers: Optional sequence of providers in order of decreasing
             precedence. Values can either be provider names or tuples of
-            (provider name, options dict). If not provided, then 'CPUExecutionProvider'
-            will used by default.
+            (provider name, options dict). If not provided, the session will fall
+            back to 'CPUExecutionProvider' by default. For using other providers,
+            please explicitly specify the providers.
         :param provider_options: Optional sequence of options dicts corresponding
             to the providers listed in 'providers'.
 
