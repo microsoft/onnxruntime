@@ -173,7 +173,7 @@ jobs:
     condition: succeededOrFailed()
     displayName: Publish React Native Android e2e Test Results
 
-  - script |
+  - script: |
       xcrun xcodebuild test -workspace OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -destination 'platform=iOS Simulator,OS=latest,name=iPhone 13' | xcpretty -r junit --no-color
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
     displayName: Run React Native iOS e2e Tests
