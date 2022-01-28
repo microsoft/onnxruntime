@@ -33,12 +33,9 @@ void RunQuantGemmU8X8Test(const int M,
   static std::uniform_int_distribution<int> random_A(std::numeric_limits<ActType>::min(),
                                                      std::numeric_limits<ActType>::max());
 
-  int random_B_min = std::numeric_limits<WeightType>::min();
-  int random_B_max = std::numeric_limits<WeightType>::max();
-  if constexpr (std::is_signed_v<WeightType>) {  // To avoid overflow on AVX2 and AVX512
-    random_B_min /= 2;
-    random_B_max /= 2;
-  }
+  constexpr int overflow_adjust = std::is_signed_v<WeightType> ? 2 : 1;
+  constexpr int random_B_min = std::numeric_limits<WeightType>::min() / overflow_adjust;
+  constexpr int random_B_max = std::numeric_limits<WeightType>::min() / overflow_adjust;
   static std::uniform_int_distribution<int> random_B(random_B_min,
                                                      random_B_max);
   static std::uniform_real_distribution<float> n_apha(1.0f, 2.0f);
