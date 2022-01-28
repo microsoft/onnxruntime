@@ -159,8 +159,8 @@ jobs:
     displayName: Copy Android package to React Native e2e directory
 
   - script: |
-      ./gradlew connectedDebugAndroidTest --stacktrace 
-      ./gradlew --stop 
+      ./gradlew :app:connectedDebugAndroidTest --stacktrace 
+      ./gradlew --stop
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
     displayName: Run React Native Android e2e Tests
     continueOnError: true
