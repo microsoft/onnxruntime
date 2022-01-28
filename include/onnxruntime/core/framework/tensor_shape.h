@@ -42,7 +42,7 @@ using InlinedShapeVectorT = absl::InlinedVector<T, kTensorShapeSmallBufferElemen
 inline TensorShapeVector ToShapeVector(const gsl::span<const int64_t>& span) {
   TensorShapeVector out;
   out.reserve(span.size());
-  out.assign(span.cbegin(), span.cend());
+  out.assign(span.begin(), span.end());
   return out;
 }
 
