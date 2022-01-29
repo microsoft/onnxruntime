@@ -281,24 +281,9 @@ bool IsOperationDeterministic(const std::string& domain, const std::string& op) 
   if (domain.compare(kOnnxDomain) == 0) {
     auto iter = std::find(kOnnxDomainNonDeterministicOps.begin(), kOnnxDomainNonDeterministicOps.end(), op);
     return iter == kOnnxDomainNonDeterministicOps.end();
-  } 
-  // Unknown domain. Assume the op is not deterministic.
-  return false;  
-}
-
-#endif  // #if !defined(ORT_MINIMAL_BUILD)
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
-bool IsScalar(const NodeArg& input_arg) {
-  auto shape = input_arg.Shape();
-  if (shape == nullptr) {
-    // shape inferencing wasn't able to populate shape information for this NodeArg
-    return false;
   }
-
-  auto dim_size = shape->dim_size();
-  return dim_size == 0 || (dim_size == 1 && shape->dim(0).has_dim_value() && shape->dim(0).dim_value() == 1);
+  // Unknown domain. Assume the op is not deterministic.
+  return false;
 }
 
 bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, float& max) {
@@ -358,6 +343,22 @@ bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, flo
 
   return min_max_are_constant_values;
 }
+
+#endif  // #if !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+bool IsScalar(const NodeArg& input_arg) {
+  auto shape = input_arg.Shape();
+  if (shape == nullptr) {
+    // shape inferencing wasn't able to populate shape information for this NodeArg
+    return false;
+  }
+
+  auto dim_size = shape->dim_size();
+  return dim_size == 0 || (dim_size == 1 && shape->dim(0).has_dim_value() && shape->dim(0).dim_value() == 1);
+}
+
 #endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 }  // namespace optimizer_utils
