@@ -1485,8 +1485,8 @@ TEST(QDQTransformerTests, Clip) {
       constexpr float min = .0f;
       constexpr float max = 6.0f;
       if (opset_version >= 11) {
-        auto* min_initializer = builder.MakeScalarInitializer<float>({min});
-        auto* max_initializer = builder.MakeScalarInitializer<float>({max});
+        auto* min_initializer = builder.MakeScalarInitializer<float>(min);
+        auto* max_initializer = builder.MakeScalarInitializer<float>(max);
         builder.AddNode("Clip", {dq_output, min_initializer, max_initializer}, {clip_output});
       } else {
         Node& argmax_node = builder.AddNode("Clip", {dq_output}, {clip_output});
