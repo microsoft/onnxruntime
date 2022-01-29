@@ -102,6 +102,9 @@ QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit);
 // This function assumes the input is a 2d conv node
 ConvType GetConvType(const NodeUnit& node_unit, const InitializedTensorSet& initializers);
 
+// If this is a quantized Conv (QLinearConv or QDQConv)
+bool IsQuantizedConv(QuantizedOpType quant_op_type);
+
 // This quantized op is an operator or qdq node unit takes 2 inputs and produces 1 output
 // Such as QLinearConv, QLinearMatMul, QLinearAdd, QDQConv,...
 bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type);

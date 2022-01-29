@@ -1260,9 +1260,7 @@ class ConvOpBuilder : public BaseOpBuilder {
 };
 
 /* static */ bool ConvOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
-  static auto quant_op_type = GetQuantizedOpType(node_unit);
-  return (quant_op_type == QuantizedOpType::QLinearConv) ||
-         (quant_op_type == QuantizedOpType::QDQConv);
+  return IsQuantizedConv(GetQuantizedOpType(node_unit));
 }
 
 /* static */ void

@@ -98,11 +98,15 @@ ConvType GetConvType(const NodeUnit& node_unit, const InitializedTensorSet& init
     return ConvType::Grouped;
 }
 
+bool IsQuantizedConv(QuantizedOpType quant_op_type) {
+  return (quant_op_type == QuantizedOpType::QLinearConv) ||
+         (quant_op_type == QuantizedOpType::QDQConv);
+}
+
 bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type) {
-  return quant_op_type == QuantizedOpType::QLinearConv ||
-         quant_op_type == QuantizedOpType::QLinearMatMul ||
+  return quant_op_type == QuantizedOpType::QLinearMatMul ||
          quant_op_type == QuantizedOpType::QLinearAdd ||
-         quant_op_type == QuantizedOpType::QDQConv;
+         IsQuantizedConv(quant_op_type);
 }
 
 bool HasValidUnaryOpQuantizedInputs(const NodeUnit& node_unit) {
@@ -136,8 +140,7 @@ bool HasValidBinaryOpQuantizedInputs(const NodeUnit& node_unit) {
 
   // QlinearConv supports u8u8 or u8s8
   // QLinearMatMul/Add only support u8u8
-  bool is_quant_conv = (quant_op_type == QuantizedOpType::QLinearConv) ||
-                       (quant_op_type == QuantizedOpType::QDQConv);
+  bool is_quant_conv = IsQuantizedConv(quant_op_type);
   bool has_valid_qlinear_conv_weight =
       (b_input_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
        b_input_type == ONNX_NAMESPACE::TensorProto_DataType_INT8);
@@ -159,8 +162,7 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
                                 const std::vector<size_t>& indices, const OpSupportCheckParams& params, bool is_input) {
   const auto& op_type = node_unit.OpType();
   auto quant_op_type = GetQuantizedOpType(node_unit);
-  bool is_quant_conv = (quant_op_type == QuantizedOpType::QLinearConv) ||
-                       (quant_op_type == QuantizedOpType::QDQConv);
+  bool is_quant_conv = IsQuantizedConv(quant_op_type);
   bool is_quant_matmul = (quant_op_type == QuantizedOpType::QLinearMatMul);
   const auto& io_defs = is_input ? node_unit.Inputs() : node_unit.Outputs();
   for (const auto idx : indices) {
@@ -234,8 +236,7 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
                                     const std::vector<size_t>& indices, bool is_input) {
   const auto& op_type = node_unit.OpType();
   auto quant_op_type = GetQuantizedOpType(node_unit);
-  bool is_quant_conv = (quant_op_type == QuantizedOpType::QLinearConv) ||
-                       (quant_op_type == QuantizedOpType::QDQConv);
+  bool is_quant_conv = IsQuantizedConv(quant_op_type);
   bool is_quant_matmul = (quant_op_type == QuantizedOpType::QLinearMatMul);
 
   const auto& io_defs = is_input ? node_unit.Inputs() : node_unit.Outputs();

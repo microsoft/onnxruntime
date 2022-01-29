@@ -743,9 +743,7 @@ class ConvOpSupportChecker : public BaseOpSupportChecker {
 }
 
 /* static */ bool ConvOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
-  static auto quant_op_type = GetQuantizedOpType(node_unit);
-  return (quant_op_type == QuantizedOpType::QLinearConv) ||
-         (quant_op_type == QuantizedOpType::QDQConv);
+  return IsQuantizedConv(GetQuantizedOpType(node_unit));
 }
 
 bool ConvOpSupportChecker::HasSupportedInputsImpl(const NodeUnit& node_unit) const {

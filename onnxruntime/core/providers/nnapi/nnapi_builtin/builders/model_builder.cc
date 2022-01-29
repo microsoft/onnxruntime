@@ -495,7 +495,23 @@ Status ModelBuilder::AddOperations() {
     const auto* node(graph_viewer_.GetNode(node_idx));
     const NodeUnit& node_unit = GetNodeUnit(node);
 
-    // We only insert the NodeUnit once when we hit the target node
+    // Since we may have NodeUnit with multiple nodes, insert NodeUnit with the first occurrence of
+    // its node(s) in topological order may cause the incorrect topological order while inserting
+    // NodeUNits, for example,
+    //  Q1
+    //  |
+    //  DQ1  DQ2
+    //    \   |
+    //     CONV
+    //      |
+    //      Q2
+    // In the above graph, we will have 2 NodeUnits, NU1 [Q1] and NU2 [DQ1, DQ2, CONV, Q2]
+    // The Q1 and DQ2 have the same topological order, if we insert DQ2 (as part of NU2) when we visit DQ2
+    // first in the topological order, the input from Q1 required by NU2 is not yet inserted, this will
+    // cause failure finding the inputs for NU2
+    //
+    // So we only insert the NodeUnit once when we hit the target node, to ensure the topological order
+    // of the NodeUnits
     if (node != &node_unit.GetNode())
       continue;
 
