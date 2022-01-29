@@ -2,6 +2,8 @@
 #include "sequences.h"
 #include "beam_search_parameters.h"
 
+#include "core/framework/inlined_containers.h"
+
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {
@@ -99,7 +101,7 @@ public:
 private:
     int batch_beam_size_;
     int vocab_size_;
-    std::vector<ILogitsProcessor<T>*> processor_list_;
+    InlinedVector<ILogitsProcessor<T>*> processor_list_;
 
     std::unique_ptr<RepetitionPenaltyLogitsProcessor<T>> repetition_penalty_processor_;
     std::unique_ptr<NoRepeatNGramLogitsProcessor<T>> no_repeat_ngram_processor_;

@@ -1320,7 +1320,7 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
       }
     }
   }
-  std::unordered_set<std::string> removed_node_names;
+  InlinedHashSet<std::string> removed_node_names;
   int pass = 0;
   do {
     LOGS(logger, VERBOSE) << "Propagate Cast Operations Pass " << pass << ":";
@@ -1437,8 +1437,8 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
 }
 
 PropagateCastOps::PropagateCastOps(GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy strategy,
-                                   size_t level, const std::vector<std::string>& _allow_list,
-                                   const std::unordered_set<std::string>& compatible_execution_providers) noexcept
+                                   size_t level, const gsl::span<const std::string>& _allow_list,
+                                   const InlinedHashSet<std::string_view>& compatible_execution_providers) noexcept
     : GraphTransformer("PropagateCastOps", compatible_execution_providers), level_(level), strategy_(strategy) {
   fp16_allow_ops[0].clear();  // Remove previously added op types if any.
   std::copy(_allow_list.begin(), _allow_list.end(), std::inserter(fp16_allow_ops[0], fp16_allow_ops[0].begin()));

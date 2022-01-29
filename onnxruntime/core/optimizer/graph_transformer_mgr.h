@@ -5,6 +5,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/optimizer/graph_transformer.h"
+#include "core/framework/inlined_containers.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/rewrite_rule.h"
 
@@ -45,7 +46,7 @@ class GraphTransformerManager {
   // maximum number of graph transformation steps
   unsigned steps_;
 
-  std::unordered_map<TransformerLevel, std::vector<std::unique_ptr<GraphTransformer>>, EnumHashKey> level_to_transformer_map_;
-  std::unordered_map<std::string, GraphTransformer*> transformers_info_;
+  InlinedHashMap<TransformerLevel, InlinedVector<std::unique_ptr<GraphTransformer>>, EnumHashKey> level_to_transformer_map_;
+  InlinedHashMap<std::string, GraphTransformer*> transformers_info_;
 };
 }  // namespace onnxruntime

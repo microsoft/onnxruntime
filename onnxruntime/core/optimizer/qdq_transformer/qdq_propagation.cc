@@ -138,7 +138,7 @@ bool QDQPropagationTransformer::PropagateDQForward(Graph& graph) const {
       continue;
     }
 
-    std::vector<NodeArg*>& dq_input_defs = dq_node.MutableInputDefs();
+    auto& dq_input_defs = dq_node.MutableInputDefs();
     if (dq_input_defs.size() != QDQ::InputIndex::TOTAL_COUNT) {
       continue;
     }
@@ -195,7 +195,7 @@ bool QDQPropagationTransformer::PropagateQBackward(Graph& graph) const {
       continue;
     }
 
-    std::vector<NodeArg*>& q_input_defs = q_node.MutableInputDefs();
+    auto& q_input_defs = q_node.MutableInputDefs();
     if (q_input_defs.size() != QDQ::InputIndex::TOTAL_COUNT ||
         !optimizer_utils::IsScalar(*q_input_defs[QDQ::InputIndex::ZERO_POINT_ID]) ||
         !optimizer_utils::IsScalar(*q_input_defs[QDQ::InputIndex::SCALE_ID])) {

@@ -558,7 +558,7 @@ common::Status GenerateSubgraph(Graph& graph, Node* start_node) {
   // graph.SetInputs({visited_inputs.begin(), visited_inputs.end()});
 
   // update the grah with only visited outputs
-  graph.SetOutputs({visited_outputs.begin(), visited_outputs.end()});
+  graph.SetOutputs(std::vector<NodeArg*>{visited_outputs.begin(), visited_outputs.end()});
   graph.SetGraphResolveNeeded();
   graph.SetGraphProtoSyncNeeded();
 

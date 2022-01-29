@@ -3,6 +3,7 @@
 
 #pragma once
 #include "core/framework/compute_capability.h"
+#include "core/framework/inlined_containers.h"
 #include "core/framework/tensor.h"
 #include "core/graph/graph_nodes.h"
 #include "core/graph/graph_viewer.h"
@@ -143,7 +144,7 @@ ONNX_NAMESPACE::TensorProto_DataType TensorProtoDataType(const NodeArg* def);
 
 // Convert ConstGraphNodes to internal NodePtrs without check lifetime.
 // Please use it only locally when GraphNodes still exist
-std::vector<const Node*> ConvertGraphNodesToNodePtrs(const ConstGraphNodes& graph_nodes);
+InlinedVector<const Node*> ConvertGraphNodesToNodePtrs(const ConstGraphNodes& graph_nodes);
 
 enum : int {
   Dimension_Unknown = -1,

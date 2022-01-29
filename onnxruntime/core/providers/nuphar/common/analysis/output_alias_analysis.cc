@@ -8,9 +8,9 @@
 namespace onnxruntime {
 namespace nuphar {
 
-void OutputAliasAnalysis::Traverse(const std::vector<const Node*>& nodes,
-                                   const std::set<std::string>& graph_inputs,
-                                   const std::set<std::string>& graph_outputs) {
+void OutputAliasAnalysis::Traverse(const gsl::span<const Node* const>& nodes,
+                                   const InilnedHashSet<std::string_view>& graph_inputs,
+                                   const InilnedHashSet<std::string_view>& graph_outputs) {
   for (auto& node : nodes) {
     if (node->NodeType() == Node::Type::Fused) {
       // unboxing of fused node
@@ -51,8 +51,8 @@ void OutputAliasAnalysis::Evaluate(const onnxruntime::nuphar::NupharSubgraphUnit
     auto subgraph = GetSubgraph(*node);
 
     if (nullptr != subgraph) {
-      std::set<std::string> graph_inputs;
-      std::set<std::string> graph_outputs;
+      InilnedHashSet<std::string_view> graph_inputs(graph_viewer.GetInputs().size());
+      InilnedHashSet<std::string_view> graph_outputs(graph_viewer.GetOutputs().size());
       const auto& graph_viewer = GraphViewer(*subgraph);
       for (const auto* def : graph_viewer.GetInputs()) {
         if (nullptr != def) {
@@ -71,8 +71,8 @@ void OutputAliasAnalysis::Evaluate(const onnxruntime::nuphar::NupharSubgraphUnit
     }
   } else {
     // outputs names
-    std::set<std::string> graph_inputs;
-    std::set<std::string> graph_outputs;
+    InilnedHashSet<std::string_view> graph_inputs(graph_viewer.GetInputs().size());
+    InilnedHashSet<std::string_view> graph_outputs(graph_viewer.GetOutputs().size());
     for (const auto* def : graph.inputs) {
       if (nullptr != def) {
         graph_inputs.insert(def->Name());

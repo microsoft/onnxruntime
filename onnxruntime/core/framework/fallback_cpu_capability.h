@@ -4,7 +4,9 @@
 #pragma once
 
 #include "core/framework/kernel_registry.h"
+#include "core/framework/inlined_containers.h"
 #include "core/graph/graph_viewer.h"
+#include <gsl/gsl>
 
 namespace onnxruntime {
 
@@ -16,9 +18,9 @@ namespace onnxruntime {
   @param kernel_registries Kernel registries for the target EP
   @param tentative_nodes Nodes that are tentative to be placed on on target EP
   */
-std::unordered_set<NodeIndex> GetCpuPreferredNodes(const GraphViewer& graph,
-                                                   const std::string& provider_type,
-                                                   const std::vector<const KernelRegistry*>& kernel_registries,
-                                                   const std::vector<NodeIndex>& tentative_nodes);
+InlinedHashSet<NodeIndex> GetCpuPreferredNodes(const GraphViewer& graph,
+                                               const std::string& provider_type,
+                                               const gsl::span<const KernelRegistry* const>& kernel_registries,
+                                               const gsl::span<const NodeIndex>& tentative_nodes);
 
 }  // namespace onnxruntime

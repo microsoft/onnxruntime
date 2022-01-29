@@ -346,10 +346,10 @@ std::string GetEnvironmentVar(const std::string& var_name) {
   return g_host->GetEnvironmentVar(var_name);
 }
 
-std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                   const std::string& provider_type,
-                                                   const std::vector<const KernelRegistry*>& kernel_registries,
-                                                   const std::vector<NodeIndex>& tentative_nodes) {
+InlinedHashSet<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
+                                               const std::string& provider_type,
+                                               const gsl::span<const KernelRegistry* const>& kernel_registries,
+                                               const gsl::span<const NodeIndex>& tentative_nodes) {
   return g_host->GetCpuPreferredNodes(graph, provider_type, kernel_registries, tentative_nodes);
 }
 
@@ -515,8 +515,9 @@ Status ScatterNDBase::ValidateShapes(const TensorShape& input_shape,
 Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) { return g_host_cpu.PadBase__HandleDimValueZero(mode, input_shape, output_shape); }
 
 Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, const ConcatBase::InlinedTensorsVector& input_tensors,
-                                     Prepare& p) const { 
-  return g_host_cpu.ConcatBase__PrepareForCompute(this, ctx, reinterpret_cast<const ConcatBase_InlinedTensorsVector&>(input_tensors), p); }
+                                     Prepare& p) const {
+  return g_host_cpu.ConcatBase__PrepareForCompute(this, ctx, reinterpret_cast<const ConcatBase_InlinedTensorsVector&>(input_tensors), p);
+}
 
 PhiloxGenerator& PhiloxGenerator::Default() { return g_host->PhiloxGenerator__Default(); }
 
@@ -537,7 +538,7 @@ Status LongformerAttentionBase::CheckInputs(const TensorShape& input_shape, cons
   return g_host_cpu.LongformerAttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape, mask_shape, global_weights_shape, global_bias_shape, global_shape);
 }
 
-Status AttentionBase::CheckInputs(const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const Tensor*& mask_index, const Tensor* past, const Tensor *extra_add_qk, const int max_threads_per_block) const {
+Status AttentionBase::CheckInputs(const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const Tensor*& mask_index, const Tensor* past, const Tensor* extra_add_qk, const int max_threads_per_block) const {
   return g_host_cpu.AttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape, mask_index, past, extra_add_qk, max_threads_per_block);
 }
 Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, int batch_size, int head_size, int sequence_length, int& past_sequence_length) const {

@@ -1227,8 +1227,8 @@ NodeArg& CastMaskToInt32(Graph& graph, NodeArg* mask_input, ProviderType provide
   }
 
   NodeArg& cast32 = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("Mask_Int32"), &mask_int32);
-  const std::vector<NodeArg*> input_defs{mask_input};
-  const std::vector<NodeArg*> output_defs{&cast32};
+  const std::array<NodeArg*, 1> input_defs{mask_input};
+  const std::array<NodeArg*, 1> output_defs{&cast32};
   Node& node = graph.AddNode(graph.GenerateNodeName("MaskCast"),
                              "Cast",
                              "Cast mask from int64 to int32",
@@ -1242,7 +1242,7 @@ NodeArg& CastMaskToInt32(Graph& graph, NodeArg* mask_input, ProviderType provide
   to.set_name("to");
   to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
   to.set_i(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32));
-  node.AddAttribute("to", to);
+  node.AddAttribute("to", std::move(to));
 
   node.SetExecutionProviderType(provider_type);
   return cast32;

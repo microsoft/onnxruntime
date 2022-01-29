@@ -17,8 +17,8 @@ class PropagateCastOps : public GraphTransformer {
  public:
   PropagateCastOps(GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy strategy =
                        GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill,
-                   size_t level = 0, const std::vector<std::string>& allow_list = {},
-                   const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept;
+                   size_t level = 0, const gsl::span<const std::string>& allow_list = {},
+                   const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept;
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 

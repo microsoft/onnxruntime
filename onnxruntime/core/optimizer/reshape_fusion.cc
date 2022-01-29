@@ -140,7 +140,7 @@ static bool Match_Shape(Graph& graph, const Node& concat, const Node& shape, con
  * one element output(skip the Gather input indices check).
  */
 bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const NodeArg& root_input, const Node& concat,
-                                                        int index, std::vector<int64_t> shape_value, bool checkOneElementOnly,
+                                                        int index, const gsl::span<const int64_t>& shape_value, bool checkOneElementOnly,
                                                         const logging::Logger& logger) {
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
       {0, index, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
@@ -251,7 +251,7 @@ bool ReshapeFusion::Is_One_Element_Input(const Node& cur_node, int index) {
  * If one of the above pattern is found, return true. Return false otherwise.
  */
 bool ReshapeFusion::Is_One_Element_Output_Subgraph(Graph& graph, const NodeArg& root_input, const Node& concat,
-                                                   int index, std::vector<int64_t> shape_value, const logging::Logger& logger) {
+                                                   int index, const gsl::span<const int64_t>& shape_value, const logging::Logger& logger) {
   // Match "1-element subgraph from inferred shape -> concat" or "Shape -> Gather(1d indice) -> Unsqueeze -> [Concat]"
   if (ReshapeFusion::Is_One_Element_Input(concat, index) ||
       ReshapeFusion::Match_One_Element_Output_Subgraph_1(graph, root_input, concat, index, shape_value, true, logger)) {

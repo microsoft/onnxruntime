@@ -571,8 +571,13 @@ common::Status InferenceSession::RegisterGraphTransformer(
   return graph_transformation_mgr_.Register(std::move(p_graph_transformer), level);
 }
 
-common::Status InferenceSession::FilterEnabledOptimizers(const std::unordered_set<std::string>& optimizers_to_disable) {
+common::Status InferenceSession::FilterEnabledOptimizers(const InlinedHashSet<std::string>& optimizers_to_disable) {
   optimizers_to_disable_ = optimizers_to_disable;
+  return Status::OK();
+}
+
+common::Status InferenceSession::FilterEnabledOptimizers(InlinedHashSet<std::string>&& optimizers_to_disable) {
+  optimizers_to_disable_ = std::move(optimizers_to_disable);
   return Status::OK();
 }
 

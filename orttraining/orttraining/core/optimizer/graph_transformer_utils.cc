@@ -70,7 +70,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
 
   // MUST be empty here, because this is called before partition, so the node's execution type is not decided yet.
   // If we give values here, the check in transformer will fail.
-  std::unordered_set<std::string> compatible_eps = {};
+  InlinedHashSet<std::string_view> compatible_eps = {};
 
   switch (level) {
     case TransformerLevel::Level1: {
@@ -127,7 +127,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
             config.number_recompute_layers, compatible_eps));
       }
       if (config.propagate_cast_ops_config.level >= 0) {
-        std::unordered_set<std::string> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider, onnxruntime::kRocmExecutionProvider};
+        const InlinedHashSet<std::string_view> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider, onnxruntime::kRocmExecutionProvider};
         transformers.emplace_back(std::make_unique<PropagateCastOps>(config.propagate_cast_ops_config.strategy,
                                                                      static_cast<size_t>(config.propagate_cast_ops_config.level),
                                                                      config.propagate_cast_ops_config.allow,
@@ -177,17 +177,17 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
   }
 }
 
-std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
+InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     TransformerLevel level,
     const std::unordered_set<std::string>& weights_to_train,
     gsl::span<const FreeDimensionOverride> free_dimension_overrides,
-    const std::unordered_set<std::string>& rules_and_transformers_to_disable) {
-  std::vector<std::unique_ptr<GraphTransformer>> transformers;
+    const InlinedHashSet<std::string>& rules_and_transformers_to_disable) {
+  InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
   switch (level) {
     case TransformerLevel::Level1: {
-      std::unordered_set<std::string> l1_execution_providers = {};
-      std::unordered_set<std::string> cuda_rocm_execution_providers = {onnxruntime::kCudaExecutionProvider,
+      InlinedHashSet<std::string_view> l1_execution_providers = {};
+      InlinedHashSet<std::string_view> cuda_rocm_execution_providers = {onnxruntime::kCudaExecutionProvider,
                                                                        onnxruntime::kRocmExecutionProvider};
 
       // TODO hack - constant folding currently doesn't work after mixed precision transformation so it's disabled for now
@@ -205,7 +205,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     } break;
 
     case TransformerLevel::Level2: {
-      std::unordered_set<std::string> cpu_execution_providers = {onnxruntime::kCpuExecutionProvider};
+      InlinedHashSet<std::string_view> cpu_execution_providers = {onnxruntime::kCpuExecutionProvider};
 
       // create rule based transformer consisting of all the level2 rewrite rules
       rule_transformer = optimizer_utils::GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable,
@@ -236,7 +236,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   if (rules_and_transformers_to_disable.empty()) {
     return transformers;
   } else {
-    std::vector<std::unique_ptr<GraphTransformer>> filtered_list;
+    InlinedVector<std::unique_ptr<GraphTransformer>> filtered_list;
     auto end = rules_and_transformers_to_disable.cend();
     std::for_each(transformers.begin(), transformers.end(),
                   [&](std::unique_ptr<GraphTransformer>& item) {

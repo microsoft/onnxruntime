@@ -6,6 +6,7 @@
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "gtest/gtest.h"
+#include "core/framework/inlined_containers.h"
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/session/inference_session.h"
 
@@ -21,7 +22,7 @@ TEST(GraphTransformerUtilsTests, TestGenerateRewriterules) {
   ASSERT_TRUE(rewrite_rules.size() != 0);
 
   // Disable rule name match test
-  std::unordered_set<std::string> disable_list = {"EliminateIdentity", "ConvAddFusion"};
+  InlinedHashSet<std::string> disable_list = {"EliminateIdentity", "ConvAddFusion"};
   rewrite_rules = optimizer_utils::GenerateRewriteRules(TransformerLevel::Level1, disable_list);
   // validate each rule returned is not present in the custom list
   for (const auto& rule : rewrite_rules) {
@@ -34,7 +35,7 @@ TEST(GraphTransformerUtilsTests, TestGenerateGraphTransformers) {
   std::string l1_rule1 = "EliminateIdentity";
   std::string l1_transformer = "ConstantFolding";
   std::string l2_transformer = "ConvActivationFusion";
-  std::unordered_set<std::string> disabled = {l1_rule1, l1_transformer, l2_transformer};
+  InlinedHashSet<std::string> disabled = {l1_rule1, l1_transformer, l2_transformer};
   CPUExecutionProvider cpu_ep(CPUExecutionProviderInfo{});
 
   auto all_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, {}, cpu_ep);

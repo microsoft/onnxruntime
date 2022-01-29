@@ -23,9 +23,9 @@ static bool IsSameShape(const TensorShapeProto& shape1, const TensorShapeProto& 
 }
 
 void FuseResidualAddIfAny(Graph& graph, const Node& dropout_node,
-                          std::vector<NodeArg*>& dropout_input,
-                          std::vector<NodeArg*>& dropout_output,
-                          std::vector<std::reference_wrapper<Node>>& nodes_to_fuse) {
+                          InlinedVector<NodeArg*>& dropout_input,
+                          InlinedVector<NodeArg*>& dropout_output,
+                          InlinedVector<std::reference_wrapper<Node>>& nodes_to_fuse) {
   bool has_residual_add = false;
 
   int dropout_consumers_count = 0;
@@ -94,7 +94,7 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
 
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    std::vector<std::reference_wrapper<Node>> nodes_to_fuse;
+    InlinedVector<std::reference_wrapper<Node>> nodes_to_fuse;
 
     // matching for bias Add node
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7, 13, 14}) ||
@@ -103,7 +103,7 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       continue;
     }
 
-    std::vector<NodeArg*> dropout_input, dropout_output;
+    InlinedVector<NodeArg*> dropout_input, dropout_output;
     const TensorShapeProto* input1_shape = node.MutableInputDefs()[0]->Shape();
     const TensorShapeProto* input2_shape = node.MutableInputDefs()[1]->Shape();
 

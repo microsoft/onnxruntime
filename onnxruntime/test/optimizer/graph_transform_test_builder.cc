@@ -80,7 +80,7 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
   run_model(target_level, target_fetches, std::move(transformer));
 
   size_t num_outputs = baseline_fetches.size();
-  ASSERT_TRUE(num_outputs == target_fetches.size());
+  ASSERT_EQ(num_outputs, target_fetches.size());
 
   for (size_t i = 0; i < num_outputs; i++) {
     std::pair<COMPARE_RESULT, std::string> ret =

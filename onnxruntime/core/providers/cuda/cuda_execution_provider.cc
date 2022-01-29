@@ -9,6 +9,7 @@
 #include "core/providers/cuda/cuda_fwd.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/cuda_profiler.h"
+#include "core/framework/inlined_containers.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cuda/cuda_contrib_kernels.h"
@@ -2213,7 +2214,7 @@ std::unique_ptr<onnxruntime::IDataTransfer> CUDAExecutionProvider::GetDataTransf
 std::vector<std::unique_ptr<ComputeCapability>>
 CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                      const std::vector<const KernelRegistry*>& kernel_registries) const {
-  std::vector<NodeIndex> candidates;
+  InlinedVector<NodeIndex> candidates;
   for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
     const auto* p_node = graph.GetNode(node_index);
     if (p_node == nullptr)
@@ -2274,7 +2275,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // For CUDA EP, exclude the subgraph that is preferred to be placed in CPU
   // These are usually shape related computation subgraphs
   // Following logic can be extended for other EPs
-  std::unordered_set<NodeIndex> cpu_nodes = GetCpuPreferredNodes(graph, Type(), kernel_registries, candidates);
+  auto cpu_nodes = GetCpuPreferredNodes(graph, Type(), kernel_registries, candidates);
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {
     if (cpu_nodes.count(node_index) > 0)

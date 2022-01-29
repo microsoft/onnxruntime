@@ -163,8 +163,8 @@ ip_2 ---> op2
 */
 bool ConcatSliceElimination::FuseConcatSliceSubgraph(Node& concat, Graph& graph, const logging::Logger& logger) {
   // The root could be either a graph input or a node so use node arg to compare.
-  std::vector<NodeArg*>& concat_inputs = concat.MutableInputDefs();
-  std::vector<onnxruntime::Node*> concat_outputs = graph.GetMutableConsumerNodes(concat.MutableOutputDefs()[0]->Name());
+  auto& concat_inputs = concat.MutableInputDefs();
+  auto concat_outputs = graph.GetMutableConsumerNodes(concat.MutableOutputDefs()[0]->Name());
 
   // number of inputs and outputs must be equal
   if (concat_outputs.size() != concat_inputs.size()) return false;
@@ -197,7 +197,7 @@ bool ConcatSliceElimination::FuseConcatSliceSubgraph(Node& concat, Graph& graph,
     return size;
   };
 
-  std::vector<int64_t> concat_input_len(num_inputs);
+  InlinedVector<int64_t> concat_input_len(num_inputs);
   for (size_t i = 0; i < num_inputs; i++) {
     concat_input_len[i] = get_initializer_size(concat_inputs[i]->Name());
     if (concat_input_len[i] == -1) {  // invalid size
@@ -205,11 +205,11 @@ bool ConcatSliceElimination::FuseConcatSliceSubgraph(Node& concat, Graph& graph,
     }
   }
 
-  std::vector<int64_t> cumulative_input_len(num_inputs + 1, 0);
+  InlinedVector<int64_t> cumulative_input_len(num_inputs + 1, 0);
   std::partial_sum(concat_input_len.begin(), concat_input_len.end(), cumulative_input_len.begin() + 1);
-  std::vector<bool> visited(num_inputs, false);
+  InlinedVector<bool> visited(num_inputs, false);
 
-  std::vector<onnxruntime::Node*> ordered_slice = concat_outputs;
+  InlinedVector<onnxruntime::Node*> ordered_slice(concat_outputs.begin(), concat_outputs.end());
   for (auto slice : concat_outputs) {
     std::vector<int64_t> starts, ends, axes, steps;
     if (!GetSliceInfo(graph, *slice, logger, starts, ends, axes, steps)) return false;

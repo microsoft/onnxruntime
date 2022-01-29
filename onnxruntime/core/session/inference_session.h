@@ -12,6 +12,7 @@
 #include "core/common/status.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/framework_common.h"
+#include "core/framework/inlined_containers.h"
 #include "core/framework/iexecutor.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/prepacked_weights_container.h"
@@ -191,7 +192,10 @@ class InferenceSession {
     * Calling this API is optional.
     * @return OK if success.
     */
-  common::Status FilterEnabledOptimizers(const std::unordered_set<std::string>& optimizers_to_disable)
+  common::Status FilterEnabledOptimizers(const InlinedHashSet<std::string>& optimizers_to_disable)
+      ORT_MUST_USE_RESULT;
+
+  common::Status FilterEnabledOptimizers(InlinedHashSet<std::string>&& optimizers_to_disable)
       ORT_MUST_USE_RESULT;
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -597,7 +601,7 @@ class InferenceSession {
   InsertCastTransformer insert_cast_transformer_;
 
   // Any GraphTransformer/RewriteRule name in this set will not be enabled.
-  std::unordered_set<std::string> optimizers_to_disable_;
+  InlinedHashSet<std::string> optimizers_to_disable_;
 #endif
 
   SessionOptions session_options_;

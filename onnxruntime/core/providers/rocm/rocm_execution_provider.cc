@@ -2109,7 +2109,7 @@ std::unique_ptr<onnxruntime::IDataTransfer> ROCMExecutionProvider::GetDataTransf
 std::vector<std::unique_ptr<ComputeCapability>>
 ROCMExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                      const std::vector<const KernelRegistry*>& kernel_registries) const {
-  std::vector<NodeIndex> candidates;
+  InlinedVector<NodeIndex> candidates;
   for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
     const auto* p_node = graph.GetNode(node_index);
     if (p_node == nullptr)
@@ -2159,7 +2159,7 @@ ROCMExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // For ROCM EP, exclude the subgraph that is preferred to be placed in CPU
   // These are usually shape related computation subgraphs
   // Following logic can be extended for other EPs
-  std::unordered_set<NodeIndex> cpu_nodes = GetCpuPreferredNodes(graph, Type(), kernel_registries, candidates);
+  auto cpu_nodes = GetCpuPreferredNodes(graph, Type(), kernel_registries, candidates);
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {
@@ -2216,7 +2216,7 @@ void ROCMExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
         DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
 
     rocm_cpu_alloc = CreateAllocator(cpu_memory_info);
-    allocator_manager->InsertAllocator(rocm_cpu_alloc);
+    allocator_manager->InsertAllocator(std:move(rocm_cpu_alloc));
   }
   TryInsertAllocator(rocm_cpu_alloc);
 }
