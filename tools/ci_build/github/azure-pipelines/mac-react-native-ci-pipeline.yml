@@ -62,7 +62,7 @@ jobs:
       scheme: 'OnnxruntimeModuleExample'
       packageApp: false
       destinationPlatformOption: 'iOS'
-      destinationSimulators: 'iPhone 13,OS=latest'
+      destinationSimulators: 'iPhone 11,OS=latest'
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
       xcprettyArgs: '--output build/reports/test-results.xml'
       publishJUnitResults: true
