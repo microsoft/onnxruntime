@@ -4,7 +4,8 @@
     "module": "CommonJS",
     "downlevelIteration": true,
     "declarationDir": "./types",
-    "lib": ["DOM"]
+    "lib": ["DOM"],
+    "typeRoots": ["./node_modules/@webgpu/types", "./node_modules/@types"]
   },
   "include": ["lib", "script", "test"],
   "exclude": ["lib/wasm/proxy-worker"]
