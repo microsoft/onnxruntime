@@ -109,14 +109,14 @@ class TestOpArgMax(unittest.TestCase):
         # Verify QDQ mode for TensorRT
         data_reader.rewind()
         quantize_static(model_fp32_path, model_uint8_qdq_trt_path, data_reader, quant_format=QuantFormat.QDQ,
-                        activation_type = activation_type, weight_type = weight_type,
-                        extra_options = {'OpTypesToExcludeOutputQuantizatioin': ['Conv']})
-        qdqnode_counts = {'QuantizeLinear': 2, 'DequantizeLinear': 3, 'ArgMax': 1}
-        check_op_type_count(self, model_uint8_qdq_path, **qdqnode_counts)
+                        activation_type=activation_type, weight_type=weight_type, extra_options=extra_options,
+                        op_types_to_quantize=['ArgMax'])
+        qdqnode_counts = {'QuantizeLinear': 1, 'DequantizeLinear': 1, 'ArgMax': 1}
+        check_op_type_count(self, model_uint8_qdq_trt_path, **qdqnode_counts)
         qnode_io_qtypes = {'QuantizeLinear' : [['i', 2, activation_proto_qtype], ['o', 0, activation_proto_qtype]]}
-        check_qtype_by_node_type(self, model_uint8_qdq_path, qnode_io_qtypes)
+        check_qtype_by_node_type(self, model_uint8_qdq_trt_path, qnode_io_qtypes)
         data_reader.rewind()
-        check_model_correctness(self, model_fp32_path, model_uint8_qdq_path, data_reader.get_next())
+        check_model_correctness(self, model_fp32_path, model_uint8_qdq_trt_path, data_reader.get_next())
 
     def test_quantize_argmax(self):
         self.quantize_argmax_test(QuantType.QUInt8, QuantType.QUInt8)
