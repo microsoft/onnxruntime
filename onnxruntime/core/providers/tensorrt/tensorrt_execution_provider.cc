@@ -1167,8 +1167,9 @@ std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetEngineBuildLock() const
 common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fused_nodes,
                                                   std::vector<NodeComputeInfo>& node_compute_funcs) {
   size_t fused_nodes_size = fused_nodes.size();
-  cuda_graphs_.reserve(fused_nodes_size);
+  std::vector<std::unique_ptr<cudaGraphExec_t>> executable_cuda_graphs(fused_nodes_size);
   for (size_t node_idx = 0; node_idx < fused_nodes_size; node_idx++) {
+    executable_cuda_graphs[node_idx] = std::make_unique<cudaGraphExec_t>();
     const auto* fused_node = fused_nodes[node_idx];
     // Build map from input name to its index in input definitions
     std::unordered_map<std::string, size_t> input_map;
@@ -1417,7 +1418,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     contexts_.emplace(fused_node->Name(), std::move(trt_context));
     builders_.emplace(fused_node->Name(), std::move(trt_builder));
     networks_.emplace(fused_node->Name(), std::move(trt_network));
-    cuda_graph_instances_.emplace(fused_node->Name(), cuda_graphs_[node_idx]);
+    executable_cuda_graph_map_.emplace(fused_node->Name(), std::move(executable_cuda_graphs[node_idx]));
     input_info_[fused_node->Name()].push_back(input_indexes);
     output_info_[fused_node->Name()].push_back(output_indexes);
     output_info_[fused_node->Name()].push_back(output_types);
@@ -1432,7 +1433,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
             &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
             input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
-            dla_enable_, dla_core_, cuda_graph_enable_, nullptr, cuda_graph_instances_[context->node_name], &max_workspace_size_,
+            dla_enable_, dla_core_, cuda_graph_enable_, nullptr, &executable_cuda_graph_map_[context->node_name], &max_workspace_size_,
             trt_node_name_with_precision, engine_cache_enable_, cache_path_, runtime_.get(), nullptr, allocator_,
             dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_};
       *state = p.release();
@@ -2024,20 +2025,20 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       if (trt_state->cuda_graph_enable)
       {
           if (*cuda_graph_ptr == nullptr) {
-            cudaGraph_t graph;
-            *cuda_graph_ptr = &(trt_state->cuda_graph_instance);
-            //warm up for cuda graph capturing
+            std::unique_ptr<cudaGraph_t> graph = std::make_unique<cudaGraph_t>();
+            *cuda_graph_ptr = trt_state->executable_cuda_graph->get();
+            //warm up to avoid capturing initialization
             if (!trt_context->enqueueV2(&buffers[0], stream, nullptr)) {
-              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
+              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, 
+                                     "TensorRT engine has operations that are not allowed in CUDA graph capture mode. ",
+                                     "Please disable trt_cuda_graph_enable.");
             }
             CUDA_CALL_THROW(cudaStreamBeginCapture(stream, cudaStreamCaptureModeRelaxed));
             if (!trt_context->enqueueV2(&buffers[0], stream, nullptr)) {
               return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "TensorRT EP execution context enqueue failed.");
             }
-            CUDA_CALL_THROW(cudaStreamEndCapture(stream, &graph));
-            CUDA_CALL_THROW(cudaStreamSynchronize(stream));
-            CUDA_CALL_THROW(cudaGraphInstantiate(*cuda_graph_ptr, graph, NULL, NULL, 0));
-            CUDA_CALL_THROW(cudaGraphDestroy(graph));
+            CUDA_CALL_THROW(cudaStreamEndCapture(stream, graph.get())); 
+            CUDA_CALL_THROW(cudaGraphInstantiate(*cuda_graph_ptr, *(graph.get()), NULL, NULL, 0));
           }
           cudaGraphLaunch(**cuda_graph_ptr, stream);
       } else {
