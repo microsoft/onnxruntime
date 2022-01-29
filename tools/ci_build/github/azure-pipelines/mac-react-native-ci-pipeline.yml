@@ -53,21 +53,26 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
     displayName: Bootstrap Android and iOS e2e tests
 
-  - task: Xcode@5
-    inputs:
-      actions: 'test'
-      configuration: 'Debug'
-      sdk: 'iphonesimulator'
-      xcWorkspacePath: '$(Build.SourcesDirectory)/js/react_native/e2e/ios/OnnxruntimeModuleExample.xcworkspace'
-      scheme: 'OnnxruntimeModuleExample'
-      packageApp: false
-      destinationPlatformOption: 'iOS'
-      destinationSimulators: 'iPhone 11,OS=latest'
-      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
-      xcprettyArgs: '--output build/reports/test-results.xml'
-      publishJUnitResults: true
-      testRunTitle: 'React Native iOS e2e Test Results'
-    displayName: Run React Native iOS e2e Tests
+  - script: |
+      xcrun xcodebuild test -workspace OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -destination 'platform=iOS Simulator,OS=latest,name=iPhone 13'
+    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
+    displayName: Run React Native iOS e2e tests
+    
+  #- task: Xcode@5
+  #  inputs:
+  #    actions: 'test'
+  #    configuration: 'Debug'
+  #    sdk: 'iphonesimulator'
+  #    xcWorkspacePath: '$(Build.SourcesDirectory)/js/react_native/e2e/ios/OnnxruntimeModuleExample.xcworkspace'
+  #    scheme: 'OnnxruntimeModuleExample'
+  #    packageApp: false
+  #    destinationPlatformOption: 'iOS'
+  #    destinationSimulators: 'iPhone 13,OS=latest'
+  #    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
+  #    xcprettyArgs: '--output build/reports/test-results.xml'
+  #    publishJUnitResults: true
+  #    testRunTitle: 'React Native iOS e2e Test Results'
+  #  displayName: Run React Native iOS e2e Tests
 
   - task: PublishTestResults@2
     inputs:
