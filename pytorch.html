@@ -127,9 +127,6 @@
                     <section class="pb-4 pt-4 blue-title-columns">
                     <div class="container-fluid">
                         <div class="row pb-4 pb-md-5">
-                            <div class="col-12 col-md-6 mb-4 mb-md-0 text-center pr-10">
-                                <img src="./images/optimization-acceleration.png" alt="Illustration of a computational graph representing ONNX format and the acceleration enabled by ONNX Runtime" class="img-fluid">
-                            </div>
                             <div class="col-12 col-md-6 pr-5">
                                 <h2>Native support in PyTorch</h2>
                                 <p>PyTorch includes support for ONNX through the <a href="https://pytorch.org/docs/stable/onnx.html" target="_blank" class="link">torch.onnx</a> APIs to simplify exporting your PyTorch model to the portable ONNX format.
@@ -137,24 +134,23 @@
                                 </p>
                                 <p><a href="https://onnxruntime.ai/docs/tutorials/accelerate-pytorch/pytorch.html#convert-model-to-onnx" class="link">Get your PyTorch models ready for optimized deployment >></a></p>
                             </div>
+                            <div class="col-12 col-md-6 mb-4 mb-md-0 text-center pr-10">
+                                <img src="./images/pytorch-builtin.png" class="img-fluid">
+                            </div>
                         </div>
                         <div class="row pb-4 pb-md-5">
-                            <div class="col-12 col-md-6 order-md-2 mb-4 mb-md-0 text-center pr-10">
-                                <img src="./images/API-platform-support.png" alt="Illustration of blank boxes conveying the breadth of API and platform support" class="img-fluid">
+                            <div class="col-12 col-md-6 mb-4 mb-md-0 text-center pr-10">
+                                <img src="./images/python-free.png" class="img-fluid">
                             </div>
-                            <div class="col-12 col-md-6 order-md-1 pr-5">
+                            <div class="col-12 col-md-6 pr-5">
                                 <h2>Python not required</h2>
-                                <p>Training PyTorch models requires Python but production environments often don't support Python. Taking a dependency on a Python interpreter is also a non-starter when your deployment target is an Android or iOS mobile device. 
-                                    This can be a significant obstacle to deploying PyTorch models. 
+                                <p>Training PyTorch models requires Python but that can be a significant obstacle to deploying PyTorch models to many production environments, especially Android and iOS mobile devices. 
                                     ONNX Runtime is designed for production and provides APIs in C/C++, C#, Java, and Objective-C, helping create a bridge from your PyTorch training environment to a successful PyTorch production deployment.
                                 </p>
                                 <p><a href="https://onnxruntime.ai/docs/api/" class="link">See ONNX Runtime's many Python-free APIs >></a></p>
                             </div>
                         </div>
-                        <div class="row pt-4 pt-md-5">
-                            <div class="col-12 col-md-6 mb-4 mb-md-0 text-center pr-10">
-                                <img src="./images/continuous-community-innovation.png" alt="Illustration of a lightbulb above three computers, all connected by lines; represents the community of ONNX Runtime contributors" class="img-fluid">
-                            </div>
+                        <div class="row">
                             <div class="col-12 col-md-6 pr-5">
                                 <h2>Lower latency, higher throughput</h2>
                                 <p>Better performance can help improve your user experience and lower your operating costs. 
@@ -164,18 +160,21 @@
                                 </p>
                                 <p><a href="https://cloudblogs.microsoft.com/opensource/tag/onnx" target="_blank" class="link">Check the latest on performance enhancements >></a></p>
                             </div>
+                            <div class="col-12 col-md-6 mb-4 mb-md-0 text-center pr-10">
+                                <img src="./images/performance.png" class="img-fluid">
+                            </div>
                         </div>
                         <div class="row pt-4 pt-md-5">
+                            <div class="col-12 col-md-6 mb-4 mb-md-0 text-center pr-10">
+                                <img src="./images/agility.png" class="img-fluid">
+                            </div>
                             <div class="col-12 col-md-6 pr-5">
-                                <h2>Save time and money</h2>
-                                <p>Development agility is also a key factor in overall costs. 
+                                <h2>Get innovations into production faster</h2>
+                                <p>Development agility is a key factor in overall costs. 
                                     ONNX Runtime was built on the experience of taking PyTorch models to production in high scale services like Microsoft Office, Bing, and Azure. It used to take weeks and months to take a model from R&D to production.
                                     With ONNX Runtime, models can be ready to be deployed at scale in hours or days.
                                 </p>
                                 <p><a href="community.html" class="link">See what ONNX Runtime users are saying >></a></p>
-                            </div>
-                            <div class="col-12 col-md-6 mb-4 mb-md-0 text-center pr-10">
-                                <img src="./images/API-platform-support.png" alt="Illustration of blank boxes conveying the breadth of API and platform support" class="img-fluid">
                             </div>
                         </div>
                     </div>
@@ -193,22 +192,39 @@
                         </div>
                         <div class="row pb-md-4 pb-0">
                             <div class="col-12 col-sm-6 col-md-3 pr-xl-5 pr-lg-4 mb-md-0 mb-4">
-                                <h3 class="footer-heading">Learn</h3>
-                                <p class="mr-xl-5 mb-2">Accelerate your machine learning inferencing and training today.</p>
-                                <a class="mr-xl-5 btn-getStarted" href="./index.html#getStartedTable">
-                                    <span class="link-content">Get Started</span><span class="link-arrow fa fa-angle-right"></span></a>
+                                <h3 class="footer-heading">Get Started</h3>
+                                <ul class="list-unstyled text-small">
+                                    <li class="mb-2">
+                                        <a target="_blank" href="./index.html#getStartedTable">
+                                            <span class="link-content">Install</span><span class="link-arrow fa fa-angle-right"></span></a>
+                                    </li>
+                                    <li class="mb-2">
+                                        <a target="_blank" href="./pytorch">
+                                            <span class="link-content">PyTorch</span><span class="link-arrow fa fa-angle-right"></span></a>
+                                    </li>
+                                </ul>
                             </div>
                             <div class="col-12 col-sm-6 col-md-3 pr-xl-5 pr-lg-4 mb-md-0 mb-4">
                                 <h3 class="footer-heading">Contribute</h3>
-                                <p class="mr-xl-5 mb-2">ONNX Runtime is a community project. We encourage you to join the effort and contribute feedback, ideas and code.</p>
                                 <a class="mr-xl-5" target="_blank" href="https://github.com/microsoft/onnxruntime">
-                                    <span class="link-content">Join us on Github</span><span class="link-arrow fa fa-angle-right"></span></a>
+                                    <span class="link-content">Join us on GitHub</span><span class="link-arrow fa fa-angle-right"></span></a>
 							</div>
                             <div class="col-12 col-sm-6 col-md-3 pr-xl-5 pr-lg-4 mb-md-0 mb-4">
                                 <h3 class="footer-heading">Follow Us</h3>
-                                <p class="mr-xl-5 mb-2">Stay up to date with the latest ONNX Runtime news.</p>
-                                <a href="https://twitter.com/hashtag/ONNXRuntime" target="_blank" title="Twitter" class="twitter-icon" aria-label="Social Icon Twitter">
-                                    <span class="fa fa-twitter" aria-hidden="true"></span></a>
+                                <ul class="list-unstyled text-small">
+                                    <li class="mb-2">
+                                        <a target="_blank" href="https://twitter.com/onnxruntime">
+                                            <span class="link-content">Twitter</span><span class="link-arrow fa fa-angle-right"></span></a>
+                                    </li>
+                                    <li class="mb-2">
+                                        <a target="_blank" href="https://www.linkedin.com/company/onnxruntime">
+                                            <span class="link-content">LinkedIn</span><span class="link-arrow fa fa-angle-right"></span></a>
+                                    </li>
+                                    <li class="mb-2">
+                                        <a target="_blank" href="https://www.youtube.com/channel/UC_SJk17KdRvDulXz-nc1uFg">
+                                            <span class="link-content">YouTube</span><span class="link-arrow fa fa-angle-right"></span></a>
+                                    </li>
+                                </ul>
 							</div>
 							<div class="col-6 col-sm-6 col-md-3">
                                 <h3 class="footer-heading">Resources</h3>
