@@ -54,7 +54,7 @@ jobs:
     displayName: Bootstrap Android and iOS e2e tests
 
   - script: |
-      xcrun simctl create iPhone13Test com.apple.CoreSimulator.SimDeviceType.iPhone-11
+      xcrun simctl create iPhone13Test com.apple.CoreSimulator.SimDeviceType.iPhone-13
       xcrun xcodebuild test -workspace OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -destination 'platform=iOS Simulator,OS=latest,name=iPhone13Test' | xcpretty -r junit --no-color
       xcrun simctl delete iPhone13Test
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
