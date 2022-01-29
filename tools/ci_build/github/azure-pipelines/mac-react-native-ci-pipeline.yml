@@ -59,6 +59,8 @@ jobs:
     displayName: Bootstrap Android and iOS e2e tests
 
   - script: |
+      export FORCE_BUNDLING=1
+      export RCT_NO_LAUNCH_PACKAGER=1
       xcrun xcodebuild test -workspace OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -destination 'platform=iOS Simulator,OS=latest,name=iPhone13Test' -derivedDataPath $(Build.BinariesDirectory)/react_native/ios_e2e_test/derived_data
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
     displayName: Run React Native iOS e2e tests
