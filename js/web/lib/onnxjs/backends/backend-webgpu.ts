@@ -9,11 +9,23 @@ import {Session} from '../session';
 import {WebGpuSessionHandler} from './webgpu/session-handler';
 
 export class WebGpuBackend implements Backend {
-  initialize(): boolean {
+  device: GPUDevice;
+  async initialize(): Promise<boolean> {
     try {
-      // STEP.1 TODO: set up context (one time initialization)
+      if (!navigator.gpu) {
+        // WebGPU is not available.
+        Logger.warning('WebGpuBackend', 'WebGPU is not available.');
+        return false;
+      }
 
-      // STEP.2 TODO: set up flags
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) {
+        Logger.warning('WebGpuBackend', 'Failed to get GPU adapter.');
+        return false;
+      }
+      this.device = await adapter.requestDevice();
+
+      // TODO: set up flags
 
       Logger.setWithEnv(env);
 
