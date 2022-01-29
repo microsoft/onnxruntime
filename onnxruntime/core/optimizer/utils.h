@@ -102,6 +102,12 @@ bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_outp
 
 bool IsOperationDeterministic(const std::string& domain, const std::string& op);
 
+
+/** Get min/max values from Clip if they are constant.
+@returns false if mutable and cannot be used.
+*/
+bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, float& max);
+
 #endif  // !#if !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

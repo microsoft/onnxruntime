@@ -1468,6 +1468,67 @@ TEST(QDQTransformerTests, DQForward_MutilpleSteps) {
   test_case({1, 13, 13, 23}, {30, 23, 3, 3}, {0, 3, 1, 2});
 }
 
+TEST(QDQTransformerTests, Clip) {
+  auto test_case = [&](float scale, auto zero_point, int clip_count, int opset_version = 12) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<int8_t>({1, 32, 112, 112},
+                                                  std::numeric_limits<int8_t>::min(),
+                                                  std::numeric_limits<int8_t>::max());
+      auto* output_arg = builder.MakeOutput();
+
+      // add DQ
+      auto* dq_output = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<int8_t>(input_arg, .0035f, 7, dq_output);
+
+      // add Clip
+      auto* clip_output = builder.MakeIntermediate();
+      constexpr float min = .0f;
+      constexpr float max = 6.0f;
+      if (opset_version >= 11) {
+        auto* min_initializer = builder.MakeScalarInitializer<float>({min});
+        auto* max_initializer = builder.MakeScalarInitializer<float>({max});
+        Node& argmax_node = builder.AddNode("Clip", {dq_output, min_initializer, max_initializer}, {clip_output});
+      } else {
+        Node& argmax_node = builder.AddNode("Clip", {dq_output}, {clip_output});
+        argmax_node.AddAttribute("min", min);
+        argmax_node.AddAttribute("max", max);
+      }
+
+      // add Q
+      builder.AddQuantizeLinearNode(clip_output, scale, zero_point, output_arg);
+    };
+
+    auto check_clip_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+      EXPECT_EQ(op_to_count["Clip"], clip_count);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+    };
+
+    TransformerTester(build_test_case, check_clip_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1,
+                      opset_version);
+  };
+
+  test_case(.0235294122248888f, static_cast<int8_t>(-128), 0);  // [0, 6]
+  test_case(.02f, static_cast<int8_t>(-128), 0);                // [0, 5.1]
+  test_case(.03f, static_cast<int8_t>(-128), 1);                // [0, 7.65]
+  test_case(.02f, static_cast<int8_t>(127), 1);                 // [-5.1 , 0]
+  test_case(.02f, static_cast<int8_t>(0), 1);                   // [-2.56, 2.54]
+  test_case(.04f, static_cast<int8_t>(-97), 1);                 // [-1.24, 8.96]
+  test_case(.02352941176f, static_cast<uint8_t>(0), 0);         // [0, 6]
+  test_case(.02f, static_cast<uint8_t>(0), 0);                  // [0, 5.1]
+  test_case(.03f, static_cast<uint8_t>(0), 1);                  // [0, 7.65]
+  test_case(.02f, static_cast<uint8_t>(255), 1);                // [-5.1, 0]
+  test_case(.02f, static_cast<uint8_t>(128), 1);                // [-2.56, 2.54]
+  test_case(.04f, static_cast<uint8_t>(31), 1);                 // [-1.24, 8.96]
+  test_case(.02f, static_cast<int8_t>(-128), 0, 10);            // [0, 5.1]
+  test_case(.03f, static_cast<int8_t>(-128), 1, 10);            // [0, 7.65]
+  test_case(.02f, static_cast<uint8_t>(0), 0, 10);              // [0, 5.1]
+  test_case(.03f, static_cast<uint8_t>(0), 1, 10);              // [0, 7.65]
+}
+
 TEST(QDQTransformerTests, Concat) {
   auto test_case = [&](const std::vector<std::vector<int64_t>>& input_shapes,
                        int64_t axis,
