@@ -14,6 +14,8 @@
 #pragma warning(push)
 // C4127: conditional expression is constant
 #pragma warning(disable : 4127)
+// C4324: structure was padded due to alignment specifier
+#pragma warning(disable : 4324)
 #endif
 
 #include <absl/container/inlined_vector.h>

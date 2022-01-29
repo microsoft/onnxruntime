@@ -1531,7 +1531,7 @@ TEST_F(GraphTest, AddTensorAttribute) {
   *(t.mutable_int64_data()->Add()) = 3;
   *(t.mutable_dims()->Add()) = 1;
   *(t.mutable_dims()->Add()) = 3;
-  node_1.AddAttribute(kConstantValue, t);
+  node_1.AddAttribute(kConstantValue, std::move(t));
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 }

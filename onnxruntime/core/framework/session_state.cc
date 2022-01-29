@@ -856,7 +856,8 @@ void SessionState::UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue
   // Get the nodes generating the fetches.
   std::vector<const Node*> nodes;
   nodes.reserve(fetch_mlvalue_idxs.size());
-  std::unordered_set<NodeIndex> reachable_nodes;
+  InlinedHashSet<NodeIndex> reachable_nodes;
+  reachable_nodes.reserve(fetch_mlvalue_idxs.size());
 
   for (auto idx : fetch_mlvalue_idxs) {
     std::string node_arg_name;
@@ -869,10 +870,10 @@ void SessionState::UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue
   // Reversely traverse to get reachable nodes.
   graph_.ReverseDFSFrom(
       nodes, {}, [&reachable_nodes](const Node* n) { reachable_nodes.insert(n->Index()); });
-  to_be_executed_nodes_.insert(std::make_pair(sorted_idxs, reachable_nodes));
+  to_be_executed_nodes_.emplace(std::move(sorted_idxs), std::move(reachable_nodes));
 }
 
-const std::unordered_set<NodeIndex>* SessionState::GetToBeExecutedNodes(
+const InlinedHashSet<NodeIndex>* SessionState::GetToBeExecutedNodes(
     const std::vector<int>& fetch_mlvalue_idxs) const {
   std::vector<int> sorted_idxs = fetch_mlvalue_idxs;
   std::sort(sorted_idxs.begin(), sorted_idxs.end());

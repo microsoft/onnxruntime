@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/inlined_containers.h"
+#include "core/common/inlined_containers.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
 #include "core/providers/common.h"
 //TODO: fix the warnings

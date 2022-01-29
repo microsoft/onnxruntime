@@ -343,22 +343,50 @@ class Node {
   size_t GetOutputEdgesCount() const noexcept { return relationships_.output_edges.size(); }
 
   /** Add an attribute to this Node with specified attribute name and value. */
-  void AddAttribute(const std::string& attr_name, const ONNX_NAMESPACE::AttributeProto& value);
+  void AddAttribute(std::string attr_name, const ONNX_NAMESPACE::AttributeProto& value);
+  void AddAttribute(std::string attr_name, ONNX_NAMESPACE::AttributeProto&& value);
 
 #define ADD_ATTR_INTERFACES(TypeName)                                     \
   void AddAttribute(const std::string& attr_name, const TypeName& value); \
   void AddAttribute(const std::string& attr_name,                         \
-                    const std::vector<TypeName>& values);
+                    const gsl::span<TypeName const>& values);
+
+#define ADD_ATTR_MOVE_INTERFACE(TypeName) \
+  void AddAttribute(const std::string& attr_name, TypeName&& value);
 
   ADD_ATTR_INTERFACES(int64_t)
   ADD_ATTR_INTERFACES(float)
-  ADD_ATTR_INTERFACES(std::string)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TensorProto)
+  ADD_ATTR_MOVE_INTERFACE(ONNX_NAMESPACE::TensorProto)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::GraphProto)
+  ADD_ATTR_MOVE_INTERFACE(ONNX_NAMESPACE::GraphProto)
 #if !defined(DISABLE_SPARSE_TENSORS)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::SparseTensorProto)
+  ADD_ATTR_MOVE_INTERFACE(ONNX_NAMESPACE::SparseTensorProto)
 #endif
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TypeProto)
+  ADD_ATTR_MOVE_INTERFACE(ONNX_NAMESPACE::TypeProto)
+
+  void AddAttribute(std::string attr_name, std::string value);
+  void AddAttribute(const std::string& attr_name,
+                    const gsl::span<std::string const>& values);
+
+  // The below overloads are made so the compiler does not attempt to resolve
+  // C-strings with a gsl::span overloads
+  template <size_t N>
+  void AddAttribute(const std::string& attr_name, const char (&value)[N]) {
+    this->AddAttribute(attr_name, std::string(value, N - 1));
+  }
+
+  template <size_t M, size_t N>
+  void AddAttribute(const char (&attr_name)[M], const char (&value)[N]) {
+    this->AddAttribute(std::string(attr_name, M - 1), std::string(value, N - 1));
+  }
+
+  template <size_t M, typename T>
+  void AddAttribute(const char (&attr_name)[M], T&& value) {
+    this->AddAttribute(std::string(attr_name, M - 1), std::forward<T>(value));
+  }
 
   /** Gets the Node's attributes. */
   const NodeAttributes& GetAttributes() const noexcept { return attributes_; }
@@ -487,8 +515,8 @@ class Node {
     They are pseudo-inputs to this Node as it has an implicit dependency on them. */
     std::vector<NodeArg*> implicit_input_defs;
 
-   private:
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Definitions);
+   private:
   };
 
   /**
@@ -871,10 +899,50 @@ class Graph {
   Node& AddNode(const std::string& name,
                 const std::string& op_type,
                 const std::string& description,
-                const std::vector<NodeArg*>& input_args,
-                const std::vector<NodeArg*>& output_args,
+                const gsl::span<NodeArg* const>& input_args,
+                const gsl::span<NodeArg* const>& output_args,
                 const NodeAttributes* attributes = nullptr,
-                const std::string& domain = "");
+                const std::string& domain = std::string());
+
+  Node& AddNode(const std::string& name,
+                const std::string& op_type,
+                const std::string& description,
+                std::initializer_list<NodeArg*> input_args,
+                std::initializer_list<NodeArg*> output_args,
+                const NodeAttributes* attributes = nullptr,
+                const std::string& domain = std::string()) {
+    return AddNode(name, op_type, description,
+                   gsl::make_span(input_args.begin(), input_args.end()),
+                   gsl::make_span(output_args.begin(), output_args.end()),
+                   attributes, domain);
+  }
+
+  Node& AddNode(const std::string& name,
+                const std::string& op_type,
+                const std::string& description,
+                const gsl::span<NodeArg* const>& input_args,
+                std::initializer_list<NodeArg*> output_args,
+                const NodeAttributes* attributes = nullptr,
+                const std::string& domain = std::string()) {
+    return AddNode(name, op_type, description,
+                   input_args,
+                   gsl::make_span(output_args.begin(), output_args.end()),
+                   attributes, domain);
+  }
+
+  Node& AddNode(const std::string& name,
+                const std::string& op_type,
+                const std::string& description,
+                std::initializer_list<NodeArg*> input_args,
+                const gsl::span<NodeArg* const>& output_args,
+                const NodeAttributes* attributes = nullptr,
+                const std::string& domain = std::string()) {
+    return AddNode(name, op_type, description,
+                   gsl::make_span(input_args.begin(), input_args.end()),
+                   output_args,
+                   attributes, domain);
+  }
+
 
   /** Remove a Node from this Graph and free it.
   The output edges of this specified node MUST have been removed before removing the node.
@@ -1073,13 +1141,21 @@ class Graph {
   @param inputs NodeArgs that represent complete graph inputs which need to be explicitly ordered.
   @remarks Note that the input order matters for subgraphs.
   */
-  void SetInputs(const std::vector<const NodeArg*>& inputs);
+  void SetInputs(const gsl::span<const NodeArg* const>& inputs);
+
+  void SetInputs(std::initializer_list<const NodeArg*> inputs) {
+    SetInputs(gsl::make_span(inputs.begin(), inputs.end()));
+  }
 
   /** Explicitly set graph outputs.
   @param outputs NodeArgs that represent complete graph outputs which need to be explicitly ordered.
   @remarks Note that the output order matters for subgraphs.
   */
-  void SetOutputs(const std::vector<const NodeArg*>& outputs);
+  void SetOutputs(const gsl::span<const NodeArg* const>& outputs);
+
+  void SetOutputs(std::initializer_list<const NodeArg*> outputs) {
+    SetOutputs(gsl::make_span(outputs.begin(), outputs.end()));
+  }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -1125,14 +1201,18 @@ class Graph {
     return GetConsumerNodesImpl(*this, node_arg_name);
   }
 
-  void UpdateConsumerNodes(const std::string& node_arg_name, const std::vector<Node*>& nodes) {
+  void UpdateConsumerNodes(const std::string& node_arg_name, const gsl::span<Node* const>& nodes) {
     auto iter = node_arg_to_consumer_nodes_.find(node_arg_name);
     if (iter != node_arg_to_consumer_nodes_.end()) {
-      node_arg_to_consumer_nodes_.erase(node_arg_name);
+      node_arg_to_consumer_nodes_.erase(iter);
     }
     for (Node* node : nodes) {
       node_arg_to_consumer_nodes_[node_arg_name].insert(node->Index());
     }
+  }
+
+  void UpdateConsumerNodes(const std::string& node_arg_name, std::initializer_list<Node*> nodes) {
+    UpdateConsumerNodes(node_arg_name, gsl::make_span(nodes.begin(), nodes.end()));
   }
 
   /** During constant folding it may become possible to infer the shape for a node.
@@ -1280,8 +1360,8 @@ class Graph {
         const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
         const logging::Logger& logger);
 
+   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
  private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
   void InitializeStateFromModelFileGraphProto();
 
   // Add node with specified <node_proto>.

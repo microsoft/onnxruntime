@@ -18,6 +18,7 @@
 #include <stddef.h>
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
+#include "core/common/inlined_containers.h"
 #include "core/common/type_list.h"
 #include "core/common/logging/severity.h"
 #include "core/framework/allocator.h"
@@ -239,7 +240,7 @@ template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)> >;
 
 inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept { return g_host->CreateStatus(code, msg); }
- 
+
 std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info);
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
@@ -249,10 +250,10 @@ std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const c
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream);
 
-std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                   const std::string& provider_type,
-                                                   const std::vector<const KernelRegistry*>& kernel_registries,
-                                                   const std::vector<NodeIndex>& tentative_nodes);
+InlinedHashSet<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
+                                               const std::string& provider_type,
+                                               const gsl::span<const KernelRegistry* const>& kernel_registries,
+                                               const gsl::span<const NodeIndex>& tentative_nodes);
 
 std::string GetEnvironmentVar(const std::string& var_name);
 
@@ -314,4 +315,3 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() { r
 
 #define LOGS_DEFAULT(severity) \
   LOGS_DEFAULT_CATEGORY(severity, ::onnxruntime::logging::Category::onnxruntime)
-
