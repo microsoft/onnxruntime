@@ -457,7 +457,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     }
     dump_subgraphs_ = info.dump_subgraphs;
     engine_cache_enable_ = info.engine_cache_enable;
-    if (engine_cache_enable_ || int8_enable_) {
+    timing_cache_enable_ = info.timing_cache_enable;
+    if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
       cache_path_ = info.engine_cache_path;
     }
     engine_decryption_enable_ = info.engine_decryption_enable;
@@ -465,7 +466,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       engine_decryption_lib_path_ = info.engine_decryption_lib_path;
     }
     force_sequential_engine_build_ = info.force_sequential_engine_build;
-    timing_cache_enable_ = info.timing_cache_enable;
   } else {
     const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
     if (!max_partition_iterations_env.empty()) {
@@ -528,7 +528,12 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       engine_cache_enable_ = (std::stoi(engine_cache_enable_env) == 0 ? false : true);
     }
 
-    if (engine_cache_enable_ || int8_enable_) {
+    const std::string timing_cache_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTimingCacheEnable);
+    if (!timing_cache_enable_env.empty()) {
+      timing_cache_enable_ = (std::stoi(timing_cache_enable_env) == 0 ? false : true);
+    }
+
+    if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
       const std::string engine_cache_path = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCachePath);
       cache_path_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kCachePath);
       if (!engine_cache_path.empty() && cache_path_.empty()) {
@@ -551,10 +556,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       force_sequential_engine_build_ = (std::stoi(force_sequential_engine_build_env) == 0 ? false : true);
     }
 
-    const std::string timing_cache_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTimingCacheEnable);
-    if (!timing_cache_enable_env.empty()) {
-      timing_cache_enable_ = (std::stoi(timing_cache_enable_env) == 0 ? false : true);
-    }
   }
 
   // Validate setting
@@ -575,7 +576,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     dla_core_ = 0;
   }
 
-  if (engine_cache_enable_ || int8_enable_) {
+  if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
     if (!cache_path_.empty() && !fs::is_directory(cache_path_)) {
       if (!fs::create_directory(cache_path_)) {
         throw std::runtime_error("Failed to create directory " + cache_path_);

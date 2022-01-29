@@ -620,7 +620,7 @@ TEST_P(ModelTest, Run) {
           params.trt_fp16_enable = 1;
           ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(TensorrtExecutionProviderWithOptions(&params)));
         } else {
-          ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider(&params)));
+          ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(TensorrtExecutionProviderWithOptions(&params)));
         }
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
       } else if (provider_name == "migraphx") {
