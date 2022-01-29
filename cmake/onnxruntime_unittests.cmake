@@ -686,6 +686,10 @@ set(test_all_args)
 if (onnxruntime_USE_TENSORRT)
     # TRT EP CI takes much longer time when updating to TRT 8.2
     # So, we only run trt ep and exclude other eps to reduce CI test time.  
+    #
+    # The test names of model tests were using sequential number in the past.
+    # This PR https://github.com/microsoft/onnxruntime/pull/10220 (Please see ExpandModelName function in model_tests.cc for more details) 
+    # made test name contain the "ep" and "model path" information, so we can easily filter the tests using cuda ep or other ep with *cpu__* or *xxx__*.  
     list(APPEND test_all_args "--gtest_filter=-*cpu__*:*cuda__*" )
 endif ()
 
