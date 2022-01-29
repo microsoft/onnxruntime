@@ -170,12 +170,6 @@ class IExecutionProvider {
 
   virtual void Replay() {}
 
-  virtual void TurnOnCapture() {}
-
-  virtual void TurnOffCapture() {}
-
-  virtual bool IsCapturing() const { return false; }
-
   /**
      Called when session creation is complete
      This provides an opportunity for execution providers to optionally synchronize and

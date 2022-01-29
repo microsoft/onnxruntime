@@ -328,10 +328,6 @@ class InferenceSession {
                             const OrtValueCachePtr& cache);
 #endif
 
-  void TurnOnCapture();
-
-  void TurnOffCapture();
-
   void Replay();
 
   /**

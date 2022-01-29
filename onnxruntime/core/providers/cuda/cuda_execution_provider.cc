@@ -372,6 +372,7 @@ void CUDAExecutionProvider::CaptureBegin()  {
 
 void CUDAExecutionProvider::CaptureEnd() {
   graph_.CaptureEnd();
+  ORT_THROW_IF_ERROR(Sync());
 }
 
 void CUDAExecutionProvider::Replay() {
@@ -380,17 +381,6 @@ void CUDAExecutionProvider::Replay() {
   ORT_THROW_IF_ERROR(OnRunEnd(true));
 }
 
-void CUDAExecutionProvider::TurnOnCapture() {
-  graph_.TurnOnCapture();
-}
-
-void CUDAExecutionProvider::TurnOffCapture() {
-  graph_.TurnOffCapture();
-}
-
-bool CUDAExecutionProvider::IsCapturing() const {
-  return graph_.IsCapturing();
-}
 #endif
 
 namespace cuda {
