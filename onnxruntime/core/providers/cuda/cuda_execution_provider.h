@@ -99,9 +99,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
   void CaptureBegin() override;
   void CaptureEnd() override;
   void Replay() override;
-  void TurnOnCapture() override;
-  void TurnOffCapture() override;
-  bool IsCapturing() const override;
 #endif
 
  private:

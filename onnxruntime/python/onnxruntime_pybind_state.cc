@@ -1194,7 +1194,9 @@ RunOptions instance. The individual calls will exit gracefully and return an err
                      R"pbdoc(Choose to run in training or inferencing mode)pbdoc")
 #endif
       .def_readwrite("only_execute_path_to_fetches", &RunOptions::only_execute_path_to_fetches,
-                     R"pbdoc(Only execute the nodes needed by fetch list)pbdoc");
+                     R"pbdoc(Only execute the nodes needed by fetch list)pbdoc")
+      .def_readwrite("capture_cuda_graph", &RunOptions::capture_cuda_graph,
+                     R"pbdoc(Set to True to capture CUDA Graph.)pbdoc");
 
   py::class_<ModelMetadata>(m, "ModelMetadata", R"pbdoc(Pre-defined and custom metadata about the model.
 It is usually used to identify the model used to run the prediction and
@@ -1397,13 +1399,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def("end_profiling", [](const PyInferenceSession* sess) -> std::string {
         return sess->GetSessionHandle()->EndProfiling();
       })
-      .def("turn_on_capture", [](const PyInferenceSession* sess) -> void {
-        sess->GetSessionHandle()->TurnOnCapture();
-      })
-      .def("turn_off_capture", [](const PyInferenceSession* sess) -> void {
-        sess->GetSessionHandle()->TurnOffCapture();
-      })
-      .def("run_with_feeds_fetches_ort_values", [](PyInferenceSession* sess, const py::dict& feeds, const py::dict&fetches, RunOptions* run_options = nullptr) -> void {
+      .def("capture_cuda_graph", [](PyInferenceSession* sess, const py::dict& feeds, const py::dict&fetches, RunOptions* run_options = nullptr) -> void {
         NameMLValMap ort_feeds;
         // item is always a copy since dict returns a value and not a ref
         // and Apple XToolChain barks

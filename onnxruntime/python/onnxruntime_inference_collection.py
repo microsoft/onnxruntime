@@ -7,6 +7,7 @@ import collections.abc
 import os
 import warnings
 
+from onnxruntime  import RunOptions
 from onnxruntime.capi import _pybind_state as C
 
 
@@ -244,7 +245,7 @@ class Session:
             else:
                 raise
             
-    def run_with_feeds_fetches_ort_values(self, input_dict_ort_values, output_dict_ort_values, run_options=None):
+    def capture_cuda_graph(self, input_dict_ort_values, output_dict_ort_values, run_options=None):
         """
         Compute the predictions.
         
@@ -259,7 +260,7 @@ class Session:
 
         ::
 
-            sess.run_with_feeds_fetches_ort_values({input_name: x}, {output_name: y})
+            sess.capture_cuda_graph({input_name: x}, {output_name: y})
         """
         def invoke(sess, input_dict_ort_values, output_dict_ort_values, run_options):
             input_dict = {}
@@ -269,10 +270,14 @@ class Session:
             for n, v in output_dict_ort_values.items():
                 output_dict[n] = v._get_c_value()
 
-            sess.run_with_feeds_fetches_ort_values(input_dict, output_dict, run_options)
+            sess.capture_cuda_graph(input_dict, output_dict, run_options)
             ort_values = [v for n, v in output_dict_ort_values.items()]
             return ort_values
-
+        
+        if run_options is None:
+            run_options = RunOptions()
+        run_options.capture_cuda_graph = True
+        
         num_required_inputs = len(self._inputs_meta)
         num_inputs = len(input_dict_ort_values)
         # the graph may have optional inputs used to override initializers. allow for that.
@@ -295,18 +300,6 @@ class Session:
                 return invoke(self._sess, input_dict_ort_values, output_dict_ort_values, run_options)
             else:
                 raise
-    
-    def turn_on_capture(self):
-        """
-        Turn on capture of the cuda graph.
-        """
-        self._sess.turn_on_capture()
-        
-    def turn_off_capture(self):
-        """
-        Turn off capture of the cuda graph.
-        """
-        self._sess.turn_off_capture()
     
     def replay(self):
         """

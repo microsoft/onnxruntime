@@ -579,7 +579,9 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                        const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                        ExecutionMode execution_mode, const bool& terminate_flag,
-                                       const logging::Logger& logger, const bool only_execute_path_to_fetches = false) {
+                                       const logging::Logger& logger,
+                                       const bool only_execute_path_to_fetches = false,
+                                       const bool capture_cuda_graph = false) {
   std::unique_ptr<IExecutor> p_exec;
   if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
     p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag, only_execute_path_to_fetches));
@@ -598,11 +600,25 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
 
   // see if we can skip copies due to the types of execution providers available
   if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
+    if (capture_cuda_graph) {
+      for (auto& provider : session_state.GetExecutionProviders()) {
+        if (provider->Type() == kCudaExecutionProvider) {
+          provider->CaptureBegin();
+        }
+      }
+    }
     // no device copies are needed so simple execute
     ORT_RETURN_IF_ERROR(p_exec->Execute(session_state,
                                         feeds_fetches_info.feeds_mlvalue_idxs, feeds,
                                         feeds_fetches_info.fetches_mlvalue_idxs, fetches, fetch_allocators,
                                         logger));
+    if (capture_cuda_graph) {
+      for (auto& provider : session_state.GetExecutionProviders()) {
+        if (provider->Type() == kCudaExecutionProvider) {
+          provider->CaptureEnd();
+        }
+      }
+    }
   } else {
     const std::vector<OrtValue>* p_feeds = &feeds;
     std::vector<OrtValue>* p_fetches = &fetches;
@@ -651,14 +667,17 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             FeedsFetchesManager& feeds_fetches_manager,
                             const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const bool& terminate_flag,
-                            const logging::Logger& logger, bool only_execute_path_to_fetches) {
+                            const logging::Logger& logger,
+                            bool only_execute_path_to_fetches,
+                            bool capture_cuda_graph) {
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(session_state, feeds_fetches_manager));
 
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
 
   auto status = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
-                                 execution_mode, terminate_flag, logger, only_execute_path_to_fetches);
+                                 execution_mode, terminate_flag, logger,
+                                 only_execute_path_to_fetches, capture_cuda_graph);
 
   return status;
 }

@@ -1739,22 +1739,6 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
 }
 #endif
 
-void InferenceSession::TurnOnCapture() {
-  for  (const auto& provider : session_state_->GetExecutionProviders()) {
-    if (provider->Type() == kCudaExecutionProvider) {
-      provider->TurnOnCapture();
-    }
-  }
-}
-
-void InferenceSession::TurnOffCapture() {
-  for  (const auto& provider : session_state_->GetExecutionProviders()) {
-    if (provider->Type() == kCudaExecutionProvider) {
-      provider->TurnOffCapture();
-    }
-  }
-}
-
 void InferenceSession::Replay() {
   for  (const auto& provider : session_state_->GetExecutionProviders()) {
     if (provider->Type() == kCudaExecutionProvider) {
@@ -1856,7 +1840,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #endif
     ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                  session_options_.execution_mode, run_options.terminate, run_logger,
-                                                 run_options.only_execute_path_to_fetches));
+                                                 run_options.only_execute_path_to_fetches,
+                                                 run_options.capture_cuda_graph));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {

@@ -32,6 +32,8 @@ struct OrtRunOptions {
   bool training_mode = true;
 #endif
 
+  bool capture_cuda_graph = false;
+
   // Stores the configurations for this run
   // To add an configuration to this specific run, call OrtApis::AddRunConfigEntry
   // The configuration keys and value formats are defined in

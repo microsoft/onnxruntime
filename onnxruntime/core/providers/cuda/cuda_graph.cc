@@ -67,18 +67,6 @@ void CUDAGraph::Reset() {
 #endif
 }
 
-bool CUDAGraph::IsCapturing() const {
-  return is_capturing_;
-}
-
-void CUDAGraph::TurnOnCapture() {
-  is_capturing_ = true;
-}
-
-void CUDAGraph::TurnOffCapture() {
-  is_capturing_ = false;
-}
-
 CUDAGraph::~CUDAGraph() {
   Reset();
 }

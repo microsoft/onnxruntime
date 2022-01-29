@@ -14,9 +14,6 @@ struct CUDAGraph {
   void CaptureEnd();
   void Replay();
   void Reset();
-  bool IsCapturing() const;
-  void TurnOnCapture();
-  void TurnOffCapture();
 
   protected:
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
