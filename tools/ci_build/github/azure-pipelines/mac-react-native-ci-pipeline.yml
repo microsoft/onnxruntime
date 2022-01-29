@@ -34,6 +34,11 @@ jobs:
     displayName: Install python modules
 
   - script: |
+      xcrun simctl create iPhone13Test com.apple.CoreSimulator.SimDeviceType.iPhone-13
+    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
+    displayName: Run iOS Simulator
+
+  - script: |
       npm ci
     workingDirectory: '$(Build.SourcesDirectory)/js'
     displayName: npm ci js
@@ -54,13 +59,15 @@ jobs:
     displayName: Bootstrap Android and iOS e2e tests
 
   - script: |
-      xcrun simctl create iPhone13Test com.apple.CoreSimulator.SimDeviceType.iPhone-13
-      xcrun xcodebuild test -workspace OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -destination 'platform=iOS Simulator,OS=latest,name=iPhone13Test' | xcpretty -r junit --no-color
+      xcrun xcodebuild test -workspace OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -destination 'platform=iOS Simulator,OS=latest,name=iPhone13Test' -derivedDataPath $(Build.BinariesDirectory)/react_native/ios_e2e_test/derived_data
+    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
+    displayName: Run React Native iOS e2e tests
+
+  - script: |
       xcrun simctl delete iPhone13Test
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
+    displayName: Stop iOS Simulator
 
-    displayName: Run React Native iOS e2e tests
-    
   #- task: Xcode@5
   #  inputs:
   #    actions: 'test'
