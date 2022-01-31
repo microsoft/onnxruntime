@@ -325,7 +325,7 @@ def convert_model(args):
 def test_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
 
     if args.prefix_vocab_mask:
-        print("Skipping parity test as prefix vocab mask is not implemented by Huggin Face")
+        print("Skipping parity test as prefix vocab mask is not implemented by Hugging Face")
         return
 
     from transformers import GPT2Tokenizer, GPT2LMHeadModel

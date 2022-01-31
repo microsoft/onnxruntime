@@ -26,8 +26,7 @@ namespace transformers {
     continue;                                                                               \
   }
 
-//#define SKIP_IF_TOO_MANY(row_or_column_size, i, new_line) SKIP_IF_MORE_THAN(row_or_column_size, i, MAX_ROW_OR_COLUMN, new_line)
-#define SKIP_IF_TOO_MANY(row_or_column_size, i, new_line)
+#define SKIP_IF_TOO_MANY(row_or_column_size, i, new_line) SKIP_IF_MORE_THAN(row_or_column_size, i, MAX_ROW_OR_COLUMN, new_line)
 
 extern bool g_enable_tensor_dump;  // global variance to turn on/off dump
 

@@ -9,6 +9,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
+// beam_search_iteration represents the current iteration counter of beam search
+// This value is used to apply processors as needed in specific iteration.
 static int beam_search_iteration;
 
 template <typename T>
@@ -154,23 +156,23 @@ PrefixVocabMaskLogitsProcessor<T>::PrefixVocabMaskLogitsProcessor(const gsl::spa
 
 template <typename T>
 void PrefixVocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
-                                          NextTokenScores<T>& next_token_scores) {  
+                                          NextTokenScores<T>& next_token_scores) {
   assert(!prefix_vocab_mask_.empty());
+
   if (beam_search_iteration > 1) {
     return;
   }
-
-  // Process vocabulary mask and set tokens with mask value 0 to -inf.
-  T* p = next_token_scores.scores.data();
-
   // next_token_scores shape (batch_size * num_beams, vocab_size)
   int num_beams = next_token_scores.batch_beam_size / batch_size_;
-  assert(num_beams*batch_size_ == next_token_scores.batch_beam_size);
+  assert(num_beams * batch_size_ == next_token_scores.batch_beam_size);
 
+  // Process prefix vocabulary mask and set tokens with mask value 0 to -inf.
+  // prefix_vocab_mask shape (batch_szie, vocab_size).
+  T* p = next_token_scores.scores.data();
   for (int i = 0; i < batch_size_; i++) {
     for (int j = 0; j < num_beams; j++) {
       for (int k = 0; k < next_token_scores.vocab_size; k++, p++) {
-        if (prefix_vocab_mask_[k] == 0) {
+        if (prefix_vocab_mask_[i][k] == 0) {
           *p = std::numeric_limits<T>::lowest();
         }
       }
