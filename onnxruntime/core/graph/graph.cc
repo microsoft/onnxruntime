@@ -1066,7 +1066,7 @@ void Node::ForEachDef(std::function<void(const onnxruntime::NodeArg&, bool is_in
 
 // Constructor: Given a <GraphProto> loaded from model file, construct
 // a <Graph> object and Resolve() it.
-//Status Graph::LoadGraph(const GraphProto& graph_proto,
+// Status Graph::LoadGraph(const GraphProto& graph_proto,
 //                        const std::unordered_map<std::string, int>& domain_to_version,
 //                        Version ir_version,
 //                        std::unique_ptr<Graph>& new_graph) {
@@ -1607,16 +1607,19 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
   // now build connections within this Graph instance
   node_arg_to_producer_node_.clear();
   node_arg_to_consumer_nodes_.clear();
+
   for (auto& node : Nodes()) {
     // Need mutable input defs to be able to set any outer scope NodeArg implicit inputs
     auto& input_args = node.MutableInputDefs();
     auto& output_args = node.MutableOutputDefs();
 
-    if (!output_args.empty()) {
-      for (const auto* output_arg : output_args) {
-        if (output_arg->Exists()) {
-          node_arg_to_producer_node_.insert({output_arg->Name(), node.Index()});
-        }
+    for (const auto* implicit_input : node.ImplicitInputDefs()) {
+      node_arg_to_consumer_nodes_[implicit_input->Name()].insert(node.Index());
+    }
+
+    for (const auto* output_arg : output_args) {
+      if (output_arg->Exists()) {
+        node_arg_to_producer_node_.insert({output_arg->Name(), node.Index()});
       }
     }
 
@@ -2128,11 +2131,16 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
 
   // apply type/shape info to the subgraph's inputs
   for (size_t i = 0; i < num_subgraph_inputs; ++i) {
-    const auto& input_type = *input_types[i];
+    const auto* input_type = input_types[i];
+    if (input_type == nullptr) {
+      // optional input
+      continue;
+    }
+
     const auto& subgraph_input = *subgraph_inputs->at(i);
 
     NodeArg* mutable_nodearg = subgraph.GetNodeArg(subgraph_input.Name());
-    status = mutable_nodearg->UpdateTypeAndShape(input_type, true, options.override_types, subgraph.logger_);
+    status = mutable_nodearg->UpdateTypeAndShape(*input_type, true, options.override_types, subgraph.logger_);
     if (!status.IsOK()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node.Name(), " ", status.ErrorMessage());
     }
@@ -2480,7 +2488,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   ctx.set_opset_imports(DomainToVersionMap());
   ctx.set_schema_registry(schema_registry_.get());
   // Set the parent directory of model path to load external tensors if exist
-  ctx.set_model_dir(ToMBString(ModelPath().ParentPath().ToPathString()));
+  ctx.set_model_dir(ToUTF8String(ModelPath().ParentPath().ToPathString()));
 
   LexicalScopeContext lsc;
   lsc.output_names.insert(resolve_context_.inputs_and_initializers.cbegin(),
@@ -2650,7 +2658,7 @@ void Graph::InitFunctionBodyForNode(Node& node) {
                            << node.Name() << "' optype " << node.OpType()
 #ifndef ORT_NO_EXCEPTIONS
                            << ". Error message " << e.what()
-#endif  //ORT_NO_EXCEPTIONS
+#endif  // ORT_NO_EXCEPTIONS
                            << ". Execution will fail if ORT does not have a specialized kernel for this op";
     // Return without using this function op's expansion. No need to fail just yet.
     // If ORT has a specialized kernel for this op then execution will proceed
@@ -3476,7 +3484,7 @@ void Graph::CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::str
   std::unordered_set<const NodeArg*> used_args;
   used_args.reserve(node_args_.size());
 
-  //Node Args we want to preserved even not being used
+  // Node Args we want to preserved even not being used
   std::unordered_set<const NodeArg*> node_args_to_preserve;
   if (initializer_names_to_preserve) {
     node_args_to_preserve.reserve(initializer_names_to_preserve->size());

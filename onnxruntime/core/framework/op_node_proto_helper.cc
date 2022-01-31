@@ -73,7 +73,6 @@ inline constexpr int ArrayTypeToAttributeType<std::string>() {
   return AttributeProto_AttributeType_STRINGS;
 }
 
-
 #define ORT_DEFINE_GET_ATTR(IMPL_T, T, type)                                                       \
   template <>                                                                                      \
   template <>                                                                                      \
@@ -152,8 +151,9 @@ inline constexpr int ArrayTypeToAttributeType<std::string>() {
   ORT_DEFINE_GET_ATTRS(ProtoHelperNodeContext, type, list) \
   ORT_DEFINE_GET_ATTRS(InferenceContext, type, list)
 
-#define ORT_DEFINE_GET_ATTRS_SPAN_SPECIALIZATION(type, list) \
-  ORT_DEFINE_GET_ATTRS_AS_SPAN(ProtoHelperNodeContext, type, list)
+#define ORT_DEFINE_GET_ATTRS_SPAN_SPECIALIZATION(type, list)       \
+  ORT_DEFINE_GET_ATTRS_AS_SPAN(ProtoHelperNodeContext, type, list) \
+  ORT_DEFINE_GET_ATTRS_AS_SPAN(InferenceContext, type, list)
 
 #else
 #define ORT_DEFINE_GET_ATTR_SPECIALIZATIONS(type, list) \
@@ -179,6 +179,17 @@ ORT_DEFINE_GET_ATTRS_SPECIALIZATIONS(GraphProto, graphs)
 
 ORT_DEFINE_GET_ATTRS_SPAN_SPECIALIZATION(float, floats)
 ORT_DEFINE_GET_ATTRS_SPAN_SPECIALIZATION(int64_t, ints)
+
+template <typename Impl_t>
+MUST_USE_RESULT Status OpNodeProtoHelper<Impl_t>::GetAttrs(const std::string& name, TensorShapeVector& out) const {
+  gsl::span<const int64_t> span;
+  Status status = this->GetAttrsAsSpan<int64_t>(name, span);
+  if (status.IsOK()) {
+    out.reserve(span.size());
+    out.assign(span.begin(), span.end());
+  }
+  return status;
+}
 
 template <typename Impl_t>
 MUST_USE_RESULT Status OpNodeProtoHelper<Impl_t>::GetAttrsStringRefs(

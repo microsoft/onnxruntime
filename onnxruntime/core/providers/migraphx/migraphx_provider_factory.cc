@@ -32,34 +32,11 @@ std::unique_ptr<IExecutionProvider> MIGraphXProviderFactory::CreateProvider() {
   return std::make_unique<MIGraphXExecutionProvider>(info_);
 }
 
-// std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id) {
-//   MIGraphXExecutionProviderInfo info;
-//   info.device_id = device_id;
-//   return std::make_shared<onnxruntime::MIGraphXProviderFactory>(info);
-// }
-
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(const MIGraphXExecutionProviderInfo& info) {
   return std::make_shared<onnxruntime::MIGraphXProviderFactory>(info);
 }
 
-
-struct ProviderInfo_MIGRAPHX_Impl : ProviderInfo_MIGRAPHX {
-  std::unique_ptr<IAllocator> CreateHIPAllocator(int16_t device_id, const char* name) override {
-    return std::make_unique<HIPAllocator>(device_id, name);
-  }
-
-  std::unique_ptr<IAllocator> CreateHIPPinnedAllocator(int16_t device_id, const char* name) override {
-    return std::make_unique<HIPPinnedAllocator>(device_id, name);
-  }
-
-  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) override {
-    return std::make_unique<GPUDataTransfer>(static_cast<hipStream_t>(stream));
-  }
-} g_info;
-
 struct MIGraphX_Provider : Provider {
-  void* GetInfo() override { return &g_info; }
-
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) override {
     MIGraphXExecutionProviderInfo info;
     info.device_id = device_id;

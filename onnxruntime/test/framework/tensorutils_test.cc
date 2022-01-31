@@ -135,7 +135,7 @@ void CreateTensorWithExternalData(TensorProto_DataType type, const std::vector<T
   // set the tensor_proto to reference this external data
   onnx::StringStringEntryProto* location = tensor_proto.mutable_external_data()->Add();
   location->set_key("location");
-  location->set_value(ToMBString(filename));
+  location->set_value(ToUTF8String(filename));
   tensor_proto.mutable_dims()->Add(test_data.size());
   tensor_proto.set_data_location(onnx::TensorProto_DataLocation_EXTERNAL);
   tensor_proto.set_data_type(type);

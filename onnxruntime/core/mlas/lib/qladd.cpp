@@ -520,7 +520,7 @@ MlasQLinearAdd<int8_t>(
     )
 {
 #if defined(MLAS_TARGET_AMD64)
-        MlasPlatform.QLinearAddS8Kernel(
+        GetMlasPlatform().QLinearAddS8Kernel(
 #else
         MlasQLinearAddKernel<int8_t>(
 #endif
@@ -545,7 +545,7 @@ MlasQLinearAdd<uint8_t>(
     )
 {
 #if defined(MLAS_TARGET_AMD64)
-        MlasPlatform.QLinearAddU8Kernel(
+        GetMlasPlatform().QLinearAddU8Kernel(
 #else
         MlasQLinearAddKernel<uint8_t>(
 #endif

@@ -664,7 +664,7 @@ static void CreateTensorWithExternalData(
   // set the tensor_proto to reference this external data
   onnx::StringStringEntryProto* location = tensor_proto.mutable_external_data()->Add();
   location->set_key("location");
-  location->set_value(ToMBString(filename));
+  location->set_value(ToUTF8String(filename));
   tensor_proto.set_data_location(onnx::TensorProto_DataLocation_EXTERNAL);
   tensor_proto.set_data_type(type);
 }
@@ -1510,7 +1510,7 @@ TEST(SparseTensorConversionTests, CooConversion) {
   auto* cpu_provider = TestCPUExecutionProvider();
   auto cpu_allocator = cpu_provider->GetAllocator(0, OrtMemTypeDefault);
 
-  const std::vector<int64_t> dense_shape{3, 3};
+  const TensorShapeVector dense_shape{3, 3};
   std::vector<int32_t> dense_data = {
       0, 0, 1,
       1, 0, 1,
@@ -1638,7 +1638,7 @@ TEST(SparseTensorConversionTests, CooConversion) {
                                                 gsl::make_span(expected_linear_indices)));
     ASSERT_EQ(str_cpu_src.Format(), SparseFormat::kCoo);
     ASSERT_TRUE(str_cpu_src.IsDataTypeString());
-    ASSERT_EQ(str_cpu_src.DenseShape(), dense_shape);
+    ASSERT_EQ(str_cpu_src.DenseShape(), TensorShape(dense_shape));
     ASSERT_EQ(str_cpu_src.NumValues(), expected_values_str.size());
     auto values = str_cpu_src.Values().DataAsSpan<std::string>();
     ASSERT_TRUE(std::equal(expected_values_str.cbegin(), expected_values_str.cend(), values.cbegin(), values.cend()));

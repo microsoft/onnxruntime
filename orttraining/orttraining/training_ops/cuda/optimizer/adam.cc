@@ -46,8 +46,6 @@ REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16, MLFloat16, MLFl
 REGISTER_ADAM_KERNEL_TYPED(MLFloat16, int64_t, float, MLFloat16, MLFloat16, float, MLFloat16)
 REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, MLFloat16, MLFloat16, MLFloat16)
 REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, MLFloat16, MLFloat16, float, MLFloat16)
-
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, float, float, float, BFloat16)
 REGISTER_ADAM_KERNEL_TYPED(BFloat16, int64_t, float, BFloat16, float, float, BFloat16)
 REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, BFloat16, float, float, BFloat16)
@@ -57,7 +55,6 @@ REGISTER_ADAM_KERNEL_TYPED(BFloat16, int64_t, float, BFloat16, BFloat16, BFloat1
 REGISTER_ADAM_KERNEL_TYPED(BFloat16, int64_t, float, BFloat16, BFloat16, float, BFloat16)
 REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, BFloat16, BFloat16, BFloat16, BFloat16)
 REGISTER_ADAM_KERNEL_TYPED(float, int64_t, float, BFloat16, BFloat16, float, BFloat16)
-#endif
 
 template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM, typename T_MIXED_PRECISION_FP>
 Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP>::ComputeInternal(OpKernelContext* ctx) const {

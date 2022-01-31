@@ -88,7 +88,7 @@ class Scan8Impl {
   Scan8Impl(OpKernelContextInternal& context,
             const SessionState& session_state,
             const Scan<8>::Info& info,
-            const std::vector<int64_t>& directions,
+            const gsl::span<const int64_t>& directions,
             const scan::detail::DeviceHelpers& device_helpers);
 
   // Initialize by validating all the inputs, and allocating the output tensors
@@ -117,7 +117,7 @@ class Scan8Impl {
   int64_t batch_size_ = -1;
   int64_t max_sequence_len_ = -1;
 
-  const std::vector<int64_t>& directions_;
+  const gsl::span<const int64_t> directions_;
   const Tensor* sequence_lens_tensor_;
   std::vector<int64_t> sequence_lens_;
 
@@ -142,7 +142,7 @@ void Scan<8>::Init(const OpKernelInfo& info) {
 
   ReadDirections(info, "directions", input_directions_, num_scan_inputs_);
 
-  device_helpers_.transpose_func = [](const std::vector<size_t>&, const Tensor&, Tensor&) -> Status {
+  device_helpers_.transpose_func = [](const gsl::span<const size_t>&, const Tensor&, Tensor&) -> Status {
     ORT_NOT_IMPLEMENTED("Scan<8> spec does not support transpose of output. This should never be called.");
   };
 
@@ -191,7 +191,7 @@ Status Scan<8>::Compute(OpKernelContext* ctx) const {
 Scan8Impl::Scan8Impl(OpKernelContextInternal& context,
                      const SessionState& session_state,
                      const Scan<8>::Info& info,
-                     const std::vector<int64_t>& directions,
+                     const gsl::span<const int64_t>& directions,
                      const scan::detail::DeviceHelpers& device_helpers)
     : context_(context),
       session_state_(session_state),
