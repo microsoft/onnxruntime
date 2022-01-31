@@ -7,6 +7,7 @@ namespace onnxruntime {
 using CaptureId_t = unsigned long long;
 
 struct CUDAGraph {
+  CUDAGraph() {}
   CUDAGraph(cudaStream_t stream);
   ~CUDAGraph();
 

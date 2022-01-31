@@ -77,6 +77,10 @@ void addOrtValueMethods(pybind11::module& m) {
           throw std::runtime_error("Inplace update of OrtValues is currently only supported from non-string numpy arrays");
         }
 
+        if (py_values.size() != ml_value->Get<Tensor>().Shape().Size()) {
+          throw std::runtime_error("The input size of numpy arrays does not match the size of the OrtValue.");
+        }
+
         auto values_type = GetNumpyArrayType(py_values);
         const auto device = ml_value->Get<Tensor>().Location().device;
         if (device.Type() == OrtDevice::CPU) {

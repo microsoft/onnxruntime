@@ -19,7 +19,7 @@ void CUDAGraph::CaptureBegin() {
               "This cuda graph has already captured a graph. "
               "Create a new instance to capture a new graph.");
 
-  cudaDeviceSynchronize();
+  CUDA_CALL_THROW(cudaDeviceSynchronize());
   CUDA_CALL_THROW(cudaStreamBeginCapture(capture_stream_, cudaStreamCaptureModeGlobal));
 #else
   ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 11.0");
