@@ -25,9 +25,13 @@ GetQDQTestCaseFn BuildQDQResizeTestCase(
     // add Resize
     auto* resize_output = builder.MakeIntermediate();
     Node& resize_node = builder.AddNode("Resize", {dq_output, roi, scales, sizes}, {resize_output});
+
+// NNAPI EP does not support the default setting of Resize Op
+// Use bi-linear and asymmetric for NNAPI EP only
+#ifdef USE_NNAPI
     resize_node.AddAttribute("mode", "linear");
     resize_node.AddAttribute("coordinate_transformation_mode", "asymmetric");
-
+#endif
     // add Q
     builder.AddQuantizeLinearNode<uint8_t>(resize_output, .003f, 1, output_arg);
   };
