@@ -56,8 +56,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Bind a piece of pre-allocated native memory as a OrtValue Tensor with a given shape
         /// to an input with a given name. The model will read the specified input from that memory
         /// possibly avoiding the need to copy between devices. OrtMemoryAllocation continues to own
-        /// the chunk of native memory and should be alive until the end of execution.
-        /// The size of the allocation can not be less than required.
+        /// the chunk of native memory, and the allocation should be alive until the end of execution.
         /// by the Tensor of the given size.
         /// </summary>
         /// <param name="name">of the input</param>
@@ -70,7 +69,11 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Bind externally allocated memory as input
+        /// Bind externally (not from OrtAllocator) allocated memory as input.
+        /// The model will read the specified input from that memory
+        /// possibly avoiding the need to copy between devices. The user code continues to own
+        /// the chunk of externally allocated memory, and the allocation should be alive until the end of execution.
+        /// by the Tensor of the given size.
         /// </summary>
         /// <param name="name">name</param>
         /// <param name="allocation">non ort allocated memory</param>
@@ -118,7 +121,11 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Bind externally allocated memory as output
+        /// Bind externally (not from OrtAllocator) allocated memory as output.
+        /// The model will read the specified input from that memory
+        /// possibly avoiding the need to copy between devices. The user code continues to own
+        /// the chunk of externally allocated memory, and the allocation should be alive until the end of execution.
+        /// by the Tensor of the given size.
         /// </summary>
         /// <param name="name">name</param>
         /// <param name="allocation">non ort allocated memory</param>
@@ -184,7 +191,8 @@ namespace Microsoft.ML.OnnxRuntime
 
 
         /// <summary>
-        /// BindExternal allocation as input or output
+        /// Bind external allocation as input or output.
+        /// The allocation is owned by the user code.
         /// </summary>
         /// <param name="name">name </param>
         /// <param name="allocation">non ort allocated memory</param>

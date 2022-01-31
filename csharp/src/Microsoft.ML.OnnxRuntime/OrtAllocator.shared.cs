@@ -333,16 +333,25 @@ namespace Microsoft.ML.OnnxRuntime
         {
             Type type;
             int width;
-            TensorElementTypeConverter.GetTypeAndWidth(elementType, out type, out width);
-            if (width < 1)
+            if (!TensorElementTypeConverter.GetTypeAndWidth(elementType, out type, out width))
             {
-                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Unsupported data type (such as string)");
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, 
+                    "Unable to query type information for data type: " + elementType.ToString());
+            }
+
+            if (elementType == TensorElementType.String)
+            {
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
+                    "Strings are not supported by this API");
             }
 
             var shapeSize = ArrayUtilities.GetSizeForShape(shape);
-            if ((shapeSize * width) > sizeInBytes)
+            var requiredBufferSize = shapeSize * width;
+            if (requiredBufferSize > sizeInBytes)
             {
-                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Shape of this type exceeds the declared buffer size");
+                var message = String.Format("Shape of {0} elements requires a buffer of at least {1} bytes. Provided: {2} bytes",
+                    shapeSize, requiredBufferSize, sizeInBytes);
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, message);
             }
 
             Info = memInfo;
