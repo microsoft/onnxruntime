@@ -1466,7 +1466,15 @@ class ResizeOpSupportChecker : public BaseOpSupportChecker {
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 11; }
 
   bool HasSupportedInputsImpl(const NodeUnit& node_unit) const override;
+  bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
+  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
 };
+
+/* static */ bool ResizeOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
+  static bool is_quant_op_type =
+      GetQuantizedOpType(node_unit) == QuantizedOpType::QDQResize;
+  return is_quant_op_type;
+}
 
 bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                const OpSupportCheckParams& params) const {
@@ -1587,6 +1595,32 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
       }
     }
   }
+
+  if (IsQuantizedOp(node_unit)) {
+    // For QDQResize, we only support uint8 output now
+    int32_t output_type;
+    if (!GetType(node_unit.Outputs()[0].node_arg, output_type))
+      return false;
+
+    if (output_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+      LOGS_DEFAULT(VERBOSE) << "[Resize] output type: [" << output_type
+                            << "] is not supported for now";
+      return false;
+    }
+
+    // Check input scales and ZPs
+    if (!HasValidQuantizationScales(initializers, node_unit, {0}, params, true /* is_input */))
+      return false;
+    if (!HasValidQuantizationZeroPoints(initializers, node_unit, {0}, true /* is_input */))
+      return false;
+
+    // Check output scale and ZP
+    if (!HasValidQuantizationScales(initializers, node_unit, {0}, params, false /* is_input */))
+      return false;
+    if (!HasValidQuantizationZeroPoints(initializers, node_unit, {0}, false /* is_input */))
+      return false;
+  }
+
   return true;
 }
 

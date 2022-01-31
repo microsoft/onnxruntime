@@ -240,13 +240,10 @@ TEST(NnapiExecutionProviderTest, TestNoShapeInputModel) {
 }
 
 #if defined(__ANDROID__)
-TEST(NnapiExecutionProviderTest, TestQDQModel) {
-  onnxruntime::Model model("nnapi_qdq_test_graph", false, DefaultLoggingManager().DefaultLogger());
+static void RunQDQModelTest(const GetQDQTestCaseFn& build_test_case, const char* test_description) {
+  onnxruntime::Model model(test_description, false, DefaultLoggingManager().DefaultLogger());
   Graph& graph = model.MainGraph();
   ModelTestBuilder helper(graph);
-
-  auto build_test_case = BuildQDQConvTestCase<uint8_t, uint8_t, int32_t, uint8_t>({1, 1, 5, 5} /*input_shape*/,
-                                                                                  {1, 1, 3, 3} /*weights_shape*/);
   build_test_case(helper);
   helper.SetGraphOutputs();
   ASSERT_STATUS_OK(model.MainGraph().Resolve());
@@ -259,7 +256,23 @@ TEST(NnapiExecutionProviderTest, TestQDQModel) {
                             std::make_unique<NnapiExecutionProvider>(0),
                             helper.feeds_);
 
-  // TODO: can add test load only verfication here later
+  // TODO: can add test load only verification here later
+}
+
+TEST(NnapiExecutionProviderTest, TestQDQConv) {
+  RunQDQModelTest(BuildQDQConvTestCase<uint8_t /* InputType */,
+                                       uint8_t /* WeightType */,
+                                       int32_t /* BiasType */,
+                                       uint8_t /* OutputType */>(
+                      {1, 1, 5, 5} /*input_shape*/,
+                      {1, 1, 3, 3} /*weights_shape*/),
+                  "nnapi_qdq_test_graph_conv");
+}
+
+TEST(NnapiExecutionProviderTest, TestQDQResize) {
+  RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
+                                         {1, 3, 32, 32} /* sizes_data */),
+                  "nnapi_qdq_test_graph_conv");
 }
 #endif  // defined(__ANDROID__)
 

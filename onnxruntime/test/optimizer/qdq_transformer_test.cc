@@ -633,27 +633,6 @@ TEST(QDQTransformerTests, Transpose_No_Fusion) {
 TEST(QDQTransformerTests, Resize) {
   auto test_case = [&](const std::vector<int64_t>& input1_shape,
                        const std::vector<int64_t>& sizes_shape) {
-    auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* input1_arg = builder.MakeInput<uint8_t>(input1_shape,
-                                                    std::numeric_limits<uint8_t>::min(),
-                                                    std::numeric_limits<uint8_t>::max());
-      auto* roi = builder.MakeInitializer<float>({0}, {});
-      auto* scales = builder.MakeInitializer<float>({0}, {});
-      auto* sizes = builder.MakeInitializer<int64_t>(sizes_shape, 1, 16);
-      auto* output_arg = builder.MakeOutput();
-
-      // add DQ
-      auto* dq_output = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode<uint8_t>(input1_arg, .003f, 1, dq_output);
-
-      // add Resize
-      auto* resize_output = builder.MakeIntermediate();
-      builder.AddNode("Resize", {dq_output, roi, scales, sizes}, {resize_output});
-
-      // add Q
-      builder.AddQuantizeLinearNode<uint8_t>(resize_output, .003f, 1, output_arg);
-    };
-
     auto check_matmul_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["Resize"], 1);
@@ -661,12 +640,14 @@ TEST(QDQTransformerTests, Resize) {
       EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
     };
 
-    TransformerTester(build_test_case, check_matmul_graph,
+    TransformerTester(BuildQDQResizeTestCase(input1_shape, sizes_shape),
+                      check_matmul_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2);
   };
 
-  test_case({2, 13, 12, 37}, {4});
+  RandomValueGenerator rand_gen{optional<RandomValueGenerator::RandomSeedType>{2345}};
+  test_case({2, 13, 12, 37}, rand_gen.Uniform<int64_t>(std::vector<int64_t>{4}, 1, 16));
 }
 
 TEST(QDQTransformerTests, Resize_No_Fusion) {
