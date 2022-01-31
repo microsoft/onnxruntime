@@ -693,7 +693,7 @@ class OrtValue:
     
     def update_inplace(self, np_arr):
         '''
-        Update the cuda OrtValue in place with a new Numpy array.
+        Update the OrtValue in place with a new Numpy array.
         '''
         self._ortvalue.update_inplace(np_arr)
 

@@ -108,7 +108,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   cudaStream_t stream_ = nullptr;
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-  CUDAGraph graph_ = NULL;
+  CUDAGraph graph_;
 #endif
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
