@@ -93,7 +93,6 @@ jobs:
       value: $(environment) -e "$(epList)"
 
   steps:
-    - script: echo "https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(Build.BuildId)"
 
     - ${{ if eq(parameters.BuildORT, true) }}:
 
@@ -173,7 +172,7 @@ jobs:
           scriptType: bash
           inlineScript: |
             short_hash=$(git rev-parse --short HEAD^) && 
-            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -u "https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch)
+            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -u "$(reportUrl)?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch)
     
     
     - template: templates/component-governance-component-detection-steps.yml
