@@ -31,8 +31,7 @@ class GraphPartitioner {
   }
 
   // Run partitioning. Provide compiled_kernel_hashes if mode is kOrtFormatLoad.
-  Status Partition(Graph& graph, bool export_dll, FuncManager& func_mgr, const logging::Logger& logger,
-                   Mode mode = Mode::kNormal,
+  Status Partition(Graph& graph, bool export_dll, FuncManager& func_mgr, Mode mode = Mode::kNormal,
                    std::unordered_map<std::string, HashValue>* compiled_kernel_hashes = nullptr) const;
 
  private:
@@ -41,12 +40,12 @@ class GraphPartitioner {
 #if !defined(ORT_MINIMAL_BUILD)
   Status PartitionOnnxFormatModel(Graph& graph, bool export_dll, FuncManager& func_mgr,
                                   KernelRegistry& fused_kernel_registry, Mode mode,
-                                  int& fused_node_unique_id, const logging::Logger& logger) const;
+                                  int& fused_node_unique_id) const;
 #endif
 
   Status PartitionOrtFormatModel(Graph& graph, FuncManager& func_mgr, KernelRegistry& fused_kernel_registry,
                                  std::unordered_map<std::string, HashValue>& compiled_kernel_hashes,
-                                 int& fused_node_unique_id, const logging::Logger& logger) const;
+                                 int& fused_node_unique_id) const;
 
   KernelRegistryManager& kernel_registry_mgr_;
   const ExecutionProviders& providers_;

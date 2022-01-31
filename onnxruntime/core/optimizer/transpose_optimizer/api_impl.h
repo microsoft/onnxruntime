@@ -38,7 +38,6 @@ std::unique_ptr<onnx_layout_transformation::api::GraphRef> MakeApiGraph(onnxrunt
 /// <param name="node">ORT Node to wrap with API.</param>
 /// <returns>api::NodeRef for use with transpose optimizer</returns>
 std::unique_ptr<onnx_layout_transformation::api::NodeRef> MakeApiNode(onnxruntime::Graph& graph, onnxruntime::Node& node);
-                                                                        const char* new_node_ep);
 
                                                                         /// <summary>
                                                                         /// Reveals underlying ORT graph from an api::GraphRef

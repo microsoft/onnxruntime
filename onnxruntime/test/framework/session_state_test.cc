@@ -142,7 +142,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
                              DefaultLoggingManager().DefaultLogger(), profiler);
 
   GraphPartitioner partitioner(krm, execution_providers);
-  status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr(), DefaultLoggingManager().DefaultLogger());
+  status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr());
   ASSERT_TRUE(status.IsOK()) << status;
 
   ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
@@ -207,7 +207,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
 
     // Partition the graph
     GraphPartitioner partitioner(krm, execution_providers);
-    status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr(), DefaultLoggingManager().DefaultLogger());
+    status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr());
     ASSERT_TRUE(status.IsOK()) << status;
 
     // Finalize the session state
@@ -256,7 +256,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
 
     // Partition the graph
     GraphPartitioner partitioner(krm, execution_providers);
-    status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr(), DefaultLoggingManager().DefaultLogger());
+    status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr());
     ASSERT_TRUE(status.IsOK()) << status;
 
     // Finalize the session state

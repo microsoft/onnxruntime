@@ -913,7 +913,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   // Do partitioning based on execution providers' capability.
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state.ExportDll(),
-                                                       session_state.GetMutableFuncMgr(), *session_logger_, mode));
+                                                       session_state.GetMutableFuncMgr(), mode));
 
   // apply transformers except default transformers
   // Default transformers are required for correctness and they are owned and run by inference session
@@ -1132,12 +1132,12 @@ namespace {
 Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                const ExecutionProviders& providers,
                                KernelRegistryManager& kernel_registry_manager,
-                               SessionState& session_state, const onnxruntime::logging::Logger& logger) {
+                               SessionState& session_state) {
   std::unordered_map<std::string, HashValue> compiled_kernel_hashes;
 
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(),
-                                            session_state.GetMutableFuncMgr(), logger,
+                                            session_state.GetMutableFuncMgr(),
                                             GraphPartitioner::Mode::kOrtFormatLoad,
                                             &compiled_kernel_hashes));
 
@@ -1394,7 +1394,7 @@ common::Status InferenceSession::Initialize() {
       // We always have the CPU EP, so only need to run this if some other EP is enabled
       if (execution_providers_.NumProviders() > 1) {
         ORT_RETURN_IF_ERROR(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
-                                                    *session_state_, *session_logger_));
+                                                    *session_state_));
       }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)

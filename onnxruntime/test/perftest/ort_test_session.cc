@@ -325,7 +325,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #ifdef USE_NNAPI
     uint32_t nnapi_flags = 0;
 #ifdef _MSC_VER
-    std::string ov_string = ToMBString(performance_test_config.run_config.ep_runtime_config_string);
+    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
 #else
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
