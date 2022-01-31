@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    DepthwiseConvSymKernelNeon.S
+    DepthwiseQConvSymU8KernelNeon.S
 
 Abstract:
 
@@ -78,7 +78,7 @@ Return Value:
 
 --*/
 
-        FUNCTION_ENTRY MlasConvSymDepthwiseKernelNeon
+        FUNCTION_ENTRY MlasConvSymDepthwiseU8KernelNeon
 
         stp     d8,d9,[sp,#-64]!
         ldr     x8,[sp,#.LConvSymDepthwiseKernelFrame_PostProcessParams]

@@ -18,7 +18,7 @@ std::vector<MLFloat16> MakeMLFloat16(const std::initializer_list<float>& input) 
   return output;
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 void TestFloat16(const char* op_name, const std::vector<int64_t>& lhs_dim,
                  const std::initializer_list<float>& lhs_values, const std::vector<int64_t>& rhs_dim,
                  const std::initializer_list<float>& rhs_values, const std::vector<int64_t>& out_dim,
@@ -29,7 +29,11 @@ void TestFloat16(const char* op_name, const std::vector<int64_t>& lhs_dim,
     tester.AddInput<MLFloat16>("B", rhs_dim, MakeMLFloat16(rhs_values));
     tester.AddOutput<MLFloat16>("C", out_dim, MakeMLFloat16(out_values));
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+    execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 
@@ -39,7 +43,11 @@ void TestFloat16(const char* op_name, const std::vector<int64_t>& lhs_dim,
     tester.AddInput<BFloat16>("B", rhs_dim, MakeBFloat16(rhs_values));
     tester.AddOutput<BFloat16>("C", out_dim, MakeBFloat16(out_values));
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+    execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
@@ -128,7 +136,7 @@ TEST(MathOpTest, Add_float) {
   test.Run();
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   TestFloat16("Add", dims, lhs_values, dims, rhs_values, dims, out_values);
 #endif
 }
@@ -163,7 +171,7 @@ TEST(MathOpTest, Add_Broadcast_Axis) {
   test.AddOutput<float>("C", dims, out_values);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "");
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   TestFloat16("Add", dims, lhs_values, {3, 1}, rhs_values, dims, out_values);
 #endif
 }
@@ -186,7 +194,7 @@ TEST(MathOpTest, Add_Broadcast_MultidirectionalAB) {
            {kTensorrtExecutionProvider});  // TensorRT: got C with shape [3, 1]
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   TestFloat16("Add", {3, 1}, lhs_values, {3}, rhs_values, {3, 3}, out_values);
 #endif
 }
@@ -208,7 +216,7 @@ TEST(MathOpTest, Add_Broadcast_MultidirectionalBA) {
            {kTensorrtExecutionProvider});  // TensorRT: got C with shape [3, 1]
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   TestFloat16("Add", {3}, lhs_values, {3, 1}, rhs_values, {3, 3}, out_values);
 #endif
 }
@@ -404,7 +412,7 @@ TEST(MathOpTest, Sub) {
   test.Run();
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   TestFloat16("Sub", dims, lhs_values, dims, rhs_values, dims, out_values);
 #endif
 }
@@ -462,7 +470,7 @@ TEST(MathOpTest, Mul) {
   test.Run();
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   TestFloat16("Mul", dims, lhs_values, dims, rhs_values, dims, out_values);
 #endif
 }
@@ -501,7 +509,7 @@ TEST(MathOpTest, Div) {
   test.Run();
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
   TestFloat16("Div", dims, lhs_values, dims, rhs_values, dims, out_values);
 #endif
 }
@@ -1097,7 +1105,7 @@ static void TestSumMultipleInputsNoBroadcasting(size_t num_inputs, const TensorS
 
   OpTester test{"Sum", 8};
 
-  const auto dims = shape.GetDimsAsVector();
+  const auto dims = GetShapeVector(shape);
   const std::vector<element_type> input_data(shape.Size(), 1);
 
   for (size_t i = 0; i < num_inputs; ++i) {

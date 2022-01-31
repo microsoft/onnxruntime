@@ -1,5 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph_utils.h"
@@ -13,27 +15,23 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#endif  // #if !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#include "core/graph/node_arg.h"
+#endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 using namespace onnxruntime;
 
 namespace onnxruntime {
 namespace optimizer_utils {
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 bool IsFloatingPointDataType(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
   return tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
          tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
          tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
-}
-
-bool IsScalar(const NodeArg& input_arg) {
-  auto shape = input_arg.Shape();
-  if (shape == nullptr) {
-    // shape inferencing wasn't able to populate shape information for this NodeArg
-    return false;
-  }
-
-  auto dim_size = shape->dim_size();
-  return dim_size == 0 || (dim_size == 1 && shape->dim(0).has_dim_value() && shape->dim(0).dim_value() == 1);
 }
 
 // Check whether input is a constant scalar with expected float value.
@@ -278,20 +276,32 @@ bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_outp
 // so we have to assume that they are not deterministic, to be on the safe side.
 // We could also allow other known domains (kMSDomain, kMSNchwcDomain, kMSFeaturizersDomain),
 // as long as we verify which of their operations are non-deterministic and add them in the map below.
-static const std::unordered_map<std::string, std::unordered_set<std::string>> kNonDeterministicOps =
-    {
-        {kOnnxDomain, {"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"}},
-};
-
+constexpr std::array kOnnxDomainNonDeterministicOps{"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"};
 bool IsOperationDeterministic(const std::string& domain, const std::string& op) {
-  auto itDomain = kNonDeterministicOps.find(domain);
-  if (itDomain == kNonDeterministicOps.end()) {
-    // Unknown domain. Assume the op is not deterministic.
+  if (domain.compare(kOnnxDomain) == 0) {
+    auto iter = std::find(kOnnxDomainNonDeterministicOps.begin(), kOnnxDomainNonDeterministicOps.end(), op);
+    return iter == kOnnxDomainNonDeterministicOps.end();
+  } 
+  // Unknown domain. Assume the op is not deterministic.
+  return false;  
+}
+
+#endif  // #if !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+bool IsScalar(const NodeArg& input_arg) {
+  auto shape = input_arg.Shape();
+  if (shape == nullptr) {
+    // shape inferencing wasn't able to populate shape information for this NodeArg
     return false;
   }
 
-  return itDomain->second.count(op) == 0;
+  auto dim_size = shape->dim_size();
+  return dim_size == 0 || (dim_size == 1 && shape->dim(0).has_dim_value() && shape->dim(0).dim_value() == 1);
 }
+
+#endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 }  // namespace optimizer_utils
 }  // namespace onnxruntime

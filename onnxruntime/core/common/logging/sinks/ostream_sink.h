@@ -29,5 +29,24 @@ class OStreamSink : public ISink {
   std::ostream* stream_;
   const bool flush_;
 };
+#ifdef _WIN32
+/// <summary>
+/// A std::wostream based ISink
+/// </summary>
+/// <seealso cref="ISink" />
+class WOStreamSink : public ISink {
+ protected:
+  WOStreamSink(std::wostream& stream, bool flush)
+      : stream_{&stream}, flush_{flush} {
+  }
+
+ public:
+  void SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) override;
+
+ private:
+  std::wostream* stream_;
+  const bool flush_;
+};
+#endif
 }  // namespace logging
 }  // namespace onnxruntime

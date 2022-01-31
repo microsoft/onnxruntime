@@ -88,7 +88,7 @@ if [ "$run_install" = true ] ; then
   else
     pip install onnxruntime-gpu
   fi
-  pip install --upgrade onnx coloredlogs packaging psutil py3nvml onnxconverter_common numpy transformers
+  pip install --upgrade onnx coloredlogs packaging psutil py3nvml onnxconverter_common numpy transformers sympy
 fi
 
 if [ "$use_package" = true ] ; then

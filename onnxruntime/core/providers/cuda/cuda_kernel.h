@@ -92,6 +92,10 @@ class CudaKernel : public OpKernel {
       memcpy(CpuPtr(), vec.data(), vec.size() * sizeof(T));
     }
 
+    CudaAsyncBuffer(const CudaKernel* op_kernel, const TensorShapeVector& vec) : CudaAsyncBuffer(op_kernel, vec.size()) {
+      memcpy(CpuPtr(), vec.data(), vec.size() * sizeof(T));
+    }
+
     void AllocCpuPtr(size_t count) {
       cpu_pinned_copy_ = op_kernel_->AllocateBufferOnCPUPinned<T>(count);
       if (cpu_pinned_copy_ == nullptr)

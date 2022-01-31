@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/inlined_containers.h"
 #include "core/providers/cuda/tensor/transpose.h"
 #include "core/providers/cuda/tensor/transpose_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -28,7 +29,7 @@ ONNX_OPERATOR_KERNEL_EX(
     Transpose);
 
 // special case acceleration using cublas matrix transpose
-static std::tuple<int, int> TryTransposeWithCublas(const std::vector<size_t>& perm, const TensorShape& input_shape) {
+static std::tuple<int, int> TryTransposeWithCublas(const gsl::span<const size_t>& perm, const TensorShape& input_shape) {
   int M = 0;
   int N = 0;
 
@@ -77,14 +78,14 @@ Status TransposeWithCublas(cudaStream_t stream, cublasHandle_t cublas_handle, co
 }
 
 Status Transpose::DoTranspose(const Transpose& transpose_kernel,
-                              const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
+                              const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output) {
   return Transpose::DoTranspose(transpose_kernel.GetDeviceProp(), transpose_kernel.Stream(), transpose_kernel.CublasHandle(), permutations, input, output);
 }
 
 Status Transpose::DoTranspose(const cudaDeviceProp& prop,
                               cudaStream_t stream,
                               const cublasHandle_t cublas_handle,
-                              const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+                              const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
                               const TensorShape* input_shape_override) {
   // special case when there is a dim value of 0 in the shape.
   if (output.Shape().Size() == 0)
@@ -97,9 +98,9 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   // flatten the adjacent dimensions which are contiguous
   // for example: permutations[0, 2, 3, 1] -> [0, 2, 1], permutations[0, 3, 1, 2] -> [0, 2, 1]
   auto new_rank = rank;
-  std::vector<size_t> new_permutations(permutations);
-  std::vector<int64_t> new_input_dims(input_dims.begin(), input_dims.end());
-  std::vector<int64_t> new_output_dims(output_dims.begin(), output_dims.end());
+  InlinedShapeVector<size_t> new_permutations(permutations.cbegin(), permutations.cend());
+  TensorShapeVector new_input_dims = ToShapeVector(input_dims);
+  TensorShapeVector new_output_dims = ToShapeVector(output_dims);
 
   // Remove all dims with value 1.
   std::vector<bool> dims_to_remove(new_rank, false);
@@ -203,7 +204,7 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   dim3 grid_size, block_size;
   if (CanDoTranspose3D(prop, new_rank, new_input_dims, new_permutations, grid_size, block_size)) {
     TensorPitches new_input_strides(new_input_dims);
-    return Transpose3DImpl(stream, element_size, new_input_dims, new_input_strides,
+    return Transpose3DImpl(stream, element_size, ToConstSpan(new_input_dims), ToConstSpan(new_input_strides),
                            input.DataRaw(), output.MutableDataRaw(), output.Shape().Size(), grid_size, block_size);
   }
 
@@ -263,9 +264,9 @@ Status Transpose::ComputeInternal(OpKernelContext* ctx) const {
   const TensorShape& input_shape = X.Shape();
   int32_t rank = gsl::narrow_cast<int32_t>(input_shape.NumDimensions());
 
-  std::vector<int64_t> output_dims(rank);
-  std::vector<size_t> default_perm(rank);
-  const std::vector<size_t>* p_perm = nullptr;
+  TensorShapeVector output_dims(rank);
+  InlinedShapeVector<size_t> default_perm(rank);
+  const InlinedShapeVector<size_t>* p_perm = nullptr;
   const auto& status = ComputeOutputShape(X, output_dims, default_perm, p_perm);
   if (!status.IsOK())
     return status;
