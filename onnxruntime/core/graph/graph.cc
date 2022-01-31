@@ -1369,7 +1369,7 @@ Status Graph::VerifyNoDuplicateName() {
 
     if (!node_name.empty() && node_name_to_index.end() != node_name_to_index.find(node_name)) {
       // The node has name and its name was used by another node.
-      Status status(ONNXRUNTIME, FAIL,
+      Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                     "This is an invalid model. Error: two nodes with same node name (" + node_name + ").");
       return status;
     }
@@ -1383,14 +1383,14 @@ Status Graph::VerifyNoDuplicateName() {
       if (output_def->Exists()) {
         auto& output_arg_name = output_def->Name();
         if (inputs_and_initializers.count(output_arg_name)) {
-          Status status(ONNXRUNTIME, FAIL,
+          Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                         "This is an invalid model. Error: Duplicate definition of name (" + output_arg_name + ").");
           return status;
         }
         auto result = output_args.insert({output_arg_name, {&node, output_index}});
         if (!result.second) {
           // Two outputs with same name, so that insertion fails.
-          Status status(ONNXRUNTIME, FAIL,
+          Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                         "This is an invalid model. Error: Duplicate definition of name (" + output_arg_name + ").");
           return status;
         }
@@ -1904,7 +1904,7 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
       const NodeIndex idx = iter->Index();
       // the input to this node is also downstream of this node
       if (downstream_nodes.find(idx) != downstream_nodes.end()) {
-        Status status(ONNXRUNTIME, FAIL, "This is an invalid model. Error: the graph is not acyclic.");
+        Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, "This is an invalid model. Error: the graph is not acyclic.");
         return status;
       }
 
@@ -1919,7 +1919,7 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
     return Status::OK();
   }
 
-  return Status(ONNXRUNTIME, FAIL, "This is an invalid model. Error: the graph is not acyclic.");
+  return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, "This is an invalid model. Error: the graph is not acyclic.");
 }
 
 bool FullyDefinedType(const TypeProto& type_proto) {
@@ -2230,7 +2230,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
 
         // Logic error: This should not happen if we properly checked that every use has
         // a corresponding def, for which type-inference already produced a valid type
-        Status status(ONNXRUNTIME, FAIL,
+        Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                       "This is an invalid model. "
                       "Node (" +
                           node_name + ") input arg (" +
@@ -2269,7 +2269,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
         } else if (param_to_type_iter->second != input_type) {
           // Type error in input model/graph:
           // The type-parameter T is bound to different values for different inputs.
-          Status status(ONNXRUNTIME, FAIL,
+          Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                         "Type Error: Type parameter (" + op_formal_parameter.GetTypeStr() +
                             ") of Optype (" + op.Name() + ") bound to different types (" + *(param_to_type_iter->second) +
                             " and " + *(input_def->Type()) +
@@ -2340,7 +2340,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
       inferred_type = existing_type;
     } else {
       // This should not happen: indicates incompleteness in ONNX inference.
-      Status status(ONNXRUNTIME, FAIL,
+      Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                     "Node (" + node_name + ") output arg (" + output_def->Name() + ") type inference failed");
       return status;
     }
@@ -2364,7 +2364,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
           output_def->SetType(inferred_type);
         }
       } else
-        return Status(ONNXRUNTIME, FAIL,
+        return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                       "Type Error: Type (" + *existing_type + ") of output arg (" +
                           output_def->Name() + ") of node (" + node_name +
                           ") does not match expected type (" + *inferred_type + ").");
@@ -2420,7 +2420,7 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
   // Check that the type of every input is specified:
   for (auto* graph_input : GetInputs()) {
     if (nullptr == graph_input->Type()) {
-      Status status(ONNXRUNTIME, FAIL,
+      Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                     "This is an invalid model. "
                     "Model input (" +
                         graph_input->Name() + ") does not have type information.");
@@ -2536,7 +2536,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       }
 
       if (!node.op_) {
-        return Status(ONNXRUNTIME, FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
+        return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
       }
 
       // For ops without schema (like model local functions set the since version after constructing the schema.
@@ -2574,7 +2574,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
           }
           // TODO: Handle optional attribute but no default value specified in op definition.
         } else {
-          Status status(ONNXRUNTIME, FAIL,
+          Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                         "This is an invalid model. "
                         "Node (" +
                             node_name + ") attribute (" + attr_def.first +
@@ -2672,7 +2672,7 @@ Status Graph::VerifyInputAndInitializerNames() {
   for (auto* input : GetInputs()) {
     auto result = inputs_and_initializers.insert(input->Name());
     if (!result.second) {
-      Status status(ONNXRUNTIME, FAIL,
+      Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                     "Error: Duplicate definition-site for (" + input->Name() + ").");
       return status;
     }
@@ -3732,7 +3732,7 @@ Status Graph::SetGraphInputsOutputs() {
               const auto& inputs = graph_inputs_including_initializers_;
               bool in_inputs = std::find(inputs.begin(), inputs.end(), input_arg) != inputs.end();
               if (!in_inputs) {
-                return Status(ONNXRUNTIME, FAIL,
+                return Status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
                               name + " must be either specified in graph inputs or graph initializers.");
               }
             } else {
