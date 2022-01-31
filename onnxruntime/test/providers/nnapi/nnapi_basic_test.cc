@@ -239,7 +239,6 @@ TEST(NnapiExecutionProviderTest, TestNoShapeInputModel) {
       << "No node should be taken by the NNAPI EP";
 }
 
-#if defined(__ANDROID__)
 static void RunQDQModelTest(const GetQDQTestCaseFn& build_test_case, const char* test_description) {
   onnxruntime::Model model(test_description, false, DefaultLoggingManager().DefaultLogger());
   Graph& graph = model.MainGraph();
@@ -252,11 +251,20 @@ static void RunQDQModelTest(const GetQDQTestCaseFn& build_test_case, const char*
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
 
+#if defined(__ANDROID__)
   RunAndVerifyOutputsWithEP(model_data, "NnapiExecutionProviderTest.TestQDQModel",
                             std::make_unique<NnapiExecutionProvider>(0),
                             helper.feeds_);
-
-  // TODO: can add test load only verification here later
+#else
+  // test load only
+  SessionOptions so;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
+      << "Some nodes should have been taken by the NNAPI EP";
+#endif
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQConv) {
@@ -272,9 +280,8 @@ TEST(NnapiExecutionProviderTest, TestQDQConv) {
 TEST(NnapiExecutionProviderTest, TestQDQResize) {
   RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
                                          {1, 3, 32, 32} /* sizes_data */),
-                  "nnapi_qdq_test_graph_conv");
+                  "nnapi_qdq_test_graph_resize");
 }
-#endif  // defined(__ANDROID__)
 
 #endif  // !(ORT_MINIMAL_BUILD)
 
