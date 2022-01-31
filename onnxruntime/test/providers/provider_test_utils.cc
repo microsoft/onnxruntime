@@ -1176,6 +1176,8 @@ void OpTester::Run(
       }
 
 #ifdef USE_TENSORRT
+      // We are allowing tests to be run with only TensorRT EP, but TensorRT EP may not support all tests and may be in excluded providers list.
+      // So, no registered EPs were able to run the model is okay for this situation.
       ORT_UNUSED_PARAMETER(has_run);
 #else
       EXPECT_TRUE(has_run)
