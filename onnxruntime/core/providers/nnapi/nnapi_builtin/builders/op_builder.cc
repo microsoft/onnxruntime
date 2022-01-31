@@ -61,7 +61,6 @@ Status AddTransposeOperator(ModelBuilder& model_builder,
                                     {output_operand_type});
 }
 
-
 static Status AddBinaryOperator(int32_t op_type,
                                 ModelBuilder& model_builder,
                                 const std::string& input1,
@@ -497,6 +496,16 @@ static void AddInputToSkip(ModelBuilder& model_builder, const NodeUnitIODef& io_
   model_builder.AddInitializerToSkip(io_def.node_arg.Name());  // main input
   if (io_def.quant_param)
     AddQuantizationScaleAndZeroPointToSkip(model_builder, *io_def.quant_param);
+}
+
+static Status IsOpInRequiredLayout(bool use_nchw, const NodeUnit& node_unit) {
+  bool is_op_nhwc = node_unit.Domain() == kMSNHWCDomain;
+  if (is_op_nhwc && use_nchw) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Expected lauout and operator layout do not match. Possible bug in layout optimizer.");
+  }
+
+  return Status::OK();
 }
 
 template <class T>
@@ -1019,9 +1028,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   auto input = node_unit.Inputs()[0].node_arg.Name();
   bool use_nchw = model_builder.UseNCHW();
-  bool is_op_nhwc = node_unit.Domain() == kMSNHWCDomain;
-  ORT_ENFORCE(use_nchw != is_op_nhwc, 
-              "Expected layout and operator layout don't match.");
+  ORT_RETURN_IF_ERROR(IsOpInRequiredLayout(use_nchw, node_unit));
 
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
   const auto& op_type = node_unit.OpType();
@@ -1184,9 +1191,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   auto input = inputs[0].node_arg.Name();
   bool use_nchw = model_builder.UseNCHW();
-  bool is_op_nhwc = node_unit.Domain() == kMSNHWCDomain;
-  ORT_ENFORCE(use_nchw != is_op_nhwc, 
-              "Expected layout and operator layout dont match. This is a bug in layout optimizer.");
+  ORT_RETURN_IF_ERROR(IsOpInRequiredLayout(use_nchw, node_unit));
 
   const auto& weight = inputs[1].node_arg.Name();
   const auto& weight_tensor = *initializers.at(weight);
@@ -1438,8 +1443,8 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
   // TODO: Needs fix.
   if (android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
-    ORT_ENFORCE(model_builder.UseNCHW(), 
-    "For Android API Level < 29 input for softmax needs to be NCHW.");
+    ORT_ENFORCE(model_builder.UseNCHW(),
+                "For Android API Level < 29 input for softmax needs to be NCHW.");
   }
 
   int32_t axis = helper.Get("axis", 1);
@@ -1703,7 +1708,6 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
   const auto& input = node_unit.Inputs()[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
-  
   ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
   bool is_qlinear_sigmoid = op_type == "QLinearSigmoid";
 
@@ -1965,14 +1969,12 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
 
   auto input = node_unit.Inputs()[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
-  bool is_op_nhwc = node_unit.Domain() == kMSNHWCDomain;
-  bool use_nchw = model_builder.UseNCHW();
-  ORT_ENFORCE(use_nchw != is_op_nhwc, 
-              "The input is NHWC but the OP Domain is not. This is a bug in layout optimizer.");
+  auto use_nchw = model_builder.UseNCHW();
+  ORT_RETURN_IF_ERROR(IsOpInRequiredLayout(use_nchw, node_unit));
 
   if (android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
     // on android api level 28, we need to transpose the nchw input to nhwc
-    // it is very rare that users set nchw format when using nnapi. Therefore, instead of 
+    // it is very rare that users set nchw format when using nnapi. Therefore, instead of
     // adding the ability to support conversion we fail and stop.
     ORT_ENFORCE(!use_nchw, "NCHW format is not supported on android api level 28");
   }
@@ -2103,11 +2105,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   auto input = inputs[0].node_arg.Name();
   bool use_nchw = model_builder.UseNCHW();
-  bool is_op_nhwc = node_unit.Domain() == kMSNHWCDomain;
-  if(is_op_nhwc && use_nchw) {
-    ORT_ENFORCE(use_nchw != is_op_nhwc, 
-              "The input and op both are not NHWC. This is a bug in layout optimizer. Op Doain is : ", node_unit.Domain());
-  }
+  ORT_RETURN_IF_ERROR(IsOpInRequiredLayout(use_nchw, node_unit));
 
   bool is_linear_resize = helper.Get("mode", "nearest") == "linear";
 
@@ -2118,10 +2116,10 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   bool using_half_pixel = coord_trans_mode == "half_pixel";
   bool using_align_corners = coord_trans_mode == "align_corners";
 
-  // if the node domain is NHWC it means all the node inputs are converter to NHWC format by the layout transformer. 
+  // if the node domain is NHWC it means all the node inputs are converted to NHWC format by the layout transformer.
   // pick the index for height and width based on the format.
-  int h_idx = is_op_nhwc ? 1 : 2;
-  int w_idx = is_op_nhwc ? 2 : 3;
+  int h_idx = use_nchw ? 2 : 1;
+  int w_idx = use_nchw ? 3 : 2;
 
   if (inputs.size() == 3) {  // we are using scales
     const auto& scales_name = inputs[2].node_arg.Name();
@@ -2152,7 +2150,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   if (android_feature_level > ANEURALNETWORKS_FEATURE_LEVEL_2) {
     // using nchw is only available on API level 29
-    ADD_SCALAR_OPERAND(model_builder, input_indices, !is_op_nhwc);
+    ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
   }
 
   // Currently we only support align_corners and half_pixel on bilinear resize

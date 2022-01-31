@@ -13,6 +13,7 @@
 #include "core/graph/model.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/optimizer/transpose_optimizer/api_impl.h"
 
 #include <queue>
 
@@ -98,13 +99,8 @@ InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& 
                                           generate_metadef_name, ep_name_, onnxruntime::utils::kInternalTestingExecutionProvider, debug_output_);
 }
 
-static const std::unordered_set<std::string_view> layout_sensitive_ops{
-    "Resize", "Conv", "QLinearConv", "AveragePool", "QLinearAveragePool",
-    "GlobalAveragePool", "QLinearGlobalAveragePool", "MaxPool", "GlobalMaxPool", "LRN"};
-
 common::Status InternalTestingExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
                                                          std::vector<NodeComputeInfo>& node_compute_funcs) {
-
   // Create a function to generate dummy empty output for each fused node so the model can be executed.
   for (const auto& node_and_viewer : fused_nodes) {
     NodeComputeInfo compute_info;
@@ -112,6 +108,7 @@ common::Status InternalTestingExecutionProvider::Compile(const std::vector<Fused
 
     if (preferred_layout_ == DataLayout::NHWC) {
       const GraphViewer& graph_viewer = node_and_viewer.filtered_graph;
+      auto layout_sensitive_ops = onnx_layout_transformation::GetLayoutSensitiveOps();
       for (const auto& unfused_node : graph_viewer.Nodes()) {
         std::cout << unfused_node.OpType() << std::endl;
         if (layout_sensitive_ops.count(unfused_node.OpType()) && unfused_node.Domain() != kMSNHWCDomain) {

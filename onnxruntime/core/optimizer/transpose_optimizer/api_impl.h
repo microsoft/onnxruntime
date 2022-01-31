@@ -10,6 +10,13 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 
+namespace onnx_layout_transformation {
+inline std::unordered_set<std::string_view> GetLayoutSensitiveOps() {
+  return {"Resize", "Conv", "QLinearConv", "FusedConv", "AveragePool", "QLinearAveragePool", "GlobalAveragePool",
+          "QLinearGlobalAveragePool", "MaxPool", "GlobalMaxPool", "LRN"};
+}
+}  // namespace onnx_layout_transformation
+
 namespace onnxruntime {
 
 /// <summary>
@@ -22,9 +29,9 @@ namespace onnxruntime {
 /// <param name="new_node_ep">New nodes are assigned to this EP, or left unassigned if nullptr</param>
 /// <returns>api::GraphRef for use with transpose optimizer</returns>
 std::unique_ptr<onnx_layout_transformation::api::GraphRef> MakeApiGraph(onnxruntime::Graph& graph,
-                                                                     AllocatorPtr cpu_allocator,
-                                                                     const logging::Logger& logger,
-                                                                     const char* new_node_ep);
+                                                                        AllocatorPtr cpu_allocator,
+                                                                        const logging::Logger& logger,
+                                                                        const char* new_node_ep);
 
 /// <summary>
 /// Creates NodeRef.

@@ -13,7 +13,6 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/func_kernel.h"
 #include "core/optimizer/transpose_optimizer/api_impl.h"
-#include "core/optimizer/transpose_optimizer/api.h"
 
 // uncomment this line to count non-CUDA ops in ONNX domain
 //#define COUNT_NON_CUDA_OPS
@@ -54,12 +53,12 @@ static void BuildFusedKernelDef(KernelDefBuilder& builder, const IndexedSubGraph
       .Provider(provider_type);
 }
 
-//static void PrintNodes(Graph& graph) {
-//  // remove the following 2 for loops:
-//  for (const auto& node : graph.Nodes()) {
-//    std::cout << node.OpType() << "    " << node.GetExecutionProviderType() << "   " << node.Index() << "       " << node.Domain() << std::endl;
-//  }
-//}
+// TODO remove once PR is ready to be checked in
+// static void PrintNodes(Graph& graph) {
+//   for (const auto& node : graph.Nodes()) {
+//     std::cout << node.OpType() << "    " << node.GetExecutionProviderType() << "   " << node.Index() << "       " << node.Domain() << "  " << node.Name() << std::endl;
+//   }
+// }
 
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -90,7 +89,7 @@ static void AssignNodes(Graph& graph, const IndexedSubGraph& capability,
 }
 
 /// <summary>
-/// Transforms data layout from NCHW to NHWC. Applies transforms to layout senstive nodes
+/// Transforms data layout from NCHW to NHWC. Applies transforms to layout sensitive nodes
 /// assigned to current_ep and any other non-layout sensitive nodes in order to optimize
 /// the transposes as much as possible.
 /// </summary>
@@ -103,9 +102,7 @@ static Status TransformLayout(Graph& graph, bool& modified,
                               IExecutionProvider& current_ep, const logging::Logger& logger) {
   // sub graph recurse will be added later
   auto api_graph = MakeApiGraph(graph, current_ep.GetAllocator(0, OrtMemTypeDefault), logger, nullptr);
-  std::unordered_set<std::string_view> layout_sensitive_ops{
-      "Resize", "Conv", "QLinearConv", "FusedConv", "AveragePool", "QLinearAveragePool", "GlobalAveragePool",
-      "QLinearGlobalAveragePool", "MaxPool", "GlobalMaxPool", "LRN"};
+  std::unordered_set<std::string_view> layout_sensitive_ops = onnx_layout_transformation::GetLayoutSensitiveOps();
 
   for (std::unique_ptr<onnx_layout_transformation::api::NodeRef>& node : api_graph->Nodes()) {
     if (layout_sensitive_ops.count(node->OpType())) {
@@ -119,8 +116,13 @@ static Status TransformLayout(Graph& graph, bool& modified,
         continue;
       }
 
-      // Skip if already transformed
+      // if already transformed then change the domain to kMSNHWCDomain this way the EP
+      // knows this op is in the expected format.
       if (node->GetAttributeIntDefault("channels_last", 0) == 1) {
+        onnx_layout_transformation::SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSNHWCDomain);
+        // Changing the domain for the node requires creating a new node and replacing the old one
+        // therefore set the modified flag.
+        modified = true;
         continue;
       }
 
@@ -141,13 +143,15 @@ static Status TransformLayout(Graph& graph, bool& modified,
       auto input_perm = onnx_layout_transformation::ChannelFirstToLastPerm(rank);
       auto output_perm = onnx_layout_transformation::ChannelLastToFirstPerm(rank);
 
-      // Resize is special case. Older versions of resize have a bug where ROI and Scales
-      // cannot be made empty inputs. To handle this case we need to jump a few extra hoops
-      // to make sure its inputs are correctly handled.
+      // Except for resize and convolution ops, all the other layout sensitive ops only require layout transformation 
+      // for 0th input and output. For resize, add the other relevant inputs which need conversion. For Conv - layout 
+      // transformer only converts layout for 0th input, weights should be handled by every EP.
       if (node->OpType() == "Resize") {
-        // Current code skips handling ROI.
-        // ROI needs special handling. Enable it when an EP which supports ROI starts using 
-        // layout transformer. NNAPI which currently used layout transformer does not support it.
+        // Older versions of resize have a bug where ROI and Scales cannot be made empty inputs. To handle this case, 
+        // we need to jump a few extra hoops to make sure its inputs are correctly handled. Current code skips 
+        // layout conversion for ROI becasue it needs special handling as ROI size is 2*rank. 
+        // Enable passing in ROI for layout conversion when an EP which supports ROI starts using layout transformer.
+        // NNAPI which currently uses layout transformer does not support it.
         std::vector<const std::vector<int64_t>*> input_perms{&input_perm, nullptr};
         for (size_t i = 2; i < node->Inputs().size(); i++) {
           auto constant = api_graph->GetConstant(node->Inputs()[i]);
@@ -162,18 +166,18 @@ static Status TransformLayout(Graph& graph, bool& modified,
         onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
       }
 
-      if (!has_channel_last_attr) {
-        onnx_layout_transformation::SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSNHWCDomain);
-      }
+      onnx_layout_transformation::SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSNHWCDomain);
       modified = true;
     }
   }
 
-  modified = onnx_layout_transformation::Optimize(*api_graph,
-                                                  /*allow_extended_ops*/ true,
-                                                  current_ep.Type(),
-                                                  onnx_layout_transformation::OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM) ||
-             modified;
+  if (modified) {
+    modified = onnx_layout_transformation::Optimize(*api_graph,
+                                                    /*allow_extended_ops*/ true,
+                                                    current_ep.Type(),
+                                                    onnx_layout_transformation::OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM, layout_sensitive_ops) ||
+               modified;
+  }
 
   return Status::OK();
 }
@@ -193,7 +197,7 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
       current_ep.GetPreferredLayout() == DataLayout::NHWC) {
     for (auto& capability : capabilities) {
       // in theory an EP could return an empty value...
-      if (!capability->sub_graph) {
+      if (!capability && !capability->sub_graph) {
         continue;
       }
       AssignNodes(graph, *capability->sub_graph, current_ep.Type());
@@ -232,7 +236,8 @@ static Status ValidateGraphPartitioning(const Graph& graph) {
     if (node.Domain() == kMSNHWCDomain) {
       return Status(common::ONNXRUNTIME, common::FAIL,
                     "Graph contains an invalid node: " + node.Name() + " Op Type: " + node.OpType() +
-                        " with domain com.microsoft.nhwc. This is a bug in layout transformer.");
+                        " with domain: " + kMSNHWCDomain + ". These are temporary nodes added during layout transformations " +
+                        " and are not expected to remain in the graph post partitioning. This is a bug in layout transformer.");
     }
   }
   return Status::OK();
@@ -400,7 +405,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
 
   for (auto& capability : capabilities) {
     // in theory an EP could return an empty value...
-    if (!capability->sub_graph) {
+    if (!capability && !capability->sub_graph) {
       continue;
     }
 
@@ -498,7 +503,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
     ORT_RETURN_IF_ERROR(ValidateGraphPartitioning(graph));
   }
 
-  //TODO remove after testing
+  //TODO remove once PR is ready to be checked in
   //PrintNodes(graph);
 
   // if this is the main graph call Resolve to put the Graph back into a guaranteed good state

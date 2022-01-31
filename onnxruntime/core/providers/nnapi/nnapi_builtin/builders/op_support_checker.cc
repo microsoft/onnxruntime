@@ -58,6 +58,10 @@ bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node
   return false;
 }
 
+inline bool IsNodeLayoutNHWC(const NodeUnit& node_unit) {
+  return node_unit.Domain() == kMSNHWCDomain;
+}
+
 template <class T>
 void CreateSharedOpSupportCheckerImpl(const std::string& op_type,
                                       OpSupportCheckerRegistrations& op_registrations,
@@ -1215,7 +1219,7 @@ class ConcatOpSupportChecker : public BaseOpSupportChecker {
 bool ConcatOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                                const OpSupportCheckParams& /* params */) const {
   Shape input_shape;
-  if (GetShape(node_unit.Inputs()[0].node_arg, input_shape))
+  if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
     return false;
 
   const auto input_size = input_shape.size();
@@ -1533,7 +1537,7 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
       }
       const float* scales_data = reinterpret_cast<const float*>(unpacked_tensor.data());
       float scale_n = scales_data[0];
-      float scale_c = node_unit.Domain() == kMSNHWCDomain ? scales_data[3] : scales_data[1];
+      float scale_c = IsNodeLayoutNHWC(node_unit) ? scales_data[3] : scales_data[1];
       if (scale_n != 1.0f || scale_c != 1.0f) {
         LOGS_DEFAULT(VERBOSE) << "Scales of N/C channel should be 1"
                               << "Resize of N/C channels are not supported"
@@ -1551,7 +1555,7 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
         return false;
       }
 
-      int channel_idx = node_unit.Domain() == kMSNHWCDomain ? 3 : 1;
+      int channel_idx = IsNodeLayoutNHWC(node_unit) ? 3 : 1;
       const int64_t* sizes_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
       uint32_t size_n = SafeInt<uint32_t>(sizes_data[0]);
       uint32_t size_c = SafeInt<uint32_t>(sizes_data[channel_idx]);

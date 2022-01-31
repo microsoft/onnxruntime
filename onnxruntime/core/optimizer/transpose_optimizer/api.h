@@ -9,6 +9,8 @@
 #include <string_view>
 #include <unordered_map>
 #include <vector>
+#include <unordered_set>
+
 
 namespace onnx_layout_transformation {
 namespace api {
@@ -204,7 +206,7 @@ class NodeRef {
     }
     std::string_view node_domain = Domain();
     return node_domain == domain ||
-        ((domain == "" || domain == "ai.onnx") && (node_domain == "" || node_domain == "ai.onnx"));
+           ((domain == "" || domain == "ai.onnx") && (node_domain == "" || node_domain == "ai.onnx"));
   }
 
   /// <summary>
@@ -237,7 +239,6 @@ class NodeRef {
 /// Information regarding the consumers of a value.
 /// </summary>
 struct ValueConsumers {
-
   /// <summary>
   /// List of nodes in the current graph containing value as an input
   /// </summary>
@@ -440,8 +441,14 @@ enum class OptimizerMode {
 /// </summary>
 /// <param name="graph">The graph to optimize (or a portion of a graph, see api::GraphRef docs)</param>
 /// <param name="allow_extended_ops">Whether com.microsoft ops can be used for optimization</param>
+/// <param name="provider_type">Execution provider if applicable.</param>
+/// <param name="mode">Current mode. Optimizer can be called in the context of transpose optimizations or during layout transformations.</param>
+/// <param name="layout_sensitive_ops">Layout sensitive ops if appplicable.</param>
 /// <returns>true if the graph was modified</returns>
-bool Optimize(api::GraphRef& graph, bool allow_extended_ops, const std::string& provider_type = "", OptimizerMode mode = OptimizerMode::OPTIMIZE_TRANSPOSE);
+bool Optimize(api::GraphRef& graph, bool allow_extended_ops,
+              const std::string& provider_type = "",
+              OptimizerMode mode = OptimizerMode::OPTIMIZE_TRANSPOSE,
+              const std::unordered_set<std::string_view>& layout_sensitive_ops = {});
 
 /* Layout Transformation Tools
  * These methods help change the channel ordering of layout sensitive ops (like Conv). ONNX currently only supports
@@ -464,13 +471,13 @@ bool Optimize(api::GraphRef& graph, bool allow_extended_ops, const std::string& 
 /// <summary>
 /// Inserts transposes around op inputs/outputs. Alternatively transposes initializers or uses existing Transpose
 /// nodes if possible. Populates shape information on affected node inputs/outputs to reflect the change.
-/// 
+///
 /// Ex:
 ///   * -> NhwcConv -> **
 ///   becomes
 ///   * -> Transpose -> NhwcConv -> Transpose -> **
 ///   Conv inputs/outputs have new shape. Shapes of * and ** are unchanged (carrying NCHW data).
-/// 
+///
 /// input_perms/output_perms are matched with node inputs/outputs positionally. Their lengths must be at most equal to
 /// the number of inputs/outputs, respectively. nullptr entires indicate an input or output should not be transposed.
 /// </summary>

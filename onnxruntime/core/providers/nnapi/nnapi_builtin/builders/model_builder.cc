@@ -680,7 +680,6 @@ int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
   const auto& op_type = node_unit.GetNode().OpType();
   if (!Contains(op_builders, op_type))
     return nullptr;
-
   return op_builders.at(op_type);
 }
 
@@ -696,7 +695,7 @@ std::string ModelBuilder::GetUniqueName(const std::string& base_name) {
 }
 
 DataLayout ModelBuilder::GetPreferredLayout() const {
-    return use_nchw_ ? DataLayout::NCHW : DataLayout::NHWC;
+  return use_nchw_ ? DataLayout::NCHW : DataLayout::NHWC;
 }
 
 const InitializedTensorSet& ModelBuilder::GetInitializerTensors() const {
