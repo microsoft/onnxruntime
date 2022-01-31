@@ -170,9 +170,10 @@ void PrefixVocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
   // prefix_vocab_mask shape (batch_szie, vocab_size).
   T* p = next_token_scores.scores.data();
   for (int i = 0; i < batch_size_; i++) {
+    int prefix_vocab_mask_offset = i * next_token_scores.vocab_size;
     for (int j = 0; j < num_beams; j++) {
       for (int k = 0; k < next_token_scores.vocab_size; k++, p++) {
-        if (prefix_vocab_mask_[i][k] == 0) {
+        if (prefix_vocab_mask_[prefix_vocab_mask_offset + k] == 0) {
           *p = std::numeric_limits<T>::lowest();
         }
       }
