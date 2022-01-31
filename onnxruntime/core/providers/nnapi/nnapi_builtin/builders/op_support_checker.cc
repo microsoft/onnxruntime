@@ -1198,8 +1198,6 @@ int UnaryOpSupportChecker::GetMinSupportedOpSet(const NodeUnit& node_unit) const
   if (!HasValidQuantizationZeroPoints(initializers, node_unit, {0}, false /* is_input */))
     return false;
 
-  return false;
-
   // NNAPI requires the scale be 1.f/256 and zero point to be 0
   // See https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/android10-c2f2-release/nn/common/operations/Activation.cpp#180
   float output_scale = 0.0f;
