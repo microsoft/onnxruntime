@@ -15,7 +15,7 @@
 #include "core/optimizer/rewrite_rule.h"
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 #endif
 
@@ -52,7 +52,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
 /** Generates all predefined transformers which support runtime optimizations for this level.
     Any transformers or rewrite rules named in rules_and_transformers_to_disable will be excluded.
@@ -66,7 +66,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformersForRuntimeOpt
     const SatApplyContextVariant& apply_context,
     const std::unordered_set<std::string>& rules_and_transformers_to_disable = {});
 
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
 }  // namespace optimizer_utils
 }  // namespace onnxruntime

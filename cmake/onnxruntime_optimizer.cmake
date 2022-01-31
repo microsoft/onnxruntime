@@ -26,7 +26,7 @@ if (onnxruntime_MINIMAL_BUILD)
     )
   endif()
 
-  if (onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+  if (onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
     list(APPEND onnxruntime_optimizer_src_patterns
       "${ONNXRUNTIME_INCLUDE_DIR}/core/optimizer/graph_transformer_utils.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/graph_transformer_utils.cc"
@@ -36,6 +36,9 @@ if (onnxruntime_MINIMAL_BUILD)
       "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/selectors_actions/*.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.cc"
+
+      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimizer/*.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimizer/*.cc"
     )
   endif()
 else()
