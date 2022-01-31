@@ -607,9 +607,9 @@ TEST_P(ModelTest, Run) {
               0,
               0,
 #ifdef _WIN32
-              "C:\\local\\trt_timing_cache", // directory where timing caches locate in CI Windows image
+              "C:\\local\\models\\trt_timing_cache", // directory where timing caches locate in CI Windows image
 #else
-              "/data/trt_timing_cache",      // directory where timing caches locate in CI Linux image
+              "/data/models/trt_timing_cache",      // directory where timing caches locate in CI Linux image
 #endif
               0,
               nullptr,
