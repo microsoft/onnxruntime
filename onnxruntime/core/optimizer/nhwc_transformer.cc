@@ -21,7 +21,7 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
   }
 
-  auto api_graph = MakeApiGraph(graph, cpu_allocator_, logger, kCpuExecutionProvider);
+  auto api_graph = MakeApiGraph(graph, cpu_allocator_, kCpuExecutionProvider);
 
   modified = false;
   for (std::unique_ptr<api::NodeRef>& node : api_graph->Nodes()) {

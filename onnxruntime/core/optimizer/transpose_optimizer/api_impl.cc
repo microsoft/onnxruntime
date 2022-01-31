@@ -95,13 +95,11 @@ class ApiGraph final : public api::GraphRef {
  private:
   onnxruntime::Graph& graph_;
   AllocatorPtr cpu_allocator_;
-  const logging::Logger& logger_;
   const char* new_node_ep_;
 
  public:
-  explicit ApiGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const logging::Logger& logger,
-                    const char* new_node_ep) : graph_(graph), cpu_allocator_(std::move(cpu_allocator)),
-                    logger_(logger), new_node_ep_(new_node_ep) {}
+  explicit ApiGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator, const char* new_node_ep)
+      : graph_(graph), cpu_allocator_(std::move(cpu_allocator)), new_node_ep_(new_node_ep) {}
 
   onnxruntime::Graph& Graph() {
     return graph_;
@@ -119,7 +117,8 @@ class ApiGraph final : public api::GraphRef {
   std::unique_ptr<api::NodeRef> AddNode(std::string_view op_type, const std::vector<std::string_view>& inputs,
                                         size_t num_outputs = 1, std::string_view domain = "") override;
 
-  std::unique_ptr<api::NodeRef> CopyNode(const api::NodeRef& source_node, std::string_view op_type, std::string_view domain = "") override;
+  std::unique_ptr<api::NodeRef> CopyNode(const api::NodeRef& source_node, std::string_view op_type,
+                                         std::string_view domain = "") override;
   void RemoveNode(api::NodeRef& node) override;
   void RemoveInitializer(std::string_view name) override;
   std::string_view AddInitializer(api::DataType dtype, const std::vector<int64_t>& shape,
@@ -143,11 +142,11 @@ const onnx::TensorShapeProto* GetNodeArgShape(const NodeArg* node_arg) {
   }
 
   const auto* type = node_arg->TypeAsProto();
-  if (type == nullptr || !utils::HasShape(*type)) {
+  if (type == nullptr) {
     return nullptr;
   }
 
-  return &utils::GetShape(*type);
+  return utils::TryGetShape(*type);
 }
 
 std::optional<std::vector<int64_t>> ApiValueInfo::Shape() const {
@@ -356,7 +355,6 @@ void ApiNode::SetInput(size_t i, std::string_view name) {
       // Append 1. Technically wrong if last input is variadic (but it never is)
       args_count.push_back(1);
     }
-
   }
 
   NodeArg* old_node_arg = mutable_input_defs[i];
@@ -581,7 +579,6 @@ void ApiGraph::ReshapeInitializer(std::string_view name, const std::vector<int64
 static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_type,
                               const std::vector<std::string_view>& inputs, size_t num_outputs,
                               std::string_view domain, std::string_view node_ep) {
-
   const std::string op_type_str(op_type);
   std::string name = graph.GenerateNodeName(op_type_str);
   std::vector<NodeArg*> input_args;
@@ -607,12 +604,11 @@ static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_typ
 
   std::vector<NodeArg*> outputs;
   Node& node = graph.AddNode(name, op_type_str, "Added in transpose optimizer", input_args, output_args, nullptr,
-                              std::string(domain));
+                             std::string(domain));
 
   graph.SetOpSchemaFromRegistryForNode(node);
 
   node.SetExecutionProviderType(std::string(node_ep));
-
 
   for (size_t i = 0; i < input_args.size(); ++i) {
     NodeArg* arg = input_args[i];
@@ -637,14 +633,13 @@ static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_typ
 std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
                                                 const std::vector<std::string_view>& inputs, size_t num_outputs,
                                                 std::string_view domain) {
-  
-  Node& node = CreateNodeHelper(graph_, op_type, inputs, num_outputs, 
+  Node& node = CreateNodeHelper(graph_, op_type, inputs, num_outputs,
                                 domain, new_node_ep_ != nullptr ? new_node_ep_ : "");
   return std::make_unique<ApiNode>(node, graph_);
 }
 
 std::unique_ptr<api::NodeRef> ApiGraph::CopyNode(const api::NodeRef& source_node, std::string_view op_type,
-    std::string_view domain) {
+                                                 std::string_view domain) {
   Node& node = CreateNodeHelper(graph_, op_type, source_node.Inputs(),
                                 source_node.Outputs().size(), domain, source_node.GetExecutionProviderType());
 
@@ -716,23 +711,35 @@ void ApiGraph::MoveOutput(api::NodeRef& src_node, size_t src_idx, api::NodeRef& 
 }
 
 void ApiGraph::CopyValueInfo(std::string_view src_name, std::string_view dst_name) {
-  NodeArg* src_arg = graph_.GetNodeArg(std::string(src_name));
-  if (src_arg != nullptr) {
-    NodeArg& dst_arg = graph_.GetOrCreateNodeArg(std::string(dst_name), src_arg->TypeAsProto());
-    const TensorShapeProto* shape = src_arg->Shape();
-    if (shape == nullptr) {
-      dst_arg.ClearShape();
-    } else {
-      dst_arg.SetShape(*shape);
-    }
-
-    ORT_THROW_IF_ERROR(dst_arg.UpdateTypeAndShape(*src_arg, /*strict*/ false, /*override_types*/ false, logger_));
+  const NodeArg* src_arg = graph_.GetNodeArg(std::string(src_name));
+  if (!src_arg) {
+    return;
   }
+
+  const TypeProto* src_type = src_arg->TypeAsProto();
+  if (!src_type) {
+    return;
+  }
+
+  NodeArg& dst_arg = graph_.GetOrCreateNodeArg(std::string(dst_name), nullptr);
+
+  if (auto* dst_type = dst_arg.TypeAsProto(); dst_type != nullptr) {
+    int32_t src_data_element_type;
+    utils::TryGetElementDataType(*src_type, src_data_element_type);
+    int32_t dst_data_element_type;
+    const bool dst_data_element_type_present = utils::TryGetElementDataType(*dst_type, dst_data_element_type);
+
+    ORT_ENFORCE(dst_type->value_case() == src_type->value_case() &&
+                    (!dst_data_element_type_present || dst_data_element_type == src_data_element_type),
+                "Existing destination type is not compatible with source type.");
+  }
+
+  graph_.SetNodeArgType(dst_arg, *src_type);
 }
 
 std::unique_ptr<api::GraphRef> MakeApiGraph(onnxruntime::Graph& graph, AllocatorPtr cpu_allocator,
-                                            const logging::Logger& logger, const char* new_node_ep) {
-  return std::make_unique<ApiGraph>(graph, std::move(cpu_allocator), logger, new_node_ep);
+                                            const char* new_node_ep) {
+  return std::make_unique<ApiGraph>(graph, std::move(cpu_allocator), new_node_ep);
 }
 
 std::unique_ptr<api::NodeRef> MakeApiNode(onnxruntime::Graph& graph, onnxruntime::Node& node) {

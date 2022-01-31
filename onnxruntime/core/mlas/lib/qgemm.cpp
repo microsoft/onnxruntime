@@ -472,7 +472,7 @@ MlasSymmQgemmPackBSize(
         return 0;
     }
 
-    const auto* Dispatch = MlasPlatform.SymmQgemmDispatch;
+    const auto* Dispatch = GetMlasPlatform().SymmQgemmDispatch;
 
     size_t PackedK = Dispatch->PackedK;
 

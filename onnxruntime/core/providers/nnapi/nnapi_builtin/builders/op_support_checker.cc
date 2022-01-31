@@ -109,6 +109,11 @@ class BaseOpSupportChecker : public IOpSupportChecker {
   virtual int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const { return 1; }
   virtual int GetMaxSupportedOpSet(const NodeUnit& /* node_unit */) const { return 15; }
 
+  // Check if this node_unit's type is supported
+  // SingleNode type NodeUnit is supported
+  // QDQGroup type NodeUnit is by default unsupported, and this can be individually overwritten by inherited classes
+  virtual bool IsNodeUnitTypeSupported(const NodeUnit& node_unit) const;
+
  private:
   bool HasSupportedOpSet(const NodeUnit& node_unit) const;
   bool HasSupportedInputs(const NodeUnit& node_unit) const;
@@ -133,6 +138,9 @@ bool BaseOpSupportChecker::IsOpSupported(const InitializedTensorSet& initializer
                           << "] is only supported on API >" << required_feature_level;
     return false;
   }
+
+  if (!IsNodeUnitTypeSupported(node_unit))
+    return false;
 
   if (!HasSupportedInputs(node_unit))
     return false;
@@ -201,6 +209,17 @@ bool BaseOpSupportChecker::HasSupportedOpSet(const NodeUnit& node_unit) const {
                           << "] is only supported for opset ["
                           << GetMinSupportedOpSet(node_unit) << ", "
                           << GetMaxSupportedOpSet(node_unit) << "]";
+    return false;
+  }
+
+  return true;
+}
+
+bool BaseOpSupportChecker::IsNodeUnitTypeSupported(const NodeUnit& node_unit) const {
+  if (node_unit.UnitType() == NodeUnit::Type::QDQGroup) {
+    LOGS_DEFAULT(VERBOSE) << "QDQ NodeUnit [" << node_unit.OpType()
+                          << "] is not supported for now";
+
     return false;
   }
 

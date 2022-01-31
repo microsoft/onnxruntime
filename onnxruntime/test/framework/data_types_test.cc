@@ -6,6 +6,7 @@
 
 #include "core/framework/data_types.h"
 #include "core/framework/data_types_internal.h"
+#include "core/framework/inlined_containers.h"
 #include "core/graph/onnx_protobuf.h"
 #include "gtest/gtest.h"
 
@@ -665,5 +666,27 @@ TEST_F(DataTypeTest, DataUtilsTest) {
   }
 }
 
+template<typename T>
+using Calc = CalculateInlinedVectorDefaultInlinedElements<T>;
+
+template <typename... Types>
+struct TypeMinimunInlinedElements {
+  std::array<std::pair<size_t, size_t>, sizeof...(Types)> sizes_{std::make_pair(sizeof(Types), Calc<Types>::value)...};
+  void print(std::ostream& os) const {
+    os << " CalculateInlinedVectorDefaultInlinedElements Sizes: ";
+    for (auto& p : sizes_) {
+      os << p.first << " -> " << p.second << std::endl;
+    }
+    os << std::endl;
+  }
+};
+
+TEST(InlinedVectorTests, TestDefaultInlinedCapacity) {
+
+  // We want to test all the type here
+  TypeMinimunInlinedElements<int8_t, int16_t, int32_t, int64_t, std::string> sizes;
+  sizes.print(std::cout);
+
+}
 }  // namespace test
 }  // namespace onnxruntime

@@ -152,16 +152,7 @@ const NodeUnit& ModelBuilder::GetNodeUnit(const Node* node) const {
 }
 
 void ModelBuilder::PreprocessNodeUnits() {
-  // TODO, hookup shared QDQ selectors here to identify all the qdq NodeUnit in the graph
-  const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
-  for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto node_idx = node_indices[i];
-    // TODO, check if the node is already part of a qdq group
-    const auto* node(graph_viewer_.GetNode(node_idx));
-    auto node_unit = std::make_unique<NodeUnit>(*node);
-    node_unit_map_.insert({node, node_unit.get()});
-    node_unit_holder_.push_back(std::move(node_unit));
-  }
+  std::tie(node_unit_holder_, node_unit_map_) = GetAllNodeUnits(graph_viewer_);
 }
 
 // Help to get all quantized operators' input and the NodeUnit(s) using the input
@@ -496,6 +487,7 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
 Status ModelBuilder::AddOperations() {
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   std::unordered_set<const NodeUnit*> processed_node_units;
+  processed_node_units.reserve(node_unit_holder_.size());
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
     const NodeUnit& node_unit = GetNodeUnit(node);

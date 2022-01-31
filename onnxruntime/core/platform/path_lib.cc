@@ -95,7 +95,7 @@ common::Status GetDirNameFromFilePath(const std::basic_string<ORTCHAR_T>& s, std
   auto st = onnxruntime::RemoveFileSpec(const_cast<wchar_t*>(ret.data()), ret.length() + 1);
   if (!st.IsOK()) {
     std::ostringstream oss;
-    oss << "illegal input path:" << ToMBString(s) << ". " << st.ErrorMessage();
+    oss << "illegal input path:" << ToUTF8String(s) << ". " << st.ErrorMessage();
     return Status(st.Category(), st.Code(), oss.str());
   }
   ret.resize(wcslen(ret.c_str()));

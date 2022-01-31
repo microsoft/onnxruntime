@@ -37,12 +37,13 @@ using TensorShapeVector = absl::InlinedVector<int64_t, kTensorShapeSmallBufferEl
 
 // Use this for inlined shape size where different types are needed.
 template <typename T>
-using InlinedShapeVectorT = absl::InlinedVector<T, kTensorShapeSmallBufferElementsSize>;
+using InlinedShapeVector = absl::InlinedVector<T, kTensorShapeSmallBufferElementsSize>;
+
 
 inline TensorShapeVector ToShapeVector(const gsl::span<const int64_t>& span) {
   TensorShapeVector out;
   out.reserve(span.size());
-  out.assign(span.cbegin(), span.cend());
+  out.assign(span.begin(), span.end());
   return out;
 }
 
