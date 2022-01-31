@@ -772,6 +772,8 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         return ortmodule_graph_builder->GetGraphInfo();
       });
 
+  // Provide a convenient and well-documented way to make a gradient graph.
+  // It's possible to get the gradient graph through ORTModule by leveraging some "private" fields and not-so-well-documented APIs, so we provide this explicit and tested way to get the gradient graph.
   py::class_<PyGradientGraphBuilder> gradient_graph_builder(m, "GradientGraphBuilder", R"pbdoc(A utility for making a gradient graph that can be used to help train a model.)pbdoc");
   // Set up methods to match the C++ `GradientGraphBuilder` interface.
   gradient_graph_builder.def(py::init([](

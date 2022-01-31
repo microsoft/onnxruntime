@@ -1447,6 +1447,9 @@ def run_training_python_frontend_tests(cwd):
         sys.executable, 'orttraining_test_transformers.py',
         'BertModelTest.test_for_pretraining_full_precision_list_and_dict_input'], cwd=cwd)
 
+    # Test that a gradient graph can be exported.
+    run_subprocess([sys.executable, 'orttraining_test_gradient_graph.py'])
+
     # TODO: use run_orttraining_test_orttrainer_frontend_separately to work around a sporadic segfault.
     # shall revert to run_subprocess call once the segfault issue is resolved.
     run_orttraining_test_orttrainer_frontend_separately(cwd)
@@ -1598,7 +1601,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 cwd = os.path.join(cwd, config)
 
             run_subprocess([sys.executable, 'onnxruntime_test_python.py'], cwd=cwd, dll_path=dll_path)
-            run_subprocess([sys.executable, 'orttraining_test_gradient_graph.py'], cwd=cwd, dll_path=dll_path)
 
             if not args.disable_contrib_ops:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_sparse_matmul.py'],

@@ -5,7 +5,7 @@ import torch
 from onnxruntime.capi._pybind_state import GradientGraphBuilder
 from torch.onnx import TrainingMode
 
-from ..ortmodule._custom_op_symbolic_registry import CustomOpSymbolicRegistry
+from ...ortmodule._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 
 
 def export_gradient_graph(
@@ -16,7 +16,7 @@ def export_gradient_graph(
         gradient_graph_path: Union[Path, str], intermediate_graph_path: Optional[Union[Path, str]] = None,
         opset_version=12) -> None:
     r"""
-    Build a gradient graph for `model` so that you can output gradients when given a specific input and labels.
+    Build a gradient graph for `model` so that you can output gradients in an inference session when given a specific input and labels.
 
     Args:
         model (torch.nn.Module): A gradient will be built for this model.

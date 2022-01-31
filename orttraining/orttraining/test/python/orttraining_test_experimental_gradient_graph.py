@@ -6,7 +6,7 @@ import numpy as np
 import onnx
 import onnxruntime
 import torch
-from onnxruntime.training import export_gradient_graph
+from onnxruntime.training.experimental import export_gradient_graph
 from torch import nn
 
 
@@ -33,14 +33,22 @@ def to_numpy(tensor):
     return tensor.detach().cpu().numpy() if tensor.requires_grad else tensor.cpu().numpy()
 
 
+def binary_cross_entropy_loss(inp, target):
+    loss = -torch.sum(target * torch.log2(inp[:, 0]) +
+                      (1-target) * torch.log2(inp[:, 1]))
+    return loss
+
+
 class GradientGraphBuilderTest(unittest.TestCase):
     def test_save(self):
-        loss_fn = nn.CrossEntropyLoss()
+        # We need a custom loss function to load the graph in an InferenceSession in ONNX Runtime Web.
+        # You can still make the gradient graph with nn.CrossEntropyLoss() and this test will pass.
+        loss_fn = binary_cross_entropy_loss
         input_size = 10
         model = NeuralNet(input_size=input_size, hidden_size=5,
                           num_classes=2)
         directory_path = Path(os.path.dirname(__file__)).resolve()
-        
+
         intermediate_graph_path = directory_path / \
             'gradient_graph_builder_test_model.onnx'
         gradient_graph_path = directory_path/'gradient_graph_model.onnx'
