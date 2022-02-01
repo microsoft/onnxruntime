@@ -1471,9 +1471,7 @@ class ResizeOpSupportChecker : public BaseOpSupportChecker {
 };
 
 /* static */ bool ResizeOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
-  static bool is_quant_op_type =
-      GetQuantizedOpType(node_unit) == QuantizedOpType::QDQResize;
-  return is_quant_op_type;
+  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQResize;
 }
 
 bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
@@ -1598,6 +1596,8 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
 
   if (IsQuantizedOp(node_unit)) {
     // For QDQResize, we only support uint8 output now
+    // TODO, add int8 support to NNAPI, and maybe move all the output type check into a virtual function
+    // similar to HasSupportedInputsImpl
     int32_t output_type;
     if (!GetType(node_unit.Outputs()[0].node_arg, output_type))
       return false;

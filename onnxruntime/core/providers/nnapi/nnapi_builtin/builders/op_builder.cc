@@ -2262,9 +2262,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
 };
 
 /* static */ bool ResizeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
-  static bool is_quant_op_type =
-      GetQuantizedOpType(node_unit) == QuantizedOpType::QDQResize;
-  return is_quant_op_type;
+  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQResize;
 }
 
 void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
