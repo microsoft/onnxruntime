@@ -11,7 +11,7 @@ jobs:
 
     - task: AzureCLI@2
       inputs:
-          #azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+          azureSubscription: 'aiinfra'
           scriptType: 'bash'
           scriptLocation: 'inlineScript'
           inlineScript: |
