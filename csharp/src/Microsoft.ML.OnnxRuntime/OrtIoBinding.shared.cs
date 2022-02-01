@@ -106,7 +106,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Bind model output to an OrtValue as Tensor with a given type and shape. An instance of OrtMemoryAllocaiton
-        /// owns the memory and should be alive for the time of execution.The size of the allocation can not be less than required
+        /// owns the memory and should be alive for the time of execution.
         /// </summary>
         /// <param name="name">of the output</param>
         /// <param name="elementType">tensor element type</param>
