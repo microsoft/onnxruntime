@@ -36,9 +36,6 @@ def export_gradient_graph(
         opset_version (int): See `torch.onnx.export`.
     """
 
-    # Is this needed?
-    model.train()
-
     # Make sure that loss nodes that expect multiple outputs are set up.
     CustomOpSymbolicRegistry.register_all()
 
