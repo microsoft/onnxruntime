@@ -101,7 +101,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void SynchronizeBoundInputs()
         {
-            NativeMethods.OrtSynchronizeBoundInputs(handle);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSynchronizeBoundInputs(handle));
         }
 
         /// <summary>
@@ -164,7 +164,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void SynchronizeBoundOutputs()
         {
-            NativeMethods.OrtSynchronizeBoundOutputs(handle);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSynchronizeBoundOutputs(handle));
         }
 
         /// <summary>
