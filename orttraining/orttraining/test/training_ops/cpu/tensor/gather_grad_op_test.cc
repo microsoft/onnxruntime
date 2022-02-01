@@ -40,7 +40,7 @@ std::pair<int32_t, std::vector<int32_t>> CalculateNumberOfSegmentsAndSegmentOffs
 }
 
 std::pair<std::vector<int32_t>, std::vector<int32_t>> CalculatePartialSegmentCountsAndOffsets(const std::vector<int32_t>& segment_offsets, const int64_t number_of_indices) {
-  const int32_t MaxPartialSegmentLength = 10;
+  constexpr int32_t MaxPartialSegmentLength = 10;
 
   std::vector<int32_t> number_of_partial_segments_per_segment;
   int32_t total_number_of_partial_segments = 0;
