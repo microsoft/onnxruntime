@@ -440,6 +440,9 @@ def parse_arguments():
     parser.add_argument(
         "--use_tvm", action='store_true', help="Build with TVM")
     parser.add_argument(
+        "--tvm_cuda_runtime", action='store_true', default=False,
+        help="Build TVM with CUDA support")
+    parser.add_argument(
         "--use_tensorrt", action='store_true', help="Build with TensorRT")
     parser.add_argument(
         "--tensorrt_home", help="Path to TensorRT installation dir")
@@ -771,6 +774,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_TENSORRT_HOME=" + (tensorrt_home if args.use_tensorrt else ""),
         # set vars for TVM
         "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
+        "-Donnxruntime_TVM_CUDA_RUNTIME=" + ("ON" if args.use_tvm and args.tvm_cuda_runtime else "OFF"),
         # set vars for migraphx
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
         "-Donnxruntime_MIGRAPHX_HOME=" + (migraphx_home if args.use_migraphx else ""),

@@ -105,6 +105,7 @@ option(onnxruntime_USE_MIMALLOC "Override new/delete and arena allocator with mi
 option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled libraries in your system" OFF)
 option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
 option(onnxruntime_USE_TVM "Build with TVM support" OFF)
+option(onnxruntime_TVM_CUDA_RUNTIME "Build TVM with CUDA support" OFF)
 
 # Options related to reducing the binary size produced by the build
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
@@ -814,29 +815,6 @@ if (onnxruntime_DISABLE_OPTIONAL_TYPE)
   add_compile_definitions(DISABLE_OPTIONAL_TYPE)
 endif()
 
-if (onnxruntime_USE_CUDA AND onnxruntime_USE_TVM)
-  if ("${onnxruntime_CUDA_HOME}" STREQUAL "")
-    message(FATAL_ERROR "onnxruntime_CUDA_HOME required for onnxruntime_USE_CUDA")
-  endif()
-
-  set(USE_TVM_CUDA ${onnxruntime_CUDA_HOME} CACHE BOOL "Only defined for TVM EP")
-  # TODO(vvchernov): check cmake keys and remove if need
-  # set(USE_MKLDNN ON CACHE BOOL "Only defined for TVM")
-  # set(USE_CUDNN ON CACHE BOOL "Only defined for TVM")
-
-  if (WIN32)
-    list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDA_HOME}/x64/lib64)
-  else()
-    list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDA_HOME}/lib64)
-  endif()
-
-  set(onnxruntime_USE_CUDA OFF)
-endif()
-if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")
-  message(FATAL_ERROR "onnxruntime_CUDNN_HOME required for onnxruntime_USE_CUDA")
-endif()
-
-
 get_filename_component(ONNXRUNTIME_ROOT "${ONNXRUNTIME_ROOT}" ABSOLUTE)
 get_filename_component(ORTTRAINING_ROOT "${ORTTRAINING_ROOT}" ABSOLUTE)
 get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
@@ -1430,14 +1408,18 @@ if (onnxruntime_USE_TVM)
     set(USE_LLVM ON CACHE BOOL "Only defined for TVM")
   endif()
 
+  if (onnxruntime_TVM_CUDA_RUNTIME)
+    set(USE_CUDA ON CACHE BOOL "Only defined for TVM" FORCE)
+  endif()
+
   set(USE_OPENMP gnu CACHE STRING "Only defined for TVM")
   # TODO(vvchernov): check messages and remove if need
-  message(STATUS "TVM BEFORE USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_TVM_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
+  message(STATUS "TVM BEFORE USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
   message(STATUS "tvm_SOURCE_DIR=${tvm_SOURCE_DIR}")
   message(STATUS "tvm_BINARY_DIR=${tvm_BINARY_DIR}")
   add_subdirectory(${tvm_SOURCE_DIR} ${tvm_BINARY_DIR} EXCLUDE_FROM_ALL)
-  message(STATUS "TVM AFTER USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_TVM_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
-
+  message(STATUS "TVM AFTER USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
+  
   set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
 
   set(TVM_INCLUDES ${tvm_SOURCE_DIR}/include
