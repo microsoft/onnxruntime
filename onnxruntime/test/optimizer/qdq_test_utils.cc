@@ -31,6 +31,8 @@ GetQDQTestCaseFn BuildQDQResizeTestCase(
 #ifdef USE_NNAPI
     resize_node.AddAttribute("mode", "linear");
     resize_node.AddAttribute("coordinate_transformation_mode", "asymmetric");
+#else
+    ORT_UNUSED_PARAMETER(resize_node);
 #endif
     // add Q
     builder.AddQuantizeLinearNode<uint8_t>(resize_output, .003f, 1, output_arg);
