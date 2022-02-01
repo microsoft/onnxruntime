@@ -53,11 +53,11 @@ def export_gradient_graph(
 
     class WrapperModule(torch.nn.Module):
         def forward(self, model_input, expected_labels, *model_params):
-                for param, set_param in zip(model.parameters(), model_params):
-                    param.data = set_param.data
-                output = model(model_input)
-                loss = loss_fn(output, expected_labels)
-                return output, loss
+            for param, set_param in zip(model.parameters(), model_params):
+                param.data = set_param.data
+            output = model(model_input)
+            loss = loss_fn(output, expected_labels)
+            return output, loss
 
     wrapped_model = WrapperModule()
 
