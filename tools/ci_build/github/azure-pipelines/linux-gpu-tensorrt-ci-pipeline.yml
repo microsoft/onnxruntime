@@ -9,6 +9,21 @@ jobs:
       clean: true
       submodules: recursive
 
+    - task: AzureCLI@2
+      inputs:
+          #azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+          scriptType: 'bash'
+          scriptLocation: 'inlineScript'
+          inlineScript: |
+            az storage blob directory download \
+              -c 'models' \
+              -s 'local/models/trt_timing_cache' \
+              -d '/data/models/' \
+              --account-name 'lotusscus' \
+              --recursive \
+              --account-key $(--account-key) 
+      displayName:
+
     - template: templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_4_tensorrt8_2
