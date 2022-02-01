@@ -1491,7 +1491,7 @@ TEST(ReductionOpTest, ReduceSum_half_bert) {
 // Add more UTs for half as needed
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(ReductionOpTest, ReduceSumBFloat16) {
   OpTester test("ReduceSum", 14);
   test.AddAttribute("keepdims", (int64_t)0);
@@ -1500,7 +1500,11 @@ TEST(ReductionOpTest, ReduceSumBFloat16) {
   test.AddInput<int64_t>("axes", {2}, std::vector<int64_t>{0, 1});
   test.AddOutput<BFloat16>("reduced", {2}, MakeBFloat16({36.0f, 42.0f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif
