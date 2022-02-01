@@ -57,7 +57,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// to an input with a given name. The model will read the specified input from that memory
         /// possibly avoiding the need to copy between devices. OrtMemoryAllocation continues to own
         /// the chunk of native memory, and the allocation should be alive until the end of execution.
-        /// by the Tensor of the given size.
         /// </summary>
         /// <param name="name">of the input</param>
         /// <param name="elementType">Tensor element type</param>
@@ -73,7 +72,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// The model will read the specified input from that memory
         /// possibly avoiding the need to copy between devices. The user code continues to own
         /// the chunk of externally allocated memory, and the allocation should be alive until the end of execution.
-        /// by the Tensor of the given size.
         /// </summary>
         /// <param name="name">name</param>
         /// <param name="allocation">non ort allocated memory</param>
@@ -109,7 +107,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Bind model output to an OrtValue as Tensor with a given type and shape. An instance of OrtMemoryAllocaiton
         /// owns the memory and should be alive for the time of execution.The size of the allocation can not be less than required
-        /// by the Tensor of the given size.
         /// </summary>
         /// <param name="name">of the output</param>
         /// <param name="elementType">tensor element type</param>
@@ -125,7 +122,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// The model will read the specified input from that memory
         /// possibly avoiding the need to copy between devices. The user code continues to own
         /// the chunk of externally allocated memory, and the allocation should be alive until the end of execution.
-        /// by the Tensor of the given size.
         /// </summary>
         /// <param name="name">name</param>
         /// <param name="allocation">non ort allocated memory</param>

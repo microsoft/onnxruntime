@@ -116,7 +116,7 @@ namespace Microsoft.ML.OnnxRuntime
                 if (typeof(T) != type)
                 {
                     var message = String.Format("The NativeOnnxTensorMemory<T> type being instantiated for T = : {0} while supplied OrtValue contains T = {1}",
-                        nameof(T), nameof(type));
+                        typeof(T), type);
                     throw new OnnxRuntimeException(ErrorCode.InvalidArgument, message);
                 }
 

@@ -103,7 +103,7 @@ namespace Microsoft.ML.OnnxRuntime
             if (elementType == TensorElementType.String)
             {
                 throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
-                    "Can not use map managed strings buffer to native OrtValue");
+                    "Cannot map managed strings buffer to native OrtValue");
             }
 
             var shapeSize = ArrayUtilities.GetSizeForShape(shape);
