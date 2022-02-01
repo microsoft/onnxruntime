@@ -231,12 +231,12 @@ class WindowsEnv : public Env {
 #endif
     if (file_handle.get() == INVALID_HANDLE_VALUE) {
       const auto error_code = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToUTF8String(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
     }
     LARGE_INTEGER filesize;
     if (!GetFileSizeEx(file_handle.get(), &filesize)) {
       const auto error_code = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileSizeEx ", ToMBString(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileSizeEx ", ToUTF8String(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
     }
     if (static_cast<ULONGLONG>(filesize.QuadPart) > std::numeric_limits<size_t>::max()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileLength: File is too large");
@@ -283,7 +283,7 @@ class WindowsEnv : public Env {
 #endif
     if (file_handle.get() == INVALID_HANDLE_VALUE) {
       const auto error_code = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToUTF8String(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
     }
 
     if (length == 0)
@@ -294,7 +294,7 @@ class WindowsEnv : public Env {
       current_position.QuadPart = offset;
       if (!SetFilePointerEx(file_handle.get(), current_position, &current_position, FILE_BEGIN)) {
         const auto error_code = GetLastError();
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SetFilePointerEx ", ToMBString(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SetFilePointerEx ", ToUTF8String(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
       }
     }
 
@@ -307,11 +307,11 @@ class WindowsEnv : public Env {
 
       if (!ReadFile(file_handle.get(), buffer.data() + total_bytes_read, bytes_to_read, &bytes_read, nullptr)) {
         const auto error_code = GetLastError();
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToUTF8String(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
       }
 
       if (bytes_read != bytes_to_read) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(Basename(file_path)), " fail: unexpected end");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToUTF8String(Basename(file_path)), " fail: unexpected end");
       }
 
       total_bytes_read += bytes_read;
@@ -387,7 +387,7 @@ class WindowsEnv : public Env {
               const auto error_code = GetLastError();
               final_status = ORT_MAKE_STATUS(
                   ONNXRUNTIME, FAIL,
-                  "DeleteFile() failed - path: ", ToMBString(Basename(child_path)),
+                  "DeleteFile() failed - path: ", ToUTF8String(Basename(child_path)),
                   ", error code: ", error_code, " - ", std::system_category().message(error_code));
             }
           }
@@ -401,7 +401,7 @@ class WindowsEnv : public Env {
       const auto error_code = GetLastError();
       final_status = ORT_MAKE_STATUS(
           ONNXRUNTIME, FAIL,
-          "RemoveDirectory() failed - path: ", ToMBString(Basename(path)),
+          "RemoveDirectory() failed - path: ", ToUTF8String(Basename(path)),
           ", error code: ", error_code, " - ", std::system_category().message(error_code));
     }
 
@@ -475,7 +475,7 @@ class WindowsEnv : public Env {
 
     if (file_handle.get() == INVALID_HANDLE_VALUE) {
       const auto error_code = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(Basename(path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToUTF8String(Basename(path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
     }
 
     constexpr DWORD initial_buffer_size = MAX_PATH;
@@ -557,8 +557,8 @@ class WindowsEnv : public Env {
       std::wostringstream oss;
       oss << L"LoadLibrary failed with error " << error_code << L" \"" << (LPWSTR)lpMsgBuf << L"\" when trying to load \"" << wlibrary_filename << L"\"";
       std::wstring errmsg = oss.str();
-      // TODO: errmsg should be converted to UTF-8 as it will be passed out to the C interface.
-      common::Status status(common::ONNXRUNTIME, common::FAIL, ToMBString(errmsg));
+      // TODO: trim the ending '\r' and/or '\n'
+      common::Status status(common::ONNXRUNTIME, common::FAIL, ToUTF8String(errmsg));
       LocalFree(lpMsgBuf);
       return status;
     }
@@ -590,8 +590,8 @@ class WindowsEnv : public Env {
       std::wostringstream oss;
       oss << L"Failed to find symbol " << ToWideString(symbol_name) << L" in library, error code: " << error_code << L" \"" << (LPWSTR)lpMsgBuf << L"\"";
       std::wstring errmsg = oss.str();
-      // TODO: errmsg should be converted to UTF-8 as it will be passed out to the C interface.
-      common::Status status(common::ONNXRUNTIME, common::FAIL, ToMBString(errmsg));
+      // TODO: trim the ending '\r' and/or '\n'
+      common::Status status(common::ONNXRUNTIME, common::FAIL, ToUTF8String(errmsg));
       LocalFree(lpMsgBuf);
       return status;
     }

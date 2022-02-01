@@ -76,7 +76,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     bool trt_force_sequential_engine_build = false;
 
     #ifdef _MSC_VER
-    std::string ov_string = ToMBString(performance_test_config.run_config.ep_runtime_config_string);
+    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
     #else
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
     #endif
@@ -249,7 +249,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::string blob_dump_path = "";       // [blob_dump_path]: Explicitly specify the path where you would like to dump and load the blobs for the use_compiled_network(save/load blob) feature. This overrides the default path.
 
 #ifdef _MSC_VER
-    std::string ov_string = ToMBString(performance_test_config.run_config.ep_runtime_config_string);
+    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
 #else
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
@@ -323,7 +323,25 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
 #ifdef USE_NNAPI
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, 0));
+    uint32_t nnapi_flags = 0;
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+    std::istringstream ss(ov_string);
+    std::string key;
+    while (ss >> key) {
+      if (key == "NNAPI_FLAG_USE_FP16") {
+        nnapi_flags |= NNAPI_FLAG_USE_FP16;
+      } else if (key == "NNAPI_FLAG_USE_NCHW") {
+        nnapi_flags |= NNAPI_FLAG_USE_NCHW;
+      } else if (key == "NNAPI_FLAG_CPU_DISABLED") {
+        nnapi_flags |= NNAPI_FLAG_CPU_DISABLED;
+      } else if (key == "NNAPI_FLAG_CPU_ONLY") {
+        nnapi_flags |= NNAPI_FLAG_CPU_ONLY;
+      } else if (key.empty()) {
+      } else {
+        ORT_THROW("[ERROR] [NNAPI] wrong key type entered. Choose from the following runtime key options that are available for NNAPI. ['NNAPI_FLAG_USE_FP16', 'NNAPI_FLAG_USE_NCHW', 'NNAPI_FLAG_CPU_DISABLED', 'NNAPI_FLAG_CPU_ONLY'] \n");
+      }
+    }
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, nnapi_flags));
 #else
     ORT_THROW("NNAPI is not supported in this build\n");
 #endif
@@ -367,6 +385,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   } else if (provider_name == onnxruntime::kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(session_options, 0));
+
+    OrtROCMProviderOptions rocm_options;
+    rocm_options.miopen_conv_exhaustive_search = performance_test_config.run_config.cudnn_conv_algo;
+    rocm_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
+    // TODO: Support arena configuration for users of perf test
+    session_options.AppendExecutionProvider_ROCM(rocm_options);
 #else
     ORT_THROW("MIGraphX is not supported in this build\n");
 #endif
@@ -405,19 +429,19 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     session_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
   if (!performance_test_config.run_config.free_dim_name_overrides.empty()) {
     for (auto const& dim_override : performance_test_config.run_config.free_dim_name_overrides) {
-      if (g_ort->AddFreeDimensionOverrideByName(session_options, ToMBString(dim_override.first).c_str(), dim_override.second) != nullptr) {
-        fprintf(stderr, "AddFreeDimensionOverrideByName failed for named dimension: %s\n", ToMBString(dim_override.first).c_str());
+      if (g_ort->AddFreeDimensionOverrideByName(session_options, ToUTF8String(dim_override.first).c_str(), dim_override.second) != nullptr) {
+        fprintf(stderr, "AddFreeDimensionOverrideByName failed for named dimension: %s\n", ToUTF8String(dim_override.first).c_str());
       } else {
-        fprintf(stdout, "Overriding dimension with name, %s, to %d\n", ToMBString(dim_override.first).c_str(), (int)dim_override.second);
+        fprintf(stdout, "Overriding dimension with name, %s, to %d\n", ToUTF8String(dim_override.first).c_str(), (int)dim_override.second);
       }
     }
   }
   if (!performance_test_config.run_config.free_dim_denotation_overrides.empty()) {
     for (auto const& dim_override : performance_test_config.run_config.free_dim_denotation_overrides) {
-      if (g_ort->AddFreeDimensionOverride(session_options, ToMBString(dim_override.first).c_str(), dim_override.second) != nullptr) {
-        fprintf(stderr, "AddFreeDimensionOverride failed for dimension denotation: %s\n", ToMBString(dim_override.first).c_str());
+      if (g_ort->AddFreeDimensionOverride(session_options, ToUTF8String(dim_override.first).c_str(), dim_override.second) != nullptr) {
+        fprintf(stderr, "AddFreeDimensionOverride failed for dimension denotation: %s\n", ToUTF8String(dim_override.first).c_str());
       } else {
-        fprintf(stdout, "Overriding dimension with denotation, %s, to %d\n", ToMBString(dim_override.first).c_str(), (int)dim_override.second);
+        fprintf(stdout, "Overriding dimension with denotation, %s, to %d\n", ToUTF8String(dim_override.first).c_str(), (int)dim_override.second);
       }
     }
   }

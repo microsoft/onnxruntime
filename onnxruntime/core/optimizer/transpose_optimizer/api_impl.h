@@ -18,13 +18,11 @@ namespace onnxruntime {
 /// </summary>
 /// <param name="graph">ORT Graph to wrap with API</param>
 /// <param name="cpu_allocator">Allocator used for reshaping/transposing tensors</param>
-/// <param name="logger">Logger</param>
 /// <param name="new_node_ep">New nodes are assigned to this EP, or left unassigned if nullptr</param>
 /// <returns>api::GraphRef for use with transpose optimizer</returns>
 std::unique_ptr<onnx_layout_transformation::api::GraphRef> MakeApiGraph(onnxruntime::Graph& graph,
-                                                                     AllocatorPtr cpu_allocator,
-                                                                     const logging::Logger& logger,
-                                                                     const char* new_node_ep);
+                                                                        AllocatorPtr cpu_allocator,
+                                                                        const char* new_node_ep);
 
 /// <summary>
 /// Reveals underlying ORT graph from an api::GraphRef

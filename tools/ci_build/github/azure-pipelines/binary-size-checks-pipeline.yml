@@ -65,6 +65,7 @@ jobs:
           echo "File not found: ${BINARY_SIZE_DATA_FILE}"
           exit 1
         fi
+        /usr/bin/python3 -m pip install -r $(Build.SourcesDirectory)/tools/ci_build/github/windows/post_to_dashboard/requirements.txt && \
         /usr/bin/python3 $(Build.SourcesDirectory)/tools/ci_build/github/windows/post_binary_sizes_to_dashboard.py \
           --commit_hash=$(Build.SourceVersion) \
           --size_data_file="${BINARY_SIZE_DATA_FILE}" \

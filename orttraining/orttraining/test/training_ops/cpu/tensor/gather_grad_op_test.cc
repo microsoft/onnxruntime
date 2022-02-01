@@ -95,7 +95,7 @@ void ConfigureGatherGradRandomDataOpTester(
   ASSERT_LT(static_cast<size_t>(axis), X_shape.NumDimensions());
 
   const TensorShape dY_shape = [&]() {
-    std::vector<int64_t> dY_dims = X_shape.GetDimsAsVector();
+    TensorShapeVector dY_dims = X_shape.AsShapeVector();
     auto it = dY_dims.erase(dY_dims.begin() + axis);
     dY_dims.insert(
         it, indices_shape.GetDims().begin(), indices_shape.GetDims().end());
@@ -108,10 +108,12 @@ void ConfigureGatherGradRandomDataOpTester(
   const auto output = CalculateOutput(axis, X_shape, grad, indices);
 
   test.AddAttribute<int64_t>("axis", axis);
+  //auto shape_dims = X_shape.GetDims();
+  //std::vector<int64_t> v_dims(shape_dims.cbegin(), shape_dims.cend());
   test.AddInput<int64_t>(
-      "shape", {static_cast<int64_t>(X_shape.NumDimensions())}, X_shape.GetDimsAsVector());
-  test.AddInput<int64_t>("indices", indices_shape.GetDimsAsVector(), indices);
-  test.AddInput<T>("grad", dY_shape.GetDimsAsVector(), grad);
+      "shape", {static_cast<int64_t>(X_shape.NumDimensions())}, X_shape.AsShapeVector());
+  test.AddInput<int64_t>("indices", indices_shape.AsShapeVector(), indices);
+  test.AddInput<T>("grad", dY_shape.AsShapeVector(), grad);
 
   const auto sorted_indices = CalculateSortedIndices(indices);
   const auto number_of_segments_and_segment_offsets = CalculateNumberOfSegmentsAndSegmentOffsets(sorted_indices.first);
@@ -122,10 +124,10 @@ void ConfigureGatherGradRandomDataOpTester(
   test.AddInput<int32_t>("last_segment_partial_segment_offset", {1LL}, {partial_segment_count_and_offsets.second.back()});
   test.AddInput<int32_t>("per_segment_partial_segment_counts", {number_of_segments_and_segment_offsets.first}, partial_segment_count_and_offsets.first);
   test.AddInput<int32_t>("per_segment_partial_segment_offsets", {number_of_segments_and_segment_offsets.first}, partial_segment_count_and_offsets.second);
-  test.AddInput<int64_t>("dX_indices_sorted", indices_shape.GetDimsAsVector(), sorted_indices.first);
-  test.AddInput<int64_t>("dY_indices_sorted", indices_shape.GetDimsAsVector(), sorted_indices.second);
+  test.AddInput<int64_t>("dX_indices_sorted", indices_shape.AsShapeVector(), sorted_indices.first);
+  test.AddInput<int64_t>("dY_indices_sorted", indices_shape.AsShapeVector(), sorted_indices.second);
 
-  test.AddOutput<T>("output", X_shape.GetDimsAsVector(), output);
+  test.AddOutput<T>("output", X_shape.AsShapeVector(), output);
 }
 
 template <typename T>

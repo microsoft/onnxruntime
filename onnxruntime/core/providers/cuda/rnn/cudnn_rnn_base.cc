@@ -86,10 +86,10 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
   // LSTM B[num_directions_, 8*hidden_size_]
   size_t number = W_lin_layer_id_.size();
   int64_t w_size = num_directions_ * (number * hidden_size_ * (input_size + hidden_size_ + 2));
-  std::vector<int64_t> dims_w({w_size, 1, 1});
+  TensorShapeVector dims_w({w_size, 1, 1});
   ORT_RETURN_IF_ERROR(target_w_desc.Set(dims_w, CudnnTensor::GetDataType<CudaT>()));
 
-  std::vector<int64_t> fake_dims_x({1, input_size, 1});
+  TensorShapeVector fake_dims_x({1, input_size, 1});
   CudnnTensor fake_x_desc;
   ORT_RETURN_IF_ERROR(fake_x_desc.Set(fake_dims_x, CudnnTensor::GetDataType<CudaT>()));
 
@@ -165,9 +165,9 @@ Status CudnnRnnBase<T>::ComputeInternal(OpKernelContext* ctx) const {
   int64_t input_size = X->Shape()[2];
 
   // optional outputs
-  std::vector<int64_t> dims_Y({seq_length, num_directions_, batch_size, hidden_size_});
-  std::vector<int64_t> dims_hxy({RNN_NUM_LAYERS * num_directions_, batch_size, hidden_size_});
-  std::vector<int64_t> dims_yc{num_directions_, batch_size, hidden_size_};
+  TensorShapeVector dims_Y({seq_length, num_directions_, batch_size, hidden_size_});
+  TensorShapeVector dims_hxy({RNN_NUM_LAYERS * num_directions_, batch_size, hidden_size_});
+  TensorShapeVector dims_yc{num_directions_, batch_size, hidden_size_};
   Tensor* Y = ctx->Output(Output_Index::Y, dims_Y);
   Tensor* Y_h = ctx->Output(Output_Index::Y_h, dims_hxy);
   Tensor* Y_c = ctx->Output(Output_Index::Y_c, dims_yc);
