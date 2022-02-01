@@ -902,6 +902,8 @@ if (CPUINFO_SUPPORTED)
   add_subdirectory(external/pytorch_cpuinfo EXCLUDE_FROM_ALL)
   if (MSVC)
     target_compile_options(cpuinfo PRIVATE "-D_CRT_SECURE_NO_WARNINGS")
+  else()
+    target_compile_options(cpuinfo PRIVATE "-Wno-stringop-overread")
   endif()
 endif()
 
