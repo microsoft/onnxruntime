@@ -78,7 +78,10 @@ GetQDQTestCaseFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shape, c
   };
 }
 
-GetQDQTestCaseFn BuildQDQResizeTestCase(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& sizes_data);
+GetQDQTestCaseFn BuildQDQResizeTestCase(const std::vector<int64_t>& input_shape,
+                                        const std::vector<int64_t>& sizes_data,
+                                        const std::string& mode = "nearest",
+                                        const std::string& coordinate_transformation_mode = "half_pixel");
 
 }  // namespace test
 }  // namespace onnxruntime

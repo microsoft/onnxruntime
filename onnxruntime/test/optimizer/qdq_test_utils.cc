@@ -8,8 +8,10 @@ namespace test {
 
 GetQDQTestCaseFn BuildQDQResizeTestCase(
     const std::vector<int64_t>& input_shape,
-    const std::vector<int64_t>& sizes_data) {
-  return [input_shape, sizes_data](ModelTestBuilder& builder) {
+    const std::vector<int64_t>& sizes_data,
+    const std::string& mode,
+    const std::string& coordinate_transformation_mode) {
+  return [input_shape, sizes_data, mode, coordinate_transformation_mode](ModelTestBuilder& builder) {
     auto* input1_arg = builder.MakeInput<uint8_t>(input_shape,
                                                   std::numeric_limits<uint8_t>::min(),
                                                   std::numeric_limits<uint8_t>::max());
@@ -26,14 +28,9 @@ GetQDQTestCaseFn BuildQDQResizeTestCase(
     auto* resize_output = builder.MakeIntermediate();
     Node& resize_node = builder.AddNode("Resize", {dq_output, roi, scales, sizes}, {resize_output});
 
-// NNAPI EP does not support the default setting of Resize Op
-// Use bi-linear and asymmetric for NNAPI EP only
-#ifdef USE_NNAPI
-    resize_node.AddAttribute("mode", "linear");
-    resize_node.AddAttribute("coordinate_transformation_mode", "asymmetric");
-#else
-    ORT_UNUSED_PARAMETER(resize_node);
-#endif
+    resize_node.AddAttribute("mode", mode);
+    resize_node.AddAttribute("coordinate_transformation_mode", coordinate_transformation_mode);
+
     // add Q
     builder.AddQuantizeLinearNode<uint8_t>(resize_output, .003f, 1, output_arg);
   };
