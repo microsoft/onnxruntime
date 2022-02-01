@@ -32,7 +32,7 @@ https://github.com/Kitware/CMake/releases/download/v3.21.0/cmake-3.21.0-linux-x8
 tar -zxf /tmp/cmake-3.21.0-linux-x86_64.tar.gz --strip=1 -C /usr
 
 # Install rbuild
-RUN pip3 install https://github.com/RadeonOpenCompute/rbuild/archive/master.tar.gz
+RUN pip3 install https://github.com/RadeonOpenCompute/rbuild/archive/master.tar.gz numpy yapf==0.28.0
 
 ENV PATH /opt/miniconda/bin:/code/cmake-3.21.0-linux-x86_64/bin:${PATH}
 
