@@ -158,14 +158,10 @@ void ModelBuilder::PreprocessNodeUnits() {
 // Help to get all quantized operators' input and the NodeUnit(s) using the input
 void ModelBuilder::GetAllQuantizedOpInputs() {
   for (const auto& node_unit : node_unit_holder_) {
-    // TODO, hookup getting quantized inputs with QDQ NodeUnits and remove the ORT_ENFORCE
-    ORT_ENFORCE(node_unit->UnitType() == NodeUnit::Type::SingleNode, "QDQ NodeUnit is not yet implemented");
+    auto quant_op_type = GetQuantizedOpType(*node_unit);
 
-    auto qlinear_op_type = GetQLinearOpType(node_unit->GetNode());
-
-    // Not a qlinear op
-    // TODO, add handling for QDQ NodeUnit
-    if (qlinear_op_type == QLinearOpType::Unknown)
+    // Not a qlinear op or qdq node group
+    if (quant_op_type == QuantizedOpType::Unknown)
       continue;
 
     const auto add_quantized_input =
@@ -174,12 +170,12 @@ void ModelBuilder::GetAllQuantizedOpInputs() {
           all_quantized_op_inputs[input_name].push_back(&node_unit);
         };
 
-    // All qlinear ops EXCEPT QuantizeLinear has quantized input
-    if (qlinear_op_type != QLinearOpType::QuantizeLinear) {
+    // All quantized ops EXCEPT QuantizeLinear has quantized input
+    if (quant_op_type != QuantizedOpType::QuantizeLinear) {
       add_quantized_input(*node_unit, 0);
     }
 
-    if (IsQLinearBinaryOp(qlinear_op_type)) {
+    if (IsQuantizedBinaryOp(quant_op_type)) {
       add_quantized_input(*node_unit, 1);
     }
 
@@ -494,14 +490,29 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
 
 Status ModelBuilder::AddOperations() {
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
-  std::unordered_set<const NodeUnit*> processed_node_units;
-  processed_node_units.reserve(node_unit_holder_.size());
-  for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_viewer_.GetNode(node_indices[i]));
+  for (const auto node_idx : node_indices) {
+    LOGS_DEFAULT(VERBOSE) << "Adding node [" << node_idx << "]";
+    const auto* node(graph_viewer_.GetNode(node_idx));
     const NodeUnit& node_unit = GetNodeUnit(node);
 
-    // Since a NodeUnit may contain multiple nodes, avoid processing the same NodeUnit multiple times
-    if (Contains(processed_node_units, &node_unit))
+    // Since we may have NodeUnit with multiple nodes, insert NodeUnit with the first occurrence of
+    // its node(s) in topological order may cause the incorrect topological order while inserting
+    // NodeUNits, for example,
+    //  Q1
+    //  |
+    //  DQ1  DQ2
+    //    \   |
+    //     CONV
+    //      |
+    //      Q2
+    // In the above graph, we will have 2 NodeUnits, NU1 [Q1] and NU2 [DQ1, DQ2, CONV, Q2]
+    // The Q1 and DQ2 have the same topological order, if we insert DQ2 (as part of NU2) when we visit DQ2
+    // first in the topological order, the input from Q1 required by NU2 is not yet inserted, this will
+    // cause failure finding the inputs for NU2
+    //
+    // So we only insert the NodeUnit once when we hit the target node, to ensure the topological order
+    // of the NodeUnits
+    if (node != &node_unit.GetNode())
       continue;
 
     if (const auto* op_builder = GetOpBuilder(node_unit)) {
@@ -510,8 +521,6 @@ Status ModelBuilder::AddOperations() {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Node [", node_unit.Name(), "], type [", node_unit.OpType(), "] is not supported");
     }
-
-    processed_node_units.insert(&node_unit);
   }
 
   return Status::OK();
@@ -535,6 +544,8 @@ Status ModelBuilder::AddOperation(int op, const std::vector<uint32_t>& input_ind
       "op = " + std::to_string(op));
 
   num_nnapi_ops_++;
+
+  LOGS_DEFAULT(VERBOSE) << "Added NNAPI Operation Type [" << op << "]";
   return Status::OK();
 }
 
@@ -640,8 +651,9 @@ int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
 
   // TODO, add support of activation fusion for quantized node group (qdq or qlinear)
   // We do not support activation fusion for quantized operators for now
-  auto qlinear_op_type = GetQLinearOpType(node_unit.GetNode());
-  if (qlinear_op_type != QLinearOpType::Unknown)
+  // (usually the activations are fused already in the quantization)
+  auto quant_op_type = GetQuantizedOpType(node_unit);
+  if (quant_op_type != QuantizedOpType::Unknown)
     return fuse_code;
 
   for (auto it = output_node.OutputEdgesBegin(), end = output_node.OutputEdgesEnd(); it != end; ++it) {

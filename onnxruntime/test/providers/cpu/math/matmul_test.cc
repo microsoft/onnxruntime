@@ -210,9 +210,9 @@ TEST(MathOpTest, MatMul_BFloat16) {
   test.AddOutput<BFloat16>("Y", {2, 3}, MakeBFloat16({10.0f, 10.0f, 10.0f, -10.0f, -10.0f, -10.0f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
-    execution_providers.push_back(DefaultCudaExecutionProvider());
+  execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
-    execution_providers.push_back(DefaultRocmExecutionProvider());
+  execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
