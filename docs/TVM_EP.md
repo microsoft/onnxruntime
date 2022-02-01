@@ -46,18 +46,18 @@ Build ONNX Runtime:
 ./build.sh --config Release --enable_pybind --build_wheel --skip_tests --parallel --use_tvm --skip_onnx_tests
 ```
 
-This command builds both TVM and onnxruntime-stvm. It creates two wheel, one for each project.
+This command builds both TVM and onnxruntime-tvm. It creates two wheel, one for each project.
 Build the python API for ONNX Runtime instead of using the standard package:
 ```bash
 cd <path_to_onnx_runtime>
 pip3 uninstall onnxruntime onnxruntime-tvm tvm -y
-whl_path=$(find ./build/cpu_stvm/Release/dist -name "*.whl")
+whl_path=$(find ./build/cpu_tvm/Release/dist -name "*.whl")
 python3 -m pip install $whl_path
 ```
 Alternatively, you can set PYTHONPATH to tell python where to find the ONNXRT library and the TVM library.
 ```bash
-export PYTHONPATH=<path_to_onnx_runtime>/build/cpu_stvm/Release:${PYTHONPATH}
-export PYTHONPATH=<path_to_onnx_runtime>/build/cpu_stvm/Release/_deps/tvm-src/python:${PYTHONPATH}
+export PYTHONPATH=<path_to_onnx_runtime>/build/cpu_tvm/Release:${PYTHONPATH}
+export PYTHONPATH=<path_to_onnx_runtime>/build/cpu_tvm/Release/_deps/tvm-src/python:${PYTHONPATH}
 ```
 
 ## Configuration options
@@ -123,7 +123,8 @@ The following pair of ONNX and protobuf versions have been found to be compatibl
 - 3.17.3 and 1.8.0
 - 3.19.1 and 1.10.1
 
-When use onnxruntime-stvm after it was build from the source, the following error may happen:
+# TODO(vvchernov): it looks like issue was resolved
+When use onnxruntime-tvm after it was build from the source, the following error may happen:
 
 ```
 terminate called after throwing an instance of 'tvm::runtime::InternalError'

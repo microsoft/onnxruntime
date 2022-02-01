@@ -762,7 +762,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 or args.use_rknpu)
             else "OFF"),
         "-Donnxruntime_USE_NUPHAR_TVM=" + ("ON" if args.use_nuphar else "OFF"),
-        "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_nuphar else "OFF"),
+        # TODO(vvchernov): do we constantly use LLVM if we use TVM EP? if we need CUDA for TVM EP?
+        "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_nuphar or args.use_tvm else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
@@ -929,7 +930,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-DProtobuf_USE_STATIC_LIBS=ON"
         ]
 
-    if (args.use_nuphar or args.use_stvm) and args.llvm_path is not None:
+    if (args.use_nuphar or args.use_tvm) and args.llvm_path is not None:
         cmake_args += ["-DLLVM_DIR=%s" % args.llvm_path]
 
     if args.use_cuda and not is_windows():
@@ -1125,7 +1126,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     for config in configs:
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
-        if args.use_nuphar or args.use_stvm:
+        if args.use_nuphar or args.use_tvm:
             os.environ["PATH"] = (
                 os.path.join(config_build_dir, "_deps", "tvm-build") + os.pathsep +
                 os.path.join(config_build_dir, "_deps", "tvm-src") + os.pathsep +
@@ -1134,7 +1135,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         run_subprocess(
             cmake_args + [
                 "-Donnxruntime_ENABLE_MEMLEAK_CHECKER=" +
-                ("ON" if config.lower() == 'debug' and not (args.use_nuphar or args.use_stvm) and not
+                ("ON" if config.lower() == 'debug' and not (args.use_nuphar or args.use_tvm) and not
                  args.use_openvino and not
                  args.enable_msvc_static_runtime and not
                  args.disable_memleak_checker
@@ -1703,7 +1704,7 @@ def nuphar_run_python_tests(build_dir, configs):
             cwd=cwd, dll_path=dll_path)
 
 
-def stvm_run_python_tests(build_dir, configs):
+def tvm_run_python_tests(build_dir, configs):
     for config in configs:
         if config == 'Debug':
             continue
@@ -1712,7 +1713,7 @@ def stvm_run_python_tests(build_dir, configs):
             cwd = os.path.join(cwd, config)
         dll_path = os.path.join(build_dir, config, "_deps", "tvm-build", config)
         run_subprocess(
-            [sys.executable, 'onnxruntime_test_python_stvm.py'],
+            [sys.executable, 'onnxruntime_test_python_tvm.py'],
             cwd=cwd, dll_path=dll_path)
 
 
@@ -2334,8 +2335,8 @@ def main():
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
             nuphar_run_python_tests(build_dir, configs)
 
-        if args.enable_pybind and not args.skip_onnx_tests and args.use_stvm:
-            stvm_run_python_tests(build_dir, configs)
+        if args.enable_pybind and not args.skip_onnx_tests and args.use_tvm:
+            tvm_run_python_tests(build_dir, configs)
 
         # run node.js binding tests
         if args.build_nodejs and not args.skip_nodejs_tests:

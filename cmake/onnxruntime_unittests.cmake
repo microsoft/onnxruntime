@@ -459,8 +459,8 @@ if(onnxruntime_USE_COREML)
   endif()
 endif()
 
-if(onnxruntime_USE_NUPHAR_TVM)
-  file(GLOB_RECURSE onnxruntime_test_nuphar_tvm_src CONFIGURE_DEPENDS
+if(onnxruntime_USE_NUPHAR)
+  file(GLOB_RECURSE onnxruntime_test_nuphar_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/nuphar_tvm/*.h"
     "${TEST_SRC_DIR}/nuphar_tvm/*.cc"
   )
@@ -644,8 +644,8 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND all_tests ${onnxruntime_test_training_src})
 endif()
 
-if (onnxruntime_USE_NUPHAR_TVM)
-  list(APPEND all_tests ${onnxruntime_test_nuphar_tvm_src})
+if (onnxruntime_USE_NUPHAR)
+  list(APPEND all_tests ${onnxruntime_test_nuphar_src})
 endif()
 
 if (onnxruntime_USE_TVM)
@@ -1288,7 +1288,7 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
 endif()
 
 if (onnxruntime_USE_TVM)
-  # find_library(TVM_LIBS NAMES libtvm.so PATHS ${onnxruntime_TVM_HOME}/lib)
+  # find_library(TVM_LIBS NAMES libtvm.so PATHS ${tvm_SOURCE_DIR}/lib)
   # link_directories(onnxruntime_test_all ${TVM_LIBS})
   find_library(PYTHON_LIBS NAMES libpython PATHS /usr/local/lib)
   #target_link_libraries(onnxruntime_test_all PRIVATE ${PYTHON_LIBRARIES} -lutil)

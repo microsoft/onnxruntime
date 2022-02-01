@@ -1275,10 +1275,12 @@ if (onnxruntime_USE_ROCM)
 endif()
 
 if (onnxruntime_USE_TVM)
+  # TODO(vvchernov): repeat from CMakeLists, do we need it here?
   if (NOT TARGET tvm)
     message(STATUS "Include TVM.")
     include(tvm)
   endif()
+  # TODO(vvchernov): do we use this defenition in the code?
   add_definitions(-DUSE_TVM=1)
 
   file (GLOB_RECURSE onnxruntime_providers_tvm_cc_srcs CONFIGURE_DEPENDS
@@ -1293,9 +1295,7 @@ if (onnxruntime_USE_TVM)
   endif()
 
   target_include_directories(onnxruntime_providers_tvm PRIVATE
-          ${onnxruntime_TVM_HOME}/include
-          ${onnxruntime_TVM_HOME}/3rdparty/dlpack/include
-          ${onnxruntime_TVM_HOME}/3rdparty/dmlc-core/include
+          ${TVM_INCLUDES}
           ${PYTHON_INLCUDE_DIRS})
   onnxruntime_add_include_to_target(onnxruntime_providers_tvm onnxruntime_common onnx tvm)
 

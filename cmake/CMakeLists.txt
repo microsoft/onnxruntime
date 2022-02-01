@@ -60,7 +60,7 @@ option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 
-option(onnxruntime_USE_NUPHAR_TVM "Build TVM for code generation." OFF)
+option(onnxruntime_USE_NUPHAR_TVM "Build TVM for code generation for NUPHAR EP" OFF)
 option(onnxruntime_USE_LLVM "Build TVM with LLVM" OFF)
 
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
@@ -814,6 +814,24 @@ if (onnxruntime_DISABLE_OPTIONAL_TYPE)
   add_compile_definitions(DISABLE_OPTIONAL_TYPE)
 endif()
 
+if (onnxruntime_USE_CUDA AND onnxruntime_USE_TVM)
+  if ("${onnxruntime_CUDA_HOME}" STREQUAL "")
+    message(FATAL_ERROR "onnxruntime_CUDA_HOME required for onnxruntime_USE_CUDA")
+  endif()
+
+  set(USE_TVM_CUDA ${onnxruntime_CUDA_HOME} CACHE BOOL "Only defined for TVM EP")
+  # TODO(vvchernov): check cmake keys and remove if need
+  # set(USE_MKLDNN ON CACHE BOOL "Only defined for TVM")
+  # set(USE_CUDNN ON CACHE BOOL "Only defined for TVM")
+
+  if (WIN32)
+    list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDA_HOME}/x64/lib64)
+  else()
+    list(APPEND onnxruntime_LINK_DIRS ${onnxruntime_CUDA_HOME}/lib64)
+  endif()
+
+  set(onnxruntime_USE_CUDA OFF)
+endif()
 if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")
   message(FATAL_ERROR "onnxruntime_CUDNN_HOME required for onnxruntime_USE_CUDA")
 endif()
@@ -1337,66 +1355,98 @@ if (onnxruntime_USE_DNNL)
   include(dnnl)
 endif()
 
-# TVM
+# NUPHAR EP
 if (onnxruntime_USE_NUPHAR_TVM)
   if (NOT TARGET tvm)
     message(STATUS "Include TVM(*).")
     include(tvm)
   endif()
   if (onnxruntime_USE_CUDA)
-    if (onnxruntime_USE_STVM)
-      set(USE_CUDA ${onnxruntime_CUDA_HOME} CACHE BOOL "Only defined for TVM")
-      set(USE_MKLDNN ON CACHE BOOL "Only defined for TVM")
-      set(USE_CUDNN ON CACHE BOOL "Only defined for TVM")
-    endif()
-    if (onnxruntime_USE_NUPHAR)
-      set(USE_CUDA ON CACHE BOOL "Only defined for TVM")
-    endif()
+    set(USE_CUDA ON CACHE BOOL "Only defined for TVM")
   endif()
   if (onnxruntime_USE_LLVM)
     set(USE_LLVM ON CACHE BOOL "Only defined for TVM")
     add_definitions(-DUSE_NUPHAR_TVM_WITH_LLVM)
   endif()
 
-  if (onnxruntime_USE_STVM)
-    set(USE_OPENMP gnu CACHE STRING "Only defined for TVM")
-    set(USE_MICRO OFF CACHE BOOL "Only defined for TVM")
-  endif()
-  message(STATUS "TVM BEFORE USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} USE_MICRO=${USE_MICRO} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
+  message(STATUS "TVM BEFORE USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
   message(STATUS "tvm_SOURCE_DIR=${tvm_SOURCE_DIR}")
   message(STATUS "tvm_BINARY_DIR=${tvm_BINARY_DIR}")
   add_subdirectory(${tvm_SOURCE_DIR} ${tvm_BINARY_DIR} EXCLUDE_FROM_ALL)
-  message(STATUS "TVM AFTER USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} USE_MICRO=${USE_MICRO} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
+  message(STATUS "TVM AFTER USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
 
-  if (onnxruntime_USE_NUPHAR)
-    set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
-    set_target_properties(tvm_topi PROPERTIES FOLDER ${tvm_SOURCE_DIR})
-    set_target_properties(tvm_runtime PROPERTIES FOLDER ${tvm_SOURCE_DIR})
+  set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
+  set_target_properties(tvm_topi PROPERTIES FOLDER ${tvm_SOURCE_DIR})
+  set_target_properties(tvm_runtime PROPERTIES FOLDER ${tvm_SOURCE_DIR})
 
-    set(TVM_INCLUDES ${tvm_SOURCE_DIR}/include
-      ${tvm_SOURCE_DIR}/3rdparty/dmlc-core/include
-      ${tvm_SOURCE_DIR}/3rdparty/dlpack/include
-      $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>
-      $<TARGET_PROPERTY:tvm_topi,INTERFACE_INCLUDE_DIRECTORIES>)
-  endif()
-
-  if (onnxruntime_USE_STVM)
-    set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
-
-    set(TVM_INCLUDES ${tvm_SOURCE_DIR}/include
-      ${tvm_SOURCE_DIR}/3rdparty/dmlc-core/include
-      ${tvm_SOURCE_DIR}/3rdparty/dlpack/include
-      $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>)
-  endif()
+  set(TVM_INCLUDES ${tvm_SOURCE_DIR}/include
+    ${tvm_SOURCE_DIR}/3rdparty/dmlc-core/include
+    ${tvm_SOURCE_DIR}/3rdparty/dlpack/include
+    $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:tvm_topi,INTERFACE_INCLUDE_DIRECTORIES>)
 
   add_definitions(-DUSE_NUPHAR_TVM)
 
-  if (onnxruntime_USE_NUPHAR)
-    set(onnxruntime_tvm_libs onnxruntime_codegen_tvm)
+  set(onnxruntime_tvm_libs onnxruntime_codegen_tvm)
+
+  # needs to link with stdc++fs in Linux
+  if (UNIX)
+    if (NOT APPLE)
+      set(FS_STDLIB stdc++fs)
+    endif()
   endif()
-  if (onnxruntime_USE_STVM)
-    set(onnxruntime_tvm_libs onnxruntime_providers_stvm)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ${FS_STDLIB})
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
+
+  if (WIN32 AND MSVC)
+    # wd4100: identifier' : unreferenced formal parameter
+    # wd4244: conversion from 'int' to 'char', possible loss of data
+    # wd4251: class X needs to have dll-interface to be used by clients of class Y
+    # wd4267: 'initializing': conversion from 'size_t' to 'int', possible loss of data
+    # wd4275: non dll-interface class X used as base for dll-interface class Y
+    # wd4389: signed/unsigned mismatch
+    # wd4456: declaration of X hides previous local declaration
+    set(DISABLED_WARNINGS_FOR_TVM "/wd4100" "/wd4244" "/wd4251" "/wd4267" "/wd4275" "/wd4389" "/wd4456")
+  else()
+    set(DISABLED_WARNINGS_FOR_TVM "-Wno-error=ignored-qualifiers" "-Wno-unused-parameter" "-Wno-ignored-qualifiers")
+    list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error=unused-parameter")
+    if (HAS_CATCH_VALUE)
+      #TODO: send a PR to TVM and fix it
+      list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error=catch-value")
+    endif()
   endif()
+
+  include(onnxruntime_codegen.cmake)
+endif(onnxruntime_USE_NUPHAR_TVM)
+
+# TVM EP
+if (onnxruntime_USE_TVM)
+  if (NOT TARGET tvm)
+    message(STATUS "Include TVM(*).")
+    include(tvm)
+  endif()
+
+  if (onnxruntime_USE_LLVM)
+    set(USE_LLVM ON CACHE BOOL "Only defined for TVM")
+  endif()
+
+  set(USE_OPENMP gnu CACHE STRING "Only defined for TVM")
+  # TODO(vvchernov): check messages and remove if need
+  message(STATUS "TVM BEFORE USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_TVM_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
+  message(STATUS "tvm_SOURCE_DIR=${tvm_SOURCE_DIR}")
+  message(STATUS "tvm_BINARY_DIR=${tvm_BINARY_DIR}")
+  add_subdirectory(${tvm_SOURCE_DIR} ${tvm_BINARY_DIR} EXCLUDE_FROM_ALL)
+  message(STATUS "TVM AFTER USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_TVM_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
+
+  set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
+
+  set(TVM_INCLUDES ${tvm_SOURCE_DIR}/include
+    ${tvm_SOURCE_DIR}/3rdparty/dmlc-core/include
+    ${tvm_SOURCE_DIR}/3rdparty/dlpack/include
+    $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>)
+
+  #TODO(vvchernov): check
+  set(onnxruntime_tvm_libs onnxruntime_providers_tvm)
 
   # needs to link with stdc++fs in Linux
   if (UNIX)
@@ -1710,29 +1760,6 @@ if (onnxruntime_USE_ROCM)
   message("ROCM_VERSION_DEV_PATCH: ${ROCM_VERSION_DEV_PATCH}")
   message("ROCM_VERSION_DEV_INT:   ${ROCM_VERSION_DEV_INT}")
   add_definitions(-DROCM_VERSION=${ROCM_VERSION_DEV_INT})
-endif()
-
-if (onnxruntime_USE_NUPHAR_TVM)
-  if (WIN32 AND MSVC)
-    # wd4100: identifier' : unreferenced formal parameter
-    # wd4244: conversion from 'int' to 'char', possible loss of data
-    # wd4251: class X needs to have dll-interface to be used by clients of class Y
-    # wd4267: 'initializing': conversion from 'size_t' to 'int', possible loss of data
-    # wd4275: non dll-interface class X used as base for dll-interface class Y
-    # wd4389: signed/unsigned mismatch
-    # wd4456: declaration of X hides previous local declaration
-    set(DISABLED_WARNINGS_FOR_TVM "/wd4100" "/wd4244" "/wd4251" "/wd4267" "/wd4275" "/wd4389" "/wd4456")
-  else()
-    set(DISABLED_WARNINGS_FOR_TVM "-Wno-error=ignored-qualifiers" "-Wno-unused-parameter" "-Wno-ignored-qualifiers")
-    list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error=unused-parameter")
-    if (HAS_CATCH_VALUE)
-      #TODO: send a PR to TVM and fix it
-      list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error=catch-value")
-    endif()
-  endif()
-  if (onnxruntime_USE_NUPHAR)
-    include(onnxruntime_codegen.cmake)
-  endif()
 endif()
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)

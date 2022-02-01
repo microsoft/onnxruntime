@@ -643,7 +643,7 @@ if (onnxruntime_USE_ROCM)
     )
 endif()
 
-if (onnxruntime_USE_NUPHAR_TVM)
+if (onnxruntime_USE_NUPHAR)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
@@ -676,11 +676,13 @@ if (onnxruntime_USE_TVM)
     COMMAND ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:onnxruntime_providers_tvm>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+    # TODO(vvchernov): why?
     COMMAND ${CMAKE_COMMAND} -E copy
         ${tvm_BINARY_DIR}/libtvm*
         ${tvm_SOURCE_DIR}/python/tvm
   )
 
+  # TODO(vvchernov): repeat?
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
       WORKING_DIRECTORY ${tvm_SOURCE_DIR}/python

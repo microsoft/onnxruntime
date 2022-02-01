@@ -165,7 +165,7 @@ try:
                         # the global table of functions. Registration is carried out through the JIT interface,
                         # so it is necessary to call special functions for registration.
                         # To do this, we need to make the following import.
-                        import onnxruntime.providers.stvm
+                        import onnxruntime.providers.tvm
                     except ImportError as e:
                         warnings.warn(
                             f"WARNING: Failed to register python functions to work with TVM EP. More details: {e}"
@@ -235,7 +235,7 @@ try:
                 self._rewrite_ld_preload(to_preload)
                 self._rewrite_ld_preload_cuda(to_preload_cuda)
                 self._rewrite_ld_preload_tensorrt(to_preload_tensorrt)
-            if package_name == 'onnxruntime-stvm':
+            if package_name == 'onnxruntime-tvm':
                 self._rewrite_ld_preload_tvm()
             _bdist_wheel.run(self)
             if is_manylinux and not disable_auditwheel_repair:
