@@ -994,6 +994,12 @@ void OpTester::Run(
     std::vector<std::string> output_names;
     FillFeedsAndOutputNames(feeds, output_names);
     // Run the model
+#ifdef USE_TENSORRT
+    // only run trt ep to reduce test time
+    static const std::string all_provider_types[] = {
+        kTensorrtExecutionProvider,
+    };
+#else
     static const std::string all_provider_types[] = {
         kCpuExecutionProvider,
         kCudaExecutionProvider,
@@ -1008,6 +1014,7 @@ void OpTester::Run(
         kRocmExecutionProvider,
         kCoreMLExecutionProvider,
     };
+#endif
 
     bool has_run = false;
 
@@ -1168,8 +1175,14 @@ void OpTester::Run(
         cur_provider = "not set";
       }
 
+#ifdef USE_TENSORRT
+      // We are allowing tests to be run with only TensorRT EP, but TensorRT EP may not support all tests and may be in excluded providers list.
+      // So, no registered EPs were able to run the model is okay for this situation.
+      ORT_UNUSED_PARAMETER(has_run);
+#else
       EXPECT_TRUE(has_run)
           << "No registered execution providers were able to run the model.";
+#endif
     }
   }
   ORT_CATCH(const std::exception& ex) {
