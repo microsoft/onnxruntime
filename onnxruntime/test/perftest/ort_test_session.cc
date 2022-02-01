@@ -1,6 +1,7 @@
 #include "ort_test_session.h"
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include <assert.h>
 #include "providers.h"
 #include "TestCase.h"
@@ -209,7 +210,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['device_id', 'trt_max_partition_iterations', 'trt_min_subgraph_size', 'trt_max_workspace_size', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_dla_enable', 'trt_dla_core', 'trt_dump_subgraphs', 'trt_engine_cache_enable', 'trt_engine_cache_path', 'trt_engine_decryption_enable', 'trt_engine_decryption_lib_path', 'trt_force_sequential_engine_build'] \n");
       }
     }
-    OrtTensorRTProviderOptions tensorrt_options;
+    OrtTensorRTProviderOptionsV2 tensorrt_options;
     tensorrt_options.device_id = device_id;
     tensorrt_options.has_user_compute_stream = 0;
     tensorrt_options.user_compute_stream = nullptr;
@@ -228,7 +229,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     tensorrt_options.trt_engine_decryption_enable = trt_engine_decryption_enable;
     tensorrt_options.trt_engine_decryption_lib_path = trt_engine_decryption_lib_path.c_str();
     tensorrt_options.trt_force_sequential_engine_build = trt_force_sequential_engine_build;
-    session_options.AppendExecutionProvider_TensorRT(tensorrt_options);
+    session_options.AppendExecutionProvider_TensorRT_V2(tensorrt_options);
 
     OrtCUDAProviderOptions cuda_options;
     cuda_options.device_id=device_id;

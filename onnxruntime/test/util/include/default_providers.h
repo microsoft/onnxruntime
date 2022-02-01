@@ -24,6 +24,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVI
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rocm(const OrtROCMProviderOptions* provider_options);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* params);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptionsV2* params);
 
 // EP for internal testing
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_InternalTesting(const std::unordered_set<std::string>& supported_ops);
@@ -38,6 +39,7 @@ std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider(bool allow_un
 //std::unique_ptr<IExecutionProvider> DefaultStvmExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider();
 std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptions* params);
+std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptionsV2* params);
 std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider();
 std::unique_ptr<IExecutionProvider> MIGraphXExecutionProviderWithOptions(const OrtMIGraphXProviderOptions* params);
 std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider();
