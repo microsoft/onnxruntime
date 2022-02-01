@@ -375,7 +375,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       std::string calibration_table, cache_path, lib_path;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
-        OrtTensorRTProviderOptions params{
+        OrtTensorRTProviderOptionsV2 params{
             0,
             0,
             nullptr,
@@ -576,7 +576,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-    OrtOpenVINOProviderOptionsV2 params;
+    OrtOpenVINOProviderOptions params;
     params.device_type = openvino_device_type.c_str();
     std::string blob_dump_path;
 
