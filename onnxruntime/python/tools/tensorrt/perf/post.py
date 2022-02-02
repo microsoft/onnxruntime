@@ -18,17 +18,6 @@ from perf_utils import *
 cluster_ingest = "https://ingest-onnxruntimedashboarddb.southcentralus.kusto.windows.net"
 database = "ep_perf_dashboard"
 
-# table names
-fail = 'fail'
-memory = 'memory'
-latency = 'latency'
-status = 'status'
-latency_over_time = 'latency_over_time'
-specs = 'specs' 
-session = 'session'
-
-time_string_format = '%Y-%m-%d %H:%M:%S'
-
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -142,7 +131,7 @@ def main():
         folders = os.listdir(result_file)
         os.chdir(result_file)
 
-        tables = [fail, memory, latency, status, latency_over_time, specs, session]
+        tables = [fail_name, memory_name, latency_name, status_name, latency_over_time_name, specs_name, session_name]
         table_results = {}
         for table_name in tables:
             table_results[table_name] = pd.DataFrame()
@@ -152,18 +141,18 @@ def main():
             csv_filenames = os.listdir()
             for csv in csv_filenames:
                 table = parse_csv(csv)
-                if session in csv: 
-                    table_results[session] = table_results[session].append(get_session(table, model_group), ignore_index=True)
-                if specs in csv: 
-                    table_results[specs] = table_results[specs].append(get_specs(table, args.branch, args.commit_hash, date_time), ignore_index=True)
-                if fail in csv:
-                    table_results[fail] = table_results[fail].append(get_failures(table, model_group), ignore_index=True)
-                if latency in csv:
-                    table_results[memory] = table_results[memory].append(get_memory(table, model_group), ignore_index=True)
-                    table_results[latency] = table_results[latency].append(get_latency(table, model_group), ignore_index=True)
-                    table_results[latency_over_time] = table_results[latency_over_time].append(get_latency_over_time(args.commit_hash, args.report_url, args.branch, table_results[latency]), ignore_index=True)
-                if status in csv: 
-                    table_results[status] = table_results[status].append(get_status(table, model_group), ignore_index=True)
+                if session_name in csv: 
+                    table_results[session_name] = table_results[session_name].append(get_session(table, model_group), ignore_index=True)
+                if specs_name in csv: 
+                    table_results[specs_name] = table_results[specs_name].append(get_specs(table, args.branch, args.commit_hash, date_time), ignore_index=True)
+                if fail_name in csv:
+                    table_results[fail_name] = table_results[fail_name].append(get_failures(table, model_group), ignore_index=True)
+                if latency_name in csv:
+                    table_results[memory_name] = table_results[memory_name].append(get_memory(table, model_group), ignore_index=True)
+                    table_results[latency_name] = table_results[latency_name].append(get_latency(table, model_group), ignore_index=True)
+                    table_results[latency_over_time_name] = table_results[latency_over_time_name].append(get_latency_over_time(args.commit_hash, args.report_url, args.branch, table_results[latency_name]), ignore_index=True)
+                if status_name in csv: 
+                    table_results[status_name] = table_results[status_name].append(get_status(table, model_group), ignore_index=True)
             os.chdir(result_file)
         for table in tables: 
             print('writing ' + table + ' to database')
