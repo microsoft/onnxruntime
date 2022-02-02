@@ -130,7 +130,7 @@ class TestOpGEMM(unittest.TestCase):
         data_reader.rewind()
         quantize_static(model_fp32_path, model_int8_path, data_reader,
                         activation_type=activation_type, weight_type=weight_type, extra_options=extra_options)
-        quant_nodes = {'QLinearMatMul': 2, 'QLinearAdd': 2, 'QuantizeLinear': 1, 'DequantizeLinear': 1}
+        quant_nodes = {'QGemm': 2, 'QuantizeLinear': 1, 'DequantizeLinear': 1}
         check_op_type_count(self, model_int8_path, **quant_nodes)
         qnode_io_qtypes = {'QuantizeLinear': [['i', 2, activation_proto_qtype], ['o', 0, activation_proto_qtype]]}
         qnode_io_qtypes.update({'DequantizeLinear': [['i', 2, activation_proto_qtype]]})
@@ -147,7 +147,7 @@ class TestOpGEMM(unittest.TestCase):
         data_reader.rewind()
         quantize_static(model_fp32_path, model_int8_path, data_reader, quant_format=QuantFormat.QDQ,
                         activation_type=activation_type, weight_type=weight_type, extra_options=extra_options)
-        quant_nodes = {'MatMul': 2, 'Add': 2, 'QuantizeLinear': 5, 'DequantizeLinear': 9}
+        quant_nodes = {'Gemm': 2, 'QuantizeLinear': 3, 'DequantizeLinear': 7}
         check_op_type_count(self, model_int8_path, **quant_nodes)
         qnode_io_qtypes = {'QuantizeLinear': [['i', 2, activation_proto_qtype], ['o', 0, activation_proto_qtype]]}
         check_qtype_by_node_type(self, model_int8_path, qnode_io_qtypes)
