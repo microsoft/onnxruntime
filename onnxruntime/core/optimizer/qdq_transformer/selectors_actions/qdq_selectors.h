@@ -3,7 +3,7 @@
 
 #pragma once
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
 
@@ -213,4 +213,4 @@ class GemmSelector : public BaseSelector {
 }  // namespace QDQ
 }  // namespace onnxruntime
 
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
