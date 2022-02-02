@@ -9,8 +9,9 @@ namespace onnxruntime {
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
   OpenVINOProviderFactory(const char* device_type, bool enable_vpu_fast_compile,
                           const char* device_id, size_t num_of_threads,
-                          bool use_compiled_network, const char* blob_dump_path, void* context)
-      : enable_vpu_fast_compile_(enable_vpu_fast_compile), num_of_threads_(num_of_threads), use_compiled_network_(use_compiled_network), context_(context) {
+                          bool use_compiled_network, const char* blob_dump_path, void* context,
+                          bool enable_gpu_throttling)
+      : enable_vpu_fast_compile_(enable_vpu_fast_compile), num_of_threads_(num_of_threads), use_compiled_network_(use_compiled_network), context_(context), enable_gpu_throttling_(enable_gpu_throttling) {
     device_type_ = (device_type == nullptr) ? "" : device_type;
     device_id_ = (device_id == nullptr) ? "" : device_id;
     blob_dump_path_ = (blob_dump_path == nullptr) ? "" : blob_dump_path;
@@ -28,16 +29,17 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
   bool use_compiled_network_;
   std::string blob_dump_path_;
   void *context_; 
+  bool enable_gpu_throttling_;
 };
 
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
-  OpenVINOExecutionProviderInfo info(device_type_, enable_vpu_fast_compile_, device_id_, num_of_threads_, use_compiled_network_, blob_dump_path_, context_);
+  OpenVINOExecutionProviderInfo info(device_type_, enable_vpu_fast_compile_, device_id_, num_of_threads_, use_compiled_network_, blob_dump_path_, context_, enable_gpu_throttling_);
   return std::make_unique<OpenVINOExecutionProvider>(info);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(
-    const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads, bool use_compiled_network, const char* blob_dump_path, void * context) {
-  return std::make_shared<onnxruntime::OpenVINOProviderFactory>(device_type, enable_vpu_fast_compile, device_id, num_of_threads, use_compiled_network, blob_dump_path, context);
+    const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads, bool use_compiled_network, const char* blob_dump_path, void * context, bool enable_gpu_throttling) {
+  return std::make_shared<onnxruntime::OpenVINOProviderFactory>(device_type, enable_vpu_fast_compile, device_id, num_of_threads, use_compiled_network, blob_dump_path, context, enable_gpu_throttling);
 }
 
 }  // namespace onnxruntime
@@ -55,7 +57,7 @@ struct OpenVINO_Provider : Provider {
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
     auto& params = *reinterpret_cast<const OrtOpenVINOProviderOptions*>(void_params);
-    return std::make_shared<OpenVINOProviderFactory>(params.device_type, params.enable_vpu_fast_compile, params.device_id, params.num_of_threads, params.use_compiled_network, params.blob_dump_path, params.context);
+    return std::make_shared<OpenVINOProviderFactory>(params.device_type, params.enable_vpu_fast_compile, params.device_id, params.num_of_threads, params.use_compiled_network, params.blob_dump_path, params.context, params.enable_gpu_throttling);
   }
 
   void Shutdown() override {

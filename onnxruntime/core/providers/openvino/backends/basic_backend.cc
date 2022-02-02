@@ -101,8 +101,16 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     } else {
       cache_dir_path = global_context_.blob_dump_path;
     }
+    LOGS_DEFAULT(INFO) << log_tag << "Enables Caching";
     global_context_.ie_core.SetConfig({{CONFIG_KEY(CACHE_DIR), cache_dir_path}});
   }
+
+  //Setting GPU Plugin throttle
+  if (global_context_.enable_gpu_throttling == true && global_context_.device_type.find("GPU") != std::string::npos) {
+    LOGS_DEFAULT(INFO) << log_tag << "Enabled GPU Plugin Throttle";
+    config[GPU_CONFIG_KEY(PLUGIN_THROTTLE)] = "1";
+  }
+
   try {
     #if defined(IO_BUFFER_ENABLED)
       if ((global_context.device_type.find("GPU") != std::string::npos)  && 
