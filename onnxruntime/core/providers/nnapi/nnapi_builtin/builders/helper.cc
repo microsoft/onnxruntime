@@ -517,19 +517,6 @@ bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_
   return true;
 }
 
-bool IsInputSupported(const NodeArg& input, const std::string& parent_name) {
-  const auto& input_name = input.Name();
-  const auto* shape_proto = input.Shape();
-  // We do not support input with no shape
-  if (!shape_proto) {
-    LOGS_DEFAULT(VERBOSE) << "Input [" << input_name << "] of [" << parent_name
-                          << "] has no shape";
-    return false;
-  }
-
-  return true;
-}
-
 std::string Shape2String(const std::vector<uint32_t>& shape) {
   std::ostringstream os;
   os << "[ ";

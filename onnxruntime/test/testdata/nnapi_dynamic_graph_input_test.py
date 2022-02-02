@@ -4,9 +4,9 @@ from onnx import TensorProto
 
 
 # Since NNAPI EP does not support dynamic shape input and we now switch from the approach of immediately rejecting
-# the whole graph in NNAPI EP if it has a dynamic input to individual operator support checking level check.
-# Please see BaseOpBuilder::HasSupportedInputs in <repo_root>/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/op_support_checker.cc
+# the whole graph in NNAPI EP if it has a dynamic input to checking the dynamic shape at individual operator support check level,
 # We have a separated test here using a graph with dynamic input that becomes fixed after a Resize
+# Please see BaseOpBuilder::HasSupportedInputs in <repo_root>/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/op_support_checker.cc
 def GenerateModel(model_name):
     nodes = [
         helper.make_node("Resize", ["X", "", "", "Resize_1_sizes"], [

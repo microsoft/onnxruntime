@@ -77,7 +77,7 @@ TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
 }
 
 // Since NNAPI EP does not support dynamic shape input and we now switch from the approach of immediately rejecting
-// the whole graph in NNAPI EP if it has a dynamic input to individual operator support checking level check, we have a
+// the whole graph in NNAPI EP if it has a dynamic input to check at individual operator support check level, we have a
 // separated test here.
 // Please see BaseOpBuilder::HasSupportedInputs in <repo_root>/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/op_support_checker.cc
 TEST(NnapiExecutionProviderTest, DynamicGraphInputTest) {
