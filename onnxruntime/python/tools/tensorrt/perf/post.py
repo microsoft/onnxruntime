@@ -30,6 +30,8 @@ def parse_arguments():
         "-t", "--trt_version", help="Tensorrt Version", required=True)
     parser.add_argument(
         "-b", "--branch", help="Branch", required=True)
+    parser.add_argument(
+        "-d", "--date", help="Date", required=True)
     return parser.parse_args()
 
 def parse_csv(report_file):
@@ -122,7 +124,7 @@ def main():
     # connect to database
     kcsb_ingest = KustoConnectionStringBuilder.with_az_cli_authentication(cluster_ingest)
     ingest_client = QueuedIngestClient(kcsb_ingest)
-    date_time = get_time()
+    date_time = args.date 
     identifier = get_identifier(args.commit_hash, args.trt_version, args.branch)
     
     try:
