@@ -374,6 +374,36 @@ at::Tensor empty_strided(
       .dtype(dtype));
 }
 
+
+// aten::as_strided(Tensor(a) self, int[] size, int[] stride, int? storage_offset=None) -> Tensor(a)
+at::Tensor as_strided(
+  const at::Tensor& self, 
+  at::IntArrayRef size, 
+  at::IntArrayRef stride, 
+  c10::optional<int64_t> storage_offset) {
+  ORT_LOG_FN(self, size, stride, storage_offset);
+  auto& invoker = GetORTInvoker(self.device());
+  auto ort_input = create_ort_value(invoker, self);
+  auto* tensor = ort_input.GetMutable<onnxruntime::Tensor>();
+
+  std::vector<int64_t> stride_vec;
+  stride_vec.assign(stride.begin(), stride.end());
+  std::vector<int64_t> dims_vec;
+  dims_vec.assign(size.begin(), size.end());
+
+  OrtValue ot;
+  CreateMLValue(tensor->MutableDataRaw(), 
+                invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
+                tensor->DataType(),
+                dims_vec,
+                stride_vec,
+                &ot);
+  
+  return aten_tensor_from_ort(
+    std::move(ot),
+    self.options());
+}
+
 at::Tensor _reshape_alias(
   const at::Tensor& self, 
   at::IntArrayRef size, 

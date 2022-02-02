@@ -6,8 +6,14 @@
 #include "core/framework/tensor.h"
 #include "core/framework/sparse_tensor.h"
 #endif
+#include "core/providers/cpu/tensor/copy.h"
 
 #include "core/framework/ortdevice.h"
+
+#include "core/session/environment.h"
+#include "core/common/logging/logging.h"
+#include "core/common/logging/sinks/clog_sink.h"
+#include "core/framework/element_type_lists.h"
 
 namespace onnxruntime {
 
@@ -43,10 +49,29 @@ common::Status CPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /
     // no need copying as both pointers are referring to same piece of memory.
     return Status::OK();
   }
-  // Copying only happens between two same size tensors.
+
+  if (!src.IsContiguous() || !dst.IsContiguous()){
+    std::unique_ptr<Environment> tmp_env;
+    ORT_RETURN_IF_ERROR(Environment::Create(std::make_unique<logging::LoggingManager>(
+                                                  std::make_unique<logging::CLogSink>(),
+                                                  logging::Severity::kWARNING, false, logging::LoggingManager::InstanceType::Temporal),
+                                              tmp_env));
+    onnxruntime::TensorShapeVector dst_stride{dst.Strides().begin(), dst.Strides().begin() + dst.Strides().size()};
+    onnxruntime::TensorShapeVector src_stride{src.Strides().begin(), src.Strides().begin() + src.Strides().size()};
+    return DispatchStridedCopy<element_type_lists::All>(tmp_env->GetIntraOpThreadPool(),
+                                                        dst,
+                                                        dst.ByteOffset(),
+                                                        dst_stride,
+                                                        src.Shape(),
+                                                        src,
+                                                        src_stride);
+  }
+  else{
+    // Copying only happens between two same size tensors.
   ORT_ENFORCE(src.SizeInBytes() == dst.SizeInBytes());
   memcpy(dst_data, src_data, src.SizeInBytes());
   return Status::OK();
+  }
 }
 
 };  // namespace onnxruntime
