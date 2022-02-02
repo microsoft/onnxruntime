@@ -39,7 +39,7 @@ IO_BINDING_DATA_TYPE_MAP = {
 
 def create_onnxruntime_session(onnx_model_path,
                                use_gpu,
-                               provider='cpu',
+                               provider=None,
                                enable_all_optimization=True,
                                num_threads=-1,
                                enable_profiling=False,

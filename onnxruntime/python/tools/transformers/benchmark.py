@@ -432,7 +432,7 @@ def parse_arguments():
     parser.add_argument("--provider",
                         required=False,
                         type=str,
-                        default='cuda',
+                        default=None,
                         help="Execution provider to use")
 
     parser.add_argument(
