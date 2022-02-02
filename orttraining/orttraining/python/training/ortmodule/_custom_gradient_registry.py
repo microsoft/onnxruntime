@@ -141,3 +141,10 @@ def binary_cross_entropy_with_logits_gradient():
         (('ATenOp', 'com.microsoft'), ['GO(0)', 'I(0)', 'I(1)', 'I(2)', 'I(3)', 'I(4)'], [
          'GI(0)'], {'name': {'value': 'aten::binary_cross_entropy_with_logits_backward', 'dtype': 'string'}}),
     ]
+
+@register_gradient('com.microsoft', 'ATenOp', 'aten::numpy_T', '')
+def numpy_T_gradient():
+    return [
+        (('ATenOp', 'com.microsoft'), ['GO(0)'], [
+         'GI(0)'], {'name': {'value': 'aten::numpy_T', 'dtype': 'string'}}),
+    ]
