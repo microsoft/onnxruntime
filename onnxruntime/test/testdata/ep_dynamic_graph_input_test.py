@@ -33,7 +33,7 @@ def GenerateModel(model_name):
 
     graph = helper.make_graph(
         nodes,
-        "NNAPI_Dynamic_Graph_Input_Test",
+        "EP_Dynamic_Graph_Input_Test",
         inputs,
         outputs,
         initializers
@@ -44,4 +44,4 @@ def GenerateModel(model_name):
 
 
 if __name__ == "__main__":
-    GenerateModel('nnapi_dynamic_graph_input_test.onnx')
+    GenerateModel('ep_dynamic_graph_input_test.onnx')

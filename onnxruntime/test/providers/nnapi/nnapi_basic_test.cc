@@ -81,7 +81,7 @@ TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
 // separated test here.
 // Please see BaseOpBuilder::HasSupportedInputs in <repo_root>/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/op_support_checker.cc
 TEST(NnapiExecutionProviderTest, DynamicGraphInputTest) {
-  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/nnapi_dynamic_graph_input_test.onnx");
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/ep_dynamic_graph_input_test.onnx");
 
 #if defined(__ANDROID__)
   std::vector<int64_t> dims_mul_x = {1, 1, 4, 4};
@@ -103,8 +103,8 @@ TEST(NnapiExecutionProviderTest, DynamicGraphInputTest) {
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
   ASSERT_STATUS_OK(session_object.Initialize());
-  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
-      << "Some nodes should have been taken by the NNAPI EP";
+  ASSERT_EQ(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 1)
+      << "Exactly one node (Add) should have been taken by the NNAPI EP";
 #endif
 }
 
