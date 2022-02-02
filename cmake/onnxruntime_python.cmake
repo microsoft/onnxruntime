@@ -126,6 +126,7 @@ if (onnxruntime_ENABLE_EAGER_MODE)
     set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_hooks.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
     set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_ops.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
     set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_util.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+    set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/python/orttraining_python_module.cc" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
   endif()
   if (MSVC) 
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4100" "/wd4324" "/wd4458" "/wd4127" "/wd4193" "/wd4624" "/wd4702")
@@ -136,8 +137,8 @@ endif()
 target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
-    ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NUPHAR}
+    ${PROVIDERS_STVM}
     ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_COREML}
@@ -602,6 +603,16 @@ if (onnxruntime_USE_TENSORRT)
   )
 endif()
 
+if (onnxruntime_USE_MIGRAPHX)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_migraphx>
+        $<TARGET_FILE:onnxruntime_providers_shared>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
+endif()
+
 if (onnxruntime_USE_OPENVINO)
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
@@ -632,19 +643,16 @@ if (onnxruntime_USE_ROCM)
     )
 endif()
 
-if (onnxruntime_USE_TVM)
+if (onnxruntime_USE_NUPHAR)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:tvm>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
-endif()
-
-if (onnxruntime_USE_NUPHAR)
   file(GLOB onnxruntime_python_nuphar_python_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/nuphar/scripts/*"
-  )
+      "${ONNXRUNTIME_ROOT}/core/providers/nuphar/scripts/*"
+    )
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/nuphar
@@ -652,6 +660,40 @@ if (onnxruntime_USE_NUPHAR)
       ${onnxruntime_python_nuphar_python_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/nuphar/
   )
+endif()
+
+if (onnxruntime_USE_STVM)
+  file(GLOB onnxruntime_python_providers_stvm_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/providers/stvm/*.py"
+  )
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/stvm
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_providers_stvm_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/stvm
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_stvm>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${tvm_BINARY_DIR}/libtvm*
+        ${tvm_SOURCE_DIR}/python/tvm
+  )
+
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+      WORKING_DIRECTORY ${tvm_SOURCE_DIR}/python
+      COMMAND ${Python_EXECUTABLE} setup.py build_ext --inplace
+      COMMAND ${CMAKE_COMMAND} -E rm
+        ${tvm_SOURCE_DIR}/python/tvm/*.so
+      COMMAND ${CMAKE_COMMAND} -E env TVM_LIBRARY_PATH=${tvm_BINARY_DIR}
+          ${Python_EXECUTABLE} setup.py bdist_wheel
+      COMMAND ${CMAKE_COMMAND} -E copy
+        ${tvm_BINARY_DIR}/libtvm*
+        ${tvm_SOURCE_DIR}/python/tvm
+    )
+
 endif()
 
 if (onnxruntime_USE_DML)

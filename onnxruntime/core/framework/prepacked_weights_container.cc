@@ -17,7 +17,7 @@ AllocatorPtr PrepackedWeightsContainer::GetOrCreateAllocator(const std::string& 
   if (device_name == CPU) {
     // TODO: Investigate benefits of using an arena based allocator
     // For now, we go with a non-arena based allocator
-    AllocatorCreationInfo device_info{[](int) { return std::make_unique<TAllocator>(); },
+    AllocatorCreationInfo device_info{[](int) { return std::make_unique<CPUAllocator>(); },
                                       0, false};
     auto allocator = CreateAllocator(device_info);
 

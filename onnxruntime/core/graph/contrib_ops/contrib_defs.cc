@@ -282,6 +282,10 @@ void FusedMatMulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   bool transa = transAAttr ? static_cast<int>(transAAttr->i()) != 0 : false;
   auto transBAttr = ctx.getAttribute("transB");
   bool transb = transBAttr ? static_cast<int>(transBAttr->i()) != 0 : false;
+  auto trans_batch_a_attr = ctx.getAttribute("transBatchA");
+  bool trans_batch_a = trans_batch_a_attr ? static_cast<int>(trans_batch_a_attr->i()) != 0 : false;
+  auto trans_batch_b_attr = ctx.getAttribute("transBatchB");
+  bool trans_batch_b = trans_batch_b_attr ? static_cast<int>(trans_batch_b_attr->i()) != 0 : false;
   int input1Idx = 0;
   int input2Idx = 1;
   if (!hasInputShape(ctx, input1Idx) || !hasInputShape(ctx, input2Idx)) {
@@ -309,11 +313,13 @@ void FusedMatMulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     // for vector input, transa does not make impact on the dim.
     shape0 = shape0_raw;
   } else {
-    for (int i = 0; i < rank0 - 2; ++i) {
+    int start = trans_batch_a ? 1 : 0;
+    int end = trans_batch_a ? rank0 - 1 : rank0 - 2;
+    for (int i = start; i < end; ++i) {
       *shape0.add_dim() = shape0_raw.dim(i);
     }
-    *shape0.add_dim() = shape0_raw.dim(transa ? rank0 - 1 : rank0 - 2);
-    *shape0.add_dim() = shape0_raw.dim(transa ? rank0 - 2 : rank0 - 1);
+    *shape0.add_dim() = shape0_raw.dim(transa ? rank0 - 1 : (trans_batch_a ? 0 : rank0 - 2));
+    *shape0.add_dim() = shape0_raw.dim(transa ? (trans_batch_a ? 0 : rank0 - 2) : rank0 - 1);
   }
 
   auto rank1 = shape1_raw.dim_size();
@@ -321,11 +327,13 @@ void FusedMatMulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
     // for vector input, transb does not make impact on the dim.
     shape1 = shape1_raw;
   } else {
-    for (int i = 0; i < rank1 - 2; ++i) {
+    int start = trans_batch_b ? 1 : 0;
+    int end = trans_batch_b ? rank1 - 1 : rank1 - 2;
+    for (int i = start; i < end; ++i) {
       *shape1.add_dim() = shape1_raw.dim(i);
     }
-    *shape1.add_dim() = shape1_raw.dim(transb ? rank1 - 1 : rank1 - 2);
-    *shape1.add_dim() = shape1_raw.dim(transb ? rank1 - 2 : rank1 - 1);
+    *shape1.add_dim() = shape1_raw.dim(transb ? rank1 - 1 : (trans_batch_b ? 0 : rank1 - 2));
+    *shape1.add_dim() = shape1_raw.dim(transb ? (trans_batch_b ? 0 : rank1 - 2) : rank1 - 1);
   }
 
   ONNX_NAMESPACE::TensorShapeProto shapeL, shapeR;
@@ -531,6 +539,177 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
   }
 }
 
+void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  // Type inference
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+  if (ctx.getNumOutputs() > 1) {
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 2);
+  }
+  // Shape inference
+  if (hasInputShape(ctx, 0)) {
+    auto& query_shape = getInputShape(ctx, 0);
+    updateOutputShape(ctx, 0, query_shape);
+  }
+  if (ctx.getNumOutputs() > 1) {
+    if (hasInputShape(ctx, 6) && hasInputShape(ctx, 7)) {
+      auto& cache_shape = getInputShape(ctx, 6);
+      auto& cache_dims = cache_shape.dim();
+      if (cache_dims.size() != 4) {
+        fail_shape_inference("key and value cache shall be 4 dimensions");
+      }
+      // has_dim_value() will return false if value is dynamic
+      if (cache_dims[0].has_dim_value() &&
+          cache_dims[1].has_dim_value() &&
+          cache_dims[2].has_dim_value() &&
+          cache_dims[3].has_dim_value()) {
+
+        ONNX_NAMESPACE::TensorShapeProto new_cache_shape;
+        *new_cache_shape.add_dim() = cache_shape.dim(0);
+        *new_cache_shape.add_dim() = cache_shape.dim(1);
+        new_cache_shape.add_dim();
+        *new_cache_shape.add_dim() = cache_shape.dim(3);
+
+        updateOutputShape(ctx, 1, new_cache_shape);
+        updateOutputShape(ctx, 2, new_cache_shape);
+      }
+    }
+  }
+}
+
+bool ParseScalar(const TensorProto* initializer, int& value) {
+  std::vector<int32_t> parsed_data;
+  if (initializer->data_type() == TensorProto::INT32) {
+    const auto& data = ParseData<int32_t>(initializer);
+    parsed_data.insert(parsed_data.end(), data.begin(), data.end());
+
+    if (parsed_data.size() == 1) {
+      value = parsed_data[0];
+      return true;
+    }
+  }
+
+  return false;
+}
+
+void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  // Type inference
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+  if (ctx.getNumOutputs() > 1) {
+    // Here we assume that the third output exist only if second output exists.
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 5, 1);
+    if (ctx.getNumOutputs() > 2) {
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 5, 2);
+    }
+  }
+
+  // Shape inference
+  // input 0 (input_ids) shape: (batch_size, sequence_length)
+  // output 0 (sequences) shape: (batch_size, num_return_sequences, max_length)
+  // output 1 (sequences_scores) shape: (batch_size, num_return_sequences)
+  // output 2 (scores) shape: (max_length - sequence_length, batch_size, num_beams, vocab_size)
+  if (!hasInputShape(ctx, 0)) {
+    return;
+  }
+  auto& input_ids_shape = getInputShape(ctx, 0);
+  auto& input_ids_dims = input_ids_shape.dim();
+  if (input_ids_dims.size() != 2) {
+    fail_shape_inference("Inputs 0 shall be 2 dimensions");
+  }
+  if (!(input_ids_dims[0].has_dim_value() && input_ids_dims[1].has_dim_value())) {
+    return;
+  }
+
+  int64_t batch_size = input_ids_dims[0].dim_value();
+  int64_t sequence_length = input_ids_dims[1].dim_value();
+
+  const auto max_length = ctx.getInputData(1);
+  const auto num_beams = ctx.getInputData(3);
+  const auto num_return_sequences = ctx.getInputData(4);
+  if (num_beams == nullptr || max_length == nullptr || num_return_sequences == nullptr) {  // not initializer
+    return;
+  }
+
+  int max_length_value = 0;
+  if (!ParseScalar(max_length, max_length_value) || max_length_value <= 0) {
+    fail_shape_inference("Failed to parse max_length or it is not positive integer scalar");
+  }
+
+  int num_beams_value = 0;
+  if (!ParseScalar(num_beams, num_beams_value) || num_beams_value <= 0) {
+    fail_shape_inference("Failed to parse num_beams or it is not positive integer scalar");
+  }
+
+  int num_return_sequences_value = 0;
+  if (!ParseScalar(num_return_sequences, num_return_sequences_value) || num_return_sequences_value <= 0) {
+    fail_shape_inference("Failed to parse num_return_sequences or it is not positive integer scalar");
+  }
+
+  ONNX_NAMESPACE::TensorShapeProto sequences_shape;
+  sequences_shape.add_dim()->set_dim_value(batch_size);
+  sequences_shape.add_dim()->set_dim_value(num_return_sequences_value);
+  sequences_shape.add_dim()->set_dim_value(max_length_value);
+  updateOutputShape(ctx, 0, sequences_shape);
+
+  if (ctx.getNumOutputs() > 1) {
+    ONNX_NAMESPACE::TensorShapeProto sequences_scores_shape;
+    sequences_shape.add_dim()->set_dim_value(batch_size);
+    sequences_shape.add_dim()->set_dim_value(num_return_sequences_value);
+    updateOutputShape(ctx, 1, sequences_scores_shape);
+
+    if (ctx.getNumOutputs() > 2) {
+      ONNX_NAMESPACE::TensorShapeProto scores_shape;
+      scores_shape.add_dim()->set_dim_value(max_length_value - sequence_length);
+      scores_shape.add_dim()->set_dim_value(batch_size);
+      scores_shape.add_dim()->set_dim_value(num_beams_value);
+      scores_shape.add_dim();  // vocab_size is unknown
+      updateOutputShape(ctx, 2, scores_shape);
+    }
+  }
+}
+
+void RegisterTextGenerationSchemas() {
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BeamSearch)
+        .SetDomain(kMSDomain)
+        .SinceVersion(1)
+        .SetDoc("Beam Search for text generation. Supports GPT-2 decoder.")
+        .Attr("eos_token_id", "The id of the end-of-sequence token", AttributeProto::INT)
+        .Attr("pad_token_id", "The id of the padding token", AttributeProto::INT)
+        .Attr("no_repeat_ngram_size", "no repeat ngrams size", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("early_stopping", "early stop or not", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr(
+            "body",
+            "The GPT-2 subgraph with input_ids, position_ids, attention_mask, past_0, past_1, ... as inputs, and logits, present_0, present_1, ... as output",
+            AttributeProto::GRAPH)
+        .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "I")
+        .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
+        .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
+        .Input(3, "num_beams", "Number of beams for beam search. 1 means no beam search. Shape is (1)", "I")
+        .Input(4, "num_return_sequences", "The number of returned sequences in the batch. Shape is (1)", "I")
+        .Input(5, "temperature", "The value used to module the next token probabilities. Accepts value > 0.0. Shape is (1)", "T")
+        .Input(6, "length_penalty",
+              "Exponential penalty to the length. Default value 1.0 means no penalty."
+              "Value > 1.0 encourages longer sequences, while values < 1.0 produces shorter sequences."
+              "Shape is (1,)",
+              "T", OpSchema::Optional)
+        .Input(7, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)", "T", OpSchema::Optional)
+        .Input(8, "vocab_mask", "Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)", "M", OpSchema::Optional)
+        .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, num_return_sequences, max_sequence_length)", "I")
+        .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)", "T", OpSchema::Optional)
+        .Output(2, "scores",
+                "Processed beam scores for each vocabulary token at each generation step."
+                "Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam."
+                "Shape is (max_length - sequence_length, batch_size, num_beams, vocab_size)",
+                "T", OpSchema::Optional)
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+        .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
+        .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          BeamSearchShapeInference(ctx);
+        });
+}
+
 void RegisterBertSchemas() {
   static const char* Attention_ver1_doc = R"DOC(
 Multi-Head Self Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
@@ -683,6 +862,37 @@ Global attention flags have value 1 for the tokens attend globally and 0 otherwi
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
       .TypeConstraint("G", {"tensor(int32)"}, "Constrain to integer types")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  static const char* Decoder_Attention_doc = R"DOC(
+This DecoderAttention supports self attention and cross attention, key and value cache, and key_padding_mask. The attention mask is not support at the moment.
+Some boolean parameters are passed by runtime input for generic purpose
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DecoderAttention)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(Decoder_Attention_doc)
+      .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+      .Input(0, "query", "3D input tensor with shape (sequence_length, batch_size, hidden_size), hidden_size = num_heads * head_size", "T")
+      .Input(1, "key", "3D input tensor with shape (total_sequence_length, batch_size, hidden_size)", "T")
+      .Input(2, "q_weight", "2D input tensor with shape (hidden_size, hidden_size)", "T")
+      .Input(3, "kv_weight", "2D input tensor with shape (hidden_size, 2 * hidden_size)", "T")
+      .Input(4, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
+      .Input(5, "key_padding_mask", "2D input tensor with shape (batch_size, total_sequence_length)", "B", OpSchema::Optional)
+      .Input(6, "key_cache", "input tensor with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)", "T", OpSchema::Optional)   // self & cross
+      .Input(7, "value_cache", "input tensor with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)", "T", OpSchema::Optional)   // self & cross
+      .Input(8, "static_kv", "If static_kv = true, cross-attention; else self-attention", "B")
+      .Input(9, "use_past", "If use_past = true, use cache; else no cache", "B")
+      .Input(10, "has_layer_state", "If has_layer_state = true, layer_state = {} or [a,b]; else layer_state = None", "B")
+      .Input(11, "has_key_padding_mask", "has_key_padding_mask or not", "B")
+      .Output(0, "output", "3D output tensor with shape (sequence_length, batch_size, hidden_size)", "T")
+      .Output(1, "new_key_cache", "output tensor with shape (batch_size, num_heads, new sequence_length, head_size)", "T", OpSchema::Optional) // self & cross
+      .Output(2, "new_value_cache", "output tensor with shape (batch_size, num_heads, new sequence_length, head_size)", "T", OpSchema::Optional) // self & cross
+      .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float and float16 tensors.")
+      .TypeConstraint("B", {"tensor(bool)"}, "Constrain key_padding_mask to bool tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        DecoderAttentionTypeAndShapeInference(ctx);
+      });
 
   static const char* EmbedLayerNormalization_ver1_doc = R"DOC(
 EmbedLayerNormalization is the fusion of embedding layer in BERT model, with optional mask processing.
@@ -1936,30 +2146,24 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
       .SinceVersion(1)
       .Input(0, "A", "N-dimensional matrix A", "T")
       .Input(1, "B", "N-dimensional matrix B", "T")
-      .Attr(
-          "alpha",
-          "Scalar multiplier for the product of the input tensors.",
-          AttributeProto::FLOAT,
-          1.0f)
-      .Attr(
-          "transA",
-          "Whether A should be transposed on the last two dimensions before doing multiplication",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
-      .Attr(
-          "transB",
-          "Whether B should be transposed on the last two dimensions before doing multiplication",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
+      .Attr("alpha", "Scalar multiplier for the product of the input tensors.", AttributeProto::FLOAT, 1.0f)
+      .Attr("transA", "Whether A should be transposed on the last two dimensions before doing multiplication",
+            AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("transB", "Whether B should be transposed on the last two dimensions before doing multiplication",
+            AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("transBatchA",
+            "Whether A should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before "
+            "doing multiplication",
+            AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("transBatchB",
+            "Whether B should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before "
+            "doing multiplication",
+            AttributeProto::INT, static_cast<int64_t>(0))
       .Output(0, "Y", "Matrix multiply results", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to float tensors.")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
       .SetDoc(FusedMatMul_doc)
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        FusedMatMulShapeInference(ctx);
-      });
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) { FusedMatMulShapeInference(ctx); });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SparseToDenseMatMul)
       .SetDomain(kMSDomain)
@@ -2670,7 +2874,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .Output(0, "C", "The output.", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
@@ -3077,6 +3281,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
 
   RegisterNhwcSchemas();
   RegisterBertSchemas();
+  RegisterTextGenerationSchemas();
 
 #ifdef BUILD_MS_EXPERIMENTAL_OPS
   onnxruntime::signal::RegisterSignalSchemas();

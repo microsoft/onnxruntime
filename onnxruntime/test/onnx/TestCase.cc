@@ -150,7 +150,7 @@ static void SortFileNames(std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_
       oss << input_pb_files[0];
       for (size_t j = 1; j != input_pb_files.size(); ++j)
         oss << ORT_TSTR(" ") << input_pb_files[j];
-      ORT_THROW("illegal input file name:", ToMBString(oss.str()));
+      ORT_THROW("illegal input file name:", ToUTF8String(oss.str()));
     }
   }
 }
@@ -265,22 +265,22 @@ void LoopDataFile(int test_data_pb_fd, bool is_input, const TestModelInfo& model
 
 #if !defined(ORT_MINIMAL_BUILD)
 std::unique_ptr<TestModelInfo> TestModelInfo::LoadOnnxModel(_In_ const PATH_CHAR_TYPE* model_url) {
-  return std::unique_ptr<TestModelInfo>(new OnnxModelInfo(model_url));
+  return std::make_unique<OnnxModelInfo>(model_url);
 }
 #endif
 
 std::unique_ptr<TestModelInfo> TestModelInfo::LoadOrtModel(_In_ const PATH_CHAR_TYPE* model_url) {
-  return std::unique_ptr<TestModelInfo>(new OnnxModelInfo(model_url, true));
+  return std::make_unique<OnnxModelInfo>(model_url, true);
 }
 
 /**
-   * test_case_dir must have contents of:
-   * model.onnx
-   * ???/input_??.pb
-   * ???/output_??.pb
-   * ???/input_??.pb
-   * ???/output_??.pb
-   */
+ * test_case_dir must have contents of:
+ * model.onnx
+ * ???/input_??.pb
+ * ???/output_??.pb
+ * ???/input_??.pb
+ * ???/output_??.pb
+ */
 class OnnxTestCase : public ITestCase {
  private:
   std::string test_case_name_;
@@ -308,10 +308,12 @@ class OnnxTestCase : public ITestCase {
                        bool is_input, size_t i,
                        std::unordered_map<std::string, Ort::Value>& out) const;
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
   void ConvertTestData(const ONNX_NAMESPACE::OptionalProto& test_data_pb,
                        onnxruntime::test::HeapBuffer& b,
                        bool is_input, size_t i,
                        std::unordered_map<std::string, Ort::Value>& out) const;
+#endif
 
   std::once_flag model_parsed_;
   std::once_flag config_parsed_;
@@ -350,9 +352,9 @@ std::unique_ptr<ITestCase> CreateOnnxTestCase(const std::string& test_case_name,
                                               std::unique_ptr<TestModelInfo> model,
                                               double default_per_sample_tolerance,
                                               double default_relative_per_sample_tolerance) {
-  return std::unique_ptr<ITestCase>(new OnnxTestCase(test_case_name, std::move(model),
-                                                     default_per_sample_tolerance,
-                                                     default_relative_per_sample_tolerance));
+  return std::make_unique<OnnxTestCase>(test_case_name, std::move(model),
+                                        default_per_sample_tolerance,
+                                        default_relative_per_sample_tolerance);
 }
 
 void OnnxTestCase::GetPerSampleTolerance(double* value) const {
@@ -421,12 +423,12 @@ static void LoadTensor(const PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::TensorPr
   int tensor_fd;
   auto st = Env::Default().FileOpenRd(pb_file, tensor_fd);
   if (!st.IsOK()) {
-    ORT_THROW("open file '", ToMBString(pb_file), "' failed:", st.ErrorMessage());
+    ORT_THROW("open file '", ToUTF8String(pb_file), "' failed:", st.ErrorMessage());
   }
   google::protobuf::io::FileInputStream f(tensor_fd, protobuf_block_size_in_bytes);
   f.SetCloseOnDelete(true);
   if (!input_pb.ParseFromZeroCopyStream(&f)) {
-    ORT_THROW("parse file '", ToMBString(pb_file), "' failed");
+    ORT_THROW("parse file '", ToUTF8String(pb_file), "' failed");
   }
 }
 
@@ -436,29 +438,32 @@ static void LoadSequenceTensor(const PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::
   int tensor_fd;
   auto st = Env::Default().FileOpenRd(pb_file, tensor_fd);
   if (!st.IsOK()) {
-    ORT_THROW("open file '", ToMBString(pb_file), "' failed:", st.ErrorMessage());
+    ORT_THROW("open file '", ToUTF8String(pb_file), "' failed:", st.ErrorMessage());
   }
   google::protobuf::io::FileInputStream f(tensor_fd, protobuf_block_size_in_bytes);
   f.SetCloseOnDelete(true);
   if (!input_pb.ParseFromZeroCopyStream(&f)) {
-    ORT_THROW("parse file '", ToMBString(pb_file), "' failed");
+    ORT_THROW("parse file '", ToUTF8String(pb_file), "' failed");
   }
 }
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
 template <typename PATH_STRING_TYPE>
 static void LoadOptional(const PATH_STRING_TYPE& pb_file,
                          ONNX_NAMESPACE::OptionalProto& input_pb) {
   int tensor_fd;
   auto st = Env::Default().FileOpenRd(pb_file, tensor_fd);
   if (!st.IsOK()) {
-    ORT_THROW("open file '", ToMBString(pb_file), "' failed:", st.ErrorMessage());
+    ORT_THROW("open file '", ToUTF8String(pb_file), "' failed:", st.ErrorMessage());
   }
   google::protobuf::io::FileInputStream f(tensor_fd, protobuf_block_size_in_bytes);
   f.SetCloseOnDelete(true);
   if (!input_pb.ParseFromZeroCopyStream(&f)) {
-    ORT_THROW("parse file '", ToMBString(pb_file), "' failed");
+    ORT_THROW("parse file '", ToUTF8String(pb_file), "' failed");
   }
 }
+#endif
+
 void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
                                 std::unordered_map<std::string, Ort::Value>& name_data_map,
                                 bool is_input) const {
@@ -482,7 +487,7 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {
         std::ostringstream oss2;
-        oss2 << "parse data file \"" << ToMBString(test_data_pb) << "\" failed:" << ex.what();
+        oss2 << "parse data file \"" << ToUTF8String(test_data_pb) << "\" failed:" << ex.what();
         ORT_THROW(oss.str());
       });
     }
@@ -528,11 +533,15 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
       ONNX_NAMESPACE::SequenceProto test_pb;
       LoadSequenceTensor(test_data_pb_files[i], test_pb);
       ConvertTestData(test_pb, b, is_input, i, name_data_map);
-    } else if (value_info_proto->type().has_optional_type()) {
+    }
+#if !defined(DISABLE_OPTIONAL_TYPE)
+    else if (value_info_proto->type().has_optional_type()) {
       ONNX_NAMESPACE::OptionalProto test_pb;
       LoadOptional(test_data_pb_files[i], test_pb);
       ConvertTestData(test_pb, b, is_input, i, name_data_map);
-    } else {
+    }
+#endif
+    else {
       ORT_THROW("Unsupported type for the ", is_input ? "input " : "output ", i, " in the test runner");
     }
   }
@@ -617,6 +626,7 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_dat
   }
 }
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
 void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::OptionalProto& test_data_pb,
                                    onnxruntime::test::HeapBuffer& b,
                                    bool is_input, size_t i,
@@ -673,6 +683,7 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::OptionalProto& test_dat
     }
   }
 }
+#endif
 
 OnnxTestCase::OnnxTestCase(const std::string& test_case_name, _In_ std::unique_ptr<TestModelInfo> model,
                            double default_per_sample_tolerance, double default_relative_per_sample_tolerance)
@@ -708,7 +719,7 @@ OnnxTestCase::OnnxTestCase(const std::string& test_case_name, _In_ std::unique_p
     if (f_type == OrtFileType::TYPE_DIR) {
       std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(test_case_dir, filename);
       test_data_dirs_.push_back(p);
-      debuginfo_strings_.push_back(ToMBString(p));
+      debuginfo_strings_.push_back(ToUTF8String(p));
     }
     return true;
   });
@@ -767,10 +778,10 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       } else if (is_ort_format) {
         model_info = TestModelInfo::LoadOrtModel(p.c_str());
       } else {
-        ORT_NOT_IMPLEMENTED(ToMBString(filename_str), " is not supported");
+        ORT_NOT_IMPLEMENTED(ToUTF8String(filename_str), " is not supported");
       }
 
-      std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToMBString(test_case_name), std::move(model_info),
+      std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToUTF8String(test_case_name), std::move(model_info),
                                                         default_per_sample_tolerance,
                                                         default_relative_per_sample_tolerance);
       process_function(std::move(l));

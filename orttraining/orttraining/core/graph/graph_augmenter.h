@@ -29,7 +29,7 @@ struct ArgDef {
 };
 
 struct OpDef {
-  OpDef() {}
+  OpDef() : opset_version(-1) {}
   OpDef(const std::string& type, const std::string& domain = kOnnxDomain, const int opset_version = 9)
       : type(type),
         domain(domain),
@@ -182,7 +182,7 @@ class GraphAugmenter {
     }
 
     TypeProto* CopyTypeProto(const NodeArg* node_arg) {
-      ORT_ENFORCE(node_arg != nullptr, "During CopyTypeProto, ", node_arg->Name(), "'s node_arg is null.");
+      ORT_ENFORCE(node_arg != nullptr, "During CopyTypeProto, node_arg is null.");
       TypeProto* type_proto = CreateTypeProto();
       type_proto->CopyFrom(*(node_arg->TypeAsProto()));
       return type_proto;

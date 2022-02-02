@@ -442,7 +442,7 @@ static Status RunPerformanceTest(const GPT2Parameters& params, const Environment
 }
 
 static Status RunTraining(const GPT2Parameters& params, const Environment& env) {
-  const size_t max_num_files_preload = 2;
+  constexpr size_t max_num_files_preload = 2;
 
   auto runner = std::make_unique<TrainingRunner>(params, env);
   ORT_RETURN_IF_ERROR(runner->Initialize());
@@ -489,7 +489,7 @@ int main(int argc, char* argv[]) {
 
   // setup logger
   std::string default_logger_id{"Default"};
-  logging::LoggingManager default_logging_manager{std::unique_ptr<logging::ISink>{new logging::CLogSink{}},
+  logging::LoggingManager default_logging_manager{std::make_unique<logging::CLogSink>(),
                                                   ort_params.log_severity,
                                                   false,
                                                   logging::LoggingManager::InstanceType::Default,

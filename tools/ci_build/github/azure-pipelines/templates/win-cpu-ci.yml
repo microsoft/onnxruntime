@@ -2,9 +2,6 @@ parameters:
 - name: BuildConfig
   type: string
 
-- name: UseOmp
-  type: string
-
 - name: EnvSetupScript
   type: string
 
@@ -121,7 +118,7 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) ${{ parameters.UseOmp }} --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019"  --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}'
+      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019"  --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
@@ -145,12 +142,14 @@ jobs:
           arguments: 'bdist_wheel'
           workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
 
-
-  - task: NuGetCommand@2
-    displayName: Restore NuGet Packages
+  - task: MSBuild@1
+    displayName: 'Restore NuGet Packages'
     inputs:
-      command: "restore"
-      restoreSolution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      platform: 'Any CPU'
+      configuration: '${{ parameters.BuildConfig }}'
+      msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: MSBuild@1
     displayName: 'Build C#'    
@@ -174,6 +173,7 @@ jobs:
 
   - ${{ if eq(parameters.EnablePython, true) }}:
       - powershell: |
+         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
          Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
        
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
@@ -181,7 +181,7 @@ jobs:
 
   - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
       - powershell: |
-         python $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) ${{ parameters.UseOmp }} --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019"  --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
+         python $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019"  --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
        
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
         displayName: 'Run tests'
@@ -197,26 +197,32 @@ jobs:
            **/*.pdb
            **/*.dll
 
-      - task: PythonScript@0
-        displayName: 'Generate cmake config'
+      #Manually set msBuildCommandline so that we can also set CAExcludePath
+      #build_dir must be a sub folder of $(Build.SourcesDirectory)
+      - task: SDLNativeRules@3
+        displayName: 'Run the PREfast SDL Native Rules for MSBuild'
         inputs:
-          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }} --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
-          workingDirectory: '$(Build.BinariesDirectory)'
+          msBuildArchitecture: amd64
+          setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --build_dir $(Build.SourcesDirectory)\b --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }} --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
+          msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.SourcesDirectory)\b\RelWithDebInfo\onnxruntime.sln" /p:RunCodeAnalysis=true /p:platform=${{ parameters.msbuildPlatform }} /p:configuration=RelWithDebInfo /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
+          excludedPaths: '$(Build.SourcesDirectory)\b#$(Build.SourcesDirectory)\cmake#C:\program files (x86)'
+          rulesetName: Custom
+          customRuleset: $(Build.SourcesDirectory)\cmake\Sdl.ruleset
 
-
-      - task: VSBuild@1
-        displayName: 'Build'
+      - task: SdtReport@2
+        displayName: 'Create Security Analysis Report'
         inputs:
-          solution: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\onnxruntime.sln'
-          platform: ${{ parameters.msbuildPlatform }}
-          configuration: ${{ parameters.BuildConfig }}
-          msbuildArgs: /m /p:CAExcludePath="$(Build.BinariesDirectory);$(Build.SourcesDirectory)\cmake;C:\program files (x86)" /p:PreferredToolArchitecture=x64
-          msbuildArchitecture: ${{ parameters.buildArch }}
-          maximumCpuCount: true
-          logProjectEvents: false
-          workingFolder: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
-          createLogFile: true
+          SDLNativeRules: true
+          
+      - task: PublishSecurityAnalysisLogs@3
+        displayName: 'Publish Security Analysis Logs'
+        continueOnError: true
+
+      - task: PostAnalysis@2
+        displayName: 'Guardian Break'
+        inputs:
+          GdnBreakGdnToolSDLNativeRulesSeverity: Warning
+          GdnBreakGdnToolSDLNativeRules: true
 
 
   - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:

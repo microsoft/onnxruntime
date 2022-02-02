@@ -194,7 +194,7 @@ Status NonMaxSuppression::Compute(OpKernelContext* ctx) const {
     }    //for class_index
   }      //for batch_index
 
-  const auto last_dim = 3;
+  constexpr auto last_dim = 3;
   const auto num_selected = selected_indices.size();
   Tensor* output = ctx->Output(0, {static_cast<int64_t>(num_selected), last_dim});
   ORT_ENFORCE(output != nullptr);

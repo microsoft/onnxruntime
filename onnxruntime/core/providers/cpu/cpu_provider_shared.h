@@ -9,6 +9,7 @@ class AttentionBase;
 }  // namespace contrib
 
 class GatherBase__Prepare;
+class ConcatBase_InlinedTensorsVector;
 class SliceOp__PrepareForComputeMetadata;  // Directly maps to SliceOp::PrepareForComputeMetadata
 class UnsqueezeBase__Prepare;              // Directly maps to UnsqueezeBase::Prepare
 
@@ -38,7 +39,7 @@ struct ProviderHostCPU {
                                               int& after_dims_including_split_axis, int& after_dims_excluding_split,
                                               std::vector<int64_t>& split_sizes) = 0;
   // From cpu/tensor/concatbase.h
-  virtual Status ConcatBase__PrepareForCompute(const ConcatBase* p, OpKernelContext* ctx, const std::vector<const Tensor*>& input_tensors, Prepare& prepare) = 0;
+  virtual Status ConcatBase__PrepareForCompute(const ConcatBase* p, OpKernelContext* ctx, const ConcatBase_InlinedTensorsVector& input_tensors, Prepare& prepare) = 0;
 
   // GatherElements
   virtual Status GatherElements__ValidateInputShapes(const TensorShape& input_data_shape, const TensorShape& indices_shape, int64_t axis) = 0;
@@ -53,27 +54,27 @@ struct ProviderHostCPU {
 
   // From onehot.h
   virtual Status ValidateInputs(const Tensor* depth, const Tensor* values) = 0;
-  virtual Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, std::vector<int64_t>& output_shape) = 0;
+  virtual Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, TensorShapeVector& output_shape) = 0;
 
   // From cpu/tensor/slice.h
-  virtual Status SliceBase__PrepareForCompute(const std::vector<int64_t>& raw_starts,
-                                              const std::vector<int64_t>& raw_ends,
-                                              const std::vector<int64_t>& raw_axes,
+  virtual Status SliceBase__PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
+                                              const gsl::span<const int64_t>& raw_ends,
+                                              const gsl::span<const int64_t>& raw_axes,
                                               SliceOp__PrepareForComputeMetadata& compute_metadata) = 0;
 
-  virtual Status SliceBase__PrepareForCompute(const std::vector<int64_t>& raw_starts,
-                                              const std::vector<int64_t>& raw_ends,
-                                              const std::vector<int64_t>& raw_axes,
-                                              const std::vector<int64_t>& raw_steps,
+  virtual Status SliceBase__PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
+                                              const gsl::span<const int64_t>& raw_ends,
+                                              const gsl::span<const int64_t>& raw_axes,
+                                              const gsl::span<const int64_t>& raw_steps,
                                               SliceOp__PrepareForComputeMetadata& compute_metadata) = 0;
   virtual Status SliceBase__FillVectorsFromInput(const Tensor& start_tensor,
                                                  const Tensor& ends_tensor,
                                                  const Tensor* axes_tensor,
                                                  const Tensor* steps_tensor,
-                                                 std::vector<int64_t>& input_starts,
-                                                 std::vector<int64_t>& input_ends,
-                                                 std::vector<int64_t>& input_axes,
-                                                 std::vector<int64_t>& input_steps) = 0;
+                                                 TensorShapeVector& input_starts,
+                                                 TensorShapeVector& input_ends,
+                                                 TensorShapeVector& input_axes,
+                                                 TensorShapeVector& input_steps) = 0;
 
   virtual Status Einsum__Compute(const Einsum* p, OpKernelContext* context) = 0;
 
@@ -135,13 +136,13 @@ struct ProviderHostCPU {
   virtual Status contrib__PassThrough__Compute(const contrib::PassThrough* p, OpKernelContext* context) = 0;
   virtual void contrib__VerifyLogitWeightAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, const TensorShape* weight_shape) = 0;
   virtual void contrib__GetNDCFromLogitAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, int64_t& N_D, int64_t& C) = 0;
-  virtual void contrib__GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, std::vector<int64_t>& new_shape, std::vector<size_t>& permutations) = 0;
+  virtual void contrib__GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, TensorShapeVector& new_shape, std::vector<size_t>& permutations) = 0;
   virtual Status contrib__PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) = 0;
   virtual Status contrib__YieldOp__Compute(const contrib::YieldOp* p, OpKernelContext* context) = 0;
 
   // From aten_op.h
   virtual bool contrib__IsATenOperatorExecutorInitialized() = 0;
-  virtual Status contrib__ExecuteReduceSumATenOp(OpKernelContext* p_ctx, const std::vector<int64_t>& axes, bool keepdims) = 0;
+  virtual Status contrib__ExecuteReduceSumATenOp(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) = 0;
 #endif
 #endif
 };
@@ -167,7 +168,7 @@ inline Status CheckROIAlignValidInput(const Tensor* X_ptr, const Tensor* rois_pt
 inline Status ValidateInputs(const Tensor* depth, const Tensor* values) { return g_host_cpu.ValidateInputs(depth, values); }
 inline Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis,
                                  int64_t& prefix_dim_size, int64_t& suffix_dim_size,
-                                 std::vector<int64_t>& output_shape) { return g_host_cpu.PrepareOutputShape(indices, depth_val, axis, prefix_dim_size, suffix_dim_size, output_shape); }
+                                 TensorShapeVector& output_shape) { return g_host_cpu.PrepareOutputShape(indices, depth_val, axis, prefix_dim_size, suffix_dim_size, output_shape); }
 
 struct EinsumComputePreprocessor {
   static void operator delete(void* p) { g_host_cpu.EinsumComputePreprocessor__operator_delete(reinterpret_cast<EinsumComputePreprocessor*>(p)); }
@@ -206,12 +207,12 @@ inline void wait_event_in_tensor(const Tensor& event_id_tensor) { return g_host_
 
 inline void VerifyLogitWeightAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, const TensorShape* weight_shape) { g_host_cpu.contrib__VerifyLogitWeightAndLabelShape(logit_shape, label_shape, weight_shape); }
 inline void GetNDCFromLogitAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, int64_t& N_D, int64_t& C) { g_host_cpu.contrib__GetNDCFromLogitAndLabelShape(logit_shape, label_shape, N_D, C); }
-inline void GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, std::vector<int64_t>& new_shape, std::vector<size_t>& permutations) { g_host_cpu.contrib__GetPermutationAndShape(ncd_to_ndc, tensor_shape, new_shape, permutations); }
+inline void GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, TensorShapeVector& new_shape, std::vector<size_t>& permutations) { g_host_cpu.contrib__GetPermutationAndShape(ncd_to_ndc, tensor_shape, new_shape, permutations); }
 inline Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) { return g_host_cpu.contrib__PrepareForTrainingCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
 
 // From aten_op.h
 inline bool IsATenOperatorExecutorInitialized() { return g_host_cpu.contrib__IsATenOperatorExecutorInitialized(); }
-inline Status ExecuteReduceSumATenOp(OpKernelContext* p_ctx, const std::vector<int64_t>& axes, bool keepdims) { return g_host_cpu.contrib__ExecuteReduceSumATenOp(p_ctx, axes, keepdims); }
+inline Status ExecuteReduceSumATenOp(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) { return g_host_cpu.contrib__ExecuteReduceSumATenOp(p_ctx, axes, keepdims); }
 }  // namespace contrib
 #endif  // ENABLE_TRAINING
 #endif  // USE_CUDA || USE_ROCM

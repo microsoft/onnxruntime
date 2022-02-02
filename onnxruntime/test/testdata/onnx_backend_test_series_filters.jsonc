@@ -72,10 +72,13 @@
         // Uncomment here once the ONNX backend test runner is able to handle
         // optional type test data.
         // https://github.com/onnx/onnx/issues/3608
+        // TODO: Once ONNX #3608 is solved and these tests are removed from exclusion,
+        // we need to figure out a way to keep these tests in the exclusion list for
+        // builds that have disabled support for the optional type.
         "^test_optional_*",
         "^test_if_opt",
         "^test_loop16_seq_none",
-        "^test_identity",
+        "^test_identity_opt",
         // Following tests are for opset 16 ops and are not yet implemented in ORT
         "^test_roialign_aligned_*",
         "^test_scatternd_*",

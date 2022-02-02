@@ -31,9 +31,9 @@ class MlasNchwcConv2DTest : public MlasConv2DTest<Threaded> {
       const float* Filter,
       const float* Bias,
       float* Output) override {
-    int64_t InputShape[] = {int64_t(BatchCount), int64_t(GroupCount * InputChannels), int64_t(InputHeight), int64_t(InputWidth)};
-    int64_t FilterShape[] = {int64_t(GroupCount * FilterCount), int64_t(InputChannels), int64_t(KernelHeight), int64_t(KernelWidth)};
-    int64_t OutputShape[] = {int64_t(BatchCount), int64_t(GroupCount * FilterCount), int64_t(OutputHeight), int64_t(OutputWidth)};
+    int64_t InputShape[] = {int64_t(BatchCount), int64_t(GroupCount) * int64_t(InputChannels), int64_t(InputHeight), int64_t(InputWidth)};
+    int64_t FilterShape[] = {int64_t(GroupCount) * int64_t(FilterCount), int64_t(InputChannels), int64_t(KernelHeight), int64_t(KernelWidth)};
+    int64_t OutputShape[] = {int64_t(BatchCount), int64_t(GroupCount) * int64_t(FilterCount), int64_t(OutputHeight), int64_t(OutputWidth)};
 
     int64_t KernelShape[] = {int64_t(KernelHeight), int64_t(KernelWidth)};
     int64_t DilationShape[] = {int64_t(DilationHeight), int64_t(DilationWidth)};
@@ -149,7 +149,7 @@ class MlasNchwcConv2DTest : public MlasConv2DTest<Threaded> {
 
  public:
   static const char* GetTestSuiteName(void) {
-    static const std::string suite_name(Threaded? "Conv2dNchwc_Threaded" : "Conv2dNchwc_SingleThread");
+    static const std::string suite_name(Threaded ? "Conv2dNchwc_Threaded" : "Conv2dNchwc_SingleThread");
     return suite_name.c_str();
   }
 

@@ -41,7 +41,7 @@ parameters:
 
 - name: BuildVariant
   type: string
-  default: 'openmp'
+  default: 'default'
 
 jobs:
 - job: Linux_C_API_Packaging_CPU_x64
@@ -464,11 +464,14 @@ jobs:
     inputs:
       versionSpec: 5.7.0
 
-  - task: NuGetCommand@2
-    displayName: Restore NuGet Packages
+  - task: MSBuild@1
+    displayName: 'Restore NuGet Packages'
     inputs:
-      command: "restore"
-      restoreSolution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      platform: 'Any CPU'
+      configuration: RelWithDebInfo
+      msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - task: MSBuild@1
     displayName: 'Build C#'
@@ -854,19 +857,10 @@ jobs:
     parameters:
       packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
 
-  - task: PowerShell@2
-    displayName: 'Get Current Date'
-    inputs:
-      targetType: 'inline'
-      script: |
-          $date = $(Get-Date -Format "yyyy-MM-dd")
-          Write-Host "##vso[task.setvariable variable=CurrentDate]$date"
-
   - task: CmdLine@2
     displayName: 'Post binary sizes to the dashboard database using command line'
     inputs:
       script: |
-          python.exe -m pip install azure-kusto-data[pandas] azure-kusto-ingest[pandas]
           echo changing directory to artifact download path
           cd $(Build.BinariesDirectory)/nuget-artifact/final-package
           echo processing nupkg
@@ -885,8 +879,9 @@ jobs:
             7z.exe l -slt %%~ni.zip runtimes\osx.10.14-x64\native\libonnxruntime.dylib | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo osx,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
             7z.exe l -slt %%~ni.zip runtimes\win-x64\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
             7z.exe l -slt %%~ni.zip runtimes\win-x86\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x86,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
-             )
-           )
+            )
+          )
+
   - task: AzureCLI@2
     displayName: 'Azure CLI'
     inputs:
@@ -894,32 +889,9 @@ jobs:
       scriptLocation: inlineScript
       scriptType: batch
       inlineScript: |
+        python.exe -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_to_dashboard\requirements.txt && ^
         python.exe $(Build.SourcesDirectory)\tools\ci_build\github\windows\post_binary_sizes_to_dashboard.py --commit_hash=$(Build.SourceVersion) --size_data_file=binary_size_data.txt --build_project=Lotus --build_id=$(Build.BuildId)
       workingDirectory: '$(Build.BinariesDirectory)'
-
-  - task: AzureFileCopy@3
-    displayName: 'Copy Signed Native NuGet Package to Blob Store'
-    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
-    inputs:
-      sourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/${{ parameters.OrtNugetPackageId }}.$(NuGetPackageVersionNumber).nupkg'
-      azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
-      destination: azureBlob
-      storage: ortpackages
-      containerName: ortpackages
-      blobPrefix: '$(CurrentDate)/'
-    continueOnError: true
-
-  - task: AzureFileCopy@3
-    displayName: 'Copy Signed Managed NuGet Package to Blob Store'
-    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
-    inputs:
-      sourcePath: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.Managed.$(NuGetPackageVersionNumber).nupkg'
-      azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
-      destination: azureBlob
-      storage: ortpackages
-      containerName: ortpackages
-      blobPrefix: '$(CurrentDate)/'
-    continueOnError: true
 
   - task: DotNetCoreCLI@2
     displayName: 'Copy Signed Native NuGet Package to Internal NuGet Feed'

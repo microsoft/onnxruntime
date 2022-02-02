@@ -33,6 +33,8 @@ TEST(Identity, SequenceType) {
   test.Run();
 }
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
+
 TEST(Identity, OptionalTensorType_NonNone) {
   OpTester test("Identity", 16, kOnnxDomain);
   // Since this test is being written at a time when only opset 15  has been released, we set
@@ -81,5 +83,8 @@ TEST(Identity, OptionalTensorSequenceType_None) {
   test.AddOptionalTypeSeqOutput<float>("Y", nullptr);                                  // None
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: opset 16 is not supported yet
 }
+
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime

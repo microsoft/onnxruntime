@@ -284,6 +284,14 @@ inline void IoBinding::ClearBoundOutputs() {
   GetApi().ClearBoundOutputs(p_);
 }
 
+inline void IoBinding::SynchronizeInputs() {
+  ThrowOnError(GetApi().SynchronizeBoundInputs(p_));
+}
+
+inline void IoBinding::SynchronizeOutputs() {
+  ThrowOnError(GetApi().SynchronizeBoundOutputs(p_));
+}
+
 inline ArenaCfg::ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk) {
   ThrowOnError(GetApi().CreateArenaCfg(max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk, &p_));
 }
@@ -507,6 +515,11 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_ROCM(const OrtROC
 
 inline SessionOptions& SessionOptions::AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options) {
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_TensorRT(p_, &provider_options));
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::AppendExecutionProvider_MIGraphX(const OrtMIGraphXProviderOptions& provider_options) {
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_MIGraphX(p_, &provider_options));
   return *this;
 }
 
@@ -1111,6 +1124,12 @@ inline T* CustomOpApi::GetTensorMutableData(_Inout_ OrtValue* value) {
   T* data;
   ThrowOnError(api_.GetTensorMutableData(value, reinterpret_cast<void**>(&data)));
   return data;
+}
+
+inline const OrtMemoryInfo* CustomOpApi::GetTensorMemoryInfo(_In_ const OrtValue* value) {
+  const OrtMemoryInfo* mem_info;
+  ThrowOnError(api_.GetTensorMemoryInfo(value, &mem_info)); 
+  return mem_info;
 }
 
 template <typename T>

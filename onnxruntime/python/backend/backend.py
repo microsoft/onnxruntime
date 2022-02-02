@@ -107,7 +107,11 @@ class OnnxRuntimeBackend(Backend):
             for k, v in kwargs.items():
                 if hasattr(options, k):
                     setattr(options, k, v)
-            inf = InferenceSession(model, sess_options=options, providers=get_available_providers())
+
+            excluded_providers = os.getenv('ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS', default="").split(',')
+            providers = [x for x in get_available_providers() if (x not in excluded_providers)]
+
+            inf = InferenceSession(model, sess_options=options, providers=providers)
             # backend API is primarily used for ONNX test/validation. As such, we should disable session.run() fallback
             # which may hide test failures.
             inf.disable_fallback()

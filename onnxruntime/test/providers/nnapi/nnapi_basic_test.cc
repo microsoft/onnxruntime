@@ -26,6 +26,10 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
+#if !defined(ORT_MINIMAL_BUILD)
+#include "test/optimizer/qdq_test_utils.h"
+#endif
+
 using namespace std;
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
@@ -235,7 +239,55 @@ TEST(NnapiExecutionProviderTest, TestNoShapeInputModel) {
       << "No node should be taken by the NNAPI EP";
 }
 
-#endif  // !(ORT_MINIMAL_BUILD
+static void RunQDQModelTest(const GetQDQTestCaseFn& build_test_case, const char* test_description) {
+  onnxruntime::Model model(test_description, false, DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  build_test_case(helper);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  // Serialize the model to a string.
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+#if defined(__ANDROID__)
+  RunAndVerifyOutputsWithEP(model_data, "NnapiExecutionProviderTest.TestQDQModel",
+                            std::make_unique<NnapiExecutionProvider>(0),
+                            helper.feeds_);
+#else
+  // test load only
+  SessionOptions so;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
+      << "Some nodes should have been taken by the NNAPI EP";
+#endif
+}
+
+TEST(NnapiExecutionProviderTest, TestQDQConv) {
+  RunQDQModelTest(BuildQDQConvTestCase<uint8_t /* InputType */,
+                                       uint8_t /* WeightType */,
+                                       int32_t /* BiasType */,
+                                       uint8_t /* OutputType */>(
+                      {1, 1, 5, 5} /*input_shape*/,
+                      {1, 1, 3, 3} /*weights_shape*/),
+                  "nnapi_qdq_test_graph_conv");
+}
+
+TEST(NnapiExecutionProviderTest, TestQDQResize) {
+  // NNAPI EP does not support the default setting of Resize Op
+  // Use bi-linear and asymmetric for NNAPI EP only
+  RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
+                                         {1, 3, 32, 32} /* sizes_data */,
+                                         "linear" /* mode */,
+                                         "asymmetric" /* coordinate_transformation_mode */),
+                  "nnapi_qdq_test_graph_resize");
+}
+
+#endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
   uint32_t nnapi_flags = NNAPI_FLAG_USE_NONE;

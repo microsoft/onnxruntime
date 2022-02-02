@@ -83,16 +83,16 @@ class CudnnPoolingDescriptor final {
   CudnnPoolingDescriptor& operator=(const CudnnPoolingDescriptor&) = delete;
 
   Status Set(cudnnPoolingMode_t mode,
-             const std::vector<int64_t>& kernel_shape,
-             const std::vector<int64_t>& pads,
-             const std::vector<int64_t>& strides) {
+             const gsl::span<const int64_t>& kernel_shape,
+             const gsl::span<const int64_t>& pads,
+             const gsl::span<const int64_t>& strides) {
     if (!desc_)
       CUDNN_RETURN_IF_ERROR(cudnnCreatePoolingDescriptor(&desc_));
 
     int rank = gsl::narrow_cast<int>(kernel_shape.size());
-    std::vector<int> window(rank);
-    std::vector<int> padding(rank);
-    std::vector<int> stride(rank);
+    InlinedShapeVector<int> window(rank);
+    InlinedShapeVector<int> padding(rank);
+    InlinedShapeVector<int> stride(rank);
     for (int i = 0; i < rank; i++) {
       window[i] = gsl::narrow_cast<int>(kernel_shape[i]);
     }
@@ -131,9 +131,9 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 3.");
   }
 
-  std::vector<int64_t> kernel_shape = pool_attrs_.kernel_shape;
-  std::vector<int64_t> pads = pool_attrs_.pads;
-  std::vector<int64_t> strides = pool_attrs_.strides;
+  auto kernel_shape = pool_attrs_.kernel_shape;
+  auto pads = pool_attrs_.pads;
+  auto strides = pool_attrs_.strides;
 
   if (pool_attrs_.global_pooling) {
     kernel_shape.assign(x_dims.begin() + 2, x_dims.end());
@@ -141,7 +141,7 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
     strides.assign(kernel_shape.size(), 1);
   }
 
-  std::vector<int64_t> y_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
+  auto y_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
   TensorShape y_shape(y_dims);
   Tensor* Y = context->Output(0, y_shape);
   // special case when there is a dim value of 0 in the shape.
@@ -151,8 +151,8 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
   auto x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   auto y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
-  std::vector<int64_t> x_dims_cudnn(x_dims.begin(), x_dims.end());
-  std::vector<int64_t> y_dims_cudnn(y_dims.begin(), y_dims.end());
+  TensorShapeVector x_dims_cudnn(x_dims.cbegin(), x_dims.cend());
+  TensorShapeVector y_dims_cudnn(y_dims);
   if (kernel_shape.size() < 2) {
     // cudnn only takes 4D or 5D input, so pad dimensions if needed
     x_dims_cudnn.push_back(1);
@@ -171,7 +171,7 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
   CudnnPoolingDescriptor pooling_desc;
   ORT_RETURN_IF_ERROR(pooling_desc.Set(mode, kernel_shape, pads, strides));
 
-  if (std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value) {
+  if constexpr (std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value) {
     // Cast to float back and forth using temp buffer
     const auto alpha = Consts<float>::One;
     const auto beta = Consts<float>::Zero;
@@ -213,9 +213,9 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input dimension cannot be less than 3.");
   }
 
-  std::vector<int64_t> kernel_shape = this->pool_attrs_.kernel_shape;
-  std::vector<int64_t> pads = this->pool_attrs_.pads;
-  std::vector<int64_t> strides = this->pool_attrs_.strides;
+  auto kernel_shape = this->pool_attrs_.kernel_shape;
+  auto pads = this->pool_attrs_.pads;
+  auto strides = this->pool_attrs_.strides;
 
   if (this->pool_attrs_.global_pooling) {
     kernel_shape.assign(x_dims.begin() + 2, x_dims.end());
@@ -223,7 +223,7 @@ Status Pool<T, MaxPool<8>>::ComputeInternal(OpKernelContext* context) const {
     strides.assign(kernel_shape.size(), 1);
   }
 
-  std::vector<int64_t> y_dims = this->pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
+  auto y_dims = this->pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
   Tensor* Y = context->Output(0, TensorShape(y_dims));
 
   // special case when there is a dim value of 0 in the shape.

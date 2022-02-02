@@ -11,6 +11,7 @@ namespace onnxruntime {
 namespace utils {
 MLDataType GetMLDataType(const onnxruntime::NodeArg& arg);
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
 inline bool IsOptionalTensor(MLDataType type) {
   return type->IsOptionalType() &&
          type->AsOptionalType()->GetElementType()->IsTensorType();
@@ -40,5 +41,7 @@ inline MLDataType GetElementTypeFromOptionalSeqTensor(MLDataType type) {
       ->AsSequenceTensorType()
       ->GetElementType();
 }
+#endif
+
 }  // namespace utils
 }  // namespace onnxruntime

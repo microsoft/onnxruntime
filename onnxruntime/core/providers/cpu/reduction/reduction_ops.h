@@ -34,10 +34,15 @@ bool operator==(FastReduceKind a, FastReduceKind b);
 
 bool operator!=(FastReduceKind a, FastReduceKind b);
 
-bool IsFastReduceKindAvailable(FastReduceKind scenario, FastReduceKind available);
-
+constexpr bool IsFastReduceKindAvailable(FastReduceKind scenario, FastReduceKind available) {
+  return (static_cast<uint8_t>(scenario) & static_cast<uint8_t>(available)) > 0;
+}
 /* Evaluate the cost of parallelized FastReduce implementations. */
-TensorOpCost ParallelReduceFastCost(int64_t n_row, int64_t n_col, int64_t element_size, int n_ops);
+constexpr TensorOpCost ParallelReduceFastCost(int64_t n_row, int64_t n_col, int64_t element_size, int n_ops) {
+  return TensorOpCost{static_cast<double>(n_row * n_col * element_size),
+                      static_cast<double>(n_row * element_size),
+                      static_cast<double>(n_row * n_col * element_size * n_ops)};
+}
 
 /**
   This only improves reduce function when reduced axes are contiguous:
@@ -56,19 +61,19 @@ TensorOpCost ParallelReduceFastCost(int64_t n_row, int64_t n_col, int64_t elemen
 */
 FastReduceKind OptimizeShapeForFastReduce(gsl::span<const int64_t> input_shape,
                                           gsl::span<const int64_t> reduced_axes,
-                                          std::vector<int64_t>& fast_shape,
-                                          std::vector<int64_t>& fast_output_shape,
-                                          std::vector<int64_t>& fast_axes,
+                                          TensorShapeVector& fast_shape,
+                                          TensorShapeVector& fast_output_shape,
+                                          TensorShapeVector& fast_axes,
                                           bool keep_dims, bool noop_with_empty_axes = false);
 
 class ResultsNoTransposePrepareForReduce {
  public:
-  std::vector<int64_t> input_shape;
-  std::vector<int64_t> reduced_axes;
-  std::vector<int64_t> projected_index;
+  TensorShapeVector input_shape;
+  TensorShapeVector reduced_axes;
+  TensorShapeVector projected_index;
   int64_t last_loop_red_size;
   int64_t last_loop_red_inc;
-  std::vector<int64_t> unprojected_index;
+  TensorShapeVector unprojected_index;
   int64_t last_loop_size;
   int64_t last_loop_inc;
 
@@ -146,9 +151,9 @@ class ReduceAggregatorBase {
  public:
   // Fast reduction: see OptimizeShapeForFastReduce's comment.
   static inline FastReduceKind WhichFastReduce() { return FastReduceKind::kNone; }
-  static void FastReduceKR(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*);
-  static void FastReduceRK(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*);
-  static void FastReduceKRK(const Tensor&, const std::vector<int64_t>&, Tensor&, concurrency::ThreadPool*);
+  static void FastReduceKR(const Tensor&, const gsl::span<const int64_t>&, Tensor&, concurrency::ThreadPool*);
+  static void FastReduceRK(const Tensor&, const gsl::span<const int64_t>&, Tensor&, concurrency::ThreadPool*);
+  static void FastReduceKRK(const Tensor&, const gsl::span<const int64_t>&, Tensor&, concurrency::ThreadPool*);
 };
 
 template <typename T, typename TVAL = T>
@@ -186,7 +191,7 @@ class ReduceAggregatorSum : public ReduceAggregator<T, TVAL> {
     return FastReduceKind::kKR | FastReduceKind::kRK | FastReduceKind::kKRK;
   }
 
-  static void FastReduceKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
+  static void FastReduceKR(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
     const T* data = input.Data<T>();
     T* out = output.MutableData<T>();
@@ -200,7 +205,7 @@ class ReduceAggregatorSum : public ReduceAggregator<T, TVAL> {
         });
   }
 
-  static void FastReduceRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
+  static void FastReduceRK(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
     int64_t N = fast_shape[1];
     const T* data = input.Data<T>();
@@ -218,7 +223,7 @@ class ReduceAggregatorSum : public ReduceAggregator<T, TVAL> {
         });
   }
 
-  static void FastReduceKRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
+  static void FastReduceKRK(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
     int64_t N = fast_shape[2];
     const T* data = input.Data<T>();
@@ -258,7 +263,7 @@ class ReduceAggregatorMean : public ReduceAggregatorSum<T, TVAL> {
   // Fast reduction
   // WhichFastReduce() already defined in ReduceAggregatorSum
 
-  static void FastReduceKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
+  static void FastReduceKR(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
     ReduceAggregatorSum<T, TVAL>::FastReduceKR(input, fast_shape, output, tp);
     // TODO: use MLAS or BLAS
@@ -269,7 +274,7 @@ class ReduceAggregatorMean : public ReduceAggregatorSum<T, TVAL> {
     }
   }
 
-  static void FastReduceRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
+  static void FastReduceRK(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
     ReduceAggregatorSum<T, TVAL>::FastReduceRK(input, fast_shape, output, tp);
     // TODO: use MLAS or BLAS
@@ -280,7 +285,7 @@ class ReduceAggregatorMean : public ReduceAggregatorSum<T, TVAL> {
     }
   }
 
-  static void FastReduceKRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
+  static void FastReduceKRK(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
     ReduceAggregatorSum<T, TVAL>::FastReduceKRK(input, fast_shape, output, tp);
     int64_t strideo = fast_shape[2];
@@ -312,7 +317,7 @@ class ReduceAggregatorMax : public ReduceAggregator<T, TVAL> {
     return FastReduceKind::kKR | FastReduceKind::kRK | FastReduceKind::kKRK;
   }
 
-  static void FastReduceKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
+  static void FastReduceKR(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
     const T* data = input.Data<T>();
     T* out = output.MutableData<T>();
@@ -327,7 +332,7 @@ class ReduceAggregatorMax : public ReduceAggregator<T, TVAL> {
         });
   }
 
-  static void FastReduceRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
+  static void FastReduceRK(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
     int64_t n_rows = fast_shape[0];
     int64_t N = fast_shape[1];
@@ -348,7 +353,7 @@ class ReduceAggregatorMax : public ReduceAggregator<T, TVAL> {
         });
   }
 
-  static void FastReduceKRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
+  static void FastReduceKRK(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
     const T* data = input.Data<T>();
     T* out = output.MutableData<T>();
@@ -471,7 +476,7 @@ class ReduceAggregatorMin : public ReduceAggregator<T, TVAL> {
     return FastReduceKind::kKR | FastReduceKind::kRK | FastReduceKind::kKRK;
   }
 
-  static void FastReduceKR(const Tensor& input, const std::vector<int64_t>& fast_shape,
+  static void FastReduceKR(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
     const T* data = input.Data<T>();
     T* out = output.MutableData<T>();
@@ -486,7 +491,7 @@ class ReduceAggregatorMin : public ReduceAggregator<T, TVAL> {
         });
   }
 
-  static void FastReduceRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
+  static void FastReduceRK(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
     int64_t n_rows = fast_shape[0];
     int64_t N = fast_shape[1];
@@ -507,7 +512,7 @@ class ReduceAggregatorMin : public ReduceAggregator<T, TVAL> {
         });
   }
 
-  static void FastReduceKRK(const Tensor& input, const std::vector<int64_t>& fast_shape,
+  static void FastReduceKRK(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
     const T* data = input.Data<T>();
     T* out = output.MutableData<T>();
@@ -593,7 +598,7 @@ class ReduceAggregatorLogSumExp : public ReduceAggregator<T, TVAL> {
 };
 
 void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
-                                 const std::vector<int64_t>& reduced_axes,
+                                 gsl::span<const int64_t> reduced_axes,
                                  ResultsNoTransposePrepareForReduce& results);
 
 template <typename AGG>
@@ -609,13 +614,13 @@ void NoTransposeReduce2Loops(Tensor* output, const TensorShape& new_input_shape,
 
 template <typename AGG>
 void CommonReduce1Loop(OpKernelContext* ctx,
-                       const std::vector<int64_t>& axes_, int64_t keepdims_,
+                       const gsl::span<const int64_t>& axes_, int64_t keepdims_,
                        bool noop_with_empty_axes = false);
 
 // Specific case for ReduceLogSumExp.
 template <typename AGG>
 void CommonReduce2Loops(OpKernelContext* ctx,
-                        const std::vector<int64_t>& axes_, int64_t keepdims_,
+                        const gsl::span<const int64_t>& axes_, int64_t keepdims_,
                         bool noop_with_empty_axes = false);
 
 template <bool allow_multi_axes>
@@ -623,7 +628,7 @@ class ReduceKernelBase {
  protected:
   ReduceKernelBase(const OpKernelInfo& info, optional<int64_t> keepdims_override = {}) {
     if (allow_multi_axes) {
-      axes_ = info.GetAttrsOrDefault<int64_t>("axes");
+      axes_ = ToShapeVector(info.GetAttrsOrDefault<int64_t>("axes"));
     } else {
       auto v = info.GetAttrOrDefault<int64_t>("axis", 0);
       axes_.push_back(v);
@@ -641,7 +646,7 @@ class ReduceKernelBase {
     select_last_index_ = (select_last_index != 0);
   }
 
-  std::vector<int64_t> axes_;
+  TensorShapeVector axes_;
   bool keepdims_;
   bool noop_with_empty_axes_;
   bool select_last_index_;

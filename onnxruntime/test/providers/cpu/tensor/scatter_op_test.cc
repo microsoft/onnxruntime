@@ -174,7 +174,7 @@ static void scatter_indices_updates_dont_match(const char* op_name, int op_versi
   test.AddInput<int64_t>("indices", {1, 3}, {1, 3, 3});
   test.AddInput<float>("updates", {1, 2}, {1.1f, 2.1f});
   test.AddOutput<float>("y", {1, 5}, {1.0f, 1.1f, 3.0f, 2.1f, 5.0f});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "Indices vs updates dimensions differs at position=1 3 vs 2");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Indices vs updates dimensions differs at position=1 3 vs 2", {kTensorrtExecutionProvider});
 }
 
 TEST(Scatter, IndicesUpdatesDontMatch) {
@@ -208,7 +208,7 @@ static void scatter_invalid_index(const char* op_name, int op_version) {
   test.AddOutput<float>("y", {4, 2, 1}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 5.0f, 0.0f});
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "indices element out of data bounds, idx=4 must be within the inclusive range [-4,3]",
-           {kCudaExecutionProvider});
+           {kCudaExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(Scatter, InvalidIndex) {

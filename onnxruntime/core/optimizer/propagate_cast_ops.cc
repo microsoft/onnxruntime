@@ -15,9 +15,14 @@ using namespace onnxruntime::common;
 * and 2. Level 2 being the most agressive, may consider moving float operations to float16 which may result in different numerical results 
 * due to loss of precision. The user may choose level 0, whereby the user chooses the opcodes which are "FP16 Safe" instead of a list
 * predetermined opcodes as in levels 1 and 2.
-* Currently two strategies are available, InsertAndReduce and FloodFill.
+* Currently three strategies are available, None, InsertAndReduce and FloodFill.
+* None:
+*   Although no new cast operations are inserted or propagated using this strategy some optimizations are performed
+*   1. Remove back-to-back casts
+*   2. Fuse subgraphs
+*   3. Remove unnecessary casts
 * InsertAndReduce :
-* This transformation converts all FP16 operations to float16. The transformation first 
+*   This transformation converts all FP16 operations to float16. The transformation first
 *   1. Inserts float16 cast operation on all the float inputs
 *   2. Changes all float outputs to float16
 *   3. Inserts float cast operations on all float outputs as expected
