@@ -162,11 +162,14 @@ class IExecutionProvider {
   */
   virtual common::Status OnRunEnd(bool /*sync_stream*/) { return Status::OK(); }
 
-  virtual void CaptureBegin() {}
+  // TODO: Comment
+  virtual bool CanCaptureGraph() { return false; }
 
-  virtual void CaptureEnd() {}
+  // TODO: Comment
+  virtual bool IsGraphCaptured() { return false; }
 
-  virtual void Replay() {}
+  // TODO: Comment
+  virtual common::Status GraphReplay() { return Status::OK(); }
 
   /**
      Called when session creation is complete
