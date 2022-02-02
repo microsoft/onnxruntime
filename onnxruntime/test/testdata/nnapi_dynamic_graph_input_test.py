@@ -9,7 +9,7 @@ from onnx import TensorProto
 # We have a separated test here using a graph with dynamic input that becomes fixed after a Resize
 def GenerateModel(model_name):
     nodes = [
-        helper.make_node("Resize", ["X", " ", " ", "Resize_1_sizes"], [
+        helper.make_node("Resize", ["X", "", "", "Resize_1_sizes"], [
                          "Resize_1_output"], "resize_1", mode="cubic"),
         helper.make_node(
             "Add", ["Resize_1_output", "Add_2_input"], ["Y"], "add"),
