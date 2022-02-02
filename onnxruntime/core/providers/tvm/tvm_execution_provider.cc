@@ -189,14 +189,9 @@ class TVMRunner {
       ishape.resize(dims);
       for (int j = 0; j < dims; ++j) {
         int64_t dim = int64_t(ort_shape[j]);
-        if (dim > 0) {
-          ishape[j] = dim;
-        } else {
-          LOGS_DEFAULT(WARNING) << "input dimension is not positive value (dim = " << dim << "). " <<
-          "It is replaced by 1. if it needs another value please use provider options to correct it";
-          ishape[j] = 1;
-          update_output_shapes_ = true;
-        }
+        ORT_ENFORCE(dim > 0, "Input dimension is not positive value (dim = " + std::to_string(dim) + "). " +
+          "Please use provider options to setup input_names and input_shapes");
+        ishape[j] = dim;
       }
       inputs_info_[indx] = ishape;
     }
