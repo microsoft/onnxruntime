@@ -1557,9 +1557,15 @@ void test_apex_reduce_sum(
 }
 
 TEST(ReductionOpTest, ReduceSum_apex_matrix_large) {
+#ifdef USE_TENSORRT 
+  // Reduction op takes much longer time for TRT 8.2, so we test smaller range of inputs.
+  int64_t threshold = 4096;
+#else
+  int64_t threshold = 32768; 
+#endif
   for (int64_t m = 1; m < 2049; m *= 8) {
     for (int64_t n = 2; n < 2049; n *= 8) {
-      if (m * n > 32768) {
+      if (m * n > threshold) {
         continue;
       }
       test_apex_reduce_sum(m, n);
@@ -1587,7 +1593,13 @@ TEST(ReductionOpTest, ReduceSum_batch_by_two) {
 }
 
 TEST(ReductionOpTest, ReduceSum_batch_by_seq_by_128) {
-  for (int i = 1; i < 16; i += 1) {
+#ifdef USE_TENSORRT 
+  // Reduction op takes much longer time for TRT 8.2, so we test smaller range of inputs.
+  int i_max = 8;
+#else
+  int i_max = 16; 
+#endif
+  for (int i = 1; i < i_max; i += 1) {
     test_apex_reduce_sum(i * 128, 128);
     test_apex_reduce_sum(i * 512, 128);
     test_apex_reduce_sum(i * 128, 768);
@@ -1616,8 +1628,16 @@ TEST(ReductionOpTest, ReduceSum_bert_selected_batch_size) {
 
 TEST(ReductionOpTest, ReduceSum_apex_more) {
   std::srand(0);
-  for (int64_t m = 1; m < 16; ++m) {
-    for (int64_t n = 1; n < 16; ++n) {
+#ifdef USE_TENSORRT 
+  // Reduction op takes much longer time for TRT 8.2, so we test smaller range of inputs.
+  int64_t m_max = 8;
+  int64_t n_max = 8;
+#else
+  int64_t m_max = 16;
+  int64_t n_max = 16; 
+#endif
+  for (int64_t m = 1; m < m_max; ++m) {
+    for (int64_t n = 1; n < n_max; ++n) {
       const auto m_ = 2 * m;
       const auto n_ = 2 * n;
       test_apex_reduce_sum(m_, n_);

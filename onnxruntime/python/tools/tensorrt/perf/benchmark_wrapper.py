@@ -47,13 +47,13 @@ def main():
 
     model_to_fail_ep = {}
 
-    benchmark_fail_csv = 'fail.csv'
-    benchmark_metrics_csv = 'metrics.csv' 
-    benchmark_success_csv = 'success.csv'  
-    benchmark_latency_csv = 'latency.csv' 
-    benchmark_status_csv = 'status.csv' 
-    benchmark_session_csv = 'session.csv'
-    specs_csv = 'specs.csv'
+    benchmark_fail_csv = fail_name + csv_ending
+    benchmark_metrics_csv = metrics_name + csv_ending
+    benchmark_success_csv = success_name + csv_ending
+    benchmark_latency_csv = latency_name + csv_ending
+    benchmark_status_csv = status_name + csv_ending
+    benchmark_session_csv = session_name + csv_ending
+    specs_csv = specs_name + csv_ending
 
     for model, model_info in models.items():
         logger.info("\n" + "="*40 + "="*len(model))
