@@ -28,7 +28,8 @@ struct BeamSearchParameters {
   int sequence_length;  // deduce from second dimension of input_ids
 
   gsl::span<const int32_t> vocab_mask;
-
+  gsl::span<const int32_t> prefix_vocab_mask;
+  
   // Parameters from outputs.
   bool output_scores;  // whether scores existed in output
 

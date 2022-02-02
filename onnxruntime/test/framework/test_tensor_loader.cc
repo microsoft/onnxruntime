@@ -78,7 +78,7 @@ static void run_external_data_test() {
   onnx::TensorProto p;
   onnx::StringStringEntryProto* location = p.mutable_external_data()->Add();
   location->set_key("location");
-  location->set_value(ToMBString(filename));
+  location->set_value(ToUTF8String(filename));
   p.mutable_dims()->Add(3);
   p.set_data_location(onnx::TensorProto_DataLocation_EXTERNAL);
   p.set_data_type(onnx::TensorProto_DataType_FLOAT);
@@ -144,7 +144,7 @@ TEST(CApiTensorTest, load_huge_tensor_with_external_data) {
   onnx::TensorProto p;
   onnx::StringStringEntryProto* location = p.mutable_external_data()->Add();
   location->set_key("location");
-  location->set_value(ToMBString(filename));
+  location->set_value(ToUTF8String(filename));
   p.mutable_dims()->Add(524288);
   p.mutable_dims()->Add(1025);
   p.set_data_location(onnx::TensorProto_DataLocation_EXTERNAL);

@@ -55,7 +55,16 @@ namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// "Global initializer calls a non-constexpr function." Therefore you can't use ORT APIs in the other global initializers.
+// TODO: we may delay-init this variable
+#pragma warning(disable : 26426)
+#endif
 static Env& platform_env = Env::Default();
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 // Custom op section starts

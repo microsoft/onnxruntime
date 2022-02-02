@@ -102,9 +102,9 @@ std::shared_ptr<KernelRegistry> MIGraphXExecutionProvider::GetKernelRegistry() c
 }
 
 MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider, true} {
+    : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider, true}, device_id_(info.device_id) {
   // Set GPU device to be used
-  HIP_CALL_THROW(hipSetDevice(info.device_id));
+  HIP_CALL_THROW(hipSetDevice(device_id_));
   t_ = migraphx::target(info.target_device.c_str());
 
   // whether fp16 is enable
@@ -128,7 +128,7 @@ void MIGraphXExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManag
   allocator_ = allocator_manager->GetAllocator(device_id_, OrtMemTypeDefault);
   if (nullptr == allocator_) {
     AllocatorCreationInfo default_memory_info(
-        [](OrtDevice::DeviceId device_id) { return CreateHIPAllocator(device_id, onnxruntime::MIGRAPHX); }, device_id_);
+        [](OrtDevice::DeviceId device_id) { return CreateROCMAllocator(device_id, onnxruntime::CUDA); }, device_id_);
     allocator_ = CreateAllocator(default_memory_info);
     allocator_manager->InsertAllocator(allocator_);
   }
@@ -141,7 +141,7 @@ void MIGraphXExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManag
   if (nullptr == hip_pinned_alloc) {
     AllocatorCreationInfo pinned_allocator_info(
         [](OrtDevice::DeviceId device_id) {
-          return CreateHIPPinnedAllocator(device_id, onnxruntime::MIGRAPHX_PINNED);
+          return CreateROCMPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
         },
         DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
     hip_pinned_alloc = CreateAllocator(pinned_allocator_info);

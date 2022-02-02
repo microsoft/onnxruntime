@@ -141,17 +141,17 @@ def main():
             csv_filenames = os.listdir()
             for csv in csv_filenames:
                 table = parse_csv(csv)
-                if session in csv: 
+                if session_name in csv: 
                     table_results[session_name] = table_results[session_name].append(get_session(table, model_group), ignore_index=True)
-                if specs in csv: 
+                if specs_name in csv: 
                     table_results[specs_name] = table_results[specs_name].append(get_specs(table, args.branch, args.commit_hash, date_time), ignore_index=True)
-                if fail in csv:
+                if fail_name in csv:
                     table_results[fail_name] = table_results[fail_name].append(get_failures(table, model_group), ignore_index=True)
-                if latency in csv:
+                if latency_name in csv:
                     table_results[memory_name] = table_results[memory_name].append(get_memory(table, model_group), ignore_index=True)
                     table_results[latency_name] = table_results[latency_name].append(get_latency(table, model_group), ignore_index=True)
                     table_results[latency_over_time_name] = table_results[latency_over_time_name].append(get_latency_over_time(args.commit_hash, args.report_url, args.branch, table_results[latency_name]), ignore_index=True)
-                if status in csv: 
+                if status_name in csv: 
                     table_results[status_name] = table_results[status_name].append(get_status(table, model_group), ignore_index=True)
             os.chdir(result_file)
         for table in tables: 

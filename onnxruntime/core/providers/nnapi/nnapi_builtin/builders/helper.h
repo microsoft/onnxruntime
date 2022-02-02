@@ -73,8 +73,8 @@ struct OpSupportCheckParams;
 
 std::string GetErrorCause(int error_code);
 
-enum class QLinearOpType : uint8_t {
-  Unknown,  // Unknown or not a linear quantized op
+enum class QuantizedOpType : uint8_t {
+  Unknown,  // Unknown or not a quantized NodeUnit
   DequantizeLinear,
   QuantizeLinear,
   QLinearConv,
@@ -85,6 +85,9 @@ enum class QLinearOpType : uint8_t {
   // Not yet supported
   // QLinearMul,
   // QLinearReduceMean,
+  QDQConv,
+  QDQResize,
+  // TODO, add other QDQ NodeUnit types
 };
 
 enum class ConvType : uint8_t {
@@ -93,15 +96,18 @@ enum class ConvType : uint8_t {
   Grouped,
 };
 
-QLinearOpType GetQLinearOpType(const onnxruntime::Node& node);
+QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit);
 
 // Return the type of the conv ops,
 // This function assumes the input is a 2d conv node
 ConvType GetConvType(const NodeUnit& node_unit, const InitializedTensorSet& initializers);
 
-// This qlinear op is an operator takes 2 inputs and produces 1 output
-// Such as QLinearConv, QLinearMatMul, QLinearAdd, ...
-bool IsQLinearBinaryOp(QLinearOpType qlinear_op_type);
+// If this is a quantized Conv (QLinearConv or QDQConv)
+bool IsQuantizedConv(QuantizedOpType quant_op_type);
+
+// This quantized op is an operator or qdq node unit takes 2 inputs and produces 1 output
+// Such as QLinearConv, QLinearMatMul, QLinearAdd, QDQConv,...
+bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type);
 
 // Check if a qlinear unary op has valid inputs, Qlinear[Sigmoid/AveragePool]
 bool HasValidUnaryOpQuantizedInputs(const NodeUnit& node_unit);
