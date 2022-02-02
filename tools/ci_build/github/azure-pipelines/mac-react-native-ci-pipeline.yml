@@ -63,7 +63,7 @@ jobs:
       export RCT_NO_LAUNCH_PACKAGER=1
       export ENTRY_FILE=index.tsx
 #      xcrun xcodebuild test -workspace $(Build.SourcesDirectory)/js/react_native/e2e/ios/OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -destination 'platform=iOS Simulator,OS=latest,name=iPhone13Test' -derivedDataPath $(Build.BinariesDirectory)/react_native/ios_e2e_test/derived_data
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+#    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
     displayName: Run React Native iOS e2e tests
 
   - task: Xcode@5
