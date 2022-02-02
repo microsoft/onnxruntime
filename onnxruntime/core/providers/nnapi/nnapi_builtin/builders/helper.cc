@@ -68,6 +68,8 @@ QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit) {
   } else if (node_unit.UnitType() == NodeUnit::Type::QDQGroup) {
     if (op_type == "Conv")
       return QuantizedOpType::QDQConv;
+    else if (op_type == "Resize")
+      return QuantizedOpType::QDQResize;
   } else {
     // throw?
   }

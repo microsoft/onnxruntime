@@ -2258,10 +2258,20 @@ class ResizeOpBuilder : public BaseOpBuilder {
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
 };
+
+/* static */ bool ResizeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
+  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQResize;
+}
 
 void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& inputs = node_unit.Inputs();
+  if (IsQuantizedOp(node_unit)) {
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[0].quant_param);               // x_scale, x_zp
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
+  }
+
   // We don't really use ROI here, so add them to skipped list
   model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());  // ROI
 
@@ -2294,6 +2304,15 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     if (!input_is_nhwc) {
       ORT_RETURN_IF_ERROR(GetNHWCInput(model_builder, node_unit, 0, input));
     }
+  }
+
+  // Check if the quantization scale and ZP is correct
+  if (IsQuantizedOp(node_unit)) {
+    float x_scale = 0.0f;
+    int32_t x_zero_point = 0;
+    ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
+        initializers, node_unit.Inputs()[0], node_unit.ModelPath(), x_scale, x_zero_point));
+    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
   }
 
   bool is_linear_resize = helper.Get("mode", "nearest") == "linear";
