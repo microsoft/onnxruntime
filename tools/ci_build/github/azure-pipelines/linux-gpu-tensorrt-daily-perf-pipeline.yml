@@ -172,9 +172,9 @@ jobs:
           scriptType: bash
           inlineScript: |
             short_hash=$(git rev-parse --short HEAD^) && 
-            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -u "$(reportUrl)?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch)
-    
-    
+            commit_date=$(git log -1 --date=short --pretty=format:%cd) &&
+            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch)
+
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
