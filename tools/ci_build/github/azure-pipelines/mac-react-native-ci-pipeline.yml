@@ -62,25 +62,9 @@ jobs:
       export FORCE_BUNDLING=1
       export RCT_NO_LAUNCH_PACKAGER=1
       export ENTRY_FILE=index.tsx
-      xcrun xcodebuild test -workspace $(Build.SourcesDirectory)/js/react_native/e2e/ios/OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -destination 'platform=iOS Simulator,OS=latest,name=iPhone13Test' -derivedDataPath $(Build.BinariesDirectory)/react_native/ios_e2e_test/derived_data | xcpretty -r junit --no-color --output build/reports/test-results.xml
+      xcrun xcodebuild test -workspace $(Build.SourcesDirectory)/js/react_native/e2e/ios/OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -destination 'platform=iOS Simulator,OS=latest,name=iPhone13Test' -derivedDataPath $(Build.BinariesDirectory)/react_native/ios_e2e_test/derived_data | xcpretty -r junit --no-color --output $(Build.SourcesDirectory)/js/react_native/e2e/ios/build/reports/test-results.xml
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
     displayName: Run React Native iOS e2e tests
-
-  #- task: Xcode@5
-  #  inputs:
-  #    actions: 'test'
-  #    configuration: 'Debug'
-  #    sdk: 'iphonesimulator'
-  #    xcWorkspacePath: '$(Build.SourcesDirectory)/js/react_native/e2e/ios/OnnxruntimeModuleExample.xcworkspace'
-  #    scheme: 'OnnxruntimeModuleExample'
-  #    packageApp: false
-  #    destinationPlatformOption: 'iOS'
-  #    destinationSimulators: 'iPhone13Test,OS=latest'
-  #    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-  #    xcprettyArgs: '--output build/reports/test-results.xml'
-  #    publishJUnitResults: true
-  #   testRunTitle: 'React Native iOS e2e Test Results'
-  #  displayName: Run React Native iOS e2e Tests
 
   - script: |
       xcrun simctl delete iPhone13Test
