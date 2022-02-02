@@ -1,0 +1,527 @@
+gj04	1		The sailors rode the breeze clear of the rocks.
+gj04	1		The weights made the rope stretch over the pulley.
+gj04	1		The mechanical doll wriggled itself loose.
+cj99	1		If you had eaten more, you would want less.
+cj99	0	*	As you eat the most, you want the least.
+cj99	0	*	The more you would want, the less you would eat.
+cj99	0	*	I demand that the more John eat, the more he pays.
+cj99	1		Mary listens to the Grateful Dead, she gets depressed.
+cj99	1		The angrier Mary got, the more she looked at pictures.
+cj99	1		The higher the stakes, the lower his expectations are.
+cj99	1		The more Fred is obnoxious, the less attention you should pay to him.
+cj99	1		John was lots more obnoxious than Fred.
+cj99	1		The more people you give beer to, the more people get sick.
+cj99	0	*	The more does Bill smoke, the more Susan hates him.
+cj99	1		The more pictures of him that appear in the news, the more embarrassed John becomes.
+cj99	1		Every senator seems to become more corrupt, as he talks to more lobbyists.
+bc01	0	*	Who does John visit Sally because he likes?
+bc01	1		Marianne did not leave.
+bc01	1		He could not have been working.
+bc01	1		He can not have been working.
+bc01	1		You will believe Bob.
+bc01	1		John has not kissed Mary.
+bc01	1		I said that never in my life had I seen a place like Bangor.
+bc01	0	*	Mickey looked up it.
+bc01	1		There tended to be a lot of discussion.
+bc01	1		John tried to be a good boy.
+bc01	1		John is eager.
+bc01	1		We want John to win.
+bc01	0	*	The box contained the ball from the tree.
+bc01	0	*	The tube was escaped by gas.
+bc01	1		Water bubbled up out of the kettle.
+bc01	1		The tub leaked water.
+bc01	0	*	What the water did to the bottle was fill it.
+bc01	0	*	What the water did to the whole bottle was fill it.
+bc01	1		The tank leaked the fluid free.
+bc01	1		John lay the ball in the box.
+bc01	1		John owns the book.
+bc01	1		We persuaded Mary to leave and Sue to stay.
+bc01	1		Most people probably consider, even though the courts didn't actually find, Klaus guilty of murder.
+bc01	0	*	Mary beautifully plays the violin.
+bc01	1		Clearly, John probably will immediately learn French perfectly.
+bc01	0	*	Sue gave to Bill a book.
+bc01	1		The men will all leave.
+bc01	1		John went home.
+bc01	0	*	They represented seriously to the dean Mary as a genuine linguist.
+bc01	0	*	Us love they.
+bc01	1		It is nice to go abroad.
+bc01	0	*	Mary intended John to go abroad.
+bc01	1		I remembered having kissed Mary.
+bc01	1		I can't believe Fred won't, either.
+bc01	1		John wants to read Fred's story, and I also want to.
+bc01	0	*	We wanted to invite someone, but we couldn't decide who to.
+bc01	1		Mary will read Fred's story, and Joe will read Holly's.
+bc01	1		Mary claimed that eating cabbage, Holly shouldn't.
+bc01	0	*	Mary came to be introduced by the bartender and I also came to be.
+bc01	1		If I can, I will work on it.
+bc01	1		Joe's neuroses bother his patrons, and Sally does too.
+bc01	0	*	I know which book José didn't read for class, and which book Lilly did it for him.
+bc01	0	*	This is the book which Bob reviewed, and this is the one which Fred won't do it.
+bc01	1		I know which book Mag read, and which book Bob said that you hadn't.
+bc01	0	?*	I know which book Mag read, and which book Bob read my report that you hadn't.
+bc01	1		I'm sure I would like him to eat fruit more than I would cookies.
+bc01	1		Rusty talked about himself only after Mary did talk about him.
+bc01	1		Fred talked about everything before Rusty did talk about something.
+bc01	1		John often meets Mary.
+bc01	0	*	The problem perceives easily.
+bc01	1		A hundred men surrounded the fort.
+bc01	1		We elected me.
+bc01	0	*	Which report that John was incompetent did he submit?
+bc01	1		Mary has always preferred lemons to limes.
+r-67	1		He let the cats which were whining out.
+r-67	1		What did Bill buy?
+r-67	1		Mary saw the boy walking toward the railroad station.
+r-67	0	*	A proof that the claim had been made was given that John had lied.
+r-67	1		He attributed to a short circuit which was caused by an overloaded transducer the fire which destroyed most of my factory.
+r-67	0	?*	The mayor regarded as being absurd the proposal to build a sidewalk from Dartmouth to Smith.
+r-67	0	?*	I want that Bill left to remain a secret.
+r-67	0	*	I know a man who Tom drives as drives.
+r-67	0	*	Drowning cats, which is against the law, are hard to rescue.
+r-67	1		Muriel said nothing else than that she had been insulted.
+r-67	0	*	Himself is understood by Rutherford.
+r-67	1		I feel that Arch will show up.
+r-67	0	*	The proof this set is recursive is difficult.
+r-67	0	*	The madrigals which Henry plays the lute and sings sound lousy.
+r-67	1		Tom picked these grapes, and I washed some turnips, and Suzie will prepare these grapes.
+r-67	1		Where did you go and who ate what?
+r-67	0	*	Which boy's did we elect guardian's employer president?
+r-67	1		How sane is Peter?
+r-67	1		I live at the place where Route 150 crosses the River and my dad lives at the place where Route 150 crosses the Hudson River too.
+r-67	0	*	I live at the place where Route 150 crosses the Hudson River and my dad lives at it too.
+r-67	1		Who is she trying to make up to now?
+r-67	0	*	Wind was gotten of a plot to negotiate an honorable end to the war in Vietnam.
+r-67	1		Mike talked about politics yesterday to my friends.
+r-67	1		It was expected by the reporters that the principal would fire some teacher.
+r-67	0	*	Which hat did Mike quip that she never wore?
+r-67	0	*	Which girl did Mike quip never wore this hat?
+r-67	1		We donated wire for the convicts to build cages with.
+r-67	0	*	I won't have some money.
+r-67	1		Do you believe the claim that somebody was looking for something?
+r-67	1		I won't ask you to believe that he tried to force me to give her any money.
+r-67	1		That Sam sometimes didn't sleep must have pleased somebody.
+r-67	1		I talked to Winston about himself.
+r-67	1		That the fuzz wanted him worried John, but that the fuzz wanted her didn't worry Mary.
+r-67	1		I'll work on it if Sam will be working on it.
+r-67	1		I'll work on it if I can.
+r-67	0	*	Here's a knife with which for you to cut up the onions.
+r-67	1		Fluffy is sick, which not everybody knows.
+r-67	1		Maxwell is quite a doctor.
+r-67	0	*	The younger woman might have been tall and, and the older one definitely was, blond.
+r-67	1		Sally is tall, and may be blond, and Sheila is short, and definitely is, blond.
+r-67	1		I have to try to finish grading some papers.
+r-67	0	*	The socks are ready for for you to put on to be planned.
+r-67	1		It is easy to play sonatas on this violin.
+r-67	1		This violin is difficult to play sonatas on.
+r-67	0	*	My mother is easy to please my father and.
+r-67	1		Poor Bill, it had started to rain and he had no umbrella.
+r-67	0	?*	That the cops spoke to the janitor about it yesterday is terrible, that robbery.
+r-67	0	*	Every student, and he wears socks, is a swinger.
+r-67	1		That girl was given my binoculars by him.
+r-67	1		Bill didn't allege that Roger had eaten anything.
+r-67	1		Nobody who hates to eat anything should work in a delicatessen.
+r-67	1		Everybody around here who ever buys anything on credit talks in his sleep.
+r-67	0	*	I can't remember the name of somebody who had misgivings.
+r-67	0	*	No writer, and no playwright, meets in Vienna.
+r-67	0	*	No writer, nor any playwright, meets in Vienna.
+r-67	1		That you will marry any student is not certain.
+rhl07	1		Felicia kicked the ball off the bench.
+rhl07	1		I sent the package halfway around the world.
+rhl07	0	*	Sam gave the ball out of the basket.
+rhl07	0	*	Sam offered the ball out of the basket.
+rhl07	1		Park Square has a festive air.
+rhl07	1		The worker will have a job.
+rhl07	0	*	No one can forgive that comment to you.
+rhl07	1		We launched the rocket to the moon, but it blew up before it got there.
+rhl07	1		Sarah promised Catherine her old car, but then gave it to her son instead.
+rhl07	0	*	I lent the book partway to Tony.
+l-93	1		The farmer loaded the cart with apples.
+l-93	0	*	The farmer dumped the cart with apples.
+l-93	1		Martha carved the baby a toy out of wood.
+l-93	1		The bread cuts easily.
+l-93	0	*	Janet broke Bill on the finger.
+l-93	1		Janet broke the cup.
+l-93	1		The visitor rang the bell.
+l-93	1		We pulled free.
+l-93	1		That movie always shocks people.
+l-93	1		That movie always shocks.
+l-93	0	*	Sharon came the room.
+l-93	1		Bill sent a package to Tom.
+l-93	1		That acorn will grow into an oak tree.
+l-93	1		He turned into a frog.
+l-93	1		I mixed the sugar into the butter.
+l-93	0	*	Brian threw the fence with the stick.
+l-93	1		Mira condemned Terry for the accident.
+l-93	1		We investigated the area for bombs.
+l-93	1		I sensed his eagerness.
+l-93	0	*	They praised the dedication in the volunteers.
+l-93	1		The earth was believed to be round.
+l-93	1		Sarah smiled a charming smile.
+l-93	1		Sandra beamed a cheerful welcome.
+l-93	1		You've really lived it up.
+l-93	0	*	Paperback books lift onto the table easily.
+l-93	0	*	The books lifted onto the table.
+l-93	1		Jessica loaded boxes under the wagon.
+l-93	1		Jessica loaded boxes on the wagon.
+l-93	0	*	Jessica crammed boxes at the truck.
+l-93	0	*	Lora buttered at the toast.
+l-93	1		Carla shoveled the walk.
+l-93	1		Nora sent the book.
+l-93	1		Nora sent Peter the book.
+l-93	1		Carla slid the book.
+l-93	0	*	Carla slid at the book.
+l-93	1		Amanda carried the package to Pamela.
+l-93	0	*	Packages drive easily to New York.
+l-93	0	*	The chair pushed.
+l-93	1		We offered a job to her.
+l-93	0	*	A job offered.
+l-93	1		Brown presented a plaque to Jones.
+l-93	1		Carmen bought Mary a dress.
+l-93	1		Carmen obtained the spare part at the hardware store.
+l-93	0	*	Michelle kept the desk with the papers.
+l-93	1		Frances hid the presents in the drawer.
+l-93	1		The needle poked the cloth.
+l-93	1		Carrie touched that cat.
+l-93	0	*	Herman whipped the sugar and the cream.
+l-93	1		Linda taped the picture to the wall.
+l-93	1		Linda taped the picture onto the wall.
+l-93	1		The child and her mother clung together.
+l-93	1		This flyer and that flyer differ.
+l-93	0	*	This flyer and that flyer differ apart.
+l-93	0	*	The jeweller scribbled the contract with his name.
+l-93	1		The gardener grew that acorn into an oak tree.
+l-93	0	*	I shaped a loaf.
+l-93	0	*	The children amused.
+l-93	1		Susan whispered the news.
+l-93	1		Susan whispered at Rachel.
+l-93	1		Ellen said that melons were selling well.
+l-93	0	*	Ellen said about the present conditions.
+l-93	1		Ellen warned Helen against skating on thin ice.
+l-93	1		Cynthia nibbled on the carrot .
+l-93	0	*	Cynthia chewed.
+l-93	1		Paul laughed at Mary.
+l-93	0	*	Linda winked her lip.
+l-93	0	*	My heart is pounding me.
+l-93	1		Sharon fainted from hunger.
+l-93	1		The witch poisoned the children.
+l-93	1		A grandfather clock ticked in the hallway.
+l-93	0	*	I squeaked the door.
+l-93	1		Over the fire there bubbled a fragrant stew.
+l-93	1		Soaring temperatures are predicted for this weekend.
+l-93	0	*	The fort fluttered with many flags.
+l-93	1		The voices echoed in the hall.
+l-93	1		The stream twists through the valley.
+l-93	0	*	There presented itself a wonderful opportunity yesterday.
+l-93	1		A wonderful opportunity presented itself to him yesterday.
+l-93	1		Out of the box jumped a little white rabbit.
+l-93	1		Penny skated around the rink.
+l-93	1		Jackie accompanied Rose.
+ks08	0	*	many information was provided.
+ks08	0	*	John offers many advice.
+ks08	1		The cake that Jones got was more delicious than the one that Smith got.
+ks08	1		We recommend to eat less cake and pastry.
+ks08	1		I saw that gas can explode.
+ks08	1		He washed her.
+ks08	0	*	Wash you!
+ks08	0	*	They have no in.
+ks08	0	*	Some my jobs are in jeopardy.
+ks08	0	*	It was the policeman met that several young students in the park last night.
+ks08	1		did the policeman meet in the park?
+ks08	1		John put old books in the box.
+ks08	0	*	The monkeys proud of their leader.
+ks08	0	*	John sounded very.
+ks08	1		I don't know if I should agree.
+ks08	1		John bought a book on the table.
+ks08	1		John called the president a fool.
+ks08	1		I forgot how good beer tastes.
+ks08	1		This teacher is a genius.
+ks08	0	*	A good friend is remained to me by him.
+ks08	1		John ate his noodle quietly.
+ks08	1		A smith hammered the metal.
+ks08	1		Sandy removed her ballet shoes.
+ks08	1		This week will be a difficult one for us.
+ks08	1		Benny worked in a shoe factory when he was a student.
+ks08	1		Everyone hoped that she would sing.
+ks08	1		This proved a decisive factor.
+ks08	1		The crocodile devoured the doughnut.
+ks08	1		John is afraid of Bill.
+ks08	0	*	John put under the bathtub.
+ks08	1		John placed Kim behind the garage.
+ks08	0	*	Kim depends for Sandy.
+ks08	1		John put the book in the box.
+ks08	1		John taught English Syntax to new students.
+ks08	1		John regards Bill as a good friend.
+ks08	0	*	Kim put in the box.
+ks08	1		The chickens seem fond of the farmer.
+ks08	1		The rules require that the executives be polite.
+ks08	0	*	That Fred was unpopular nominated Bill.
+ks08	1		They were taking a hard look at possible FTA.
+ks08	0	*	John paid me against the book.
+ks08	1		The committee will study the feasibility of setting up a national computer network.
+ks08	1		We made them be rude.
+ks08	1		After reading the pamphlet, Judy threw it into the garbage can.
+ks08	0	*	Students studying English reads Conrad's Heart of Darkness while at university.
+ks08	1		I read some of the book.
+ks08	1		Most of the fruit is rotten.
+ks08	0	*	Neither of students failed.
+ks08	0	*	I drank some of water.
+ks08	1		It is a golden hair.
+ks08	1		The boy in the doorway waved to his father.
+ks08	1		That dog is so ferocious, it even tried to bite itself.
+ks08	0	*	He washed yourself.
+ks08	0	*	John is easy to please Kim.
+ks08	0	*	There seemed to be intelligent.
+ks08	1		John tried to please Stephen.
+ks08	0	*	We believed John to be a fountain in the park.
+ks08	0	*	It tries to leave the country.
+ks08	1		John tries to leave the country.
+ks08	1		Under the bed seems to be a fun place to hide.
+ks08	0	*	There is believed to be sheep in the park.
+ks08	0	*	I hope to would study in France.
+ks08	1		John can kick the ball.
+ks08	0	*	John will rain tomorrow.
+ks08	0	*	We expect there to will rain.
+ks08	1		John was found in the office.
+ks08	0	*	Did the child be in the school?
+ks08	1		It did not rain.
+ks08	1		John wants not to leave the town.
+ks08	1		Mary likes to tour art galleries, but Bill hates to.
+ks08	1		They needn't take this exam.
+ks08	1		Ann may spend her vacation in Italy.
+ks08	1		They love to play golf, but I do not.
+ks08	1		George has spent a lot of money, hasn't he?
+ks08	1		As a statesman, scarcely could he do anything worth mentioning.
+ks08	1		We never found any of the unicorns.
+ks08	1		One of Korea's most famous poets wrote these lines.
+ks08	1		Somebody apparently struck the unidentified victim during the early morning hours.
+ks08	1		The car was driven.
+ks08	1		Ricky can be relied on.
+ks08	1		The bed was slept in.
+ks08	0	*	A pound was weighed by the book.
+ks08	1		Who do you think Tom saw?
+ks08	1		he had spent five thousand dollars.
+ks08	0	*	Fed knows which politician her to vote for.
+ks08	1		How did you guess that he fixed the computer?
+ks08	1		The committee knows whose efforts to achieve peace the world should honor.
+ks08	0	*	Which house does your friend live?
+ks08	1		the baker from whom I bought these bagels left.
+ks08	1		I found the place where we can relax.
+ks08	0	*	Jack is the person with whom Jenny fell in love with.
+ks08	1		There is a bench to sit on.
+ks08	1		I met the man who grows peaches.
+ks08	1		Which topic did you choose without getting his approval?
+ks08	0	*	Which topic did you get bored because Mary talked about?
+ks08	1		That is the reason why he resigned.
+ks08	1		It bothers me that John coughs.
+ks08	1		To please John is easy.
+ks08	1		Kim is eager to please Tom.
+ks08	1		That we invaded Iraq really bites.
+ks08	1		It annoys me that Fido barks.
+ks08	0	*	Who achieved the best result was Angela.
+ks08	1		It was the peasant girl who got it.
+ks08	1		That kind of person is hard to find anyone to look after.
+kl93	1		A sick owl doesn't hunt mice.
+kl93	1		Each candidate who has interest in semantics will be admitted to the department.
+kl93	1		Each author whose contribution is written in any language other than English will provide a summary in English.
+kl93	1		I'm sure we even got these tickets!
+kl93	1		I'm even sure we got these tickets!
+kl93	1		It's not because I have any sympathy for urban guerillas that I helped him.
+kl93	1		It isn't because Sue said anything bad about me that I'm angry.
+b_82	0	*	That he was hungry, John whined.
+b_82	0	*	I gave Mary after the party a book.
+b_82	0	*	Because she's so pleasant, as for Mary I really like her.
+b_82	1		Though he may hate those that criticize Carter, it doesn't matter.
+b_82	1		With no job would John be happy.
+b_73	1		I have much of the manuscript left to type.
+b_73	1		He's a more reliable man.
+b_73	0	*	Any trouble is what I don't want.
+b_73	1		They may grow as high as bamboo.
+b_73	1		Some of them made as many errors as 20.
+c_13	0	*	Sally kissed himself.
+c_13	1		Drew believes I think Rosie loves magazine ads.
+c_13	1		Dave, Dan, Erin, Jaime, and Alina left.
+c_13	1		Hopefully, we'll make it through the winter without snow.
+c_13	0	*	Blue leather shows herself that Betsy is pretty.
+c_13	1		Gwen hit the baseball.
+c_13	0	*	I hit that you knew the answer.
+c_13	1		I've lost my wallet or I've lost my mind.
+c_13	1		It was a brand new car that he bought.
+c_13	1		He likes cookies and he hates crumb cake.
+c_13	1		They chased the man with the car.
+c_13	1		I didn't have a red cent.
+c_13	0	*	the book of poems and from Blackwell takes a very long time to read.
+c_13	1		the one with a red cover takes a very long time to read.
+c_13	1		John has a fear of dogs.
+c_13	0	*	The building's the roof is leaking.
+c_13	0	*	the panther's the coat is dark black.
+c_13	1		Colin asked if they could get a mortgage.
+c_13	1		The man I saw get into the cab robbed the bank.
+c_13	1		I know you eat asparagus.
+c_13	1		John's drum will always bother me.
+c_13	1		An evil thought struck Dave.
+c_13	1		In the classroom John put the book on the table.
+c_13	1		Phillip gave the medal to the soldier.
+c_13	0	*	Heidi thinks that Andy to eat salmon flavored candy bars.
+c_13	1		Heidi thinks that Andy should eat salmon flavored candy bars.
+c_13	1		He danced.
+c_13	0	*	Did Calvin his homework?
+c_13	1		Sylvia was slapping Jeff upside the head in martial arts class.
+c_13	0	*	If I am a rich man, I'd buy a diamond ring.
+c_13	1		If he were a rich man, he'd buy a diamond ring.
+c_13	1		John is likely to leave.
+c_13	1		The manager laughed.
+c_13	0	*	Was sunk.
+c_13	1		Who did you think kissed the gorilla?
+c_13	1		Have you seen my model airplane collection?
+c_13	1		It seems that Lucy was mugged.
+c_13	1		I ate a salad that was filled with lima beans.
+c_13	1		There were four men arriving at the station when I pulled up.
+c_13	1		Jean is reluctant to dance.
+c_13	1		I want her to dance.
+c_13	1		Jean persuaded Robert.
+c_13	1		Jean wants Bill to do the Macarena.
+c_13	1		The children admire their mother.
+c_13	1		Who has Peter talked with?
+c_13	1		Heidi likes her violin.
+c_13	0	*	John thinks that Mary loves himself.
+c_13	1		Which pictures of himself does John like?
+d_98	1		Any owl hunts mice.
+d_98	0	*	Any man didn't eat dinner.
+d_98	1		A pilot could be flying this plane.
+d_98	1		Everybody who attended last week's huge rally, whoever they were, signed the petition.
+d_98	1		Anybody who attended last week's huge rally signed the petition.
+d_98	1		Any tiger has orange fur, marked with black stripes.
+d_98	1		Any albino tiger has orange fur, marked with black stripes.
+d_98	1		You must pick any flower you see.
+d_98	1		Any pilot on duty today could be flying this plane.
+d_98	0	*	You may pick every flower, but leave a few for Mary.
+g_81	1		The Dodgers beat the Red Sox and were beaten by the Giants.
+g_81	1		In which car was the man seen?
+g_81	1		The man who Mary loves and Sally hates computed my tax.
+g_81	0	*	The kennel which Mary made and Fido sleeps has been stolen.
+g_81	1		Tom said he would and Bill actually did eat a raw eggplant.
+m_02	1		The wealthy young man bought that piano for his secret fiancée.
+m_02	1		The dog stole the turkey.
+m_02	1		a tall building.
+m_02	1		This building is tall.
+m_02	1		I like the book which you gave me.
+m_02	1		Captain Wentworth wrote a letter to Anne Elliott.
+m_02	1		She asked was Alison coming to the party.
+m_02	1		They realised that never had Sir Thomas been so offended.
+m_02	1		Fanny regretted having to talk to Aunt Norris.
+m_02	1		Knowing the country well, he took a short cut.
+m_02	1		He left the train with somebody else's wallet in his pocket.
+m_02	1		Magnus went to Ireland.
+m_02	1		Who did John send the book?
+m_02	1		The idea dismayed the Prime Minister that the Dome was dull.
+m_02	1		Came right in he did without so much as a knock.
+m_02	1		Harriet admired Mr Knightley.
+m_02	1		The book is boring.
+m_02	1		Ethel wishes to ask you some awkward questions.
+m_02	1		Emma made Harriet some food.
+m_02	1		The window was broken with a hammer.
+m_02	1		The fugitive lay motionless in order to avoid discovery.
+m_02	1		The guard marched the prisoners round the yard.
+m_02	1		Frank Churchill crossed the street.
+m_02	1		Emma and Harriet were attacked yesterday.
+m_02	1		Fiona might be here by 5 o'clock.
+sgww85	1		I am both expecting to get the job and of the opinion that it is a desirable one.
+sgww85	1		Pat was awarded the Golden Fleece Award and very upset about it.
+sgww85	0	*	Kim alienated cats and beating his dog.
+sgww85	1		They knew that pictures of each other would be on sale.
+sgww85	0	*	Which article did Terry file papers without reading?
+sgww85	1		I want to try and buy some whiskey.
+sgww85	0	*	She goes and buying some whiskey.
+sgww85	0	*	Kim and Terry is happy.
+sgww85	1		Kim gave a dollar to Bobbie and a dime to Jean.
+sks13	1		This girl in the red coat will put a picture of Bill in the mailbox and on your desk before tomorrow.
+sks13	0	*	Put a picture of Bill on your desk before tomorrow, this girl in the red coat will put a picture of Bill on your desk before tomorrow.
+sks13	0	*	Picture of Bill, this girl in the red coat will put a picture of Bill on your desk before tomorrow.
+sks13	1		Ann bought a first edition of Richard III for $1000.
+sks13	1		John became deadly afraid of flying.
+sks13	1		What John promised is to be gentle.
+sks13	1		Henri wants to buy which books about cooking?
+sks13	1		I will fix the computer for Carol.
+sks13	1		Smith loaned a valuable collection of manuscripts to the library.
+sks13	1		The paper is cut by Mary.
+sks13	1		It was from six to nine or it took place from six to nine.
+sks13	1		Suddenly, there arrived two inspectors from the INS.
+sks13	1		The soup cooks, thickens.
+sks13	1		I gave money to the charity.
+sks13	1		John asked.
+sks13	1		I saw even the student.
+sks13	0	*	John whispered Mary left.
+sks13	0	*	Mary wonders that Bill will come.
+sks13	0	*	Sophie will theater.
+sks13	1		John finished the cake and drank the lemonade.
+sks13	0	*	Herself likes Mary's mother.
+sks13	1		Each of the boys fought with some of the other boys.
+sks13	0	*	John's mother likes himself.
+sks13	0	*	Mary revealed himself to John.
+sks13	1		Mary believes that Bill saw himself.
+sks13	0	*	John heard that they criticized themselves.
+sks13	1		Mary thinks that she is smart.
+sks13	1		Henry found that Bill is sad.
+sks13	1		John considers himself proud of Mary.
+sks13	0	*	You should sit before there.
+sks13	1		There is a nurse available.
+sks13	0	*	Everyone hopes everyone to sleep.
+sks13	1		Everyone hopes that he will sleep.
+sks13	0	*	Only Churchill remembered Churchill giving the Blood, Sweat and Tears speech.
+sks13	1		John promise Mary to shave himself.
+sks13	1		John convinced Bill that Mary should sleep.
+sks13	0	*	I saw Bill while you did so Mary.
+sks13	0	*	What Mary did Bill was give a book.
+ad03	1		The bears sniffed
+ad03	1		to steal talismans from witches is dangerous
+ad03	0	*	Anson demonized
+ad03	1		You kicked yourselves
+ad03	1		The book that I said that I'd never read.
+ad03	0	*	Anson demonized up the Khyber
+ad03	1		It is not true that I might be going to the party.
+ad03	0	*	Kick you!
+ad03	1		Jason persuaded the doctor to treat Medea
+ad03	1		Who did you get an accurate description of?
+ad03	1		The Peter we all like was at the party
+ad03	1		The government's imposition of a fine.
+ad03	1		Did Athena help us?
+ad03	1		You wanted to meet the man I saw.
+ad03	1		Anson demonized David every day
+ad03	1		There is a programme about Euripides on a Radio 4 tonight?
+ad03	1		Medea denied poisoning the phoenix.
+ad03	1		The elixir was hidden in a hole in the ground
+ad03	1		Extremely frantically, Anson danced at Trade
+ad03	0	*	What did you ask who Medea gave?
+ad03	1		It's Anson that I like
+ad03	0	*	Medea tried the nurse to poison her children.
+ad03	1		I felt that I know you.
+ad03	1		Will he can do it?
+ad03	0	*	I ate that she was happy
+ad03	1		Anson believed himself to be handsome.
+ad03	1		We arrived about six o'clock
+ad03	0	*	Gilgamesh is having fought the dragon.
+ad03	0	*	Anson thought that himself was happy.
+ad03	1		Fortunately Hermione passed biology
+ad03	1		I might be not going to the party but washing my hair
+ad03	0	*	I thought he liked myself
+ad03	1		The butler sent the poison to Dinah.
+ad03	1		Jason happens to appear to seem to be sick.
+ad03	0	*	What did you ask who saw?
+ad03	1		We linguists love to argue
+ad03	0	*	He can will go
+ad03	0	*	How fierce the battle?
+ad03	0	*	Which king did you ask which city invaded?
+ad03	1		It is some disgruntled old pigs in those ditches that humans love to eat.
+ad03	1		That banana is eating the monkey.
+ad03	1		Burn them!
+ad03	1		It stinks that Aphrodite is omnipotent.
+ad03	1		Agamemnon seems to be a maniac
+ad03	1		Will Anson come to the party?
+ad03	1		I wondered who Medea had poisoned.
+ad03	0	*	I inquired when could we leave.
+ad03	1		They kicked them
+ad03	0	*	The monkey is ate the banana
+ad03	0	*	I would like to could swim
+ad03	1		I kicked myself
+ad03	0	*	The bookcase ran
+ad03	1		I shaved myself.
+ad03	0	*	Anson became a muscle bound.

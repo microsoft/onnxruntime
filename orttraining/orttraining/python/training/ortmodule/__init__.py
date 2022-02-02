@@ -114,4 +114,5 @@ def _are_deterministic_algorithms_enabled():
 
 # ORTModule must be loaded only after all validation passes
 from .ortmodule import ORTModule  # noqa: E402
+from .ovtorch import OVTorch  # noqa: E402
 from .debug_options import DebugOptions, LogLevel  # noqa: E402

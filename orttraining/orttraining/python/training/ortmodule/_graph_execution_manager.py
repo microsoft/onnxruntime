@@ -30,6 +30,7 @@ import io
 import inspect
 import os
 import onnx
+from torch.onnx import OperatorExportTypes
 import onnxruntime
 import torch
 import warnings
@@ -256,29 +257,33 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         providers = None
         provider_options = None
-        if self._device.type == 'cuda':
-            # Configure the InferenceSessions to use the specific GPU on which the model is placed.
-            providers = (["ROCMExecutionProvider"] if self.is_rocm_pytorch else [
-                         "CUDAExecutionProvider"])
-            providers.append("CPUExecutionProvider")
-            provider_option_map = {"device_id": str(self._device.index)}
-            if not self.is_rocm_pytorch:
+        if not os.environ["OPENVINO_PT_ENABLE"]:
+           if self._device.type == 'cuda':
+             # Configure the InferenceSessions to use the specific GPU on which the model is placed.
+             providers = (["ROCMExecutionProvider"] if self.is_rocm_pytorch else [
+                           "CUDAExecutionProvider"])
+             providers.append("CPUExecutionProvider")
+             provider_option_map = {"device_id": str(self._device.index)}
+             if not self.is_rocm_pytorch:
                 # Set Conv algo search mode to HEURISTIC, which is same as PyTorch's default setting.
                 provider_option_map["cudnn_conv_algo_search"] = "HEURISTIC"
                 provider_option_map["cudnn_conv_use_max_workspace"] = "1"
-            if self._use_external_gpu_allocator:
+             if self._use_external_gpu_allocator:
                 provider_option_map["gpu_external_alloc"] = str(self._torch_alloc)
                 provider_option_map["gpu_external_free"] = str(self._torch_free)
                 provider_option_map["gpu_external_empty_cache"] = str(self._torch_empty_cache)
-            provider_options = [provider_option_map, {}]
-        elif self._device.type == 'cpu':
-            providers = ["CPUExecutionProvider"]
+                provider_options = [provider_option_map, {}]
+           elif self._device.type == 'cpu':
+                providers = ["CPUExecutionProvider"]
+                provider_options = [{}]
+           elif self._device.type == 'ort':
+                provider_info = C.get_ort_device_provider_info(self._device.index)
+                assert len(provider_info.keys()) == 1
+                providers = list(provider_info.keys())
+                provider_options = [provider_info[providers[0]]]
+        else:
+            providers = ["OpenVINOExecutionProvider"]
             provider_options = [{}]
-        elif self._device.type == 'ort':
-            provider_info = C.get_ort_device_provider_info(self._device.index)
-            assert len(provider_info.keys()) == 1
-            providers = list(provider_info.keys())
-            provider_options = [provider_info[providers[0]]]
 
         session_options = onnxruntime.SessionOptions()
         session_options.enable_mem_pattern = False
@@ -366,37 +371,65 @@ class GraphExecutionManager(GraphExecutionInterface):
         # correct training flag to reflect the expected behavior.
         # For example, the Dropout node in a model is dropped under eval mode.
         assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
+        if not os.environ["OPENVINO_PT_ENABLE"]:
+           try:
+               with torch.set_grad_enabled(self._enable_custom_autograd_function), \
+                      _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level):
+               
+                   required_export_kwargs = {'input_names': self._input_info.names,
+                                              'output_names': output_names,
+                                              'opset_version': ortmodule.ONNX_OPSET_VERSION,
+                                              'do_constant_folding': False,
+                                              'training': self._export_mode,
+                                              'dynamic_axes': self._input_info.dynamic_axes,
+                                              'verbose': self._debug_options.logging.log_level < LogLevel.WARNING,
+                                              'export_params': False,
+                                              'keep_initializers_as_inputs': True}
+                   invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys()
+                   assert len(invalid_args) == 0,\
+                       f"The following PyTorch exporter arguments cannot be specified: '{invalid_args}'."
+                   torch.onnx.export(self._flattened_module,
+                                     sample_inputs_as_tuple,
+                                     f,
+                                     **required_export_kwargs,
+                                     **self._export_extra_kwargs)
+           except Exception as e:
+               raise wrap_exception(ORTModuleONNXModelException,
+                                    RuntimeError(f'There was an error while exporting the PyTorch model to ONNX: '
+                                                 f'\n\n{_utils.get_exception_as_string(e)}'))
+           exported_model = onnx.load_model_from_string(f.getvalue())
 
-        try:
-            with torch.set_grad_enabled(self._enable_custom_autograd_function), \
-                    _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level):
-                required_export_kwargs = {'input_names': self._input_info.names,
-                                          'output_names': output_names,
-                                          'opset_version': ortmodule.ONNX_OPSET_VERSION,
-                                          'do_constant_folding': False,
-                                          'training': self._export_mode,
-                                          'dynamic_axes': self._input_info.dynamic_axes,
-                                          'verbose': self._debug_options.logging.log_level < LogLevel.WARNING,
-                                          'export_params': False,
-                                          'keep_initializers_as_inputs': True}
-                invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys()
-                assert len(invalid_args) == 0,\
-                    f"The following PyTorch exporter arguments cannot be specified: '{invalid_args}'."
-                torch.onnx.export(self._flattened_module,
-                                  sample_inputs_as_tuple,
-                                  f,
-                                  **required_export_kwargs,
-                                  **self._export_extra_kwargs)
-        except Exception as e:
-            raise wrap_exception(ORTModuleONNXModelException,
-                                 RuntimeError(f'There was an error while exporting the PyTorch model to ONNX: '
-                                              f'\n\n{_utils.get_exception_as_string(e)}'))
-        exported_model = onnx.load_model_from_string(f.getvalue())
-
-        exported_model = _post_process_after_export(exported_model,
+           exported_model = _post_process_after_export(exported_model,
                                                     self._enable_custom_autograd_function,
                                                     self._debug_options.logging.log_level)
+        else:
+           try:
+               with torch.no_grad():
+                   required_export_kwargs = {'input_names': self._input_info.names,
+                                             'output_names': output_names,
+                                             'opset_version': ortmodule.ONNX_OPSET_VERSION,
+                                             'do_constant_folding': True,
+                                             'training': self._export_mode,
+                                             'dynamic_axes': self._input_info.dynamic_axes,
+                                             'verbose': self._debug_options.logging.log_level < LogLevel.WARNING,
+                                             'operator_export_type': OperatorExportTypes.ONNX_FALLTHROUGH,
+                                             'export_params': True,
+                                             'keep_initializers_as_inputs': False}
 
+                   invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys()
+                   assert len(invalid_args) == 0,\
+                       f"The following PyTorch exporter arguments cannot be specified: '{invalid_args}'."
+                   torch.onnx.export(self._flattened_module,
+                                     sample_inputs_as_tuple,
+                                     f,
+                                     **required_export_kwargs,
+                                     **self._export_extra_kwargs)
+           except Exception as e:
+               raise wrap_exception(ORTModuleONNXModelException,
+                                    RuntimeError(f'There was an error while exporting the PyTorch model to ONNX: '
+                                                 f'\n\n{_utils.get_exception_as_string(e)}'))
+           exported_model = onnx.load_model_from_string(f.getvalue())
+            
         return exported_model
 
     def _set_device_from_module(self, inputs, kwargs):
