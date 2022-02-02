@@ -57,7 +57,13 @@ def is_dynamic(model):
             return True
     return False 
 
-def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_shape, fp16, track_memory):
+def get_model_inputs(model): 
+    all_inputs = [node.name for node in model.graph.input]
+    input_initializers = [node.name for node in model.graph.initializer]
+    inputs = list(set(all_inputs) - set(input_initializers))
+    return inputs 
+
+def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, track_memory):
     logger.info("running standalone trt")
     onnx_model_path = "--onnx=" + model_path
     
@@ -65,11 +71,14 @@ def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_s
     input_shape = []
     loaded_inputs = []
     
+    model = onnx.load(model_path)
+    ort_inputs = get_model_inputs(model)
+
     output = get_output(["find", "-L", os.getcwd(), "-name", "test_data*", "-type", "d"])
     test_data_dir = split_and_sort_output(output)[0]
-
+    
     for i in range(len(ort_inputs)):
-        name = ort_inputs[i].name
+        name = ort_inputs[i]
         loaded_input = name + ':' + test_data_dir + '/' + str(i) + '.bin'
         shape = []
         for j in all_inputs_shape[i]:
@@ -84,9 +93,8 @@ def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_s
     result = {}
     command = [trtexec, onnx_model_path, "--duration=50", "--percentile=90", "--workspace=4096"]
     command.extend([inputs_arg])
-    
+   
     # add benchmarking flags
-    model = onnx.load(model_path)
     if is_dynamic(model):
         command.extend([shapes_arg])
     if fp16: 
@@ -102,7 +110,6 @@ def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_s
     load_command = command + ["--loadEngine=" + engine_name]
     logger.info(load_command)
 
-    trtexec = True 
     mem_usage = None
     p = None
     success = False
@@ -111,9 +118,9 @@ def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_s
         try: 
             out = get_output(load_command)
             success = True
-            mem_usage = end_memory_tracking(p, trtexec, success)
+            mem_usage = end_memory_tracking(p, success)
         except Exception as e: 
-            end_memory_tracking(p, trtexec, success)
+            end_memory_tracking(p, success)
             raise(e)
     else: 
         out = get_output(load_command)
@@ -204,11 +211,9 @@ def get_trtexec_pid(df, python_pid):
         if pid != python_pid: 
             return pid
 
-def get_max_memory(trtexec): 
+def get_max_memory(): 
     df = pd.read_csv(MEMORY_FILE)
     pid = df['pid'].iloc[0]
-    if trtexec: 
-        pid = get_trtexec_pid(df, pid) 
     mem_series = df.loc[df['pid'] == pid, ' used_gpu_memory [MiB]']
     max_mem = max(mem_series.str.replace(' MiB','').astype(int))
     return max_mem
@@ -218,14 +223,14 @@ def start_memory_tracking():
     p = subprocess.Popen(["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv", "-l", "1", "-f", MEMORY_FILE])
     return p
 
-def end_memory_tracking(p, trtexec, success): 
+def end_memory_tracking(p, success): 
     logger.info("terminating memory tracking process")
     p.terminate()
     p.wait()
     p.kill()
     mem_usage = None
     if success:
-        mem_usage = get_max_memory(trtexec) 
+        mem_usage = get_max_memory() 
     if os.path.exists(MEMORY_FILE):
         os.remove(MEMORY_FILE)
     return mem_usage
@@ -248,7 +253,6 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
     mem_usages = []   
     p = None
     mem_usage = None
-    trtexec = False
     success = False
 
     # get and load inputs and outputs
@@ -269,7 +273,7 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
             if track_memory: 
                 p = start_memory_tracking()    
                 runtime, success = inference_ort_with_ep(ep, session, repeat_times, sess_outputs, sess_inputs, io_binding)
-                mem_usage = end_memory_tracking(p, trtexec, success)
+                mem_usage = end_memory_tracking(p, success)
                 mem_usages.append(mem_usage) 
             else: 
                 runtime, success = inference_ort_with_ep(ep, session, repeat_times, sess_outputs, sess_inputs, io_binding)
@@ -278,7 +282,7 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
         except Exception as e:
             logger.error(e)
             if track_memory:
-                end_memory_tracking(p, trtexec, success)
+                end_memory_tracking(p, success)
             raise(e)
 
     if len(mem_usages) > 0: 
@@ -1047,25 +1051,6 @@ def run_onnxruntime(args, models):
             if args.running_mode == 'benchmark':
                 logger.info("\n----------------------------- benchmark -------------------------------------")
 
-                # resolve providers to create session
-                if is_standalone(ep): 
-                    providers = ep_to_provider_list[trt]
-                else: 
-                    providers = ep_to_provider_list[ep] 
-
-                options = onnxruntime.SessionOptions()
-                options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-
-                
-                # create onnxruntime inference session
-                try:
-                    sess, _ = create_session(model_path, providers, options)
-
-                except Exception as e:
-                    logger.error(e)
-                    update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
-                    continue
-                
                 # memory tracking variables 
                 p = None 
                 mem_usage = None
@@ -1073,9 +1058,8 @@ def run_onnxruntime(args, models):
 
                 # get standalone TensorRT perf
                 if is_standalone(ep) and args.trtexec: 
-                    trtexec = True 
                     try: 
-                        result = run_trt_standalone(args.trtexec, name, model_path, sess.get_inputs(), all_inputs_shape, fp16, args.track_memory)
+                        result = run_trt_standalone(args.trtexec, name, model_path, all_inputs_shape, fp16, args.track_memory)
                     except Exception as e: 
                         logger.error(e)
                         update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
@@ -1083,6 +1067,19 @@ def run_onnxruntime(args, models):
 
                 # inference with onnxruntime ep
                 else:         
+                    
+                    # create onnxruntime inference session
+                    providers = ep_to_provider_list[ep] 
+                    options = onnxruntime.SessionOptions()
+                    options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+                    try:
+                        sess, _ = create_session(model_path, providers, options)
+
+                    except Exception as e:
+                        logger.error(e)
+                        update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
+                        continue
+                    
                     logger.info("start to inference {} with {} ...".format(name, ep))
                     logger.info(sess.get_providers())
 
