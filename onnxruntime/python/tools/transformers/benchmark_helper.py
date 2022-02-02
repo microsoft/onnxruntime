@@ -73,9 +73,9 @@ def create_onnxruntime_session(onnx_model_path,
             elif provider == 'rocm':
                 execution_providers = ['ROCMExecutionProvider', 'CPUExecutionProvider']
             elif provider == 'migraphx':
-                execution_providers = ['MIGraphXExecutionProvider', 'CPUExecutionProvider']
+                execution_providers = ['MIGraphXExecutionProvider', 'ROCMExecutionProvider', 'CPUExecutionProvider']
             elif provider == 'tensorrt':
-                execution_providers = ['TensorrtExecutionProvider', 'CPUExecutionProvider']
+                execution_providers = ['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
             else:
                 execution_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
         else:
