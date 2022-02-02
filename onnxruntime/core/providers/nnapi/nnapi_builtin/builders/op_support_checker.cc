@@ -100,7 +100,7 @@ class BaseOpSupportChecker : public IOpSupportChecker {
     return ANEURALNETWORKS_FEATURE_LEVEL_1;
   }
 
-  virtual bool HasSupportedInputsImpl(const NodeUnit& node_unit) const;
+  virtual bool HasSupportedInputOutputsImpl(const NodeUnit& node_unit) const;
 
   virtual int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const { return 1; }
   virtual int GetMaxSupportedOpSet(const NodeUnit& /* node_unit */) const { return 15; }
@@ -112,7 +112,7 @@ class BaseOpSupportChecker : public IOpSupportChecker {
 
  private:
   bool HasSupportedOpSet(const NodeUnit& node_unit) const;
-  bool HasSupportedInputs(const NodeUnit& node_unit) const;
+  bool HasSupportedInputOutputs(const NodeUnit& node_unit) const;
 };
 
 /* static */ void BaseOpSupportChecker::CreateSharedOpSupportChecker(
@@ -138,7 +138,7 @@ bool BaseOpSupportChecker::IsOpSupported(const InitializedTensorSet& initializer
   if (!IsNodeUnitTypeSupported(node_unit))
     return false;
 
-  if (!HasSupportedInputs(node_unit))
+  if (!HasSupportedInputOutputs(node_unit))
     return false;
 
   // We do not support external initializers for now
@@ -151,7 +151,7 @@ bool BaseOpSupportChecker::IsOpSupported(const InitializedTensorSet& initializer
   return IsOpSupportedImpl(initializers, node_unit, params);
 }
 
-bool BaseOpSupportChecker::HasSupportedInputs(const NodeUnit& node_unit) const {
+bool BaseOpSupportChecker::HasSupportedInputOutputs(const NodeUnit& node_unit) const {
   // We do not support unknown(null) input shape
   auto has_shape = [](const NodeArg& node_arg, const std::string& name, const std::string op_type) {
     if (!node_arg.Shape()) {
@@ -176,10 +176,10 @@ bool BaseOpSupportChecker::HasSupportedInputs(const NodeUnit& node_unit) const {
         return false;
     }
   }
-  return HasSupportedInputsImpl(node_unit);
+  return HasSupportedInputOutputsImpl(node_unit);
 }
 
-bool BaseOpSupportChecker::HasSupportedInputsImpl(const NodeUnit& node_unit) const {
+bool BaseOpSupportChecker::HasSupportedInputOutputsImpl(const NodeUnit& node_unit) const {
   // We only check the type of input 0 by default
   // specific op builder can override this
   const auto& input = node_unit.Inputs()[0].node_arg;
@@ -236,7 +236,7 @@ class BinaryOpSupportChecker : public BaseOpSupportChecker {
                                            const OpSupportCheckParams& params) const override;
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
-  bool HasSupportedInputsImpl(const NodeUnit& node_unit) const override;
+  bool HasSupportedInputOutputsImpl(const NodeUnit& node_unit) const override;
   int GetMinSupportedOpSet(const NodeUnit& node_unit) const override;
 };
 
@@ -278,11 +278,11 @@ int BinaryOpSupportChecker::GetMinSupportedOpSet(const NodeUnit& node_unit) cons
   return 1;
 }
 
-bool BinaryOpSupportChecker::HasSupportedInputsImpl(const NodeUnit& node_unit) const {
+bool BinaryOpSupportChecker::HasSupportedInputOutputsImpl(const NodeUnit& node_unit) const {
   bool is_qlinear_add = node_unit.OpType() == "QLinearAdd";
   bool is_pow = node_unit.OpType() == "Pow";
   if (!is_qlinear_add && !is_pow)
-    return BaseOpSupportChecker::HasSupportedInputsImpl(node_unit);
+    return BaseOpSupportChecker::HasSupportedInputOutputsImpl(node_unit);
 
   if (is_qlinear_add) {
     // QLinearAdd
@@ -373,7 +373,7 @@ class TransposeOpSupportChecker : public BaseOpSupportChecker {
     return ANEURALNETWORKS_FEATURE_LEVEL_2;
   }
 
-  bool HasSupportedInputsImpl(const NodeUnit& node_unit) const override;
+  bool HasSupportedInputOutputsImpl(const NodeUnit& node_unit) const override;
 };
 
 bool TransposeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
@@ -392,7 +392,7 @@ bool TransposeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /*
   return true;
 }
 
-bool TransposeOpSupportChecker::HasSupportedInputsImpl(const NodeUnit& node_unit) const {
+bool TransposeOpSupportChecker::HasSupportedInputOutputsImpl(const NodeUnit& node_unit) const {
   int32_t input_type;
   if (!GetType(node_unit.Inputs()[0].node_arg, input_type))
     return false;
@@ -552,7 +552,7 @@ class PoolOpSupportChecker : public BaseOpSupportChecker {
     return params.use_nchw ? ANEURALNETWORKS_FEATURE_LEVEL_3 : ANEURALNETWORKS_FEATURE_LEVEL_2;
   }
 
-  bool HasSupportedInputsImpl(const NodeUnit& node_unit) const override;
+  bool HasSupportedInputOutputsImpl(const NodeUnit& node_unit) const override;
 };
 
 /* static */ void PoolOpSupportChecker::CreateSharedOpSupportChecker(
@@ -682,11 +682,11 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
   return true;
 }
 
-bool PoolOpSupportChecker::HasSupportedInputsImpl(const NodeUnit& node_unit) const {
+bool PoolOpSupportChecker::HasSupportedInputOutputsImpl(const NodeUnit& node_unit) const {
   bool is_max_pool = node_unit.OpType() == "MaxPool";
   bool is_qlinear_average_pool = node_unit.OpType() == "QLinearAveragePool";
   if (!is_max_pool && !is_qlinear_average_pool)
-    return BaseOpSupportChecker::HasSupportedInputsImpl(node_unit);
+    return BaseOpSupportChecker::HasSupportedInputOutputsImpl(node_unit);
 
   if (is_qlinear_average_pool) {
     return HasValidUnaryOpQuantizedInputs(node_unit);
@@ -727,7 +727,7 @@ class ConvOpSupportChecker : public BaseOpSupportChecker {
     return params.use_nchw ? ANEURALNETWORKS_FEATURE_LEVEL_3 : ANEURALNETWORKS_FEATURE_LEVEL_2;
   }
 
-  bool HasSupportedInputsImpl(const NodeUnit& node_unit) const override;
+  bool HasSupportedInputOutputsImpl(const NodeUnit& node_unit) const override;
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
   static bool IsQuantizedOp(const NodeUnit& node_unit);
 };
@@ -746,9 +746,9 @@ class ConvOpSupportChecker : public BaseOpSupportChecker {
   return IsQuantizedConv(GetQuantizedOpType(node_unit));
 }
 
-bool ConvOpSupportChecker::HasSupportedInputsImpl(const NodeUnit& node_unit) const {
+bool ConvOpSupportChecker::HasSupportedInputOutputsImpl(const NodeUnit& node_unit) const {
   if (!IsQuantizedOp(node_unit))
-    return BaseOpSupportChecker::HasSupportedInputsImpl(node_unit);
+    return BaseOpSupportChecker::HasSupportedInputOutputsImpl(node_unit);
 
   // QLinearConv only supports input of uint8 for now
   if (!HasValidBinaryOpQuantizedInputs(node_unit))
@@ -916,13 +916,13 @@ class GemmOpSupportChecker : public BaseOpSupportChecker {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
-  bool HasSupportedInputsImpl(const NodeUnit& node_unit) const override;
+  bool HasSupportedInputOutputsImpl(const NodeUnit& node_unit) const override;
   int GetMinSupportedOpSet(const NodeUnit& node_unit) const override;
 };
 
-bool GemmOpSupportChecker::HasSupportedInputsImpl(const NodeUnit& node_unit) const {
+bool GemmOpSupportChecker::HasSupportedInputOutputsImpl(const NodeUnit& node_unit) const {
   if (node_unit.OpType() != "QLinearMatMul")
-    return BaseOpSupportChecker::HasSupportedInputsImpl(node_unit);
+    return BaseOpSupportChecker::HasSupportedInputOutputsImpl(node_unit);
 
   // QLinearMatMul
   if (!HasValidBinaryOpQuantizedInputs(node_unit))
@@ -1112,7 +1112,7 @@ class UnaryOpSupportChecker : public BaseOpSupportChecker {
   int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
                                            const OpSupportCheckParams& params) const override;
 
-  bool HasSupportedInputsImpl(const NodeUnit& node_unit) const override;
+  bool HasSupportedInputOutputsImpl(const NodeUnit& node_unit) const override;
 
   int GetMinSupportedOpSet(const NodeUnit& node_unit) const override;
 
@@ -1161,10 +1161,10 @@ int32_t UnaryOpSupportChecker::GetMinSupportedNNAPIFeatureLevel(const NodeUnit& 
   return ANEURALNETWORKS_FEATURE_LEVEL_1;
 }
 
-bool UnaryOpSupportChecker::HasSupportedInputsImpl(const NodeUnit& node_unit) const {
+bool UnaryOpSupportChecker::HasSupportedInputOutputsImpl(const NodeUnit& node_unit) const {
   // We only need to override input check for QLinearSigmoid
   if (node_unit.OpType() != "QLinearSigmoid")
-    return BaseOpSupportChecker::HasSupportedInputsImpl(node_unit);
+    return BaseOpSupportChecker::HasSupportedInputOutputsImpl(node_unit);
 
   return HasValidUnaryOpQuantizedInputs(node_unit);
 }
@@ -1234,7 +1234,7 @@ class ConcatOpSupportChecker : public BaseOpSupportChecker {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
-  bool HasSupportedInputsImpl(const NodeUnit& node_unit) const override;
+  bool HasSupportedInputOutputsImpl(const NodeUnit& node_unit) const override;
 };
 
 bool ConcatOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
@@ -1253,7 +1253,7 @@ bool ConcatOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* in
   return true;
 }
 
-bool ConcatOpSupportChecker::HasSupportedInputsImpl(const NodeUnit& node_unit) const {
+bool ConcatOpSupportChecker::HasSupportedInputOutputsImpl(const NodeUnit& node_unit) const {
   int32_t input_type;
   if (!GetType(node_unit.Inputs()[0].node_arg, input_type))
     return false;
@@ -1361,7 +1361,7 @@ class DequantizeLinearOpSupportChecker : public BaseOpSupportChecker {
                                            const OpSupportCheckParams& /* params */) const override {
     return ANEURALNETWORKS_FEATURE_LEVEL_1;
   }
-  bool HasSupportedInputsImpl(const NodeUnit& node_unit) const override;
+  bool HasSupportedInputOutputsImpl(const NodeUnit& node_unit) const override;
 };
 
 bool DequantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
@@ -1376,7 +1376,7 @@ bool DequantizeLinearOpSupportChecker::IsOpSupportedImpl(const InitializedTensor
   return true;
 }
 
-bool DequantizeLinearOpSupportChecker::HasSupportedInputsImpl(const NodeUnit& node_unit) const {
+bool DequantizeLinearOpSupportChecker::HasSupportedInputOutputsImpl(const NodeUnit& node_unit) const {
   int32_t input_type;
   if (!GetType(node_unit.Inputs()[0].node_arg, input_type))
     return false;
@@ -1465,7 +1465,7 @@ class ResizeOpSupportChecker : public BaseOpSupportChecker {
   // We only support Resize opset 11+ here
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 11; }
 
-  bool HasSupportedInputsImpl(const NodeUnit& node_unit) const override;
+  bool HasSupportedInputOutputsImpl(const NodeUnit& node_unit) const override;
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
   static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
 };
@@ -1638,7 +1638,7 @@ int32_t ResizeOpSupportChecker::GetMinSupportedNNAPIFeatureLevel(const NodeUnit&
   return ANEURALNETWORKS_FEATURE_LEVEL_2;
 }
 
-bool ResizeOpSupportChecker::HasSupportedInputsImpl(const NodeUnit& node_unit) const {
+bool ResizeOpSupportChecker::HasSupportedInputOutputsImpl(const NodeUnit& node_unit) const {
   int32_t input_type;
   if (!GetType(node_unit.Inputs()[0].node_arg, input_type))
     return false;
