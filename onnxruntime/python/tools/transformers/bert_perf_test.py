@@ -69,6 +69,8 @@ def create_session(model_path, use_gpu, provider, intra_op_num_threads, graph_op
                 execution_providers = ['ROCMExecutionProvider', 'CPUExecutionProvider']
             elif provider == 'migraphx':
                 execution_providers = ['MIGraphXExecutionProvider', 'ROCMExecutionProvider', 'CPUExecutionProvider']
+            elif provider == 'cuda':
+                execution_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
             elif provider == 'tensorrt':
                 execution_providers = ['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
             else:
@@ -105,6 +107,8 @@ def create_session(model_path, use_gpu, provider, intra_op_num_threads, graph_op
         elif provider == 'migraphx':
             assert 'MIGraphXExecutionProvider' in session.get_providers()
             assert 'ROCMExecutionProvider' in session.get_providers()
+        elif provider == 'cuda':
+            assert 'CUDAExecutionProvider' in session.get_providers()
         elif provider == 'tensorrt':
             assert 'TensorrtExecutionProvider' in session.get_providers()
             assert 'CUDAExecutionProvider' in session.get_providers()

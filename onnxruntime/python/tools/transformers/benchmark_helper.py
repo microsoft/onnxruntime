@@ -74,6 +74,8 @@ def create_onnxruntime_session(onnx_model_path,
                 execution_providers = ['ROCMExecutionProvider', 'CPUExecutionProvider']
             elif provider == 'migraphx':
                 execution_providers = ['MIGraphXExecutionProvider', 'ROCMExecutionProvider', 'CPUExecutionProvider']
+            elif provider == 'cuda':
+                execution_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
             elif provider == 'tensorrt':
                 execution_providers = ['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
             else:
@@ -95,7 +97,7 @@ def setup_logger(verbose=True):
         logging.getLogger("transformers").setLevel(logging.WARNING)
 
 
-def prepare_environment(cache_dir, output_dir, use_gpu, use_dml=False):
+def prepare_environment(cache_dir, output_dir, use_gpu, provider=None):
     if cache_dir and not os.path.exists(cache_dir):
         os.makedirs(cache_dir)
 
@@ -104,7 +106,7 @@ def prepare_environment(cache_dir, output_dir, use_gpu, use_dml=False):
 
     import onnxruntime
     if use_gpu:
-        if use_dml:
+        if provider == 'dml':
             assert 'DmlExecutionProvider' in onnxruntime.get_available_providers(
             ), "Please install onnxruntime-directml package to test GPU inference."
 
