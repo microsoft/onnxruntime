@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma once
+
 #include "graph_transform_test_builder.h"
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
@@ -12,7 +14,7 @@
 namespace onnxruntime {
 namespace test {
 
-using GetQDQConvTestCaseFn = std::function<void(ModelTestBuilder& builder)>;
+using GetQDQTestCaseFn = std::function<void(ModelTestBuilder& builder)>;
 
 template <typename T>
 typename std::enable_if<IsTypeQuantLinearCompatible<T>::value, NodeArg*>::type
@@ -24,10 +26,8 @@ AddQDQNodePair(ModelTestBuilder& builder, NodeArg* q_input, float scale, T zp = 
   return dq_output;
 }
 
-// TODO: for now it just builds a conv qdq graph.
-// can be modified and made it shared among different qdq test graphs associated with other operators
 template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
-GetQDQConvTestCaseFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
+GetQDQTestCaseFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
   return [input_shape, weights_shape](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
     auto* output_arg = builder.MakeOutput();
@@ -77,6 +77,11 @@ GetQDQConvTestCaseFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shap
                                                 output_arg);
   };
 }
+
+GetQDQTestCaseFn BuildQDQResizeTestCase(const std::vector<int64_t>& input_shape,
+                                        const std::vector<int64_t>& sizes_data,
+                                        const std::string& mode = "nearest",
+                                        const std::string& coordinate_transformation_mode = "half_pixel");
 
 }  // namespace test
 }  // namespace onnxruntime

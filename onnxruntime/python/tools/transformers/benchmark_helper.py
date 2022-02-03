@@ -39,11 +39,11 @@ IO_BINDING_DATA_TYPE_MAP = {
 
 def create_onnxruntime_session(onnx_model_path,
                                use_gpu,
+                               provider=None,
                                enable_all_optimization=True,
                                num_threads=-1,
                                enable_profiling=False,
-                               verbose=False,
-                               use_dml=False):
+                               verbose=False):
     session = None
     try:
         from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel, __version__ as onnxruntime_version
@@ -68,8 +68,16 @@ def create_onnxruntime_session(onnx_model_path,
 
         logger.debug(f"Create session for onnx model: {onnx_model_path}")
         if use_gpu:
-            if use_dml:
+            if provider == 'dml':
                 execution_providers = ['DmlExecutionProvider', 'CPUExecutionProvider']
+            elif provider == 'rocm':
+                execution_providers = ['ROCMExecutionProvider', 'CPUExecutionProvider']
+            elif provider == 'migraphx':
+                execution_providers = ['MIGraphXExecutionProvider', 'ROCMExecutionProvider', 'CPUExecutionProvider']
+            elif provider == 'cuda':
+                execution_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+            elif provider == 'tensorrt':
+                execution_providers = ['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
             else:
                 execution_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
         else:
@@ -89,7 +97,7 @@ def setup_logger(verbose=True):
         logging.getLogger("transformers").setLevel(logging.WARNING)
 
 
-def prepare_environment(cache_dir, output_dir, use_gpu, use_dml=False):
+def prepare_environment(cache_dir, output_dir, use_gpu, provider=None):
     if cache_dir and not os.path.exists(cache_dir):
         os.makedirs(cache_dir)
 
@@ -98,7 +106,7 @@ def prepare_environment(cache_dir, output_dir, use_gpu, use_dml=False):
 
     import onnxruntime
     if use_gpu:
-        if use_dml:
+        if provider == 'dml':
             assert 'DmlExecutionProvider' in onnxruntime.get_available_providers(
             ), "Please install onnxruntime-directml package to test GPU inference."
 
