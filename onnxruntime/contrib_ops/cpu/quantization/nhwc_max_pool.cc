@@ -40,8 +40,8 @@ Status NhwcMaxPool<T8Bits>::Compute(OpKernelContext* context) const {
   const size_t spatial_dims = input_rank - 2;
 
   // Compute the output size and effective padding for this pooling operation.
-  std::vector<int64_t> output_dims({N});
-  std::vector<int64_t> pads = pool_attrs_.pads;
+  TensorShapeVector output_dims({N});
+  TensorShapeVector pads = pool_attrs_.pads;
   int64_t kernel_size = 1;
   int64_t input_image_size = 1;
   int64_t output_image_size = 1;

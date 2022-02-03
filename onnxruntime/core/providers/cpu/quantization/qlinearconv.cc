@@ -11,7 +11,25 @@
 #include "core/util/qmath.h"
 #include "core/mlas/inc/mlas.h"
 
+#if defined(_M_ARM64) || defined(__aarch64__)
+
+//
+// TODO!! Hack! need to move this to MLAS
+// 
+// We use a different job partition with mobile devices
+// where the model tends to be smaller. When the entire
+// weight matrix fits in the cache, we process a thin
+// horizontal slice of the result matrix at a time. The
+// thickness of this slice depend on micro-kernel M
+// stride.
+//
+#define GEMM_KERNEL_STRIDE_M 4
+
+#endif
+
 namespace onnxruntime {
+
+using ConvPadVector = ConvAttributes::ConvPadVector;
 
 template <typename ActType>
 class QLinearConv : public OpKernel {
@@ -105,7 +123,7 @@ class QLinearConv : public OpKernel {
     return output_scales;
   }
 
-  static int32_t ComputeThreadCount(int64_t output_image_size, int64_t group_output_channels, int64_t kernel_dim) {
+  static int32_t ComputeTaskCount(int64_t output_image_size, int64_t group_output_channels, int64_t kernel_dim) {
     // Replicate the logic from MlasGemmU8X8Schedule to control the number of
     // worker threads used for the convolution.
     int32_t maximum_thread_count;
@@ -120,16 +138,16 @@ class QLinearConv : public OpKernel {
                               static_cast<double>(group_output_channels) *
                               static_cast<double>(kernel_dim);
 
-    int32_t thread_count = maximum_thread_count;
+    int32_t task_count = maximum_thread_count;
     if (complexity < thread_complexity * maximum_thread_count) {
-      thread_count = static_cast<int32_t>(complexity / thread_complexity) + 1;
+      task_count = static_cast<int32_t>(complexity / thread_complexity) + 1;
     }
-    if (thread_count > output_image_size) {
+    if (task_count > output_image_size) {
       // Ensure that every thread produces at least one output.
-      thread_count = static_cast<int32_t>(output_image_size);
+      task_count = static_cast<int32_t>(output_image_size);
     }
 
-    return thread_count;
+    return task_count;
   }
 
   bool TryConvSymPrepack(const uint8_t* Wdata,
@@ -141,46 +159,97 @@ class QLinearConv : public OpKernel {
                          size_t kernel_size) {
     const Tensor* X_zero_point = nullptr;
     const Tensor* W_zero_point = nullptr;
-    if (Info().TryGetConstantInput(InputTensors::IN_X_ZERO_POINT, &X_zero_point) && IsScalarOr1ElementVector(X_zero_point) &&
-        Info().TryGetConstantInput(InputTensors::IN_W_ZERO_POINT, &W_zero_point) && IsValidQuantParam(W_zero_point, static_cast<int64_t>(output_channels))) {
-      auto X_zero_point_value = *(X_zero_point->template Data<ActType>());
-      const size_t W_zero_point_size = static_cast<size_t>(W_zero_point->Shape().Size());
-      const auto* W_zero_point_data = W_zero_point->Data<int8_t>();
-      if (std::all_of(W_zero_point_data, W_zero_point_data + W_zero_point_size, [](int8_t v) { return v == 0; })) {
-        size_t packed_size = MlasConvSymPackWSize(group_count, group_input_channels, group_output_channels, kernel_size, std::is_signed<ActType>::value);
-        if (packed_size != 0) {
-          const Tensor* B = nullptr;
-          Info().TryGetConstantInput(8, &B);
-          const auto* Bdata = B != nullptr ? B->template Data<int32_t>() : nullptr;
 
-          column_sums_.resize(output_channels);
-          const int8_t* sdata = (const int8_t*)Wdata;
-          int32_t X_zero_point_fixup = MlasConvSymFixupInputZeroPoint(X_zero_point_value, std::is_signed<ActType>::value);
-          for (size_t oc = 0; oc < output_channels; oc++) {
-            int32_t sum = 0;
-            for (size_t ks = 0; ks < kernel_size * group_input_channels; ks++) {
-              sum += *sdata++;
-            }
-            column_sums_[oc] = (Bdata != nullptr ? Bdata[oc] : 0) - sum * X_zero_point_fixup;
-          }
+    // We need activation and weight zero points for symmetric packing
+    if (!Info().TryGetConstantInput(InputTensors::IN_X_ZERO_POINT, &X_zero_point) || !IsScalarOr1ElementVector(X_zero_point) ||
+        !Info().TryGetConstantInput(InputTensors::IN_W_ZERO_POINT, &W_zero_point) || !IsValidQuantParam(W_zero_point, static_cast<int64_t>(output_channels))) {
+      return false;
+    }
 
-          auto* packed_W = static_cast<uint8_t*>(alloc->Alloc(packed_size));
-          packed_W_buffer_ = BufferUniquePtr(packed_W, BufferDeleter(alloc));
+    auto X_zero_point_value = *(X_zero_point->template Data<ActType>());
+    const size_t W_zero_point_size = static_cast<size_t>(W_zero_point->Shape().Size());
+    const auto* W_zero_point_data = W_zero_point->Data<int8_t>();
+    if (!std::all_of(W_zero_point_data, W_zero_point_data + W_zero_point_size, [](int8_t v) { return v == 0; })) {
+      // Symmetric means weight zero point must be zero
+      return false;
+    }
 
-          MlasConvSymPackW(group_count,
-                           group_input_channels,
-                           group_output_channels,
-                           kernel_size,
-                           reinterpret_cast<const int8_t*>(Wdata),
-                           reinterpret_cast<int8_t*>(packed_W),
-                           packed_size,
-                           std::is_signed<ActType>::value);
+    // Try indirect conv packing
+    size_t packed_size = MlasConvSymPackWSize(group_count, group_input_channels, group_output_channels, kernel_size, std::is_signed<ActType>::value);
+    if (packed_size != 0) {
+      const Tensor* B = nullptr;
+      Info().TryGetConstantInput(8, &B);
+      const auto* Bdata = B != nullptr ? B->template Data<int32_t>() : nullptr;
 
-          is_symmetric_conv_ = true;
-
-          is_W_packed_ = true;
-          return true;
+      column_sums_.resize(output_channels);
+      const int8_t* sdata = (const int8_t*)Wdata;
+      int32_t X_zero_point_fixup = MlasConvSymFixupInputZeroPoint(X_zero_point_value, std::is_signed<ActType>::value);
+      for (size_t oc = 0; oc < output_channels; oc++) {
+        int32_t sum = 0;
+        for (size_t ks = 0; ks < kernel_size * group_input_channels; ks++) {
+          sum += *sdata++;
         }
+        column_sums_[oc] = (Bdata != nullptr ? Bdata[oc] : 0) - sum * X_zero_point_fixup;
+      }
+
+      auto* packed_W = static_cast<uint8_t*>(alloc->Alloc(packed_size));
+      packed_W_buffer_ = BufferUniquePtr(packed_W, BufferDeleter(alloc));
+
+      MlasConvSymPackW(group_count,
+                       group_input_channels,
+                       group_output_channels,
+                       kernel_size,
+                       reinterpret_cast<const int8_t*>(Wdata),
+                       reinterpret_cast<int8_t*>(packed_W),
+                       packed_size,
+                       std::is_signed<ActType>::value);
+
+      is_symmetric_conv_ = true;
+      is_W_packed_ = true;
+      return true;
+    }
+
+    // Try symmetric GEMM packing
+    // Don't pack the filter buffer if the MlasConvDepthwise path is used.
+    if (group_input_channels != 1 || group_output_channels != 1) {
+      const size_t kernel_dim = group_input_channels * kernel_size;
+      packed_W_size_ = MlasSymmQgemmPackBSize(group_output_channels,
+                                              kernel_dim,
+                                              std::is_same<ActType, int8_t>::value);
+      
+      if (packed_W_size_ != 0) {
+        size_t packed_W_data_size = SafeInt<size_t>(group_count) * packed_W_size_;
+        auto* packed_W = static_cast<uint8_t*>(alloc->Alloc(packed_W_data_size));
+
+        memset(packed_W, 0, packed_W_data_size);
+
+        packed_W_buffer_ = BufferUniquePtr(packed_W, BufferDeleter(alloc));
+
+        // Allocate a temporary buffer to hold the reordered oihw->hwio filter for
+        // a single group.
+        //
+        // Note: The size of this buffer is less than or equal to the size of the original
+        // weight tensor, so the allocation size is guaranteed to fit inside size_t.
+        auto* group_reordered_W = static_cast<int8_t*>(alloc->Alloc(group_output_channels * group_input_channels * kernel_size));
+        BufferUniquePtr group_reordered_W_buffer(group_reordered_W, BufferDeleter(alloc));
+
+        const size_t W_offset = group_output_channels * kernel_dim;
+
+        for (int64_t group_id = 0; group_id < conv_attrs_.group; ++group_id) {
+          ReorderFilter(Wdata, (uint8_t*)(group_reordered_W), group_output_channels, group_input_channels, kernel_size);
+          MlasSymmQgemmPackB(group_output_channels,
+                             kernel_dim,
+                             group_reordered_W,
+                             group_output_channels,
+                             std::is_same<ActType, int8_t>::value,
+                             X_zero_point_value,
+                             packed_W);
+          packed_W += packed_W_size_;
+          Wdata += W_offset;
+        }
+        is_symmetric_gemm_ = true;
+        is_W_packed_ = true;
+        return true;
       }
     }
 
@@ -211,6 +280,7 @@ class QLinearConv : public OpKernel {
   bool is_W_signed_{false};
   bool is_W_packed_{false};
   bool is_symmetric_conv_{false};
+  bool is_symmetric_gemm_{false};
   bool channels_last_{false};
   std::vector<int32_t> column_sums_;
 };
@@ -322,7 +392,7 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
   }
 
   // Don't pack the filter buffer if the MlasConvDepthwise path is used.
-  if (group_input_channels != 1 && group_output_channels != 1) {
+  if (group_input_channels != 1 || group_output_channels != 1) {
     packed_W_size_ = MlasGemmPackBSize(group_output_channels,
                                        kernel_dim,
                                        std::is_same<ActType, int8_t>::value,
@@ -440,20 +510,20 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
 
   ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X->Shape(), W_shape, channels_last_));
 
-  std::vector<int64_t> kernel_shape;
+  TensorShapeVector kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W_shape, kernel_shape));
 
   const size_t kernel_rank = kernel_shape.size();
 
-  std::vector<int64_t> pads(conv_attrs_.pads);
+  ConvPadVector pads(conv_attrs_.pads);
   if (pads.empty()) {
     pads.resize(kernel_rank * 2, 0);
   }
-  std::vector<int64_t> dilations(conv_attrs_.dilations);
+  TensorShapeVector dilations(conv_attrs_.dilations);
   if (dilations.empty()) {
     dilations.resize(kernel_rank, 1);
   }
-  std::vector<int64_t> strides(conv_attrs_.strides);
+  TensorShapeVector strides(conv_attrs_.strides);
   if (strides.empty()) {
     strides.resize(kernel_rank, 1);
   }
@@ -462,7 +532,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
   const size_t spatial_dim_start = channels_last_ ? 1 : 2;
   const size_t spatial_dim_end = spatial_dim_start + kernel_rank;
 
-  std::vector<int64_t> Y_dims({N});
+  TensorShapeVector Y_dims({N});
   if (!channels_last_) {
     Y_dims.push_back(M);
   }
@@ -545,7 +615,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
 
   // Allocate temporary buffers for transposing to channels last format.
   if (!channels_last_) {
-    auto* transpose_input = alloc->Alloc(SafeInt<size_t>(sizeof(ActType)) * X_offset);
+    auto* transpose_input = alloc->Alloc(SafeInt<size_t>(sizeof(ActType)) * (X_offset + MLAS_SYMM_QGEMM_BUF_OVERRUN));
     transpose_input_buffer = BufferUniquePtr(transpose_input, BufferDeleter(alloc));
     auto* transpose_output = alloc->Alloc(SafeInt<size_t>(sizeof(ActType)) * Y_offset);
     transpose_output_buffer = BufferUniquePtr(transpose_output, BufferDeleter(alloc));
@@ -565,6 +635,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
       // Pointwise convolutions can use the original input tensor in place,
       // otherwise a temporary buffer is required for the im2col transform.
       int64_t group_col_buffer_size = (kernel_rank > 2) ? group_count * col_buffer_size : col_buffer_size;
+      group_col_buffer_size += MLAS_SYMM_QGEMM_BUF_OVERRUN;
       auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(ActType)) * group_col_buffer_size);
       col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
     }
@@ -577,9 +648,13 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
     padding_data.resize(static_cast<size_t>(C), X_zero_point_value);
   }
 
-  int32_t thread_count = ComputeThreadCount(output_image_size, group_output_channels, kernel_dim);
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
-  thread_count = std::min(thread_count, concurrency::ThreadPool::DegreeOfParallelism(thread_pool));
+#if defined(_M_ARM64) || defined(__aarch64__)
+  int32_t task_count = (output_image_size + (GEMM_KERNEL_STRIDE_M - 1)) / GEMM_KERNEL_STRIDE_M;
+#else
+  int32_t task_count = ComputeTaskCount(output_image_size, group_output_channels, kernel_dim);
+  task_count = std::min(task_count, concurrency::ThreadPool::DegreeOfParallelism(thread_pool));
+#endif
 
   for (int64_t image_id = 0; image_id < N; ++image_id) {
     const auto* input_data = Xdata;
@@ -617,9 +692,14 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
     }
 
     auto conv_worker = [&](ptrdiff_t batch) {
-      auto work = concurrency::ThreadPool::PartitionWork(batch, thread_count, static_cast<ptrdiff_t>(output_image_size));
+#if defined(_M_ARM64) || defined(__aarch64__)
+      int64_t output_start = batch * GEMM_KERNEL_STRIDE_M;
+      int64_t output_count = std::min((int64_t)GEMM_KERNEL_STRIDE_M, output_image_size - output_start);
+#else
+      auto work = concurrency::ThreadPool::PartitionWork(batch, task_count, static_cast<ptrdiff_t>(output_image_size));
       int64_t output_start = static_cast<int64_t>(work.start);
       int64_t output_count = static_cast<int64_t>(work.end) - work.start;
+#endif
 
       ActType const** worker_indirection_buffer = nullptr;
       if (indirection_buffer) {
@@ -685,22 +765,11 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
             static_cast<size_t>(kernel_size));
       } else {
         for (int64_t group_id = 0; group_id < group_count; ++group_id) {
-          MLAS_GEMM_QUANT_DATA_PARAMS gemm_params;
-          gemm_params.ZeroPointA = static_cast<uint8_t>(X_zero_point_value);
-          if (packed_W_buffer_) {
-            gemm_params.B = static_cast<const int8_t*>(packed_W_buffer_.get()) + group_id * packed_W_size_,
-            gemm_params.BIsPacked = true;
-          } else {
-            gemm_params.B = reordered_W + group_id * group_output_channels,
-            gemm_params.ldb = static_cast<size_t>(M);
-          }
-          gemm_params.ZeroPointB = &W_zero_point_value;
-          gemm_params.C = worker_gemm_output + group_id * group_output_channels;
-          gemm_params.ldc = static_cast<size_t>(M);
-
           // Prepare the im2col transformation or use the input buffer directly for
           // pointwise convolutions.
           const auto* group_input_data = input_data + group_id * group_input_channels;
+          const uint8_t* AData;
+          size_t lda;
           if (col_buffer) {
             auto* worker_col_buffer = static_cast<ActType*>(col_buffer.get()) + output_start * kernel_dim;
             if (kernel_rank == 2) {
@@ -747,11 +816,11 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
               // Use the im2col buffer prepared outside the thread, indexed by group.
               worker_col_buffer += group_id * col_buffer_size;
             }
-            gemm_params.A = reinterpret_cast<const uint8_t*>(worker_col_buffer);
-            gemm_params.lda = static_cast<size_t>(kernel_dim);
+            AData = reinterpret_cast<const uint8_t*>(worker_col_buffer);
+            lda = static_cast<size_t>(kernel_dim);
           } else {
-            gemm_params.A = reinterpret_cast<const uint8_t*>(group_input_data + output_start * C);
-            gemm_params.lda = static_cast<size_t>(C);
+            AData = reinterpret_cast<const uint8_t*>(group_input_data + output_start * C);
+            lda = static_cast<size_t>(C);
           }
 
           MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape;
@@ -761,7 +830,32 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
           gemm_shape.AIsSigned = std::is_signed<ActType>::value;
           gemm_shape.BIsSigned = is_W_signed;
 
-          MlasGemm(gemm_shape, gemm_params, nullptr);
+          if (is_symmetric_gemm_) {
+            MLAS_SYMM_QGEMM_DATA_PARAMS symm_gemm;
+            symm_gemm.A = AData;
+            symm_gemm.lda = lda;
+            symm_gemm.C = worker_gemm_output + group_id * group_output_channels;
+            symm_gemm.ldc = static_cast<size_t>(M);
+            symm_gemm.B = static_cast<const int8_t*>(packed_W_buffer_.get()) + group_id * packed_W_size_,
+            MlasSymmQgemmBatch(gemm_shape, &symm_gemm, 1, nullptr);
+          } else {
+            MLAS_GEMM_QUANT_DATA_PARAMS gemm_params;
+            gemm_params.ZeroPointA = static_cast<uint8_t>(X_zero_point_value);
+            gemm_params.A = AData;
+            gemm_params.lda = lda;
+            if (packed_W_buffer_) {
+              gemm_params.B = static_cast<const int8_t*>(packed_W_buffer_.get()) + group_id * packed_W_size_,
+              gemm_params.BIsPacked = true;
+            } else {
+              gemm_params.B = reordered_W + group_id * group_output_channels,
+              gemm_params.ldb = static_cast<size_t>(M);
+            }
+            gemm_params.ZeroPointB = &W_zero_point_value;
+            gemm_params.C = worker_gemm_output + group_id * group_output_channels;
+            gemm_params.ldc = static_cast<size_t>(M);
+
+            MlasGemm(gemm_shape, gemm_params, nullptr);
+          }
         }
       }
 
@@ -780,7 +874,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
           static_cast<size_t>(M));
     };
 
-    concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, thread_count, conv_worker);
+    concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, task_count, conv_worker);
 
     if (!channels_last_) {
       // Transpose the output from channels last (NHWC) to channels first (NCHW).

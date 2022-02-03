@@ -553,7 +553,7 @@ class ONNXQuantizer:
             return self.parent.find_quantized_value(input_name)
         return None
 
-    def quantize_bias_static(self, bias_name, input_name, weight_name):
+    def quantize_bias_static(self, bias_name, input_name, weight_name, beta = 1.0):
         '''
         Quantized the bias. Zero Point == 0 and Scale == Input_Scale * Weight_Scale
         '''
@@ -584,7 +584,7 @@ class ONNXQuantizer:
         input_scale = self.tensor_proto_to_array(inputscale_initializer)
 
         # calcuate scale for bias
-        bias_scale = input_scale * weight_scale
+        bias_scale = input_scale * weight_scale * beta
 
         # quantize bias
         quantized_data = (np.asarray(bias_data) / bias_scale).round().astype(np.int32)

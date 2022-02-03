@@ -35,6 +35,10 @@ static void VerifyOutputs(const std::vector<std::string>& output_names,
         EXPECT_THAT(ltensor.DataAsSpan<int64_t>(), ::testing::ContainerEq(rtensor.DataAsSpan<int64_t>()))
             << " mismatch for " << output_names[i];
         break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+        EXPECT_THAT(ltensor.DataAsSpan<uint8_t>(), ::testing::ContainerEq(rtensor.DataAsSpan<uint8_t>()))
+            << " mismatch for " << output_names[i];
+        break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
         constexpr float abs_err = 1e-5f;
 
@@ -69,6 +73,15 @@ int CountAssignedNodes(const Graph& current_graph, const std::string& ep_type) {
 void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
                                const NameMLValMap& feeds) {
+  // read raw data from model provided by the model_path
+  std::ifstream stream(model_path, std::ios::in | std::ios::binary);
+  std::string model_data((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+  RunAndVerifyOutputsWithEP(model_data, log_id, std::move(execution_provider), feeds);
+}
+
+void RunAndVerifyOutputsWithEP(const std::string& model_data, const char* log_id,
+                               std::unique_ptr<IExecutionProvider> execution_provider,
+                               const NameMLValMap& feeds) {
   SessionOptions so;
   so.session_logid = log_id;
   RunOptions run_options;
@@ -78,7 +91,7 @@ void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
   // get expected output from CPU EP
   //
   InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(model_path));
+  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
   ASSERT_STATUS_OK(session_object.Initialize());
 
   const auto& graph = session_object.GetGraph();
@@ -103,13 +116,13 @@ void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
   //
   InferenceSessionWrapper session_object2{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object2.RegisterExecutionProvider(std::move(execution_provider)));
-  ASSERT_STATUS_OK(session_object2.Load(model_path));
+  ASSERT_STATUS_OK(session_object2.Load(model_data.data(), static_cast<int>(model_data.size())));
   ASSERT_STATUS_OK(session_object2.Initialize());
 
   // make sure that some nodes are assigned to the EP, otherwise this test is pointless...
   const auto& graph2 = session_object2.GetGraph();
   auto ep_nodes = CountAssignedNodes(graph2, provider_type);
-  ASSERT_GT(ep_nodes, 0) << "No nodes were assigned to " << provider_type << " for " << model_path;
+  ASSERT_GT(ep_nodes, 0) << "No nodes were assigned to " << provider_type;
 
   // Run with EP and verify the result
   std::vector<OrtValue> fetches;
@@ -178,7 +191,7 @@ void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl:
   ASSERT_THAT(ind_span, testing::ContainerEq(expected_indicies));
 }
 
-#endif // DISABLE_SPARSE_TENSORS
+#endif  // DISABLE_SPARSE_TENSORS
 
 }  // namespace test
 }  // namespace onnxruntime

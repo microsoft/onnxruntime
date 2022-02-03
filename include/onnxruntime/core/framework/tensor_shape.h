@@ -10,6 +10,18 @@
 #include <gsl/gsl>
 #include "onnxruntime_config.h"
 
+#ifdef _MSC_VER
+#pragma warning(push)
+// C4127: conditional expression is constant
+#pragma warning(disable : 4127)
+#endif
+
+#include <absl/container/inlined_vector.h>
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+
 namespace onnxruntime {
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -17,6 +29,28 @@ namespace onnxruntime {
 #pragma GCC diagnostic ignored "-Wnull-dereference"
 #endif
 #endif
+
+constexpr size_t kTensorShapeSmallBufferElementsSize = 5;
+
+// Use this type to build a shape and then create TensorShape.
+using TensorShapeVector = absl::InlinedVector<int64_t, kTensorShapeSmallBufferElementsSize>;
+
+// Use this for inlined shape size where different types are needed.
+template <typename T>
+using InlinedShapeVector = absl::InlinedVector<T, kTensorShapeSmallBufferElementsSize>;
+
+
+inline TensorShapeVector ToShapeVector(const gsl::span<const int64_t>& span) {
+  TensorShapeVector out;
+  out.reserve(span.size());
+  out.assign(span.begin(), span.end());
+  return out;
+}
+
+inline gsl::span<const int64_t> ToConstSpan(const TensorShapeVector& vec) {
+  return gsl::make_span(vec);
+}
+
 class TensorShape {
   // We use negative numbers for unknown symbolic dimension. Each negative
   // number represents a unique symbolic dimension.
@@ -25,13 +59,17 @@ class TensorShape {
 
   TensorShape(const TensorShape& other) : TensorShape(other.GetDims()) {}
   TensorShape& operator=(const TensorShape& other);
+  TensorShape& operator=(const gsl::span<const int64_t>& dims) { 
+    *this = TensorShape(dims);
+    return *this;
+  }
 
   TensorShape(TensorShape&& other) noexcept { operator=(std::move(other)); }
   TensorShape& operator=(TensorShape&& other) noexcept;
 
   TensorShape(gsl::span<const int64_t> dims);
-  TensorShape(const std::vector<int64_t>& dims) : TensorShape(gsl::make_span(dims)) {}
-  TensorShape(const std::initializer_list<int64_t>& dims) : TensorShape(gsl::make_span(dims.begin(), dims.end())) {}
+  TensorShape(const TensorShapeVector& dims) : TensorShape(gsl::make_span(dims)) {}
+  TensorShape(std::initializer_list<int64_t> dims) : TensorShape(gsl::make_span(dims.begin(), dims.end())) {}
   TensorShape(const int64_t* dimension_sizes, size_t dimension_count) : TensorShape(gsl::span<const int64_t>(dimension_sizes, dimension_count)) {}
   TensorShape(const std::vector<int64_t>& dims, size_t start, size_t end) : TensorShape(gsl::span<const int64_t>(&dims[start], end - start)) {}
 
@@ -47,7 +85,7 @@ class TensorShape {
   int64_t& operator[](size_t idx) { return values_[idx]; }
 
   bool operator==(const TensorShape& other) const noexcept { return GetDims() == other.GetDims(); }
-  bool operator!=(const TensorShape& other) const noexcept { return GetDims() != other.GetDims(); }
+  bool operator!=(const TensorShape& other) const noexcept { return !(*this == other); }
 
   size_t NumDimensions() const noexcept {
     return values_.size();
@@ -73,7 +111,10 @@ class TensorShape {
      Return underlying vector representation.
   */
   gsl::span<const int64_t> GetDims() const { return values_; }
-  std::vector<int64_t> GetDimsAsVector() const { return std::vector<int64_t>(values_.begin(), values_.end()); }
+
+  TensorShapeVector AsShapeVector() const {
+    return ToShapeVector(values_);
+  }
 
   /**
    * Return the total number of elements. Returns 1 for an empty (rank 0) TensorShape.
@@ -135,7 +176,7 @@ class TensorShape {
   void Allocate(size_t size);
 
   gsl::span<int64_t> values_;
-  int64_t small_buffer_[5];
+  int64_t small_buffer_[kTensorShapeSmallBufferElementsSize];
   std::unique_ptr<int64_t[]> allocated_buffer_;
 
   friend struct ProviderHostImpl; // So that the shared provider interface can access Allocate

@@ -424,10 +424,10 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
   }
 }
 
-static int64_t CalculateMemoryPatternsKey(const std::vector<std::reference_wrapper<const TensorShape>>& shapes) {
+static int64_t CalculateMemoryPatternsKey(const gsl::span<const OrtValue>& tensor_inputs) {
   int64_t key = 0;
-  for (auto shape : shapes) {
-    for (auto dim : shape.get().GetDims()) key ^= dim;
+  for (const auto& input : tensor_inputs) {
+    for (auto dim : input.Get<Tensor>().Shape().GetDims()) key ^= dim;
   }
   return key;
 }
@@ -467,13 +467,13 @@ Status TryResolveShape(
     const NodeArg* arg,
     const std::unordered_map<std::string, int64_t>& symbolic_dimensions,
     size_t& is_resolved,  // indicate whether resolve successfully or not.
-    std::vector<int64_t>& resolved_shape) {
+    TensorShapeVector& resolved_shape) {
   if (!arg->Shape()) {
     is_resolved = 0;
     return Status::OK();
   }
 
-  std::vector<int64_t> shape;
+  TensorShapeVector shape;
 
   SafeInt<size_t> safe_size = 1;
   for (auto& dim : arg->Shape()->dim()) {
@@ -515,7 +515,7 @@ void TryCalculateSizeFromResolvedShape(int ml_value_idx, std::unordered_map<int,
 }  // namespace
 
 // If this function fails NO memory planning will take place, hence lets ONLY FAIL and stop training where warranted, example SIZE overflow.
-Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
+Status SessionState::GeneratePatternGroupCache(const gsl::span<const OrtValue>& tensor_inputs,
                                                const std::vector<int>& feed_mlvalue_idxs,
                                                MemoryPatternGroup* output,
                                                std::unordered_map<int, TensorShape>& resolved_shapes) const {
@@ -523,7 +523,7 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
   for (size_t i = 0, end = feed_mlvalue_idxs.size(); i < end; ++i) {
     std::string name;
     ORT_RETURN_IF_ERROR(this->ort_value_name_idx_map_.GetName(feed_mlvalue_idxs[i], name));
-    feeds.insert({name, input_shape[i]});
+    feeds.insert({name, tensor_inputs[i].Get<Tensor>().Shape()});
   }
   std::unordered_map<std::string, int64_t> map;
   ORT_RETURN_IF_ERROR(ResolveDimParams(*graph_viewer_, feeds, map));
@@ -550,14 +550,14 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
 
       auto* arg = node->OutputDefs()[i];
       size_t is_resolved = 0;
-      std::vector<int64_t> resolved_shape;
+      TensorShapeVector resolved_shape;
 
       // Tensors whose shape cannot be resolved statically will be allocated at runtime.
       if (TryResolveShape(arg, map, is_resolved, resolved_shape).IsOK()) {
         // Store all valid resolved shapes. They will be queried in, for example,
         // Recv operator to bypass the dependency of output shapes on inputs.
         if (is_resolved != 0) {
-          resolved_shapes[ml_value_idx] = resolved_shape;
+          resolved_shapes[ml_value_idx] = gsl::make_span(resolved_shape);
         }
       } else {
         LOGS(logger_, INFO) << "[Static memory planning] Could not resolve shape for tensor with ML index "
@@ -651,18 +651,18 @@ Status SessionState::GeneratePatternGroupCache(const std::vector<std::reference_
 }
 #endif
 
-const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
+const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(const gsl::span<const OrtValue>& tensor_inputs,
                                                               const std::vector<int>& feed_mlvalue_idxs,
                                                               std::unordered_map<int, TensorShape>& inferred_shapes) const {
-  int64_t key = CalculateMemoryPatternsKey(input_shapes);
+  int64_t key = CalculateMemoryPatternsKey(tensor_inputs);
 
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
   auto it = mem_patterns_.find(key);
   if (it == mem_patterns_.end()) {
 #ifdef ENABLE_TRAINING
     auto mem_patterns = std::make_unique<MemoryPatternGroup>();
-    if (GeneratePatternGroupCache(input_shapes, feed_mlvalue_idxs, mem_patterns.get(), inferred_shapes).IsOK()) {
-      key = CalculateMemoryPatternsKey(input_shapes);
+    if (GeneratePatternGroupCache(tensor_inputs, feed_mlvalue_idxs, mem_patterns.get(), inferred_shapes).IsOK()) {
+      key = CalculateMemoryPatternsKey(tensor_inputs);
       auto ptr = mem_patterns.get();
       mem_patterns_[key] = std::move(mem_patterns);
       shape_patterns_[key] = inferred_shapes;
@@ -703,9 +703,9 @@ void SessionState::ResolveMemoryPatternFlag() {
   }
 }
 
-Status SessionState::UpdateMemoryPatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
+Status SessionState::UpdateMemoryPatternGroupCache(const gsl::span<const OrtValue>& tensor_inputs,
                                                    std::unique_ptr<MemoryPatternGroup> mem_patterns) const {
-  int64_t key = CalculateMemoryPatternsKey(input_shapes);
+  int64_t key = CalculateMemoryPatternsKey(tensor_inputs);
 
   std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
   auto it = mem_patterns_.find(key);
@@ -982,9 +982,9 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
 
   const bool original_nodes_should_exist =
       compiled_kernel_hashes.empty()
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
       && graph_.RuntimeOptimizationReplayCtx().num_replayed_optimizations == 0
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
       ;
 
   // process the nodes that existed when the model was created
@@ -1003,7 +1003,7 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
     ORT_RETURN_IF_ERROR(add_kernel_by_hash(*node, node_kernel_info.kernel_def_hash));
   }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   // process the nodes that were added by replaying any loaded runtime optimizations
   for (const auto& [node_index, kernel_def_hash] :
        graph_.RuntimeOptimizationReplayCtx().produced_node_index_to_kernel_def_hash) {
@@ -1013,7 +1013,7 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
 
     ORT_RETURN_IF_ERROR(add_kernel_by_hash(*node, kernel_def_hash));
   }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
   // lookup the hashes for any nodes we compiled. the nodes indexes for compiled nodes are not in node_indices
   // as they were created at runtime.
@@ -1239,7 +1239,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     CreateGraphInfo();
   }
 
-#if defined(ORT_MINIMAL_BUILD) && defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#if defined(ORT_MINIMAL_BUILD) && defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   // remove any unused initializers
   // not needed in a full build because unused initializers should have been removed earlier by Graph::Resolve()
   // not needed in a minimal build with runtime optimizations disabled because only runtime optimizations are expected
@@ -1258,7 +1258,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       graph_.RemoveInitializedTensor(name);
     }
   }
-#endif  // defined(ORT_MINIMAL_BUILD) && defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#endif  // defined(ORT_MINIMAL_BUILD) && defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
   // ignore any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
   std::vector<const NodeArg*> valid_outer_scope_node_args;

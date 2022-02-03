@@ -17,10 +17,10 @@
     "ONNX Runtime"
   ],
   "devDependencies": {
-    "@release-it/conventional-changelog": "^3.3.0",
     "@types/fs-extra": "^9.0.11",
     "@types/jest": "^27.4.0",
     "@types/react": "^17.0.38",
+<<<<<<< HEAD
     "@types/react-native": "0.66.11",
     "jest": "^27.4.7",
     "pod-install": "^0.1.30",
@@ -30,6 +30,16 @@
     "react-native-builder-bob": "^0.18.2",
     "release-it": "^14.2.2",
     "typescript": "^4.5.4"
+=======
+    "@types/react-native": "^0.66.15",
+    "jest": "^27.4.7",
+    "pod-install": "^0.1.31",
+    "prettier": "^2.0.5",
+    "react": "^17.0.2",
+    "react-native": "^0.67.2",
+    "react-native-builder-bob": "^0.18.2",
+    "typescript": "^4.5.5"
+>>>>>>> 97b8f6f394ae02c73ed775f456fd85639c91ced1
   },
   "peerDependencies": {
     "react": "*",
@@ -41,6 +51,7 @@
   },
   "source": "lib/index",
   "version": "1.11.0",
+<<<<<<< HEAD
   "release-it": {
     "npm": {
       "publish": true
@@ -58,6 +69,8 @@
       "release": true
     }
   },
+=======
+>>>>>>> 97b8f6f394ae02c73ed775f456fd85639c91ced1
   "main": "dist/commonjs/index",
   "homepage": "https://github.com/Microsoft/onnxruntime/js/react_native#readme",
   "files": [
@@ -96,6 +109,7 @@
   "scripts": {
     "typescript": "tsc --noEmit",
     "prepare": "bob build",
+<<<<<<< HEAD
     "bootstrap": "yarn pack-common && yarn unpack-common && yarn pack-libs && yarn unpack-libs && yarn example && yarn && yarn pods",
     "release": "release-it",
     "test": "jest",
@@ -105,6 +119,11 @@
     "unpack-libs": "cd example && yarn add file:./onnxruntime-react-native.tgz",
     "prepack-rel": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack",
     "prepack-e2e": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack-e2e",
+=======
+    "bootstrap": "yarn example && yarn && yarn pods",
+    "test": "jest",
+    "prepack": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack",
+>>>>>>> 97b8f6f394ae02c73ed775f456fd85639c91ced1
     "pods": "cd example && pod-install --quiet",
     "example": "yarn --cwd example"
   },

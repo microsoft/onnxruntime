@@ -698,6 +698,13 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchDefault;
 
 //
+// Symmetric quantized qgemm dispatch structure
+//
+struct MLAS_SYMM_QGEMM_DISPATCH;
+extern const MLAS_SYMM_QGEMM_DISPATCH MlasSymmQgemmS8DispatchNeon;
+extern const MLAS_SYMM_QGEMM_DISPATCH MlasSymmQgemmS8DispatchSdot;
+
+//
 // Symmetric quantized integer convolution dispatch structure.
 //
 
@@ -707,8 +714,10 @@ extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx2;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvxVnni;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Core;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni;
-extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchNeon;
-extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchDot;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchNeon;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchNeon;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchDot;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchDot;
 
 //
 // Quantized depthwise convolution kernels.
@@ -761,19 +770,6 @@ struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
     int32_t OutputZeroPoint;
 };
 
-typedef
-void
-(MLASCALL MLAS_CONV_SYM_DEPTHWISE_ROUTINE_KERNELSIZE)(
-    void const* const* InputIndirection,
-    int8_t const* Filter,
-    size_t Channels,
-    void* Output,
-    size_t OutputCount,
-    MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
-    unsigned KernelFlags,
-    bool InputIsSigned
-    );
-
 //
 // Environment information class.
 //
@@ -792,6 +788,7 @@ struct MLAS_PLATFORM {
 #elif defined(MLAS_TARGET_ARM64)
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8X8Dispatch;
 #endif
+    const MLAS_SYMM_QGEMM_DISPATCH* SymmQgemmDispatch{nullptr};
 
     const MLAS_CONV_SYM_DISPATCH* ConvSymU8S8Dispatch{nullptr};
     const MLAS_CONV_SYM_DISPATCH* ConvSymS8S8Dispatch{nullptr};
@@ -841,7 +838,11 @@ struct MLAS_PLATFORM {
 
 };
 
-extern MLAS_PLATFORM MlasPlatform;
+inline
+MLAS_PLATFORM& GetMlasPlatform(){
+    static MLAS_PLATFORM MlasPlatform;
+    return MlasPlatform;
+}
 
 //
 // Threading support.
@@ -861,6 +862,13 @@ MlasExecuteThreaded(
     ptrdiff_t Iterations,
     MLAS_THREADPOOL* ThreadPool
     );
+
+constexpr
+size_t
+MlasDivRoundup(size_t up, size_t down)
+{
+    return (up + down - 1) / down;
+}
 
 /**
  * @brief Distribute multiple iterations of work over a thread pool if supported

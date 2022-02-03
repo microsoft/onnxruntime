@@ -116,4 +116,25 @@ class DnnlSubgraphPrimitive {
 };
 
 }  // namespace ort_dnnl
+
+inline std::ostream& operator<<(std::ostream& os, const dnnl::memory::dims& dims) {
+  std::copy(dims.cbegin(), dims.cend(), std::ostream_iterator<dnnl::memory::dim>(os, " "));
+  return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const gsl::span<const int64_t>& span) {
+  std::copy(span.cbegin(), span.cend(), std::ostream_iterator<int64_t>(os, " "));
+  return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const gsl::span<int64_t>& span) {
+  std::copy(span.cbegin(), span.cend(), std::ostream_iterator<int64_t>(os, " "));
+  return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const TensorShape& shape) {
+  return os << shape.GetDims();
+}
+
 }  // namespace onnxruntime
+
