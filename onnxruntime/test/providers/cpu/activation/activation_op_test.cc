@@ -245,7 +245,7 @@ TEST_F(ActivationOpTest, Sigmoid_bfloat16) {
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST_F(ActivationOpTest, Tanh_bfloat16) {
@@ -277,7 +277,7 @@ TEST_F(ActivationOpTest, Tanh_bfloat16) {
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST_F(ActivationOpTest, Relu_bfloat16) {
@@ -309,7 +309,7 @@ TEST_F(ActivationOpTest, Relu_bfloat16) {
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif
 
