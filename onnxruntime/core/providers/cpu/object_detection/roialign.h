@@ -56,6 +56,14 @@ class RoiAlignBase {
     if (info.GetAttr<float>("spatial_scale", &spatial_scale_tmp).IsOK()) {
       spatial_scale_ = spatial_scale_tmp;
     }
+
+    std::string coordinate_transformation_mode;
+    if (info.GetAttr<std::string>("coordinate_transformation_mode", &coordinate_transformation_mode).IsOK()) {
+      if (coordinate_transformation_mode == "half_pixel")
+        aligned_ = true;
+      else
+        aligned_ = false;
+    }
   }
 
  protected:
@@ -64,6 +72,7 @@ class RoiAlignBase {
   int64_t output_width_{1};
   int64_t sampling_ratio_{0};
   float spatial_scale_{1.0f};
+  bool aligned_{true};
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RoiAlignBase);
