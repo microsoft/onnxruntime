@@ -857,9 +857,21 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
 // onnxruntime::nnapi::Model.
 /* static */ bool ReshapeOpBuilder::CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
                                                    size_t input_rank, size_t output_rank) {
+  // Since we know this is a Reshape NodeUnit, so we can safely assume there is only 1 output
+  // and the node_unit has only one output node.
   const auto& output_node_arg = node_unit.Outputs()[0].node_arg;
   const auto& output_name = output_node_arg.Name();
   const auto& output_node = *node_unit.GetOutputNodes()[0];
+
+  // Check if the Reshape output is a graph output, if so we cannot skip the Reshape
+  // We do not care the case where the Reshape output is a dead end
+  for (const auto* node_arg : model_builder.GetGraphViewer().GetOutputs()) {
+    if (node_arg == &output_node_arg) {
+      LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can not be skipped when the output is a graph output"
+                            << ", output name, " << output_name;
+      return false;
+    }
+  }
 
   // We will go through all the output edges
   for (auto it = output_node.OutputEdgesBegin(), end = output_node.OutputEdgesEnd(); it != end; ++it) {
@@ -893,17 +905,6 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
                             << ", output name, " << output_name
                             << ", the actual input_rank, " << input_rank
                             << ", the actual output_rank, " << output_rank;
-      return false;
-    }
-  }
-
-  // If we reach here, we have all the Reshape outputs are used by gemm/matmul, or Reshape has no output edge
-  // Check if the Reshape output is a graph output, if so we cannot skip the Reshape
-  // We do not care the case where the Reshape output is a dead end
-  for (const auto* node_arg : model_builder.GetGraphViewer().GetOutputs()) {
-    if (node_arg == &output_node_arg) {
-      LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can not be skipped when the output is a graph output"
-                            << ", output name, " << output_name;
       return false;
     }
   }
@@ -1259,8 +1260,7 @@ class ConvOpBuilder : public BaseOpBuilder {
 };
 
 /* static */ bool ConvOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
-  // TODO, add support for QDQ NodeUnit
-  return node_unit.OpType() == "QLinearConv";
+  return IsQuantizedConv(GetQuantizedOpType(node_unit));
 }
 
 /* static */ void
@@ -1295,7 +1295,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto& initializers(model_builder.GetInitializerTensors());
   NodeAttrHelper helper(node_unit);
   const auto inputs = node_unit.Inputs();
-  bool is_qlinear_conv = IsQuantizedOp(node_unit);
+  bool is_quant_conv = IsQuantizedOp(node_unit);
 
   // onnx strides are in the order height, width
   // while nnapi strides are in the order width, height
@@ -1340,7 +1340,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   // this is for per-channel quantization weights
   optional<std::vector<float>> w_scales;
   bool is_per_tensor_u8s8 = false;
-  if (is_qlinear_conv) {
+  if (is_quant_conv) {
     ORT_RETURN_IF_ERROR(GetConvMatMulOpQuantizationScaleAndZeroPoint(model_builder, node_unit,
                                                                      x_scale, w_scale, y_scale,
                                                                      x_zero_point, w_zero_point, y_zero_point,
@@ -1378,7 +1378,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   // Get weight operand type
   // Per-channel quantized weight is handled differently
   OperandType onnx_weight_operand_type =
-      (is_qlinear_conv && w_scales.has_value())
+      (is_quant_conv && w_scales.has_value())
           ? OperandType{onnx_weight_type, onnx_weight_shape,
                         SymmPerChannelQuantParams{w_scales.value(),
                                                   depthwise_conv_2d ? 3u : 0u}}  // channelDim is 3 for depthwise-conv
@@ -1391,7 +1391,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight, onnx_weight_operand_type, L_1230, is_per_tensor_u8s8));
   }
 
-  if (is_qlinear_conv) {
+  if (is_quant_conv) {
     // Verify if the scale and zero point matchs from onnx input/weight and nnapi input/weight
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
     ORT_RETURN_IF_ERROR(IsValidConvWeightQuantizedType(model_builder, weight, w_scale, w_zero_point, w_scales));
@@ -1419,7 +1419,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unknown weight type ", TypeToStr(weight_type));
     }
-  } else if (is_qlinear_conv) {
+  } else if (is_quant_conv) {
     // QLinearConv's bias type need special handling to add scale for quantization input
     const auto& bias_tensor = *model_builder.GetInitializerTensors().at(bias);
     ORT_RETURN_IF_NOT(bias_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32,
@@ -2258,10 +2258,20 @@ class ResizeOpBuilder : public BaseOpBuilder {
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
 };
+
+/* static */ bool ResizeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
+  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQResize;
+}
 
 void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& inputs = node_unit.Inputs();
+  if (IsQuantizedOp(node_unit)) {
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[0].quant_param);               // x_scale, x_zp
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
+  }
+
   // We don't really use ROI here, so add them to skipped list
   model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());  // ROI
 
@@ -2294,6 +2304,15 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     if (!input_is_nhwc) {
       ORT_RETURN_IF_ERROR(GetNHWCInput(model_builder, node_unit, 0, input));
     }
+  }
+
+  // Check if the quantization scale and ZP is correct
+  if (IsQuantizedOp(node_unit)) {
+    float x_scale = 0.0f;
+    int32_t x_zero_point = 0;
+    ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
+        initializers, node_unit.Inputs()[0], node_unit.ModelPath(), x_scale, x_zero_point));
+    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
   }
 
   bool is_linear_resize = helper.Get("mode", "nearest") == "linear";
@@ -2512,7 +2531,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& inputs = node_unit.Inputs();
   const auto& input_shape = shaper[inputs[0].node_arg.Name()];
-  std::vector<int64_t> input_shape_64(input_shape.cbegin(), input_shape.cend());
+  TensorShapeVector input_shape_64(input_shape.cbegin(), input_shape.cend());
   SliceOp::PrepareForComputeMetadata compute_metadata(input_shape_64);
 
   {
@@ -2520,12 +2539,12 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     // to be used in shared PrepareForCompute function to calculate the output shape
     // and normalize inputs, for example, input can be starts/ends/steps for certain axes,
     // PrepareForCompute can generate standard starts/ends/steps/axes for each axes
-    std::vector<int64_t> input_starts;
-    std::vector<int64_t> input_ends;
-    std::vector<int64_t> input_axes;
-    std::vector<int64_t> input_steps;
+    TensorShapeVector input_starts;
+    TensorShapeVector input_ends;
+    TensorShapeVector input_axes;
+    TensorShapeVector input_steps;
 
-    const auto CopyInputData = [&inputs, &model_builder](size_t input_idx, std::vector<int64_t>& data) {
+    const auto CopyInputData = [&inputs, &model_builder](size_t input_idx, TensorShapeVector& data) {
       data.clear();
 
       // This is an optional input, return empty vector
@@ -2591,7 +2610,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
   // helper function to add begin/end/strides of ANEURALNETWORKS_STRIDED_SLICE
   const auto AddOperand = [&model_builder, &node_unit, &input_indices, &operand_indices](
-                              const char* name, const Shape& shape, const std::vector<int64_t>& param_raw_data) {
+                              const char* name, const Shape& shape, const gsl::span<const int64_t>& param_raw_data) {
     std::vector<int32_t> param_data;
     param_data.reserve(param_raw_data.size());
     std::transform(param_raw_data.cbegin(), param_raw_data.cend(),
@@ -2637,8 +2656,8 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     // the end, for example, dim = 5, and end = -1, the end will be normalized to 4, which will cause
     // incorrect result, so here we have to make the end = -dim - 1 such that it will not be treated as
     // an index counting from the end.
-    std::vector<int64_t> ends = compute_metadata.ends_;
-    for (size_t i = 0; i < ends.size(); ++i) {
+    auto ends = compute_metadata.ends_;
+    for (size_t i = 0, limit = ends.size(); i < limit; ++i) {
       if (ends[i] == -1) {
         ends[i] = -static_cast<int32_t>(input_shape[i] + 1);
       }

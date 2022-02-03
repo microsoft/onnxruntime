@@ -118,7 +118,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   const int hidden_size = static_cast<int>(bias_shape.GetDims()[0]) / 3;
   const int head_size = hidden_size / num_heads_;
 
-  std::vector<int64_t> output_shape(3);
+  TensorShapeVector output_shape(3);
   output_shape[0] = shape[0];
   output_shape[1] = shape[1];
   output_shape[2] = static_cast<int64_t>(hidden_size);

@@ -573,7 +573,7 @@ __global__ void _ResizeBiCubicKernel(
 }
 
 size_t CalcResizeBufferSize(const onnxruntime::UpsampleMode upsample_mode,
-                            const std::vector<int64_t>& output_dims) {
+                            const gsl::span<const int64_t>& output_dims) {
   switch (upsample_mode) {
     case UpsampleMode::NN:
       return sizeof(int64_t) * output_dims.size() + sizeof(NearestMappingInfo) * static_cast<size_t>(std::accumulate(output_dims.begin(), output_dims.end(), (int64_t)0));

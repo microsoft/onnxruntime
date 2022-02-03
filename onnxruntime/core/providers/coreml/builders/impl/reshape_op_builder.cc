@@ -57,7 +57,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                         : target_shape_tensor.int64_data().data();
 
   const auto size = target_shape_tensor.dims()[0];
-  std::vector<int64_t> target_shape{raw_target_shape, raw_target_shape + size};
+  TensorShapeVector target_shape{raw_target_shape, raw_target_shape + size};
   std::vector<int64_t> input_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
   ReshapeHelper helper(TensorShape(input_shape), target_shape);

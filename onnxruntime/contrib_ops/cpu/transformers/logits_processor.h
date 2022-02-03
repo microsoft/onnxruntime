@@ -77,11 +77,24 @@ class VocabMaskLogitsProcessor : public ILogitsProcessor<T> {
 };
 
 template <typename T>
+class PrefixVocabMaskLogitsProcessor : public ILogitsProcessor<T> {
+ public:
+  PrefixVocabMaskLogitsProcessor(const gsl::span<const int32_t>& vocab_mask, int batch_size);
+
+  void Process(const ISequences* sequences,
+               NextTokenScores<T>& next_token_scores) override;
+
+ private:
+  gsl::span<const int32_t> prefix_vocab_mask_;
+  const int batch_size_;
+};
+
+template <typename T>
 class LogitsProcessorList {
 public:
     LogitsProcessorList() = default ;
     void Init(const BeamSearchParameters& parameters);
-    void Process(const ISequences* sequences, gsl::span<T>& next_token_scores);
+    void Process(const ISequences* sequences, gsl::span<T>& next_token_scores, int counter);
 
 private:
     int batch_beam_size_;
@@ -91,6 +104,7 @@ private:
     std::unique_ptr<RepetitionPenaltyLogitsProcessor<T>> repetition_penalty_processor_;
     std::unique_ptr<NoRepeatNGramLogitsProcessor<T>> no_repeat_ngram_processor_;
     std::unique_ptr<VocabMaskLogitsProcessor<T>> vocab_mask_processor_;
+    std::unique_ptr<PrefixVocabMaskLogitsProcessor<T>> prefix_vocab_mask_processor_;
     std::unique_ptr<MinLengthLogitsProcessor<T>> min_length_processor_;
 };
 

@@ -314,6 +314,16 @@ Status MoveInputOutput(Graph& graph, const NodesToOptimize& selected_nodes, Node
       if (src != nullptr) {
         ORT_RETURN_IF_ERROR(MoveInputOutputImpl(graph, move.value_move_info, *src, dest,
                                                 only_update_dest_definitions));
+      } else if (move.value_move_info.optional &&
+                 move.value_move_info.fill_optional_with_empty) {
+        auto& dest_defs = (move.value_move_info.dest_slot.in_out == ArgType::kInput)
+                              ? dest.MutableInputDefs()
+                              : dest.MutableOutputDefs();
+        dest_defs.push_back(&graph.GetOrCreateNodeArg("", nullptr));
+
+        if (move.value_move_info.dest_slot.in_out == ArgType::kInput) {
+          dest.MutableInputArgsCount().push_back(1);
+        }
       }
     }
   }

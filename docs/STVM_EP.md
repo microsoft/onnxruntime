@@ -15,13 +15,7 @@
 STVM is an execution provider for ONNX Runtime that is built on top of Apache TVM. It enables ONNX Runtime users to leverage Apache TVM model optimizations.
 STVM EP is currently in "Preview". It's been tested to work on a handful of models on Linux, but not on Windows or MacOS.
 
-## Build
-
-To use the STVM EP in ONNX Runtime (ORT), users first need to build Apache TVM and ONNX Runtime.
-
-Note: some python packages may need to be upgraded/downgraded because both TVM and ORT with the STVM EP use the Python API. Alternatively, use modify PYTHONPATH to solve these conflicts. 
-
-### Build and configure TVM
+### Build ONNX Runtime with the STVM Execution Provider
 
 Install the minimal pre-requisites on Ubuntu/Debian like linux operating systems:
 ```
@@ -29,29 +23,7 @@ apt-get install -y python3 python3-dev python3-pip python3-setuptools gcc libtin
 pip3 install numpy decorator attrs
 ```
 
-Clone this repo using the `--recursive` flag to pull all associated dependencies
-
-
-Build TVM from the tvm_update folder:
-
-```
-cd onnxruntime/cmake/external/tvm_update/
-mkdir build
-cd ./build
-cmake -DCMAKE_BUILD_TYPE=Release -DUSE_LLVM=ON -DUSE_OPENMP=gnu -DUSE_MICRO=ON (If your machine is CUDA enabled -DUSE_CUDA=ON) ..
-make -j <number of threads in build machine>
-```
-
-Set the environment variable PYTHONPATH to tell python where to find the TVM library:
-
-```
-export TVM_HOME=<path_to_onnx_runtime>/cmake/external/tvm_update
-export PYTHONPATH=$TVM_HOME/python:${PYTHONPATH}
-```
-
-For more details on installing Apache TVM click [here](https://tvm.apache.org/docs/install/from_source.html)
-
-### Build ONNX Runtime with the STVM Execution Provider
+Clone this repo.
 
 In order to build ONNXRT you will need to have CMake 3.18 or higher. In Ubuntu 20.04 you can use the following commands to install the latest version of CMake:
 
@@ -75,22 +47,22 @@ Build ONNX Runtime:
 ./build.sh --config Release --enable_pybind --build_wheel --skip_tests --parallel --use_stvm --skip_onnx_tests
 ```
 
+This command builds both TVM and onnxruntime-stvm. It creates two wheel, one for each project.
 Build the python API for ONNX Runtime instead of using the standard package:
 ```
 cd <path_to_onnx_runtime>
-pip3 uninstall onnxruntime onnxruntime-stvm -y
+pip3 uninstall onnxruntime onnxruntime-stvm tvm -y
 whl_path=$(find ./build/Linux/Release/dist -name "*.whl")
 python3 -m pip install $whl_path
 ```
-Alternatively, you can set PYTHONPATH to tell python where to find the ONNXRT library:
+Alternatively, you can set PYTHONPATH to tell python where to find the ONNXRT library and the TVM library.
 ```
-export ORT_PYTHON_HOME=<path_to_onnx_runtime>/build/Linux/Release
-export PYTHONPATH=$ORT_PYTHON_HOME:${PYTHONPATH}
+export PYTHONPATH=$ORT_PYTHON_HOME:$TVM_PYTHON_HOME:${PYTHONPATH}
 ```
 
 ## Configuration options
 STVM Executor Provider can be configured with the following provider options:
-```
+```python
 po = [dict(target=client_target,
            target_host=client_target_host,
            opt_level=client_opt_level,
@@ -109,7 +81,7 @@ stvm_session = onnxruntime.InferenceSession(model_path, providers=["StvmExecutio
 - `tuning_file_path` is path to AutoTVM or Ansor tuning file which gives specifications for given model and target for the best performance. (See below for more details).
 
 TVM supports models with fixed graph only. If your model has unknown dimensions in input shapes (excluding batch size) you must provide the shape using the `input_names` and `input_shapes` provider options. Below is an example of what must be passed to `provider_options`:
-```
+```python
 input_names = "input_1 input_2"
 input_shapes = "[1 3 224 224] [1 2]"
 ```
@@ -150,3 +122,25 @@ pip3 install protobuf==3.19.1
 The following pair of ONNX and protobuf versions have been found to be compatible:
 - 3.17.3 and 1.8.0
 - 3.19.1 and 1.10.1
+
+When use onnxruntime-stvm after it was build from the source, the following error may happen:
+
+```
+terminate called after throwing an instance of 'tvm::runtime::InternalError'
+  what():  [12:01:11] ..._deps/tvm-src/src/runtime/registry.cc:69: 
+---------------------------------------------------------------
+An error occurred during the execution of TVM.
+For more information, please see: https://tvm.apache.org/docs/errors.html
+---------------------------------------------------------------
+  Check failed: (can_override) is false: Global PackedFunc arith.CreateAnalyzer is already registered
+
+Aborted (core dumped)
+```
+
+It means both onnxruntime and tvm loaded a different dynamic library ``libtvm.[so|dll]``.
+To solve that, `tvm` must be imported first:
+
+```python
+import tvm
+import onnxruntime
+```

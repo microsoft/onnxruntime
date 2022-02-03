@@ -279,7 +279,7 @@ TEST(OrtModelOnlyTests, ValidateOrtFormatModelDoesNotRunOptimizersInFullBuild) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/mnist.onnx.test_output.ort");
   SaveAndCompareModels("testdata/mnist.onnx", ort_file);
 
-  // DumpOrtModelAsJson(ToMBString(ort_file));
+  // DumpOrtModelAsJson(ToUTF8String(ort_file));
 
   OrtModelTestInfo test_info;
   test_info.model_filename = ort_file;
@@ -306,7 +306,7 @@ TEST(OrtModelOnlyTests, SerializeToOrtFormat) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/ort_github_issue_4031.onnx.test_output.ort");
   SaveAndCompareModels("testdata/ort_github_issue_4031.onnx", ort_file);
 
-  // DumpOrtModelAsJson(ToMBString(ort_file));
+  // DumpOrtModelAsJson(ToUTF8String(ort_file));
 
   OrtModelTestInfo test_info;
   test_info.model_filename = ort_file;
