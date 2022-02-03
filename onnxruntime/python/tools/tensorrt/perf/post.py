@@ -3,7 +3,6 @@ import sys
 import os
 import pandas as pd
 import time
-from datetime import datetime, timedelta
 from azure.kusto.data import KustoConnectionStringBuilder
 from azure.kusto.data.helpers import dataframe_from_result_table 
 from azure.kusto.ingest import (
@@ -31,7 +30,7 @@ def parse_arguments():
     parser.add_argument(
         "-b", "--branch", help="Branch", required=True)
     parser.add_argument(
-        "-d", "--date", help="Date", required=True)
+        "-d", "--datetime", help="Commit Datetime", required=True)
     return parser.parse_args()
 
 def parse_csv(report_file):
@@ -84,10 +83,10 @@ def get_status(status, model_group):
     status = adjust_columns(status, status_columns, status_db_columns, model_group)
     return status
 
-def get_specs(specs, branch, commit_id, upload_time):
+def get_specs(specs, branch, commit_id, date_time):
     specs = specs.append({'.': 6, 'Spec': 'Branch', 'Version' : branch}, ignore_index=True)
     specs = specs.append({'.': 7, 'Spec': 'CommitId', 'Version' : commit_id}, ignore_index=True)
-    specs = specs.append({'.': 8, 'Spec': 'UploadTime', 'Version' : upload_time}, ignore_index=True)
+    specs = specs.append({'.': 8, 'Spec': 'CommitTime', 'Version' : date_time}, ignore_index=True)
     return specs
 
 def get_session(session, model_group):
@@ -96,10 +95,10 @@ def get_session(session, model_group):
     session = adjust_columns(session, session_columns, session_db_columns, model_group)
     return session
 
-def write_table(ingest_client, table, table_name, upload_time, identifier):
+def write_table(ingest_client, table, table_name, commit_time, identifier):
     if table.empty:
         return
-    table = table.assign(UploadTime=upload_time) # add UploadTime
+    table = table.assign(UploadTime=commit_time) # add Commit Datetime
     table = table.assign(Identifier=identifier) # add Identifier
     ingestion_props = IngestionProperties(
       database=database,
@@ -110,12 +109,9 @@ def write_table(ingest_client, table, table_name, upload_time, identifier):
     # append rows
     ingest_client.ingest_from_dataframe(table, ingestion_properties=ingestion_props)
 
-def get_time():   
-    date_time = time.strftime(time_string_format)
-    return date_time
-
-def get_identifier(commit_id, trt_version, branch):
-    return commit_id + '_' + trt_version + '_' + branch
+def get_identifier(date_time, commit_id, trt_version, branch):
+    date = date_time.split('T')[0] # extract date only 
+    return date + '_' + commit_id + '_' + trt_version + '_' + branch
 
 def main():
     
@@ -124,8 +120,8 @@ def main():
     # connect to database
     kcsb_ingest = KustoConnectionStringBuilder.with_az_cli_authentication(cluster_ingest)
     ingest_client = QueuedIngestClient(kcsb_ingest)
-    date_time = args.date 
-    identifier = get_identifier(args.commit_hash, args.trt_version, args.branch)
+    date_time = args.date_time
+    identifier = get_identifier(date_time, args.commit_hash, args.trt_version, args.branch)
     
     try:
         result_file = args.report_folder

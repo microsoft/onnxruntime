@@ -36,8 +36,6 @@ latency_over_time_name = 'latency_over_time'
 specs_name = 'specs' 
 session_name = 'session'
 
-time_string_format = '%Y-%m-%d %H:%M:%S'
-
 # column names 
 model_title = 'Model'
 group_title = 'Group'

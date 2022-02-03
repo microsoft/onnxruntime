@@ -213,6 +213,7 @@ def get_trtexec_pid(df, python_pid):
 
 def get_max_memory(): 
     df = pd.read_csv(MEMORY_FILE)
+    print(df.to_string())
     pid = df['pid'].iloc[0]
     mem_series = df.loc[df['pid'] == pid, ' used_gpu_memory [MiB]']
     max_mem = max(mem_series.str.replace(' MiB','').astype(int))
