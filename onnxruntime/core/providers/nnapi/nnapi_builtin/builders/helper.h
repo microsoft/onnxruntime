@@ -87,6 +87,7 @@ enum class QuantizedOpType : uint8_t {
   // QLinearReduceMean,
   QDQConv,
   QDQResize,
+  QDQPool,
   // TODO, add other QDQ NodeUnit types
 };
 

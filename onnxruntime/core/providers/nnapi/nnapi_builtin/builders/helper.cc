@@ -70,8 +70,11 @@ QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit) {
       return QuantizedOpType::QDQConv;
     else if (op_type == "Resize")
       return QuantizedOpType::QDQResize;
+    else if (op_type == "Pool")
+      return QuantizedOpType::QDQPool;
   } else {
     // throw?
+    // Do we want to throw here? seems got neglected last time
   }
 
   return QuantizedOpType::Unknown;
