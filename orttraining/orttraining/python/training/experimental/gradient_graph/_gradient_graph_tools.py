@@ -16,17 +16,18 @@ def export_gradient_graph(
         gradient_graph_path: Union[Path, str], intermediate_graph_path: Optional[Union[Path, str]] = None,
         opset_version=12) -> None:
     r"""
-    Build a gradient graph for `model` so that you can output gradients in an inference session when given a specific input and labels.
+    Build a gradient graph for `model` so that you can output gradients in an inference session when given specific input and corresponding labels.
 
     Args:
-        model (torch.nn.Module): A gradient will be built for this model.
+        model (torch.nn.Module): A gradient graph will be built for this model.
 
         loss_fn (Callable[[Any, Any], Any]): A function to compute the loss given the model's output and the `example_labels`.
+        Predefined loss functions such as `torch.nn.CrossEntropyLoss()` will work but you might not be able to load the graph in other environments such as an InferenceSession in ONNX Runtime Web, instead, use a custom Python method.
 
         example_input (torch.Tensor): Example input that you would give your model for inference/prediction.
 
         example_labels (torch.Tensor): The expected labels for `example_input`.
-        This could be the output of your model when given `example_input` but it might be different if your loss function expects labels to be different (e.g. when using CrossEntropyLoss).
+        This could be the output of your model when given `example_input` but it might be different if your loss function expects labels to be different (e.g. when using cross entropy loss).
 
         gradient_graph_path (Union[Path, str]): The path to where you would like to save the gradient graph.
 
@@ -67,10 +68,9 @@ def export_gradient_graph(
     args = (example_input, example_labels, *tuple(model.parameters()))
     model_param_names = tuple(name for name, _ in model.named_parameters())
     input_names = ['input', 'labels', *model_param_names]
-    nodes_needing_gradients = set()
-    for name, _ in model.named_parameters():
-        # Should we check `if _.requires_grad:` first?
-        nodes_needing_gradients.add(name)
+    nodes_needing_gradients = set(
+        name for name, param in model.named_parameters()
+        if param.requires_grad)
 
     torch.onnx.export(
         wrapped_model, args,

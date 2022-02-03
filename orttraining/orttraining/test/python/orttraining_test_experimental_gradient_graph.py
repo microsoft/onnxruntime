@@ -7,7 +7,6 @@ import onnx
 import onnxruntime
 import torch
 from onnxruntime.training.experimental import export_gradient_graph
-from torch import nn
 
 
 class NeuralNet(torch.nn.Module):
@@ -15,15 +14,25 @@ class NeuralNet(torch.nn.Module):
     Simple example model.
     """
 
-    def __init__(self, input_size: int, hidden_size: int, num_classes: int):
+    def __init__(self,
+                 input_size: int,
+                 embedding_size: int,
+                 hidden_size: int,
+                 num_classes: int):
         super(NeuralNet, self).__init__()
 
-        self.fc1 = torch.nn.Linear(input_size, hidden_size)
+        self.frozen_layer = torch.nn.Linear(
+            input_size, embedding_size, bias=False)
+        # Freeze a layer (mainly to test that gradients don't get output for it).
+        self.frozen_layer.requires_grad_(False)
+
+        self.fc1 = torch.nn.Linear(embedding_size, hidden_size)
         self.relu = torch.nn.ReLU()
         self.fc2 = torch.nn.Linear(hidden_size, num_classes)
 
     def forward(self, x):
-        out = self.fc1(x)
+        out = self.frozen_layer(x)
+        out = self.fc1(out)
         out = self.relu(out)
         out = self.fc2(out)
         return out
@@ -42,10 +51,10 @@ def binary_cross_entropy_loss(inp, target):
 class GradientGraphBuilderTest(unittest.TestCase):
     def test_save(self):
         # We need a custom loss function to load the graph in an InferenceSession in ONNX Runtime Web.
-        # You can still make the gradient graph with nn.CrossEntropyLoss() and this test will pass.
+        # You can still make the gradient graph with torch.nn.CrossEntropyLoss() and this test will pass.
         loss_fn = binary_cross_entropy_loss
         input_size = 10
-        model = NeuralNet(input_size=input_size, hidden_size=5,
+        model = NeuralNet(input_size=input_size, embedding_size=20, hidden_size=5,
                           num_classes=2)
         directory_path = Path(os.path.dirname(__file__)).resolve()
 
@@ -64,13 +73,19 @@ class GradientGraphBuilderTest(unittest.TestCase):
         onnx_model = onnx.load(str(gradient_graph_path))
         onnx.checker.check_model(onnx_model)
 
+        # Expected inputs: input, labels, models parameters.
+        self.assertEqual(
+            1 + 1 + sum(1 for _ in model.parameters()), len(onnx_model.graph.input))
+        
+        # Expected outputs: prediction, loss, and parameters with gradients.
+        self.assertEqual(
+            1 + 1 + sum(1 if p.requires_grad else 0 for p in model.parameters()), len(onnx_model.graph.output))
+
         torch_out = model(example_input)
-        ort_session = onnxruntime.InferenceSession(
-            str(gradient_graph_path))
-        inputs = ort_session.get_inputs()
+        ort_session = onnxruntime.InferenceSession(str(gradient_graph_path))
         ort_inputs = {
-            inputs[0].name: to_numpy(example_input),
-            inputs[1].name: to_numpy(example_labels),
+            onnx_model.graph.input[0].name: to_numpy(example_input),
+            onnx_model.graph.input[1].name: to_numpy(example_labels),
         }
 
         for name, param in model.named_parameters():
@@ -79,7 +94,6 @@ class GradientGraphBuilderTest(unittest.TestCase):
         ort_outs = ort_session.run(None, ort_inputs)
         onnx_output_names = [node.name for node in onnx_model.graph.output]
         onnx_name_to_output = dict(zip(onnx_output_names, ort_outs))
-        self.assertEqual(6, len(onnx_name_to_output))
 
         ort_output = onnx_name_to_output['output']
         np.testing.assert_allclose(
@@ -92,12 +106,13 @@ class GradientGraphBuilderTest(unittest.TestCase):
 
         # Make sure the gradients have the right shape.
         model_param_names = tuple(
-            name for name, _ in model.named_parameters())
+            name for name, param in model.named_parameters() if param.requires_grad)
         self.assertEqual(4, len(model_param_names))
 
         for name, param in model.named_parameters():
-            grad = onnx_name_to_output[name + '_grad']
-            self.assertEqual(param.size(), grad.shape)
+            if param.requires_grad:
+                grad = onnx_name_to_output[name + '_grad']
+                self.assertEqual(param.size(), grad.shape)
 
 
 if __name__ == '__main__':
