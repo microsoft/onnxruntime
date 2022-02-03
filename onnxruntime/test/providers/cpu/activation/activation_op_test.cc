@@ -146,8 +146,8 @@ TEST_F(ActivationOpTest, Sigmoid_fp16) {
 
   std::vector<MLFloat16> f_X(X.size());
   std::vector<MLFloat16> f_Y(Y.size());
-  ConvertFloatToMLFloat16(X.data(), f_X.data(), X.size());
-  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), Y.size());
+  ConvertFloatToMLFloat16(X.data(), f_X.data(), static_cast<int>(X.size()));
+  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), static_cast<int>(Y.size()));
 
   test.AddInput<MLFloat16>("X", dims, f_X);
   test.AddOutput<MLFloat16>("Y", dims, f_Y);
@@ -174,8 +174,8 @@ TEST_F(ActivationOpTest, Tanh_fp16) {
 
   std::vector<MLFloat16> f_X(X.size());
   std::vector<MLFloat16> f_Y(Y.size());
-  ConvertFloatToMLFloat16(X.data(), f_X.data(), X.size());
-  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), Y.size());
+  ConvertFloatToMLFloat16(X.data(), f_X.data(), static_cast<int>(X.size()));
+  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), static_cast<int>(Y.size()));
 
   test.AddInput<MLFloat16>("X", dims, f_X);
   test.AddOutput<MLFloat16>("Y", dims, f_Y);
@@ -202,8 +202,8 @@ TEST_F(ActivationOpTest, Relu_fp16) {
 
   std::vector<MLFloat16> f_X(X.size());
   std::vector<MLFloat16> f_Y(Y.size());
-  ConvertFloatToMLFloat16(X.data(), f_X.data(), X.size());
-  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), Y.size());
+  ConvertFloatToMLFloat16(X.data(), f_X.data(), static_cast<int>(X.size()));
+  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), static_cast<int>(Y.size()));
 
   test.AddInput<MLFloat16>("X", dims, f_X);
   test.AddOutput<MLFloat16>("Y", dims, f_Y);
