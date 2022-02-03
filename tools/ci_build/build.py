@@ -1449,7 +1449,7 @@ def run_training_python_frontend_tests(cwd):
         'BertModelTest.test_for_pretraining_full_precision_list_and_dict_input'], cwd=cwd)
 
     # Test that a gradient graph can be exported.
-    run_subprocess([sys.executable, 'orttraining_test_experimental_gradient_graph.py'])
+    run_subprocess([sys.executable, 'orttraining_test_experimental_gradient_graph.py'], cwd=cwd)
 
     # TODO: use run_orttraining_test_orttrainer_frontend_separately to work around a sporadic segfault.
     # shall revert to run_subprocess call once the segfault issue is resolved.
