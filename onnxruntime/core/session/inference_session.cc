@@ -161,6 +161,29 @@ Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger&
 
   return status;
 }
+
+static bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, const ProviderType provider) {
+  for (const auto& node : graph.Nodes()) {
+    const auto& node_provider = node.GetExecutionProviderType();
+
+    if (node_provider.empty() || node_provider != provider) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+static bool HasControlflowNodes(const Graph& graph) {
+  for (const auto& node : graph.Nodes()) {
+    if (node.ContainsSubgraph()) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 }  // namespace
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
@@ -1377,6 +1400,39 @@ common::Status InferenceSession::Initialize() {
                                                     *session_state_,
                                                     saving_ort_format));
 
+      // If the CUDA EP is part of the providers list for this session AND
+      // The CUDA EP is configured to do a graph capture AND
+      // All the graph nodes have been assigned to the CUDA EP,
+      // Then the CUDA EP is cached for triggering a GraphReplay() in Run().
+      auto* cuda_ep = execution_providers_.Get(onnxruntime::kCudaExecutionProvider);
+      if (cuda_ep && cuda_ep->ConfiguredForGraphCapture()) {
+        if (HasControlflowNodes(graph)) {
+          LOGS(*session_logger_, INFO) << "This session cannot use the CUDA Graph feature as requested by the user "
+                                       << " as the model has control flow nodes which can't be supported by CUDA Graphs.";
+
+          // Return error status as we don't want the session initialization to complete successfully
+          // if the user has requested usage of CUDA Graph feature and we cannot honor that.
+          ORT_RETURN_IF_ERROR_SESSIONID_(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                                         "This session cannot use the CUDA Graph feature as requested by the user "
+                                                         " as the model has control flow nodes which can't be supported by CUDA Graphs."));
+        } else if (!AreAllNodesInMainGraphAssignedToOneEp(graph, onnxruntime::kCudaExecutionProvider)) {
+          LOGS(*session_logger_, INFO) << "This session cannot use the CUDA Graph feature as requested by the user "
+                                       << " as all the graph nodes have not been partitioned to the CUDA EP.";
+
+          // Return error status as we don't want the session initialization to complete successfully
+          // if the user has requested usage of CUDA Graph feature and we cannot honor that.
+          ORT_RETURN_IF_ERROR_SESSIONID_(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                                         "This session cannot use the CUDA Graph feature as requested by the user "
+                                                         " as all the graph nodes have not been partitioned to the CUDA EP."));
+
+        }
+
+        else {
+          LOGS(*session_logger_, INFO) << "This session will use the CUDA Graph feature as requested by the user.";
+          cached_cuda_execution_provider_for_cuda_graph_replay = cuda_ep;
+        }
+      }
+
       // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
       ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
 
@@ -1778,18 +1834,20 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
 }
 #endif
 
-void InferenceSession::Replay() {
-  for  (const auto& provider : session_state_->GetExecutionProviders()) {
-    if (provider->Type() == kCudaExecutionProvider) {
-      provider->Replay();
-    }
-  }
-}
-
 Status InferenceSession::Run(const RunOptions& run_options,
                              const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
                              const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
+  // Check if this Run() is simply going to be a CUDA Graph replay.
+  if (cached_cuda_execution_provider_for_cuda_graph_replay) {
+    if (cached_cuda_execution_provider_for_cuda_graph_replay->IsGraphCaptured()) {
+      LOGS(*session_logger_, INFO) << "Replaying the captured CUDA Graph for this model";
+      return cached_cuda_execution_provider_for_cuda_graph_replay->GraphReplay();
+    } else {
+      LOGS(*session_logger_, INFO) << "Capturing the CUDA Graph for this model";
+    }
+  }
+
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
@@ -1879,8 +1937,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #endif
     ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                  session_options_.execution_mode, run_options.terminate, run_logger,
-                                                 run_options.only_execute_path_to_fetches,
-                                                 run_options.capture_cuda_graph));
+                                                 run_options.only_execute_path_to_fetches));
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {

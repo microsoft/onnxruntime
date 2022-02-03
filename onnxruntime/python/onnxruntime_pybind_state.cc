@@ -55,16 +55,7 @@ namespace py = pybind11;
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(push)
-// "Global initializer calls a non-constexpr function." Therefore you can't use ORT APIs in the other global initializers.
-// TODO: we may delay-init this variable
-#pragma warning(disable : 26426)
-#endif
 static Env& platform_env = Env::Default();
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(push)
-#endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 // Custom op section starts
@@ -1237,9 +1228,7 @@ RunOptions instance. The individual calls will exit gracefully and return an err
                      R"pbdoc(Choose to run in training or inferencing mode)pbdoc")
 #endif
       .def_readwrite("only_execute_path_to_fetches", &RunOptions::only_execute_path_to_fetches,
-                     R"pbdoc(Only execute the nodes needed by fetch list)pbdoc")
-      .def_readwrite("capture_cuda_graph", &RunOptions::capture_cuda_graph,
-                     R"pbdoc(Set to True to capture CUDA Graph.)pbdoc");
+                     R"pbdoc(Only execute the nodes needed by fetch list)pbdoc");
 
   py::class_<ModelMetadata>(m, "ModelMetadata", R"pbdoc(Pre-defined and custom metadata about the model.
 It is usually used to identify the model used to run the prediction and
@@ -1441,37 +1430,6 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       })
       .def("end_profiling", [](const PyInferenceSession* sess) -> std::string {
         return sess->GetSessionHandle()->EndProfiling();
-      })
-      .def("capture_cuda_graph", [](PyInferenceSession* sess, const py::dict& feeds, const py::dict&fetches, RunOptions* run_options = nullptr) -> void {
-        NameMLValMap ort_feeds;
-        // item is always a copy since dict returns a value and not a ref
-        // and Apple XToolChain barks
-        for (const auto item : feeds) {
-          auto name = item.first.cast<std::string>();
-          const OrtValue* ort_value = item.second.cast<const OrtValue*>();
-          ort_feeds.emplace(name, *ort_value);
-        }
-        std::vector<std::string> output_names;
-        std::vector<OrtValue> fetch_ort_values;
-        for (const auto item : fetches) {
-          auto name = item.first.cast<std::string>();
-          const OrtValue* ort_value = item.second.cast<const OrtValue*>();
-          output_names.push_back(name);
-          fetch_ort_values.push_back(*ort_value);
-        }
-
-        {
-          // release GIL to allow multiple python threads to invoke Run() in parallel.
-          py::gil_scoped_release release;
-          if (run_options != nullptr) {
-            OrtPybindThrowIfError(sess->GetSessionHandle()->Run(*run_options, ort_feeds, output_names, &fetch_ort_values));
-          } else {
-            OrtPybindThrowIfError(sess->GetSessionHandle()->Run(ort_feeds, output_names, &fetch_ort_values));
-          }
-        }
-      })
-      .def("replay", [](const PyInferenceSession* sess) -> void {
-        sess->GetSessionHandle()->Replay();
       })
       .def_property_readonly("get_profiling_start_time_ns", [](const PyInferenceSession* sess) -> uint64_t {
         return sess->GetSessionHandle()->GetProfiling().GetStartTimeNs();

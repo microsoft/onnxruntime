@@ -165,7 +165,7 @@ class IExecutionProvider {
   virtual common::Status OnRunEnd(bool /*sync_stream*/) { return Status::OK(); }
 
   // TODO: Comment
-  virtual bool CanCaptureGraph() { return false; }
+  virtual bool ConfiguredForGraphCapture() { return false; }
 
   // TODO: Comment
   virtual bool IsGraphCaptured() { return false; }
