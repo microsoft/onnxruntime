@@ -53,6 +53,28 @@ static void BuildFusedKernelDef(KernelDefBuilder& builder, const IndexedSubGraph
       .Provider(provider_type);
 }
 
+/// <summary>
+/// Validate all the layout sensitive nodes which were transformed for current EP are indeed taken by current EP.
+/// If not, then we have a bug. If a node with domain kMSNHWC is left in the graph at this point then
+/// graph.Resolve will fail.
+/// Since layout transformation is only enabled for compile based EPs, just checking that graph does not contain
+/// a node with kMSNHWC domain is enough. This is because after compile all the nodes which the EP claims are fused
+/// into 1 and removed from the graph.
+/// </summary>
+/// <param name="graph">Graph to validate</param>
+/// <returns></returns>
+static Status ValidateGraphPartitioning(const Graph& graph) {
+  for (const auto& node : graph.Nodes()) {
+    if (node.Domain() == kMSNHWCDomain) {
+      return Status(common::ONNXRUNTIME, common::FAIL,
+                    "Graph contains an invalid node: " + node.Name() + " Op Type: " + node.OpType() +
+                        " with domain: " + kMSNHWCDomain + ". These are temporary nodes added during layout transformations " +
+                        " and are not expected to remain in the graph post partitioning. This is a bug in layout transformer.");
+    }
+  }
+  return Status::OK();
+}
+
 // TODO remove once PR is ready to be checked in
 // static void PrintNodes(Graph& graph) {
 //   for (const auto& node : graph.Nodes()) {
@@ -60,7 +82,7 @@ static void BuildFusedKernelDef(KernelDefBuilder& builder, const IndexedSubGraph
 //   }
 // }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
 /// <summary>
 /// Check if a node can be placed on a specific provider. If yes, then set the nodes execution provider.
@@ -181,6 +203,7 @@ static Status TransformLayout(Graph& graph, bool& modified,
 
   return Status::OK();
 }
+#endif
 
 static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_registry_mgr, IExecutionProvider& current_ep,
                                  GraphPartitioner::Mode mode, std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
@@ -189,7 +212,7 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
     capabilities = current_ep.GetCapability(graph_viewer, kernel_registry_mgr.GetKernelRegistriesByProviderType(current_ep.Type()));
   }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   // Run layout transformer only for EPs other than CPU EP and provided the preferred layout is NHWC
   // CPU EP layout transformation happens later when level 3 transformers are run.
   if (mode != GraphPartitioner::Mode::kAssignOnly &&
@@ -220,27 +243,7 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
   return Status::OK();
 }
 
-/// <summary>
-/// Validate all the layout sensitive nodes which were transformed for current EP are indeed taken by current EP.
-/// If not, then we have a bug. If a node with domain kMSNHWC is left in the graph at this point then
-/// graph.Resolve will fail.
-/// Since layout transformation is only enabled for compile based EPs, just checking that graph does not contain
-/// a node with kMSNHWC domain is enough. This is because after compile all the nodes which the EP claims are fused
-/// into 1 and removed from the graph.
-/// </summary>
-/// <param name="graph">Graph to validate</param>
-/// <returns></returns>
-static Status ValidateGraphPartitioning(const Graph& graph) {
-  for (const auto& node : graph.Nodes()) {
-    if (node.Domain() == kMSNHWCDomain) {
-      return Status(common::ONNXRUNTIME, common::FAIL,
-                    "Graph contains an invalid node: " + node.Name() + " Op Type: " + node.OpType() +
-                        " with domain: " + kMSNHWCDomain + ". These are temporary nodes added during layout transformations " +
-                        " and are not expected to remain in the graph post partitioning. This is a bug in layout transformer.");
-    }
-  }
-  return Status::OK();
-}
+#if !defined(ORT_MINIMAL_BUILD)
 
 static void BuildFusedKernelDef(KernelDefBuilder& builder, const onnxruntime::Node& node) {
   auto schema = node.Op();

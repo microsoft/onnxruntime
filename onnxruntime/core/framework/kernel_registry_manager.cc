@@ -51,6 +51,34 @@ void KernelRegistryManager::RegisterKernelRegistry(std::shared_ptr<KernelRegistr
   }
   custom_kernel_registries_.push_front(kernel_registry);
 }
+
+// Layout tranformer can add new nodes to the graph.
+// Since layout transformation can happen in an extended build, we need a way to
+// get the hashes for these nodes if they are not picked up and compiled by NNAPI
+// or some other compile based EP. Since the infrastructure as well as op_schema required to generate
+// these hashes is not available in an extended minimal build, we maintain a static map of
+// nodes to hash value. This hash value can then be used to retireive the kernel for the given op.
+static const std::unordered_map<std::string, HashValue> static_kernel_hashes{
+    {"Transpose_1", 4324835766923221184},
+    {"Transpose_13", 17267477159887372848},
+    {"Squeeze_1", 12889825108950034784},
+    {"Squeeze_11", 14725795030460042064},
+    {"Squeeze_13", 16122603335179721968},
+    {"UnSqueeze_1", 15964030255371555232},
+    {"UnSqueeze_11", 16989589986691430224},
+    {"UnSqueeze_13", 9466011545409597224},
+    {"Gather_1", 625186873870077080},
+    {"Gather_11", 11761559382112736008},
+    {"Gather_13", 7462749543760614528},
+    {"Identity_1", 18001636502361632792},
+    {"Identity_13", 16879814636194901248},
+    {"Identity_14", 16515685968327103576},
+    {"Identity_16", 17661628575887109792},
+};
+
+const std::unordered_map<std::string, HashValue>& KernelRegistryManager::GetStaticKernelHashMap() const {
+  return static_kernel_hashes;
+}
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)

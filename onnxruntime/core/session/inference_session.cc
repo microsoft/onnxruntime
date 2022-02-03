@@ -1213,6 +1213,23 @@ Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
+#if defined(ORT_EXTENDED_MINIMAL_BUILD)
+  // layout transformer is enabled in extended minimal build. When nnapi ep is registered
+  // layout transformer can add new nodes. The following loop fetches the hash values for these nodes.
+  // kernel_registry_manager.GetStaticKernelHashMap() contains a list of optype+version to hashvalue for
+  // nodes which are likely to be added by layout transformer.
+  auto new_node_hashes = kernel_registry_manager.GetStaticKernelHashMap();
+  for (const auto& node : graph.Nodes()) {
+    if (node.GetExecutionProviderType().empty()) {
+      auto key = node.OpType() + "_" + std::to_string(node.SinceVersion());
+      auto iter = new_node_hashes.find(key);
+      if (iter != new_node_hashes.end()) {
+        ORT_RETURN_IF_ERROR(set_node_ep(node.Index(), iter->second));
+      }
+    }
+  }
+#endif
+
   return Status::OK();
 }
 

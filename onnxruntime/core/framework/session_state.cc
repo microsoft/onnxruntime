@@ -1015,15 +1015,24 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
-  // lookup the hashes for any nodes we compiled. the nodes indexes for compiled nodes are not in node_indices
+  // lookup the hashes for any nodes we compiled or added during graph partitioning.
+  // These node indexes for compiled nodes as well as newly added nodes are not in node_indices
   // as they were created at runtime.
-  if (!compiled_kernel_hashes.empty()) {
-    for (const auto& node : graph_.Nodes()) {
-      if (kernel_create_info_map_.count(node.Index()) == 0) {
+  auto new_node_hashes = kernel_registry_manager.GetStaticKernelHashMap();
+  for (const auto& node : graph_.Nodes()) {
+    if (kernel_create_info_map_.count(node.Index()) == 0) {
+      if (node.Domain() == kOnnxDomain || node.Domain() == kOnnxDomainAlias) {
+        auto key = node.OpType() + "_" + std::to_string(node.SinceVersion());
+        auto iter = new_node_hashes.find(key);
+        if (iter != new_node_hashes.end()) {
+          ORT_RETURN_IF_ERROR(add_kernel_by_hash(node, iter->second));
+        } else {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to find kernel hash for node:", node.Name(), " optype:", node.OpType());
+        }
+      } else {
         const auto hash_info = compiled_kernel_hashes.find(node.OpType());
         ORT_RETURN_IF(hash_info == compiled_kernel_hashes.cend(),
-                      "Unable to find compiled kernel hash for node '", node.Name(), "'.");
-
+                      "Unable to find compile kernel hash for node '", node.Name(), "'.");
         ORT_RETURN_IF_ERROR(add_kernel_by_hash(node, hash_info->second));
       }
     }

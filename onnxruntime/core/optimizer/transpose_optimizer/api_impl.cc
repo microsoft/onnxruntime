@@ -578,7 +578,7 @@ void ApiGraph::ReshapeInitializer(std::string_view name, const std::vector<int64
 
 static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_type,
                               const std::vector<std::string_view>& inputs, size_t num_outputs,
-                              std::string_view domain, std::string_view node_ep) {
+                              std::string_view domain, int since_version, std::string_view node_ep) {
   const std::string op_type_str(op_type);
   std::string name = graph.GenerateNodeName(op_type_str);
   std::vector<NodeArg*> input_args;
@@ -606,7 +606,13 @@ static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_typ
   Node& node = graph.AddNode(name, op_type_str, "Added in transpose optimizer", input_args, output_args, nullptr,
                              std::string(domain));
 
+#if !defined(ORT_MINIMAL_BUILD)
   graph.SetOpSchemaFromRegistryForNode(node);
+#endif
+
+  if (node.SinceVersion() == -1) {
+    node.SetSinceVersion(since_version);
+  }
 
   node.SetExecutionProviderType(std::string(node_ep));
 
@@ -630,22 +636,58 @@ static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_typ
   return node;
 }
 
+#if defined(ORT_EXTENDED_MINIMAL_BUILD)
+// This is a list of onnx ops and their versions which transpose_optimizer can potentially add to the graph.
+// This is needed in minimal build since opschema is not available.
+static const std::unordered_map<std::string, std::vector<int>> onnx_ops_available_versions = {
+    {"Squeeze", {1, 11, 13}},
+    {"Unsqueeze", {1, 11, 13}},
+    {"Gather", {1, 11, 13}},
+    {"Transpose", {1, 13}},
+    {"Identity", {1, 13, 14, 16}},
+};
+
+// Based on the opset version imported for this model, returns the since version for the node.
+static int GetSinceVersionForNewOp(std::string_view op_type, std::string_view domain,
+                                   const std::unordered_map<std::string, int>& domain_to_version_map) {
+  int since_version = -1;
+  auto opset_import_iter = domain_to_version_map.find(std::string(domain));
+  if (opset_import_iter != domain_to_version_map.end()) {
+    int opset_version = opset_import_iter->second;
+    auto iter = onnx_ops_available_versions.find(std::string(op_type));
+    if (iter != onnx_ops_available_versions.end()) {
+      for (auto version : iter->second) {
+        if (version <= opset_version) {
+          since_version = version;
+        }
+      }
+    }
+  }
+
+  return since_version;
+}
+#endif
+
 std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
                                                 const std::vector<std::string_view>& inputs, size_t num_outputs,
                                                 std::string_view domain) {
+  int since_version =
+#if defined(ORT_EXTENDED_MINIMAL_BUILD)
+      GetSinceVersionForNewOp(op_type, domain, graph_.DomainToVersionMap());
+#else
+      -1;
+#endif
+
   Node& node = CreateNodeHelper(graph_, op_type, inputs, num_outputs,
-                                domain, new_node_ep_ != nullptr ? new_node_ep_ : "");
+                                domain, since_version, new_node_ep_ != nullptr ? new_node_ep_ : "");
+
   return std::make_unique<ApiNode>(node, graph_);
 }
 
 std::unique_ptr<api::NodeRef> ApiGraph::CopyNode(const api::NodeRef& source_node, std::string_view op_type,
                                                  std::string_view domain) {
   Node& node = CreateNodeHelper(graph_, op_type, source_node.Inputs(),
-                                source_node.Outputs().size(), domain, source_node.GetExecutionProviderType());
-
-  if (node.SinceVersion() == -1) {
-    node.SetSinceVersion(source_node.SinceVersion());
-  }
+                                source_node.Outputs().size(), domain, source_node.SinceVersion(), source_node.GetExecutionProviderType());
 
   std::unique_ptr<api::NodeRef> new_node = std::make_unique<ApiNode>(node, graph_);
   new_node->CopyAttributes(source_node);
