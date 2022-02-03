@@ -74,9 +74,21 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     Scatter<EnabledScatterElementsDataTypes>);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     ScatterElements,
     13,
+    15,
+    KernelDefBuilder()
+        .MayInplace(0, 0)
+        .TypeConstraint("T",
+                        BuildKernelDefConstraintsFromTypeList<ScatterElementsDataTypes>(),
+                        BuildKernelDefConstraintsFromTypeList<EnabledScatterElementsDataTypes>())
+        .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
+    Scatter<EnabledScatterElementsDataTypes>);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    ScatterElements,
+    16,
     KernelDefBuilder()
         .MayInplace(0, 0)
         .TypeConstraint("T",
