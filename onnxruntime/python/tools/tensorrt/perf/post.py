@@ -120,7 +120,7 @@ def main():
     # connect to database
     kcsb_ingest = KustoConnectionStringBuilder.with_az_cli_authentication(cluster_ingest)
     ingest_client = QueuedIngestClient(kcsb_ingest)
-    date_time = args.date_time
+    date_time = args.datetime
     identifier = get_identifier(date_time, args.commit_hash, args.trt_version, args.branch)
     
     try:
