@@ -45,7 +45,8 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(float)
 // SPECIALIZED_SOFTMAX_HELPER_IMPL(double)
 SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
 
-// miopenSoftmaxForward/Backward doesn't support BFloat16.
+// cudnnSoftmaxForward/Backward doesn't support BFloat16.
+// apply the same for miopen for now
 #define SPECIALIZED_SOFTMAX_HELPER_IMPL_BFloat16(is_log_softmax)                                                     \
   template <>                                                                                                        \
   Status SoftMaxComputeHelper<BFloat16, is_log_softmax>(hipStream_t stream, const BFloat16* X,                       \
