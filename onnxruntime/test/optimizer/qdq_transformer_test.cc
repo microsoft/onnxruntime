@@ -889,13 +889,19 @@ TEST(QDQTransformerTests, ResizeReshape) {
       // add QDQ + Reshape
       auto* qdq_resize_output = AddQDQNodePair<uint8_t>(builder, resize_output, .003f, 1);
       auto* reshape_shape = builder.Make1DInitializer<int64_t>({1, 2, 52, 82});
-      builder.AddNode("Reshape", {qdq_resize_output, reshape_shape}, {output_arg});
+      auto* reshape_output = builder.MakeIntermediate();
+      builder.AddNode("Reshape", {qdq_resize_output, reshape_shape}, {reshape_output});
+
+      // add QDQ + Squeeze
+      auto* qdq_squeeze_output = AddQDQNodePair<uint8_t>(builder, reshape_output, .003f, 1);
+      builder.AddNode("Squeeze", {qdq_squeeze_output}, {output_arg});
     };
 
     auto check_qdq_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["Resize"], 1);
       EXPECT_EQ(op_to_count["Reshape"], 1);
+      EXPECT_EQ(op_to_count["Squeeze"], 1);
       EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
       EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
     };

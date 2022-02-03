@@ -31,7 +31,8 @@ static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() { retur
                                                                                    {"Reshape", {}},
                                                                                    {"Transpose", {}},
                                                                                    {"MaxPool", {12}},
-                                                                                   {"Resize", {}}}; }
+                                                                                   {"Resize", {}},
+                                                                                   {"Squeeze", {}}}; }
 
 static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() { return {{"AveragePool", {}},
                                                                                     {"LeakyRelu", {}}}; }
