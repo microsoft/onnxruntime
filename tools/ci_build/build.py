@@ -1597,7 +1597,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if is_windows():
                 cwd = os.path.join(cwd, config)
 
-            #run_subprocess([sys.executable, 'onnxruntime_test_python.py'], cwd=cwd, dll_path=dll_path)
+            run_subprocess([sys.executable, 'onnxruntime_test_python.py'], cwd=cwd, dll_path=dll_path)
 
             if not args.disable_contrib_ops:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_sparse_matmul.py'],
