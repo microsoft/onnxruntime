@@ -366,13 +366,28 @@ file(GLOB onnxruntime_python_datasets_data CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/datasets/*.onnx"
 )
 
-# Files needed to convert ONNX model to ORT format
-set(onnxruntime_ort_format_model_conversion_srcs
+# ORT Mobile helpers to convert ONNX model to ORT format, analyze model for suitability in mobile scenarios,
+# and assist with export from PyTorch.
+set(onnxruntime_mobile_util_srcs
+    ${REPO_ROOT}/tools/python/util/check_onnx_model_mobile_usability.py
     ${REPO_ROOT}/tools/python/util/convert_onnx_models_to_ort.py
     ${REPO_ROOT}/tools/python/util/logger.py
+    ${REPO_ROOT}/tools/python/util/make_dynamic_shape_fixed.py
+    ${REPO_ROOT}/tools/python/util/onnx_model_utils.py
+    ${REPO_ROOT}/tools/python/util/optimize_onnx_model.py
+    ${REPO_ROOT}/tools/python/util/pytorch_export_helpers.py
+    ${REPO_ROOT}/tools/python/util/reduced_build_config_parser.py
+    ${REPO_ROOT}/tools/python/util/update_onnx_opset.py
 )
 file(GLOB onnxruntime_ort_format_model_srcs CONFIGURE_DEPENDS
-    ${REPO_ROOT}/tools/python/util/ort_format_model/*.py)
+    ${REPO_ROOT}/tools/python/util/ort_format_model/*.py
+)
+file(GLOB onnxruntime_mobile_helpers_srcs CONFIGURE_DEPENDS
+    ${REPO_ROOT}/tools/python/util/mobile_helpers/*.py
+    ${REPO_ROOT}/tools/ci_build/github/android/mobile_package.required_operators.config
+    ${REPO_ROOT}/tools/ci_build/github/android/nnapi_supported_ops.md
+    ${REPO_ROOT}/tools/ci_build/github/apple/coreml_supported_ops.md
+)
 
 set(build_output_target onnxruntime_common)
 if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
@@ -383,6 +398,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/datasets
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/mobile_helpers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/ort_flatbuffers_py
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers
@@ -433,8 +449,11 @@ add_custom_command(
       ${onnxruntime_python_tools_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
   COMMAND ${CMAKE_COMMAND} -E copy
-      ${onnxruntime_ort_format_model_conversion_srcs}
+      ${onnxruntime_mobile_util_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
+      COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_mobile_helpers_srcs}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/mobile_helpers/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_ort_format_model_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/

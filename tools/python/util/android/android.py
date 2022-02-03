@@ -12,7 +12,7 @@ import time
 import typing
 
 from ..run import run
-from ..platform import is_windows
+from ..platform_helpers import is_windows
 
 
 _log = logging.getLogger("util.android")
