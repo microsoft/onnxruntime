@@ -110,6 +110,19 @@ static void RunFastGeluTest(
   RunFastGeluTest(input_data, bias_data, output_data, input_dims, bias_dims, output_dims, has_bias);
 }
 
+TEST(FastGeluTest, FastGeluWithNullInput) {
+  int batch_size = 1;
+  int sequence_length = 0;
+  int hidden_size = 4;
+
+  std::vector<float> input_data = {};
+
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f};
+
+  RunFastGeluTest(input_data, bias_data, batch_size, sequence_length, hidden_size);
+}
+
 TEST(FastGeluTest, FastGeluWithBiasFloat32) {
   int batch_size = 1;
   int sequence_length = 2;
