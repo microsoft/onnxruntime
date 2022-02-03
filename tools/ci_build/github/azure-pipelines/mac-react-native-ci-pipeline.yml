@@ -102,18 +102,33 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
     displayName: Start iOS Simulator
 
-  - script: |
-      ./gradlew connectedDebugAndroidTest --stacktrace 
-      ./gradlew --stop 
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/android'
+  - task: Gradle@3
+    inputs:
+      gradleWrapperFile: 'gradlew'
+      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/android'
+      options: '--stacktrace'
+      tasks: 'connectedDebugAndroidTest'
+      publishJUnitResults: true
+      testResultsFiles: '**/TEST-*.xml'
+      testRunTitle: 'React Native Android Instrumented Test results'
+      javaHomeOption: 'JDKVersion'
+      sonarQubeRunAnalysis: false
+      spotBugsAnalysis: false
     displayName: Run React Native Android Instrumented Tests
     continueOnError: false
+
+  #- script: |
+  #    ./gradlew connectedDebugAndroidTest --stacktrace 
+  #    ./gradlew --stop 
+  #  workingDirectory: '$(Build.SourcesDirectory)/js/react_native/android'
+  #  displayName: Run React Native Android Instrumented Tests
+  #  continueOnError: false
 
   - task: PublishTestResults@2
     inputs:
       testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/android/**/outputs/androidTest-results/**/TEST*.xml'
       failTaskOnFailedTests: true
-      testRunTitle: 'React Native Android Instrumented Test results'
+      testRunTitle: '
     condition: succeededOrFailed()
     displayName: Publish React Native Android Instrumented Test Results
 
@@ -203,12 +218,27 @@ jobs:
       targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/node_modules/onnxruntime-react-native/android/libs
     displayName: Copy Android package to React Native e2e directory
 
-  - script: |
-      ./gradlew :app:connectedDebugAndroidTest --stacktrace 
-      ./gradlew --stop
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
+  - task: Gradle@3
+    inputs:
+      gradleWrapperFile: 'gradlew'
+      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
+      options: '--stacktrace'
+      tasks: ':app:connectedDebugAndroidTest'
+      publishJUnitResults: true
+      testResultsFiles: '**/TEST-*.xml'
+      testRunTitle: 'React Native Android Instrumented Test results'
+      javaHomeOption: 'JDKVersion'
+      sonarQubeRunAnalysis: false
+      spotBugsAnalysis: false
     displayName: Run React Native Android e2e Tests
     continueOnError: false
+
+  #- script: |
+  #    ./gradlew :app:connectedDebugAndroidTest --stacktrace 
+  #    ./gradlew --stop
+  #  workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
+  #  displayName: Run React Native Android e2e Tests
+  #  continueOnError: false
 
   - task: PublishTestResults@2
     inputs:
