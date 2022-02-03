@@ -107,7 +107,7 @@ jobs:
       ./gradlew --stop 
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/android'
     displayName: Run React Native Android Instrumented Tests
-    continueOnError: true
+    continueOnError: false
 
   - task: PublishTestResults@2
     inputs:
@@ -153,10 +153,14 @@ jobs:
       errorActionPreference: stop
     displayName: Pack NPM packages
 
+  - script: |
+      export COMMIT_SHORT=`git rev-parse --short HEAD`
+    displayName: Set the short version of commit
+
   - task: CopyFiles@2
     inputs:
       sourceFolder: $(Build.SourcesDirectory)/js/common
-      contents: onnxruntime-common-*.tgz
+      contents: onnxruntime-common-*-$(COMMIT_SHORT).tgz
       targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e
     displayName: Copy onnxruntime-common npm package to React Native e2e directory
 
@@ -204,7 +208,7 @@ jobs:
       ./gradlew --stop
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
     displayName: Run React Native Android e2e Tests
-    continueOnError: true
+    continueOnError: false
 
   - task: PublishTestResults@2
     inputs:
@@ -245,6 +249,7 @@ jobs:
       xcrun simctl delete iPhoneRNTest
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
     displayName: Stop iOS Simulator
+    condition: always()
 
   - script: |
       git restore .
