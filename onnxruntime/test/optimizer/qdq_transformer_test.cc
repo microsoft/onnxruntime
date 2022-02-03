@@ -217,7 +217,7 @@ TEST(QDQTransformerTests, ConvMaxPoolReshape_Int8) {
 template <typename InputType, typename OutputType>
 void QDQTransformerAveragePoolTests() {
   auto test_case = [&](const std::vector<int64_t>& input_shape) {
-    auto check_binary_op_graph = [&](InferenceSessionWrapper& session) {
+    auto check_averagepool_op_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       if constexpr (std::is_same<InputType, OutputType>::value) {
         EXPECT_EQ(op_to_count["com.microsoft.QLinearAveragePool"], 1);
@@ -233,7 +233,7 @@ void QDQTransformerAveragePoolTests() {
     };
 
     TransformerTester(BuildQDQAveragePoolTestCase<InputType, OutputType>(input_shape),
-                      check_binary_op_graph,
+                      check_averagepool_op_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       12 /*opset_version*/,

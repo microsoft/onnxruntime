@@ -1155,8 +1155,8 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto& op_type = node_unit.OpType();
 
   int32_t op_code;
-  bool is_quant_average_pool = IsQuantizedOp(node_unit);
-  bool is_average_pool = op_type == "AveragePool" || is_quant_average_pool;
+  bool is_quant_pool = IsQuantizedOp(node_unit);
+  bool is_average_pool = op_type == "AveragePool" || op_type == "QLinearAveragePool";
   if (is_average_pool || op_type == "GlobalAveragePool")
     op_code = ANEURALNETWORKS_AVERAGE_POOL_2D;
   else  // (op_type == "MaxPool" || op_type == "GlobalMaxPool")
@@ -1199,7 +1199,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const OperandType& input_operand_type = operand_types.at(input);
   float y_scale = input_operand_type.operandType.scale;
   int32_t y_zero_point = input_operand_type.operandType.zeroPoint;
-  if (is_quant_average_pool) {
+  if (is_quant_pool) {
     const auto& initializers = model_builder.GetInitializerTensors();
     float x_scale = 0.0f;
     int32_t x_zero_point = 0;
