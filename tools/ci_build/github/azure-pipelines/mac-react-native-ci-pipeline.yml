@@ -187,7 +187,8 @@ jobs:
     displayName: Pod install for onnxruntime react native ios e2e tests
 
   - script: |
-      keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
+      keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android \
+        -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
     displayName: Generate a debug keystore
 
@@ -217,7 +218,10 @@ jobs:
       export FORCE_BUNDLING=1
       export RCT_NO_LAUNCH_PACKAGER=1
       export ENTRY_FILE=index.tsx
-      xcrun xcodebuild test -workspace $(Build.SourcesDirectory)/js/react_native/e2e/ios/OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -destination 'platform=iOS Simulator,OS=latest,name=iPhoneRNTest' -derivedDataPath $(Build.BinariesDirectory)/react_native/ios_e2e_test/derived_data | xcpretty -r junit --no-color --output $(Build.SourcesDirectory)/js/react_native/e2e/ios/build/reports/test-results.xml
+      xcrun xcodebuild test -workspace $(Build.SourcesDirectory)/js/react_native/e2e/ios/OnnxruntimeModuleExample.xcworkspace \
+        -scheme OnnxruntimeModuleExample -destination 'platform=iOS Simulator,OS=latest,name=iPhoneRNTest' \
+        -derivedDataPath $(Build.BinariesDirectory)/react_native/ios_e2e_test/derived_data | xcpretty -r junit --no-color \
+        --output $(Build.SourcesDirectory)/js/react_native/e2e/ios/build/reports/test-results.xml
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
     displayName: Run React Native iOS e2e tests
 
