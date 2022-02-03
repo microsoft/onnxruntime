@@ -140,7 +140,7 @@ RCT_EXPORT_METHOD(postprocess
   NSDictionary *outputTensor = [result objectForKey:@"Identity"];
 
   NSString *data = [outputTensor objectForKey:@"data"];
-  NSData *buffer =	 [[NSData alloc] initWithBase64EncodedString:data options:0];
+  NSData *buffer = [[NSData alloc] initWithBase64EncodedString:data options:0];
   float *values = (float *)[buffer bytes];
   int count = (int)[buffer length] / 4;
 
