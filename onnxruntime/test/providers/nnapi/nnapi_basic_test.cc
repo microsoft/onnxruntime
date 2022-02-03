@@ -76,6 +76,38 @@ TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
 #endif
 }
 
+// Since NNAPI EP does not support dynamic shape input and we now switch from the approach of immediately rejecting
+// the whole graph in NNAPI EP if it has a dynamic input to check at individual operator support check level, we have a
+// separated test here.
+// Please see BaseOpBuilder::HasSupportedInputs in <repo_root>/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/op_support_checker.cc
+TEST(NnapiExecutionProviderTest, DynamicGraphInputTest) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/ep_dynamic_graph_input_test.onnx");
+
+#if defined(__ANDROID__)
+  std::vector<int64_t> dims_mul_x = {1, 1, 4, 4};
+  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f};
+  OrtValue ml_value_x;
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+                       &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.DynamicGraphInputTest",
+                            std::make_unique<NnapiExecutionProvider>(0),
+                            feeds);
+#else
+  // test load only
+  SessionOptions so;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  ASSERT_EQ(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 1)
+      << "Exactly one node (Add) should have been taken by the NNAPI EP";
+#endif
+}
+
 // This is to test the uint8 handling of operators without "QLinear" such as Concat and Transpose
 // NNAPI will require scale and zero point for inputs of all quantized operations
 // For these operators without "Qlinear", there is no information about the scale and zero point, we can

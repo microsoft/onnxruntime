@@ -153,26 +153,35 @@ bool BaseOpSupportChecker::IsOpSupported(const InitializedTensorSet& initializer
 
 bool BaseOpSupportChecker::HasSupportedInputs(const NodeUnit& node_unit) const {
   // We do not support unknown(null) input shape
-  auto has_shape = [](const NodeArg& node_arg, const std::string& name, const std::string op_type) {
-    if (!node_arg.Shape()) {
+  auto has_supported_shape = [](const NodeArg& node_arg, const std::string& name, const std::string op_type) {
+    const auto* shape_proto = node_arg.Shape();
+    if (!shape_proto) {
       LOGS_DEFAULT(VERBOSE) << "Node [" << name << "] type [" << op_type
                             << "] Input [" << node_arg.Name() << "] has no shape";
       return false;
+    }
+
+    // We do not support dynamic shape input for now
+    for (const auto& dim : shape_proto->dim()) {
+      if (!dim.has_dim_value()) {
+        LOGS_DEFAULT(VERBOSE) << "Dynamic shape is not supported for now, for input:" << node_arg.Name();
+        return false;
+      }
     }
     return true;
   };
 
   for (const auto& input : node_unit.Inputs()) {
-    if (!has_shape(input.node_arg, node_unit.Name(), node_unit.OpType()))
+    if (!has_supported_shape(input.node_arg, node_unit.Name(), node_unit.OpType()))
       return false;
 
     if (input.quant_param.has_value()) {
-      if (!has_shape(input.quant_param->scale, node_unit.Name(), node_unit.OpType()))
+      if (!has_supported_shape(input.quant_param->scale, node_unit.Name(), node_unit.OpType()))
         return false;
 
       // zero point is optional
       if (input.quant_param->zero_point &&
-          !has_shape(*input.quant_param->zero_point, node_unit.Name(), node_unit.OpType()))
+          !has_supported_shape(*input.quant_param->zero_point, node_unit.Name(), node_unit.OpType()))
         return false;
     }
   }
@@ -1681,7 +1690,7 @@ bool FlattenOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* i
   GetFlattenOutputShape(node_unit, input_shape, dim_1, dim_2);
 
   if (dim_1 == 0 && dim_2 == 0) {
-    LOGS_DEFAULT(VERBOSE) << "The dynamical input shape " << Shape2String(input_shape)
+    LOGS_DEFAULT(VERBOSE) << "The dynamic input shape " << Shape2String(input_shape)
                           << " is not supported";
     return false;
   }

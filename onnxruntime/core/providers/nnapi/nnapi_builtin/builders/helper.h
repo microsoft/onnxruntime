@@ -148,9 +148,6 @@ bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_
                             const OpSupportCheckParams& params,
                             const std::unordered_set<std::string>& node_outputs_in_group);
 
-// If a graph input is supported by NNAPI
-bool IsInputSupported(const NodeArg& input, const std::string& parent_name);
-
 // If an NNAPI partition node group is valid
 bool IsValidSupportedNodeGroup(const std::vector<const Node*>& supported_node_group);
 
