@@ -259,7 +259,7 @@ jobs:
   - task: CopyFiles@2
     inputs:
       sourceFolder: $(Build.SourcesDirectory)/js/react_native
-      contents: onnxruntime-react_native-*.tgz
+      contents: onnxruntime-react-native-*.tgz
       targetFolder: $(Build.ArtifactStagingDirectory)
     displayName: Create Artifacts onnxruntime-react-native
   
