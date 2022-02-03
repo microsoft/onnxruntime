@@ -51,14 +51,16 @@ common::Status CPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /
   }
 
   if (!src.IsContiguous() || !dst.IsContiguous()){
-    std::unique_ptr<Environment> tmp_env;
-    ORT_RETURN_IF_ERROR(Environment::Create(std::make_unique<logging::LoggingManager>(
-                                                  std::make_unique<logging::CLogSink>(),
-                                                  logging::Severity::kWARNING, false, logging::LoggingManager::InstanceType::Temporal),
-                                              tmp_env));
-    onnxruntime::TensorShapeVector dst_stride{dst.Strides().begin(), dst.Strides().begin() + dst.Strides().size()};
-    onnxruntime::TensorShapeVector src_stride{src.Strides().begin(), src.Strides().begin() + src.Strides().size()};
-    return DispatchStridedCopy<element_type_lists::All>(tmp_env->GetIntraOpThreadPool(),
+    // std::unique_ptr<Environment> tmp_env;
+    // ORT_RETURN_IF_ERROR(Environment::Create(std::make_unique<logging::LoggingManager>(
+    //                                               std::make_unique<logging::CLogSink>(),
+    //                                               logging::Severity::kWARNING, false, logging::LoggingManager::InstanceType::Temporal),
+    //                                           tmp_env));
+    auto dst_stride_vec = dst.Strides();
+    auto src_stride_vec = src.Strides();
+    onnxruntime::TensorShapeVector dst_stride{dst_stride_vec.begin(), dst_stride_vec.begin() + dst_stride_vec.size()};
+    onnxruntime::TensorShapeVector src_stride{src_stride_vec.begin(), src_stride_vec.begin() + src_stride_vec.size()};
+    return DispatchStridedCopy<element_type_lists::All>(nullptr,
                                                         dst,
                                                         dst.ByteOffset(),
                                                         dst_stride,

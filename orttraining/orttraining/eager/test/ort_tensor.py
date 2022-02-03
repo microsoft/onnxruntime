@@ -38,6 +38,21 @@ class OrtTensorTests(unittest.TestCase):
     ort_ones = cpu_ones.to('ort')
     y = ort_ones.view(-1)
     assert y.size()[0] == 200704
+  
+  def test_stride(self):
+    cpu_ones = torch.ones(3, 3)
+    ort_ones = cpu_ones.to('ort')
+    y = torch.as_strided(ort_ones, (2, 2), (1, 2))
+    assert y.size() == (2, 2)
+    assert y.is_contiguous() == False
+    contiguous_y = y.contiguous()
+    w = torch.ones((2,3))
+    ort_w = w.to('ort')
+    z = torch.zeros((2, 3))
+    ort_z = z.to('ort')
+    ort_z = torch.addmm(ort_z, contiguous_y, ort_w)
+    cpu_z = torch.addmm(z, torch.ones(2, 2), w)
+    assert torch.allclose(ort_z.cpu(), cpu_z)
 
 if __name__ == '__main__':
   unittest.main()
