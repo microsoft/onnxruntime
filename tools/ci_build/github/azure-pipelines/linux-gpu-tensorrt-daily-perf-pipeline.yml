@@ -94,6 +94,7 @@ jobs:
 
   steps:
 
+    - bash: nvidia-smi
     - ${{ if eq(parameters.BuildORT, true) }}:
 
       - ${{ if eq(parameters.RunDocker, true) }}: 
