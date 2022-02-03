@@ -122,7 +122,7 @@ option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in b
 option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
 cmake_dependent_option(onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD
                        "Enable runtime graph optimizations for ORT format models in an extended minimal build."
-                       ON "onnxruntime_EXTENDED_MINIMAL_BUILD; onnxruntime_USE_NNAPI_BUILTIN" OFF)
+                       OFF "onnxruntime_EXTENDED_MINIMAL_BUILD" OFF)
 
 #A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
 #The option has no effect on Windows.
@@ -1083,13 +1083,9 @@ if (onnxruntime_USE_RKNPU)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES rknpu)
 endif()
 if (onnxruntime_USE_NNAPI_BUILTIN)
-    message("USE NNAPI ENABLED")
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_NNAPI=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_NNAPI_BUILTIN=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_NNAPI_BUILTIN=1 -Donnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES nnapi)
-endif()
-if(onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
-  message("***************************************** option is ON")
 endif()
 if (onnxruntime_USE_NUPHAR)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_NUPHAR=1)

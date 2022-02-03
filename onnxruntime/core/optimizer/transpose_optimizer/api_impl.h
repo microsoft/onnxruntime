@@ -12,6 +12,8 @@ using namespace ::onnxruntime::common;
 
 namespace onnx_layout_transformation {
 inline std::unordered_set<std::string_view> GetLayoutSensitiveOps() {
+  // Per ONNX standard resize is not a layout sensitive op. However both CPU EP and NNAPI treat it as layout sensitive,
+  // so adding it to the list of layout senstive ops.
   return {"Resize", "Conv", "QLinearConv", "FusedConv", "AveragePool", "QLinearAveragePool", "GlobalAveragePool",
           "QLinearGlobalAveragePool", "MaxPool", "GlobalMaxPool", "LRN"};
 }
@@ -39,18 +41,18 @@ std::unique_ptr<onnx_layout_transformation::api::GraphRef> MakeApiGraph(onnxrunt
 /// <returns>api::NodeRef for use with transpose optimizer</returns>
 std::unique_ptr<onnx_layout_transformation::api::NodeRef> MakeApiNode(onnxruntime::Graph& graph, onnxruntime::Node& node);
 
-                                                                        /// <summary>
-                                                                        /// Reveals underlying ORT graph from an api::GraphRef
-                                                                        /// </summary>
-                                                                        /// <param name="graph">api:GraphRef created from MakeApiGraph</param>
-                                                                        /// <returns>ORT graph</returns>
-                                                                        onnxruntime::Graph& GraphFromApiGraph(onnx_layout_transformation::api::GraphRef& graph);
+/// <summary>
+/// Reveals underlying ORT graph from an api::GraphRef
+/// </summary>
+/// <param name="graph">api:GraphRef created from MakeApiGraph</param>
+/// <returns>ORT graph</returns>
+onnxruntime::Graph& GraphFromApiGraph(onnx_layout_transformation::api::GraphRef& graph);
 
-                                                                        /// <summary>
-                                                                        /// Reveals underlying ORT node from an api::NodeRef
-                                                                        /// </summary>
-                                                                        /// <param name="graph">api:NodeRef from graph created from MakeApiGraph</param>
-                                                                        /// <returns>ORT node</returns>
-                                                                        onnxruntime::Node& NodeFromApiNode(onnx_layout_transformation::api::NodeRef& node);
+/// <summary>
+/// Reveals underlying ORT node from an api::NodeRef
+/// </summary>
+/// <param name="graph">api:NodeRef from graph created from MakeApiGraph</param>
+/// <returns>ORT node</returns>
+onnxruntime::Node& NodeFromApiNode(onnx_layout_transformation::api::NodeRef& node);
 
-                                                                        }  // namespace onnxruntime
+}  // namespace onnxruntime

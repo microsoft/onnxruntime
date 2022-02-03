@@ -75,13 +75,6 @@ static Status ValidateGraphPartitioning(const Graph& graph) {
   return Status::OK();
 }
 
-// TODO remove once PR is ready to be checked in
-// static void PrintNodes(Graph& graph) {
-//   for (const auto& node : graph.Nodes()) {
-//     std::cout << node.OpType() << "    " << node.GetExecutionProviderType() << "   " << node.Index() << "       " << node.Domain() << "  " << node.Name() << std::endl;
-//   }
-// }
-
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
 /// <summary>
@@ -171,7 +164,7 @@ static Status TransformLayout(Graph& graph, bool& modified,
       if (node->OpType() == "Resize") {
         // Older versions of resize have a bug where ROI and Scales cannot be made empty inputs. To handle this case, 
         // we need to jump a few extra hoops to make sure its inputs are correctly handled. Current code skips 
-        // layout conversion for ROI becasue it needs special handling as ROI size is 2*rank. 
+        // layout conversion for ROI because it needs special handling as ROI size is 2*rank. 
         // Enable passing in ROI for layout conversion when an EP which supports ROI starts using layout transformer.
         // NNAPI which currently uses layout transformer does not support it.
         std::vector<const std::vector<int64_t>*> input_perms{&input_perm, nullptr};
@@ -219,7 +212,7 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
       current_ep.GetPreferredLayout() == DataLayout::NHWC) {
     for (auto& capability : capabilities) {
       // in theory an EP could return an empty value...
-      if (!capability && !capability->sub_graph) {
+      if (!capability || !capability->sub_graph) {
         continue;
       }
       AssignNodes(graph, *capability->sub_graph, current_ep.Type());
@@ -503,9 +496,6 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
 
     ORT_RETURN_IF_ERROR(ValidateGraphPartitioning(graph));
   }
-
-  //TODO remove once PR is ready to be checked in
-  //PrintNodes(graph);
 
   // if this is the main graph call Resolve to put the Graph back into a guaranteed good state
   // TODO: Graph::FuseSubGraph and Graph::FinalizeFuseSubGraph should now create valid edges so this call to

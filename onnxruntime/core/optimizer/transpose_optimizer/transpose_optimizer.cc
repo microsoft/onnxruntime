@@ -472,9 +472,8 @@ static void Permute1DConstant(api::GraphRef& graph, api::NodeRef& node, api::Ten
   uint8_t* dst = new_data.data();
   for (size_t j = 0; j < rank; ++j) {
     uint8_t* src = data.data() + perm[j] * bytes_per_val;
-    for (size_t k = 0; k < bytes_per_val; ++k) {
-      *dst++ = *src++;
-    }
+    std::memcpy(dst, src, bytes_per_val);
+    dst += bytes_per_val;
   }
 
   std::string_view new_initializer = graph.AddInitializer(constant.DType(), shape, new_data);
@@ -497,7 +496,11 @@ static void TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i,
 
   // Case 1: input is a constant with a known list of consumer nodes
   if (constant != nullptr && consumers->comprehensive) {
-    if (constant->Shape().size() == 1 && (constant->Shape()[0] == gsl::narrow_cast<int64_t>(perm.size()) || constant->Shape()[0] == 0)) {
+    // This is a special case where the constant is 1D with length == perm.
+    // TODO: TransposeInitializer should be updated to handle this case.
+    // Permute1DConstant permutes the constant and adds a new initializer. The old initializer is only removed if
+    // there are no other consumers.
+    if (constant->Shape().size() == 1 && constant->Shape()[0] == gsl::narrow_cast<int64_t>(perm.size())) {
       Permute1DConstant(graph, node, *constant, i, input, perm);
       return;
     }
