@@ -9,6 +9,7 @@
 
 #include <torch/csrc/jit/ir/ir.h>
 #include <c10/util/irange.h>
+#include <ATen//WrapDimUtils.h>
 
 
 namespace torch_ort {
@@ -391,11 +392,14 @@ at::Tensor as_strided(
   std::vector<int64_t> dims_vec;
   dims_vec.assign(size.begin(), size.end());
 
+  auto byte_offset = storage_offset.has_value() ? (*storage_offset * tensor->DataType()->Size()) : 0;
+
   OrtValue ot;
   CreateMLValue(tensor->MutableDataRaw(), 
                 invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
                 tensor->DataType(),
                 dims_vec,
+                byte_offset,
                 stride_vec,
                 &ot);
   
@@ -567,6 +571,67 @@ at::Tensor& add__Tensor(
       "ORT return failure status:" + status.ErrorMessage());
   
   return self;
+}
+
+// aten::slice.Tensor(Tensor(a) self, int dim=0, int? start=None, int? end=None, int step=1) -> Tensor(a)
+at::Tensor slice_Tensor(
+  const at::Tensor& self, 
+  int64_t dim, 
+  c10::optional<int64_t> start, 
+  c10::optional<int64_t> end, 
+  int64_t step) {
+  ORT_LOG_FN(self, dim, start, end, step);
+  int64_t ndim = self.dim();
+  if (ndim == 0) {
+    throw std::runtime_error("slice() cannot be applied to a 0-dim tensor.");
+  }
+  dim = at::maybe_wrap_dim(dim, ndim);
+
+  auto& invoker = GetORTInvoker(self.device());
+  auto ort_input = create_ort_value(invoker, self);
+  auto* ort_tensor = ort_input.GetMutable<onnxruntime::Tensor>();
+  auto& shape = ort_tensor->Shape();
+  auto strides = ort_tensor->Strides();
+  int64_t l_start = start.has_value() ? *start : 0;
+  int64_t l_end = end.has_value() ? *end : shape[dim];
+  if (l_start < 0) {
+    l_start += shape[dim];
+  }
+  if (l_end < 0) {
+    l_end += shape[dim];
+  }
+  if (l_start < 0) {
+    l_start = 0;
+  } else if (l_start >= shape[dim]) {
+    l_start = shape[dim];
+  }
+  if (l_end < l_start) {
+    l_end = l_start;
+  } else if (l_end >= shape[dim]) {
+    l_end = shape[dim];
+  }
+
+  auto byte_offset = ort_tensor->ByteOffset() + (l_start * strides[dim]) * ort_tensor->DataType()->Size();
+  auto len = l_end - l_start;
+  std::vector<int64_t> new_shape;
+  auto shape_vec = shape.AsShapeVector();
+  new_shape.assign(shape_vec.begin(), shape_vec.end());
+  std::vector<int64_t> new_stride = strides;
+  new_shape[dim] = (len + step - 1) / step;  // round-up
+  new_stride[dim] *= step;
+  
+  OrtValue ot;
+  CreateMLValue(ort_tensor->MutableDataRaw(), 
+                invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
+                ort_tensor->DataType(),
+                new_shape,
+                byte_offset,
+                new_stride,
+                &ot);
+  
+  return aten_tensor_from_ort(
+    std::move(ot),
+    self.options());
 }
 
 } // namespace aten

@@ -17,7 +17,7 @@ void CreateMLValue(onnxruntime::AllocatorPtr alloc,
 
 void CreateMLValue(void* data_ptr, onnxruntime::MLDataType element_type, const std::vector<int64_t>& dims, OrtValue* p_mlvalue);
 void CreateMLValue(void* data_ptr, onnxruntime::MLDataType element_type, onnxruntime::TensorShape& shape, OrtValue* p_mlvalue);
-void CreateMLValue(void* data_ptr, onnxruntime::AllocatorPtr alloc, onnxruntime::MLDataType element_type, const std::vector<int64_t>& dims, const std::vector<int64_t>& strides, OrtValue* p_mlvalue);
+void CreateMLValue(void* data_ptr, onnxruntime::AllocatorPtr alloc, onnxruntime::MLDataType element_type, const std::vector<int64_t>& dims, ptrdiff_t offset, const std::vector<int64_t>& strides, OrtValue* p_mlvalue);
 
 template <typename T>
 inline void CopyVectorToTensor(onnxruntime::ORTInvoker& invoker,

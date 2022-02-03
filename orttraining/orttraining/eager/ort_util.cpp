@@ -47,6 +47,7 @@ void CreateMLValue(void* data_ptr,
                    onnxruntime::AllocatorPtr alloc, 
                    onnxruntime::MLDataType element_type, 
                    const std::vector<int64_t>& dims, 
+                   ptrdiff_t offset,
                    const std::vector<int64_t>& strides, 
                    OrtValue* p_mlvalue){
   onnxruntime::TensorShape shape(dims);
@@ -54,7 +55,7 @@ void CreateMLValue(void* data_ptr,
                                                                       shape,
                                                                       data_ptr,
                                                                       alloc->Info(),
-                                                                      0,
+                                                                      offset,
                                                                       strides.empty() ? nullptr : &strides[0]);
    p_mlvalue->Init(p_tensor.release(),
                   onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>(),
