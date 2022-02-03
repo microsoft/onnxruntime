@@ -117,13 +117,6 @@ jobs:
     displayName: Run React Native Android Instrumented Tests
     continueOnError: false
 
-  #- script: |
-  #    ./gradlew connectedDebugAndroidTest --stacktrace 
-  #    ./gradlew --stop 
-  #  workingDirectory: '$(Build.SourcesDirectory)/js/react_native/android'
-  #  displayName: Run React Native Android Instrumented Tests
-  #  continueOnError: false
-
   - task: PublishTestResults@2
     inputs:
       testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/android/**/outputs/androidTest-results/**/TEST*.xml'
@@ -168,21 +161,17 @@ jobs:
       errorActionPreference: stop
     displayName: Pack NPM packages
 
-  - script: |
-      export COMMIT_SHORT=`git rev-parse --short HEAD`
-    displayName: Set the short version of commit
-
   - task: CopyFiles@2
     inputs:
       sourceFolder: $(Build.SourcesDirectory)/js/common
-      contents: onnxruntime-common-*-$(COMMIT_SHORT).tgz
+      contents: onnxruntime-common*.tgz
       targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e
     displayName: Copy onnxruntime-common npm package to React Native e2e directory
 
   - task: CopyFiles@2
     inputs:
       sourceFolder: $(Build.SourcesDirectory)/js/react_native
-      contents: onnxruntime-react-native-*.tgz
+      contents: onnxruntime-react-native*.tgz
       targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e
     displayName: Copy onnxruntime-react-native npm package to React Native e2e directory
 
@@ -192,9 +181,9 @@ jobs:
     displayName: Prepare Android and iOS e2e tests
 
   - script: |
-      mv onnxruntime-common-*.tgz onnxruntime-common.tgz
+      mv onnxruntime-common*.tgz onnxruntime-common.tgz
       yarn add --no-lockfile file:./onnxruntime-common.tgz
-      mv onnxruntime-react-native-*.tgz onnxruntime-react-native.tgz
+      mv onnxruntime-react-native*.tgz onnxruntime-react-native.tgz
       yarn add --no-lockfile file:./onnxruntime-react-native.tgz
       yarn
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
@@ -232,13 +221,6 @@ jobs:
       spotBugsAnalysis: false
     displayName: Run React Native Android e2e Tests
     continueOnError: false
-
-  #- script: |
-  #    ./gradlew :app:connectedDebugAndroidTest --stacktrace 
-  #    ./gradlew --stop
-  #  workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
-  #  displayName: Run React Native Android e2e Tests
-  #  continueOnError: false
 
   - task: PublishTestResults@2
     inputs:
@@ -289,7 +271,7 @@ jobs:
   - task: CopyFiles@2
     inputs:
       sourceFolder: $(Build.SourcesDirectory)/js/react_native
-      contents: onnxruntime-react-native-*.tgz
+      contents: onnxruntime-react-native*.tgz
       targetFolder: $(Build.ArtifactStagingDirectory)
     displayName: Create Artifacts onnxruntime-react-native
   

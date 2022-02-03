@@ -137,6 +137,8 @@ if ($MODE -eq "dev") {
 
     if (!$use_latest) {
         Write-Host "Need update to onnxruntime-common@dev"
+        # delete the latest package
+        rm $current_tgz_compare_only
         # need to publish a new version for onnxruntime-common
         pushd $JS_COMMON_DIR
         npm version $($version_number.version)
