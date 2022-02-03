@@ -128,7 +128,7 @@ jobs:
     inputs:
       testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/android/**/outputs/androidTest-results/**/TEST*.xml'
       failTaskOnFailedTests: true
-      testRunTitle: '
+      testRunTitle: 'React Native Android Instrumented Test results'
     condition: succeededOrFailed()
     displayName: Publish React Native Android Instrumented Test Results
 
