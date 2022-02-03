@@ -124,7 +124,7 @@ bool HasValidUnaryOpQuantizedInputs(const NodeUnit& node_unit) {
   return true;
 }
 
-bool HasValidBinaryOpQuantizedInputs(const NodeUnit& node_unit) {
+bool HasValidBinaryOpQuantizedInputTypes(const NodeUnit& node_unit) {
   auto quant_op_type = GetQuantizedOpType(node_unit);
   int32_t a_input_type, b_input_type;
   if (!IsQuantizedBinaryOp(quant_op_type)) {

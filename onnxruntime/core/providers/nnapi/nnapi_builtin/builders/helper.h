@@ -112,7 +112,7 @@ bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type);
 // Check if a qlinear unary op has valid inputs, Qlinear[Sigmoid/AveragePool]
 bool HasValidUnaryOpQuantizedInputs(const NodeUnit& node_unit);
 // Check if a qlinear binary op has valid inputs, Qlinear[Conv/MatMul/Add]
-bool HasValidBinaryOpQuantizedInputs(const NodeUnit& node_unit);
+bool HasValidBinaryOpQuantizedInputTypes(const NodeUnit& node_unit);
 
 // Check if the given quantized input(s) or output(s) is supported
 bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit,

@@ -286,7 +286,7 @@ bool BinaryOpSupportChecker::HasSupportedInputOutputsImpl(const NodeUnit& node_u
 
   if (is_qlinear_add) {
     // QLinearAdd
-    if (!HasValidBinaryOpQuantizedInputs(node_unit))
+    if (!HasValidBinaryOpQuantizedInputTypes(node_unit))
       return false;
   }
 
@@ -751,7 +751,7 @@ bool ConvOpSupportChecker::HasSupportedInputOutputsImpl(const NodeUnit& node_uni
     return BaseOpSupportChecker::HasSupportedInputOutputsImpl(node_unit);
 
   // QLinearConv only supports input of uint8 for now
-  if (!HasValidBinaryOpQuantizedInputs(node_unit))
+  if (!HasValidBinaryOpQuantizedInputTypes(node_unit))
     return false;
 
   return true;
@@ -925,7 +925,7 @@ bool GemmOpSupportChecker::HasSupportedInputOutputsImpl(const NodeUnit& node_uni
     return BaseOpSupportChecker::HasSupportedInputOutputsImpl(node_unit);
 
   // QLinearMatMul
-  if (!HasValidBinaryOpQuantizedInputs(node_unit))
+  if (!HasValidBinaryOpQuantizedInputTypes(node_unit))
     return false;
 
   return true;
