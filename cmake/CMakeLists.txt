@@ -491,6 +491,14 @@ if (onnxruntime_CROSS_COMPILING)
   endif()
 endif()
 
+if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.0)
+  check_cxx_compiler_flag(-Wno-error HAS_NOERROR)
+  if (HAS_NOERROR)
+    string(APPEND CMAKE_CXX_FLAGS " -Wno-error=attributes")
+    string(APPEND CMAKE_C_FLAGS " -Wno-error=attributes")
+  endif()
+endif()
+
 # Mark symbols to be invisible, for macOS/iOS target only
 # Due to many dependencies have different symbol visibility settings, set global compile flags here.
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS")

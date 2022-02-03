@@ -110,13 +110,6 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     return result;
   }
 
-  // Disable NNAPI if the graph has any unsupported inputs
-  for (const auto* input : graph_viewer.GetInputs()) {
-    if (!nnapi::IsInputSupported(*input, "graph")) {
-      return result;
-    }
-  }
-
   // Get all the NodeUnits in the graph_viewer
   std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
   std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
