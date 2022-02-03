@@ -5,14 +5,16 @@ import argparse
 import logging
 import pathlib
 
-from .mobile_helpers import check_model_can_use_ort_mobile_pkg, usability_checker
+# need this before the mobile helper imports for some reason
+logging.basicConfig(format='%(levelname)s:  %(message)s')
+
+from .mobile_helpers import check_model_can_use_ort_mobile_pkg, usability_checker  # noqa
 
 
 def check_usability():
     parser = argparse.ArgumentParser(
-        description=
-        'Analyze an ONNX model to determine how well it will work in mobile scenarios, and whether '
-        'it is likely to be able to use the pre-build ONNX Runtime Mobile Android or iOS package.',
+        description='''Analyze an ONNX model to determine how well it will work in mobile scenarios, and whether
+        it is likely to be able to use the pre-build ONNX Runtime Mobile Android or iOS package.''',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument('--config_path',
@@ -27,7 +29,6 @@ def check_usability():
 
     args = parser.parse_args()
     logger = logging.getLogger('default')
-    logging.basicConfig(format='%(levelname)s:  %(message)s')
 
     if args.log_level == 'debug':
         logger.setLevel(logging.DEBUG)

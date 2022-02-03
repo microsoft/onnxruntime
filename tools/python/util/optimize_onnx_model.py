@@ -34,5 +34,3 @@ def optimize_model_helper():
 
 if __name__ == '__main__':
     optimize_model_helper()
-
-

@@ -201,7 +201,7 @@ def run_check_with_model(model_with_type_info: onnx.ModelProto,
     if onnx_opset_model_uses not in supported_onnx_opsets:
         logger.info(f'Model uses ONNX opset {onnx_opset_model_uses}.')
         logger.info(f'The pre-built package only supports ONNX opsets {sorted(supported_onnx_opsets)}.')
-        logger.info(f'Please try updating the ONNX model opset to a supported version using '
+        logger.info('Please try updating the ONNX model opset to a supported version using '
                     'python -m onnxruntime.tools.onnx_model_utils.update_onnx_opset ...')
 
         return False

@@ -159,7 +159,8 @@ class PartitioningInfo:
             logger.info(f"{ep_name} can be considered for this model as there are two partitions "
                         f"covering {pct_nodes_using_ep}% of the nodes. Performance testing is required to validate.")
         else:
-            logger.info(f"{ep_name} is not recommended with this model as there are {self.num_partitions} partitions. "
+            logger.info(f"{ep_name} is not recommended with this model as there are {self.num_partitions} partitions "
+                        f"covering {pct_nodes_using_ep}% of the nodes in the model. "
                         "This will most likely result in worse performance than just using the CPU EP.")
 
 
@@ -464,7 +465,7 @@ def checker(model_path, logger: logging.Logger):
         logger.info(f"Model should perform well with {ep_name} as is: {suitability.name}")
 
         if suitability != PartitioningInfo.TryWithEP.YES and has_dynamic_shapes:
-            logger.info(f"Checking if model will perform better if the dynamic shapes are fixed.")
+            logger.info("Checking if model will perform better if the dynamic shapes are fixed...")
             partition_info_with_fixed_shapes = checker_func(model_with_shape_info)
             if logger.getEffectiveLevel() <= logging.DEBUG:
                 # analyze and log detailed info

@@ -6,9 +6,7 @@ import onnx
 import pathlib
 import unittest
 
-from onnx import shape_inference
 from testfixtures import LogCapture
-
 from ..check_model_can_use_ort_mobile_pkg import run_check, run_check_with_model
 
 # example usage from <ort root>/tools/python
