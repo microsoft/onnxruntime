@@ -104,7 +104,7 @@ jobs:
 
   - task: Gradle@3
     inputs:
-      gradleWrapperFile: 'gradlew'
+      gradleWrapperFile: '$(Build.SourcesDirectory)/js/react_native/android/gradlew'
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/android'
       options: '--stacktrace'
       tasks: 'connectedDebugAndroidTest'
@@ -220,7 +220,7 @@ jobs:
 
   - task: Gradle@3
     inputs:
-      gradleWrapperFile: 'gradlew'
+      gradleWrapperFile: '$(Build.SourcesDirectory)/js/react_native/e2e/android/gradlew'
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
       options: '--stacktrace'
       tasks: ':app:connectedDebugAndroidTest'
