@@ -215,6 +215,7 @@ def output_fusion_statistics(model_fusion_statistics, csv_filename):
 
 def inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_size):
     result = {}
+    timeit.repeat(lambda: ort_session.run(None, ort_inputs), number=1, repeat=5) # Dry run
     runtimes = timeit.repeat(lambda: ort_session.run(None, ort_inputs), number=1, repeat=repeat_times)
     result.update(result_template)
     result.update({"io_binding": False})
@@ -250,6 +251,7 @@ def inference_ort_with_io_binding(ort_session,
     for i in range(len(ort_output_names)):
         io_binding.bind_output(ort_output_names[i], output_buffers[i].device.type, 0, numpy.float32,
                                ort_outputs[i].shape, output_buffers[i].data_ptr())
+    timeit.repeat(lambda: ort_session.run_with_iobinding(io_binding), number=1, repeat=5) # Dry run
     runtimes = timeit.repeat(lambda: ort_session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
     result.update(result_template)
     result.update({"io_binding": True})
