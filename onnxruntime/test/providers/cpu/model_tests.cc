@@ -606,21 +606,16 @@ TEST_P(ModelTest, Run) {
               0,
               0,
               0,
-#ifdef _WIN32
-              "C:\\local\\models\\trt_timing_cache", // directory where timing caches locate in CI Windows image
-#else
-              "/data/models/trt_timing_cache",      // directory where timing caches locate in CI Linux image
-#endif
+              nullptr,
               0,
               nullptr,
               0,
-              1 // enable trt timing cache to reduce CI testing time for trt ep
-            };
+              0};
         if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
           params.trt_fp16_enable = 1;
           ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(TensorrtExecutionProviderWithOptions(&params)));
         } else {
-          ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(TensorrtExecutionProviderWithOptions(&params)));
+          ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
         }
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
       } else if (provider_name == "migraphx") {
