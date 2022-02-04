@@ -610,6 +610,7 @@ TEST_P(ModelTest, Run) {
               nullptr,
               0,
               nullptr,
+              0,
               0};
           ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(TensorrtExecutionProviderWithOptions(&params)));
         } else {
