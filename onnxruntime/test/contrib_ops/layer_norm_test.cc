@@ -80,6 +80,11 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
 #endif
 }
 
+TEST(CudaKernelTest, LayerNorm_NullInput) {
+  const std::vector<int64_t> X_dims{0, 20, 128};
+  TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
+}
+
 TEST(CudaKernelTest, LayerNorm_SmallSizeTensor) {
   const std::vector<int64_t> X_dims{4, 20, 128};
   TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
