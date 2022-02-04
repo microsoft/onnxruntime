@@ -407,7 +407,7 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
    ```sh
    yarn bootstrap
    ```
-   
+
    When testing with a custom built ONNX Runtime Android package, copy `<BUILD_DIRECTORY>/aar_out/MinSizeRel/com/microsoft/onnxruntime/onnxruntime-mobile/<version>/onnxruntime-mobile-<version>.aar` into `<ORT_ROOT>/js/react_native/e2e/node_modules/onnxruntime-react-native/android/libs` directory.
 
    From `<ORT_ROOT>/js/react_native/e2e/android`, run e2e Android tests as follows,
@@ -421,6 +421,8 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
    ```sh
    xcrun xcodebuild test -workspace OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -destination 'platform=iOS Simulator,OS=latest,name=iPhone 13'
    ```
+
+   ***`yarn bootstrap` changes `packages.json` and `yarn.lock` files. Once testing is done, restore changes to avoid unwanted commit.***
 
 5. Run Android and iOS apps.
 
