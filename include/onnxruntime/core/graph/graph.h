@@ -1119,7 +1119,7 @@ class Graph {
     return GetConsumerNodesImpl(*this, node_arg_name);
   }
 
-  void UpdateConsumerNodes(const std::string& node_arg_name, const std::vector<Node*>& nodes) {
+  void UpdateConsumerNodes(const std::string& node_arg_name, const gsl::span<Node* const>& nodes) {
     auto iter = node_arg_to_consumer_nodes_.find(node_arg_name);
     if (iter != node_arg_to_consumer_nodes_.end()) {
       node_arg_to_consumer_nodes_.erase(node_arg_name);
@@ -1127,6 +1127,10 @@ class Graph {
     for (Node* node : nodes) {
       node_arg_to_consumer_nodes_[node_arg_name].insert(node->Index());
     }
+  }
+
+  inline void UpdateConsumerNodes(const std::string& node_arg_name, std::initializer_list<Node*> nodes) {
+    UpdateConsumerNodes(node_arg_name, gsl::make_span(nodes.begin(), nodes.end()));
   }
 
   /** During constant folding it may become possible to infer the shape for a node.

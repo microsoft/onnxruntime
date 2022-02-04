@@ -5,6 +5,7 @@
 
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_transformer_config.h"
+
 namespace onnxruntime {
 
 /**
@@ -17,14 +18,15 @@ class PropagateCastOps : public GraphTransformer {
  public:
   PropagateCastOps(GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy strategy =
                        GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill,
-                   size_t level = 0, const std::vector<std::string>& allow_list = {},
-                   const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept;
+                   size_t level = 0, const gsl::span<std::string const>& allow_list = {},
+                   const std::unordered_set<std::string>& compatible_execution_providers = {});
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
  private:
-  size_t level_;
-  GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy strategy_;
+
+  class Impl;
+  std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace onnxruntime
