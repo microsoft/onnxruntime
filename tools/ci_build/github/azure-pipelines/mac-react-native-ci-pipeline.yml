@@ -117,14 +117,6 @@ jobs:
     displayName: Run React Native Android Instrumented Tests
     continueOnError: false
 
-  #- task: PublishTestResults@2
-  #  inputs:
-  #    testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/android/**/outputs/androidTest-results/**/TEST*.xml'
-  #    failTaskOnFailedTests: true
-  #    testRunTitle: 'React Native Android Instrumented Test results'
-  #  condition: succeededOrFailed()
-  #  displayName: Publish React Native Android Instrumented Test Results
-
   - script: |
       pod install
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
@@ -146,13 +138,13 @@ jobs:
       testRunTitle: 'React Native iOS Instrumented Test Results'
     displayName: Run React Native iOS Instrumented Tests
 
-  #- task: PublishTestResults@2
-  #  inputs:
-  #    testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/ios/build/reports/test-results.xml'
-  #    failTaskOnFailedTests: true
-  #    testRunTitle: 'React Native iOS Instrumented Test results'
-  #  condition: succeededOrFailed()
-  #  displayName: Publish React Native iOS Instrumented Test Results
+  - task: PublishTestResults@2
+    inputs:
+      testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/ios/build/reports/test-results.xml'
+      failTaskOnFailedTests: true
+      testRunTitle: 'React Native iOS Instrumented Test results'
+    condition: succeededOrFailed()
+    displayName: Publish React Native iOS Instrumented Test Results
 
   - script: |
       yarn prepack-e2e
@@ -221,14 +213,6 @@ jobs:
       spotBugsAnalysis: false
     displayName: Run React Native Android e2e Tests
     continueOnError: false
-
-  #- task: PublishTestResults@2
-  #  inputs:
-  #    testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/e2e/android/**/outputs/androidTest-results/**/TEST*.xml'
-  #    failTaskOnFailedTests: true
-  #    testRunTitle: 'React Native Android Instrumented e2e results'
-  #  condition: succeededOrFailed()
-  #  displayName: Publish React Native Android e2e Test Results
 
   - script: |
       export FORCE_BUNDLING=1
