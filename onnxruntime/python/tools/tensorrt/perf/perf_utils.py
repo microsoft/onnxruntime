@@ -25,11 +25,25 @@ standalone_trt = "TRTFp32"
 standalone_trt_fp16 = "TRTFp16"
 acl = "ORT-ACLFp32"
 
+# table names
+metrics_name = 'metrics'
+success_name = 'success'
+fail_name = 'fail'
+memory_name = 'memory'
+latency_name = 'latency'
+status_name = 'status'
+latency_over_time_name = 'latency_over_time'
+specs_name = 'specs' 
+session_name = 'session'
+
+time_string_format = '%Y-%m-%d %H:%M:%S'
+
 # column names 
 model_title = 'Model'
 group_title = 'Group'
 
 # endings 
+csv_ending = '.csv'
 avg_ending =  ' \nmean (ms)'
 percentile_ending = ' \n90th percentile (ms)'
 memory_ending = ' \npeak memory usage (MiB)'

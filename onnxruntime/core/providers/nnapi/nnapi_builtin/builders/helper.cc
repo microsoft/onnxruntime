@@ -48,24 +48,33 @@ std::string GetErrorCause(int error_code) {
   }
 }
 
-QLinearOpType GetQLinearOpType(const onnxruntime::Node& node) {
-  const auto& op_type = node.OpType();
-  if (op_type == "DequantizeLinear")
-    return QLinearOpType::DequantizeLinear;
-  else if (op_type == "QuantizeLinear")
-    return QLinearOpType::QuantizeLinear;
-  else if (op_type == "QLinearConv")
-    return QLinearOpType::QLinearConv;
-  else if (op_type == "QLinearMatMul")
-    return QLinearOpType::QLinearMatMul;
-  else if (op_type == "QLinearAdd")
-    return QLinearOpType::QLinearAdd;
-  else if (op_type == "QLinearSigmoid")
-    return QLinearOpType::QLinearSigmoid;
-  else if (op_type == "QLinearAveragePool")
-    return QLinearOpType::QLinearAveragePool;
+QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit) {
+  const auto& op_type = node_unit.OpType();
+  if (node_unit.UnitType() == NodeUnit::Type::SingleNode) {
+    if (op_type == "DequantizeLinear")
+      return QuantizedOpType::DequantizeLinear;
+    else if (op_type == "QuantizeLinear")
+      return QuantizedOpType::QuantizeLinear;
+    else if (op_type == "QLinearConv")
+      return QuantizedOpType::QLinearConv;
+    else if (op_type == "QLinearMatMul")
+      return QuantizedOpType::QLinearMatMul;
+    else if (op_type == "QLinearAdd")
+      return QuantizedOpType::QLinearAdd;
+    else if (op_type == "QLinearSigmoid")
+      return QuantizedOpType::QLinearSigmoid;
+    else if (op_type == "QLinearAveragePool")
+      return QuantizedOpType::QLinearAveragePool;
+  } else if (node_unit.UnitType() == NodeUnit::Type::QDQGroup) {
+    if (op_type == "Conv")
+      return QuantizedOpType::QDQConv;
+    else if (op_type == "Resize")
+      return QuantizedOpType::QDQResize;
+  } else {
+    // throw?
+  }
 
-  return QLinearOpType::Unknown;
+  return QuantizedOpType::Unknown;
 }
 
 ConvType GetConvType(const NodeUnit& node_unit, const InitializedTensorSet& initializers) {
@@ -89,10 +98,15 @@ ConvType GetConvType(const NodeUnit& node_unit, const InitializedTensorSet& init
     return ConvType::Grouped;
 }
 
-bool IsQLinearBinaryOp(QLinearOpType qlinear_op_type) {
-  return qlinear_op_type == QLinearOpType::QLinearConv ||
-         qlinear_op_type == QLinearOpType::QLinearMatMul ||
-         qlinear_op_type == QLinearOpType::QLinearAdd;
+bool IsQuantizedConv(QuantizedOpType quant_op_type) {
+  return (quant_op_type == QuantizedOpType::QLinearConv) ||
+         (quant_op_type == QuantizedOpType::QDQConv);
+}
+
+bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type) {
+  return quant_op_type == QuantizedOpType::QLinearMatMul ||
+         quant_op_type == QuantizedOpType::QLinearAdd ||
+         IsQuantizedConv(quant_op_type);
 }
 
 bool HasValidUnaryOpQuantizedInputs(const NodeUnit& node_unit) {
@@ -111,9 +125,9 @@ bool HasValidUnaryOpQuantizedInputs(const NodeUnit& node_unit) {
 }
 
 bool HasValidBinaryOpQuantizedInputs(const NodeUnit& node_unit) {
-  auto op_type = GetQLinearOpType(node_unit.GetNode());
+  auto quant_op_type = GetQuantizedOpType(node_unit);
   int32_t a_input_type, b_input_type;
-  if (!IsQLinearBinaryOp(op_type)) {
+  if (!IsQuantizedBinaryOp(quant_op_type)) {
     LOGS_DEFAULT(VERBOSE) << "[" << node_unit.OpType() << "] is not a binary qlinear op";
     return false;
   }
@@ -126,14 +140,14 @@ bool HasValidBinaryOpQuantizedInputs(const NodeUnit& node_unit) {
 
   // QlinearConv supports u8u8 or u8s8
   // QLinearMatMul/Add only support u8u8
-  bool is_qlinear_conv = op_type == QLinearOpType::QLinearConv;
+  bool is_quant_conv = IsQuantizedConv(quant_op_type);
   bool has_valid_qlinear_conv_weight =
       (b_input_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
        b_input_type == ONNX_NAMESPACE::TensorProto_DataType_INT8);
 
   if (a_input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
-      (!is_qlinear_conv && a_input_type != b_input_type) ||
-      (is_qlinear_conv && !has_valid_qlinear_conv_weight)) {
+      (!is_quant_conv && a_input_type != b_input_type) ||
+      (is_quant_conv && !has_valid_qlinear_conv_weight)) {
     LOGS_DEFAULT(VERBOSE) << "[" << node_unit.OpType()
                           << "] A Input type: [" << a_input_type
                           << "] B Input type: [" << b_input_type
@@ -147,9 +161,9 @@ bool HasValidBinaryOpQuantizedInputs(const NodeUnit& node_unit) {
 bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                 const std::vector<size_t>& indices, const OpSupportCheckParams& params, bool is_input) {
   const auto& op_type = node_unit.OpType();
-  auto qlinear_op_type = GetQLinearOpType(node_unit.GetNode());
-  bool is_qlinear_conv = (qlinear_op_type == QLinearOpType::QLinearConv);
-  bool is_qlinear_matmul = (qlinear_op_type == QLinearOpType::QLinearMatMul);
+  auto quant_op_type = GetQuantizedOpType(node_unit);
+  bool is_quant_conv = IsQuantizedConv(quant_op_type);
+  bool is_quant_matmul = (quant_op_type == QuantizedOpType::QLinearMatMul);
   const auto& io_defs = is_input ? node_unit.Inputs() : node_unit.Outputs();
   for (const auto idx : indices) {
     if (idx >= io_defs.size()) {
@@ -174,7 +188,7 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
     }
 
     // If this op is Qlinear[Conv/MatMul], we want to check u8s8 support for weight tensor (or B tensor for QlinearMatMul)
-    bool is_conv_matmul_weight = is_input && (is_qlinear_conv || is_qlinear_matmul) && idx == 1;
+    bool is_conv_matmul_weight = is_input && (is_quant_conv || is_quant_matmul) && idx == 1;
     bool is_conv_matmul_u8s8_weight = false;
 
     if (is_conv_matmul_weight) {
@@ -194,7 +208,7 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
       // For u8s8 Qlinear[Conv/MatMul], we support
       // 1. Per-tensor, the weight will be transformed to uint8 later
       // 2. Per-channel, only from Android API level 29
-      if (is_qlinear_matmul) {
+      if (is_quant_matmul) {
         LOGS_DEFAULT(VERBOSE) << "QLinearMatMul does not support per-channel quantization";
         return false;
       }
@@ -221,9 +235,9 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
 bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                     const std::vector<size_t>& indices, bool is_input) {
   const auto& op_type = node_unit.OpType();
-  auto qlinear_op_type = GetQLinearOpType(node_unit.GetNode());
-  bool is_qlinear_conv = (qlinear_op_type == QLinearOpType::QLinearConv);
-  bool is_qlinear_matmul = (qlinear_op_type == QLinearOpType::QLinearMatMul);
+  auto quant_op_type = GetQuantizedOpType(node_unit);
+  bool is_quant_conv = IsQuantizedConv(quant_op_type);
+  bool is_quant_matmul = (quant_op_type == QuantizedOpType::QLinearMatMul);
 
   const auto& io_defs = is_input ? node_unit.Inputs() : node_unit.Outputs();
   for (const auto idx : indices) {
@@ -251,7 +265,7 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
       return false;
     }
 
-    bool is_conv_matmul_weight = is_input && (is_qlinear_conv || is_qlinear_matmul) && idx == 1;
+    bool is_conv_matmul_weight = is_input && (is_quant_conv || is_quant_matmul) && idx == 1;
     bool is_conv_matmul_u8s8_weight = false;
 
     if (is_conv_matmul_weight) {
@@ -279,7 +293,7 @@ bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, co
       }
 
       if (zero_dim != 1) {
-        if (is_qlinear_matmul) {
+        if (is_quant_matmul) {
           LOGS_DEFAULT(VERBOSE) << "QLinearMatMul does not support per-channel quantization";
           return false;
         }
@@ -501,27 +515,6 @@ bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_
   // We also want to check if the node is supported as an internal quantized node_unit
   if (IsInternalQuantizedNodeUnit(node_unit))
     return IsInternalQuantizationSupported(node_unit.GetNode(), node_outputs_in_group);
-
-  return true;
-}
-
-bool IsInputSupported(const NodeArg& input, const std::string& parent_name) {
-  const auto& input_name = input.Name();
-  const auto* shape_proto = input.Shape();
-  // We do not support input with no shape
-  if (!shape_proto) {
-    LOGS_DEFAULT(VERBOSE) << "Input [" << input_name << "] of [" << parent_name
-                          << "] has no shape";
-    return false;
-  }
-
-  for (const auto& dim : shape_proto->dim()) {
-    // For now we do not support dynamic shape
-    if (!dim.has_dim_value()) {
-      LOGS_DEFAULT(WARNING) << "Dynamic shape is not supported for now, for input:" << input_name;
-      return false;
-    }
-  }
 
   return true;
 }

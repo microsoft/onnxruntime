@@ -35,6 +35,10 @@ static void VerifyOutputs(const std::vector<std::string>& output_names,
         EXPECT_THAT(ltensor.DataAsSpan<int64_t>(), ::testing::ContainerEq(rtensor.DataAsSpan<int64_t>()))
             << " mismatch for " << output_names[i];
         break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+        EXPECT_THAT(ltensor.DataAsSpan<uint8_t>(), ::testing::ContainerEq(rtensor.DataAsSpan<uint8_t>()))
+            << " mismatch for " << output_names[i];
+        break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
         constexpr float abs_err = 1e-5f;
 
