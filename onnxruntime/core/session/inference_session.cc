@@ -162,7 +162,7 @@ Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger&
   return status;
 }
 
-static bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, const ProviderType provider) {
+static bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderType provider) {
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
 
@@ -1429,7 +1429,7 @@ common::Status InferenceSession::Initialize() {
 
         else {
           LOGS(*session_logger_, INFO) << "This session will use the CUDA Graph feature as requested by the user.";
-          cached_cuda_execution_provider_for_cuda_graph_replay = cuda_ep;
+          cached_cuda_execution_provider_for_cuda_graph_replay_ = cuda_ep;
         }
       }
 
@@ -1838,13 +1838,16 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
                              const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
+  // TODO: Can we avoid leaking EP-specific concepts in InferenceSession::Run() ?
   // Check if this Run() is simply going to be a CUDA Graph replay.
-  if (cached_cuda_execution_provider_for_cuda_graph_replay) {
-    if (cached_cuda_execution_provider_for_cuda_graph_replay->IsGraphCaptured()) {
+  bool is_cuda_graph_captured_on_this_run = false;
+  if (cached_cuda_execution_provider_for_cuda_graph_replay_) {
+    if (cached_cuda_execution_provider_for_cuda_graph_replay_->IsGraphCaptured()) {
       LOGS(*session_logger_, INFO) << "Replaying the captured CUDA Graph for this model";
-      return cached_cuda_execution_provider_for_cuda_graph_replay->GraphReplay();
+      return cached_cuda_execution_provider_for_cuda_graph_replay_->GraphReplay();
     } else {
       LOGS(*session_logger_, INFO) << "Capturing the CUDA Graph for this model";
+      is_cuda_graph_captured_on_this_run = true;
     }
   }
 
@@ -1985,6 +1988,14 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   TraceLoggingWriteStop(ortrun_activity, "OrtRun");
 #endif
+
+  // If the CUDA Graph was captured on this Run(), we must trigger a replay
+  // to actually make the kernels run on the GPU as the kernels don't really
+  // run on the GPU as the graph capture is going on.
+  if (is_cuda_graph_captured_on_this_run) {
+    return cached_cuda_execution_provider_for_cuda_graph_replay_->GraphReplay();
+  }
+
   return retval;
 }
 

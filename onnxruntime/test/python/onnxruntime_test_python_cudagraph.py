@@ -63,8 +63,7 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
 
           # Validate results
           expected_y = np.array([[5.0], [11.0], [17.0]]*INPUT_SIZE, dtype=np.float32)
-          # TODO: Investigate why does the first Run() which involves the CUDA Graph capture fail always ?
-          #np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
+          np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
 
 
           # RUN - 2
