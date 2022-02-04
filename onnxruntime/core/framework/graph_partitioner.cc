@@ -117,7 +117,7 @@ static Status TransformLayout(Graph& graph, bool& modified,
                               IExecutionProvider& current_ep) {
   // sub graph recurse will be added later
   auto api_graph = MakeApiGraph(graph, current_ep.GetAllocator(0, OrtMemTypeDefault), nullptr);
-  std::unordered_set<std::string_view> layout_sensitive_ops = onnx_layout_transformation::GetLayoutSensitiveOps();
+  const auto& layout_sensitive_ops = onnx_layout_transformation::GetLayoutSensitiveOps();
 
   for (std::unique_ptr<onnx_layout_transformation::api::NodeRef>& node : api_graph->Nodes()) {
     if (layout_sensitive_ops.count(node->OpType())) {
@@ -399,7 +399,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
 
   for (auto& capability : capabilities) {
     // in theory an EP could return an empty value...
-    if (!capability && !capability->sub_graph) {
+    if (!capability || !capability->sub_graph) {
       continue;
     }
 

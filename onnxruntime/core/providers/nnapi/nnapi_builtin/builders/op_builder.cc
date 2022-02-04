@@ -502,7 +502,7 @@ static Status IsOpInRequiredLayout(bool use_nchw, const NodeUnit& node_unit) {
   bool is_op_nhwc = node_unit.Domain() == kMSNHWCDomain;
   if (is_op_nhwc && use_nchw) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Expected lauout and operator layout do not match. Possible bug in layout optimizer.");
+                           "Expected layout and operator layout do not match. Possible bug in layout optimizer.");
   }
 
   return Status::OK();

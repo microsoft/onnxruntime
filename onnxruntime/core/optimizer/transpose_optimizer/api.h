@@ -443,7 +443,9 @@ enum class OptimizerMode {
 /// <param name="allow_extended_ops">Whether com.microsoft ops can be used for optimization</param>
 /// <param name="provider_type">Execution provider if applicable.</param>
 /// <param name="mode">Current mode. Optimizer can be called in the context of transpose optimizations or during layout transformations.</param>
-/// <param name="layout_sensitive_ops">Layout sensitive ops if appplicable.</param>
+/// <param name="layout_sensitive_ops">List of ops which are treated as layout sensitive by the ONNX standard as well as any runtime specific ops.
+/// These ops should be provided when mode is set to OPTIMIZE_LAYOUT_TRANSFORM. If these ops are not provided, transpose optimizer may convert the 
+/// layout for these ops </param>
 /// <returns>true if the graph was modified</returns>
 bool Optimize(api::GraphRef& graph, bool allow_extended_ops,
               const std::string& provider_type = "",

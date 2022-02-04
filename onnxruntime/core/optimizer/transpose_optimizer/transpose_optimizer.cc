@@ -8,6 +8,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <unordered_set>
+#include <cstring>
 
 namespace onnx_layout_transformation {
 
@@ -496,9 +497,13 @@ static void TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i,
 
   // Case 1: input is a constant with a known list of consumer nodes
   if (constant != nullptr && consumers->comprehensive) {
+    // Input is scalar, return early.
+    if (constant->Shape().size() == 1 && constant->Shape()[0] == 0) {
+      return;
+    }
     // This is a special case where the constant is 1D with length == perm.
     // TODO: TransposeInitializer should be updated to handle this case.
-    // Permute1DConstant permutes the constant and adds a new initializer. The old initializer is only removed if
+    // Permute1DConstant permutes the constant and adds a new initializer. The old initializer is removed only if
     // there are no other consumers.
     if (constant->Shape().size() == 1 && constant->Shape()[0] == gsl::narrow_cast<int64_t>(perm.size())) {
       Permute1DConstant(graph, node, *constant, i, input, perm);

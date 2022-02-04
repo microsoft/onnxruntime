@@ -636,10 +636,9 @@ static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_typ
   return node;
 }
 
-#if defined(ORT_EXTENDED_MINIMAL_BUILD)
 // This is a list of onnx ops and their versions which transpose_optimizer can potentially add to the graph.
 // This is needed in minimal build since opschema is not available.
-// The versions should be sorted.
+// The versions MUST be sorted due to how the model opset is matched with the most recent operator version.
 static const std::unordered_map<std::string, std::vector<int>> onnx_ops_available_versions = {
     {"Squeeze", {1, 11, 13}},
     {"Unsqueeze", {1, 11, 13}},
@@ -652,35 +651,31 @@ static const std::unordered_map<std::string, std::vector<int>> onnx_ops_availabl
 static int GetSinceVersionForNewOp(std::string_view op_type, std::string_view domain,
                                    const std::unordered_map<std::string, int>& domain_to_version_map) {
   int since_version = -1;
-  auto opset_import_iter = domain_to_version_map.find(std::string(domain));
-  if (opset_import_iter != domain_to_version_map.end()) {
-    int opset_version = opset_import_iter->second;
-    auto iter = onnx_ops_available_versions.find(std::string(op_type));
-    ORT_ENFORCE(iter != onnx_ops_available_versions.end(),
-                "Transpose Optimizer is adding an unexpected node: ", op_type,
-                "An entry for this node should be added in onnx_ops_available_versions and static_kernel_hashes map.");
+  ORT_ENFORCE(domain == kOnnxDomain, "Transpose optimizer is expected to add only onnx domain ops. Domain: ",
+              domain, " provided for op: ", op_type);
 
-    for (auto version : iter->second) {
-      if (version <= opset_version) {
-        since_version = version;
-      }
+  auto opset_import_iter = domain_to_version_map.find(std::string(domain));
+  ORT_ENFORCE(opset_import_iter != domain_to_version_map.end(), "Onnx domain not found in opset imports.");
+
+  int opset_version = opset_import_iter->second;
+  auto iter = onnx_ops_available_versions.find(std::string(op_type));
+  ORT_ENFORCE(iter != onnx_ops_available_versions.end(),
+              "Transpose Optimizer is adding an unexpected node: ", op_type,
+              "An entry for this node should be added in onnx_ops_available_versions and static_kernel_hashes map.");
+
+  for (auto version : iter->second) {
+    if (version <= opset_version) {
+      since_version = version;
     }
   }
 
   return since_version;
 }
-#endif
 
 std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
                                                 const std::vector<std::string_view>& inputs, size_t num_outputs,
                                                 std::string_view domain) {
-  int since_version =
-#if defined(ORT_EXTENDED_MINIMAL_BUILD)
-      GetSinceVersionForNewOp(op_type, domain, graph_.DomainToVersionMap());
-#else
-      -1;
-#endif
-
+  int since_version = GetSinceVersionForNewOp(op_type, domain, graph_.DomainToVersionMap());
   Node& node = CreateNodeHelper(graph_, op_type, inputs, num_outputs,
                                 domain, since_version, new_node_ep_ != nullptr ? new_node_ep_ : "");
 

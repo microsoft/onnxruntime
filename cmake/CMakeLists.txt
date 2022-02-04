@@ -346,10 +346,8 @@ if (onnxruntime_MINIMAL_BUILD)
   if (onnxruntime_EXTENDED_MINIMAL_BUILD)
     # enable EPs that compile kernels at runtime
     add_compile_definitions(ORT_EXTENDED_MINIMAL_BUILD)
-
-    if (onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
-      add_compile_definitions(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
-    endif()
+    # enable runtime optimizations. These are required for NNAPI
+    add_compile_definitions(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   endif()
 
   if (onnxruntime_MINIMAL_BUILD_CUSTOM_OPS)
