@@ -109,22 +109,8 @@ bool IsQuantizedConv(QuantizedOpType quant_op_type);
 // Such as QLinearConv, QLinearMatMul, QLinearAdd, QDQConv,...
 bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type);
 
-// Check if a qlinear unary op has valid inputs, Qlinear[Sigmoid/AveragePool]
-bool HasValidUnaryOpQuantizedInputs(const NodeUnit& node_unit);
 // Check if a qlinear binary op has valid inputs, Qlinear[Conv/MatMul/Add]
 bool HasValidBinaryOpQuantizedInputTypes(const NodeUnit& node_unit);
-
-// Check if the given quantized input(s) or output(s) is supported
-bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                            const std::vector<size_t>& indices, const OpSupportCheckParams& params, bool is_input);
-
-// Check if a qlinear op has valid scales for given indices
-bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                const std::vector<size_t>& indices, const OpSupportCheckParams& params, bool is_input);
-
-// Check if a qlinear op has valid zero points for given indices
-bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                    const std::vector<size_t>& indices, bool is_input);
 
 common::Status GetQuantizationScaleAndZeroPoint(
     const InitializedTensorSet& initializers, const NodeUnitIODef& io_def, const Path& model_path,
