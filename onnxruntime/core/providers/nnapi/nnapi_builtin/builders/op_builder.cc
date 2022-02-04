@@ -1101,11 +1101,16 @@ class PoolOpBuilder : public BaseOpBuilder {
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
+  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
+/* static */ bool PoolOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
+  return IsQuantizedPool(GetQuantizedOpType(node_unit));
+}
+
 void PoolOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  if (!PoolOpSupportChecker::IsQuantizedOp(node_unit))
+  if (!IsQuantizedOp(node_unit))
     return;
 
   // skip input/output scales and zeropoints
@@ -1150,7 +1155,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto& op_type = node_unit.OpType();
 
   int32_t op_code;
-  bool is_quant_pool = PoolOpSupportChecker::IsQuantizedOp(node_unit);
+  bool is_quant_pool = IsQuantizedOp(node_unit);
   bool is_average_pool = op_type == "AveragePool" || op_type == "QLinearAveragePool";
   if (is_average_pool || op_type == "GlobalAveragePool")
     op_code = ANEURALNETWORKS_AVERAGE_POOL_2D;
