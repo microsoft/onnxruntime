@@ -1056,50 +1056,68 @@ GetPartitionedSubgraphs(const std::vector<NodeIndex>& topological_order, const s
 std::vector<std::unique_ptr<ComputeCapability>>
 MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                          const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+  std::cout << "InGetCapacity...." << std::endl;
   std::vector<std::unique_ptr<ComputeCapability>> result;
   auto model = graph_viewer.CreateModel(*GetLogger());
   auto model_proto = model->ToProto();
   ToGraphProtoInternal(graph_viewer, *model_proto->mutable_graph());
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-
+std::cout << "loc1" << std::endl;
   std::string onnx_string_buffer;
   model_proto->SerializeToString(onnx_string_buffer);
 
+  // dump onnxfile
+  std::ofstream ofs("getCapacity.onnx");
+  ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
+  ofs.close();
+
+std::cout << "loc2" << std::endl;
   // This is a list of initializers that migraphx considers as constants.
   // Example weights, reshape shape etc.
   std::unordered_set<std::string> mgx_required_initializers;
   const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, mgx_required_initializers, *GetLogger());
+std::cout << "loc3" << std::endl;
   
   //If all ops are supported, no partitioning is required. Short-circuit and avoid splitting.
   if (unsupported_nodes.empty()) {
+std::cout << "loc4" << std::endl;
     auto node_indices = graph_viewer.GetNodesInTopologicalOrder();
     auto sub_graph = GetSubGraph(node_indices, graph_viewer);
     result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+std::cout << "loc5" << std::endl;
   } else {  // unsupported_nodes_idx.empty()
-    if (unsupported_nodes.size() > 10)
-    {
-      return result;
-    }
+//     if (unsupported_nodes.size() > 10)
+//     {
+// std::cout << "loc6" << std::endl;
+//       return result;
+//     }
 
     // migraphx cannot handle Loop, If, and SoftmaxCrossEntropyLoss for now,
     // so if a model contain any of these operators, fall back to CPU
+std::cout << "loc7" << std::endl;
     std::unordered_set<std::string> vec_ops = {"SoftmaxCrossEntropyLoss"};
     if (std::any_of(unsupported_nodes.begin(), unsupported_nodes.end(), [&](auto i) {
       return (vec_ops.count(graph_viewer.GetNode(i)->OpType()) > 0);
     })) {
+std::cout << "loc8" << std::endl;
       return result;
     }
 
+std::cout << "loc9" << std::endl;
     auto mgx_clusters = GetPartitionedSubgraphs(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
+std::cout << "loc10" << std::endl;
 
     // check whether a subgrap should fallback to CPU
     SubgraphPostProcessing(graph_viewer, mgx_clusters, *GetLogger());
+std::cout << "loc11" << std::endl;
 
     for (const auto& this_cluster : mgx_clusters) {
       auto sub_graph = GetSubGraph(this_cluster, graph_viewer);
+std::cout << "loc12" << std::endl;
       result.push_back(ComputeCapability::Create(std::move(sub_graph)));
     }
   }
+std::cout << "loc13" << std::endl;
 
   return result;
 }
@@ -1144,6 +1162,7 @@ bool get_input_output_names(const GraphViewer& graph,
 
 Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                           std::vector<NodeComputeInfo>& node_compute_funcs) {
+  std::cout << "Compile...." << std::endl;
   migraphx::onnx_options options;
   bool no_input_shape = false;
   for (const auto& fused_node : fused_nodes) {

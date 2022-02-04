@@ -57,9 +57,9 @@ def create_onnxruntime_session(onnx_model_path,
         if enable_profiling:
             sess_options.enable_profiling = True
 
-        if num_threads > 0:
-            sess_options.intra_op_num_threads = num_threads
-            logger.debug(f"Session option: intra_op_num_threads={sess_options.intra_op_num_threads}")
+        #if num_threads > 0:
+        #    sess_options.intra_op_num_threads = num_threads
+        #    logger.debug(f"Session option: intra_op_num_threads={sess_options.intra_op_num_threads}")
 
         if verbose:
             sess_options.log_severity_level = 0
@@ -73,7 +73,8 @@ def create_onnxruntime_session(onnx_model_path,
             elif provider == 'rocm':
                 execution_providers = ['ROCMExecutionProvider', 'CPUExecutionProvider']
             elif provider == 'migraphx':
-                execution_providers = ['MIGraphXExecutionProvider', 'ROCMExecutionProvider', 'CPUExecutionProvider']
+                #execution_providers = ['MIGraphXExecutionProvider', 'CPUExecutionProvider']
+                execution_providers = ['MIGraphXExecutionProvider']
             elif provider == 'cuda':
                 execution_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
             elif provider == 'tensorrt':
@@ -82,7 +83,11 @@ def create_onnxruntime_session(onnx_model_path,
                 execution_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
         else:
             execution_providers = ['CPUExecutionProvider']
+
+        print("providers = {}".format(execution_providers)) 
         session = InferenceSession(onnx_model_path, sess_options, providers=execution_providers)
+        providers = session.get_providers()
+        print("created_providers = {}".format(providers))
     except:
         logger.error(f"Exception", exc_info=True)
 
@@ -239,6 +244,7 @@ def inference_ort_with_io_binding(ort_session,
     io_binding = ort_session.io_binding()
     # Bind inputs to device
     for name in ort_inputs.keys():
+        print("device={}".format(device))
         np_input = torch.from_numpy(ort_inputs[name]).to(device)
         input_type = IO_BINDING_DATA_TYPE_MAP[str(ort_inputs[name].dtype)] if str(
             ort_inputs[name].dtype) in IO_BINDING_DATA_TYPE_MAP else data_type
