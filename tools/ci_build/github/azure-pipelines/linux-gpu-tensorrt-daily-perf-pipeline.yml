@@ -171,6 +171,12 @@ jobs:
           scriptLocation: inlineScript
           scriptType: bash
           inlineScript: |
-            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch)
+            short_hash=$(git rev-parse --short HEAD^) && 
+            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch)
     
+    
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+        
     - template: templates/clean-agent-build-directory-step.yml

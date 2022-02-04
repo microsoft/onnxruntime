@@ -44,7 +44,7 @@ inline std::unique_ptr<char[]> read_mnist_file(const std::string& path, uint32_t
   }
 
   std::streampos size = file.tellg();
-  std::unique_ptr<char[]> buffer(new char[size]);
+  std::unique_ptr<char[]> buffer = std::make_unique<char[]>(size);
 
   //Read the entire file at once
   file.seekg(0, std::ios::beg);

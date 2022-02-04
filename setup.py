@@ -12,6 +12,7 @@ from shutil import copyfile
 import platform
 import subprocess
 import sys
+import textwrap
 import datetime
 
 from pathlib import Path
@@ -145,6 +146,33 @@ try:
                     f.write('    import os\n')
                     f.write('    os.environ["ORT_TENSORRT_UNAVAILABLE"] = "1"\n')
 
+        def _rewrite_ld_preload_tvm(self):
+            with open('onnxruntime/capi/_ld_preload.py', 'a') as f:
+                f.write(textwrap.dedent(
+                    """
+                    import warnings
+
+                    try:
+                        # This import is necessary in order to delegate the loading of libtvm.so to TVM.
+                        import tvm
+                    except ImportError as e:
+                        warnings.warn(
+                            f"WARNING: Failed to import TVM, libtvm.so was not loaded. More details: {e}"
+                        )
+                    try:
+                        # Working between the C++ and Python parts in TVM EP is done using the PackedFunc and
+                        # Registry classes. In order to use a Python function in C++ code, it must be registered in
+                        # the global table of functions. Registration is carried out through the JIT interface,
+                        # so it is necessary to call special functions for registration.
+                        # To do this, we need to make the following import.
+                        import onnxruntime.providers.stvm
+                    except ImportError as e:
+                        warnings.warn(
+                            f"WARNING: Failed to register python functions to work with TVM EP. More details: {e}"
+                        )
+                    """
+                ))
+
         def run(self):
             if is_manylinux:
                 source = 'onnxruntime/capi/onnxruntime_pybind11_state.so'
@@ -188,7 +216,7 @@ try:
                     if len(args) > 3:
                         subprocess.run(args, check=True, stdout=subprocess.PIPE)
 
-                dest = 'onnxruntime/capi/libonnxruntime_providers_tensorrt.so'
+                dest = 'onnxruntime/capi/libonnxruntime_providers_' + ('migraphx.so' if is_rocm else 'tensorrt.so')
                 if path.isfile(dest):
                     result = subprocess.run(['patchelf', '--print-needed', dest],
                                             check=True, stdout=subprocess.PIPE, universal_newlines=True)
@@ -207,6 +235,8 @@ try:
                 self._rewrite_ld_preload(to_preload)
                 self._rewrite_ld_preload_cuda(to_preload_cuda)
                 self._rewrite_ld_preload_tensorrt(to_preload_tensorrt)
+            if package_name == 'onnxruntime-stvm':
+                self._rewrite_ld_preload_tvm()
             _bdist_wheel.run(self)
             if is_manylinux and not disable_auditwheel_repair:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
@@ -223,21 +253,21 @@ except ImportError as error:
     print(error)
     bdist_wheel = None
 
-providers_cuda_or_rocm = 'libonnxruntime_providers_rocm.so' if is_rocm else 'libonnxruntime_providers_cuda.so'
-
+providers_cuda_or_rocm = 'libonnxruntime_providers_' + ('rocm.so' if is_rocm else 'cuda.so')
+providers_tensorrt_or_migraphx = 'libonnxruntime_providers_' + ('migraphx.so' if is_rocm else 'tensorrt.so')
 # Additional binaries
 if platform.system() == 'Linux':
     libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.2', 'libmklml_intel.so', 'libmklml_gnu.so', 'libiomp5.so',
             'mimalloc.so']
     dl_libs = ['libonnxruntime_providers_shared.so']
     dl_libs.append(providers_cuda_or_rocm)
-    dl_libs.append('libonnxruntime_providers_tensorrt.so')
+    dl_libs.append(providers_tensorrt_or_migraphx)
     # DNNL, TensorRT & OpenVINO EPs are built as shared libs
     libs.extend(['libonnxruntime_providers_shared.so'])
     libs.extend(['libonnxruntime_providers_dnnl.so'])
-    libs.extend(['libonnxruntime_providers_tensorrt.so'])
     libs.extend(['libonnxruntime_providers_openvino.so'])
     libs.append(providers_cuda_or_rocm)
+    libs.append(providers_tensorrt_or_migraphx)
     # Nuphar Libs
     libs.extend(['libtvm.so.0.5.1'])
     if nightly_build:

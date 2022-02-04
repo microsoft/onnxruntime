@@ -123,7 +123,7 @@ void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, cons
   try {
     ORT_ENFORCE(
         tensor_proto.SerializeToFileDescriptor(output_fd),
-        "Failed to write tensor to file - tensor: ", tensor_name, ", file: ", ToMBString(file_path_str));
+        "Failed to write tensor to file - tensor: ", tensor_name, ", file: ", ToUTF8String(file_path_str));
   } catch (...) {
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(output_fd));
     throw;

@@ -23,7 +23,7 @@ Status DataCopy(const Tensor& input, Tensor& output, void* /*einsum_cuda_assets*
 }
 
 // CPU specific Transpose helper
-Status Transpose(const std::vector<size_t>& permutation, const Tensor& input,
+Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* /*einsum_cuda_assets*/) {
   return TransposeBase::DoTranspose(permutation, input, output, input_shape_override);
 }
@@ -112,7 +112,7 @@ static std::unique_ptr<Tensor> DiagonalInnermostDims(const Tensor& input,
   ORT_ENFORCE(input_dims[rank - 2] == input_dims[rank - 1],
               "The innermost dims should have the same dim value to parse the diagonal elements");
 
-  std::vector<int64_t> output_dims;
+  TensorShapeVector output_dims;
   output_dims.reserve(rank);
 
   int64_t batch_size = 1;  // Flatten the outermost dims - this will be the number of iterations
@@ -135,7 +135,7 @@ static std::unique_ptr<Tensor> DiagonalInnermostDims(const Tensor& input,
 
   // Pass in allocator as that will be used as an allocator deleter by the framework
   // and it will de-allocate the memory for this intermediate tensor when it goes out of scope
-  std::unique_ptr<Tensor> output = std::make_unique<Tensor>(input.DataType(), output_dims, allocator);
+  std::unique_ptr<Tensor> output = std::make_unique<Tensor>(input.DataType(), output_dims, std::move(allocator));
 
   switch (element_size_in_bytes) {
     case 4:
@@ -237,7 +237,7 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
   }
 
   // Make copy of the output dims
-  auto output_dims = output->Shape().GetDimsAsVector();
+  auto output_dims = output->Shape().AsShapeVector();
 
   // Unsqueeze the reduced dim
   auto iter = output_dims.begin() + second_dim;
@@ -252,7 +252,7 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
 }  // namespace DeviceHelpers
 
 // This helps decide if we need to apply (and pay the cost) of a Transpose
-bool IsTransposeRequired(size_t input_rank, const std::vector<size_t>& permutation) {
+bool IsTransposeRequired(size_t input_rank, const gsl::span<const size_t>& permutation) {
   ORT_ENFORCE(input_rank == permutation.size(), "The rank of the input must match permutation size for Transpose");
 
   // No transpose required for scalars
@@ -274,12 +274,12 @@ bool IsTransposeRequired(size_t input_rank, const std::vector<size_t>& permutati
 
 // The following are thin wrappers over device specific helpers
 std::unique_ptr<Tensor> Transpose(const Tensor& input, const TensorShape& input_shape_override,
-                                  const std::vector<size_t>& permutation, AllocatorPtr allocator,
+                                  const gsl::span<const size_t>& permutation, AllocatorPtr allocator,
                                   void* einsum_cuda_assets, const DeviceHelpers::Transpose& device_transpose_func) {
   auto input_rank = input_shape_override.NumDimensions();
   ORT_ENFORCE(input_rank == permutation.size(), "Length of permutation must match the rank of the input to be permutated");
 
-  std::vector<int64_t> output_dims;
+  TensorShapeVector output_dims;
   output_dims.reserve(input_rank);
 
   for (const auto& dim : permutation) {
@@ -301,8 +301,8 @@ std::unique_ptr<Tensor> Transpose(const Tensor& input, const TensorShape& input_
 }
 
 template <typename T>
-std::unique_ptr<Tensor> MatMul(const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
-                               const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
+std::unique_ptr<Tensor> MatMul(const Tensor& input_1, const gsl::span<const int64_t>& input_shape_1_override,
+                               const Tensor& input_2, const gsl::span<const int64_t>& input_shape_2_override,
                                AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
                                const DeviceHelpers::MatMul<T>& device_matmul_func) {
   // Sanity checks before the actual MatMul
@@ -320,7 +320,7 @@ std::unique_ptr<Tensor> MatMul(const Tensor& input_1, const std::vector<int64_t>
   size_t right_offset = K * N;
   size_t output_offset = M * N;
 
-  std::vector<int64_t> output_dims;
+  TensorShapeVector output_dims;
   output_dims.reserve(3);
   output_dims.push_back(static_cast<int64_t>(batches));
   output_dims.push_back(static_cast<int64_t>(M));
@@ -363,8 +363,8 @@ template Status DeviceHelpers::CpuDeviceHelpers::MatMul<float>(
     void* einsum_cuda_assets);
 
 template std::unique_ptr<Tensor> MatMul<float>(
-    const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
-    const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
+    const Tensor& input_1, const gsl::span<const int64_t>& input_shape_1_override,
+    const Tensor& input_2, const gsl::span<const int64_t>& input_shape_2_override,
     AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
     const DeviceHelpers::MatMul<float>& device_matmul_func);
 
@@ -387,8 +387,8 @@ template Status DeviceHelpers::CpuDeviceHelpers::MatMul<int32_t>(
     void* einsum_cuda_assets);
 
 template std::unique_ptr<Tensor> MatMul<int32_t>(
-    const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
-    const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
+    const Tensor& input_1, const gsl::span<const int64_t>& input_shape_1_override,
+    const Tensor& input_2, const gsl::span<const int64_t>& input_shape_2_override,
     AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
     const DeviceHelpers::MatMul<int32_t>& device_matmul_func);
 
@@ -412,8 +412,8 @@ template Status DeviceHelpers::CpuDeviceHelpers::MatMul<double>(
     void* einsum_cuda_assets);
 
 template std::unique_ptr<Tensor> MatMul<double>(
-    const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
-    const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
+    const Tensor& input_1, const gsl::span<const int64_t>& input_shape_1_override,
+    const Tensor& input_2, const gsl::span<const int64_t>& input_shape_2_override,
     AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
     const DeviceHelpers::MatMul<double>& device_matmul_func);
 
@@ -443,8 +443,8 @@ template std::unique_ptr<Tensor> DeviceHelpers::CpuDeviceHelpers::ReduceSum<int6
     concurrency::ThreadPool* tp, void* einsum_cuda_assets);
 
 template std::unique_ptr<Tensor> MatMul<int64_t>(
-    const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
-    const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
+    const Tensor& input_1, const gsl::span<const int64_t>& input_shape_1_override,
+    const Tensor& input_2, const gsl::span<const int64_t>& input_shape_2_override,
     AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
     const DeviceHelpers::MatMul<int64_t>& device_matmul_func);
 
@@ -455,8 +455,8 @@ template std::unique_ptr<Tensor> ReduceSum<int64_t>(
 
 // MLFloat16
 template std::unique_ptr<Tensor> MatMul<MLFloat16>(
-    const Tensor& input_1, const std::vector<int64_t>& input_shape_1_override,
-    const Tensor& input_2, const std::vector<int64_t>& input_shape_2_override,
+    const Tensor& input_1, const gsl::span<const int64_t>& input_shape_1_override,
+    const Tensor& input_2, const gsl::span<const int64_t>& input_shape_2_override,
     AllocatorPtr allocator, concurrency::ThreadPool* tp, void* einsum_cuda_assets,
     const DeviceHelpers::MatMul<MLFloat16>& device_matmul_func);
 

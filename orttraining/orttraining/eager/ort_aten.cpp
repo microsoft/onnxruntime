@@ -7,11 +7,15 @@
 #include <ATen/native/CPUFallback.h>
 #include <ATen/InferSize.h>
 
+#include <torch/csrc/jit/ir/ir.h>
+#include <c10/util/irange.h>
+
+
 namespace torch_ort {
 namespace eager {
 
 //#pragma region Helpers
-
+using NodeAttributes = onnxruntime::NodeAttributes;
 namespace {
   inline bool is_device_supported(at::DeviceType type) {
     return type == at::kORT || type == at::kCPU;
@@ -218,6 +222,92 @@ bool IsSupportedType(at::TensorList tensors, const std::vector<at::ScalarType>& 
   return IsSupportedType(tensors[0], valid_types);
 }
 
+ONNX_NAMESPACE::TensorProto_DataType GetONNXTensorProtoDataType(at::ScalarType dtype){
+  switch (dtype){
+    case at::kFloat:
+      return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+    case at::kDouble:
+      return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
+    case at::kHalf:
+      return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+    case at::kBFloat16:
+      return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+    case at::kInt:
+      return ONNX_NAMESPACE::TensorProto_DataType_INT32;
+    case at::kShort:
+      return ONNX_NAMESPACE::TensorProto_DataType_INT16;
+    case at::kLong:
+      return ONNX_NAMESPACE::TensorProto_DataType_INT64;
+    case at::kBool:
+      return ONNX_NAMESPACE::TensorProto_DataType_BOOL;
+    default:
+      ORT_THROW("Unsupport aten scalar type: ", dtype);
+  }
+}
+
+static c10::optional<at::ScalarType> PromoteScalarTypes(
+    const std::vector<at::ScalarType>& types) {
+  if (types.empty()) {
+    return at::nullopt;
+  }
+  auto st = types[0];
+  for (const auto i : c10::irange(1, types.size())) {
+    st = c10::promoteTypes(st, types[i]);
+  }
+  return st;
+}
+
+
+c10::optional<at::ScalarType> PromoteScalarTypesWithCategory(
+    const std::vector<at::ScalarType>& typesFromTensors,
+    const std::vector<at::ScalarType>& typesFromScalars) {
+  auto typeFromTensor = PromoteScalarTypes(typesFromTensors);
+  auto typeFromScalar = PromoteScalarTypes(typesFromScalars);
+
+  auto getTypeCategory = [](c10::ScalarType t) {
+    if (c10::kBool == t) {
+      return 1;
+    }
+    if (c10::isIntegralType(t, /*includeBool=*/false)) {
+      return 2;
+    }
+    if (c10::isFloatingType(t)) {
+      return 3;
+    }
+    return 0;
+  };
+
+  if (c10::nullopt == typeFromScalar) {
+    return typeFromTensor;
+  } else if (c10::nullopt == typeFromTensor) {
+    return typeFromScalar;
+  }
+
+  auto typeCategoryFromTensor = getTypeCategory(typeFromTensor.value());
+  auto typeCategoryFromScalar = getTypeCategory(typeFromScalar.value());
+
+  if (typeCategoryFromScalar > typeCategoryFromTensor) {
+    return typeFromScalar;
+  }
+  return typeFromTensor;
+}
+
+OrtValue CastToType(onnxruntime::ORTInvoker& invoker, const OrtValue& input, at::ScalarType type){
+  std::vector<OrtValue> output(1);
+  NodeAttributes attrs(2);
+  attrs["to"] = create_ort_attribute(
+    "to", GetONNXTensorProtoDataType(type), at::ScalarType::Long);
+
+  auto status = invoker.Invoke("Cast", {
+    std::move(input),
+  }, output, &attrs);
+
+  if (!status.IsOK())
+    throw std::runtime_error(
+    "ORT return failure status:" + status.ErrorMessage());
+  return output[0];  
+}
+
 //#pragma endregion
 
 //#pragma region Hand-Implemented ATen Ops
@@ -314,29 +404,6 @@ at::Tensor view(const at::Tensor& self, at::IntArrayRef size) {
       // invoke reshape kernel inplace
       true),
     self.options());
-}
-
-ONNX_NAMESPACE::TensorProto_DataType GetONNXTensorProtoDataType(at::ScalarType dtype){
-  switch (dtype){
-    case at::kFloat:
-      return ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-    case at::kDouble:
-      return ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
-    case at::kHalf:
-      return ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
-    case at::kBFloat16:
-      return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
-    case at::kInt:
-      return ONNX_NAMESPACE::TensorProto_DataType_INT32;
-    case at::kShort:
-      return ONNX_NAMESPACE::TensorProto_DataType_INT16;
-    case at::kLong:
-      return ONNX_NAMESPACE::TensorProto_DataType_INT64;
-    case at::kBool:
-      return ONNX_NAMESPACE::TensorProto_DataType_BOOL;
-    default:
-      ORT_THROW("Unsupport aten scalar type: ", dtype);
-  }
 }
 
 at::Tensor& copy_(

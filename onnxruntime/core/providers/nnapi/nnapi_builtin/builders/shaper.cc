@@ -3,20 +3,17 @@
 
 #include "core/providers/common.h"
 
-#include "helper.h"
 #include "shaper.h"
+#include "helper.h"
 
 namespace onnxruntime {
 namespace nnapi {
 
-using std::string;
-using std::vector;
-
 std::pair<uint32_t, uint32_t> ComputeConvOutputShape(const uint32_t input_size_y, const uint32_t input_size_x,
                                                      const uint32_t weight_size_y, const uint32_t weight_size_x,
-                                                     const vector<int32_t>& onnx_pads,
-                                                     const vector<int32_t>& onnx_strides,
-                                                     const vector<int32_t>& onnx_dilations) {
+                                                     const std::vector<int32_t>& onnx_pads,
+                                                     const std::vector<int32_t>& onnx_strides,
+                                                     const std::vector<int32_t>& onnx_dilations) {
   int32_t padding_top = onnx_pads[0];
   int32_t padding_bottom = onnx_pads[2];
   int32_t padding_left = onnx_pads[1];
@@ -53,9 +50,9 @@ std::pair<uint32_t, uint32_t> ComputeConvOutputShape(const uint32_t input_size_y
 
 Status Shaper::Conv(const std::string& input_name,
                     const std::string& weight_name,
-                    const vector<int32_t>& onnx_pads,
-                    const vector<int32_t>& onnx_strides,
-                    const vector<int32_t>& onnx_dilations,
+                    const std::vector<int32_t>& onnx_pads,
+                    const std::vector<int32_t>& onnx_strides,
+                    const std::vector<int32_t>& onnx_dilations,
                     bool nchw,
                     const std::string& output_name) {
   SHAPER_FUNC(Conv,
@@ -150,9 +147,9 @@ Status Shaper::ResizeUsingOutputSizes(const std::string& input_name,
 
 Status Shaper::ConvImpl(const std::string& input_name,
                         const std::string& weight_name,
-                        const vector<int32_t>& onnx_pads,
-                        const vector<int32_t>& onnx_strides,
-                        const vector<int32_t>& onnx_dilations,
+                        const std::vector<int32_t>& onnx_pads,
+                        const std::vector<int32_t>& onnx_strides,
+                        const std::vector<int32_t>& onnx_dilations,
                         bool nchw,
                         const std::string& output_name) {
   const Shape& input_dimen = shape_map_.at(input_name);
