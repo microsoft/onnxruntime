@@ -268,6 +268,8 @@ class TestOrtValue(unittest.TestCase):
         else:
             tensors = _ortvalues_to_torch_tensor(vect, device)
         self.assertEqual(len(tensors), len(vect))
+        for t in tensors:
+            assert(isinstance(t, torch.Tensor))
         self.assertEqual(ptr, [t.data_ptr() for t in tensors])
         assert all(map(lambda v: isinstance(v, tensor_type), tensors))
 

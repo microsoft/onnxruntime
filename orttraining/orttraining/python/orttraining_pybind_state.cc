@@ -415,7 +415,11 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
             list_dlpacks.append(obj);
             Py_DECREF(obj);
           }
-          Py_DECREF(capsule);
+          if (capsule != NULL) {
+            // This test is never wrong because v is not empty if the execution goes through that path.
+            // If not present, Guardian detects a potential failure.
+            Py_DECREF(capsule);
+          }
         }
         return list_dlpacks;
        },
