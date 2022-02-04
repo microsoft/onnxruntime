@@ -269,7 +269,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
   }
 }
 
-auto ExpandModelName  = [](const ::testing::TestParamInfo<TensorrtExecutionProviderCacheTest::ParamType>& info) {
+auto AddTestName  = [](const ::testing::TestParamInfo<TensorrtExecutionProviderCacheTest::ParamType>& info) {
   // use info.param here to generate the test suffix
   std::basic_string<ORTCHAR_T> name = info.param;
 #ifdef _WIN32
@@ -289,7 +289,7 @@ INSTANTIATE_TEST_SUITE_P(TensorrtExecutionProviderCacheTests, TensorrtExecutionP
                                                                                                                   "timing_dynamic_enginecache_disable",
                                                                                                                   "timing_static_enginecache_enable",
                                                                                                                   "timing_static_enginecache_disable"),
-                                                                                                  ExpandModelName);
+                                                                                                  AddTestName);
 
 TEST(TensorrtExecutionProviderTest, EngineCachingTest) {
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
