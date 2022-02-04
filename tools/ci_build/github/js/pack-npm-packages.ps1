@@ -51,8 +51,8 @@ Function Generate-Package-Version-Number {
     return @{ version = $version_number; commit = $version_commit }
 }
 
-$JS_COMMON_DIR="$ORT_ROOT\js\common"
-$JS_TARGET_DIR="$ORT_ROOT\js\$TARGET"
+$JS_COMMON_DIR=Join-Path -Path $ORT_ROOT -ChildPath 'js\common'
+$JS_TARGET_DIR=Join-Path -Path $ORT_ROOT -ChildPath 'js' -AdditionalChildPath $TARGET
 
 if ($MODE -eq "dev") {
     # For @dev builds, we compares the following 2 package versions for onnxruntime-common:
@@ -88,7 +88,7 @@ if ($MODE -eq "dev") {
     npm pack
     popd
 
-    $current_tgz_compare_only="$JS_COMMON_DIR\onnxruntime-common-$ort_common_latest_version.tgz"
+    $current_tgz_compare_only=Join-Path -Path $JS_COMMON_DIR -ChildPath "onnxruntime-common-$ort_common_latest_version.tgz"
     if (!(Test-Path $current_tgz_compare_only)) {
         throw "File is not generated: $current_tgz_compare_only"
     }
@@ -114,21 +114,27 @@ if ($MODE -eq "dev") {
     npm install "dir-compare-cli@1.0.1" "json-diff@0.5.4"
 
     Write-Host "Compare package.json"
-    npx json-diff ..\latest\package\package.json ..\current\package\package.json
+    $latest_package_json=Join-Path -Path '..' -ChildPath 'latest\package\package.json'
+    $current_package_json=Join-Path -Path '..' -ChildPath 'current\package\package.json'
+    npx json-diff $latest_package_json $current_package_json
     $use_latest=$?
     Write-Host "Result: $use_latest"
     if ($use_latest) {
         # package.json matches. now check package contents.
 
         # do not compare commit number
-        if (test-path ../latest/package/__commit.txt) { rm ../latest/package/__commit.txt }
-        if (test-path ../current/package/__commit.txt) { rm ../current/package/__commit.txt }
+        $latest_package_commit=Join-Path -Path '..' -ChildPath 'latest\package\__commit.txt'
+        $current_package_commit=Join-Path -Path '..' -ChildPath 'current\package\__commit.txt'
+        if (test-path $latest_package_commit) { rm $latest_package_commit }
+        if (test-path $current_package_commit) { rm $current_package_commit }
         # skip package.json, we already checked them
-        rm ../latest/package/package.json
-        rm ../current/package/package.json
+        rm $latest_package_json
+        rm $current_package_json
 
         Write-Host "Compare package contents"
-        npx dircompare -c ../latest/package/ ../current/package/
+        $latest_package_dir=Join-Path -Path '..' -ChildPath 'latest\package'
+        $current_package_dir=Join-Path -Path '..' -ChildPath 'current\package'
+        npx dircompare -c $latest_package_dir $current_package_dir
         $use_latest=$?
         Write-Host "Result: $use_latest"
     }
@@ -137,8 +143,6 @@ if ($MODE -eq "dev") {
 
     if (!$use_latest) {
         Write-Host "Need update to onnxruntime-common@dev"
-        # delete the latest package
-        rm $current_tgz_compare_only
         # need to publish a new version for onnxruntime-common
         pushd $JS_COMMON_DIR
         npm version $($version_number.version)
