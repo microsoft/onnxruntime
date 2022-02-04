@@ -62,8 +62,6 @@ Status SoftMaxGradComputeHelper(
   return Status::OK();
 }
 
-// cudnnSoftmaxForward/Backward doesn't support BFloat16.
-// apply the same for miopen for now
 #define SPECIALIZED_SOFTMAXGRAD_HELPER_IMPL_BFloat16(is_log_softmax)                                           \
   template <>                                                                                                  \
   Status SoftMaxGradComputeHelper<BFloat16, is_log_softmax>(hipStream_t stream, const BFloat16* dY,            \

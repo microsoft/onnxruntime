@@ -44,7 +44,6 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(float)
 SPECIALIZED_SOFTMAX_HELPER_IMPL(double)
 SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
 
-// cudnnSoftmaxForward/Backward doesn't support BFloat16.
 #define SPECIALIZED_SOFTMAX_HELPER_IMPL_BFloat16(is_log_softmax)                                                     \
   template <>                                                                                                        \
   Status SoftMaxComputeHelper<BFloat16, is_log_softmax>(cudaStream_t stream, const BFloat16* X,                      \
@@ -112,8 +111,8 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL_BFloat16(false)
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Softmax<T>);
 
-        template <typename T>
-        Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
+template <typename T>
+Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* X = ctx->Input<Tensor>(0);
   const TensorShape& input_shape{X->Shape()};
   size_t rank = input_shape.NumDimensions();

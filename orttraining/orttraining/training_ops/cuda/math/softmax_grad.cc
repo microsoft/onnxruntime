@@ -62,7 +62,6 @@ Status SoftMaxGradComputeHelper(
   return Status::OK();
 }
 
-// cudnnSoftmaxForward/Backward doesn't support BFloat16.
 #define SPECIALIZED_SOFTMAXGRAD_HELPER_IMPL_BFloat16(is_log_softmax)                                           \
   template <>                                                                                                  \
   Status SoftMaxGradComputeHelper<BFloat16, is_log_softmax>(cudaStream_t stream, const BFloat16* dY,           \
@@ -121,8 +120,8 @@ SPECIALIZED_SOFTMAXGRAD_HELPER_IMPL_BFloat16(false)
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       SoftmaxGrad<T>);
 
-        template <typename T>
-        Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
+template <typename T>
+Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* dY = ctx->Input<Tensor>(0);
   const TensorShape& input_shape{dY->Shape()};
   const Tensor* Y = ctx->Input<Tensor>(1);
