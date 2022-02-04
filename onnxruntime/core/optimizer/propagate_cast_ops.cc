@@ -1546,6 +1546,8 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
   return impl_->ApplyImpl(*this, graph, modified, graph_level, logger);
 }
 
+// Can't use unique_ptr as the Impl class is not defined in the header
+GSL_SUPPRESS(r .11)
 PropagateCastOps::PropagateCastOps(GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy strategy,
                                    size_t level, const gsl::span<const std::string>& allow_list,
                                    const std::unordered_set<std::string>& compatible_execution_providers)
@@ -1553,6 +1555,7 @@ PropagateCastOps::PropagateCastOps(GraphTransformerConfiguration::PropagateCastO
       impl_(new Impl(strategy, level, allow_list)) {
 }
 
+GSL_SUPPRESS(r .11)
 PropagateCastOps::~PropagateCastOps() noexcept {
   delete impl_;
 }
