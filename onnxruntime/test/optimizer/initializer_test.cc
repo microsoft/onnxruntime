@@ -64,7 +64,7 @@ TEST(OptimizerInitializerTest, LoadExternalData) {
         tensor_proto.add_dims(tensor_data.size());
         tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
         tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
-        SetTensorProtoExternalData("location", ToMBString(tensor_data_dir_relative_path.ToPathString()), tensor_proto);
+        SetTensorProtoExternalData("location", ToUTF8String(tensor_data_dir_relative_path.ToPathString()), tensor_proto);
         SetTensorProtoExternalData("offset", "0", tensor_proto);
         SetTensorProtoExternalData("length", std::to_string(tensor_data.size() * sizeof(int32_t)), tensor_proto);
         return tensor_proto;

@@ -33,7 +33,8 @@ group_title = 'Group'
 avg_ending =  ' \nmean (ms)'
 percentile_ending = ' \n90th percentile (ms)'
 memory_ending = ' \npeak memory usage (MiB)'
-
+session_ending = ' \n session creation time (s)'
+ort_provider_list = [cpu, cuda, trt, cuda_fp16, trt_fp16]
 provider_list = [cpu, cuda, trt, standalone_trt, cuda_fp16, trt_fp16, standalone_trt_fp16]
 table_headers = [model_title] + provider_list
 

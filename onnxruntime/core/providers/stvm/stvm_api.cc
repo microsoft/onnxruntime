@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "stvm_api.h"
+#include "core/common/common.h"
 
 #include <tvm/runtime/registry.h>
 #include <tvm/target/codegen.h>
@@ -32,6 +33,7 @@ tvm::runtime::Module TVMCompile(const std::string& onnx_txt,
   }
 
   const tvm::PackedFunc* compile = tvm::runtime::Registry::Get("tvm_onnx_import_and_compile");
+  ORT_ENFORCE(compile != nullptr, "Unable to retrieve 'tvm_onnx_import_and_compile'.");
   tvm::runtime::Module mod = (*compile)(
           TVMByteArray{onnx_txt.data(), onnx_txt.size()},
           model_path,
@@ -84,6 +86,7 @@ void TVMRun(tvm::runtime::Module& mod,
             [[maybe_unused]] tvm::runtime::TVMRetValue *ret)
 {
   const tvm::PackedFunc* run = tvm::runtime::Registry::Get("tvm_run");
+  ORT_ENFORCE(run != nullptr, "Unable to retrieve 'tvm_run'.");
   (*run)(mod);
 
   tvm::PackedFunc get_output = mod.GetFunction("get_output", false);

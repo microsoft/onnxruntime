@@ -43,6 +43,7 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
 void* AllocatorDefaultAlloc(size_t size) {
   const size_t alignment = MlasGetPreferredBufferAlignment();
   if (size <= 0) return nullptr;
+  size += MLAS_SYMM_QGEMM_BUF_OVERRUN;
   void* p;
 #if defined(_MSC_VER)
   p = mi_malloc_aligned(size, alignment);
@@ -73,6 +74,7 @@ void AllocatorDefaultFree(void* p) {
 void* AllocatorDefaultAlloc(size_t size) {
   const size_t alignment = MlasGetPreferredBufferAlignment();
   if (size <= 0) return nullptr;
+  size += MLAS_SYMM_QGEMM_BUF_OVERRUN;
   void* p;
 #if _MSC_VER
   p = _aligned_malloc(size, alignment);

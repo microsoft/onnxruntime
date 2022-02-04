@@ -5,15 +5,16 @@
 
 #include <string>
 #include <vector>
+#include <gsl/gsl>
 #include <tvm/tvm.h>
 #include "core/codegen/mti/common.h"
 
 namespace onnxruntime {
 namespace tvm_codegen {
 
-tvm::Array<tvm::Expr> ToTvmArray(const std::vector<int64_t>& shape);
+tvm::Array<tvm::Expr> ToTvmArray(gsl::span<const int64_t> shape);
 
-tvm::Array<tvm::Integer> ToTvmArrayInt(const std::vector<int64_t>& shape);
+tvm::Array<tvm::Integer> ToTvmArrayInt(gsl::span<const int64_t> shape);
 
 // Helper function to compute sub shape size to axis (not included)
 tvm::Expr SizeToDimension(const tvm::Array<tvm::Expr>& shape, int64_t axis);
