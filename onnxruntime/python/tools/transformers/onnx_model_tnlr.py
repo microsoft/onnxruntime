@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 class FusionTnlrAttention(FusionAttention):
     """
     Fuse TNLR Attention subgraph into one Attention node.
+    TNLR Attention has extra addtion after qk nodes and adopts [S, B, NH] as I/O shape.
     """
     def __init__(self, model: OnnxModel, hidden_size: int, num_heads: int, attention_mask: AttentionMask):
         super().__init__(model, hidden_size, num_heads, attention_mask)
@@ -150,7 +151,7 @@ class FusionTnlrAttention(FusionAttention):
             self.nodes_to_add.append(new_node)
             self.node_name_to_graph_name[new_node.name] = self.this_graph_name
 
-            # Add a transpose node after the attention in Offensive V4
+            # Add a transpose node after the attention node
             back_transpose = helper.make_node("Transpose", ["back_transpose_in_" + new_node.name], [new_node.output[0]],
                                               "back_transpose_" + new_node.name,
                                               perm=[1, 0, 2])
