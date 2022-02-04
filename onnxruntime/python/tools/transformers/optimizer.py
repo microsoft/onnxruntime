@@ -28,6 +28,7 @@ from onnx_model_bert import BertOnnxModel
 from onnx_model_bert_tf import BertOnnxModelTF
 from onnx_model_bert_keras import BertOnnxModelKeras
 from onnx_model_gpt2 import Gpt2OnnxModel
+from onnx_model_tnlr import TnlrOnnxModel
 from fusion_options import FusionOptions
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,8 @@ MODEL_TYPES = {
     "bert_tf": (BertOnnxModelTF, "tf2onnx", 0),
     "bert_keras": (BertOnnxModelKeras, "keras2onnx", 0),
     "gpt2": (Gpt2OnnxModel, "pytorch", 1),
-    "gpt2_tf": (Gpt2OnnxModel, 'tf2onnx', 0)  # might add a class for GPT2OnnxModel for TF later.
+    "gpt2_tf": (Gpt2OnnxModel, 'tf2onnx', 0),  # might add a class for GPT2OnnxModel for TF later.
+    "tnlr": (TnlrOnnxModel, "pytorch", 1),
 }
 
 
@@ -115,9 +117,9 @@ def optimize_by_fusion(model: ModelProto,
         model (ModelProto): model object
         model_type (str, optional): model type - like bert, bert_tf, bert_keras or gpt2. Defaults to 'bert'.
         num_heads (int, optional): number of attention heads. Defaults to 0.
-                                   0 allows detect the parameter from graph automatically (for model_type "bert" only). 
+                                   0 allows detect the parameter from graph automatically (for model_type "bert" only).
         hidden_size (int, optional): hidden size. Defaults to 0.
-                                     0 allows detect the parameter from graph automatically (for model_type "bert" only). 
+                                     0 allows detect the parameter from graph automatically (for model_type "bert" only).
         optimization_options (FusionOptions, optional): optimization options that turn on/off some fusions. Defaults to None.
 
      Returns:
@@ -159,7 +161,7 @@ def optimize_model(input: str,
                    only_onnxruntime: bool = False):
     """ Optimize Model by OnnxRuntime and/or python fusion logic.
 
-    ONNX Runtime has graph optimizations (https://onnxruntime.ai/docs/resources/graph-optimizations.html). 
+    ONNX Runtime has graph optimizations (https://onnxruntime.ai/docs/resources/graph-optimizations.html).
     However, the coverage is limited. We also have graph fusions that implemented in Python to improve the coverage.
     They can combined: ONNX Runtime will run first when opt_level > 0, then graph fusions in Python will be applied.
 
@@ -170,8 +172,8 @@ def optimize_model(input: str,
 
     When opt_level is 0 and only_onnxruntime is False, only python fusion logic is used and onnxruntime is disabled.
 
-    When opt_level > 1, use_gpu shall set properly since the optimized graph might contain operators for GPU or CPU only. 
-    If your model is intended for GPU inference only (especially float16 or mixed precision model), it is recommended to 
+    When opt_level > 1, use_gpu shall set properly since the optimized graph might contain operators for GPU or CPU only.
+    If your model is intended for GPU inference only (especially float16 or mixed precision model), it is recommended to
     set use_gpu to be True, otherwise the model is not optimized for GPU inference.
 
     For BERT model, num_heads and hidden_size are optional. For other model types, you need specify these parameters.
@@ -180,9 +182,9 @@ def optimize_model(input: str,
         input (str): input model path.
         model_type (str, optional): model type - like bert, bert_tf, bert_keras or gpt2. Defaults to 'bert'.
         num_heads (int, optional): number of attention heads. Defaults to 0.
-                                   0 allows detect the parameter from graph automatically (for model_type "bert" only). 
+                                   0 allows detect the parameter from graph automatically (for model_type "bert" only).
         hidden_size (int, optional): hidden size. Defaults to 0.
-                                     0 allows detect the parameter from graph automatically (for model_type "bert" only). 
+                                     0 allows detect the parameter from graph automatically (for model_type "bert" only).
         optimization_options (FusionOptions, optional): optimization options that turn on/off some fusions. Defaults to None.
         opt_level (int, optional): onnxruntime graph optimization level (0, 1, 2 or 99) or None. Defaults to None.
                                    When the value is None, default value (1 for bert and gpt2, 0 for other model types) will be used.
