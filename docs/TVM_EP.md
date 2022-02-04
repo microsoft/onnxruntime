@@ -23,6 +23,8 @@ apt-get install -y python3 python3-dev python3-pip python3-setuptools gcc libtin
 pip3 install numpy decorator attrs
 ```
 
+If you want to use the `GPU` then make sure you have installed NVidia driver and CUDA Toolkit.
+
 Clone this repo.
 In order to build ONNXRT you will need to have CMake 3.18 or higher. In Ubuntu 20.04 you can use the following commands to install the latest version of CMake:
 
@@ -41,23 +43,39 @@ sudo apt-get install kitware-archive-keyring
 sudo apt-get install cmake
 ```
 
-Build ONNX Runtime:
+Build ONNX Runtime (TVM x86):
 ```bash
-./build.sh --config Release --enable_pybind --build_wheel --skip_tests --parallel --use_tvm --skip_onnx_tests
+./build.sh --config Release --enable_pybind --build_wheel --parallel --skip_tests --skip_onnx_tests --use_tvm
 ```
 
-This command builds both TVM and onnxruntime-tvm. It creates two wheel, one for each project.
-Build the python API for ONNX Runtime instead of using the standard package:
+Build ONNX Runtime (TVM with CUDA support):
+```bash
+./build.sh --config Release --enable_pybind --build_wheel --parallel --skip_tests --skip_onnx_tests --use_tvm --tvm_cuda_runtime
+```
+
+This command builds both `TVM` and `onnxruntime-tvm`. It creates two wheel, one for each project.
+Build the python API for ONNX Runtime instead of using the standard package. Instructions for this are given below.
+
+Package for TVM:
 ```bash
 cd <path_to_onnx_runtime>
-pip3 uninstall onnxruntime onnxruntime-tvm tvm -y
-whl_path=$(find ./build/cpu_tvm/Release/dist -name "*.whl")
+python3 -m pip uninstall tvm -y
+whl_path=$(find ./build/<OS_NAME>/Release/_deps/tvm-src/python/dist -name "*.whl")
 python3 -m pip install $whl_path
 ```
-Alternatively, you can set PYTHONPATH to tell python where to find the ONNXRT library and the TVM library.
+
+Package for TVM EP:
 ```bash
-export PYTHONPATH=<path_to_onnx_runtime>/build/cpu_tvm/Release:${PYTHONPATH}
-export PYTHONPATH=<path_to_onnx_runtime>/build/cpu_tvm/Release/_deps/tvm-src/python:${PYTHONPATH}
+cd <path_to_onnx_runtime>
+ppython3 -m pipip3 uninstall onnxruntime onnxruntime-tvm -y
+whl_path=$(find ./build/<OS_NAME>/Release/dist -name "*.whl")
+python3 -m pip install $whl_path
+```
+
+Alternatively, you can set `PYTHONPATH` to tell python where to find the ONNXRT library and the TVM library.
+```bash
+export PYTHONPATH=<path_to_onnx_runtime>/build/<OS_NAME>/Release:${PYTHONPATH}
+export PYTHONPATH=<path_to_onnx_runtime>/build/<OS_NAME>/Release/_deps/tvm-src/python:${PYTHONPATH}
 ```
 
 ## Configuration options
