@@ -165,6 +165,28 @@ Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger&
 }
 }  // namespace
 
+static bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, const ProviderType provider) {
+  for (const auto& node : graph.Nodes()) {
+    const auto& node_provider = node.GetExecutionProviderType();
+
+    if (node_provider.empty() || node_provider != provider) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+static bool HasControlflowNodes(const Graph& graph) {
+  for (const auto& node : graph.Nodes()) {
+    if (node.ContainsSubgraph()) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 
 static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
@@ -1395,6 +1417,39 @@ common::Status InferenceSession::Initialize() {
       // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
       ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
 
+      // If the CUDA EP is part of the providers list for this session AND
+      // The CUDA EP is configured to do a graph capture AND
+      // All the graph nodes have been assigned to the CUDA EP,
+      // Then the CUDA EP is cached for triggering a GraphReplay() in Run().
+      auto* cuda_ep = execution_providers_.Get(onnxruntime::kCudaExecutionProvider);
+      if (cuda_ep && cuda_ep->ConfiguredForGraphCapture()) {
+        if (HasControlflowNodes(graph)) {
+          LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
+                                        << " as the model has control flow nodes which can't be supported by CUDA Graphs.";
+
+          // Return error status as we don't want the session initialization to complete successfully
+          // if the user has requested usage of CUDA Graph feature and we cannot honor that.
+          ORT_RETURN_IF_ERROR_SESSIONID_(
+            ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                            "This session cannot use the CUDA Graph feature as requested by the user "
+                            " as the model has control flow nodes which can't be supported by CUDA Graphs."));
+        } else if (!AreAllNodesInMainGraphAssignedToOneEp(graph, onnxruntime::kCudaExecutionProvider)) {
+          LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
+                                        << " as all the graph nodes have not been partitioned to the CUDA EP.";
+
+          // Return error status as we don't want the session initialization to complete successfully
+          // if the user has requested usage of CUDA Graph feature and we cannot honor that.
+          ORT_RETURN_IF_ERROR_SESSIONID_(
+            ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                            "This session cannot use the CUDA Graph feature as requested by the user "
+                            " as all the graph nodes have not been partitioned to the CUDA EP."));
+
+        } else {
+          LOGS(*session_logger_, INFO) << "This session will use the CUDA Graph feature as requested by the user.";
+          cached_cuda_execution_provider_for_cuda_graph_replay_ = cuda_ep;
+        }
+      }
+
       // Update temporary copies of metadata, input- and output definitions to the same state as the resolved graph
       ORT_RETURN_IF_ERROR_SESSIONID_(SaveModelMetadata(*model_));
     } else
@@ -1793,14 +1848,6 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
 }
 #endif
 
-void InferenceSession::Replay() {
-  for  (const auto& provider : session_state_->GetExecutionProviders()) {
-    if (provider->Type() == kCudaExecutionProvider) {
-      provider->Replay();
-    }
-  }
-}
-
 Status InferenceSession::Run(const RunOptions& run_options,
                              const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
                              const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
@@ -1818,104 +1865,112 @@ Status InferenceSession::Run(const RunOptions& run_options,
   Status retval = Status::OK();
   const Env& env = Env::Default();
 
-  std::vector<IExecutionProvider*> exec_providers_to_stop;
-  exec_providers_to_stop.reserve(execution_providers_.NumProviders());
-
-  std::vector<AllocatorPtr> arenas_to_shrink;
-
-  ORT_TRY {
-    if (!is_inited_) {
-      LOGS(*session_logger_, ERROR) << "Session was not initialized";
-      return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
+  // Check if this Run() is simply going to be a CUDA Graph replay.
+  if (cached_cuda_execution_provider_for_cuda_graph_replay_ && cached_cuda_execution_provider_for_cuda_graph_replay_->IsGraphCaptured()) {
+      LOGS(*session_logger_, INFO) << "Replaying the captured CUDA Graph for this model";
+      ++current_num_runs_;
+      ORT_RETURN_IF_ERROR_SESSIONID_(cached_cuda_execution_provider_for_cuda_graph_replay_->GraphReplay());
+  } else {
+    if (cached_cuda_execution_provider_for_cuda_graph_replay_) {
+      LOGS(*session_logger_, INFO) << "Capturing the CUDA Graph for this model";
     }
+    std::vector<IExecutionProvider*> exec_providers_to_stop;
+    exec_providers_to_stop.reserve(execution_providers_.NumProviders());
 
-    // log evaluation start to trace logging provider
-    env.GetTelemetryProvider().LogEvaluationStart();
+    std::vector<AllocatorPtr> arenas_to_shrink;
 
-    ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
-    ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
-
-    // shrink certain default memory arenas if the user has requested for it
-    const std::string& shrink_memory_arenas =
-        run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "");
-
-    if (!shrink_memory_arenas.empty()) {
-      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateAndParseShrinkArenaString(shrink_memory_arenas, arenas_to_shrink));
-    }
-
-    FeedsFetchesInfo info(feed_names, output_names, session_state_->GetOrtValueNameIdxMap());
-    FeedsFetchesManager feeds_fetches_manager{std::move(info)};
-
-    if (p_fetches_device_info) {
-      // populate the target device info. ignored if pre-allocated fetches are provided
-      const auto& fetch_device_info = *p_fetches_device_info;
-      auto& fetch_info = feeds_fetches_manager.GetMutableFetchesDeviceCopyInfo();
-
-      for (size_t i = 0, end = output_names.size(); i < end; ++i) {
-        fetch_info[i].target_device = fetch_device_info[i];
+    ORT_TRY {
+      if (!is_inited_) {
+        LOGS(*session_logger_, ERROR) << "Session was not initialized";
+        return Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
       }
-    }
 
-    if (!run_options.run_tag.empty()) {
-      LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
-    }
+      // log evaluation start to trace logging provider
+      env.GetTelemetryProvider().LogEvaluationStart();
 
-    ++current_num_runs_;
+      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateInputs(feed_names, feeds));
+      ORT_RETURN_IF_ERROR_SESSIONID_(ValidateOutputs(output_names, p_fetches));
 
-    // scope of owned_run_logger is just the call to Execute.
-    // If Execute ever becomes async we need a different approach
-    std::unique_ptr<logging::Logger> owned_run_logger;
-    auto run_logger = CreateLoggerForRun(run_options, owned_run_logger);
+      // shrink certain default memory arenas if the user has requested for it
+      const std::string& shrink_memory_arenas =
+          run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "");
 
-    // info all execution providers InferenceSession:Run started
-    // TODO: only call OnRunStart for all providers in-use
-    for (auto& xp : execution_providers_) {
-      // call OnRunStart and add to exec_providers_to_stop if successful
-      auto start_func = [&xp, &exec_providers_to_stop]() {
-        auto status = xp->OnRunStart();
-        if (status.IsOK())
-          exec_providers_to_stop.push_back(xp.get());
+      if (!shrink_memory_arenas.empty()) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(ValidateAndParseShrinkArenaString(shrink_memory_arenas, arenas_to_shrink));
+      }
 
-        return status;
-      };
+      FeedsFetchesInfo info(feed_names, output_names, session_state_->GetOrtValueNameIdxMap());
+      FeedsFetchesManager feeds_fetches_manager{std::move(info)};
 
-      ORT_CHECK_AND_SET_RETVAL(start_func());
-    }
+      if (p_fetches_device_info) {
+        // populate the target device info. ignored if pre-allocated fetches are provided
+        const auto& fetch_device_info = *p_fetches_device_info;
+        auto& fetch_info = feeds_fetches_manager.GetMutableFetchesDeviceCopyInfo();
+
+        for (size_t i = 0, end = output_names.size(); i < end; ++i) {
+          fetch_info[i].target_device = fetch_device_info[i];
+        }
+      }
+
+      if (!run_options.run_tag.empty()) {
+        LOGS(*session_logger_, INFO) << "Running with tag: " << run_options.run_tag;
+      }
+
+      ++current_num_runs_;
+
+      // scope of owned_run_logger is just the call to Execute.
+      // If Execute ever becomes async we need a different approach
+      std::unique_ptr<logging::Logger> owned_run_logger;
+      auto run_logger = CreateLoggerForRun(run_options, owned_run_logger);
+
+      // info all execution providers InferenceSession:Run started
+      // TODO: only call OnRunStart for all providers in-use
+      for (auto& xp : execution_providers_) {
+        // call OnRunStart and add to exec_providers_to_stop if successful
+        auto start_func = [&xp, &exec_providers_to_stop]() {
+          auto status = xp->OnRunStart();
+          if (status.IsOK())
+            exec_providers_to_stop.push_back(xp.get());
+
+          return status;
+        };
+
+        ORT_CHECK_AND_SET_RETVAL(start_func());
+      }
 
 #if !defined(ORT_MINIMAL_BUILD)
-    if (run_options.only_execute_path_to_fetches) {
-      session_state_->UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
-    }
+      if (run_options.only_execute_path_to_fetches) {
+        session_state_->UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
+      }
 #endif
 
     // execute the graph
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    session_state_->IncrementGraphExecutionCounter();
+      session_state_->IncrementGraphExecutionCounter();
 #endif
-    ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
-                                                 session_options_.execution_mode, run_options.terminate, run_logger,
-                                                 run_options.only_execute_path_to_fetches,
-                                                 run_options.capture_cuda_graph));
-  }
-  ORT_CATCH(const std::exception& e) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
-    });
-  }
-  ORT_CATCH(...) {
-    retval = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Run()");
-  }
+      ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
+                                                  session_options_.execution_mode, run_options.terminate, run_logger,
+                                                  run_options.only_execute_path_to_fetches));
+    }
+    ORT_CATCH(const std::exception& e) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        retval = Status(common::ONNXRUNTIME, common::FAIL, e.what());
+      });
+    }
+    ORT_CATCH(...) {
+      retval = Status(common::ONNXRUNTIME, common::RUNTIME_EXCEPTION, "Encountered unknown exception in Run()");
+    }
 
-  // info all execution providers InferenceSession:Run ended
-  for (auto* xp : exec_providers_to_stop) {
-    auto status = xp->OnRunEnd(/*sync_stream*/ true);
-    ORT_CHECK_AND_SET_RETVAL(status);
-  }
+    // info all execution providers InferenceSession:Run ended
+    for (auto* xp : exec_providers_to_stop) {
+      auto status = xp->OnRunEnd(/*sync_stream*/ true);
+      ORT_CHECK_AND_SET_RETVAL(status);
+    }
 
-  if (!arenas_to_shrink.empty()) {
-    ShrinkMemoryArenas(arenas_to_shrink);
+    if (!arenas_to_shrink.empty()) {
+      ShrinkMemoryArenas(arenas_to_shrink);
+    }
   }
-
   --current_num_runs_;
 
   // keep track of telemetry

@@ -328,8 +328,6 @@ class InferenceSession {
                             const OrtValueCachePtr& cache);
 #endif
 
-  void Replay();
-
   /**
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
     * @note lifetime of the returned pointer is valid as long as the Session object is live.
@@ -735,6 +733,11 @@ class InferenceSession {
   // The life-cycle of the cache itself is maintained by the user and the user will ensure
   // the cache is valid until any session reliant on it is still in scope.
   PrepackedWeightsContainer* prepacked_weights_container_ = nullptr;
+
+  // Cache the CUDA EP instance if the user has configured the EP to capture a CUDA graph
+  // for the model and all the necessary criteria for CUDA graph capture has been met.
+  // At Run() time, if this member is not nullptr, simply invoke GraphReplay() using it.
+  IExecutionProvider* cached_cuda_execution_provider_for_cuda_graph_replay_ = nullptr;
 };
 
 struct SessionIOBinding {

@@ -178,8 +178,8 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
     }
   }
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000  
-  graph_ = CUDAGraph(stream_);
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
+  graph_.SetStream(stream_);
 #endif
 
   size_t free = 0;
@@ -335,10 +335,20 @@ Status CUDAExecutionProvider::OnRunStart() {
   auto& current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
   CUDA_RETURN_IF_ERROR(cudaEventCreate(&current_deferred_release_event, cudaEventDisableTiming));
   deferred_release_cpu_ptr_.emplace(current_deferred_release_event, DeferredReleaseCPUPtrs());
+
+  if (ConfiguredForGraphCapture() && !IsGraphCaptured()) {
+    CaptureBegin();
+  }
   return Status::OK();
 }
 
 Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
+  if (ConfiguredForGraphCapture() && !IsGraphCaptured()) {
+    CaptureEnd();
+    // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
+    // so run the captured graph here to actually execute the work.
+    ORT_RETURN_IF_ERROR(graph_.Replay());
+  }
   // record deferred release event on default stream, and release per_thread_context
   auto current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
   CUDA_RETURN_IF_ERROR(cudaEventRecord(current_deferred_release_event, static_cast<cudaStream_t>(GetComputeStream())));
@@ -364,23 +374,31 @@ Status CUDAExecutionProvider::SetComputeStream(void* stream) {
   return Status::OK();
 }
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
 void CUDAExecutionProvider::CaptureBegin()  {
   ORT_THROW_IF_ERROR(Sync());
+  graph_.Reset();
   graph_.CaptureBegin();
 }
 
 void CUDAExecutionProvider::CaptureEnd() {
   graph_.CaptureEnd();
   ORT_THROW_IF_ERROR(Sync());
+  is_graph_captured_ = true;
 }
 
-void CUDAExecutionProvider::Replay() {
-  ORT_THROW_IF_ERROR(OnRunStart());
-  graph_.Replay();
-  ORT_THROW_IF_ERROR(OnRunEnd(true));
+bool CUDAExecutionProvider::ConfiguredForGraphCapture() {
+  return info_.enable_cuda_graph;
 }
 
+bool CUDAExecutionProvider::IsGraphCaptured() {
+  return is_graph_captured_;
+}
+
+Status CUDAExecutionProvider::GraphReplay() {
+  ORT_RETURN_IF_ERROR(graph_.Replay());
+  return Status::OK();
+}
 #endif
 
 namespace cuda {

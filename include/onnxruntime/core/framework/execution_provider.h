@@ -164,11 +164,23 @@ class IExecutionProvider {
   */
   virtual common::Status OnRunEnd(bool /*sync_stream*/) { return Status::OK(); }
 
-  virtual void CaptureBegin() {}
+  /**
+     Indicate whether the graph capturing mode (e.g., cuda graph) is enabled for
+     the provider. Currently only CUDA execution provider supports it.
+   */
+  virtual bool ConfiguredForGraphCapture() { return false; }
 
-  virtual void CaptureEnd() {}
+  /**
+     Indicate whether the graph has been captured and instantiated. Currently
+     only CUDA execution provider supports it.
+   */
+  virtual bool IsGraphCaptured() { return false; }
 
-  virtual void Replay() {}
+  /**
+     Run the instantiated graph. Currently only CUDA execution provider supports
+     it.
+   */
+  virtual common::Status GraphReplay() { return Status::OK(); }
 
   /**
      Called when session creation is complete

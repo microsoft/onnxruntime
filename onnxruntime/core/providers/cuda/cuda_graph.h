@@ -1,5 +1,6 @@
 #pragma once
 #include "core/common/common.h"
+#include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_pch.h"
 
 namespace onnxruntime {
@@ -13,21 +14,22 @@ struct CUDAGraph {
 
   void CaptureBegin();
   void CaptureEnd();
-  void Replay();
+  Status Replay();
   void Reset();
+  void SetStream(cudaStream_t stream);
 
-  protected:
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+private:
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
   cudaGraph_t graph_ = NULL;
   cudaGraphExec_t graph_exec_ = NULL;
 #endif
 
   bool has_graph_ = false;
   bool has_graph_exec_ = false;
-  bool is_capturing_ = false;
 
   CaptureId_t id_;
   cudaStream_t capture_stream_ = nullptr;
+  OrtMutex lock_;
   };
  
 } // namespace onnxruntime

@@ -7,7 +7,6 @@ import collections.abc
 import os
 import warnings
 
-from onnxruntime  import RunOptions
 from onnxruntime.capi import _pybind_state as C
 
 
@@ -244,69 +243,7 @@ class Session:
                 return invoke(self._sess, output_names, input_dict_ort_values, run_options)
             else:
                 raise
-            
-    def capture_cuda_graph(self, input_dict_ort_values, output_dict_ort_values, run_options=None):
-        """
-        Compute the predictions.
-        
-        :param input_dict_ort_values: dictionary ``{ input_name: input_cuda_ort_value }``
-            See ``OrtValue`` class how to create `OrtValue`
-            from numpy array or `SparseTensor`
-        :param output_dict_ort_values: dictionary ``{ output_name: output_cuda_ort_value }``
-            See ``OrtValue`` class how to create `OrtValue`
-            from numpy array or `SparseTensor`
-        :param run_options: See :class:`onnxruntime.RunOptions`.
-        :return: an array of `OrtValue`
 
-        ::
-
-            sess.capture_cuda_graph({input_name: x}, {output_name: y})
-        """
-        def invoke(sess, input_dict_ort_values, output_dict_ort_values, run_options):
-            input_dict = {}
-            output_dict = {}
-            for n, v in input_dict_ort_values.items():
-                input_dict[n] = v._get_c_value()
-            for n, v in output_dict_ort_values.items():
-                output_dict[n] = v._get_c_value()
-
-            sess.capture_cuda_graph(input_dict, output_dict, run_options)
-            ort_values = [v for n, v in output_dict_ort_values.items()]
-            return ort_values
-        
-        if run_options is None:
-            run_options = RunOptions()
-        run_options.capture_cuda_graph = True
-        
-        num_required_inputs = len(self._inputs_meta)
-        num_inputs = len(input_dict_ort_values)
-        # the graph may have optional inputs used to override initializers. allow for that.
-        if num_inputs < num_required_inputs:
-            raise ValueError("Model requires {} inputs. Input Feed contains {}".format(num_required_inputs, num_inputs))
-        num_required_outputs = len(self._outputs_meta)
-        num_outputs = len(output_dict_ort_values)
-        if num_outputs > num_required_outputs:
-            raise ValueError("Model requires {} outputs. Output Feed contains {}".format(num_required_outputs, num_outputs))
-        
-        try:
-            return invoke(self._sess, input_dict_ort_values, output_dict_ort_values, run_options)
-        except C.EPFail as err:
-            if self._enable_fallback:
-                print("EP Error: {} using {}".format(str(err), self._providers))
-                print("Falling back to {} and retrying.".format(self._fallback_providers))
-                self.set_providers(self._fallback_providers)
-                # Fallback only once.
-                self.disable_fallback()
-                return invoke(self._sess, input_dict_ort_values, output_dict_ort_values, run_options)
-            else:
-                raise
-    
-    def replay(self):
-        """
-        Replay the cuda graph.
-        """
-        self._sess.replay()
-        
     def end_profiling(self):
         """
         End profiling and return results in a file.
