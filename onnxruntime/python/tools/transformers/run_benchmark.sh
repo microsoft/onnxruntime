@@ -16,7 +16,9 @@ use_package=true
 run_install=true
 
 # Engines to test.
+# To run ort_trt, you need to build and install the onnxruntime-gpu-tensorrt package on your own
 run_ort=true
+run_ort_trt=false
 run_torch=false
 run_torchscript=true
 run_tensorflow=false
@@ -122,6 +124,16 @@ run_one_test() {
       fi
     fi
 
+    if [ "$run_ort_trt" = true ] ; then
+      trt_options="--provider tensorrt --disable_ort_io_binding"
+      echo python $benchmark_script -m $1 $onnx_export_options $trt_options $2 $3 $4 >> benchmark.log
+      echo python $benchmark_script -m $1 $benchmark_options $trt_options $2 $3 $4 -i $input_counts >> benchmark.log
+      if [ "$run_tests" = true ] ; then
+        python $benchmark_script -m $1 $onnx_export_options $trt_options $2 $3 $4
+        python $benchmark_script -m $1 $benchmark_options $trt_options $2 $3 $4 -i $input_counts
+      fi
+    fi
+
     if [ "$run_torch" = true ] ; then
       echo python $benchmark_script -e torch -m $1 $benchmark_options $2 $3 $4 >> benchmark.log
       if [ "$run_tests" = true ] ; then
@@ -146,6 +158,9 @@ run_one_test() {
 
 # -------------------------------------------
 if [ "$run_gpu_fp32" = true ] ; then
+  if [ "$run_ort_trt" = true ] ; then
+    export ORT_TENSORRT_FP16_ENABLE=0
+  fi
   for m in $models_to_test
   do
     echo Run GPU FP32 Benchmark on model ${m}
@@ -154,6 +169,9 @@ if [ "$run_gpu_fp32" = true ] ; then
 fi
 
 if [ "$run_gpu_fp16" = true ] ; then
+  if [ "$run_ort_trt" = true ] ; then
+    export ORT_TENSORRT_FP16_ENABLE=1
+  fi
   for m in $models_to_test
   do
     echo Run GPU FP16 Benchmark on model ${m}

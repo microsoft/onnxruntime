@@ -81,6 +81,12 @@ def run_onnxruntime(use_gpu, provider, model_names, model_class, precision, num_
         )
         return results
 
+    if (provider == 'tensorrt' and 'TensorrtExecutionProvider' not in onnxruntime.get_available_providers()):
+        logger.error(
+            "Please install onnxruntime-gpu-tensorrt package, and use a machine with GPU for testing gpu performance."
+        )
+        return results
+
     for model_name in model_names:
         all_input_names = MODELS[model_name][0]
         for num_inputs in input_counts:
@@ -94,12 +100,12 @@ def run_onnxruntime(use_gpu, provider, model_names, model_class, precision, num_
                     onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model_from_pt(
                         model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3], model_class,
                         cache_dir, onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx,
-                        use_raw_attention_mask, overwrite, model_fusion_statistics)
+                        use_raw_attention_mask, overwrite, model_fusion_statistics, provider=='tensorrt')
             if 'tf' in model_source:
                 onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model_from_tf(
                     model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3], model_class,
                     cache_dir, onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx,
-                    use_raw_attention_mask, overwrite, model_fusion_statistics)
+                    use_raw_attention_mask, overwrite, model_fusion_statistics, provider=='tensorrt')
 
             if not is_valid_onnx_model:
                 continue
@@ -134,6 +140,7 @@ def run_onnxruntime(use_gpu, provider, model_names, model_class, precision, num_
                     result_template = {
                         "engine": "onnxruntime",
                         "version": onnxruntime.__version__,
+                        "providers": provider,
                         "device": device,
                         "optimizer": optimize_onnx,
                         "precision": precision,

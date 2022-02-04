@@ -146,7 +146,7 @@ def get_latency_result(runtimes, batch_size):
 def output_details(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
-            "engine", "version", "device", "precision", "optimizer", "io_binding", "model_name", "inputs", "threads",
+            "engine", "version", "providers", "device", "precision", "optimizer", "io_binding", "model_name", "inputs", "threads",
             "batch_size", "sequence_length", "datetime", "test_times", "QPS", "average_latency_ms", "latency_variance",
             "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
         ]
@@ -162,7 +162,7 @@ def output_details(results, csv_filename):
 def output_summary(results, csv_filename, args):
     with open(csv_filename, mode="a", newline='') as csv_file:
         header_names = [
-            "model_name", "inputs", "engine", "version", "device", "precision", "optimizer", "io_binding", "threads"
+            "model_name", "inputs", "engine", "version", "providers", "device", "precision", "optimizer", "io_binding", "threads"
         ]
         data_names = []
         for batch_size in args.batch_sizes:
