@@ -13,7 +13,7 @@ namespace concurrency {
 class ThreadPool;
 }
 class ScatterNDBase {
- protected:
+ public:
   struct Prepare {
     const uint8_t* input_base;
     const std::string* input_str_base;
@@ -34,23 +34,32 @@ class ScatterNDBase {
                 element_offsets(0) {}
   };  // struct Prepare
 
-  Status PrepareForCompute(OpKernelContext* context, Prepare& p) const;
-
- public:
   // Shared between the CPU and CUDA implementation
   static Status ValidateShapes(const TensorShape& input_shape,
                                const TensorShape& indice_shape,
                                const TensorShape& update_shape);
+
+ protected:
+  Status PrepareForCompute(OpKernelContext* context, Prepare& p) const;
+
 };  // class ScatterNDBase
 
 class ScatterND final : public OpKernel, protected ScatterNDBase {
  public:
-  explicit ScatterND(const OpKernelInfo& info) : OpKernel(info) {}
+  explicit ScatterND(const OpKernelInfo& info) : OpKernel(info) {
+    // 'reduction' attribute was added in opset 16.
+    // its default value is 'none' in which case the op behaves the same as before opset 16.
+    if (!info.GetAttr<std::string>("reduction", &reduction_).IsOK()) {
+      reduction_ = "none";
+    }
+  }
   Status Compute(OpKernelContext* context) const override;
 
+  static Status ScatterNumber(const Prepare& p, concurrency::ThreadPool* tp);
+  static Status ScatterString(const Prepare& p, concurrency::ThreadPool* tp);
+
  private:
-  Status ScatterNumber(const Prepare& p, concurrency::ThreadPool* tp) const;
-  Status ScatterString(const Prepare& p, concurrency::ThreadPool* tp) const;
+  std::string reduction_{"none"};
 };
 
 }  // namespace onnxruntime

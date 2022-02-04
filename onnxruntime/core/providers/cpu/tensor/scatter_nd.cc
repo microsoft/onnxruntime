@@ -32,9 +32,19 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterNDDataTypes>()),
     ScatterND);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     ScatterND,
     13,
+    15,
+    KernelDefBuilder()
+        .TypeConstraint("T",
+                        BuildKernelDefConstraintsFromTypeList<ScatterNDDataTypes>(),
+                        BuildKernelDefConstraintsFromTypeList<EnabledScatterNDDataTypes>()),
+    ScatterND);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    ScatterND,
+    16,
     KernelDefBuilder()
         .TypeConstraint("T",
                         BuildKernelDefConstraintsFromTypeList<ScatterNDDataTypes>(),
@@ -168,14 +178,128 @@ Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) co
   return Status::OK();
 }
 
+template <class T>
+struct Func_Add_ND {
+  void operator()(T* a, const T* b, uint64_t element_to_copy) const {
+    while (element_to_copy-- > 0)
+      (*a++) += (*b++);
+  }
+};
+
+template<>
+struct Func_Add_ND<bool> {
+  void operator()(bool* a, const bool* b, uint64_t element_to_copy) const {
+    while (element_to_copy-- > 0)
+      (*a++) |= (*b++);
+  }
+};
+
+template<>
+struct Func_Add_ND<MLFloat16> {
+  void operator()(MLFloat16*, const MLFloat16*, uint64_t) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with ScatterND opset 16 when reduction is 'add'.");
+    }
+};
+
+template<>
+struct Func_Add_ND<BFloat16> {
+  void operator()(BFloat16*, const BFloat16*, uint64_t) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterND opset 16 when reduction is 'add'.");
+    }
+};
+
+template <class T>
+struct Func_Mul_ND {
+  void operator()(T* a, const T* b, uint64_t element_to_copy) const {
+    while (element_to_copy-- > 0)
+      (*a++) *= (*b++);
+  }
+};
+
+template<>
+struct Func_Mul_ND<bool> {
+  void operator()(bool* a, const bool* b, uint64_t element_to_copy) const {
+    while (element_to_copy-- > 0)
+      (*a++) &= (*b++);
+  }
+};
+
+template<>
+struct Func_Mul_ND<std::string> {
+  void operator()(std::string*, const std::string*, uint64_t) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: string data type is not supported with ScatterND opset 16 when reduction is 'mul'.");
+  }
+};
+
+template<>
+struct Func_Mul_ND<MLFloat16> {
+  void operator()(MLFloat16*, const MLFloat16*, uint64_t) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with ScatterND opset 16 when reduction is 'mul'.");
+    }
+};
+
+template<>
+struct Func_Mul_ND<BFloat16> {
+  void operator()(BFloat16*, const BFloat16*, uint64_t) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterND opset 16 when reduction is 'mul'.");
+    }
+};
+
+template <typename TData>
+struct ScatterNDDataDispatchTarget {
+  Status operator()(const ScatterNDBase::Prepare& p, concurrency::ThreadPool* tp, const std::string &reduction) const {
+    if(reduction == "add") {
+      auto lambda = [&](int64_t i) {
+        auto func = Func_Add_ND<TData>();
+        func((TData*)(
+          p.output_base + p.element_offsets[i] * p.element_bytes),
+          (TData*)(p.input_base + i * p.bytes_to_copy),
+          p.element_to_copy);
+      };
+      concurrency::ThreadPool::TryParallelFor(tp, p.element_offsets.size(), static_cast<double>(p.bytes_to_copy),
+                                              [&lambda](ptrdiff_t first, ptrdiff_t last) {
+                                                for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
+                                                  lambda(i);
+                                                }
+                                              });
+      return Status::OK();
+    }
+    else if(reduction == "mul")
+    {
+      auto lambda = [&](int64_t i) {
+        auto func = Func_Mul_ND<TData>();
+        func((TData*)(
+          p.output_base + p.element_offsets[i] * p.element_bytes),
+          (TData*)(p.input_base + i * p.bytes_to_copy),
+          p.element_to_copy);
+      };
+      concurrency::ThreadPool::TryParallelFor(tp, p.element_offsets.size(), static_cast<double>(p.bytes_to_copy),
+                                              [&lambda](ptrdiff_t first, ptrdiff_t last) {
+                                                for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
+                                                  lambda(i);
+                                                }
+                                              });
+      return Status::OK();
+    }
+    else // if (reduction == "none")
+      return nullptr == p.input_str_base ? ScatterND::ScatterNumber(p, tp) : ScatterND::ScatterString(p, tp);
+  }
+};
+
 Status ScatterND::Compute(OpKernelContext* context) const {
   Prepare p;
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
   ORT_RETURN_IF_ERROR(PrepareForCompute(context, p));
-  return nullptr == p.input_str_base ? ScatterNumber(p, tp) : ScatterString(p, tp);
+
+  const auto* data_input = context->Input<Tensor>(0);
+  const auto data_type = data_input->GetElementType();
+
+  utils::MLTypeCallDispatcherFromTypeList<EnabledScatterNDDataTypes> dispatcher{data_type};
+  Status status = dispatcher.template InvokeRet<Status, ScatterNDDataDispatchTarget>(p, tp, this->reduction_);
+  return status;
 }
 
-Status ScatterND::ScatterNumber(const Prepare& p, concurrency::ThreadPool* tp) const {
+Status ScatterND::ScatterNumber(const Prepare& p, concurrency::ThreadPool* tp) {
   constexpr bool has_non_string_enabled_type =
       !boost::mp11::mp_empty<
           boost::mp11::mp_remove<
@@ -199,7 +323,7 @@ Status ScatterND::ScatterNumber(const Prepare& p, concurrency::ThreadPool* tp) c
   return Status::OK();
 }
 
-Status ScatterND::ScatterString(const Prepare& p, concurrency::ThreadPool* tp) const {
+Status ScatterND::ScatterString(const Prepare& p, concurrency::ThreadPool* tp) {
   if (!utils::HasType<EnabledScatterNDDataTypes, std::string>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "String data type is not supported in this build.");
   }

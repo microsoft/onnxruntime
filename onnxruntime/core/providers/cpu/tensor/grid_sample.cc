@@ -9,8 +9,6 @@
 #include "core/providers/cpu/tensor/copy.h"
 #include "core/providers/op_kernel_type_control.h"
 
-#pragma warning(disable : 4244)
-
 namespace onnxruntime {
 
 template <typename T>
@@ -270,6 +268,5 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
       GridSample<T>);
 
 REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(double)
 
 }  // namespace onnxruntime

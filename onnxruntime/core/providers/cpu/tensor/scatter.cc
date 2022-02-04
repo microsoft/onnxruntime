@@ -142,15 +142,15 @@ struct Func_Add<bool> {
 
 template<>
 struct Func_Add<MLFloat16> {
-  void operator()(MLFloat16* a, const MLFloat16* b) const {
-    ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with Scatter opset 16 when reduction is 'add'.");
+  void operator()(MLFloat16*, const MLFloat16*) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with ScatterElements opset 16 when reduction is 'add'.");
     }
 };
 
 template<>
 struct Func_Add<BFloat16> {
-  void operator()(BFloat16* a, const BFloat16* b) const {
-    ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with Scatter opset 16 when reduction is 'add'.");
+  void operator()(BFloat16*, const BFloat16*) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterElements opset 16 when reduction is 'add'.");
     }
 };
 
@@ -170,22 +170,22 @@ struct Func_Mul<bool> {
 
 template<>
 struct Func_Mul<std::string> {
-  void operator()(std::string* a, const std::string* b) const {
-    ORT_NOT_IMPLEMENTED("CPU execution provider: string data type is not supported with Scatter opset 16 when reduction is 'mul'.");
+  void operator()(std::string*, const std::string*) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: string data type is not supported with ScatterElements opset 16 when reduction is 'mul'.");
   }
 };
 
 template<>
 struct Func_Mul<MLFloat16> {
-  void operator()(MLFloat16* a, const MLFloat16* b) const {
-    ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with Scatter opset 16 when reduction is 'mul'.");
+  void operator()(MLFloat16*, const MLFloat16*) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with ScatterElements opset 16 when reduction is 'mul'.");
     }
 };
 
 template<>
 struct Func_Mul<BFloat16> {
-  void operator()(BFloat16* a, const BFloat16* b) const {
-    ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with Scatter opset 16 when reduction is 'mul'.");
+  void operator()(BFloat16*, const BFloat16*) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterElements opset 16 when reduction is 'mul'.");
     }
 };
 
