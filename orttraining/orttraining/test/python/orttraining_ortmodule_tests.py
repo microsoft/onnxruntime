@@ -121,6 +121,15 @@ def run_ortmodule_experimental_json_config_tests(cwd, log):
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
 
+def run_experimental_gradient_graph_tests(cwd, log):
+    log.debug('Running: Experimental Load Config tests')
+
+    command = [sys.executable, '-m', 'pytest', '-sv',
+               'orttraining_test_experimental_gradient_graph.py']
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
+
 def main():
     args = parse_arguments()
     cwd = args.cwd
@@ -150,6 +159,8 @@ def main():
     run_ortmodule_fallback_tests(cwd, log, args.transformers_cache)
 
     run_ortmodule_hierarchical_ortmodule_tests(cwd, log,)
+
+    run_experimental_gradient_graph_tests(cwd, log)
 
     return 0
 
