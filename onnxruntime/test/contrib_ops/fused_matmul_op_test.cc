@@ -295,9 +295,9 @@ TEST(FusedMatMulOpTest, Float16_NoTranspose) {
     std::vector<MLFloat16> f_A(input0_vals.size());
     std::vector<MLFloat16> f_B(input1_vals.size());
     std::vector<MLFloat16> f_Y(t.expected_vals.size());
-    ConvertFloatToMLFloat16(input0_vals.data(), f_A.data(), input0_vals.size());
-    ConvertFloatToMLFloat16(input1_vals.data(), f_B.data(), input1_vals.size());
-    ConvertFloatToMLFloat16(t.expected_vals.data(), f_Y.data(), t.expected_vals.size());
+    ConvertFloatToMLFloat16(input0_vals.data(), f_A.data(), (int)input0_vals.size());
+    ConvertFloatToMLFloat16(input1_vals.data(), f_B.data(), (int)input1_vals.size());
+    ConvertFloatToMLFloat16(t.expected_vals.data(), f_Y.data(), (int)t.expected_vals.size());
 
     test.AddInput<MLFloat16>("A", input0_dims, f_A);
     test.AddInput<MLFloat16>("B", input1_dims, f_B, false);
