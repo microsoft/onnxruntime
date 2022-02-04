@@ -1550,7 +1550,12 @@ PropagateCastOps::PropagateCastOps(GraphTransformerConfiguration::PropagateCastO
                                    size_t level, const gsl::span<const std::string>& allow_list,
                                    const std::unordered_set<std::string>& compatible_execution_providers)
     : GraphTransformer("PropagateCastOps", compatible_execution_providers),
-      impl_(std::make_unique<Impl>(strategy, level, allow_list)) {
+      impl_(new Impl(strategy, level, allow_list)) {
 }
+
+PropagateCastOps::~PropagateCastOps() noexcept {
+  delete impl_;
+}
+
 
 }  // namespace onnxruntime

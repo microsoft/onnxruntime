@@ -21,12 +21,15 @@ class PropagateCastOps : public GraphTransformer {
                    size_t level = 0, const gsl::span<std::string const>& allow_list = {},
                    const std::unordered_set<std::string>& compatible_execution_providers = {});
 
+  ~PropagateCastOps() noexcept;
+
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
- private:
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(PropagateCastOps);
 
+ private:
   class Impl;
-  std::unique_ptr<Impl> impl_;
+  Impl* impl_;
 };
 
 }  // namespace onnxruntime
