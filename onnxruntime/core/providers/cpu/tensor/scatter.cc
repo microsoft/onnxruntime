@@ -42,6 +42,12 @@ class Scatter final : public OpKernel {
   explicit Scatter(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK(),
                 "Missing/Invalid 'axis' attribute value");
+
+    // 'reduction' attribute was added in opset 16.
+    // its default value is 'none' in which case the op behaves the same as before opset 16.
+    if (!info.GetAttr<std::string>("reduction", &reduction_).IsOK()) {
+      reduction_ = "none";
+    }
   }
 
   ~Scatter() = default;
@@ -49,6 +55,7 @@ class Scatter final : public OpKernel {
 
  private:
   int64_t axis_;
+  std::string reduction_;
 };
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -86,6 +93,21 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     Scatter<EnabledScatterElementsDataTypes>);
 
+// template <typename... T> struct TypeList2 {};
+// using Scatter16TypeList = TypeList2<MLFloat16, bool, std::string, uint8_t, int8_t, uint16_t, int16_t, uint32_t, int32_t, uint64_t, int64_t, float, double>;
+
+// ONNX_CPU_OPERATOR_KERNEL(
+//     ScatterElements,
+//     16,
+//     KernelDefBuilder()
+//         .MayInplace(0, 0)
+//         .TypeConstraint("T",
+//                         BuildKernelDefConstraintsFromTypeList<Scatter16TypeList>(),
+//                         BuildKernelDefConstraintsFromTypeList<Scatter16TypeList>())
+//         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
+//     Scatter16<Scatter16TypeList>);
+
+
 ONNX_CPU_OPERATOR_KERNEL(
     ScatterElements,
     16,
@@ -100,8 +122,71 @@ ONNX_CPU_OPERATOR_KERNEL(
 template <class T>
 struct Func_Assignment {
   void operator()(T* a, const T* b) const {
-    *a = *b;
+    (*a) = (*b);
   }
+};
+
+template <class T>
+struct Func_Add {
+  void operator()(T* a, const T* b) const {
+    (*a) += (*b);
+  }
+};
+
+template<>
+struct Func_Add<bool> {
+  void operator()(bool* a, const bool* b) const {
+    (*a) |= (*b);
+  }
+};
+
+template<>
+struct Func_Add<MLFloat16> {
+  void operator()(MLFloat16* a, const MLFloat16* b) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with Scatter opset 16 when reduction is 'add'.");
+    }
+};
+
+template<>
+struct Func_Add<BFloat16> {
+  void operator()(BFloat16* a, const BFloat16* b) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with Scatter opset 16 when reduction is 'add'.");
+    }
+};
+
+template <class T>
+struct Func_Mul {
+  void operator()(T* a, const T* b) const {
+    (*a) *= (*b);
+  }
+};
+
+template<>
+struct Func_Mul<bool> {
+  void operator()(bool* a, const bool* b) const {
+    (*a) &= (*b);
+  }
+};
+
+template<>
+struct Func_Mul<std::string> {
+  void operator()(std::string* a, const std::string* b) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: string data type is not supported with Scatter opset 16 when reduction is 'mul'.");
+  }
+};
+
+template<>
+struct Func_Mul<MLFloat16> {
+  void operator()(MLFloat16* a, const MLFloat16* b) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with Scatter opset 16 when reduction is 'mul'.");
+    }
+};
+
+template<>
+struct Func_Mul<BFloat16> {
+  void operator()(BFloat16* a, const BFloat16* b) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with Scatter opset 16 when reduction is 'mul'.");
+    }
 };
 
 template <class TIndex>
@@ -134,7 +219,7 @@ Status GetIndices(
 }
 
 template <class Tdata, typename FuncT>
-Status CopyScatterData(
+Status ScatterData(
     const FuncT& func,
     const Tensor* data_input, const std::vector<int64_t>& indices_data, const Tensor* updates_input, int64_t axis,
     Tensor* data_output) {
@@ -246,11 +331,18 @@ Status CopyScatterData(
 }
 
 template <typename TData>
-struct CopyScatterDataDispatchTarget {
+struct ScatterDataDispatchTarget {
   Status operator()(const Tensor* data_input, const std::vector<int64_t>& indices_data, const Tensor* updates_input, int64_t axis,
-                    Tensor* data_output) const {
-    return CopyScatterData<TData>(
-        Func_Assignment<TData>(), data_input, indices_data, updates_input, axis, data_output);
+                    const std::string &reduction, Tensor* data_output) const {
+    if(reduction == "add")
+      return ScatterData<TData>(
+          Func_Add<TData>(), data_input, indices_data, updates_input, axis, data_output);
+    else if(reduction == "mul")
+      return ScatterData<TData>(
+          Func_Mul<TData>(), data_input, indices_data, updates_input, axis, data_output);
+    else // if (reduction == "none")
+      return ScatterData<TData>(
+          Func_Assignment<TData>(), data_input, indices_data, updates_input, axis, data_output);
   }
 };
 
@@ -319,8 +411,8 @@ Status Scatter<EnabledDataTypes>::Compute(OpKernelContext* context) const {
   const auto data_type = data_input->GetElementType();
 
   utils::MLTypeCallDispatcherFromTypeList<EnabledDataTypes> dispatcher{data_type};
-  status = dispatcher.template InvokeRet<Status, CopyScatterDataDispatchTarget>(
-      data_input, indices_data, updates_input, axis, data_output);
+  status = dispatcher.template InvokeRet<Status, ScatterDataDispatchTarget>(
+      data_input, indices_data, updates_input, axis, this->reduction_, data_output);
 
   return status;
 }
