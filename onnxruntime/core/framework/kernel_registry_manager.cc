@@ -59,21 +59,21 @@ void KernelRegistryManager::RegisterKernelRegistry(std::shared_ptr<KernelRegistr
 // these hashes is not available in an extended minimal build, we maintain a static map of
 // nodes to hash value. This hash value can then be used to retireive the kernel for the given op.
 static const std::unordered_map<std::string, HashValue> static_kernel_hashes{
-    {"Transpose_1", 4324835766923221184},
-    {"Transpose_13", 17267477159887372848},
-    {"Squeeze_1", 12889825108950034784},
-    {"Squeeze_11", 14725795030460042064},
-    {"Squeeze_13", 16122603335179721968},
-    {"UnSqueeze_1", 15964030255371555232},
-    {"UnSqueeze_11", 16989589986691430224},
-    {"UnSqueeze_13", 9466011545409597224},
-    {"Gather_1", 625186873870077080},
-    {"Gather_11", 11761559382112736008},
-    {"Gather_13", 7462749543760614528},
-    {"Identity_1", 18001636502361632792},
-    {"Identity_13", 16879814636194901248},
-    {"Identity_14", 16515685968327103576},
-    {"Identity_16", 17661628575887109792},
+    {"Transpose_1", 4324835766923221184ULL},
+    {"Transpose_13", 17267477159887372848ULL},
+    {"Squeeze_1", 12889825108950034784ULL},
+    {"Squeeze_11", 14725795030460042064ULL},
+    {"Squeeze_13", 16122603335179721968ULL},
+    {"UnSqueeze_1", 15964030255371555232ULL},
+    {"UnSqueeze_11", 16989589986691430224ULL},
+    {"UnSqueeze_13", 9466011545409597224ULL},
+    {"Gather_1", 625186873870077080ULL},
+    {"Gather_11", 11761559382112736008ULL},
+    {"Gather_13", 7462749543760614528ULL},
+    {"Identity_1", 18001636502361632792ULL},
+    {"Identity_13", 16879814636194901248ULL},
+    {"Identity_14", 16515685968327103576ULL},
+    {"Identity_16", 17661628575887109792ULL},
 };
 
 const std::unordered_map<std::string, HashValue>& KernelRegistryManager::GetStaticKernelHashMap() const {

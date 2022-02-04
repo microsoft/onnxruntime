@@ -639,6 +639,7 @@ static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_typ
 #if defined(ORT_EXTENDED_MINIMAL_BUILD)
 // This is a list of onnx ops and their versions which transpose_optimizer can potentially add to the graph.
 // This is needed in minimal build since opschema is not available.
+// The versions should be sorted.
 static const std::unordered_map<std::string, std::vector<int>> onnx_ops_available_versions = {
     {"Squeeze", {1, 11, 13}},
     {"Unsqueeze", {1, 11, 13}},
@@ -655,11 +656,13 @@ static int GetSinceVersionForNewOp(std::string_view op_type, std::string_view do
   if (opset_import_iter != domain_to_version_map.end()) {
     int opset_version = opset_import_iter->second;
     auto iter = onnx_ops_available_versions.find(std::string(op_type));
-    if (iter != onnx_ops_available_versions.end()) {
-      for (auto version : iter->second) {
-        if (version <= opset_version) {
-          since_version = version;
-        }
+    ORT_ENFORCE(iter != onnx_ops_available_versions.end(),
+                "Transpose Optimizer is adding an unexpected node: ", op_type,
+                "An entry for this node should be added in onnx_ops_available_versions and static_kernel_hashes map.");
+
+    for (auto version : iter->second) {
+      if (version <= opset_version) {
+        since_version = version;
       }
     }
   }
