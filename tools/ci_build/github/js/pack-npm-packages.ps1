@@ -51,8 +51,8 @@ Function Generate-Package-Version-Number {
     return @{ version = $version_number; commit = $version_commit }
 }
 
-$JS_COMMON_DIR=Join-Path -Path $ORT_ROOT -ChildPath 'js\common'
-$JS_TARGET_DIR=Join-Path -Path $ORT_ROOT -ChildPath 'js' -AdditionalChildPath $TARGET
+$JS_COMMON_DIR=Join-Path -Path "$ORT_ROOT" -ChildPath "js\common"
+$JS_TARGET_DIR=Join-Path -Path "$ORT_ROOT" -ChildPath "js\$TARGET"
 
 if ($MODE -eq "dev") {
     # For @dev builds, we compares the following 2 package versions for onnxruntime-common:
@@ -83,12 +83,12 @@ if ($MODE -eq "dev") {
 
     # make package for latest
     pushd $JS_COMMON_DIR
-    npm version $ort_common_latest_version
+    npm version --allow-same-version $ort_common_latest_version
     echo $($version_number.commit) | Out-File -Encoding ascii -NoNewline -FilePath ./__commit.txt
     npm pack
     popd
 
-    $current_tgz_compare_only=Join-Path -Path $JS_COMMON_DIR -ChildPath "onnxruntime-common-$ort_common_latest_version.tgz"
+    $current_tgz_compare_only=Join-Path -Path "$JS_COMMON_DIR" -ChildPath "onnxruntime-common-$ort_common_latest_version.tgz"
     if (!(Test-Path $current_tgz_compare_only)) {
         throw "File is not generated: $current_tgz_compare_only"
     }
@@ -114,8 +114,8 @@ if ($MODE -eq "dev") {
     npm install "dir-compare-cli@1.0.1" "json-diff@0.5.4"
 
     Write-Host "Compare package.json"
-    $latest_package_json=Join-Path -Path '..' -ChildPath 'latest\package\package.json'
-    $current_package_json=Join-Path -Path '..' -ChildPath 'current\package\package.json'
+    $latest_package_json=Join-Path -Path ".." -ChildPath "latest\package\package.json"
+    $current_package_json=Join-Path -Path ".." -ChildPath "current\package\package.json"
     npx json-diff $latest_package_json $current_package_json
     $use_latest=$?
     Write-Host "Result: $use_latest"
@@ -123,8 +123,8 @@ if ($MODE -eq "dev") {
         # package.json matches. now check package contents.
 
         # do not compare commit number
-        $latest_package_commit=Join-Path -Path '..' -ChildPath 'latest\package\__commit.txt'
-        $current_package_commit=Join-Path -Path '..' -ChildPath 'current\package\__commit.txt'
+        $latest_package_commit=Join-Path -Path ".." -ChildPath "latest\package\__commit.txt"
+        $current_package_commit=Join-Path -Path ".." -ChildPath "current\package\__commit.txt"
         if (test-path $latest_package_commit) { rm $latest_package_commit }
         if (test-path $current_package_commit) { rm $current_package_commit }
         # skip package.json, we already checked them
@@ -132,8 +132,8 @@ if ($MODE -eq "dev") {
         rm $current_package_json
 
         Write-Host "Compare package contents"
-        $latest_package_dir=Join-Path -Path '..' -ChildPath 'latest\package'
-        $current_package_dir=Join-Path -Path '..' -ChildPath 'current\package'
+        $latest_package_dir=Join-Path -Path ".." -ChildPath "latest\package"
+        $current_package_dir=Join-Path -Path ".." -ChildPath "current\package"
         npx dircompare -c $latest_package_dir $current_package_dir
         $use_latest=$?
         Write-Host "Result: $use_latest"
@@ -145,7 +145,7 @@ if ($MODE -eq "dev") {
         Write-Host "Need update to onnxruntime-common@dev"
         # need to publish a new version for onnxruntime-common
         pushd $JS_COMMON_DIR
-        npm version $($version_number.version)
+        npm version --allow-same-version $($version_number.version)
         # file __commit.txt is already generated
         npm pack
         popd
@@ -153,7 +153,7 @@ if ($MODE -eq "dev") {
 
     # make package for target
     pushd $JS_TARGET_DIR
-    npm version $($version_number.version)
+    npm version --allow-same-version $($version_number.version)
     echo $($version_number.commit) | Out-File -Encoding ascii -NoNewline -FilePath ./__commit.txt
     npm pack
     popd
@@ -170,12 +170,12 @@ if ($MODE -eq "dev") {
     $version_number=Generate-Package-Version-Number
 
     pushd $JS_COMMON_DIR
-    npm version $($version_number.version)
+    npm version --allow-same-version $($version_number.version)
     npm pack
     popd
 
     pushd $JS_TARGET_DIR
-    npm version $($version_number.version)
+    npm version --allow-same-version $($version_number.version)
     npm pack
     popd
 }
