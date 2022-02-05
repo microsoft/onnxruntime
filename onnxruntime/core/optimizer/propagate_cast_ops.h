@@ -24,6 +24,7 @@ class PropagateCastOps : public GraphTransformer {
 
  private:
   size_t level_;
+  std::vector<std::string> allow_list_;
   GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy strategy_;
 };
 
