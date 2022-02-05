@@ -22,7 +22,6 @@
 #include "test/onnx/heap_buffer.h"
 #include "test/onnx/onnx_model_info.h"
 #include "test/onnx/callback.h"
-#include "core/providers/tensorrt/tensorrt_provider_options.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -600,7 +599,7 @@ TEST_P(ModelTest, Run) {
               1000,
               1,
               1 << 30,
-              0,
+              1, // enable fp16
               0,
               nullptr,
               0,
