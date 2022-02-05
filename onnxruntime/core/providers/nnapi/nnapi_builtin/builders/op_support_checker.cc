@@ -562,6 +562,8 @@ class PoolOpSupportChecker : public BaseOpSupportChecker {
   }
 
   bool HasSupportedInputsImpl(const NodeUnit& node_unit) const override;
+  bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
+  static bool IsQuantizedOp(const NodeUnit& node_unit);
 };
 
 /* static */ void PoolOpSupportChecker::CreateSharedOpSupportChecker(
@@ -575,6 +577,10 @@ class PoolOpSupportChecker : public BaseOpSupportChecker {
           "MaxPool",
           "QLinearAveragePool",
       });
+}
+
+/* static */ bool PoolOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
+  return IsQuantizedPool(GetQuantizedOpType(node_unit));
 }
 
 bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
@@ -594,8 +600,8 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
     return false;
   }
 
-  bool is_qlinear_average_pool = op_type == "QLinearAveragePool";
-  if (op_type == "AveragePool" || op_type == "MaxPool" || is_qlinear_average_pool) {
+  bool is_quant_pool = IsQuantizedOp(node_unit);
+  if (op_type == "AveragePool" || op_type == "MaxPool" || op_type == "QLinearAveragePool") {
     NodeAttrHelper helper(node_unit);
 
     const auto count_include_pad = helper.Get("count_include_pad", 0);
@@ -636,7 +642,7 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
   }
 
   // We need to check if we have valid scales and zero points for QLinearAveragePool
-  if (is_qlinear_average_pool) {
+  if (is_quant_pool) {
     // Check input scales and ZPs
     if (!HasValidQuantizationScales(initializers, node_unit, {0}, params, true /* is_input */))
       return false;
@@ -693,11 +699,11 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
 
 bool PoolOpSupportChecker::HasSupportedInputsImpl(const NodeUnit& node_unit) const {
   bool is_max_pool = node_unit.OpType() == "MaxPool";
-  bool is_qlinear_average_pool = node_unit.OpType() == "QLinearAveragePool";
-  if (!is_max_pool && !is_qlinear_average_pool)
+  bool is_quant_pool = IsQuantizedOp(node_unit);
+  if (!is_max_pool && !is_quant_pool)
     return BaseOpSupportChecker::HasSupportedInputsImpl(node_unit);
 
-  if (is_qlinear_average_pool) {
+  if (is_quant_pool) {
     return HasValidUnaryOpQuantizedInputs(node_unit);
   }
 

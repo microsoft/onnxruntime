@@ -217,31 +217,7 @@ TEST(QDQTransformerTests, ConvMaxPoolReshape_Int8) {
 template <typename InputType, typename OutputType>
 void QDQTransformerAveragePoolTests() {
   auto test_case = [&](const std::vector<int64_t>& input_shape) {
-    auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
-      auto* output_arg = builder.MakeOutput();
-      // add QDQ + AveragePool
-      auto* dq_output = AddQDQNodePair<InputType>(builder, input_arg, .0035f, 7);
-      auto* averagepool_output = builder.MakeIntermediate();
-      Node& pool_node = builder.AddNode("AveragePool", {dq_output}, {averagepool_output});
-      std::vector<int64_t> pads((input_shape.size() - 2) * 2, 1);
-      pool_node.AddAttribute("pads", pads);
-      std::vector<int64_t> kernel_shape(input_shape.size() - 2, 3);
-      pool_node.AddAttribute("kernel_shape", kernel_shape);
-
-      // add QDQ output
-      auto* q_output = builder.MakeIntermediate();
-      builder.AddQuantizeLinearNode<OutputType>(averagepool_output,
-                                                .0038f,
-                                                std::numeric_limits<OutputType>::max() / 2,
-                                                q_output);
-      builder.AddDequantizeLinearNode<OutputType>(q_output,
-                                                  .0039f,
-                                                  std::numeric_limits<OutputType>::max() / 2,
-                                                  output_arg);
-    };
-
-    auto check_binary_op_graph = [&](InferenceSessionWrapper& session) {
+    auto check_averagepool_op_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       if constexpr (std::is_same<InputType, OutputType>::value) {
         EXPECT_EQ(op_to_count["com.microsoft.QLinearAveragePool"], 1);
@@ -256,8 +232,8 @@ void QDQTransformerAveragePoolTests() {
       }
     };
 
-    TransformerTester(build_test_case,
-                      check_binary_op_graph,
+    TransformerTester(BuildQDQAveragePoolTestCase<InputType, OutputType>(input_shape),
+                      check_averagepool_op_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       12 /*opset_version*/,
@@ -614,8 +590,7 @@ void QDQTransformerGemmTests(bool has_output_q, bool has_bias, bool beta_not_one
 
     auto check_binary_op_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
-      if ((!has_output_q || std::is_same_v<Input1Type, OutputType>)&&
-          (!has_bias || (std::is_same_v<BiasType, int32_t> && !beta_not_one)) &&
+      if ((!has_output_q || std::is_same_v<Input1Type, OutputType>)&&(!has_bias || (std::is_same_v<BiasType, int32_t> && !beta_not_one)) &&
           (std::is_same_v<Input1Type, uint8_t> || std::is_same_v<Input2Type, int8_t>)) {
         EXPECT_EQ(op_to_count["com.microsoft.QGemm"], 1);
         EXPECT_EQ(op_to_count["Gemm"], 0);
@@ -800,7 +775,7 @@ TEST(QDQTransformerTests, Transpose_No_Fusion) {
 TEST(QDQTransformerTests, Resize) {
   auto test_case = [&](const std::vector<int64_t>& input1_shape,
                        const std::vector<int64_t>& sizes_shape) {
-    auto check_matmul_graph = [&](InferenceSessionWrapper& session) {
+    auto check_resize_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["Resize"], 1);
       EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
@@ -808,7 +783,7 @@ TEST(QDQTransformerTests, Resize) {
     };
 
     TransformerTester(BuildQDQResizeTestCase(input1_shape, sizes_shape),
-                      check_matmul_graph,
+                      check_resize_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2);
   };

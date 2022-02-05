@@ -319,6 +319,13 @@ TEST(NnapiExecutionProviderTest, TestQDQResize) {
                   "nnapi_qdq_test_graph_resize");
 }
 
+TEST(NnapiExecutionProviderTest, TestQDQAveragePool) {
+  RunQDQModelTest(BuildQDQAveragePoolTestCase<uint8_t /* InputType */,
+                                              uint8_t /* OutputType */>(
+                      {1, 3, 32, 32} /* input_shape */),
+                  "nnapi_qdq_test_graph_averagepool");
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
