@@ -4,6 +4,7 @@
 #include "api.h"
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 
 #include <iostream>
 #include <vector>
@@ -338,12 +339,7 @@ OrtRunOptions* OrtCreateRunOptions(size_t log_severity_level,
     RETURN_NULLPTR_IF_ERROR(RunOptionsUnsetTerminate, run_options);
   }
 
-  if (synchronize) {
-    RETURN_NULLPTR_IF_ERROR(AddRunConfigEntry, run_options);
-  } else {
-    RETURN_NULLPTR_IF_ERROR(AddRunConfigEntry, run_options);
-  }
-
+  RETURN_NULLPTR_IF_ERROR(AddRunConfigEntry, run_options, kOrtRunOptionsConfigSynchronizeExecutionProviders, synchronize ?"1" : "0");
   if (tag != nullptr) {
     RETURN_NULLPTR_IF_ERROR(RunOptionsSetRunTag, run_options, tag);
   }
