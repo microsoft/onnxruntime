@@ -996,7 +996,7 @@ void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_buil
   model_builder.AddInitializerToSkip(node_unit.Inputs()[1].node_arg.Name());  // scale
   model_builder.AddInitializerToSkip(node_unit.Inputs()[2].node_arg.Name());  // B
   model_builder.AddInitializerToSkip(node_unit.Inputs()[3].node_arg.Name());  // mean
-  model_builder.AddInitializerToSkip(node_unit.Inputs()[4].node_arg.Name());  //var
+  model_builder.AddInitializerToSkip(node_unit.Inputs()[4].node_arg.Name());  // var
 }
 
 Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -1106,8 +1106,7 @@ class PoolOpBuilder : public BaseOpBuilder {
 };
 
 /* static */ bool PoolOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
-  // TODO, add support for QDQ NodeUnit
-  return node_unit.OpType() == "QLinearAveragePool";
+  return IsQuantizedPool(GetQuantizedOpType(node_unit));
 }
 
 void PoolOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -1156,8 +1155,8 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto& op_type = node_unit.OpType();
 
   int32_t op_code;
-  bool is_qlinear_average_pool = op_type == "QLinearAveragePool";
-  bool is_average_pool = op_type == "AveragePool" || is_qlinear_average_pool;
+  bool is_quant_pool = IsQuantizedOp(node_unit);
+  bool is_average_pool = op_type == "AveragePool" || op_type == "QLinearAveragePool";
   if (is_average_pool || op_type == "GlobalAveragePool")
     op_code = ANEURALNETWORKS_AVERAGE_POOL_2D;
   else  // (op_type == "MaxPool" || op_type == "GlobalMaxPool")
@@ -1200,7 +1199,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const OperandType& input_operand_type = operand_types.at(input);
   float y_scale = input_operand_type.operandType.scale;
   int32_t y_zero_point = input_operand_type.operandType.zeroPoint;
-  if (is_qlinear_average_pool) {
+  if (is_quant_pool) {
     const auto& initializers = model_builder.GetInitializerTensors();
     float x_scale = 0.0f;
     int32_t x_zero_point = 0;
@@ -2624,7 +2623,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     return Status::OK();
   };
 
-  ORT_RETURN_IF_ERROR(AddOperand("starts", param_dimen, compute_metadata.starts_));  //nnapi_begin
+  ORT_RETURN_IF_ERROR(AddOperand("starts", param_dimen, compute_metadata.starts_));  // nnapi_begin
 
   // NNAPI has 2 slice operations
   // - ANEURALNETWORKS_SLICE
@@ -2639,7 +2638,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
       model_builder.GetNNAPIFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_2) {
     op_code = ANEURALNETWORKS_SLICE;
     // the nnapi size of the slice in this case is the output shape
-    ORT_RETURN_IF_ERROR(AddOperand("sizes", param_dimen, compute_metadata.output_dims_));  //nnapi_sizes
+    ORT_RETURN_IF_ERROR(AddOperand("sizes", param_dimen, compute_metadata.output_dims_));  // nnapi_sizes
   } else {
     // ** The special treatment of ends **
     // The nnapi_end need some special handling, based on the current undocumented design of
@@ -2662,8 +2661,8 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
         ends[i] = -static_cast<int32_t>(input_shape[i] + 1);
       }
     }
-    ORT_RETURN_IF_ERROR(AddOperand("ends", param_dimen, ends));                      //nnapi_end
-    ORT_RETURN_IF_ERROR(AddOperand("steps", param_dimen, compute_metadata.steps_));  //nnapi_strides
+    ORT_RETURN_IF_ERROR(AddOperand("ends", param_dimen, ends));                      // nnapi_end
+    ORT_RETURN_IF_ERROR(AddOperand("steps", param_dimen, compute_metadata.steps_));  // nnapi_strides
     // We do not use the following inputs in ANEURALNETWORKS_STRIDED_SLICE, set them all to 0
     ADD_SCALAR_OPERAND(model_builder, input_indices, 0);  // begin_mask
     ADD_SCALAR_OPERAND(model_builder, input_indices, 0);  // end_mask
