@@ -11,7 +11,8 @@ namespace onnxruntime {
 /**
     @Class QDQPropagationTransformer
 
-    Propagate Q backward, DQ forward and remove DQ/Q pair
+    Propagate Q backward, DQ forward.
+    TODO elaborate
 */
 class QDQPropagationTransformer : public GraphTransformer {
  public:
@@ -21,8 +22,6 @@ class QDQPropagationTransformer : public GraphTransformer {
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
-  bool PropagateDQForward(Graph& graph) const;
-  bool PropagateQBackward(Graph& graph) const;
 };
 
 }  // namespace onnxruntime
