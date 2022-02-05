@@ -1170,7 +1170,8 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_engine_decryption_enable = legacy_trt_options->trt_engine_decryption_enable;
   trt_options_converted.trt_engine_decryption_lib_path = legacy_trt_options->trt_engine_decryption_lib_path;
   trt_options_converted.trt_force_sequential_engine_build = legacy_trt_options->trt_force_sequential_engine_build;
-  // Use default value as this field is not available in OrtTensorRTProviderOptionsV2
+  // Add new provider option below
+  // Use default value as this field is not available in OrtTensorRTProviderOptions
   trt_options_converted.trt_timing_cache_enable = 0;
 
   return trt_options_converted;

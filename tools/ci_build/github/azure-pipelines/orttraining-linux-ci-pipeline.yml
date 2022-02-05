@@ -55,6 +55,8 @@ jobs:
          # Test ORT with the latest ONNX release.
          export ONNX_VERSION=$(cat $(Build.SourcesDirectory)/cmake/external/onnx/VERSION_NUMBER)
          sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx==$ONNX_VERSION/" $(Build.BinariesDirectory)/requirements.txt
+         #Do not explicitly specify numpy version as this is not a packaging pipeline, any version should be ok
+         sed -i "/^numpy/d" $(Build.BinariesDirectory)/requirements.txt
          python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
          cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu.txt $(Build.BinariesDirectory)/requirements_torch_cpu.txt
          python3 -m pip install -r $(Build.BinariesDirectory)/requirements_torch_cpu.txt

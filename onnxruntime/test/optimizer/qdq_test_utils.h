@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma once
+
 #include "graph_transform_test_builder.h"
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
@@ -12,7 +14,7 @@
 namespace onnxruntime {
 namespace test {
 
-using GetQDQConvTestCaseFn = std::function<void(ModelTestBuilder& builder)>;
+using GetQDQTestCaseFn = std::function<void(ModelTestBuilder& builder)>;
 
 template <typename T>
 typename std::enable_if<IsTypeQuantLinearCompatible<T>::value, NodeArg*>::type
@@ -24,10 +26,8 @@ AddQDQNodePair(ModelTestBuilder& builder, NodeArg* q_input, float scale, T zp = 
   return dq_output;
 }
 
-// TODO: for now it just builds a conv qdq graph.
-// can be modified and made it shared among different qdq test graphs associated with other operators
 template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
-GetQDQConvTestCaseFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
+GetQDQTestCaseFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
   return [input_shape, weights_shape](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
     auto* output_arg = builder.MakeOutput();
@@ -77,6 +77,38 @@ GetQDQConvTestCaseFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shap
                                                 output_arg);
   };
 }
+
+template <typename InputType, typename OutputType>
+GetQDQTestCaseFn BuildQDQAveragePoolTestCase(const std::vector<int64_t>& input_shape) {
+  return [input_shape](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
+    auto* output_arg = builder.MakeOutput();
+    // add QDQ + AveragePool
+    auto* dq_output = AddQDQNodePair<InputType>(builder, input_arg, .0035f, 7);
+    auto* averagepool_output = builder.MakeIntermediate();
+    Node& pool_node = builder.AddNode("AveragePool", {dq_output}, {averagepool_output});
+    std::vector<int64_t> pads((input_shape.size() - 2) * 2, 1);
+    pool_node.AddAttribute("pads", pads);
+    std::vector<int64_t> kernel_shape(input_shape.size() - 2, 3);
+    pool_node.AddAttribute("kernel_shape", kernel_shape);
+
+    // add QDQ output
+    auto* q_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<OutputType>(averagepool_output,
+                                              .0038f,
+                                              std::numeric_limits<OutputType>::max() / 2,
+                                              q_output);
+    builder.AddDequantizeLinearNode<OutputType>(q_output,
+                                                .0039f,
+                                                std::numeric_limits<OutputType>::max() / 2,
+                                                output_arg);
+  };
+}
+
+GetQDQTestCaseFn BuildQDQResizeTestCase(const std::vector<int64_t>& input_shape,
+                                        const std::vector<int64_t>& sizes_data,
+                                        const std::string& mode = "nearest",
+                                        const std::string& coordinate_transformation_mode = "half_pixel");
 
 }  // namespace test
 }  // namespace onnxruntime

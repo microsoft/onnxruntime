@@ -8,6 +8,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_env.h"
+#include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "asserts.h"
 #include <core/platform/path_lib.h>
 #include "default_providers.h"
@@ -591,7 +592,8 @@ TEST_P(ModelTest, Run) {
       } else if (provider_name == "nuphar") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultNupharExecutionProvider()));
       } else if (provider_name == "tensorrt") {
-        OrtTensorRTProviderOptionsV2 params{
+        if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
+          OrtTensorRTProviderOptionsV2 params{
               0,
               0,
               nullptr,
@@ -611,8 +613,6 @@ TEST_P(ModelTest, Run) {
               nullptr,
               0,
               0};
-        if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
-          params.trt_fp16_enable = 1;
           ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(TensorrtExecutionProviderWithOptions(&params)));
         } else {
           ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
