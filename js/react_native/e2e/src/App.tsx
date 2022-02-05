@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 import * as React from 'react';
-import{Button, Image, Text, TextInput, View} from 'react-native';
+import{Image, Text, TextInput, View} from 'react-native';
+// onnxruntime-react-native package is installed when bootstraping
+// eslint-disable-next-line import/no-extraneous-dependencies
 import{InferenceSession, Tensor} from 'onnxruntime-react-native';
 import MNIST, {MNISTInput, MNISTOutput, MNISTResult, } from './mnist-data-handler';
 import{Buffer} from 'buffer';
@@ -40,7 +42,7 @@ export default class App extends React.PureComponent<{}, State> {
         const session : InferenceSession = await InferenceSession.create(modelPath);
         this.setState({session});
 
-        this.infer();
+        void this.infer();
       } catch (err) {
         console.log(err.message);
       }
