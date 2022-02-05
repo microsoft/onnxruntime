@@ -20,7 +20,7 @@ using namespace ::onnxruntime::logging;
 namespace onnxruntime {
 
 namespace test {
-class TensorrtExecutionProviderCacheTest: public testing::TestWithParam<std::basic_string<ORTCHAR_T>> {};
+class TensorrtExecutionProviderCacheTest: public testing::TestWithParam<std::string> {};
 
 template <typename T>
 void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
@@ -33,24 +33,24 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
   ASSERT_EQ(expected_values, found);
 }
 
-bool IsTensorRTCacheExisted(std::basic_string<ORTCHAR_T> path, std::basic_string<ORTCHAR_T> file_extension) {
+bool IsTensorRTCacheExisted(std::string path, std::string file_extension) {
   for (const auto & entry : fs::directory_iterator(path)) {
-      if (file_extension.compare(fs::path(entry).extension()) == 0) {
+      if (fs::path(file_extension) == fs::path(entry).extension()) {
           return true;
       }
   }
   return false;
 }
 
-void RemoveTensorRTCache(std::basic_string<ORTCHAR_T> path, std::basic_string<ORTCHAR_T> file_extension) {
+void RemoveTensorRTCache(std::string path, std::string file_extension) {
   for (const auto & entry : fs::directory_iterator(path)) {
-      if (file_extension.compare(fs::path(entry).extension()) == 0) {
+      if (fs::path(file_extension) == fs::path(entry).extension()) {
           fs::remove(entry);
       }
   }
 }
 
-void CreateBaseModel(std::basic_string<ORTCHAR_T> model_name, std::basic_string<ORTCHAR_T> graph_name, bool is_dynamic_input_shape, std::vector<int> dims) {
+void CreateBaseModel(std::string model_name, std::string graph_name, bool is_dynamic_input_shape, std::vector<int> dims) {
   onnxruntime::Model model(graph_name, false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   std::vector<onnxruntime::NodeArg*> inputs;
@@ -92,26 +92,24 @@ void CreateBaseModel(std::basic_string<ORTCHAR_T> model_name, std::basic_string<
 }
 
 TEST_P(TensorrtExecutionProviderCacheTest, Run) {
-  // GetParam() consists of two main parameters:
-  // - cache type (engine cache, profile cache and timing cache)
-  // - input type (dynamic input shape or static input shape). 
-  // Note: it might have other paramters used for specific situation
-  std::basic_string<ORTCHAR_T> param = GetParam();
-  std::basic_string<ORTCHAR_T> input_type = "static";
-  std::basic_string<ORTCHAR_T> engine_info = "enginecache_disable"; // for timigh cache case only
-  size_t pos = param.find(ORT_TSTR("_"));
+  // GetParam() returns the parameter of following format:
+  // ##cache type##_##input shape type##_##other information if needed##
+  std::string param = GetParam();
+  std::string input_type = "static";
+  std::string engine_info = "enginecache_disable"; // for timigh cache case only
+  size_t pos = param.find("_");
   ASSERT_NE(pos, std::string::npos);
-  std::basic_string<ORTCHAR_T> cache_type = ToUTF8String(param.substr(0, pos));
+  std::string cache_type = ToUTF8String(param.substr(0, pos));
   if (cache_type.compare("timing") == 0) {
-    std::basic_string<ORTCHAR_T> suffix = param.substr(pos + 1);
-    size_t suffix_pos = suffix.find(ORT_TSTR("_"));
+    std::string suffix = param.substr(pos + 1);
+    size_t suffix_pos = suffix.find("_");
     input_type = ToUTF8String(suffix.substr(0, suffix_pos));
     engine_info = suffix.substr(suffix_pos + 1);
   } else {
     input_type = param.substr(pos + 1);
   }
 
-  std::basic_string<ORTCHAR_T> model_name = "trt_execution_provider_" + cache_type + "caching_test_" + input_type + ".onnx";
+  std::string model_name = "trt_execution_provider_" + cache_type + "caching_test_" + input_type + ".onnx";
   std::vector<int> dims; // static dims
   if (input_type.compare("dynamic") == 0) {
     dims.push_back(1);
@@ -269,27 +267,23 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
   }
 }
 
-auto AddTestName  = [](const ::testing::TestParamInfo<TensorrtExecutionProviderCacheTest::ParamType>& info) {
-  // use info.param here to generate the test suffix
-  std::basic_string<ORTCHAR_T> name = info.param;
-#ifdef _WIN32
-  // Note: The return value of INSTANTIATE_TEST_SUITE_P accpets std::basic_string<char...>.
-  // Need conversion of wchar_t to char.
-  return std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(name);
-#else
-  return name;
-#endif
-};
-
-// timing_dynamic_enginecache_enable: timing cache enabled, dynamic input shape and engine cache enable
-// timing_dynamic_enginecache_disable: timing cache enabled, dynamic input shape and engine cache disable
-// timing_static_enginecache_enable: timing cache enabled, static input shape and engine cache enable
-// timing_static_enginecache_disable: timing cache enabled, static input shape and engine cache disable
+// The TensorrtExecutionProviderCacheTest aims to test the functionality of all the engine/profile/timing caches of ORT TRT.
+// It uses value-parameterized test and the parameter in the test is a composite parameter which has following format:  
+// ##cache type##_##input shape type##_##additional provider options if needed##
+// - cache type       (could be engine cache, profile cache or timing cache)
+// - input shape type (could be dynamic input shape or static input shape). 
+// 
+//
+// We have following test parameters: 
+// - timing_dynamic_enginecache_enable: timing cache enabled, dynamic input shape and engine cache enable
+// - timing_dynamic_enginecache_disable: timing cache enabled, dynamic input shape and engine cache disable
+// - timing_static_enginecache_enable: timing cache enabled, static input shape and engine cache enable
+// - timing_static_enginecache_disable: timing cache enabled, static input shape and engine cache disable
 INSTANTIATE_TEST_SUITE_P(TensorrtExecutionProviderCacheTests, TensorrtExecutionProviderCacheTest, testing::Values("timing_dynamic_enginecache_enable",
                                                                                                                   "timing_dynamic_enginecache_disable",
                                                                                                                   "timing_static_enginecache_enable",
                                                                                                                   "timing_static_enginecache_disable"),
-                                                                                                  AddTestName);
+                                                                                                  [](const ::testing::TestParamInfo<TensorrtExecutionProviderCacheTest::ParamType>& info) {return info.param;});
 
 TEST(TensorrtExecutionProviderTest, EngineCachingTest) {
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
