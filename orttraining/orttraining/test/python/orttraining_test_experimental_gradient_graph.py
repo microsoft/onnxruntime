@@ -82,7 +82,15 @@ class GradientGraphBuilderTest(unittest.TestCase):
             1 + 1 + sum(1 if p.requires_grad else 0 for p in model.parameters()), len(onnx_model.graph.output))
 
         torch_out = model(example_input)
-        ort_session = onnxruntime.InferenceSession(str(gradient_graph_path))
+
+        try:
+            ort_session = onnxruntime.InferenceSession(str(gradient_graph_path))
+        except ValueError:
+            # Sometimes it is required to pass the available providers.
+            from onnxruntime.capi import _pybind_state as C
+            available_providers = C.get_available_providers()
+            ort_session = onnxruntime.InferenceSession(str(gradient_graph_path), providers=available_providers)
+
         ort_inputs = {
             onnx_model.graph.input[0].name: to_numpy(example_input),
             onnx_model.graph.input[1].name: to_numpy(example_labels),
