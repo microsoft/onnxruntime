@@ -1,6 +1,6 @@
 variables:
   build_config: Release
-  ${{ if eq($(NpmPublish), 'custom') }}:
+  ${{ if eq(variables['NpmPublish'], 'custom') }}:
     npm_packaging_mode: -dev.$(Date:yyyyMMdd)-$(Rev:.r)
   ${{ else }}:
     npm_packaging_mode: $(NpmPublish)
