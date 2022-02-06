@@ -1,9 +1,8 @@
 variables:
   build_config: Release
-  ${{ if eq(variables['NpmPublish'], 'custom') }}:
+  npm_packaging_mode: $(NpmPublish)
+  ${{ if eq(variables.npm_packaging_mode, 'custom') }}:
     npm_packaging_mode: -dev.$(Date:yyyyMMdd)-$(Rev:.r)
-  ${{ else }}:
-    npm_packaging_mode: $(NpmPublish)
 
 jobs:
 - template: templates/android-java-api-aar.yml
