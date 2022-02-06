@@ -16,6 +16,16 @@ using namespace onnx_layout_transformation;
 
 namespace onnxruntime {
 
+std::unordered_set<std::string_view> GetORTLayoutSensitiveOps() {
+  static std::unordered_set<std::string_view> ort_layout_senstive_ops = []() {
+    const auto& layout_sensitive_ops = onnx_layout_transformation::GetLayoutSensitiveOps();
+    std::unordered_set<std::string_view> ort_specific_ops = {"Resize", "FusedConv", "QLinearAveragePool", "QLinearGlobalAveragePool"};
+    ort_specific_ops.insert(layout_sensitive_ops.cbegin(), layout_sensitive_ops.cend());
+    return ort_specific_ops;
+  }();
+
+  return ort_layout_senstive_ops;
+}
 class ApiValueInfo final : public api::ValueInfoRef {
  private:
   NodeArg& node_arg_;
@@ -605,10 +615,6 @@ static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_typ
   std::vector<NodeArg*> outputs;
   Node& node = graph.AddNode(name, op_type_str, "Added in transpose optimizer", input_args, output_args, nullptr,
                              std::string(domain));
-
-#if !defined(ORT_MINIMAL_BUILD)
-  graph.SetOpSchemaFromRegistryForNode(node);
-#endif
 
   if (node.SinceVersion() == -1) {
     node.SetSinceVersion(since_version);

@@ -108,10 +108,10 @@ common::Status InternalTestingExecutionProvider::Compile(const std::vector<Fused
 
     if (preferred_layout_ == DataLayout::NHWC) {
       const GraphViewer& graph_viewer = node_and_viewer.filtered_graph;
-      auto layout_sensitive_ops = onnx_layout_transformation::GetLayoutSensitiveOps();
+      auto layout_sensitive_ops = GetORTLayoutSensitiveOps();
       for (const auto& unfused_node : graph_viewer.Nodes()) {
         std::cout << unfused_node.OpType() << std::endl;
-        if (layout_sensitive_ops.count(unfused_node.OpType()) && unfused_node.Domain() != kMSNHWCDomain) {
+        if (layout_sensitive_ops.count(unfused_node.OpType()) && unfused_node.Domain() != kMSInternalNHWCDomain) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                  "Found a layout sensitive op which is still in NCHW format. Node: ",
                                  unfused_node.OpType(), " ", unfused_node.Name(),

@@ -431,6 +431,12 @@ enum class OptimizerMode {
 };
 
 /// <summary>
+/// Gets a list of layout sensitive ops defined by ONNX standard.
+/// </summary>
+/// <returns>unordered set of op_types which are layout sensitive</returns>
+std::unordered_set<std::string_view> GetLayoutSensitiveOps();
+
+/// <summary>
 /// Performs transpose optimization on a graph. Returns true if the graph was modified.
 ///
 /// Models outside the supported opset range will be returned unchanged.

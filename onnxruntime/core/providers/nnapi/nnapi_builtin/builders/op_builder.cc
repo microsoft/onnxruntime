@@ -499,7 +499,7 @@ static void AddInputToSkip(ModelBuilder& model_builder, const NodeUnitIODef& io_
 }
 
 static Status IsOpInRequiredLayout(bool use_nchw, const NodeUnit& node_unit) {
-  bool is_op_nhwc = node_unit.Domain() == kMSNHWCDomain;
+  bool is_op_nhwc = node_unit.Domain() == kMSInternalNHWCDomain;
   if (is_op_nhwc && use_nchw) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Expected layout and operator layout do not match. Possible bug in layout optimizer.");
@@ -941,6 +941,7 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   Shape tensor_a_dimen = {size};
 
   bool use_nchw = model_builder.UseNCHW();
+  ORT_RETURN_IF_ERROR(IsOpInRequiredLayout(use_nchw, node_unit));
 
   if (use_nchw) {
     // the batch normalization is applied on C channel,

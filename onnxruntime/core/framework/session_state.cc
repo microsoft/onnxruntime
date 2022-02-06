@@ -16,6 +16,7 @@
 #include "core/framework/session_state_flatbuffers_utils.h"
 #include "core/framework/session_state_utils.h"
 #include "core/framework/utils.h"
+#include "core/framework/ort_format_model_utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -1018,21 +1019,19 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
   // lookup the hashes for any nodes we compiled or added during graph partitioning.
   // These node indexes for compiled nodes as well as newly added nodes are not in node_indices
   // as they were created at runtime.
-  auto new_node_hashes = kernel_registry_manager.GetStaticKernelHashMap();
   for (const auto& node : graph_.Nodes()) {
     if (kernel_create_info_map_.count(node.Index()) == 0) {
       if (node.Domain() == kOnnxDomain || node.Domain() == kOnnxDomainAlias) {
-        auto key = node.OpType() + "_" + std::to_string(node.SinceVersion());
-        auto iter = new_node_hashes.find(key);
-        if (iter != new_node_hashes.end()) {
-          ORT_RETURN_IF_ERROR(add_kernel_by_hash(node, iter->second));
+        auto kernel_hash = GetHashValueFromStaticKernelHashMap(node.OpType(), node.SinceVersion());
+        if (kernel_hash.has_value()) {
+          ORT_RETURN_IF_ERROR(add_kernel_by_hash(node, kernel_hash.value()));
         } else {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to find kernel hash for node:", node.Name(), " optype:", node.OpType());
         }
       } else {
         const auto hash_info = compiled_kernel_hashes.find(node.OpType());
         ORT_RETURN_IF(hash_info == compiled_kernel_hashes.cend(),
-                      "Unable to find compile kernel hash for node '", node.Name(), "'.");
+                      "Unable to find compiled kernel hash for node '", node.Name(), "'.");
         ORT_RETURN_IF_ERROR(add_kernel_by_hash(node, hash_info->second));
       }
     }

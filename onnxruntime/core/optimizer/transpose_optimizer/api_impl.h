@@ -11,15 +11,17 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 
 namespace onnx_layout_transformation {
-inline std::unordered_set<std::string_view> GetLayoutSensitiveOps() {
-  // Per ONNX standard resize is not a layout sensitive op. However both CPU EP and NNAPI treat it as layout sensitive,
-  // so adding it to the list of layout senstive ops.
-  return {"Resize", "Conv", "QLinearConv", "FusedConv", "AveragePool", "QLinearAveragePool", "GlobalAveragePool",
-          "QLinearGlobalAveragePool", "MaxPool", "GlobalMaxPool", "LRN"};
-}
 }  // namespace onnx_layout_transformation
 
 namespace onnxruntime {
+
+/// <summary>
+/// Gets a list of layout sensitive ops for ORT. This list contains onnx standard defined
+/// layout senstive ops + contrib ops + ops which are not layout sensitive but are treated as
+/// layout sensitive by ORT EPs (exmaple Resize).
+/// </summary>
+/// <returns>unordered set of op_types which are layout sensitive</returns>
+std::unordered_set<std::string_view> GetORTLayoutSensitiveOps();
 
 /// <summary>
 /// Creates concrete implementation of api for transpose optimizer. IMPORTANT: graph must have up-to-date edges,

@@ -1795,6 +1795,15 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
   return changed;
 }
 
+std::unordered_set<std::string_view> GetLayoutSensitiveOps() {
+  // List of all layout sensitive ops defined in ONNX standard.
+  static std::unordered_set<std::string_view> layout_sensitive_ops = {"Conv", "QLinearConv", "BatchNormalization",
+                                                                      "AveragePool", "GlobalAveragePool", "MaxPool",
+                                                                      "GlobalMaxPool", "LRN"};
+
+  return layout_sensitive_ops;
+}
+
 bool Optimize(api::GraphRef& graph, bool allow_extended_ops,
               const std::string& provider_type, OptimizerMode mode,
               const std::unordered_set<std::string_view>& layout_sensitive_ops) {

@@ -59,7 +59,7 @@ bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node
 }
 
 inline bool IsNodeLayoutNHWC(const NodeUnit& node_unit) {
-  return node_unit.Domain() == kMSNHWCDomain;
+  return node_unit.Domain() == kMSInternalNHWCDomain;
 }
 
 template <class T>

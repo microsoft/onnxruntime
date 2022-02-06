@@ -32,6 +32,7 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/utils.h"
+#include "core/framework/ort_format_model_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/optimizer/graph_transformer_utils.h"
@@ -1214,15 +1215,11 @@ Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs
 
   // layout transformer which is enabled in extended minimal build can add new nodes.
   // The following loop fetches the hash values for these nodes.
-  // kernel_registry_manager.GetStaticKernelHashMap() contains a list of optype+version to hashvalue for
-  // nodes which are likely to be added by layout transformer.
-  auto new_node_hashes = kernel_registry_manager.GetStaticKernelHashMap();
   for (const auto& node : graph.Nodes()) {
     if (node.GetExecutionProviderType().empty()) {
-      auto key = node.OpType() + "_" + std::to_string(node.SinceVersion());
-      auto iter = new_node_hashes.find(key);
-      if (iter != new_node_hashes.end()) {
-        ORT_RETURN_IF_ERROR(set_node_ep(node.Index(), iter->second));
+      auto kernel_hash = GetHashValueFromStaticKernelHashMap(node.OpType(), node.SinceVersion());
+      if (kernel_hash.has_value()) {
+        ORT_RETURN_IF_ERROR(set_node_ep(node.Index(), kernel_hash.value()));
       }
     }
   }

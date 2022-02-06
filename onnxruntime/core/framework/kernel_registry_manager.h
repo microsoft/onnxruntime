@@ -72,13 +72,6 @@ class KernelRegistryManager {
 #endif
 
   /**
-   * @brief Gets the op_type+version -> kernel hashes map. This map containes 
-   * hash values for nodes which are likely to be added by layout transformer in minimal build.
-   * 
-   * @return const std::unordered_map<std::string, HashValue>& 
-   */
-  const std::unordered_map<std::string, HashValue>& GetStaticKernelHashMap() const;
-  /**
    * Search the kernel registries given a kernel def hash.
    */
   bool SearchKernelRegistriesByHash(HashValue kernel_def_hash,
