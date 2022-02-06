@@ -869,6 +869,14 @@ class OpTester {
     add_prepacked_shared_container_to_sessions_ = true;
   }
 
+  void PreferDeepSpeedKernels() {
+#ifdef ENABLE_DEEP_SPEED_CUDA_KERNELS
+    prefer_deep_speed_kernels_ = true;
+#else
+    ORT_THROW("Can't use DeepSpeed kernels as they are not supported in this build");
+#endif
+  }
+
   size_t GetNumPrePackedWeightsShared() const {
     return prepacked_weights_container_.GetNumberOfElements();
   }
@@ -1145,6 +1153,8 @@ class OpTester {
   bool add_prepacked_shared_container_to_sessions_ = false;
 
   onnxruntime::PrepackedWeightsContainer prepacked_weights_container_;
+
+  bool prefer_deep_speed_kernels_ = false;
 };
 
 template <typename TException>

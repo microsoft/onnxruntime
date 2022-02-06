@@ -83,6 +83,11 @@ file(GLOB_RECURSE onnxruntime_cuda_contrib_ops_cu_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/*.cuh"
 )
 
+file(GLOB_RECURSE onnxruntime_cuda_deep_speed_cc_srcs CONFIGURE_DEPENDS
+  "${ONNXRUNTIME_ROOT}/core/providers/cuda/deep_speed/*.h"
+  "${ONNXRUNTIME_ROOT}/core/providers/cuda/deep_speed/*.cc"
+)
+
 file(GLOB_RECURSE onnxruntime_rocm_contrib_ops_cc_srcs CONFIGURE_DEPENDS
   "${ONNXRUNTIME_ROOT}/contrib_ops/rocm/*.h"
   "${ONNXRUNTIME_ROOT}/contrib_ops/rocm/*.cc"
@@ -351,6 +356,10 @@ if (onnxruntime_USE_CUDA)
     list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
   endif()
 
+  if(NOT onnxruntime_ENABLE_DEEP_SPEED_CUDA_KERNELS)
+    list(REMOVE_ITEM onnxruntime_providers_cuda_src ${onnxruntime_cuda_deep_speed_cc_srcs})
+  endif()
+
   if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
     file(GLOB_RECURSE onnxruntime_cuda_training_ops_cc_srcs CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/training_ops/cuda/*.h"
@@ -440,6 +449,16 @@ if (onnxruntime_USE_CUDA)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDA_HOME}/extras/CUPTI/include)
     target_link_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDA_HOME}/extras/CUPTI/lib64)
     target_link_libraries(onnxruntime_providers_cuda PRIVATE cupti)
+  endif()
+
+  if (onnxruntime_ENABLE_DEEP_SPEED_CUDA_KERNELS) # build with DeepSpeed CUDA kernel support
+    if (NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+       message(FATAL_ERROR "Building with DeepSpeed CUDA kernel support is only supported on Linux")
+    endif()
+    set(DEEP_SPEED_SHARED_LIB libdeepspeed.so)
+    set(DEEP_SPEED_SHARED_LIB_PATH ${ONNXRUNTIME_ROOT}/core/providers/cuda/deep_speed/deps/lib64/${DEEP_SPEED_SHARED_LIB})
+    target_link_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT}/core/providers/cuda/deep_speed/deps/lib64)
+    target_link_libraries(onnxruntime_providers_cuda PRIVATE deepspeed)
   endif()
 
   if (onnxruntime_ENABLE_NVTX_PROFILE)

@@ -72,6 +72,9 @@ class CUDAExecutionProvider : public IExecutionProvider {
   }
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+
+  std::shared_ptr<KernelRegistry> GetSpecialKernelRegistry() const override;
+
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(

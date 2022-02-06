@@ -114,6 +114,11 @@ class IExecutionProvider {
   */
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const { return nullptr; }
 
+  /*
+  TODO: DOcumentation
+  */
+  virtual std::shared_ptr<KernelRegistry> GetSpecialKernelRegistry() const { return nullptr; }
+
   /**
      Get the device id of current execution provider
   */
