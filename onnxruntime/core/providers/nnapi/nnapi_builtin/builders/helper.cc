@@ -72,6 +72,10 @@ QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit) {
       return QuantizedOpType::QDQResize;
     else if (op_type == "AveragePool")
       return QuantizedOpType::QDQAveragePool;
+    else if (op_type == "Add")
+      return QuantizedOpType::QDQAdd;
+    else if (op_type == "Mul")
+      return QuantizedOpType::QDQMul;
   } else {
     // throw?
     // Do we want to throw here? seems got neglected last time
@@ -114,6 +118,8 @@ bool IsQuantizedPool(QuantizedOpType quant_op_type) {
 bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type) {
   return quant_op_type == QuantizedOpType::QLinearMatMul ||
          quant_op_type == QuantizedOpType::QLinearAdd ||
+         quant_op_type == QuantizedOpType::QDQAdd ||
+         quant_op_type == QuantizedOpType::QDQMul ||
          IsQuantizedConv(quant_op_type);
 }
 

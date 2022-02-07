@@ -453,6 +453,7 @@ class BinaryOpSupportChecker : public BaseOpSupportChecker {
       const OpSupportCheckParams& params) const override;
   int GetMinSupportedOpSet(const NodeUnit& node_unit) const override;
 
+  bool IsNodeUnitTypeSupported(const NodeUnit& node_unit) const override;
   static bool IsQuantizedOp(const NodeUnit& node_unit);
 };
 
@@ -470,8 +471,21 @@ class BinaryOpSupportChecker : public BaseOpSupportChecker {
       });
 }
 
+bool BinaryOpSupportChecker::IsNodeUnitTypeSupported(const NodeUnit& node_unit) const {
+  if (node_unit.UnitType() == NodeUnit::Type::QDQGroup) {
+    const auto quant_type = GetQuantizedOpType(node_unit);
+    return quant_type == QuantizedOpType::QDQAdd ||
+           quant_type == QuantizedOpType::QDQMul;
+  }
+
+  return true;
+}
+
 /* static */ bool BinaryOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
-  return GetQuantizedOpType(node_unit) == QuantizedOpType::QLinearAdd;
+  const auto quant_type = GetQuantizedOpType(node_unit);
+  return quant_type == QuantizedOpType::QLinearAdd ||
+         quant_type == QuantizedOpType::QDQAdd ||
+         quant_type == QuantizedOpType::QDQMul;
 }
 
 int32_t BinaryOpSupportChecker::GetMinSupportedNNAPIFeatureLevel(
@@ -760,7 +774,7 @@ class PoolOpSupportChecker : public BaseOpSupportChecker {
   bool HasSupportedInputOutputsImpl(
       const InitializedTensorSet& initializers, const NodeUnit& node_unit,
       const OpSupportCheckParams& params) const override;
-  bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
+  bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override;
   static bool IsQuantizedOp(const NodeUnit& node_unit);
 };
 
@@ -775,6 +789,15 @@ class PoolOpSupportChecker : public BaseOpSupportChecker {
           "MaxPool",
           "QLinearAveragePool",
       });
+}
+
+bool PoolOpSupportChecker::IsNodeUnitTypeSupported(const NodeUnit& node_unit) const {
+  if (node_unit.UnitType() == NodeUnit::Type::QDQGroup) {
+    const auto quant_type = GetQuantizedOpType(node_unit);
+    return quant_type == QuantizedOpType::QDQAveragePool;
+  }
+
+  return true;
 }
 
 /* static */ bool PoolOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {

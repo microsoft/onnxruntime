@@ -88,6 +88,8 @@ enum class QuantizedOpType : uint8_t {
   QDQConv,
   QDQResize,
   QDQAveragePool,
+  QDQAdd,
+  QDQMul,
   // TODO, add other QDQ NodeUnit types
 };
 
