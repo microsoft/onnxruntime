@@ -5,11 +5,10 @@ message: "Please use this information to cite ONNX Runtime in
 authors:
   - affiliation: Microsoft Corporation
     given-names: ONNX Runtime developers
-title: "ONNX Runtime"
 date-released: 2018-11-29
 url: "https://onnxruntime.ai"
 repository-code: "https://github.com/microsoft/onnxruntime"
-license: "MIT License"
+license: "MIT"
 keywords:
   - deep learning
   - machine learning
