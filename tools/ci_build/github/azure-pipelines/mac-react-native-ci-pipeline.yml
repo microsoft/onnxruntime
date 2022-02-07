@@ -174,7 +174,7 @@ jobs:
     inputs:
       filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/js/pack-npm-packages.ps1'
       arguments: '"${{variables.npm_packaging_mode}}" $(Build.SourcesDirectory) react_native'
-      workingDirectory: '$(Build.BinariesDirectory)'
+      workingDirectory: '$(Build.SourcesDirectory)'
       errorActionPreference: stop
     displayName: Pack NPM packages
 
