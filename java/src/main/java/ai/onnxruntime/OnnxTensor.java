@@ -55,6 +55,10 @@ public class OnnxTensor implements OnnxValue {
     return OnnxValueType.ONNX_TYPE_TENSOR;
   }
 
+  /**
+   * Returns the native pointer.
+   * @return The native pointer.
+   */
   long getNativeHandle() {
     return nativeHandle;
   }
