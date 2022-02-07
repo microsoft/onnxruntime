@@ -92,7 +92,7 @@ bool LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int i
   return CUDA_CALL(cudaPeekAtLastError());
 }
 
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+#if CUDA_VERSION >= 11000 && __CUDA_ARCH__ >= 800
 template <unsigned TPB>
 __global__ void FastGeluKernel2(const nv_bfloat162 a, const nv_bfloat162 b, const nv_bfloat162 c, int input_length,
                                 int bias_length, const nv_bfloat162* input, const nv_bfloat162* bias,
@@ -111,7 +111,7 @@ template <>
 bool LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int input_length, int bias_length,
                           const BFloat16* input, const BFloat16* bias, BFloat16* output, bool /*use_half2*/) {
   constexpr int blockSize = 256;
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+#if CUDA_VERSION >= 11000 && __CUDA_ARCH__ >= 800
   if (0 == (bias_length & 1) && prop.major >= 7) {
     const int n = input_length / 2;
     const int gridSize = (n + blockSize - 1) / blockSize;
@@ -128,7 +128,7 @@ bool LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int i
     const int gridSize = (input_length + blockSize - 1) / blockSize;
     FastGeluKernel<BFloat16, blockSize>
         <<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length, input, bias, output);
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
+#if CUDA_VERSION >= 11000 && __CUDA_ARCH__ >= 800
   }
 #endif
   return CUDA_CALL(cudaPeekAtLastError());
