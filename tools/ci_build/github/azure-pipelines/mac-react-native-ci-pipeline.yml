@@ -1,8 +1,24 @@
+parameters:
+- name: NpmPublish
+  displayName: 'NPM packages publish configuration'
+  type: string
+  values:
+  - 'nightly (@dev)'
+  - 'release candidate (@rc)'
+  - 'production (@latest)'
+  - 'custom'
+  default: 'nightly (@dev)'
+
 variables:
   build_config: Release
-  npm_packaging_mode: $(NpmPublish)
-  ${{ if eq(variables.npm_packaging_mode, 'custom') }}:
-    npm_packaging_mode: -dev.$(Date:yyyyMMdd)-$(Rev:.r)
+  ${{ if eq(parameters.NpmPublish, 'nightly (@dev)') }}:
+    npm_packaging_mode: '-dev.$(Date:yyyyMMdd)-$(Rev:.r)'
+  ${{ if eq(parameters.NpmPublish, 'release candidate (@rc)') }}:
+    npm_packaging_mode: 'rc'
+  ${{ if eq(parameters.NpmPublish, 'production (@latest)') }}:
+    npm_packaging_mode: 'release'
+  ${{ if eq(parameters.NpmPublish, 'custom') }}:
+    npm_packaging_mode: '$(VersionSuffix)'
 
 jobs:
 - template: templates/android-java-api-aar.yml
