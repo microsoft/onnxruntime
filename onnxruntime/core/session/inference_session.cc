@@ -1871,9 +1871,6 @@ Status InferenceSession::Run(const RunOptions& run_options,
       ++current_num_runs_;
       ORT_RETURN_IF_ERROR_SESSIONID_(cached_cuda_execution_provider_for_cuda_graph_replay_->GraphReplay());
   } else {
-    if (cached_cuda_execution_provider_for_cuda_graph_replay_) {
-      LOGS(*session_logger_, INFO) << "Capturing the CUDA Graph for this model";
-    }
     std::vector<IExecutionProvider*> exec_providers_to_stop;
     exec_providers_to_stop.reserve(execution_providers_.NumProviders());
 

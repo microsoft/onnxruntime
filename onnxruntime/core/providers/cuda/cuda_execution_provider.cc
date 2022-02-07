@@ -178,10 +178,6 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
     }
   }
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-  graph_.SetStream(stream_);
-#endif
-
   size_t free = 0;
   size_t total = 0;
   CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
@@ -337,6 +333,8 @@ Status CUDAExecutionProvider::OnRunStart() {
   deferred_release_cpu_ptr_.emplace(current_deferred_release_event, DeferredReleaseCPUPtrs());
 
   if (ConfiguredForGraphCapture() && !IsGraphCaptured()) {
+    LOGS_DEFAULT(INFO) << "Capturing the CUDA Graph for this model";
+    graph_.SetStream(static_cast<cudaStream_t>(GetComputeStream()));
     CaptureBegin();
   }
   return Status::OK();

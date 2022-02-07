@@ -22,7 +22,7 @@ void CUDAGraph::CaptureBegin() {
   CUDA_CALL_THROW(cudaDeviceSynchronize());
   CUDA_CALL_THROW(cudaStreamBeginCapture(capture_stream_, cudaStreamCaptureModeGlobal));
 #else
-  ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 11.0");
+  ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 10.0");
 #endif
 }
 
@@ -39,7 +39,7 @@ void CUDAGraph::CaptureEnd() {
   CUDA_CALL_THROW(cudaGraphDestroy(graph_));
   has_graph_ = false;
 #else
-  ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 11.0");
+  ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 10.0");
 #endif
 }
 
@@ -58,7 +58,7 @@ Status CUDAGraph::Replay() {
     CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
   }
 #else
-  CUDA_RETURN_IF_ERROR("CUDA graphs can only be used in Onnxruntime built with CUDA >= 11.0");
+  CUDA_RETURN_IF_ERROR("CUDA graphs can only be used in Onnxruntime built with CUDA >= 10.0");
 #endif
   return Status::OK();
 }
@@ -74,7 +74,7 @@ void CUDAGraph::Reset() {
     has_graph_exec_ = false;
   }
 #else
-  ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 11.0");
+  ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 10.0");
 #endif
 }
 

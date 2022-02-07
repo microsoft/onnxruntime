@@ -639,7 +639,8 @@ class OrtValue:
     
     def update_inplace(self, np_arr):
         '''
-        Update the OrtValue in place with a new Numpy array.
+        Update the OrtValue in place with a new Numpy array. The numpy contents
+        are copied over to the device memory backing the OrtValue.
         '''
         self._ortvalue.update_inplace(np_arr)
 
