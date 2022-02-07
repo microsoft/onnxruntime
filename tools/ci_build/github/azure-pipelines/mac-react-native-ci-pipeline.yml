@@ -12,7 +12,7 @@ parameters:
 variables:
   build_config: Release
   ${{ if eq(parameters.NpmPublish, 'nightly (@dev)') }}:
-    npm_packaging_mode: '-dev.$(Date:yyyyMMdd)-$(Rev:.r)'
+    npm_packaging_mode: '-dev.$(Get-Date -Format yyyyMMdd)-$(git rev-parse --short HEAD)'
   ${{ if eq(parameters.NpmPublish, 'release candidate (@rc)') }}:
     npm_packaging_mode: 'rc'
   ${{ if eq(parameters.NpmPublish, 'production (@latest)') }}:
