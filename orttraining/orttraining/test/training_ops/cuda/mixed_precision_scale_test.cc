@@ -172,6 +172,7 @@ TEST(CudaKernelTest, MixedPrecisionScale_bfloat16_bfloat16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+// failed with data error, disabled for now 
 TEST(CudaKernelTest, DISABLED_MixedPrecisionScale_float_bfloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
