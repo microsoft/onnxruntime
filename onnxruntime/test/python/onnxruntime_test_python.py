@@ -18,9 +18,7 @@ from onnxruntime.capi.onnxruntime_pybind11_state import Fail
 if platform.system() == 'Windows' and sys.version_info.major >= 3 and sys.version_info.minor >= 8:
     os.add_dll_directory(os.getcwd())
 
-available_providers = [
-    provider for provider in onnxrt.get_available_providers()
-    if provider not in {'TvmExecutionProvider'}]
+available_providers = [provider for provider in onnxrt.get_available_providers()]
 
 
 class TestInferenceSession(unittest.TestCase):
@@ -383,13 +381,15 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, rescontiguous[0], rtol=1e-05, atol=1e-08)
 
     def testRunModelMultipleThreads(self):
-        available_providers = onnxrt.get_available_providers()
-
-        # Skip this test for a "pure" DML onnxruntime python wheel. We keep this test enabled for instances where both DML and CUDA
-        # EPs are available (Windows GPU CI pipeline has this config) - this test will pass because CUDA has higher precendence than DML
-        # and the nodes are assigned to only the CUDA EP (which supports this test)
-        if ('DmlExecutionProvider' in available_providers and not 'CUDAExecutionProvider' in available_providers):
-            print("Skipping testRunModelMultipleThreads as the DML EP does not support calling Run() on different threads using the same session object ")
+        # Skip this test for a "pure" DML onnxruntime python wheel.
+        # We keep this test enabled for instances where both DML and CUDA EPs are available
+        # (Windows GPU CI pipeline has this config) - this test will pass because CUDA has higher precedence
+        # than DML and the nodes are assigned to only the CUDA EP (which supports this test).
+        # Also this test is skipped for TVM EP.
+        if ('DmlExecutionProvider' in available_providers and 'CUDAExecutionProvider' not in available_providers
+                or 'TvmExecutionProvider' in available_providers):
+            print("Skipping testRunModelMultipleThreads as the DML EP and TVM EP does not support calling Run()"
+                  " on different threads using the same session object.")
         else:
             so = onnxrt.SessionOptions()
             so.log_verbosity_level = 1
@@ -426,6 +426,9 @@ class TestInferenceSession(unittest.TestCase):
         self.assertTrue('CPU' in device or 'GPU' in device)
 
     def testRunModelSymbolicInput(self):
+        if 'TvmExecutionProvider' in available_providers:
+            print('Skipped. TVM EP doesn\'t support symbolic inputs.')
+            return
         sess = onnxrt.InferenceSession(get_name("matmul_2.onnx"), providers=available_providers)
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         input_name = sess.get_inputs()[0].name
@@ -517,6 +520,9 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(x, res[0])
 
     def testInputBytes(self):
+        if 'TvmExecutionProvider' in available_providers:
+            print('Skipped. TVM EP doesn\'t support byte type inputs.')
+            return
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers)
         x = np.array([b'this', b'is', b'identity', b'test']).reshape((2, 2))
 
@@ -538,6 +544,9 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(x, res[0].astype('|S8'))
 
     def testInputObject(self):
+        if 'TvmExecutionProvider' in available_providers:
+            print('Skipped. TVM EP doesn\'t support object type inputs.')
+            return
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers)
         x = np.array(['this', 'is', 'identity', 'test'], object).reshape((2, 2))
 
@@ -559,6 +568,9 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_equal(x, res[0])
 
     def testInputVoid(self):
+        if 'TvmExecutionProvider' in available_providers:
+            print('Skipped. TVM EP doesn\'t support void type inputs.')
+            return
         sess = onnxrt.InferenceSession(get_name("identity_string.onnx"), providers=available_providers)
         # numpy 1.20+ doesn't automatically pad the bytes based entries in the array when dtype is np.void,
         # so we use inputs where that is the case
@@ -675,6 +687,9 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(output_expected, res[0])
 
     def testSequenceConstruct(self):
+        if 'TvmExecutionProvider' in available_providers:
+            print('Skipped. TVM EP doesn\'t support SequenceConstruct operator.')
+            return
         sess = onnxrt.InferenceSession(get_name("sequence_construct.onnx"),
                                        providers=available_providers)
 
@@ -814,6 +829,9 @@ class TestInferenceSession(unittest.TestCase):
         self.assertTrue(np.array_equal(res[0], np.array([[2.0, 2.0], [12.0, 12.0], [30.0, 30.0]], dtype=np.float32)))
 
     def testRegisterCustomOpsLibrary(self):
+        if 'TvmExecutionProvider' in onnxrt.get_available_providers():
+            print('Skipped. TVM EP doesn\'t support custom operators.')
+            return
         if sys.platform.startswith("win"):
             shared_library = 'custom_op_library.dll'
             if not os.path.exists(shared_library):
