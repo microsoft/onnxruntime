@@ -83,5 +83,53 @@ GetQDQTestCaseFn BuildQDQResizeTestCase(const std::vector<int64_t>& input_shape,
                                         const std::string& mode = "nearest",
                                         const std::string& coordinate_transformation_mode = "half_pixel");
 
+template <typename Input1Type, typename Input2Type, typename OutputType>
+GetQDQTestCaseFn BuildBinaryOpTestCase(const std::vector<int64_t>& input_shape,
+                                       const std::string& op_type) {
+  return [input_shape, op_type](ModelTestBuilder& builder) {
+    auto* input1_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
+    auto* input2_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
+    auto* output_arg = builder.MakeOutput();
+
+    // add QDQ 1
+    auto* q1_output = builder.MakeIntermediate();
+    auto* dq1_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<Input1Type>(input1_arg,
+                                              .004f,
+                                              std::numeric_limits<Input1Type>::max() / 2,
+                                              q1_output);
+    builder.AddDequantizeLinearNode<Input1Type>(q1_output,
+                                                .0039f,
+                                                std::numeric_limits<Input1Type>::max() / 2,
+                                                dq1_output);
+
+    // add QDQ 2
+    auto* q2_output = builder.MakeIntermediate();
+    auto* dq2_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<Input2Type>(input2_arg,
+                                              .004f,
+                                              std::numeric_limits<Input2Type>::max() / 2,
+                                              q2_output);
+    builder.AddDequantizeLinearNode<Input2Type>(q2_output,
+                                                .0039f,
+                                                std::numeric_limits<Input2Type>::max() / 2,
+                                                dq2_output);
+
+    // add binary operator
+    auto* binary_op_output = builder.MakeIntermediate();
+    builder.AddNode(op_type, {dq1_output, dq2_output}, {binary_op_output});
+
+    // add QDQ output
+    auto* q3_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<OutputType>(binary_op_output,
+                                              .0038f,
+                                              std::numeric_limits<OutputType>::max() / 2,
+                                              q3_output);
+    builder.AddDequantizeLinearNode<OutputType>(q3_output,
+                                                .0039f,
+                                                std::numeric_limits<OutputType>::max() / 2,
+                                                output_arg);
+  };
+}
 }  // namespace test
 }  // namespace onnxruntime

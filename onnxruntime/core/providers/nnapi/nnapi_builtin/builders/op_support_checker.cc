@@ -210,7 +210,7 @@ static bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, con
   const auto& op_type = node_unit.OpType();
   auto quant_op_type = GetQuantizedOpType(node_unit);
 
-  ORT_ENFORCE(quant_op_type != QuantizedOpType::QLinearMatMul, "[", op_type, "] is not a quantized op");
+  ORT_ENFORCE(quant_op_type != QuantizedOpType::Unknown, "[", op_type, "] is not a quantized op");
 
   bool is_quant_conv = IsQuantizedConv(quant_op_type);
   bool is_quant_matmul = (quant_op_type == QuantizedOpType::QLinearMatMul);
