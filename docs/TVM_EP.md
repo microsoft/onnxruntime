@@ -23,7 +23,7 @@ apt-get install -y python3 python3-dev python3-pip python3-setuptools gcc libtin
 pip3 install numpy decorator attrs
 ```
 
-If you want to use the `GPU` then make sure you have installed NVidia driver and CUDA Toolkit.
+Also, the current implementation has `GPU` support for TVM EP. For now, you can use an `NVidia GPU` with CUDA Toolkit support. To do this, make sure you have installed the NVidia driver and CUDA Toolkit. More detailed instructions can be found on the [official page](https://developer.nvidia.com/cuda-toolkit).
 
 Clone this repo.
 In order to build ONNXRT you will need to have CMake 3.18 or higher. In Ubuntu 20.04 you can use the following commands to install the latest version of CMake:
