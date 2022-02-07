@@ -281,9 +281,67 @@ bool IsOperationDeterministic(const std::string& domain, const std::string& op) 
   if (domain.compare(kOnnxDomain) == 0) {
     auto iter = std::find(kOnnxDomainNonDeterministicOps.begin(), kOnnxDomainNonDeterministicOps.end(), op);
     return iter == kOnnxDomainNonDeterministicOps.end();
-  } 
+  }
   // Unknown domain. Assume the op is not deterministic.
-  return false;  
+  return false;
+}
+
+bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, float& max) {
+  min = std::numeric_limits<float>::lowest();
+  max = std::numeric_limits<float>::max();
+
+  // Clip opset 1 and 6 has min and max as attributes. they're inputs from opset 11 on.
+  bool min_max_are_attributes = graph_utils::IsSupportedOptypeVersionAndDomain(node, "Clip", {1, 6});
+  bool min_max_are_constant_values = true;
+
+  if (min_max_are_attributes) {
+    min = graph_utils::GetNodeAttribute(node, "min")->f();
+    max = graph_utils::GetNodeAttribute(node, "max")->f();
+  } else {
+    // update min/max if provided via a constant initializer
+    // return true if value is default or coming from a constant initializer and update 'value'
+    // return false if value is mutable
+    auto update_if_constant_value = [&graph](const Node& node, size_t input_idx, float& value) {
+      const auto& input_defs = node.InputDefs();
+      const NodeArg* input = (input_defs.size() > input_idx) ? input_defs[input_idx] : nullptr;
+
+      if (input == nullptr || !input->Exists()) {
+        // optional input not specified so using default value
+        return true;
+      }
+
+      bool is_constant = true;
+      const ONNX_NAMESPACE::TensorProto* initializer = graph_utils::GetConstantInitializer(graph, input->Name());
+      if (initializer) {
+        Initializer i(*initializer, graph.ModelPath());
+        switch (initializer->data_type()) {
+          case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+            value = *i.data<float>();
+            break;
+          // double isn't currently supported
+          //case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+          //  value = static_cast<float>(*i.data<double>());
+          //  break;
+          case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+            value = math::halfToFloat(i.data<MLFloat16>()->val);
+            break;
+          default:
+            ORT_THROW("Unexpected data type for Clip input of ", initializer->data_type());
+        }
+      } else {
+        is_constant = false;
+      }
+
+      return is_constant;
+    };
+
+    // 'min' is input 1, 'max' is input 2. both are optional.
+    // if the input is constant, 'min' or 'max' is updated by the call to get_if_constant_value
+    min_max_are_constant_values = update_if_constant_value(node, 1, min) &&
+                                  update_if_constant_value(node, 2, max);
+  }
+
+  return min_max_are_constant_values;
 }
 
 #endif  // #if !defined(ORT_MINIMAL_BUILD)

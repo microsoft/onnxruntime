@@ -68,13 +68,14 @@ import torch
 from transformers import (AutoConfig, AutoTokenizer, AutoModel, GPT2Model, LxmertConfig)
 
 
-def run_onnxruntime(use_gpu, model_names, model_class, precision, num_threads, batch_sizes, sequence_lengths,
+def run_onnxruntime(use_gpu, provider, model_names, model_class, precision, num_threads, batch_sizes, sequence_lengths,
                     repeat_times, input_counts, optimize_onnx, validate_onnx, cache_dir, onnx_dir, verbose, overwrite,
                     disable_ort_io_binding, use_raw_attention_mask, model_fusion_statistics, model_source):
     import onnxruntime
 
     results = []
-    if use_gpu and ('CUDAExecutionProvider' not in onnxruntime.get_available_providers()):
+    if (use_gpu and ('CUDAExecutionProvider' not in onnxruntime.get_available_providers()) and
+        ('ROCMExecutionProvider' not in onnxruntime.get_available_providers())):
         logger.error(
             "Please install onnxruntime-gpu package instead of onnxruntime, and use a machine with GPU for testing gpu performance."
         )
@@ -105,6 +106,7 @@ def run_onnxruntime(use_gpu, model_names, model_class, precision, num_threads, b
 
             ort_session = create_onnxruntime_session(onnx_model_file,
                                                      use_gpu,
+                                                     provider,
                                                      enable_all_optimization=True,
                                                      num_threads=num_threads,
                                                      verbose=verbose)
@@ -425,7 +427,13 @@ def parse_arguments():
                         default=os.path.join('.', 'onnx_models'),
                         help="Directory to store onnx models")
 
-    parser.add_argument("-g", "--use_gpu", required=False, action="store_true", help="Run on cuda device")
+    parser.add_argument("-g", "--use_gpu", required=False, action="store_true", help="Run on gpu device")
+
+    parser.add_argument("--provider",
+                        required=False,
+                        type=str,
+                        default=None,
+                        help="Execution provider to use")
 
     parser.add_argument(
         "-p",
@@ -545,7 +553,7 @@ def main():
         if enable_onnxruntime:
             try:
                 use_raw_attention_mask = True
-                results += run_onnxruntime(args.use_gpu, args.models, args.model_class, args.precision, num_threads,
+                results += run_onnxruntime(args.use_gpu, args.provider, args.models, args.model_class, args.precision, num_threads,
                                            args.batch_sizes, args.sequence_lengths, args.test_times, args.input_counts,
                                            args.optimize_onnx, args.validate_onnx, args.cache_dir, args.onnx_dir,
                                            args.verbose, args.overwrite, args.disable_ort_io_binding,

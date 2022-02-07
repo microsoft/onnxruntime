@@ -70,8 +70,11 @@ QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit) {
       return QuantizedOpType::QDQConv;
     else if (op_type == "Resize")
       return QuantizedOpType::QDQResize;
+    else if (op_type == "AveragePool")
+      return QuantizedOpType::QDQAveragePool;
   } else {
     // throw?
+    // Do we want to throw here? seems got neglected last time
   }
 
   return QuantizedOpType::Unknown;
@@ -101,6 +104,11 @@ ConvType GetConvType(const NodeUnit& node_unit, const InitializedTensorSet& init
 bool IsQuantizedConv(QuantizedOpType quant_op_type) {
   return (quant_op_type == QuantizedOpType::QLinearConv) ||
          (quant_op_type == QuantizedOpType::QDQConv);
+}
+
+bool IsQuantizedPool(QuantizedOpType quant_op_type) {
+  return (quant_op_type == QuantizedOpType::QLinearAveragePool) ||
+         (quant_op_type == QuantizedOpType::QDQAveragePool);
 }
 
 bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type) {
