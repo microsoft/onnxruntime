@@ -29,4 +29,12 @@ void LearningModelExperimental::Save(hstring const& file_name) {
     modelp->SaveToFile(file_name);
 }
 
+wfc::IMapView<hstring, hstring> LearningModelExperimental::EditModelName(hstring const& model_name) {
+    // telemetry_helper.LogApiUsage("LearningModelExperimental::Save");
+    // auto modelp = model_.as<winmlp::LearningModel>();
+    // modelp->SaveToFile(file_name);
+    auto name = model_name;
+    return model_.Metadata();
+}
+
 }
