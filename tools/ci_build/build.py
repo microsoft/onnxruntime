@@ -765,7 +765,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 or args.use_rknpu)
             else "OFF"),
         "-Donnxruntime_USE_NUPHAR_TVM=" + ("ON" if args.use_nuphar else "OFF"),
-        # TODO(vvchernov): do we constantly use LLVM if we use TVM EP? if we need CUDA for TVM EP?
         "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_nuphar or args.use_tvm else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),

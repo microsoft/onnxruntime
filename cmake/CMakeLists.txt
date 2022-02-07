@@ -1417,13 +1417,8 @@ if (onnxruntime_USE_TVM)
   endif()
 
   set(USE_OPENMP gnu CACHE STRING "Only defined for TVM")
-  # TODO(vvchernov): check messages and remove if need
-  message(STATUS "TVM BEFORE USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
-  message(STATUS "tvm_SOURCE_DIR=${tvm_SOURCE_DIR}")
-  message(STATUS "tvm_BINARY_DIR=${tvm_BINARY_DIR}")
   add_subdirectory(${tvm_SOURCE_DIR} ${tvm_BINARY_DIR} EXCLUDE_FROM_ALL)
-  message(STATUS "TVM AFTER USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
-  
+
   set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
 
   set(TVM_INCLUDES ${tvm_SOURCE_DIR}/include
@@ -1431,7 +1426,6 @@ if (onnxruntime_USE_TVM)
     ${tvm_SOURCE_DIR}/3rdparty/dlpack/include
     $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>)
 
-  #TODO(vvchernov): check
   set(onnxruntime_tvm_libs onnxruntime_providers_tvm)
 
   # needs to link with stdc++fs in Linux
