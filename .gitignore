@@ -51,6 +51,7 @@ java/hs_*.log
 onnxruntime/python/version_info.py
 /orttraining/orttraining/eager/ort_aten.g.cpp
 /orttraining/orttraining/eager/ort_customops.g.cpp
+/orttraining/orttraining/eager/onnx_eager.g.cpp
 /csharp/**/packages
 # direnv, posh-direnv
 .envrc

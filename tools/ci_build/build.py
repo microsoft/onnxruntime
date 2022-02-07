@@ -566,6 +566,8 @@ def parse_arguments():
                         help='Module containing custom op mappings for eager mode.')
     parser.add_argument('--eager_customop_header', default=None,
                         help='Header containing custom op definitions for eager mode.')
+    parser.add_argument('--eager_onnx_module', action='store_true',
+                        help='Module containing eager mode ops for onnx.')
 
     parser.add_argument(
         "--enable_external_custom_op_schemas", action='store_true',
@@ -2264,7 +2266,7 @@ def main():
             elif args.eager_customop_header and not args.eager_customop_module:
                 raise Exception('eager_customop_module must be provided when eager_customop_header is')
 
-            def gen_ops(gen_cpp_name: str, header_file: str, ops_module: str, custom_ops: bool):
+            def gen_ops(gen_cpp_name: str, header_file: str, ops_module: str, custom_ops: str):
                 gen_cpp_scratch_name = gen_cpp_name + '.working'
                 print(f'Generating ORT ATen overrides (output_file: {gen_cpp_name}, header_file: {header_file},'
                       f'ops_module: {ops_module}), custom_ops: {custom_ops}')
@@ -2274,8 +2276,8 @@ def main():
                        '--ops_module', ops_module,
                        '--header_file', header_file]
 
-                if custom_ops:
-                    cmd += ["--custom_ops"]
+                if len(custom_ops) > 0:
+                    cmd += ["--custom_ops", custom_ops]
 
                 subprocess.check_call(cmd)
 
@@ -2292,7 +2294,7 @@ def main():
                 regdecs_path = os.path.join(os.path.dirname(torch.__file__), 'include/ATen/RegistrationDeclarations.h')
 
                 ops_module = os.path.join(eager_root_dir, 'opgen/opgen/atenops.py')
-                gen_ops(os.path.join(eager_root_dir, 'ort_aten.g.cpp'), regdecs_path, ops_module, False)
+                gen_ops(os.path.join(eager_root_dir, 'ort_aten.g.cpp'), regdecs_path, ops_module, '')
 
                 # generate custom ops
                 if not args.eager_customop_header:
@@ -2305,7 +2307,22 @@ def main():
                     args.eager_customop_module = os.path.join(eager_root_dir, 'opgen/opgen/custom_ops.py')
 
                 gen_ops(os.path.join(eager_root_dir, 'ort_customops.g.cpp'),
-                        args.eager_customop_header, args.eager_customop_module, True)
+                        args.eager_customop_header, args.eager_customop_module, 'CustomOps')
+                
+                if args.eager_onnx_module:
+                    onnx_ops_header = os.path.realpath(os.path.join(
+                        eager_root_dir,
+                        'opgen',
+                        'opgen',
+                        'OnnxOpDeclarations.h'))
+                    onnx_ops_module = os.path.realpath(os.path.join(
+                        eager_root_dir,
+                        'opgen',
+                        'opgen',
+                        'onnx_op_eager.py'
+                    ))
+                    gen_ops(os.path.join(eager_root_dir, 'onnx_eager.g.cpp'),
+                        onnx_ops_header, onnx_ops_module, 'OnnxOps')
 
             gen_ort_ops()
         if args.enable_external_custom_op_schemas and not is_linux():

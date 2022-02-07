@@ -17,7 +17,7 @@ parser.add_argument('--ops_module', type=str,
 parser.add_argument('--output_file', default=None, type=str, help='Output file [default to std out]')
 parser.add_argument('--header_file', type=str,
                     help='Header file which contains ATen / Pytorch operation signature')
-parser.add_argument('--custom_ops', action='store_true', help='Whether we are generating code for custom ops or native operation')
+parser.add_argument('--custom_ops', type=str, default='', help='Name for the custom op module, empty string means not for custom op')
 
 args = parser.parse_args()
 ops_module = SourceFileLoader("opgen.customop", args.ops_module).load_module()

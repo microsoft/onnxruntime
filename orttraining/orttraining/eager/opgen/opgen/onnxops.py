@@ -12,7 +12,7 @@ class Abs(ONNXOp):
 
   def __init__(self, X):
     super().__init__('Abs', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       X)
 
 class Acos(ONNXOp):
@@ -191,7 +191,7 @@ class Add(ONNXOp):
 
   def __init__(self, A, B):
     super().__init__('Add', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       A,B)
 
 class And(ONNXOp):
@@ -223,7 +223,7 @@ class ArgMax(ONNXOp):
     keepdims=None, 
     select_last_index=None):
     super().__init__('ArgMax', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       data,
       axis=ONNXAttr(axis, AttrType.INT), 
       keepdims=ONNXAttr(keepdims, AttrType.INT), 
@@ -245,7 +245,7 @@ class ArgMin(ONNXOp):
     keepdims=None, 
     select_last_index=None):
     super().__init__('ArgMin', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       data,
       axis=ONNXAttr(axis, AttrType.INT), 
       keepdims=ONNXAttr(keepdims, AttrType.INT), 
@@ -259,7 +259,7 @@ class ArrayFeatureExtractor(ONNXOp):
 
   def __init__(self, X, Y):
     super().__init__('ArrayFeatureExtractor', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}, {'at::kLong'}],
+      [{'at::kDouble', 'at::kLong', 'at::kFloat', 'at::kInt'}, {'at::kLong'}],
       X,Y)
 
 class Asin(ONNXOp):
@@ -385,6 +385,8 @@ class BatchNormalization(ONNXOp):
   
   ```
   
+  The computation of ReduceMean and ReduceVar uses float to avoid overflow for float16 inputs.
+  
   When training_mode=False:
   ```
   Y = (X - input_mean) / sqrt(input_var + epsilon) * scale + B
@@ -400,11 +402,30 @@ class BatchNormalization(ONNXOp):
     momentum=None, 
     training_mode=None):
     super().__init__('BatchNormalization', 3,
-      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
       X,scale,B,input_mean,input_var,
       epsilon=ONNXAttr(epsilon, AttrType.FLOAT), 
       momentum=ONNXAttr(momentum, AttrType.FLOAT), 
       training_mode=ONNXAttr(training_mode, AttrType.INT))
+
+class Bernoulli(ONNXOp):
+  """
+  Draws binary random numbers (0 or 1) from a Bernoulli distribution. The input tensor should be a tensor
+  containing probabilities p (a value in the range [0,1]) to be used for drawing the binary random number,
+  where an output of 1 is produced with probability p and an output of 0 is produced with probability (1-p).
+  
+  This operator is non-deterministic and may not produce the same values in different
+  implementations (even if a seed is specified).
+  """
+
+  def __init__(self, input,
+    dtype=None, 
+    seed=None):
+    super().__init__('Bernoulli', 1,
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat'}],
+      input,
+      dtype=ONNXAttr(dtype, AttrType.INT), 
+      seed=ONNXAttr(seed, AttrType.FLOAT))
 
 class Binarizer(ONNXOp):
   """
@@ -414,7 +435,7 @@ class Binarizer(ONNXOp):
   def __init__(self, X,
     threshold=None):
     super().__init__('Binarizer', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kLong', 'at::kFloat', 'at::kInt'}],
       X,
       threshold=ONNXAttr(threshold, AttrType.FLOAT))
 
@@ -467,9 +488,21 @@ class Cast(ONNXOp):
   def __init__(self, input,
     to=None):
     super().__init__('Cast', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       input,
       to=ONNXAttr(to, AttrType.INT))
+
+class CastLike(ONNXOp):
+  """
+  The operator casts the elements of a given input tensor (the first input) to
+  the same data type as the elements of the second input tensor.
+  See documentation of the Cast operator for further details.
+  """
+
+  def __init__(self, input, target_type):
+    super().__init__('CastLike', 1,
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
+      input,target_type)
 
 class CastMap(ONNXOp):
   """
@@ -523,7 +556,7 @@ class Ceil(ONNXOp):
 
   def __init__(self, X):
     super().__init__('Ceil', 1,
-      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
       X)
 
 class Celu(ONNXOp):
@@ -553,7 +586,7 @@ class Clip(ONNXOp):
 
   def __init__(self, input, min, max):
     super().__init__('Clip', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       input,min,max)
 
 class Compress(ONNXOp):
@@ -567,7 +600,7 @@ class Compress(ONNXOp):
   def __init__(self, input, condition,
     axis=None):
     super().__init__('Compress', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}, {'at::kBool'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kBool'}],
       input,condition,
       axis=ONNXAttr(axis, AttrType.INT))
 
@@ -579,7 +612,7 @@ class Concat(ONNXOp):
   def __init__(self, inputs,
     axis=None):
     super().__init__('Concat', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       inputs,
       axis=ONNXAttr(axis, AttrType.INT))
 
@@ -696,7 +729,7 @@ class ConvTranspose(ONNXOp):
   output_shape can also be explicitly specified in which case pads values are auto generated using these equations:
   
     total_padding[i] = stride[i] * (input_size[i] - 1) + output_padding[i] + ((kernel_shape[i] - 1) * dilations[i] + 1) - output_shape[i]
-    If (auto_pads != SAME_UPPER): pads[start_i] = total_padding[i]/2; pads[end_i] = total_padding[i] - (total_padding[i]/2)
+    If (auto_pads == SAME_UPPER): pads[start_i] = total_padding[i]/2; pads[end_i] = total_padding[i] - (total_padding[i]/2)
     Else: pads[start_i] = total_padding[i] - (total_padding[i]/2); pads[end_i] = (total_padding[i]/2).
   
       
@@ -771,7 +804,7 @@ class CumSum(ONNXOp):
     exclusive=None, 
     reverse=None):
     super().__init__('CumSum', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong', 'at::kInt'}],
+      [{'at::kHalf', 'at::kLong', 'at::kFloat', 'at::kBFloat16', 'at::kInt', 'at::kDouble'}, {'at::kLong', 'at::kInt'}],
       x,axis,
       exclusive=ONNXAttr(exclusive, AttrType.INT), 
       reverse=ONNXAttr(reverse, AttrType.INT))
@@ -810,7 +843,7 @@ class DepthToSpace(ONNXOp):
     blocksize=None, 
     mode=None):
     super().__init__('DepthToSpace', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       input,
       blocksize=ONNXAttr(blocksize, AttrType.INT), 
       mode=ONNXAttr(mode, AttrType.STRING))
@@ -881,7 +914,7 @@ class Div(ONNXOp):
 
   def __init__(self, A, B):
     super().__init__('Div', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       A,B)
 
 class Dropout(ONNXOp):
@@ -903,7 +936,7 @@ class Dropout(ONNXOp):
   def __init__(self, data, ratio, training_mode,
     seed=None):
     super().__init__('Dropout', 2,
-      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kBool'}],
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kBool'}],
       data,ratio,training_mode,
       seed=ONNXAttr(seed, AttrType.INT))
 
@@ -968,7 +1001,7 @@ class Einsum(ONNXOp):
   def __init__(self, Inputs,
     equation=None):
     super().__init__('Einsum', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat'}],
+      [{'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       Inputs,
       equation=ONNXAttr(equation, AttrType.STRING))
 
@@ -996,7 +1029,7 @@ class Equal(ONNXOp):
 
   def __init__(self, A, B):
     super().__init__('Equal', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       A,B)
 
 class Erf(ONNXOp):
@@ -1006,7 +1039,7 @@ class Erf(ONNXOp):
 
   def __init__(self, input):
     super().__init__('Erf', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       input)
 
 class Exp(ONNXOp):
@@ -1016,7 +1049,7 @@ class Exp(ONNXOp):
 
   def __init__(self, input):
     super().__init__('Exp', 1,
-      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
       input)
 
 class Expand(ONNXOp):
@@ -1033,7 +1066,7 @@ class Expand(ONNXOp):
 
   def __init__(self, input, shape):
     super().__init__('Expand', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kLong'}],
       input,shape)
 
 class EyeLike(ONNXOp):
@@ -1051,7 +1084,7 @@ class EyeLike(ONNXOp):
     dtype=None, 
     k=None):
     super().__init__('EyeLike', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       input,
       dtype=ONNXAttr(dtype, AttrType.INT), 
       k=ONNXAttr(k, AttrType.INT))
@@ -1067,7 +1100,7 @@ class FeatureVectorizer(ONNXOp):
   def __init__(self, X,
     inputdimensions=None):
     super().__init__('FeatureVectorizer', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kLong', 'at::kFloat', 'at::kInt'}],
       X,
       inputdimensions=ONNXAttr(inputdimensions, AttrType.INTS))
 
@@ -1081,7 +1114,7 @@ class Flatten(ONNXOp):
   def __init__(self, input,
     axis=None):
     super().__init__('Flatten', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       input,
       axis=ONNXAttr(axis, AttrType.INT))
 
@@ -1094,7 +1127,7 @@ class Floor(ONNXOp):
 
   def __init__(self, X):
     super().__init__('Floor', 1,
-      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
       X)
 
 class Gather(ONNXOp):
@@ -1159,7 +1192,7 @@ class Gather(ONNXOp):
   def __init__(self, data, indices,
     axis=None):
     super().__init__('Gather', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong', 'at::kInt'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kLong', 'at::kInt'}],
       data,indices,
       axis=ONNXAttr(axis, AttrType.INT))
 
@@ -1195,10 +1228,8 @@ class GatherElements(ONNXOp):
     ]
     axis = 1
     output = [
-        [
-          [1, 1],
-          [4, 3],
-        ],
+        [1, 1],
+        [4, 3],
     ]
   ```
   Example 2:
@@ -1214,10 +1245,8 @@ class GatherElements(ONNXOp):
     ]
     axis = 0
     output = [
-        [
-          [4, 8, 3],
-          [7, 2, 3],
-        ],
+        [4, 8, 3],
+        [7, 2, 3],
     ]
   ```
   """
@@ -1225,7 +1254,7 @@ class GatherElements(ONNXOp):
   def __init__(self, data, indices,
     axis=None):
     super().__init__('GatherElements', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong', 'at::kInt'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kLong', 'at::kInt'}],
       data,indices,
       axis=ONNXAttr(axis, AttrType.INT))
 
@@ -1325,7 +1354,7 @@ class GatherND(ONNXOp):
   def __init__(self, data, indices,
     batch_dims=None):
     super().__init__('GatherND', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kLong'}],
       data,indices,
       batch_dims=ONNXAttr(batch_dims, AttrType.INT))
 
@@ -1352,7 +1381,7 @@ class Gemm(ONNXOp):
     transA=None, 
     transB=None):
     super().__init__('Gemm', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kLong', 'at::kFloat', 'at::kBFloat16', 'at::kInt', 'at::kDouble'}, {'at::kHalf', 'at::kLong', 'at::kFloat', 'at::kBFloat16', 'at::kInt', 'at::kDouble'}, {'at::kHalf', 'at::kLong', 'at::kFloat', 'at::kBFloat16', 'at::kInt', 'at::kDouble'}],
       A,B,C,
       alpha=ONNXAttr(alpha, AttrType.FLOAT), 
       beta=ONNXAttr(beta, AttrType.FLOAT), 
@@ -1528,7 +1557,7 @@ class Gradient(ONNXOp):
     y=None, 
     zs=None):
     super().__init__('Gradient', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       Inputs,
       xs=ONNXAttr(xs, AttrType.STRINGS), 
       y=ONNXAttr(y, AttrType.STRING), 
@@ -1544,7 +1573,7 @@ class Greater(ONNXOp):
 
   def __init__(self, A, B):
     super().__init__('Greater', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       A,B)
 
 class GreaterOrEqual(ONNXOp):
@@ -1557,7 +1586,7 @@ class GreaterOrEqual(ONNXOp):
 
   def __init__(self, A, B):
     super().__init__('GreaterOrEqual', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat'}],
+      [{'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       A,B)
 
 class GRU(ONNXOp):
@@ -1664,16 +1693,15 @@ class Hardmax(ONNXOp):
   
    Hardmax(element in input, axis) = 1 if the element is the first maximum value along the specified axis, 0 otherwise
   
-  The input does not need to explicitly be a 2D vector. The "axis" attribute
-  indicates the dimension along which Hardmax will be performed.
-  The output tensor has the same shape
+  The "axis" attribute indicates the dimension along which Hardmax
+  will be performed. The output tensor has the same shape
   and contains the Hardmax values of the corresponding input.
   """
 
   def __init__(self, input,
     axis=None):
     super().__init__('Hardmax', 1,
-      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
       input,
       axis=ONNXAttr(axis, AttrType.INT))
 
@@ -1712,7 +1740,7 @@ class Identity(ONNXOp):
 
   def __init__(self, input):
     super().__init__('Identity', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kLong', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble'}],
       input)
 
 class If(ONNXOp):
@@ -1747,7 +1775,7 @@ class Imputer(ONNXOp):
     replaced_value_float=None, 
     replaced_value_int64=None):
     super().__init__('Imputer', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kLong', 'at::kFloat', 'at::kInt'}],
       X,
       imputed_value_floats=ONNXAttr(imputed_value_floats, AttrType.FLOATS), 
       imputed_value_int64s=ONNXAttr(imputed_value_int64s, AttrType.INTS), 
@@ -1791,7 +1819,7 @@ class IsNaN(ONNXOp):
 
   def __init__(self, X):
     super().__init__('IsNaN', 1,
-      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
       X)
 
 class LabelEncoder(ONNXOp):
@@ -1862,7 +1890,7 @@ class Less(ONNXOp):
 
   def __init__(self, A, B):
     super().__init__('Less', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       A,B)
 
 class LessOrEqual(ONNXOp):
@@ -1875,7 +1903,7 @@ class LessOrEqual(ONNXOp):
 
   def __init__(self, A, B):
     super().__init__('LessOrEqual', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat'}],
+      [{'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       A,B)
 
 class LinearClassifier(ONNXOp):
@@ -1891,7 +1919,7 @@ class LinearClassifier(ONNXOp):
     multi_class=None, 
     post_transform=None):
     super().__init__('LinearClassifier', 2,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kLong', 'at::kFloat', 'at::kInt'}],
       X,
       classlabels_ints=ONNXAttr(classlabels_ints, AttrType.INTS), 
       classlabels_strings=ONNXAttr(classlabels_strings, AttrType.STRINGS), 
@@ -1916,7 +1944,7 @@ class LinearRegressor(ONNXOp):
     post_transform=None, 
     targets=None):
     super().__init__('LinearRegressor', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kLong', 'at::kFloat', 'at::kInt'}],
       X,
       coefficients=ONNXAttr(coefficients, AttrType.FLOATS), 
       intercepts=ONNXAttr(intercepts, AttrType.FLOATS), 
@@ -1930,7 +1958,7 @@ class Log(ONNXOp):
 
   def __init__(self, input):
     super().__init__('Log', 1,
-      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
       input)
 
 class LogSoftmax(ONNXOp):
@@ -1939,16 +1967,15 @@ class LogSoftmax(ONNXOp):
   
    LogSoftmax(input, axis) = Log(Softmax(input, axis=axis))
   
-  The input does not need to explicitly be a 2D vector. The "axis" attribute
-  indicates the dimension along which LogSoftmax will be performed.
-  The output tensor has the same shape
+  The "axis" attribute indicates the dimension along which LogSoftmax
+  will be performed. The output tensor has the same shape
   and contains the LogSoftmax values of the corresponding input.
   """
 
   def __init__(self, input,
     axis=None):
     super().__init__('LogSoftmax', 1,
-      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
       input,
       axis=ONNXAttr(axis, AttrType.INT))
 
@@ -2094,7 +2121,7 @@ class Loop(ONNXOp):
   def __init__(self, M, cond, v_initial,
     body=None):
     super().__init__('Loop', 1,
-      [{'at::kLong'}, {'at::kBool'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      [{'at::kLong'}, {'at::kBool'}, {'at::kHalf', 'at::kShort', 'at::kLong', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble'}],
       M,cond,v_initial,
       body=ONNXAttr(body, AttrType.GRAPH))
 
@@ -2156,7 +2183,7 @@ class LRN(ONNXOp):
     bias=None, 
     size=None):
     super().__init__('LRN', 1,
-      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
       X,
       alpha=ONNXAttr(alpha, AttrType.FLOAT), 
       beta=ONNXAttr(beta, AttrType.FLOAT), 
@@ -2276,7 +2303,7 @@ class MatMul(ONNXOp):
 
   def __init__(self, A, B):
     super().__init__('MatMul', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kLong', 'at::kFloat', 'at::kBFloat16', 'at::kInt', 'at::kDouble'}, {'at::kHalf', 'at::kLong', 'at::kFloat', 'at::kBFloat16', 'at::kInt', 'at::kDouble'}],
       A,B)
 
 class MatMulInteger(ONNXOp):
@@ -2299,7 +2326,7 @@ class Max(ONNXOp):
 
   def __init__(self, data_0):
     super().__init__('Max', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       data_0)
 
 class MaxPool(ONNXOp):
@@ -2344,7 +2371,7 @@ class MaxPool(ONNXOp):
     storage_order=None, 
     strides=None):
     super().__init__('MaxPool', 2,
-      [{'at::kDouble', 'at::kByte', 'at::kHalf', 'at::kFloat'}],
+      [{'at::kHalf', 'at::kDouble', 'at::kByte', 'at::kFloat'}],
       X,
       auto_pad=ONNXAttr(auto_pad, AttrType.STRING), 
       ceil_mode=ONNXAttr(ceil_mode, AttrType.INT), 
@@ -2412,7 +2439,7 @@ class Mean(ONNXOp):
 
   def __init__(self, data_0):
     super().__init__('Mean', 1,
-      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
       data_0)
 
 class MeanVarianceNormalization(ONNXOp):
@@ -2424,7 +2451,7 @@ class MeanVarianceNormalization(ONNXOp):
   def __init__(self, X,
     axes=None):
     super().__init__('MeanVarianceNormalization', 1,
-      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
       X,
       axes=ONNXAttr(axes, AttrType.INTS))
 
@@ -2437,7 +2464,7 @@ class Min(ONNXOp):
 
   def __init__(self, data_0):
     super().__init__('Min', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       data_0)
 
 class Mod(ONNXOp):
@@ -2460,7 +2487,7 @@ class Mod(ONNXOp):
   def __init__(self, A, B,
     fmod=None):
     super().__init__('Mod', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       A,B,
       fmod=ONNXAttr(fmod, AttrType.INT))
 
@@ -2552,7 +2579,7 @@ class Mul(ONNXOp):
 
   def __init__(self, A, B):
     super().__init__('Mul', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       A,B)
 
 class Multinomial(ONNXOp):
@@ -2581,7 +2608,7 @@ class Neg(ONNXOp):
 
   def __init__(self, X):
     super().__init__('Neg', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kLong', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble'}],
       X)
 
 class NegativeLogLikelihoodLoss(ONNXOp):
@@ -2711,7 +2738,7 @@ class NonZero(ONNXOp):
 
   def __init__(self, X):
     super().__init__('NonZero', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       X)
 
 class Normalizer(ONNXOp):
@@ -2731,7 +2758,7 @@ class Normalizer(ONNXOp):
   def __init__(self, X,
     norm=None):
     super().__init__('Normalizer', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kLong', 'at::kFloat', 'at::kInt'}],
       X,
       norm=ONNXAttr(norm, AttrType.STRING))
 
@@ -2770,7 +2797,7 @@ class OneHot(ONNXOp):
   def __init__(self, indices, depth, values,
     axis=None):
     super().__init__('OneHot', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      [{'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       indices,depth,values,
       axis=ONNXAttr(axis, AttrType.INT))
 
@@ -2791,11 +2818,45 @@ class OneHotEncoder(ONNXOp):
     cats_strings=None, 
     zeros=None):
     super().__init__('OneHotEncoder', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kLong', 'at::kFloat', 'at::kInt'}],
       X,
       cats_int64s=ONNXAttr(cats_int64s, AttrType.INTS), 
       cats_strings=ONNXAttr(cats_strings, AttrType.STRINGS), 
       zeros=ONNXAttr(zeros, AttrType.INT))
+
+class Optional(ONNXOp):
+  """
+  Constructs an optional-type value containing either an empty optional of a certain type specified by the attribute,
+  or a non-empty value containing the input element.
+  """
+
+  def __init__(self, input,
+    type=None):
+    super().__init__('Optional', 1,
+      [{'at::kHalf', 'at::kShort', 'at::kLong', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble'}],
+      input,
+      type=ONNXAttr(type, AttrType.TYPE_PROTO))
+
+class OptionalGetElement(ONNXOp):
+  """
+  Outputs the element in the optional-type input. It is an error if the input value does not have an element
+  and the behavior is undefined in this case.
+  """
+
+  def __init__(self, input):
+    super().__init__('OptionalGetElement', 1,
+      [set()],
+      input)
+
+class OptionalHasElement(ONNXOp):
+  """
+  Returns true if the optional-type input contains an element. If it is an empty optional-type, this op returns false.
+  """
+
+  def __init__(self, input):
+    super().__init__('OptionalHasElement', 1,
+      [set()],
+      input)
 
 class Or(ONNXOp):
   """
@@ -2891,7 +2952,7 @@ class Pad(ONNXOp):
   def __init__(self, data, pads, constant_value,
     mode=None):
     super().__init__('Pad', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kLong'}, {'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       data,pads,constant_value,
       mode=ONNXAttr(mode, AttrType.STRING))
 
@@ -2905,7 +2966,7 @@ class Pow(ONNXOp):
 
   def __init__(self, X, Y):
     super().__init__('Pow', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat'}],
+      [{'at::kHalf', 'at::kLong', 'at::kFloat', 'at::kBFloat16', 'at::kInt', 'at::kDouble'}, {'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       X,Y)
 
 class PRelu(ONNXOp):
@@ -2918,7 +2979,7 @@ class PRelu(ONNXOp):
 
   def __init__(self, X, slope):
     super().__init__('PRelu', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat'}, {'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat'}],
+      [{'at::kHalf', 'at::kLong', 'at::kFloat', 'at::kInt', 'at::kDouble'}, {'at::kHalf', 'at::kLong', 'at::kFloat', 'at::kInt', 'at::kDouble'}],
       X,slope)
 
 class QLinearConv(ONNXOp):
@@ -2952,12 +3013,15 @@ class QLinearConv(ONNXOp):
 class QLinearMatMul(ONNXOp):
   """
   Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html.
-  It consumes two quantized input tensors, their scales and zero points, scale and zero point of output, and computes the quantized output.
-  The quantization formula is y = saturate((x / y_scale) + y_zero_point). For (x / y_scale), it is rounding to nearest ties to even.
-  Refer to https://en.wikipedia.org/wiki/Rounding for details. Scale and zero point must have same shape.
-  They must be either scalar (per tensor) or 1-D tensor (per row for 'a' and per column for 'b'). If scale and zero point are 1-D tensor,
-  the number of elements of scale and zero point tensor of input 'a' and output 'y' should be equal to the number of rows of input 'a',
-  and the number of elements of scale and zero point tensor of input 'b' should be equal to the number of columns of input 'b'.
+  It consumes two quantized input tensors, their scales and zero points, scale and zero point of output, 
+  and computes the quantized output. The quantization formula is y = saturate((x / y_scale) + y_zero_point). 
+  For (x / y_scale), it is rounding to nearest ties to even. Refer to https://en.wikipedia.org/wiki/Rounding for details. 
+  Scale and zero point must have same shape. They must be either scalar (per tensor) or N-D tensor 
+  (per row for 'a' and per column for 'b'). Scalar refers to per tensor quantization whereas N-D refers to per row 
+  or per column quantization. If the input is 2D of shape [M, K] then zero point and scale tensor may be 
+  an M element vector [v_1, v_2, ..., v_M] for per row quantization and K element vector of shape [v_1, v_2, ..., v_K] 
+  for per column quantization. If the input is N-D tensor with shape [D1, D2, M, K] then zero point and scale tensor may 
+  have shape [D1, D2, M, 1] for per row quantization and shape [D1, D2, 1, K] for per column quantization.
   Production must never overflow, and accumulation may overflow if and only if in 32 bits.
   """
 
@@ -2977,7 +3041,7 @@ class QuantizeLinear(ONNXOp):
   def __init__(self, x, y_scale, y_zero_point,
     axis=None):
     super().__init__('QuantizeLinear', 1,
-      [{'at::kInt', 'at::kFloat'}, {'at::kFloat'}, {'at::kByte'}],
+      [{'at::kFloat', 'at::kInt'}, {'at::kFloat'}, {'at::kByte'}],
       x,y_scale,y_zero_point,
       axis=ONNXAttr(axis, AttrType.INT))
 
@@ -3023,7 +3087,7 @@ class RandomNormalLike(ONNXOp):
     scale=None, 
     seed=None):
     super().__init__('RandomNormalLike', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       input,
       dtype=ONNXAttr(dtype, AttrType.INT), 
       mean=ONNXAttr(mean, AttrType.FLOAT), 
@@ -3071,7 +3135,7 @@ class RandomUniformLike(ONNXOp):
     low=None, 
     seed=None):
     super().__init__('RandomUniformLike', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       input,
       dtype=ONNXAttr(dtype, AttrType.INT), 
       high=ONNXAttr(high, AttrType.FLOAT), 
@@ -3108,7 +3172,7 @@ class Range(ONNXOp):
 
   def __init__(self, start, limit, delta):
     super().__init__('Range', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kShort', 'at::kFloat'}, {'at::kDouble', 'at::kLong', 'at::kInt', 'at::kShort', 'at::kFloat'}, {'at::kDouble', 'at::kLong', 'at::kInt', 'at::kShort', 'at::kFloat'}],
+      [{'at::kShort', 'at::kLong', 'at::kFloat', 'at::kInt', 'at::kDouble'}, {'at::kShort', 'at::kLong', 'at::kFloat', 'at::kInt', 'at::kDouble'}, {'at::kShort', 'at::kLong', 'at::kFloat', 'at::kInt', 'at::kDouble'}],
       start,limit,delta)
 
 class Reciprocal(ONNXOp):
@@ -3120,7 +3184,7 @@ class Reciprocal(ONNXOp):
 
   def __init__(self, X):
     super().__init__('Reciprocal', 1,
-      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
       X)
 
 class ReduceL1(ONNXOp):
@@ -3137,7 +3201,7 @@ class ReduceL1(ONNXOp):
     axes=None, 
     keepdims=None):
     super().__init__('ReduceL1', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kLong', 'at::kFloat', 'at::kBFloat16', 'at::kInt', 'at::kDouble'}],
       data,
       axes=ONNXAttr(axes, AttrType.INTS), 
       keepdims=ONNXAttr(keepdims, AttrType.INT))
@@ -3156,7 +3220,7 @@ class ReduceL2(ONNXOp):
     axes=None, 
     keepdims=None):
     super().__init__('ReduceL2', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kLong', 'at::kFloat', 'at::kBFloat16', 'at::kInt', 'at::kDouble'}],
       data,
       axes=ONNXAttr(axes, AttrType.INTS), 
       keepdims=ONNXAttr(keepdims, AttrType.INT))
@@ -3175,7 +3239,7 @@ class ReduceLogSum(ONNXOp):
     axes=None, 
     keepdims=None):
     super().__init__('ReduceLogSum', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kLong', 'at::kFloat', 'at::kBFloat16', 'at::kInt', 'at::kDouble'}],
       data,
       axes=ONNXAttr(axes, AttrType.INTS), 
       keepdims=ONNXAttr(keepdims, AttrType.INT))
@@ -3194,7 +3258,7 @@ class ReduceLogSumExp(ONNXOp):
     axes=None, 
     keepdims=None):
     super().__init__('ReduceLogSumExp', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kLong', 'at::kFloat', 'at::kBFloat16', 'at::kInt', 'at::kDouble'}],
       data,
       axes=ONNXAttr(axes, AttrType.INTS), 
       keepdims=ONNXAttr(keepdims, AttrType.INT))
@@ -3213,7 +3277,7 @@ class ReduceMax(ONNXOp):
     axes=None, 
     keepdims=None):
     super().__init__('ReduceMax', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       data,
       axes=ONNXAttr(axes, AttrType.INTS), 
       keepdims=ONNXAttr(keepdims, AttrType.INT))
@@ -3232,7 +3296,7 @@ class ReduceMean(ONNXOp):
     axes=None, 
     keepdims=None):
     super().__init__('ReduceMean', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kLong', 'at::kFloat', 'at::kBFloat16', 'at::kInt', 'at::kDouble'}],
       data,
       axes=ONNXAttr(axes, AttrType.INTS), 
       keepdims=ONNXAttr(keepdims, AttrType.INT))
@@ -3251,7 +3315,7 @@ class ReduceMin(ONNXOp):
     axes=None, 
     keepdims=None):
     super().__init__('ReduceMin', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       data,
       axes=ONNXAttr(axes, AttrType.INTS), 
       keepdims=ONNXAttr(keepdims, AttrType.INT))
@@ -3270,7 +3334,7 @@ class ReduceProd(ONNXOp):
     axes=None, 
     keepdims=None):
     super().__init__('ReduceProd', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kLong', 'at::kFloat', 'at::kBFloat16', 'at::kInt', 'at::kDouble'}],
       data,
       axes=ONNXAttr(axes, AttrType.INTS), 
       keepdims=ONNXAttr(keepdims, AttrType.INT))
@@ -3289,7 +3353,7 @@ class ReduceSum(ONNXOp):
     keepdims=None, 
     noop_with_empty_axes=None):
     super().__init__('ReduceSum', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}],
+      [{'at::kHalf', 'at::kLong', 'at::kFloat', 'at::kBFloat16', 'at::kInt', 'at::kDouble'}, {'at::kLong'}],
       data,axes,
       keepdims=ONNXAttr(keepdims, AttrType.INT), 
       noop_with_empty_axes=ONNXAttr(noop_with_empty_axes, AttrType.INT))
@@ -3308,7 +3372,7 @@ class ReduceSumSquare(ONNXOp):
     axes=None, 
     keepdims=None):
     super().__init__('ReduceSumSquare', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kLong', 'at::kFloat', 'at::kBFloat16', 'at::kInt', 'at::kDouble'}],
       data,
       axes=ONNXAttr(axes, AttrType.INTS), 
       keepdims=ONNXAttr(keepdims, AttrType.INT))
@@ -3322,7 +3386,7 @@ class Relu(ONNXOp):
 
   def __init__(self, X):
     super().__init__('Relu', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kLong', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble'}],
       X)
 
 class Reshape(ONNXOp):
@@ -3339,7 +3403,7 @@ class Reshape(ONNXOp):
   def __init__(self, data, shape,
     allowzero=None):
     super().__init__('Reshape', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kLong'}],
       data,shape,
       allowzero=ONNXAttr(allowzero, AttrType.INT))
 
@@ -3358,7 +3422,7 @@ class Resize(ONNXOp):
     mode=None, 
     nearest_mode=None):
     super().__init__('Resize', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kFloat'}, {'at::kLong'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kDouble', 'at::kHalf', 'at::kFloat'}, {'at::kFloat'}, {'at::kLong'}],
       X,roi,scales,sizes,
       coordinate_transformation_mode=ONNXAttr(coordinate_transformation_mode, AttrType.STRING), 
       cubic_coeff_a=ONNXAttr(cubic_coeff_a, AttrType.FLOAT), 
@@ -3408,7 +3472,7 @@ class ReverseSequence(ONNXOp):
     batch_axis=None, 
     time_axis=None):
     super().__init__('ReverseSequence', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}, {'at::kLong'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kLong'}],
       input,sequence_lens,
       batch_axis=ONNXAttr(batch_axis, AttrType.INT), 
       time_axis=ONNXAttr(time_axis, AttrType.INT))
@@ -3558,7 +3622,7 @@ class Scaler(ONNXOp):
     offset=None, 
     scale=None):
     super().__init__('Scaler', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kLong', 'at::kFloat', 'at::kInt'}],
       X,
       offset=ONNXAttr(offset, AttrType.FLOATS), 
       scale=ONNXAttr(scale, AttrType.FLOATS))
@@ -3695,7 +3759,7 @@ class Scan(ONNXOp):
     scan_output_axes=None, 
     scan_output_directions=None):
     super().__init__('Scan', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       initial_state_and_scan_inputs,
       body=ONNXAttr(body, AttrType.GRAPH), 
       num_scan_inputs=ONNXAttr(num_scan_inputs, AttrType.INT), 
@@ -3742,7 +3806,7 @@ class Scatter(ONNXOp):
   def __init__(self, data, indices, updates,
     axis=None):
     super().__init__('Scatter', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}, {'at::kLong', 'at::kInt'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kLong', 'at::kInt'}, {'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       data,indices,updates,
       axis=ONNXAttr(axis, AttrType.INT))
 
@@ -3804,7 +3868,7 @@ class ScatterElements(ONNXOp):
   def __init__(self, data, indices, updates,
     axis=None):
     super().__init__('ScatterElements', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong', 'at::kInt'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kLong', 'at::kInt'}, {'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       data,indices,updates,
       axis=ONNXAttr(axis, AttrType.INT))
 
@@ -3870,7 +3934,7 @@ class ScatterND(ONNXOp):
 
   def __init__(self, data, indices, updates):
     super().__init__('ScatterND', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kLong'}, {'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       data,indices,updates)
 
 class Selu(ONNXOp):
@@ -3910,7 +3974,7 @@ class SequenceConstruct(ONNXOp):
 
   def __init__(self, inputs):
     super().__init__('SequenceConstruct', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       inputs)
 
 class SequenceEmpty(ONNXOp):
@@ -3948,7 +4012,7 @@ class SequenceInsert(ONNXOp):
 
   def __init__(self, input_sequence, tensor, position):
     super().__init__('SequenceInsert', 1,
-      [set(), {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}, {'at::kLong', 'at::kInt'}],
+      [set(), {'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kLong', 'at::kInt'}],
       input_sequence,tensor,position)
 
 class SequenceLength(ONNXOp):
@@ -3964,12 +4028,44 @@ class SequenceLength(ONNXOp):
 class Shape(ONNXOp):
   """
   Takes a tensor as input and outputs an 1D int64 tensor containing the shape of the input tensor.
+  Optional attributes start and end can be used to compute a slice of the input tensor's shape.
+  If start axis is omitted, the slice starts from axis 0.
+  The end axis, if specified, is exclusive (and the returned value will not include the size of that axis).
+  If the end axis is omitted, the axes upto the last one will be included.
+  Negative axes indicate counting back from the last axis.
+  Note that axes will be clipped to the range [0, r-1], where r is the
+  rank of the input tensor if they are out-of-range (after adding r in the case of
+  negative axis). Thus, specifying any end value > r is equivalent to specifying an end
+  value of r, and specifying any start value < -r is equivalent to specifying a start
+  value of 0.
+  
+  For example:
+  Input tensor with shape: [2, 3, 4] 
+  No attributes specified.
+  Output: [2, 3, 4] 
+  
+  Input tensor with shape: [2, 3, 4] 
+  start: -1
+  Output: [4] 
+  
+  Input tensor with shape: [2, 3, 4] 
+  end: -1
+  Output: [2, 3]
+  
+  Input tensor with shape: [2, 3, 4] 
+  start: 1
+  end: 2
+  Output: [3] 
   """
 
-  def __init__(self, data):
+  def __init__(self, data,
+    end=None, 
+    start=None):
     super().__init__('Shape', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
-      data)
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
+      data,
+      end=ONNXAttr(end, AttrType.INT), 
+      start=ONNXAttr(start, AttrType.INT))
 
 class Shrink(ONNXOp):
   """
@@ -3983,7 +4079,7 @@ class Shrink(ONNXOp):
     bias=None, 
     lambd=None):
     super().__init__('Shrink', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat'}],
+      [{'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       input,
       bias=ONNXAttr(bias, AttrType.FLOAT), 
       lambd=ONNXAttr(lambd, AttrType.FLOAT))
@@ -3997,7 +4093,7 @@ class Sigmoid(ONNXOp):
 
   def __init__(self, X):
     super().__init__('Sigmoid', 1,
-      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
       X)
 
 class Sign(ONNXOp):
@@ -4008,7 +4104,7 @@ class Sign(ONNXOp):
 
   def __init__(self, input):
     super().__init__('Sign', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       input)
 
 class Sin(ONNXOp):
@@ -4038,7 +4134,7 @@ class Size(ONNXOp):
 
   def __init__(self, data):
     super().__init__('Size', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       data)
 
 class Slice(ONNXOp):
@@ -4083,7 +4179,7 @@ class Slice(ONNXOp):
 
   def __init__(self, data, starts, ends, axes, steps):
     super().__init__('Slice', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong', 'at::kInt'}, {'at::kLong', 'at::kInt'}, {'at::kLong', 'at::kInt'}, {'at::kLong', 'at::kInt'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kLong', 'at::kInt'}, {'at::kLong', 'at::kInt'}, {'at::kLong', 'at::kInt'}, {'at::kLong', 'at::kInt'}],
       data,starts,ends,axes,steps)
 
 class Softmax(ONNXOp):
@@ -4092,16 +4188,15 @@ class Softmax(ONNXOp):
   
    Softmax(input, axis) = Exp(input) / ReduceSum(Exp(input), axis=axis, keepdims=1) 
   
-  The input does not need to explicitly be a 2D vector. The "axis" attribute
-  indicates the dimension along which Softmax will be performed.
-  The output tensor has the same shape
+  The "axis" attribute indicates the dimension along which Softmax
+  will be performed. The output tensor has the same shape
   and contains the Softmax values of the corresponding input.
   """
 
   def __init__(self, input,
     axis=None):
     super().__init__('Softmax', 1,
-      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
       input,
       axis=ONNXAttr(axis, AttrType.INT))
 
@@ -4144,7 +4239,7 @@ class SoftmaxCrossEntropyLoss(ONNXOp):
     ignore_index=None, 
     reduction=None):
     super().__init__('SoftmaxCrossEntropyLoss', 2,
-      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}, {'at::kLong', 'at::kInt'}, {'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong', 'at::kInt'}, {'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
       scores,labels,weights,
       ignore_index=ONNXAttr(ignore_index, AttrType.INT), 
       reduction=ONNXAttr(reduction, AttrType.STRING))
@@ -4181,7 +4276,7 @@ class SpaceToDepth(ONNXOp):
   def __init__(self, input,
     blocksize=None):
     super().__init__('SpaceToDepth', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       input,
       blocksize=ONNXAttr(blocksize, AttrType.INT))
 
@@ -4195,7 +4290,7 @@ class Split(ONNXOp):
   def __init__(self, input, split,
     axis=None):
     super().__init__('Split', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kLong'}],
       input,split,
       axis=ONNXAttr(axis, AttrType.INT))
 
@@ -4217,7 +4312,7 @@ class SplitToSequence(ONNXOp):
     axis=None, 
     keepdims=None):
     super().__init__('SplitToSequence', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}, {'at::kLong', 'at::kInt'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kLong', 'at::kInt'}],
       input,split,
       axis=ONNXAttr(axis, AttrType.INT), 
       keepdims=ONNXAttr(keepdims, AttrType.INT))
@@ -4231,7 +4326,7 @@ class Sqrt(ONNXOp):
 
   def __init__(self, X):
     super().__init__('Sqrt', 1,
-      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
       X)
 
 class Squeeze(ONNXOp):
@@ -4244,7 +4339,7 @@ class Squeeze(ONNXOp):
 
   def __init__(self, data, axes):
     super().__init__('Squeeze', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kLong'}],
       data,axes)
 
 class StringNormalizer(ONNXOp):
@@ -4284,7 +4379,7 @@ class Sub(ONNXOp):
 
   def __init__(self, A, B):
     super().__init__('Sub', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       A,B)
 
 class Sum(ONNXOp):
@@ -4296,7 +4391,7 @@ class Sum(ONNXOp):
 
   def __init__(self, data_0):
     super().__init__('Sum', 1,
-      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
       data_0)
 
 class SVMClassifier(ONNXOp):
@@ -4317,7 +4412,7 @@ class SVMClassifier(ONNXOp):
     support_vectors=None, 
     vectors_per_class=None):
     super().__init__('SVMClassifier', 2,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kLong', 'at::kFloat', 'at::kInt'}],
       X,
       classlabels_ints=ONNXAttr(classlabels_ints, AttrType.INTS), 
       classlabels_strings=ONNXAttr(classlabels_strings, AttrType.STRINGS), 
@@ -4346,7 +4441,7 @@ class SVMRegressor(ONNXOp):
     rho=None, 
     support_vectors=None):
     super().__init__('SVMRegressor', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kLong', 'at::kFloat', 'at::kInt'}],
       X,
       coefficients=ONNXAttr(coefficients, AttrType.FLOATS), 
       kernel_params=ONNXAttr(kernel_params, AttrType.FLOATS), 
@@ -4374,7 +4469,7 @@ class Tanh(ONNXOp):
 
   def __init__(self, input):
     super().__init__('Tanh', 1,
-      [{'at::kDouble', 'at::kBFloat16', 'at::kHalf', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kHalf', 'at::kFloat', 'at::kBFloat16'}],
       input)
 
 class TfIdfVectorizer(ONNXOp):
@@ -4454,7 +4549,7 @@ class Tile(ONNXOp):
 
   def __init__(self, input, repeats):
     super().__init__('Tile', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kLong'}],
       input,repeats)
 
 class TopK(ONNXOp):
@@ -4480,7 +4575,7 @@ class TopK(ONNXOp):
     largest=None, 
     sorted=None):
     super().__init__('TopK', 2,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kFloat'}, {'at::kLong'}],
+      [{'at::kHalf', 'at::kShort', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kLong'}],
       X,K,
       axis=ONNXAttr(axis, AttrType.INT), 
       largest=ONNXAttr(largest, AttrType.INT), 
@@ -4496,7 +4591,7 @@ class Transpose(ONNXOp):
   def __init__(self, data,
     perm=None):
     super().__init__('Transpose', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       data,
       perm=ONNXAttr(perm, AttrType.INTS))
 
@@ -4532,7 +4627,7 @@ class TreeEnsembleClassifier(ONNXOp):
     nodes_values=None, 
     post_transform=None):
     super().__init__('TreeEnsembleClassifier', 2,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kLong', 'at::kFloat', 'at::kInt'}],
       X,
       base_values=ONNXAttr(base_values, AttrType.FLOATS), 
       class_ids=ONNXAttr(class_ids, AttrType.INTS), 
@@ -4585,7 +4680,7 @@ class TreeEnsembleRegressor(ONNXOp):
     target_treeids=None, 
     target_weights=None):
     super().__init__('TreeEnsembleRegressor', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kInt', 'at::kFloat'}],
+      [{'at::kDouble', 'at::kLong', 'at::kFloat', 'at::kInt'}],
       X,
       aggregate_function=ONNXAttr(aggregate_function, AttrType.STRING), 
       base_values=ONNXAttr(base_values, AttrType.FLOATS), 
@@ -4624,7 +4719,7 @@ class Trilu(ONNXOp):
   def __init__(self, input, k,
     upper=None):
     super().__init__('Trilu', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kLong'}],
       input,k,
       upper=ONNXAttr(upper, AttrType.INT))
 
@@ -4711,7 +4806,7 @@ class Unique(ONNXOp):
     axis=None, 
     sorted=None):
     super().__init__('Unique', 4,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       X,
       axis=ONNXAttr(axis, AttrType.INT), 
       sorted=ONNXAttr(sorted, AttrType.INT))
@@ -4733,7 +4828,7 @@ class Unsqueeze(ONNXOp):
 
   def __init__(self, data, axes):
     super().__init__('Unsqueeze', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kBFloat16'}, {'at::kLong'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kBFloat16', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kLong'}],
       data,axes)
 
 class Upsample(ONNXOp):
@@ -4746,7 +4841,7 @@ class Upsample(ONNXOp):
   def __init__(self, X, scales,
     mode=None):
     super().__init__('Upsample', 1,
-      [{'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}, {'at::kFloat'}],
+      [{'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kFloat'}],
       X,scales,
       mode=ONNXAttr(mode, AttrType.STRING))
 
@@ -4760,7 +4855,7 @@ class Where(ONNXOp):
 
   def __init__(self, condition, X, Y):
     super().__init__('Where', 1,
-      [{'at::kBool'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}, {'at::kDouble', 'at::kLong', 'at::kByte', 'at::kInt', 'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat'}],
+      [{'at::kBool'}, {'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}, {'at::kHalf', 'at::kShort', 'at::kBool', 'at::kFloat', 'at::kByte', 'at::kInt', 'at::kDouble', 'at::kLong'}],
       condition,X,Y)
 
 class Xor(ONNXOp):
@@ -4808,9 +4903,14 @@ onnx_ops = {
   'treeensembleregressor': TreeEnsembleRegressor,
   'dictvectorizer': DictVectorizer,
   'castmap': CastMap,
+  'binarizer': Binarizer,
+  'castlike': CastLike,
+  'optionalgetelement': OptionalGetElement,
+  'optionalhaselement': OptionalHasElement,
   'shape': Shape,
   'reshape': Reshape,
-  'binarizer': Binarizer,
+  'arrayfeatureextractor': ArrayFeatureExtractor,
+  'reduceprod': ReduceProd,
   'reciprocal': Reciprocal,
   'leakyrelu': LeakyRelu,
   'hardsigmoid': HardSigmoid,
@@ -4863,6 +4963,7 @@ onnx_ops = {
   'linearregressor': LinearRegressor,
   'add': Add,
   'selu': Selu,
+  'optional': Optional,
   'reducemax': ReduceMax,
   'and': And,
   'abs': Abs,
@@ -4901,6 +5002,7 @@ onnx_ops = {
   'reducel1': ReduceL1,
   'lstm': LSTM,
   'slice': Slice,
+  'bernoulli': Bernoulli,
   'softmax': Softmax,
   'softmaxcrossentropyloss': SoftmaxCrossEntropyLoss,
   'categorymapper': CategoryMapper,
@@ -4978,6 +5080,4 @@ onnx_ops = {
   'sequenceerase': SequenceErase,
   'concatfromsequence': ConcatFromSequence,
   'hardswish': HardSwish,
-  'reduceprod': ReduceProd,
-  'arrayfeatureextractor': ArrayFeatureExtractor,
 }

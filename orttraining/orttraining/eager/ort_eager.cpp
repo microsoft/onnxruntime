@@ -10,6 +10,7 @@
 #include "ort_backends.h"
 #include "orttraining/core/framework/ortmodule_graph_builder.h"
 #include "ort_customops.h"
+#include "ort_onnx_ops.h"
 #include "torch/csrc/autograd/python_variable.h"
 #include "core/framework/tensor.h"
 #include "orttraining/python/orttraining_python_module_eager.h"
@@ -92,6 +93,10 @@ void addObjectMethodsForEager(py::module& m){
 
   auto customop_module = m.def_submodule("custom_ops");
   torch_ort::eager::GenerateCustomOpsBindings(customop_module);
+
+  // onnx eager mode module
+  auto onnxops_module = m.def_submodule("onnx");
+  torch_ort::eager::GenerateOnnxOpsBindings(onnxops_module);
 }
 
 }

@@ -100,12 +100,12 @@ class MappedOpFunction:
 
 class ORTGen:
   _mapped_ops: Dict[str, ONNXOp]
-  _custom_ops: bool
+  _custom_ops_name: str 
 
   def __init__(
     self,
     ops: Optional[Dict[str, ONNXOp]] = None,
-    custom_ops : bool = False,
+    custom_ops : str = '',
     type_promotion_ops : List = ()):
     self._mapped_ops = {}    
     if ops:
@@ -125,7 +125,6 @@ class ORTGen:
 
     generated_funcs = []
     current_ns = None
-
     for mapped_func in self._parse_mapped_function_decls(cpp_parser):
       del self._mapped_ops[mapped_func.mapped_op_name]
       generated_funcs.append(mapped_func)
@@ -160,7 +159,7 @@ class ORTGen:
     if not self._custom_ops:
       self._write_function_registrations(writer, generated_funcs)
     else:
-      self._write_custom_ops_registrations(writer, generated_funcs)
+      self._write_custom_ops_registrations(writer, generated_funcs, self._custom_ops)
     self._write_file_postlude(writer)
 
     if len(self._mapped_ops) > 0:
@@ -491,11 +490,12 @@ class ORTGen:
   def _write_custom_ops_registrations(
     self,
     writer: writer.SourceWriter,
-    generated_funcs: List[MappedOpFunction]):
+    generated_funcs: List[MappedOpFunction],
+    module_name: str):
     writer.writeline()
-    writer.writeline('void GenerateCustomOpsBindings(pybind11::module_ m) {')
+    writer.writeline('void Generate%sBindings(pybind11::module_ m) {' % module_name)
     writer.push_indent()
-    writer.writeline('ORT_LOG_INFO << "GenerateCustomOpsBindings init";')
+    writer.writeline(f'ORT_LOG_INFO << "Generate{module_name}Bindings init";')
 
     for mapped_func in generated_funcs:
       cpp_func = mapped_func.cpp_func
@@ -550,7 +550,7 @@ class ORTGen:
     # Parse the Torch schema from the JSON comment that follows each C++ decl
     # and link associated Torch and C++ decls (functions, parameters, returns)
     for cpp_func in tu:
-      if self._custom_ops == True:
+      if self._custom_ops:
         # customops don't have torch schema
         cpp_func.torch_func = None
         yield cpp_func
