@@ -15,6 +15,8 @@ Propagate FP16 Cast operations up the graph and FP32 Cast operations down the gr
 */
 class PropagateCastOps : public GraphTransformer {
  public:
+  typedef std::vector<std::unordered_set<std::string>> FP16AllowOps;
+
   PropagateCastOps(GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy strategy =
                        GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::FloodFill,
                    size_t level = 0, const std::vector<std::string>& allow_list = {},
@@ -24,7 +26,7 @@ class PropagateCastOps : public GraphTransformer {
 
  private:
   size_t level_;
-  std::vector<std::string> allow_list_;
+  FP16AllowOps fp16_allow_ops_;
   GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy strategy_;
 };
 
