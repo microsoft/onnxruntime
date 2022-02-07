@@ -996,7 +996,7 @@ void BatchNormalizationOpBuilder::AddInitializersToSkip(ModelBuilder& model_buil
   model_builder.AddInitializerToSkip(node_unit.Inputs()[1].node_arg.Name());  // scale
   model_builder.AddInitializerToSkip(node_unit.Inputs()[2].node_arg.Name());  // B
   model_builder.AddInitializerToSkip(node_unit.Inputs()[3].node_arg.Name());  // mean
-  model_builder.AddInitializerToSkip(node_unit.Inputs()[4].node_arg.Name());  //var
+  model_builder.AddInitializerToSkip(node_unit.Inputs()[4].node_arg.Name());  // var
 }
 
 Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -1106,8 +1106,7 @@ class PoolOpBuilder : public BaseOpBuilder {
 };
 
 /* static */ bool PoolOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
-  // TODO, add support for QDQ NodeUnit
-  return node_unit.OpType() == "QLinearAveragePool";
+  return IsQuantizedPool(GetQuantizedOpType(node_unit));
 }
 
 void PoolOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -1156,8 +1155,8 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto& op_type = node_unit.OpType();
 
   int32_t op_code;
-  bool is_qlinear_average_pool = op_type == "QLinearAveragePool";
-  bool is_average_pool = op_type == "AveragePool" || is_qlinear_average_pool;
+  bool is_quant_pool = IsQuantizedOp(node_unit);
+  bool is_average_pool = op_type == "AveragePool" || op_type == "QLinearAveragePool";
   if (is_average_pool || op_type == "GlobalAveragePool")
     op_code = ANEURALNETWORKS_AVERAGE_POOL_2D;
   else  // (op_type == "MaxPool" || op_type == "GlobalMaxPool")
@@ -1200,7 +1199,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const OperandType& input_operand_type = operand_types.at(input);
   float y_scale = input_operand_type.operandType.scale;
   int32_t y_zero_point = input_operand_type.operandType.zeroPoint;
-  if (is_qlinear_average_pool) {
+  if (is_quant_pool) {
     const auto& initializers = model_builder.GetInitializerTensors();
     float x_scale = 0.0f;
     int32_t x_zero_point = 0;
@@ -1260,8 +1259,7 @@ class ConvOpBuilder : public BaseOpBuilder {
 };
 
 /* static */ bool ConvOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
-  // TODO, add support for QDQ NodeUnit
-  return node_unit.OpType() == "QLinearConv";
+  return IsQuantizedConv(GetQuantizedOpType(node_unit));
 }
 
 /* static */ void
@@ -1296,7 +1294,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto& initializers(model_builder.GetInitializerTensors());
   NodeAttrHelper helper(node_unit);
   const auto inputs = node_unit.Inputs();
-  bool is_qlinear_conv = IsQuantizedOp(node_unit);
+  bool is_quant_conv = IsQuantizedOp(node_unit);
 
   // onnx strides are in the order height, width
   // while nnapi strides are in the order width, height
@@ -1341,7 +1339,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   // this is for per-channel quantization weights
   optional<std::vector<float>> w_scales;
   bool is_per_tensor_u8s8 = false;
-  if (is_qlinear_conv) {
+  if (is_quant_conv) {
     ORT_RETURN_IF_ERROR(GetConvMatMulOpQuantizationScaleAndZeroPoint(model_builder, node_unit,
                                                                      x_scale, w_scale, y_scale,
                                                                      x_zero_point, w_zero_point, y_zero_point,
@@ -1379,7 +1377,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   // Get weight operand type
   // Per-channel quantized weight is handled differently
   OperandType onnx_weight_operand_type =
-      (is_qlinear_conv && w_scales.has_value())
+      (is_quant_conv && w_scales.has_value())
           ? OperandType{onnx_weight_type, onnx_weight_shape,
                         SymmPerChannelQuantParams{w_scales.value(),
                                                   depthwise_conv_2d ? 3u : 0u}}  // channelDim is 3 for depthwise-conv
@@ -1392,7 +1390,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight, onnx_weight_operand_type, L_1230, is_per_tensor_u8s8));
   }
 
-  if (is_qlinear_conv) {
+  if (is_quant_conv) {
     // Verify if the scale and zero point matchs from onnx input/weight and nnapi input/weight
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
     ORT_RETURN_IF_ERROR(IsValidConvWeightQuantizedType(model_builder, weight, w_scale, w_zero_point, w_scales));
@@ -1420,7 +1418,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unknown weight type ", TypeToStr(weight_type));
     }
-  } else if (is_qlinear_conv) {
+  } else if (is_quant_conv) {
     // QLinearConv's bias type need special handling to add scale for quantization input
     const auto& bias_tensor = *model_builder.GetInitializerTensors().at(bias);
     ORT_RETURN_IF_NOT(bias_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32,
@@ -2259,10 +2257,20 @@ class ResizeOpBuilder : public BaseOpBuilder {
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
 };
+
+/* static */ bool ResizeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
+  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQResize;
+}
 
 void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& inputs = node_unit.Inputs();
+  if (IsQuantizedOp(node_unit)) {
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[0].quant_param);               // x_scale, x_zp
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
+  }
+
   // We don't really use ROI here, so add them to skipped list
   model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());  // ROI
 
@@ -2295,6 +2303,15 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     if (!input_is_nhwc) {
       ORT_RETURN_IF_ERROR(GetNHWCInput(model_builder, node_unit, 0, input));
     }
+  }
+
+  // Check if the quantization scale and ZP is correct
+  if (IsQuantizedOp(node_unit)) {
+    float x_scale = 0.0f;
+    int32_t x_zero_point = 0;
+    ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
+        initializers, node_unit.Inputs()[0], node_unit.ModelPath(), x_scale, x_zero_point));
+    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
   }
 
   bool is_linear_resize = helper.Get("mode", "nearest") == "linear";
@@ -2606,7 +2623,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     return Status::OK();
   };
 
-  ORT_RETURN_IF_ERROR(AddOperand("starts", param_dimen, compute_metadata.starts_));  //nnapi_begin
+  ORT_RETURN_IF_ERROR(AddOperand("starts", param_dimen, compute_metadata.starts_));  // nnapi_begin
 
   // NNAPI has 2 slice operations
   // - ANEURALNETWORKS_SLICE
@@ -2621,7 +2638,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
       model_builder.GetNNAPIFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_2) {
     op_code = ANEURALNETWORKS_SLICE;
     // the nnapi size of the slice in this case is the output shape
-    ORT_RETURN_IF_ERROR(AddOperand("sizes", param_dimen, compute_metadata.output_dims_));  //nnapi_sizes
+    ORT_RETURN_IF_ERROR(AddOperand("sizes", param_dimen, compute_metadata.output_dims_));  // nnapi_sizes
   } else {
     // ** The special treatment of ends **
     // The nnapi_end need some special handling, based on the current undocumented design of
@@ -2644,8 +2661,8 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
         ends[i] = -static_cast<int32_t>(input_shape[i] + 1);
       }
     }
-    ORT_RETURN_IF_ERROR(AddOperand("ends", param_dimen, ends));                      //nnapi_end
-    ORT_RETURN_IF_ERROR(AddOperand("steps", param_dimen, compute_metadata.steps_));  //nnapi_strides
+    ORT_RETURN_IF_ERROR(AddOperand("ends", param_dimen, ends));                      // nnapi_end
+    ORT_RETURN_IF_ERROR(AddOperand("steps", param_dimen, compute_metadata.steps_));  // nnapi_strides
     // We do not use the following inputs in ANEURALNETWORKS_STRIDED_SLICE, set them all to 0
     ADD_SCALAR_OPERAND(model_builder, input_indices, 0);  // begin_mask
     ADD_SCALAR_OPERAND(model_builder, input_indices, 0);  // end_mask

@@ -120,8 +120,8 @@ option(onnxruntime_EXTENDED_MINIMAL_BUILD "onnxruntime_MINIMAL_BUILD with suppor
 option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support to a minimal build." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
 option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
-cmake_dependent_option(onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD
-                       "Enable runtime graph optimization replay for ORT format models in an extended minimal build."
+cmake_dependent_option(onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD
+                       "Enable runtime graph optimizations for ORT format models in an extended minimal build."
                        OFF "onnxruntime_EXTENDED_MINIMAL_BUILD" OFF)
 
 #A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
@@ -347,8 +347,8 @@ if (onnxruntime_MINIMAL_BUILD)
     # enable EPs that compile kernels at runtime
     add_compile_definitions(ORT_EXTENDED_MINIMAL_BUILD)
 
-    if (onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
-      add_compile_definitions(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+    if (onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+      add_compile_definitions(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
     endif()
   endif()
 
@@ -484,6 +484,14 @@ endif()
 
 if (onnxruntime_CROSS_COMPILING)
   set(CMAKE_CROSSCOMPILING ON)
+  check_cxx_compiler_flag(-Wno-error HAS_NOERROR)
+  if (HAS_NOERROR)
+    string(APPEND CMAKE_CXX_FLAGS " -Wno-error=attributes")
+    string(APPEND CMAKE_C_FLAGS " -Wno-error=attributes")
+  endif()
+endif()
+
+if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.0)
   check_cxx_compiler_flag(-Wno-error HAS_NOERROR)
   if (HAS_NOERROR)
     string(APPEND CMAKE_CXX_FLAGS " -Wno-error=attributes")
