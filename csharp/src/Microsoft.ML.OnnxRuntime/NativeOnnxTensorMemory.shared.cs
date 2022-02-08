@@ -248,7 +248,7 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     throw new ArgumentOutOfRangeException(nameof(elementIndex));
                 }
-                return new MemoryHandle((void*)((int)_dataBufferPointer + elementIndex * ElementWidth)); //could not use Unsafe.Add
+                return new MemoryHandle(IntPtr.Add(_dataBufferPointer, elementIndex * ElementWidth).ToPointer());
             }
         }
 
