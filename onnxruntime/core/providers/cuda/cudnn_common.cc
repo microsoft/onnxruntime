@@ -137,6 +137,11 @@ cudnnDataType_t CudnnTensor::GetDataType<half>() {
 }
 
 template <>
+cudnnDataType_t CudnnTensor::GetDataType<BFloat16>() {
+  return CUDNN_DATA_BFLOAT16;
+}
+
+template <>
 cudnnDataType_t CudnnTensor::GetDataType<int8_t>() {
   return CUDNN_DATA_INT8;
 }
