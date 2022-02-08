@@ -183,7 +183,7 @@ static Status InsertCastNodes(Graph& graph,
                               const NodeIndices& removed_nodes,
                               NodeIndices& inserted_nodes) {
   // Create required new Cast nodes.
-  for (const std::pair<NodeArg*, std::vector<Node*>>& element : require_cast) {
+  for (const NodeArgToConsumerMap::value_type& element : require_cast) {
     NodeArg* node_arg = element.first;
     const std::vector<Node*>& nodes = element.second;
     if (!node_arg->Exists()) {
