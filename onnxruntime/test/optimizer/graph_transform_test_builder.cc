@@ -45,7 +45,7 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        std::unique_ptr<GraphTransformer> transformer = nullptr) {
     SessionOptions session_options;
     session_options.graph_optimization_level = transformer ? baseline_level : level;
-#if 1  // enable to dump model for debugging
+#if 0  // enable to dump model for debugging
     session_options.optimized_model_filepath =
         ToPathString("model" + std::to_string(static_cast<int>(level)) + ".onnx");
 #endif

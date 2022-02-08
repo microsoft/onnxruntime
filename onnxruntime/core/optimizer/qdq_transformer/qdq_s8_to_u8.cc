@@ -1,18 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "qdq_s8_to_u8.h"
+#include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
 
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/utils.h"
 
 namespace onnxruntime {
 
 // Convert QuantizeLinear and DequantizeLinear pair with type int8_t to type uint8_t
-Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
+                                       const logging::Logger& logger) const {
+  bool is_current_graph_modified = false;
+
   GraphViewer graph_viewer(graph);
-  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+  const auto node_topology_list = gsl::make_span(graph_viewer.GetNodesInTopologicalOrder());
 
   for (auto node_index : node_topology_list) {
     auto* q_node_ptr = graph.GetNode(node_index);
@@ -23,14 +27,14 @@ Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_l
     Node& q_node = *q_node_ptr;
     ORT_RETURN_IF_ERROR(Recurse(q_node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(q_node, "QuantizeLinear", {10, 13}) ||
+    if (!QDQ::MatchQNode(q_node) ||
         !graph_utils::IsSupportedProvider(q_node, GetCompatibleExecutionProviders()) ||
         !optimizer_utils::CheckOutputEdges(graph, q_node, 1)) {
       continue;
     }
 
     Node& dq_node = *graph.GetNode(q_node.OutputNodesBegin()->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(dq_node, "DequantizeLinear", {10, 13}) ||
+    if (!QDQ::MatchDQNode(dq_node) ||
         !graph_utils::IsSupportedProvider(dq_node, GetCompatibleExecutionProviders())) {
       continue;
     }
@@ -85,6 +89,14 @@ Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_l
     q_input_defs[zp_idx] = zp_u8_arg;
     dq_input_defs[zp_idx] = zp_u8_arg;
 
+    is_current_graph_modified = true;
+  }
+
+  if (is_current_graph_modified) {
+    // remove redundant DQ/Q pairs that were introduced
+    ORT_RETURN_IF_ERROR(QDQ::CancelOutRedundantDQQPairs(graph, node_topology_list,
+                                                        GetCompatibleExecutionProviders(), logger,
+                                                        is_current_graph_modified));
     modified = true;
   }
 
