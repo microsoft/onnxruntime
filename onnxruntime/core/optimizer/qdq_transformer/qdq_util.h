@@ -9,8 +9,8 @@
 
 #include <gsl/gsl>
 
-#include "core/graph/basic_types.h"
 #include "core/common/status.h"
+#include "core/graph/basic_types.h"
 
 namespace ONNX_NAMESPACE {
 class TensorProto;
