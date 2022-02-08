@@ -1090,24 +1090,44 @@ static void SetIntraOpThreadSpinning() {
  }
 
  static void TestEditModelName() {
-  int64_t height = 256;
-  int64_t width = 256;
-  int64_t channels = 3;
-  std::vector<int64_t> input_shape = {1, height, width, channels};  
-  std::vector<int64_t> output_shape = {1, channels, height, width};  
-  auto model =
-    LearningModelBuilder::Create(13)
-      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The NHWC image", TensorKind::Float, input_shape))
-      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, output_shape))
-      .Operators().Add(Operator(L"Transpose")
-               .SetInput(L"data", L"Input")
-               .SetAttribute(L"perm", TensorInt64Bit::CreateFromArray({4}, {0, 3, 1, 2}))
-               .SetOutput(L"transposed", L"Output"))
-      .CreateModel();
+  //int64_t height = 256;
+  //int64_t width = 256;
+  //int64_t channels = 3;
+  //std::vector<int64_t> input_shape = {1, height, width, channels};  
+  //std::vector<int64_t> output_shape = {1, channels, height, width};  
+  //auto model =
+  //  LearningModelBuilder::Create(13)
+  //    .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The NHWC image", TensorKind::Float, input_shape))
+  //    .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, output_shape))
+  //    .Operators().Add(Operator(L"Transpose")
+  //             .SetInput(L"data", L"Input")
+  //             .SetAttribute(L"perm", TensorInt64Bit::CreateFromArray({4}, {0, 3, 1, 2}))
+  //             .SetOutput(L"transposed", L"Output"))
+  //    .CreateModel();
+   //auto modelName = "squeezenet1.1-7-batched.onnx";
+  //auto model = LearningModel.LoadFromFilePath("./squeezenet1.1-7-batched.onnx");
+  LearningModel model = nullptr;
+  WINML_EXPECT_NO_THROW(APITest::LoadModel(L"squeezenet.onnx", model));
+  auto model_name = model.Name();
+  std::wcout << "Model name: " << model_name.c_str() << std::endl;
 
-  auto experimental_model = winml_experimental::LearningModelExperimental(model);
-  auto metadata = experimental_model.EditModelName(L"New Name");
-  printf("I'm in the TestEditModelName test\n");
+  //auto experimental_model = winml_experimental::LearningModelExperimental(model);
+  //auto metadata = experimental_model.EditModelName(L"New Name");
+  //auto size = metadata.Size();
+  //printf("Metadata size %u\n", size);
+  //auto first = metadata.First();
+  //while (first != NULL) {
+  //  printf("In loop\n");
+  //  auto pair = first.Current();
+  //  printf("Got pair\n");
+  //  auto key = pair.Key();
+  //  auto value = pair.Value();
+  //  //printf(key.c_str());
+  //  //std::wcout << "key: " << key.c_str() << " value: " << value.c_str() << std::endl;
+  //  first.MoveNext();
+  //  printf("Moved next\n");
+  //}
+  //printf("I'm in the TestEditModelName test\n");
  }
 
 

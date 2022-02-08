@@ -10,6 +10,7 @@ namespace APITest {
 static void LoadModel(const std::wstring& modelPath,
                       winml::LearningModel& learningModel) {
   std::wstring fullPath = FileHelpers::GetModulePath() + modelPath;
+  std::wcout << "Full path: " << fullPath.c_str() << std::endl;
   learningModel = winml::LearningModel::LoadFromFilePath(fullPath);
 };
 
