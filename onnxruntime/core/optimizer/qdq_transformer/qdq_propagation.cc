@@ -61,7 +61,8 @@ struct ExtendedGraphEdge {
   static std::optional<ExtendedGraphEdge> FromInputOrInitializerToNode(
       const Graph& graph, const Node& node, int node_input_def_idx) {
     const auto node_inputs = node.InputDefs();
-    ORT_ENFORCE(node_input_def_idx <= node_inputs.size());
+    ORT_ENFORCE(node_input_def_idx >= 0 &&
+                static_cast<size_t>(node_input_def_idx) < node_inputs.size());
 
     const auto* node_input = node_inputs[node_input_def_idx];
     if (!graph.IsInputsIncludingInitializers(node_input)) {
@@ -77,7 +78,8 @@ struct ExtendedGraphEdge {
   static std::optional<ExtendedGraphEdge> FromNodeToOutput(
       const Graph& graph, const Node& node, int node_output_def_idx) {
     const auto node_outputs = node.OutputDefs();
-    ORT_ENFORCE(node_output_def_idx <= node_outputs.size());
+    ORT_ENFORCE(node_output_def_idx >= 0 &&
+                static_cast<size_t>(node_output_def_idx) < node_outputs.size());
 
     const auto* node_output = node_outputs[node_output_def_idx];
     if (!graph.IsOutput(node_output)) {

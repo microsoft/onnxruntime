@@ -121,8 +121,8 @@ static Status RemoveDQQPair(Graph& graph, Node& dq_node, Node& q_node) {
     }
   }
 
-  ORT_RETURN_IF_NOT(graph.RemoveNode(dq_node.Index()));
-  ORT_RETURN_IF_NOT(graph.RemoveNode(q_node.Index()));
+  ORT_RETURN_IF_NOT(graph.RemoveNode(dq_node.Index()), "Failed to remove DQ node at index ", dq_node.Index());
+  ORT_RETURN_IF_NOT(graph.RemoveNode(q_node.Index()), "Failed to remove Q node at index ", q_node.Index());
 
   return Status::OK();
 }
