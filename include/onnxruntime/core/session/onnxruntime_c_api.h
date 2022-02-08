@@ -482,6 +482,9 @@ typedef struct OrtTensorRTProviderOptions {
   int trt_engine_decryption_enable;             // enable engine decryption. Default 0 = false, nonzero = true
   const char* trt_engine_decryption_lib_path;   // specify engine decryption library path
   int trt_force_sequential_engine_build;        // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
+  // This is the legacy struct and don't add new fields here.
+  // For new field that can be represented by string, please add it in include/onnxruntime/core/providers/tensorrt/tensorrt_provider_options.h   
+  // For non-string field, need to create a new separate api to handle it.
 } OrtTensorRTProviderOptions;
 
 /** \brief MIGraphX Provider Options
