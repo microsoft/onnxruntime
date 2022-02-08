@@ -77,7 +77,6 @@ static bool IsQuantizationScaleSupported(const InitializedTensorSet& initializer
                                          const OpSupportCheckParams& params,
                                          const std::string& op_type,
                                          bool is_quant_matmul,
-                                         bool is_conv_matmul_weight,
                                          bool is_conv_matmul_u8s8_weight) {
   const auto scale_name = io_def.quant_param->scale.Name();
   if (!Contains(initializers, scale_name)) {
@@ -125,11 +124,9 @@ static bool IsQuantizationScaleSupported(const InitializedTensorSet& initializer
 
 static bool IsQuantizationZeroPointSupported(const InitializedTensorSet& initializers,
                                              const NodeUnitIODef& io_def,
-                                             const OpSupportCheckParams& params,
                                              const std::string& op_type,
                                              const Path& model_path,
                                              bool is_quant_matmul,
-                                             bool is_conv_matmul_weight,
                                              bool is_conv_matmul_u8s8_weight) {
   // zero point is optional here
   if (!io_def.quant_param->zero_point)
@@ -256,12 +253,12 @@ static bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, con
 
     // Check scale and zero point
     if (!IsQuantizationScaleSupported(initializers, io_def, params, op_type,
-                                      is_quant_matmul, is_conv_matmul_weight, is_conv_matmul_u8s8_weight)) {
+                                      is_quant_matmul, is_conv_matmul_u8s8_weight)) {
       return false;
     }
 
-    if (!IsQuantizationZeroPointSupported(initializers, io_def, params, op_type, node_unit.ModelPath(),
-                                          is_quant_matmul, is_conv_matmul_weight, is_conv_matmul_u8s8_weight)) {
+    if (!IsQuantizationZeroPointSupported(initializers, io_def, op_type, node_unit.ModelPath(),
+                                          is_quant_matmul, is_conv_matmul_u8s8_weight)) {
       return false;
     }
   }
@@ -390,8 +387,8 @@ bool BaseOpSupportChecker::HasSupportedInputOutputs(const InitializedTensorSet& 
 }
 
 bool BaseOpSupportChecker::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-    const OpSupportCheckParams& params) const {
+    const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
+    const OpSupportCheckParams& /* params */) const {
   // We only check the type of input 0 by default
   // specific op builder can override this
   const auto& input = node_unit.Inputs()[0].node_arg;
@@ -553,8 +550,8 @@ bool BinaryOpSupportChecker::HasSupportedInputOutputsImpl(
   return true;
 }
 
-bool BinaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                               const OpSupportCheckParams& params) const {
+bool BinaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
+                                               const OpSupportCheckParams& /* params */) const {
   const auto& op_type(node_unit.OpType());
   const auto& inputs = node_unit.Inputs();
   Shape input1_shape, input2_shape;
@@ -805,7 +802,7 @@ bool PoolOpSupportChecker::IsNodeUnitTypeSupported(const NodeUnit& node_unit) co
 }
 
 bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                             const OpSupportCheckParams& params) const {
+                                             const OpSupportCheckParams& /* params */) const {
   const auto& op_name = node_unit.Name();
   const auto& op_type = node_unit.OpType();
   const auto& inputs = node_unit.Inputs();
@@ -1392,7 +1389,7 @@ int UnaryOpSupportChecker::GetMinSupportedOpSet(const NodeUnit& node_unit) const
 }
 
 /* static */ bool UnaryOpSupportChecker::IsQuantizedOpSupported(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& params) {
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) {
   const auto& op_type = node_unit.OpType();
   ORT_ENFORCE(op_type == "QLinearSigmoid");
   const auto& op_name = node_unit.Name();
@@ -1564,8 +1561,8 @@ class LRNOpSupportChecker : public BaseOpSupportChecker {
   }
 };
 
-bool LRNOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                            const OpSupportCheckParams& params) const {
+bool LRNOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
+                                            const OpSupportCheckParams& /* params */) const {
   Shape input_shape;
   if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
     return false;

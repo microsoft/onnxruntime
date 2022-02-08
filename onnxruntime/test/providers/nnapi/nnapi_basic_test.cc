@@ -324,7 +324,7 @@ TEST(NnapiExecutionProviderTest, TestQDQResize) {
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQAveragePool) {
-  // NNAPI Pool use different rounding, which may cause ~1% difference in the result
+  // NNAPI use different rounding, which may cause ~1% difference in the result
   RunQDQModelTest(BuildQDQAveragePoolTestCase<uint8_t /* InputType */,
                                               uint8_t /* OutputType */>(
                       {1, 3, 32, 32} /* input_shape */),
@@ -335,7 +335,7 @@ TEST(NnapiExecutionProviderTest, TestQDQAveragePool) {
                   });
 }
 
-TEST(NnapiExecutionProviderTest, TestQDQBinaryOp) {
+TEST(NnapiExecutionProviderTest, TestQDQAdd) {
   RunQDQModelTest(BuildBinaryOpTestCase<uint8_t /* Input1Type */,
                                         uint8_t /* Input2Type */,
                                         uint8_t /* OutputType */>(
@@ -343,14 +343,20 @@ TEST(NnapiExecutionProviderTest, TestQDQBinaryOp) {
                       "Add" /* op_type */),
                   "nnapi_qdq_test_graph_add",
                   {true /* verify_entire_graph_use_ep */});
+}
 
+TEST(NnapiExecutionProviderTest, TestQDQMul) {
+  // NNAPI use different rounding, which may cause ~1% difference in the result
   RunQDQModelTest(BuildBinaryOpTestCase<uint8_t /* Input1Type */,
                                         uint8_t /* Input2Type */,
                                         uint8_t /* OutputType */>(
                       {1, 23, 13, 13} /* input_shape */,
-                      "Add" /* op_type */),
+                      "Mul" /* op_type */),
                   "nnapi_qdq_test_graph_mul",
-                  {true /* verify_entire_graph_use_ep */});
+                  {
+                      true /* verify_entire_graph_use_ep */,
+                      1e-2f /* fp32_abs_err */,
+                  });
 }
 
 #endif  // !(ORT_MINIMAL_BUILD)

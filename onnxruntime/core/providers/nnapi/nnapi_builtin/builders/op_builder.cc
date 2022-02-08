@@ -693,11 +693,11 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   int32_t op_code;
   bool add_activation = true;
   bool is_quant_op = IsQuantizedOp(node_unit);
-  if (op_type == "Add" || is_quant_op) {  // Add/QLinearAdd/QDQAdd
+  if (op_type == "Add" || op_type == "QLinearAdd") {  // Add/QLinearAdd/QDQAdd
     op_code = ANEURALNETWORKS_ADD;
   } else if (op_type == "Sub") {
     op_code = ANEURALNETWORKS_SUB;
-  } else if (op_type == "Mul" || is_quant_op) {  // Mul/QDQMul
+  } else if (op_type == "Mul") {  // Mul/QDQMul
     op_code = ANEURALNETWORKS_MUL;
   } else if (op_type == "Div") {
     op_code = ANEURALNETWORKS_DIV;

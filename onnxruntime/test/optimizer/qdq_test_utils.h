@@ -82,7 +82,7 @@ template <typename InputType, typename OutputType>
 GetQDQTestCaseFn BuildQDQAveragePoolTestCase(const std::vector<int64_t>& input_shape) {
   return [input_shape](ModelTestBuilder& builder) {
 
-#ifdef USE_NNAPI  // NNAPI require consistent scales for DQ -> Pool -> Q
+#ifdef USE_NNAPI  // NNAPI require consistent scales/ZPs for DQ -> Pool -> Q
     float dq_scale = 0.0038f;
     float pool_output_scale = 0.0038f;
     float q_scale = 0.0038f;
@@ -136,22 +136,22 @@ GetQDQTestCaseFn BuildBinaryOpTestCase(const std::vector<int64_t>& input_shape,
     auto* output_arg = builder.MakeOutput();
 
 #ifdef USE_NNAPI  // NNAPI require consistent scales for DQ -> bin op -> Q
-    float dq_scale = 0.0039f;
-    float op_input_scale = 0.0039f;
-    float op_output_scale = 0.0039f;
-    float q_scale = 0.0039f;
+    float q_scale = 0.008f;
+    float op_input_scale = 0.008f;
+    float op_output_scale = 0.008f;
+    float dq_scale = 0.008f;
 #else
-    float dq_scale = 0.004f;
-    float op_input_scale = 0.0039f;
-    float op_output_scale = 0.0038f;
-    float q_scale = 0.0039f;
+    float q_scale = 0.008f;
+    float op_input_scale = 0.0079f;
+    float op_output_scale = 0.0076f;
+    float dq_scale = 0.0078f;
 #endif
 
     // add QDQ 1
     auto* q1_output = builder.MakeIntermediate();
     auto* dq1_output = builder.MakeIntermediate();
     builder.AddQuantizeLinearNode<Input1Type>(input1_arg,
-                                              dq_scale,
+                                              q_scale,
                                               std::numeric_limits<Input1Type>::max() / 2,
                                               q1_output);
     builder.AddDequantizeLinearNode<Input1Type>(q1_output,
@@ -163,7 +163,7 @@ GetQDQTestCaseFn BuildBinaryOpTestCase(const std::vector<int64_t>& input_shape,
     auto* q2_output = builder.MakeIntermediate();
     auto* dq2_output = builder.MakeIntermediate();
     builder.AddQuantizeLinearNode<Input2Type>(input2_arg,
-                                              dq_scale,
+                                              q_scale,
                                               std::numeric_limits<Input2Type>::max() / 2,
                                               q2_output);
     builder.AddDequantizeLinearNode<Input2Type>(q2_output,
@@ -182,7 +182,7 @@ GetQDQTestCaseFn BuildBinaryOpTestCase(const std::vector<int64_t>& input_shape,
                                               std::numeric_limits<OutputType>::max() / 2,
                                               q3_output);
     builder.AddDequantizeLinearNode<OutputType>(q3_output,
-                                                q_scale,
+                                                dq_scale,
                                                 std::numeric_limits<OutputType>::max() / 2,
                                                 output_arg);
   };
