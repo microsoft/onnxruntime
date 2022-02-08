@@ -689,7 +689,11 @@ static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
         reinterpret_cast<PrepackedWeightsContainer*>(prepacked_weights_container)));
   }
 
+  auto start_ = std::chrono::high_resolution_clock::now();
   ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Initialize());
+  auto end_ = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> total_ = end_ - start_;
+  fprintf(stdout, "    sess->Initialize(): %f\n", total_.count());
 
   return nullptr;
 }
@@ -704,9 +708,17 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
   *out = nullptr;
 
   ORT_TRY {
+    auto start_ = std::chrono::high_resolution_clock::now();
     ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, model_path, nullptr, 0, sess));
+    auto end_ = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> total_ = end_ - start_;
+    fprintf(stdout, "  CreateSessionAndLoadModel: %f\n", total_.count());
+    start_ = std::chrono::high_resolution_clock::now();
     ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess));
-
+    end_ = std::chrono::high_resolution_clock::now();
+    total_ = end_ - start_;
+    fprintf(stdout, "  InitializeSession: %f\n", total_.count());
+    
     *out = reinterpret_cast<OrtSession*>(sess.release());
   }
   ORT_CATCH(const std::exception& e) {

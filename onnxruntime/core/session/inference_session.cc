@@ -911,9 +911,13 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
                                          : GraphPartitioner::Mode::kNormal;
 
   // Do partitioning based on execution providers' capability.
+  auto partition_start_ = std::chrono::high_resolution_clock::now();
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state.ExportDll(),
                                                        session_state.GetMutableFuncMgr(), mode));
+  auto partition_end_ = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> partition_total_ = partition_end_ - partition_start_;
+  fprintf(stdout, "      Graph partition total time: %f\n", partition_total_.count());
 
   // apply transformers except default transformers
   // Default transformers are required for correctness and they are owned and run by inference session
@@ -1371,11 +1375,15 @@ common::Status InferenceSession::Initialize() {
                                                                saving_runtime_optimizations));
 
       // apply any transformations to the main graph and any subgraphs
+      auto start_ = std::chrono::high_resolution_clock::now();
       ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
                                                     execution_providers_, kernel_registry_manager_,
                                                     insert_cast_transformer_,
                                                     *session_state_,
                                                     saving_ort_format));
+      auto end_ = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double> total_ = end_ - start_;
+      fprintf(stdout, "        Transform Graph total time: %f\n", total_.count());
 
       // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
       ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());
@@ -1406,6 +1414,7 @@ common::Status InferenceSession::Initialize() {
                                                      *session_logger_));
     }
 
+    auto start_ = std::chrono::high_resolution_clock::now();
     ORT_RETURN_IF_ERROR_SESSIONID_(
         session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
                                              session_options_,
@@ -1413,6 +1422,9 @@ common::Status InferenceSession::Initialize() {
                                              // need to keep the initializers if saving the optimized model
                                              !saving_model,
                                              saving_ort_format));
+    auto end_ = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> total_ = end_ - start_;
+    fprintf(stdout, "    Finalize session state time: %f\n", total_.count());
 
 #if !defined(ORT_MINIMAL_BUILD)
     if (saving_model) {
@@ -1447,16 +1459,24 @@ common::Status InferenceSession::Initialize() {
 
     // we don't directly use the ORT format bytes currently, so free those now
     // TODO, we may need to keep the bytes if we are using the offset directly in the initializers
+    start_ = std::chrono::high_resolution_clock::now();
     ort_format_model_bytes_ = gsl::span<const uint8_t>();
     std::vector<uint8_t>().swap(ort_format_model_bytes_data_holder_);
+    end_ = std::chrono::high_resolution_clock::now();
+    total_ = end_ - start_;
+    fprintf(stdout, "    finalize ort bytes time: %f\n", total_.count());
 
     // and log telemetry
+    start_ = std::chrono::high_resolution_clock::now();
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
     env.GetTelemetryProvider().LogSessionCreation(
         session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
         model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(), model_->MetaData(),
         telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs);
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
+    end_ = std::chrono::high_resolution_clock::now();
+    total_ = end_ - start_;
+    fprintf(stdout, "    Logging time: %f\n", total_.count());
   }
   ORT_CATCH(const NotImplementedException& ex) {
     ORT_HANDLE_EXCEPTION([&]() {

@@ -367,19 +367,26 @@ Status GraphPartitioner::PartitionOnnxFormatModel(Graph& graph, bool export_dll,
 
   do {
     // process full graph with each EP
+    auto part_start_ = std::chrono::high_resolution_clock::now();
     for (const auto& ep : providers_) {
       ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(graph, export_dll, func_mgr, kernel_registry_mgr_,
                                                        fused_kernel_registry, *ep, mode, fused_node_unique_id));
     }
-
+    auto part_end_ = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> part_total_ = part_end_ - part_start_;
+    fprintf(stdout, "          Graph partition Onnx Format total time: %f\n", part_total_.count());
     // expand any nodes that have an ONNX function definition but no matching ORT kernel.
     modified_graph = false;
     ORT_RETURN_IF_ERROR(InlineNodes(graph, modified_graph));
 
     // Resolve and rerun graph partitioning and inlining if there was a change
+    auto resolve_start_ = std::chrono::high_resolution_clock::now();
     if (modified_graph) {
       ORT_RETURN_IF_ERROR(graph.Resolve());
     }
+    auto resolve_end_ = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> resolve_total_ = resolve_end_ - resolve_start_;
+    fprintf(stdout, "          Graph resolving total time: %f\n", resolve_total_.count());
   } while (modified_graph);
 
   return Status::OK();
@@ -512,7 +519,8 @@ Status GraphPartitioner::PartitionOrtFormatModel(
 }
 
 Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& func_mgr, Mode mode,
-                                   std::unordered_map<std::string, HashValue>* compiled_kernel_hashes) const {
+
+    std::unordered_map<std::string, HashValue>* compiled_kernel_hashes) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
   // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.

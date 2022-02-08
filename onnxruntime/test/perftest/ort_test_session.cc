@@ -446,8 +446,15 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     }
   }
 
+  auto small_session_create_start_ = std::chrono::high_resolution_clock::now();
   session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
+  auto small_session_create_end_ = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> small_session_total_ = small_session_create_end_ - small_session_create_start_;
+  fprintf(stdout, "Ort::Session creation in ort_test_session: %f s\n", small_session_total_.count());
 
+  
+  auto process_create_start_ = std::chrono::high_resolution_clock::now();
+  
   size_t output_count = session_.GetOutputCount();
   output_names_.resize(output_count);
   Ort::AllocatorWithDefaultOptions a;
@@ -467,9 +474,14 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     input_names_str_[i] = m.GetInputName(i);
     input_names_[i] = input_names_str_[i].c_str();
   }
+  auto process_create_end_ = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> process_inputs_total_ = process_create_end_ - process_create_start_;
+  fprintf(stdout, "Process Outputs and Inputs: %f s\n", process_inputs_total_.count());
 }
 
+
 bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData() {
+  fprintf(stdout, "Generating Data");
   // iterate over all input nodes
   for (size_t i = 0; i < static_cast<size_t>(input_length_); i++) {
     Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
