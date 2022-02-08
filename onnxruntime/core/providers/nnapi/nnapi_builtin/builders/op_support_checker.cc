@@ -632,10 +632,10 @@ bool TransposeOpSupportChecker::HasSupportedInputOutputsImpl(
   }
 
   if (IsQuantizedOp(node_unit)) {
-    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, true /* is_input */))
+    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Input))
       return false;
 
-    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, false /* is_input */))
+    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Output))
       return false;
   }
 

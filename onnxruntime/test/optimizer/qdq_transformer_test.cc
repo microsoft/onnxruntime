@@ -665,32 +665,18 @@ TEST(QDQTransformerTests, Gather) {
 }
 
 TEST(QDQTransformerTests, Transpose) {
-  auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& perms) {
-    auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* input1_arg = builder.MakeInput<int8_t>(input1_shape, -128, 127);
-      auto* output_arg = builder.MakeOutput();
-
-      // add DQ
-      auto* dq_output = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode<int8_t>(input1_arg, .003f, 1, dq_output);
-
-      // add Transpose
-      auto* transpose_output = builder.MakeIntermediate();
-      Node& transpose_node = builder.AddNode("Transpose", {dq_output}, {transpose_output});
-      transpose_node.AddAttribute("perm", perms);
-
-      // add Q
-      builder.AddQuantizeLinearNode<int8_t>(transpose_output, .003f, 1, output_arg);
-    };
-
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& perms) {
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["Transpose"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
     };
 
-    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+    TransformerTester(BuildQDQTransposeTestCase<int8_t, int8_t>(input_shape, perms),
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2);
   };
 
   test_case({2, 13, 12, 37}, {0, 3, 1, 2});
