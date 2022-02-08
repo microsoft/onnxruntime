@@ -77,7 +77,7 @@ class FusionUtils:
 
         if isinstance(expected_value, list):
             return (isinstance(value, ndarray) or isinstance(value, list)) and array_equal(
-                expected_value, value)
+                expected_value, value, equal_nan=False)
         else:
             return value == expected_value
 
@@ -98,7 +98,7 @@ class FusionUtils:
 
         if isinstance(expected_value, list):
             return (isinstance(value, ndarray) or isinstance(value, list)) and array_equal(
-                expected_value, value)
+                expected_value, value, equal_nan=False)
         else:
             return value == expected_value
 
