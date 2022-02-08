@@ -135,11 +135,11 @@ GetQDQTestCaseFn BuildBinaryOpTestCase(const std::vector<int64_t>& input_shape,
     auto* input2_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
     auto* output_arg = builder.MakeOutput();
 
-#ifdef USE_NNAPI  // NNAPI require consistent scales for DQ -> bin op -> Q
+#ifdef USE_NNAPI  // NNAPI require consistent scales for DQ -> bin_op_input and bin_op_output-> Q
     float q_scale = 0.008f;
     float op_input_scale = 0.008f;
-    float op_output_scale = 0.008f;
-    float dq_scale = 0.008f;
+    float op_output_scale = 0.0076f;
+    float dq_scale = 0.0076f;
 #else
     float q_scale = 0.008f;
     float op_input_scale = 0.0079f;
