@@ -185,7 +185,7 @@ TEST(FastGeluTest, FastGeluWithoutBiasFloat16) {
 }
 
 
-// failed with data error, disabled for now 
+// failed with device error, disabled for now 
 // CUDA only, ROCM has not been supported yet
 #ifdef USE_CUDA
 TEST(FastGeluTest, DISABLED_FastGeluWithBias_BFloat16) {
