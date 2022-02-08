@@ -669,49 +669,495 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   }
 }
 
-void RegisterTextGenerationSchemas() {
-  ONNX_CONTRIB_OPERATOR_SCHEMA(BeamSearch)
-        .SetDomain(kMSDomain)
-        .SinceVersion(1)
-        .SetDoc("Beam Search for text generation. Supports GPT-2 decoder.")
-        .Attr("eos_token_id", "The id of the end-of-sequence token", AttributeProto::INT)
-        .Attr("pad_token_id", "The id of the padding token", AttributeProto::INT)
-        .Attr("no_repeat_ngram_size", "no repeat ngrams size", AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr("early_stopping", "early stop or not", AttributeProto::INT, static_cast<int64_t>(0))
-        .Attr(
-            "body",
-            "The GPT-2 subgraph with input_ids, position_ids, attention_mask, past_0, past_1, ... as inputs, and logits, present_0, present_1, ... as output",
-            AttributeProto::GRAPH)
-        .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "I")
-        .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
-        .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
-        .Input(3, "num_beams", "Number of beams for beam search. 1 means no beam search. Shape is (1)", "I")
-        .Input(4, "num_return_sequences", "The number of returned sequences in the batch. Shape is (1)", "I")
-        .Input(5, "temperature", "The value used to module the next token probabilities. Accepts value > 0.0. Shape is (1)", "T")
-        .Input(6, "length_penalty",
-              "Exponential penalty to the length. Default value 1.0 means no penalty."
-              "Value > 1.0 encourages longer sequences, while values < 1.0 produces shorter sequences."
-              "Shape is (1,)",
-              "T", OpSchema::Optional)
-        .Input(7, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)", "T", OpSchema::Optional)
-        .Input(8, "vocab_mask", "Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)", "M", OpSchema::Optional)
-        .Input(9, "prefix_vocab_mask", "Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)", "M", OpSchema::Optional)
-        .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, num_return_sequences, max_sequence_length)", "I")
-        .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)", "T", OpSchema::Optional)
-        .Output(2, "scores",
-                "Processed beam scores for each vocabulary token at each generation step."
-                "Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam."
-                "Shape is (max_length - sequence_length, batch_size, num_beams, vocab_size)",
-                "T", OpSchema::Optional)
-        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
-        .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
-        .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
-        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          BeamSearchShapeInference(ctx);
-        });
-}
+static const char* Gelu_ver1_doc =
+    R"DOC(Gaussian Error Linear Unit.
+A high-performing neural network activation function.The GELU nonlinearity is
+the expected transformation of a stochastic regularizer which randomly applies
+the identity or zero map to a neuron's input. The GELU nonlinearity weights
+inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)DOC";
 
-void RegisterBertSchemas() {
+ONNX_MS_OPERATOR_SET_SCHEMA(Gelu, 1,
+    OpSchema()
+    .SetDoc(Gelu_ver1_doc)
+    .Input(0, "X", "The input data as Tensor.", "T")
+    .Output(0, "Y", "The output.", "T")
+    .TypeConstraint(
+        "T",
+        {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+        "Constrain input and output types to float tensors.")
+    .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
+    .SetContextDependentFunctionBodyBuilder([](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+      // gelu(x) = x * Phi(x) = x * 1/2(1+erf(x/sqrt(2)))
+      auto* tp = ctx.getInputType(0);
+      if ((tp == nullptr) || (!tp->has_tensor_type()))
+        return false;
+      auto elem_type = tp->tensor_type().elem_type();
+
+      FunctionBuilder builder(functionProto);
+      builder
+          .AddOpset("", 13)
+          .Const("Half", 0.5, elem_type)
+          .Const("One", 1.0, elem_type)
+          .Const("C", std::sqrt(0.5), elem_type)
+          .Add(R"(
+                CX = Mul (C, X)
+                ERFCX = Erf (CX)
+                ERFCXPlus1 = Add (ERFCX, One)
+                PhiX = Mul (ERFCXPlus1, Half)
+                Y = Mul (X, PhiX)
+            )");
+
+      schema.BuildFunction(functionProto);
+      return true;
+    }));
+
+static const char* BiasGelu_ver1_doc =
+    R"DOC(Bias Gelu.
+It's an extension of Gelu. It takes the sum of input A and bias input B as the input of Gelu activation. )DOC";
+ONNX_MS_OPERATOR_SET_SCHEMA(BiasGelu, 1,
+    OpSchema()
+    .SetDomain(kMSDomain)
+    .SinceVersion(1)
+    .SetDoc(BiasGelu_ver1_doc)
+    .Input(0, "A", "The normal input data.", "T")
+    .Input(1, "B", "The bias input data that is a 1D tensor.", "T")
+    .Output(0, "C", "The output.", "T")
+    .TypeConstraint(
+        "T",
+        {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+        "Constrain input and output types to float tensors.")
+    .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
+// Used to be ONNX 1.7 Inverse(12)
+// Comment out docs not to increase the binary size
+//
+//  static const char* Inverse_ver1_doc = R"DOC(
+//Calculates inverse of a square matrix or batches of square matrices.
+//Inverse takes one input tensor of shape `[*, M, M]`, where `*` is zero or more batch dimensions,
+//and the inner-most 2 dimensions form square matrices. These matrices must be invertible (full-rank).
+//The behavior where one of the matrices is not invertible is undefined. The implementation can choose
+//to throw an error or output (garbage) results as is. The output is a tensor of shape `[*, M, M]`,
+//containing the individual inverses of all input submatrices.
+//)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(Inverse, 1,
+    OpSchema()
+    .Input(0, "X", "Input tensor. Every matrix in the batch must be invertible.", "T")
+    .Output(0, "Y", "Output tensor of the same type and shape as the input tensor.", "T")
+    .TypeConstraint(
+        "T",
+        {"tensor(float16)",
+         "tensor(float)",
+         "tensor(double)"},
+        "Constrain input and output types to float tensors.")
+    .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+      // Type inference
+      using namespace ONNX_NAMESPACE;
+      propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+      // Shape inference
+      if (hasInputShape(ctx, 0)) {
+        const TensorShapeProto& input_shape =
+            ctx.getInputType(0)->tensor_type().shape();
+        const int rank = static_cast<int>(input_shape.dim_size());
+
+        if (rank < 2) {
+          fail_shape_inference("Input rank must be >= 2.")
+        }
+
+        const auto mat_w = input_shape.dim(rank - 1);
+        const auto mat_h = input_shape.dim(rank - 2);
+        if (mat_w.has_dim_value() && mat_h.has_dim_value() &&
+            (mat_w.dim_value() != mat_h.dim_value())) {
+          fail_shape_inference(
+              "The inner-most 2 dimensions must have the same size (mat_w:",
+              mat_w.dim_value(),
+              " != mat_h:",
+              mat_h.dim_value(),
+              ").");
+        }
+
+        // Shape inference
+        propagateShapeFromInputToOutput(ctx, 0, 0);
+      }
+    }));
+
+static const char* TorchEmbedding_ver1_doc = R"DOC(
+      Based on Torch operator Embedding, creates a lookup table of embedding vectors of fixed size,
+       for a dictionary of fixed size.
+      )DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(TorchEmbedding, 1,
+    OpSchema()
+    .SetDoc(TorchEmbedding_ver1_doc)
+    .Input(
+        0,
+        "weight",
+        "The embedding matrix of size N x M. 'N' is equal to the maximum possible index + 1, and 'M' is "
+        "equal to the embedding size",
+        "T")
+    .Input(
+        1,
+        "indices",
+        "Long tensor containing the indices to extract from embedding matrix.",
+        "tensor(int64)")
+    .Input(
+        2,
+        "padding_idx",
+        "A 0-D scalar tensor. If specified, the entries at `padding_idx` do not contribute to the gradient; "
+        "therefore, the embedding vector at `padding_idx` is not updated during training, "
+        "i.e. it remains as a fixed pad.",
+        "tensor(int64)",
+        OpSchema::Optional)
+    .Input(
+        3,
+        "scale_grad_by_freq",
+        "A 0-D bool tensor. If given, this will scale gradients by the inverse of frequency of "
+        "the indices (words) in the mini-batch. Default  is ``False``",
+        "tensor(bool)",
+        OpSchema::Optional)
+    .Output(
+        0,
+        "Y",
+        "Output tensor of the same type as the input tensor. Shape of the output is * x M, where '*' is the shape of "
+        "input indices, and 'M' is the embedding size.",
+        "T")
+    .TypeConstraint(
+        "T",
+        {"tensor(float16)",
+         "tensor(float)",
+         "tensor(double)",
+         "tensor(bfloat16)",
+         "tensor(uint8)",
+         "tensor(uint16)",
+         "tensor(uint32)",
+         "tensor(uint64)",
+         "tensor(int8)",
+         "tensor(int16)",
+         "tensor(int32)",
+         "tensor(int64)"},
+        "Constrain input and output types to all numeric tensors.")
+    .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+      using namespace ONNX_NAMESPACE;
+      propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+      TensorShapeProto outputs_shape;
+      Dim input_dim_i;
+
+      if (hasInputShape(ctx, 1)) {
+        auto& input_shape = getInputShape(ctx, 1);
+        for (int32_t i = 0; i < input_shape.dim_size(); i++) {
+          input_dim_i = input_shape.dim(i);
+          *outputs_shape.add_dim() = input_dim_i;
+        }
+      }
+
+      Dim embedding_dim;
+      unifyInputDim(ctx, 0, 1, embedding_dim);
+      *outputs_shape.add_dim() = embedding_dim;
+      updateOutputShape(ctx, 0, outputs_shape);
+    }));
+
+static const char* Trilu_ver1_doc = R"DOC(
+      Returns the upper or lower triangular part of a 2-D matrix, or batches of 2-D matrices. If the attribute "upper" is set to true,
+      the upper triangular matrix is retained. Lower triangular matrix is retained otherwise. Default value for upper is true.
+      Trilu takes one input tensor of shape [*, N, M], where * is zero or more batch dimensions. The upper triangular part consists
+      of the elements on and above the given diagonal (k). The lower triangular part consists of elements on and below the diagonal.
+      All other elements in the matrix are set to zero.
+      If k = 0, the triangular part on and above/below the main diagonal is retained.
+      If upper is set to true, a positive k retains the upper triangular matrix excluding k diagonals above
+      the main diagonal. A negative k value includes as many diagonals below the main diagonal.
+      If upper is set to false, a positive k retains the lower triangular matrix including k diagonals above
+      the main diagonal. A negative k value excludes as many diagonals below the main diagonal.
+      )DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(Trilu, 1,
+    OpSchema()
+    .SetDoc(Trilu_ver1_doc)
+    .Attr("upper",
+          "Boolean. Indicates whether upper or lower part of matrix is retained. Default is true.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
+    .Input(
+        0,
+        "X",
+        "Input tensor of rank 2 or higher.",
+        "T")
+    .Input(
+        1,
+        "k",
+        "A 0-D tensor containing a single value corresponding to the number diagonals above or the main diagonal to exclude or include."
+        "Default value is 0 if it's not specified.",
+        "tensor(int64)",
+        OpSchema::Optional)
+    .Output(
+        0,
+        "Y",
+        "Output tensor of the same type and shape as the input tensor.",
+        "T")
+    .TypeConstraint(
+        "T",
+        {"tensor(float16)",
+         "tensor(float)",
+         "tensor(double)",
+         "tensor(bfloat16)",
+         "tensor(uint8)",
+         "tensor(uint16)",
+         "tensor(uint32)",
+         "tensor(uint64)",
+         "tensor(int8)",
+         "tensor(int16)",
+         "tensor(int32)",
+         "tensor(int64)",
+         "tensor(bool)"},
+        "Constrain input and output types to all numeric tensors and bool tensors.")
+    .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+      using namespace ONNX_NAMESPACE;
+      propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+      if (hasInputShape(ctx, 0)) {
+        const TensorShapeProto& input_shape =
+            ctx.getInputType(0)->tensor_type().shape();
+        const int rank = static_cast<int>(input_shape.dim_size());
+        if (rank < 2) {
+          fail_shape_inference("Input rank must be >= 2.")
+        }
+        propagateShapeFromInputToOutput(ctx, 0, 0);
+      }
+    }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(BiasSoftmax, 1,
+    OpSchema()
+    .SetDoc(
+        "Y = softmax(scores + bias)) with simple broadcast on bias. "
+        "Intended to specialize softmax(scores + additive_mask) commonly found in transformer models.")
+    .Attr("softmax_axis", "apply softmax to elements for dimensions softmax_axis or higher", AttributeProto::INT, static_cast<int64_t>(1))
+    .Attr("broadcast_axis", "broadcast bias across input for dimensions broadcast_axis to softmax_axis-1", AttributeProto::INT, static_cast<int64_t>(1))
+    .Input(0, "data", "The input data as Tensor.", "T")
+    .Input(1, "bias", "The bias (or mask) as Tensor.", "T")
+    .Output(0, "output", "The output.", "T")
+    .TypeConstraint(
+        "T",
+        {"tensor(float16)", "tensor(float)", "tensor(double)"},
+        "Constrain input and output types to float tensors.")
+    .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(BiasDropout, 1,
+    OpSchema()
+    .SetDoc(
+        "output, dropout_mask = Dropout(data + bias, ratio) + residual, "
+        "Intended to specialize the dropout pattern commonly found in transformer models.")
+    .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.", AttributeProto::INT, OPTIONAL_VALUE)
+    .AllowUncheckedAttributes()
+    .Input(0, "data", "The input data as Tensor.", "T")
+    .Input(1, "bias", "The bias input, a vector with the same shape as last dim of data OR same shape with data", "T")
+    .Input(2, "residual", "The residual input, must have the same shape as data", "T", OpSchema::Optional)
+    .Input(3, "ratio",
+           "The ratio of random dropout, with value in [0, 1). If this input was not set, "
+           "or if it was set to 0, the output would be a simple copy of the input. "
+           "If it's non-zero, output will be a random dropout of input, which is typically "
+           "the case during training.",
+           "T1",
+           OpSchema::Optional)
+    .Input(4, "training_mode",
+           "If set to true then it indicates dropout is being used for "
+           "training. It is an optional value hence unless specified explicitly, it is false. "
+           "If it is false, ratio is ignored and the operation mimics inference mode where nothing "
+           "will be dropped from the input data and if mask is requested as output it will contain "
+           "all ones.",
+           "T2",
+           OpSchema::Optional)
+    .Output(0, "output", "The output.", "T")
+    .Output(1, "mask", "The output mask of dropout.", "T2", OpSchema::Optional)
+    .TypeConstraint(
+        "T",
+        {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+        "Constrain input and output types to float tensors.")
+    .TypeConstraint(
+        "T1",
+        {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+        "Constrain input 'ratio' types to float tensors.")
+    .TypeConstraint(
+        "T2",
+        {"tensor(bool)"},
+        "Constrain output 'mask' types to boolean tensors.")
+    .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+      propagateShapeAndTypeFromFirstInput(ctx);
+      if (ctx.getNumOutputs() == 2) {
+        updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
+        if (hasNInputShapes(ctx, 1)) {
+          propagateShapeFromInputToOutput(ctx, 0, 1);
+        }
+      }
+    }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(IsAllFinite, 1,
+    OpSchema()
+    .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+    .SetDoc("IsAllFinite")
+    .SetDomain(kMSDomain)
+    .SinceVersion(1)
+    .Attr("isinf_only",
+          "If true, check only for Inf, -Inf.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+    .Attr("isnan_only",
+          "If true, check only for NaN.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+    .TypeConstraint(
+        "V",
+        {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+        "Constrain input and output types to float tensors.")
+    .TypeConstraint(
+        "T",
+        {"tensor(bool)"},
+        "Constrain the output to a boolean tensor.")
+    .Input(0, "input", "Input tensors to check.", "V",
+           OpSchema::Variadic)
+    .Output(
+        0,
+        "output",
+        "The output scalar. Its value is true if all input "
+        "tensors are finite. Otherwise, the output value would "
+        "be false.",
+        "T")
+    .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+      bool isinf_only = static_cast<bool>(getAttribute(ctx, "isinf_only", int64_t(0)));
+      bool isnan_only = static_cast<bool>(getAttribute(ctx, "isnan_only", int64_t(0)));
+      ORT_ENFORCE(!(isinf_only && isnan_only),
+                  "Both attributes isinf_only and isnan_only cannot be set. Unset both to check for both conditions.");
+      updateOutputShape(ctx, 0, {});
+      updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+    }));
+
+static const char* GridSample_ver1_doc = R"DOC(
+      Given an `input` and a flow-field `grid`, computes the `output` using `input` values and pixel locations from `grid`.
+      Currently, only spatial (4-D) inputs are supported. For `input` with shape (N, C, H, W) and `grid` with shape (N, H_out, W_out, 2),
+      the `output` will have shape (N, C, H_out, W_out).
+      For each output location `output[n, :, h, w]`, the size-2 vector `grid[n, h, w]` specifies `input` pixel locations `x` and `y`,
+      which are used to interpolate the output value `output[n, :, h, w]`.
+      The GridSample operator is often used in doing grid generator and sampler in the [Spatial Transformer Networks](https://arxiv.org/abs/1506.02025).
+      See also in [torch.nn.functional.grid_sample](https://pytorch.org/docs/master/generated/torch.nn.functional.grid_sample.html#torch-nn-functional-grid-sample).
+      )DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(GridSample, 1,
+    OpSchema()
+    .SetDoc(GridSample_ver1_doc)
+    .Attr(
+        "mode",
+        "Three interpolation modes: bilinear (default), nearest and bicubic.",
+        AttributeProto::STRING,
+        std::string("bilinear"))
+    .Attr(
+        "padding_mode",
+        "Support padding modes for outside grid values: `zeros`(default), `border`, `reflection`. "
+        "zeros: use 0 for out-of-bound grid locations, "
+        "border: use border values for out-of-bound grid locations, "
+        "reflection: use values at locations reflected by the border for out-of-bound grid locations.",
+        AttributeProto::STRING,
+        std::string("zeros"))
+    .Attr(
+        "align_corners",
+        "If align_corners=1, the extrema (-1 and 1) are considered as referring to the center points of the input's corner pixels. "
+        "If align_corners=0, they are instead considered as referring to the corner points of the input's corner pixels, making the sampling more resolution agnostic.",
+        AttributeProto::INT,
+        static_cast<int64_t>(0))
+    .Input(
+        0,
+        "X",
+        "4-D tensor of shape (N, C, H, W), "
+        "where N is the batch size, C is the numbers of channels, "
+        "H and W are the height and width of the input data.",
+        "T1")
+    .Input(
+        1,
+        "Grid",
+        "Input offset, 4-D tensor of shape (N, H_out, W_out, 2), "
+        "where H_out and W_out are the height and width of grid and output, "
+        "Grid specifies the sampling pixel locations normalized by the input spatial dimensions. "
+        "Therefore, it should have most values in the range of [-1, 1]. "
+        "If grid has values outside the range of [-1, 1], the corresponding outputs will be handled as defined by padding_mode.",
+        "T1")
+    .Output(
+        0,
+        "Y",
+        "4-D tensor of shape (N, C, H_out, W_out).",
+        "T2")
+    .TypeConstraint(
+        "T1",
+        OpSchema::all_tensor_types(),
+        "Constrain input types to all tensor types.")
+    .TypeConstraint(
+        "T2",
+        {"tensor(float16)", "tensor(float)", "tensor(double)"},
+        "Constrain output types to float tensors.")
+    .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+      propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+      size_t input_param = 0, grid_param = 1;
+
+      checkInputRank(ctx, input_param, 4);
+      checkInputRank(ctx, grid_param, 4);
+
+      // Output dimensions, initialized to an unknown-dimension-value
+      Dim N, C, H_out, W_out;
+
+      // Get value of N from dim 0 of input_param, if available
+      unifyInputDim(ctx, input_param, 0, N);
+      // Get value of C from dim 1 of input_param, if available
+      unifyInputDim(ctx, input_param, 1, C);
+
+      // Get value of H_out from dim 1 of grid_param, if available
+      unifyInputDim(ctx, grid_param, 1, H_out);
+      // Get value of W_out from dim 2 of grid_param, if available
+      unifyInputDim(ctx, grid_param, 2, W_out);
+
+      // set output shape:
+      updateOutputShape(ctx, 0, {N, C, H_out, W_out});
+    }));
+
+ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
+                            OpSchema()
+    .SetDoc("Beam Search for text generation. Supports GPT-2 decoder.")
+    .Attr("eos_token_id", "The id of the end-of-sequence token", AttributeProto::INT)
+    .Attr("pad_token_id", "The id of the padding token", AttributeProto::INT)
+    .Attr("no_repeat_ngram_size", "no repeat ngrams size", AttributeProto::INT, static_cast<int64_t>(0))
+    .Attr("early_stopping", "early stop or not", AttributeProto::INT, static_cast<int64_t>(0))
+    .Attr(
+        "body",
+        "The GPT-2 subgraph with input_ids, position_ids, attention_mask, past_0, past_1, ... as inputs, and logits, present_0, present_1, ... as output",
+        AttributeProto::GRAPH)
+    .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "I")
+    .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
+    .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
+    .Input(3, "num_beams", "Number of beams for beam search. 1 means no beam search. Shape is (1)", "I")
+    .Input(4, "num_return_sequences", "The number of returned sequences in the batch. Shape is (1)", "I")
+    .Input(5, "temperature", "The value used to module the next token probabilities. Accepts value > 0.0. Shape is (1)", "T")
+    .Input(6, "length_penalty",
+           "Exponential penalty to the length. Default value 1.0 means no penalty."
+           "Value > 1.0 encourages longer sequences, while values < 1.0 produces shorter sequences."
+           "Shape is (1,)",
+           "T", OpSchema::Optional)
+    .Input(7, "repetition_penalty", "The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)", "T", OpSchema::Optional)
+    .Input(8, "vocab_mask", "Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)", "M", OpSchema::Optional)
+    .Input(9, "prefix_vocab_mask", "Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)", "M", OpSchema::Optional)
+    .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, num_return_sequences, max_sequence_length)", "I")
+    .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)", "T", OpSchema::Optional)
+    .Output(2, "scores",
+            "Processed beam scores for each vocabulary token at each generation step."
+            "Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam."
+            "Shape is (max_length - sequence_length, batch_size, num_beams, vocab_size)",
+            "T", OpSchema::Optional)
+    .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+    .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
+    .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
+    .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+      BeamSearchShapeInference(ctx);
+    }));
+
+
+
   static const char* Attention_ver1_doc = R"DOC(
 Multi-Head Self Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
 The mask_index input is optional. Besides raw attention mask with shape (batch_size, past_sequence_length + sequence_length)
@@ -723,9 +1169,8 @@ the inclusive start positions. When unidirectional is 1, and each token only att
 and present state are optional. Present state could appear in output even when past state is not in input.
 )DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(Attention)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+ONNX_MS_OPERATOR_SET_SCHEMA(Attention, 1,
+      OpSchema()
       .SetDoc(Attention_ver1_doc)
       .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
       .Attr("unidirectional",
@@ -752,11 +1197,10 @@ and present state are optional. Present state could appear in output even when p
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         constexpr int past_input_index = 4;
         AttentionTypeAndShapeInference(ctx, past_input_index);
-      });
+      }));
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(QAttention)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+ONNX_MS_OPERATOR_SET_SCHEMA(QAttention, 1,
+      OpSchema()
       .SetDoc("Quantization of Multi-Head Self Attention.")
       .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
       .Attr("unidirectional",
@@ -833,7 +1277,7 @@ and present state are optional. Present state could appear in output even when p
         constexpr int past_input_index = 8;
 
         AttentionTypeAndShapeInference(ctx, past_input_index);
-      });
+      }));
 
   static const char* Longformer_Attention_doc = R"DOC(
 Longformer Self Attention with a local context and a global context. Tokens attend locally: Each token
@@ -846,7 +1290,8 @@ Mask value < 0 (like -10000.0) means the token is masked, 0 otherwise.
 Global attention flags have value 1 for the tokens attend globally and 0 otherwise.
 )DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(LongformerAttention)
+ONNX_MS_OPERATOR_SET_SCHEMA(LongformerAttention, 1,
+    OpSchema()
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(Longformer_Attention_doc)
@@ -862,16 +1307,15 @@ Global attention flags have value 1 for the tokens attend globally and 0 otherwi
       .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "T")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
       .TypeConstraint("G", {"tensor(int32)"}, "Constrain to integer types")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
   static const char* Decoder_Attention_doc = R"DOC(
 This DecoderAttention supports self attention and cross attention, key and value cache, and key_padding_mask. The attention mask is not support at the moment.
 Some boolean parameters are passed by runtime input for generic purpose
 )DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(DecoderAttention)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+ONNX_MS_OPERATOR_SET_SCHEMA(DecoderAttention, 1,
+      OpSchema()
       .SetDoc(Decoder_Attention_doc)
       .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
       .Input(0, "query", "3D input tensor with shape (sequence_length, batch_size, hidden_size), hidden_size = num_heads * head_size", "T")
@@ -893,7 +1337,7 @@ Some boolean parameters are passed by runtime input for generic purpose
       .TypeConstraint("B", {"tensor(bool)"}, "Constrain key_padding_mask to bool tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         DecoderAttentionTypeAndShapeInference(ctx);
-      });
+      }));
 
   static const char* EmbedLayerNormalization_ver1_doc = R"DOC(
 EmbedLayerNormalization is the fusion of embedding layer in BERT model, with optional mask processing.
@@ -902,9 +1346,8 @@ and segment_emedding; the embeddings are added then applied layer normalization 
 The last input mask is optional. If mask is provided, mask index (that is position of first 0 in mask, or number of words)
 will be calculated.)DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(EmbedLayerNormalization)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+ONNX_MS_OPERATOR_SET_SCHEMA(EmbedLayerNormalization, 1,
+      OpSchema()
       .SetDoc(EmbedLayerNormalization_ver1_doc)
       .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon)
       .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
@@ -921,7 +1364,7 @@ will be calculated.)DOC";
       .Output(2, "embedding_sum", "sum of word_embedding and position_embedding without layer normalization", "T", OpSchema::Optional)
       .TypeConstraint("T1", {"tensor(int32)"}, "Constrain input and output integer tensors types")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output float tensors types.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::embedLayerNormalizationShapeInference);
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::embedLayerNormalizationShapeInference));
 
   static const char* QEmbedLayerNormalization_ver1_doc = R"DOC(
 QEmbedLayerNormalization is the quantized fusion of embedding layer in BERT model, with optional mask processing.
@@ -930,9 +1373,8 @@ and segment_emedding; the embeddings are added then applied layer normalization 
 and segment_ids remain int32. All embeddings, gamma, and beta tensors are converted to int8/uint8. The last input mask is optional.
 If mask is provided, mask index (that is position of first 0 in mask, or number of words will be calculated.)DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(QEmbedLayerNormalization)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+  ONNX_MS_OPERATOR_SET_SCHEMA(QEmbedLayerNormalization, 1,
+      OpSchema()
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc(QEmbedLayerNormalization_ver1_doc)
       .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon)
@@ -959,14 +1401,13 @@ If mask is provided, mask index (that is position of first 0 in mask, or number 
       .TypeConstraint("T1", {"tensor(int32)"}, "Constrain mask index to integer types")
       .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
       .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float32 tensors.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::embedLayerNormalizationShapeInference);
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::embedLayerNormalizationShapeInference));
 
   static const char* FastGelu_ver1_doc = R"DOC(
 GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.035677*X*X*X)) with an optional input of bias that will be added to X before GELU.)DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(FastGelu)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+ONNX_MS_OPERATOR_SET_SCHEMA(FastGelu, 1,
+      OpSchema()
       .SetDoc(FastGelu_ver1_doc)
       .Input(0, "X", "input tensor", "T")
       .Input(1, "bias", "bias tensor", "T", OpSchema::Optional)
@@ -1004,11 +1445,10 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
 
         schema.BuildFunction(functionProto);
         return true;
-      });
+      }));
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(SkipLayerNormalization)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+ONNX_MS_OPERATOR_SET_SCHEMA(SkipLayerNormalization, 1,
+      OpSchema()
       .SetDoc("Skip and Layer Normalization Fusion")
       .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
@@ -1021,16 +1461,14 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
       .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
       .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
   static const char* NGramRepeatBlock_ver1_doc = R"DOC(
 Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form a repeated n-gram if added to the back of the input_ids.
 )DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(NGramRepeatBlock)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetDoc(NGramRepeatBlock_ver1_doc)
+  ONNX_MS_OPERATOR_SET_SCHEMA(NGramRepeatBlock, 1, 
+      OpSchema().SetDoc(NGramRepeatBlock_ver1_doc)
       .Attr("ngram_size", "The NGram size.", AttributeProto::INT)
       .Input(0, "input_ids", "2D input tensor with shape (batch_size, sequence_length)", "Tid")
       .Input(1, "scores", "2D input tensor with shape (batch_size, vocab_size)", "T")
@@ -1043,7 +1481,7 @@ Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form 
           return;
         }
         propagateShapeFromInputToOutput(ctx, 1, 0);
-      });
+      }));
 
   static const char* BifurcationDetector_ver1_doc = R"DOC(
 Component for aggressive decoding. Find the bifurcation index of predicted tokens, between source tokens,
@@ -1058,9 +1496,8 @@ Return the index of the start of the n-gram in source tokens.
 No matching if found if src tokens contain multiple or zero matching n-grams. Return -1.
 )DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(BifurcationDetector)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+  ONNX_MS_OPERATOR_SET_SCHEMA(BifurcationDetector, 1,
+      OpSchema()
       .SetDoc(BifurcationDetector_ver1_doc)
       .Attr("min_ngram_size", "The minimum NGram size for suffix matching.", AttributeProto::INT, static_cast<int64_t>(1))
       .Attr("max_ngram_size", "The maximum NGram size for suffix matching.", AttributeProto::INT, static_cast<int64_t>(3))
@@ -1080,8 +1517,9 @@ No matching if found if src tokens contain multiple or zero matching n-grams. Re
         // output tokens lengths is dynamic as it depends on the bifurcation index of predicted tokens and source tokens,
         // and current tokens length.
         // tokens_length = cur_tokens_length + bifurcation_index + 1.
-      });
-}
+      }));
+
+
 
 void RegisterContribSchemas() {
   // Register removed experimental ops for backward compatibility.
@@ -2981,460 +3419,7 @@ Example 4:
           output_shape.add_dim()->set_dim_value(pooled_size);
           output_shape.add_dim()->set_dim_value(pooled_size);
           updateOutputShape(ctx, 0, output_shape);
-      });
-
-  static const char* Gelu_ver1_doc =
-      R"DOC(Gaussian Error Linear Unit.
-A high-performing neural network activation function.The GELU nonlinearity is
-the expected transformation of a stochastic regularizer which randomly applies
-the identity or zero map to a neuron's input. The GELU nonlinearity weights
-inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)DOC";
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(Gelu)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetDoc(Gelu_ver1_doc)
-      .Input(0, "X", "The input data as Tensor.", "T")
-      .Output(0, "Y", "The output.", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
-      .SetContextDependentFunctionBodyBuilder([](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
-        // gelu(x) = x * Phi(x) = x * 1/2(1+erf(x/sqrt(2)))
-        auto* tp = ctx.getInputType(0);
-        if ((tp == nullptr) || (!tp->has_tensor_type()))
-          return false;
-        auto elem_type = tp->tensor_type().elem_type();
-
-        FunctionBuilder builder(functionProto);
-        builder
-            .AddOpset("", 13)
-            .Const("Half", 0.5, elem_type)
-            .Const("One", 1.0, elem_type)
-            .Const("C", std::sqrt(0.5), elem_type)
-            .Add(R"(
-                CX = Mul (C, X)
-                ERFCX = Erf (CX)
-                ERFCXPlus1 = Add (ERFCX, One)
-                PhiX = Mul (ERFCXPlus1, Half)
-                Y = Mul (X, PhiX)
-            )");
-
-        schema.BuildFunction(functionProto);
-        return true;
-      });
-
-  static const char* BiasGelu_ver1_doc =
-      R"DOC(Bias Gelu.
-It's an extension of Gelu. It takes the sum of input A and bias input B as the input of Gelu activation. )DOC";
-  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasGelu)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetDoc(BiasGelu_ver1_doc)
-      .Input(0, "A", "The normal input data.", "T")
-      .Input(1, "B", "The bias input data that is a 1D tensor.", "T")
-      .Output(0, "C", "The output.", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
-
-  // Used to be ONNX 1.7 Inverse(12)
-  // Comment out docs not to increase the binary size
-  //
-  //  static const char* Inverse_ver1_doc = R"DOC(
-  //Calculates inverse of a square matrix or batches of square matrices.
-  //Inverse takes one input tensor of shape `[*, M, M]`, where `*` is zero or more batch dimensions,
-  //and the inner-most 2 dimensions form square matrices. These matrices must be invertible (full-rank).
-  //The behavior where one of the matrices is not invertible is undefined. The implementation can choose
-  //to throw an error or output (garbage) results as is. The output is a tensor of shape `[*, M, M]`,
-  //containing the individual inverses of all input submatrices.
-  //)DOC";
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(Inverse)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .Input(0, "X", "Input tensor. Every matrix in the batch must be invertible.", "T")
-      .Output(0, "Y", "Output tensor of the same type and shape as the input tensor.", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)",
-           "tensor(float)",
-           "tensor(double)"},
-          "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        // Type inference
-        using namespace ONNX_NAMESPACE;
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-
-        // Shape inference
-        if (hasInputShape(ctx, 0)) {
-          const TensorShapeProto& input_shape =
-              ctx.getInputType(0)->tensor_type().shape();
-          const int rank = static_cast<int>(input_shape.dim_size());
-
-          if (rank < 2) {
-            fail_shape_inference("Input rank must be >= 2.")
-          }
-
-          const auto mat_w = input_shape.dim(rank - 1);
-          const auto mat_h = input_shape.dim(rank - 2);
-          if (mat_w.has_dim_value() && mat_h.has_dim_value() &&
-              (mat_w.dim_value() != mat_h.dim_value())) {
-            fail_shape_inference(
-                "The inner-most 2 dimensions must have the same size (mat_w:",
-                mat_w.dim_value(),
-                " != mat_h:",
-                mat_h.dim_value(),
-                ").");
-          }
-
-          // Shape inference
-          propagateShapeFromInputToOutput(ctx, 0, 0);
-        }
-      });
-
-  static const char* TorchEmbedding_ver1_doc = R"DOC(
-      Based on Torch operator Embedding, creates a lookup table of embedding vectors of fixed size,
-       for a dictionary of fixed size.
-      )DOC";
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(TorchEmbedding)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetDoc(TorchEmbedding_ver1_doc)
-      .Input(
-          0,
-          "weight",
-          "The embedding matrix of size N x M. 'N' is equal to the maximum possible index + 1, and 'M' is "
-          "equal to the embedding size",
-          "T")
-      .Input(
-          1,
-          "indices",
-          "Long tensor containing the indices to extract from embedding matrix.",
-          "tensor(int64)")
-      .Input(
-          2,
-          "padding_idx",
-          "A 0-D scalar tensor. If specified, the entries at `padding_idx` do not contribute to the gradient; "
-          "therefore, the embedding vector at `padding_idx` is not updated during training, "
-          "i.e. it remains as a fixed pad.",
-          "tensor(int64)",
-          OpSchema::Optional)
-      .Input(
-          3,
-          "scale_grad_by_freq",
-          "A 0-D bool tensor. If given, this will scale gradients by the inverse of frequency of "
-          "the indices (words) in the mini-batch. Default  is ``False``",
-          "tensor(bool)",
-          OpSchema::Optional)
-      .Output(
-          0,
-          "Y",
-          "Output tensor of the same type as the input tensor. Shape of the output is * x M, where '*' is the shape of "
-          "input indices, and 'M' is the embedding size.",
-          "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)",
-           "tensor(float)",
-           "tensor(double)",
-           "tensor(bfloat16)",
-           "tensor(uint8)",
-           "tensor(uint16)",
-           "tensor(uint32)",
-           "tensor(uint64)",
-           "tensor(int8)",
-           "tensor(int16)",
-           "tensor(int32)",
-           "tensor(int64)"},
-          "Constrain input and output types to all numeric tensors.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        using namespace ONNX_NAMESPACE;
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-
-        TensorShapeProto outputs_shape;
-        Dim input_dim_i;
-
-        if (hasInputShape(ctx, 1)) {
-          auto& input_shape = getInputShape(ctx, 1);
-          for (int32_t i = 0; i < input_shape.dim_size(); i++) {
-            input_dim_i = input_shape.dim(i);
-            *outputs_shape.add_dim() = input_dim_i;
-          }
-        }
-
-        Dim embedding_dim;
-        unifyInputDim(ctx, 0, 1, embedding_dim);
-        *outputs_shape.add_dim() = embedding_dim;
-        updateOutputShape(ctx, 0, outputs_shape);
-      });
-
-  static const char* Trilu_ver1_doc = R"DOC(
-      Returns the upper or lower triangular part of a 2-D matrix, or batches of 2-D matrices. If the attribute "upper" is set to true,
-      the upper triangular matrix is retained. Lower triangular matrix is retained otherwise. Default value for upper is true.
-      Trilu takes one input tensor of shape [*, N, M], where * is zero or more batch dimensions. The upper triangular part consists
-      of the elements on and above the given diagonal (k). The lower triangular part consists of elements on and below the diagonal.
-      All other elements in the matrix are set to zero.
-      If k = 0, the triangular part on and above/below the main diagonal is retained.
-      If upper is set to true, a positive k retains the upper triangular matrix excluding k diagonals above
-      the main diagonal. A negative k value includes as many diagonals below the main diagonal.
-      If upper is set to false, a positive k retains the lower triangular matrix including k diagonals above
-      the main diagonal. A negative k value excludes as many diagonals below the main diagonal.
-      )DOC";
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(Trilu)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetDoc(Trilu_ver1_doc)
-      .Attr("upper",
-            "Boolean. Indicates whether upper or lower part of matrix is retained. Default is true.",
-            AttributeProto::INT,
-            static_cast<int64_t>(1))
-      .Input(
-          0,
-          "X",
-          "Input tensor of rank 2 or higher.",
-          "T")
-      .Input(
-          1,
-          "k",
-          "A 0-D tensor containing a single value corresponding to the number diagonals above or the main diagonal to exclude or include."
-          "Default value is 0 if it's not specified.",
-          "tensor(int64)",
-          OpSchema::Optional)
-      .Output(
-          0,
-          "Y",
-          "Output tensor of the same type and shape as the input tensor.",
-          "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)",
-           "tensor(float)",
-           "tensor(double)",
-           "tensor(bfloat16)",
-           "tensor(uint8)",
-           "tensor(uint16)",
-           "tensor(uint32)",
-           "tensor(uint64)",
-           "tensor(int8)",
-           "tensor(int16)",
-           "tensor(int32)",
-           "tensor(int64)",
-           "tensor(bool)"},
-          "Constrain input and output types to all numeric tensors and bool tensors.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        using namespace ONNX_NAMESPACE;
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-
-        if (hasInputShape(ctx, 0)) {
-          const TensorShapeProto& input_shape =
-              ctx.getInputType(0)->tensor_type().shape();
-          const int rank = static_cast<int>(input_shape.dim_size());
-          if (rank < 2) {
-            fail_shape_inference("Input rank must be >= 2.")
-          }
-          propagateShapeFromInputToOutput(ctx, 0, 0);
-        }
-      });
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasSoftmax)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetDoc(
-          "Y = softmax(scores + bias)) with simple broadcast on bias. "
-          "Intended to specialize softmax(scores + additive_mask) commonly found in transformer models.")
-      .Attr("softmax_axis", "apply softmax to elements for dimensions softmax_axis or higher", AttributeProto::INT, static_cast<int64_t>(1))
-      .Attr("broadcast_axis", "broadcast bias across input for dimensions broadcast_axis to softmax_axis-1", AttributeProto::INT, static_cast<int64_t>(1))
-      .Input(0, "data", "The input data as Tensor.", "T")
-      .Input(1, "bias", "The bias (or mask) as Tensor.", "T")
-      .Output(0, "output", "The output.", "T")
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasDropout)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetDoc(
-          "output, dropout_mask = Dropout(data + bias, ratio) + residual, "
-          "Intended to specialize the dropout pattern commonly found in transformer models.")
-      .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.", AttributeProto::INT, OPTIONAL_VALUE)
-      .AllowUncheckedAttributes()
-      .Input(0, "data", "The input data as Tensor.", "T")
-      .Input(1, "bias", "The bias input, a vector with the same shape as last dim of data OR same shape with data", "T")
-      .Input(2, "residual", "The residual input, must have the same shape as data", "T", OpSchema::Optional)
-      .Input(3, "ratio",
-             "The ratio of random dropout, with value in [0, 1). If this input was not set, "
-             "or if it was set to 0, the output would be a simple copy of the input. "
-             "If it's non-zero, output will be a random dropout of input, which is typically "
-             "the case during training.",
-             "T1",
-             OpSchema::Optional)
-      .Input(4, "training_mode",
-             "If set to true then it indicates dropout is being used for "
-             "training. It is an optional value hence unless specified explicitly, it is false. "
-             "If it is false, ratio is ignored and the operation mimics inference mode where nothing "
-             "will be dropped from the input data and if mask is requested as output it will contain "
-             "all ones.",
-             "T2",
-             OpSchema::Optional)
-      .Output(0, "output", "The output.", "T")
-      .Output(1, "mask", "The output mask of dropout.", "T2", OpSchema::Optional)
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to float tensors.")
-      .TypeConstraint(
-          "T1",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input 'ratio' types to float tensors.")
-      .TypeConstraint(
-          "T2",
-          {"tensor(bool)"},
-          "Constrain output 'mask' types to boolean tensors.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateShapeAndTypeFromFirstInput(ctx);
-        if (ctx.getNumOutputs() == 2) {
-          updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
-          if (hasNInputShapes(ctx, 1)) {
-            propagateShapeFromInputToOutput(ctx, 0, 1);
-          }
-        }
-      });
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(IsAllFinite)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("IsAllFinite")
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .Attr("isinf_only",
-            "If true, check only for Inf, -Inf.",
-            AttributeProto::INT,
-            static_cast<int64_t>(0))
-      .Attr("isnan_only",
-            "If true, check only for NaN.",
-            AttributeProto::INT,
-            static_cast<int64_t>(0))
-      .TypeConstraint(
-          "V",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to float tensors.")
-      .TypeConstraint(
-          "T",
-          {"tensor(bool)"},
-          "Constrain the output to a boolean tensor.")
-      .Input(0, "input", "Input tensors to check.", "V",
-             OpSchema::Variadic)
-      .Output(
-          0,
-          "output",
-          "The output scalar. Its value is true if all input "
-          "tensors are finite. Otherwise, the output value would "
-          "be false.",
-          "T")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        bool isinf_only = static_cast<bool>(getAttribute(ctx, "isinf_only", int64_t(0)));
-        bool isnan_only = static_cast<bool>(getAttribute(ctx, "isnan_only", int64_t(0)));
-        ORT_ENFORCE(!(isinf_only && isnan_only),
-                    "Both attributes isinf_only and isnan_only cannot be set. Unset both to check for both conditions.");
-        updateOutputShape(ctx, 0, {});
-        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
-      });
-
-  static const char* GridSample_ver1_doc = R"DOC(
-      Given an `input` and a flow-field `grid`, computes the `output` using `input` values and pixel locations from `grid`.
-      Currently, only spatial (4-D) inputs are supported. For `input` with shape (N, C, H, W) and `grid` with shape (N, H_out, W_out, 2),
-      the `output` will have shape (N, C, H_out, W_out).
-      For each output location `output[n, :, h, w]`, the size-2 vector `grid[n, h, w]` specifies `input` pixel locations `x` and `y`,
-      which are used to interpolate the output value `output[n, :, h, w]`.
-      The GridSample operator is often used in doing grid generator and sampler in the [Spatial Transformer Networks](https://arxiv.org/abs/1506.02025).
-      See also in [torch.nn.functional.grid_sample](https://pytorch.org/docs/master/generated/torch.nn.functional.grid_sample.html#torch-nn-functional-grid-sample).
-      )DOC";
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(GridSample)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetDoc(GridSample_ver1_doc)
-      .Attr(
-          "mode",
-          "Three interpolation modes: bilinear (default), nearest and bicubic.",
-          AttributeProto::STRING,
-          std::string("bilinear"))
-      .Attr(
-          "padding_mode",
-          "Support padding modes for outside grid values: `zeros`(default), `border`, `reflection`. "
-          "zeros: use 0 for out-of-bound grid locations, "
-          "border: use border values for out-of-bound grid locations, "
-          "reflection: use values at locations reflected by the border for out-of-bound grid locations.",
-          AttributeProto::STRING,
-          std::string("zeros"))
-      .Attr(
-          "align_corners",
-          "If align_corners=1, the extrema (-1 and 1) are considered as referring to the center points of the input's corner pixels. "
-          "If align_corners=0, they are instead considered as referring to the corner points of the input's corner pixels, making the sampling more resolution agnostic.",
-          AttributeProto::INT,
-          static_cast<int64_t>(0))
-      .Input(
-          0,
-          "X",
-          "4-D tensor of shape (N, C, H, W), "
-          "where N is the batch size, C is the numbers of channels, "
-          "H and W are the height and width of the input data.",
-          "T1")
-      .Input(
-          1,
-          "Grid",
-          "Input offset, 4-D tensor of shape (N, H_out, W_out, 2), "
-          "where H_out and W_out are the height and width of grid and output, "
-          "Grid specifies the sampling pixel locations normalized by the input spatial dimensions. "
-          "Therefore, it should have most values in the range of [-1, 1]. "
-          "If grid has values outside the range of [-1, 1], the corresponding outputs will be handled as defined by padding_mode.",
-          "T1")
-      .Output(
-          0,
-          "Y",
-          "4-D tensor of shape (N, C, H_out, W_out).",
-          "T2")
-      .TypeConstraint(
-          "T1",
-          OpSchema::all_tensor_types(),
-          "Constrain input types to all tensor types.")
-      .TypeConstraint(
-          "T2",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain output types to float tensors.")
-      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 0, 0);
-
-        size_t input_param = 0, grid_param = 1;
-
-        checkInputRank(ctx, input_param, 4);
-        checkInputRank(ctx, grid_param, 4);
-
-        // Output dimensions, initialized to an unknown-dimension-value
-        Dim N, C, H_out, W_out;
-
-        // Get value of N from dim 0 of input_param, if available
-        unifyInputDim(ctx, input_param, 0, N);
-        // Get value of C from dim 1 of input_param, if available
-        unifyInputDim(ctx, input_param, 1, C);
-
-        // Get value of H_out from dim 1 of grid_param, if available
-        unifyInputDim(ctx, grid_param, 1, H_out);
-        // Get value of W_out from dim 2 of grid_param, if available
-        unifyInputDim(ctx, grid_param, 2, W_out);
-
-        // set output shape:
-        updateOutputShape(ctx, 0, {N, C, H_out, W_out});
-      });
+      });  
 
 #ifndef _OPSCHEMA_LIB_
   // Register the NCHWc schemas if supported by the platform.
@@ -3443,15 +3428,14 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
   }
 #endif
 
-  RegisterNhwcSchemas();
-  RegisterBertSchemas();
-  RegisterTextGenerationSchemas();
-
 #ifdef BUILD_MS_EXPERIMENTAL_OPS
   onnxruntime::signal::RegisterSignalSchemas();
 #endif
 
   RegisterQuantizationSchemas();
 }
+
+
+
 }  // namespace contrib
 }  // namespace onnxruntime

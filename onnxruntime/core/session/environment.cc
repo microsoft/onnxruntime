@@ -23,6 +23,7 @@
 
 #include "core/platform/env.h"
 #include "core/util/thread_utils.h"
+#include "core/graph/contrib_ops/ms_opset.h"
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
 #include "core/platform/tracing.h"
@@ -225,6 +226,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 // Register contributed schemas.
 // The corresponding kernels are registered inside the appropriate execution provider.
 #ifndef DISABLE_CONTRIB_OPS
+      RegisterOpSetSchema<contrib::OpSet_Microsoft_ver1>();
       contrib::RegisterContribSchemas();
 #endif
 #ifdef USE_DML

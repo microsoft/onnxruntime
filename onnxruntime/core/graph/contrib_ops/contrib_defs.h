@@ -8,9 +8,15 @@
 #else
 #include "onnx/defs/data_type_utils.h"
 #endif
+#include "core/graph/contrib_ops/ms_schema.h"
+
+#define ONNX_MS_OPERATOR_SET_SCHEMA(name, ver, impl) \
+  ONNX_OPERATOR_SET_SCHEMA_EX(name, Microsoft, ::onnxruntime::kMSDomain, ver, true, impl)
 
 namespace onnxruntime {
 namespace contrib {
+
+
 #define ONNX_CONTRIB_OPERATOR_SCHEMA(name) \
   ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_HELPER(__COUNTER__, name)
 #define ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_HELPER(Counter, name) \
@@ -31,7 +37,6 @@ namespace contrib {
 
 void RegisterContribSchemas();
 void RegisterNchwcSchemas();
-void RegisterNhwcSchemas();
 void RegisterQuantizationSchemas();
 
 constexpr const float kDefaultSkipLayerNormEpsilon = 1e-12f;
