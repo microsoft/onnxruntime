@@ -7,11 +7,12 @@
 import logging
 import numpy
 import os
+from pyparsing import Opt
 import torch
 from pathlib import Path
 from transformers import AutoConfig, AutoTokenizer, LxmertConfig, TransfoXLConfig
 from affinity_helper import AffinitySetting
-from benchmark_helper import create_onnxruntime_session, Precision
+from benchmark_helper import create_onnxruntime_session, Precision, OptimizerInfo
 from gpt2_helper import GPT2ModelNoPastState, PRETRAINED_GPT2_MODELS, TFGPT2ModelNoPastState
 from quantize_helper import QuantizeHelper
 from huggingface_models import MODEL_CLASSES
@@ -305,7 +306,7 @@ def validate_and_optimize_onnx(model_name,
                                input_names,
                                use_gpu,
                                precision,
-                               optimize_onnx,
+                               optimize_info,
                                validate_onnx,
                                use_raw_attention_mask,
                                overwrite,
@@ -314,16 +315,15 @@ def validate_and_optimize_onnx(model_name,
                                onnx_model_path,
                                example_inputs,
                                example_outputs_flatten,
-                               output_names=None,
-                               bypass_optimization=False):
+                               output_names=None):
     is_valid_onnx_model = True
     if validate_onnx:
         is_valid_onnx_model = validate_onnx_model(onnx_model_path, example_inputs, example_outputs_flatten, use_gpu,
                                                   False, output_names)
-    if bypass_optimization:
+    if optimize_info == OptimizerInfo.NOOPT:
         return onnx_model_path, is_valid_onnx_model, config.vocab_size
 
-    if optimize_onnx or precision == Precision.FLOAT16 or precision == Precision.INT8:  # Use script (optimizer.py) to optimize
+    if optimize_info == OptimizerInfo.BYSCRIPT or precision == Precision.FLOAT16 or precision == Precision.INT8:  # Use script (optimizer.py) to optimize
         optimized_model_path = get_onnx_file_path(onnx_dir, model_name, len(input_names), True, use_gpu, precision,
                                                   False, use_external_data_format)
         optimize_onnx_model(model_name, onnx_model_path, optimized_model_path, model_type, config.num_attention_heads,
@@ -340,7 +340,7 @@ def validate_and_optimize_onnx(model_name,
             QuantizeHelper.quantize_onnx_model(onnx_model_path, onnx_model_path, use_external_data_format)
             logger.info(f"Finished quantizing model: {onnx_model_path}")
 
-    else:  # Use OnnxRuntime to optimize
+    if optimize_info == OptimizerInfo.BYORT:  # Use OnnxRuntime to optimize
         if is_valid_onnx_model:
             ort_model_path = add_filename_suffix(onnx_model_path, '_ort')
             optimize_onnx_model_by_ort(onnx_model_path, ort_model_path, use_gpu, overwrite, model_fusion_statistics)
@@ -349,8 +349,8 @@ def validate_and_optimize_onnx(model_name,
 
 
 def export_onnx_model_from_pt(model_name, opset_version, use_external_data_format, model_type, model_class, cache_dir,
-                              onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx,
-                              use_raw_attention_mask, overwrite, model_fusion_statistics, no_opt=False):
+                              onnx_dir, input_names, use_gpu, precision, optimizer_info, validate_onnx,
+                              use_raw_attention_mask, overwrite, model_fusion_statistics):
 
     config, model = load_pt_model(model_name, model_class, cache_dir)
     # config, model = load_pt_model_from_tf(model_name)
@@ -397,16 +397,16 @@ def export_onnx_model_from_pt(model_name, opset_version, use_external_data_forma
         logger.info(f"Skip export since model existed: {onnx_model_path}")
 
     onnx_model_file, is_valid_onnx_model, vocab_size = validate_and_optimize_onnx(
-        model_name, use_external_data_format, model_type, onnx_dir, input_names, use_gpu, precision, optimize_onnx,
+        model_name, use_external_data_format, model_type, onnx_dir, input_names, use_gpu, precision, optimizer_info,
         validate_onnx, use_raw_attention_mask, overwrite, config, model_fusion_statistics, onnx_model_path,
-        example_inputs, example_outputs_flatten, None, no_opt)
+        example_inputs, example_outputs_flatten, None)
 
     return onnx_model_file, is_valid_onnx_model, vocab_size, max_input_size
 
 
 def export_onnx_model_from_tf(model_name, opset_version, use_external_data_format, model_type, model_class, cache_dir,
-                              onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx,
-                              use_raw_attention_mask, overwrite, model_fusion_statistics, no_opt=False):
+                              onnx_dir, input_names, use_gpu, precision, optimizer_info, validate_onnx,
+                              use_raw_attention_mask, overwrite, model_fusion_statistics):
     # Use CPU to export
     import tensorflow as tf
     tf.config.set_visible_devices([], 'GPU')
@@ -491,8 +491,8 @@ def export_onnx_model_from_tf(model_name, opset_version, use_external_data_forma
 
     model_type = model_type + '_tf'
     opt_onnx_model_file, onnx_model_file, is_valid_onnx_model, vocab_size = validate_and_optimize_onnx(
-        model_name, use_external_data_format, model_type, onnx_dir, input_names, use_gpu, precision, optimize_onnx,
+        model_name, use_external_data_format, model_type, onnx_dir, input_names, use_gpu, precision, optimizer_info,
         validate_onnx, use_raw_attention_mask, overwrite, config, model_fusion_statistics, onnx_model_path,
-        example_inputs, example_outputs_flatten, output_names, no_opt)
+        example_inputs, example_outputs_flatten, output_names)
 
     return opt_onnx_model_file, onnx_model_file, is_valid_onnx_model, vocab_size, max_input_size

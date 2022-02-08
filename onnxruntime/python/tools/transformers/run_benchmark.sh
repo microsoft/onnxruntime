@@ -109,8 +109,11 @@ if [ "$export_onnx_from_tf" = true ] ; then
 fi
 
 if [ "$use_optimizer" = true ] ; then
-  onnx_export_options="$onnx_export_options -o"
-  benchmark_options="$benchmark_options -o"
+  onnx_export_options="$onnx_export_options -o by_script"
+  benchmark_options="$benchmark_options -o by_script"
+else
+  onnx_export_options="$onnx_export_options -o by_ort"
+  benchmark_options="$benchmark_options -o by_ort"
 fi
 
 # -------------------------------------------
