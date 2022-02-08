@@ -197,8 +197,12 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
   std::vector<Node*> nodes_to_compile;
 
   GraphViewer graph_viewer(graph);
+  auto capability_start_ = std::chrono::high_resolution_clock::now();
   std::vector<std::unique_ptr<ComputeCapability>> capabilities =
       current_ep.GetCapability(graph_viewer, kernel_registry_mgr.GetKernelRegistriesByProviderType(type));
+  auto capability_end_ = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> cability_total_ = capability_end_ - capability_start_;
+  fprintf(stdout, "        GetCapability total time: %f\n", cability_total_.count());
 
   // filter out the ComputeCapability instances that do not need compiling so we have a std::vector that's 1:1 with
   // nodes_to_compile.
@@ -242,7 +246,11 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
           ORT_RETURN_IF_ERROR(func_mgr.AddFuncInfo(node->Name(), dll_path));
         }
       } else {
+        auto capability_start_ = std::chrono::high_resolution_clock::now();
         ORT_RETURN_IF_ERROR(current_ep.Compile(nodes_to_compile, node_compute_funcs));
+        auto capability_end_ = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> cability_total_ = capability_end_ - capability_start_;
+        fprintf(stdout, "        GetCompile total time: %f\n", cability_total_.count());
 
         if (node_compute_funcs.size() != nodes_to_compile.size()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, type, " did not return correct number of compiled functions");
@@ -409,6 +417,7 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     }
   }
 
+   fprintf(stdout, "        Does it get here total time:\n");
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   if (graph.NumberOfNodes() == 0) {
@@ -418,10 +427,9 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   const std::string& type = current_ep.Type();
   GraphViewer graph_viewer(graph);
   std::vector<IExecutionProvider::FusedNodeAndGraph> nodes_and_viewers;
-
   std::vector<std::unique_ptr<ComputeCapability>> capabilities =
       current_ep.GetCapability(graph_viewer, kernel_registry_mgr.GetKernelRegistriesByProviderType(type));
-
+  
   if (capabilities.empty()) {
     return Status::OK();
   }
@@ -458,7 +466,13 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   for (size_t j = 0, end = nodes_and_viewers.size(); j < end; ++j) {
     Node& node = nodes_and_viewers[j].fused_node;
     std::vector<NodeComputeInfo> single_node_compute_func;
+
+    auto compile_start_ = std::chrono::high_resolution_clock::now();
     auto status = current_ep.Compile({nodes_and_viewers[j]}, single_node_compute_func);
+    auto compile_end_ = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> compile_total_ = compile_end_ - compile_start_;
+    fprintf(stdout, "        GetCompile total time: %f\n", compile_total_.count());
+
     if (!status.IsOK()) {
       // There is compile error with the nodes_and_viewer[j], remove the fused_node and function from the graph
       LOGS_DEFAULT(ERROR) << "EP: " << current_ep.Type() << " has Compile error: " << status.ErrorMessage();

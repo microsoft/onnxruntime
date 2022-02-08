@@ -88,7 +88,11 @@ BackendManager::BackendManager(const Node* fused_node, const logging::Logger& lo
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has concreate input dims. Initializing backend for graph " << subgraph_context_.subgraph_name;
 
     subgraph_context_.has_dynamic_input_shape = false;
+    auto backend_start_ = std::chrono::high_resolution_clock::now();
     concrete_backend_ = BackendFactory::MakeBackend(*model_proto_, GetGlobalContext(), subgraph_context_);
+    auto backend_end_ = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> backend_total_ = backend_end_ - backend_start_;
+    fprintf(stdout, "     Backend total time: %f\n", backend_total_.count());
   }
 }
 
