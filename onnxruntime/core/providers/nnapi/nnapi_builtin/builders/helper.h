@@ -82,8 +82,8 @@ enum class QuantizedOpType : uint8_t {
   QLinearAdd,
   QLinearSigmoid,
   QLinearAveragePool,
+  QLinearMul,
   // Not yet supported
-  // QLinearMul,
   // QLinearReduceMean,
   QDQConv,
   QDQResize,
@@ -98,6 +98,11 @@ enum class ConvType : uint8_t {
   Regular,
   Depthwise,
   Grouped,
+};
+
+enum class IOKind : uint8_t {
+  Input,
+  Output,
 };
 
 QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit);
@@ -125,7 +130,7 @@ common::Status GetQuantizationScaleAndZeroPoint(
 
 common::Status GetQuantizationScaleAndZeroPoint(
     const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::string& name,
-    float& scale, int32_t& zero_point, bool is_input = true);
+    float& scale, int32_t& zero_point, IOKind io_kind = IOKind::Input);
 
 // Get Shape/Type of a NodeArg
 // TODO, move to shared_utils

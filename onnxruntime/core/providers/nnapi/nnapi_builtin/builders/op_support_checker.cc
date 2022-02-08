@@ -79,12 +79,13 @@ static bool IsQuantizationScaleSupported(const InitializedTensorSet& initializer
                                          bool is_quant_matmul,
                                          bool is_conv_matmul_u8s8_weight) {
   const auto scale_name = io_def.quant_param->scale.Name();
-  if (!Contains(initializers, scale_name)) {
+  auto it = initializers.find(scale_name);
+  if (it == initializers.cend()) {
     LOGS_DEFAULT(VERBOSE) << "The scale of " << op_type << " must be an initializer tensor";
     return false;
   }
 
-  const auto& scale_tensor = *initializers.at(scale_name);
+  const auto& scale_tensor = *it->second;
   int64_t scales_dim = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
   if (!is_conv_matmul_u8s8_weight) {
     if (scales_dim != 1) {
@@ -203,12 +204,13 @@ static bool IsQuantizationZeroPointSupported(const InitializedTensorSet& initial
 
 // Check if the given quantized input(s) or output(s) is supported
 static bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                   const std::vector<size_t>& indices, const OpSupportCheckParams& params, bool is_input) {
+                                   const std::vector<size_t>& indices, const OpSupportCheckParams& params, IOKind io_kind) {
   const auto& op_type = node_unit.OpType();
   auto quant_op_type = GetQuantizedOpType(node_unit);
 
   ORT_ENFORCE(quant_op_type != QuantizedOpType::Unknown, "[", op_type, "] is not a quantized op");
 
+  bool is_input = io_kind == IOKind::Input;
   bool is_quant_conv = IsQuantizedConv(quant_op_type);
   bool is_quant_matmul = (quant_op_type == QuantizedOpType::QLinearMatMul);
   const auto& io_defs = is_input ? node_unit.Inputs() : node_unit.Outputs();
@@ -247,7 +249,7 @@ static bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, con
       LOGS_DEFAULT(VERBOSE) << op_type << "NodeUnit [" << node_unit.Name()
                             << "], type [" << op_type << "]'s "
                             << (is_input ? "Input" : "Output") << " index  [" << idx
-                            << "] has unspoorted type [" << input_type << "]";
+                            << "] has unsupported type [" << input_type << "]";
       return false;
     }
 
@@ -464,6 +466,7 @@ class BinaryOpSupportChecker : public BaseOpSupportChecker {
           "Mul",
           "Div",
           "QLinearAdd",
+          "QLinearMul",
           "Pow",
       });
 }
@@ -481,6 +484,7 @@ bool BinaryOpSupportChecker::IsNodeUnitTypeSupported(const NodeUnit& node_unit) 
 /* static */ bool BinaryOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
   const auto quant_type = GetQuantizedOpType(node_unit);
   return quant_type == QuantizedOpType::QLinearAdd ||
+         quant_type == QuantizedOpType::QLinearMul ||
          quant_type == QuantizedOpType::QDQAdd ||
          quant_type == QuantizedOpType::QDQMul;
 }
@@ -503,7 +507,7 @@ int BinaryOpSupportChecker::GetMinSupportedOpSet(const NodeUnit& node_unit) cons
   const auto& op(node_unit.OpType());
 
   // Add/Sub/Mul/Div/Pow opset 6- has broadcast attributes we do not support now
-  if (op != "QLinearAdd")
+  if (op != "QLinearAdd" && op != "QLinearMul")
     return 7;
 
   return 1;
@@ -518,14 +522,14 @@ bool BinaryOpSupportChecker::HasSupportedInputOutputsImpl(
     return BaseOpSupportChecker::HasSupportedInputOutputsImpl(initializers, node_unit, params);
 
   if (is_quantized_op) {
-    // QLinearAdd/QDQAdd/QDQMul
+    // QLinearAdd/QDQAdd/QLinearMul/QDQMul
     if (!HasValidBinaryOpQuantizedInputTypes(node_unit))
       return false;
 
-    if (!IsQuantizedIOSupported(initializers, node_unit, {0, 1}, params, true /* is_input */))
+    if (!IsQuantizedIOSupported(initializers, node_unit, {0, 1}, params, IOKind::Input))
       return false;
 
-    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, false /* is_input */))
+    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Output))
       return false;
   }
 
@@ -929,10 +933,10 @@ bool PoolOpSupportChecker::HasSupportedInputOutputsImpl(
     return BaseOpSupportChecker::HasSupportedInputOutputsImpl(initializers, node_unit, params);
 
   if (is_quant_average_pool) {
-    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, true /* is_input */))
+    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Input))
       return false;
 
-    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, false /* is_input */))
+    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Output))
       return false;
   }
 
@@ -1002,10 +1006,10 @@ bool ConvOpSupportChecker::HasSupportedInputOutputsImpl(
   if (!HasValidBinaryOpQuantizedInputTypes(node_unit))
     return false;
 
-  if (!IsQuantizedIOSupported(initializers, node_unit, {0, 1}, params, true /* is_input */))
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0, 1}, params, IOKind::Input))
     return false;
 
-  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, false /* is_input */))
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Output))
     return false;
 
   return true;
@@ -1162,10 +1166,10 @@ bool GemmOpSupportChecker::HasSupportedInputOutputsImpl(
   if (!HasValidBinaryOpQuantizedInputTypes(node_unit))
     return false;
 
-  if (!IsQuantizedIOSupported(initializers, node_unit, {0, 1}, params, true /* is_input */))
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0, 1}, params, IOKind::Input))
     return false;
 
-  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, false /* is_input */))
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Output))
     return false;
 
   return true;
@@ -1383,10 +1387,10 @@ bool UnaryOpSupportChecker::HasSupportedInputOutputsImpl(
   if (node_unit.OpType() != "QLinearSigmoid")
     return BaseOpSupportChecker::HasSupportedInputOutputsImpl(initializers, node_unit, params);
 
-  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, true /* is_input */))
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Input))
     return false;
 
-  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, false /* is_input */))
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Output))
     return false;
 
   return true;
@@ -1538,7 +1542,7 @@ class QuantizeLinearOpSupportChecker : public BaseOpSupportChecker {
   bool HasSupportedInputOutputsImpl(
       const InitializedTensorSet& initializers, const NodeUnit& node_unit,
       const OpSupportCheckParams& params) const override {
-    return IsQuantizedIOSupported(initializers, node_unit, {0}, params, false /* is_input */);
+    return IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Output);
   }
 };
 
@@ -1556,7 +1560,7 @@ class DequantizeLinearOpSupportChecker : public BaseOpSupportChecker {
   bool HasSupportedInputOutputsImpl(
       const InitializedTensorSet& initializers, const NodeUnit& node_unit,
       const OpSupportCheckParams& params) const override {
-    return IsQuantizedIOSupported(initializers, node_unit, {0}, params, true /* is_input */);
+    return IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Input);
   }
 };
 
@@ -1798,10 +1802,10 @@ bool ResizeOpSupportChecker::HasSupportedInputOutputsImpl(
   }
 
   if (IsQuantizedOp(node_unit)) {
-    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, true /* is_input */))
+    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Input))
       return false;
 
-    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, false /* is_input */))
+    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Output))
       return false;
   }
 
@@ -2009,6 +2013,7 @@ static OpSupportCheckerRegistrations CreateOpSupportCheckerRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Mul", BinaryOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Pow", BinaryOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("QLinearAdd", BinaryOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("QLinearMul", BinaryOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Sub", BinaryOpSupportChecker);
   }
 

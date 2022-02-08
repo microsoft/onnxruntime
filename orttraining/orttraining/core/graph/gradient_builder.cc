@@ -1838,5 +1838,24 @@ IMPLEMENT_GRADIENT_BUILDER(GetScatterNDGradient) {
   return result;
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetScatterElementsGradient) {
+  auto attributes = SrcNodeAttributes();
+  auto axis = utils::HasInt(attributes.at("axis")) ? attributes.at("axis").i() : 0;
+  std::vector<NodeDef> result;
+  if (IsGradientRequiredForSrcNodeInput(0)) {
+    result.emplace_back(NodeDef("Shape", {I(2)}, {IA("Shape_updates")}));
+    result.emplace_back(NodeDef("ConstantOfShape", {IA("Shape_updates")}, {IA("Zero_Shape_updates")},
+                                {MakeAttribute("value", ScalarTensorProtoByElemType(0.0f, IElemType(0)))}));
+    result.emplace_back(NodeDef("ScatterElements", {GO(0), I(1), IA("Zero_Shape_updates")}, {GI(0)},
+                                {MakeAttribute("axis", axis)}));
+  }
+
+  if (IsGradientRequiredForSrcNodeInput(2)) {
+    result.emplace_back(NodeDef("GatherElements", {GO(0), I(1)}, {GI(2)},
+                                {MakeAttribute("axis", axis)}));
+  }
+  return result;
+}
+
 }  // namespace training
 }  // namespace onnxruntime
