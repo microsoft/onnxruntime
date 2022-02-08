@@ -112,6 +112,13 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   if (!fp16_enable_env.empty()) {
     fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
   }
+
+  // dump unsupported ops
+  const std::string dump_model_ops_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::dumpModelOps);
+  if (!dump_model_ops_env.empty())
+  {
+    dump_model_ops_ = (std::stoi(dump_model_ops_env) == 0 ? false : true);
+  }
 }
 
 AllocatorPtr MIGraphXExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
@@ -296,6 +303,14 @@ std::size_t node_input_num(const Node& node)
   return node_num;
 }
 
+bool is_input_node(const Node* node, const std::string& name)
+{
+  auto outputs = node->OutputDefs();
+  return std::any_of(outputs.begin(), outputs.end(), [&](auto out) {
+    return (out->Name() == name); 
+  });
+}
+
 static bool can_eval_shape_general(const GraphViewer& graph, const Node* node, const logging::Logger& logger, std::vector<NodeIndex>& input_nodes)
 {
   if (node == nullptr)
@@ -333,7 +348,7 @@ static bool can_eval_shape_general(const GraphViewer& graph, const Node* node, c
 
     // find the node corresponding to the name
     auto nit = std::find_if(in_nodes.begin(), in_nodes.end(), [&](auto n) {
-      return input_name.find(n->Name()) != std::string::npos;
+      return is_input_node(n, input_name);
     });
     if (nit == in_nodes.end())
     {
@@ -362,7 +377,6 @@ static bool can_eval_shape_general(const GraphViewer& graph, const Node* node, c
 static bool can_eval_node_argument(const GraphViewer& graph, const Node* node, std::vector<std::size_t> indices, const logging::Logger& logger, std::vector<NodeIndex>& input_nodes)
 {
   input_nodes.clear();
-
   std::vector<const Node*> in_nodes;
   for (auto nit = node->InputNodesBegin(); nit != node->InputNodesEnd(); ++nit)
   {
@@ -387,7 +401,7 @@ static bool can_eval_node_argument(const GraphViewer& graph, const Node* node, s
 
     // find the node corresponding to the name
     auto nit = std::find_if(in_nodes.begin(), in_nodes.end(), [&](auto n) {
-      return input_name.find(n->Name()) != std::string::npos;
+      return is_input_node(n, input_name);
     });
     if (nit == in_nodes.end())
     {
@@ -959,8 +973,6 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(const st
       output_names.push_back(name);
   }
 
-
-
   // Generate unique kernel name for MIGraphX subgraph
   uint64_t model_hash = 0;
   int id = GenerateMetaDefId(graph, model_hash);
@@ -1056,68 +1068,68 @@ GetPartitionedSubgraphs(const std::vector<NodeIndex>& topological_order, const s
 std::vector<std::unique_ptr<ComputeCapability>>
 MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                          const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
-  std::cout << "InGetCapacity...." << std::endl;
   std::vector<std::unique_ptr<ComputeCapability>> result;
   auto model = graph_viewer.CreateModel(*GetLogger());
   auto model_proto = model->ToProto();
   ToGraphProtoInternal(graph_viewer, *model_proto->mutable_graph());
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-std::cout << "loc1" << std::endl;
   std::string onnx_string_buffer;
   model_proto->SerializeToString(onnx_string_buffer);
 
-  // dump onnxfile
-  std::ofstream ofs("getCapacity.onnx");
-  ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
-  ofs.close();
+  // dump onnxfile if environment var is set
+  if (dump_model_ops_)
+  {
+    std::string model_name = graph_viewer.Name() + ".onnx";
+    std::ofstream ofs(model_name);
+    ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
+    ofs.close();
+  }
 
-std::cout << "loc2" << std::endl;
   // This is a list of initializers that migraphx considers as constants.
   // Example weights, reshape shape etc.
   std::unordered_set<std::string> mgx_required_initializers;
   const auto unsupported_nodes = GetUnsupportedNodeIndices(graph_viewer, mgx_required_initializers, *GetLogger());
-std::cout << "loc3" << std::endl;
   
   //If all ops are supported, no partitioning is required. Short-circuit and avoid splitting.
   if (unsupported_nodes.empty()) {
-std::cout << "loc4" << std::endl;
     auto node_indices = graph_viewer.GetNodesInTopologicalOrder();
     auto sub_graph = GetSubGraph(node_indices, graph_viewer);
     result.push_back(ComputeCapability::Create(std::move(sub_graph)));
-std::cout << "loc5" << std::endl;
   } else {  // unsupported_nodes_idx.empty()
-//     if (unsupported_nodes.size() > 10)
-//     {
-// std::cout << "loc6" << std::endl;
-//       return result;
-//     }
+    if (dump_model_ops_)
+    {
+      std::cout << "============= Unsupported nodes ====================" << std::endl;
+      for (auto idx : unsupported_nodes)
+      {
+        std::cout << graph_viewer.GetNode(idx)->OpType() << std::endl;
+      }
+      std::cout << "************* Unsupported nodes ********************" << std::endl;
+    }
+
+    if (unsupported_nodes.size() > 10)
+    {
+      return result;
+    }
 
     // migraphx cannot handle Loop, If, and SoftmaxCrossEntropyLoss for now,
     // so if a model contain any of these operators, fall back to CPU
-std::cout << "loc7" << std::endl;
     std::unordered_set<std::string> vec_ops = {"SoftmaxCrossEntropyLoss"};
     if (std::any_of(unsupported_nodes.begin(), unsupported_nodes.end(), [&](auto i) {
       return (vec_ops.count(graph_viewer.GetNode(i)->OpType()) > 0);
     })) {
-std::cout << "loc8" << std::endl;
       return result;
     }
 
-std::cout << "loc9" << std::endl;
     auto mgx_clusters = GetPartitionedSubgraphs(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
-std::cout << "loc10" << std::endl;
 
     // check whether a subgrap should fallback to CPU
     SubgraphPostProcessing(graph_viewer, mgx_clusters, *GetLogger());
-std::cout << "loc11" << std::endl;
 
     for (const auto& this_cluster : mgx_clusters) {
       auto sub_graph = GetSubGraph(this_cluster, graph_viewer);
-std::cout << "loc12" << std::endl;
       result.push_back(ComputeCapability::Create(std::move(sub_graph)));
     }
   }
-std::cout << "loc13" << std::endl;
 
   return result;
 }
@@ -1162,7 +1174,6 @@ bool get_input_output_names(const GraphViewer& graph,
 
 Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                           std::vector<NodeComputeInfo>& node_compute_funcs) {
-  std::cout << "Compile...." << std::endl;
   migraphx::onnx_options options;
   bool no_input_shape = false;
   for (const auto& fused_node : fused_nodes) {
@@ -1188,6 +1199,14 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     std::string onnx_string_buffer;
     model_proto->SerializeToString(onnx_string_buffer);
+
+    if (dump_model_ops_)
+    {
+      std::string onnx_name = fused_node->Name() + ".onnx";
+      std::ofstream ofs(onnx_name);
+      ofs.write(onnx_string_buffer.data(), onnx_string_buffer.size());
+      ofs.close();
+    }
 
     std::vector<std::string> input_names, output_names;
     no_input_shape = no_input_shape or get_input_output_names(*graph_body_viewer, input_names, output_names);
@@ -1221,7 +1240,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
       std::unique_ptr<MIGraphXFuncState> p = std::make_unique<MIGraphXFuncState>();
       *p = {context->allocate_func, context->release_func, context->allocator_handle, map_progs_[context->node_name],
             map_onnx_string_[context->node_name], options, t_, map_input_index_[context->node_name], &mgx_mu_,
-            map_no_input_shape_[context->node_name], fp16_enable_};
+            map_no_input_shape_[context->node_name], fp16_enable_, dump_model_ops_};
       *state = p.release();
       return 0;
     };
