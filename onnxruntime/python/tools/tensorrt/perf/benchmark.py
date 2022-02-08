@@ -522,7 +522,8 @@ def remove_files(path):
     out = get_output(["find", path, "-name", "*.profile"])
     profiling_files = [] + out.split("\n")
     out = get_output(["find", path, "-name", "*.engine"])
-    engine_files = [] + out.split("\n")
+    #engine_files = [] + out.split("\n")
+    engine_files = []
     files = files + ort_profiling_files + profiling_files + engine_files
     for f in files:
         if "custom_test_data" in f:
