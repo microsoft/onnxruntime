@@ -140,7 +140,7 @@ bool HasValidBinaryOpQuantizedInputTypes(const NodeUnit& node_unit) {
   if (!GetType(inputs[1].node_arg, b_input_type))
     return false;
 
-  // QlinearConv/Mul supports u8u8 or u8s8
+  // QlinearConv/MatMul supports u8u8 or u8s8
   // QLinearAdd/QLinearMul only support u8u8
   bool is_quant_conv_or_matmul = IsQuantizedConv(quant_op_type) || (quant_op_type == QuantizedOpType::QLinearMatMul);
 
@@ -206,8 +206,8 @@ common::Status GetQuantizationScaleAndZeroPoint(
 
 common::Status GetQuantizationScaleAndZeroPoint(
     const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::string& name,
-    float& scale, int32_t& zero_point, bool is_input) {
-  const auto& io_defs = is_input ? node_unit.Inputs() : node_unit.Outputs();
+    float& scale, int32_t& zero_point, IOKind io_kind) {
+  const auto& io_defs = io_kind == IOKind::Input ? node_unit.Inputs() : node_unit.Outputs();
   for (const auto& io_def : io_defs) {
     if (io_def.node_arg.Name() == name)
       return GetQuantizationScaleAndZeroPoint(initializers, io_def, node_unit.ModelPath(),
