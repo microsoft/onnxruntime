@@ -3,11 +3,7 @@
 
 #pragma once
 
-#if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
-#else
-#include "onnx/defs/data_type_utils.h"
-#endif
 
 namespace onnxruntime {
 namespace contrib {

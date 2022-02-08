@@ -5,10 +5,10 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
+#include "core/graph/contrib_ops/ms_schema.h"
 #else
 #include "onnx/defs/data_type_utils.h"
 #endif
-#include "core/graph/contrib_ops/ms_schema.h"
 
 #define ONNX_MS_OPERATOR_SET_SCHEMA(name, ver, impl) \
   ONNX_OPERATOR_SET_SCHEMA_EX(name, Microsoft, ::onnxruntime::kMSDomain, ver, true, impl)
