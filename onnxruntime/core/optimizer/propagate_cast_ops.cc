@@ -183,9 +183,9 @@ static Status InsertCastNodes(Graph& graph,
                               const NodeIndices& removed_nodes,
                               NodeIndices& inserted_nodes) {
   // Create required new Cast nodes.
-  for (std::pair<NodeArg*, std::vector<Node*>> element : require_cast) {
+  for (const std::pair<NodeArg*, std::vector<Node*>>& element : require_cast) {
     NodeArg* node_arg = element.first;
-    std::vector<Node*> nodes = element.second;
+    const std::vector<Node*>& nodes = element.second;
     if (!node_arg->Exists()) {
       continue;
     }
@@ -320,7 +320,7 @@ static Status InsertCastNodes(Graph& graph,
  *                              V
  */
 
-static Status RemoveCastNodesChain(Graph& graph, std::vector<Node*> casts, NodeIndices& removed_nodes) {
+static Status RemoveCastNodesChain(Graph& graph, const std::vector<Node*>& casts, NodeIndices& removed_nodes) {
   ORT_ENFORCE(casts.size() > 0);
   Node* lead_cast = casts.front();
   Node* trail_cast = casts.back();
