@@ -588,7 +588,13 @@ class TransposeOpSupportChecker : public BaseOpSupportChecker {
   bool HasSupportedInputOutputsImpl(
       const InitializedTensorSet& initializers, const NodeUnit& node_unit,
       const OpSupportCheckParams& params) const override;
+  bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
+  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
 };
+
+/* static */ bool TransposeOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
+  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQTranspose;
+}
 
 bool TransposeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                                   const OpSupportCheckParams& /* params */) const {
@@ -607,8 +613,8 @@ bool TransposeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /*
 }
 
 bool TransposeOpSupportChecker::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-    const OpSupportCheckParams& /* params */) const {
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+    const OpSupportCheckParams& params) const {
   int32_t input_type;
   if (!GetType(node_unit.Inputs()[0].node_arg, input_type))
     return false;
@@ -619,6 +625,14 @@ bool TransposeOpSupportChecker::HasSupportedInputOutputsImpl(
                           << "] Input type: [" << input_type
                           << "] is not supported for now";
     return false;
+  }
+
+  if (IsQuantizedOp(node_unit)) {
+    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, true /* is_input */))
+      return false;
+
+    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, false /* is_input */))
+      return false;
   }
 
   return true;
