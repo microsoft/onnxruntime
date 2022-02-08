@@ -209,7 +209,7 @@ equal to the spatial dimension of input tensor. Input is of type uint8_t or int8
   }
     }));
 
-const char* QLinearAveragePoolDoc_ver1 = R"DOC(
+constexpr const char* QLinearAveragePoolDoc_ver1 = R"DOC(
  QLinearAveragePool consumes an input tensor X and applies average pooling across
  the tensor according to kernel sizes, stride sizes, and pad lengths.
  average pooling consisting of computing the average on all values of a
@@ -244,7 +244,7 @@ Input and output scales and zero points are used to convert the output to a new 
 Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output)
 )DOC";
 
-static const char* contrib_ops_pads_doc =
+constexpr const char* contrib_ops_pads_doc =
     "Padding for the beginning and ending along each spatial axis, it can take any value greater "
     "than or equal to 0. The value represent the number of pixels added to the beginning "
     "and end part of the corresponding axis. `pads` format should be as follow "
@@ -252,7 +252,7 @@ static const char* contrib_ops_pads_doc =
     "added at the beginning of axis `i` and xi_end, the number of pixels added at "
     "the end of axis `i`. This attribute cannot be used simultaneously with "
     "auto_pad attribute. If not present, the padding defaults to 0 along start and end of each spatial axis.";
-static const char* contrib_ops_auto_pad_doc =
+constexpr const char* contrib_ops_auto_pad_doc =
     "auto_pad must be either NOTSET, SAME_UPPER, SAME_LOWER or VALID. Where "
     "default value is NOTSET, which means explicit padding is used. "
     "SAME_UPPER or SAME_LOWER mean pad the input so that the output spatial size match the input."

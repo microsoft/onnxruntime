@@ -229,6 +229,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 #ifndef DISABLE_CONTRIB_OPS
 #ifndef ORT_MINIMAL_BUILD
       RegisterOpSetSchema<contrib::OpSet_Microsoft_ver1>();
+      RegisterOpSetSchema<contrib::OpSet_ONNX_Deprecated>();
 #endif
       contrib::RegisterContribSchemas();
 #endif
