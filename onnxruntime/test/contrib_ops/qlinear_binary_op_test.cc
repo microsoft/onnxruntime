@@ -43,9 +43,7 @@ void RunQLinearMathTestFromFloat(
     const quantization::Params<T>& a_params,
     const std::vector<float>& b, const std::vector<int64_t>& b_shape_origin,
     const quantization::Params<T>& b_params,
-    const quantization::Params<T>& c_params,
-    bool input_b_is_initializer = false,
-    bool all_initializer_scale_zero_point = false) {
+    const quantization::Params<T>& c_params) {
   const auto run_test = [&](bool input_b_is_initializer,
                             bool all_initializer_scale_zero_point) {
     size_t number_dims = std::max(a_shape_origin.size(), b_shape_origin.size());
