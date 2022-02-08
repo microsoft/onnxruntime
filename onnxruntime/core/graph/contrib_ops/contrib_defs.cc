@@ -667,7 +667,7 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   }
 }
 
-static const char* Gelu_ver1_doc =
+constexpr const char* Gelu_ver1_doc =
     R"DOC(Gaussian Error Linear Unit.
 A high-performing neural network activation function.The GELU nonlinearity is
 the expected transformation of a stochastic regularizer which randomly applies
@@ -709,7 +709,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Gelu, 1,
                                   return true;
                                 }));
 
-static const char* BiasGelu_ver1_doc =
+constexpr const char* BiasGelu_ver1_doc =
     R"DOC(Bias Gelu.
 It's an extension of Gelu. It takes the sum of input A and bias input B as the input of Gelu activation. )DOC";
 ONNX_MS_OPERATOR_SET_SCHEMA(BiasGelu, 1,
@@ -729,7 +729,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BiasGelu, 1,
 // Used to be ONNX 1.7 Inverse(12)
 // Comment out docs not to increase the binary size
 //
-//  static const char* Inverse_ver1_doc = R"DOC(
+//  constexpr const char* Inverse_ver1_doc = R"DOC(
 // Calculates inverse of a square matrix or batches of square matrices.
 // Inverse takes one input tensor of shape `[*, M, M]`, where `*` is zero or more batch dimensions,
 // and the inner-most 2 dimensions form square matrices. These matrices must be invertible (full-rank).
@@ -780,7 +780,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Inverse, 1,
                                   }
                                 }));
 
-static const char* TorchEmbedding_ver1_doc = R"DOC(
+constexpr const char* TorchEmbedding_ver1_doc = R"DOC(
       Based on Torch operator Embedding, creates a lookup table of embedding vectors of fixed size,
        for a dictionary of fixed size.
       )DOC";
@@ -856,7 +856,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(TorchEmbedding, 1,
                                   updateOutputShape(ctx, 0, outputs_shape);
                                 }));
 
-static const char* Trilu_ver1_doc = R"DOC(
+constexpr const char* Trilu_ver1_doc = R"DOC(
       Returns the upper or lower triangular part of a 2-D matrix, or batches of 2-D matrices. If the attribute "upper" is set to true,
       the upper triangular matrix is retained. Lower triangular matrix is retained otherwise. Default value for upper is true.
       Trilu takes one input tensor of shape [*, N, M], where * is zero or more batch dimensions. The upper triangular part consists
@@ -1030,7 +1030,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(IsAllFinite, 1,
                                   updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
                                 }));
 
-static const char* GridSample_ver1_doc = R"DOC(
+constexpr const char* GridSample_ver1_doc = R"DOC(
       Given an `input` and a flow-field `grid`, computes the `output` using `input` values and pixel locations from `grid`.
       Currently, only spatial (4-D) inputs are supported. For `input` with shape (N, C, H, W) and `grid` with shape (N, H_out, W_out, 2),
       the `output` will have shape (N, C, H_out, W_out).
@@ -1155,7 +1155,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                   BeamSearchShapeInference(ctx);
                                 }));
 
-static const char* Attention_ver1_doc = R"DOC(
+constexpr const char* Attention_ver1_doc = R"DOC(
 Multi-Head Self Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
 The mask_index input is optional. Besides raw attention mask with shape (batch_size, past_sequence_length + sequence_length)
 or (batch_size, sequence_length, past_sequence_length + sequence_length) with value 0 for masked and 1 otherwise,
@@ -1276,7 +1276,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(QAttention, 1,
                                   AttentionTypeAndShapeInference(ctx, past_input_index);
                                 }));
 
-static const char* Longformer_Attention_doc = R"DOC(
+constexpr const char* Longformer_Attention_doc = R"DOC(
 Longformer Self Attention with a local context and a global context. Tokens attend locally: Each token
 attends to its W previous tokens and W succeding tokens with W being the window length. A selected few tokens
 attend globally to all other tokens.
@@ -1306,7 +1306,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(LongformerAttention, 1,
                                 .TypeConstraint("G", {"tensor(int32)"}, "Constrain to integer types")
                                 .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
-static const char* Decoder_Attention_doc = R"DOC(
+constexpr const char* Decoder_Attention_doc = R"DOC(
 This DecoderAttention supports self attention and cross attention, key and value cache, and key_padding_mask. The attention mask is not support at the moment.
 Some boolean parameters are passed by runtime input for generic purpose
 )DOC";
@@ -1336,7 +1336,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(DecoderAttention, 1,
                                   DecoderAttentionTypeAndShapeInference(ctx);
                                 }));
 
-static const char* EmbedLayerNormalization_ver1_doc = R"DOC(
+constexpr const char* EmbedLayerNormalization_ver1_doc = R"DOC(
 EmbedLayerNormalization is the fusion of embedding layer in BERT model, with optional mask processing.
 The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
 and segment_emedding; the embeddings are added then applied layer normalization using gamma and beta tensors.
@@ -1363,7 +1363,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(EmbedLayerNormalization, 1,
                                 .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output float tensors types.")
                                 .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::embedLayerNormalizationShapeInference));
 
-static const char* QEmbedLayerNormalization_ver1_doc = R"DOC(
+constexpr const char* QEmbedLayerNormalization_ver1_doc = R"DOC(
 QEmbedLayerNormalization is the quantized fusion of embedding layer in BERT model, with optional mask processing.
 The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
 and segment_emedding; the embeddings are added then applied layer normalization using gamma and beta tensors. The input_ids
@@ -1400,7 +1400,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(QEmbedLayerNormalization, 1,
                                 .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float32 tensors.")
                                 .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::embedLayerNormalizationShapeInference));
 
-static const char* FastGelu_ver1_doc = R"DOC(
+constexpr const char* FastGelu_ver1_doc = R"DOC(
 GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.035677*X*X*X)) with an optional input of bias that will be added to X before GELU.)DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(FastGelu, 1,
@@ -1460,7 +1460,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(SkipLayerNormalization, 1,
                                 .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors.")
                                 .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
-static const char* NGramRepeatBlock_ver1_doc = R"DOC(
+constexpr const char* NGramRepeatBlock_ver1_doc = R"DOC(
 Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form a repeated n-gram if added to the back of the input_ids.
 )DOC";
 
@@ -1473,7 +1473,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(NGramRepeatBlock, 1,
                               propagateShapeFromInputToOutput(ctx, 1, 0);
                             }));
 
-static const char* BifurcationDetector_ver1_doc = R"DOC(
+constexpr const char* BifurcationDetector_ver1_doc = R"DOC(
 Component for aggressive decoding. Find the bifurcation index of predicted tokens, between source tokens,
 starting from previous suffix match index, and predicted tokens.
 Concat predicted tokens, starting from bifurcation index, to the back
@@ -1868,7 +1868,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(ExpandDims, 1,
                                 })
                                 .SetDoc(R"DOC(ExpandDims echo operator.)DOC"));
 
-static const char* Tokenizer_ver1_doc = R"DOC(
+constexpr const char* Tokenizer_ver1_doc = R"DOC(
   Tokenizer divides each string in X into a vector of strings along the last axis. Allowed input shapes are [C] and [N, C].
   If the maximum number of tokens found per input string is D, the output shape would be [N, C, D] when input shape is [N, C].
   Similarly, if input shape is [C] then the output should be [C, D]. Tokenizer has two different operation modes.
@@ -2008,12 +2008,12 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
                                   ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
                                 }));
 
-static const char* TransposeMatMul_doc = R"DOC(
+constexpr const char* TransposeMatMul_doc = R"DOC(
 Duplicate of FusedMatMul. Going forward FusedMatMul should be used. This OP will be supported for backward compatibility.
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
 )DOC";
 
-static const char* FusedMatMul_doc = R"DOC(
+constexpr const char* FusedMatMul_doc = R"DOC(
 Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
 )DOC";
 
