@@ -464,6 +464,7 @@ class BinaryOpSupportChecker : public BaseOpSupportChecker {
           "Mul",
           "Div",
           "QLinearAdd",
+          "QLinearMul",
           "Pow",
       });
 }
@@ -481,6 +482,7 @@ bool BinaryOpSupportChecker::IsNodeUnitTypeSupported(const NodeUnit& node_unit) 
 /* static */ bool BinaryOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
   const auto quant_type = GetQuantizedOpType(node_unit);
   return quant_type == QuantizedOpType::QLinearAdd ||
+         quant_type == QuantizedOpType::QLinearMul ||
          quant_type == QuantizedOpType::QDQAdd ||
          quant_type == QuantizedOpType::QDQMul;
 }
@@ -503,7 +505,7 @@ int BinaryOpSupportChecker::GetMinSupportedOpSet(const NodeUnit& node_unit) cons
   const auto& op(node_unit.OpType());
 
   // Add/Sub/Mul/Div/Pow opset 6- has broadcast attributes we do not support now
-  if (op != "QLinearAdd")
+  if (op != "QLinearAdd" && op != "QLinearMul")
     return 7;
 
   return 1;
@@ -518,7 +520,7 @@ bool BinaryOpSupportChecker::HasSupportedInputOutputsImpl(
     return BaseOpSupportChecker::HasSupportedInputOutputsImpl(initializers, node_unit, params);
 
   if (is_quantized_op) {
-    // QLinearAdd/QDQAdd/QDQMul
+    // QLinearAdd/QDQAdd/QLinearMul/QDQMul
     if (!HasValidBinaryOpQuantizedInputTypes(node_unit))
       return false;
 
@@ -1995,6 +1997,7 @@ static OpSupportCheckerRegistrations CreateOpSupportCheckerRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Mul", BinaryOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Pow", BinaryOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("QLinearAdd", BinaryOpSupportChecker);
+    NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("QLinearMul", BinaryOpSupportChecker);
     NNAPI_EP_ADD_SHARED_OP_SUPPORT_CHECKER("Sub", BinaryOpSupportChecker);
   }
 

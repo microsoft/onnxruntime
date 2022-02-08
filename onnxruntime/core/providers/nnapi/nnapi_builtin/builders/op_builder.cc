@@ -452,7 +452,7 @@ static Status HandleAutoPad(const Shape& input_shape,
 }
 
 // Get scales and zero points for the qlinear binary ops (which has 2 input and 1 output)
-// QLinearConv, QLinearMatmul, QLinearAdd
+// QLinearConv, QLinearMatmul, QLinearAdd, QLinearMul
 // a, b are inputs, and y is output
 static Status GetBinaryOpQuantizationScaleAndZeroPoint(
     const InitializedTensorSet& initializers, const NodeUnit& node_unit,
@@ -658,6 +658,7 @@ class BinaryOpBuilder : public BaseOpBuilder {
 /* static */ bool BinaryOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
   const auto quant_type = GetQuantizedOpType(node_unit);
   return quant_type == QuantizedOpType::QLinearAdd ||
+         quant_type == QuantizedOpType::QLinearMul ||
          quant_type == QuantizedOpType::QDQAdd ||
          quant_type == QuantizedOpType::QDQMul;
 }
@@ -682,6 +683,7 @@ void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
           "Mul",
           "Div",
           "QLinearAdd",
+          "QLinearMul",
           "Pow",
       });
 }
@@ -697,7 +699,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     op_code = ANEURALNETWORKS_ADD;
   } else if (op_type == "Sub") {
     op_code = ANEURALNETWORKS_SUB;
-  } else if (op_type == "Mul") {  // Mul/QDQMul
+  } else if (op_type == "Mul" || op_type == "QLinearMul") {  // Mul/QLinearMul/QDQMul
     op_code = ANEURALNETWORKS_MUL;
   } else if (op_type == "Div") {
     op_code = ANEURALNETWORKS_DIV;
@@ -2719,6 +2721,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Mul", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Pow", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearAdd", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearMul", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Sub", BinaryOpBuilder);
   }
 

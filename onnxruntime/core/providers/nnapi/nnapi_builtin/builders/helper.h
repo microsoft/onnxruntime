@@ -82,8 +82,8 @@ enum class QuantizedOpType : uint8_t {
   QLinearAdd,
   QLinearSigmoid,
   QLinearAveragePool,
+  QLinearMul,
   // Not yet supported
-  // QLinearMul,
   // QLinearReduceMean,
   QDQConv,
   QDQResize,

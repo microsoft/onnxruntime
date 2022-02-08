@@ -61,6 +61,8 @@ QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit) {
       return QuantizedOpType::QLinearMatMul;
     else if (op_type == "QLinearAdd")
       return QuantizedOpType::QLinearAdd;
+    else if (op_type == "QLinearMul")
+      return QuantizedOpType::QLinearMul;
     else if (op_type == "QLinearSigmoid")
       return QuantizedOpType::QLinearSigmoid;
     else if (op_type == "QLinearAveragePool")
@@ -118,6 +120,7 @@ bool IsQuantizedPool(QuantizedOpType quant_op_type) {
 bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type) {
   return quant_op_type == QuantizedOpType::QLinearMatMul ||
          quant_op_type == QuantizedOpType::QLinearAdd ||
+         quant_op_type == QuantizedOpType::QLinearMul ||
          quant_op_type == QuantizedOpType::QDQAdd ||
          quant_op_type == QuantizedOpType::QDQMul ||
          IsQuantizedConv(quant_op_type);
@@ -138,7 +141,7 @@ bool HasValidBinaryOpQuantizedInputTypes(const NodeUnit& node_unit) {
     return false;
 
   // QlinearConv/Mul supports u8u8 or u8s8
-  // QLinearAdd only support u8u8
+  // QLinearAdd/QLinearMul only support u8u8
   bool is_quant_conv_or_matmul = IsQuantizedConv(quant_op_type) || (quant_op_type == QuantizedOpType::QLinearMatMul);
 
   bool has_valid_qlinear_conv_weight =
