@@ -11,9 +11,7 @@
 #include "core/optimizer/utils.h"
 
 namespace onnxruntime {
-
 namespace {
-
 // like graph_utils::GraphEdge, but also allowing the source end to be an input and the destination end to be an output
 struct ExtendedGraphEdge {
   enum class End { Source,
@@ -104,7 +102,8 @@ bool CanNodePropagate(const Node& node) {
 // convert this: src_node -> dst_node
 // to this:      src_node -> Q -> DQ -> dst_node
 // assumptions:
-// 1. insertion_edge is valid - node indexes refer to valid nodes and the arg name refers to a valid NodeArg
+// 1. insertion_edge is valid - node indexes refer to valid nodes, arg name refers to a valid NodeArg, and it
+//    corresponds to an actual graph relationship
 // 2. scale_initializer_nodearg and zp_initializer_nodearg are constant initializers
 Status InsertQDQPair(Graph& graph, const ExtendedGraphEdge& insertion_edge,
                      NodeArg& scale_initializer_nodearg,
@@ -141,7 +140,7 @@ Status InsertQDQPair(Graph& graph, const ExtendedGraphEdge& insertion_edge,
 
   // set up new Nodes
   auto& q_node = graph.AddNode(graph.GenerateNodeName(base_name + "_q"),
-                               "QuantizeLinear",
+                               QDQ::QOpName,
                                "Inserted by QDQPropagationTransformer",
                                // inputs
                                {&pre_q_nodearg,
@@ -153,7 +152,7 @@ Status InsertQDQPair(Graph& graph, const ExtendedGraphEdge& insertion_edge,
   ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(q_node), "Failed to set op schema for added Q node.");
 
   auto& dq_node = graph.AddNode(graph.GenerateNodeName(base_name + "_dq"),
-                                "DequantizeLinear",
+                                QDQ::DQOpName,
                                 "Inserted by QDQPropagationTransformer",
                                 // inputs
                                 {&q_to_dq_nodearg, &scale_initializer_nodearg, &zp_initializer_nodearg},
@@ -191,7 +190,7 @@ bool IsMatchingQDQPair(const Graph& graph, const Node& q_node, const Node& dq_no
              graph.ModelPath());
 }
 
-std::optional<ExtendedGraphEdge> GetPreviousPropagationEdge(const Graph& graph, const Node& node) {
+std::optional<ExtendedGraphEdge> GetPreviousEdge(const Graph& graph, const Node& node) {
   // for now we can just consider the first input (index 0)
 
   const auto input_edges = graph_utils::GraphEdge::GetNodeInputEdges(node);
@@ -222,10 +221,17 @@ std::optional<ExtendedGraphEdge> GetPreviousPropagationEdge(const Graph& graph,
     return std::nullopt;
   }
 
-  return GetPreviousPropagationEdge(graph, *edge.GetNodeAtEnd(graph, ExtendedGraphEdge::End::Source));
+  const auto* src_node = edge.GetNodeAtEnd(graph, ExtendedGraphEdge::End::Source);
+  ORT_ENFORCE(src_node != nullptr);
+
+  if (!CanNodePropagate(*src_node)) {
+    return std::nullopt;
+  }
+
+  return GetPreviousEdge(graph, *src_node);
 }
 
-std::optional<ExtendedGraphEdge> GetNextPropagationEdge(const Graph& graph, const Node& node) {
+std::optional<ExtendedGraphEdge> GetNextEdge(const Graph& graph, const Node& node) {
   // for now we can just consider the first output (index 0)
 
   const auto output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(node, 0);
@@ -248,7 +254,14 @@ std::optional<ExtendedGraphEdge> GetNextPropagationEdge(const Graph& graph,
     return std::nullopt;
   }
 
-  return GetNextPropagationEdge(graph, *edge.GetNodeAtEnd(graph, ExtendedGraphEdge::End::Destination));
+  const auto* dst_node = edge.GetNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
+  ORT_ENFORCE(dst_node != nullptr);
+
+  if (!CanNodePropagate(*dst_node)) {
+    return std::nullopt;
+  }
+
+  return GetNextEdge(graph, *dst_node);
 }
 
 Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
@@ -288,7 +301,7 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
       continue;
     }
 
-    const auto edge_after_dq = GetNextPropagationEdge(graph, dq_node);
+    const auto edge_after_dq = GetNextEdge(graph, dq_node);
     if (!edge_after_dq) {
       continue;
     }
@@ -296,11 +309,6 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
     for (auto curr_edge = GetNextPropagationEdge(graph, *edge_after_dq);
          curr_edge.has_value();
          curr_edge = GetNextPropagationEdge(graph, *curr_edge)) {
-      if (const auto* src_node = curr_edge->GetNodeAtEnd(graph, ExtendedGraphEdge::End::Source);
-          src_node && !CanNodePropagate(*src_node)) {
-        break;
-      }
-
       if (const auto* dst_node = curr_edge->GetNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
           dst_node && IsMatchingQDQPair(graph, *dst_node, dq_node)) {
         break;
@@ -350,7 +358,7 @@ Status PropagateQBackward(Graph& graph, gsl::span<const NodeIndex> node_indices,
       continue;
     }
 
-    const auto edge_before_q = GetPreviousPropagationEdge(graph, q_node);
+    const auto edge_before_q = GetPreviousEdge(graph, q_node);
     if (!edge_before_q) {
       continue;
     }
@@ -358,11 +366,6 @@ Status PropagateQBackward(Graph& graph, gsl::span<const NodeIndex> node_indices,
     for (auto curr_edge = GetPreviousPropagationEdge(graph, *edge_before_q);
          curr_edge.has_value();
          curr_edge = GetPreviousPropagationEdge(graph, *curr_edge)) {
-      if (auto* dst_node = curr_edge->GetNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
-          dst_node && !CanNodePropagate(*dst_node)) {
-        break;
-      }
-
       if (auto* src_node = curr_edge->GetNodeAtEnd(graph, ExtendedGraphEdge::End::Source);
           src_node && IsMatchingQDQPair(graph, q_node, *src_node)) {
         break;
@@ -402,5 +405,4 @@ Status QDQPropagationTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
 
   return Status::OK();
 }
-
 }  // namespace onnxruntime
