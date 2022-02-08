@@ -1553,8 +1553,8 @@ TEST(QDQTransformerTests, QDQPropagation_QBackward) {
                        const std::vector<int64_t>& perms,
                        bool add_op_boundary) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
-      const float qdq_scale = 0.004f;
-      const uint8_t qdq_zero_point = 129;
+      constexpr float qdq_scale = 0.004f;
+      constexpr uint8_t qdq_zero_point = 129;
 
       auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
       auto* output_arg = builder.MakeOutput();
@@ -1622,8 +1622,8 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward) {
                        const std::vector<int64_t>& perms,
                        bool add_op_boundary) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
-      const float qdq_scale = 0.004f;
-      const uint8_t qdq_zero_point = 129;
+      constexpr float qdq_scale = 0.004f;
+      constexpr uint8_t qdq_zero_point = 129;
 
       auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
                                                    std::numeric_limits<uint8_t>::min(),
