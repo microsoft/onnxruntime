@@ -68,8 +68,13 @@ QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit) {
   } else if (node_unit.UnitType() == NodeUnit::Type::QDQGroup) {
     if (op_type == "Conv")
       return QuantizedOpType::QDQConv;
+    else if (op_type == "Resize")
+      return QuantizedOpType::QDQResize;
+    else if (op_type == "AveragePool")
+      return QuantizedOpType::QDQAveragePool;
   } else {
     // throw?
+    // Do we want to throw here? seems got neglected last time
   }
 
   return QuantizedOpType::Unknown;
@@ -99,6 +104,11 @@ ConvType GetConvType(const NodeUnit& node_unit, const InitializedTensorSet& init
 bool IsQuantizedConv(QuantizedOpType quant_op_type) {
   return (quant_op_type == QuantizedOpType::QLinearConv) ||
          (quant_op_type == QuantizedOpType::QDQConv);
+}
+
+bool IsQuantizedPool(QuantizedOpType quant_op_type) {
+  return (quant_op_type == QuantizedOpType::QLinearAveragePool) ||
+         (quant_op_type == QuantizedOpType::QDQAveragePool);
 }
 
 bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type) {
@@ -513,27 +523,6 @@ bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_
   // We also want to check if the node is supported as an internal quantized node_unit
   if (IsInternalQuantizedNodeUnit(node_unit))
     return IsInternalQuantizationSupported(node_unit.GetNode(), node_outputs_in_group);
-
-  return true;
-}
-
-bool IsInputSupported(const NodeArg& input, const std::string& parent_name) {
-  const auto& input_name = input.Name();
-  const auto* shape_proto = input.Shape();
-  // We do not support input with no shape
-  if (!shape_proto) {
-    LOGS_DEFAULT(VERBOSE) << "Input [" << input_name << "] of [" << parent_name
-                          << "] has no shape";
-    return false;
-  }
-
-  for (const auto& dim : shape_proto->dim()) {
-    // For now we do not support dynamic shape
-    if (!dim.has_dim_value()) {
-      LOGS_DEFAULT(WARNING) << "Dynamic shape is not supported for now, for input:" << input_name;
-      return false;
-    }
-  }
 
   return true;
 }

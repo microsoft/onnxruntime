@@ -86,6 +86,8 @@ enum class QuantizedOpType : uint8_t {
   // QLinearMul,
   // QLinearReduceMean,
   QDQConv,
+  QDQResize,
+  QDQAveragePool,
   // TODO, add other QDQ NodeUnit types
 };
 
@@ -103,6 +105,9 @@ ConvType GetConvType(const NodeUnit& node_unit, const InitializedTensorSet& init
 
 // If this is a quantized Conv (QLinearConv or QDQConv)
 bool IsQuantizedConv(QuantizedOpType quant_op_type);
+
+// If this is a quantized Pool (QLinearAveragePool or QDQAveragePool)
+bool IsQuantizedPool(QuantizedOpType quant_op_type);
 
 // This quantized op is an operator or qdq node unit takes 2 inputs and produces 1 output
 // Such as QLinearConv, QLinearMatMul, QLinearAdd, QDQConv,...
@@ -145,9 +150,6 @@ bool IsNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph_viewer,
 bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_viewer,
                             const OpSupportCheckParams& params,
                             const std::unordered_set<std::string>& node_outputs_in_group);
-
-// If a graph input is supported by NNAPI
-bool IsInputSupported(const NodeArg& input, const std::string& parent_name);
 
 // If an NNAPI partition node group is valid
 bool IsValidSupportedNodeGroup(const std::vector<const Node*>& supported_node_group);

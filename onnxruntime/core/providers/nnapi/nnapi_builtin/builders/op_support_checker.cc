@@ -153,26 +153,35 @@ bool BaseOpSupportChecker::IsOpSupported(const InitializedTensorSet& initializer
 
 bool BaseOpSupportChecker::HasSupportedInputs(const NodeUnit& node_unit) const {
   // We do not support unknown(null) input shape
-  auto has_shape = [](const NodeArg& node_arg, const std::string& name, const std::string op_type) {
-    if (!node_arg.Shape()) {
+  auto has_supported_shape = [](const NodeArg& node_arg, const std::string& name, const std::string op_type) {
+    const auto* shape_proto = node_arg.Shape();
+    if (!shape_proto) {
       LOGS_DEFAULT(VERBOSE) << "Node [" << name << "] type [" << op_type
                             << "] Input [" << node_arg.Name() << "] has no shape";
       return false;
+    }
+
+    // We do not support dynamic shape input for now
+    for (const auto& dim : shape_proto->dim()) {
+      if (!dim.has_dim_value()) {
+        LOGS_DEFAULT(VERBOSE) << "Dynamic shape is not supported for now, for input:" << node_arg.Name();
+        return false;
+      }
     }
     return true;
   };
 
   for (const auto& input : node_unit.Inputs()) {
-    if (!has_shape(input.node_arg, node_unit.Name(), node_unit.OpType()))
+    if (!has_supported_shape(input.node_arg, node_unit.Name(), node_unit.OpType()))
       return false;
 
     if (input.quant_param.has_value()) {
-      if (!has_shape(input.quant_param->scale, node_unit.Name(), node_unit.OpType()))
+      if (!has_supported_shape(input.quant_param->scale, node_unit.Name(), node_unit.OpType()))
         return false;
 
       // zero point is optional
       if (input.quant_param->zero_point &&
-          !has_shape(*input.quant_param->zero_point, node_unit.Name(), node_unit.OpType()))
+          !has_supported_shape(*input.quant_param->zero_point, node_unit.Name(), node_unit.OpType()))
         return false;
     }
   }
@@ -553,6 +562,8 @@ class PoolOpSupportChecker : public BaseOpSupportChecker {
   }
 
   bool HasSupportedInputsImpl(const NodeUnit& node_unit) const override;
+  bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
+  static bool IsQuantizedOp(const NodeUnit& node_unit);
 };
 
 /* static */ void PoolOpSupportChecker::CreateSharedOpSupportChecker(
@@ -566,6 +577,10 @@ class PoolOpSupportChecker : public BaseOpSupportChecker {
           "MaxPool",
           "QLinearAveragePool",
       });
+}
+
+/* static */ bool PoolOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
+  return IsQuantizedPool(GetQuantizedOpType(node_unit));
 }
 
 bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
@@ -585,8 +600,8 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
     return false;
   }
 
-  bool is_qlinear_average_pool = op_type == "QLinearAveragePool";
-  if (op_type == "AveragePool" || op_type == "MaxPool" || is_qlinear_average_pool) {
+  bool is_quant_pool = IsQuantizedOp(node_unit);
+  if (op_type == "AveragePool" || op_type == "MaxPool" || op_type == "QLinearAveragePool") {
     NodeAttrHelper helper(node_unit);
 
     const auto count_include_pad = helper.Get("count_include_pad", 0);
@@ -627,7 +642,7 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
   }
 
   // We need to check if we have valid scales and zero points for QLinearAveragePool
-  if (is_qlinear_average_pool) {
+  if (is_quant_pool) {
     // Check input scales and ZPs
     if (!HasValidQuantizationScales(initializers, node_unit, {0}, params, true /* is_input */))
       return false;
@@ -684,11 +699,11 @@ bool PoolOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
 
 bool PoolOpSupportChecker::HasSupportedInputsImpl(const NodeUnit& node_unit) const {
   bool is_max_pool = node_unit.OpType() == "MaxPool";
-  bool is_qlinear_average_pool = node_unit.OpType() == "QLinearAveragePool";
-  if (!is_max_pool && !is_qlinear_average_pool)
+  bool is_quant_pool = IsQuantizedOp(node_unit);
+  if (!is_max_pool && !is_quant_pool)
     return BaseOpSupportChecker::HasSupportedInputsImpl(node_unit);
 
-  if (is_qlinear_average_pool) {
+  if (is_quant_pool) {
     return HasValidUnaryOpQuantizedInputs(node_unit);
   }
 
@@ -1466,7 +1481,13 @@ class ResizeOpSupportChecker : public BaseOpSupportChecker {
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 11; }
 
   bool HasSupportedInputsImpl(const NodeUnit& node_unit) const override;
+  bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
+  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
 };
+
+/* static */ bool ResizeOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
+  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQResize;
+}
 
 bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                const OpSupportCheckParams& params) const {
@@ -1587,6 +1608,34 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
       }
     }
   }
+
+  if (IsQuantizedOp(node_unit)) {
+    // For QDQResize, we only support uint8 output now
+    // TODO, add int8 support to NNAPI, and maybe move all the output type check into a virtual function
+    // similar to HasSupportedInputsImpl
+    int32_t output_type;
+    if (!GetType(node_unit.Outputs()[0].node_arg, output_type))
+      return false;
+
+    if (output_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+      LOGS_DEFAULT(VERBOSE) << "[Resize] output type: [" << output_type
+                            << "] is not supported for now";
+      return false;
+    }
+
+    // Check input scales and ZPs
+    if (!HasValidQuantizationScales(initializers, node_unit, {0}, params, true /* is_input */))
+      return false;
+    if (!HasValidQuantizationZeroPoints(initializers, node_unit, {0}, true /* is_input */))
+      return false;
+
+    // Check output scale and ZP
+    if (!HasValidQuantizationScales(initializers, node_unit, {0}, params, false /* is_input */))
+      return false;
+    if (!HasValidQuantizationZeroPoints(initializers, node_unit, {0}, false /* is_input */))
+      return false;
+  }
+
   return true;
 }
 
@@ -1647,7 +1696,7 @@ bool FlattenOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* i
   GetFlattenOutputShape(node_unit, input_shape, dim_1, dim_2);
 
   if (dim_1 == 0 && dim_2 == 0) {
-    LOGS_DEFAULT(VERBOSE) << "The dynamical input shape " << Shape2String(input_shape)
+    LOGS_DEFAULT(VERBOSE) << "The dynamic input shape " << Shape2String(input_shape)
                           << " is not supported";
     return false;
   }
