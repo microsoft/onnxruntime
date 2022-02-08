@@ -89,7 +89,7 @@ Status LayerNormGrad<T, U, simplified>::ComputeInternal(OpKernelContext* p_op_ke
     bias_grad_data = reinterpret_cast<CudaT*>(bias_grad->template MutableData<T>());
   }
 
-  #ifndef __HIP_PLATFORM_HCC__
+  #ifndef USE_ROCM
   const int part_size = 16;
   #else
   // Optimization for ROCm MI100
