@@ -1902,7 +1902,8 @@ TEST(QDQTransformerTests, RedundantDQQ) {
   test_case({1, 13, 13, 23});
 }
 
-TEST(QDQTransformerTests, RedundantDQQAfterS8U8Conversion) {
+#if !defined(DISABLE_CONTRIB_OPS)
+TEST(QDQTransformerTests, RedundantDQQAfterS8ToU8Conversion) {
   auto test_case = [&](const std::vector<int64_t>& input_shape) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>(input_shape, -1.0f, 1.0f);
@@ -1919,7 +1920,7 @@ TEST(QDQTransformerTests, RedundantDQQAfterS8U8Conversion) {
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
-        // Note: Expecting middle DQ/Q pairs to be removed after they become equivalent post-S8U8 conversion.
+        // Note: The middle DQ/Q pairs should be removed after they become equivalent post-S8 to U8 conversion.
       const std::vector<std::string> expected_op_types_in_order{
           "QuantizeLinear",
           "DequantizeLinear"};
@@ -1930,11 +1931,12 @@ TEST(QDQTransformerTests, RedundantDQQAfterS8U8Conversion) {
     TransformerTester(build_test_case,
                       check_graph,
                       TransformerLevel::Default,
-                      TransformerLevel::Level2);  // S8U8 conversion is in Level2
+                      TransformerLevel::Level2);  // S8 to U8 conversion is in Level2
   };
 
   test_case({1, 13, 13, 23});
 }
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 TEST(QDQTransformerTests, QDQ_Selector_Test) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/transform/qdq_conv.onnx");
