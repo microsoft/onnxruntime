@@ -11,8 +11,10 @@ namespace onnxruntime {
 /**
     @Class QDQPropagationTransformer
 
-    Propagate Q backward, DQ forward.
-    TODO elaborate
+    Propagate Q backward, DQ forward. This is done by inserting Q/DQ pairs that match the starting Q or DQ past each
+    subsequent (previous for Q, next for DQ) op supporting propagation.
+
+    Additionally, remove redundant DQ/Q pairs.
 */
 class QDQPropagationTransformer : public GraphTransformer {
  public:
