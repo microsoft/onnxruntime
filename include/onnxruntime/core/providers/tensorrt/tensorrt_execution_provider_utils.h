@@ -5,38 +5,6 @@
 #include <unordered_map>
 #include "flatbuffers/idl.h"
 
-/*
-* Seralize engine profile
-* The profile contains min/max shape ranges of dynamic shape dimensions of each input tensor
-* For example, assume tensor_a has two dynamic shape dimensions: dim_0 and dim_2, and tensor_b
-* has one dynamic shape dimension: dim_1. The data in profile will be,
-* key: tensor_a, value: dim_0 min_shape max_shape dim_2 min_shape max_shape
-* key: tensor_b, value: dim_1 min_shape max_shape
-*/
-void SerializeProfile(const std::string& file_name, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>& shape_ranges) {
-  // Serialize profile
-  flexbuffers::Builder builder;
-  auto profile_start = builder.StartMap();
-  for (auto outer_it = shape_ranges.begin(); outer_it != shape_ranges.end(); ++outer_it) {
-    builder.TypedVector(outer_it->first.c_str(), [&] {
-      for (auto inner_it = outer_it->second.begin(); inner_it != outer_it->second.end(); ++inner_it) {
-        builder.Int(inner_it->first);
-        builder.Int(inner_it->second.first);
-        builder.Int(inner_it->second.second);
-      }
-    });
-  }
-  builder.EndMap(profile_start);
-  builder.Finish();
-
-  // Save flexbuffer
-  std::ofstream file(file_name, std::ios::binary | std::ios::out);
-  auto buf = builder.GetBuffer();
-  size_t size = builder.GetSize();
-  file.write(reinterpret_cast<const char*>(&buf[0]), size);
-  file.close();
-}
-
 // Deserialize engine profile
 std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> DeserializeProfile(std::ifstream& infile) {
   // Load flexbuffer

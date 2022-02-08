@@ -65,10 +65,11 @@ std::vector<fs::path> GetTensorRTCache(std::string path, std::string file_extens
  * Create a simple model with dynamic or non-dynamic input shape.
  * \param model_name - model name
  * \param graph_name - graph name
- * \params dims - specify dimensions 
+ * \params dims - input dimensions 
  *
  * input: "X", "Y" and "Z"
- *        you can specify input dimension, for example (1, 3, 2), (1, 2) or (1, -1, -1)). Note: -1 means the dimension is dynamic
+ *        you can specify input dimensions, for example (1, 3, 2), (1, 2) or (1, -1, -1)). Note: -1 means the dimension is dynamic.
+ *        All three inputs have the same dimensions.
  * output: "M"
  *
  *      "X"  "Y"
@@ -189,7 +190,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
 
   if (cache_type.compare("engine") == 0) {
 
-    /* Following code block will test the functionality of engine and optimization profile of ORT TRT, including:
+    /* Following code block tests the functionality of engine and optimization profile of ORT TRT, including:
      * - engine cache serialization/de-serialization
      * - profile cache serialization/de-serialization
      * - engine/profile cache should be updated when the input shape changes
@@ -221,7 +222,9 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
     std::vector<fs::path> profile_files;
 
     // profile cache only being generated for dynamic input shape
-    if (input_type.compare("dynamic") == 0) {
+    if (input_type.compare("static") == 0) {
+      ASSERT_TRUE(!IsTensorRTCacheExisted("./", ".profile"));
+    } else {
       ASSERT_TRUE(IsTensorRTCacheExisted("./", ".profile"));
 
       profile_files = GetTensorRTCache("./", ".profile");
@@ -243,11 +246,8 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
         }
       }
     }
-    else {
-      ASSERT_TRUE(!IsTensorRTCacheExisted("./", ".profile"));
-    }
 
-    // inference run with input shape {1, 1, 6}
+    // another inference run with input shape {1, 1, 6}
     // TRT engine and profile will be updated
     // Data in profile,
     // X: 1, 1, 3, 2, 2, 6
@@ -270,7 +270,10 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
 
     status = session_object.Run(run_options, feeds, output_names, &fetches);
 
-    if (input_type.compare("dynamic") == 0) {
+    if (input_type.compare("static") == 0) {
+      // Can't run inference since input shape changes but the engine is built with static input
+      ASSERT_FALSE(status.IsOK());
+    } else {
       ASSERT_TRUE(status.IsOK());
       VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
 
@@ -292,9 +295,6 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
           }
         }
       }
-    } else {
-      // Can't run inference since input shape changes and the engine is static 
-      ASSERT_FALSE(status.IsOK());
     }
   } else if (cache_type.compare("timing") == 0) {
      // add test code here
@@ -315,6 +315,8 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
  * We have following test parameters:
  * - engine_static: engine cache enabled with non-dynamic input shape
  * - engine_dynamic: engine cache enabled with dynamic input shape
+ * - timing_static: will be added 
+ * - timing_dynamic: will be added
  */
 INSTANTIATE_TEST_SUITE_P(TensorrtExecutionProviderCacheTests, TensorrtExecutionProviderCacheTest, testing::Values("engine_static",
                                                                                                                   "engine_dynamic"),
