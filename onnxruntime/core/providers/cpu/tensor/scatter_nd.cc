@@ -274,55 +274,35 @@ struct ScatterNDDispatchTarget {
     Prepare<TData> prepare;
     ORT_RETURN_IF_ERROR(PrepareForCompute(context, prepare));
 
-    if(reduction == "add") {
-      auto lambda = [&](int64_t i) {
+    auto lambda = [&](int64_t i) {
+      if (reduction == "add") {
         auto func = Func_Add_ND<TData>();
         func(
           prepare.output_base + prepare.element_offsets[i],
           prepare.input_base + i * prepare.element_to_copy,
           prepare.element_to_copy);
-      };
-      concurrency::ThreadPool::TryParallelFor(tp, prepare.element_offsets.size(), static_cast<double>(prepare.element_to_copy),
-                                              [&lambda](ptrdiff_t first, ptrdiff_t last) {
-                                                for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
-                                                  lambda(i);
-                                                }
-                                              });
-      return Status::OK();
-    }
-    else if(reduction == "mul")
-    {
-      auto lambda = [&](int64_t i) {
+      } else if (reduction == "mul") {
         auto func = Func_Mul_ND<TData>();
         func(
           prepare.output_base + prepare.element_offsets[i],
           prepare.input_base + i * prepare.element_to_copy,
           prepare.element_to_copy);
-      };
-      concurrency::ThreadPool::TryParallelFor(tp, prepare.element_offsets.size(), static_cast<double>(prepare.element_to_copy),
-                                              [&lambda](ptrdiff_t first, ptrdiff_t last) {
-                                                for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
-                                                  lambda(i);
-                                                }
-                                              });
-      return Status::OK();
-    }
-    else {
-      auto lambda = [&](int64_t i) {
+      } else {
         auto func = Func_Copy_ND<TData>();
         func(
           prepare.output_base + prepare.element_offsets[i],
           prepare.input_base + i * prepare.element_to_copy,
           prepare.element_to_copy);
+        }
       };
-      concurrency::ThreadPool::TryParallelFor(tp, prepare.element_offsets.size(), static_cast<double>(prepare.element_to_copy),
-                                              [&lambda](ptrdiff_t first, ptrdiff_t last) {
-                                                for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
-                                                  lambda(i);
-                                                }
-                                              });
-      return Status::OK();
-    }
+    concurrency::ThreadPool::TryParallelFor(
+      tp, prepare.element_offsets.size(), static_cast<double>(prepare.element_to_copy),
+      [&lambda](ptrdiff_t first, ptrdiff_t last) {
+        for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
+          lambda(i);
+          }
+      });
+    return Status::OK();
   }
 };
 
