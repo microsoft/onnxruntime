@@ -1386,17 +1386,10 @@ bool UnaryOpSupportChecker::HasSupportedInputOutputsImpl(
   // We only need to override input check for QLinearSigmoid
   if (node_unit.OpType() != "QLinearSigmoid")
     return BaseOpSupportChecker::HasSupportedInputOutputsImpl(initializers, node_unit, params);
-<<<<<<< HEAD
 
   if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Input))
     return false;
 
-=======
-
-  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Input))
-    return false;
-
->>>>>>> 7a2bf3c24c7ba74e04b8bfcd0d1ece969c35b562
   if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Output))
     return false;
 
