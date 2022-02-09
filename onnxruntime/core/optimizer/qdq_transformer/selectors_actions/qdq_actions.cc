@@ -3,7 +3,7 @@
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_actions.h"
 
-#include "core/optimizer/qdq_transformer/qdq_util_minimal.h"
+#include "core/optimizer/qdq_transformer/qdq_util.h"
 
 namespace onnxruntime {
 namespace QDQ {
