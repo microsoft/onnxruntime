@@ -87,10 +87,13 @@ void DumpTensorToStdOut(const Tensor& tensor) {
   auto data = tensor.DataAsSpan<T>();
 
   auto print_val = [](const T& value) {
-    if (std::is_floating_point<T>::value)
+    if constexpr (std::is_floating_point<T>::value)
       std::cout << std::setprecision(8) << value;
-    else
+    else if constexpr (std::is_integral_v<T>) {
+      std::cout << (int64_t)(value);
+    } else {
       std::cout << value;
+    }
   };
 
   for (size_t row = 0; row < num_rows; ++row) {

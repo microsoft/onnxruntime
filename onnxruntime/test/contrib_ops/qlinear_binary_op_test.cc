@@ -361,6 +361,20 @@ TEST(QLinearBinaryOpTest, AddS8VectorVectorBroadcast) {
                               C_params);
 }
 
+TEST(QLinearBinaryOpTest, AddU8ARM64X64) {
+  OpTester test("QLinearAdd", 1, onnxruntime::kMSDomain);
+  test.AddInput<uint8_t>("A", {2}, {144, 144});
+  test.AddInput<float>("A_scale", {}, {0.030050727});
+  test.AddInput<uint8_t>("A_zero_point", {}, {137});
+  test.AddInput<uint8_t>("B", {2}, {124, 124});
+  test.AddInput<float>("B_scale", {}, {0.020501083});
+  test.AddInput<uint8_t>("B_zero_point", {}, {138});
+  test.AddInput<float>("C_scale", {}, {0.030664071});
+  test.AddInput<uint8_t>("C_zero_point", {}, {123});
+  test.AddOutput<uint8_t>("C", {2}, {120, 120});
+  test.Run();
+}
+
 TEST(QLinearBinaryOpTest, AddS8ScalarVectorFull) {
   const std::vector<float>& A(A4Add);
   float A_scale = 8.0f / 256.0f;
