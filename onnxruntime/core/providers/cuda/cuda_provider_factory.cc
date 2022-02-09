@@ -200,6 +200,7 @@ struct CUDA_Provider : Provider {
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
     info.cudnn_conv_use_max_workspace = params->cudnn_conv_use_max_workspace != 0;
     info.enable_cuda_graph = params->enable_cuda_graph != 0;
+    info.cuda_graph_warmup_runs = params->cuda_graph_warmup_runs;
 
     return std::make_shared<CUDAProviderFactory>(info);
   }
@@ -218,6 +219,7 @@ struct CUDA_Provider : Provider {
     cuda_options.default_memory_arena_cfg = internal_options.default_memory_arena_cfg;
     cuda_options.cudnn_conv_use_max_workspace = internal_options.cudnn_conv_use_max_workspace;
     cuda_options.enable_cuda_graph = internal_options.enable_cuda_graph;
+    cuda_options.cuda_graph_warmup_runs = internal_options.cuda_graph_warmup_runs;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {

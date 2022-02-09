@@ -333,19 +333,26 @@ Status CUDAExecutionProvider::OnRunStart() {
   deferred_release_cpu_ptr_.emplace(current_deferred_release_event, DeferredReleaseCPUPtrs());
 
   if (ConfiguredForGraphCapture() && !IsGraphCaptured()) {
-    LOGS_DEFAULT(INFO) << "Capturing the CUDA Graph for this model";
-    graph_.SetStream(static_cast<cudaStream_t>(GetComputeStream()));
-    CaptureBegin();
+    if (FinishWarmupForGraphCapture()) {
+      LOGS_DEFAULT(INFO) << "Capturing the CUDA Graph for this model";
+      CaptureBegin();
+    } else {
+      LOGS_DEFAULT(INFO) << "Run the " << cuda_graph_warmup_count_ << "th/" << info_.cuda_graph_warmup_runs << " warmup for cuda graph capture. ";
+    }
   }
   return Status::OK();
 }
 
 Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
   if (ConfiguredForGraphCapture() && !IsGraphCaptured()) {
-    CaptureEnd();
-    // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
-    // so run the captured graph here to actually execute the work.
-    ORT_RETURN_IF_ERROR(graph_.Replay());
+    if (FinishWarmupForGraphCapture()) {
+      CaptureEnd();
+      // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
+      // so run the captured graph here to actually execute the work.
+      ORT_RETURN_IF_ERROR(graph_.Replay());
+    } else {
+      ++cuda_graph_warmup_count_;
+    }
   }
   // record deferred release event on default stream, and release per_thread_context
   auto current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
@@ -373,9 +380,15 @@ Status CUDAExecutionProvider::SetComputeStream(void* stream) {
 }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
+bool CUDAExecutionProvider::FinishWarmupForGraphCapture() const {
+  return cuda_graph_warmup_count_ >= info_.cuda_graph_warmup_runs;
+}
+
+
 void CUDAExecutionProvider::CaptureBegin()  {
-  ORT_THROW_IF_ERROR(Sync());
   graph_.Reset();
+  graph_.SetStream(static_cast<cudaStream_t>(GetComputeStream()));
+  ORT_THROW_IF_ERROR(Sync());
   graph_.CaptureBegin();
 }
 
@@ -394,6 +407,15 @@ bool CUDAExecutionProvider::IsGraphCaptured() {
 }
 
 Status CUDAExecutionProvider::GraphReplay() {
+  if (!FinishWarmupForGraphCapture()) {
+    return ORT_MAKE_STATUS(
+      ONNXRUNTIME, FAIL,
+      "Warmup for CUDA graph capture is not finished yet. Please run at least " +
+      std::to_string(info_.cuda_graph_warmup_runs) + " warmup runs.");
+  }
+  if (!IsGraphCaptured()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Graph is not captured yet.");
+  }
   ORT_RETURN_IF_ERROR(graph_.Replay());
   return Status::OK();
 }

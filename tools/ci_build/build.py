@@ -1624,7 +1624,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 run_subprocess([sys.executable, 'onnxruntime_test_python_iobinding.py'], cwd=cwd, dll_path=dll_path)
 
                 log.info("Testing CUDA Graph feature")
-                run_subprocess([sys.executable, 'onnxruntime_test_python_cudagraph.py'], cwd=cwd, dll_path=dll_path)
+                run_subprocess([sys.executable, 'onnxruntime_test_python_cuda_graph.py'], cwd=cwd, dll_path=dll_path)
 
             if not args.disable_ml_ops:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_mlops.py'], cwd=cwd, dll_path=dll_path)

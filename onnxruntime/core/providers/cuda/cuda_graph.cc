@@ -47,16 +47,21 @@ Status CUDAGraph::Replay() {
   std::lock_guard<OrtMutex> lock(lock_);
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
   CUDA_RETURN_IF_ERROR(cudaGraphLaunch(graph_exec_, capture_stream_));
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(capture_stream_));
 
-  int version;
-  CUDA_RETURN_IF_ERROR(cudaDriverGetVersion(&version));
-  if (version < 11040) {
+  // TODO: check if the cuda graph issue mentioned in pytorch can be resolved by
+  // doing stream synchronize here instead of cudaDeviceSynchronize. The solution
+  // in pytorch can be found in below:
+  //
+  // int version;
+  // CUDA_RETURN_IF_ERROR(cudaDriverGetVersion(&version));
+  // if (version < 11040) {
     // Workaround for bug in libcuda.so that causes replayed graphs with
     // certain topologies to be corrupted (kernels elided, internal syncs
     // ignored) when replayed back to back without a sync in between.
     // The bug is fixed in CUDA 11.4+.
-    CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
-  }
+    // CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
+  // }
 #else
   CUDA_RETURN_IF_ERROR("CUDA graphs can only be used in Onnxruntime built with CUDA >= 10.0");
 #endif

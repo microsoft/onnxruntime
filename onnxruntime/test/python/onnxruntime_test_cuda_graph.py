@@ -33,7 +33,8 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
       
   def testRunModelWithCudaGraph(self):
       if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
-          providers = [('CUDAExecutionProvider', {'enable_cuda_graph': True})]
+          warmup_runs = 10
+          providers = [('CUDAExecutionProvider', {'enable_cuda_graph': True, 'cuda_graph_warmup_runs': warmup_runs})]
           INPUT_SIZE = 1280
           x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]*INPUT_SIZE, dtype=np.float32)
           y = np.array([[0.0], [0.0], [0.0]]*INPUT_SIZE, dtype=np.float32)
@@ -47,12 +48,17 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
           io_binding.bind_input('X', 'cuda', 0, np.float32, [INPUT_SIZE*3, 2], x_ortvalue.data_ptr())
           io_binding.bind_output('Y', 'cuda', 0, np.float32, [INPUT_SIZE*3, 1], y_ortvalue.data_ptr())
 
-          # RUN - 1
-          # Warm-up Run() - (CUDA Graph capture happens on the very first Run)
-          session.run_with_iobinding(io_binding)
+          # RUN - 0
+          # Warm-up Run() - (CUDA Graph capture happens after the warmup runs finish)
+          for _ in range(warmup_runs):
+            session.run_with_iobinding(io_binding)
           expected_y = np.array([[5.0], [11.0], [17.0]]*INPUT_SIZE, dtype=np.float32)
           np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
-
+          
+          # RUN - 1
+          # Capture the CUDA Graph
+          session.run_with_iobinding(io_binding)
+          np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
 
           # RUN - 2
           # Graph Replay Run 1 (CUDA Graph replay happens from this Run onwards)

@@ -99,6 +99,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool ConfiguredForGraphCapture() override;
   bool IsGraphCaptured() override;
   Status GraphReplay() override;
+  bool FinishWarmupForGraphCapture() const;
   void CaptureBegin();
   void CaptureEnd();
 #endif
@@ -112,6 +113,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
   CUDAGraph graph_;
   bool is_graph_captured_ = false;
+  int cuda_graph_warmup_count_ = 0;
 #endif
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;

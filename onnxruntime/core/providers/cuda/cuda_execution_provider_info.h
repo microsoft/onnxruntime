@@ -53,6 +53,7 @@ struct CUDAExecutionProviderInfo {
   bool cudnn_conv_use_max_workspace{false};
 
   bool enable_cuda_graph{false};
+  int cuda_graph_warmup_runs{10};
 
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);
