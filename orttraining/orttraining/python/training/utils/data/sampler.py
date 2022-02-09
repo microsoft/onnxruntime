@@ -11,6 +11,27 @@ from typing import Optional, Iterator, Callable
 import numpy as np
 
 
+def _shard_wrapped_indices_across_workers(dataset_index_list, num_shards, num_samples_per_shard):
+    """Yield successive num_shards-sized chunks from dataset_index_list."""
+    num_samples = max(1, num_samples_per_shard)
+    num_elements = num_samples * num_shards
+    current_lst = []
+    for i in range(num_elements):
+        current_lst.append(dataset_index_list[i % len(dataset_index_list)])
+        if len(current_lst) == num_shards:
+            yield current_lst
+            current_lst = []
+
+
+def shard_wrapped_indices_for_worker(dataset_index_list, shard_id, num_shards):
+    """Shard wrapped around dataset_index_list across num_shards and return the indices for this shard_id"""
+    num_samples_per_worker = (len(dataset_index_list) + num_shards - 1) // num_shards
+    sharded_indices = list(_shard_wrapped_indices_across_workers(dataset_index_list,
+                                                                 num_shards,
+                                                                 num_samples_per_worker))
+    return [sharded_indices[i][shard_id] for i in range(len(sharded_indices))]
+
+
 # Implementation is adapted from bagua/load_balancing_data_loader.py
 # https://github.com/BaguaSys/bagua/blob/01874a7c3f90904c37c5612a9db866b5d4b8b5ed/bagua/torch_api/contrib/load_balancing_data_loader.py#L12
 class LoadBalancingDistributedSampler:
@@ -128,6 +149,7 @@ class LoadBalancingDistributedSampler:
 
         self.complexity_fn = complexity_fn
         self.sample_complexities = None
+        self.ordered_sample_complexities = None
 
         if random_level < 0.0 or random_level > 1.0:
             raise ValueError(
@@ -161,17 +183,6 @@ class LoadBalancingDistributedSampler:
                 sample_complexities[group_begin_index:group_end_index, :] = sample_complexities[sorted_indices]
             return sample_complexities
 
-        def chunks_wrap_padding(dataset_index_list, num_shards):
-            """Yield successive num_shards-sized chunks from dataset_index_list."""
-            num_samples = max(1, self.num_samples)
-            num_elements = num_samples * num_shards
-            current_lst = []
-            for i in range(num_elements):
-                current_lst.append(dataset_index_list[i % len(dataset_index_list)])
-                if len(current_lst) == num_shards:
-                    yield current_lst
-                    current_lst = []
-
         # Get the samples and their complexities from the complexity_fn
         if not self.sample_complexities:
             self.sample_complexities = np.empty((len(self.dataset), 2), dtype=np.int64)
@@ -200,7 +211,10 @@ class LoadBalancingDistributedSampler:
                 sample_complexities[index][1] += random_int
 
         # Sort the data based on the computed complexities and group sizes.
-        ordered_sample_complexities = sort_in_groups(sample_complexities, self.group_size)
+        # Sort only once if random_number <= 1 else sort everytime
+        if self.ordered_sample_complexities is None or self.random_number > 1:
+            self.ordered_sample_complexities = sort_in_groups(sample_complexities, self.group_size)
+        ordered_sample_complexities = self.ordered_sample_complexities
 
         # If group_size is not None, shuffle the index of each group instead
         # of shuffling the data indices.
@@ -220,8 +234,10 @@ class LoadBalancingDistributedSampler:
 
         # Shard the data across the different workers.
         index_chunks = list(
-            chunks_wrap_padding(
-                [index_complexity_tuple[0] for index_complexity_tuple in ordered_sample_complexities], self.world_size
+            _shard_wrapped_indices_across_workers(
+                [index_complexity_tuple[0] for index_complexity_tuple in ordered_sample_complexities],
+                self.world_size,
+                self.num_samples
             )
         )
 
