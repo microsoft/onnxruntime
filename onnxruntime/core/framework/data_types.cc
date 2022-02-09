@@ -4,6 +4,16 @@
 #include "core/framework/data_types.h"
 
 #include "boost/mp11.hpp"
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wunused-result"
+#endif
+#include "Eigen/Core"
+#include "Eigen/src/Core/arch/Default/Half.h"
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 #include "core/framework/data_types_internal.h"
 #include "core/framework/element_type_lists.h"
@@ -26,7 +36,19 @@
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
+namespace math {
+uint16_t floatToHalf(float f) {
+  return Eigen::half_impl::float_to_half_rtne(f).x;
+}
 
+uint16_t doubleToHalf(double f) {
+  return Eigen::half_impl::float_to_half_rtne(static_cast<float>(f)).x;
+}
+
+float halfToFloat(uint16_t h) {
+  return Eigen::half_impl::half_to_float(Eigen::half_impl::raw_uint16_to_half(h));
+}
+}  // namespace math
 MLFloat16::MLFloat16(float f) : val{math::floatToHalf(f)} {}
 
 float MLFloat16::ToFloat() const {

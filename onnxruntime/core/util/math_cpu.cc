@@ -808,18 +808,6 @@ void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, con
 SPECIALIZED_COPYVECTOR(float)
 #undef SPECIALIZED_COPYVECTOR
 
-uint16_t floatToHalf(float f) {
-  return Eigen::half_impl::float_to_half_rtne(f).x;
-}
-
-uint16_t doubleToHalf(double f) {
-  return Eigen::half_impl::float_to_half_rtne(static_cast<float>(f)).x;
-}
-
-float halfToFloat(uint16_t h) {
-  return Eigen::half_impl::half_to_float(Eigen::half_impl::raw_uint16_to_half(h));
-}
-
 // AddToRow and AddToCol adds the corresponding row/col vector b to the matrix a
 // of shape M x N. The actual implementation uses eigen which is column major,
 // so notice the row/column swap in the actual implementation.

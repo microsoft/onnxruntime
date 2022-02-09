@@ -16,7 +16,16 @@ namespace onnxruntime {
 #else
 #define ORT_HOST_DEVICE
 #endif
+namespace math {
+// Converts a float32 to a float16 value.
+uint16_t floatToHalf(float f);
 
+// Converts a double (float64) to a float16 value.
+uint16_t doubleToHalf(double f);
+
+// Converts a float16 to a float32 value.
+float halfToFloat(uint16_t h);
+}
 // MLFloat16
 struct MLFloat16 {
   uint16_t val;

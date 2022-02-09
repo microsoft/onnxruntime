@@ -353,14 +353,5 @@ constexpr T roundUp(T a, T b) {
   return divUp<T>(a, b) * b;
 }
 
-// Converts a float32 to a float16 value.
-uint16_t floatToHalf(float f);
-
-// Converts a double (float64) to a float16 value.
-uint16_t doubleToHalf(double f);
-
-// Converts a float16 to a float32 value.
-float halfToFloat(uint16_t h);
-
 }  // namespace math
 }  // namespace onnxruntime
