@@ -59,10 +59,10 @@ struct OpenVINOExecutionProviderInfo {
   bool use_compiled_network_;
   std::string blob_dump_path_;
   void* context_;
-  bool enable_gpu_throttling_;
+  bool enable_opencl_throttling_;
 
-  explicit OpenVINOExecutionProviderInfo(std::string dev_type, bool enable_vpu_fast_compile, std::string dev_id, size_t num_of_threads, bool use_compiled_network, std::string blob_dump_path, void* context, bool enable_gpu_throttling)
-      : enable_vpu_fast_compile_(enable_vpu_fast_compile), device_id_(dev_id), num_of_threads_(num_of_threads), use_compiled_network_(use_compiled_network), blob_dump_path_(blob_dump_path), context_(context), enable_gpu_throttling_(enable_gpu_throttling) {
+  explicit OpenVINOExecutionProviderInfo(std::string dev_type, bool enable_vpu_fast_compile, std::string dev_id, size_t num_of_threads, bool use_compiled_network, std::string blob_dump_path, void* context, bool enable_opencl_throttling)
+      : enable_vpu_fast_compile_(enable_vpu_fast_compile), device_id_(dev_id), num_of_threads_(num_of_threads), use_compiled_network_(use_compiled_network), blob_dump_path_(blob_dump_path), context_(context), enable_opencl_throttling_(enable_opencl_throttling) {
     if (dev_type == "") {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
                          << "No runtime device selection option provided.";

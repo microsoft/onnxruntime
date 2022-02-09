@@ -19,7 +19,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   openvino_ep::BackendManager::GetGlobalContext().use_compiled_network = info.use_compiled_network_;
   openvino_ep::BackendManager::GetGlobalContext().blob_dump_path = info.blob_dump_path_;
   openvino_ep::BackendManager::GetGlobalContext().context = info.context_;
-  openvino_ep::BackendManager::GetGlobalContext().enable_gpu_throttling = info.enable_gpu_throttling_;
+  openvino_ep::BackendManager::GetGlobalContext().enable_opencl_throttling = info.enable_opencl_throttling_;
 
 
   if ((int)info.num_of_threads_ <= 0) {
