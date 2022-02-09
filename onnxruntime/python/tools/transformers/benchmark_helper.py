@@ -32,6 +32,8 @@ class Precision(Enum):
 
 
 class OptimizerInfo(Enum):
+    # no_opt means using the raw ONNX model, but OnnxRuntime might still apply optimization as long as
+    # graph optimization level is not 0 (disable all).
     NOOPT = 'no_opt'
     BYORT = 'by_ort'
     BYSCRIPT = 'by_script'
