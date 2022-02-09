@@ -452,7 +452,7 @@ static Status HandleAutoPad(const Shape& input_shape,
 }
 
 // Get scales and zero points for the qlinear binary ops (which has 2 input and 1 output)
-// QLinearConv, QLinearMatmul, QLinearAdd
+// QLinearConv, QLinearMatmul, QLinearAdd, QLinearMul
 // a, b are inputs, and y is output
 static Status GetBinaryOpQuantizationScaleAndZeroPoint(
     const InitializedTensorSet& initializers, const NodeUnit& node_unit,
@@ -656,8 +656,11 @@ class BinaryOpBuilder : public BaseOpBuilder {
 };
 
 /* static */ bool BinaryOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
-  // TODO, add support for QDQ NodeUnit
-  return node_unit.OpType() == "QLinearAdd";
+  const auto quant_type = GetQuantizedOpType(node_unit);
+  return quant_type == QuantizedOpType::QLinearAdd ||
+         quant_type == QuantizedOpType::QLinearMul ||
+         quant_type == QuantizedOpType::QDQAdd ||
+         quant_type == QuantizedOpType::QDQMul;
 }
 
 void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -680,6 +683,7 @@ void BinaryOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
           "Mul",
           "Div",
           "QLinearAdd",
+          "QLinearMul",
           "Pow",
       });
 }
@@ -690,12 +694,12 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   int32_t op_code;
   bool add_activation = true;
-  bool op_is_qlinear = op_type == "QLinearAdd";
-  if (op_type == "Add" || op_is_qlinear) {
+  bool is_quant_op = IsQuantizedOp(node_unit);
+  if (op_type == "Add" || op_type == "QLinearAdd") {  // Add/QLinearAdd/QDQAdd
     op_code = ANEURALNETWORKS_ADD;
   } else if (op_type == "Sub") {
     op_code = ANEURALNETWORKS_SUB;
-  } else if (op_type == "Mul") {
+  } else if (op_type == "Mul" || op_type == "QLinearMul") {  // Mul/QLinearMul/QDQMul
     op_code = ANEURALNETWORKS_MUL;
   } else if (op_type == "Div") {
     op_code = ANEURALNETWORKS_DIV;
@@ -721,7 +725,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
           b_zero_point = 0,
           y_zero_point = 0;
 
-  if (op_is_qlinear) {
+  if (is_quant_op) {
     ORT_RETURN_IF_ERROR(GetBinaryOpQuantizationScaleAndZeroPoint(
         model_builder.GetInitializerTensors(), node_unit,
         a_scale, b_scale, y_scale,
@@ -729,7 +733,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   }
 
   // Verify if the scale and zero point matchs from onnx input and nnapi input match
-  if (op_is_qlinear) {
+  if (is_quant_op) {
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input1, a_scale, a_zero_point));
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input2, b_scale, b_zero_point));
   }
@@ -2717,6 +2721,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Mul", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Pow", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearAdd", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearMul", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Sub", BinaryOpBuilder);
   }
 
