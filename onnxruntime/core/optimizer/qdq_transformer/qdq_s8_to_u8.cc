@@ -14,7 +14,7 @@ namespace onnxruntime {
 Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                        const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
-  const auto node_topology_list = gsl::make_span(graph_viewer.GetNodesInTopologicalOrder());
+  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
   for (auto node_index : node_topology_list) {
     auto* q_node_ptr = graph.GetNode(node_index);
