@@ -5,96 +5,16 @@
 
 #include <optional>
 
+#include "core/graph/extended_graph_edge.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/utils.h"
 
+using onnxruntime::graph_utils::ExtendedGraphEdge;
+
 namespace onnxruntime {
 namespace {
-// like graph_utils::GraphEdge, but also allowing the source end to be an input and the destination end to be an output
-struct ExtendedGraphEdge {
-  enum class End { Source,
-                   Destination };
-
-  struct NodeInfo {
-    NodeIndex node_idx;
-    int arg_idx;
-  };
-
-  std::optional<NodeInfo> src;  // if empty, graph input
-  std::optional<NodeInfo> dst;  // if empty, graph output
-  std::string arg_name;
-
-  bool HasGraphInputOrInitializer() const noexcept { return !src.has_value(); }
-  bool HasGraphOutput() const noexcept { return !dst.has_value(); }
-
-  const std::optional<NodeInfo>& GetNodeInfoAtEnd(End end) const {
-    return end == End::Source ? src : dst;
-  }
-
-  Node* GetNodeAtEnd(Graph& graph, End end) const {
-    if (const auto& node_info = GetNodeInfoAtEnd(end); node_info.has_value()) {
-      Node* node = graph.GetNode(node_info->node_idx);
-      ORT_ENFORCE(node != nullptr, "Invalid node index ", node_info->node_idx);
-      return node;
-    }
-    return nullptr;
-  }
-
-  const Node* GetNodeAtEnd(const Graph& graph, End end) const {
-    if (const auto& node_info = GetNodeInfoAtEnd(end); node_info.has_value()) {
-      const Node* node = graph.GetNode(node_info->node_idx);
-      ORT_ENFORCE(node != nullptr, "Invalid node index ", node_info->node_idx);
-      return node;
-    }
-    return nullptr;
-  }
-
-  static ExtendedGraphEdge FromGraphEdge(const graph_utils::GraphEdge& graph_edge) {
-    return ExtendedGraphEdge{
-        NodeInfo{graph_edge.src_node, graph_edge.src_arg_index},
-        NodeInfo{graph_edge.dst_node, graph_edge.dst_arg_index},
-        graph_edge.arg_name};
-  }
-
-  static std::optional<ExtendedGraphEdge> FromInputOrInitializerToNode(
-      const Graph& graph, const Node& node, int node_input_def_idx) {
-    const auto node_inputs = node.InputDefs();
-    ORT_ENFORCE(node_input_def_idx >= 0 &&
-                static_cast<size_t>(node_input_def_idx) < node_inputs.size());
-
-    const auto* node_input = node_inputs[node_input_def_idx];
-    if (!graph.IsInputsIncludingInitializers(node_input)) {
-      return std::nullopt;
-    }
-
-    return ExtendedGraphEdge{
-        std::nullopt,
-        NodeInfo{node.Index(), node_input_def_idx},
-        node_input->Name()};
-  }
-
-  static std::optional<ExtendedGraphEdge> FromNodeToOutput(
-      const Graph& graph, const Node& node, int node_output_def_idx) {
-    const auto node_outputs = node.OutputDefs();
-    ORT_ENFORCE(node_output_def_idx >= 0 &&
-                static_cast<size_t>(node_output_def_idx) < node_outputs.size());
-
-    const auto* node_output = node_outputs[node_output_def_idx];
-    if (!graph.IsOutput(node_output)) {
-      return std::nullopt;
-    }
-
-    return ExtendedGraphEdge{
-        NodeInfo{node.Index(), node_output_def_idx},
-        std::nullopt,
-        node_output->Name()};
-  }
-
-  // there is also the case where the graph input is an output, but we don't care about that for this transformer
-};
-
 bool CanNodePropagate(const Node& node) {
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {12}) ||
          graph_utils::IsSupportedOptypeVersionAndDomain(node, "Reshape", {5, 13, 14}) ||
@@ -110,8 +30,8 @@ bool CanNodePropagate(const Node& node) {
 Status InsertQDQPair(Graph& graph, const ExtendedGraphEdge& insertion_edge,
                      NodeArg& scale_initializer_nodearg,
                      NodeArg& zp_initializer_nodearg, const logging::Logger& logger) {
-  auto* src_node = insertion_edge.GetNodeAtEnd(graph, ExtendedGraphEdge::End::Source);
-  auto* dst_node = insertion_edge.GetNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
+  auto* src_node = insertion_edge.GetMutableNodeAtEnd(graph, ExtendedGraphEdge::End::Source);
+  auto* dst_node = insertion_edge.GetMutableNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
 
   ORT_ENFORCE(src_node || dst_node, "At least one graph node must be specified in the propagation edge.");
 
@@ -194,7 +114,7 @@ std::optional<ExtendedGraphEdge> GetPreviousEdge(const Graph& graph, const Node&
 
   if (input_edge_it == input_edges.end()) {
     // maybe edge from input
-    return ExtendedGraphEdge::FromInputOrInitializerToNode(graph, node, 0);
+    return ExtendedGraphEdge::TryCreateFromInputOrInitializerToNode(graph, node, 0);
   }
 
   const auto& src_node = *graph.GetNode(input_edge_it->src_node);
@@ -203,7 +123,7 @@ std::optional<ExtendedGraphEdge> GetPreviousEdge(const Graph& graph, const Node&
   if (!graph.IsOutput(src_node.OutputDefs()[input_edge_it->src_arg_index]) &&
       src_node_output_edges.size() == 1) {
     // single edge from previous node
-    return ExtendedGraphEdge::FromGraphEdge(*input_edge_it);
+    return ExtendedGraphEdge::CreateFromValidGraphEdge(*input_edge_it);
   }
 
   return std::nullopt;
@@ -231,12 +151,12 @@ std::optional<ExtendedGraphEdge> GetNextEdge(const Graph& graph, const Node& nod
   const auto output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(node, 0);
   if (output_edges.empty()) {
     // maybe edge to output
-    return ExtendedGraphEdge::FromNodeToOutput(graph, node, 0);
+    return ExtendedGraphEdge::TryCreateFromNodeToOutput(graph, node, 0);
   }
 
   if (!graph.IsOutput(node.OutputDefs()[0]) && output_edges.size() == 1) {
     // single edge to next node
-    return ExtendedGraphEdge::FromGraphEdge(output_edges.front());
+    return ExtendedGraphEdge::CreateFromValidGraphEdge(output_edges.front());
   }
 
   return std::nullopt;
