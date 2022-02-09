@@ -136,12 +136,17 @@ cudnnDataType_t CudnnTensor::GetDataType<half>() {
   return CUDNN_DATA_HALF;
 }
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 template <>
+
 cudnnDataType_t CudnnTensor::GetDataType<BFloat16>() {
+#if CUDNN_VERSION >= 8100
   return CUDNN_DATA_BFLOAT16;
-}
+#else
+  ORT_THROW("cuDNN version is too low to support BFloat16.");
+  // Not reachable but GCC complains
+  return CUDNN_DATA_FLOAT;
 #endif
+}
 
 template <>
 cudnnDataType_t CudnnTensor::GetDataType<int8_t>() {
