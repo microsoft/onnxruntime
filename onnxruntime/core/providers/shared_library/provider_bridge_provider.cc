@@ -508,7 +508,7 @@ Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outp
 
 Status Size::Compute(OpKernelContext* context) const { return g_host_cpu.Size__Compute(this, context); }
 
-Status ScatterNDBase::ValidateShapes(const TensorShape& input_shape,
+Status ScatterND::ValidateShapes(const TensorShape& input_shape,
                                      const TensorShape& indice_shape,
                                      const TensorShape& update_shape) { return g_host_cpu.ScatterNDBase__ValidateShapes(input_shape, indice_shape, update_shape); }
 

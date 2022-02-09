@@ -12,6 +12,11 @@
 #include "onnx/defs/function.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 
+// have to put declaration here before a fix in onnx repo
+namespace ONNX_NAMESPACE {
+void propagateElemTypeFromTensorInputToOutput(InferenceContext& ctx, size_t inputIndex, size_t outputIndex);
+}
+
 namespace onnxruntime {
 namespace training {
 
@@ -2089,16 +2094,15 @@ Example 4:
             auto* tp = ctx.getInputType(0);
             if ((tp == nullptr) || (!tp->has_tensor_type()))
               return false;
-            auto elem_type = tp->tensor_type().elem_type();
             double kAlpha = M_2_SQRTPI * M_SQRT1_2 * 0.5;
             FunctionBuilder builder(functionProto);
             builder
                 .AddOpset("", 13)
-                .Const("C_Half", 0.5f, elem_type)
-                .Const("C_One", 1.0f, elem_type)
-                .Const("C_SqrtHalf", float(M_SQRT1_2), elem_type)
-                .Const("C_MinusHalf", -0.5f, elem_type)
-                .Const("C_alpha", kAlpha, elem_type)
+                .Const("C_Half", 0.5f)
+                .Const("C_One", 1.0f)
+                .Const("C_SqrtHalf", float(M_SQRT1_2))
+                .Const("C_MinusHalf", -0.5f)
+                .Const("C_alpha", kAlpha)
                 .Add(R"(
                     ErfArg = Mul (X, C_SqrtHalf) 
                     ErfTerm = Erf (ErfArg) 
@@ -2767,18 +2771,17 @@ Return true if all elements are true and false otherwise.
             auto* tp = ctx.getInputType(0);
             if ((tp == nullptr) || (!tp->has_tensor_type()))
               return false;
-            auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
             static constexpr double kAlpha = M_2_SQRTPI * M_SQRT1_2;
             static constexpr double kGamma = 0.044715f;
             static constexpr double kBeta = kGamma * kAlpha * 3.0f;
             FunctionBuilder builder(functionProto);
             builder
                 .AddOpset("", 13)
-                .Const("half", 0.5f, elem_type)
-                .Const("one", 1.0f, elem_type)
-                .Const("alpha", kAlpha, elem_type)
-                .Const("gamma", kGamma, elem_type)
-                .Const("beta", kBeta, elem_type)
+                .Const("half", 0.5f)
+                .Const("one", 1.0f)
+                .Const("alpha", kAlpha)
+                .Const("gamma", kGamma)
+                .Const("beta", kBeta)
                 .Add(R"ONNX(
                   x_square = Mul (X, X)
                   x_cube = Mul (X, x_square)

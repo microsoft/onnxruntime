@@ -93,21 +93,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
     Scatter<EnabledScatterElementsDataTypes>);
 
-// template <typename... T> struct TypeList2 {};
-// using Scatter16TypeList = TypeList2<MLFloat16, bool, std::string, uint8_t, int8_t, uint16_t, int16_t, uint32_t, int32_t, uint64_t, int64_t, float, double>;
-
-// ONNX_CPU_OPERATOR_KERNEL(
-//     ScatterElements,
-//     16,
-//     KernelDefBuilder()
-//         .MayInplace(0, 0)
-//         .TypeConstraint("T",
-//                         BuildKernelDefConstraintsFromTypeList<Scatter16TypeList>(),
-//                         BuildKernelDefConstraintsFromTypeList<Scatter16TypeList>())
-//         .TypeConstraint("Tind", BuildKernelDefConstraints<int32_t, int64_t>()),
-//     Scatter16<Scatter16TypeList>);
-
-
 ONNX_CPU_OPERATOR_KERNEL(
     ScatterElements,
     16,
@@ -433,7 +418,7 @@ Status GatherElementsGradImpl(const Tensor* indices_input, const Tensor* updates
                               const int64_t axis, Tensor* data_output) {
   std::vector<int64_t> indices_data{};
   ORT_RETURN_IF_ERROR(GetIndices<Tin>(*data_output, *indices_input, axis, indices_data));
-  return CopyScatterData<Tdata>(Func_Add<Tdata>(), data_output, indices_data, updates_input, axis, data_output);
+  return ScatterData<Tdata>(Func_Add<Tdata>(), data_output, indices_data, updates_input, axis, data_output);
 }
 
 #define GATHER_ELEMENTS_GRAD_IMPL_SPECIALIZED(Tin, Tdata)         \
