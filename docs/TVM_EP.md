@@ -69,7 +69,7 @@ python3 -m pip install $whl_path
 Package for TVM EP:
 ```bash
 cd <path_to_onnx_runtime>
-ppython3 -m pipip3 uninstall onnxruntime onnxruntime-tvm -y
+python3 -m pip3 uninstall onnxruntime onnxruntime-tvm -y
 whl_path=$(find ./build/<OS_NAME>/Release/dist -name "*.whl")
 python3 -m pip install $whl_path
 ```
