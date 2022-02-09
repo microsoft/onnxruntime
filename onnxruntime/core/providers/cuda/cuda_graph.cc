@@ -63,7 +63,7 @@ Status CUDAGraph::Replay() {
     // CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
   // }
 #else
-  CUDA_RETURN_IF_ERROR("CUDA graphs can only be used in Onnxruntime built with CUDA >= 10.0");
+  ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 10.0");
 #endif
   return Status::OK();
 }

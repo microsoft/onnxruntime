@@ -416,8 +416,7 @@ Status CUDAExecutionProvider::GraphReplay() {
   if (!IsGraphCaptured()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Graph is not captured yet.");
   }
-  ORT_RETURN_IF_ERROR(graph_.Replay());
-  return Status::OK();
+  return graph_.Replay();
 }
 #endif
 
