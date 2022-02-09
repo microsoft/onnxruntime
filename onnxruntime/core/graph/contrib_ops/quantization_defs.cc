@@ -27,8 +27,10 @@ namespace contrib {
 using ONNX_NAMESPACE::AttributeProto;
 using ONNX_NAMESPACE::InferenceContext;
 using ONNX_NAMESPACE::OpSchema;
-using ONNX_NAMESPACE::DbgOperatorSetTracker;
 using ONNX_NAMESPACE::OPTIONAL_VALUE;
+#ifndef NDEBUG
+using ONNX_NAMESPACE::DbgOperatorSetTracker;
+#endif
 
 void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, int index, ::google::protobuf::int32 expectedType, bool isScalar, int expectedTensorSize) {
   if (ctx.getNumInputs() > static_cast<size_t>(index)) {
