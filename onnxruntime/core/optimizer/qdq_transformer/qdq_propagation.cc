@@ -28,8 +28,8 @@ bool CanNodePropagate(const Node& node) {
 //    corresponds to an actual graph relationship
 // 2. scale_initializer_nodearg and zp_initializer_nodearg are constant initializers
 Status InsertQDQPair(Graph& graph, const ExtendedGraphEdge& insertion_edge,
-                     NodeArg& scale_initializer_nodearg,
-                     NodeArg& zp_initializer_nodearg, const logging::Logger& logger) {
+                     NodeArg& scale_initializer_nodearg, NodeArg& zp_initializer_nodearg,
+                     const logging::Logger& logger) {
   auto* src_node = insertion_edge.GetMutableNodeAtEnd(graph, ExtendedGraphEdge::End::Source);
   auto* dst_node = insertion_edge.GetMutableNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
 
@@ -178,6 +178,15 @@ std::optional<ExtendedGraphEdge> GetNextPropagationEdge(const Graph& graph,
   return GetNextEdge(graph, *dst_node);
 }
 
+class GraphConstantInitializerGetter {
+  const Graph& graph_;
+ public:
+  GraphConstantInitializerGetter(const Graph& graph) : graph_{graph} {}
+  const ONNX_NAMESPACE::TensorProto* operator()(const std::string& initializer_name) const {
+    return graph_utils::GetConstantInitializer(graph_, initializer_name);
+  }
+};
+
 Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
                           const std::unordered_set<std::string>& compatible_eps,
                           const logging::Logger& logger,
@@ -196,24 +205,12 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
       continue;
     }
 
-    std::vector<NodeArg*>& dq_input_defs = dq_node.MutableInputDefs();
-    if (dq_input_defs.size() != QDQ::InputIndex::TOTAL_COUNT) {
+    if (!QDQ::DoesQOrDQNodeHaveConstantScalarScaleAndZeroPoint(dq_node, GraphConstantInitializerGetter{graph})) {
       continue;
     }
 
-    if (!optimizer_utils::IsScalar(*dq_input_defs[QDQ::InputIndex::ZERO_POINT_ID]) ||
-        !optimizer_utils::IsScalar(*dq_input_defs[QDQ::InputIndex::SCALE_ID])) {
-      continue;
-    }
-
-    const ONNX_NAMESPACE::TensorProto* dq_zp_tensor_proto =
-        graph_utils::GetConstantInitializer(graph, dq_input_defs[QDQ::InputIndex::ZERO_POINT_ID]->Name());
-    const ONNX_NAMESPACE::TensorProto* dq_scale_tensor_proto =
-        graph_utils::GetConstantInitializer(graph, dq_input_defs[QDQ::InputIndex::SCALE_ID]->Name());
-
-    if (nullptr == dq_zp_tensor_proto || nullptr == dq_scale_tensor_proto) {
-      continue;
-    }
+    auto& dq_scale = *dq_node.MutableInputDefs()[QDQ::InputIndex::SCALE_ID];
+    auto& dq_zero_point = *dq_node.MutableInputDefs()[QDQ::InputIndex::ZERO_POINT_ID];
 
     const auto edge_after_dq = GetNextEdge(graph, dq_node);
     if (!edge_after_dq) {
@@ -228,10 +225,7 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
         break;
       }
 
-      ORT_RETURN_IF_ERROR(InsertQDQPair(graph, *curr_edge,
-                                        *dq_input_defs[QDQ::InputIndex::SCALE_ID],
-                                        *dq_input_defs[QDQ::InputIndex::ZERO_POINT_ID],
-                                        logger));
+      ORT_RETURN_IF_ERROR(InsertQDQPair(graph, *curr_edge, dq_scale, dq_zero_point, logger));
       modified = true;
     }
   }
@@ -256,21 +250,12 @@ Status PropagateQBackward(Graph& graph, gsl::span<const NodeIndex> node_indices,
       continue;
     }
 
-    std::vector<NodeArg*>& q_input_defs = q_node.MutableInputDefs();
-    if (q_input_defs.size() != QDQ::InputIndex::TOTAL_COUNT ||
-        !optimizer_utils::IsScalar(*q_input_defs[QDQ::InputIndex::ZERO_POINT_ID]) ||
-        !optimizer_utils::IsScalar(*q_input_defs[QDQ::InputIndex::SCALE_ID])) {
+    if (!QDQ::DoesQOrDQNodeHaveConstantScalarScaleAndZeroPoint(q_node, GraphConstantInitializerGetter{graph})) {
       continue;
     }
 
-    const ONNX_NAMESPACE::TensorProto* q_zp_tensor_proto =
-        graph_utils::GetConstantInitializer(graph, q_input_defs[QDQ::InputIndex::ZERO_POINT_ID]->Name());
-    const ONNX_NAMESPACE::TensorProto* q_scale_tensor_proto =
-        graph_utils::GetConstantInitializer(graph, q_input_defs[QDQ::InputIndex::SCALE_ID]->Name());
-
-    if (nullptr == q_zp_tensor_proto || nullptr == q_scale_tensor_proto) {
-      continue;
-    }
+    auto& q_scale = *q_node.MutableInputDefs()[QDQ::InputIndex::SCALE_ID];
+    auto& q_zero_point = *q_node.MutableInputDefs()[QDQ::InputIndex::ZERO_POINT_ID];
 
     const auto edge_before_q = GetPreviousEdge(graph, q_node);
     if (!edge_before_q) {
@@ -285,10 +270,7 @@ Status PropagateQBackward(Graph& graph, gsl::span<const NodeIndex> node_indices,
         break;
       }
 
-      ORT_RETURN_IF_ERROR(InsertQDQPair(graph, *curr_edge,
-                                        *q_input_defs[QDQ::InputIndex::SCALE_ID],
-                                        *q_input_defs[QDQ::InputIndex::ZERO_POINT_ID],
-                                        logger));
+      ORT_RETURN_IF_ERROR(InsertQDQPair(graph, *curr_edge, q_scale, q_zero_point, logger));
       modified = true;
     }
   }
