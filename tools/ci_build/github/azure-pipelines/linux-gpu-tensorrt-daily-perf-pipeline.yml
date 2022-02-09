@@ -94,7 +94,7 @@ jobs:
 
   steps:
 
-    - bash: nvidia-smi
+    - bash: ls -al /data/models
     - ${{ if eq(parameters.BuildORT, true) }}:
 
       - ${{ if eq(parameters.RunDocker, true) }}: 
