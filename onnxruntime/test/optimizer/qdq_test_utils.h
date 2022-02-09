@@ -192,22 +192,30 @@ template <typename InputType, typename OutputType>
 GetQDQTestCaseFn BuildQDQTransposeTestCase(
     const std::vector<int64_t>& input_shape,
     const std::vector<int64_t>& perms) {
-    return [input_shape, perms](ModelTestBuilder& builder) {
-      auto* input_arg = builder.MakeInput<InputType>(input_shape, -128, 127);
-      auto* output_arg = builder.MakeOutput();
+  return [input_shape, perms](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<InputType>(input_shape, -128, 127);
+    auto* output_arg = builder.MakeOutput();
 
-      // add DQ
-      auto* dq_output = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode<InputType>(input_arg, .003f, 1, dq_output);
+#ifdef USE_NNAPI
+    uint8_t dq_zp = std::numeric_limits<InputType>::max() / 2;
+    uint8_t q_zp = std::numeric_limits<OutputType>::max() / 2;
+#else
+    int8_t dq_zp = 1;
+    int8_t q_zp = 1;
+#endif
 
-      // add Transpose
-      auto* transpose_output = builder.MakeOutput();  // transpose output is graph output
-      Node& transpose_node = builder.AddNode("Transpose", {dq_output}, {transpose_output});
-      transpose_node.AddAttribute("perm", perms);
+    // add DQ
+    auto* dq_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<InputType>(input_arg, .003f, dq_zp, dq_output);
 
-      // add Q
-      builder.AddQuantizeLinearNode<OutputType>(transpose_output, .003f, 1, output_arg);
-    };
+    // add Transpose
+    auto* transpose_output = builder.MakeOutput();  // transpose output is graph output
+    Node& transpose_node = builder.AddNode("Transpose", {dq_output}, {transpose_output});
+    transpose_node.AddAttribute("perm", perms);
+
+    // add Q
+    builder.AddQuantizeLinearNode<OutputType>(transpose_output, .003f, q_zp, output_arg);
+  };
 }
 }  // namespace test
 }  // namespace onnxruntime
