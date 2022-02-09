@@ -7,7 +7,6 @@
 import logging
 import numpy
 import os
-from pyparsing import Opt
 import torch
 from pathlib import Path
 from transformers import AutoConfig, AutoTokenizer, LxmertConfig, TransfoXLConfig
