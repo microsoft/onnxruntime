@@ -505,26 +505,15 @@ def cleanup_files():
             continue
         subprocess.Popen(["rm","-rf", f], stdout=subprocess.PIPE)
 
-def remove_profiling_files(path):
+def remove_files(running_mode, path):
     files = []
-    out = get_output(["find", path, "-name", "onnxruntime_profile*"])
+    out = "" 
+    if running_mode == "validate": 
+        out = get_output(["find", path, "-name", "onnxruntime_profile*"])
+    if running_mode == "benchmark": 
+        out = get_output(["find", path, "-name", "*.engine"])
+
     files = files + out.split("\n")
-
-    for f in files:
-        if "custom_test_data" in f:
-            continue
-        subprocess.Popen(["rm","-rf", f], stdout=subprocess.PIPE)
-
-def remove_files(path):
-    files = []
-    out = get_output(["find", path, "-name", "onnxruntime_profile*"])
-    ort_profiling_files = [] + out.split("\n")
-    out = get_output(["find", path, "-name", "*.profile"])
-    profiling_files = [] + out.split("\n")
-    out = get_output(["find", path, "-name", "*.engine"])
-    #engine_files = [] + out.split("\n")
-    engine_files = []
-    files = files + ort_profiling_files + profiling_files + engine_files
     for f in files:
         if "custom_test_data" in f:
             continue
@@ -982,9 +971,6 @@ def run_onnxruntime(args, models):
         os.chdir(path)
         path = os.getcwd()
 
-        if args.running_mode == "validate": 
-            remove_profiling_files(path)
-        
         inputs = []
         ref_outputs = []
         all_inputs_shape = [] # use for standalone trt
@@ -1130,7 +1116,7 @@ def run_onnxruntime(args, models):
                         success_results.append(result)
 
                     model_to_latency[name] = copy.deepcopy(latency_result)
-                    remove_files(model_info["working_directory"])
+                    remove_files(args.running_mode, model_info["working_directory"])
 
                 logger.info("---------------------------- benchmark [end] ----------------------------------\n")
 
@@ -1179,6 +1165,8 @@ def run_onnxruntime(args, models):
                         status = validate(ref_outputs, ort_outputs, args.rtol, args.atol, args.percent_mismatch)
                         if not status[0]:
                             update_fail_model_map(model_to_fail_ep, name, ep, 'result accuracy issue', status[1])
+                            
+                            remove_files(args.running_mode, model_info["working_directory"])
                             continue
                     except Exception as e:
                         logger.error(e)
@@ -1200,7 +1188,9 @@ def run_onnxruntime(args, models):
                 if metrics:
                     logger.info(ep)
                     ep_to_operator[ep] = metrics
-
+                
+                remove_files(args.running_mode, model_info["working_directory"])
+                
                 logger.info("---------------------------- validate [end] ----------------------------------\n")
 
         ####################
