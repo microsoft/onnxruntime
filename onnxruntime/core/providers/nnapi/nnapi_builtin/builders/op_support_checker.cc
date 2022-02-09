@@ -520,7 +520,6 @@ bool BinaryOpSupportChecker::HasSupportedInputOutputsImpl(
   bool is_pow = node_unit.OpType() == "Pow";
   if (!is_quantized_op && !is_pow)
     return BaseOpSupportChecker::HasSupportedInputOutputsImpl(initializers, node_unit, params);
-<<<<<<< HEAD
 
   if (is_quantized_op) {
     // QLinearAdd/QDQAdd/QLinearMul/QDQMul
@@ -530,17 +529,6 @@ bool BinaryOpSupportChecker::HasSupportedInputOutputsImpl(
     if (!IsQuantizedIOSupported(initializers, node_unit, {0, 1}, params, IOKind::Input))
       return false;
 
-=======
-
-  if (is_quantized_op) {
-    // QLinearAdd/QDQAdd/QLinearMul/QDQMul
-    if (!HasValidBinaryOpQuantizedInputTypes(node_unit))
-      return false;
-
-    if (!IsQuantizedIOSupported(initializers, node_unit, {0, 1}, params, IOKind::Input))
-      return false;
-
->>>>>>> 7a2bf3c24c7ba74e04b8bfcd0d1ece969c35b562
     if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Output))
       return false;
   }
@@ -604,11 +592,8 @@ class TransposeOpSupportChecker : public BaseOpSupportChecker {
   bool HasSupportedInputOutputsImpl(
       const InitializedTensorSet& initializers, const NodeUnit& node_unit,
       const OpSupportCheckParams& params) const override;
-<<<<<<< HEAD
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
   static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
-=======
->>>>>>> 7a2bf3c24c7ba74e04b8bfcd0d1ece969c35b562
 };
 
 /* static */ bool TransposeOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
@@ -632,13 +617,8 @@ bool TransposeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /*
 }
 
 bool TransposeOpSupportChecker::HasSupportedInputOutputsImpl(
-<<<<<<< HEAD
     const InitializedTensorSet& initializers, const NodeUnit& node_unit,
     const OpSupportCheckParams& params) const {
-=======
-    const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-    const OpSupportCheckParams& /* params */) const {
->>>>>>> 7a2bf3c24c7ba74e04b8bfcd0d1ece969c35b562
   int32_t input_type;
   if (!GetType(node_unit.Inputs()[0].node_arg, input_type))
     return false;
