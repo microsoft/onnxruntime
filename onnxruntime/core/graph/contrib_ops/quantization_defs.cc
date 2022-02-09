@@ -322,7 +322,7 @@ C (int32) = (A - A_zero_point) * (B - B_zero_point)
               ctx.getInputType(2)->tensor_type().shape(),
               *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape());
         }
-                                                 }));
+      }));
 
   ONNX_MS_OPERATOR_SET_SCHEMA(DynamicQuantizeMatMul, 1, OpSchema()
       .Input(0, "A", "N-dimensional matrix A", "T1")
