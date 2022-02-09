@@ -4,8 +4,7 @@
 #include "core/graph/contrib_ops/quantization_defs.h"
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
-
-
+#include "core/graph/contrib_ops/shape_inference_functions.h"
 
 namespace ONNX_NAMESPACE {
 void RNNShapeInference(InferenceContext& ctx);
@@ -960,5 +959,121 @@ Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
                second_input_shape.dim(transB ? 0 : 1)});
         }
       }));
-}  // namespace contrib
+  ONNX_MS_OPERATOR_SET_SCHEMA(QAttention, 1,
+                              OpSchema()
+                                  .SetDoc("Quantization of Multi-Head Self Attention.")
+                                  .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+                                  .Attr("unidirectional",
+                                        "Whether every token can only attend to previous tokens. Default value is 0.",
+                                        AttributeProto::INT,
+                                        static_cast<int64_t>(0))
+                                  .Input(
+                                      0,
+                                      "input",
+                                      "3D input tensor with shape (batch_size, sequence_length, input_hidden_size)",
+                                      "T1")
+                                  .Input(
+                                      1,
+                                      "weight",
+                                      "2D input tensor with shape (input_hidden_size, 3 * hidden_size), hidden_size = num_heads * head_size",
+                                      "T2")
+                                  .Input(
+                                      2,
+                                      "bias",
+                                      "1D input tensor with shape (3 * hidden_size)",
+                                      "T3")
+                                  .Input(
+                                      3,
+                                      "input_scale",
+                                      "scale of quantized input tensor. It's a scalar, which means a per-tensor/layer quantization.",
+                                      "T3")
+                                  .Input(
+                                      4,
+                                      "weight_scale",
+                                      "scale of weight scale. It's a scalar or a 1D tensor, which means a per-tensor/per-column quantization."
+                                      "Its size should be 3 * hidden_size if it is per-column quantization",
+                                      "T3")
+                                  .Input(
+                                      5,
+                                      "mask_index",
+                                      "Attention mask index with shape (batch_size)",
+                                      "T4",
+                                      OpSchema::Optional)
+                                  .Input(
+                                      6,
+                                      "input_zero_point",
+                                      "zero point of quantized input tensor.It's a scalar, which means a per-tensor/layer quantization.",
+                                      "T1",
+                                      OpSchema::Optional)
+                                  .Input(
+                                      7,
+                                      "weight_zero_point",
+                                      "zero point of quantized weight tensor. It's a scalar or a 1D tensor, which means a per-tensor/per-column quantization."
+                                      "Its size should be 3 * hidden_size if it is per-column quantization",
+                                      "T2",
+                                      OpSchema::Optional)
+                                  .Input(
+                                      8,
+                                      "past",
+                                      "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).",
+                                      "T3",
+                                      OpSchema::Optional)
+                                  .Output(
+                                      0,
+                                      "output",
+                                      "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
+                                      "T3")
+                                  .Output(
+                                      1,
+                                      "present",
+                                      "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)",
+                                      "T3",
+                                      OpSchema::Optional)
+                                  .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
+                                  .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
+                                  .TypeConstraint("T3", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+                                  .TypeConstraint("T4", {"tensor(int32)"}, "Constrain mask index to integer types")
+                                  .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+                                    constexpr int past_input_index = 8;
+
+                                    AttentionTypeAndShapeInference(ctx, past_input_index);
+                                  }));
+
+  constexpr const char* QEmbedLayerNormalization_ver1_doc = R"DOC(
+QEmbedLayerNormalization is the quantized fusion of embedding layer in BERT model, with optional mask processing.
+The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
+and segment_emedding; the embeddings are added then applied layer normalization using gamma and beta tensors. The input_ids
+and segment_ids remain int32. All embeddings, gamma, and beta tensors are converted to int8/uint8. The last input mask is optional.
+If mask is provided, mask index (that is position of first 0 in mask, or number of words will be calculated.)DOC";
+
+  ONNX_MS_OPERATOR_SET_SCHEMA(QEmbedLayerNormalization, 1,
+                              OpSchema()
+                                  .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+                                  .SetDoc(QEmbedLayerNormalization_ver1_doc)
+                                  .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon)
+                                  .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
+                                  .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
+                                  .Input(2, "word_embedding_quant", "2D with shape (,hidden_size)", "T2")
+                                  .Input(3, "position_embedding_quant", "2D with shape (, hidden_size)", "T2")
+                                  .Input(4, "segment_embedding", "2D with shape (, hidden_size)", "T2", OpSchema::Optional)
+                                  .Input(5, "gamma_quant", "1D gamma tensor for layer normalization with shape (hidden_size)", "T2")
+                                  .Input(6, "beta_quant", "1D beta tensor for layer normalization  with shape (hidden_size)", "T2")
+                                  .Input(7, "mask", "Mask", "T1", OpSchema::Optional)
+                                  .Input(8, "word_embedding_scale", "Scale for word embeddings", "T")
+                                  .Input(9, "position_embedding_scale", "Scale for position embeddings", "T")
+                                  .Input(10, "segment_embedding_scale", "Scale for segment embeddings", "T", OpSchema::Optional)
+                                  .Input(11, "gamma_scale", "Scale for 1D gamma tensor", "T")
+                                  .Input(12, "beta_scale", "Scale for 1D beta tensor", "T")
+                                  .Input(13, "word_embedding_zero_point", "Zero point for word embeddings", "T2")
+                                  .Input(14, "position_embedding_zero_point", "Zero point for position embeddings", "T2")
+                                  .Input(15, "segment_embedding_zero_point", "Zero Point for segment embeddings", "T2", OpSchema::Optional)
+                                  .Input(16, "gamma_zero_point", "Zero Point for 1D gamma tensor", "T2")
+                                  .Input(17, "beta_zero_point", "Zero Point for 1D beta tensor", "T2")
+                                  .Output(0, "layernorm_out", "LayerNorm Output", "T")
+                                  .Output(1, "mask_index_out", "Mask Index Output", "T1")
+                                  .TypeConstraint("T1", {"tensor(int32)"}, "Constrain mask index to integer types")
+                                  .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
+                                  .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float32 tensors.")
+                                  .TypeAndShapeInferenceFunction(EmbedLayerNormalizationShapeInference));
+  }  // namespace contrib
 }  // namespace onnxruntime
