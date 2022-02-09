@@ -5,6 +5,8 @@
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 
+
+
 namespace ONNX_NAMESPACE {
 void RNNShapeInference(InferenceContext& ctx);
 
@@ -22,10 +24,10 @@ void matmulShapeInference(
 
 namespace onnxruntime {
 namespace contrib {
-
 using ONNX_NAMESPACE::AttributeProto;
 using ONNX_NAMESPACE::InferenceContext;
 using ONNX_NAMESPACE::OpSchema;
+using ONNX_NAMESPACE::DbgOperatorSetTracker;
 using ONNX_NAMESPACE::OPTIONAL_VALUE;
 
 void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, int index, ::google::protobuf::int32 expectedType, bool isScalar, int expectedTensorSize) {
@@ -136,16 +138,13 @@ Performs element-wise binary {name} on 8 bit data types (with Numpy-style broadc
   };
 }
 
-void RegisterQuantizationSchemas() {
   static const char* QuantizeLinear_ver1_doc = R"DOC(
 The linear quantization operator. It consumes a full precision data, a scale, a zero point to compute the low precision / quantized tensor.
 The quantization formula is y = saturate ((x / y_scale) + y_zero_point).For saturation, it saturates to [0, 255] if it's uint8, or [-128, 127] if it's int8.
 For (x / y_scale), it's rounding to nearest ties to even. Refer to https://en.wikipedia.org/wiki/Rounding for details.
 Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(QuantizeLinear)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+  ONNX_MS_OPERATOR_SET_SCHEMA(QuantizeLinear, 1, OpSchema()
       .Attr(
           "axis",
           "The axis along which same quantization parameters are applied. It's optional."
@@ -193,16 +192,14 @@ Scale and zero point must have same shape. They must be either scalar (per tenso
 
         auto& input_shape = getInputShape(ctx, 0);
         updateOutputShape(ctx, 0, input_shape);
-      });
+      }));
 
   static const char* DequantizeLinear_ver1_doc = R"DOC(
 The linear dequantization operator. It consumes a quantized data, a scale, a zero point and computes the full precision data.
 The dequantization formula is y = (x - x_zero_point) * x_scale.
 Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(DequantizeLinear)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+  ONNX_MS_OPERATOR_SET_SCHEMA(DequantizeLinear, 1, OpSchema()
       .Attr("axis",
             "The axis along which same quantization parameters are applied. It's optional."
             "If it's not specified, it means per-tensor quantization and input 'x_scale' and 'x_zero_point' must be scalars."
@@ -250,11 +247,9 @@ Scale and zero point must have same shape. They must be either scalar (per tenso
 
         auto& input_shape = getInputShape(ctx, 0);
         updateOutputShape(ctx, 0, input_shape);
-      });
+      }));
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceSumInteger)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+  ONNX_MS_OPERATOR_SET_SCHEMA(ReduceSumInteger, 1, OpSchema()
       .SetDoc(R"DOC(
 Computes the sum of the low-precision input tensor's element along the provided axes.
 The resulting tensor has the same rank as the input if keepdims equal 1. If keepdims equal 0,
@@ -274,12 +269,9 @@ with the exception that numpy default keepdims to False instead of True.)DOC")
           AttributeProto::INTS)
       .Attr(
           "keepdims",
-          "Keep the reduced dimension or not, default 1 mean keep reduced dimension.",
-          AttributeProto::INT);
+          "Keep the reduced dimension or not, default 1 mean keep reduced dimension.", AttributeProto::INT));
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(MulInteger)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+  ONNX_MS_OPERATOR_SET_SCHEMA(MulInteger, 1, OpSchema()
       .SetDoc(R"DOC(Performs element-wise binary quantized multiplication (with Numpy-style broadcasting support).
 "This operator supports **multidirectional (i.e., Numpy-style) broadcasting**"
 The output of this op is the int32 accumulated result of the mul operation
@@ -328,11 +320,9 @@ C (int32) = (A - A_zero_point) * (B - B_zero_point)
               ctx.getInputType(2)->tensor_type().shape(),
               *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape());
         }
-      });
+                                                 }));
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(DynamicQuantizeMatMul)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+  ONNX_MS_OPERATOR_SET_SCHEMA(DynamicQuantizeMatMul, 1, OpSchema()
       .Input(0, "A", "N-dimensional matrix A", "T1")
       .Input(1, "B", "N-dimensional matrix B", "T2")
       .Input(
@@ -367,11 +357,9 @@ C (int32) = (A - A_zero_point) * (B - B_zero_point)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
-      });
+      }));
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulIntegerToFloat)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+  ONNX_MS_OPERATOR_SET_SCHEMA(MatMulIntegerToFloat, 1, OpSchema()
       .Input(0, "A", "N-dimensional matrix A", "T1")
       .Input(1, "B", "N-dimensional matrix B", "T2")
       .Input(
@@ -426,23 +414,17 @@ C (int32) = (A - A_zero_point) * (B - B_zero_point)
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 2, 0);
         ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
-      });
+      }));
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearAdd)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+  ONNX_MS_OPERATOR_SET_SCHEMA(QLinearAdd, 1, OpSchema()
       .FillUsing(QLinearMathDocGenerator("addition",
-                                         "C = (A_scale * (A - A_zero_point) + B_scale * (B - B_zero_point))/C_scale + C_zero_point"));
+                                         "C = (A_scale * (A - A_zero_point) + B_scale * (B - B_zero_point))/C_scale + C_zero_point")));
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearMul)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+  ONNX_MS_OPERATOR_SET_SCHEMA(QLinearMul, 1, OpSchema()
       .FillUsing(QLinearMathDocGenerator("multiplication",
-                                         "C = ((A - A_zero_point) * (B - B_zero_point)) * (A_scale * B_scale)/C_scale + C_zero_point"));
+                                         "C = ((A - A_zero_point) * (B - B_zero_point)) * (A_scale * B_scale)/C_scale + C_zero_point")));
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearReduceMean)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+  ONNX_MS_OPERATOR_SET_SCHEMA(QLinearReduceMean, 1, OpSchema()
       .SetDoc(R"DOC(
 Computes the mean of the low-precision input tensor's element along the provided axes.
 The resulting tensor has the same rank as the input if keepdims equal 1. If keepdims equal 0,
@@ -544,7 +526,7 @@ This helps to improve accuracy as after ReduceMean operation the range of the ou
             }
           }
         }
-      });
+      }));
 
   const char* QLinearLeakyReluDoc_ver1 = R"DOC(
 QLinearLeakyRelu takes quantized input data (Tensor), an argument alpha, and quantize parameter for output,
@@ -552,9 +534,7 @@ and produces one output data (Tensor<T>) where the function `f(x) = quantize(alp
 `f(x) = quantize(dequantize(x)) for dequantize(x) >= 0`, is applied to the data tensor elementwise.
 )DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearLeakyRelu)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+  ONNX_MS_OPERATOR_SET_SCHEMA(QLinearLeakyRelu, 1, OpSchema()
       .SetDoc(QLinearLeakyReluDoc_ver1)
       .Attr("alpha", "Coefficient of leakage.", AttributeProto::FLOAT, 0.01f)
       .Input(0, "X", "Input tensor", "T")
@@ -575,16 +555,14 @@ and produces one output data (Tensor<T>) where the function `f(x) = quantize(alp
           "T",
           {"tensor(uint8)", "tensor(int8)"},
           "Constrain input and output types to 8 bit tensors.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
   const char* QLinearSigmoidDoc_ver1 = R"DOC(
 QLinearSigmoid takes quantized input data (Tensor), and quantize parameter for output, and produces one output data 
 (Tensor<T>) where the function `f(x) = quantize(Sigmoid(dequantize(x)))`, is applied to the data tensor elementwise.
 Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearSigmoid)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+  ONNX_MS_OPERATOR_SET_SCHEMA(QLinearSigmoid, 1, OpSchema()
       .SetDoc(QLinearSigmoidDoc_ver1)
       .Input(0, "X", "Input tensor", "T")
       .Input(1, "X_scale",
@@ -604,11 +582,9 @@ Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
           "T",
           {"tensor(uint8)", "tensor(int8)"},
           "Constrain input and output types to 8 bit tensors.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(DynamicQuantizeLSTM)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+  ONNX_MS_OPERATOR_SET_SCHEMA(DynamicQuantizeLSTM, 1, OpSchema()
       .Attr(
           "direction",
           "Specify if the RNN is forward, reverse, or bidirectional. "
@@ -781,11 +757,9 @@ Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
           "T2",
           {"tensor(uint8)", "tensor(int8)"},
           "Constrain weights types to 8 bit tensors.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::RNNShapeInference);
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::RNNShapeInference));
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearConcat)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+  ONNX_MS_OPERATOR_SET_SCHEMA(QLinearConcat, 1, OpSchema()
       .Attr("axis", "Which axis to concat on", AttributeProto::INT)
       .SetDoc(
           "Concatenate a list of tensors into a single tensor."
@@ -861,11 +835,9 @@ Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
         if (all_lengths_known) {
           output_shape->mutable_dim(axis)->set_dim_value(total_length);
         }
-      });
+      }));
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(QGemm)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
+  ONNX_MS_OPERATOR_SET_SCHEMA(QGemm, 1, OpSchema()
       .SetDoc("Quantized Gemm")
       .Input(0,
              "A",
@@ -985,8 +957,6 @@ Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
               {first_input_shape.dim(transA ? 1 : 0),
                second_input_shape.dim(transB ? 0 : 1)});
         }
-      });
-}
-
+      }));
 }  // namespace contrib
 }  // namespace onnxruntime

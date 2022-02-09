@@ -71,8 +71,7 @@ class NhwcInferenceContext : public ::ONNX_NAMESPACE::InferenceContext {
     return (index == 0) ? &input_type_ : ctx_.getInputType(index);
   }
 
-  const TensorProto* getInputData(size_t index) const override {
-    ORT_UNUSED_PARAMETER(index);
+  const TensorProto* getInputData(size_t ) const override {
     return nullptr;
   }
 
@@ -84,8 +83,7 @@ class NhwcInferenceContext : public ::ONNX_NAMESPACE::InferenceContext {
     return (index == 0) ? &output_type_ : ctx_.getOutputType(index);
   }
 
-  GraphInferencer* getGraphAttributeInferencer(const std::string& attribute_name) override {
-    ORT_UNUSED_PARAMETER(attribute_name);
+  GraphInferencer* getGraphAttributeInferencer(const std::string&) override {
     return nullptr;
   }
 
