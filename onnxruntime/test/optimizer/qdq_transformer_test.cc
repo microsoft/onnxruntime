@@ -669,8 +669,8 @@ TEST(QDQTransformerTests, Transpose) {
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["Transpose"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
     };
 
     TransformerTester(BuildQDQTransposeTestCase<int8_t, int8_t>(input_shape, perms),

@@ -209,7 +209,7 @@ GetQDQTestCaseFn BuildQDQTransposeTestCase(
     builder.AddDequantizeLinearNode<InputType>(input_arg, .003f, dq_zp, dq_output);
 
     // add Transpose
-    auto* transpose_output = builder.MakeOutput();  // transpose output is graph output
+    auto* transpose_output = builder.MakeIntermediate();
     Node& transpose_node = builder.AddNode("Transpose", {dq_output}, {transpose_output});
     transpose_node.AddAttribute("perm", perms);
 
