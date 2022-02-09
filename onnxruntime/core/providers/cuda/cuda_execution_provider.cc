@@ -337,7 +337,7 @@ Status CUDAExecutionProvider::OnRunStart() {
       LOGS_DEFAULT(INFO) << "Capturing the CUDA Graph for this model";
       CaptureBegin();
     } else {
-      LOGS_DEFAULT(INFO) << "Run the " << cuda_graph_warmup_count_ << "th/" << info_.cuda_graph_warmup_runs << " warmup for cuda graph capture. ";
+      LOGS_DEFAULT(INFO) << "Run the " << cuda_graph_warmup_count_ << "th / " << DEFAULT_CUDA_GRAPH_WARMUP_RUNS << " warmup for cuda graph capture. ";
     }
   }
   return Status::OK();
@@ -381,20 +381,18 @@ Status CUDAExecutionProvider::SetComputeStream(void* stream) {
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
 bool CUDAExecutionProvider::FinishWarmupForGraphCapture() const {
-  return cuda_graph_warmup_count_ >= info_.cuda_graph_warmup_runs;
+  return cuda_graph_warmup_count_ >= DEFAULT_CUDA_GRAPH_WARMUP_RUNS;
 }
 
 
 void CUDAExecutionProvider::CaptureBegin()  {
   graph_.Reset();
   graph_.SetStream(static_cast<cudaStream_t>(GetComputeStream()));
-  ORT_THROW_IF_ERROR(Sync());
   graph_.CaptureBegin();
 }
 
 void CUDAExecutionProvider::CaptureEnd() {
   graph_.CaptureEnd();
-  ORT_THROW_IF_ERROR(Sync());
   is_graph_captured_ = true;
 }
 
@@ -411,7 +409,7 @@ Status CUDAExecutionProvider::GraphReplay() {
     return ORT_MAKE_STATUS(
       ONNXRUNTIME, FAIL,
       "Warmup for CUDA graph capture is not finished yet. Please run at least " +
-      std::to_string(info_.cuda_graph_warmup_runs) + " warmup runs.");
+      std::to_string(DEFAULT_CUDA_GRAPH_WARMUP_RUNS) + " warmup runs.");
   }
   if (!IsGraphCaptured()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Graph is not captured yet.");

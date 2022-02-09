@@ -21,6 +21,7 @@ namespace onnxruntime {
 // Logical device representation.
 class CUDAExecutionProvider : public IExecutionProvider {
  public:
+  static const int DEFAULT_CUDA_GRAPH_WARMUP_RUNS = 3;
   explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info);
   virtual ~CUDAExecutionProvider();
 
