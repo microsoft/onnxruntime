@@ -105,9 +105,9 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     global_context_.ie_core.SetConfig({{CONFIG_KEY(CACHE_DIR), cache_dir_path}});
   }
 
-  //Setting GPU Plugin throttle
-  if (global_context_.enable_gpu_throttling == true && global_context_.device_type.find("GPU") != std::string::npos) {
-    LOGS_DEFAULT(INFO) << log_tag << "Enabled GPU Plugin Throttle";
+  //Setting OpenCL queue throttling for GPU
+  if (global_context_.enable_opencl_throttling == true && global_context_.device_type.find("GPU") != std::string::npos) {
+    LOGS_DEFAULT(INFO) << log_tag << "Enabled OpenCL queue throttling for GPU device";
     config[GPU_CONFIG_KEY(PLUGIN_THROTTLE)] = "1";
   }
 
