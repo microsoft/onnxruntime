@@ -184,14 +184,6 @@ Status InsertQDQPair(Graph& graph, const ExtendedGraphEdge& insertion_edge,
   return Status::OK();
 }
 
-bool IsMatchingQDQPair(const Graph& graph, const Node& q_node, const Node& dq_node) {
-  return QDQ::MatchDQNode(dq_node) && QDQ::MatchQNode(q_node) &&
-         QDQ::IsQDQPairSupported(
-             q_node, dq_node,
-             [&graph](const std::string& name) { return graph.GetConstantInitializer(name, true); },
-             graph.ModelPath());
-}
-
 std::optional<ExtendedGraphEdge> GetPreviousEdge(const Graph& graph, const Node& node) {
   // for now we can just consider the first input (index 0)
 
@@ -312,7 +304,7 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
          curr_edge.has_value();
          curr_edge = GetNextPropagationEdge(graph, *curr_edge)) {
       if (const auto* dst_node = curr_edge->GetNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
-          dst_node && IsMatchingQDQPair(graph, *dst_node, dq_node)) {
+          dst_node && QDQ::MatchQNode(*dst_node)) {
         break;
       }
 
@@ -369,7 +361,7 @@ Status PropagateQBackward(Graph& graph, gsl::span<const NodeIndex> node_indices,
          curr_edge.has_value();
          curr_edge = GetPreviousPropagationEdge(graph, *curr_edge)) {
       if (auto* src_node = curr_edge->GetNodeAtEnd(graph, ExtendedGraphEdge::End::Source);
-          src_node && IsMatchingQDQPair(graph, q_node, *src_node)) {
+          src_node && QDQ::MatchDQNode(*src_node)) {
         break;
       }
 
@@ -402,8 +394,6 @@ Status QDQPropagationTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
 
   ORT_RETURN_IF_ERROR(PropagateQBackward(graph, node_indices, compatible_eps, logger, modified));
   ORT_RETURN_IF_ERROR(PropagateDQForward(graph, node_indices, compatible_eps, logger, modified));
-
-  ORT_RETURN_IF_ERROR(QDQ::CancelOutRedundantDQQPairs(graph, node_indices, compatible_eps, logger, modified));
 
   return Status::OK();
 }

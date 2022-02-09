@@ -13,8 +13,6 @@ namespace onnxruntime {
 // Convert QuantizeLinear and DequantizeLinear pair with type int8_t to type uint8_t
 Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                        const logging::Logger& logger) const {
-  bool is_current_graph_modified = false;
-
   GraphViewer graph_viewer(graph);
   const auto node_topology_list = gsl::make_span(graph_viewer.GetNodesInTopologicalOrder());
 
@@ -89,14 +87,6 @@ Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_l
     q_input_defs[zp_idx] = zp_u8_arg;
     dq_input_defs[zp_idx] = zp_u8_arg;
 
-    is_current_graph_modified = true;
-  }
-
-  if (is_current_graph_modified) {
-    // remove redundant DQ/Q pairs that were introduced
-    ORT_RETURN_IF_ERROR(QDQ::CancelOutRedundantDQQPairs(graph, node_topology_list,
-                                                        GetCompatibleExecutionProviders(), logger,
-                                                        is_current_graph_modified));
     modified = true;
   }
 

@@ -1883,7 +1883,7 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward) {
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true);
 }
 
-TEST(QDQTransformerTests, QDQPropagation_ToAnotherQDQ) {
+TEST(QDQTransformerTests, QDQPropagation_StopAtOtherQDQ) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, bool same_scale, bool same_zp) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
@@ -1902,20 +1902,10 @@ TEST(QDQTransformerTests, QDQPropagation_ToAnotherQDQ) {
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
-      std::vector<std::string> expected_op_types_in_order{
-          "QuantizeLinear", "DequantizeLinear"};
-      if (!same_scale || !same_zp) {
-        // Note: It would be fine to either propagate DQ forward or Q backward.
-        // The implementation propagates Q's backward first so we look look for that.
-        expected_op_types_in_order.insert(
-            expected_op_types_in_order.end(),
-            {"QuantizeLinear", "DequantizeLinear"});
-      }
-      expected_op_types_in_order.insert(
-          expected_op_types_in_order.end(),
-          {"Reshape",
-           "QuantizeLinear"});
-
+      const std::vector<std::string> expected_op_types_in_order{
+          "QuantizeLinear", "DequantizeLinear",
+          "Reshape",
+          "QuantizeLinear"};
       const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
       EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
     };
@@ -2053,7 +2043,6 @@ TEST(QDQTransformerTests, QDQPropagation_DQ_Q) {
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
-        // Note: This DQ/Q produces a graph output so it is not considered redundant.
       const std::vector<std::string> expected_op_types_in_order{
           "DequantizeLinear",
           "QuantizeLinear"};
@@ -2069,72 +2058,6 @@ TEST(QDQTransformerTests, QDQPropagation_DQ_Q) {
 
   test_case({1, 13, 13, 23});
 }
-
-TEST(QDQTransformerTests, RedundantDQQ) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape) {
-    auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* input_arg = builder.MakeInput<float>(input_shape, -1.0f, 1.0f);
-      auto* output_arg = builder.MakeOutput();
-
-      // add QDQ
-      auto* dq1_output = AddQDQNodePair<uint8_t>(builder, input_arg, 0.0035f, 135);
-
-      // add QDQ
-      AddQDQNodePair<uint8_t>(builder, dq1_output, 0.0035f, 135, output_arg);
-    };
-
-    auto check_graph = [&](InferenceSessionWrapper& session) {
-      const std::vector<std::string> expected_op_types_in_order{
-          "QuantizeLinear",
-          "DequantizeLinear"};
-      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
-      EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
-    };
-
-    TransformerTester(build_test_case,
-                      check_graph,
-                      TransformerLevel::Default,
-                      TransformerLevel::Level1);
-  };
-
-  test_case({1, 13, 13, 23});
-}
-
-#if !defined(DISABLE_CONTRIB_OPS)
-TEST(QDQTransformerTests, RedundantDQQAfterS8ToU8Conversion) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape) {
-    auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* input_arg = builder.MakeInput<float>(input_shape, -1.0f, 1.0f);
-      auto* output_arg = builder.MakeOutput();
-
-      // add QDQ (uint8_t)
-      auto* dq1_output = AddQDQNodePair<uint8_t>(builder, input_arg, 0.0035f, 135);
-
-      // add QDQ (int8_t)
-      auto* dq2_output = AddQDQNodePair<int8_t>(builder, dq1_output, 0.0035f, 135 - 128);
-
-      // add QDQ (uint8_t)
-      AddQDQNodePair<uint8_t>(builder, dq2_output, 0.0035f, 135, output_arg);
-    };
-
-    auto check_graph = [&](InferenceSessionWrapper& session) {
-        // Note: The middle DQ/Q pairs should be removed after they become equivalent post-S8 to U8 conversion.
-      const std::vector<std::string> expected_op_types_in_order{
-          "QuantizeLinear",
-          "DequantizeLinear"};
-      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
-      EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
-    };
-
-    TransformerTester(build_test_case,
-                      check_graph,
-                      TransformerLevel::Default,
-                      TransformerLevel::Level2);  // S8 to U8 conversion is in Level2
-  };
-
-  test_case({1, 13, 13, 23});
-}
-#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 TEST(QDQTransformerTests, QDQ_Selector_Test) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/transform/qdq_conv.onnx");
