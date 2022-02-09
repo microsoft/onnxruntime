@@ -16,7 +16,7 @@ using namespace onnx_layout_transformation;
 
 namespace onnxruntime {
 
-std::unordered_set<std::string_view> GetORTLayoutSensitiveOps() {
+const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
   static std::unordered_set<std::string_view> ort_layout_senstive_ops = []() {
     const auto& layout_sensitive_ops = onnx_layout_transformation::GetLayoutSensitiveOps();
     std::unordered_set<std::string_view> ort_specific_ops = {"Resize", "FusedConv", "QLinearAveragePool", "QLinearGlobalAveragePool"};

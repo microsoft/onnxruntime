@@ -21,7 +21,7 @@ namespace onnxruntime {
 /// layout sensitive by ORT EPs (exmaple Resize).
 /// </summary>
 /// <returns>unordered set of op_types which are layout sensitive</returns>
-std::unordered_set<std::string_view> GetORTLayoutSensitiveOps();
+const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps();
 
 /// <summary>
 /// Creates concrete implementation of api for transpose optimizer. IMPORTANT: graph must have up-to-date edges,

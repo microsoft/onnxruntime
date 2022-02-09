@@ -144,7 +144,7 @@ static bool IsValidPerm(const std::vector<int64_t>& perm) {
 
 static std::optional<std::vector<int64_t>> GetPermAttrIfValid(const api::NodeRef& node) {
   std::optional<std::vector<int64_t>> perm = node.GetAttributeInts("perm");
-  if (perm != std::nullopt && !IsValidPerm(*perm)) {
+  if (perm.has_value() && !IsValidPerm(*perm)) {
     return std::nullopt;
   }
   return perm;
@@ -447,7 +447,7 @@ static void UnsqueezeInput(OptimizerCtx& ctx, api::NodeRef& node, size_t i, cons
   // a Transpose, optimize it here.
   if (inp_node != nullptr && inp_node->IsOp("Transpose")) {
     auto perm = GetPermAttrIfValid(*inp_node);
-    if (perm != std::nullopt) {
+    if (perm.has_value()) {
       auto perm_inv = InvertPerm(*perm);
       std::vector<size_t> indices = {0};
       HandlerArgs args{ctx, *inp_node, unsqueeze, *perm, perm_inv, indices};
@@ -967,41 +967,41 @@ static void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, con
   node.SetInput(i, gather_output);
 }
 
-//static bool HandleResize(HandlerArgs& args) {
-// auto inputs = args.node.Inputs();
-// int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
+// static bool HandleResize(HandlerArgs& args) {
+//  auto inputs = args.node.Inputs();
+//  int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
 //
-// auto p = ChannelFirstToLastPerm(rank_int);
-// auto& perm = p == args.perm ? args.perm : args.perm_inv;
-// auto& perm_inv = p == args.perm ? args.perm_inv : args.perm;
+//  auto p = ChannelFirstToLastPerm(rank_int);
+//  auto& perm = p == args.perm ? args.perm : args.perm_inv;
+//  auto& perm_inv = p == args.perm ? args.perm_inv : args.perm;
 //
-// if (args.ctx.opset < 11) {
-//    PermuteInput(args.ctx.graph, args.node, 1, perm);
-//  } else {
-//    if (inputs[1] != "") {
-//      std::vector<int64_t> double_perm_inv = perm;
-//      double_perm_inv.reserve(2 * args.perm.size());
-//      for (int64_t p1 : perm) {
-//        double_perm_inv.push_back(p1 + rank_int);
-//      }
-//      PermuteInput(args.ctx.graph, args.node, 1, double_perm_inv);
-//    }
-//    for (size_t i = 2; i < inputs.size(); ++i) {
-//      if (inputs[i] != "") {
-//        PermuteInput(args.ctx.graph, args.node, i, perm);
-//      }
-//    }
-//  }
+//  if (args.ctx.opset < 11) {
+//     PermuteInput(args.ctx.graph, args.node, 1, perm);
+//   } else {
+//     if (inputs[1] != "") {
+//       std::vector<int64_t> double_perm_inv = perm;
+//       double_perm_inv.reserve(2 * args.perm.size());
+//       for (int64_t p1 : perm) {
+//         double_perm_inv.push_back(p1 + rank_int);
+//       }
+//       PermuteInput(args.ctx.graph, args.node, 1, double_perm_inv);
+//     }
+//     for (size_t i = 2; i < inputs.size(); ++i) {
+//       if (inputs[i] != "") {
+//         PermuteInput(args.ctx.graph, args.node, i, perm);
+//       }
+//     }
+//   }
 //
-//  TransposeFirstInput(args.ctx, args.node, perm);
-//  TransposeOutputs(args.ctx, args.node, perm_inv);
+//   TransposeFirstInput(args.ctx, args.node, perm);
+//   TransposeOutputs(args.ctx, args.node, perm_inv);
 //
-//  SwapNodeOpTypeAndDomain(args.ctx.graph, args.node, args.node.OpType(), "com.microsoft.nhwc");
+//   SwapNodeOpTypeAndDomain(args.ctx.graph, args.node, args.node.OpType(), "com.microsoft.nhwc");
 //
-//  return true;
-//}
+//   return true;
+// }
 
-//constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
+// constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
 
 static bool HandlePad(HandlerArgs& args) {
   size_t rank = args.perm.size();
@@ -1207,24 +1207,30 @@ static bool HandleUnsqueeze(HandlerArgs& args) {
 
 constexpr HandlerInfo unsqueeze_handler = {&FirstInput, &HandleUnsqueeze};
 
-static bool HandleQuantizeDequantizeLinear(HandlerArgs& args) {
-  size_t rank = args.perm.size();
-
-  if (args.ctx.opset >= 13) {
+static bool HandleQuantizeDequantizeScale(const api::GraphRef& graph, const std::vector<int64_t>& perm,
+                                          api::NodeRef& node, int64_t opset) {
+  if (opset >= 13) {
+    size_t rank = perm.size();
     // Update axis in Opset >= 13 if scale/zero_point are non-scalar
-    auto inputs = args.node.Inputs();
+    auto inputs = node.Inputs();
 
-    std::optional<std::vector<int64_t>> inp_shape = args.ctx.graph.GetValueInfo(inputs[1])->Shape();
-    bool scalar_params = inp_shape != std::nullopt && inp_shape->size() == 0;
+    auto inp_shape = graph.GetValueInfo(inputs[1])->Shape();
+    bool scalar_params = inp_shape.has_value() && inp_shape->size() == 0;
 
     if (!scalar_params) {
-      int64_t axis = args.node.GetAttributeIntDefault("axis", 1);
+      int64_t axis = node.GetAttributeIntDefault("axis", 1);
       if (!NormalizeAndValidateAxis(axis, rank)) {
         return false;
       }
-
-      args.node.SetAttributeInt("axis", args.perm[gsl::narrow_cast<size_t>(axis)]);
+      node.SetAttributeInt("axis", perm[gsl::narrow_cast<size_t>(axis)]);
     }
+  }
+  return true;
+}
+
+static bool HandleQuantizeDequantizeLinear(HandlerArgs& args) {
+  if (!HandleQuantizeDequantizeScale(args.ctx.graph, args.perm, args.node, args.ctx.opset)) {
+    return false;
   }
 
   TransposeFirstInput(args.ctx, args.node, args.perm_inv);
@@ -1560,59 +1566,109 @@ static bool HandleMaxPool(HandlerArgs& args) {
 constexpr HandlerInfo max_pool_op_handler = {&FirstInput, &HandleMaxPool};
 
 // TODO: check binary size of this and replace it with constexpr if large
-static const std::unordered_map<std::string_view, const HandlerInfo&> handler_map {
+static const std::unordered_map<std::string_view, const HandlerInfo&> handler_map{
 
-  {"Cast", simple_node_handler}, {"Exp", simple_node_handler}, {"Identity", simple_node_handler},
-  {"LeakyRelu", simple_node_handler}, {"Log", simple_node_handler}, {"Reciprocal", simple_node_handler},
-  {"Relu", simple_node_handler}, {"Sigmoid", simple_node_handler}, {"Sqrt", simple_node_handler},
-  {"Tanh", simple_node_handler}, {"Abs", simple_node_handler}, {"Not", simple_node_handler},
-  {"Ceil", simple_node_handler}, {"Floor", simple_node_handler}, {"Neg", simple_node_handler},
-  {"Erf", simple_node_handler}, {"HardSigmoid", simple_node_handler}, {"Round", simple_node_handler},
-  {"IsInf", simple_node_handler}, {"IsNaN", simple_node_handler},
-  {"Selu", simple_node_handler}, {"Shrink", simple_node_handler}, {"Sign", simple_node_handler},
-  {"Softplus", simple_node_handler}, {"Softsign", simple_node_handler}, {"ThresholdedRelu", simple_node_handler},
-  {"Celu", simple_node_handler}, {"HardSwish", simple_node_handler},
+    {"Cast", simple_node_handler},
+    {"Exp", simple_node_handler},
+    {"Identity", simple_node_handler},
+    {"LeakyRelu", simple_node_handler},
+    {"Log", simple_node_handler},
+    {"Reciprocal", simple_node_handler},
+    {"Relu", simple_node_handler},
+    {"Sigmoid", simple_node_handler},
+    {"Sqrt", simple_node_handler},
+    {"Tanh", simple_node_handler},
+    {"Abs", simple_node_handler},
+    {"Not", simple_node_handler},
+    {"Ceil", simple_node_handler},
+    {"Floor", simple_node_handler},
+    {"Neg", simple_node_handler},
+    {"Erf", simple_node_handler},
+    {"HardSigmoid", simple_node_handler},
+    {"Round", simple_node_handler},
+    {"IsInf", simple_node_handler},
+    {"IsNaN", simple_node_handler},
+    {"Selu", simple_node_handler},
+    {"Shrink", simple_node_handler},
+    {"Sign", simple_node_handler},
+    {"Softplus", simple_node_handler},
+    {"Softsign", simple_node_handler},
+    {"ThresholdedRelu", simple_node_handler},
+    {"Celu", simple_node_handler},
+    {"HardSwish", simple_node_handler},
 
-  {"Sin", simple_node_handler}, {"Cos", simple_node_handler}, {"Tan", simple_node_handler},
-  {"Sinh", simple_node_handler}, {"Cosh", simple_node_handler}, {"Tanh", simple_node_handler},
-  {"Asin", simple_node_handler}, {"Acos", simple_node_handler}, {"Atan", simple_node_handler},
-  {"Asinh", simple_node_handler}, {"Acosh", simple_node_handler}, {"Atanh", simple_node_handler},
+    {"Sin", simple_node_handler},
+    {"Cos", simple_node_handler},
+    {"Tan", simple_node_handler},
+    {"Sinh", simple_node_handler},
+    {"Cosh", simple_node_handler},
+    {"Tanh", simple_node_handler},
+    {"Asin", simple_node_handler},
+    {"Acos", simple_node_handler},
+    {"Atan", simple_node_handler},
+    {"Asinh", simple_node_handler},
+    {"Acosh", simple_node_handler},
+    {"Atanh", simple_node_handler},
 
-  {"Add", broadcast_node_handler}, {"Max", broadcast_node_handler}, {"Min", broadcast_node_handler},
-  {"Mul", broadcast_node_handler}, {"Sub", broadcast_node_handler}, {"Div", broadcast_node_handler},
-  {"And", broadcast_node_handler}, {"Or", broadcast_node_handler}, {"Xor", broadcast_node_handler},
-  {"Mod", broadcast_node_handler}, {"PRelu", broadcast_node_handler}, {"BitShift", broadcast_node_handler},
-  {"Equal", broadcast_node_handler}, {"Greater", broadcast_node_handler}, {"Less", broadcast_node_handler},
-  {"GreaterOrEqual", broadcast_node_handler}, {"LessOrEqual", broadcast_node_handler},
-  {"Mean", broadcast_node_handler}, {"Sum", broadcast_node_handler},  {"Pow", broadcast_node_handler},
-  {"Where", broadcast_node_handler},
+    {"Add", broadcast_node_handler},
+    {"Max", broadcast_node_handler},
+    {"Min", broadcast_node_handler},
+    {"Mul", broadcast_node_handler},
+    {"Sub", broadcast_node_handler},
+    {"Div", broadcast_node_handler},
+    {"And", broadcast_node_handler},
+    {"Or", broadcast_node_handler},
+    {"Xor", broadcast_node_handler},
+    {"Mod", broadcast_node_handler},
+    {"PRelu", broadcast_node_handler},
+    {"BitShift", broadcast_node_handler},
+    {"Equal", broadcast_node_handler},
+    {"Greater", broadcast_node_handler},
+    {"Less", broadcast_node_handler},
+    {"GreaterOrEqual", broadcast_node_handler},
+    {"LessOrEqual", broadcast_node_handler},
+    {"Mean", broadcast_node_handler},
+    {"Sum", broadcast_node_handler},
+    {"Pow", broadcast_node_handler},
+    {"Where", broadcast_node_handler},
 
-  {"Clip", node_1_inp_handler}, {"CastLike", node_1_inp_handler},
+    {"Clip", node_1_inp_handler},
+    {"CastLike", node_1_inp_handler},
 
-  {"Transpose", transpose_handler},
-  {"Concat", concat_handler},
-  {"Split", split_handler},
-  {"Shape", shape_handler},
-  {"Pad", pad_handler},
-  // Todo: renable resize handler after adding NHWC support in upsample op on cpu
-  // https://github.com/microsoft/onnxruntime/issues/9857
-//  {"Resize", resize_handler},
-  {"ReduceSum", reduce_sum_handler},
+    {"Transpose", transpose_handler},
+    {"Concat", concat_handler},
+    {"Split", split_handler},
+    {"Shape", shape_handler},
+    {"Pad", pad_handler},
+    // Todo: renable resize handler after adding NHWC support in upsample op on cpu
+    // https://github.com/microsoft/onnxruntime/issues/9857
+    //  {"Resize", resize_handler},
+    {"ReduceSum", reduce_sum_handler},
 
-  {"ReduceLogSum", reduce_op_handler}, {"ReduceLogSumExp", reduce_op_handler}, {"ReduceMax", reduce_op_handler},
-  {"ReduceMean", reduce_op_handler}, {"ReduceMin", reduce_op_handler}, {"ReduceProd", reduce_op_handler},
-  {"ReduceSumSquare", reduce_op_handler}, {"ReduceL1", reduce_op_handler}, {"ReduceL2", reduce_op_handler},
+    {"ReduceLogSum", reduce_op_handler},
+    {"ReduceLogSumExp", reduce_op_handler},
+    {"ReduceMax", reduce_op_handler},
+    {"ReduceMean", reduce_op_handler},
+    {"ReduceMin", reduce_op_handler},
+    {"ReduceProd", reduce_op_handler},
+    {"ReduceSumSquare", reduce_op_handler},
+    {"ReduceL1", reduce_op_handler},
+    {"ReduceL2", reduce_op_handler},
 
-  {"ArgMin", arg_min_max_handler}, {"ArgMax", arg_min_max_handler},
+    {"ArgMin", arg_min_max_handler},
+    {"ArgMax", arg_min_max_handler},
 
-  {"Squeeze", squeeze_handler},
-  {"Unsqueeze", unsqueeze_handler},
-  {"Slice", slice_handler},
-  {"Tile", tile_handler},
+    {"Squeeze", squeeze_handler},
+    {"Unsqueeze", unsqueeze_handler},
+    {"Slice", slice_handler},
+    {"Tile", tile_handler},
 
-  {"Softmax", soft_hard_max_handler}, {"Hardmax", soft_hard_max_handler}, {"LogSoftmax", soft_hard_max_handler},
+    {"Softmax", soft_hard_max_handler},
+    {"Hardmax", soft_hard_max_handler},
+    {"LogSoftmax", soft_hard_max_handler},
 
-  {"QuantizeLinear", quantize_dequantize_linear_handler}, {"DequantizeLinear", quantize_dequantize_linear_handler},
+    {"QuantizeLinear", quantize_dequantize_linear_handler},
+    {"DequantizeLinear", quantize_dequantize_linear_handler},
 };
 
 static const std::unordered_map<std::string_view, const HandlerInfo&> extended_handler_map{
@@ -1792,10 +1848,38 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
       }
     }
   }
+
+  // Run second optimization pass.
+  // If any transpose succeeds a DQ node, move it above the DQ node.
+  // In case of QDQ models this helps to preserve the QDQ node unit
+  // In all other scenarios this is beneficial as well because moving transpose above DQ node is more efficient as
+  // transpose node now handles less data.
+  auto graph_nodes = ctx.graph.Nodes();
+  for (size_t i = 1; i < graph_nodes.size(); i++) {
+    if (graph_nodes[i]->OpType() == "Transpose" && graph_nodes[i - 1]->OpType() == "DequantizeLinear") {
+      auto& transpose_node = *graph_nodes[i];
+      auto& dq_node = *graph_nodes[i - 1];
+
+      // Update Dequantize Node and move the transpose above it
+      std::optional<std::vector<int64_t>> perm = GetPermAttrIfValid(transpose_node);
+      if (!perm.has_value()) {
+        continue;
+      }
+      if (!HandleQuantizeDequantizeScale(ctx.graph, *perm, dq_node, ctx.opset)) {
+        continue;
+      }
+      TransposeFirstInput(ctx, dq_node, *perm);
+
+      // remove existing transpose node
+      transpose_node.SetInput(0, "");
+      ctx.graph.MoveOutput(transpose_node, 0, dq_node, 0);
+      ctx.graph.RemoveNode(transpose_node);
+    }
+  }
   return changed;
 }
 
-std::unordered_set<std::string_view> GetLayoutSensitiveOps() {
+const std::unordered_set<std::string_view>& GetLayoutSensitiveOps() {
   // List of all layout sensitive ops defined in ONNX standard.
   static std::unordered_set<std::string_view> layout_sensitive_ops = {"Conv", "QLinearConv", "BatchNormalization",
                                                                       "AveragePool", "GlobalAveragePool", "MaxPool",

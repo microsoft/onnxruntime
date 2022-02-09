@@ -11,7 +11,6 @@
 #include <vector>
 #include <unordered_set>
 
-
 namespace onnx_layout_transformation {
 namespace api {
 
@@ -433,8 +432,8 @@ enum class OptimizerMode {
 /// <summary>
 /// Gets a list of layout sensitive ops defined by ONNX standard.
 /// </summary>
-/// <returns>unordered set of op_types which are layout sensitive</returns>
-std::unordered_set<std::string_view> GetLayoutSensitiveOps();
+/// <returns>const reference to an unordered set of op_types which are layout sensitive</returns>
+const std::unordered_set<std::string_view>& GetLayoutSensitiveOps();
 
 /// <summary>
 /// Performs transpose optimization on a graph. Returns true if the graph was modified.
@@ -450,7 +449,7 @@ std::unordered_set<std::string_view> GetLayoutSensitiveOps();
 /// <param name="provider_type">Execution provider if applicable.</param>
 /// <param name="mode">Current mode. Optimizer can be called in the context of transpose optimizations or during layout transformations.</param>
 /// <param name="layout_sensitive_ops">List of ops which are treated as layout sensitive by the ONNX standard as well as any runtime specific ops.
-/// These ops should be provided when mode is set to OPTIMIZE_LAYOUT_TRANSFORM. If these ops are not provided, transpose optimizer may convert the 
+/// These ops should be provided when mode is set to OPTIMIZE_LAYOUT_TRANSFORM. If these ops are not provided, transpose optimizer may convert the
 /// layout for these ops </param>
 /// <returns>true if the graph was modified</returns>
 bool Optimize(api::GraphRef& graph, bool allow_extended_ops,

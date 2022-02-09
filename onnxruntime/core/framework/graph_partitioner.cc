@@ -117,7 +117,7 @@ static Status TransformLayout(Graph& graph, bool& modified,
   auto api_graph = MakeApiGraph(graph, current_ep.GetAllocator(0, OrtMemTypeDefault), nullptr);
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
 
-  for (std::unique_ptr<onnx_layout_transformation::api::NodeRef>& node : api_graph->Nodes()) {
+  for (auto& node : api_graph->Nodes()) {
     if (layout_sensitive_ops.count(node->OpType())) {
       if (node->GetExecutionProviderType() != current_ep.Type()) {
         continue;
@@ -186,7 +186,8 @@ static Status TransformLayout(Graph& graph, bool& modified,
 
   if (modified) {
     onnx_layout_transformation::Optimize(*api_graph, /*allow_extended_ops*/ true, current_ep.Type(),
-                                         onnx_layout_transformation::OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM, layout_sensitive_ops);
+                                         onnx_layout_transformation::OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM,
+                                         layout_sensitive_ops);
   }
 
   return Status::OK();
