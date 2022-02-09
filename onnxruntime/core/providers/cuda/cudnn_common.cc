@@ -136,10 +136,12 @@ cudnnDataType_t CudnnTensor::GetDataType<half>() {
   return CUDNN_DATA_HALF;
 }
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 template <>
 cudnnDataType_t CudnnTensor::GetDataType<BFloat16>() {
   return CUDNN_DATA_BFLOAT16;
 }
+#endif
 
 template <>
 cudnnDataType_t CudnnTensor::GetDataType<int8_t>() {
