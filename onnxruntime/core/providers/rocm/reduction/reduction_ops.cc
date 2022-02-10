@@ -518,14 +518,6 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
     Impl_Cast<HipT, float>(stream, reinterpret_cast<const HipT*>(input.template Data<T>()), temp_X.get(), input_shape.Size());
   }
 
-  if (ReduceTensorIndices == MIOPEN_REDUCE_TENSOR_NO_INDICES && std::is_same<T, BFloat16>::value) {
-    // unlike bfp16 not supported in cudnn, miopen call for bfp16 succeeded below, however, UT shows data error
-    // so for now, follow the same logic in cudnn and convert input to fp32 then call miopen
-    temp_X = rocm_ep.GetScratchBuffer<float>(input_count);
-    miopen_type_X = miopenFloat;
-    Impl_Cast<HipT, float>(stream, reinterpret_cast<const HipT*>(input.template Data<T>()), temp_X.get(), input_shape.Size());
-  }
-
   MiopenReduceDescriptor reduce_desc;
   ORT_IF_CONSTEXPR (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value) {
     ORT_RETURN_IF_ERROR(reduce_desc.Set(miopen_reduce_op, MiopenTensor::GetDataType<float>(), ReduceTensorIndices));
@@ -659,23 +651,11 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
           HIP_RETURN_IF_ERROR(hipMemcpyAsync(output.template MutableData<T>(), input.template Data<T>(), input_count * sizeof(T), hipMemcpyDeviceToDevice, stream));
         }
       } else {
-        if (temp_X) {
-          auto temp_output = rocm_ep.GetScratchBuffer<float>(output_count);
-          MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
-              rocm_ep.PerThreadMiopenHandle(), reduce_desc, indices_rocm.get(), indices_bytes,
-              workspace_rocm.get(), workspace_bytes,
-              &one, input_tensor, temp_X.get(),
-              &zero, output_tensor, temp_output.get()));
-
-          Impl_Cast<float, HipT>(stream, temp_output.get(), reinterpret_cast<HipT*>(output.template MutableData<T>()), output_count); 
-        } else {
-          MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
-              rocm_ep.PerThreadMiopenHandle(), reduce_desc, indices_rocm.get(), indices_bytes,
-              workspace_rocm.get(), workspace_bytes,
-              &one, input_tensor, reinterpret_cast<const HipT*>(input.template Data<T>()),
-              &zero, output_tensor, reinterpret_cast<HipT*>(output.template MutableData<T>())));
-        }
-
+        MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
+            rocm_ep.PerThreadMiopenHandle(), reduce_desc, indices_rocm.get(), indices_bytes,
+            workspace_rocm.get(), workspace_bytes,
+            &one, input_tensor, reinterpret_cast<const HipT*>(input.template Data<T>()),
+            &zero, output_tensor, reinterpret_cast<HipT*>(output.template MutableData<T>())));
       }
     }
   } else {
