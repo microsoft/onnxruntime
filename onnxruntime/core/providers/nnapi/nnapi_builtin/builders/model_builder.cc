@@ -210,7 +210,7 @@ static Status GetInputDataType(
       // TODO, verify the scale and zero point match if there are multiple op using same input
       const auto* node_unit = all_quantized_op_inputs.at(name)[0];
       ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-          initializers, *node_unit, name, scale, zero_point, true /* is_input */));
+          initializers, *node_unit, name, scale, zero_point, IOKind::Input));
       break;
     }
       // case ONNX_NAMESPACE::TensorProto_DataType_INT8:
