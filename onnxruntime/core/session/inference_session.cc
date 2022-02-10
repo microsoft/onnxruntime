@@ -165,7 +165,8 @@ Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger&
 }
 }  // namespace
 
-static bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, const ProviderType provider) {
+#if !defined(ORT_MINIMAL_BUILD)
+static bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderType provider) {
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
 
@@ -186,6 +187,7 @@ static bool HasControlflowNodes(const Graph& graph) {
 
   return false;
 }
+#endif
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 

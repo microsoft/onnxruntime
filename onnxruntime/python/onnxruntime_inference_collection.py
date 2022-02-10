@@ -636,7 +636,7 @@ class OrtValue:
         Use accessors to gain a reference to non-Tensor objects such as SparseTensor
         '''
         return self._ortvalue.numpy()
-    
+
     def update_inplace(self, np_arr):
         '''
         Update the OrtValue in place with a new Numpy array. The numpy contents
