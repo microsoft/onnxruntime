@@ -1509,7 +1509,8 @@ TEST(ReductionOpTest, ReduceSumBFloat16) {
 }
 #endif
 
-// this UT, with axes {0,2}, will go thru cudnn lib only if ATenOp is not initialized
+// on CUDA - this UT, with axes {0,2}, will go thru cudnn lib only if ATenOp is not initialized
+// on ROCM - miopen call succeeded, but results in data error, thus follow the same logic done in cudnn
 #if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(ReductionOpTest, ReduceSumBFloat16_2) {
   OpTester test("ReduceSum", 14);
