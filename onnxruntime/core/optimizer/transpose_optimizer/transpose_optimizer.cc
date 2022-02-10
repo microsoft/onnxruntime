@@ -1856,7 +1856,7 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
   // transpose node now handles less data.
   auto graph_nodes = ctx.graph.Nodes();
   for (size_t i = 1; i < graph_nodes.size(); i++) {
-    if (graph_nodes[i]->OpType() == "Tranpose" && graph_nodes[i - 1]->OpType() == "DequantizeLinear" && graph_nodes[i + 1]->OpType() != "QuantizeLinear") {
+    if (graph_nodes[i]->OpType() == "Transpose" && graph_nodes[i - 1]->OpType() == "DequantizeLinear" && graph_nodes[i + 1]->OpType() != "QuantizeLinear") {
       auto& transpose_node = *graph_nodes[i];
       auto& dq_node = *graph_nodes[i - 1];
 
