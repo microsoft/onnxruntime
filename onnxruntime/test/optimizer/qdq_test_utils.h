@@ -196,13 +196,8 @@ GetQDQTestCaseFn BuildQDQTransposeTestCase(
     auto* input_arg = builder.MakeInput<InputType>(input_shape, -128, 127);
     auto* output_arg = builder.MakeOutput();
 
-#ifdef USE_NNAPI
     InputType dq_zp = std::numeric_limits<InputType>::max() / 2;
     OutputType q_zp = std::numeric_limits<OutputType>::max() / 2;
-#else
-    InputType dq_zp = 1;
-    OutputType q_zp = 1;
-#endif
 
     // add DQ
     auto* dq_output = builder.MakeIntermediate();
