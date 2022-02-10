@@ -6,6 +6,7 @@
 #include <atomic>
 #include "tensorrt_execution_provider.h"
 #include "core/framework/provider_options.h"
+#include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include <string.h>
 
 using namespace onnxruntime;
@@ -48,7 +49,7 @@ struct Tensorrt_Provider : Provider {
   }
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* provider_options) override {
-    auto& options = *reinterpret_cast<const OrtTensorRTProviderOptions*>(provider_options);
+    auto& options = *reinterpret_cast<const OrtTensorRTProviderOptionsV2*>(provider_options);
     TensorrtExecutionProviderInfo info;
     info.device_id = options.device_id;
     info.has_user_compute_stream = options.has_user_compute_stream != 0;
@@ -74,7 +75,7 @@ struct Tensorrt_Provider : Provider {
 
   void UpdateProviderOptions(void* provider_options, const ProviderOptions& options) override {
     auto internal_options = onnxruntime::TensorrtExecutionProviderInfo::FromProviderOptions(options);
-    auto& trt_options = *reinterpret_cast<OrtTensorRTProviderOptions*>(provider_options);
+    auto& trt_options = *reinterpret_cast<OrtTensorRTProviderOptionsV2*>(provider_options);
     trt_options.device_id = internal_options.device_id;
     trt_options.trt_max_partition_iterations = internal_options.max_partition_iterations;
     trt_options.trt_min_subgraph_size = internal_options.min_subgraph_size;
@@ -88,7 +89,11 @@ struct Tensorrt_Provider : Provider {
       trt_options.trt_int8_calibration_table_name = nullptr;
     } else {
       dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.int8_calibration_table_name.c_str(), str_size);
+#else
       strncpy(dest, internal_options.int8_calibration_table_name.c_str(), str_size);
+#endif
       dest[str_size] = '\0';
       trt_options.trt_int8_calibration_table_name = (const char*)dest;
     }
@@ -104,7 +109,11 @@ struct Tensorrt_Provider : Provider {
       trt_options.trt_engine_cache_path = nullptr;
     } else {
       dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.engine_cache_path.c_str(), str_size);
+#else
       strncpy(dest, internal_options.engine_cache_path.c_str(), str_size);
+#endif
       dest[str_size] = '\0';
       trt_options.trt_engine_cache_path = (const char*)dest;
     }
@@ -116,7 +125,11 @@ struct Tensorrt_Provider : Provider {
       trt_options.trt_engine_decryption_lib_path = nullptr;
     } else {
       dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.engine_decryption_lib_path.c_str(), str_size);
+#else
       strncpy(dest, internal_options.engine_decryption_lib_path.c_str(), str_size);
+#endif
       dest[str_size] = '\0';
       trt_options.trt_engine_decryption_lib_path = (const char*)dest;
     }

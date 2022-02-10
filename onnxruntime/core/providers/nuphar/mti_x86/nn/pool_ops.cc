@@ -112,7 +112,7 @@ static tvm::Tensor MakePoolCommon(const tvm::Tensor& X,
               "kernel_shape num_dims is not compatible with X num_dims.");
 
   tvm::Array<tvm::Expr> pooling_args;
-  auto add_args_fn = [&](const std::vector<int64_t>& v) {
+  auto add_args_fn = [&](const TensorShapeVector& v) {
     pooling_args.push_back(tvm::make_const(tvm::Int(64), static_cast<int64_t>(v.size())));
     for (auto n : v) {
       pooling_args.push_back(tvm::make_const(tvm::Int(64), n));

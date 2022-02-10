@@ -31,7 +31,10 @@ ONNX_CPU_OPERATOR_KERNEL(
                         BuildKernelDefConstraintsFromTypeList<ShrinkDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledShrinkDataTypes>()),
     Shrink);
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26451)
+#endif
 namespace shrink_internal {
 template <class T>
 inline T ShrinkCore(const T& val, float bias, float lambd) {

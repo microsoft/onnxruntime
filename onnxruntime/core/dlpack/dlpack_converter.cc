@@ -67,6 +67,10 @@ DLDataType GetDlpackDataType(const OrtValue& ort_value) {
       dtype.code = DLDataTypeCode::kDLUInt;
       dtype.bits = sizeof(uint64_t);
       break;
+    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
+      dtype.code = DLDataTypeCode::kDLBfloat;
+      dtype.bits = sizeof(BFloat16);
+      break;
     default:
       ORT_THROW("Unexpected data type of ", tensor.GetElementType());
   }
@@ -158,6 +162,13 @@ MLDataType GetOrtValueDataType(const DLDataType& dtype, bool is_bool_tensor) {
         default:
           ORT_THROW("Unsupported kFloat bits " + std::to_string(dtype.bits));
       }
+    case DLDataTypeCode::kDLBfloat:
+      switch (dtype.bits) {
+        case 16:
+          return DataTypeImpl::GetType<BFloat16>();
+        default:
+          ORT_THROW("Unsupported kBFloat bits " + std::to_string(dtype.bits));
+      }
     default:
       ORT_THROW("Unsupported code " + std::to_string(dtype.code));
   }
@@ -197,6 +208,12 @@ bool IsContiguousTensor(const DLTensor& tensor) {
 
 }  // namespace
 
+//This function should use smart pointers inside
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26409)
+#pragma warning(disable : 26400)
+#endif
 // This function returns a pointer to DLManagedTensor constructed from an OrtValue
 // The OrtValue inside OrtDLManagedTensor will increase its own buffer's ref count by one
 // When the consumer of DLManagedTensor is done with the tensor, it should invoke the deleter.
@@ -217,7 +234,9 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
   ort_dlmanaged_tensor->tensor.dl_tensor.byte_offset = 0;
   return &(ort_dlmanaged_tensor->tensor);
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
   // ORT only supports contiguous tensor for now.
   ORT_ENFORCE(IsContiguousTensor(dlpack->dl_tensor), "ORT only supports contiguous tensor for now.");

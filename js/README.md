@@ -301,6 +301,7 @@ It should be able to consumed by both from projects that uses NPM packages (thro
 #### Reduced WebAssembly artifacts
 
 By default, the WebAssembly artifacts from onnxruntime-web package allows use of both standard ONNX models (.onnx) and ORT format models (.ort). There is an option to use a minimal build of ONNX Runtime to reduce the binary size, which only supports ORT format models. See also [ORT format model](https://onnxruntime.ai/docs/tutorials/mobile/overview.html) for more information.
+
 #### Reduced JavaScript bundle file fize
 
 By default, the main bundle file `ort.min.js` of ONNX Runtime Web contains all features. However, its size is over 500kB and for some scenarios we want a smaller sized bundle file, if we don't use all the features. The following table lists all available bundles with their support status of features.
@@ -313,6 +314,9 @@ By default, the main bundle file `ort.min.js` of ONNX Runtime Web contains all f
 |ort.wasm.min.js|148.56|44KB|X|O|O|O|X|
 |ort.wasm-core.min.js|40.56KB|12.74KB|X|O|X|X|X|
 
+#### Build ONNX Runtime as a WebAssembly static library
+
+When `--build_wasm_static_lib` is given instead of `--build_wasm`, it builds a WebAssembly static library of ONNX Runtime and creates a `libonnxruntime_webassembly.a` file at a build output directory. Developers who have their own C/C++ project and build it as WebAssembly with ONNX Runtime, this build option would be useful. This static library is not published by a pipeline, so a manual build is required if necessary.
 
 ## onnxruntime-react-native
 
@@ -359,12 +363,10 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
 
    4. Copy `<BUILD_DIRECTORY>/aar_out/MinSizeRel/com/microsoft/onnxruntime/onnxruntime-mobile/<version>/onnxruntime-mobile-<version>.aar` into `<ORT_ROOT>/js/react_native/android/libs` directory.
 
-   5. Modify `Onnxruntime_mobileVersion` property in `<ORT_ROOT>/js/react_native/android/build.properties` to consume a locally built package or a newly published package from Maven.
-
-   6. To verify, open Android Emulator and run this command from `<ORT_ROOT>/js/react_native/android`
+   5. To verify, open Android Emulator and run this command from `<ORT_ROOT>/js/react_native/android`
 
       ```sh
-      adb shell am instrument -w ai.onnxruntime.react_native.test/androidx.test.runner.AndroidJUnitRunner
+      ./gradlew connectedDebugAndroidTest
       ```
 
 3. Build iOS ONNX Runtime package
@@ -379,48 +381,67 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
       python tools/ci_build/github/apple/build_ios_framework.py tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json --config MinSizeRel --include_ops_by_config tools/ci_build/github/android/mobile_package.required_operators.config
       ```
 
-      It creates `onnxruntime.framework` in `build/iOS_framework/framework_out` directory. Create an archive file of `onnxruntime.framework` directory as follows and copy to `<ORT_ROOT>/js/react_native/local_pods` directory.
+      It creates `Headers`, `LICENSE`, and `onnxruntime.xcframework` in `build/iOS_framework/framework_out` directory. From `framework_out` directory, create an archive file named `onnxruntime-mobile-c.zip` as follows and copy to `<ORT_ROOT>/js/react_native/local_pods` directory.
 
       ```sh
-      zip -r onnxruntime-mobile-c.zip onnxruntime.framework
+      zip -r onnxruntime-mobile-c.zip .
       ```
 
    4. To verify, open iOS Simulator and run this command from `<ORT_ROOT>/js/react_native/ios`. Change a destination to specify a running iOS Simulator.
 
       ```sh
       pod install
-      xcodebuild test -workspace OnnxruntimeModule.xcworkspace -scheme OnnxruntimeModuleTest -destination 'platform=iOS Simulator,name=iPhone 11,OS=14.5'
+      xcodebuild test -workspace OnnxruntimeModule.xcworkspace -scheme OnnxruntimeModuleTest -destination 'platform=iOS Simulator,OS=latest,name=iPhone 13'
       ```
 
-4. Test an example for Android and iOS. In Windows, open Android Emulator first.
+4. Test Android and iOS apps. In Windows, open Android Emulator first.
 
    `debug.keystore` must be generated ahead for Android example.
 
    ```sh
-   keytool -genkey -v -keystore <ORT_ROOT>/js/react_native/example/android/app/debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
+   keytool -genkey -v -keystore <ORT_ROOT>/js/react_native/e2e/android/debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
    ```
 
    From `<ORT_ROOT>/js/react_native,
 
    ```sh
    yarn bootstrap
-   yarn example ios
-   yarn example android
+   ```
+
+   When testing with a custom built ONNX Runtime Android package, copy `<BUILD_DIRECTORY>/aar_out/MinSizeRel/com/microsoft/onnxruntime/onnxruntime-mobile/<version>/onnxruntime-mobile-<version>.aar` into `<ORT_ROOT>/js/react_native/e2e/node_modules/onnxruntime-react-native/android/libs` directory. Using a custom built ONNX Runtime iOS package, copy `onnxruntime-mobile-c.zip` into `<ORT_ROOT>/js/react_native/local_pods` directory if it's not already done.
+
+   From `<ORT_ROOT>/js/react_native/e2e/android`, run e2e Android tests as follows,
+
+   ```sh
+   ./gradlew :app:connectedDebugAndroidTest
+   ```
+
+   From `<ORT_ROOT>/js/react_native/e2e/ios`, run e2e iOS tests as follows,
+
+   ```sh
+   xcrun xcodebuild test -workspace OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -destination 'platform=iOS Simulator,OS=latest,name=iPhone 13'
+   ```
+
+   ***`yarn bootstrap` changes `packages.json` and `yarn.lock` files. Once testing is done, restore changes to avoid unwanted commit.***
+
+5. Run Android and iOS apps.
+
+   ```sh
+   yarn e2e android
+   yarn e2e ios
    ```
 
 ### NPM Packaging
 
 1. Update a version using `npm verison <version>` from `<ORT_ROOT>/js/react_native` folder. If it's for a dev, use `npm version <version>-dev.<subversion>`
 
-2. Modify Onnxruntime_mobileVersion property in `<ORT_ROOT>/js/react_native/android/build.properties` to update ONNX Runtime Android package version.
+2. Run `yarn prepack-rel` to change `onnxruntime-common` to point to a published npm package
 
-3. Run `yarn prepack` to change `onnxruntime-common` to point to a published npm package
+3. Run `npm pack` and verify NPM package contents
 
-4. Run `npm pack` and verify NPM package contents
+4. Run `npm publish <tgz> --dry-run` to see how it's going to be published
 
-5. Run `npm publish <tgz> --dry-run` to see how it's going to be published
-
-6. Run `npm publish <tgz>` to publish to npmjs. If it's for a dev, add flag `--tag dev`.
+5. Run `npm publish <tgz>` to publish to npmjs. If it's for a dev, add flag `--tag dev`.
 
 ### Distribution
 

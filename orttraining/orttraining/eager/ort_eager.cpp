@@ -11,6 +11,8 @@
 #include "orttraining/core/framework/ortmodule_graph_builder.h"
 #include "ort_customops.h"
 #include "torch/csrc/autograd/python_variable.h"
+#include "core/framework/tensor.h"
+#include "orttraining/python/orttraining_python_module_eager.h"
 
 namespace onnxruntime{
 namespace python{
@@ -18,19 +20,42 @@ namespace python{
 using namespace onnxruntime::training;
 using namespace torch_ort::eager;
 
-py::object ORTTensor_toDLPack(const at::Tensor& data)
-{
-  OrtValue ort_value = torch_ort::eager::create_ort_value(data);
-  return py::reinterpret_steal<py::object>(onnxruntime::training::framework::torch::ToDlpack(ort_value));
+static at::ScalarType aten_scalar_type_from_ort(
+  onnxruntime::MLDataType dtype) {
+  if (dtype == onnxruntime::DataTypeImpl::GetType<float>())
+      return at::kFloat;
+  else if (dtype == onnxruntime::DataTypeImpl::GetType<double>())
+      return at::kDouble;
+  else if (dtype == onnxruntime::DataTypeImpl::GetType<onnxruntime::MLFloat16>())
+      return at::kHalf;
+  else if (dtype == onnxruntime::DataTypeImpl::GetType<onnxruntime::BFloat16>())
+      return at::kBFloat16;
+  else if (dtype == onnxruntime::DataTypeImpl::GetType<int>())
+      return at::kInt;
+  else if (dtype == onnxruntime::DataTypeImpl::GetType<int16_t>())
+      return at::kShort;
+  else if (dtype == onnxruntime::DataTypeImpl::GetType<int64_t>())
+      return at::kLong;
+  else if (dtype == onnxruntime::DataTypeImpl::GetType<bool>())
+      return at::kBool;
+  else
+      ORT_THROW("Unsupport aten scalar type: ", dtype);
 }
 
-at::Tensor ORTTensor_FromDLPack(const py::object& dlpack_tensor)
+OrtValue ORTTensor_toORTValue(const at::Tensor& data)
 {
-  OrtValue ort_value = onnxruntime::training::framework::torch::FromDlpack(dlpack_tensor.ptr(), false);
+  return torch_ort::eager::create_ort_value(data);
+}
+
+at::Tensor OrtValue_To_ATen_Tensor(OrtValue& ortvalue)
+{
+  auto& ort_tensor = ortvalue.Get<Tensor>();
+  size_t ort_device_idx = GetORTBackendsManager().GetOrtDeviceIndex(ort_tensor.Location());
   return torch_ort::eager::aten_tensor_from_ort(
-    std::move(ort_value),
+    std::move(ortvalue),
     at::TensorOptions()
-      .device(at::Device(at::DeviceType::ORT, 0)));
+      .device(at::Device(at::DeviceType::ORT, ort_device_idx))
+      .dtype(onnxruntime::python::aten_scalar_type_from_ort(ort_tensor.DataType())));
 }
 
 void addObjectMethodsForEager(py::module& m){
@@ -44,22 +69,25 @@ void addObjectMethodsForEager(py::module& m){
     },
     py::arg("device_index") = 0);
   
-  m.def("ort_to_dlpack", [](at::Tensor data) {
-    return ORTTensor_toDLPack(data);
+  m.def("aten_ort_tensor_to_ort_value", [](at::Tensor data) {
+    return ORTTensor_toORTValue(data);
   });
-  m.def("ort_from_dlpack", [](py::object dlpack_tensor) {
-    return ORTTensor_FromDLPack(dlpack_tensor);
+  m.def("to_aten_ort_device_tensor", [](OrtValue& ortvalue) {
+    return OrtValue_To_ATen_Tensor(ortvalue);
   });
 
   m.def("set_device", [](size_t device_index, 
                                           const std::string& provider_type,
                                           const std::unordered_map<std::string, std::string>& arguments){
-      auto status = torch_ort::eager::GetORTBackendsManager().set_device(device_index, provider_type, arguments);
+      auto status = GetORTBackendsManager().set_device(device_index, provider_type, arguments);
       if (!status.IsOK())
         throw std::runtime_error(status.ErrorMessage());
     });
   m.def("get_ort_device", [](size_t torch_device_index){
-    return torch_ort::eager::GetORTBackendsManager().GetOrtDeviceInfo(torch_device_index);
+    return GetORTBackendsManager().GetOrtDeviceInfo(torch_device_index);
+  });
+  m.def("get_ort_device_provider_info", [](size_t torch_device_index){
+    return GetORTBackendsManager().GetOrtDeviceProviderInfo(torch_device_index);
   });
 
   auto customop_module = m.def_submodule("custom_ops");

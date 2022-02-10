@@ -113,7 +113,7 @@ struct CastNonStringTester {
     auto output_span = gsl::make_span<DstType>(output_buffer.get(), size);
     CastSpan<SrcType, DstType>(input_span, output_span);
 
-    TestCastOp<SrcType, DstType>(input_span, output_span, shape.GetDimsAsVector());
+    TestCastOp<SrcType, DstType>(input_span, output_span, GetShapeVector(shape));
   }
 };
 

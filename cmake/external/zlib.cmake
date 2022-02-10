@@ -1,7 +1,7 @@
 include (ExternalProject)
 
 set(zlib_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/zlib_archive)
-set(ZLIB_URL https://github.com/madler/zlib)
+set(ZLIB_URL https://github.com/madler/zlib.git)
 set(ZLIB_BUILD ${CMAKE_CURRENT_BINARY_DIR}/zlib/src/zlib)
 set(ZLIB_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/zlib/install)
 set(ZLIB_TAG 50893291621658f355bc5b4d450a8d06a563053d)

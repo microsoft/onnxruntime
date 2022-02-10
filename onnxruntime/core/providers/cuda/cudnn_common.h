@@ -56,7 +56,7 @@ class CudnnFilterDescriptor final {
   ~CudnnFilterDescriptor();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudnnFilterDescriptor);
 
-  Status Set(const std::vector<int64_t>& filter_dims, cudnnDataType_t data_typ);
+  Status Set(gsl::span<const int64_t> filter_dims, cudnnDataType_t data_typ);
 
   operator cudnnFilterDescriptor_t() const { return desc_; }
 
@@ -124,13 +124,11 @@ struct Consts<half> {
   static const float One;
 };
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 template <>
-struct Consts<nv_bfloat16> {
+struct Consts<BFloat16> {
   static const float Zero;
   static const float One;
 };
-#endif
 
 inline double ClampCudnnBatchNormEpsilon(double epsilon) {
   if (epsilon < CUDNN_BN_MIN_EPSILON) {

@@ -349,6 +349,8 @@ class InferenceSession(Session):
         # Tensorrt can fall back to CUDA. All others fall back to CPU.
         if 'TensorrtExecutionProvider' in available_providers:
             self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        elif 'MIGraphXExecutionProvider' in available_providers:
+            self._fallback_providers = ['ROCMExecutionProvider', 'CPUExecutionProvider']
         else:
             self._fallback_providers = ['CPUExecutionProvider']
 
@@ -357,6 +359,7 @@ class InferenceSession(Session):
                                                                         provider_options,
                                                                         available_providers)
         if providers == [] and len(available_providers) > 1:
+            self.disable_fallback()
             raise ValueError("This ORT build has {} enabled. ".format(available_providers) +
                              "Since ORT 1.9, you are required to explicitly set " +
                              "the providers parameter when instantiating InferenceSession. For example, "

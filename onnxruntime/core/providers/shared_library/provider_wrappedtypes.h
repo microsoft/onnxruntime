@@ -348,6 +348,8 @@ struct IndexedSubGraph_MetaDef final {
   const std::vector<std::string>& inputs() const { return g_host->IndexedSubGraph_MetaDef__inputs(const_cast<IndexedSubGraph_MetaDef*>(this)); }
   std::vector<std::string>& inputs() { return g_host->IndexedSubGraph_MetaDef__inputs(this); }
   const std::vector<std::string>& outputs() const { return g_host->IndexedSubGraph_MetaDef__outputs(const_cast<IndexedSubGraph_MetaDef*>(this)); }
+  const std::vector<std::string>& constant_initializers() const { return g_host->IndexedSubGraph_MetaDef__constant_initializers(const_cast<IndexedSubGraph_MetaDef*>(this)); }
+  std::vector<std::string>& constant_initializers() { return g_host->IndexedSubGraph_MetaDef__constant_initializers(this); }
   std::vector<std::string>& outputs() { return g_host->IndexedSubGraph_MetaDef__outputs(this); }
   NodeAttributes& attributes() { return g_host->IndexedSubGraph_MetaDef__attributes(this); }
 
@@ -795,6 +797,13 @@ struct OpKernelInfo final {
     return GetAttrs<T>(name, tmp).IsOK() ? tmp : default_value;
   }
 
+  template<typename T>
+  Status GetAttrsAsSpan(const std::string& name, gsl::span<const T>& out) const;
+
+  Status GetAttrs(const std::string& name, TensorShapeVector& out) const;
+
+  TensorShapeVector GetAttrsOrDefault(const std::string& name, const TensorShapeVector& default_value = TensorShapeVector{}) const;
+
   bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const { return g_host->OpKernelInfo__TryGetConstantInput(this, input_index, constant_input_value); }
 
   const DataTransferManager& GetDataTransferManager() const noexcept { return g_host->OpKernelInfo__GetDataTransferManager(this); }
@@ -824,6 +833,25 @@ template <>
 inline Status OpKernelInfo::GetAttrs<float>(const std::string& name, std::vector<float>& values) const { return g_host->OpKernelInfo__GetAttrs(this, name, values); }
 template <>
 inline Status OpKernelInfo::GetAttrs<std::string>(const std::string& name, std::vector<std::string>& values) const { return g_host->OpKernelInfo__GetAttrs(this, name, values); }
+template <>
+inline Status OpKernelInfo::GetAttrsAsSpan<int64_t>(const std::string& name, gsl::span<const int64_t>& values) const { return g_host->OpKernelInfo__GetAttrsAsSpan(this, name, values); }
+
+inline Status OpKernelInfo::GetAttrs(const std::string& name, TensorShapeVector& out) const {
+  gsl::span<const int64_t> span;
+  Status status = this->GetAttrsAsSpan<int64_t>(name, span);
+  if (status.IsOK()) {
+    out.reserve(span.size());
+    out.assign(span.cbegin(), span.cend());
+  }
+  return status;
+}
+
+inline TensorShapeVector OpKernelInfo::GetAttrsOrDefault(const std::string& name, const TensorShapeVector& default_value) const {
+  TensorShapeVector tmp;
+  return GetAttrs(name, tmp).IsOK() ? tmp : default_value;
+}
+
+
 
 class SessionState {
  public:

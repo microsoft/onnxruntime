@@ -6,10 +6,12 @@ from opgen.generator import \
   ORTGen as ORTGen, \
   ONNXOp as ONNXOp, \
   SignatureOnly as SignatureOnly, \
-  MakeFallthrough as MakeFallthrough
+  MakeTorchFallback as MakeTorchFallback
 
 from opgen.onnxops import *
 
 ops = {
     'gemm': Gemm('A', 'B', 'C', 'alpha', 'beta', 'transA', 'transB')
 }
+
+type_promotion_ops = {}

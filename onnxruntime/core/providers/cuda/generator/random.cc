@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/generator/random.h"
+#include "core/providers/cuda/generator/random_impl.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -28,50 +29,80 @@ ONNX_OPERATOR_KERNEL_EX(RandomUniformLike, kOnnxDomain, 1, kCudaExecutionProvide
                             .TypeConstraint("T2", DataTypeImpl::AllIEEEFloatTensorTypes()),
                         RandomUniformLike);
 
-Status RandomNormalBase::Compute(OpKernelContext* p_ctx, const TensorShape& shape, int dtype) const {
-  Tensor& Y = *p_ctx->Output(0, shape);
+#define RANDOM_COMPUTE_IMPL(name)                                                                        \
+  template <typename T>                                                                                  \
+  struct name##ComputeImpl {                                                                             \
+    void operator()(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const float alpha, \
+                    const float beta, PhiloxGenerator& generator, Tensor& Y) const {                     \
+      typedef typename ToCudaType<T>::MappedType CudaT;                                                  \
+      CudaT* Y_data = reinterpret_cast<CudaT*>(Y.template MutableData<T>());                             \
+      name##KernelImpl<CudaT>(prop, stream, N, alpha, beta, generator, Y_data);                          \
+    }                                                                                                    \
+  };
+
+RANDOM_COMPUTE_IMPL(RandomNormal)
+RANDOM_COMPUTE_IMPL(RandomUniform)
+
+#undef RANDOM_COMPUTE_IMPL
+
+Status RandomNormalBase::ComputeNormal(const CudaKernel& cuda_kernel, OpKernelContext& ctx, const TensorShape& shape, int dtype) const {
+  Tensor& Y = *ctx.Output(0, shape);
   const int64_t N = shape.Size();
-  PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
+  PhiloxGenerator& generator = GetPhiloxGenerator();
   utils::MLTypeCallDispatcher<float, MLFloat16, double> t_disp(dtype);
-  t_disp.Invoke<RandomNormalComputeImpl>(GetDeviceProp(), Stream(), N, scale_, mean_, generator, Y);
+  t_disp.Invoke<RandomNormalComputeImpl>(cuda_kernel.GetDeviceProp(), cuda_kernel.Stream(), N, scale_, mean_, generator, Y);
   return Status::OK();
 }
-
-Status RandomNormal::ComputeInternal(OpKernelContext* p_ctx) const { return Compute(p_ctx, shape_, dtype_); }
 
 Status RandomNormalLike::ComputeInternal(OpKernelContext* p_ctx) const {
   const Tensor* p_X = p_ctx->Input<Tensor>(0);
-  if (!p_X) return Status(common::ONNXRUNTIME, common::FAIL, "X Input is not available.");
-  if (dtype_ == TensorProto_DataType_UNDEFINED && !p_X->IsDataType<float>() && !p_X->IsDataType<double>() &&
+
+  if (!p_X) {
+    return Status(common::ONNXRUNTIME, common::FAIL, "X Input is not available.");
+  }
+
+  int dtype = GetDType();
+  if (dtype == TensorProto_DataType_UNDEFINED && !p_X->IsDataType<float>() && !p_X->IsDataType<double>() &&
       !p_X->IsDataType<MLFloat16>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Output data type is required to be one of float types, but got incompatible data type ",
                            p_X->DataType(), " from input tensor.");
   }
-  return Compute(p_ctx, p_X->Shape(), dtype_ != TensorProto_DataType_UNDEFINED ? dtype_ : p_X->GetElementType());
+
+  if (dtype == TensorProto_DataType_UNDEFINED)
+    dtype = p_X->GetElementType();
+
+  return ComputeNormal(*this, *p_ctx, p_X->Shape(), dtype);
 }
 
-Status RandomUniformBase::Compute(OpKernelContext* p_ctx, const TensorShape& shape, int dtype) const {
-  Tensor& Y = *p_ctx->Output(0, shape);
+Status RandomUniformBase::ComputeUniform(const CudaKernel& cuda_kernel, OpKernelContext& ctx, const TensorShape& shape, int dtype) const {
+  Tensor& Y = *ctx.Output(0, shape);
   const int64_t N = shape.Size();
-  PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
+  PhiloxGenerator& generator = GetPhiloxGenerator();
   utils::MLTypeCallDispatcher<float, MLFloat16, double> t_disp(dtype);
-  t_disp.Invoke<RandomUniformComputeImpl>(GetDeviceProp(), Stream(), N, range_, from_, generator, Y);
+  t_disp.Invoke<RandomUniformComputeImpl>(cuda_kernel.GetDeviceProp(), cuda_kernel.Stream(), N, range_, from_, generator, Y);
   return Status::OK();
 }
 
-Status RandomUniform::ComputeInternal(OpKernelContext* p_ctx) const { return Compute(p_ctx, shape_, dtype_); }
-
 Status RandomUniformLike::ComputeInternal(OpKernelContext* p_ctx) const {
   const Tensor* p_X = p_ctx->Input<Tensor>(0);
-  if (!p_X) return Status(common::ONNXRUNTIME, common::FAIL, "X Input is not available.");
-  if (dtype_ == TensorProto_DataType_UNDEFINED && !p_X->IsDataType<float>() && !p_X->IsDataType<double>() &&
+
+  if (!p_X) {
+    return Status(common::ONNXRUNTIME, common::FAIL, "X Input is not available.");
+  }
+
+  int dtype = GetDType();
+  if (dtype == TensorProto_DataType_UNDEFINED && !p_X->IsDataType<float>() && !p_X->IsDataType<double>() &&
       !p_X->IsDataType<MLFloat16>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Output data type is required to be one of float types, but got incompatible data type ",
                            p_X->DataType(), " from input tensor.");
   }
-  return Compute(p_ctx, p_X->Shape(), dtype_ != TensorProto_DataType_UNDEFINED ? dtype_ : p_X->GetElementType());
+
+  if (dtype == TensorProto_DataType_UNDEFINED)
+    dtype = p_X->GetElementType();
+
+  return ComputeUniform(*this, *p_ctx, p_X->Shape(), dtype);
 }
 
 }  // namespace cuda

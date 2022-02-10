@@ -4,6 +4,7 @@
 #pragma once
 #include <atomic>
 #include <string>
+#include "core/common/gsl_suppress.h"
 #include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {

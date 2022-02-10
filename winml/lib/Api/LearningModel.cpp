@@ -15,6 +15,50 @@
 #include <robuffer.h>
 
 namespace WINMLP {
+
+// IBuffer implementation to avoid calling into WinTypes.dll to create wss::Buffer.
+// This will enable model creation on VTL1 without pulling in additional binaries on load.
+template <typename T>
+class STLVectorBackedBuffer : public winrt::implements<
+                                  STLVectorBackedBuffer<T>,
+                                  wss::IBuffer,
+                                  ::Windows::Storage::Streams::IBufferByteAccess> {
+ private:
+  std::vector<T> data_;
+  size_t length_ = 0;
+
+ public:
+  STLVectorBackedBuffer(size_t num_elements) : data_(num_elements) {}
+
+  uint32_t Capacity() const try {
+    // Return the size of the backing vector in bytes
+    return static_cast<uint32_t>(data_.size() * sizeof(T));
+  }
+  WINML_CATCH_ALL
+
+  uint32_t Length() const try {
+    // Return the used buffer in bytes
+    return static_cast<uint32_t>(length_);
+  }
+  WINML_CATCH_ALL
+
+  void Length(uint32_t value) try {
+    // Set the use buffer length in bytes
+    WINML_THROW_HR_IF_TRUE_MSG(E_INVALIDARG, value > Capacity(), "Parameter 'value' cannot be greater than the buffer's capacity.");
+    length_ = value;
+  }
+  WINML_CATCH_ALL
+
+  STDMETHOD(Buffer)
+  (_Outptr_ BYTE** value) {
+    // Return the buffer
+    RETURN_HR_IF_NULL(E_POINTER, value);
+    *value = reinterpret_cast<BYTE*>(data_.data());
+    return S_OK;
+  }
+};
+
+
 LearningModel::LearningModel(
     const hstring& path,
     const winml::ILearningModelOperatorProvider op_provider) try : operator_provider_(op_provider) {
@@ -90,12 +134,11 @@ static HRESULT CreateModelFromStream(
     _winml::IModel** model) {
   auto content = stream.OpenReadAsync().get();
 
-  wss::Buffer buffer(static_cast<uint32_t>(content.Size()));
+  auto buffer = winrt::make<STLVectorBackedBuffer<BYTE>>(static_cast<size_t>(content.Size()));
   auto result = content.ReadAsync(
                            buffer,
                            buffer.Capacity(),
-                           wss::InputStreamOptions::None)
-                    .get();
+                           wss::InputStreamOptions::None).get();
 
   auto bytes = buffer.try_as<::Windows::Storage::Streams::IBufferByteAccess>();
   WINML_THROW_HR_IF_NULL_MSG(E_UNEXPECTED, bytes, "Model stream is invalid.");
@@ -118,6 +161,30 @@ LearningModel::LearningModel(
 
   WINML_THROW_IF_FAILED(CreateOnnxruntimeEngineFactory(engine_factory_.put()));
   WINML_THROW_IF_FAILED(CreateModelFromStream(engine_factory_.get(), stream, model_.put()));
+  WINML_THROW_IF_FAILED(model_->GetModelInfo(model_info_.put()));
+}
+WINML_CATCH_ALL
+
+static HRESULT CreateModelFromBuffer(
+    _winml::IEngineFactory* engine_factory,
+    const wss::IBuffer buffer,
+    _winml::IModel** model) {
+		
+  size_t len = buffer.Length();
+  if (FAILED(engine_factory->CreateModel((void*)buffer.data(), len, model))) {
+    WINML_THROW_HR(E_INVALIDARG);
+  }
+
+  return S_OK;
+}
+
+LearningModel::LearningModel(
+    const wss::IBuffer buffer,
+    const winml::ILearningModelOperatorProvider operator_provider) try : operator_provider_(operator_provider) {
+  _winmlt::TelemetryEvent loadModel_event(_winmlt::EventCategory::kModelLoad);
+
+  WINML_THROW_IF_FAILED(CreateOnnxruntimeEngineFactory(engine_factory_.put()));
+  WINML_THROW_IF_FAILED(CreateModelFromBuffer(engine_factory_.get(), buffer, model_.put()));
   WINML_THROW_IF_FAILED(model_->GetModelInfo(model_info_.put()));
 }
 WINML_CATCH_ALL
@@ -250,6 +317,20 @@ LearningModel::LoadFromStreamAsync(
   return make<LearningModel>(model_stream, provider);
 }
 
+wf::IAsyncOperation<winml::LearningModel>
+LearningModel::LoadFromBufferAsync(
+    wss::IBuffer const model_buffer) {
+  return LoadFromBufferAsync(model_buffer, nullptr);
+}
+
+wf::IAsyncOperation<winml::LearningModel>
+LearningModel::LoadFromBufferAsync(
+    wss::IBuffer const model_buffer,
+    winml::ILearningModelOperatorProvider const provider) {
+  co_await resume_background();
+  return make<LearningModel>(model_buffer, provider);
+}
+
 winml::LearningModel
 LearningModel::LoadFromFilePath(
     hstring const& path) try {
@@ -277,6 +358,21 @@ LearningModel::LoadFromStream(
     wss::IRandomAccessStreamReference const model_stream,
     winml::ILearningModelOperatorProvider const provider) try {
   return make<LearningModel>(model_stream, provider);
+}
+WINML_CATCH_ALL
+
+winml::LearningModel
+LearningModel::LoadFromBuffer(
+    wss::IBuffer const model_buffer) try {
+  return LoadFromBuffer(model_buffer, nullptr);
+}
+WINML_CATCH_ALL
+
+winml::LearningModel
+LearningModel::LoadFromBuffer(
+    wss::IBuffer const model_buffer,
+    winml::ILearningModelOperatorProvider const provider) try {
+  return make<LearningModel>(model_buffer, provider);
 }
 WINML_CATCH_ALL
 

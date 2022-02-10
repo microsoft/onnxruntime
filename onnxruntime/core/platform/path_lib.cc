@@ -28,6 +28,7 @@
 #include <libgen.h>
 #include <stdlib.h>
 #include <sys/stat.h>
+#include <string.h>
 #endif
 
 #ifdef _WIN32
@@ -94,7 +95,7 @@ common::Status GetDirNameFromFilePath(const std::basic_string<ORTCHAR_T>& s, std
   auto st = onnxruntime::RemoveFileSpec(const_cast<wchar_t*>(ret.data()), ret.length() + 1);
   if (!st.IsOK()) {
     std::ostringstream oss;
-    oss << "illegal input path:" << ToMBString(s) << ". " << st.ErrorMessage();
+    oss << "illegal input path:" << ToUTF8String(s) << ". " << st.ErrorMessage();
     return Status(st.Category(), st.Code(), oss.str());
   }
   ret.resize(wcslen(ret.c_str()));
@@ -107,24 +108,24 @@ namespace onnxruntime {
 
 namespace {
 
-template <typename T>
-struct Freer {
-  void operator()(T* p) { ::free(p); }
-};
-
-using MallocdStringPtr = std::unique_ptr<char, Freer<char> >;
+inline std::unique_ptr<char[]> StrDup(const std::string& input) {
+  auto buf = std::make_unique<char[]>(input.size() + 1);
+  strncpy(buf.get(), input.c_str(), input.size());
+  buf[input.size()] = 0;
+  return buf;
+}
 
 }  // namespace
 
 common::Status GetDirNameFromFilePath(const std::basic_string<ORTCHAR_T>& input,
                                       std::basic_string<ORTCHAR_T>& output) {
-  MallocdStringPtr s{strdup(input.c_str())};
+  auto s = StrDup(input);
   output = dirname(s.get());
   return Status::OK();
 }
 
 std::string GetLastComponent(const std::string& input) {
-  MallocdStringPtr s{strdup(input.c_str())};
+  auto s = StrDup(input);
   std::string ret = basename(s.get());
   return ret;
 }

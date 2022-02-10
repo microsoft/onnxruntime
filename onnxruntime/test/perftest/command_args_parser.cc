@@ -33,8 +33,8 @@ namespace perftest {
       "\t-A: Disable memory arena\n"
       "\t-I: Generate tensor input binding (Free dimensions are treated as 1.)\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
-      "\t-e [cpu|cuda|dnnl|tensorrt|openvino|nuphar|dml|acl]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
-      "'openvino', 'nuphar', 'dml', 'acl', 'nnapi' or 'coreml'. "
+      "\t-e [cpu|cuda|dnnl|tensorrt|openvino|nuphar|dml|acl|rocm|migraphx]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
+      "'openvino', 'nuphar', 'dml', 'acl', 'nnapi', 'coreml', 'rocm' or 'migraphx'. "
       "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
@@ -49,7 +49,7 @@ namespace perftest {
       "\t-F [free_dimension_override]: Specifies a free dimension by denotation to override to a specific value for performance optimization. "
       "Syntax is [dimension_denotation:override_value]. override_value must > 0\n"
       "\t-P: Use parallel executor instead of sequential executor.\n"
-      "\t-o [optimization level]: Default is 1. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
+      "\t-o [optimization level]: Default is 99 (all). Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels.\n"
       "\t-u [optimized_model_path]: Specify the optimized model path for saving.\n"
       "\t-d [cudnn_conv_algorithm]: Specify CUDNN convolution algothrithms: 0(benchmark), 1(heuristic), 2(default). \n"
@@ -65,8 +65,8 @@ namespace perftest {
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n\n"
       "\t [Example] [For OpenVINO EP] -e openvino -i \"device_type|CPU_FP32 enable_vpu_fast_compile|true num_of_threads|5 use_compiled_network|true blob_dump_path|\"<path>\"\"\n"
       "\t    [TensorRT only] [trt_max_partition_iterations]: Maximum iterations for TensorRT parser to get capability.\n"
-      "\t    [TensorRT only] [trt_min_subgraph_size]: Minimum size of TensorRT subgraphs.\n"	  
-      "\t    [TensorRT only] [trt_max_workspace_size]: Set TensorRT maximum workspace size in byte.\n"	  
+      "\t    [TensorRT only] [trt_min_subgraph_size]: Minimum size of TensorRT subgraphs.\n"
+      "\t    [TensorRT only] [trt_max_workspace_size]: Set TensorRT maximum workspace size in byte.\n"
       "\t    [TensorRT only] [trt_fp16_enable]: Enable TensorRT FP16 precision.\n"
       "\t    [TensorRT only] [trt_int8_enable]: Enable TensorRT INT8 precision.\n"
       "\t    [TensorRT only] [trt_int8_calibration_table_name]: Specify INT8 calibration table name.\n"
@@ -79,6 +79,12 @@ namespace perftest {
       "\t    [TensorRT only] [trt_force_sequential_engine_build]: Force TensorRT engines to be built sequentially.\n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>'\n\n"
       "\t [Example] [For TensorRT EP] -e tensorrt -i 'trt_fp16_enable|true trt_int8_enable|true trt_int8_calibration_table_name|calibration.flatbuffers trt_int8_use_native_calibration_table|false trt_force_sequential_engine_build|false'\n"
+      "\t    [NNAPI only] [NNAPI_FLAG_USE_FP16]: Use fp16 relaxation in NNAPI EP..\n"
+      "\t    [NNAPI only] [NNAPI_FLAG_USE_NCHW]: Use the NCHW layout in NNAPI EP.\n"
+      "\t    [NNAPI only] [NNAPI_FLAG_CPU_DISABLED]: Prevent NNAPI from using CPU devices.\n"
+      "\t    [NNAPI only] [NNAPI_FLAG_CPU_ONLY]: Using CPU only in NNAPI EP.\n"
+      "\t [Usage]: -e <provider_name> -i '<key1> <key2>'\n\n"
+      "\t [Example] [For NNAPI EP] -e nnapi -i \" NNAPI_FLAG_USE_FP16 NNAPI_FLAG_USE_NCHW NNAPI_FLAG_CPU_DISABLED \"\n"
       "\t-h: help\n");
 }
 #ifdef _WIN32
@@ -172,6 +178,10 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
           test_config.machine_config.provider_type_name = onnxruntime::kAclExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("armnn"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kArmNNExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("rocm"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kRocmExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("migraphx"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kMIGraphXExecutionProvider;
         } else {
           return false;
         }

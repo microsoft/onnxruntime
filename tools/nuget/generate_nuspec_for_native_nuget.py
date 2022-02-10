@@ -33,7 +33,8 @@ def get_package_name(os, cpu_arch, ep):
 
 
 # Currently we take onnxruntime_providers_cuda from CUDA build
-# And onnxruntime, onnxruntime_providers_shared and onnxruntime_providers_tensorrt from tensorrt build
+# And onnxruntime, onnxruntime_providers_shared and
+# onnxruntime_providers_tensorrt from tensorrt build
 def is_this_file_needed(ep, filename):
     return (ep != 'cuda' or 'cuda' in filename) and (ep != 'tensorrt' or 'cuda' not in filename)
 
@@ -453,12 +454,36 @@ def generate_files(list, args):
                           runtimes_target + args.target_architecture + '\\native" />')
 
     if args.execution_provider == "openvino":
+        openvino_path = get_env_var('INTEL_OPENVINO_DIR')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['providers_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['openvino_ep_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
+
+        if is_windows():
+            dll_list_path = os.path.join(openvino_path, 'deployment_tools\\inference_engine\\bin\\intel64\\Release\\')
+            for dll_element in os.listdir(dll_list_path):
+                if dll_element.endswith('dll'):
+                    files_list.append('<file src=' + '"' + os.path.join(dll_list_path, dll_element) + runtimes_target +
+                                      args.target_architecture + '\\native" />')
+            ngraph_list_path = os.path.join(openvino_path, 'deployment_tools\\ngraph\\lib\\')
+            for ngraph_element in os.listdir(ngraph_list_path):
+                if ngraph_element.endswith('dll'):
+                    files_list.append('<file src=' + '"' + os.path.join(ngraph_list_path, ngraph_element) +
+                                      runtimes_target + args.target_architecture + '\\native" />')
+            # plugins.xml
+            files_list.append('<file src=' + '"' + os.path.join(dll_list_path, 'plugins.xml') +
+                              runtimes_target + args.target_architecture + '\\native" />')
+            # usb-ma2x8x.mvcmd
+            files_list.append('<file src=' + '"' + os.path.join(dll_list_path, 'usb-ma2x8x.mvcmd') +
+                              runtimes_target + args.target_architecture + '\\native" />')
+            tbb_list_path = os.path.join(openvino_path, 'deployment_tools\\inference_engine\\external\\tbb\\bin\\')
+            for tbb_element in os.listdir(tbb_list_path):
+                if tbb_element.endswith('dll'):
+                    files_list.append('<file src=' + '"' + os.path.join(tbb_list_path, tbb_element) +
+                                      runtimes_target + args.target_architecture + '\\native" />')
 
     if args.execution_provider == "cuda" or is_cuda_gpu_package and not is_ado_packaging_build:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,

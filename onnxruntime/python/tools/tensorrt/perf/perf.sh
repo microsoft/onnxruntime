@@ -29,6 +29,7 @@ fi
 FAIL_MODEL_FILE=".fail_model_map"
 LATENCY_FILE=".latency_map"
 METRICS_FILE=".metrics_map"
+SESSION_FILE=".session_map"
 PROFILE="*onnxruntime_profile*"
 
 # files to download info
@@ -39,6 +40,7 @@ cleanup_files() {
     rm -f $FAIL_MODEL_FILE
     rm -f $LATENCY_FILE
     rm -f $METRICS_FILE
+    rm -f $SESSION_FILE
     rm -f $FLOAT_16
     rm -rf result/$OPTION
     find -name $PROFILE -delete
@@ -55,4 +57,4 @@ setup() {
 
 setup
 python3 benchmark_wrapper.py -r validate -m $MODEL_PATH -o result/$OPTION -w $WORKSPACE $RUN_EPS
-python3 benchmark_wrapper.py -r benchmark -t 10 -m $MODEL_PATH -o result/$OPTION -w $WORKSPACE $RUN_EPS
+python3 benchmark_wrapper.py -r benchmark -t 1200 -m $MODEL_PATH -o result/$OPTION -w $WORKSPACE $RUN_EPS
