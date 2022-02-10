@@ -3,6 +3,8 @@
 
 #include "ort_aten.h"
 #include "ort_tensor.h"
+#include "ort_backends.h"
+#include <core/providers/cpu/cpu_execution_provider.h>
 #include <c10/core/TensorImpl.h>
 #include <ATen/native/CPUFallback.h>
 #include <ATen/InferSize.h>
@@ -130,11 +132,26 @@ OrtValue create_ort_value(
   }
 
   OrtValue ort_tensor;
-  CreateMLValue(
-    tensor.data_ptr(),
-    ort_scalar_type_from_aten(tensor.scalar_type()),
-    tensor.sizes().vec(),
-    &ort_tensor);
+  if (tensor.device().type() == at::kORT) {
+    auto allocator = invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault);
+    const auto& mem_info = allocator->Info();
+    CreateMLValue(
+      tensor.data_ptr(),
+      ort_scalar_type_from_aten(tensor.scalar_type()),
+      tensor.sizes().vec(),
+      mem_info,
+      &ort_tensor);
+  } // this tensor is not an ORT tensor
+  else {
+    OrtMemoryInfo *mem_info;
+    Ort::ThrowOnError(Ort::GetApi().CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mem_info));
+    CreateMLValue(
+      tensor.data_ptr(),
+      ort_scalar_type_from_aten(tensor.scalar_type()),
+      tensor.sizes().vec(),
+      *mem_info,
+      &ort_tensor);
+  }
   return ort_tensor;
 }
 
