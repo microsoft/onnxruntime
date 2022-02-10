@@ -22,4 +22,76 @@ inline static FunctionBodyHelper::NodeDef Const(const std::string& name, double 
       {name}, "Constant", {}, {{"value", ToTensor(value, elem_type)}}};
 }
 
+class OrtFunctionBuilder {
+ public:
+  OrtFunctionBuilder(FunctionProto& funProto_) : funProto(funProto_) {}
+
+  OrtFunctionBuilder& Add(const char* nodes_txt) {
+    OnnxParser parser(nodes_txt);
+    auto& nodes = *funProto.mutable_node();
+
+    while (!parser.EndOfInput()) {
+      auto status = parser.Parse(*nodes.Add());
+      if (!status.IsOK())
+        ONNX_THROW_EX(std::logic_error("Error parsing node:" + status.ErrorMessage()));
+    }
+
+    return *this;
+  }
+
+  OrtFunctionBuilder& Add(const char* node_txt, const AttributeProto& attr) {
+    OnnxParser parser(node_txt);
+    auto& node = *funProto.add_node();
+    auto status = parser.Parse(node);
+    if (!status.IsOK()) {
+      ONNX_THROW_EX(std::logic_error("Error parsing node:" + status.ErrorMessage()));
+    }
+
+    if (!parser.EndOfInput()) {
+      ONNX_THROW_EX(std::logic_error("Error unexpected extra input in node:" + status.ErrorMessage()));
+    }
+
+    *node.add_attribute() = attr;
+
+    return *this;
+  }
+
+  template <typename T>
+  OrtFunctionBuilder& Add(const char* node_txt, const std::string& attr_name, T attr_value) {
+    return Add(node_txt, MakeAttribute(attr_name, attr_value));
+  }
+
+  OrtFunctionBuilder& Const(const std::string& name, double value, int64_t elem_type) {
+    std::string constant_op(name);
+    constant_op += " = Constant()";
+    return Add(constant_op.c_str(), MakeAttribute("value", ToTensor(value, (TensorProto_DataType)elem_type)));
+  }
+
+  template <typename T>
+  OrtFunctionBuilder& Const(const std::string& name, T const_value) {
+    std::string constant_op(name);
+    constant_op += " = Constant()";
+    return Add(constant_op.c_str(), MakeAttribute("value", ToTensor(const_value)));
+  }
+
+  template <typename T>
+  OrtFunctionBuilder& Const(const std::string& name, const std::vector<T>& values) {
+    std::string constant_op(name);
+    constant_op += " = Constant()";
+    auto tensor = ToTensor(values);
+    tensor.add_dims(values.size());  // Treat as 1D tensor.
+
+    return Add(constant_op.c_str(), MakeAttribute("value", tensor));
+  }
+
+  OrtFunctionBuilder& AddOpset(const char* domain, int version) {
+    auto* opset = funProto.add_opset_import();
+    opset->set_domain(domain);
+    opset->set_version(version);
+    return *this;
+  }
+
+ private:
+  FunctionProto& funProto;
+};
 }  // namespace ONNX_NAMESPACE

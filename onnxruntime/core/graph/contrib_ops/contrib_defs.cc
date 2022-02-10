@@ -977,17 +977,18 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
         auto* tp = ctx.getInputType(0);
         if ((tp == nullptr) || (!tp->has_tensor_type()))
           return false;
+        auto elem_type = tp->tensor_type().elem_type();
 
         // Optional input 1 indicates a bias to be added to input 0.
         auto hasBias = ctx.hasInput(1);
 
-        FunctionBuilder builder(functionProto);
+        OrtFunctionBuilder builder(functionProto);
         builder
             .AddOpset("", 13)
-            .Const("a", 0.5)
-            .Const("b", 0.797885)
-            .Const("c", 0.035677)
-            .Const("one", 1.0)
+            .Const("a", 0.5, elem_type)
+            .Const("b", 0.797885, elem_type)
+            .Const("c", 0.035677, elem_type)
+            .Const("one", 1.0, elem_type)
             .Add(hasBias ? "X_bias = Add (X, bias)" : "X_bias = Identity (X)")
             .Add(R"(
                 T1 = Mul (X_bias, X_bias)
@@ -2725,10 +2726,10 @@ Example 4:
             // Normalization is applied to the second dimension.
             // Output Y has same shape as X
             // Outputs Mean and InvStdDev have shape: [d[0], ..., d[axis-1], 1, ..., 1]
-            FunctionBuilder builder(functionProto);
+            OrtFunctionBuilder builder(functionProto);
             builder
                 .AddOpset("", 13)
-                .Const("Epsilon", epsilon)
+                .Const("Epsilon", epsilon, U)
                 .Add("XShape = Shape (X)")                                                    // shape of input tensor: 1D tensor
                 .Add("Rank = Size (XShape)")                                                  // rank of input tensor: scalar
                 .Add("Zero1D = Constant()", "value", mktensor(0))                             // [0] : 1D tensor
@@ -2841,13 +2842,14 @@ inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)D
         auto* tp = ctx.getInputType(0);
         if ((tp == nullptr) || (!tp->has_tensor_type()))
           return false;
+        auto elem_type = tp->tensor_type().elem_type();
 
-        FunctionBuilder builder(functionProto);
+        OrtFunctionBuilder builder(functionProto);
         builder
             .AddOpset("", 13)
-            .Const("Half", 0.5)
-            .Const("One", 1.0)
-            .Const("C", std::sqrt(0.5))
+            .Const("Half", 0.5, elem_type)
+            .Const("One", 1.0, elem_type)
+            .Const("C", std::sqrt(0.5), elem_type)
             .Add(R"(
                 CX = Mul (C, X)
                 ERFCX = Erf (CX)
