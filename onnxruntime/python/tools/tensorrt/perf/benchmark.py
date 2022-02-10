@@ -511,10 +511,10 @@ def remove_files(running_mode, path):
     if running_mode == "validate": 
         out = get_output(["find", path, "-name", "onnxruntime_profile*"])
     if running_mode == "benchmark": 
-        out = ""
-        #out = get_output(["find", path, "-name", "*.engine"])
+        logger.info(running_mode)
+        out = get_output(["find", path, "-name", "*.engine"])
 
-    print(out)
+    logger.info(out)
     files = files + out.split("\n")
     for f in files:
         if "custom_test_data" in f:
