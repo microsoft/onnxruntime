@@ -1,15 +1,15 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-# This script makes NPM packages for onnxruntime-common and onnxruntime-(node|web|react_native)
+# This script makes NPM packages for onnxruntime-common and onnxruntime-(node|web|react-native)
 #
 # Release Mode (release):
 #   Do not update version number. Version number should be matching $(ORT_ROOT)/VERSION_NUMBER
-#   Always generate packages for onnxruntime-common and onnxruntime-(node|web|react_native)
+#   Always generate packages for onnxruntime-common and onnxruntime-(node|web|react-native)
 #
 # Release Candidate Mode (rc):
 #   Update version number to {VERSION_BASE}-rc.{YYYYMMDD}-{COMMIT}
-#   Always generate packages for onnxruntime-common and onnxruntime-(node|web|react_native)
+#   Always generate packages for onnxruntime-common and onnxruntime-(node|web|react-native)
 #
 # Dev Mode (dev):
 #   Compare current content with latest @dev package for onnxruntime-common. If no change, we
@@ -19,7 +19,7 @@
 #
 # Custom Mode:
 #   Use first commandline parameter as version number suffix.
-#   Always generate packages for onnxruntime-common and onnxruntime-(node|web|react_native)
+#   Always generate packages for onnxruntime-common and onnxruntime-(node|web|react-native)
 #
 
 if ($Args.Count -ne 3) {
