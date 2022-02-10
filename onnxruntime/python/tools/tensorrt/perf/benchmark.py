@@ -1167,8 +1167,8 @@ def run_onnxruntime(args, models):
                         status = validate(ref_outputs, ort_outputs, args.rtol, args.atol, args.percent_mismatch)
                         if not status[0]:
                             update_fail_model_map(model_to_fail_ep, name, ep, 'result accuracy issue', status[1])
-                            
-                            remove_files(args.running_mode, model_info["working_directory"])
+                            if "ORT-TRT" in ep: 
+                                remove_files(args.running_mode, model_info["working_directory"])
                             continue
                     except Exception as e:
                         logger.error(e)
@@ -1191,7 +1191,8 @@ def run_onnxruntime(args, models):
                     logger.info(ep)
                     ep_to_operator[ep] = metrics
                 
-                remove_files(args.running_mode, model_info["working_directory"])
+                if "ORT-TRTFp16" in ep: 
+                    remove_files(args.running_mode, model_info["working_directory"])
                 
                 logger.info("---------------------------- validate [end] ----------------------------------\n")
 
