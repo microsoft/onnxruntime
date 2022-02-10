@@ -41,6 +41,8 @@ struct LearningModel : LearningModelT<LearningModel> {
   hstring
   Name();
 
+  void EditModelName(const hstring& name);
+
   hstring
   Domain();
 

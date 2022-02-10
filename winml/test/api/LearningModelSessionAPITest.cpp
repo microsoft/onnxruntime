@@ -1109,10 +1109,14 @@ static void SetIntraOpThreadSpinning() {
   LearningModel model = nullptr;
   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"squeezenet.onnx", model));
   auto model_name = model.Name();
-  std::wcout << "Model name: " << model_name.c_str() << std::endl;
+  std::wcout << "Model name before: " << model_name.c_str() << std::endl;
 
-  //auto experimental_model = winml_experimental::LearningModelExperimental(model);
-  //auto metadata = experimental_model.EditModelName(L"New Name");
+  auto experimental_model = winml_experimental::LearningModelExperimental(model);
+  experimental_model.EditModelName(L"New Name");
+  model_name = model.Name();
+  std::wcout << "Model name after: " << model_name.c_str() << std::endl;
+
+
   //auto size = metadata.Size();
   //printf("Metadata size %u\n", size);
   //auto first = metadata.First();

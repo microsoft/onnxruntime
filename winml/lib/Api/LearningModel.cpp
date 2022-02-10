@@ -207,6 +207,12 @@ LearningModel::Name() try {
 }
 WINML_CATCH_ALL
 
+void LearningModel::EditModelName(const hstring& name) try {
+  auto name_str = _winml::Strings::UTF8FromHString(name);
+  WINML_THROW_IF_FAILED(model_info_->EditModelName(name_str));
+}
+WINML_CATCH_ALL
+
 hstring
 LearningModel::Domain() try {
   const char* out;

@@ -15,6 +15,7 @@ using namespace _winml;
 struct winml_adapter_api_model_feature_helper {
   decltype(WinmlAdapterApi::ModelGetInputCount) GetCount;
   decltype(WinmlAdapterApi::ModelGetInputName) GetName;
+  //decltype(WinmlAdapterApi::ModelEditModelName) EditModelName;
   decltype(WinmlAdapterApi::ModelGetInputDescription) GetDescription;
   decltype(WinmlAdapterApi::ModelGetInputTypeInfo) GetTypeInfo;
 };
@@ -127,6 +128,11 @@ STDMETHODIMP ModelInfo::GetAuthor(const char** out, size_t* len) {
 STDMETHODIMP ModelInfo::GetName(const char** out, size_t* len) {
   *out = name_.c_str();
   *len = name_.size();
+  return S_OK;
+}
+
+STDMETHODIMP ModelInfo::EditModelName(std::string name) {
+  name_ = name;
   return S_OK;
 }
 
