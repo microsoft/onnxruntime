@@ -1849,6 +1849,12 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
     }
   }
 
+  // Currently limiting the second optimization pass to layout transform mode
+  // TODO: Enable this for both the modes.
+  if (ctx.mode == OptimizerMode::OPTIMIZE_TRANSPOSE) {
+    return changed;
+  }
+
   // Run second optimization pass.
   // If any transpose succeeds a DQ node, move it above the DQ node.
   // In case of QDQ models this helps to preserve the QDQ node unit
@@ -1856,23 +1862,35 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
   // transpose node now handles less data.
   auto graph_nodes = ctx.graph.Nodes();
   for (size_t i = 1; i < graph_nodes.size(); i++) {
-    if (graph_nodes[i]->OpType() == "Transpose" && graph_nodes[i - 1]->OpType() == "DequantizeLinear" && graph_nodes[i + 1]->OpType() != "QuantizeLinear") {
+    if (graph_nodes[i]->OpType() == "Transpose") {
       auto& transpose_node = *graph_nodes[i];
-      auto& dq_node = *graph_nodes[i - 1];
+      auto dq_node = ctx.graph.GetNodeProducingOutput(transpose_node.Inputs()[0]);
+      if (!dq_node || dq_node->OpType() != "DequantizeLinear") {
+        continue;
+      }
+
+      auto consumers = ctx.graph.GetValueConsumers(transpose_node.Outputs()[0]);
+      bool is_part_of_qdq_unit = std::find_if(consumers->nodes.cbegin(), consumers->nodes.cend(),
+                                              [](const std::unique_ptr<api::NodeRef>& node) {
+                                                return node->OpType() == "QuantizeLinear";
+                                              }) != consumers->nodes.cend();
+      if (is_part_of_qdq_unit) {
+        continue;
+      }
 
       // Update Dequantize Node and move the transpose above it
-      std::optional<std::vector<int64_t>> perm = GetPermAttrIfValid(transpose_node);
+      auto perm = GetPermAttrIfValid(transpose_node);
       if (!perm.has_value()) {
         continue;
       }
-      if (!HandleQuantizeDequantizeScale(ctx.graph, *perm, dq_node, ctx.opset)) {
+      if (!HandleQuantizeDequantizeScale(ctx.graph, *perm, *dq_node, ctx.opset)) {
         continue;
       }
-      TransposeFirstInput(ctx, dq_node, *perm);
+      TransposeFirstInput(ctx, *dq_node, *perm);
 
       // remove existing transpose node
       transpose_node.SetInput(0, "");
-      ctx.graph.MoveOutput(transpose_node, 0, dq_node, 0);
+      ctx.graph.MoveOutput(transpose_node, 0, *dq_node, 0);
       ctx.graph.RemoveNode(transpose_node);
       changed = true;
     }
