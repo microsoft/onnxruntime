@@ -205,7 +205,7 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
       continue;
     }
 
-    if (!QDQ::DoesQOrDQNodeHaveConstantScalarScaleAndZeroPoint(dq_node, GraphConstantInitializerGetter{graph})) {
+    if (!QDQ::QOrDQNodeHasConstantScalarScaleAndZeroPoint(dq_node, GraphConstantInitializerGetter{graph})) {
       continue;
     }
 
@@ -250,7 +250,7 @@ Status PropagateQBackward(Graph& graph, gsl::span<const NodeIndex> node_indices,
       continue;
     }
 
-    if (!QDQ::DoesQOrDQNodeHaveConstantScalarScaleAndZeroPoint(q_node, GraphConstantInitializerGetter{graph})) {
+    if (!QDQ::QOrDQNodeHasConstantScalarScaleAndZeroPoint(q_node, GraphConstantInitializerGetter{graph})) {
       continue;
     }
 

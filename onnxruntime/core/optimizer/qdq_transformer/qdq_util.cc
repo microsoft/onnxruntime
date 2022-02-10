@@ -57,7 +57,7 @@ bool IsQDQPairSupported(
          *q_scale.data<float>() == *dq_scale.data<float>();
 }
 
-bool DoesQOrDQNodeHaveConstantScalarScaleAndZeroPoint(
+bool QOrDQNodeHasConstantScalarScaleAndZeroPoint(
     const Node& q_or_dq_node,
     const std::function<const ONNX_NAMESPACE::TensorProto*(const std::string&)>& get_const_initializer) {
   ConstPointerContainer<std::vector<NodeArg*>> q_or_dq_input_defs = q_or_dq_node.InputDefs();

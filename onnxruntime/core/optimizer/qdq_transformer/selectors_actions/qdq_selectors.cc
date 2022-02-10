@@ -132,7 +132,7 @@ bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return graph_viewer.GetConstantInitializer(initializer_name, true);
   };
 
-  return DoesQOrDQNodeHaveConstantScalarScaleAndZeroPoint(dq_node, get_const_initializer);
+  return QOrDQNodeHasConstantScalarScaleAndZeroPoint(dq_node, get_const_initializer);
 }
 
 bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,

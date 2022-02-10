@@ -37,7 +37,7 @@ bool IsQDQPairSupported(
     const Path& model_path);
 
 // Check if Q or DQ node's scale and zero point inputs exist and are constant scalars.
-bool DoesQOrDQNodeHaveConstantScalarScaleAndZeroPoint(
+bool QOrDQNodeHasConstantScalarScaleAndZeroPoint(
     const Node& q_or_dq_node,
     const std::function<const ONNX_NAMESPACE::TensorProto*(const std::string&)>& get_const_initializer);
 
