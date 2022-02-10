@@ -119,7 +119,8 @@ static void AdapterIdAndDevice() {
   WINML_EXPECT_HRESULT_SUCCEEDED(adapter->GetDesc(&desc));
   LARGE_INTEGER id;
   id.QuadPart = APITest::GetAdapterIdQuadPart(learningModelDevice);
-  WINML_EXPECT_EQUAL(desc.AdapterLuid.LowPart, id.LowPart);
+
+  (desc.AdapterLuid.LowPart, id.LowPart);
   WINML_EXPECT_EQUAL(desc.AdapterLuid.HighPart, id.HighPart);
   WINML_EXPECT_TRUE(learningModelDevice.Direct3D11Device() != nullptr);
 
@@ -1089,11 +1090,26 @@ static void SetIntraOpThreadSpinning() {
     WINML_EXPECT_TRUE(allowSpinning);
  }
 
+ static void TestEditModelName() {
+   LearningModel model = nullptr;
+   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"squeezenet.onnx", model));
+   auto model_name = model.Name();
+   auto main = to_hstring("main");
+   WINML_EXPECT_EQUAL(model_name, main);
+
+   auto experimental_model = winml_experimental::LearningModelExperimental(model);
+   auto new_name = to_hstring("new name");
+   experimental_model.EditModelName(new_name);
+   model_name = model.Name();
+   WINML_EXPECT_EQUAL(model_name, new_name);
+ }
+
 
 const LearningModelSessionAPITestsApi& getapi() {
   static LearningModelSessionAPITestsApi api =
   {
     LearningModelSessionAPITestsClassSetup,
+    TestEditModelName,
     CreateSessionDeviceDefault,
     CreateSessionDeviceCpu,
     CreateSessionWithModelLoadedFromStream,

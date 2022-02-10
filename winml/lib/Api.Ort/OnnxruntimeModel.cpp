@@ -130,6 +130,11 @@ STDMETHODIMP ModelInfo::GetName(const char** out, size_t* len) {
   return S_OK;
 }
 
+STDMETHODIMP ModelInfo::EditModelName(std::string name) {
+  name_ = name;
+  return S_OK;
+}
+
 STDMETHODIMP ModelInfo::GetDomain(const char** out, size_t* len) {
   *out = domain_.c_str();
   *len = domain_.size();
