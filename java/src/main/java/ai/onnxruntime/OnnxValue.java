@@ -8,8 +8,8 @@ import java.util.Map;
 
 /**
  * Top interface for input and output values from ONNX models. Currently implemented by {@link
- * OnnxTensor}, {@link OnnxSparseTensor}, {@link OnnxSequence} and {@link OnnxMap}.
- * Will be sealed to these types one day.
+ * OnnxTensor}, {@link OnnxSparseTensor}, {@link OnnxSequence} and {@link OnnxMap}. Will be sealed
+ * to these types one day.
  */
 public interface OnnxValue extends AutoCloseable {
 

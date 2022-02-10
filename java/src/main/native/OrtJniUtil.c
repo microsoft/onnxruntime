@@ -69,6 +69,26 @@ ExecutionMode convertExecutionMode(jint mode) {
 }
 
 /**
+ * Must be kept in sync with OrtSparseFormat and OnnxSparseTensor.SparseTensorType
+ * @param format The Java int.
+ * @return The enum.
+ */
+OrtSparseFormat convertToOrtSparseFormat(jint format) {
+    switch (format) {
+      case 0:
+        return ORT_SPARSE_UNDEFINED;
+      case 1:
+        return ORT_SPARSE_COO;
+      case 2:
+        return ORT_SPARSE_CSRC;
+      case 4:
+        return ORT_SPARSE_BLOCK_SPARSE;
+      default:
+        return ORT_SPARSE_UNDEFINED;
+    }
+}
+
+/**
  * Must be kept in sync with convertToONNXDataFormat
  */
 jint convertFromONNXDataFormat(ONNXTensorElementDataType type) {

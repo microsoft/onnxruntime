@@ -28,6 +28,8 @@ GraphOptimizationLevel convertOptimizationLevel(jint level);
 
 ExecutionMode convertExecutionMode(jint mode);
 
+OrtSparseFormat convertToOrtSparseFormat(jint format);
+
 jint convertFromONNXDataFormat(ONNXTensorElementDataType type);
 
 ONNXTensorElementDataType convertToONNXDataFormat(jint type);
