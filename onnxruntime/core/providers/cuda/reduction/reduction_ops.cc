@@ -520,6 +520,13 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
     Impl_Cast<CudaT, float>(stream, reinterpret_cast<const CudaT*>(input.template Data<T>()), temp_X.get(), input_shape.Size());
   }
 
+  if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_NO_INDICES && std::is_same<T, BFloat16>::value) {
+    // Reducesum with BFP16 are not supported by cudnn, so convert input to fp32 then call cudnn
+    temp_X = cuda_ep.GetScratchBuffer<float>(input_count);
+    cudnn_type_X = CUDNN_DATA_FLOAT;
+    Impl_Cast<CudaT, float>(stream, reinterpret_cast<const CudaT*>(input.template Data<T>()), temp_X.get(), input_shape.Size());
+  }
+
   CudnnReduceDescriptor reduce_desc;
   ORT_IF_CONSTEXPR (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value) {
     ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnn_reduce_op, CudnnTensor::GetDataType<float>(), ReduceTensorIndices));
@@ -652,11 +659,22 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
           CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output.template MutableData<T>(), input.template Data<T>(), input_count * sizeof(T), cudaMemcpyDeviceToDevice, stream));
         }
       } else {
-        CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
-            cuda_ep.PerThreadCudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes,
-            workspace_cuda.get(), workspace_bytes,
-            &one, input_tensor, reinterpret_cast<const CudaT*>(input.template Data<T>()),
-            &zero, output_tensor, reinterpret_cast<CudaT*>(output.template MutableData<T>())));
+        if (temp_X) {
+          auto temp_output = cuda_ep.GetScratchBuffer<float>(output_count);
+          CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
+              cuda_ep.PerThreadCudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes,
+              workspace_cuda.get(), workspace_bytes,
+              &one, input_tensor, temp_X.get(),
+              &zero, output_tensor, temp_output.get()));
+
+          Impl_Cast<float, CudaT>(stream, temp_output.get(), reinterpret_cast<CudaT*>(output.template MutableData<T>()), output_count); 
+        } else {
+          CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
+              cuda_ep.PerThreadCudnnHandle(), reduce_desc, indices_cuda.get(), indices_bytes,
+              workspace_cuda.get(), workspace_bytes,
+              &one, input_tensor, reinterpret_cast<const CudaT*>(input.template Data<T>()),
+              &zero, output_tensor, reinterpret_cast<CudaT*>(output.template MutableData<T>())));
+        }
       }
     }
   } else {

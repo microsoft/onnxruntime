@@ -1509,6 +1509,25 @@ TEST(ReductionOpTest, ReduceSumBFloat16) {
 }
 #endif
 
+// this UT, with axes {0,2}, will go thru cudnn lib only if ATenOp is not initialized
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST(ReductionOpTest, ReduceSumBFloat16_2) {
+  OpTester test("ReduceSum", 14);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<BFloat16>("data", {3, 2, 2},
+                          MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f}));
+  test.AddInput<int64_t>("axes", {2}, std::vector<int64_t>{0, 2});
+  test.AddOutput<BFloat16>("reduced", {2}, MakeBFloat16({33.0f, 45.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
+
 TEST(ReductionOpTest, ReduceSum_apex_reduction) {
   OpTester test("ReduceSum");
   test.AddAttribute("keepdims", (int64_t)0);
