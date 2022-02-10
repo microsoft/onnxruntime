@@ -359,7 +359,7 @@ class ThreadPool {
   // working in combination with the thread initiating the loop.
   static int DegreeOfParallelism(const ThreadPool* tp);
 
-  // Force hybrid mode to is_hybrid, this function designed to be used in unit test so hybrid 
+  // Set hybrid mode to is_hybrid, this function is designed to be used in unit test so hybrid case
   // could be tested on normal CPUs
   static void ForceHybridCpu(bool is_hybrid) { force_hybrid_cpu_ = is_hybrid; }
 

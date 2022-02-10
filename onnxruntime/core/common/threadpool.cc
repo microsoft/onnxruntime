@@ -625,7 +625,7 @@ int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
   // When not using OpenMP, we parallelise over the N threads created by the pool
   // tp, plus 1 for the thread entering a loop.
   if (tp) {
-    if (CPUIDInfo::GetCPUIDInfo().IsHybrid()) {
+    if (force_hybrid_cpu_ || CPUIDInfo::GetCPUIDInfo().IsHybrid()) {
       return ((tp->NumThreads() + 1)) * TaskGranularityFactor;
     } else {
       return ((tp->NumThreads() + 1));
