@@ -15,9 +15,10 @@
 */
 // Modifications Copyright (c) Microsoft.
 
+#include "core/util/math_cpuonly.h"
+
 #include <algorithm>
 #include "core/util/math.h"
-#include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
 #if defined(__GNUC__)
 #pragma GCC diagnostic push

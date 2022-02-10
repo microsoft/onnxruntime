@@ -1,7 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "element_wise_ops.h"
+#include "contrib_ops/cpu/element_wise_ops.h"
+
+#include "core/framework/math_utils.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 
 namespace onnxruntime {
