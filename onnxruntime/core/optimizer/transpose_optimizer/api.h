@@ -348,6 +348,12 @@ class GraphRef {
   virtual std::unique_ptr<NodeRef> AddNode(std::string_view op_type, const std::vector<std::string_view>& inputs,
                                            size_t num_outputs, std::string_view domain = "") = 0;
 
+  /// <summary>
+  /// Creates a copy of the provided node in the graph with the specified op type and domain.
+  /// </summary>
+  /// <param name="op_type">The new node's op type</param>
+  /// <param name="domain">The new node's domain. Empty string signifies default onnx domain.</param>
+  /// <returns>The new node</returns>
   virtual std::unique_ptr<NodeRef> CopyNode(const api::NodeRef& source_node, std::string_view op_type, std::string_view domain = "") = 0;
 
   /// <summary>
@@ -463,14 +469,14 @@ bool Optimize(api::GraphRef& graph, bool allow_extended_ops,
  * the new ordering. The existence of a robust transpose optimizer means that we can freely add transpose ops during
  * conversion and then call Optimize to remove as many as possible. To change the channel ordering of some/all ops
  * in a model, a user of this tool should do the following:
- * 
+ *
  * 1. Iterate over the graph nodes and identify nodes to convert. For each one:
  *    a. Change the op type and domain (and possibly attributes) to the op/contrib op with the desired ordering.
  *    b. The model is now invalid since the input tensors are in the original ordering (and all consumers
  *       expect the original ordering). Use WrapTransposesAroundNode helper to insert transposes around the
  *       inputs/outputs of the op to correct this.
  * 2. The model is now correct but has many unnecessary Transpose ops. Call Optimize on the graph.
- * 
+ *
  * After step 1, the Transpose ops will wrap converted ops in a similar manner to q/dq ops in quantization.
  * The perm attributes essentially encode the information about which ops are being reordered.
  */

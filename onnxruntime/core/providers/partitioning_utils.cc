@@ -205,9 +205,7 @@ std::unordered_set<const Node*> CreateExcludedNodeSet(const GraphViewer& graph_v
                                                       const std::unordered_set<std::string>& stop_ops) {
   std::unordered_set<const Node*> excluded_nodes;
 
-  for (const NodeIndex node_index : graph_viewer.GetNodesInTopologicalOrder()) {
-    const Node& node = *graph_viewer.GetNode(node_index);
-
+  for (const auto& node : graph_viewer.Nodes()) {
     if (!Contains(excluded_nodes, &node) && Contains(stop_ops, node.OpType())) {
       excluded_nodes.insert(&node);
 

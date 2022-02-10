@@ -80,6 +80,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "gtest/gtest.h"
 
 using json = nlohmann::json;
 
@@ -196,7 +197,7 @@ TEST(KernelDefHashTest, ExpectedCpuKernelDefHashes) {
 // for one of the ops in the list below and this file has information around that.
 // Please update the following 3 places:
 // 1. api_impl.cc "onnx_ops_available_versions" map, include the latest version in the map
-// 2. kernel_registry_manager.cc "static_kernel_hashes" include an entry for latest version and it's associated hash
+// 2. static_kernel_def_hashes.cc "static_kernel_hashes" include an entry for latest version and it's associated hash
 // 3. This file "onnx_ops_available_versions" map, include the latest version in the map
 TEST(KernelDefHashTest, TestNewOpsVersionSupportDuringLayoutTransform) {
   static const std::unordered_map<std::string, std::vector<int>> onnx_ops_available_versions = {
@@ -210,10 +211,9 @@ TEST(KernelDefHashTest, TestNewOpsVersionSupportDuringLayoutTransform) {
   auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
   for (const auto& [op_type, version_list] : onnx_ops_available_versions) {
     auto schema = schema_registry->GetSchema(op_type, INT_MAX, kOnnxDomain);
-    ORT_ENFORCE(schema->SinceVersion() == version_list[version_list.size() - 1], "A new version for op: ", op_type,
-                "is available. Please update the files mentioned in the comments of this test.");
+    EXPECT_EQ(schema->SinceVersion(), version_list[version_list.size() - 1]) << "A new version for op: " << op_type
+                                                                             << "is available. Please update the files mentioned in the comments of this test.";
   }
 }
-
 }  // namespace test
 }  // namespace onnxruntime

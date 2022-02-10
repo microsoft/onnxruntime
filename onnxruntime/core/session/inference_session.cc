@@ -32,7 +32,7 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/utils.h"
-#include "core/framework/ort_format_model_utils.h"
+#include "core/framework/static_kernel_def_hashes.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/optimizer/graph_transformer_utils.h"
@@ -1248,7 +1248,7 @@ static void ResolveMemoryPatternFlags(SessionState& session_state) {
 }
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
-//VC++ reports: "Releasing unheld lock 'l' in function 'onnxruntime::InferenceSession::Initialize'". But I don't see anything wrong.
+// VC++ reports: "Releasing unheld lock 'l' in function 'onnxruntime::InferenceSession::Initialize'". But I don't see anything wrong.
 #pragma warning(disable : 26117)
 #endif
 common::Status InferenceSession::Initialize() {

@@ -227,9 +227,9 @@ static bool IsIdentityPerm(const std::vector<int64_t>& perm) {
 }
 
 // Computes permutation from channel last to channel first ordering of given rank. Nearly all handlers work for any
-// permutation, but some are restricted. Also used for layout transformation. Rank must be >= 1.
+// permutation, but some are restricted. Also used for layout transformation.
 std::vector<int64_t> ChannelLastToFirstPerm(size_t rank) {
-  if (rank == 0) {
+  if (rank < 2) {
     return {};
   }
 
@@ -1780,7 +1780,7 @@ std::optional<OptimizerCtx> MakeOptimizerContext(api::GraphRef& graph, bool allo
 
   // during layout transformation we want to push the transposes as far out as possible.
   // it is important that the EP gets the entire graph in the layout it prefers.
-  bool skip_cost_check = mode == OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM ? true : false;
+  bool skip_cost_check = mode == OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM;
   OptimizerCtx ctx{*opset, graph, allow_extended_ops, skip_cost_check, provider_type, mode, layout_sensitive_ops};
   return ctx;
 }

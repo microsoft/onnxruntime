@@ -10,9 +10,6 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 
-namespace onnx_layout_transformation {
-}  // namespace onnx_layout_transformation
-
 namespace onnxruntime {
 
 /// <summary>

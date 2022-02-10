@@ -1,4 +1,4 @@
-#include "core/framework/ort_format_model_utils.h"
+#include "core/framework/static_kernel_def_hashes.h"
 
 namespace onnxruntime {
 std::optional<HashValue> GetHashValueFromStaticKernelHashMap(const std::string& op_type, int since_version) {
