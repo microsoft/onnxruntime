@@ -197,11 +197,11 @@ GetQDQTestCaseFn BuildQDQTransposeTestCase(
     auto* output_arg = builder.MakeOutput();
 
 #ifdef USE_NNAPI
-    uint8_t dq_zp = std::numeric_limits<InputType>::max() / 2;
-    uint8_t q_zp = std::numeric_limits<OutputType>::max() / 2;
+    InputType dq_zp = std::numeric_limits<InputType>::max() / 2;
+    OutputType q_zp = std::numeric_limits<OutputType>::max() / 2;
 #else
-    int8_t dq_zp = 1;
-    int8_t q_zp = 1;
+    InputType dq_zp = 1;
+    OutputType q_zp = 1;
 #endif
 
     // add DQ
