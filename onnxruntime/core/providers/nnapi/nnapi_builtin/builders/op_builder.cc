@@ -788,10 +788,21 @@ Status ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 #pragma region op_transpose
 
 class TransposeOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
   static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
 };
+
+void TransposeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  if (!IsQuantizedOp(node_unit))
+    return;
+
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Inputs()[0].quant_param);   // x_scale, x_zp
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
+}
 
 /* static */ bool TransposeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQTranspose;
