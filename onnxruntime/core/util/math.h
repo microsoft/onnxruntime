@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include <cassert>
+
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #endif
