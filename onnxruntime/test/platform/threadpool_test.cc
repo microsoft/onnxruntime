@@ -46,7 +46,8 @@ void ValidateTestData(TestData& test_data, int expected=1) {
 // test the function with a null pointer, reflecting scenarios where we
 // run with just the main thread.  Note that the thread pool API uses
 // static methods and should operate across all of these cases.
-void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::function<void(ThreadPool*)>& test_body, int dynamic_block_base = 0) {
+void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::function<void(ThreadPool*)>& test_body, int dynamic_block_base = 0, bool force_hybrid = false) {
+  ThreadPool::ForceHybridCpu(force_hybrid);
   if (num_threads > 0) {
     if (dynamic_block_base > 0) {
       onnxruntime::ThreadOptions thread_options;
@@ -60,6 +61,7 @@ void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::fun
   } else {
     test_body(nullptr);
   }
+  ThreadPool::ForceHybridCpu(false);
 }
 
 void TestParallelFor(const std::string& name, int num_threads, int num_tasks) {
@@ -80,7 +82,7 @@ void TestBatchParallelFor(const std::string& name, int num_threads, int num_task
   ValidateTestData(*test_data);
 }
 
-void TestConcurrentParallelFor(const std::string& name, int num_threads, int num_concurrent, int num_tasks, int dynamic_block_base = 0) {
+void TestConcurrentParallelFor(const std::string& name, int num_threads, int num_concurrent, int num_tasks, int dynamic_block_base = 0, bool force_hybrid = false) {
   // Test running multiple concurrent loops over the same thread pool.  This aims to provoke a
   // more diverse mix of interleavings than with a single loop running at a time.
   for (int rep = 0; rep < 5; rep++) {
@@ -115,7 +117,7 @@ void TestConcurrentParallelFor(const std::string& name, int num_threads, int num
           }
           td.clear();
         },
-        dynamic_block_base);
+        dynamic_block_base, force_hybrid);
   }
 }
 
@@ -399,8 +401,16 @@ TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_blo
   TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_16", 4, 4, 1000000, 16);
 }
 
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_16_hybrid) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_16", 4, 4, 1000000, 16, true);
+}
+
 TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_128) {
   TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_128", 4, 4, 1000000, 128);
+}
+
+TEST(ThreadPoolTest, TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_128_hybrid) {
+  TestConcurrentParallelFor("TestConcurrentParallelFor_4Thread_4Conc_1MTasks_dynamic_block_base_128", 4, 4, 1000000, 128, true);
 }
 
 TEST(ThreadPoolTest, TestBurstScheduling_0Tasks) {

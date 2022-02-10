@@ -444,6 +444,8 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
         }
       }
     };
+    // Distribute task among all threads in the pool, reduce number of work items if 
+    // num_of_blocks is smaller than number of threads.
     RunInParallel(run_work, std::min(NumThreads() + 1, num_of_blocks), base_block_size);
   }
 }
@@ -674,6 +676,8 @@ void ThreadPool::TryParallelFor(concurrency::ThreadPool* tp, std::ptrdiff_t tota
   }
   tp->ParallelFor(total, cost_per_unit, fn);
 }
+
+bool ThreadPool::force_hybrid_cpu_ = false;
 
 }  // namespace concurrency
 }  // namespace onnxruntime
