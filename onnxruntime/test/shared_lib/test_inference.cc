@@ -1196,18 +1196,15 @@ TEST(CApiTest, cuda_graph) {
   binding.BindInput("X", bound_x);
   binding.BindOutput("Y", bound_y);
   
-  // Warmup runs for CUDA graph capturing
-  const int default_warmup_runs = 3;
-  for (int i = 0; i < default_warmup_runs; i++) {
-    session.Run(Ort::RunOptions(), binding);
-  }
+  // One regular run before CUDA graph capturing for necessary memory allocation
+  session.Run(Ort::RunOptions(), binding);
 
   // Check the values against the bound raw memory (needs copying from device to host first)
   std::array<float, 3 * 2> y_values;
   cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
   ASSERT_TRUE(std::equal(std::begin(y_values), std::end(y_values), std::begin(expected_y)));
 
-  // Run for capturing CUDA graph
+  // This run captures CUDA graph
   session.Run(Ort::RunOptions(), binding);
   cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
   ASSERT_TRUE(std::equal(std::begin(y_values), std::end(y_values), std::begin(expected_y)));

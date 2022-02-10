@@ -47,27 +47,20 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
           io_binding.bind_input('X', 'cuda', 0, np.float32, [INPUT_SIZE*3, 2], x_ortvalue.data_ptr())
           io_binding.bind_output('Y', 'cuda', 0, np.float32, [INPUT_SIZE*3, 1], y_ortvalue.data_ptr())
 
-          warmup_runs = 3
-
-          # STEP - 1
-          # Warm-up Run() to avoid the incampatible cuda api calls (e.g., cudaMalloc) with cuda graph
-          for _ in range(warmup_runs):
-            session.run_with_iobinding(io_binding)
+          # One regular run for the necessary memory allocation before cuda graph capture
+          session.run_with_iobinding(io_binding)
           expected_y = np.array([[5.0], [11.0], [17.0]]*INPUT_SIZE, dtype=np.float32)
           np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
           
-          # STEP - 2
-          # Capture the CUDA Graph
+          # This run captures the CUDA graph
           session.run_with_iobinding(io_binding)
           np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
 
-          # RUN - 1
-          # After capturing, CUDA Graph replay happens from this Run onwards)
+          # After capturing, CUDA graph replay happens from this Run onwards
           session.run_with_iobinding(io_binding)          
           np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
 
-          # RUN - 2
-          # Update input and then CUDA Graph replays
+          # Update input and then replay CUDA graph
           x_ortvalue.update_inplace(np.array([[10.0, 20.0], [30.0, 40.0], [50.0, 60.0]]*INPUT_SIZE, dtype=np.float32))
           session.run_with_iobinding(io_binding)
           np.testing.assert_allclose(np.array([[50.0], [110.0], [170.0]]*INPUT_SIZE, dtype=np.float32), y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)

@@ -21,7 +21,7 @@ namespace onnxruntime {
 // Logical device representation.
 class CUDAExecutionProvider : public IExecutionProvider {
  public:
-  static const int DEFAULT_CUDA_GRAPH_WARMUP_RUNS = 3;
+  static const int DEFAULT_REGULAR_RUNS_BEFORE_CUDA_GRAPH_CAPTURE = 1; // one regular run is needed before graph capture for the necessary memory allocations.
   explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info);
   virtual ~CUDAExecutionProvider();
 
@@ -100,7 +100,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool ConfiguredForGraphCapture() override;
   bool IsGraphCaptured() override;
   Status GraphReplay() override;
-  bool FinishWarmupForGraphCapture() const;
+  bool FinishRegularRunsBeforeGraphCapture() const;
   void CaptureBegin();
   void CaptureEnd();
 #endif
@@ -114,7 +114,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
   CUDAGraph graph_;
   bool is_graph_captured_ = false;
-  int cuda_graph_warmup_count_ = 0;
+  int regular_run_count_before_graph_capture_ = 0;
 #endif
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;

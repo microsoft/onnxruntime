@@ -333,11 +333,11 @@ Status CUDAExecutionProvider::OnRunStart() {
   deferred_release_cpu_ptr_.emplace(current_deferred_release_event, DeferredReleaseCPUPtrs());
 
   if (ConfiguredForGraphCapture() && !IsGraphCaptured()) {
-    if (FinishWarmupForGraphCapture()) {
+    if (FinishRegularRunsBeforeGraphCapture()) {
       LOGS_DEFAULT(INFO) << "Capturing the CUDA Graph for this model";
       CaptureBegin();
     } else {
-      LOGS_DEFAULT(INFO) << "Run the " << cuda_graph_warmup_count_ << "th / " << DEFAULT_CUDA_GRAPH_WARMUP_RUNS << " warmup for cuda graph capture. ";
+      LOGS_DEFAULT(INFO) << "Run the " << regular_run_count_before_graph_capture_ << "th of the required " << DEFAULT_REGULAR_RUNS_BEFORE_CUDA_GRAPH_CAPTURE << " regular runs for cuda graph capture. ";
     }
   }
   return Status::OK();
@@ -345,13 +345,13 @@ Status CUDAExecutionProvider::OnRunStart() {
 
 Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
   if (ConfiguredForGraphCapture() && !IsGraphCaptured()) {
-    if (FinishWarmupForGraphCapture()) {
+    if (FinishRegularRunsBeforeGraphCapture()) {
       CaptureEnd();
       // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
       // so run the captured graph here to actually execute the work.
       ORT_RETURN_IF_ERROR(graph_.Replay());
     } else {
-      ++cuda_graph_warmup_count_;
+      ++regular_run_count_before_graph_capture_;
     }
   }
   // record deferred release event on default stream, and release per_thread_context
@@ -380,8 +380,8 @@ Status CUDAExecutionProvider::SetComputeStream(void* stream) {
 }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-bool CUDAExecutionProvider::FinishWarmupForGraphCapture() const {
-  return cuda_graph_warmup_count_ >= DEFAULT_CUDA_GRAPH_WARMUP_RUNS;
+bool CUDAExecutionProvider::FinishRegularRunsBeforeGraphCapture() const {
+  return regular_run_count_before_graph_capture_ >= DEFAULT_REGULAR_RUNS_BEFORE_CUDA_GRAPH_CAPTURE;
 }
 
 
@@ -405,11 +405,10 @@ bool CUDAExecutionProvider::IsGraphCaptured() {
 }
 
 Status CUDAExecutionProvider::GraphReplay() {
-  if (!FinishWarmupForGraphCapture()) {
+  if (!FinishRegularRunsBeforeGraphCapture()) {
     return ORT_MAKE_STATUS(
       ONNXRUNTIME, FAIL,
-      "Warmup for CUDA graph capture is not finished yet. Please run at least " +
-      std::to_string(DEFAULT_CUDA_GRAPH_WARMUP_RUNS) + " warmup runs.");
+      "One regular run is required before graph capture.");
   }
   if (!IsGraphCaptured()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Graph is not captured yet.");
