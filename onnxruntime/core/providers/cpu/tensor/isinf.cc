@@ -5,7 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/data_types_internal.h"
-#include "core/framework/math_utils.h"
+#include "core/framework/math.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
 #include "core/providers/op_kernel_type_control.h"

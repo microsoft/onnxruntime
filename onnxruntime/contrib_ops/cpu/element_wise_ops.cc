@@ -3,7 +3,7 @@
 
 #include "contrib_ops/cpu/element_wise_ops.h"
 
-#include "core/framework/math_utils.h"
+#include "core/framework/math.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 
 namespace onnxruntime {
