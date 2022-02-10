@@ -55,12 +55,13 @@ class OrtTensorTests(unittest.TestCase):
     assert torch.allclose(ort_z.cpu(), cpu_z)
   
   def test_slice(self):
-    cpu_ones = torch.ones(10, 10)
+    cpu_ones = torch.ones((128, 256), dtype=torch.bfloat16)
     ort_ones = cpu_ones.to('ort')
-    y = ort_ones[2:, 3:]
+    y_cpu = cpu_ones[0:128, :128]
+    y = ort_ones[0:128, :128]
     assert y.is_contiguous() == False
-    assert y.size() == (8, 7)
-    assert y.stride() == (10, 1)
+    assert y.size() == (128, 128)
+    assert torch.allclose(y.cpu(), y_cpu)
 
 if __name__ == '__main__':
   unittest.main()

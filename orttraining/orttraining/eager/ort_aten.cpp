@@ -129,12 +129,19 @@ OrtValue create_ort_value(
   if (impl) {
     return impl->tensor();
   }
+  //todo: figure out correct memory info from aten device.
+  OrtMemoryInfo *cpu_info;
+  Ort::ThrowOnError(Ort::GetApi().CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &cpu_info));
 
+  auto element_type = ort_scalar_type_from_aten(tensor.scalar_type());
   OrtValue ort_tensor;
   CreateMLValue(
     tensor.data_ptr(),
-    ort_scalar_type_from_aten(tensor.scalar_type()),
+    *cpu_info,
+    element_type,
     tensor.sizes().vec(),
+    tensor.storage_offset() * element_type->Size(),
+    tensor.strides().vec(),
     &ort_tensor);
   return ort_tensor;
 }
@@ -396,7 +403,7 @@ at::Tensor as_strided(
 
   OrtValue ot;
   CreateMLValue(tensor->MutableDataRaw(), 
-                invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
+                invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault)->Info(),
                 tensor->DataType(),
                 dims_vec,
                 byte_offset,
@@ -622,7 +629,7 @@ at::Tensor slice_Tensor(
   
   OrtValue ot;
   CreateMLValue(ort_tensor->MutableDataRaw(), 
-                invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
+                invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault)->Info(),
                 ort_tensor->DataType(),
                 new_shape,
                 byte_offset,
