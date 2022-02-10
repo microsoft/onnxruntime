@@ -1089,6 +1089,20 @@ static void SetIntraOpThreadSpinning() {
     WINML_EXPECT_TRUE(allowSpinning);
  }
 
+ static void EditModelName() {
+   LearningModel model = nullptr;
+   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", model));
+   auto model_name = model.Name();
+   auto squeezenet_old = to_hstring("squeezenet_old");
+   WINML_EXPECT_EQUAL(model_name, squeezenet_old);
+
+   auto experimental_model = winml_experimental::LearningModelExperimental(model);
+   auto new_name = to_hstring("new name");
+   experimental_model.EditModelName(new_name);
+   model_name = model.Name();
+   WINML_EXPECT_EQUAL(model_name, new_name);
+ }
+
 
 const LearningModelSessionAPITestsApi& getapi() {
   static LearningModelSessionAPITestsApi api =
@@ -1123,6 +1137,7 @@ const LearningModelSessionAPITestsApi& getapi() {
     ModelBuilding_STFT,
     ModelBuilding_MelSpectrogramOnThreeToneSignal,
     ModelBuilding_MelWeightMatrix,
+    EditModelName
   };
 
   if (SkipGpuTests()) {
