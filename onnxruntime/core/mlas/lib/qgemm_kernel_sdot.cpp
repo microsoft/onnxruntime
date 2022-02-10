@@ -1028,6 +1028,7 @@ size_t MlasSymmQGemmKernel<MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT>(
 
 const MLAS_SYMM_QGEMM_DISPATCH MlasSymmQgemmS8DispatchSdot = {
     MlasSymmQGemmPackedOperation<MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT>,
+    MlasSymmQGemmPackedOperation<MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT>,
     MlasGemmQuantCopyPackB<MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT>,
     4,  // StrideM
     MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT::PackedK

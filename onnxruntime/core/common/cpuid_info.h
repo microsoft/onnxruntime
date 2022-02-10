@@ -34,6 +34,11 @@ class CPUIDInfo {
   // ARM 
   bool HasArmNeonDot() const { return has_arm_neon_dot_; }
 
+  /**
+   * @return CPU core micro-architecture running the current thread
+  */
+  int32_t GetCurrentUarch() const;
+
  private:
   CPUIDInfo();
   bool has_avx_{false};
