@@ -64,9 +64,14 @@ def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_s
     # load inputs
     input_shape = []
     loaded_inputs = []
+    
+    output = get_output(["find", "-L", os.getcwd(), "-name", "test_data*", "-type", "d"])
+    test_data_dir = split_and_sort_output(output)[0]
+
     for i in range(len(ort_inputs)):
         name = ort_inputs[i].name
-        loaded_input = name + ':' + str(i) + '.bin'
+        loaded_input = name + ':' + test_data_dir + '/' + str(i) + '.bin'
+        logger.info(loaded_input)
         shape = []
         for j in all_inputs_shape[i]:
             shape.append(str(j))
@@ -79,7 +84,7 @@ def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_s
     inputs_arg = '--loadInputs=' + ','.join(loaded_inputs)
     result = {}
     command = [trtexec, onnx_model_path, "--duration=50", "--percentile=90", "--workspace=4096"]
-    #command.extend([inputs_arg]) TODO: rebind IO inputs in TRT 8.2
+    command.extend([inputs_arg])
     
     # add benchmarking flags
     model = onnx.load(model_path)
@@ -998,11 +1003,17 @@ def run_onnxruntime(args, models):
             model_path = model_info["model_path"]
             test_data_dir = model_info["test_data_path"]
 
-            fp16 = False
-            os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1" if "Fp16" in ep else "0"
             logger.info("[Initialize]  model = {}, ep = {} ...".format(name, ep))
+
+            # Set environment variables for ort-trt benchmarking 
+            if "ORT-TRT" in ep:
+                os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1" if "Fp16" in ep else "0"
+                os.environ["ORT_TENSORRT_ENGINE_CACHE_ENABLE"] = "1"
+                os.environ["ORT_TENSORRT_MAX_WORKSPACE_SIZE"] = "4294967296"
            
-            # use float16.py for cuda fp16 only
+            fp16 = False
+            
+            # use float16.py for cuda fp16 only            
             if cuda_fp16 == ep: 
                 
                 # handle model
@@ -1041,7 +1052,7 @@ def run_onnxruntime(args, models):
                 if is_standalone(ep): 
                     providers = ep_to_provider_list[trt]
                 else: 
-                    providers = ep_to_provider_list[ep]
+                    providers = ep_to_provider_list[ep] 
 
                 options = onnxruntime.SessionOptions()
                 options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
