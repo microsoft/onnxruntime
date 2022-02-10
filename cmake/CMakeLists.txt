@@ -349,6 +349,7 @@ if (onnxruntime_MINIMAL_BUILD)
     # enable runtime optimizations. These are required for NNAPI.
     # TODO remove onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD since these optimzations are now
     # enabled for all extended minimal builds.
+    SET(onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD ON)
     add_compile_definitions(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   endif()
 
