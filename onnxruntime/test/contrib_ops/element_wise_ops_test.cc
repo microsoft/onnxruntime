@@ -146,7 +146,6 @@ TEST(BiasGeluTest, Two_One_Dim_fp16) {
 }
 #endif
 
-// failed test for CUDA (therefore ROCM as well) to be investigated 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(BiasGeluTest, Two_One_Dim_bfloat16) {
 #ifdef USE_CUDA
