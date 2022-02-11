@@ -12,7 +12,7 @@ struct LearningModelExperimental : LearningModelExperimentalT<LearningModelExper
 
     void Save(hstring const& file_name);
 
-    void EditModelName(hstring const& model_name);
+    void SetName(hstring const& model_name);
 
 private:
     Microsoft::AI::MachineLearning::LearningModel model_;

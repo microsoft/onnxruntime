@@ -34,7 +34,7 @@ struct LearningModelSessionAPITestsApi {
   VoidTest ModelBuilding_STFT;
   VoidTest ModelBuilding_MelSpectrogramOnThreeToneSignal;
   VoidTest ModelBuilding_MelWeightMatrix;
-  VoidTest EditModelName;
+  VoidTest SetName;
 };
 const LearningModelSessionAPITestsApi& getapi();
 
@@ -70,5 +70,5 @@ WINML_TEST(LearningModelSessionAPITests, ModelBuilding_BlackmanWindow)
 WINML_TEST(LearningModelSessionAPITests, ModelBuilding_STFT)
 WINML_TEST(LearningModelSessionAPITests, ModelBuilding_MelSpectrogramOnThreeToneSignal)
 WINML_TEST(LearningModelSessionAPITests, ModelBuilding_MelWeightMatrix)
-WINML_TEST(LearningModelSessionAPITests, EditModelName)
+WINML_TEST(LearningModelSessionAPITests, SetName)
 WINML_TEST_CLASS_END()
