@@ -237,10 +237,10 @@ def end_memory_tracking(p, success):
     return mem_usage
 
 def inference_ort_with_ep(ep, session, repeat_times, sess_outputs, sess_inputs, io_binding):
-    if cpu in ep: 
-        runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
-    else: # other eps utilize python binding 
-        runtime = timeit.repeat(lambda: session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
+    #if cpu in ep: 
+    runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
+    #else: # other eps utilize python binding 
+    #    runtime = timeit.repeat(lambda: session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
     success = True
     return runtime, success
 
