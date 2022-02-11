@@ -497,7 +497,8 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Scan,
                                    9,
                                    10,
                                    KernelDefBuilder()
-                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                       // 'I' is in the ONNX spec but is not actually used for any inputs or outputs
+                                       //.TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                                        .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                                    Scan<9>);
 
@@ -505,7 +506,8 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Scan,
 ONNX_CPU_OPERATOR_KERNEL(Scan,
                          11,
                          KernelDefBuilder()
-                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                             // 'I' is in the ONNX spec but is not actually used for any inputs or outputs
+                             //.TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                              .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
                          Scan<9>);
 }  // namespace onnxruntime

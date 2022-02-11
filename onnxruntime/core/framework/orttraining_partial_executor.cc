@@ -22,7 +22,7 @@
 #ifdef ENABLE_NVTX_PROFILE
 // This header is for profile using Nvidia's visual profilier.
 #include "core/providers/cuda/nvtx_profile.h"
-#include "core/profile/context.h"
+#include "core/providers/cuda/nvtx_profile_context.h"
 #endif
 
 // #define TRACE_EXECUTION
@@ -292,7 +292,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
       }
     }
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    dump_context.program_counter = program_counter; 
+    dump_context.program_counter = program_counter;
     utils::DumpNodeInputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 

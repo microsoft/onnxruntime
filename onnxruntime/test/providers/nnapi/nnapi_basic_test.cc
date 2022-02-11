@@ -271,7 +271,9 @@ TEST(NnapiExecutionProviderTest, TestNoShapeInputModel) {
       << "No node should be taken by the NNAPI EP";
 }
 
-static void RunQDQModelTest(const GetQDQTestCaseFn& build_test_case, const char* test_description) {
+static void RunQDQModelTest(const GetQDQTestCaseFn& build_test_case,
+                            const char* test_description,
+                            const EPVerificationParams& params = EPVerificationParams()) {
   onnxruntime::Model model(test_description, false, DefaultLoggingManager().DefaultLogger());
   Graph& graph = model.MainGraph();
   ModelTestBuilder helper(graph);
@@ -286,7 +288,7 @@ static void RunQDQModelTest(const GetQDQTestCaseFn& build_test_case, const char*
 #if defined(__ANDROID__)
   RunAndVerifyOutputsWithEP(model_data, "NnapiExecutionProviderTest.TestQDQModel",
                             std::make_unique<NnapiExecutionProvider>(0),
-                            helper.feeds_);
+                            helper.feeds_, params);
 #else
   // test load only
   SessionOptions so;
@@ -306,7 +308,8 @@ TEST(NnapiExecutionProviderTest, TestQDQConv) {
                                        uint8_t /* OutputType */>(
                       {1, 1, 5, 5} /*input_shape*/,
                       {1, 1, 3, 3} /*weights_shape*/),
-                  "nnapi_qdq_test_graph_conv");
+                  "nnapi_qdq_test_graph_conv",
+                  {true /* verify_entire_graph_use_ep */});
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQResize) {
@@ -316,14 +319,44 @@ TEST(NnapiExecutionProviderTest, TestQDQResize) {
                                          {1, 3, 32, 32} /* sizes_data */,
                                          "linear" /* mode */,
                                          "asymmetric" /* coordinate_transformation_mode */),
-                  "nnapi_qdq_test_graph_resize");
+                  "nnapi_qdq_test_graph_resize",
+                  {true /* verify_entire_graph_use_ep */});
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQAveragePool) {
+  // NNAPI use different rounding, which may cause ~1% difference in the result
   RunQDQModelTest(BuildQDQAveragePoolTestCase<uint8_t /* InputType */,
                                               uint8_t /* OutputType */>(
                       {1, 3, 32, 32} /* input_shape */),
-                  "nnapi_qdq_test_graph_averagepool");
+                  "nnapi_qdq_test_graph_averagepool",
+                  {
+                      true /* verify_entire_graph_use_ep */,
+                      1e-2f /* fp32_abs_err */,
+                  });
+}
+
+TEST(NnapiExecutionProviderTest, TestQDQAdd) {
+  RunQDQModelTest(BuildBinaryOpTestCase<uint8_t /* Input1Type */,
+                                        uint8_t /* Input2Type */,
+                                        uint8_t /* OutputType */>(
+                      {1, 23, 13, 13} /* input_shape */,
+                      "Add" /* op_type */),
+                  "nnapi_qdq_test_graph_add",
+                  {true /* verify_entire_graph_use_ep */});
+}
+
+TEST(NnapiExecutionProviderTest, TestQDQMul) {
+  // NNAPI use different rounding, which may cause ~1% difference in the result
+  RunQDQModelTest(BuildBinaryOpTestCase<uint8_t /* Input1Type */,
+                                        uint8_t /* Input2Type */,
+                                        uint8_t /* OutputType */>(
+                      {1, 23, 13, 13} /* input_shape */,
+                      "Mul" /* op_type */),
+                  "nnapi_qdq_test_graph_mul",
+                  {
+                      true /* verify_entire_graph_use_ep */,
+                      1e-2f /* fp32_abs_err */,
+                  });
 }
 
 #endif  // !(ORT_MINIMAL_BUILD)

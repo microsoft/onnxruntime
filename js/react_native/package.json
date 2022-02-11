@@ -3,7 +3,7 @@
   "module": "dist/module/index",
   "jest": {
     "modulePathIgnorePatterns": [
-      "<rootDir>/example/node_modules",
+      "<rootDir>/e2e/node_modules",
       "<rootDir>/dist/"
     ],
     "preset": "react-native"
@@ -52,7 +52,11 @@
     "!dist/module/*.js.map",
     "!android/.gitignore",
     "!android/.idea",
-    "!android/build"
+    "!android/build",
+    "!android/gradlew",
+    "!android/gradlew.bat",
+    "!android/gradle/wrapper/*.jar",
+    "!android/libs"
   ],
   "description": "Onnxruntime bridge for react native",
   "repository": "https://github.com/Microsoft/onnxruntime.git",
@@ -77,11 +81,16 @@
   "scripts": {
     "typescript": "tsc --noEmit",
     "prepare": "bob build",
-    "bootstrap": "yarn example && yarn && yarn pods",
+    "bootstrap": "yarn pack-common && yarn unpack-common && yarn pack-libs && yarn unpack-libs && yarn e2e && yarn pods",
     "test": "jest",
-    "prepack": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack",
-    "pods": "cd example && pod-install --quiet",
-    "example": "yarn --cwd example"
+    "pack-common": "cd ../common && npm pack && mv -f onnxruntime-common-*.tgz ../react_native/e2e/onnxruntime-common.tgz",
+    "unpack-common": "cd e2e && yarn add --no-lockfile file:./onnxruntime-common.tgz",
+    "pack-libs": "yarn prepack-e2e && npm pack && mv -f onnxruntime-react-native-*.tgz e2e/onnxruntime-react-native.tgz",
+    "unpack-libs": "cd e2e && yarn add --no-lockfile file:./onnxruntime-react-native.tgz",
+    "prepack-rel": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack",
+    "prepack-e2e": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack-e2e",
+    "pods": "cd e2e && pod-install --quiet",
+    "e2e": "yarn --cwd e2e"
   },
   "types": "dist/typescript/index.d.ts",
   "name": "onnxruntime-react-native",

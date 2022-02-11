@@ -7,21 +7,20 @@
 
 namespace onnxruntime {
 namespace cuda {
-#define REGISTER_VERSIONED_TYPED_SLICE(TIND)                            \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                              \
-      Slice,                                                            \
-      kOnnxDomain,                                                      \
-      1, 9,                                                             \
-      TIND,                                                             \
-      kCudaExecutionProvider,                                           \
-      (*KernelDefBuilder::Create())                                     \
-          .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()) \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
+// this really doesn't need to be a typed registration as the indices come from attributes and can only be int64.
+// leaving as in maintain original incorrect registration setup (pre 02/2022).
+#define REGISTER_VERSIONED_TYPED_SLICE(TIND)                             \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                               \
+      Slice,                                                             \
+      kOnnxDomain,                                                       \
+      1, 9,                                                              \
+      TIND,                                                              \
+      kCudaExecutionProvider,                                            \
+      (*KernelDefBuilder::Create())                                      \
+          .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()), \
       Slice<false>);
 
-REGISTER_VERSIONED_TYPED_SLICE(int32_t)
 REGISTER_VERSIONED_TYPED_SLICE(int64_t)
-REGISTER_VERSIONED_TYPED_SLICE(float)
 
 #define REGISTER_V10_TYPED_SLICE(TIND)                                  \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                              \
