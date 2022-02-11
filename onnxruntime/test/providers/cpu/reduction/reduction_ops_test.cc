@@ -1535,9 +1535,10 @@ TEST(ReductionOpTest, ReduceSumBFloat16) {
 #endif
 
 // on CUDA - this UT, with axes {0,2}, will go thru cudnn lib only if ATenOp is not initialized
-// on ROCM - miopen call succeeded, but results in data error, pending investigation ...
+// on ROCM - miopen call succeeded, but results in data error, thus follow the same logic done in cudnn for now
+// TODO - try ROCm 4.5.2 and/or double check the source code on BFloat16 support 
 #if defined(USE_CUDA) || defined(USE_ROCM)
-TEST(ReductionOpTest, DISABLED_ReduceSumBFloat16_2) {
+TEST(ReductionOpTest, ReduceSumBFloat16_2) {
   OpTester test("ReduceSum", 14);
   test.AddAttribute("keepdims", (int64_t)0);
   test.AddInput<BFloat16>("data", {3, 2, 2},
