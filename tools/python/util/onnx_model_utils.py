@@ -61,10 +61,9 @@ def update_onnx_opset(model_path: pathlib.Path, opset: int, out_path: pathlib.Pa
                       logger: logging.Logger = None):
     """
     Helper to update the opset of a model using onnx version_converter. Target opset must be greater than current opset.
-    Model is saved to the original location with the '.onnx' extension replaced with '.opset<opset>.onnx'.
     :param model_path: Path to model to update
     :param opset: Opset to update model to
-    :param out_path: Optional output path for updated model.
+    :param out_path: Optional output path for updated model to be saved to.
     :param logger: Optional logger for diagnostic output
     :returns: Updated onnx.ModelProto
     """
@@ -80,7 +79,7 @@ def update_onnx_opset(model_path: pathlib.Path, opset: int, out_path: pathlib.Pa
     if out_path:
         onnx.save(new_model, str(out_path))
         if logger:
-            logger.info("Saved updated model to %s", model_path)
+            logger.info("Saved updated model to %s", out_path)
 
     return new_model
 
@@ -135,7 +134,7 @@ def make_dim_param_fixed(graph: onnx.GraphProto, param_name: str, value: int):
     iterate_graph_per_graph_func(graph, _replace_symbolic_dim_value, dim_param=param_name, value=value)
 
 
-def make_input_shape_fixed(graph: onnx.GraphProto, input_name, fixed_shape: [int]):
+def make_input_shape_fixed(graph: onnx.GraphProto, input_name: str, fixed_shape: [int]):
     '''
     Update the named graph input to set shape to the provided value. This can be used to set unknown dims as well
     as to replace dim values.
@@ -150,14 +149,13 @@ def make_input_shape_fixed(graph: onnx.GraphProto, input_name, fixed_shape: [int
             if not i.type.HasField("tensor_type"):
                 raise ValueError(f'Input {input_name} is not a tensor')
 
-            # graph input are required to have a shape to provide the rank
+            # graph inputs are required to have a shape to provide the rank
             shape = i.type.tensor_type.shape
             if len(shape.dim) != len(fixed_shape):
                 raise ValueError(
                     f'Rank mismatch. Existing:{len(shape.dim)} Replacement:{len(fixed_shape)}')
 
-            idx = 0
-            for dim in shape.dim:
+            for idx, dim in enumerate(shape.dim):
                 # check any existing fixed dims match
                 if dim.HasField('dim_value'):
                     if dim.dim_value != fixed_shape[idx]:
@@ -171,8 +169,6 @@ def make_input_shape_fixed(graph: onnx.GraphProto, input_name, fixed_shape: [int
                     # replacing an unknown dim
                     dim.Clear()
                     dim.dim_value = fixed_shape[idx]
-
-                idx += 1
 
             return
 

@@ -14,7 +14,7 @@ from .mobile_helpers import check_model_can_use_ort_mobile_pkg, usability_checke
 def check_usability():
     parser = argparse.ArgumentParser(
         description='''Analyze an ONNX model to determine how well it will work in mobile scenarios, and whether
-        it is likely to be able to use the pre-build ONNX Runtime Mobile Android or iOS package.''',
+        it is likely to be able to use the pre-built ONNX Runtime Mobile Android or iOS package.''',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument('--config_path',

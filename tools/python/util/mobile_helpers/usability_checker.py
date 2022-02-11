@@ -106,7 +106,7 @@ class PartitioningInfo:
 
         return PartitioningInfo.TryWithEP.NO
 
-    def analyze_info(self, logger: logging.Logger, ep_name: str):
+    def dump_analysis(self, logger: logging.Logger, ep_name: str):
         '''
         Analyze the partitioning information and log the analysis
         :param logger: Logger to use
@@ -141,26 +141,27 @@ class PartitioningInfo:
 
         pct_nodes_using_ep = self.num_supported_nodes / num_nodes * 100
         if self.num_partitions == 0:
-            logger.info(f"{ep_name} can not run any nodes in this model.")
+            logger.info(f"{ep_name} cannot run any nodes in this model.")
         elif self.num_partitions == 1:
             if pct_nodes_using_ep > 75:
                 logger.info(f"{ep_name} should work well for this model as there is one partition "
-                            f"covering {pct_nodes_using_ep}% of the nodes in the model.")
+                            f"covering {pct_nodes_using_ep:.1f}% of the nodes in the model.")
             elif pct_nodes_using_ep > 50:
                 logger.info(
-                    f"{ep_name} may work well for this model, however only {pct_nodes_using_ep}% of nodes will use it. "
-                    "Performance testing is required to validate.")
+                    f"{ep_name} may work well for this model, however only {pct_nodes_using_ep:.1f}% of nodes "
+                    "will use it. Performance testing is required to validate.")
             else:
                 logger.info(
-                    f"{ep_name} will probably not work will for this model as only {pct_nodes_using_ep}% "
+                    f"{ep_name} will probably not work will for this model as only {pct_nodes_using_ep:.2f}% "
                     "of nodes will use it.")
 
         elif self.num_partitions == 2 and pct_nodes_using_ep > 75:
             logger.info(f"{ep_name} can be considered for this model as there are two partitions "
-                        f"covering {pct_nodes_using_ep}% of the nodes. Performance testing is required to validate.")
+                        f"covering {pct_nodes_using_ep:.1f}% of the nodes. "
+                        "Performance testing is required to validate.")
         else:
             logger.info(f"{ep_name} is not recommended with this model as there are {self.num_partitions} partitions "
-                        f"covering {pct_nodes_using_ep}% of the nodes in the model. "
+                        f"covering {pct_nodes_using_ep:.1f}% of the nodes in the model. "
                         "This will most likely result in worse performance than just using the CPU EP.")
 
 
@@ -233,12 +234,12 @@ def check_partitioning(graph: onnx.GraphProto, supported_ops_checker: _Supported
     # currently we don't support checking subgraphs in the partitioning as they're not handled by NNAPI/CoreML.
     # check how many nodes are in that blind spot so we can adjust the recommendation accordingly.
     # note: need to pass count in an array so that it's by reference
-    def _count_subraph_nodes(cur_graph: onnx.GraphProto, original_graph: onnx.GraphProto, count: [int]):
+    def _count_subgraph_nodes(cur_graph: onnx.GraphProto, original_graph: onnx.GraphProto, count: [int]):
         if cur_graph != original_graph:
             count[0] += len(cur_graph.node)
 
     nodes_in_subgraphs = [0]  # array with single value
-    iterate_graph_per_graph_func(graph, _count_subraph_nodes, original_graph=graph, count=nodes_in_subgraphs)
+    iterate_graph_per_graph_func(graph, _count_subgraph_nodes, original_graph=graph, count=nodes_in_subgraphs)
 
     supported_group = []
     # the partition node group's border is the aggregate of its nodes' output nodes
@@ -450,7 +451,7 @@ def checker(model_path, logger: logging.Logger):
     for v in model_with_shape_info.graph.value_info:
         value_to_shape[v.name] = v
 
-    has_dynamic_shapes = check_shapes(model_with_shape_info.graph)
+    dynamic_inputs, num_dynamic_values = check_shapes(model_with_shape_info.graph)
 
     def check_ep(ep_name, checker_func):
         logger.info(f"Checking {ep_name}")
@@ -458,19 +459,18 @@ def checker(model_path, logger: logging.Logger):
         # check with shape info first so supported nodes takes into account values with dynamic shapes
         partition_info = checker_func(model_with_shape_info, value_to_shape)
         if logger.getEffectiveLevel() <= logging.DEBUG:
-            # analyze and log detailed info
-            partition_info.analyze_info(logger, ep_name)
+            partition_info.dump_analysis(logger, ep_name)
 
         suitability = partition_info.suitability()
         logger.info(f"Model should perform well with {ep_name} as is: {suitability.name}")
 
-        if suitability != PartitioningInfo.TryWithEP.YES and has_dynamic_shapes:
+        if suitability != PartitioningInfo.TryWithEP.YES and dynamic_inputs:
             logger.info("Checking if model will perform better if the dynamic shapes are fixed...")
             partition_info_with_fixed_shapes = checker_func(model_with_shape_info)
             if logger.getEffectiveLevel() <= logging.DEBUG:
                 # analyze and log detailed info
                 logger.info('Partition information if the model was updated to make the shapes fixed:')
-                partition_info_with_fixed_shapes.analyze_info(logger, ep_name)
+                partition_info_with_fixed_shapes.dump_analysis(logger, ep_name)
 
             fixed_shape_suitability = partition_info_with_fixed_shapes.suitability()
             logger.info(f"Model should perform well with {ep_name} if modified to have fixed input shapes: "
@@ -503,6 +503,10 @@ def analyze_model(model_path: pathlib.Path, skip_optimize: bool = False, logger:
     :param logger: Logger for output
     :return: True if either the NNAPI or CoreML Execution Providers may work well with this model.
     '''
+    if not logger:
+        logger = logging.getLogger('usability_checker')
+        logger.setLevel(logging.INFO)
+
     logger.info(f'Checking {model_path} for usability with ORT Mobile.')
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -510,10 +514,6 @@ def analyze_model(model_path: pathlib.Path, skip_optimize: bool = False, logger:
             tmp_path = pathlib.Path(tmp) / model_path.name
             optimize_model(model_path, tmp_path)
             model_path = tmp_path
-
-        if not logger:
-            logger = logging.getLogger('usability_checker')
-            logger.setLevel(logging.INFO)
 
         try_eps = checker(str(model_path.resolve(strict=True)), logger)
 

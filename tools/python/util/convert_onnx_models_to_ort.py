@@ -23,17 +23,16 @@ def _onnx_model_path_to_ort_model_path(onnx_model_path: pathlib.Path, optimizati
     return onnx_model_path.with_suffix(".{}.ort".format(optimization_level_str))
 
 
-def _create_config_file_from_ort_models(onnx_model_path_or_dir: pathlib.Path, optimization_level_str: str,
-                                        enable_type_reduction: bool,
-                                        optimization_level: str):
+def _create_config_file_from_ort_models(onnx_model_path_or_dir: pathlib.Path, optimization_level: str,
+                                        enable_type_reduction: bool):
     if onnx_model_path_or_dir.is_dir():
         # model directory
         model_path_or_dir = onnx_model_path_or_dir
         config_path = None  # default path in model directory
     else:
         # single model
-        model_path_or_dir = _onnx_model_path_to_ort_model_path(onnx_model_path_or_dir, optimization_level_str)
-        suffix = f'.{optimization_level}.config' if optimization_level else '.config'
+        model_path_or_dir = _onnx_model_path_to_ort_model_path(onnx_model_path_or_dir, optimization_level)
+        suffix = f'.{optimization_level}.config'
         config_suffix = ".{}{}".format(
             'required_operators_and_types' if enable_type_reduction else 'required_operators', suffix)
         config_path = model_path_or_dir.with_suffix(config_suffix)
@@ -172,8 +171,8 @@ def parse_args():
                              "These map to the onnxruntime.GraphOptimizationLevel values. "
                              "If the level is 'all' the NCHWc transformer is manually disabled as it contains device "
                              "specific logic, so the ORT format model must be generated on the device it will run on. "
-                             "Additionally, the NCHWc optimizations are not applicable to ARM devices."
-                             "Multiple values can be provided. A model produced with 'all' is optimal for usage with"
+                             "Additionally, the NCHWc optimizations are not applicable to ARM devices. "
+                             "Multiple values can be provided. A model produced with 'all' is optimal for usage with "
                              "just the CPU Execution Provider. A model produced with 'basic' is required for usage "
                              "with the NNAPI or CoreML Execution Providers. "
                              "The filename for the ORT format model will contain the optimization level that was used "
@@ -234,8 +233,7 @@ def convert_onnx_models_to_ort():
         _convert(model_path_or_dir, optimization_level, args.use_nnapi, args.use_coreml, custom_op_library,
                  args.save_optimized_onnx_model, args.allow_conversion_failures, session_options_config_entries)
 
-        _create_config_file_from_ort_models(model_path_or_dir, optimization_level, args.enable_type_reduction,
-                                            optimization_level)
+        _create_config_file_from_ort_models(model_path_or_dir, optimization_level, args.enable_type_reduction)
 
 
 if __name__ == '__main__':

@@ -79,7 +79,7 @@ class TestAnalyzer(unittest.TestCase):
                 ('default', 'INFO', 'Model should perform well with NNAPI as is: NO'),
                 ('default', 'INFO', 'Model should perform well with NNAPI if modified to have fixed input shapes: YES'),
                 ('default', 'INFO', '0 partitions with a total of 0/1 nodes can be handled by the CoreML EP.'),
-                ('default', 'INFO', 'CoreML can not run any nodes in this model.'),
+                ('default', 'INFO', 'CoreML cannot run any nodes in this model.'),
                 ('default', 'INFO', 'Model should perform well with CoreML as is: NO'),
                 ('default', 'INFO', 'Model should perform well with CoreML if modified to have fixed input shapes: NO')
             )
@@ -99,7 +99,8 @@ class TestAnalyzer(unittest.TestCase):
                 ('default', 'INFO', 'Partition sizes: [5, 4, 8]'),
                 ('default', 'INFO', 'Unsupported ops: ai.onnx:Gather,ai.onnx:ReduceProd,ai.onnx:ReduceSum,'
                                     'ai.onnx:Shape,ai.onnx:Unsqueeze'),
-                ('default', 'INFO', 'NNAPI is not recommended with this model as there are 3 partitions. '
+                ('default', 'INFO', 'NNAPI is not recommended with this model as there are 3 partitions '
+                                    'covering 37.0% of the nodes in the model. '
                                     'This will most likely result in worse performance than just using the CPU EP.'),
                 ('default', 'INFO', 'Model should perform well with NNAPI as is: NO'),
                 ('default', 'INFO', 'Partition information if the model was updated to make the shapes fixed:'),
