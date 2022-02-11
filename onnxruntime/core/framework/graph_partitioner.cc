@@ -141,13 +141,13 @@ static Status TransformLayout(Graph& graph, bool& modified,
       }
 
       // Skip if unknown rank
-      auto shape = NodeFromApiNode(*node).InputDefs()[0]->Shape();
-      if (shape == nullptr) {
+      auto shape = api_graph->GetValueInfo(node->Inputs()[0])->Shape();
+      if (!shape.has_value()) {
         continue;
       }
 
       // Convert to channels last
-      size_t rank = shape->dim_size();
+      size_t rank = shape->size();
 
       bool has_channel_last_attr = node->GetAttributeInt("channels_last").has_value() ? true : false;
       if (has_channel_last_attr) {

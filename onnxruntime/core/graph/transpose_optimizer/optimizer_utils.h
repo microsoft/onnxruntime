@@ -6,9 +6,6 @@
 #include "optimizer_api.h"
 #include "core/graph/graph.h"
 
-using namespace ONNX_NAMESPACE;
-using namespace ::onnxruntime::common;
-
 namespace onnxruntime {
 class IAllocator;
 
