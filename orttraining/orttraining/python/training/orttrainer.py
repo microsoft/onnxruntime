@@ -679,7 +679,7 @@ class ORTTrainer(object):
         del self._training_session
         # Set provider-specific options if needed
         def get_providers(provider_options):
-            providers = ort.get_available_providers()
+            providers = []
             if provider_options:
                 for provider_name in provider_options:
                     if provider_name in providers:
