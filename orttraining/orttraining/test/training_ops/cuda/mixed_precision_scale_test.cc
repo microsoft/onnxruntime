@@ -22,13 +22,13 @@ struct MixedPrecisionScaleInputOutput {
 
     input1_bf16.resize(input1.size());
     output1_bf16.resize(output1.size());
-    std::vector<BFloat16> input1_bf16 = FloatsToBFloat16s(input1);
-    std::vector<BFloat16> output1_bf16 = FloatsToBFloat16s(output1);
+    input1_bf16 = FloatsToBFloat16s(input1);
+    output1_bf16 = FloatsToBFloat16s(output1);
 
     input2_bf16.resize(input2.size());
     output2_bf16.resize(output2.size());
-    std::vector<BFloat16> input2_bf16 = FloatsToBFloat16s(input2);
-    std::vector<BFloat16> output2_bf16 = FloatsToBFloat16s(output2);
+    input2_bf16 = FloatsToBFloat16s(input2);
+    output2_bf16 = FloatsToBFloat16s(output2);
   }
 
   // Fp32 Inputs/Output
@@ -172,8 +172,7 @@ TEST(CudaKernelTest, MixedPrecisionScale_bfloat16_bfloat16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-// failed with data error, disabled for now 
-TEST(CudaKernelTest, DISABLED_MixedPrecisionScale_float_bfloat16) {
+TEST(CudaKernelTest, MixedPrecisionScale_float_bfloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
@@ -197,7 +196,7 @@ TEST(CudaKernelTest, DISABLED_MixedPrecisionScale_float_bfloat16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-TEST(CudaKernelTest, DISABLED_MixedPrecisionScale_bfloat16_float) {
+TEST(CudaKernelTest, MixedPrecisionScale_bfloat16_float) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
@@ -221,7 +220,7 @@ TEST(CudaKernelTest, DISABLED_MixedPrecisionScale_bfloat16_float) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-TEST(CudaKernelTest, DISABLED_MixedPrecisionScale_half_bfloat16) {
+TEST(CudaKernelTest, MixedPrecisionScale_half_bfloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
@@ -245,7 +244,7 @@ TEST(CudaKernelTest, DISABLED_MixedPrecisionScale_half_bfloat16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-TEST(CudaKernelTest, DISABLED_MixedPrecisionScale_bfloat16_half) {
+TEST(CudaKernelTest, MixedPrecisionScale_bfloat16_half) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
