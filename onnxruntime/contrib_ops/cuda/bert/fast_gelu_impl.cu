@@ -99,7 +99,6 @@ bool LaunchFastGeluKernel(const cudaDeviceProp& prop, cudaStream_t stream, int i
 
   // remove nv_bfloat162 implementation for now to fix build issue
   // we can decide whether to add it back if there's perf concern 
-
   const int gridSize = (input_length + blockSize - 1) / blockSize;
   FastGeluKernel<BFloat16, blockSize>
       <<<gridSize, blockSize, 0, stream>>>(A, B, C, input_length, bias_length, input, bias, output);
