@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/graph/transpose_optimizer/optimizer_api.h"
-#include "core/graph/transpose_optimizer/optimizer_utils.h"
+#include "core/framework/transpose_optimizer/optimizer_api.h"
+#include "core/framework/transpose_optimizer/optimizer_utils.h"
 #include <deque>
 #include "core/graph/graph_utils.h"
 #include "core/framework/tensorprotoutils.h"

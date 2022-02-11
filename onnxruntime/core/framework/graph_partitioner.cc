@@ -12,8 +12,8 @@
 #include "core/framework/execution_providers.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/func_kernel.h"
-#include "core/graph/transpose_optimizer/optimizer_utils.h"
-#include "core/graph/transpose_optimizer/optimizer_api.h"
+#include "core/framework/transpose_optimizer/optimizer_utils.h"
+#include "core/framework/transpose_optimizer/optimizer_api.h"
 
 // uncomment this line to count non-CUDA ops in ONNX domain
 //#define COUNT_NON_CUDA_OPS

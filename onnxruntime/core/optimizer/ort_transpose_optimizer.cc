@@ -7,7 +7,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
-#include "core/graph/transpose_optimizer/optimizer_utils.h"
+#include "core/framework/transpose_optimizer/optimizer_utils.h"
 #include "core/providers/cpu/tensor/transpose.h"
 
 using namespace ONNX_NAMESPACE;

@@ -13,7 +13,7 @@
 #include "core/graph/model.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/graph/transpose_optimizer/optimizer_utils.h"
+#include "core/framework/transpose_optimizer/optimizer_utils.h"
 
 #include <queue>
 
