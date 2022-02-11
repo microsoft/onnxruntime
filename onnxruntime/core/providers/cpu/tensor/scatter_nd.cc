@@ -131,9 +131,9 @@ Status PrepareForCompute(OpKernelContext* context, Prepare<TData>& p) {
 
   auto output_tensor = context->Output(0, input_shape);
 
-  const bool is_string_type = input_tensor->IsDataTypeString();
   const auto* src_base = input_tensor->template Data<TData>();
   auto* dst_base = output_tensor->template MutableData<TData>();
+  const bool is_string_type = input_tensor->IsDataTypeString();
 
   auto last_indice_dimension = indice_shape[indice_shape.NumDimensions() - 1];
 
@@ -145,7 +145,7 @@ Status PrepareForCompute(OpKernelContext* context, Prepare<TData>& p) {
       auto* dst = output_tensor->template MutableData<std::string>();
       std::copy(str_begin, str_end, dst);
     } else {
-      memcpy(dst_base, src_base, input_tensor->SizeInBytes());
+      memcpy((void*)dst_base, (const void*)src_base, input_tensor->SizeInBytes());
     }
   }
 

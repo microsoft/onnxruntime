@@ -623,7 +623,7 @@ void RegisterTrainingOpSchemas() {
             int64_t axis = (axis_attr != nullptr) ? axis_attr->i() : 1;
 
             // First, convert axis specification k to reduction axes [k, k+1, ..., n-1]
-            OrtFunctionBuilder builder(functionProto);
+            FunctionBuilder builder(functionProto);
             builder
                 .AddOpset("", 13)
                 .Const("one", int64_t(1))
@@ -2094,16 +2094,16 @@ Example 4:
             auto* tp = ctx.getInputType(0);
             if ((tp == nullptr) || (!tp->has_tensor_type()))
               return false;
-            auto elem_type = tp->tensor_type().elem_type();
+            auto elem_type = (TensorProto_DataType)(tp->tensor_type().elem_type());
             double kAlpha = M_2_SQRTPI * M_SQRT1_2 * 0.5;
-            OrtFunctionBuilder builder(functionProto);
+            FunctionBuilder builder(functionProto);
             builder
                 .AddOpset("", 13)
-                .Const("C_Half", 0.5f, elem_type)
-                .Const("C_One", 1.0f, elem_type)
-                .Const("C_SqrtHalf", float(M_SQRT1_2), elem_type)
-                .Const("C_MinusHalf", -0.5f, elem_type)
-                .Const("C_alpha", kAlpha, elem_type)
+                .Const("C_Half", ToTensor(0.5f, elem_type))
+                .Const("C_One", ToTensor(1.0f, elem_type))
+                .Const("C_SqrtHalf", ToTensor(float(M_SQRT1_2), elem_type))
+                .Const("C_MinusHalf", ToTensor(-0.5f, elem_type))
+                .Const("C_alpha", ToTensor(kAlpha, elem_type))
                 .Add(R"(
                     ErfArg = Mul (X, C_SqrtHalf) 
                     ErfTerm = Erf (ErfArg) 
@@ -2219,7 +2219,7 @@ Example 4:
       })
       .SetContextDependentFunctionBodyBuilder(
           [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
-            OrtFunctionBuilder builder(functionProto);
+            FunctionBuilder builder(functionProto);
 
             auto* tp = ctx.getInputType(0);
             if ((tp == nullptr) || (!tp->has_tensor_type()))
@@ -2776,14 +2776,14 @@ Return true if all elements are true and false otherwise.
             static constexpr double kAlpha = M_2_SQRTPI * M_SQRT1_2;
             static constexpr double kGamma = 0.044715f;
             static constexpr double kBeta = kGamma * kAlpha * 3.0f;
-            OrtFunctionBuilder builder(functionProto);
+            FunctionBuilder builder(functionProto);
             builder
                 .AddOpset("", 13)
-                .Const("half", 0.5f, elem_type)
-                .Const("one", 1.0f, elem_type)
-                .Const("alpha", kAlpha, elem_type)
-                .Const("gamma", kGamma, elem_type)
-                .Const("beta", kBeta, elem_type)
+                .Const("half", ToTensor(0.5f, elem_type))
+                .Const("one", ToTensor(1.0f, elem_type))
+                .Const("alpha", ToTensor(kAlpha, elem_type))
+                .Const("gamma", ToTensor(kGamma, elem_type))
+                .Const("beta", ToTensor(kBeta, elem_type))
                 .Add(R"ONNX(
                   x_square = Mul (X, X)
                   x_cube = Mul (X, x_square)
