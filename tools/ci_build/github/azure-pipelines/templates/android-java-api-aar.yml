@@ -20,7 +20,7 @@ parameters:
   default: ''
 
 - name: job_name_suffix
-  displayName: job name
+  displayName: Job name
   type: string
   default: ''
 
@@ -30,12 +30,17 @@ parameters:
   type: string
   default: '0'
 
+- name: pool_name
+  displayName: Pool name
+  type: string
+  default: 'Linux-CPU'
+
 jobs:
 - job: Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}
   timeoutInMinutes: 120
   workspace:
     clean: all
-  pool: Linux-CPU
+  pool: ${{parameters.pool_name}}
 
   variables:
     artifacts_directory: $(Build.BinariesDirectory)/.artifacts
