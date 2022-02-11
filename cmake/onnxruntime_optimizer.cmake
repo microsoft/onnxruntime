@@ -37,8 +37,11 @@ if (onnxruntime_MINIMAL_BUILD)
       "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.cc"
 
-      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimizer/*.h"
-      "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimizer/*.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/ort_transpose_optimizer.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/ort_transpose_optimizer.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/ort_transpose_optimizer_api_impl.cc"
+      "${ONNXRUNTIME_ROOT}/core/graph/transpose_optimizer/*.h"
+      "${ONNXRUNTIME_ROOT}/core/graph/transpose_optimizer/*.cc"
     )
   endif()
 else()
@@ -54,8 +57,11 @@ else()
     "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/selectors_actions/shared/utils.cc"
     "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimizer/*.h"
-    "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimizer/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/ort_transpose_optimizer.h"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/ort_transpose_optimizer.cc"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/ort_transpose_optimizer_api_impl.cc"
+    "${ONNXRUNTIME_ROOT}/core/graph/transpose_optimizer/*.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/transpose_optimizer/*.cc"
   )
 endif()
 

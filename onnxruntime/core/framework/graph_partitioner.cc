@@ -12,7 +12,8 @@
 #include "core/framework/execution_providers.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/func_kernel.h"
-#include "core/optimizer/transpose_optimizer/api_impl.h"
+#include "core/graph/transpose_optimizer/optimizer_utils.h"
+#include "core/graph/transpose_optimizer/optimizer_api.h"
 
 // uncomment this line to count non-CUDA ops in ONNX domain
 //#define COUNT_NON_CUDA_OPS
@@ -192,7 +193,7 @@ static Status TransformLayout(Graph& graph, bool& modified,
 
   return Status::OK();
 }
-#endif //!defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  //! defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
 static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_registry_mgr, IExecutionProvider& current_ep,
                                  GraphPartitioner::Mode mode, std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
@@ -720,7 +721,7 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
 #else
     ORT_UNUSED_PARAMETER(export_dll);
     ORT_THROW("Not supported in this build.");
-#endif //!defined(ORT_MINIMAL_BUILD)
+#endif  //! defined(ORT_MINIMAL_BUILD)
   } else {
     ORT_ENFORCE(compiled_kernel_hashes != nullptr, "Compiled kernel hashes must be provided");
 

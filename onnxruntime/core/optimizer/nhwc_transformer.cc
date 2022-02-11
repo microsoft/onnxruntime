@@ -6,7 +6,7 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/utils.h"
-#include "core/optimizer/transpose_optimizer/api_impl.h"
+#include "core/graph/transpose_optimizer/optimizer_utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
