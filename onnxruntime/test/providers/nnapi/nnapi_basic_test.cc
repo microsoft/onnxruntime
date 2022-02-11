@@ -364,6 +364,17 @@ TEST(NnapiExecutionProviderTest, TestQDQMul) {
                   });
 }
 
+TEST(NnapiExecutionProviderTest, TestQDQTranspose) {
+  RunQDQModelTest(BuildQDQTransposeTestCase<uint8_t /* InputType */,
+                                            uint8_t /* OutputType */>(
+                      {1, 3, 32, 32} /* input_shape */,
+                      {0, 3, 1, 2} /* perms */),
+                  "nnapi_qdq_test_graph_transpose",
+                  {
+                      true /* verify_entire_graph_use_ep */
+                  });
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {

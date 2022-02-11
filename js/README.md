@@ -363,12 +363,10 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
 
    4. Copy `<BUILD_DIRECTORY>/aar_out/MinSizeRel/com/microsoft/onnxruntime/onnxruntime-mobile/<version>/onnxruntime-mobile-<version>.aar` into `<ORT_ROOT>/js/react_native/android/libs` directory.
 
-   5. Modify `Onnxruntime_mobileVersion` property in `<ORT_ROOT>/js/react_native/android/build.properties` to consume a locally built package or a newly published package from Maven.
-
-   6. To verify, open Android Emulator and run this command from `<ORT_ROOT>/js/react_native/android`
+   5. To verify, open Android Emulator and run this command from `<ORT_ROOT>/js/react_native/android`
 
       ```sh
-      adb shell am instrument -w ai.onnxruntime.react_native.test/androidx.test.runner.AndroidJUnitRunner
+      ./gradlew connectedDebugAndroidTest
       ```
 
 3. Build iOS ONNX Runtime package
@@ -393,38 +391,57 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
 
       ```sh
       pod install
-      xcodebuild test -workspace OnnxruntimeModule.xcworkspace -scheme OnnxruntimeModuleTest -destination 'platform=iOS Simulator,name=iPhone 11,OS=15.0'
+      xcodebuild test -workspace OnnxruntimeModule.xcworkspace -scheme OnnxruntimeModuleTest -destination 'platform=iOS Simulator,OS=latest,name=iPhone 13'
       ```
 
-4. Test an example for Android and iOS. In Windows, open Android Emulator first.
+4. Test Android and iOS apps. In Windows, open Android Emulator first.
 
    `debug.keystore` must be generated ahead for Android example.
 
    ```sh
-   keytool -genkey -v -keystore <ORT_ROOT>/js/react_native/example/android/app/debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
+   keytool -genkey -v -keystore <ORT_ROOT>/js/react_native/e2e/android/debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
    ```
 
    From `<ORT_ROOT>/js/react_native,
 
    ```sh
    yarn bootstrap
-   yarn example ios
-   yarn example android
+   ```
+
+   When testing with a custom built ONNX Runtime Android package, copy `<BUILD_DIRECTORY>/aar_out/MinSizeRel/com/microsoft/onnxruntime/onnxruntime-mobile/<version>/onnxruntime-mobile-<version>.aar` into `<ORT_ROOT>/js/react_native/e2e/node_modules/onnxruntime-react-native/android/libs` directory. Using a custom built ONNX Runtime iOS package, copy `onnxruntime-mobile-c.zip` into `<ORT_ROOT>/js/react_native/local_pods` directory if it's not already done.
+
+   From `<ORT_ROOT>/js/react_native/e2e/android`, run e2e Android tests as follows,
+
+   ```sh
+   ./gradlew :app:connectedDebugAndroidTest
+   ```
+
+   From `<ORT_ROOT>/js/react_native/e2e/ios`, run e2e iOS tests as follows,
+
+   ```sh
+   xcrun xcodebuild test -workspace OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -destination 'platform=iOS Simulator,OS=latest,name=iPhone 13'
+   ```
+
+   ***`yarn bootstrap` changes `packages.json` and `yarn.lock` files. Once testing is done, restore changes to avoid unwanted commit.***
+
+5. Run Android and iOS apps.
+
+   ```sh
+   yarn e2e android
+   yarn e2e ios
    ```
 
 ### NPM Packaging
 
 1. Update a version using `npm verison <version>` from `<ORT_ROOT>/js/react_native` folder. If it's for a dev, use `npm version <version>-dev.<subversion>`
 
-2. Modify Onnxruntime_mobileVersion property in `<ORT_ROOT>/js/react_native/android/build.properties` to update ONNX Runtime Android package version.
+2. Run `yarn prepack-rel` to change `onnxruntime-common` to point to a published npm package
 
-3. Run `yarn prepack` to change `onnxruntime-common` to point to a published npm package
+3. Run `npm pack` and verify NPM package contents
 
-4. Run `npm pack` and verify NPM package contents
+4. Run `npm publish <tgz> --dry-run` to see how it's going to be published
 
-5. Run `npm publish <tgz> --dry-run` to see how it's going to be published
-
-6. Run `npm publish <tgz>` to publish to npmjs. If it's for a dev, add flag `--tag dev`.
+5. Run `npm publish <tgz>` to publish to npmjs. If it's for a dev, add flag `--tag dev`.
 
 ### Distribution
 

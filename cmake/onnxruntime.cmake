@@ -7,7 +7,7 @@ if(UNIX)
     set(OUTPUT_STYLE xcode)
   else()
     set(OUTPUT_STYLE gcc)
-  endif()  
+  endif()
 else()
   set(SYMBOL_FILE ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_dll.def)
   set(OUTPUT_STYLE vc)
@@ -157,6 +157,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_BUILD_JAVA)
   endforeach()
 endif()
 
+# This list is a reversed topological ordering of library dependencies.
+# Earlier entries may depend on later ones. Later ones should not depend on earlier ones.
 set(onnxruntime_INTERNAL_LIBRARIES
   onnxruntime_session
   ${onnxruntime_libs}
@@ -174,10 +176,10 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${onnxruntime_winml}
   onnxruntime_optimizer
   onnxruntime_providers
-  onnxruntime_util
   ${onnxruntime_tvm_libs}
   onnxruntime_framework
   onnxruntime_graph
+  onnxruntime_util
   ${ONNXRUNTIME_MLAS_LIBS}
   onnxruntime_common
   onnxruntime_flatbuffers
