@@ -112,7 +112,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OnnxSparseTensor_close(JNIEnv * jniEn
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxSparseTensor_createSparseTensorFromBuffer
   (JNIEnv * jniEnv, jclass cls, jlong apiHandle, jlong allocatorHandle,
   jobject indicesBuffer, jint indicesBufferPos, jlong indicesBufferSize,
-  jobject dataBuffer, jint dataBufferPos, jlong dataBufferSize,
+  jobject dataBuffer, jint dataBufferPos,
   jlongArray denseShape, jlongArray valuesShape, jint onnxTypeJava, jint sparsityTypeJava) {
     (void) cls; // Required JNI parameters not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
