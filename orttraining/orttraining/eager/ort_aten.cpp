@@ -3,8 +3,6 @@
 
 #include "ort_aten.h"
 #include "ort_tensor.h"
-#include "ort_backends.h"
-#include <core/providers/cpu/cpu_execution_provider.h>
 #include <c10/core/TensorImpl.h>
 #include <ATen/native/CPUFallback.h>
 #include <ATen/InferSize.h>
