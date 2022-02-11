@@ -100,7 +100,7 @@ Status CudnnFilterDescriptor::Set(gsl::span<const int64_t> filter_dims, cudnnDat
     CUDNN_RETURN_IF_ERROR(cudnnCreateFilterDescriptor(&desc_));
 
   int rank = gsl::narrow_cast<int>(filter_dims.size());
-  InlinedShapeVectorT<int> w_dims(rank);
+  InlinedShapeVector<int> w_dims(rank);
   for (int i = 0; i < rank; i++) {
     w_dims[i] = gsl::narrow_cast<int>(filter_dims[i]);
   }
@@ -134,6 +134,18 @@ cudnnDataType_t CudnnTensor::GetDataType<double>() {
 template <>
 cudnnDataType_t CudnnTensor::GetDataType<half>() {
   return CUDNN_DATA_HALF;
+}
+
+template <>
+
+cudnnDataType_t CudnnTensor::GetDataType<BFloat16>() {
+#if CUDNN_VERSION >= 8100
+  return CUDNN_DATA_BFLOAT16;
+#else
+  ORT_THROW("cuDNN version is too low to support BFloat16.");
+  // Not reachable but GCC complains
+  return CUDNN_DATA_FLOAT;
+#endif
 }
 
 template <>

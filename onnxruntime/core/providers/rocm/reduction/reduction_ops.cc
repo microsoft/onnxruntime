@@ -378,8 +378,7 @@ Status PrepareForReduce(const Tensor* X,
   }
 
   const auto input_dims = input_shape.GetDims();
-  InlinedShapeVectorT<bool> reduced(rank, false);
-  prepare_reduce_metadata.output_dims.reserve(input_dims.size());
+  InlinedShapeVector<bool> reduced(rank, false);
   if (axes.size() > 0) {
     prepare_reduce_metadata.output_dims = input_shape.AsShapeVector();
     for (auto axis : axes) {
@@ -393,6 +392,7 @@ Status PrepareForReduce(const Tensor* X,
     }
   } else {
     // no axes provided (i.e.) default axes  => reduce on all dims
+    prepare_reduce_metadata.output_dims.reserve(input_dims.size());
     for (auto dim : input_dims) {
       ORT_ENFORCE(keepdims || dim != 0,
                   "Can't reduce on dim with value of 0 if 'keepdims' is false. "
@@ -511,7 +511,10 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
   IAllocatorUniquePtr<float> temp_X;
   miopenDataType_t miopen_type_X = MiopenTensor::GetDataType<HipT>();
 
-  if (ReduceTensorIndices == MIOPEN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) {
+  // unlike bfp16 not supported in cudnn, miopen call for bfp16 succeeded below, however, UT shows data error
+  // so for now, follow the same logic in cudnn and convert input to fp32 then call miopen
+  if ((ReduceTensorIndices == MIOPEN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) ||
+      (ReduceTensorIndices == MIOPEN_REDUCE_TENSOR_NO_INDICES && std::is_same<T, BFloat16>::value)) {
     // ArgMax/ArgMin with FP16 are not supported by miopen, so convert input to fp32 then call miopen
     temp_X = rocm_ep.GetScratchBuffer<float>(input_count);
     miopen_type_X = miopenFloat;
@@ -519,7 +522,7 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
   }
 
   MiopenReduceDescriptor reduce_desc;
-  if (std::is_same<T, MLFloat16>::value) {
+  ORT_IF_CONSTEXPR (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value) {
     ORT_RETURN_IF_ERROR(reduce_desc.Set(miopen_reduce_op, MiopenTensor::GetDataType<float>(), ReduceTensorIndices));
   } else {
     ORT_RETURN_IF_ERROR(reduce_desc.Set(miopen_reduce_op, miopen_type_X, ReduceTensorIndices));
@@ -651,11 +654,22 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
           HIP_RETURN_IF_ERROR(hipMemcpyAsync(output.template MutableData<T>(), input.template Data<T>(), input_count * sizeof(T), hipMemcpyDeviceToDevice, stream));
         }
       } else {
-        MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
-            rocm_ep.PerThreadMiopenHandle(), reduce_desc, indices_rocm.get(), indices_bytes,
-            workspace_rocm.get(), workspace_bytes,
-            &one, input_tensor, reinterpret_cast<const HipT*>(input.template Data<T>()),
-            &zero, output_tensor, reinterpret_cast<HipT*>(output.template MutableData<T>())));
+        if (temp_X) {
+          auto temp_output = rocm_ep.GetScratchBuffer<float>(output_count);
+          MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
+              rocm_ep.PerThreadMiopenHandle(), reduce_desc, indices_rocm.get(), indices_bytes,
+              workspace_rocm.get(), workspace_bytes,
+              &one, input_tensor, temp_X.get(),
+              &zero, output_tensor, temp_output.get()));
+
+          Impl_Cast<float, HipT>(stream, temp_output.get(), reinterpret_cast<HipT*>(output.template MutableData<T>()), output_count); 
+        } else {
+          MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
+              rocm_ep.PerThreadMiopenHandle(), reduce_desc, indices_rocm.get(), indices_bytes,
+              workspace_rocm.get(), workspace_bytes,
+              &one, input_tensor, reinterpret_cast<const HipT*>(input.template Data<T>()),
+              &zero, output_tensor, reinterpret_cast<HipT*>(output.template MutableData<T>())));
+        }
       }
     }
   } else {
@@ -880,7 +894,8 @@ template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, MIOPEN_REDUCE_TENSOR_N
 
 #define REGISTER_KERNEL_HFD(name)        \
   REGISTER_KERNEL_TYPED(name, MLFloat16) \
-  REGISTER_KERNEL_TYPED(name, float)
+  REGISTER_KERNEL_TYPED(name, float) \
+  REGISTER_KERNEL_TYPED(name, BFloat16)
 // REGISTER_KERNEL_TYPED(name, double)
 
 #define REGISTER_KERNEL_HFD_11(name)        \
@@ -926,6 +941,7 @@ REGISTER_KERNEL_TYPED_13(ReduceSum, float)
 // REGISTER_KERNEL_TYPED_13(ReduceSum, double)
 REGISTER_KERNEL_TYPED_13(ReduceSum, int32_t)
 REGISTER_KERNEL_TYPED_13(ReduceSum, int64_t)
+REGISTER_KERNEL_TYPED_13(ReduceSum, BFloat16)
 
 REGISTER_KERNEL_HFD(ReduceLogSum)
 REGISTER_KERNEL_HFD(ReduceSumSquare)

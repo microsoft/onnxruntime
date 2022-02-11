@@ -110,6 +110,19 @@ static void RunFastGeluTest(
   RunFastGeluTest(input_data, bias_data, output_data, input_dims, bias_dims, output_dims, has_bias);
 }
 
+TEST(FastGeluTest, FastGeluWithNullInput) {
+  int batch_size = 1;
+  int sequence_length = 0;
+  int hidden_size = 4;
+
+  std::vector<float> input_data = {};
+
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f};
+
+  RunFastGeluTest(input_data, bias_data, batch_size, sequence_length, hidden_size);
+}
+
 TEST(FastGeluTest, FastGeluWithBiasFloat32) {
   int batch_size = 1;
   int sequence_length = 2;
@@ -183,6 +196,51 @@ TEST(FastGeluTest, FastGeluWithoutBiasFloat16) {
 
   RunFastGeluTest(input_data, bias_data, output_data, input_dims, bias_dims, output_dims, false, true);
 }
+
+// CUDA only, ROCM has not been supported yet
+#ifdef USE_CUDA
+TEST(FastGeluTest, FastGeluWithBias_BFloat16) {
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+  OpTester tester("FastGelu", 1, onnxruntime::kMSDomain);
+
+  int batch_size = 1;
+  int sequence_length = 2;
+  int hidden_size = 4;
+
+  std::vector<float> X = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<float> B = {
+      -0.5f, 0.6f, 1.2f, 2.1f};
+
+  std::vector<float> Y = {
+      0.1851806640625f, 0.054046630859375f, 1.0615234375f, 3.095703125f,
+      0, 0.63037109375f, 1.3984375f, 1.3984375f};
+
+  std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
+  std::vector<int64_t> bias_dims = {hidden_size};
+  std::vector<int64_t> output_dims = input_dims;
+
+  std::vector<BFloat16> f_X = FloatsToBFloat16s(X);
+  std::vector<BFloat16> f_B = FloatsToBFloat16s(B);
+  std::vector<BFloat16> f_Y = FloatsToBFloat16s(Y);
+
+  tester.AddInput<BFloat16>("X", input_dims, f_X);
+  tester.AddInput<BFloat16>("bias", bias_dims, f_B);
+  tester.AddOutput<BFloat16>("Y", output_dims, f_Y);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
+
+
 
 }  // namespace test
 }  // namespace onnxruntime

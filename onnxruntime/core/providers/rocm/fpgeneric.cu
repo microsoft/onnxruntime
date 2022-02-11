@@ -44,6 +44,13 @@ __global__ void CopyVectorHalf(const half* x, int incx, half* y, int incy, int n
   y[id * incy] = x[id * incx];
 }
 
+__global__ void CopyVectorBFloat16(const onnxruntime::BFloat16* x, int incx, onnxruntime::BFloat16* y, int incy,
+                                   int n) {
+  int id = blockIdx.x * blockDim.x + threadIdx.x;
+  if (id >= n) return;
+  y[id * incy] = x[id * incx];
+}
+
 }  // namespace
 
 rocblas_status rocblasTransposeHelper(hipStream_t stream, rocblas_handle, rocblas_operation , rocblas_operation , int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int) {
@@ -62,5 +69,13 @@ rocblas_status rocblasCopyHelper(hipStream_t stream, rocblas_handle, int n, cons
   dim3 dimGrid((unsigned int)(n + COPY_BLOCK_DIM - 1) / COPY_BLOCK_DIM, 1, 1);
   dim3 dimBlock(COPY_BLOCK_DIM, 1, 1);
   hipLaunchKernelGGL(CopyVectorHalf, dim3(dimGrid), dim3(dimBlock), 0, stream, x, incx, y, incy, n);
+  return rocblas_status_success;
+}
+
+rocblas_status rocblasCopyHelper(hipStream_t stream, rocblas_handle, int n, const onnxruntime::BFloat16* x, int incx,
+                                onnxruntime::BFloat16* y, int incy) {
+  dim3 dimGrid((unsigned int)(n + COPY_BLOCK_DIM - 1) / COPY_BLOCK_DIM, 1, 1);
+  dim3 dimBlock(COPY_BLOCK_DIM, 1, 1);
+  hipLaunchKernelGGL(CopyVectorBFloat16, dim3(dimGrid), dim3(dimBlock), 0, stream, x, incx, y, incy, n);
   return rocblas_status_success;
 }

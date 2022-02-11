@@ -43,61 +43,87 @@ void RunQLinearMathTestFromFloat(
     const quantization::Params<T>& a_params,
     const std::vector<float>& b, const std::vector<int64_t>& b_shape_origin,
     const quantization::Params<T>& b_params,
-    const quantization::Params<T>& c_params,
-    bool input_b_is_initializer = false,
-    bool all_initializer_scale_zero_point = false) {
-  size_t number_dims = std::max(a_shape_origin.size(), b_shape_origin.size());
-  std::vector<int64_t> a_shape = PrefixingDims(a_shape_origin, number_dims);
-  std::vector<int64_t> b_shape = PrefixingDims(b_shape_origin, number_dims);
-  // calc broadcasting shaped
-  std::vector<int64_t> c_shape(number_dims, 1);
-  for (size_t axis = 0; axis < number_dims; ++axis) {
-    if (a_shape[axis] != b_shape[axis] && (a_shape[axis] != 1 && b_shape[axis] != 1)) {
-      ORT_THROW("Shapes can not be broadcasted");
-    }
-    c_shape[axis] = std::max(a_shape[axis], b_shape[axis]);
-  }
-
-  std::vector<int64_t> a_strides, b_strides, c_strides;
-  auto c_size = CalcStrides(c_shape, c_strides, false);
-  auto a_size = CalcStrides(a_shape, a_strides, true);
-  auto b_size = CalcStrides(b_shape, b_strides, true);
-  if (a_size != static_cast<int64_t>(a.size()) || b_size != static_cast<int64_t>(b.size())) {
-    ORT_THROW("Input size not match input shape!");
-  }
-  constexpr int qmax = std::numeric_limits<T>::max();
-  constexpr int qmin = std::numeric_limits<T>::min();
-
-  OpTester test(op_name, 1, onnxruntime::kMSDomain);
-  std::vector<T> a_quantized = QuantizeTestVector<T>(a, a_params);
-  test.template AddInput<T>("A", a_shape_origin, a_quantized);
-  test.AddInput<float>("A_scale", {}, {a_params.scale}, all_initializer_scale_zero_point);
-  test.template AddInput<T>("A_zero_point", {}, {a_params.zero_point}, all_initializer_scale_zero_point);
-
-  std::vector<T> b_quantized = QuantizeTestVector<T>(b, b_params);
-  test.template AddInput<T>("B", b_shape_origin, b_quantized, input_b_is_initializer);
-  test.AddInput<float>("B_scale", {}, {b_params.scale}, all_initializer_scale_zero_point);
-  test.template AddInput<T>("B_zero_point", {}, {b_params.zero_point}, all_initializer_scale_zero_point);
-
-  test.AddInput<float>("C_scale", {}, {c_params.scale}, all_initializer_scale_zero_point);
-  test.template AddInput<T>("C_zero_point", {}, {c_params.zero_point}, all_initializer_scale_zero_point);
-  std::vector<T> c(c_size);
-  for (int64_t offset = 0; offset < c_size; ++offset) {
-    int64_t remain = offset, a_offset = 0, b_offset = 0;
+    const quantization::Params<T>& c_params) {
+  const auto run_test = [&](bool input_b_is_initializer,
+                            bool all_initializer_scale_zero_point) {
+    size_t number_dims = std::max(a_shape_origin.size(), b_shape_origin.size());
+    std::vector<int64_t> a_shape = PrefixingDims(a_shape_origin, number_dims);
+    std::vector<int64_t> b_shape = PrefixingDims(b_shape_origin, number_dims);
+    // calc broadcasting shaped
+    std::vector<int64_t> c_shape(number_dims, 1);
     for (size_t axis = 0; axis < number_dims; ++axis) {
-      int64_t index = remain / c_strides[axis];
-      remain = remain % c_strides[axis];
-      a_offset += index * a_strides[axis];
-      b_offset += index * b_strides[axis];
+      if (a_shape[axis] != b_shape[axis] && (a_shape[axis] != 1 && b_shape[axis] != 1)) {
+        ORT_THROW("Shapes can not be broadcasted");
+      }
+      c_shape[axis] = std::max(a_shape[axis], b_shape[axis]);
     }
 
-    float a_dequantized = quantization::Dequantize(a_quantized[a_offset], a_params);
-    float b_dequantized = quantization::Dequantize(b_quantized[b_offset], b_params);
-    c[offset] = clampi<T>(static_cast<int>(std::nearbyintf(calc(a_dequantized, b_dequantized) / c_params.scale)) + c_params.zero_point, qmin, qmax);
-  }
-  test.template AddOutput<T>("C", c_shape, c);
+    std::vector<int64_t> a_strides, b_strides, c_strides;
+    auto c_size = CalcStrides(c_shape, c_strides, false);
+    auto a_size = CalcStrides(a_shape, a_strides, true);
+    auto b_size = CalcStrides(b_shape, b_strides, true);
+    if (a_size != static_cast<int64_t>(a.size()) || b_size != static_cast<int64_t>(b.size())) {
+      ORT_THROW("Input size not match input shape!");
+    }
+    constexpr int qmax = std::numeric_limits<T>::max();
+    constexpr int qmin = std::numeric_limits<T>::min();
 
-  test.Run();
+    OpTester test(op_name, 1, onnxruntime::kMSDomain);
+    std::vector<T> a_quantized = QuantizeTestVector<T>(a, a_params);
+    test.template AddInput<T>("A", a_shape_origin, a_quantized);
+    test.AddInput<float>("A_scale", {}, {a_params.scale}, all_initializer_scale_zero_point);
+    test.template AddInput<T>("A_zero_point", {}, {a_params.zero_point}, all_initializer_scale_zero_point);
+
+    std::vector<T> b_quantized = QuantizeTestVector<T>(b, b_params);
+    test.template AddInput<T>("B", b_shape_origin, b_quantized, input_b_is_initializer);
+    test.AddInput<float>("B_scale", {}, {b_params.scale}, all_initializer_scale_zero_point);
+    test.template AddInput<T>("B_zero_point", {}, {b_params.zero_point}, all_initializer_scale_zero_point);
+
+    test.AddInput<float>("C_scale", {}, {c_params.scale}, all_initializer_scale_zero_point);
+    test.template AddInput<T>("C_zero_point", {}, {c_params.zero_point}, all_initializer_scale_zero_point);
+    std::vector<T> c(c_size);
+    for (int64_t offset = 0; offset < c_size; ++offset) {
+      int64_t remain = offset, a_offset = 0, b_offset = 0;
+      for (size_t axis = 0; axis < number_dims; ++axis) {
+        int64_t index = remain / c_strides[axis];
+        remain = remain % c_strides[axis];
+        a_offset += index * a_strides[axis];
+        b_offset += index * b_strides[axis];
+      }
+
+      float a_dequantized = quantization::Dequantize(a_quantized[a_offset], a_params);
+      float b_dequantized = quantization::Dequantize(b_quantized[b_offset], b_params);
+      c[offset] = clampi<T>(static_cast<int>(std::nearbyintf(calc(a_dequantized, b_dequantized) / c_params.scale)) + c_params.zero_point, qmin, qmax);
+    }
+
+    float abs_error = 0.0f;
+
+    // For quantized models, NNAPI's rounding is different than CPU provider
+    // Sometimes the result is within +/-1 of result of CPU provider
+    // For ONNX, we use rounding to nearest ties to even.
+    // For NNAPI, it is using std::round which is HALF_AWAY_FROM_ZERO, see
+    // https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/master/nn/common/operations/Quantize.cpp
+    // Use 1 as abs_error which is the smallest possbile for uint8_t
+    //
+    // NOTE, for now the tolerance will only apply if the NNAPI is actually used,
+    // if for any reason the execution falls back to CPU, we still expect an exact match
+    // See, 'void Check<uint8_t>(...' in onnxruntime/test/providers/provider_test_utils.cc
+#ifdef USE_NNAPI
+    abs_error = 1.0f;
+#endif
+
+    test.template AddOutput<T>("C", c_shape, c, false /* sort_output */, 0.0f /* rel_error */, abs_error);
+
+    test.Run();
+  };
+
+  run_test(false /* input_b_is_initializer */, false /* all_initializer_scale_zero_point */);
+
+  // NNAPI will require all the scales and zero points be initializers
+  run_test(false /* input_b_is_initializer */, true /* all_initializer_scale_zero_point */);
+
+  // We also want to test the case input B is an initializer
+  run_test(true /* input_b_is_initializer */, true /* all_initializer_scale_zero_point */);
 }
 
 // total 32 + 31 elements to cover all path
@@ -145,22 +171,6 @@ TEST(QLinearBinaryOpTest, AddU8VectorVectorFull) {
                               A, {63}, A_params,
                               B, {63}, B_params,
                               C_params);
-
-  // NNAPI will require all the scales and zero points be initializers
-  // We also want to test the case input B is an initializer
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              A, {63}, A_params,
-                              B, {63}, B_params,
-                              C_params,
-                              false /* input_b_is_initializer */,
-                              true /* all_initializer_scale_zero_point */);
-
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              A, {63}, A_params,
-                              B, {63}, B_params,
-                              C_params,
-                              true /* input_b_is_initializer */,
-                              true /* all_initializer_scale_zero_point */);
 }
 
 TEST(QLinearBinaryOpTest, AddU8VectorVectorBroadcast) {
@@ -180,22 +190,6 @@ TEST(QLinearBinaryOpTest, AddU8VectorVectorBroadcast) {
                               A, {3, 3, 7}, A_params,
                               B, {3, 1, 7}, B_params,
                               C_params);
-
-  // NNAPI will require all the scales and zero points be initializers
-  // We also want to test the case input B is an initializer
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              A, {3, 3, 7}, A_params,
-                              B, {3, 1, 7}, B_params,
-                              C_params,
-                              false /* input_b_is_initializer */,
-                              true /* all_initializer_scale_zero_point */);
-
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              A, {3, 3, 7}, A_params,
-                              B, {3, 1, 7}, B_params,
-                              C_params,
-                              true /* input_b_is_initializer */,
-                              true /* all_initializer_scale_zero_point */);
 }
 
 TEST(QLinearBinaryOpTest, AddU8ScalarVectorFull) {
@@ -212,22 +206,6 @@ TEST(QLinearBinaryOpTest, AddU8ScalarVectorFull) {
                               B, {1}, B_params,
                               A, {63}, A_params,
                               C_params);
-
-  // NNAPI will require all the scales and zero points be initializers
-  // We also want to test the case input B is an initializer
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              B, {1}, B_params,
-                              A, {63}, A_params,
-                              C_params,
-                              false /* input_b_is_initializer */,
-                              true /* all_initializer_scale_zero_point */);
-
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              B, {1}, B_params,
-                              A, {63}, A_params,
-                              C_params,
-                              true /* input_b_is_initializer */,
-                              true /* all_initializer_scale_zero_point */);
 }
 
 TEST(QLinearBinaryOpTest, AddU8ScalarVectorBroadcast) {
@@ -244,22 +222,6 @@ TEST(QLinearBinaryOpTest, AddU8ScalarVectorBroadcast) {
                               B, {3, 1, 1}, B_params,
                               A, {3, 7, 3}, A_params,
                               C_params);
-
-  // NNAPI will require all the scales and zero points be initializers
-  // We also want to test the case input B is an initializer
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              B, {3, 1, 1}, B_params,
-                              A, {3, 7, 3}, A_params,
-                              C_params,
-                              false /* input_b_is_initializer */,
-                              true /* all_initializer_scale_zero_point */);
-
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              B, {3, 1, 1}, B_params,
-                              A, {3, 7, 3}, A_params,
-                              C_params,
-                              true /* input_b_is_initializer */,
-                              true /* all_initializer_scale_zero_point */);
 }
 
 TEST(QLinearBinaryOpTest, AddU8VectorScalarFull) {
@@ -276,22 +238,6 @@ TEST(QLinearBinaryOpTest, AddU8VectorScalarFull) {
                               A, {63}, A_params,
                               B, {1}, B_params,
                               C_params);
-
-  // NNAPI will require all the scales and zero points be initializers
-  // We also want to test the case input B is an initializer
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              A, {63}, A_params,
-                              B, {1}, B_params,
-                              C_params,
-                              false /* input_b_is_initializer */,
-                              true /* all_initializer_scale_zero_point */);
-
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              A, {63}, A_params,
-                              B, {1}, B_params,
-                              C_params,
-                              true /* input_b_is_initializer */,
-                              true /* all_initializer_scale_zero_point */);
 }
 
 TEST(QLinearBinaryOpTest, AddU8VectorScalarBroadcast) {
@@ -308,22 +254,6 @@ TEST(QLinearBinaryOpTest, AddU8VectorScalarBroadcast) {
                               A, {3, 7, 3}, A_params,
                               B, {1, 1, 3}, B_params,
                               C_params);
-
-  // NNAPI will require all the scales and zero points be initializers
-  // We also want to test the case input B is an initializer
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              A, {3, 7, 3}, A_params,
-                              B, {1, 1, 3}, B_params,
-                              C_params,
-                              false /* input_b_is_initializer */,
-                              true /* all_initializer_scale_zero_point */);
-
-  RunQLinearMathTestFromFloat("QLinearAdd", add_function,
-                              A, {3, 7, 3}, A_params,
-                              B, {1, 1, 3}, B_params,
-                              C_params,
-                              true /* input_b_is_initializer */,
-                              true /* all_initializer_scale_zero_point */);
 }
 
 TEST(QLinearBinaryOpTest, AddS8VectorVectorFull) {

@@ -43,7 +43,7 @@ static Status BuildBackPropGraph(
   SessionOptions so{};
   TrainingSession training_session{so, *env};
 
-  std::cout << "Loading source model file = " << ToMBString(forward_model_file) << "\n";
+  std::cout << "Loading source model file = " << ToUTF8String(forward_model_file) << "\n";
 
   ORT_RETURN_IF_ERROR(training_session.Load(forward_model_file));
 
@@ -230,7 +230,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
   SessionOptions so{};
   TrainingSession training_session{so, *env};
 
-  std::cout << "Loading source model file = " << ToMBString(forward_model_file) << "\n";
+  std::cout << "Loading source model file = " << ToUTF8String(forward_model_file) << "\n";
 
   ORT_THROW_IF_ERROR(training_session.Load(forward_model_file));
 

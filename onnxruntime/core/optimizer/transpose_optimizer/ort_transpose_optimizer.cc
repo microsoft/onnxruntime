@@ -17,7 +17,7 @@ using namespace onnx_layout_transformation;
 namespace onnxruntime {
 
 Status TransposeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
-  auto api_graph = MakeApiGraph(graph, cpu_allocator_, logger, /*new_node_ep*/ nullptr);
+  auto api_graph = MakeApiGraph(graph, cpu_allocator_, /*new_node_ep*/ nullptr);
   if (onnx_layout_transformation::Optimize(*api_graph, /*allow_extended_ops*/ false)) {
     modified = true;
   }

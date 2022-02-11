@@ -19,7 +19,7 @@ const std::string LAMB_STEP_TENSOR_NAME = "Step";
 const std::string ADAM_UC_PREFIX = "Update_Count";
 
 namespace training_internal {
-extern const int64_t single_span_element;
+constexpr int64_t single_span_element = 1;
 }
 
 template <class T>
