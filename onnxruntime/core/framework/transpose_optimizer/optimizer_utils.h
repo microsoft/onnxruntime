@@ -5,10 +5,9 @@
 
 #include "optimizer_api.h"
 #include "core/graph/graph.h"
+#include "core/framework/allocator.h"
 
 namespace onnxruntime {
-class IAllocator;
-
 /// <summary>
 /// Gets a list of layout sensitive ops for ORT. This list contains onnx standard defined
 /// layout senstive ops + contrib ops + ops which are not layout sensitive but are treated as
@@ -26,7 +25,7 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps();
 /// <param name="new_node_ep">New nodes are assigned to this EP, or left unassigned if nullptr</param>
 /// <returns>api::GraphRef for use with transpose optimizer</returns>
 std::unique_ptr<onnx_layout_transformation::api::GraphRef> MakeApiGraph(onnxruntime::Graph& graph,
-                                                                        std::shared_ptr<IAllocator> cpu_allocator,
+                                                                        AllocatorPtr cpu_allocator,
                                                                         const char* new_node_ep);
 
 /// <summary>
