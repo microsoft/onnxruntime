@@ -653,8 +653,16 @@ class ReshapeOpSupportChecker : public BaseOpSupportChecker {
 
   // Reshape opset 4- uses attributes for new shape which we do not support for now
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 5; }
+  bool HasSupportedInputOutputsImpl(
+      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
+      const OpSupportCheckParams& /* params */) const override;
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
+  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
 };
+
+/* static */ bool ReshapeOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
+  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQReshape;
+}
 
 bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                 const OpSupportCheckParams& /* params */) const {
@@ -700,6 +708,31 @@ bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
         return false;
       }
     }
+  }
+
+  return true;
+}
+
+bool ReshapeOpSupportChecker::HasSupportedInputOutputsImpl(
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+    const OpSupportCheckParams& params) const {
+  int32_t input_type;
+  if (!GetType(node_unit.Inputs()[0].node_arg, input_type))
+    return false;
+
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node_unit.OpType()
+                          << "] Input type: [" << input_type
+                          << "] is not supported for now";
+    return false;
+  }
+
+  if (IsQuantizedOp(node_unit)) {
+    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Input))
+      return false;
+
+    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Output))
+      return false;
   }
 
   return true;
