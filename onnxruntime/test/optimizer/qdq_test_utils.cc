@@ -36,5 +36,27 @@ GetQDQTestCaseFn BuildQDQResizeTestCase(
   };
 }
 
+GetQDQTestCaseFn BuildQDQReshapeTestCase(const std::vector<int64_t>& input_shape,
+                                         const std::vector<int64_t>& reshape_shape) {
+  return [input_shape, reshape_shape](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
+                                                 std::numeric_limits<uint8_t>::min(),
+                                                 std::numeric_limits<uint8_t>::max());
+    auto* output_arg = builder.MakeOutput();
+
+    // add DQ
+    auto* dq_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<uint8_t>(input_arg, .003f, 1, dq_output);
+
+    // add Reshape
+    auto* reshape_output = builder.MakeIntermediate();
+    auto* shape = builder.Make1DInitializer<int64_t>(reshape_shape);
+    builder.AddNode("Reshape", {dq_output, shape}, {reshape_output});
+
+    // add Q
+    builder.AddQuantizeLinearNode<uint8_t>(reshape_output, .003f, 1, output_arg);
+  };
+}
+
 }  // namespace test
 }  // namespace onnxruntime
