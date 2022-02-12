@@ -18,10 +18,9 @@ using GetQDQTestCaseFn = std::function<void(ModelTestBuilder& builder)>;
 
 template <typename T>
 typename std::enable_if<IsTypeQuantLinearCompatible<T>::value, NodeArg*>::type
-AddQDQNodePair(ModelTestBuilder& builder, NodeArg* q_input, float scale, T zp = T(),
-               NodeArg* existing_dq_output = nullptr) {
+AddQDQNodePair(ModelTestBuilder& builder, NodeArg* q_input, float scale, T zp = T()) {
   auto* q_output = builder.MakeIntermediate();
-  auto* dq_output = existing_dq_output ? existing_dq_output : builder.MakeIntermediate();
+  auto* dq_output = builder.MakeIntermediate();
   builder.AddQuantizeLinearNode<T>(q_input, scale, zp, q_output);
   builder.AddDequantizeLinearNode<T>(q_output, scale, zp, dq_output);
   return dq_output;

@@ -5,6 +5,7 @@
 
 #include <vector>
 
+#include "core/common/common.h"
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
@@ -14,7 +15,7 @@ namespace onnxruntime::QDQ {
 
 bool IsQDQPairSupported(
     const Node& q_node, const Node& dq_node,
-    const std::function<const ONNX_NAMESPACE::TensorProto*(const std::string&)>& get_const_initializer,
+    const GetConstantInitializerFn& get_const_initializer,
     const Path& model_path) {
   ConstPointerContainer<std::vector<NodeArg*>> dq_input_defs = dq_node.InputDefs();
   ConstPointerContainer<std::vector<NodeArg*>> q_input_defs = q_node.InputDefs();
@@ -57,26 +58,40 @@ bool IsQDQPairSupported(
          *q_scale.data<float>() == *dq_scale.data<float>();
 }
 
-bool QOrDQNodeHasConstantScalarScaleAndZeroPoint(
-    const Node& q_or_dq_node,
-    const std::function<const ONNX_NAMESPACE::TensorProto*(const std::string&)>& get_const_initializer) {
-  ConstPointerContainer<std::vector<NodeArg*>> q_or_dq_input_defs = q_or_dq_node.InputDefs();
-
-  // if Q or DQ contains optional input, return false
-  // if Q or DQ scale and zero point are non-scalar, return false
-  if (q_or_dq_input_defs.size() != InputIndex::TOTAL_COUNT ||
-      !optimizer_utils::IsScalar(*q_or_dq_input_defs[InputIndex::SCALE_ID]) ||
-      !optimizer_utils::IsScalar(*q_or_dq_input_defs[InputIndex::ZERO_POINT_ID])) {
+bool IsDQSupported(const Node& dq_node, const GetConstantInitializerFn& get_const_initializer) {
+  bool zero_point_exists = false;
+  if (!QOrDQNodeHasConstantScalarScaleAndZeroPoint(dq_node, get_const_initializer, zero_point_exists)) {
     return false;
   }
 
-  // if Q or DQ scale and zero point are not constant, return false
-  const ONNX_NAMESPACE::TensorProto* q_or_dq_scale_tensor_proto =
-      get_const_initializer(q_or_dq_input_defs[InputIndex::SCALE_ID]->Name());
-  const ONNX_NAMESPACE::TensorProto* q_or_dq_zp_tensor_proto =
-      get_const_initializer(q_or_dq_input_defs[InputIndex::ZERO_POINT_ID]->Name());
-  if (nullptr == q_or_dq_zp_tensor_proto ||
-      nullptr == q_or_dq_scale_tensor_proto) {
+  if (!zero_point_exists) {
+    return false;
+  }
+
+  return true;
+}
+
+bool QOrDQNodeHasConstantScalarScaleAndZeroPoint(
+    const Node& q_or_dq_node,
+    const GetConstantInitializerFn& get_const_initializer,
+    bool& zero_point_exists) {
+  auto q_or_dq_input_defs = q_or_dq_node.InputDefs();
+
+  ORT_ENFORCE(q_or_dq_input_defs.size() >= 2);
+
+  zero_point_exists = q_or_dq_input_defs.size() > 2 &&
+                      q_or_dq_input_defs[InputIndex::ZERO_POINT_ID]->Exists();
+
+  auto is_constant_scalar = [&](const NodeArg& node_arg) {
+    return optimizer_utils::IsScalar(node_arg) && get_const_initializer(node_arg.Name()) != nullptr;
+  };
+
+  if (!is_constant_scalar(*q_or_dq_input_defs[InputIndex::SCALE_ID])) {
+    return false;
+  }
+
+  if (zero_point_exists &&
+      !is_constant_scalar(*q_or_dq_input_defs[InputIndex::ZERO_POINT_ID])) {
     return false;
   }
 

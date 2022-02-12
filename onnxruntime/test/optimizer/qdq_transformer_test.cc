@@ -1704,11 +1704,9 @@ TEST(QDQTransformerTests, QDQPropagation_QBackward) {
   auto test_case = [&](const std::vector<int64_t>& input_shape,
                        size_t maxpool_dim,
                        const std::vector<int64_t>& perms,
-                       bool add_op_boundary) {
+                       bool add_op_boundary,
+                       bool include_zp) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
-      constexpr float qdq_scale = 0.004f;
-      constexpr uint8_t qdq_zero_point = 129;
-
       auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
       auto* output_arg = builder.MakeOutput();
 
@@ -1737,7 +1735,13 @@ TEST(QDQTransformerTests, QDQPropagation_QBackward) {
       builder.AddNode("Reshape", {maxpool_output, reshape_shape}, {reshape_output});
 
       // add Q
-      builder.AddQuantizeLinearNode<uint8_t>(reshape_output, qdq_scale, qdq_zero_point, output_arg);
+      constexpr float qdq_scale = 0.004f;
+      if (include_zp) {
+        constexpr uint8_t qdq_zero_point = 129;
+        builder.AddQuantizeLinearNode<uint8_t>(reshape_output, qdq_scale, qdq_zero_point, output_arg);
+      } else {
+        builder.AddQuantizeLinearNode(reshape_output, qdq_scale, output_arg);
+      }
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
@@ -1765,27 +1769,35 @@ TEST(QDQTransformerTests, QDQPropagation_QBackward) {
                       TransformerLevel::Level1);
   };
 
-  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true);
-  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false);
+  // TODO re-enable tests after updating ONNX to get QuantizeLinear shape inference fix
+  // https://github.com/onnx/onnx/pull/3806
+  //test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, true);
+  //test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, true);
 }
 
 TEST(QDQTransformerTests, QDQPropagation_DQForward) {
   auto test_case = [&](const std::vector<int64_t>& input_shape,
                        size_t maxpool_dim,
                        const std::vector<int64_t>& perms,
-                       bool add_op_boundary) {
+                       bool add_op_boundary,
+                       bool include_zp) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
-      constexpr float qdq_scale = 0.004f;
-      constexpr uint8_t qdq_zero_point = 129;
-
       auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
                                                    std::numeric_limits<uint8_t>::min(),
                                                    std::numeric_limits<uint8_t>::max());
       auto* output_arg = builder.MakeOutput();
 
       // add DQ
+      constexpr float qdq_scale = 0.004f;
       auto* dq_output = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode<uint8_t>(input_arg, qdq_scale, qdq_zero_point, dq_output);
+      if (include_zp) {
+        constexpr uint8_t qdq_zero_point = 129;
+        builder.AddDequantizeLinearNode<uint8_t>(input_arg, qdq_scale, qdq_zero_point, dq_output);
+      } else {
+        builder.AddDequantizeLinearNode(input_arg, qdq_scale, dq_output);
+      }
 
       // add Transpose
       auto* transpose_output = builder.MakeIntermediate();
@@ -1834,8 +1846,12 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward) {
                       TransformerLevel::Level1);
   };
 
-  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false);
-  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true);
+  // TODO re-enable tests after updating ONNX to get QuantizeLinear shape inference fix
+  // https://github.com/onnx/onnx/pull/3806
+  //test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, true);
+  //test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, true);
 }
 
 TEST(QDQTransformerTests, QDQPropagation_StopAtOtherQDQ) {

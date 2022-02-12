@@ -26,9 +26,9 @@ bool CanNodePropagate(const Node& node) {
 // assumptions:
 // 1. insertion_edge is valid - node indexes refer to valid nodes, arg name refers to a valid NodeArg, and it
 //    corresponds to an actual graph relationship
-// 2. scale_initializer_nodearg and zp_initializer_nodearg are constant initializers
+// 2. scale_initializer_nodearg and zp_initializer_nodearg_ptr (if not null) are constant initializers
 Status InsertQDQPair(Graph& graph, const ExtendedGraphEdge& insertion_edge,
-                     NodeArg& scale_initializer_nodearg, NodeArg& zp_initializer_nodearg,
+                     NodeArg& scale_initializer_nodearg, NodeArg* zp_initializer_nodearg_ptr,
                      const logging::Logger& logger) {
   auto* src_node = insertion_edge.GetMutableNodeAtEnd(graph, ExtendedGraphEdge::End::Source);
   auto* dst_node = insertion_edge.GetMutableNodeAtEnd(graph, ExtendedGraphEdge::End::Destination);
@@ -61,13 +61,17 @@ Status InsertQDQPair(Graph& graph, const ExtendedGraphEdge& insertion_edge,
                                                          nullptr);
 
   // set up new Nodes
+  auto make_q_or_dq_inputs = [](NodeArg& data, NodeArg& scale, NodeArg* zero_point) {
+    return zero_point ? std::vector<NodeArg*>{&data, &scale, zero_point}
+                      : std::vector<NodeArg*>{&data, &scale};
+  };
+
   auto& q_node = graph.AddNode(graph.GenerateNodeName(base_name + "_q"),
                                QDQ::QOpName,
                                "Inserted by QDQPropagationTransformer",
                                // inputs
-                               {&pre_q_nodearg,
-                                &scale_initializer_nodearg,
-                                &zp_initializer_nodearg},
+                               make_q_or_dq_inputs(pre_q_nodearg, scale_initializer_nodearg,
+                                                   zp_initializer_nodearg_ptr),
                                // outputs
                                {&q_to_dq_nodearg});
 
@@ -77,7 +81,8 @@ Status InsertQDQPair(Graph& graph, const ExtendedGraphEdge& insertion_edge,
                                 QDQ::DQOpName,
                                 "Inserted by QDQPropagationTransformer",
                                 // inputs
-                                {&q_to_dq_nodearg, &scale_initializer_nodearg, &zp_initializer_nodearg},
+                                make_q_or_dq_inputs(q_to_dq_nodearg, scale_initializer_nodearg,
+                                                    zp_initializer_nodearg_ptr),
                                 // outputs
                                 {&post_dq_nodearg});
 
@@ -180,6 +185,7 @@ std::optional<ExtendedGraphEdge> GetNextPropagationEdge(const Graph& graph,
 
 class GraphConstantInitializerGetter {
   const Graph& graph_;
+
  public:
   GraphConstantInitializerGetter(const Graph& graph) : graph_{graph} {}
   const ONNX_NAMESPACE::TensorProto* operator()(const std::string& initializer_name) const {
@@ -205,12 +211,16 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
       continue;
     }
 
-    if (!QDQ::QOrDQNodeHasConstantScalarScaleAndZeroPoint(dq_node, GraphConstantInitializerGetter{graph})) {
+    bool dq_zero_point_exists = false;
+    if (!QDQ::QOrDQNodeHasConstantScalarScaleAndZeroPoint(dq_node, GraphConstantInitializerGetter{graph},
+                                                          dq_zero_point_exists)) {
       continue;
     }
 
     auto& dq_scale = *dq_node.MutableInputDefs()[QDQ::InputIndex::SCALE_ID];
-    auto& dq_zero_point = *dq_node.MutableInputDefs()[QDQ::InputIndex::ZERO_POINT_ID];
+    auto* dq_zero_point = dq_zero_point_exists
+                              ? dq_node.MutableInputDefs()[QDQ::InputIndex::ZERO_POINT_ID]
+                              : nullptr;
 
     const auto edge_after_dq = GetNextEdge(graph, dq_node);
     if (!edge_after_dq) {
@@ -250,12 +260,16 @@ Status PropagateQBackward(Graph& graph, gsl::span<const NodeIndex> node_indices,
       continue;
     }
 
-    if (!QDQ::QOrDQNodeHasConstantScalarScaleAndZeroPoint(q_node, GraphConstantInitializerGetter{graph})) {
+    bool q_zero_point_exists = false;
+    if (!QDQ::QOrDQNodeHasConstantScalarScaleAndZeroPoint(q_node, GraphConstantInitializerGetter{graph},
+                                                          q_zero_point_exists)) {
       continue;
     }
 
     auto& q_scale = *q_node.MutableInputDefs()[QDQ::InputIndex::SCALE_ID];
-    auto& q_zero_point = *q_node.MutableInputDefs()[QDQ::InputIndex::ZERO_POINT_ID];
+    auto* q_zero_point = q_zero_point_exists
+                             ? q_node.MutableInputDefs()[QDQ::InputIndex::ZERO_POINT_ID]
+                             : nullptr;
 
     const auto edge_before_q = GetPreviousEdge(graph, q_node);
     if (!edge_before_q) {
