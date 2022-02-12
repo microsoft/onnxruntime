@@ -694,7 +694,7 @@ bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
   const auto perm_size = SafeInt<uint32_t>(perm_tensor.dims()[0]);
 
   NodeAttrHelper helper(node_unit);
-  const bool allow_zero = helper.Get("allowzero ", 0) == 1;
+  const bool allow_zero = helper.Get("allowzero", 0) == 1;
   for (uint32_t i = 0; i < perm_size; i++) {
     // NNAPI reshape does not support 0 as dimension
     if (raw_perm[i] == 0) {
@@ -720,7 +720,8 @@ bool ReshapeOpSupportChecker::HasSupportedInputOutputsImpl(
   if (!GetType(node_unit.Inputs()[0].node_arg, input_type))
     return false;
 
-  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+      input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     LOGS_DEFAULT(VERBOSE) << "[" << node_unit.OpType()
                           << "] Input type: [" << input_type
                           << "] is not supported for now";
