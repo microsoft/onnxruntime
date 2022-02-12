@@ -867,10 +867,20 @@ class ReshapeOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
   static bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
                              size_t input_rank, size_t output_rank);
+  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
 };
 
+/* static */ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
+  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQReshape;
+}
+
 void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
-  model_builder.AddInitializerToSkip(node_unit.Inputs()[1].node_arg.Name());
+  if (IsQuantizedOp(node_unit)) {
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Inputs()[0].quant_param);   // x_scale, x_zp
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
+  } else {
+    model_builder.AddInitializerToSkip(node_unit.Inputs()[1].node_arg.Name());
+  }
 }
 
 // We can skip the Reshape if all the output edges satisfies both the following conditions
@@ -1004,6 +1014,15 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
     int32_t dim = SafeInt<int32_t>(raw_shape[i]);
     // NNAPI reshape does not support 0 as dimension
     shape[i] = dim == 0 ? input_shape[i] : dim;
+  }
+
+  // Check if the quantization scale and ZP are correct
+  if (IsQuantizedOp(node_unit)) {
+    float x_scale = 0.0f;
+    int32_t x_zero_point = 0;
+    ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
+        initializers, node_unit.Inputs()[0], node_unit.ModelPath(), x_scale, x_zero_point));
+    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
   }
 
   return AddReshapeOperator(model_builder, node_unit, input, shape);

@@ -370,6 +370,15 @@ TEST(NnapiExecutionProviderTest, TestQDQTranspose) {
                   });
 }
 
+TEST(NnapiExecutionProviderTest, TestQDQReshape) {
+  RunQDQModelTest(BuildQDQReshapeTestCase({1, 3, 64, 64} /* input_shape */,
+                                          {1, 64, 64, 3} /* reshape_shape */),
+                  "nnapi_qdq_test_graph_reshape",
+                  {
+                      true /* verify_entire_graph_use_ep */
+                  });
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
