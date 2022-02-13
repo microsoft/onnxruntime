@@ -2522,6 +2522,18 @@ static constexpr OrtApi ort_api_1_to_11 = {
     &OrtApis::GetCUDAProviderOptionsAsString,
     &OrtApis::ReleaseCUDAProviderOptions,
     &OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX,
+    &OrtApis::CreateInvoker,
+    &OrtApis::Invoker_Invoke,
+    &OrtApis::CreateNodeAttributes,
+    &OrtApis::NodeAttributes_Set_float,
+    &OrtApis::NodeAttributes_Set_int64,
+    &OrtApis::NodeAttributes_Set_string,
+    &OrtApis::NodeAttributes_Set_tensor,
+    &OrtApis::NodeAttributes_SetArray_float,
+    &OrtApis::NodeAttributes_SetArray_int64,
+    &OrtApis::NodeAttributes_SetArray_string,
+    &OrtApis::ReleaseInvoker,
+    &OrtApis::ReleaseNodeAttributes,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)

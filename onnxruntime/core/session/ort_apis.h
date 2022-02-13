@@ -339,4 +339,29 @@ ORT_API_STATUS_IMPL(UpdateCUDAProviderOptions, _Inout_ OrtCUDAProviderOptionsV2*
                     size_t num_keys);
 ORT_API_STATUS_IMPL(GetCUDAProviderOptionsAsString, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 ORT_API(void, ReleaseCUDAProviderOptions, _Frees_ptr_opt_ OrtCUDAProviderOptionsV2*);
+ORT_API_STATUS_IMPL(CreateInvoker,
+                    _In_ const OrtEnv* env,
+                    _In_ const OrtSessionOptions* options,
+                    size_t provider_index,
+                    _Outptr_ OrtInvoker** invoker);
+ORT_API_STATUS_IMPL(Invoker_Invoke,
+                    _Inout_ OrtInvoker* invoker,
+                    const char* op_name,
+                    _In_reads_(input_len) const OrtValue* const* inputs,
+                    size_t inputs_len,
+                    _Inout_updates_all_(output_names_len) OrtValue** outputs,
+                    size_t outputs_len,
+                    const OrtNodeAttributes* attributes,
+                    const char* domain,
+                    int version);
+ORT_API_STATUS_IMPL(CreateNodeAttributes, _Outptr_ OrtNodeAttributes** attributes);
+ORT_API_STATUS_IMPL(NodeAttributes_Set_float, _Inout_ OrtNodeAttributes* attributes, _In_ const char* name, float value);
+ORT_API_STATUS_IMPL(NodeAttributes_Set_int64, _Inout_ OrtNodeAttributes* attributes, _In_ const char* name, int64_t value);
+ORT_API_STATUS_IMPL(NodeAttributes_Set_string, _Inout_ OrtNodeAttributes* attributes, _In_ const char* name, _In_ const char* value);
+ORT_API_STATUS_IMPL(NodeAttributes_Set_tensor, _Inout_ OrtNodeAttributes* attributes, _In_ const char* name, _Inout_ void* p_data, size_t p_data_len, _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
+ORT_API_STATUS_IMPL(NodeAttributes_SetArray_float, _Inout_ OrtNodeAttributes* attributes, _In_ const char* name, _In_reads_(values_len) float const* values, size_t values_len);
+ORT_API_STATUS_IMPL(NodeAttributes_SetArray_int64, _Inout_ OrtNodeAttributes* attributes, _In_ const char* name, _In_reads_(values_len) int64_t const* values, size_t values_len);
+ORT_API_STATUS_IMPL(NodeAttributes_SetArray_string, _Inout_ OrtNodeAttributes* attributes, _In_ const char* name, _In_reads_(values_len) const char* const* values, size_t values_len);
+ORT_API(void, ReleaseInvoker, _Frees_ptr_opt_ OrtInvoker*);
+ORT_API(void, ReleaseNodeAttributes, _Frees_ptr_opt_ OrtNodeAttributes*);
 }  // namespace OrtApis

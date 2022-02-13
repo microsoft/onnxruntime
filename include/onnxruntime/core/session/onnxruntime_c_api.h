@@ -257,6 +257,8 @@ ORT_RUNTIME_CLASS(ArenaCfg);
 ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
 ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
 ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
+ORT_RUNTIME_CLASS(Invoker);
+ORT_RUNTIME_CLASS(NodeAttributes);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -3303,6 +3305,31 @@ struct OrtApi {
   */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_MIGraphX,
                   _In_ OrtSessionOptions* options, _In_ const OrtMIGraphXProviderOptions* migraphx_options);
+  ORT_API2_STATUS(CreateInvoker,
+                  _In_ const OrtEnv* env,
+                  _In_ const OrtSessionOptions* options,
+                  size_t provider_index,
+                  _Outptr_ OrtInvoker** invoker);
+  ORT_API2_STATUS(Invoker_Invoke,
+                  _Inout_ OrtInvoker* invoker,
+                  const char* op_name,
+                  _In_reads_(input_len) const OrtValue* const* inputs,
+                  size_t inputs_len,
+                  _Inout_updates_all_(output_names_len) OrtValue** outputs,
+                  size_t outputs_len,
+                  const OrtNodeAttributes* attributes,
+                  const char* domain,
+                  int version);
+  ORT_API2_STATUS(CreateNodeAttributes, _Outptr_ OrtNodeAttributes** attributes);
+  ORT_API2_STATUS(NodeAttributes_Set_float, _Inout_ OrtNodeAttributes* attributes, _In_ const char* name, float value);
+  ORT_API2_STATUS(NodeAttributes_Set_int64, _Inout_ OrtNodeAttributes* attributes, _In_ const char* name, int64_t value);
+  ORT_API2_STATUS(NodeAttributes_Set_string, _Inout_ OrtNodeAttributes* attributes, _In_ const char* name, _In_ const char* value);
+  ORT_API2_STATUS(NodeAttributes_Set_tensor, _Inout_ OrtNodeAttributes* attributes, _In_ const char* name, _Inout_ void* p_data, size_t p_data_len, _In_ const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
+  ORT_API2_STATUS(NodeAttributes_SetArray_float, _Inout_ OrtNodeAttributes* attributes, _In_ const char* name, _In_reads_(values_len) float const* values, size_t values_len);
+  ORT_API2_STATUS(NodeAttributes_SetArray_int64, _Inout_ OrtNodeAttributes* attributes, _In_ const char* name, _In_reads_(values_len) int64_t const* values, size_t values_len);
+  ORT_API2_STATUS(NodeAttributes_SetArray_string, _Inout_ OrtNodeAttributes* attributes, _In_ const char* name, _In_reads_(values_len) const char* const* values, size_t values_len);
+  ORT_CLASS_RELEASE(Invoker);
+  ORT_CLASS_RELEASE(NodeAttributes);
 };
 
 /*

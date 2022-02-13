@@ -112,6 +112,8 @@ ORT_DEFINE_RELEASE(ModelMetadata);
 ORT_DEFINE_RELEASE(ThreadingOptions);
 ORT_DEFINE_RELEASE(IoBinding);
 ORT_DEFINE_RELEASE(ArenaCfg);
+ORT_DEFINE_RELEASE(Invoker);
+ORT_DEFINE_RELEASE(NodeAttributes);
 
 #undef ORT_DEFINE_RELEASE
 
@@ -931,6 +933,29 @@ struct ArenaCfg : Base<OrtArenaCfg> {
   * See docs/C_API.md for details on what the following parameters mean and how to choose these values
   */
   ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk);
+};
+
+struct NodeAttributes : public Base<OrtNodeAttributes> {
+  explicit NodeAttributes(std::nullptr_t);
+  void Set_float(const char* name, float value);
+  void Set_int64(const char* name, int64_t value);
+  void Set_string(const char* name, const char* value);
+  void Set_tensor(const char* name, void* p_data, size_t p_data_len, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type);
+  void SetArray_float(const char* name, float const* values, size_t values_len);
+  void SetArray_int64(const char* name, int64_t const* values, size_t values_len);
+  void SetArray_string(const char* name, const char* const* values, size_t values_len);
+};
+
+struct Invoker : public Base<OrtInvoker> {
+  Invoker(const Env& env, const SessionOptions& options, size_t provider_index);
+  void Invoke(const char* op_name,
+              const Value* inputs,
+              size_t inputs_len,
+              Value* outputs,
+              size_t outputs_len,
+              const NodeAttributes& attributes,
+              const char* domain,
+              int version);
 };
 
 //

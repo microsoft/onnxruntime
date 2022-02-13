@@ -5,6 +5,8 @@ file(GLOB onnxruntime_session_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_INCLUDE_DIR}/core/session/*.h"
     "${ONNXRUNTIME_ROOT}/core/session/*.h"
     "${ONNXRUNTIME_ROOT}/core/session/*.cc"
+    "${ONNXRUNTIME_INCLUDE_DIR}/core/eager/ort_kernel_invoker.h"
+    "${ONNXRUNTIME_ROOT}/core/eager/ort_kernel_invoker.cc"
     )
 
 if (onnxruntime_MINIMAL_BUILD)

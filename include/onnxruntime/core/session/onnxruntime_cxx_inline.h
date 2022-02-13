@@ -1020,6 +1020,48 @@ inline TensorTypeAndShapeInfo Value::GetTensorTypeAndShapeInfo() const {
   return TensorTypeAndShapeInfo{output};
 }
 
+inline NodeAttributes::NodeAttributes(std::nullptr_t) {
+  ThrowOnError(GetApi().CreateNodeAttributes(&p_));
+}
+
+inline void NodeAttributes::Set_float(const char* name, float value) {
+  ThrowOnError(GetApi().NodeAttributes_Set_float(p_, name, value));
+}
+inline void NodeAttributes::Set_int64(const char* name, int64_t value) {
+  ThrowOnError(GetApi().NodeAttributes_Set_int64(p_, name, value));
+}
+inline void NodeAttributes::Set_string(const char* name, const char* value) {
+  ThrowOnError(GetApi().NodeAttributes_Set_string(p_, name, value));
+}
+inline void NodeAttributes::Set_tensor(const char* name, void* p_data, size_t p_data_len, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type) {
+  ThrowOnError(GetApi().NodeAttributes_Set_tensor(p_, name, p_data, p_data_len, shape, shape_len, type));
+}
+inline void NodeAttributes::SetArray_float(const char* name, float const* values, size_t values_len) {
+  ThrowOnError(GetApi().NodeAttributes_SetArray_float(p_, name, values, values_len));
+}
+inline void NodeAttributes::SetArray_int64(const char* name, int64_t const* values, size_t values_len) {
+  ThrowOnError(GetApi().NodeAttributes_SetArray_int64(p_, name, values, values_len));
+}
+inline void NodeAttributes::SetArray_string(const char* name, const char* const* values, size_t values_len) {
+  ThrowOnError(GetApi().NodeAttributes_SetArray_string(p_, name, values, values_len));
+}
+
+inline Invoker::Invoker(const Env& env, const SessionOptions& options, size_t provider_index) {
+  ThrowOnError(GetApi().CreateInvoker(env, options, provider_index, &p_));
+}
+inline void Invoker::Invoke(const char* op_name,
+                            const Value* inputs,
+                            size_t inputs_len,
+                            Value* outputs,
+                            size_t outputs_len,
+                            const NodeAttributes& attributes,
+                            const char* domain,
+                            int version) {
+  auto ort_input_values = reinterpret_cast<const OrtValue**>(const_cast<Value*>(inputs));
+  auto ort_output_values = reinterpret_cast<OrtValue**>(outputs);
+  ThrowOnError(GetApi().Invoker_Invoke(p_, op_name, ort_input_values, inputs_len, ort_output_values, outputs_len, attributes, domain, version));
+}
+
 //
 // Custom OP API Inlines
 //
