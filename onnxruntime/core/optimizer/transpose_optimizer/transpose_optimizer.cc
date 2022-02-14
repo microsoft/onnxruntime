@@ -1762,12 +1762,6 @@ bool Optimize(api::GraphRef& graph, bool allow_extended_ops) {
   return OptimizeImpl(*ctx);
 }
 
-void TransposesNodeInputs(api::GraphRef& graph, api::NodeRef& node,
-    size_t i,
-                          const std::vector<int64_t>& input_perm) {
-  TransposeInput(graph, node, i, input_perm, InvertPerm(input_perm));
-}
-
 void WrapTransposesAroundNode(api::GraphRef& graph, api::NodeRef& node,
                               const std::vector<const std::vector<int64_t>*>& input_perms,
                               const std::vector<const std::vector<int64_t>*>& output_perms) {
@@ -1789,7 +1783,7 @@ std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api:
                                                       std::string_view op_type, std::string_view domain) {
   auto inputs = node.Inputs();
   auto outputs = node.Outputs();
-  auto new_node = graph.AddNode(op_type, inputs, outputs.size(), domain, node.Name());
+  auto new_node = graph.AddNode(op_type, inputs, outputs.size(), domain);
   for (size_t j = 0; j < outputs.size(); ++j) {
     if (outputs[j] != "") {
       graph.MoveOutput(node, j, *new_node, j);
