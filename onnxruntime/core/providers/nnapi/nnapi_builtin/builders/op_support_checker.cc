@@ -716,24 +716,14 @@ bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
 bool ReshapeOpSupportChecker::HasSupportedInputOutputsImpl(
     const InitializedTensorSet& initializers, const NodeUnit& node_unit,
     const OpSupportCheckParams& params) const {
-  int32_t input_type;
-  if (!GetType(node_unit.Inputs()[0].node_arg, input_type))
-    return false;
-
-  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-      input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node_unit.OpType()
-                          << "] Input type: [" << input_type
-                          << "] is not supported for now";
-    return false;
-  }
-
   if (IsQuantizedOp(node_unit)) {
     if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Input))
       return false;
 
     if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Output))
       return false;
+  } else {
+    return BaseOpSupportChecker::HasSupportedInputOutputsImpl(initializers, node_unit, params);
   }
 
   return true;

@@ -874,9 +874,8 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   if (IsQuantizedOp(node_unit)) {
     AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Inputs()[0].quant_param);   // x_scale, x_zp
     AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
-  } else {
-    model_builder.AddInitializerToSkip(node_unit.Inputs()[1].node_arg.Name());
   }
+  model_builder.AddInitializerToSkip(node_unit.Inputs()[1].node_arg.Name());
 }
 
 /* static */ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
