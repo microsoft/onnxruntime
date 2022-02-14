@@ -2326,6 +2326,71 @@ void RegisterContribSchemas() {
         updateOutputShape(ctx, 0, output_shape);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BitmaskDropout)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "output, dropout_mask = Dropout(data + bias, ratio) + residual, "
+          "Intended to specialize the dropout pattern commonly found in transformer models.")
+      .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.", AttributeProto::INT, OPTIONAL_VALUE)
+      .AllowUncheckedAttributes()
+      .Input(0, "data", "The input data as Tensor.", "T")
+      .Input(1, "ratio",
+             "The ratio of random dropout, with value in [0, 1). If this input was not set, "
+             "or if it was set to 0, the output would be a simple copy of the input. "
+             "If it's non-zero, output will be a random dropout of the scaled input, which is typically "
+             "the case during training. It is an optional value, if not specified it will default to 0.5.",
+             "T1",
+             OpSchema::Optional,
+             true,
+             1,
+             OpSchema::NonDifferentiable)
+      .Input(
+          2,
+          "training_mode",
+          "If set to true then it indicates dropout is being used for training. It is an optional value hence unless "
+          "specified explicitly, it is false. If it is false, ratio is ignored and the operation mimics inference mode where "
+          "nothing will be dropped from the input data and if mask is requested as output it will contain all ones.",
+          "T2",
+          OpSchema::Optional,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .Output(
+          0,
+          "output",
+          "The output.",
+          "T",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::Differentiable)
+      .Output(
+          1,
+          "mask",
+          "The output mask.",
+          "T3",
+          OpSchema::Optional,
+          true,
+          1,
+          OpSchema::NonDifferentiable)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input 'ratio' types to float tensors.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(bool)"},
+          "Constrain training_mode to boolean tensors")
+      .TypeConstraint(
+          "T3",
+          {"tensor(uint32)"},
+          "Constrain output 'mask' types to bit-packed uint32 tensors.");
+
 #ifndef _OPSCHEMA_LIB_
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {

@@ -579,7 +579,7 @@ class OpTester {
   void AddOutput(const char* name, std::initializer_list<int64_t> dims, const T* p_values, const size_t size,
                  bool sort_output = false, float rel_error = 0.0f, float abs_error = 0.0f) {
     const DimsVariant dims_var = std::vector<int64_t>(dims);
-    AddData(output_data_, name, dims, p_values, size, false,
+    AddData(output_data_, name, dims_var, p_values, size, false,
             sort_output, nullptr /* dim_params */, rel_error, abs_error);
   }
 
