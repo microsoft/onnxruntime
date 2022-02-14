@@ -189,14 +189,10 @@ bool LaunchAttentionKernel(
     const void* past,
     const void* extra_add_qk,
     void* present) {
-  std::cout << "d 2" << std::endl;
-  std::cout << "d 2" << std::endl;
   // For testing, environment variable ORT_TRANSFORMER_OPTIONS=1 could enable persistent softmax
   const TransformerOptions* options = TransformerOptions::GetInstance();
   bool use_persistent_softmax = options->IsPrecisionMode() && !options->DisablePersistentSoftmax();
   if (element_size == 2) {
-    std::cout << "d 2 half" << std::endl;
-    std::cout << "d 2 half" << std::endl;
     return QkvToContext(prop, rocblas, stream,
                         batch_size, sequence_length, num_heads, head_size, element_size,
                         reinterpret_cast<const __half*>(input), reinterpret_cast<__half*>(output), reinterpret_cast<__half*>(workspace),
@@ -204,8 +200,6 @@ bool LaunchAttentionKernel(
                         past_sequence_length, reinterpret_cast<const __half*>(past), reinterpret_cast<const __half*>(extra_add_qk),
                         reinterpret_cast<__half*>(present), use_persistent_softmax);
   } else {
-    std::cout << "d 2 float" << std::endl;
-    std::cout << "d 2 float" << std::endl;
     return QkvToContext(prop, rocblas, stream,
                         batch_size, sequence_length, num_heads, head_size, element_size,
                         reinterpret_cast<const float*>(input), reinterpret_cast<float*>(output), reinterpret_cast<float*>(workspace),
