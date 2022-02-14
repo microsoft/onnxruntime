@@ -10,9 +10,6 @@
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/tensorrt/tensorrt_execution_provider_utils.h"
 #include <string>
-#include <iostream>
-#include <filesystem>
-namespace fs = std::filesystem;
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -32,33 +29,6 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
   ASSERT_EQ(expected_shape, rtensor.Shape());
   const std::vector<T> found(rtensor.template Data<T>(), rtensor.template Data<T>() + expected_values.size());
   ASSERT_EQ(expected_values, found);
-}
-
-bool IsTensorRTCacheExisted(std::string path, std::string file_extension) {
-  for (const auto & entry : fs::directory_iterator(path)) {
-      if (fs::path(file_extension) == fs::path(entry).extension()) {
-          return true;
-      }
-  }
-  return false;
-}
-
-void RemoveTensorRTCache(std::string path, std::string file_extension) {
-  for (const auto & entry : fs::directory_iterator(path)) {
-      if (fs::path(file_extension) == fs::path(entry).extension()) {
-          fs::remove(entry);
-      }
-  }
-}
-
-std::vector<fs::path> GetTensorRTCache(std::string path, std::string file_extension) {
-  std::vector<fs::path> cache_files;
-  for (const auto & entry : fs::directory_iterator(path)) {
-      if (fs::path(file_extension) == fs::path(entry).extension()) {
-        cache_files.push_back(fs::path(entry));
-      }
-  }
-  return cache_files;
 }
 
 /**
@@ -217,17 +187,17 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
     status = session_object.Run(run_options, feeds, output_names, &fetches);
     ASSERT_TRUE(status.IsOK());
     VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
-    ASSERT_TRUE(IsTensorRTCacheExisted("./", ".engine"));
+    ASSERT_TRUE(IsCacheExistedByType("./", ".engine"));
 
     std::vector<fs::path> profile_files;
 
     // profile cache only being generated for dynamic input shape
     if (input_type.compare("static") == 0) {
-      ASSERT_TRUE(!IsTensorRTCacheExisted("./", ".profile"));
+      ASSERT_TRUE(!IsCacheExistedByType("./", ".profile"));
     } else {
-      ASSERT_TRUE(IsTensorRTCacheExisted("./", ".profile"));
+      ASSERT_TRUE(IsCacheExistedByType("./", ".profile"));
 
-      profile_files = GetTensorRTCache("./", ".profile");
+      profile_files = GetCachesByType("./", ".profile");
       ASSERT_EQ(profile_files.size(), 1);
       std::ifstream profile_file(profile_files[0], std::ios::binary | std::ios::in);
       auto shape_ranges = DeserializeProfile(profile_file);
@@ -277,7 +247,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
       ASSERT_TRUE(status.IsOK());
       VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
 
-      profile_files = GetTensorRTCache("./", ".profile");
+      profile_files = GetCachesByType("./", ".profile");
       ASSERT_EQ(profile_files.size(), 1);
       std::ifstream profile_file2(profile_files[0], std::ios::binary | std::ios::in);
       auto shape_ranges2 = DeserializeProfile(profile_file2);
@@ -301,8 +271,8 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
   }
 
   // clean up caches
-  RemoveTensorRTCache("./", ".engine");
-  RemoveTensorRTCache("./", ".profile");
+  RemoveCachesByType("./", ".engine");
+  RemoveCachesByType("./", ".profile");
 }
 
 /*
