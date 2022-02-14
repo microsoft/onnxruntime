@@ -862,7 +862,7 @@ class ReshapeOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
   static Status AddReshapeOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
                                    const std::string& input, const std::vector<int32_t>& shape,
-                                   float scale, int32_t zero_point);
+                                   float scale = 0.0f, int32_t zero_point = 0);
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
@@ -958,7 +958,7 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
                                                          const NodeUnit& node_unit,
                                                          const std::string& input,
                                                          const std::vector<int32_t>& shape,
-                                                         float scale = 0.0f, int32_t zero_point = 0) {
+                                                         float scale, int32_t zero_point) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
