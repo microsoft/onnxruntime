@@ -337,7 +337,9 @@ Status CUDAExecutionProvider::OnRunStart() {
       LOGS_DEFAULT(INFO) << "Capturing the CUDA Graph for this model";
       CaptureBegin();
     } else {
-      LOGS_DEFAULT(INFO) << "Run the " << regular_run_count_before_graph_capture_ << "th of the required " << DEFAULT_REGULAR_RUNS_BEFORE_CUDA_GRAPH_CAPTURE << " regular runs for cuda graph capture. ";
+      LOGS_DEFAULT(INFO) << "Run the " << regular_run_count_before_graph_capture_
+                         << "th of the required " << default_regular_runs_before_cuda_graph_capture_
+                         << " regular runs for cuda graph capture. ";
     }
   }
   return Status::OK();
@@ -381,7 +383,7 @@ Status CUDAExecutionProvider::SetComputeStream(void* stream) {
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
 bool CUDAExecutionProvider::FinishRegularRunsBeforeGraphCapture() const {
-  return regular_run_count_before_graph_capture_ >= DEFAULT_REGULAR_RUNS_BEFORE_CUDA_GRAPH_CAPTURE;
+  return regular_run_count_before_graph_capture_ >= default_regular_runs_before_cuda_graph_capture_;
 }
 
 
