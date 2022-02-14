@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #ifdef NDEBUG  // disable for debug builds because some of these tests are slow
@@ -613,8 +613,11 @@ TEST(GradientCheckerTest, ReduceMeanGrad) {
 
 TEST(GradientCheckerTest, ReduceMaxGrad) {
   // Attribute axes supports negative values from opset 11.
-  OpDef op_def{"ReduceMax", kOnnxDomain, 11};
-  RunReductionTests(op_def);
+  OpDef op_def_11{"ReduceMax", kOnnxDomain, 11};
+  RunReductionTests(op_def_11);
+
+  OpDef op_def_13{"ReduceMax", kOnnxDomain, 11};
+  RunReductionTests(op_def_13);
 
 }
 
@@ -2880,3 +2883,4 @@ TEST(GradientCheckerTest, TriluGrad) {
 }  // namespace onnxruntime
 
 #endif  // NDEBUG
+

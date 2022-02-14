@@ -1069,6 +1069,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMaxGradient) {
   ArgDef ONE = one_constant_node.output_args[0];
   result.push_back(one_constant_node);
   ArgDef grad = GO(0);
+
+  std::vector<int64_t> default_reduce_axes = {};
+  ArgDef reduce_axes_arg_def = IA("ReduceAxes");
+
   if (!keepdims) {
     if (attributes.find("axes") != attributes.end()) {
       std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
@@ -1079,21 +1083,36 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMaxGradient) {
       result.push_back(NodeDef("Where", {IA("Mask"), ONE, ZERO}, {IA("Mask_float")}));
       AddReduceSumNode(IA("Mask_float"), IA("ReduceSum_Mask"), axes_values, true, result);
     } else { // axes is not available, O(0) will be a scalar
-      result.push_back(NodeDef("Equal", {I(0), O(0)}, {IA("Mask")}));
-      result.push_back(NodeDef("Where", {IA("Mask"), ONE, ZERO}, {IA("Mask_float")}));
-      result.push_back(NodeDef(opset_version >= 13 ? OpDef{"ReduceSum", kOnnxDomain, opset_version} : OpDef{"ReduceSumTraining", kMSDomain, 1},
+      if (opset_version >= 13) {
+        result.push_back(NodeDef(OpDef{"ReduceSum", kOnnxDomain, opset_version},
                              {IA("Mask_float")}, {IA("ReduceSum_Mask")},
                              {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t{1})}}));
+      }
+      else {
+        result.push_back(ConstantVectorNode(default_reduce_axes, reduce_axes_arg_def.name));
+        result.push_back(NodeDef(OpDef{"ReduceSumTraining", kMSDomain, 1},
+                             {IA("Mask_float"), reduce_axes_arg_def}, {IA("ReduceSum_Mask")},
+                             {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t{1})}}));
+      }
     }
   } else {
     result.push_back(NodeDef("Equal", {I(0), O(0)}, {IA("Mask")}));
     result.push_back(NodeDef("Where", {IA("Mask"), ONE, ZERO}, {IA("Mask_float")}));
     if (attributes.find("axes") != attributes.end()) {
+      std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
       AddReduceSumNode(IA("Mask_float"), IA("ReduceSum_Mask"), axes_values, true, result);
-    } else { // axes is not available
-      result.push_back(NodeDef(opset_version >= 13 ? OpDef{"ReduceSum", kOnnxDomain, opset_version} : OpDef{"ReduceSumTraining", kMSDomain, 1},
+    } else { // axes is not available, O(0) will be a scalar
+      if (opset_version >= 13) {
+        result.push_back(NodeDef(OpDef{"ReduceSum", kOnnxDomain, opset_version},
                              {IA("Mask_float")}, {IA("ReduceSum_Mask")},
                              {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t{1})}}));
+      }
+      else {
+        result.push_back(ConstantVectorNode(default_reduce_axes, reduce_axes_arg_def.name));
+        result.push_back(NodeDef(OpDef{"ReduceSumTraining", kMSDomain, 1},
+                             {IA("Mask_float"), reduce_axes_arg_def}, {IA("ReduceSum_Mask")},
+                             {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t{1})}}));
+      }
     }
   } 
   result.push_back(NodeDef("Div", {grad, IA("ReduceSum_Mask")}, {IA("Scaled_Grad")}));
@@ -1909,3 +1928,4 @@ IMPLEMENT_GRADIENT_BUILDER(GetScatterElementsGradient) {
 
 }  // namespace training
 }  // namespace onnxruntime
+
