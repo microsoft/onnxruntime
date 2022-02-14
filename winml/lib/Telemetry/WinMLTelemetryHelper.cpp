@@ -191,7 +191,7 @@ void WinMLTelemetryHelper::SetLearningModelDeviceKind(
       TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
       //Telemetry info
       TraceLoggingUInt8(WINML_TLM_DEVICE_KIND_VERSION, "schemaVersion"),
-      // thread spinning info
+      // learning model device info 
       TraceLoggingInt32(device_kind, "deviceKind"),
       TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
 }
