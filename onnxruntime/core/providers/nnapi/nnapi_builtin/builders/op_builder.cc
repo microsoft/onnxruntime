@@ -861,16 +861,26 @@ class ReshapeOpBuilder : public BaseOpBuilder {
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
   static Status AddReshapeOperator(ModelBuilder& model_builder, const NodeUnit& node_unit,
-                                   const std::string& input, const std::vector<int32_t>& shape);
+                                   const std::string& input, const std::vector<int32_t>& shape,
+                                   float scale, int32_t zero_point);
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
   static bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
                              size_t input_rank, size_t output_rank);
+  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
 };
 
 void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  if (IsQuantizedOp(node_unit)) {
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Inputs()[0].quant_param);   // x_scale, x_zp
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
+  }
   model_builder.AddInitializerToSkip(node_unit.Inputs()[1].node_arg.Name());
+}
+
+/* static */ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
+  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQReshape;
 }
 
 // We can skip the Reshape if all the output edges satisfies both the following conditions
@@ -947,7 +957,8 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
 /* static */ Status ReshapeOpBuilder::AddReshapeOperator(ModelBuilder& model_builder,
                                                          const NodeUnit& node_unit,
                                                          const std::string& input,
-                                                         const std::vector<int32_t>& shape) {
+                                                         const std::vector<int32_t>& shape,
+                                                         float scale = 0.0f, int32_t zero_point = 0) {
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
@@ -961,7 +972,7 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   // NNAPI CPU impl and NNAPI hardware accelerator impl
   if (CanSkipReshape(model_builder, node_unit, input_rank, output_rank)) {
     // Since reshape can be skipped, only register the dimension and type, with same index and new name
-    const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+    const OperandType output_operand_type(operand_types.at(input).type, shaper[output], scale, zero_point);
     model_builder.RegisterOperand(output, operand_indices.at(input), output_operand_type, false);
   } else {
     // We still need to perform a reshape here
@@ -971,11 +982,11 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
     // Add new shape
     Shape shape_dimen = {static_cast<uint32_t>(shape.size())};
     std::string shape_name = model_builder.GetUniqueName(node_unit.Name() + input + "newshape");
-    OperandType shape_operand_type(Type::TENSOR_INT32, shape_dimen);
+    OperandType shape_operand_type(Type::TENSOR_INT32, shape_dimen, scale, zero_point);
     ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(shape_name, shape.data(), shape_operand_type));
     input_indices.push_back(operand_indices.at(shape_name));
 
-    const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+    const OperandType output_operand_type(operand_types.at(input).type, shaper[output], scale, zero_point);
     ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_RESHAPE, input_indices, {output}, {output_operand_type}, {false}));
   }
 
@@ -1006,7 +1017,16 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
     shape[i] = dim == 0 ? input_shape[i] : dim;
   }
 
-  return AddReshapeOperator(model_builder, node_unit, input, shape);
+  // Check if the quantization scale and ZP are correct
+  float x_scale = 0.0f;
+  int32_t x_zero_point = 0;
+  if (IsQuantizedOp(node_unit)) {
+    ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
+        initializers, node_unit.Inputs()[0], node_unit.ModelPath(), x_scale, x_zero_point));
+    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
+  }
+
+  return AddReshapeOperator(model_builder, node_unit, input, shape, x_scale, x_zero_point);
 }
 
 #pragma endregion op_reshape

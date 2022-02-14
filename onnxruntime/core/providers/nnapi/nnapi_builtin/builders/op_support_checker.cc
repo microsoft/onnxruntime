@@ -653,7 +653,16 @@ class ReshapeOpSupportChecker : public BaseOpSupportChecker {
 
   // Reshape opset 4- uses attributes for new shape which we do not support for now
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 5; }
+  bool HasSupportedInputOutputsImpl(
+      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
+      const OpSupportCheckParams& /* params */) const override;
+  bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
+  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
 };
+
+/* static */ bool ReshapeOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
+  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQReshape;
+}
 
 bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                 const OpSupportCheckParams& /* params */) const {
@@ -685,7 +694,7 @@ bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
   const auto perm_size = SafeInt<uint32_t>(perm_tensor.dims()[0]);
 
   NodeAttrHelper helper(node_unit);
-  const bool allow_zero = helper.Get("allowzero ", 0) == 1;
+  const bool allow_zero = helper.Get("allowzero", 0) == 1;
   for (uint32_t i = 0; i < perm_size; i++) {
     // NNAPI reshape does not support 0 as dimension
     if (raw_perm[i] == 0) {
@@ -699,6 +708,24 @@ bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
         return false;
       }
     }
+  }
+
+  return true;
+}
+
+bool ReshapeOpSupportChecker::HasSupportedInputOutputsImpl(
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+    const OpSupportCheckParams& params) const {
+  if (!IsQuantizedOp(node_unit)) {
+    return BaseOpSupportChecker::HasSupportedInputOutputsImpl(initializers, node_unit, params);
+  }
+
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Input)) {
+    return false;
+  }
+
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Output)) {
+    return false;
   }
 
   return true;
