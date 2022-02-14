@@ -113,11 +113,8 @@ inline constexpr int ArrayTypeToAttributeType<std::string>() {
     if (!attr) {                                                                                             \
       return Status(ONNXRUNTIME, FAIL, "No attribute with this name is defined.");                           \
     }                                                                                                        \
-    if (values.size() != static_cast<size_t>(attr->list##_size())) {                                         \
-      std::ostringstream oss;                                                                                \
-      oss << "GetAttrs failed. Expect values.size()=" << (attr->list##_size()) << ", got " << values.size(); \
-      return Status(ONNXRUNTIME, FAIL, oss.str());                                                           \
-    }                                                                                                        \
+    ORT_RETURN_IF(values.size() != static_cast<size_t>(attr->list##_size()),                                 \
+       "GetAttrs failed. Expect values.size()=" , (attr->list##_size()) , ", got " , values.size());         \
     for (int i = 0; i < attr->list##_size(); ++i) {                                                          \
       values[i] = static_cast<T>(attr->list(i));                                                             \
     }                                                                                                        \
