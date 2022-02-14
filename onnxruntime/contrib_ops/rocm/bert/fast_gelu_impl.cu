@@ -113,6 +113,13 @@ bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int i
   return HIP_CALL(hipPeekAtLastError());
 }
 
+template <>
+bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int input_length, int bias_length,
+                          const BFloat16* input, const BFloat16* bias, BFloat16* output, bool /*use_half2*/) {
+  // HIP math is not supported yet
+  return false;
+}
+
 }  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

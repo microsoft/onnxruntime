@@ -49,9 +49,11 @@ static void RunFastGeluTest(
     const std::vector<int64_t>& output_dims,
     bool has_bias = true,
     bool use_float16 = false) {
+#ifdef USE_CUDA
   // Test CUDA operator.
   int min_cuda_architecture = use_float16 ? 530 : 0;
   if (HasCudaEnvironment(min_cuda_architecture)) {
+#endif
     OpTester tester("FastGelu", 1, onnxruntime::kMSDomain);
 
     if (use_float16) {
@@ -69,9 +71,16 @@ static void RunFastGeluTest(
     }
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+    execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+#ifdef USE_CUDA
   }
+#endif  
 
   // Test CPU operator: only float32 is implemented for FastGelu CPU.
   if (nullptr != DefaultCpuExecutionProvider().get() && !use_float16) {
@@ -198,13 +207,15 @@ TEST(FastGeluTest, FastGeluWithoutBiasFloat16) {
 }
 
 // CUDA only, ROCM has not been supported yet
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(FastGeluTest, FastGeluWithBias_BFloat16) {
+#ifdef USE_CUDA
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
     return;
   }
+#endif
   OpTester tester("FastGelu", 1, onnxruntime::kMSDomain);
 
   int batch_size = 1;
@@ -235,7 +246,11 @@ TEST(FastGeluTest, FastGeluWithBias_BFloat16) {
   tester.AddOutput<BFloat16>("Y", output_dims, f_Y);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif
