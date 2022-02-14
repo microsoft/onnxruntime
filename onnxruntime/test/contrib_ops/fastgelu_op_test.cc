@@ -40,7 +40,6 @@ const std::vector<float> GetExpectedResult(const std::vector<float>& input_data,
   return ComputeGelu(add_bias_data);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
 static void RunFastGeluGpuTest(
     const std::vector<float>& input_data,
     const std::vector<float>& bias_data,
@@ -51,9 +50,9 @@ static void RunFastGeluGpuTest(
     bool has_bias = true,
     bool use_float16 = false) {
 #ifdef USE_CUDA
-  int min_cuda_architecture = 530;
+  int min_cuda_architecture =  use_float16 ? 530 : 0;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
-    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
     return;
   }
 #endif
@@ -81,7 +80,6 @@ static void RunFastGeluGpuTest(
 #endif 
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
-#endif
 
 static void RunFastGeluCpuTest(
     const std::vector<float>& input_data,
@@ -92,19 +90,17 @@ static void RunFastGeluCpuTest(
     const std::vector<int64_t>& output_dims,
     bool has_bias = true) {
   // Test CPU operator: only float32 is implemented for FastGelu CPU.
-  if (nullptr != DefaultCpuExecutionProvider().get()) {
-    OpTester tester("FastGelu", 1, onnxruntime::kMSDomain);
+  OpTester tester("FastGelu", 1, onnxruntime::kMSDomain);
 
-    tester.AddInput<float>("X", input_dims, input_data);
-    if (has_bias) {
-      tester.AddInput<float>("bias", bias_dims, bias_data);
-    }
-    tester.AddOutput<float>("Y", output_dims, output_data);
-
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-    execution_providers.push_back(DefaultCpuExecutionProvider());
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  tester.AddInput<float>("X", input_dims, input_data);
+  if (has_bias) {
+    tester.AddInput<float>("bias", bias_dims, bias_data);
   }
+  tester.AddOutput<float>("Y", output_dims, output_data);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 // This test simulates Gelu in Bert model for float32
@@ -264,8 +260,6 @@ TEST(FastGeluTest, FastGeluWithBias_BFloat16) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif
-
-
 
 }  // namespace test
 }  // namespace onnxruntime
