@@ -716,14 +716,16 @@ bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
 bool ReshapeOpSupportChecker::HasSupportedInputOutputsImpl(
     const InitializedTensorSet& initializers, const NodeUnit& node_unit,
     const OpSupportCheckParams& params) const {
-  if (IsQuantizedOp(node_unit)) {
-    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Input))
-      return false;
-
-    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Output))
-      return false;
-  } else {
+  if (!IsQuantizedOp(node_unit)) {
     return BaseOpSupportChecker::HasSupportedInputOutputsImpl(initializers, node_unit, params);
+  }
+
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Input)) {
+    return false;
+  }
+
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Output)) {
+    return false;
   }
 
   return true;
