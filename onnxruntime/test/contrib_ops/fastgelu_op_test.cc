@@ -40,6 +40,7 @@ const std::vector<float> GetExpectedResult(const std::vector<float>& input_data,
   return ComputeGelu(add_bias_data);
 }
 
+#if defined(USE_CUDA) || defined(USE_ROCM)
 static void RunFastGeluGpuTest(
     const std::vector<float>& input_data,
     const std::vector<float>& bias_data,
@@ -50,6 +51,7 @@ static void RunFastGeluGpuTest(
     bool has_bias = true,
     bool use_float16 = false) {
 #ifdef USE_CUDA
+  // Test CUDA operator.
   int min_cuda_architecture =  use_float16 ? 530 : 0;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
@@ -80,6 +82,7 @@ static void RunFastGeluGpuTest(
 #endif 
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+#endif
 
 static void RunFastGeluCpuTest(
     const std::vector<float>& input_data,
@@ -90,17 +93,19 @@ static void RunFastGeluCpuTest(
     const std::vector<int64_t>& output_dims,
     bool has_bias = true) {
   // Test CPU operator: only float32 is implemented for FastGelu CPU.
-  OpTester tester("FastGelu", 1, onnxruntime::kMSDomain);
+  if (nullptr != DefaultCpuExecutionProvider().get()) {
+    OpTester tester("FastGelu", 1, onnxruntime::kMSDomain);
 
-  tester.AddInput<float>("X", input_dims, input_data);
-  if (has_bias) {
-    tester.AddInput<float>("bias", bias_dims, bias_data);
+    tester.AddInput<float>("X", input_dims, input_data);
+    if (has_bias) {
+      tester.AddInput<float>("bias", bias_dims, bias_data);
+    }
+    tester.AddOutput<float>("Y", output_dims, output_data);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
-  tester.AddOutput<float>("Y", output_dims, output_data);
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCpuExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 // This test simulates Gelu in Bert model for float32
@@ -121,7 +126,9 @@ static void RunFastGeluTest(
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> bias_dims = {hidden_size};
   std::vector<int64_t> output_dims = input_dims;
+#if defined(USE_CUDA) || defined(USE_ROCM)
   RunFastGeluGpuTest(input_data, bias_data, output_data, input_dims, bias_dims, output_dims, has_bias);
+#endif
   RunFastGeluCpuTest(input_data, bias_data, output_data, input_dims, bias_dims, output_dims, has_bias);
 }
 
@@ -167,6 +174,7 @@ TEST(FastGeluTest, FastGeluWithoutBiasFloat32) {
   RunFastGeluTest(input_data, bias_data, batch_size, sequence_length, hidden_size);
 }
 
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(FastGeluTest, FastGeluWithBiasFloat16) {
   int batch_size = 1;
   int sequence_length = 2;
@@ -213,7 +221,6 @@ TEST(FastGeluTest, FastGeluWithoutBiasFloat16) {
 }
 
 // ROCM has no support for HIP math, workaround using float in backend
-#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(FastGeluTest, FastGeluWithBias_BFloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
