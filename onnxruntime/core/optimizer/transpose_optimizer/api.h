@@ -333,6 +333,7 @@ class GraphRef {
   /// Number of outputs for the node. Names automatically generated. Optional outputs not supported.
   /// </param>
   /// <param name="domain">The new node's domain. Empty string signifies default onnx domain.</param>
+  /// <param name="name">The new node's name. If it is empty, we will generate a random string for it</param>
   /// <returns>The new node</returns>
   virtual std::unique_ptr<NodeRef> AddNode(std::string_view op_type, const std::vector<std::string_view>& inputs,
                                            size_t num_outputs, std::string_view domain = "", std::string_view name = "") = 0;
