@@ -592,7 +592,7 @@ std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
   }
 
   std::vector<NodeArg*> outputs;
-  Node& node = graph_.AddNode(std::string(name), op_type_str, "Added in transpose optimizer", input_args, output_args, nullptr,
+  Node& node = graph_.AddNode(name, op_type_str, "Added in transpose optimizer", input_args, output_args, nullptr,
                               std::string(domain));
 
   if (new_node_ep_ != nullptr) {
