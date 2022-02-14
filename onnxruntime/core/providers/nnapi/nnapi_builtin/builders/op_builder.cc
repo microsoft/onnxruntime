@@ -788,12 +788,29 @@ Status ReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 #pragma region op_transpose
 
 class TransposeOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
 };
+
+void TransposeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  if (!IsQuantizedOp(node_unit))
+    return;
+
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Inputs()[0].quant_param);   // x_scale, x_zp
+  AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
+}
+
+/* static */ bool TransposeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
+  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQTranspose;
+}
 
 Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   auto& shaper(model_builder.GetShaper());
+  const auto& initializers(model_builder.GetInitializerTensors());
 
   const auto& input = node_unit.Inputs()[0].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
@@ -814,6 +831,15 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
     const int32_t axis_nchw_to_nhwc[4]{0, 3, 1, 2};
     for (size_t i = 0; i < perm.size(); i++)
       perm[i] = axis_nchw_to_nhwc[perm[i]];
+  }
+
+  // Check if the quantization scale and ZP are correct
+  if (IsQuantizedOp(node_unit)) {
+    float x_scale = 0.0f;
+    int32_t x_zero_point = 0;
+    ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
+        initializers, node_unit.Inputs()[0], node_unit.ModelPath(), x_scale, x_zero_point));
+    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
   }
 
   std::string perm_name = model_builder.GetUniqueName(node_unit.Name() + input + "perm");
