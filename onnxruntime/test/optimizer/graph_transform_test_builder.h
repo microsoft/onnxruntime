@@ -172,11 +172,9 @@ class ModelTestBuilder {
     return AddNode("DequantizeLinear", input_args, {output_arg});
   }
 
-  template <typename T>
-  typename std::enable_if<IsTypeDequantLinearCompatible<T>::value, Node&>::type
-  AddDequantizeLinearNode(NodeArg* input_arg,
-                          float input_scale,
-                          NodeArg* output_arg) {
+  Node& AddDequantizeLinearNode(NodeArg* input_arg,
+                                float input_scale,
+                                NodeArg* output_arg) {
     std::vector<NodeArg*> input_args;
     input_args.push_back(input_arg);
     input_args.push_back(MakeScalarInitializer<float>(input_scale));

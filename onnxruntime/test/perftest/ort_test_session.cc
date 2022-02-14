@@ -60,7 +60,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   } else if (provider_name == onnxruntime::kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
     int device_id = 0;
-    int trt_max_partition_iterations  = 1000;
+    int trt_max_partition_iterations = 1000;
     int trt_min_subgraph_size = 1;
     size_t trt_max_workspace_size = 1 << 30;
     bool trt_fp16_enable = false;
@@ -76,11 +76,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::string trt_engine_decryption_lib_path = "";
     bool trt_force_sequential_engine_build = false;
 
-    #ifdef _MSC_VER
+#ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-    #else
+#else
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
-    #endif
+#endif
     std::istringstream ss(ov_string);
     std::string token;
     while (ss >> token) {
@@ -215,7 +215,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     tensorrt_options.has_user_compute_stream = 0;
     tensorrt_options.user_compute_stream = nullptr;
     tensorrt_options.trt_max_partition_iterations = trt_max_partition_iterations;
-    tensorrt_options.trt_min_subgraph_size = trt_min_subgraph_size;	
+    tensorrt_options.trt_min_subgraph_size = trt_min_subgraph_size;
     tensorrt_options.trt_max_workspace_size = trt_max_workspace_size;
     tensorrt_options.trt_fp16_enable = trt_fp16_enable;
     tensorrt_options.trt_int8_enable = trt_int8_enable;
@@ -232,9 +232,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     session_options.AppendExecutionProvider_TensorRT_V2(tensorrt_options);
 
     OrtCUDAProviderOptions cuda_options;
-    cuda_options.device_id=device_id;
-    cuda_options.cudnn_conv_algo_search=static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo);
-    cuda_options.do_copy_in_default_stream=!performance_test_config.run_config.do_cuda_copy_in_separate_stream;
+    cuda_options.device_id = device_id;
+    cuda_options.cudnn_conv_algo_search = static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo);
+    cuda_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
     // TODO: Support arena configuration for users of perf test
     session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else
@@ -325,7 +325,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
 #ifdef USE_NNAPI
     uint32_t nnapi_flags = 0;
+#ifdef _MSC_VER
+    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
     std::istringstream ss(ov_string);
     std::string key;
     while (ss >> key) {

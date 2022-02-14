@@ -21,6 +21,8 @@ if (onnxruntime_MINIMAL_BUILD)
       "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/qdq_util.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/initializer.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/initializer.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/helpers.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/helpers.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/utils.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/utils.cc"
     )
