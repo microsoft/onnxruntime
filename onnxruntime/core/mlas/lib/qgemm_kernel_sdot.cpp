@@ -994,7 +994,7 @@ extern "C" {
 
     size_t
     MLASCALL
-    MlasSymQgemmS8KernelSdot(
+    MlasSymQgemmS8KernelSdotLd64(
         const int8_t* A,
         const int8_t* B,
         int32_t* C,
@@ -1022,7 +1022,7 @@ size_t MlasSymmQGemmKernel<MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT>(
     const int32_t* ColumnSumVector
 )
 {
-    return MlasSymQgemmS8KernelSdot(A, B, C, PackedCountK, CountM, CountN, ldc, lda,
+    return MlasSymQgemmS8KernelSdotLd64(A, B, C, PackedCountK, CountM, CountN, ldc, lda,
                                     ColumnSumVector);
 }
 
