@@ -80,7 +80,7 @@ class FusedAdam(torch.optim.Optimizer):
                         eps=eps,
                         weight_decay=weight_decay)
         super(FusedAdam, self).__init__(params, defaults)
-        self._adam_w_mode = adam_w_mode
+        self._adam_w_mode = int(adam_w_mode) # backend expects the argument to be an int
         self._set_grad_none = set_grad_none
 
         # Skip buffer
