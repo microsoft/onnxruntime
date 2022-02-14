@@ -68,7 +68,9 @@ class ApiNode final : public api::NodeRef {
   onnxruntime::Node& Node() {
     return node_;
   }
-
+  std::string_view Name() const override {
+    return node_.Name();
+  }
   std::string_view OpType() const override {
     return node_.OpType();
   }
@@ -113,7 +115,7 @@ class ApiGraph final : public api::GraphRef {
   void TransposeInitializer(std::string_view name, const std::vector<int64_t>& perm) override;
   void ReshapeInitializer(std::string_view name, const std::vector<int64_t>& shape) override;
   std::unique_ptr<api::NodeRef> AddNode(std::string_view op_type, const std::vector<std::string_view>& inputs,
-                                        size_t num_outputs = 1, std::string_view domain = "") override;
+                                        size_t num_outputs = 1, std::string_view domain = "", std::string_view name = "") override;
   void RemoveNode(api::NodeRef& node) override;
   void RemoveInitializer(std::string_view name) override;
   std::string_view AddInitializer(api::DataType dtype, const std::vector<int64_t>& shape,
@@ -564,9 +566,10 @@ void ApiGraph::ReshapeInitializer(std::string_view name, const std::vector<int64
 
 std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
                                                 const std::vector<std::string_view>& inputs, size_t num_outputs,
-                                                std::string_view domain) {
+                                                std::string_view domain, std::string_view node_name) {
   const std::string op_type_str(op_type);
-  std::string name = graph_.GenerateNodeName(op_type_str);
+  std::string name = node_name.empty() ? graph_.GenerateNodeName(op_type_str) : std::string(node_name);
+
   std::vector<NodeArg*> input_args;
   std::vector<NodeArg*> output_args;
 
@@ -589,7 +592,7 @@ std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
   }
 
   std::vector<NodeArg*> outputs;
-  Node& node = graph_.AddNode(name, op_type_str, "Added in transpose optimizer", input_args, output_args, nullptr,
+  Node& node = graph_.AddNode(std::string(name), op_type_str, "Added in transpose optimizer", input_args, output_args, nullptr,
                               std::string(domain));
 
   if (new_node_ep_ != nullptr) {

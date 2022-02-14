@@ -140,6 +140,9 @@ class NodeRef {
   /// <returns>Domain containing the op. Empty string if node has no domain set.</returns>
   virtual std::string_view Domain() const = 0;
 
+  /// <returns>Node name. Empty string if node has no domain set.</returns>
+  virtual std::string_view Name() const = 0;
+
   /// <returns>Names of input values. Empty string may be included for optional inputs.</returns>
   virtual std::vector<std::string_view> Inputs() const = 0;
 
@@ -204,7 +207,7 @@ class NodeRef {
     }
     std::string_view node_domain = Domain();
     return node_domain == domain ||
-        ((domain == "" || domain == "ai.onnx") && (node_domain == "" || node_domain == "ai.onnx"));
+           ((domain == "" || domain == "ai.onnx") && (node_domain == "" || node_domain == "ai.onnx"));
   }
 
   /// <summary>
@@ -224,7 +227,6 @@ class NodeRef {
 /// Information regarding the consumers of a value.
 /// </summary>
 struct ValueConsumers {
-
   /// <summary>
   /// List of nodes in the current graph containing value as an input
   /// </summary>
@@ -333,7 +335,7 @@ class GraphRef {
   /// <param name="domain">The new node's domain. Empty string signifies default onnx domain.</param>
   /// <returns>The new node</returns>
   virtual std::unique_ptr<NodeRef> AddNode(std::string_view op_type, const std::vector<std::string_view>& inputs,
-                                           size_t num_outputs, std::string_view domain = "") = 0;
+                                           size_t num_outputs, std::string_view domain = "", std::string_view name = "") = 0;
 
   /// <summary>
   /// Deletes a node from the graph. Behavior is undefined if node has any consumers.
@@ -444,13 +446,13 @@ bool Optimize(api::GraphRef& graph, bool allow_extended_ops);
 /// <summary>
 /// Inserts transposes around op inputs/outputs. Alternatively transposes initializers or uses existing Transpose
 /// nodes if possible. Populates shape information on affected node inputs/outputs to reflect the change.
-/// 
+///
 /// Ex:
 ///   * -> NhwcConv -> **
 ///   becomes
 ///   * -> Transpose -> NhwcConv -> Transpose -> **
 ///   Conv inputs/outputs have new shape. Shapes of * and ** are unchanged (carrying NCHW data).
-/// 
+///
 /// input_perms/output_perms are matched with node inputs/outputs positionally. Their lengths must be at most equal to
 /// the number of inputs/outputs, respectively. nullptr entires indicate an input or output should not be transposed.
 /// </summary>

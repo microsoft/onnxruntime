@@ -44,6 +44,7 @@ struct HandlerInfo {
   bool transposes_outputs = true;
 };
 
+
 /////// <Helper Utils> ///////
 /* Small utilities for editing nodes and manipulating axes/permutations */
 
@@ -62,14 +63,14 @@ static std::vector<int32_t> DataInt32(api::TensorRef& tensor) {
 }
 
 static std::string_view AddInitializerInt64(api::GraphRef& graph, const std::vector<int64_t>& shape,
-                                            const std::vector<int64_t>& values) {
+                                     const std::vector<int64_t>& values) {
   const uint8_t* raw_data = reinterpret_cast<const uint8_t*>(values.data());
   std::vector<uint8_t> data(raw_data, raw_data + values.size() * sizeof(int64_t));
   return graph.AddInitializer(api::DataType::INT64, shape, data);
 }
 
 static std::string_view AddInitializerInt32(api::GraphRef& graph, const std::vector<int64_t>& shape,
-                                            const std::vector<int32_t>& values) {
+                                     const std::vector<int32_t>& values) {
   const uint8_t* raw_data = reinterpret_cast<const uint8_t*>(values.data());
   std::vector<uint8_t> data(raw_data, raw_data + values.size() * sizeof(int32_t));
   return graph.AddInitializer(api::DataType::INT32, shape, data);
@@ -107,7 +108,7 @@ static std::unique_ptr<api::NodeRef> MakeTranspose(api::GraphRef& graph, std::st
 }
 
 // Creates a Squeeze/Unsqueeze node. Does not update output ValueInfo.
-static std::unique_ptr<api::NodeRef> MakeSqueezeOrUnsqueeze(int64_t opset, api::GraphRef& graph,
+static std::unique_ptr<api::NodeRef> MakeSqueezeOrUnsqueeze(int64_t opset, api::GraphRef& graph, 
                                                             std::string_view op_type, std::string_view input,
                                                             const std::vector<int64_t>& axes) {
   if (opset < 13) {
@@ -329,9 +330,9 @@ static std::vector<int64_t> SqueezePerm(const std::vector<int64_t>& axes, const 
   return new_perm;
 }
 
-// Computes a new axes attribute for an input that has been permuted using perm. Unsafe if axes/perm are invalid or
+// Computes a new axes attribute for an input that has been permuted using perm. Unsafe if axes/perm are invalid or 
 // have negative values.
-//
+// 
 // Ex: perm = [2, 0, 1], axes = [0, 1], new_axes = [2, 0]
 static std::vector<int64_t> AxesForTransposedInput(const std::vector<int64_t>& axes,
                                                    const std::vector<int64_t>& perm) {
@@ -345,7 +346,7 @@ static std::vector<int64_t> AxesForTransposedInput(const std::vector<int64_t>& a
 
 // Computes a new axes attribute for an input that has been permuted using perm and sorts the result. Axes attributes
 // are commonly sorted (unless order matters like in Slice). Unsafe if axes/perm are invalid or have negative values.
-//
+// 
 // Ex: perm = [2, 0, 1], axes = [0, 1], new_axes = [0, 2]
 static std::vector<int64_t> SortedAxesForTransposedInput(const std::vector<int64_t>& axes,
                                                          const std::vector<int64_t>& perm) {
@@ -375,7 +376,9 @@ static std::vector<int64_t> SortedAxesForTransposedInput(const std::vector<int64
 /////// <Core Helpers> ///////
 /* These helpers hide the most gnarly parts of the transpose optimizer. */
 
+
 static std::string_view HelpHandleUnsqueeze(HandlerArgs& args, const std::vector<int64_t>& axes);
+
 
 // Replaces ith input to node with unsqueezed value. Might create a new Unsqueeze node, find an existing one,
 // or reshape an initializer. Unsqueezing can be necessary before transposing inputs of a node that supports
@@ -510,7 +513,7 @@ static void TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i,
       return;
     }
   }
-
+  
   // Case 3: A Transpose op might already exist
   for (size_t j = 0; j < consumers->nodes.size(); ++j) {
     api::NodeRef& consumer = *consumers->nodes[j];
@@ -530,7 +533,7 @@ static void TransposeInput(api::GraphRef& graph, api::NodeRef& node, size_t i,
 }
 
 // Unsqueezes inputs of node to have uniform rank. Returns false if input ranks are unknown or exceed the target rank.
-static bool NormalizeInputRanks(OptimizerCtx ctx, api::NodeRef& node, size_t target_rank,
+static bool NormalizeInputRanks(OptimizerCtx ctx, api::NodeRef& node, size_t target_rank, 
                                 const std::vector<size_t>& input_indices) {
   auto inputs = node.Inputs();
 
@@ -560,7 +563,7 @@ static bool NormalizeInputRanks(OptimizerCtx ctx, api::NodeRef& node, size_t tar
 }
 
 // Transposes specified inputs according to perm.
-// NOTE: if a Transpose is expected to be above an input to this node, use the inverse of its permutation to cancel it.
+// NOTE: if a Transpose is expected to be above an input to this node, use the inverse of its permutation to cancel it. 
 static void TransposeInputs(OptimizerCtx& ctx, api::NodeRef& node, const std::vector<int64_t>& perm,
                             const std::vector<size_t>& input_indices) {
   auto perm_inv = InvertPerm(perm);
@@ -570,7 +573,7 @@ static void TransposeInputs(OptimizerCtx& ctx, api::NodeRef& node, const std::ve
 }
 
 inline static void TransposeFirstInput(OptimizerCtx& ctx, api::NodeRef& node, const std::vector<int64_t>& perm) {
-  std::vector<size_t> indices{0};
+  std::vector<size_t> indices {0};
   TransposeInputs(ctx, node, perm, indices);
 }
 
@@ -627,7 +630,7 @@ static void TransposeOutputs(OptimizerCtx& ctx, api::NodeRef& node, const std::v
 // A rank of 5 is used if rank cannot be determined since 5 is the largest rank we expect from something like a Conv
 // and an unknown rank likely corresponds to a data-carrying (non-weight) tensor, which will be large.
 
-// Given a value, returns the rank of the value excluding dimensions of value 1. Returns 5 if the rank is unknown.
+// Given a value, returns the rank of the value excluding dimensions of value 1. Returns 5 if the rank is unknown. 
 static int EstimateValueRank(api::GraphRef& graph, std::string_view input) {
   auto value_info = graph.GetValueInfo(input);
   std::optional<std::vector<int64_t>> shape = value_info->Shape();
@@ -771,7 +774,7 @@ std::vector<size_t> NonScalarInputs(OptimizerCtx& ctx, api::NodeRef& node) {
 constexpr HandlerInfo broadcast_node_handler = {&NonScalarInputs, &HandleSimpleNodeBroadcast};
 
 // Transposes all inputs and all outputs. Updates axis attribute.
-static bool HandleSimpleNodeWithAxis(HandlerArgs& args, std::optional<int64_t> default_axis = std::nullopt) {
+static bool HandleSimpleNodeWithAxis(HandlerArgs& args, std::optional<int64_t> default_axis=std::nullopt) {
   size_t rank = args.perm.size();
   std::optional<int64_t> axis = args.node.GetAttributeInt("axis");
   if (axis == std::nullopt) {
@@ -845,6 +848,7 @@ static bool HandleShape(HandlerArgs& args) {
   std::vector<int64_t> new_perm;
   // For opset 15, Shape(Transpose(x, perm))[starts:stops] = Gather(Shape(x), perm[starts:stops])
   if (args.ctx.opset >= 15) {
+
     // Assign new_perm = perm[starts:stops]
     int64_t start = args.node.GetAttributeIntDefault("start", 0);
     int64_t end = args.node.GetAttributeIntDefault("end", rank_int);
@@ -866,7 +870,7 @@ static bool HandleShape(HandlerArgs& args) {
   }
 
   // Make new_perm initializer
-  std::vector<int64_t> perm_shape{gsl::narrow_cast<int64_t>(new_perm.size())};
+  std::vector<int64_t> perm_shape {gsl::narrow_cast<int64_t>(new_perm.size())};
   std::string_view perm_const = AddInitializerInt64(args.ctx.graph, perm_shape, new_perm);
 
   // X -> Shape -> Y,   Gather
@@ -1024,6 +1028,7 @@ static bool HandleReduceOp(HandlerArgs& args) {
     }
 
   } else {
+
     if (!NormalizeAndValidateAxes(*axes, args.perm.size())) {
       return false;
     }
@@ -1138,6 +1143,7 @@ static bool HandleSqueeze(HandlerArgs& args) {
     if (!args.ctx.graph.HasValueConsumers(axes_inp)) {
       args.ctx.graph.RemoveInitializer(axes_inp);
     }
+
   }
 
   // Transpose inputs/outputs
@@ -1209,7 +1215,7 @@ static bool HandleArgMinMax(HandlerArgs& args) {
     return false;
   }
   int64_t new_axis = args.perm[gsl::narrow_cast<size_t>(axis)];
-  std::vector<int64_t> new_axes{new_axis};
+  std::vector<int64_t> new_axes {new_axis};
   args.node.SetAttributeInt("axis", new_axis);
 
   TransposeInputs(args.ctx, args.node, args.perm_inv, args.transposible_inputs);
@@ -1362,7 +1368,7 @@ static bool HandleTile(HandlerArgs& args) {
   } else {
     // Case 2: Repeats is computed. Insert Gather node.
     std::string_view perm_inv_const = AddInitializerInt64(args.ctx.graph, perm_shape, args.perm_inv);
-    std::vector<std::string_view> gather_inputs{repeats_inp, perm_inv_const};
+    std::vector<std::string_view> gather_inputs {repeats_inp, perm_inv_const};
     auto gather_node_ptr = args.ctx.graph.AddNode("Gather", gather_inputs, /*num_outputs*/ 1);
     api::NodeRef& gather_node = *gather_node_ptr;
     std::string_view gather_output = gather_node.Outputs()[0];
@@ -1419,7 +1425,7 @@ static bool HandleTranspose(HandlerArgs& args) {
       } else {
         // Worst-case scenario: Both parent output and 2nd transpose output cannot be removed (both graph outputs)
         // despite computing the same value. Use an Identity op instead.
-        std::vector<std::string_view> single_empty_input{""};
+        std::vector<std::string_view> single_empty_input {""};
         auto identity_ptr = args.ctx.graph.AddNode("Identity", single_empty_input, /*num_outputs*/ 1);
         api::NodeRef& identity = *identity_ptr;
         args.ctx.graph.MoveOutput(args.node, 0, identity, 0);
@@ -1523,121 +1529,71 @@ static bool HandleMaxPool(HandlerArgs& args) {
 constexpr HandlerInfo max_pool_op_handler = {&FirstInput, &HandleMaxPool};
 
 // TODO: check binary size of this and replace it with constexpr if large
-static const std::unordered_map<std::string_view, const HandlerInfo&> handler_map{
+static const std::unordered_map<std::string_view, const HandlerInfo&> handler_map {
 
-    {"Cast", simple_node_handler},
-    {"Exp", simple_node_handler},
-    {"Identity", simple_node_handler},
-    {"LeakyRelu", simple_node_handler},
-    {"Log", simple_node_handler},
-    {"Reciprocal", simple_node_handler},
-    {"Relu", simple_node_handler},
-    {"Sigmoid", simple_node_handler},
-    {"Sqrt", simple_node_handler},
-    {"Tanh", simple_node_handler},
-    {"Abs", simple_node_handler},
-    {"Not", simple_node_handler},
-    {"Ceil", simple_node_handler},
-    {"Floor", simple_node_handler},
-    {"Neg", simple_node_handler},
-    {"Erf", simple_node_handler},
-    {"HardSigmoid", simple_node_handler},
-    {"Round", simple_node_handler},
-    {"IsInf", simple_node_handler},
-    {"IsNaN", simple_node_handler},
-    {"Selu", simple_node_handler},
-    {"Shrink", simple_node_handler},
-    {"Sign", simple_node_handler},
-    {"Softplus", simple_node_handler},
-    {"Softsign", simple_node_handler},
-    {"ThresholdedRelu", simple_node_handler},
-    {"Celu", simple_node_handler},
-    {"HardSwish", simple_node_handler},
+  {"Cast", simple_node_handler}, {"Exp", simple_node_handler}, {"Identity", simple_node_handler},
+  {"LeakyRelu", simple_node_handler}, {"Log", simple_node_handler}, {"Reciprocal", simple_node_handler},
+  {"Relu", simple_node_handler}, {"Sigmoid", simple_node_handler}, {"Sqrt", simple_node_handler},
+  {"Tanh", simple_node_handler}, {"Abs", simple_node_handler}, {"Not", simple_node_handler},
+  {"Ceil", simple_node_handler}, {"Floor", simple_node_handler}, {"Neg", simple_node_handler},
+  {"Erf", simple_node_handler}, {"HardSigmoid", simple_node_handler}, {"Round", simple_node_handler},
+  {"IsInf", simple_node_handler}, {"IsNaN", simple_node_handler},
+  {"Selu", simple_node_handler}, {"Shrink", simple_node_handler}, {"Sign", simple_node_handler},
+  {"Softplus", simple_node_handler}, {"Softsign", simple_node_handler}, {"ThresholdedRelu", simple_node_handler},
+  {"Celu", simple_node_handler}, {"HardSwish", simple_node_handler},
 
-    {"Sin", simple_node_handler},
-    {"Cos", simple_node_handler},
-    {"Tan", simple_node_handler},
-    {"Sinh", simple_node_handler},
-    {"Cosh", simple_node_handler},
-    {"Tanh", simple_node_handler},
-    {"Asin", simple_node_handler},
-    {"Acos", simple_node_handler},
-    {"Atan", simple_node_handler},
-    {"Asinh", simple_node_handler},
-    {"Acosh", simple_node_handler},
-    {"Atanh", simple_node_handler},
+  {"Sin", simple_node_handler}, {"Cos", simple_node_handler}, {"Tan", simple_node_handler},
+  {"Sinh", simple_node_handler}, {"Cosh", simple_node_handler}, {"Tanh", simple_node_handler},
+  {"Asin", simple_node_handler}, {"Acos", simple_node_handler}, {"Atan", simple_node_handler},
+  {"Asinh", simple_node_handler}, {"Acosh", simple_node_handler}, {"Atanh", simple_node_handler},
 
-    {"Add", broadcast_node_handler},
-    {"Max", broadcast_node_handler},
-    {"Min", broadcast_node_handler},
-    {"Mul", broadcast_node_handler},
-    {"Sub", broadcast_node_handler},
-    {"Div", broadcast_node_handler},
-    {"And", broadcast_node_handler},
-    {"Or", broadcast_node_handler},
-    {"Xor", broadcast_node_handler},
-    {"Mod", broadcast_node_handler},
-    {"PRelu", broadcast_node_handler},
-    {"BitShift", broadcast_node_handler},
-    {"Equal", broadcast_node_handler},
-    {"Greater", broadcast_node_handler},
-    {"Less", broadcast_node_handler},
-    {"GreaterOrEqual", broadcast_node_handler},
-    {"LessOrEqual", broadcast_node_handler},
-    {"Mean", broadcast_node_handler},
-    {"Sum", broadcast_node_handler},
-    {"Pow", broadcast_node_handler},
-    {"Where", broadcast_node_handler},
+  {"Add", broadcast_node_handler}, {"Max", broadcast_node_handler}, {"Min", broadcast_node_handler},
+  {"Mul", broadcast_node_handler}, {"Sub", broadcast_node_handler}, {"Div", broadcast_node_handler},
+  {"And", broadcast_node_handler}, {"Or", broadcast_node_handler}, {"Xor", broadcast_node_handler},
+  {"Mod", broadcast_node_handler}, {"PRelu", broadcast_node_handler}, {"BitShift", broadcast_node_handler},
+  {"Equal", broadcast_node_handler}, {"Greater", broadcast_node_handler}, {"Less", broadcast_node_handler},
+  {"GreaterOrEqual", broadcast_node_handler}, {"LessOrEqual", broadcast_node_handler},
+  {"Mean", broadcast_node_handler}, {"Sum", broadcast_node_handler},  {"Pow", broadcast_node_handler},
+  {"Where", broadcast_node_handler},
 
-    {"Clip", node_1_inp_handler},
-    {"CastLike", node_1_inp_handler},
+  {"Clip", node_1_inp_handler}, {"CastLike", node_1_inp_handler},
 
-    {"Transpose", transpose_handler},
-    {"Concat", concat_handler},
-    {"Split", split_handler},
-    {"Shape", shape_handler},
-    {"Pad", pad_handler},
-    // Todo: renable resize handler after adding NHWC support in upsample op on cpu
-    // https://github.com/microsoft/onnxruntime/issues/9857
-    //{"Resize", resize_handler},
-    {"ReduceSum", reduce_sum_handler},
+  {"Transpose", transpose_handler},
+  {"Concat", concat_handler},
+  {"Split", split_handler},
+  {"Shape", shape_handler},
+  {"Pad", pad_handler},
+  // Todo: renable resize handler after adding NHWC support in upsample op on cpu
+  // https://github.com/microsoft/onnxruntime/issues/9857
+  //{"Resize", resize_handler},
+  {"ReduceSum", reduce_sum_handler},
 
-    {"ReduceLogSum", reduce_op_handler},
-    {"ReduceLogSumExp", reduce_op_handler},
-    {"ReduceMax", reduce_op_handler},
-    {"ReduceMean", reduce_op_handler},
-    {"ReduceMin", reduce_op_handler},
-    {"ReduceProd", reduce_op_handler},
-    {"ReduceSumSquare", reduce_op_handler},
-    {"ReduceL1", reduce_op_handler},
-    {"ReduceL2", reduce_op_handler},
+  {"ReduceLogSum", reduce_op_handler}, {"ReduceLogSumExp", reduce_op_handler}, {"ReduceMax", reduce_op_handler},
+  {"ReduceMean", reduce_op_handler}, {"ReduceMin", reduce_op_handler}, {"ReduceProd", reduce_op_handler},
+  {"ReduceSumSquare", reduce_op_handler}, {"ReduceL1", reduce_op_handler}, {"ReduceL2", reduce_op_handler},
 
-    {"ArgMin", arg_min_max_handler},
-    {"ArgMax", arg_min_max_handler},
+  {"ArgMin", arg_min_max_handler}, {"ArgMax", arg_min_max_handler},
 
-    {"Squeeze", squeeze_handler},
-    {"Unsqueeze", unsqueeze_handler},
-    {"Slice", slice_handler},
-    {"Tile", tile_handler},
+  {"Squeeze", squeeze_handler},
+  {"Unsqueeze", unsqueeze_handler},
+  {"Slice", slice_handler},
+  {"Tile", tile_handler},
 
-    {"Softmax", soft_hard_max_handler},
-    {"Hardmax", soft_hard_max_handler},
-    {"LogSoftmax", soft_hard_max_handler},
+  {"Softmax", soft_hard_max_handler}, {"Hardmax", soft_hard_max_handler}, {"LogSoftmax", soft_hard_max_handler},
 
-    {"QuantizeLinear", quantize_dequantize_linear_handler},
-    {"DequantizeLinear", quantize_dequantize_linear_handler},
+  {"QuantizeLinear", quantize_dequantize_linear_handler}, {"DequantizeLinear", quantize_dequantize_linear_handler},
 };
 
 static const std::unordered_map<std::string_view, const HandlerInfo&> extended_handler_map{
-    {"com.microsoft.QLinearReduceMean", reduce_op_handler},
-    {"com.microsoft.QLinearSigmoid", node_1_inp_handler},
-    {"com.microsoft.QLinearLeakyRelu", node_1_inp_handler},
-    {"com.microsoft.QLinearConcat", q_linear_concat_handler},
-    {"com.microsoft.QLinearAdd", q_linear_binary_op_handler},
-    {"com.microsoft.QLinearMul", q_linear_binary_op_handler},
-    {"com.microsoft.QLinearAveragePool", q_linear_pool_op_handler},
-    {"com.microsoft.QLinearGlobalAveragePool", q_linear_pool_op_handler},
-    {"MaxPool", max_pool_op_handler},
+  {"com.microsoft.QLinearReduceMean", reduce_op_handler},
+  {"com.microsoft.QLinearSigmoid", node_1_inp_handler},
+  {"com.microsoft.QLinearLeakyRelu", node_1_inp_handler},
+  {"com.microsoft.QLinearConcat", q_linear_concat_handler},
+  {"com.microsoft.QLinearAdd", q_linear_binary_op_handler},
+  {"com.microsoft.QLinearMul", q_linear_binary_op_handler},
+  {"com.microsoft.QLinearAveragePool", q_linear_pool_op_handler},
+  {"com.microsoft.QLinearGlobalAveragePool", q_linear_pool_op_handler},
+  {"MaxPool", max_pool_op_handler},
 };
 
 static const HandlerInfo* GetHandler(api::NodeRef& node, bool allow_extended_ops) {
@@ -1739,6 +1695,7 @@ std::optional<OptimizerCtx> MakeOptimizerContext(api::GraphRef& graph, bool allo
 // Performs optimization. General algorithm: iterate over nodes in topological order. If a node has a transpose
 // as input, push it through if the transpose cost does not increase and is likely to decrease.
 bool OptimizeImpl(OptimizerCtx& ctx) {
+  
   const std::vector<std::unique_ptr<api::NodeRef>> nodes = ctx.graph.Nodes();
 
   std::unordered_set<std::string> outputs_leading_to_transpose;
@@ -1746,6 +1703,7 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
   // First iterate over sorted nodes in reverse order to find which outputs have paths through supported ops to
   // transpose nodes. We pull push transposes towards these outputs.
   for (size_t i = 0; i < nodes.size(); ++i) {
+
     api::NodeRef& node = *nodes[nodes.size() - i - 1];
     if (node.IsOp("Transpose")) {
       outputs_leading_to_transpose.insert(std::string(node.Inputs()[0]));
@@ -1805,7 +1763,7 @@ bool Optimize(api::GraphRef& graph, bool allow_extended_ops) {
 }
 
 void TransposesNodeInputs(api::GraphRef& graph, api::NodeRef& node,
-                          size_t i,
+    size_t i,
                           const std::vector<int64_t>& input_perm) {
   TransposeInput(graph, node, i, input_perm, InvertPerm(input_perm));
 }
