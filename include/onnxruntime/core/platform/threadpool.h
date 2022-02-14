@@ -359,10 +359,6 @@ class ThreadPool {
   // working in combination with the thread initiating the loop.
   static int DegreeOfParallelism(const ThreadPool* tp);
 
-  // Set hybrid mode to is_hybrid, this function is designed to be used in unit test so hybrid case
-  // could be tested on normal CPUs
-  static void ForceHybridCpu(bool is_hybrid) { force_hybrid_cpu_ = is_hybrid; }
-
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ThreadPool);
 
   // StartProfiling and StopProfiling are not to be consumed as public-facing API
@@ -428,9 +424,6 @@ class ThreadPool {
 
   // If used, underlying_threadpool_ is instantiated and owned by the ThreadPool.
   std::unique_ptr<ThreadPoolTempl<Env> > extended_eigen_threadpool_;
-
-  // once set true, all thread pool instances will run in hybrid mode.
-  static bool force_hybrid_cpu_;
 };
 
 }  // namespace concurrency

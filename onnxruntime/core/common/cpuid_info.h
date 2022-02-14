@@ -17,7 +17,7 @@ namespace onnxruntime {
 
 class CPUIDInfo {
  public:
-  static const CPUIDInfo& GetCPUIDInfo() {
+  static CPUIDInfo& GetCPUIDInfo() {
     static CPUIDInfo cpuid_info;
     return cpuid_info;
   }
@@ -33,6 +33,9 @@ class CPUIDInfo {
 
   // ARM 
   bool HasArmNeonDot() const { return has_arm_neon_dot_; }
+
+  // Mocking
+  void MockHybrid(bool is_hybrid) { is_hybrid_ = is_hybrid; }
 
  private:
   CPUIDInfo();
