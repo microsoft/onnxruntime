@@ -187,5 +187,30 @@ GetQDQTestCaseFn BuildBinaryOpTestCase(const std::vector<int64_t>& input_shape,
                                                 output_arg);
   };
 }
+
+template <typename InputType, typename OutputType>
+GetQDQTestCaseFn BuildQDQTransposeTestCase(
+    const std::vector<int64_t>& input_shape,
+    const std::vector<int64_t>& perms) {
+  return [input_shape, perms](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<InputType>(input_shape, -128, 127);
+    auto* output_arg = builder.MakeOutput();
+
+    InputType dq_zp = std::numeric_limits<InputType>::max() / 2;
+    OutputType q_zp = std::numeric_limits<OutputType>::max() / 2;
+
+    // add DQ
+    auto* dq_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<InputType>(input_arg, .003f, dq_zp, dq_output);
+
+    // add Transpose
+    auto* transpose_output = builder.MakeIntermediate();
+    Node& transpose_node = builder.AddNode("Transpose", {dq_output}, {transpose_output});
+    transpose_node.AddAttribute("perm", perms);
+
+    // add Q
+    builder.AddQuantizeLinearNode<OutputType>(transpose_output, .003f, q_zp, output_arg);
+  };
+}
 }  // namespace test
 }  // namespace onnxruntime
