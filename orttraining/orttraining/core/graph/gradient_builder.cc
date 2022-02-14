@@ -1073,6 +1073,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMaxGradient) {
   std::vector<int64_t> default_reduce_axes = {};
   ArgDef reduce_axes_arg_def = IA("ReduceAxes");
 
+
+
   if (!keepdims) {
     if (attributes.find("axes") != attributes.end()) {
       std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
@@ -1928,4 +1930,3 @@ IMPLEMENT_GRADIENT_BUILDER(GetScatterElementsGradient) {
 
 }  // namespace training
 }  // namespace onnxruntime
-
