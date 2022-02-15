@@ -15,6 +15,7 @@ namespace onnxruntime {
 class ExecutionProviders;
 class KernelRegistry;
 class KernelRegistryManager;
+using TransformLayoutFunction = std::function<Status(Graph& graph, bool& modified, IExecutionProvider& current_ep)>;
 
 class GraphPartitioner {
  public:
@@ -31,7 +32,9 @@ class GraphPartitioner {
   }
 
   // Run partitioning. Provide compiled_kernel_hashes if mode is kOrtFormatLoad.
-  Status Partition(Graph& graph, bool export_dll, FuncManager& func_mgr, Mode mode = Mode::kNormal,
+  Status Partition(Graph& graph, bool export_dll, FuncManager& func_mgr, 
+                   TransformLayoutFunction transform_layout_function,
+                   Mode mode = Mode::kNormal,
                    std::unordered_map<std::string, HashValue>* compiled_kernel_hashes = nullptr) const;
 
  private:
@@ -40,12 +43,12 @@ class GraphPartitioner {
 #if !defined(ORT_MINIMAL_BUILD)
   Status PartitionOnnxFormatModel(Graph& graph, bool export_dll, FuncManager& func_mgr,
                                   KernelRegistry& fused_kernel_registry, Mode mode,
-                                  int& fused_node_unique_id) const;
+                                  int& fused_node_unique_id, TransformLayoutFunction transform_layout_function) const;
 #endif
 
   Status PartitionOrtFormatModel(Graph& graph, FuncManager& func_mgr, KernelRegistry& fused_kernel_registry,
                                  std::unordered_map<std::string, HashValue>& compiled_kernel_hashes,
-                                 int& fused_node_unique_id) const;
+                                 int& fused_node_unique_id, TransformLayoutFunction transform_layout_function) const;
 
   KernelRegistryManager& kernel_registry_mgr_;
   const ExecutionProviders& providers_;

@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/transpose_optimizer/optimizer_api.h"
-#include "core/framework/transpose_optimizer/optimizer_utils.h"
+#include "optimizer_api.h"
+#include "optimizer_utils.h"
 #include <deque>
 #include "core/graph/graph_utils.h"
 #include "core/framework/tensorprotoutils.h"
@@ -15,17 +15,6 @@ using namespace ::onnxruntime::common;
 using namespace onnx_layout_transformation;
 
 namespace onnxruntime {
-
-const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
-  static std::unordered_set<std::string_view> ort_layout_senstive_ops = []() {
-    const auto& layout_sensitive_ops = onnx_layout_transformation::GetLayoutSensitiveOps();
-    std::unordered_set<std::string_view> ort_specific_ops = {"Resize", "FusedConv", "QLinearAveragePool", "QLinearGlobalAveragePool"};
-    ort_specific_ops.insert(layout_sensitive_ops.cbegin(), layout_sensitive_ops.cend());
-    return ort_specific_ops;
-  }();
-
-  return ort_layout_senstive_ops;
-}
 class ApiValueInfo final : public api::ValueInfoRef {
  private:
   NodeArg& node_arg_;
@@ -800,4 +789,99 @@ onnxruntime::Node& NodeFromApiNode(onnx_layout_transformation::api::NodeRef& nod
   return static_cast<ApiNode&>(node).Node();
 }
 
+namespace layout_transformer {
+
+const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
+  static std::unordered_set<std::string_view> ort_layout_senstive_ops = []() {
+    const auto& layout_sensitive_ops = onnx_layout_transformation::GetLayoutSensitiveOps();
+    std::unordered_set<std::string_view> ort_specific_ops = {"Resize", "FusedConv", "QLinearAveragePool", "QLinearGlobalAveragePool"};
+    ort_specific_ops.insert(layout_sensitive_ops.cbegin(), layout_sensitive_ops.cend());
+    return ort_specific_ops;
+  }();
+
+  return ort_layout_senstive_ops;
+}
+
+Status TransformLayout(Graph& graph, bool& modified, IExecutionProvider& execution_provider) {
+  // sub graph recurse will be added later
+  auto api_graph = MakeApiGraph(graph, execution_provider.GetAllocator(0, OrtMemTypeDefault), nullptr);
+  const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
+
+  for (auto& node : api_graph->Nodes()) {
+    if (layout_sensitive_ops.count(node->OpType())) {
+      if (node->GetExecutionProviderType() != execution_provider.Type()) {
+        continue;
+      }
+
+      auto domain = node->Domain();
+      // Skip if domain is incorrect
+      if (domain != kOnnxDomain && domain != kOnnxDomainAlias && domain != kMSDomain) {
+        continue;
+      }
+
+      // if already transformed then change the domain to kMSInternalNHWCDomain this way the EP
+      // knows this op is in the expected format.
+      if (node->GetAttributeIntDefault("channels_last", 0) == 1) {
+        onnx_layout_transformation::SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSInternalNHWCDomain);
+        // Changing the domain for the node requires creating a new node and replacing the old one
+        // therefore set the modified flag.
+        modified = true;
+        continue;
+      }
+
+      // Skip if unknown rank
+      auto shape = api_graph->GetValueInfo(node->Inputs()[0])->Shape();
+      if (!shape.has_value()) {
+        continue;
+      }
+
+      // Convert to channels last
+      size_t rank = shape->size();
+
+      bool has_channel_last_attr = node->GetAttributeInt("channels_last").has_value() ? true : false;
+      if (has_channel_last_attr) {
+        node->SetAttributeInt("channels_last", 1);
+      }
+
+      auto input_perm = onnx_layout_transformation::ChannelFirstToLastPerm(rank);
+      auto output_perm = onnx_layout_transformation::ChannelLastToFirstPerm(rank);
+
+      // Except for resize and convolution ops, all the other layout sensitive ops only require layout transformation
+      // for 0th input and output. For resize, add the other relevant inputs which need conversion. For Conv - layout
+      // transformer only converts layout for 0th input, weights should be handled by every EP.
+      if (node->OpType() == "Resize") {
+        // Older versions of resize have a bug where ROI and Scales cannot be made empty inputs. To handle this case,
+        // we need to jump a few extra hoops to make sure its inputs are correctly handled. Current code skips
+        // layout conversion for ROI because it needs special handling as ROI size is 2*rank.
+        // Enable passing in ROI for layout conversion when an EP which supports ROI starts using layout transformer.
+        // NNAPI which currently uses layout transformer does not support it.
+        std::vector<const std::vector<int64_t>*> input_perms{&input_perm, nullptr};
+        for (size_t i = 2; i < node->Inputs().size(); i++) {
+          auto constant = api_graph->GetConstant(node->Inputs()[i]);
+          if (constant != nullptr && constant->Data().size() > 0) {
+            input_perms.push_back(&input_perm);
+          } else {
+            input_perms.push_back(nullptr);
+          }
+        }
+        onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, input_perms, {&output_perm});
+      } else {
+        onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
+      }
+
+      onnx_layout_transformation::SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSInternalNHWCDomain);
+      modified = true;
+    }
+  }
+
+  if (modified) {
+    onnx_layout_transformation::Optimize(*api_graph, /*allow_extended_ops*/ true, execution_provider.Type(),
+                                         onnx_layout_transformation::OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM,
+                                         layout_sensitive_ops);
+  }
+
+  return Status::OK();
+}
+
+}  // namespace layout_transformer
 }  // namespace onnxruntime

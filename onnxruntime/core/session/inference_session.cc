@@ -41,6 +41,7 @@
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 #include "core/optimizer/transformer_memcpy.h"
+#include "core/optimizer/transpose_optimizer/optimizer_utils.h"
 #include "core/platform/Barrier.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
@@ -914,7 +915,8 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   // Do partitioning based on execution providers' capability.
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state.ExportDll(),
-                                                       session_state.GetMutableFuncMgr(), mode));
+                                                       session_state.GetMutableFuncMgr(),
+                                                       layout_transformer::TransformLayout, mode));
 
   // apply transformers except default transformers
   // Default transformers are required for correctness and they are owned and run by inference session
@@ -1139,6 +1141,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(),
                                             session_state.GetMutableFuncMgr(),
+                                            layout_transformer::TransformLayout,
                                             GraphPartitioner::Mode::kOrtFormatLoad,
                                             &compiled_kernel_hashes));
 

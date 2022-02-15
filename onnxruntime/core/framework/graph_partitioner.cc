@@ -12,8 +12,8 @@
 #include "core/framework/execution_providers.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/func_kernel.h"
-#include "core/framework/transpose_optimizer/optimizer_utils.h"
-#include "core/framework/transpose_optimizer/optimizer_api.h"
+#include "core/optimizer/transpose_optimizer/optimizer_utils.h"
+#include "core/optimizer/transpose_optimizer/optimizer_api.h"
 
 // uncomment this line to count non-CUDA ops in ONNX domain
 //#define COUNT_NON_CUDA_OPS
@@ -102,101 +102,11 @@ static void AssignNodes(Graph& graph, const IndexedSubGraph& capability,
   }
 }
 
-/// <summary>
-/// Transforms data layout from NCHW to NHWC. Applies transforms to layout sensitive nodes
-/// assigned to current_ep and any other non-layout sensitive nodes in order to optimize
-/// the transposes as much as possible.
-/// </summary>
-/// <param name="graph"></param>
-/// <param name="modified"></param>
-/// <param name="current_ep"></param>
-/// <param name="logger"></param>
-/// <returns></returns>
-static Status TransformLayout(Graph& graph, bool& modified,
-                              IExecutionProvider& current_ep) {
-  // sub graph recurse will be added later
-  auto api_graph = MakeApiGraph(graph, current_ep.GetAllocator(0, OrtMemTypeDefault), nullptr);
-  const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
-
-  for (auto& node : api_graph->Nodes()) {
-    if (layout_sensitive_ops.count(node->OpType())) {
-      if (node->GetExecutionProviderType() != current_ep.Type()) {
-        continue;
-      }
-
-      auto domain = node->Domain();
-      // Skip if domain is incorrect
-      if (domain != kOnnxDomain && domain != kOnnxDomainAlias && domain != kMSDomain) {
-        continue;
-      }
-
-      // if already transformed then change the domain to kMSInternalNHWCDomain this way the EP
-      // knows this op is in the expected format.
-      if (node->GetAttributeIntDefault("channels_last", 0) == 1) {
-        onnx_layout_transformation::SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSInternalNHWCDomain);
-        // Changing the domain for the node requires creating a new node and replacing the old one
-        // therefore set the modified flag.
-        modified = true;
-        continue;
-      }
-
-      // Skip if unknown rank
-      auto shape = api_graph->GetValueInfo(node->Inputs()[0])->Shape();
-      if (!shape.has_value()) {
-        continue;
-      }
-
-      // Convert to channels last
-      size_t rank = shape->size();
-
-      bool has_channel_last_attr = node->GetAttributeInt("channels_last").has_value() ? true : false;
-      if (has_channel_last_attr) {
-        node->SetAttributeInt("channels_last", 1);
-      }
-
-      auto input_perm = onnx_layout_transformation::ChannelFirstToLastPerm(rank);
-      auto output_perm = onnx_layout_transformation::ChannelLastToFirstPerm(rank);
-
-      // Except for resize and convolution ops, all the other layout sensitive ops only require layout transformation
-      // for 0th input and output. For resize, add the other relevant inputs which need conversion. For Conv - layout
-      // transformer only converts layout for 0th input, weights should be handled by every EP.
-      if (node->OpType() == "Resize") {
-        // Older versions of resize have a bug where ROI and Scales cannot be made empty inputs. To handle this case,
-        // we need to jump a few extra hoops to make sure its inputs are correctly handled. Current code skips
-        // layout conversion for ROI because it needs special handling as ROI size is 2*rank.
-        // Enable passing in ROI for layout conversion when an EP which supports ROI starts using layout transformer.
-        // NNAPI which currently uses layout transformer does not support it.
-        std::vector<const std::vector<int64_t>*> input_perms{&input_perm, nullptr};
-        for (size_t i = 2; i < node->Inputs().size(); i++) {
-          auto constant = api_graph->GetConstant(node->Inputs()[i]);
-          if (constant != nullptr && constant->Data().size() > 0) {
-            input_perms.push_back(&input_perm);
-          } else {
-            input_perms.push_back(nullptr);
-          }
-        }
-        onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, input_perms, {&output_perm});
-      } else {
-        onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
-      }
-
-      onnx_layout_transformation::SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSInternalNHWCDomain);
-      modified = true;
-    }
-  }
-
-  if (modified) {
-    onnx_layout_transformation::Optimize(*api_graph, /*allow_extended_ops*/ true, current_ep.Type(),
-                                         onnx_layout_transformation::OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM,
-                                         layout_sensitive_ops);
-  }
-
-  return Status::OK();
-}
 #endif  //! defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
 static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_registry_mgr, IExecutionProvider& current_ep,
-                                 GraphPartitioner::Mode mode, std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
+                                 GraphPartitioner::Mode mode, std::vector<std::unique_ptr<ComputeCapability>>& capabilities, 
+                                 TransformLayoutFunction transform_layout) {
   {
     GraphViewer graph_viewer(graph);
     capabilities = current_ep.GetCapability(graph_viewer, kernel_registry_mgr.GetKernelRegistriesByProviderType(current_ep.Type()));
@@ -217,7 +127,7 @@ static Status GetCapabilityForEP(Graph& graph, KernelRegistryManager& kernel_reg
 
     // Perform layout transformation on the specific EP assigned graph
     bool modified = false;
-    ORT_RETURN_IF_ERROR(TransformLayout(graph, modified, current_ep));
+    ORT_RETURN_IF_ERROR(transform_layout(graph, modified, current_ep));
 
     // It is possible some new nodes are introduced during transformation. These nodes can be either existing nodes
     // which are reconstructed to update domain or completly new nodes which are necessary for layout transformation.
@@ -347,7 +257,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
                                            KernelRegistry& fused_kernel_registry,
                                            IExecutionProvider& current_ep,
                                            GraphPartitioner::Mode mode,
-                                           int& fused_node_unique_id) {
+                                           int& fused_node_unique_id,
+                                           TransformLayoutFunction transform_layout_function) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   if (graph.NumberOfNodes() == 0) {
@@ -360,7 +271,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
       Graph* subgraph = entry.second;
       // we pass through the export_dll value and FuncManager from the top level graph
       ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(*subgraph, export_dll, func_mgr, kernel_registry_mgr,
-                                                       fused_kernel_registry, current_ep, mode, fused_node_unique_id));
+                                                       fused_kernel_registry, current_ep, mode, fused_node_unique_id,
+                                                       transform_layout_function));
     }
   }
 
@@ -376,7 +288,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
   // run the function by SessionOption, we should create a function kernel for it and
   // delegate the compute to the functions inside the dlls.
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
-  ORT_RETURN_IF_ERROR(GetCapabilityForEP(graph, kernel_registry_mgr, current_ep, mode, capabilities));
+  ORT_RETURN_IF_ERROR(GetCapabilityForEP(graph, kernel_registry_mgr, current_ep, mode, capabilities,
+                                         transform_layout_function));
   if (capabilities.empty()) {
     return Status::OK();
   }
@@ -549,14 +462,16 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
 
 Status GraphPartitioner::PartitionOnnxFormatModel(Graph& graph, bool export_dll, FuncManager& func_mgr,
                                                   KernelRegistry& fused_kernel_registry, Mode mode,
-                                                  int& fused_node_unique_id) const {
+                                                  int& fused_node_unique_id,
+                                                  TransformLayoutFunction transform_layout_function) const {
   bool modified_graph = false;
 
   do {
     // process full graph with each EP
     for (const auto& ep : providers_) {
       ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(graph, export_dll, func_mgr, kernel_registry_mgr_,
-                                                       fused_kernel_registry, *ep, mode, fused_node_unique_id));
+                                                       fused_kernel_registry, *ep, mode, fused_node_unique_id,
+                                                       transform_layout_function));
     }
 
     // expand any nodes that have an ONNX function definition but no matching ORT kernel.
@@ -579,13 +494,15 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                           KernelRegistry& fused_kernel_registry,
                                           IExecutionProvider& current_ep,
                                           std::unordered_map<std::string, HashValue>& compiled_kernel_hashes,
-                                          int& fused_node_unique_id) {
+                                          int& fused_node_unique_id,
+                                          TransformLayoutFunction transform_layout_function) {
   // recurse into nested graphs first to partition bottom up.
   for (auto& node : graph.Nodes()) {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       Graph* subgraph = entry.second;
       ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(*subgraph, func_mgr, kernel_registry_mgr, fused_kernel_registry,
-                                                      current_ep, compiled_kernel_hashes, fused_node_unique_id));
+                                                      current_ep, compiled_kernel_hashes, fused_node_unique_id,
+                                                      transform_layout_function));
     }
   }
 
@@ -599,7 +516,7 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   std::vector<IExecutionProvider::FusedNodeAndGraph> nodes_and_viewers;
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(graph, kernel_registry_mgr, current_ep,
-                                         GraphPartitioner::Mode::kOrtFormatLoad, capabilities));
+                                         GraphPartitioner::Mode::kOrtFormatLoad, capabilities, transform_layout_function));
   if (capabilities.empty()) {
     return Status::OK();
   }
@@ -677,7 +594,8 @@ Status GraphPartitioner::PartitionOrtFormatModel(
     Graph& graph, FuncManager& func_mgr,
     KernelRegistry& fused_kernel_registry,
     std::unordered_map<std::string, HashValue>& compiled_kernel_hashes,
-    int& fused_node_unique_id) const {
+    int& fused_node_unique_id,
+    TransformLayoutFunction transform_layout_function) const {
   // process full graph with each EP
   for (const auto& ep : providers_) {
     if (ep->Type() == kCpuExecutionProvider) {
@@ -687,13 +605,15 @@ Status GraphPartitioner::PartitionOrtFormatModel(
     }
 
     ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(graph, func_mgr, kernel_registry_mgr_, fused_kernel_registry,
-                                                    *ep, compiled_kernel_hashes, fused_node_unique_id));
+                                                    *ep, compiled_kernel_hashes, fused_node_unique_id,
+                                                    transform_layout_function));
   }
 
   return Status::OK();
 }
 
-Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& func_mgr, Mode mode,
+Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& func_mgr, 
+                                   TransformLayoutFunction transform_layout_function, Mode mode,
                                    std::unordered_map<std::string, HashValue>* compiled_kernel_hashes) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
@@ -717,7 +637,7 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
   if (mode == Mode::kNormal || mode == Mode::kAssignOnly) {
 #if !defined(ORT_MINIMAL_BUILD)
     ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(graph, export_dll, func_mgr, *fused_kernel_registry, mode,
-                                                 fused_node_unique_id));
+                                                 fused_node_unique_id, transform_layout_function));
 #else
     ORT_UNUSED_PARAMETER(export_dll);
     ORT_THROW("Not supported in this build.");
@@ -726,7 +646,7 @@ Status GraphPartitioner::Partition(Graph& graph, bool export_dll, FuncManager& f
     ORT_ENFORCE(compiled_kernel_hashes != nullptr, "Compiled kernel hashes must be provided");
 
     ORT_RETURN_IF_ERROR(PartitionOrtFormatModel(graph, func_mgr, *fused_kernel_registry, *compiled_kernel_hashes,
-                                                fused_node_unique_id));
+                                                fused_node_unique_id, transform_layout_function));
   }
 
   if (!fused_kernel_registry->IsEmpty()) {

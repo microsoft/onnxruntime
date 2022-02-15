@@ -13,7 +13,7 @@
 #include "core/graph/model.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/framework/transpose_optimizer/optimizer_utils.h"
+#include "core/optimizer/transpose_optimizer/optimizer_utils.h"
 
 #include <queue>
 
@@ -108,7 +108,7 @@ common::Status InternalTestingExecutionProvider::Compile(const std::vector<Fused
 
     if (preferred_layout_ == DataLayout::NHWC) {
       const GraphViewer& graph_viewer = node_and_viewer.filtered_graph;
-      auto layout_sensitive_ops = GetORTLayoutSensitiveOps();
+      auto layout_sensitive_ops = layout_transformer::GetORTLayoutSensitiveOps();
       for (const auto& unfused_node : graph_viewer.Nodes()) {
         std::cout << unfused_node.OpType() << std::endl;
         if (layout_sensitive_ops.count(unfused_node.OpType()) && unfused_node.Domain() != kMSInternalNHWCDomain) {
