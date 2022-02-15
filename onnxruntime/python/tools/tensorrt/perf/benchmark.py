@@ -237,11 +237,11 @@ def end_memory_tracking(p, success):
         os.remove(MEMORY_FILE)
     return mem_usage
 
-def inference_ort_with_ep(ep, session, repeat_times, sess_outputs, sess_inputs, io_binding):
-    if cpu in ep: 
-        runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
-    else: # other eps utilize python binding 
+def inference_ort_with_ep(ep, session, repeat_times, sess_outputs, sess_inputs, with_binding, io_binding):
+    if with_binding and cpu not in ep: # other eps utilize python binding 
         runtime = timeit.repeat(lambda: session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
+    else:
+        runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
     success = True
     return runtime, success
 
@@ -266,19 +266,20 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
             logger.info(sess_inputs)
             logger.info("ORT session outputs:")
             logger.info(sess_outputs)
-        for name, inp in sess_inputs.items():
-            io_binding.bind_cpu_input(name, inp)
-        for out in sess_outputs: 
-            io_binding.bind_output(out)
+        if args.io_binding:
+            for name, inp in sess_inputs.items():
+                io_binding.bind_cpu_input(name, inp)
+            for out in sess_outputs: 
+                io_binding.bind_output(out)
        
         try:
             if track_memory: 
                 p = start_memory_tracking()    
-                runtime, success = inference_ort_with_ep(ep, session, repeat_times, sess_outputs, sess_inputs, io_binding)
+                runtime, success = inference_ort_with_ep(ep, session, repeat_times, sess_outputs, sess_inputs, args.io_binding, io_binding)
                 mem_usage = end_memory_tracking(p, success)
                 mem_usages.append(mem_usage) 
             else: 
-                runtime, success = inference_ort_with_ep(ep, session, repeat_times, sess_outputs, sess_inputs, io_binding)
+                runtime, success = inference_ort_with_ep(ep, session, repeat_times, sess_outputs, sess_inputs, args.io_binding, io_binding)
             runtimes += runtime[1:] # remove warmup
         
         except Exception as e:
@@ -968,7 +969,7 @@ def run_onnxruntime(args, models):
         path = os.getcwd()
 
         if args.running_mode == "validate": 
-            remove_profiling_files(path)
+            remove_files(args.running_mode, path)
         
         inputs = []
         ref_outputs = []
@@ -1037,26 +1038,7 @@ def run_onnxruntime(args, models):
             #######################################
             if args.running_mode == 'benchmark':
                 logger.info("\n----------------------------- benchmark -------------------------------------")
-
-                # resolve providers to create session
-                if is_standalone(ep): 
-                    providers = ep_to_provider_list[trt]
-                else: 
-                    providers = ep_to_provider_list[ep] 
-
-                options = onnxruntime.SessionOptions()
-                options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-
-                
-                # create onnxruntime inference session
-                try:
-                    sess, _ = create_session(model_path, providers, options)
-
-                except Exception as e:
-                    logger.error(e)
-                    update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
-                    continue
-                
+        
                 # memory tracking variables 
                 p = None 
                 mem_usage = None
@@ -1064,9 +1046,8 @@ def run_onnxruntime(args, models):
 
                 # get standalone TensorRT perf
                 if is_standalone(ep) and args.trtexec: 
-                    trtexec = True 
                     try: 
-                        result = run_trt_standalone(args.trtexec, name, model_path, sess.get_inputs(), all_inputs_shape, fp16, args.track_memory)
+                        result = run_trt_standalone(args.trtexec, name, model_path, all_inputs_shape, fp16, args.track_memory)
                     except Exception as e: 
                         logger.error(e)
                         update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
@@ -1074,6 +1055,20 @@ def run_onnxruntime(args, models):
 
                 # inference with onnxruntime ep
                 else:         
+                    # resolve providers to create session
+                    providers = ep_to_provider_list[ep] 
+                    options = onnxruntime.SessionOptions()
+                    options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+                    
+                    # create onnxruntime inference session
+                    try:
+                        sess, _ = create_session(model_path, providers, options)
+
+                    except Exception as e:
+                        logger.error(e)
+                        update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
+                        continue
+                    
                     logger.info("start to inference {} with {} ...".format(name, ep))
                     logger.info(sess.get_providers())
 
@@ -1091,7 +1086,7 @@ def run_onnxruntime(args, models):
                         "version": onnxruntime.__version__,
                         "device": ep,
                         "fp16": fp16,
-                        "io_binding": True,
+                        "io_binding": args.io_binding,
                         "model_name": name,
                         "inputs": len(sess.get_inputs()),
                         "batch_size": batch_size,
@@ -1122,7 +1117,9 @@ def run_onnxruntime(args, models):
                         success_results.append(result)
 
                     model_to_latency[name] = copy.deepcopy(latency_result)
-                    remove_files(model_info["working_directory"])
+                    
+                    if ep == trt_fp16: # delete engine
+                        remove_files(args.running_mode, model_info["working_directory"])
 
                 logger.info("---------------------------- benchmark [end] ----------------------------------\n")
 
@@ -1657,6 +1654,8 @@ def parse_arguments():
     parser.add_argument("-w", "--workspace", required=False, default="/", help="Workspace to find tensorrt and perf script (with models if parsing with model file)")
     
     parser.add_argument("--track_memory", required=False, default=True, help="Track CUDA and TRT Memory Usage")
+
+    parser.add_argument("--io_binding", required=False, default=False, help="Bind Inputs")
 
     parser.add_argument("--ep", required=False, default=None, help="Specify ORT Execution Provider.")
     
