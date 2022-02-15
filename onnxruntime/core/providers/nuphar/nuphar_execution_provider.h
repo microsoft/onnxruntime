@@ -23,11 +23,11 @@ class CodeGenTarget;
 constexpr const char* llvm_target_str = "llvm";
 constexpr const char* stackvm_target_str = "stackvm";
 
-#ifdef USE_TVM_WITH_LLVM
+#ifdef USE_NUPHAR_TVM_WITH_LLVM
 constexpr const char* default_nuphar_target_str = llvm_target_str;
 #else
 constexpr const char* default_nuphar_target_str = stackvm_target_str;
-#endif  // USE_TVM_WITH_LLVM
+#endif  // USE_NUPHAR_TVM_WITH_LLVM
 
 // Information needed to construct Nuphar execution providers.
 struct NupharExecutionProviderInfo {

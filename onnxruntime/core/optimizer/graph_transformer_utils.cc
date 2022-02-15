@@ -182,6 +182,11 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
           session_options.free_dimension_overrides));
       auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
       transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
+
+      if (!disable_quant_qdq) {
+        transformers.emplace_back(std::make_unique<QDQPropagationTransformer>());
+      }
+
     } break;
 
     case TransformerLevel::Level2: {
@@ -203,7 +208,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         if (!QDQIsInt8Allowed()) {
           transformers.emplace_back(std::make_unique<QDQS8ToU8Transformer>(cpu_ep));
         }
-        transformers.emplace_back(std::make_unique<QDQPropagationTransformer>(cpu_ep));
         transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>());
       }
 
