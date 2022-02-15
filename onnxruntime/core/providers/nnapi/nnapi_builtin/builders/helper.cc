@@ -80,6 +80,8 @@ QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit) {
       return QuantizedOpType::QDQMul;
     else if (op_type == "Transpose")
       return QuantizedOpType::QDQTranspose;
+    else if (op_type == "Reshape")
+      return QuantizedOpType::QDQReshape;
   } else {
     // throw?
   }
