@@ -40,7 +40,7 @@ class CPUIDInfo {
   int32_t GetCurrentUarch() const;
 
   // Mock hybrid
-  void MockHybrid(bool is_hybrid) { is_hybrid_ = is_hybrid; }
+  void MockHybrid(bool is_hybrid) const { is_hybrid_ = is_hybrid; }
 
  private:
   CPUIDInfo();
