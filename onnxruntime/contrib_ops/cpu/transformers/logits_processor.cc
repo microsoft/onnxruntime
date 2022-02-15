@@ -9,10 +9,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
-// beam_search_iteration represents the current iteration counter of beam search
-// This value is used to apply processors as needed in specific iteration.
-static int beam_search_iteration;
-
 template <typename T>
 gsl::span<T> NextTokenScores<T>::GetScores(int batch_beam_index) {
   assert(batch_beam_index >= 0 && batch_beam_index < batch_beam_size);
@@ -30,7 +26,7 @@ void NextTokenScores<T>::SetScore(int token_id, T score) {
 #ifdef DEBUG_BEAM_SEARCH
 template <typename T>
 void DumpScores(const char* name, gsl::span<T>& scores) {
-  DumpString(name, 0, true);
+  ORT_UNUSED_PARAMETER(name);
   ORT_UNUSED_PARAMETER(scores);
 }
 #endif
@@ -151,17 +147,15 @@ void VocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
 }
 
 template <typename T>
-PrefixVocabMaskLogitsProcessor<T>::PrefixVocabMaskLogitsProcessor(const gsl::span<const int32_t>& prefix_vocab_mask, int batch_size) : prefix_vocab_mask_(prefix_vocab_mask), batch_size_(batch_size) {
+PrefixVocabMaskLogitsProcessor<T>::PrefixVocabMaskLogitsProcessor(const gsl::span<const int32_t>& prefix_vocab_mask, int batch_size)
+    : prefix_vocab_mask_(prefix_vocab_mask), batch_size_(batch_size) {
 }
 
 template <typename T>
 void PrefixVocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
-                                          NextTokenScores<T>& next_token_scores) {
+                                                NextTokenScores<T>& next_token_scores) {
   assert(!prefix_vocab_mask_.empty());
 
-  if (beam_search_iteration > 1) {
-    return;
-  }
   // next_token_scores shape (batch_size * num_beams, vocab_size)
   int num_beams = next_token_scores.batch_beam_size / batch_size_;
   assert(num_beams * batch_size_ == next_token_scores.batch_beam_size);
@@ -221,10 +215,13 @@ void LogitsProcessorList<T>::Init(const BeamSearchParameters& parameters) {
 template <typename T>
 void LogitsProcessorList<T>::Process(const ISequences* sequences,
                                      gsl::span<T>& next_token_scores,
-                                     int counter) {
+                                     int step) {
   NextTokenScores<T> input_scores = {next_token_scores, batch_beam_size_, vocab_size_};
-  beam_search_iteration = counter;
   for (size_t i = 0; i < processor_list_.size(); i++) {
+    // Prefix vocab mask is applied to first iteration only.
+    if (step > 1 && processor_list_[i] == prefix_vocab_mask_processor_.get()) {
+      continue;
+    }
     processor_list_[i]->Process(sequences, input_scores);
   }
 }

@@ -7,22 +7,13 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
-void Sequences::Init(AllocatorPtr allocator, const OrtValue& input_ids, int batch_beam_size, int sequence_length, int max_length) {
+void Sequences::Init(gsl::span<int64_t> buffer, int batch_beam_size, int sequence_length, int max_length) {
   size_t sequences_size = SafeInt<size_t>(batch_beam_size) * max_length;
-  size_t buffer_size = sequences_size + sequences_size;
-  gsl::span<int64_t> buffer = AllocateBuffer<int64_t>(allocator, sequences_space_buffer_, buffer_size, true, static_cast<int64_t>(0));
+  assert(buffer.length() == sequences_size + sequences_size);
 
   sequences[0] = buffer.subspan(0, sequences_size);
   sequences[1] = buffer.subspan(sequences_size);
 
-  // Copy input_ids to sequences[0].
-  gsl::span<const int64_t> input = input_ids.Get<Tensor>().DataAsSpan<int64_t>();
-  gsl::span<int64_t> output = sequences[0];
-  for (int i = 0; i < batch_beam_size; i++) {
-    gsl::span<const int64_t> source = input.subspan(i * sequence_length, sequence_length);
-    gsl::span<int64_t> target = output.subspan(i * max_length, sequence_length);
-    gsl::copy(source, target);
-  }
   current_sequences_buffer = 0;
 
   batch_beam_size_ = batch_beam_size;
@@ -40,15 +31,15 @@ int Sequences::GetSequenceLength() const {
   return current_length_;
 }
 
-void Sequences::PrintSequences() {
 #ifdef DEBUG_BEAM_SEARCH
+void Sequences::PrintSequences(const IConsoleDumper* dumper) const {
   for (int i = 0; i < batch_beam_size_; i++) {
     gsl::span<const int64_t> sequence = GetSequence(i);
-    DumpString("sequences", i, false);
-    DumpTensor<int64_t>(nullptr, sequence.data(), 1, current_length_);
+    dumper->Print("sequences", i, false);
+    dumper->Print(nullptr, sequence.data(), 1, current_length_);
   }
-#endif
 }
+#endif
 
 void Sequences::AppendNextTokenToSequences(
     gsl::span<int64_t>& beam_indices,

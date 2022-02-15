@@ -1,6 +1,7 @@
 #pragma once
 #include "sequences.h"
 #include "beam_search_parameters.h"
+#include "beam_search_shared.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -90,22 +91,22 @@ class PrefixVocabMaskLogitsProcessor : public ILogitsProcessor<T> {
 };
 
 template <typename T>
-class LogitsProcessorList {
-public:
-    LogitsProcessorList() = default ;
-    void Init(const BeamSearchParameters& parameters);
-    void Process(const ISequences* sequences, gsl::span<T>& next_token_scores, int counter);
+class LogitsProcessorList : public ILogitsProcessorList<T> {
+ public:
+  LogitsProcessorList() = default;
+  void Init(const BeamSearchParameters& parameters);
+  void Process(const ISequences* sequences, gsl::span<T>& next_token_scores, int step);
 
-private:
-    int batch_beam_size_;
-    int vocab_size_;
-    std::vector<ILogitsProcessor<T>*> processor_list_;
+ private:
+  int batch_beam_size_;
+  int vocab_size_;
+  std::vector<ILogitsProcessor<T>*> processor_list_;
 
-    std::unique_ptr<RepetitionPenaltyLogitsProcessor<T>> repetition_penalty_processor_;
-    std::unique_ptr<NoRepeatNGramLogitsProcessor<T>> no_repeat_ngram_processor_;
-    std::unique_ptr<VocabMaskLogitsProcessor<T>> vocab_mask_processor_;
-    std::unique_ptr<PrefixVocabMaskLogitsProcessor<T>> prefix_vocab_mask_processor_;
-    std::unique_ptr<MinLengthLogitsProcessor<T>> min_length_processor_;
+  std::unique_ptr<RepetitionPenaltyLogitsProcessor<T>> repetition_penalty_processor_;
+  std::unique_ptr<NoRepeatNGramLogitsProcessor<T>> no_repeat_ngram_processor_;
+  std::unique_ptr<VocabMaskLogitsProcessor<T>> vocab_mask_processor_;
+  std::unique_ptr<PrefixVocabMaskLogitsProcessor<T>> prefix_vocab_mask_processor_;
+  std::unique_ptr<MinLengthLogitsProcessor<T>> min_length_processor_;
 };
 
 }  // namespace transformers

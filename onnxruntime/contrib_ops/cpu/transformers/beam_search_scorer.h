@@ -12,29 +12,11 @@
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "sequences.h"
+#include "beam_search_shared.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {
-
-// Interface for all scorers for beam search or beam sample.
-template <typename T>
-class IBeamScorer {
- public:
-  virtual ~IBeamScorer() {}
-
-  virtual void Initialize(AllocatorPtr& allocator, int sequence_length) = 0;
-
-  virtual void Process(ISequences* sequences,
-                       gsl::span<const T>& next_scores,
-                       gsl::span<const int64_t>& next_tokens,
-                       gsl::span<const int64_t>& next_indices) = 0;
-
-  virtual void Finalize(ISequences* sequences,
-                        gsl::span<const T>& final_beam_scores,
-                        Tensor* output_sequences,
-                        Tensor* output_sequence_scores) = 0;
-};
 
 template <typename T>
 struct HypothesisScore {
@@ -121,7 +103,7 @@ class BeamSearchScorer : public IBeamScorer<T> {
   // TODO: use ORT allocator to avoid allocating from heap directly
   std::vector<BeamHypotheses<T>> beam_hyps;  // List of batch result of beam search. Its shape is (batch_size)
 
-  IAllocatorUniquePtr<bool> done_ptr_;       // List of flags indicates whether each batch is finished or not. Its shape is (batch_size).
+  IAllocatorUniquePtr<bool> done_ptr_;  // List of flags indicates whether each batch is finished or not. Its shape is (batch_size).
   gsl::span<bool> done_;
 
   IAllocatorUniquePtr<T> next_beam_scores_ptr_;

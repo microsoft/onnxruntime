@@ -4,25 +4,19 @@
 #include "core/common/safeint.h"
 #include "core/framework/allocator.h"
 #include "core/framework/ort_value.h"
+#include "beam_search_shared.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {
-
-class ISequences {
- public:
-  virtual ~ISequences() {}
-  virtual gsl::span<const int64_t> GetSequence(int beam_index) const = 0;
-  virtual int GetSequenceLength() const = 0;
-};
 
 // This class keeps track of sequences generated.
 class Sequences : public ISequences {
  public:
   Sequences() {}
 
-  // Initialize the sequence with initial input_ids and related parameters.
-  void Init(AllocatorPtr allocator, const OrtValue& input_ids, int batch_beam_size, int sequence_length, int max_length);
+  // Initialize the sequence.
+  void Init(gsl::span<int64_t> buffer, int batch_beam_size, int sequence_length, int max_length);
 
   // Returns a sequence of word IDs for a given beam index ( beam_index < batch_beam_size).
   gsl::span<const int64_t> GetSequence(int beam_index) const override;
@@ -30,8 +24,10 @@ class Sequences : public ISequences {
   // Returns current sequence length.
   int GetSequenceLength() const override;
 
+#ifdef DEBUG_BEAM_SEARCH
   // Print the sequences to StdOut in debug mode
-  void PrintSequences();
+  void PrintSequences(const IConsoleDumper* dumper) const;
+#endif
 
   // Select sequences based on beam indices, then append next token to selected sequences.
   void AppendNextTokenToSequences(
@@ -39,9 +35,6 @@ class Sequences : public ISequences {
       gsl::span<int64_t>& beam_next_tokens);
 
  private:
-  gsl::span<int64_t> sequences_space;        // shape (2, batch_size, num_beams, max_seq_length)
-  BufferUniquePtr sequences_space_buffer_;
-
   // Two buffers of shape (batch_size, num_beams, max_seq_length) to store sequences.
   // At each time, there is only one buffer is active. The other one will be active in next token.
   // Each AppendNextTokenToSequences call will trigger a rotation of active buffer.
