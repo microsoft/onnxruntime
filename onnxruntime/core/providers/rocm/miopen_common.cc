@@ -92,11 +92,6 @@ miopenDataType_t MiopenTensor::GetDataType<half>() {
 }
 
 template <>
-miopenDataType_t MiopenTensor::GetDataType<BFloat16>() {
-  return miopenBFloat16;
-}
-
-template <>
 miopenDataType_t MiopenTensor::GetDataType<int32_t>() {
   return miopenInt32;
 }
