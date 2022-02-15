@@ -1417,10 +1417,14 @@ if (onnxruntime_USE_TVM)
     set(USE_CUDA ON CACHE BOOL "Only defined for TVM" FORCE)
   endif()
 
+  add_definitions(-DTVM_LOG_CUSTOMIZE=1)
+  add_library(custom_logger STATIC ${ONNXRUNTIME_ROOT}/core/providers/tvm/custom_logging.cc)
+
   set(USE_OPENMP gnu CACHE STRING "Only defined for TVM")
   add_subdirectory(${tvm_SOURCE_DIR} ${tvm_BINARY_DIR} EXCLUDE_FROM_ALL)
 
   set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
+  target_link_libraries(tvm PUBLIC custom_logger)
 
   set(TVM_INCLUDES ${tvm_SOURCE_DIR}/include
     ${tvm_SOURCE_DIR}/3rdparty/dmlc-core/include
