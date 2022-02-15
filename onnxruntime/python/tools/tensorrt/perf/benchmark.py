@@ -96,7 +96,6 @@ def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, 
     command.extend([inputs_arg])
     
     # add benchmarking flags
-    model = onnx.load(model_path)
     if is_dynamic(model):
         command.extend([shapes_arg])
     if fp16: 
@@ -967,9 +966,6 @@ def run_onnxruntime(args, models):
             os.mkdir(path)
         os.chdir(path)
         path = os.getcwd()
-
-        if args.running_mode == "validate": 
-            remove_files(args.running_mode, path)
         
         inputs = []
         ref_outputs = []
@@ -1167,6 +1163,7 @@ def run_onnxruntime(args, models):
 
                         status = validate(ref_outputs, ort_outputs, args.rtol, args.atol, args.percent_mismatch)
                         if not status[0]:
+                            remove_files(args.running_mode, model_info["working_directory"])
                             update_fail_model_map(model_to_fail_ep, name, ep, 'result accuracy issue', status[1])
                             continue
                     except Exception as e:
@@ -1190,6 +1187,7 @@ def run_onnxruntime(args, models):
                     logger.info(ep)
                     ep_to_operator[ep] = metrics
 
+                remove_files(args.running_mode, model_info["working_directory"])
                 logger.info("---------------------------- validate [end] ----------------------------------\n")
 
         ####################
