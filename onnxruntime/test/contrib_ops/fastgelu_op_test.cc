@@ -197,14 +197,16 @@ TEST(FastGeluTest, FastGeluWithoutBiasFloat16) {
   RunFastGeluTest(input_data, bias_data, output_data, input_dims, bias_dims, output_dims, false, true);
 }
 
-// CUDA only, ROCM has not been supported yet
-#ifdef USE_CUDA
+// CUDA and ROCm only.
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(FastGeluTest, FastGeluWithBias_BFloat16) {
+#ifdef USE_CUDA
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
     return;
   }
+#endif
   OpTester tester("FastGelu", 1, onnxruntime::kMSDomain);
 
   int batch_size = 1;
@@ -235,7 +237,11 @@ TEST(FastGeluTest, FastGeluWithBias_BFloat16) {
   tester.AddOutput<BFloat16>("Y", output_dims, f_Y);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif
