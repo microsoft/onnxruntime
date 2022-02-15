@@ -34,7 +34,12 @@ class CPUIDInfo {
   // ARM 
   bool HasArmNeonDot() const { return has_arm_neon_dot_; }
 
-  // Mocking
+  /**
+   * @return CPU core micro-architecture running the current thread
+  */
+  int32_t GetCurrentUarch() const;
+
+  // Mock hybrid
   void MockHybrid(bool is_hybrid) { is_hybrid_ = is_hybrid; }
 
  private:

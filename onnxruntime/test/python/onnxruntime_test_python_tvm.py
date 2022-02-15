@@ -6,9 +6,9 @@ from onnx.helper import (
     make_graph, make_tensor_value_info)
 import onnxruntime
 
-if "StvmExecutionProvider" not in onnxruntime.get_available_providers():
+if "TvmExecutionProvider" not in onnxruntime.get_available_providers():
     raise AssertionError(
-        "Unable to find 'StvmExecutionProvider' in %r." % onnxruntime.get_available_providers())
+        "Unable to find 'TvmExecutionProvider' in %r." % onnxruntime.get_available_providers())
 
 X = make_tensor_value_info('X', TensorProto.FLOAT, [None, None])
 A = make_tensor_value_info('A', TensorProto.FLOAT, [None, None])
@@ -47,7 +47,7 @@ so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
 
 sess = onnxruntime.InferenceSession(
     onnx_model.SerializeToString(), so,
-    providers=["StvmExecutionProvider"],
+    providers=["TvmExecutionProvider"],
     provider_options=[provider_options])
 
 y_tvm = sess.run(None, data)[0]
