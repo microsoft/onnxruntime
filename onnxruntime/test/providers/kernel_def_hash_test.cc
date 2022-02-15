@@ -48,7 +48,11 @@
  *
  * In the unlikely event that we need to make a change to the kernel def
  * hashing that breaks backward compatibility, the expected values may need to
- * be updated.
+ * be updated. You will also need to update UpdateHashForBackwardsCompatibility
+ * in onnxruntime/core/framework/session_state_flatbuffers_utils.cc, add a
+ * test model for the operator in question to onnxruntime/test/testdata/ort_backwards_compat
+ * and update OrtModelOnlyTests.TestBackwardsCompat in onnxruntime/test/framework/ort_model_only_test.cc
+ * to load the new model and validate the hash replacement works correctly.
  */
 
 #include <algorithm>

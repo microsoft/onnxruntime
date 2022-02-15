@@ -535,7 +535,7 @@ TEST(OrtModelOnlyTests, TestBackwardsCompat) {
   for (const auto& model : models) {
     // test loading old model succeeds. if it does the hash replacement worked.
     InferenceSession session{session_options, GetEnvironment()};
-    auto model_uri = v110_dir + ToWideString(model);
+    auto model_uri = v110_dir + ToPathString(model);
 
     ASSERT_STATUS_OK(session.Load(model_uri));
     ASSERT_STATUS_OK(session.Initialize());

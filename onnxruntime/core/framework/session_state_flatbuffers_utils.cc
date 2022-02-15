@@ -77,32 +77,34 @@ Status FbsSessionStateViewer::GetSubgraphSessionState(NodeIndex node_idx, const 
   return Status::OK();
 }
 
-#define SEP ":"
-#define OPINFO(d, o, s) #d SEP #o SEP #s
-
 void UpdateHashForBackwardsCompatibility(HashValue& hash) {
-  // map of old hash to pair of new hash and op info. we store the op info so it's easy to debug what we're matching.
-  // we could take domain/optype/opset as input to validate the match,
-  // but hashes should be unique and doing so shouldn't be necessary.
-  static const std::unordered_map<HashValue, std::pair<HashValue, std::string>> hashes{
-      {2832535737534577496ULL, {16708009824840936392ULL, OPINFO(kOnnxDomain, Dropout, 7)}},
-      {12198479371038564912ULL, {1718418059112844640ULL, OPINFO(kOnnxDomain, Scan, 9)}},
-      {2560955351529676608ULL, {3668627007850399040ULL, OPINFO(kOnnxDomain, Scan, 11)}},
-      {10232409728231027688ULL, {5212043150202938416ULL, OPINFO(kOnnxDomain, Not, 1)}},
-      {11912523891622051440ULL, {10225383741733918632ULL, OPINFO(kOnnxDomain, RoiAlign, 10)}},  // RoiAlign 10 float
-      {18084231515768318048ULL, {17022700455473327752ULL, OPINFO(kOnnxDomain, RoiAlign, 10)}},  // RoiAlign 10 double
-      {14033689580222898712ULL, {634727773751317256ULL, OPINFO(kOnnxDomain, GatherND, 11)}},
-      {646512416908411600ULL, {3064028185911332496ULL, OPINFO(kOnnxDomain, GatherND, 12)}},
-      {15019893097608892000ULL, {11311962292460032936ULL, OPINFO(kOnnxDomain, GatherND, 13)}},
-      {14259324427750852648ULL, {7767393334034626736ULL, OPINFO(kOnnxDomain, StringNormalizer, 10)}},
-      // contrib ops
-      {7642430665819070720ULL, {8620498355864235632ULL, OPINFO(kMSDomain, CropAndResize, 1)}},
-      {1501966609334176828ULL, {11924582339825775592ULL, OPINFO(kMSDomain, GridSample, 1)}}};
+  // map of old hash to new hash if we were forced to break backwards compatibility for a kernel registration
+  //
+  // If we need to update the hash for an existing registration, an entry needs to be added here to map the
+  // old hash to the new. This should rarely be required as historically the only need for it was fixing
+  // kernel registrations with invalid type constraints. Please carefully read through the information at the top of
+  // onnxruntime/test/providers/kernel_def_hash_test.cc regarding how/when hashes might change and the best way to
+  // address that.
+  static const std::unordered_map<HashValue, HashValue> hashes{
+      // old                   new                          domain, operator, opset[, type]
+      {2832535737534577496ULL, 16708009824840936392ULL},   // kOnnxDomain, Dropout, 7
+      {12198479371038564912ULL, 1718418059112844640ULL},   // kOnnxDomain, Scan, 9
+      {2560955351529676608ULL, 3668627007850399040ULL},    // kOnnxDomain, Scan, 11
+      {10232409728231027688ULL, 5212043150202938416ULL},   // kOnnxDomain, Not, 1
+      {11912523891622051440ULL, 10225383741733918632ULL},  // kOnnxDomain, RoiAlign, 10, float
+      {18084231515768318048ULL, 17022700455473327752ULL},  // kOnnxDomain, RoiAlign, 10, double
+      {14033689580222898712ULL, 634727773751317256ULL},    // kOnnxDomain, GatherND, 11
+      {646512416908411600ULL, 3064028185911332496ULL},     // kOnnxDomain, GatherND, 12
+      {15019893097608892000ULL, 11311962292460032936ULL},  // kOnnxDomain, GatherND, 13
+      {14259324427750852648ULL, 7767393334034626736ULL},   // kOnnxDomain, StringNormalizer, 10
+                                                           // contrib ops
+      {7642430665819070720ULL, 8620498355864235632ULL},    // kMSDomain, CropAndResize, 1
+      {1501966609334176828ULL, 11924582339825775592ULL}};  // kMSDomain, GridSample, 1
 
   auto iter = hashes.find(hash);
   if (iter != hashes.cend()) {
     // hash was updated in newer version of ORT kernel registrations
-    hash = iter->second.first;
+    hash = iter->second;
   }
 }
 
