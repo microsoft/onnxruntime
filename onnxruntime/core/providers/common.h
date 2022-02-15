@@ -55,9 +55,6 @@ enum class AutoPadType {
 };
 
 inline AutoPadType StringToAutoPadType(const std::string& str) {
-  if (str.empty()) {
-    return AutoPadType::NOTSET;
-  }
   if (str == "NOTSET") {  // in onnx spec, default value is "NOTSET"
     return AutoPadType::NOTSET;
   }
