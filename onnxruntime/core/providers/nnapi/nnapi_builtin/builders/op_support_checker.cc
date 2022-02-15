@@ -1181,10 +1181,10 @@ class SoftMaxOpSupportChecker : public BaseOpSupportChecker {
 
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
 
-  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;  // TODO, see if we want to move this to BaseOpBuilder
 };
 
-/* static */ bool SoftMaxOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
+bool SoftMaxOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQSoftmax;
 }
 
