@@ -57,19 +57,28 @@ def is_dynamic(model):
             return True
     return False 
 
-def run_trt_standalone(trtexec, model_name, model_path, ort_inputs, all_inputs_shape, fp16, track_memory):
+def get_model_inputs(model): 
+    all_inputs = [node.name for node in model.graph.input]
+    input_initializers = [node.name for node in model.graph.initializer]
+    inputs = list(set(all_inputs) - set(input_initializers))
+    return inputs 
+
+def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, track_memory):
     logger.info("running standalone trt")
     onnx_model_path = "--onnx=" + model_path
     
     # load inputs
     input_shape = []
     loaded_inputs = []
-    
+
+    model = onnx.load(model_path)
+    ort_inputs = get_model_inputs(model)
+
     output = get_output(["find", "-L", os.getcwd(), "-name", "test_data*", "-type", "d"])
     test_data_dir = split_and_sort_output(output)[0]
 
     for i in range(len(ort_inputs)):
-        name = ort_inputs[i].name
+        name = ort_inputs[i]
         loaded_input = name + ':' + test_data_dir + '/' + str(i) + '.bin'
         logger.info(loaded_input)
         shape = []
