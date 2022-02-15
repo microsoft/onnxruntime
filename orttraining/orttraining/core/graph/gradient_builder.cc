@@ -1073,11 +1073,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMaxGradient) {
   std::vector<int64_t> default_reduce_axes = {};
   ArgDef reduce_axes_arg_def = IA("ReduceAxes");
 
-
-
   if (!keepdims) {
     if (attributes.find("axes") != attributes.end()) {
-      std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+      axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
       grad = IA("Unsqueezed_Grad");
       result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
       result.push_back(NodeDef("Unsqueeze", {O(0)}, {IA("Unsqueezed_Output")}, {MakeAttribute("axes", axes_values)}));
@@ -1101,7 +1099,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMaxGradient) {
     result.push_back(NodeDef("Equal", {I(0), O(0)}, {IA("Mask")}));
     result.push_back(NodeDef("Where", {IA("Mask"), ONE, ZERO}, {IA("Mask_float")}));
     if (attributes.find("axes") != attributes.end()) {
-      std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+      axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
       AddReduceSumNode(IA("Mask_float"), IA("ReduceSum_Mask"), axes_values, true, result);
     } else { // axes is not available, O(0) will be a scalar
       if (opset_version >= 13) {
