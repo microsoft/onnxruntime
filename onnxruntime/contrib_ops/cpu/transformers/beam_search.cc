@@ -11,17 +11,20 @@
 
 #include <assert.h>
 #include <functional>
-#include "core/framework/feeds_fetches_manager.h"
+#include "core/common/safeint.h"
 #include "core/providers/cpu/math/top_k.h"
+#include "core/providers/cpu/tensor/utils.h"
 #include "core/framework/allocator.h"
 #include "core/framework/framework_common.h"
+#include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
-#include "core/providers/cpu/tensor/utils.h"
 #include "core/framework/session_options.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/allocator.h"
+#include "core/framework/ort_value.h"
 #include "gsl/gsl"
 #include "beam_search.h"
 #include "logits_processor.h"
@@ -55,6 +58,27 @@ namespace contrib {
 REGISTER_KERNEL_TYPED(float)
 
 namespace transformers {
+
+template <typename T>
+gsl::span<T> AllocateBuffer(AllocatorPtr allocator,
+                            BufferUniquePtr& buffer,
+                            size_t elements,
+                            bool fill = false,
+                            T fill_value = T{}) {
+  size_t bytes = SafeInt<size_t>(sizeof(T)) * elements;
+  void* data = allocator->Alloc(bytes);
+  BufferUniquePtr temp_buffer(data, BufferDeleter(allocator));
+  buffer = std::move(temp_buffer);
+  T* first = reinterpret_cast<T*>(buffer.get());
+  auto span = gsl::make_span(first, elements);
+
+  if (fill) {
+    std::fill_n(first, elements, fill_value);
+  }
+
+  return span;
+}
+
 template <typename T>
 struct BeamSearchState : public IBeamSearchState<T> {
   void Init(AllocatorPtr allocator,

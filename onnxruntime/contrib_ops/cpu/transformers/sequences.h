@@ -1,9 +1,6 @@
 #pragma once
 
 #include "gsl/gsl"
-#include "core/common/safeint.h"
-#include "core/framework/allocator.h"
-#include "core/framework/ort_value.h"
 #include "beam_search_shared.h"
 
 namespace onnxruntime {
@@ -47,26 +44,6 @@ class Sequences : public ISequences {
   int max_length_;
   int current_length_;
 };
-
-template <typename T>
-gsl::span<T> AllocateBuffer(AllocatorPtr allocator,
-                            BufferUniquePtr& buffer,
-                            size_t elements,
-                            bool fill = false,
-                            T fill_value = T{}) {
-  size_t bytes = SafeInt<size_t>(sizeof(T)) * elements;
-  void* data = allocator->Alloc(bytes);
-  BufferUniquePtr temp_buffer(data, BufferDeleter(allocator));
-  buffer = std::move(temp_buffer);
-  T* first = reinterpret_cast<T*>(buffer.get());
-  auto span = gsl::make_span(first, elements);
-
-  if (fill) {
-    std::fill_n(first, elements, fill_value);
-  }
-
-  return span;
-}
 
 }  // namespace transformers
 }  // namespace contrib
