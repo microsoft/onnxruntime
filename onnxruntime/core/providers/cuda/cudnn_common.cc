@@ -141,7 +141,7 @@ cudnnDataType_t CudnnTensor::GetDataType<BFloat16>() {
 #if CUDNN_VERSION >= 8100
   return CUDNN_DATA_BFLOAT16;
 #else
-#ifdef USE_CUDA
+#if !defined(WIN32)
   ORT_THROW("cuDNN version is too low to support BFloat16.");
 #endif
   // Not reachable but GCC complains
