@@ -92,6 +92,12 @@ miopenDataType_t MiopenTensor::GetDataType<half>() {
 }
 
 template <>
+miopenDataType_t MiopenTensor::GetDataType<BFloat16>() {
+  ORT_THROW("miopen version is too low to support BFloat16.");
+  return miopenFloat;
+}
+
+template <>
 miopenDataType_t MiopenTensor::GetDataType<int32_t>() {
   return miopenInt32;
 }
