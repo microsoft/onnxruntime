@@ -212,5 +212,8 @@ GetQDQTestCaseFn BuildQDQTransposeTestCase(
     builder.AddQuantizeLinearNode<OutputType>(transpose_output, .003f, q_zp, output_arg);
   };
 }
+
+GetQDQTestCaseFn BuildQDQReshapeTestCase(const std::vector<int64_t>& input_shape,
+                                         const std::vector<int64_t>& reshape_shape);
 }  // namespace test
 }  // namespace onnxruntime
