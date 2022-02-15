@@ -622,6 +622,7 @@ class BaseOpBuilder : public IOpBuilder {
  protected:
   virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const = 0;
   static bool IsOpSupported(const ModelBuilder& model_builder, const NodeUnit& node_unit) ORT_MUST_USE_RESULT;
+  virtual bool IsQuantizedOp(const NodeUnit& /* node_unit */) const { return false; }
 };
 
 /* static */ bool BaseOpBuilder::IsOpSupported(const ModelBuilder& model_builder, const NodeUnit& node_unit) {
@@ -651,11 +652,11 @@ class BinaryOpBuilder : public BaseOpBuilder {
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
-  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
-/* static */ bool BinaryOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
+bool BinaryOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   const auto quant_type = GetQuantizedOpType(node_unit);
   return quant_type == QuantizedOpType::QLinearAdd ||
          quant_type == QuantizedOpType::QLinearMul ||
@@ -793,7 +794,7 @@ class TransposeOpBuilder : public BaseOpBuilder {
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
-  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
 void TransposeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -804,7 +805,7 @@ void TransposeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, cons
   AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
 }
 
-/* static */ bool TransposeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
+bool TransposeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQTranspose;
 }
 
@@ -867,7 +868,7 @@ class ReshapeOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
   static bool CanSkipReshape(const ModelBuilder& model_builder, const NodeUnit& node_unit,
                              size_t input_rank, size_t output_rank);
-  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
 void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
@@ -878,7 +879,7 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   model_builder.AddInitializerToSkip(node_unit.Inputs()[1].node_arg.Name());
 }
 
-/* static */ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
+bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQReshape;
 }
 
@@ -1150,11 +1151,11 @@ class PoolOpBuilder : public BaseOpBuilder {
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
-  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
-/* static */ bool PoolOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
+bool PoolOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return IsQuantizedPool(GetQuantizedOpType(node_unit));
 }
 
@@ -1303,11 +1304,11 @@ class ConvOpBuilder : public BaseOpBuilder {
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
-  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
-/* static */ bool ConvOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
+bool ConvOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return IsQuantizedConv(GetQuantizedOpType(node_unit));
 }
 
@@ -1722,11 +1723,11 @@ class GemmOpBuilder : public BaseOpBuilder {
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
-  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
-/* static */ bool GemmOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
+bool GemmOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   // TODO, add support for QDQ NodeUnit
   return node_unit.OpType() == "QLinearMatMul";
 }
@@ -1882,11 +1883,11 @@ class UnaryOpBuilder : public BaseOpBuilder {
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
-  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
 };
 
-/* static */ bool UnaryOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
+bool UnaryOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   // TODO, add support for QDQ NodeUnit
   return node_unit.OpType() == "QLinearSigmoid";
 }
@@ -2336,10 +2337,10 @@ class ResizeOpBuilder : public BaseOpBuilder {
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
-  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
-/* static */ bool ResizeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
+bool ResizeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQResize;
 }
 
