@@ -880,7 +880,7 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   model_builder.AddInitializerToSkip(node_unit.Inputs()[1].node_arg.Name());
 }
 
-/* static */ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
+bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQReshape;
 }
 
