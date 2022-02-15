@@ -67,21 +67,21 @@ struct BeamSearchState : public IBeamSearchState<T> {
     size_t batch_beam_size = SafeInt<size_t>(batch_size) * num_beams;
 
     size_t next_token_size = SafeInt<size_t>(batch_beam_size) * vocab_size;
-    next_token_logits = AllocateBuffer<T>(allocator, next_token_logits_buffer_, next_token_size);
-    next_token_scores = AllocateBuffer<T>(allocator, next_token_scores_buffer_, next_token_size);
+    this->next_token_logits = AllocateBuffer<T>(allocator, next_token_logits_buffer_, next_token_size);
+    this->next_token_scores = AllocateBuffer<T>(allocator, next_token_scores_buffer_, next_token_size);
 
-    next_tokens = AllocateBuffer<int64_t>(allocator, next_tokens_buffer_, SafeInt<size_t>(2) * batch_beam_size);
+    this->next_tokens = AllocateBuffer<int64_t>(allocator, next_tokens_buffer_, SafeInt<size_t>(2) * batch_beam_size);
 
-    next_indices = AllocateBuffer<int64_t>(allocator, next_indices_buffer_, SafeInt<size_t>(2) * batch_beam_size);
+    this->next_indices = AllocateBuffer<int64_t>(allocator, next_indices_buffer_, SafeInt<size_t>(2) * batch_beam_size);
 
-    next_positions = AllocateBuffer<int64_t>(allocator, next_positions_buffer_, batch_beam_size);
+    this->next_positions = AllocateBuffer<int64_t>(allocator, next_positions_buffer_, batch_beam_size);
 
-    beam_scores = AllocateBuffer<T>(allocator, beam_scores_buffer_, batch_beam_size);
+    this->beam_scores = AllocateBuffer<T>(allocator, beam_scores_buffer_, batch_beam_size);
 
     if (output_scores) {
       size_t elements = SafeInt<size_t>(max_length - sequence_length) * batch_size * num_beams * vocab_size;
-      scores = AllocateBuffer<T>(allocator, scores_buffer_, elements);
-      remaining_scores = scores;
+      this->scores = AllocateBuffer<T>(allocator, scores_buffer_, elements);
+      this->remaining_scores = this->scores;
     }
   }
 
@@ -100,12 +100,12 @@ struct BeamSearchCpuState : public IBeamSearchCpuState<T> {
   Sequences sequences;
 
   void Init(AllocatorPtr allocator, size_t batch_beam_size, int max_length) {
-    sequence_lengths = AllocateBuffer<int64_t>(allocator, sequence_lengths_buffer_, batch_beam_size);
-    topk_scores = AllocateBuffer<T>(allocator, topk_scores_buffer_, 2 * batch_beam_size);
-    topk_tokens = AllocateBuffer<int64_t>(allocator, topk_tokens_buffer_, 2 * batch_beam_size);
-    topk_indices = AllocateBuffer<int64_t>(allocator, topk_indices_buffer_, 2 * batch_beam_size);
-    final_beam_scores = AllocateBuffer<T>(allocator, final_beam_scores_buffer_, batch_beam_size);
-    sequences_space = AllocateBuffer<int64_t>(allocator, sequences_space_buffer_, SafeInt<size_t>(2) * batch_beam_size * max_length);
+    this->sequence_lengths = AllocateBuffer<int64_t>(allocator, sequence_lengths_buffer_, batch_beam_size);
+    this->topk_scores = AllocateBuffer<T>(allocator, topk_scores_buffer_, 2 * batch_beam_size);
+    this->topk_tokens = AllocateBuffer<int64_t>(allocator, topk_tokens_buffer_, 2 * batch_beam_size);
+    this->topk_indices = AllocateBuffer<int64_t>(allocator, topk_indices_buffer_, 2 * batch_beam_size);
+    this->final_beam_scores = AllocateBuffer<T>(allocator, final_beam_scores_buffer_, batch_beam_size);
+    this->sequences_space = AllocateBuffer<int64_t>(allocator, sequences_space_buffer_, SafeInt<size_t>(2) * batch_beam_size * max_length);
   }
 
  private:

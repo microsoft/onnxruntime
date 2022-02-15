@@ -189,6 +189,10 @@ Status ProcessLogits(const OrtValue& logits,                                    
                      int /*step*/,                                                      // iteration counter
                      void* stream,                                                      // cuda stream (for CUDA only)
                      const transformers::IConsoleDumper* dumper) {                      // tensor dumper
+  #ifndef DEBUG_BEAM_SEARCH
+  ORT_UNUSED_PARAMETER(dumper);
+  #endif
+
   int batch_size = parameters->batch_size;
   int num_beams = parameters->num_beams;
   int vocab_size = parameters->vocab_size;
@@ -336,7 +340,7 @@ Status PickPastState(const std::vector<OrtValue>& last_outputs,
                      gsl::span<const int64_t>& beam_indices,
                      AllocatorPtr allocator,
                      void* stream,
-                     const transformers::IConsoleDumper* dumper) {
+                     const transformers::IConsoleDumper* /*dumper*/) {
   for (size_t i = 1; i < last_outputs.size(); ++i) {
     const OrtValue& present = last_outputs[i];  // shape is like (2, batch_beam_size, 12, past_seq_len, 64)
     const TensorShape& past_shape = present.Get<Tensor>().Shape();
