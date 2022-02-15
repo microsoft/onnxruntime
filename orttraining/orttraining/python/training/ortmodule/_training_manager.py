@@ -23,6 +23,22 @@ from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_typ
 import torch
 import warnings
 
+import random
+import numpy as np
+
+def get_random_states():
+    r_state = random.getstate()
+    np_state = np.random.get_state()
+    torch_state = torch.get_rng_state()
+    torch_cuda_state = torch.cuda.get_rng_state()
+    return r_state, np_state, torch_state, torch_cuda_state
+
+def set_random_states(states):
+    r_state, np_state, torch_state, torch_cuda_state = states
+    random.setstate(r_state)
+    np.random.set_state(np_state)
+    torch.set_rng_state(torch_state)
+    torch.cuda.set_rng_state(torch_cuda_state)
 
 class TrainingManager(GraphExecutionManager):
     """Concrete instance of GraphExecutionManager that is able to manage the training model
@@ -220,7 +236,9 @@ class TrainingManager(GraphExecutionManager):
             build_gradient_graph = False
             if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False or \
                     not self._onnx_models.exported_model:
+                random_states = get_random_states()
                 build_gradient_graph = self._export_model(*inputs, **kwargs)
+                set_random_states(random_states)
                 if build_gradient_graph:
                     # If model was exported, then initialize the graph builder
                     self._initialize_graph_builder(training=True)
