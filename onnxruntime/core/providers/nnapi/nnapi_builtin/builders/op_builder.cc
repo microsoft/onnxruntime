@@ -984,6 +984,7 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
     // Add new shape
     Shape shape_dimen = {static_cast<uint32_t>(shape.size())};
     std::string shape_name = model_builder.GetUniqueName(node_unit.Name() + input + "newshape");
+    OperandType shape_operand_type(Type::TENSOR_INT32, shape_dimen);
     ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(shape_name, shape.data(), shape_operand_type));
     input_indices.push_back(operand_indices.at(shape_name));
     ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_RESHAPE, input_indices, {output}, {output_operand_type}, {false}));
