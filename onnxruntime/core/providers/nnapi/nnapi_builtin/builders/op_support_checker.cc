@@ -289,6 +289,8 @@ class BaseOpSupportChecker : public IOpSupportChecker {
     return true;
   }
 
+  virtual bool IsQuantizedOp(const NodeUnit& /* node_unit */) const { return false; }
+
   virtual int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
                                                    const OpSupportCheckParams& /* params */) const {
     // ANEURALNETWORKS_FEATURE_LEVEL_1 is the baseline version of NNAPI,
@@ -453,7 +455,7 @@ class BinaryOpSupportChecker : public BaseOpSupportChecker {
   int GetMinSupportedOpSet(const NodeUnit& node_unit) const override;
 
   bool IsNodeUnitTypeSupported(const NodeUnit& node_unit) const override;
-  static bool IsQuantizedOp(const NodeUnit& node_unit);
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
 /* static */ void BinaryOpSupportChecker::CreateSharedOpSupportChecker(
@@ -481,7 +483,7 @@ bool BinaryOpSupportChecker::IsNodeUnitTypeSupported(const NodeUnit& node_unit) 
   return true;
 }
 
-/* static */ bool BinaryOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
+bool BinaryOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
   const auto quant_type = GetQuantizedOpType(node_unit);
   return quant_type == QuantizedOpType::QLinearAdd ||
          quant_type == QuantizedOpType::QLinearMul ||
@@ -593,10 +595,10 @@ class TransposeOpSupportChecker : public BaseOpSupportChecker {
       const InitializedTensorSet& initializers, const NodeUnit& node_unit,
       const OpSupportCheckParams& params) const override;
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
-  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
-/* static */ bool TransposeOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
+bool TransposeOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQTranspose;
 }
 
@@ -653,7 +655,16 @@ class ReshapeOpSupportChecker : public BaseOpSupportChecker {
 
   // Reshape opset 4- uses attributes for new shape which we do not support for now
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 5; }
+  bool HasSupportedInputOutputsImpl(
+      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
+      const OpSupportCheckParams& /* params */) const override;
+  bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
+
+bool ReshapeOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
+  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQReshape;
+}
 
 bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                 const OpSupportCheckParams& /* params */) const {
@@ -685,7 +696,7 @@ bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
   const auto perm_size = SafeInt<uint32_t>(perm_tensor.dims()[0]);
 
   NodeAttrHelper helper(node_unit);
-  const bool allow_zero = helper.Get("allowzero ", 0) == 1;
+  const bool allow_zero = helper.Get("allowzero", 0) == 1;
   for (uint32_t i = 0; i < perm_size; i++) {
     // NNAPI reshape does not support 0 as dimension
     if (raw_perm[i] == 0) {
@@ -699,6 +710,24 @@ bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
         return false;
       }
     }
+  }
+
+  return true;
+}
+
+bool ReshapeOpSupportChecker::HasSupportedInputOutputsImpl(
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+    const OpSupportCheckParams& params) const {
+  if (!IsQuantizedOp(node_unit)) {
+    return BaseOpSupportChecker::HasSupportedInputOutputsImpl(initializers, node_unit, params);
+  }
+
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Input)) {
+    return false;
+  }
+
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Output)) {
+    return false;
   }
 
   return true;
@@ -790,7 +819,7 @@ class PoolOpSupportChecker : public BaseOpSupportChecker {
       const InitializedTensorSet& initializers, const NodeUnit& node_unit,
       const OpSupportCheckParams& params) const override;
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override;
-  static bool IsQuantizedOp(const NodeUnit& node_unit);
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
 /* static */ void PoolOpSupportChecker::CreateSharedOpSupportChecker(
@@ -815,7 +844,7 @@ bool PoolOpSupportChecker::IsNodeUnitTypeSupported(const NodeUnit& node_unit) co
   return true;
 }
 
-/* static */ bool PoolOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
+bool PoolOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
   return IsQuantizedPool(GetQuantizedOpType(node_unit));
 }
 
@@ -979,7 +1008,7 @@ class ConvOpSupportChecker : public BaseOpSupportChecker {
       const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
       const OpSupportCheckParams& /* params */) const override;
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
-  static bool IsQuantizedOp(const NodeUnit& node_unit);
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
 /* static */ void ConvOpSupportChecker::CreateSharedOpSupportChecker(
@@ -992,7 +1021,7 @@ class ConvOpSupportChecker : public BaseOpSupportChecker {
       });
 }
 
-/* static */ bool ConvOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
+bool ConvOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
   return IsQuantizedConv(GetQuantizedOpType(node_unit));
 }
 
@@ -1642,10 +1671,10 @@ class ResizeOpSupportChecker : public BaseOpSupportChecker {
       const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
       const OpSupportCheckParams& /* params */) const override;
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
-  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
-/* static */ bool ResizeOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
+bool ResizeOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQResize;
 }
 
