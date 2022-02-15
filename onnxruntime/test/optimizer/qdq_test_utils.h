@@ -81,10 +81,27 @@ GetQDQTestCaseFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shape, c
 template <typename InputType, typename OutputType>
 GetQDQTestCaseFn BuildQDQAveragePoolTestCase(const std::vector<int64_t>& input_shape) {
   return [input_shape](ModelTestBuilder& builder) {
+
+#ifdef USE_NNAPI  // NNAPI require consistent scales/ZPs for DQ -> Pool -> Q
+    float dq_scale = 0.0038f;
+    float pool_output_scale = 0.0038f;
+    float q_scale = 0.0038f;
+    InputType dq_zp = std::numeric_limits<OutputType>::max() / 2;
+    InputType pool_output_zp = std::numeric_limits<OutputType>::max() / 2;
+    InputType q_zp = std::numeric_limits<OutputType>::max() / 2;
+#else
+    float dq_scale = 0.0035f;
+    float pool_output_scale = 0.0038f;
+    float q_scale = 0.0039f;
+    InputType dq_zp = 7;
+    InputType pool_output_zp = std::numeric_limits<OutputType>::max() / 2;
+    InputType q_zp = std::numeric_limits<OutputType>::max() / 2;
+#endif
+
     auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
     auto* output_arg = builder.MakeOutput();
     // add QDQ + AveragePool
-    auto* dq_output = AddQDQNodePair<InputType>(builder, input_arg, .0035f, 7);
+    auto* dq_output = AddQDQNodePair<InputType>(builder, input_arg, dq_scale, dq_zp);
     auto* averagepool_output = builder.MakeIntermediate();
     Node& pool_node = builder.AddNode("AveragePool", {dq_output}, {averagepool_output});
     std::vector<int64_t> pads((input_shape.size() - 2) * 2, 1);
@@ -95,12 +112,12 @@ GetQDQTestCaseFn BuildQDQAveragePoolTestCase(const std::vector<int64_t>& input_s
     // add QDQ output
     auto* q_output = builder.MakeIntermediate();
     builder.AddQuantizeLinearNode<OutputType>(averagepool_output,
-                                              .0038f,
-                                              std::numeric_limits<OutputType>::max() / 2,
+                                              pool_output_scale,
+                                              pool_output_zp,
                                               q_output);
     builder.AddDequantizeLinearNode<OutputType>(q_output,
-                                                .0039f,
-                                                std::numeric_limits<OutputType>::max() / 2,
+                                                q_scale,
+                                                q_zp,
                                                 output_arg);
   };
 }
@@ -110,5 +127,90 @@ GetQDQTestCaseFn BuildQDQResizeTestCase(const std::vector<int64_t>& input_shape,
                                         const std::string& mode = "nearest",
                                         const std::string& coordinate_transformation_mode = "half_pixel");
 
+template <typename Input1Type, typename Input2Type, typename OutputType>
+GetQDQTestCaseFn BuildBinaryOpTestCase(const std::vector<int64_t>& input_shape,
+                                       const std::string& op_type) {
+  return [input_shape, op_type](ModelTestBuilder& builder) {
+    auto* input1_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
+    auto* input2_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
+    auto* output_arg = builder.MakeOutput();
+
+#ifdef USE_NNAPI  // NNAPI require consistent scales for DQ -> bin_op_input and bin_op_output-> Q
+    float q_scale = 0.008f;
+    float op_input_scale = 0.008f;
+    float op_output_scale = 0.0076f;
+    float dq_scale = 0.0076f;
+#else
+    float q_scale = 0.008f;
+    float op_input_scale = 0.0079f;
+    float op_output_scale = 0.0076f;
+    float dq_scale = 0.0078f;
+#endif
+
+    // add QDQ 1
+    auto* q1_output = builder.MakeIntermediate();
+    auto* dq1_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<Input1Type>(input1_arg,
+                                              q_scale,
+                                              std::numeric_limits<Input1Type>::max() / 2,
+                                              q1_output);
+    builder.AddDequantizeLinearNode<Input1Type>(q1_output,
+                                                op_input_scale,
+                                                std::numeric_limits<Input1Type>::max() / 2,
+                                                dq1_output);
+
+    // add QDQ 2
+    auto* q2_output = builder.MakeIntermediate();
+    auto* dq2_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<Input2Type>(input2_arg,
+                                              q_scale,
+                                              std::numeric_limits<Input2Type>::max() / 2,
+                                              q2_output);
+    builder.AddDequantizeLinearNode<Input2Type>(q2_output,
+                                                op_input_scale,
+                                                std::numeric_limits<Input2Type>::max() / 2,
+                                                dq2_output);
+
+    // add binary operator
+    auto* binary_op_output = builder.MakeIntermediate();
+    builder.AddNode(op_type, {dq1_output, dq2_output}, {binary_op_output});
+
+    // add QDQ output
+    auto* q3_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<OutputType>(binary_op_output,
+                                              op_output_scale,
+                                              std::numeric_limits<OutputType>::max() / 2,
+                                              q3_output);
+    builder.AddDequantizeLinearNode<OutputType>(q3_output,
+                                                dq_scale,
+                                                std::numeric_limits<OutputType>::max() / 2,
+                                                output_arg);
+  };
+}
+
+template <typename InputType, typename OutputType>
+GetQDQTestCaseFn BuildQDQTransposeTestCase(
+    const std::vector<int64_t>& input_shape,
+    const std::vector<int64_t>& perms) {
+  return [input_shape, perms](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<InputType>(input_shape, -128, 127);
+    auto* output_arg = builder.MakeOutput();
+
+    InputType dq_zp = std::numeric_limits<InputType>::max() / 2;
+    OutputType q_zp = std::numeric_limits<OutputType>::max() / 2;
+
+    // add DQ
+    auto* dq_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<InputType>(input_arg, .003f, dq_zp, dq_output);
+
+    // add Transpose
+    auto* transpose_output = builder.MakeIntermediate();
+    Node& transpose_node = builder.AddNode("Transpose", {dq_output}, {transpose_output});
+    transpose_node.AddAttribute("perm", perms);
+
+    // add Q
+    builder.AddQuantizeLinearNode<OutputType>(transpose_output, .003f, q_zp, output_arg);
+  };
+}
 }  // namespace test
 }  // namespace onnxruntime

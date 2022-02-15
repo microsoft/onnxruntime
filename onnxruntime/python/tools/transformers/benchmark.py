@@ -48,9 +48,9 @@ import os
 import psutil
 import onnx
 from enum import Enum
-from benchmark_helper import (create_onnxruntime_session, Precision, setup_logger, get_latency_result, output_details,
-                              output_summary, output_fusion_statistics, inference_ort, inference_ort_with_io_binding,
-                              allocateOutputBuffers)
+from benchmark_helper import (OptimizerInfo, create_onnxruntime_session, Precision, setup_logger, get_latency_result,
+                              output_details, output_summary, output_fusion_statistics, inference_ort,
+                              inference_ort_with_io_binding, allocateOutputBuffers)
 from quantize_helper import QuantizeHelper
 from onnx_exporter import create_onnxruntime_input, load_pretrained_model, export_onnx_model_from_pt, export_onnx_model_from_tf
 
@@ -69,17 +69,27 @@ from transformers import (AutoConfig, AutoTokenizer, AutoModel, GPT2Model, Lxmer
 
 
 def run_onnxruntime(use_gpu, provider, model_names, model_class, precision, num_threads, batch_sizes, sequence_lengths,
-                    repeat_times, input_counts, optimize_onnx, validate_onnx, cache_dir, onnx_dir, verbose, overwrite,
+                    repeat_times, input_counts, optimizer_info, validate_onnx, cache_dir, onnx_dir, verbose, overwrite,
                     disable_ort_io_binding, use_raw_attention_mask, model_fusion_statistics, model_source):
     import onnxruntime
 
     results = []
-    if (use_gpu and ('CUDAExecutionProvider' not in onnxruntime.get_available_providers()) and
-        ('ROCMExecutionProvider' not in onnxruntime.get_available_providers())):
+    if (use_gpu and ('CUDAExecutionProvider' not in onnxruntime.get_available_providers())
+            and ('ROCMExecutionProvider' not in onnxruntime.get_available_providers())):
         logger.error(
             "Please install onnxruntime-gpu package instead of onnxruntime, and use a machine with GPU for testing gpu performance."
         )
         return results
+
+    warm_up_repeat = 0
+    if provider == 'tensorrt':
+        optimizer_info = OptimizerInfo.NOOPT
+        warm_up_repeat = 5
+        if 'TensorrtExecutionProvider' not in onnxruntime.get_available_providers():
+            logger.error(
+                "Please install onnxruntime-gpu-tensorrt package, and use a machine with GPU for testing gpu performance."
+            )
+            return results
 
     for model_name in model_names:
         all_input_names = MODELS[model_name][0]
@@ -93,12 +103,12 @@ def run_onnxruntime(use_gpu, provider, model_names, model_class, precision, num_
                 with torch.no_grad():
                     onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model_from_pt(
                         model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3], model_class,
-                        cache_dir, onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx,
+                        cache_dir, onnx_dir, input_names, use_gpu, precision, optimizer_info, validate_onnx,
                         use_raw_attention_mask, overwrite, model_fusion_statistics)
             if 'tf' in model_source:
                 onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model_from_tf(
                     model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3], model_class,
-                    cache_dir, onnx_dir, input_names, use_gpu, precision, optimize_onnx, validate_onnx,
+                    cache_dir, onnx_dir, input_names, use_gpu, precision, optimizer_info, validate_onnx,
                     use_raw_attention_mask, overwrite, model_fusion_statistics)
 
             if not is_valid_onnx_model:
@@ -134,8 +144,9 @@ def run_onnxruntime(use_gpu, provider, model_names, model_class, precision, num_
                     result_template = {
                         "engine": "onnxruntime",
                         "version": onnxruntime.__version__,
+                        "providers": provider,
                         "device": device,
-                        "optimizer": optimize_onnx,
+                        "optimizer": optimizer_info,
                         "precision": precision,
                         "io_binding": not disable_ort_io_binding,
                         "model_name": model_name,
@@ -150,7 +161,8 @@ def run_onnxruntime(use_gpu, provider, model_names, model_class, precision, num_
                                                                                    [batch_size, sequence_length]))
 
                     if disable_ort_io_binding:
-                        result = inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_size)
+                        result = inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_size,
+                                               warm_up_repeat)
                     else:
                         # Get output sizes from a dummy ort run
                         ort_outputs = ort_session.run(ort_output_names, ort_inputs)
@@ -165,7 +177,8 @@ def run_onnxruntime(use_gpu, provider, model_names, model_class, precision, num_
                         data_type = numpy.longlong if 'pt' in model_source else numpy.intc
                         result = inference_ort_with_io_binding(ort_session, ort_inputs, result_template, repeat_times,
                                                                ort_output_names, ort_outputs, output_buffers,
-                                                               output_buffer_max_sizes, batch_size, device, data_type)
+                                                               output_buffer_max_sizes, batch_size, device, data_type,
+                                                               warm_up_repeat)
                     logger.info(result)
                     results.append(result)
 
@@ -429,11 +442,7 @@ def parse_arguments():
 
     parser.add_argument("-g", "--use_gpu", required=False, action="store_true", help="Run on gpu device")
 
-    parser.add_argument("--provider",
-                        required=False,
-                        type=str,
-                        default=None,
-                        help="Execution provider to use")
+    parser.add_argument("--provider", required=False, type=str, default=None, help="Execution provider to use")
 
     parser.add_argument(
         "-p",
@@ -447,11 +456,14 @@ def parse_arguments():
 
     parser.add_argument("--overwrite", required=False, action="store_true", help="Overwrite existing models")
 
-    parser.add_argument("-o",
-                        "--optimize_onnx",
-                        required=False,
-                        action="store_true",
-                        help="Use optimizer.py to optimize onnx model")
+    parser.add_argument(
+        "-o",
+        "--optimizer_info",
+        type=OptimizerInfo,
+        default=OptimizerInfo.BYSCRIPT,
+        choices=list(OptimizerInfo),
+        help="Optimizer info: Use optimizer.py to optimize onnx model as default. Can also choose from by_ort and no_opt"
+    )
 
     parser.add_argument("-v", "--validate_onnx", required=False, action="store_true", help="Validate ONNX model")
 
@@ -553,10 +565,10 @@ def main():
         if enable_onnxruntime:
             try:
                 use_raw_attention_mask = True
-                results += run_onnxruntime(args.use_gpu, args.provider, args.models, args.model_class, args.precision, num_threads,
-                                           args.batch_sizes, args.sequence_lengths, args.test_times, args.input_counts,
-                                           args.optimize_onnx, args.validate_onnx, args.cache_dir, args.onnx_dir,
-                                           args.verbose, args.overwrite, args.disable_ort_io_binding,
+                results += run_onnxruntime(args.use_gpu, args.provider, args.models, args.model_class, args.precision,
+                                           num_threads, args.batch_sizes, args.sequence_lengths, args.test_times,
+                                           args.input_counts, args.optimizer_info, args.validate_onnx, args.cache_dir,
+                                           args.onnx_dir, args.verbose, args.overwrite, args.disable_ort_io_binding,
                                            use_raw_attention_mask, model_fusion_statistics, args.model_source)
             except:
                 logger.error(f"Exception", exc_info=True)

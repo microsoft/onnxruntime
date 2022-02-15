@@ -34,12 +34,22 @@
 namespace onnxruntime {
 namespace test {
 
-#ifndef DISABLE_CONTRIB_OPS
+static std::vector<std::string> GetNodeOpTypesInTopologicalOrder(const Graph& graph) {
+  std::vector<std::string> op_types{};
+  GraphViewer graph_viewer{graph};
+  const auto& ordering = graph_viewer.GetNodesInTopologicalOrder();
+  for (const auto node_idx : ordering) {
+    op_types.push_back(graph.GetNode(node_idx)->OpType());
+  }
+  return op_types;
+}
+
+#if !defined(DISABLE_CONTRIB_OPS)
 
 template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
 void QDQTransformerConvTests() {
   auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
-    auto check_conv_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       if constexpr (std::is_same<InputType, OutputType>::value &&
                     std::is_same<BiasType, int32_t>::value &&
@@ -57,7 +67,7 @@ void QDQTransformerConvTests() {
     };
 
     TransformerTester(BuildQDQConvTestCase<InputType, WeightType, BiasType, OutputType>(input_shape, weights_shape),
-                      check_conv_graph,
+                      check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       12 /*opset_version*/,
@@ -136,7 +146,7 @@ TEST(QDQTransformerTests, ConvMaxPoolReshape_UInt8) {
       builder.AddQuantizeLinearNode<uint8_t>(reshape_output, .0039f, 135, output_arg);
     };
 
-    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["QLinearConv"], 1);
       EXPECT_EQ(op_to_count["MaxPool"], 1);
@@ -146,7 +156,7 @@ TEST(QDQTransformerTests, ConvMaxPoolReshape_UInt8) {
     };
 
     TransformerTester(build_test_case,
-                      check_mp_reshape_graph,
+                      check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       opset_version);
@@ -197,16 +207,17 @@ TEST(QDQTransformerTests, ConvMaxPoolReshape_Int8) {
       }
     };
 
-    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
-      auto op_to_count = CountOpsInGraph(session.GetGraph());
-      EXPECT_EQ(op_to_count["QLinearConv"], 1);
-      EXPECT_EQ(op_to_count["MaxPool"], 1);
-      EXPECT_EQ(op_to_count["Reshape"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      const std::vector<std::string> expected_op_types_in_order{
+          "QuantizeLinear",
+          "QLinearConv",
+          "MaxPool",
+          "Reshape"};
+      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
+      EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
     };
 
-    TransformerTester(build_test_case, check_mp_reshape_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
   test_case({1, 12, 37}, {32, 12, 5});
@@ -217,7 +228,7 @@ TEST(QDQTransformerTests, ConvMaxPoolReshape_Int8) {
 template <typename InputType, typename OutputType>
 void QDQTransformerAveragePoolTests() {
   auto test_case = [&](const std::vector<int64_t>& input_shape) {
-    auto check_averagepool_op_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       if constexpr (std::is_same<InputType, OutputType>::value) {
         EXPECT_EQ(op_to_count["com.microsoft.QLinearAveragePool"], 1);
@@ -233,7 +244,7 @@ void QDQTransformerAveragePoolTests() {
     };
 
     TransformerTester(BuildQDQAveragePoolTestCase<InputType, OutputType>(input_shape),
-                      check_averagepool_op_graph,
+                      check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       12 /*opset_version*/,
@@ -266,52 +277,7 @@ TEST(QDQTransformerTests, AveragePool_U8S8) {
 template <typename Input1Type, typename Input2Type, typename OutputType>
 void QDQTransformerBinaryOpTests(const std::string& op_type) {
   auto test_case = [&](const std::vector<int64_t>& input_shape) {
-    auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* input1_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
-      auto* input2_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
-      auto* output_arg = builder.MakeOutput();
-
-      // add QDQ 1
-      auto* q1_output = builder.MakeIntermediate();
-      auto* dq1_output = builder.MakeIntermediate();
-      builder.AddQuantizeLinearNode<Input1Type>(input1_arg,
-                                                .004f,
-                                                std::numeric_limits<Input1Type>::max() / 2,
-                                                q1_output);
-      builder.AddDequantizeLinearNode<Input1Type>(q1_output,
-                                                  .0039f,
-                                                  std::numeric_limits<Input1Type>::max() / 2,
-                                                  dq1_output);
-
-      // add QDQ 2
-      auto* q2_output = builder.MakeIntermediate();
-      auto* dq2_output = builder.MakeIntermediate();
-      builder.AddQuantizeLinearNode<Input2Type>(input2_arg,
-                                                .004f,
-                                                std::numeric_limits<Input2Type>::max() / 2,
-                                                q2_output);
-      builder.AddDequantizeLinearNode<Input2Type>(q2_output,
-                                                  .0039f,
-                                                  std::numeric_limits<Input2Type>::max() / 2,
-                                                  dq2_output);
-
-      // add binary operator
-      auto* binary_op_output = builder.MakeIntermediate();
-      builder.AddNode(op_type, {dq1_output, dq2_output}, {binary_op_output});
-
-      // add QDQ output
-      auto* q3_output = builder.MakeIntermediate();
-      builder.AddQuantizeLinearNode<OutputType>(binary_op_output,
-                                                .0038f,
-                                                std::numeric_limits<OutputType>::max() / 2,
-                                                q3_output);
-      builder.AddDequantizeLinearNode<OutputType>(q3_output,
-                                                  .0039f,
-                                                  std::numeric_limits<OutputType>::max() / 2,
-                                                  output_arg);
-    };
-
-    auto check_binary_op_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       if (std::is_same<Input1Type, Input2Type>::value &&
           std::is_same<Input1Type, OutputType>::value) {
@@ -327,8 +293,8 @@ void QDQTransformerBinaryOpTests(const std::string& op_type) {
       }
     };
 
-    TransformerTester(build_test_case,
-                      check_binary_op_graph,
+    TransformerTester(BuildBinaryOpTestCase<Input1Type, Input2Type, OutputType>(input_shape, op_type),
+                      check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       12 /*opset_version*/,
@@ -426,7 +392,7 @@ void QDQTransformerMatMulTests(bool has_output_q) {
       }
     };
 
-    auto check_binary_op_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       if (has_output_q) {
         if constexpr (std::is_same<Input1Type, OutputType>::value &&
@@ -459,7 +425,7 @@ void QDQTransformerMatMulTests(bool has_output_q) {
     };
 
     TransformerTester(build_test_case,
-                      check_binary_op_graph,
+                      check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       12 /*opset_version*/,
@@ -696,46 +662,32 @@ TEST(QDQTransformerTests, Gather) {
       builder.AddQuantizeLinearNode<int8_t>(gather_output, .003f, 1, output_arg);
     };
 
-    auto check_matmul_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["Gather"], 1);
       EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
       EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
     };
 
-    TransformerTester(build_test_case, check_matmul_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
   test_case({12, 37}, {24, 12});
 }
 
 TEST(QDQTransformerTests, Transpose) {
-  auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& perms) {
-    auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* input1_arg = builder.MakeInput<int8_t>(input1_shape, -128, 127);
-      auto* output_arg = builder.MakeOutput();
-
-      // add DQ
-      auto* dq_output = builder.MakeIntermediate();
-      builder.AddDequantizeLinearNode<int8_t>(input1_arg, .003f, 1, dq_output);
-
-      // add Transpose
-      auto* transpose_output = builder.MakeIntermediate();
-      Node& transpose_node = builder.AddNode("Transpose", {dq_output}, {transpose_output});
-      transpose_node.AddAttribute("perm", perms);
-
-      // add Q
-      builder.AddQuantizeLinearNode<int8_t>(transpose_output, .003f, 1, output_arg);
-    };
-
-    auto check_matmul_graph = [&](InferenceSessionWrapper& session) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& perms) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["Transpose"], 1);
       EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
       EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
     };
 
-    TransformerTester(build_test_case, check_matmul_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+    TransformerTester(BuildQDQTransposeTestCase<int8_t, int8_t>(input_shape, perms),
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2);
   };
 
   test_case({2, 13, 12, 37}, {0, 3, 1, 2});
@@ -760,13 +712,13 @@ TEST(QDQTransformerTests, Transpose_No_Fusion) {
       builder.AddQuantizeLinearNode<int8_t>(transpose_output, .003f, 1, output_arg);
     };
 
-    auto check_matmul_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
       EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
     };
 
-    TransformerTester(build_test_case, check_matmul_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
   test_case({2, 13, 12, 37}, {0, 3, 1, 2});
@@ -775,7 +727,7 @@ TEST(QDQTransformerTests, Transpose_No_Fusion) {
 TEST(QDQTransformerTests, Resize) {
   auto test_case = [&](const std::vector<int64_t>& input1_shape,
                        const std::vector<int64_t>& sizes_shape) {
-    auto check_resize_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["Resize"], 1);
       EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
@@ -783,7 +735,7 @@ TEST(QDQTransformerTests, Resize) {
     };
 
     TransformerTester(BuildQDQResizeTestCase(input1_shape, sizes_shape),
-                      check_resize_graph,
+                      check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2);
   };
@@ -828,7 +780,7 @@ TEST(QDQTransformerTests, Resize_No_Fusion) {
       builder.AddQuantizeLinearNode<uint8_t>(resize_output, .003f, 1, output_arg);
     };
 
-    auto check_qdq_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["Resize"], 1);
       EXPECT_EQ(op_to_count["Concat"], 1);
@@ -836,7 +788,7 @@ TEST(QDQTransformerTests, Resize_No_Fusion) {
       EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
     };
 
-    TransformerTester(build_test_case, check_qdq_graph,
+    TransformerTester(build_test_case, check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2);
   };
@@ -867,7 +819,7 @@ TEST(QDQTransformerTests, ResizeReshape) {
       builder.AddNode("Reshape", {qdq_resize_output, reshape_shape}, {output_arg});
     };
 
-    auto check_qdq_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["Resize"], 1);
       EXPECT_EQ(op_to_count["Reshape"], 1);
@@ -875,7 +827,7 @@ TEST(QDQTransformerTests, ResizeReshape) {
       EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
     };
 
-    TransformerTester(build_test_case, check_qdq_graph,
+    TransformerTester(build_test_case, check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2);
   };
@@ -905,13 +857,13 @@ TEST(QDQTransformerTests, ArgMax) {
       argmax_node.AddAttribute("select_last_index", static_cast<int64_t>(select_last_index));
     };
 
-    auto check_argmax_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["ArgMax"], 1);
       EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
     };
 
-    TransformerTester(build_test_case, check_argmax_graph,
+    TransformerTester(build_test_case, check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       /* opset_version */ 13);
@@ -939,14 +891,14 @@ TEST(QDQTransformerTests, QLinearMatMul) {
       builder.AddQuantizeLinearNode<uint8_t>(matmul_output, .0039f, 135, output_arg);
     };
 
-    auto check_matmul_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["QLinearMatMul"], 1);
       EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
       EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
     };
 
-    TransformerTester(build_test_case, check_matmul_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
   test_case({12, 37}, {37, 12});
@@ -970,7 +922,7 @@ TEST(QDQTransformerTests, MatMul_No_Fusion) {
       builder.AddQuantizeLinearNode<uint8_t>(matmul_output, .0039f, 135, output_arg);
     };
 
-    auto check_matmul_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["MatMul"], 1);
       EXPECT_EQ(op_to_count["QLinearMatMul"], 0);
@@ -978,7 +930,7 @@ TEST(QDQTransformerTests, MatMul_No_Fusion) {
       EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
     };
 
-    TransformerTester(build_test_case, check_matmul_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
   test_case({12, 37}, {37, 12});
@@ -1006,7 +958,7 @@ TEST(QDQTransformerTests, MatMul_1st_Input_Int8) {
       builder.AddQuantizeLinearNode<uint8_t>(matmul_output, .0039f, 135, output_arg);
     };
 
-    auto check_matmul_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["MatMul"], 1);
       EXPECT_EQ(op_to_count["QLinearMatMul"], 0);
@@ -1014,7 +966,7 @@ TEST(QDQTransformerTests, MatMul_1st_Input_Int8) {
       EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
     };
 
-    TransformerTester(build_test_case, check_matmul_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
   test_case({12, 37}, {37, 12});
@@ -1043,7 +995,7 @@ TEST(QDQTransformerTests, MatMulIntegerToFloat) {
       builder.AddNode("MatMul", {dq_output_1, dq_output_2}, {output_arg});
     };
 
-    auto check_matmul_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
       EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
@@ -1051,7 +1003,7 @@ TEST(QDQTransformerTests, MatMulIntegerToFloat) {
     };
 
     TransformerTester(build_test_case,
-                      check_matmul_graph,
+                      check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       12 /*opset_version*/,
@@ -1086,7 +1038,7 @@ TEST(QDQTransformerTests, ConvRelu) {
       builder.AddQuantizeLinearNode<uint8_t>(relu_output, .0039f, is_zp_zero ? 0 : 1, output_arg);
     };
 
-    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       if (is_zp_zero) {
         EXPECT_EQ(op_to_count["QLinearConv"], 1);
@@ -1104,7 +1056,7 @@ TEST(QDQTransformerTests, ConvRelu) {
       }
     };
 
-    TransformerTester(build_test_case, check_mp_reshape_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+    TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2);
   };
 
   test_case({1, 12, 37}, {32, 12, 5}, true);
@@ -1150,7 +1102,7 @@ TEST(QDQTransformerTests, ConvAveragePoolReshape_UInt8) {
       builder.AddDequantizeLinearNode<uint8_t>(q_output, .0035f, 135, output_arg);
     };
 
-    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["QLinearConv"], 1);
       EXPECT_EQ(op_to_count["com.microsoft.QLinearAveragePool"], 1);
@@ -1160,7 +1112,7 @@ TEST(QDQTransformerTests, ConvAveragePoolReshape_UInt8) {
     };
 
     TransformerTester(build_test_case,
-                      check_mp_reshape_graph,
+                      check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       12 /*opset_version*/,
@@ -1213,7 +1165,7 @@ TEST(QDQTransformerTests, ConvAveragePoolReshape_Int8) {
       }
     };
 
-    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["QLinearConv"], 1);
       EXPECT_EQ(op_to_count["com.microsoft.QLinearAveragePool"], 1);
@@ -1223,7 +1175,7 @@ TEST(QDQTransformerTests, ConvAveragePoolReshape_Int8) {
     };
 
     TransformerTester(build_test_case,
-                      check_mp_reshape_graph,
+                      check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       12 /*opset_version*/,
@@ -1277,7 +1229,7 @@ TEST(QDQTransformerTests, ConvAveragePoolReshape_Int8_Fail) {
       }
     };
 
-    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["Conv"], 1);
       EXPECT_EQ(op_to_count["QLinearConv"], 0);
@@ -1288,7 +1240,7 @@ TEST(QDQTransformerTests, ConvAveragePoolReshape_Int8_Fail) {
     };
 
     TransformerTester(build_test_case,
-                      check_mp_reshape_graph,
+                      check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       12 /*opset_version*/,
@@ -1325,7 +1277,7 @@ void QDQTransformerLeakyReluTests() {
                                                   output_arg);
     };
 
-    auto check_binary_op_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       if constexpr (std::is_same<InputType, OutputType>::value) {
         EXPECT_EQ(op_to_count["com.microsoft.QLinearLeakyRelu"], 1);
@@ -1341,7 +1293,7 @@ void QDQTransformerLeakyReluTests() {
     };
 
     TransformerTester(build_test_case,
-                      check_binary_op_graph,
+                      check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       12 /*opset_version*/,
@@ -1401,7 +1353,7 @@ TEST(QDQTransformerTests, ConvTranspose_QBackward) {
       }
     };
 
-    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["QLinearConv"], 1);
       EXPECT_EQ(op_to_count["Transpose"], 1);
@@ -1410,7 +1362,7 @@ TEST(QDQTransformerTests, ConvTranspose_QBackward) {
     };
 
     TransformerTester(build_test_case,
-                      check_mp_reshape_graph,
+                      check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2);
   };
@@ -1461,7 +1413,7 @@ TEST(QDQTransformerTests, QBackward_MutilpleSteps) {
       }
     };
 
-    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["QLinearConv"], 1);
       EXPECT_EQ(op_to_count["MaxPool"], 1);
@@ -1472,7 +1424,7 @@ TEST(QDQTransformerTests, QBackward_MutilpleSteps) {
     };
 
     TransformerTester(build_test_case,
-                      check_mp_reshape_graph,
+                      check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2);
   };
@@ -1512,7 +1464,7 @@ TEST(QDQTransformerTests, ConvTranspose_DQForward) {
       }
     };
 
-    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["QLinearConv"], 1);
       EXPECT_EQ(op_to_count["Transpose"], 1);
@@ -1521,7 +1473,7 @@ TEST(QDQTransformerTests, ConvTranspose_DQForward) {
     };
 
     TransformerTester(build_test_case,
-                      check_mp_reshape_graph,
+                      check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2);
   };
@@ -1572,7 +1524,7 @@ TEST(QDQTransformerTests, DQForward_MutilpleSteps) {
       }
     };
 
-    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["QLinearConv"], 1);
       EXPECT_EQ(op_to_count["MaxPool"], 1);
@@ -1583,7 +1535,7 @@ TEST(QDQTransformerTests, DQForward_MutilpleSteps) {
     };
 
     TransformerTester(build_test_case,
-                      check_mp_reshape_graph,
+                      check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2);
   };
@@ -1704,7 +1656,7 @@ TEST(QDQTransformerTests, Concat) {
       }
     };
 
-    auto check_mp_reshape_graph = [&input_shapes, &has_input_float, &has_input_int8, &has_output_int8](InferenceSessionWrapper& session) {
+    auto check_graph = [&input_shapes, &has_input_float, &has_input_int8, &has_output_int8](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       if (has_input_float || has_input_int8 || has_output_int8) {
         EXPECT_EQ(op_to_count["com.microsoft.QLinearConcat"], 0);
@@ -1716,7 +1668,7 @@ TEST(QDQTransformerTests, Concat) {
     };
 
     TransformerTester(build_test_case,
-                      check_mp_reshape_graph,
+                      check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       12 /*opset_version*/,
@@ -1732,27 +1684,115 @@ TEST(QDQTransformerTests, Concat) {
   test_case({{1, 6, 36}, {1, 6, 8}, {1, 6, 2}}, 2, false, false, true);
 }
 
-TEST(QDQTransformerTests, QDQPropagation_QDQCancelOut) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape, size_t maxpool_dim, const std::vector<int64_t>& perms) {
+#endif  // !defined(DISABLE_CONTRIB_OPS)
+
+TEST(QDQTransformerTests, QDQPropagation_QBackward) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape,
+                       size_t maxpool_dim,
+                       const std::vector<int64_t>& perms,
+                       bool add_op_boundary,
+                       bool include_zp) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
       auto* output_arg = builder.MakeOutput();
 
-      // add QDQ
-      auto* qdq_output = AddQDQNodePair<uint8_t>(builder, input_arg, .004f, 129);
+      auto* transpose_input = add_op_boundary ? builder.MakeIntermediate() : input_arg;
+      if (add_op_boundary) {
+        // add Sign as boundary for QDQ propagation
+        builder.AddNode("Sign", {input_arg}, {transpose_input});
+      }
 
       // add Transpose
       auto* transpose_output = builder.MakeIntermediate();
-      Node& transpose_node = builder.AddNode("Transpose", {qdq_output}, {transpose_output});
+      Node& transpose_node = builder.AddNode("Transpose", {transpose_input}, {transpose_output});
       transpose_node.AddAttribute("perm", perms);
-
-      // add Q
-      auto* q_output = builder.MakeIntermediate();
-      builder.AddQuantizeLinearNode<uint8_t>(transpose_output, .004f, 129, q_output);
 
       // add MaxPool
       auto* maxpool_output = builder.MakeIntermediate();
-      Node& pool_node = builder.AddNode("MaxPool", {q_output}, {maxpool_output});
+      Node& pool_node = builder.AddNode("MaxPool", {transpose_output}, {maxpool_output});
+      std::vector<int64_t> pads((maxpool_dim - 2) * 2, 1);
+      pool_node.AddAttribute("pads", pads);
+      std::vector<int64_t> kernel_shape(maxpool_dim - 2, 3);
+      pool_node.AddAttribute("kernel_shape", kernel_shape);
+
+      // Reshape
+      auto* reshape_output = builder.MakeIntermediate();
+      auto* reshape_shape = builder.Make1DInitializer<int64_t>({-1, 0});
+      builder.AddNode("Reshape", {maxpool_output, reshape_shape}, {reshape_output});
+
+      // add Q
+      constexpr float qdq_scale = 0.004f;
+      if (include_zp) {
+        constexpr uint8_t qdq_zero_point = 129;
+        builder.AddQuantizeLinearNode<uint8_t>(reshape_output, qdq_scale, qdq_zero_point, output_arg);
+      } else {
+        builder.AddQuantizeLinearNode(reshape_output, qdq_scale, output_arg);
+      }
+    };
+
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      std::vector<std::string> expected_op_types_in_order{};
+      if (add_op_boundary) {
+        expected_op_types_in_order.push_back("Sign");
+      }
+      expected_op_types_in_order.insert(
+          expected_op_types_in_order.end(),
+          {"QuantizeLinear", "DequantizeLinear",
+           "Transpose",
+           "QuantizeLinear", "DequantizeLinear",
+           "MaxPool",
+           "QuantizeLinear", "DequantizeLinear",
+           "Reshape",
+           "QuantizeLinear"});
+
+      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
+      EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
+    };
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1);
+  };
+
+  // TODO re-enable tests after updating ONNX to get QuantizeLinear shape inference fix
+  // https://github.com/onnx/onnx/pull/3806
+  //test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, true);
+  //test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, true);
+}
+
+TEST(QDQTransformerTests, QDQPropagation_DQForward) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape,
+                       size_t maxpool_dim,
+                       const std::vector<int64_t>& perms,
+                       bool add_op_boundary,
+                       bool include_zp) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
+                                                   std::numeric_limits<uint8_t>::min(),
+                                                   std::numeric_limits<uint8_t>::max());
+      auto* output_arg = builder.MakeOutput();
+
+      // add DQ
+      constexpr float qdq_scale = 0.004f;
+      auto* dq_output = builder.MakeIntermediate();
+      if (include_zp) {
+        constexpr uint8_t qdq_zero_point = 129;
+        builder.AddDequantizeLinearNode<uint8_t>(input_arg, qdq_scale, qdq_zero_point, dq_output);
+      } else {
+        builder.AddDequantizeLinearNode(input_arg, qdq_scale, dq_output);
+      }
+
+      // add Transpose
+      auto* transpose_output = builder.MakeIntermediate();
+      Node& transpose_node = builder.AddNode("Transpose", {dq_output}, {transpose_output});
+      transpose_node.AddAttribute("perm", perms);
+
+      // add MaxPool
+      auto* maxpool_output = builder.MakeIntermediate();
+      Node& pool_node = builder.AddNode("MaxPool", {transpose_output}, {maxpool_output});
       std::vector<int64_t> pads((maxpool_dim - 2) * 2, 1);
       pool_node.AddAttribute("pads", pads);
       std::vector<int64_t> kernel_shape(maxpool_dim - 2, 3);
@@ -1760,28 +1800,47 @@ TEST(QDQTransformerTests, QDQPropagation_QDQCancelOut) {
 
       // Reshape
       auto* reshape_shape = builder.Make1DInitializer<int64_t>({-1, 0});
-      builder.AddNode("Reshape", {maxpool_output, reshape_shape}, {output_arg});
+      auto* reshape_output = add_op_boundary ? builder.MakeIntermediate() : output_arg;
+      builder.AddNode("Reshape", {maxpool_output, reshape_shape}, {reshape_output});
+
+      if (add_op_boundary) {
+        // add Sign as boundary for QDQ propagation
+        builder.AddNode("Sign", {reshape_output}, {output_arg});
+      }
     };
 
-    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
-      auto op_to_count = CountOpsInGraph(session.GetGraph());
-      EXPECT_EQ(op_to_count["MaxPool"], 1);
-      EXPECT_EQ(op_to_count["Reshape"], 1);
-      EXPECT_EQ(op_to_count["Transpose"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      std::vector<std::string> expected_op_types_in_order{
+          "DequantizeLinear",
+          "Transpose",
+          "QuantizeLinear", "DequantizeLinear",
+          "MaxPool",
+          "QuantizeLinear", "DequantizeLinear",
+          "Reshape",
+          "QuantizeLinear", "DequantizeLinear"};
+      if (add_op_boundary) {
+        expected_op_types_in_order.push_back("Sign");
+      }
+
+      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
+      EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
     };
 
     TransformerTester(build_test_case,
-                      check_mp_reshape_graph,
-                      TransformerLevel::Level1,
-                      TransformerLevel::Level2);
+                      check_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1);
   };
 
-  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2});
+  // TODO re-enable tests after updating ONNX to get QuantizeLinear shape inference fix
+  // https://github.com/onnx/onnx/pull/3806
+  //test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, true);
+  //test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, true);
 }
 
-TEST(QDQTransformerTests, QDQPropagation_QDQ_CancelOut_More) {
+TEST(QDQTransformerTests, QDQPropagation_StopAtOtherQDQ) {
   auto test_case = [&](const std::vector<int64_t>& input_shape, bool same_scale, bool same_zp) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
@@ -1799,17 +1858,19 @@ TEST(QDQTransformerTests, QDQPropagation_QDQ_CancelOut_More) {
       builder.AddQuantizeLinearNode<uint8_t>(reshape_output, same_scale ? .004f : .0039f, same_zp ? 129 : 128, output_arg);
     };
 
-    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
-      auto op_to_count = CountOpsInGraph(session.GetGraph());
-      EXPECT_EQ(op_to_count["Reshape"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], same_scale && same_zp ? 1 : 2);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], same_scale && same_zp ? 0 : 1);
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      const std::vector<std::string> expected_op_types_in_order{
+          "QuantizeLinear", "DequantizeLinear",
+          "Reshape",
+          "QuantizeLinear"};
+      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
+      EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
     };
 
     TransformerTester(build_test_case,
-                      check_mp_reshape_graph,
-                      TransformerLevel::Level1,
-                      TransformerLevel::Level2);
+                      check_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1);
   };
 
   test_case({1, 13, 13, 23}, false, false);
@@ -1833,17 +1894,19 @@ TEST(QDQTransformerTests, QDQPropagation_Q_No_Parent) {
       builder.AddQuantizeLinearNode<uint8_t>(transpose_output, .0035f, 135, output_arg);
     };
 
-    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
-      GraphViewer graph_viewer(session.GetGraph());
-      const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-      EXPECT_EQ(graph_viewer.GetNode(node_topology_list[0])->OpType(), "QuantizeLinear");
-      EXPECT_EQ(graph_viewer.GetNode(node_topology_list[1])->OpType(), "Transpose");
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      const std::vector<std::string> expected_op_types_in_order{
+          "QuantizeLinear", "DequantizeLinear",
+          "Transpose",
+          "QuantizeLinear"};
+      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
+      EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
     };
 
     TransformerTester(build_test_case,
-                      check_mp_reshape_graph,
-                      TransformerLevel::Level1,
-                      TransformerLevel::Level2);
+                      check_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1);
   };
 
   test_case({1, 13, 13, 23}, {0, 2, 3, 1});
@@ -1866,18 +1929,19 @@ TEST(QDQTransformerTests, QDQPropagation_DQ_No_Children) {
       transpose_node.AddAttribute("perm", perms);
     };
 
-    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
-      auto op_to_count = CountOpsInGraph(session.GetGraph());
-      GraphViewer graph_viewer(session.GetGraph());
-      const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-      EXPECT_EQ(graph_viewer.GetNode(node_topology_list[0])->OpType(), "Transpose");
-      EXPECT_EQ(graph_viewer.GetNode(node_topology_list[1])->OpType(), "DequantizeLinear");
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      const std::vector<std::string> expected_op_types_in_order{
+          "DequantizeLinear",
+          "Transpose",
+          "QuantizeLinear", "DequantizeLinear"};
+      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
+      EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
     };
 
     TransformerTester(build_test_case,
-                      check_mp_reshape_graph,
-                      TransformerLevel::Level1,
-                      TransformerLevel::Level2);
+                      check_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1);
   };
 
   test_case({1, 13, 13, 23}, {0, 2, 3, 1});
@@ -1902,18 +1966,18 @@ TEST(QDQTransformerTests, QDQPropagation_Per_Layer_No_Propagation) {
       transpose_node.AddAttribute("perm", perms);
     };
 
-    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
-      auto op_to_count = CountOpsInGraph(session.GetGraph());
-      GraphViewer graph_viewer(session.GetGraph());
-      const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-      EXPECT_EQ(graph_viewer.GetNode(node_topology_list[0])->OpType(), "DequantizeLinear");
-      EXPECT_EQ(graph_viewer.GetNode(node_topology_list[1])->OpType(), "Transpose");
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      const std::vector<std::string> expected_op_types_in_order{
+          "DequantizeLinear",
+          "Transpose"};
+      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
+      EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
     };
 
     TransformerTester(build_test_case,
-                      check_mp_reshape_graph,
-                      TransformerLevel::Level1,
-                      TransformerLevel::Level2);
+                      check_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1);
   };
 
   test_case({1, 13, 13, 23}, {0, 2, 3, 1});
@@ -1935,22 +1999,22 @@ TEST(QDQTransformerTests, QDQPropagation_DQ_Q) {
       builder.AddQuantizeLinearNode<uint8_t>(dq_output, .0035f, 135, output_arg);
     };
 
-    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
-      auto op_to_count = CountOpsInGraph(session.GetGraph());
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      const std::vector<std::string> expected_op_types_in_order{
+          "DequantizeLinear",
+          "QuantizeLinear"};
+      const auto op_types_in_order = GetNodeOpTypesInTopologicalOrder(session.GetGraph());
+      EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
     };
 
     TransformerTester(build_test_case,
-                      check_mp_reshape_graph,
-                      TransformerLevel::Level1,
-                      TransformerLevel::Level2);
+                      check_graph,
+                      TransformerLevel::Default,
+                      TransformerLevel::Level1);
   };
 
   test_case({1, 13, 13, 23});
 }
-
-#endif  // DISABLE_CONTRIB_OPS
 
 TEST(QDQTransformerTests, QDQ_Selector_Test) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/transform/qdq_conv.onnx");

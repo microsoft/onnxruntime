@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/math/scale.h"
+#include "core/framework/math.h"
 #include "core/providers/common.h"
-#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 namespace contrib {
