@@ -33,7 +33,8 @@ bool TraverseFormalParametersWithTypeProto(const Node& node,
   const ONNX_NAMESPACE::OpSchema& op_schema = *node.Op();
 
   // was the param name matched in either inputs, outputs or type constraints. 
-  // this validates the name was valid.and that the type involved will be returned if available.
+  // this validates the name was valid and that the type involved will be returned if available.
+``` #Resolved
   // if the name is invalid we do not return a type, and any applicable type constraint can not be applied 
   // in VerifyKernelDef.
   bool matched = false;
