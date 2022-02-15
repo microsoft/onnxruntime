@@ -744,9 +744,6 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s USE_PTHREADS=1 -s PROXY_TO_PTHREAD=1")
   endif()
 endif()
-if (onnxruntime_USE_TENSORRT)
-  target_link_libraries(onnxruntime_test_all PRIVATE stdc++fs)
-endif()
 
 set(test_data_target onnxruntime_test_all)
 
