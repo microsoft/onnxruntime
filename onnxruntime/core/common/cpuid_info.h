@@ -17,7 +17,7 @@ namespace onnxruntime {
 
 class CPUIDInfo {
  public:
-  static CPUIDInfo& GetCPUIDInfo() {
+  static const CPUIDInfo& GetCPUIDInfo() {
     static CPUIDInfo cpuid_info;
     return cpuid_info;
   }
@@ -46,7 +46,7 @@ class CPUIDInfo {
   bool has_f16c_{false};
   bool has_sse3_{false};
   bool has_sse4_1_{false};
-  bool is_hybrid_{false};
+  mutable bool is_hybrid_{false};
 
 #if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED)
   bool pytorch_cpuinfo_init_{false};
