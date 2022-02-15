@@ -506,29 +506,14 @@ def cleanup_files():
             continue
         subprocess.Popen(["rm","-rf", f], stdout=subprocess.PIPE)
 
-def remove_profiling_files(path):
+def remove_files(running_mode, path):
     files = []
-    out = get_output(["find", path, "-name", "onnxruntime_profile*"])
-    files = files + out.split("\n")
-
-    for f in files:
-        if "custom_test_data" in f:
-            continue
-        subprocess.Popen(["rm","-rf", f], stdout=subprocess.PIPE)
-
-def remove_files(path):
-    files = []
-    out = get_output(["find", path, "-name", "onnxruntime_profile*"])
-    ort_profiling_files = [] + out.split("\n")
-    out = get_output(["find", path, "-name", "*.profile"])
-    profiling_files = [] + out.split("\n")
-    out = get_output(["find", path, "-name", "*.engine"])
-    engine_files = [] + out.split("\n")
-    files = files + ort_profiling_files + profiling_files + engine_files
-    for f in files:
-        if "custom_test_data" in f:
-            continue
-        get_output(["rm","-rf", f])
+    out = "" 
+    if running_mode == "validate": 
+        out = get_output(["find", path, "-name", "onnxruntime_profile*"])
+    if running_mode == "benchmark": 
+        logger.info(running_mode)
+        out = get_output(["find", path, "-name", "*.engine"])
 
 def update_fail_report(fail_results, model, ep, e_type, e):
     result = {}
