@@ -5,7 +5,7 @@
 #define XPU_DATA_TRANSFER
 
 #include "core/framework/data_transfer.h"
-#include "stvm_common.h"
+#include "tvm_common.h"
 
 namespace onnxruntime {
 
@@ -22,9 +22,9 @@ class XPUDataTransfer : public IDataTransfer {
   DLDevice get_context(const OrtDevice& device) const;
 };
 
-class StvmCPUDataTransfer : public IDataTransfer {
+class TvmCPUDataTransfer : public IDataTransfer {
  public:
-  StvmCPUDataTransfer() = default;
+  TvmCPUDataTransfer() = default;
   // Dampen MSVC warning about not fully overriding CopyTensor
   using IDataTransfer::CopyTensor;
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;

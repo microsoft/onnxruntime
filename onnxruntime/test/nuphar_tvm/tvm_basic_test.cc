@@ -13,7 +13,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/framework/test_utils.h"
 #include "test/test_environment.h"
-#include "test/tvm/tvm_demo/demo_compiler.h"
+#include "test/nuphar_tvm/tvm_demo/demo_compiler.h"
 
 #include <tvm/runtime/ndarray.h>
 
@@ -363,7 +363,7 @@ TEST(TVMTest, Native_TVM) {
   auto args = Array<Tensor>({A, B, D, E});
   std::unordered_map<Tensor, Buffer> binds;
   auto config = build_config();
-#ifdef USE_TVM_WITH_LLVM
+#ifdef USE_NUPHAR_TVM_WITH_LLVM
   auto target = target::llvm();
 #else
   auto target = target::stackvm();
