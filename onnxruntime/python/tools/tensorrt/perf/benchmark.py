@@ -112,7 +112,6 @@ def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, 
     load_command = command + ["--loadEngine=" + engine_name]
     logger.info(load_command)
 
-    trtexec = True 
     mem_usage = None
     p = None
     success = False
@@ -121,9 +120,9 @@ def run_trt_standalone(trtexec, model_name, model_path, all_inputs_shape, fp16, 
         try: 
             out = get_output(load_command)
             success = True
-            mem_usage = end_memory_tracking(p, trtexec, success)
+            mem_usage = end_memory_tracking(p, success)
         except Exception as e: 
-            end_memory_tracking(p, trtexec, success)
+            end_memory_tracking(p, success)
             raise(e)
     else: 
         out = get_output(load_command)
@@ -214,11 +213,9 @@ def get_trtexec_pid(df, python_pid):
         if pid != python_pid: 
             return pid
 
-def get_max_memory(trtexec): 
+def get_max_memory(): 
     df = pd.read_csv(MEMORY_FILE)
     pid = df['pid'].iloc[0]
-    if trtexec: 
-        pid = get_trtexec_pid(df, pid) 
     mem_series = df.loc[df['pid'] == pid, ' used_gpu_memory [MiB]']
     max_mem = max(mem_series.str.replace(' MiB','').astype(int))
     return max_mem
@@ -228,14 +225,14 @@ def start_memory_tracking():
     p = subprocess.Popen(["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv", "-l", "1", "-f", MEMORY_FILE])
     return p
 
-def end_memory_tracking(p, trtexec, success): 
+def end_memory_tracking(p, success): 
     logger.info("terminating memory tracking process")
     p.terminate()
     p.wait()
     p.kill()
     mem_usage = None
     if success:
-        mem_usage = get_max_memory(trtexec) 
+        mem_usage = get_max_memory() 
     if os.path.exists(MEMORY_FILE):
         os.remove(MEMORY_FILE)
     return mem_usage
@@ -258,7 +255,6 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
     mem_usages = []   
     p = None
     mem_usage = None
-    trtexec = False
     success = False
 
     # get and load inputs and outputs
@@ -279,7 +275,7 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
             if track_memory: 
                 p = start_memory_tracking()    
                 runtime, success = inference_ort_with_ep(ep, session, repeat_times, sess_outputs, sess_inputs, io_binding)
-                mem_usage = end_memory_tracking(p, trtexec, success)
+                mem_usage = end_memory_tracking(p, success)
                 mem_usages.append(mem_usage) 
             else: 
                 runtime, success = inference_ort_with_ep(ep, session, repeat_times, sess_outputs, sess_inputs, io_binding)
@@ -288,7 +284,7 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
         except Exception as e:
             logger.error(e)
             if track_memory:
-                end_memory_tracking(p, trtexec, success)
+                end_memory_tracking(p, success)
             raise(e)
 
     if len(mem_usages) > 0: 
