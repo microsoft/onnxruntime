@@ -145,7 +145,8 @@ class TypeBindingResolver {
 
 // invalid kernel def with type constraints that don't match the schema. this means the type constraints are not
 // actually applied, making the kernel def misleading and potentially matching an unexpected/incorrect kernel.
-// warn in a release build as we do not have covereage of every single opset for every single operator
+// warn in a release build as we do not have coverage of every single opset for every single operator
+``` #Resolved
 // in the unit tests, so issues may be missed and the model may still work (e.g. matches the correct kernel by chance).
 // throw in a debug build so the issue is obvious and force it to be fixed.
 #ifdef NDEBUG
