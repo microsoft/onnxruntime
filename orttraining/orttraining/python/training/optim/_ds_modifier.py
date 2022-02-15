@@ -28,7 +28,7 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
         try:
             import deepspeed
             v = LooseVersion(deepspeed.__version__)
-            if v > LooseVersion("0.5.4") or v < LooseVersion("0.4.0"):
+            if v > LooseVersion("0.5.4") or v < LooseVersion("0.3.16"):
                 warnings.warn('Unsupported DeepSpeed version to override, skipped.', UserWarning)
                 return False
         except Exception as _:
