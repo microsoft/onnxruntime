@@ -15,7 +15,6 @@ variables:
     # 'dev' will skip generating onnxruntime-common package when it's not updated
     # since react-native e2e always requires both onnxruntime-common and onnxruntime-react-native packages,
     # use 'custom' type mode here.
-    #npm_packaging_mode: '-dev.$(Get-Date -Format yyyyMMdd)-$(git rev-parse --short HEAD)'
     npm_packaging_mode: 'dev'
   ${{ if eq(parameters.NpmPublish, 'release candidate (@rc)') }}:
     npm_packaging_mode: 'rc'
@@ -200,6 +199,7 @@ jobs:
   # since e2e requires onnxruntime-common package, it builds and move it to e2e directory.
   - script: |
       if [ ! -f $(Build.SourcesDirectory)/js/common/*.tgz ]
+      then
         pushd $(Build.SourcesDirectory)/js/common
         npm pack
         mv *.tgz $(Build.SourcesDirectory)/js/react_native/e2e
