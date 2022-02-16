@@ -34,6 +34,11 @@ parameters:
   type: string
   default: ' '
 
+- name: ubuntu_version_linux_cpu
+  displayName: 'Ubuntu Version for Linux CPU package.'
+  type: string
+  default: '20.04'
+
 trigger: none
 
 stages:
@@ -46,3 +51,4 @@ stages:
     python_version: ${{ parameters.python_version }}
     cpu_build_py_parameters: ${{ parameters.cpu_build_py_parameters }}
     gpu_build_py_parameters: ${{ parameters.gpu_build_py_parameters }}
+    ubuntu_version_linux_cpu: ${{ parameters.ubuntu_version_linux_cpu }}
