@@ -2032,27 +2032,5 @@ enum MlasCoreType { mlas_core_unknown = 0, mlas_core_little = 2, mlas_core_big =
  *  @return 2 current core is little core with narrow memory load (e.g. ARMv8 a53)
  *          3 current core is big core with wider load (e.g. ARMv8 a72)
  */
-MLAS_FORCEINLINE
-int32_t
-MlasGetCoreUArch()
-{
-    thread_local int32_t core_type = mlas_core_unknown;
-    if (core_type == mlas_core_unknown) {
-        // initialization needed
-#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
-        auto uarch = MLAS_CPUIDINFO::GetCPUIDInfo().GetCurrentUarch();
-        if (uarch == cpuinfo_uarch_cortex_a53 || uarch == cpuinfo_uarch_cortex_a55r0 ||
-            uarch == cpuinfo_uarch_cortex_a55) {
-            core_type = mlas_core_little;
-        } else {
-            core_type = mlas_core_big;
-        }
-#else
-        core_type = mlas_core_big;
-#endif  // MLAS_TARGET_ARM64
-
-    }
-    return core_type;
-}
-
+extern MlasCoreType MlasGetCoreType();
 
