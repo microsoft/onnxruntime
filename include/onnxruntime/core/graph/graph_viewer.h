@@ -19,6 +19,12 @@ struct NodeCompare {
   bool operator()(const Node* n1, const Node* n2) const;
 };
 
+enum class DataLayout {
+  NCHW,
+  NHWC,
+  NCHWC,
+};
+
 /**
 @class GraphViewer
 Class that provides a read-only view of the Graph.

@@ -9,6 +9,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <vector>
+#include <unordered_set>
 
 namespace onnx_layout_transformation {
 namespace api {
@@ -204,7 +205,7 @@ class NodeRef {
     }
     std::string_view node_domain = Domain();
     return node_domain == domain ||
-        ((domain == "" || domain == "ai.onnx") && (node_domain == "" || node_domain == "ai.onnx"));
+           ((domain == "" || domain == "ai.onnx") && (node_domain == "" || node_domain == "ai.onnx"));
   }
 
   /// <summary>
@@ -217,6 +218,19 @@ class NodeRef {
     return GetAttributeInt(name).value_or(default_value);
   }
 
+  /// <summary>
+  /// Returns the Execution Provider assigned to this node. Any empty string means this node is
+  /// not assigned to any EP.
+  /// </summary>
+  /// <returns>EP type or empty string</returns>
+  virtual const std::string& GetExecutionProviderType() const = 0;
+
+  /// <summary>
+  /// Returns the schema since version for the op_type of this node. Value os -1 means it is not set.
+  /// </summary>
+  /// <returns>since version or default value -1</returns>
+  virtual int SinceVersion() const = 0;
+
   virtual ~NodeRef(){};
 };
 
@@ -224,7 +238,6 @@ class NodeRef {
 /// Information regarding the consumers of a value.
 /// </summary>
 struct ValueConsumers {
-
   /// <summary>
   /// List of nodes in the current graph containing value as an input
   /// </summary>
@@ -336,6 +349,14 @@ class GraphRef {
                                            size_t num_outputs, std::string_view domain = "") = 0;
 
   /// <summary>
+  /// Creates a copy of the provided node in the graph with the specified op type and domain.
+  /// </summary>
+  /// <param name="op_type">The new node's op type</param>
+  /// <param name="domain">The new node's domain. Empty string signifies default onnx domain.</param>
+  /// <returns>The new node</returns>
+  virtual std::unique_ptr<NodeRef> CopyNode(const api::NodeRef& source_node, std::string_view op_type, std::string_view domain = "") = 0;
+
+  /// <summary>
   /// Deletes a node from the graph. Behavior is undefined if node has any consumers.
   /// </summary>
   /// <param name="node">Node to remove</param>
@@ -409,6 +430,17 @@ class GraphRef {
 constexpr int64_t kMinSupportedOpset = 7;
 constexpr int64_t kMaxSupportedOpset = 15;
 
+enum class OptimizerMode {
+  OPTIMIZE_TRANSPOSE,        // simple transpose optimization
+  OPTIMIZE_LAYOUT_TRANSFORM  // transpose optimization post layout transformation
+};
+
+/// <summary>
+/// Gets a list of layout sensitive ops defined by ONNX standard.
+/// </summary>
+/// <returns>const reference to an unordered set of op_types which are layout sensitive</returns>
+const std::unordered_set<std::string_view>& GetLayoutSensitiveOps();
+
 /// <summary>
 /// Performs transpose optimization on a graph. Returns true if the graph was modified.
 ///
@@ -420,8 +452,16 @@ constexpr int64_t kMaxSupportedOpset = 15;
 /// </summary>
 /// <param name="graph">The graph to optimize (or a portion of a graph, see api::GraphRef docs)</param>
 /// <param name="allow_extended_ops">Whether com.microsoft ops can be used for optimization</param>
+/// <param name="provider_type">Execution provider if applicable.</param>
+/// <param name="mode">Current mode. Optimizer can be called in the context of transpose optimizations or during layout transformations.</param>
+/// <param name="layout_sensitive_ops">List of ops which are treated as layout sensitive by the ONNX standard as well as any runtime specific ops.
+/// These ops should be provided when mode is set to OPTIMIZE_LAYOUT_TRANSFORM. If these ops are not provided, transpose optimizer may convert the
+/// layout for these ops </param>
 /// <returns>true if the graph was modified</returns>
-bool Optimize(api::GraphRef& graph, bool allow_extended_ops);
+bool Optimize(api::GraphRef& graph, bool allow_extended_ops,
+              const std::string& provider_type = "",
+              OptimizerMode mode = OptimizerMode::OPTIMIZE_TRANSPOSE,
+              const std::unordered_set<std::string_view>& layout_sensitive_ops = {});
 
 /* Layout Transformation Tools
  * These methods help change the channel ordering of layout sensitive ops (like Conv). ONNX currently only supports
@@ -429,14 +469,14 @@ bool Optimize(api::GraphRef& graph, bool allow_extended_ops);
  * the new ordering. The existence of a robust transpose optimizer means that we can freely add transpose ops during
  * conversion and then call Optimize to remove as many as possible. To change the channel ordering of some/all ops
  * in a model, a user of this tool should do the following:
- * 
+ *
  * 1. Iterate over the graph nodes and identify nodes to convert. For each one:
  *    a. Change the op type and domain (and possibly attributes) to the op/contrib op with the desired ordering.
  *    b. The model is now invalid since the input tensors are in the original ordering (and all consumers
  *       expect the original ordering). Use WrapTransposesAroundNode helper to insert transposes around the
  *       inputs/outputs of the op to correct this.
  * 2. The model is now correct but has many unnecessary Transpose ops. Call Optimize on the graph.
- * 
+ *
  * After step 1, the Transpose ops will wrap converted ops in a similar manner to q/dq ops in quantization.
  * The perm attributes essentially encode the information about which ops are being reordered.
  */
@@ -444,13 +484,13 @@ bool Optimize(api::GraphRef& graph, bool allow_extended_ops);
 /// <summary>
 /// Inserts transposes around op inputs/outputs. Alternatively transposes initializers or uses existing Transpose
 /// nodes if possible. Populates shape information on affected node inputs/outputs to reflect the change.
-/// 
+///
 /// Ex:
 ///   * -> NhwcConv -> **
 ///   becomes
 ///   * -> Transpose -> NhwcConv -> Transpose -> **
 ///   Conv inputs/outputs have new shape. Shapes of * and ** are unchanged (carrying NCHW data).
-/// 
+///
 /// input_perms/output_perms are matched with node inputs/outputs positionally. Their lengths must be at most equal to
 /// the number of inputs/outputs, respectively. nullptr entires indicate an input or output should not be transposed.
 /// </summary>
