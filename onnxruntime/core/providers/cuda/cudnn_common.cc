@@ -138,7 +138,7 @@ cudnnDataType_t CudnnTensor::GetDataType<half>() {
 
 template <>
 cudnnDataType_t CudnnTensor::GetDataType<BFloat16>() {
-  ORT_THROW("cuDNN version is too low to support BFloat16.");
+  ORT_THROW("cuDNN doesn't support BFloat16.");
   return CUDNN_DATA_FLOAT;
 }
 
