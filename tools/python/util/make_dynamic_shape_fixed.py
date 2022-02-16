@@ -8,7 +8,7 @@ import os
 import pathlib
 import sys
 
-from .onnx_model_utils import make_dim_param_fixed, make_input_shape_fixed
+from .onnx_model_utils import make_dim_param_fixed, make_input_shape_fixed, fix_output_shapes
 
 
 def make_dynamic_shape_fixed_helper():
@@ -46,6 +46,9 @@ def make_dynamic_shape_fixed_helper():
         make_dim_param_fixed(model.graph, args.dim_param, args.dim_value)
     else:
         make_input_shape_fixed(model.graph, args.input_name, args.input_shape)
+
+    # update the output shapes to make them fixed if possible.
+    fix_output_shapes(model)
 
     onnx.save(model, str(args.output_model.resolve()))
 

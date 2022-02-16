@@ -9,8 +9,9 @@ from onnx import helper
 from onnx import shape_inference
 from onnx import TensorProto
 
-from ..onnx_model_utils import get_producer_consumer_maps, make_dim_param_fixed, make_input_shape_fixed
 from ..mobile_helpers.usability_checker import check_shapes
+from ..onnx_model_utils import get_producer_consumer_maps, \
+    make_dim_param_fixed, make_input_shape_fixed, fix_output_shapes, is_fixed_size_tensor
 
 script_dir = pathlib.Path(__file__).parent
 ort_root = script_dir.parents[3]
@@ -144,15 +145,18 @@ class TestDynamicDimReplacement(unittest.TestCase):
             ort_root / 'onnxruntime' / 'test' / 'testdata' / 'CNTK' / 'test_LSTM.tanh.bidirectional' / 'model.onnx'
 
         model = onnx.load_model(str(model_path))
-        model = shape_inference.infer_shapes(model, True)
 
-        dynamic_inputs, num_dynamic_values = check_shapes(model.graph)
+        # validate the expected input after inferring shape info
+        m2 = shape_inference.infer_shapes(model, True)
+        dynamic_inputs, num_dynamic_values = check_shapes(m2.graph)
         self.assertEqual(len(dynamic_inputs), 1)
         self.assertEqual(dynamic_inputs[0].name, 'Input3')
         self.assertGreater(num_dynamic_values, 0)
 
+        # update original model
         make_dim_param_fixed(model.graph, 'None', 4)
 
+        # and validate the model no longer has dynamic values
         model = shape_inference.infer_shapes(model, True)
         dynamic_inputs, num_dynamic_values = check_shapes(model.graph)
         self.assertFalse(dynamic_inputs)
@@ -166,15 +170,17 @@ class TestDynamicDimReplacement(unittest.TestCase):
         model_path = ort_root / 'onnxruntime' / 'test' / 'testdata' / 'gh_issue_9671.onnx'
 
         model = onnx.load_model(str(model_path))
-        model = shape_inference.infer_shapes(model, True)
 
-        dynamic_inputs, num_dynamic_values = check_shapes(model.graph)
+        # validate the expected input after inferring shape info
+        m2 = shape_inference.infer_shapes(model, True)
+        dynamic_inputs, num_dynamic_values = check_shapes(m2.graph)
         self.assertEqual(len(dynamic_inputs), 3)
         self.assertEqual(dynamic_inputs[0].name, 'X1')
         self.assertEqual(dynamic_inputs[1].name, 'X2')
         self.assertEqual(dynamic_inputs[2].name, 'X3')
         self.assertGreater(num_dynamic_values, 0)
 
+        # update original model
         make_input_shape_fixed(model.graph, 'X1', [2, 2, 4])
         make_input_shape_fixed(model.graph, 'X2', [2, 4])
         make_input_shape_fixed(model.graph, 'X3', [2, 2, 4])
@@ -189,26 +195,40 @@ class TestDynamicDimReplacement(unittest.TestCase):
         # in this case we should also iterate the rest of the model and replace other instances
         # of the dim_param with the new value.
         model_path = ort_root / 'onnxruntime' / 'test' / 'testdata' / 'fuse_mul_1.onnx'
-
         model = onnx.load_model(str(model_path))
-        model = shape_inference.infer_shapes(model, True)
 
-        dynamic_inputs, num_dynamic_values = check_shapes(model.graph)
+        m2 = shape_inference.infer_shapes(model, True)
+        dynamic_inputs, num_dynamic_values = check_shapes(m2.graph)
         self.assertEqual(len(dynamic_inputs), 1)
         self.assertEqual(dynamic_inputs[0].name, 'X1')
         # input as well as other values in model have shape ['D'] so check > 1
         self.assertGreater(num_dynamic_values, 1)
 
-        model = shape_inference.infer_shapes(model, True)
-        # replace X1 shape of ['D'] -> [4]
+        # replace X1's shape of ['D'] -> [4]
         make_input_shape_fixed(model.graph, 'X1', [4])
 
         # validate the model no longer has dynamic values
         # we don't run shape_inference here as 'D' is the only dimension in the whole model, and we should have
         # replaced every instance of it if _make_input_shape_fixed worked as expected.
+        model = shape_inference.infer_shapes(model, True)
         dynamic_inputs, num_dynamic_values = check_shapes(model.graph)
         self.assertFalse(dynamic_inputs)
         self.assertEqual(num_dynamic_values, 0)
+
+    def test_fix_output_shape(self):
+        '''
+        Replace an input shape in a model where that won't update the output shape automatically.
+        Manually fix the output so the usage of the model is clearer.
+        '''
+        model_path = ort_root / 'onnxruntime' / 'test' / 'testdata' / 'transform' / 'fusion' / 'bias_gelu_fusion.onnx'
+        model = onnx.load_model(str(model_path))
+
+        make_input_shape_fixed(model.graph, 'A', [2, 2, 3072])
+
+        # symbolic dim names in graph inputs don't match graph outputs so they won't have been updated yet
+        self.assertFalse(is_fixed_size_tensor(model.graph.output[0]))
+        fix_output_shapes(model)
+        self.assertTrue(is_fixed_size_tensor(model.graph.output[0]))
 
     def test_invalid_replace_input_shape(self):
         model_path = ort_root / 'onnxruntime' / 'test' / 'testdata' / 'sklearn_bin_voting_classifier_soft.onnx'
