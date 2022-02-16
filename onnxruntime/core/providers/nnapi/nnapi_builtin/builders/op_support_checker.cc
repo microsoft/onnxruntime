@@ -72,6 +72,10 @@ static bool HasExternalInitializer(const InitializedTensorSet& initializers, con
   return false;
 }
 
+inline bool IsNodeLayoutNHWC(const NodeUnit& node_unit) {
+  return node_unit.Domain() == kMSInternalNHWCDomain;
+}
+
 static bool IsQuantizationScaleSupported(const InitializedTensorSet& initializers,
                                          const NodeUnitIODef& io_def,
                                          const OpSupportCheckParams& params,
@@ -1826,7 +1830,7 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
       }
       const float* scales_data = reinterpret_cast<const float*>(unpacked_tensor.data());
       float scale_n = scales_data[0];
-      float scale_c = scales_data[1];
+      float scale_c = IsNodeLayoutNHWC(node_unit) ? scales_data[3] : scales_data[1];
       if (scale_n != 1.0f || scale_c != 1.0f) {
         LOGS_DEFAULT(VERBOSE) << "Scales of N/C channel should be 1"
                               << "Resize of N/C channels are not supported"
@@ -1843,14 +1847,16 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
         LOGS_DEFAULT(ERROR) << "Error while unpacking sizes_tensor: " << status.ErrorMessage();
         return false;
       }
+
+      int channel_idx = IsNodeLayoutNHWC(node_unit) ? 3 : 1;
       const int64_t* sizes_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
       uint32_t size_n = SafeInt<uint32_t>(sizes_data[0]);
-      uint32_t size_c = SafeInt<uint32_t>(sizes_data[1]);
-      if (size_n != input_shape[0] || size_c != input_shape[1]) {
-        LOGS_DEFAULT(VERBOSE) << "Output sizes of N/C chanel should match the input sizes, "
+      uint32_t size_c = SafeInt<uint32_t>(sizes_data[channel_idx]);
+      if (size_n != input_shape[0] || size_c != input_shape[channel_idx]) {
+        LOGS_DEFAULT(VERBOSE) << "Output sizes of N/C channel should match the input sizes, "
                               << "Resize of N/C channels are not supported"
                               << ", input_size_n, " << input_shape[0] << ", output_size_n, " << size_n
-                              << ". input_size_c, " << input_shape[1] << ", output_size_c, " << size_c;
+                              << ". input_size_c, " << input_shape[channel_idx] << ", output_size_c, " << size_c;
         return false;
       }
     }

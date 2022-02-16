@@ -3,15 +3,11 @@
 
 #pragma once
 
-#include "core/framework/execution_provider.h"
+#include "optimizer_api.h"
 #include "core/graph/graph.h"
-#include "core/optimizer/transpose_optimizer/api.h"
-
-using namespace ONNX_NAMESPACE;
-using namespace ::onnxruntime::common;
+#include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
-
 /// <summary>
 /// Creates concrete implementation of api for transpose optimizer. IMPORTANT: graph must have up-to-date edges,
 ///   node_arg-to-producer, and node_arg-to-consumer relationships. Otherwise call Resolve() before this.
@@ -23,6 +19,14 @@ namespace onnxruntime {
 std::unique_ptr<onnx_layout_transformation::api::GraphRef> MakeApiGraph(onnxruntime::Graph& graph,
                                                                         AllocatorPtr cpu_allocator,
                                                                         const char* new_node_ep);
+
+/// <summary>
+/// Creates NodeRef.
+/// </summary>
+/// <param name="graph">ORT Graph which owns the node</param>
+/// <param name="node">ORT Node to wrap with API.</param>
+/// <returns>api::NodeRef for use with transpose optimizer</returns>
+std::unique_ptr<onnx_layout_transformation::api::NodeRef> MakeApiNode(onnxruntime::Graph& graph, onnxruntime::Node& node);
 
 /// <summary>
 /// Reveals underlying ORT graph from an api::GraphRef
@@ -38,4 +42,25 @@ onnxruntime::Graph& GraphFromApiGraph(onnx_layout_transformation::api::GraphRef&
 /// <returns>ORT node</returns>
 onnxruntime::Node& NodeFromApiNode(onnx_layout_transformation::api::NodeRef& node);
 
+namespace layout_transformer {
+/// <summary>
+/// Gets a list of layout sensitive ops for ORT. This list contains onnx standard defined
+/// layout senstive ops + contrib ops + ops which are not layout sensitive but are treated as
+/// layout sensitive by ORT EPs (exmaple Resize).
+/// </summary>
+/// <returns>unordered set of op_types which are layout sensitive</returns>
+const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps();
+
+/// <summary>
+/// Transforms data layout from NCHW to NHWC. Applies transforms to layout sensitive nodes
+/// assigned to execution_provider provided by the caller and any other non-layout sensitive 
+/// nodes in order to optimize the transposes as much as possible.
+/// </summary>
+/// <param name="graph">graph to transform</param>
+/// <param name="modified">indicates whether the graph is modified during transformation</param>
+/// <param name="execution_provider">execution provider for which the transformation needs to be performed</param>
+/// <returns></returns>
+Status TransformLayout(Graph& graph, bool& modified, IExecutionProvider& execution_provider);
+
+}  // namespace layout_transformer
 }  // namespace onnxruntime

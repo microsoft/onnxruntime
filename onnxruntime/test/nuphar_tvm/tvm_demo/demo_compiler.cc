@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test/tvm/tvm_demo/demo_compiler.h"
+#include "test/nuphar_tvm/tvm_demo/demo_compiler.h"
 
 #include "core/codegen/passes/scheduler/schedule_utils.h"
 #include "core/codegen/passes/utils/ort_tvm_utils.h"

@@ -4,7 +4,7 @@
 #include "core/framework/tensor.h"
 
 #include "xpu_data_transfer.h"
-#include "stvm_utils.h"
+#include "tvm_utils.h"
 
 namespace onnxruntime {
 XPUDataTransfer::XPUDataTransfer() {
@@ -63,11 +63,11 @@ DLDevice XPUDataTransfer::get_context(const OrtDevice& device) const
   return GetDLDevice(device);
 }
 
-bool StvmCPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
+bool TvmCPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
   return src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::CPU;
 }
 
-common::Status StvmCPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /*exec_queue_id*/) const {
+common::Status TvmCPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /*exec_queue_id*/) const {
   const void* src_data = src.DataRaw();
   void* dst_data = dst.MutableDataRaw();
   if (src_data == dst_data) {

@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/optimizer/transpose_optimizer/api_impl.h"
-
+#include "optimizer_api.h"
+#include "optimizer_utils.h"
 #include <deque>
 #include "core/graph/graph_utils.h"
-#include "core/optimizer/initializer.h"
-#include "core/optimizer/utils.h"
-#include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/framework/execution_provider.h"
+#include "core/graph/graph_viewer.h"
 #include "core/providers/cpu/tensor/transpose.h"
 
 using namespace ONNX_NAMESPACE;
@@ -15,7 +15,6 @@ using namespace ::onnxruntime::common;
 using namespace onnx_layout_transformation;
 
 namespace onnxruntime {
-
 class ApiValueInfo final : public api::ValueInfoRef {
  private:
   NodeArg& node_arg_;
@@ -84,6 +83,8 @@ class ApiNode final : public api::NodeRef {
   void CopyAttributes(const api::NodeRef& node) override;
   void ClearAttribute(std::string_view name) override;
   void SetInput(size_t i, std::string_view name) override;
+  const std::string& GetExecutionProviderType() const override;
+  virtual int SinceVersion() const override;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ApiNode);
@@ -114,6 +115,9 @@ class ApiGraph final : public api::GraphRef {
   void ReshapeInitializer(std::string_view name, const std::vector<int64_t>& shape) override;
   std::unique_ptr<api::NodeRef> AddNode(std::string_view op_type, const std::vector<std::string_view>& inputs,
                                         size_t num_outputs = 1, std::string_view domain = "") override;
+
+  std::unique_ptr<api::NodeRef> CopyNode(const api::NodeRef& source_node, std::string_view op_type,
+                                         std::string_view domain = "") override;
   void RemoveNode(api::NodeRef& node) override;
   void RemoveInitializer(std::string_view name) override;
   std::string_view AddInitializer(api::DataType dtype, const std::vector<int64_t>& shape,
@@ -377,6 +381,15 @@ void ApiNode::SetInput(size_t i, std::string_view name) {
     }
   }
 }
+
+const std::string& ApiNode::GetExecutionProviderType() const {
+  return node_.GetExecutionProviderType();
+}
+
+int ApiNode::SinceVersion() const {
+  return node_.SinceVersion();
+}
+
 // </ApiNode>
 
 std::optional<int64_t> ApiGraph::Opset(std::string_view domain) const {
@@ -562,11 +575,11 @@ void ApiGraph::ReshapeInitializer(std::string_view name, const std::vector<int64
   node_arg->SetShape(new_shape);
 }
 
-std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
-                                                const std::vector<std::string_view>& inputs, size_t num_outputs,
-                                                std::string_view domain) {
+static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_type,
+                              const std::vector<std::string_view>& inputs, size_t num_outputs,
+                              std::string_view domain, int since_version, std::string_view node_ep) {
   const std::string op_type_str(op_type);
-  std::string name = graph_.GenerateNodeName(op_type_str);
+  std::string name = graph.GenerateNodeName(op_type_str);
   std::vector<NodeArg*> input_args;
   std::vector<NodeArg*> output_args;
 
@@ -574,46 +587,105 @@ std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
   for (const auto& input : inputs) {
     NodeArg* arg;
     if (input == "") {
-      arg = &graph_.GetOrCreateNodeArg("", nullptr);
+      arg = &graph.GetOrCreateNodeArg("", nullptr);
     } else {
-      arg = graph_.GetNodeArg(std::string(input));
+      arg = graph.GetNodeArg(std::string(input));
     }
     input_args.push_back(arg);
   }
 
   output_args.reserve(num_outputs);
   for (size_t i = 0; i < num_outputs; ++i) {
-    std::string output = graph_.GenerateNodeArgName(name + "_out" + std::to_string(i));
-    NodeArg* arg = &graph_.GetOrCreateNodeArg(output, nullptr);
+    std::string output = graph.GenerateNodeArgName(name + "_out" + std::to_string(i));
+    NodeArg* arg = &graph.GetOrCreateNodeArg(output, nullptr);
     output_args.push_back(arg);
   }
 
   std::vector<NodeArg*> outputs;
-  Node& node = graph_.AddNode(name, op_type_str, "Added in transpose optimizer", input_args, output_args, nullptr,
-                              std::string(domain));
+  Node& node = graph.AddNode(name, op_type_str, "Added in transpose optimizer", input_args, output_args, nullptr,
+                             std::string(domain));
 
-  if (new_node_ep_ != nullptr) {
-    node.SetExecutionProviderType(new_node_ep_);
+  if (node.SinceVersion() == -1) {
+    node.SetSinceVersion(since_version);
   }
+
+  node.SetExecutionProviderType(std::string(node_ep));
 
   for (size_t i = 0; i < input_args.size(); ++i) {
     NodeArg* arg = input_args[i];
     if (arg->Exists()) {
       const std::string& name_str = arg->Name();
-      graph_.AddConsumerNode(name_str, &node);
-      const auto* inp_node = graph_.GetProducerNode(name_str);
+      graph.AddConsumerNode(name_str, &node);
+      const auto* inp_node = graph.GetProducerNode(name_str);
       if (inp_node != nullptr) {
         int inp_node_out_index = graph_utils::GetNodeOutputIndexFromOutputName(*inp_node, name_str);
-        graph_.AddEdge(inp_node->Index(), node.Index(), inp_node_out_index, gsl::narrow_cast<int>(i));
+        graph.AddEdge(inp_node->Index(), node.Index(), inp_node_out_index, gsl::narrow_cast<int>(i));
       }
     }
   }
 
   for (NodeArg* arg : output_args) {
-    graph_.UpdateProducerNode(arg->Name(), node.Index());
+    graph.UpdateProducerNode(arg->Name(), node.Index());
   }
 
+  return node;
+}
+
+// This is a list of onnx ops and their versions which transpose_optimizer can potentially add to the graph.
+// This is needed in minimal build since opschema is not available.
+// The versions MUST be sorted due to how the model opset is matched with the most recent operator version.
+static const std::unordered_map<std::string, std::vector<int>> onnx_ops_available_versions = {
+    {"Squeeze", {1, 11, 13}},
+    {"Unsqueeze", {1, 11, 13}},
+    {"Gather", {1, 11, 13}},
+    {"Transpose", {1, 13}},
+    {"Identity", {1, 13, 14, 16}},
+};
+
+// Based on the opset version imported for this model, returns the since version for the node.
+static int GetSinceVersionForNewOp(std::string_view op_type, std::string_view domain,
+                                   const std::unordered_map<std::string, int>& domain_to_version_map) {
+  int since_version = -1;
+  ORT_ENFORCE(domain == kOnnxDomain, "Transpose optimizer is expected to add only onnx domain ops. Domain: ",
+              domain, " provided for op: ", op_type);
+
+  auto opset_import_iter = domain_to_version_map.find(std::string(domain));
+  ORT_ENFORCE(opset_import_iter != domain_to_version_map.end(), "Onnx domain not found in opset imports.");
+
+  int opset_version = opset_import_iter->second;
+  auto iter = onnx_ops_available_versions.find(std::string(op_type));
+  ORT_ENFORCE(iter != onnx_ops_available_versions.end(),
+              "Transpose Optimizer is adding an unexpected node: ", op_type,
+              "An entry for this node should be added in onnx_ops_available_versions and static_kernel_hashes map.");
+
+  for (auto version : iter->second) {
+    if (version <= opset_version) {
+      since_version = version;
+    }
+  }
+
+  return since_version;
+}
+
+std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
+                                                const std::vector<std::string_view>& inputs, size_t num_outputs,
+                                                std::string_view domain) {
+  int since_version = GetSinceVersionForNewOp(op_type, domain, graph_.DomainToVersionMap());
+  Node& node = CreateNodeHelper(graph_, op_type, inputs, num_outputs,
+                                domain, since_version, new_node_ep_ != nullptr ? new_node_ep_ : "");
+
   return std::make_unique<ApiNode>(node, graph_);
+}
+
+std::unique_ptr<api::NodeRef> ApiGraph::CopyNode(const api::NodeRef& source_node, std::string_view op_type,
+                                                 std::string_view domain) {
+  Node& node = CreateNodeHelper(graph_, op_type, source_node.Inputs(),
+                                source_node.Outputs().size(), domain, source_node.SinceVersion(), source_node.GetExecutionProviderType());
+
+  std::unique_ptr<api::NodeRef> new_node = std::make_unique<ApiNode>(node, graph_);
+  new_node->CopyAttributes(source_node);
+
+  return new_node;
 }
 
 void ApiGraph::RemoveNode(api::NodeRef& node) {
@@ -705,6 +777,10 @@ std::unique_ptr<api::GraphRef> MakeApiGraph(onnxruntime::Graph& graph, Allocator
   return std::make_unique<ApiGraph>(graph, std::move(cpu_allocator), new_node_ep);
 }
 
+std::unique_ptr<api::NodeRef> MakeApiNode(onnxruntime::Graph& graph, onnxruntime::Node& node) {
+  return std::make_unique<ApiNode>(node, graph);
+}
+
 onnxruntime::Graph& GraphFromApiGraph(onnx_layout_transformation::api::GraphRef& graph) {
   return static_cast<ApiGraph&>(graph).Graph();
 }
@@ -713,4 +789,99 @@ onnxruntime::Node& NodeFromApiNode(onnx_layout_transformation::api::NodeRef& nod
   return static_cast<ApiNode&>(node).Node();
 }
 
+namespace layout_transformer {
+
+const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
+  static std::unordered_set<std::string_view> ort_layout_senstive_ops = []() {
+    const auto& layout_sensitive_ops = onnx_layout_transformation::GetLayoutSensitiveOps();
+    std::unordered_set<std::string_view> ort_specific_ops = {"Resize", "FusedConv", "QLinearAveragePool", "QLinearGlobalAveragePool"};
+    ort_specific_ops.insert(layout_sensitive_ops.cbegin(), layout_sensitive_ops.cend());
+    return ort_specific_ops;
+  }();
+
+  return ort_layout_senstive_ops;
+}
+
+Status TransformLayout(Graph& graph, bool& modified, IExecutionProvider& execution_provider) {
+  // sub graph recurse will be added later
+  auto api_graph = MakeApiGraph(graph, execution_provider.GetAllocator(0, OrtMemTypeDefault), nullptr);
+  const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
+
+  for (auto& node : api_graph->Nodes()) {
+    if (layout_sensitive_ops.count(node->OpType())) {
+      if (node->GetExecutionProviderType() != execution_provider.Type()) {
+        continue;
+      }
+
+      auto domain = node->Domain();
+      // Skip if domain is incorrect
+      if (domain != kOnnxDomain && domain != kOnnxDomainAlias && domain != kMSDomain) {
+        continue;
+      }
+
+      // if already transformed then change the domain to kMSInternalNHWCDomain this way the EP
+      // knows this op is in the expected format.
+      if (node->GetAttributeIntDefault("channels_last", 0) == 1) {
+        onnx_layout_transformation::SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSInternalNHWCDomain);
+        // Changing the domain for the node requires creating a new node and replacing the old one
+        // therefore set the modified flag.
+        modified = true;
+        continue;
+      }
+
+      // Skip if unknown rank
+      auto shape = api_graph->GetValueInfo(node->Inputs()[0])->Shape();
+      if (!shape.has_value()) {
+        continue;
+      }
+
+      // Convert to channels last
+      size_t rank = shape->size();
+
+      bool has_channel_last_attr = node->GetAttributeInt("channels_last").has_value() ? true : false;
+      if (has_channel_last_attr) {
+        node->SetAttributeInt("channels_last", 1);
+      }
+
+      auto input_perm = onnx_layout_transformation::ChannelFirstToLastPerm(rank);
+      auto output_perm = onnx_layout_transformation::ChannelLastToFirstPerm(rank);
+
+      // Except for resize and convolution ops, all the other layout sensitive ops only require layout transformation
+      // for 0th input and output. For resize, add the other relevant inputs which need conversion. For Conv - layout
+      // transformer only converts layout for 0th input, weights should be handled by every EP.
+      if (node->OpType() == "Resize") {
+        // Older versions of resize have a bug where ROI and Scales cannot be made empty inputs. To handle this case,
+        // we need to jump a few extra hoops to make sure its inputs are correctly handled. Current code skips
+        // layout conversion for ROI because it needs special handling as ROI size is 2*rank.
+        // Enable passing in ROI for layout conversion when an EP which supports ROI starts using layout transformer.
+        // NNAPI which currently uses layout transformer does not support it.
+        std::vector<const std::vector<int64_t>*> input_perms{&input_perm, nullptr};
+        for (size_t i = 2; i < node->Inputs().size(); i++) {
+          auto constant = api_graph->GetConstant(node->Inputs()[i]);
+          if (constant != nullptr && constant->Data().size() > 0) {
+            input_perms.push_back(&input_perm);
+          } else {
+            input_perms.push_back(nullptr);
+          }
+        }
+        onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, input_perms, {&output_perm});
+      } else {
+        onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
+      }
+
+      onnx_layout_transformation::SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSInternalNHWCDomain);
+      modified = true;
+    }
+  }
+
+  if (modified) {
+    onnx_layout_transformation::Optimize(*api_graph, /*allow_extended_ops*/ true, execution_provider.Type(),
+                                         onnx_layout_transformation::OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM,
+                                         layout_sensitive_ops);
+  }
+
+  return Status::OK();
+}
+
+}  // namespace layout_transformer
 }  // namespace onnxruntime
