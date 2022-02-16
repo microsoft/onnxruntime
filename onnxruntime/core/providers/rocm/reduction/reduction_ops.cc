@@ -509,7 +509,7 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
   HIP_RETURN_IF_ERROR(hipMemsetAsync(output.MutableDataRaw(), 0, output.SizeInBytes(), stream));
 
   IAllocatorUniquePtr<float> temp_X;
-  miopenDataType_t miopen_type_X = MiopenTensor::GetDataType<HipT>();
+  miopenDataType_t miopen_type_X = miopenFloat;
 
   // unlike bfp16 not supported in cudnn, miopen call for bfp16 succeeded below, however, UT shows data error
   // so for now, follow the same logic in cudnn and convert input to fp32 then call miopen
@@ -517,8 +517,9 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
       (ReduceTensorIndices == MIOPEN_REDUCE_TENSOR_NO_INDICES && std::is_same<T, BFloat16>::value)) {
     // ArgMax/ArgMin with FP16 are not supported by miopen, so convert input to fp32 then call miopen
     temp_X = rocm_ep.GetScratchBuffer<float>(input_count);
-    miopen_type_X = miopenFloat;
     Impl_Cast<HipT, float>(stream, reinterpret_cast<const HipT*>(input.template Data<T>()), temp_X.get(), input_shape.Size());
+  } else {
+    miopen_type_X = MiopenTensor::GetDataType<HipT>();
   }
 
   MiopenReduceDescriptor reduce_desc;
