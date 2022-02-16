@@ -138,7 +138,7 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_NUPHAR}
-    ${PROVIDERS_STVM}
+    ${PROVIDERS_TVM}
     ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_COREML}
@@ -669,25 +669,27 @@ if (onnxruntime_USE_NUPHAR)
   )
 endif()
 
-if (onnxruntime_USE_STVM)
-  file(GLOB onnxruntime_python_providers_stvm_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/python/providers/stvm/*.py"
+if (onnxruntime_USE_TVM)
+  file(GLOB onnxruntime_python_providers_tvm_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/providers/tvm/*.py"
   )
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/stvm
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/tvm
     COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_providers_stvm_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/stvm
+        ${onnxruntime_python_providers_tvm_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/tvm
     COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:onnxruntime_providers_stvm>
+        $<TARGET_FILE:onnxruntime_providers_tvm>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+    # TODO(vvchernov): why?
     COMMAND ${CMAKE_COMMAND} -E copy
         ${tvm_BINARY_DIR}/libtvm*
         ${tvm_SOURCE_DIR}/python/tvm
   )
 
+  # TODO(vvchernov): repeat?
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
       WORKING_DIRECTORY ${tvm_SOURCE_DIR}/python
