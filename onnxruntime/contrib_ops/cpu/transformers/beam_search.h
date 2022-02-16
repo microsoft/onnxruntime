@@ -46,10 +46,10 @@ class BeamSearch : public IControlFlowKernel {
 
   // Type dependent helpers
   void SetDeviceHelpers(
-      const BeamSearchDeviceHelper::ProcessLogitsFunc& process_logits_func,
-      const BeamSearchDeviceHelper::InitBeamStateFunc& init_beam_state_func,
-      const BeamSearchDeviceHelper::DeviceCopyFunc& device_copy_func,
-      const BeamSearchDeviceHelper::UpdateFeedsFunc& update_feeds_func) {
+      const BeamSearchDeviceHelper::ProcessLogitsFunc<float>& process_logits_func,
+      const BeamSearchDeviceHelper::InitBeamStateFunc<float>& init_beam_state_func,
+      const BeamSearchDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
+      const BeamSearchDeviceHelper::UpdateFeedsFunc<float>& update_feeds_func) {
     process_logits_func_ = process_logits_func;
     init_beam_state_func_ = init_beam_state_func;
     device_copy_func_ = device_copy_func;
@@ -61,10 +61,10 @@ class BeamSearch : public IControlFlowKernel {
   BeamSearchDeviceHelper::CreateInputsFunc create_inputs_func_;
   BeamSearchDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
   BeamSearchDeviceHelper::TopkFunc topk_func_;
-  BeamSearchDeviceHelper::ProcessLogitsFunc process_logits_func_;
-  BeamSearchDeviceHelper::InitBeamStateFunc init_beam_state_func_;
-  BeamSearchDeviceHelper::DeviceCopyFunc device_copy_func_;
-  BeamSearchDeviceHelper::UpdateFeedsFunc update_feeds_func_;
+  BeamSearchDeviceHelper::ProcessLogitsFunc<float> process_logits_func_;
+  BeamSearchDeviceHelper::InitBeamStateFunc<float> init_beam_state_func_;
+  BeamSearchDeviceHelper::DeviceCopyFunc<float> device_copy_func_;
+  BeamSearchDeviceHelper::UpdateFeedsFunc<float> update_feeds_func_;
 
   // Subgraph and FeedsFetchesManager re-used for each subgraph execution.
   std::unique_ptr<GptSubgraph> gpt_subgraph_;

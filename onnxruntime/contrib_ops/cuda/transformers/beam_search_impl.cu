@@ -61,22 +61,33 @@ void LaunchInitKernel(
 }
 
 template <typename T>
-__global__ void VocabMaskKernel(T* log_probs,
-                                const int* vocab_mask,
-                                int vocab_size,
-                                int total_elements) {
+__global__ void LogitsProcessKernel(
+    T* log_probs,
+    const int* vocab_mask,
+    const int* prefix_vocab_mask,
+    int num_beams,
+    int vocab_size,
+    int total_elements) {
   int index = blockIdx.x * blockDim.x + threadIdx.x;
   int word_id = index % vocab_size;
 
-  if (index < total_elements && vocab_mask[word_id] == 0) {
-    log_probs[index] = std::numeric_limits<T>::lowest();
+  if (index < total_elements) {
+    if (vocab_mask != nullptr && vocab_mask[word_id] == 0) {
+      log_probs[index] = std::numeric_limits<T>::lowest();
+    }
+
+    int batch_id = (index / vocab_size) / num_beams;
+    if (prefix_vocab_mask != nullptr && prefix_vocab_mask[batch_id * vocab_size + word_id] == 0) {
+      log_probs[index] = std::numeric_limits<T>::lowest();
+    }
   }
 }
 
 template <typename T>
-void LaunchVocabMaskKernel(
+void LaunchLogitsProcessKernel(
     T* log_probs,
     const int* vocab_mask,
+    const int* prefix_vocab_mask,
     int batch_size,
     int num_beams,
     int vocab_size,
@@ -84,17 +95,18 @@ void LaunchVocabMaskKernel(
   int total_elements = batch_size * num_beams * vocab_size;
   constexpr int blockSize = 256;
   const int gridSize = (total_elements + blockSize - 1) / blockSize;
-  VocabMaskKernel<float><<<gridSize, blockSize, 0, stream>>>(log_probs, vocab_mask, vocab_size, total_elements);
+  LogitsProcessKernel<float><<<gridSize, blockSize, 0, stream>>>(log_probs, vocab_mask, prefix_vocab_mask, num_beams, vocab_size, total_elements);
 }
 
 // Instantiation
-template void LaunchVocabMaskKernel(
-    float* log_probs,
-    const int* vocab_mask,
-    int batch_size,
-    int num_beams,
-    int vocab_size,
-    cudaStream_t stream);
+template void LaunchLogitsProcessKernel(
+  float* log_probs,
+  const int* vocab_mask,
+  const int* prefix_vocab_mask,
+  int batch_size,
+  int num_beams,
+  int vocab_size,
+  cudaStream_t stream);
 
 template <typename T>
 __global__ void AddProbsKernel(T* log_probs,

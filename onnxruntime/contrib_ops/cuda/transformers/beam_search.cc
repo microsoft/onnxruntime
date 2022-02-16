@@ -39,10 +39,10 @@ BeamSearch::BeamSearch(const OpKernelInfo& info)
   // TODO: handle float16
   SetDeviceHelpers(BeamSearchCudaDeviceHelper::AddToFeeds,
                    BeamSearchCudaDeviceHelper::TopK);
-  SetDeviceHelpers(BeamSearchCudaDeviceHelper::ProcessLogits,
-                   BeamSearchCudaDeviceHelper::InitBeamState,
-                   BeamSearchCudaDeviceHelper::DeviceCopy,
-                   BeamSearchCudaDeviceHelper::UpdateFeeds);
+  SetDeviceHelpers(BeamSearchCudaDeviceHelper::ProcessLogits<float>,
+                   BeamSearchCudaDeviceHelper::InitBeamState<float>,
+                   BeamSearchCudaDeviceHelper::DeviceCopy<float>,
+                   BeamSearchCudaDeviceHelper::UpdateFeeds<float>);
   SetConsoleDumper(&g_cuda_dumper);
 }
 

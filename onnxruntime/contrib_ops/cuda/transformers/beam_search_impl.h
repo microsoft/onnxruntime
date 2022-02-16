@@ -29,9 +29,10 @@ void LaunchUpdateKernel(T* log_probs,
                         cudaStream_t stream);
 
 template <typename T>
-void LaunchVocabMaskKernel(
+void LaunchLogitsProcessKernel(
     T* log_probs,
     const int* vocab_mask,
+    const int* prefix_vocab_mask,
     int batch_size,
     int num_beams,
     int vocab_size,

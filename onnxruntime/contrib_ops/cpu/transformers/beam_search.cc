@@ -154,10 +154,10 @@ class BeamSearchImpl {
                  const BeamSearchDeviceHelper::CreateInputsFunc& create_inputs_func,
                  const BeamSearchDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
                  const BeamSearchDeviceHelper::TopkFunc& topk_func,
-                 const BeamSearchDeviceHelper::ProcessLogitsFunc& process_logits_func,
-                 const BeamSearchDeviceHelper::InitBeamStateFunc& init_beam_state_func,
-                 const BeamSearchDeviceHelper::DeviceCopyFunc& device_copy_func,
-                 const BeamSearchDeviceHelper::UpdateFeedsFunc& update_feeds_func)
+                 const BeamSearchDeviceHelper::ProcessLogitsFunc<T>& process_logits_func,
+                 const BeamSearchDeviceHelper::InitBeamStateFunc<T>& init_beam_state_func,
+                 const BeamSearchDeviceHelper::DeviceCopyFunc<T>& device_copy_func,
+                 const BeamSearchDeviceHelper::UpdateFeedsFunc<T>& update_feeds_func)
       : context_(context),
         session_state_(session_state),
         gpt_subgraph_(gpt_subgraph),
@@ -253,10 +253,10 @@ class BeamSearchImpl {
   BeamSearchDeviceHelper::CreateInputsFunc create_inputs_func_;
   BeamSearchDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
   BeamSearchDeviceHelper::TopkFunc topk_func_;
-  BeamSearchDeviceHelper::ProcessLogitsFunc process_logits_func_;
-  BeamSearchDeviceHelper::InitBeamStateFunc init_beam_state_func_;
-  BeamSearchDeviceHelper::DeviceCopyFunc device_copy_func_;
-  BeamSearchDeviceHelper::UpdateFeedsFunc update_feeds_func_;
+  BeamSearchDeviceHelper::ProcessLogitsFunc<T> process_logits_func_;
+  BeamSearchDeviceHelper::InitBeamStateFunc<T> init_beam_state_func_;
+  BeamSearchDeviceHelper::DeviceCopyFunc<T> device_copy_func_;
+  BeamSearchDeviceHelper::UpdateFeedsFunc<T> update_feeds_func_;
 };
 
 void BeamSearch::Init(const OpKernelInfo& info) {
@@ -301,10 +301,10 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
                                create_inputs_func_ ? create_inputs_func_ : BeamSearchCpuDeviceHelper::CreateInputs,
                                add_to_feeds_func_ ? add_to_feeds_func_ : BeamSearchCpuDeviceHelper::AddToFeeds,
                                topk_func_ ? topk_func_ : BeamSearchCpuDeviceHelper::TopK,
-                               process_logits_func_ ? process_logits_func_ : BeamSearchCpuDeviceHelper::ProcessLogits,
-                               init_beam_state_func_ ? init_beam_state_func_ : BeamSearchCpuDeviceHelper::InitBeamState,
-                               device_copy_func_ ? device_copy_func_ : BeamSearchCpuDeviceHelper::DeviceCopy,
-                               update_feeds_func_ ? update_feeds_func_ : BeamSearchCpuDeviceHelper::UpdateFeeds};
+                               process_logits_func_ ? process_logits_func_ : BeamSearchCpuDeviceHelper::ProcessLogits<float>,
+                               init_beam_state_func_ ? init_beam_state_func_ : BeamSearchCpuDeviceHelper::InitBeamState<float>,
+                               device_copy_func_ ? device_copy_func_ : BeamSearchCpuDeviceHelper::DeviceCopy<float>,
+                               update_feeds_func_ ? update_feeds_func_ : BeamSearchCpuDeviceHelper::UpdateFeeds<float>};
     ORT_RETURN_IF_ERROR(impl.Initialize());
 
     return impl.Execute(*feeds_fetches_manager_);
