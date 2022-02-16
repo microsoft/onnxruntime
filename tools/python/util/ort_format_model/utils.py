@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 import os
+import typing
 
 from .operator_type_usage_processors import OperatorTypeUsageManager
 from .ort_model_processor import OrtFormatModelProcessor
@@ -41,7 +42,7 @@ def _extract_ops_and_types_from_ort_models(model_path_or_dir: str, enable_type_r
 
 
 def create_config_from_models(model_path_or_dir: str, output_file: str = None, enable_type_reduction: bool = True,
-                              optimization_level: str = None):
+                              optimization_level: typing.Optional[str] = None):
     '''
     Create a configuration file with required operators and optionally required types.
     :param model_path_or_dir: Path to recursively search for ORT format models, or to a single ORT format model.

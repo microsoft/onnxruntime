@@ -12,7 +12,8 @@ from .onnx_model_utils import update_onnx_opset
 def update_onnx_opset_helper():
     parser = argparse.ArgumentParser(f'{os.path.basename(__file__)}:{update_onnx_opset_helper.__name__}',
                                      description='''
-                                     Update the ONNX opset of the model. New opset must be later than the existing one. 
+                                     Update the ONNX opset of the model.
+                                     New opset must be later than the existing one.
                                      If not specified will update to opset 15.
                                      ''')
 
