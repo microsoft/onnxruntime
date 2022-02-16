@@ -1,9 +1,10 @@
-#include "beam_search_device_helper.h"
 #include "core/providers/cpu/math/top_k.h"
 #include "core/providers/cpu/math/softmax_shared.h"
+#include "core/common/safeint.h"
+#include "gsl/gsl"
 #include "sequences.h"
 #include "beam_search_scorer.h"
-#include "gsl/gsl"
+#include "beam_search_device_helper.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -125,7 +126,7 @@ Status CreateInputs(
     }
 
     for (int k = 0; k < num_beams; k++) {
-      sequence_lengths[i * num_beams + k] = abs_position;
+      sequence_lengths[SafeInt<gsl::index>(i) * num_beams + k] = abs_position;
     }
   }
 
@@ -171,7 +172,7 @@ void InitBeamState(transformers::IBeamSearchState<float>* beam_state,
   gsl::span<float>& beam_scores = beam_state->beam_scores;
   for (int i = 0; i < batch_size; i++) {
     for (int j = 1; j < num_beams; j++) {
-      beam_scores[i * num_beams + j] = -1e9;
+      beam_scores[SafeInt<gsl::index>(i) * num_beams + j] = -1e9;
     }
   }
 
@@ -183,8 +184,8 @@ void InitBeamState(transformers::IBeamSearchState<float>* beam_state,
   gsl::span<int64_t> sequences_0 = cpu_state->sequences_space;
   int batch_beam_size = batch_size * num_beams;
   for (int i = 0; i < batch_beam_size; i++) {
-    gsl::span<const int64_t> source = input_ids_in_cpu.subspan(i * sequence_length, sequence_length);
-    gsl::span<int64_t> target = sequences_0.subspan(i * max_length, sequence_length);
+    gsl::span<const int64_t> source = input_ids_in_cpu.subspan(SafeInt<gsl::index>(i) * sequence_length, static_cast<gsl::index>(sequence_length));
+    gsl::span<int64_t> target = sequences_0.subspan(SafeInt<gsl::index>(i) * max_length, static_cast<gsl::index>(sequence_length));
     gsl::copy(source, target);
   }
 }
@@ -227,7 +228,7 @@ Status ProcessLogits(const OrtValue& logits,                                    
     const float* current_logits = logits_data + (input_length - 1) * vocab_size;
     for (int i = 0; i < batch_beam_size; i++) {
       gsl::span<const float> source(current_logits, vocab_size);
-      gsl::span<float> target = next_token_logits.subspan(i * vocab_size, vocab_size);
+      gsl::span<float> target = next_token_logits.subspan(SafeInt<gsl::index>(i) * vocab_size, static_cast<gsl::index>(vocab_size));
       gsl::copy(source, target);
       current_logits += input_length * vocab_size;
     }
@@ -284,7 +285,7 @@ Status ProcessLogits(const OrtValue& logits,                                    
   // Apply top-k selection like the following:
   //   next_token_scores = next_token_scores.view(batch_size, num_beams * vocab_size)
   //   next_token_scores, next_tokens = torch.topk(next_token_scores, 2 * num_beams, dim=1, largest=True, sorted=True)
-  int64_t next_token_scores_dims[] = {batch_size, num_beams * vocab_size};
+  int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size), SafeInt<int64_t>(num_beams) * vocab_size};
   TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
   auto element_type = DataTypeImpl::GetType<float>();
   OrtValue next_token_scores_value;
