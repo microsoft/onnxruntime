@@ -60,8 +60,9 @@ fi
 
 if [ "$OS_VERSION" = "18.04" ]; then
     PACKAGE_LIST="$PACKAGE_LIST libicu60"
-elif [ "$OS_VERSION" = "20.04" ]; then
+else
     PACKAGE_LIST="$PACKAGE_LIST libicu66"
+fi
 
 apt-get install -y --no-install-recommends $PACKAGE_LIST
 
