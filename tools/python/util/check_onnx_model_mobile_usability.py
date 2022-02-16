@@ -28,7 +28,7 @@ def check_usability():
     parser.add_argument('model_path', help='Path to ONNX model to check', type=pathlib.Path)
 
     args = parser.parse_args()
-    logger = logging.getLogger('default')
+    logger = logging.getLogger('check_usability')
 
     if args.log_level == 'debug':
         logger.setLevel(logging.DEBUG)

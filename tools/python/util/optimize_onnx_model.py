@@ -39,7 +39,7 @@ def optimize_model_helper():
     elif args.log_level == 'warning':
         log_level = 2
 
-    optimize_model(args.input_model, args.output_model, get_optimization_level(args.opt_level), args.log_level)
+    optimize_model(args.input_model, args.output_model, get_optimization_level(args.opt_level), log_level)
 
 
 if __name__ == '__main__':

@@ -126,7 +126,7 @@ class PartitioningInfo:
                 logger.info('Unsupported nodes due to input having a dynamic shape=%d',
                             self.nodes_unsupported_due_to_dynamic_input)
 
-        if logger.getEffectiveLevel() >= logging.DEBUG:
+        if logger.getEffectiveLevel() <= logging.DEBUG:
             # Enable this manually if you need to look at specific partitions.
             # for group in supported_groups:
             #     logger.debug(f'Nodes in group: {",".join([f"{node.name}:{node.op_type}" for node in group])}')
