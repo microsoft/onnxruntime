@@ -12,9 +12,6 @@ parameters:
 variables:
   build_config: Release
   ${{ if eq(parameters.NpmPublish, 'nightly (@dev)') }}:
-    # 'dev' will skip generating onnxruntime-common package when it's not updated
-    # since react-native e2e always requires both onnxruntime-common and onnxruntime-react-native packages,
-    # use 'custom' type mode here.
     npm_packaging_mode: 'dev'
   ${{ if eq(parameters.NpmPublish, 'release candidate (@rc)') }}:
     npm_packaging_mode: 'rc'
