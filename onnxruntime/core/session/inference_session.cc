@@ -1869,7 +1869,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
   // Check if this Run() is simply going to be a CUDA Graph replay.
   if (cached_cuda_execution_provider_for_cuda_graph_replay_ && cached_cuda_execution_provider_for_cuda_graph_replay_->IsGraphCaptured()) {
-      LOGS(*session_logger_, INFO) << "Replaying the captured CUDA Graph for this model";
+      LOGS(*session_logger_, INFO) << "Replaying the captured CUDA Graph for this model with tag: " << run_options.run_tag;
       ++current_num_runs_;
       ORT_RETURN_IF_ERROR_SESSIONID_(cached_cuda_execution_provider_for_cuda_graph_replay_->GraphReplay());
   } else {

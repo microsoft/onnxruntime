@@ -65,5 +65,47 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
           session.run_with_iobinding(io_binding)
           np.testing.assert_allclose(np.array([[50.0], [110.0], [170.0]]*INPUT_SIZE, dtype=np.float32), y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
 
+  def testRunModelWithCudaGraphWithMultipleThreads(self):
+      if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
+          providers = [('CUDAExecutionProvider', {'enable_cuda_graph': True})]
+          INPUT_SIZE = 1280
+          x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]*INPUT_SIZE, dtype=np.float32)
+          y = np.array([[0.0], [0.0], [0.0]]*INPUT_SIZE, dtype=np.float32)
+
+          so = onnxrt.SessionOptions()
+          so.log_verbosity_level = 0
+          so.logid = "MultiThreadsTest"
+          session = onnxrt.InferenceSession(get_name("matmul_2.onnx"), sess_options=so, providers=providers)
+
+          num_threads = 4
+          io_bindings = [session.io_binding() for _ in range(num_threads)]
+          x_ortvalues = [onnxrt.OrtValue.ortvalue_from_numpy(x, 'cuda', 0) for _ in range(num_threads)]
+          y_ortvalues = [onnxrt.OrtValue.ortvalue_from_numpy(y, 'cuda', 0) for _ in range(num_threads)]
+          ros = [onnxrt.RunOptions() for _ in range(num_threads)]
+          for i, ro in enumerate(ros):
+              ro.logid = "thread" + str(i)
+          for i, io_binding in enumerate(io_bindings):
+              io_binding.bind_input('X', 'cuda', 0, np.float32, [INPUT_SIZE*3, 2], x_ortvalues[i].data_ptr())
+              io_binding.bind_output('Y', 'cuda', 0, np.float32, [INPUT_SIZE*3, 1], y_ortvalues[i].data_ptr())
+
+          def sess_run(io_binding, ro):
+              for _ in range(10):
+                  session.run_with_iobinding(io_binding, ro)
+
+          def run_multi_threads():
+            run_threads = []
+
+            for i in range(num_threads):
+                t = threading.Thread(target=sess_run, args=(io_bindings[i], ros[i]))
+                run_threads.append(t)
+
+            for t in run_threads:
+                t.start()
+
+            for t in run_threads:
+                t.join()
+
+          run_multi_threads()
+
 if __name__ == '__main__':
     unittest.main()

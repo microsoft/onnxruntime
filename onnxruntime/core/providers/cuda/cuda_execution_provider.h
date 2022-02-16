@@ -99,9 +99,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool ConfiguredForGraphCapture() override;
   bool IsGraphCaptured() override;
   Status GraphReplay() override;
-  bool FinishRegularRunsBeforeGraphCapture() const;
-  void CaptureBegin();
-  void CaptureEnd();
 #endif
 
  private:
@@ -110,12 +107,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool external_stream_ = false;
   cudaStream_t stream_ = nullptr;
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-  CUDAGraph graph_;
-  bool is_graph_captured_ = false;
-  const int default_regular_runs_before_cuda_graph_capture_ = 1; // one regular run is needed before graph capture for the necessary memory allocations.
-  int regular_run_count_before_graph_capture_ = 0;
-#endif
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
     std::vector<void*> cpu_ptrs;
@@ -173,6 +164,15 @@ class CUDAExecutionProvider : public IExecutionProvider {
       return allocator_;
     }
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
+  bool FinishRegularRunsBeforeGraphCapture() const;
+  void CaptureBegin();
+  void CaptureEnd();
+  bool IsGraphCaptured() const;
+  Status GraphReplay();
+  void IncrementRegularRunCountBeforeGraphCapture();
+#endif
+
    private:
     cudaStream_t stream_ = nullptr;
     cublasHandle_t cublas_handle_ = nullptr;
@@ -189,6 +189,15 @@ class CUDAExecutionProvider : public IExecutionProvider {
     std::unique_ptr<cuda::IConstantBuffer<BFloat16>> constant_ones_bfloat16_;
 
     AllocatorPtr allocator_;
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
+    std::unique_ptr<CUDAGraph> cuda_graph_;
+    bool is_graph_captured_ = false;
+    int regular_run_count_before_graph_capture_ = 0;
+    const int default_regular_runs_before_cuda_graph_capture_ = 1; // one regular run is needed before graph capture for the necessary memory allocations.
+
+#endif
+
   };
 
   using PerThreadContextMap = std::unordered_map<const CUDAExecutionProvider*, std::weak_ptr<PerThreadContext>>;

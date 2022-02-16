@@ -8,7 +8,6 @@ namespace onnxruntime {
 using CaptureId_t = unsigned long long;
 
 struct CUDAGraph {
-  CUDAGraph() {}
   CUDAGraph(cudaStream_t stream);
   ~CUDAGraph();
 
@@ -16,7 +15,6 @@ struct CUDAGraph {
   void CaptureEnd();
   Status Replay();
   void Reset();
-  void SetStream(cudaStream_t stream);
 
 private:
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
@@ -29,6 +27,7 @@ private:
 
   CaptureId_t id_;
   cudaStream_t capture_stream_ = nullptr;
+  cudaStream_t replay_stream_ = nullptr;
   OrtMutex lock_;
   };
  

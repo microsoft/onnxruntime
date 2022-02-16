@@ -11,6 +11,7 @@ CUDAGraph::CUDAGraph(cudaStream_t stream) : capture_stream_(stream) {
 #if (defined(CUDA_VERSION) && CUDA_VERSION < 10000)
   ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 11.0");
 #endif
+  CUDA_CALL_THROW(cudaStreamCreateWithFlags(&replay_stream_, cudaStreamNonBlocking));
 }
 
 void CUDAGraph::CaptureBegin() {
@@ -46,8 +47,9 @@ void CUDAGraph::CaptureEnd() {
 Status CUDAGraph::Replay() {
   std::lock_guard<OrtMutex> lock(lock_);
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-  CUDA_RETURN_IF_ERROR(cudaGraphLaunch(graph_exec_, capture_stream_));
-  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(capture_stream_));
+  LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << replay_stream_;
+  CUDA_RETURN_IF_ERROR(cudaGraphLaunch(graph_exec_, replay_stream_));
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(replay_stream_));
 #else
   ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 10.0");
 #endif
@@ -69,12 +71,9 @@ void CUDAGraph::Reset() {
 #endif
 }
 
-void CUDAGraph::SetStream(cudaStream_t stream) {
-  capture_stream_ = stream;
-}
-
 CUDAGraph::~CUDAGraph() {
   Reset();
+  CUDA_CALL_THROW(cudaStreamDestroy(replay_stream_));
 }
 
 } // namespace onnxruntime

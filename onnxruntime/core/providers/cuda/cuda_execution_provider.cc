@@ -136,6 +136,10 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
 
   // CUDA malloc/free is expensive so always use an arena
   allocator_ = CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
+  cuda_graph_ = std::make_unique<CUDAGraph>(stream_);
+#endif
 }
 
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
@@ -154,6 +158,42 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
     LOGS_DEFAULT(ERROR) << "cudnnDestroy threw:" << ex.what();
   }
 }
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
+bool CUDAExecutionProvider::PerThreadContext::FinishRegularRunsBeforeGraphCapture() const {
+  return regular_run_count_before_graph_capture_ >= default_regular_runs_before_cuda_graph_capture_;
+}
+
+void CUDAExecutionProvider::PerThreadContext::CaptureBegin()  {
+  cuda_graph_->Reset();
+  cuda_graph_->CaptureBegin();
+}
+
+void CUDAExecutionProvider::PerThreadContext::CaptureEnd() {
+  cuda_graph_->CaptureEnd();
+  is_graph_captured_ = true;
+}
+
+bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptured() const {
+  return is_graph_captured_;
+}
+
+Status CUDAExecutionProvider::PerThreadContext::GraphReplay() {
+  if (!FinishRegularRunsBeforeGraphCapture()) {
+    return ORT_MAKE_STATUS(
+      ONNXRUNTIME, FAIL,
+      "One regular run is required before graph capture.");
+  }
+  if (!IsGraphCaptured()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Graph is not captured yet.");
+  }
+  return cuda_graph_->Replay();
+}
+
+void CUDAExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGraphCapture() {
+  ++regular_run_count_before_graph_capture_;
+}
+#endif
 
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kCudaExecutionProvider},
@@ -332,28 +372,26 @@ Status CUDAExecutionProvider::OnRunStart() {
   CUDA_RETURN_IF_ERROR(cudaEventCreate(&current_deferred_release_event, cudaEventDisableTiming));
   deferred_release_cpu_ptr_.emplace(current_deferred_release_event, DeferredReleaseCPUPtrs());
 
-  if (ConfiguredForGraphCapture() && !IsGraphCaptured()) {
-    if (FinishRegularRunsBeforeGraphCapture()) {
+  if (ConfiguredForGraphCapture() && !GetPerThreadContext().IsGraphCaptured()) {
+    if (GetPerThreadContext().FinishRegularRunsBeforeGraphCapture()) {
       LOGS_DEFAULT(INFO) << "Capturing the CUDA Graph for this model";
-      CaptureBegin();
+      GetPerThreadContext().CaptureBegin();
     } else {
-      LOGS_DEFAULT(INFO) << "Run the " << regular_run_count_before_graph_capture_
-                         << "th of the required " << default_regular_runs_before_cuda_graph_capture_
-                         << " regular runs for cuda graph capture. ";
+      LOGS_DEFAULT(INFO) << "Waiting for the regular run before CUDA Graph capture to finish";
     }
   }
   return Status::OK();
 }
 
 Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
-  if (ConfiguredForGraphCapture() && !IsGraphCaptured()) {
-    if (FinishRegularRunsBeforeGraphCapture()) {
-      CaptureEnd();
+  if (ConfiguredForGraphCapture() && !GetPerThreadContext().IsGraphCaptured()) {
+    if (GetPerThreadContext().FinishRegularRunsBeforeGraphCapture()) {
+      GetPerThreadContext().CaptureEnd();
       // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
       // so run the captured graph here to actually execute the work.
-      ORT_RETURN_IF_ERROR(graph_.Replay());
+      ORT_RETURN_IF_ERROR(GetPerThreadContext().GraphReplay());
     } else {
-      ++regular_run_count_before_graph_capture_;
+      GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture();
     }
   }
   // record deferred release event on default stream, and release per_thread_context
@@ -362,7 +400,9 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
   if (sync_stream) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(GetComputeStream())));
   }
-  ReleasePerThreadContext();
+  if (!ConfiguredForGraphCapture()) {
+    ReleasePerThreadContext();
+  }
   std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
   deferred_release_cpu_ptr_[current_deferred_release_event].recorded = true;
 
@@ -382,40 +422,16 @@ Status CUDAExecutionProvider::SetComputeStream(void* stream) {
 }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-bool CUDAExecutionProvider::FinishRegularRunsBeforeGraphCapture() const {
-  return regular_run_count_before_graph_capture_ >= default_regular_runs_before_cuda_graph_capture_;
-}
-
-
-void CUDAExecutionProvider::CaptureBegin()  {
-  graph_.Reset();
-  graph_.SetStream(static_cast<cudaStream_t>(GetComputeStream()));
-  graph_.CaptureBegin();
-}
-
-void CUDAExecutionProvider::CaptureEnd() {
-  graph_.CaptureEnd();
-  is_graph_captured_ = true;
-}
-
 bool CUDAExecutionProvider::ConfiguredForGraphCapture() {
   return info_.enable_cuda_graph;
 }
 
 bool CUDAExecutionProvider::IsGraphCaptured() {
-  return is_graph_captured_;
+  return GetPerThreadContext().IsGraphCaptured();
 }
 
 Status CUDAExecutionProvider::GraphReplay() {
-  if (!FinishRegularRunsBeforeGraphCapture()) {
-    return ORT_MAKE_STATUS(
-      ONNXRUNTIME, FAIL,
-      "One regular run is required before graph capture.");
-  }
-  if (!IsGraphCaptured()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Graph is not captured yet.");
-  }
-  return graph_.Replay();
+  return GetPerThreadContext().GraphReplay();
 }
 #endif
 
