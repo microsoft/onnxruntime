@@ -11,6 +11,9 @@ import numpy as np
 from onnx import onnx_pb, numpy_helper, save_model, load_model
 from pathlib import Path
 
+# An experimental small value for differentiating shape data and weights.
+# The tensor data with larger size can't be shape data.
+# User may adjust this value as needed.
 SIZE_THRESHOLD = 10
 
 def graph_iterator(model, func):
@@ -32,7 +35,7 @@ def graph_iterator(model, func):
 def randomize_graph_initializer(graph):
     for i_tensor in graph.initializer:
         array = numpy_helper.to_array(i_tensor)
-        # TODO: need to find a better way to differentiate shape data and weights data
+        # TODO: need to find a better way to differentiate shape data and weights.
         if array.size > SIZE_THRESHOLD:
             random_array = np.random.uniform(array.min(),
                                              array.max(),
