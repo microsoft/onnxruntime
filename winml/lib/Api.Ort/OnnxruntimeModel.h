@@ -27,7 +27,7 @@ class ModelInfo : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(GetName)
   (const char** out, size_t* len);
   STDMETHOD(SetName)
-  (std::string name);
+  (const char* name);
   STDMETHOD(GetDomain)
   (const char** out, size_t* len);
   STDMETHOD(GetDescription)

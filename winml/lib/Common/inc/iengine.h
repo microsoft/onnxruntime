@@ -67,7 +67,7 @@ IModelInfo : IUnknown {
   (const char** out, size_t* len) PURE;
 
   STDMETHOD(SetName)
-  (std::string name) PURE;
+  (const char* name) PURE;
 
   STDMETHOD(GetDomain)
   (const char** out, size_t* len) PURE;

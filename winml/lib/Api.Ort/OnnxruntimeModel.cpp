@@ -130,8 +130,8 @@ STDMETHODIMP ModelInfo::GetName(const char** out, size_t* len) {
   return S_OK;
 }
 
-STDMETHODIMP ModelInfo::SetName(std::string name) {
-  name_ = name;
+STDMETHODIMP ModelInfo::SetName(const char* name) {
+  name_ = std::string(name);
   return S_OK;
 }
 
