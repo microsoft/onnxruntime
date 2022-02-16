@@ -15,6 +15,7 @@ struct ComputeCapability;
 class GraphViewer;
 class NodeArg;
 class Node;
+class NodeUnit;
 
 namespace utils {
 
@@ -26,6 +27,10 @@ Called to check whether a node is supported.
 @return Whether the node is supported.
 */
 using IsNodeSupportedFn = std::function<bool(const Node& node)>;
+
+#ifdef USE_NNAPI
+using IsNodeUnitSupportedFn = std::function<bool(const NodeUnit& node_unit)>;
+#endif
 
 /**
 Called to indicate a completed partition node group.
@@ -67,7 +72,19 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const std::string& execution_provider_name,
                           bool debug_output = false);
 
-/** 
+#ifdef USE_NNAPI
+std::vector<std::unique_ptr<ComputeCapability>>
+CreateSupportedPartitions(const GraphViewer& graph_viewer,
+                          const IsNodeUnitSupportedFn& is_node_unit_supported_fn,
+                          const OnGroupClosedFn& on_group_closed_fn,
+                          const GenerateMetadefNameFn& generate_metadef_name_fn,
+                          const std::string& execution_provider_name,
+                          const std::vector<std::unique_ptr<NodeUnit>>& node_units,
+                          const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
+                          bool debug_output = false);
+#endif
+
+/**
 Create the supported partitions for the execution provider.
 
 @param graph_viewer GraphViewer that IExecutionProvider::GetCapability is called with.

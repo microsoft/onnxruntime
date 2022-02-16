@@ -89,6 +89,61 @@ const std::vector<const Node*> GetQDQIONodes(const GraphViewer& graph_viewer,
   return io_nodes;
 }
 
+const std::vector<const Node*> GetSingleNodeConnectingNodes(const Node& target_node, bool is_input) {
+  std::vector<const Node*> connecting_nodes;
+  auto begin = is_input ? target_node.InputNodesBegin() : target_node.OutputNodesBegin();
+  auto end = is_input ? target_node.InputNodesEnd() : target_node.OutputNodesEnd();
+  std::for_each(
+      begin, end,
+      [&connecting_nodes](const Node& connecting_node) {
+        connecting_nodes.push_back(&connecting_node);
+      });
+
+  return connecting_nodes;
+}
+
+const std::vector<const Node*> GetQDQAllNodes(
+    const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group) {
+  std::vector<const Node*> all_nodes;
+  for (const auto idx : node_group.dq_nodes) {
+    all_nodes.push_back(graph_viewer.GetNode(idx));
+  }
+  all_nodes.push_back(graph_viewer.GetNode(node_group.target_node));
+  for (const auto idx : node_group.q_nodes) {
+    all_nodes.push_back(graph_viewer.GetNode(idx));
+  }
+  return all_nodes;
+}
+
+const std::vector<const Node*> GetQDQConnectingNodes(
+    const GraphViewer& graph_viewer, const Node& target_node, const QDQ::NodeGroup& node_group, bool is_input) {
+  std::vector<const Node*> connecting_nodes;
+  const auto& dq_or_q_nodes = is_input ? node_group.dq_nodes : node_group.q_nodes;
+  for (const auto& idx : dq_or_q_nodes) {
+    const auto& node = *graph_viewer.GetNode(idx);
+    auto begin = is_input ? node.InputNodesBegin() : node.OutputNodesBegin();
+    auto end = is_input ? node.InputNodesEnd() : node.OutputNodesEnd();
+    std::for_each(
+        begin, end,
+        [&connecting_nodes](const Node& connecting_node) {
+          connecting_nodes.push_back(&connecting_node);
+        });
+  }
+
+  {
+    auto begin = is_input ? target_node.InputNodesBegin() : target_node.OutputNodesBegin();
+    auto end = is_input ? target_node.InputNodesEnd() : target_node.OutputNodesEnd();
+    std::for_each(
+        begin, end,
+        [&connecting_nodes, &dq_or_q_nodes](const Node& connecting_node) {
+          if (std::find(dq_or_q_nodes.cbegin(), dq_or_q_nodes.cend(), connecting_node.Index()) == dq_or_q_nodes.cend()) {
+            connecting_nodes.push_back(&connecting_node);
+          }
+        });
+  }
+  return connecting_nodes;
+}
+
 // Get the input or output NodeUnitIODef(s) for the given QDQ NodeGroup
 std::vector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::NodeGroup& node_group,
                                         bool is_input) {
@@ -147,17 +202,23 @@ std::vector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::Node
 
 NodeUnit::NodeUnit(const Node& node)
     : output_nodes_{&node},
+      all_nodes_({&node}),
       target_node_(node),
-      type_(Type::SingleNode) {
+      type_(Type::SingleNode),
+      input_connecting_nodes_{GetSingleNodeConnectingNodes(target_node_, true /* is_input */)},
+      output_connecting_nodes_{GetSingleNodeConnectingNodes(target_node_, false /* is_input */)} {
   InitForSingleNode();
 }
 
 NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group)
     : output_nodes_{GetQDQIONodes(graph_viewer, node_group, false /* is_input */)},
+      all_nodes_{GetQDQAllNodes(graph_viewer, node_group)},
       target_node_(*graph_viewer.GetNode(node_group.target_node)),
       type_(Type::QDQGroup),
       inputs_{GetQDQIODefs(target_node_, node_group, true /* is_input */)},
-      outputs_{GetQDQIODefs(target_node_, node_group, false /* is_input */)} {
+      outputs_{GetQDQIODefs(target_node_, node_group, false /* is_input */)},
+      input_connecting_nodes_{GetQDQConnectingNodes(graph_viewer, target_node_, node_group, true /* is_input */)},
+      output_connecting_nodes_{GetQDQConnectingNodes(graph_viewer, target_node_, node_group, false /* is_input */)} {
 }
 
 const std::string& NodeUnit::Domain() const noexcept { return target_node_.Domain(); }

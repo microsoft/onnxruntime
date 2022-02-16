@@ -116,47 +116,36 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
   std::tie(node_unit_holder, node_unit_map) = GetAllNodeUnits(graph_viewer);
 
-  // This holds the result of whether a NodeUnit is supported or not,
-  // to prevent nodes in a NodeUnit to be checked for multiple times
-  std::unordered_map<const NodeUnit*, bool> node_unit_supported_result;
-  node_unit_supported_result.reserve(node_unit_holder.size());
-
   const auto excluded_nodes = utils::CreateExcludedNodeSet(graph_viewer, partitioning_stop_ops_);
   const bool check_excluded_nodes = !excluded_nodes.empty();
 
   std::unordered_set<std::string> node_outputs_in_current_group{};
 
-  const auto is_node_supported = [&](const Node& node) -> bool {
-    const NodeUnit* node_unit = node_unit_map.at(&node);
-    bool supported = false;
+  const auto is_node_unit_supported = [&](const NodeUnit& node_unit) -> bool {
+    // We only check the target node of the node unit for exclusion
+    const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node_unit.GetNode());
+    bool supported = !excluded &&
+                     nnapi::IsNodeSupportedInGroup(node_unit, graph_viewer, params,
+                                                   node_outputs_in_current_group);
 
-    // If we have visited one of the nodes in the node_unit, use the result directly
-    const auto it = node_unit_supported_result.find(node_unit);
-    if (it != node_unit_supported_result.cend()) {
-      supported = it->second;
-    } else {
-      // We only check the target node of the node unit for exclusion
-      const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node_unit->GetNode());
-      supported = !excluded &&
-                  nnapi::IsNodeSupportedInGroup(*node_unit, graph_viewer, params,
-                                                node_outputs_in_current_group);
-      node_unit_supported_result[node_unit] = supported;
+    for (const auto* node : node_unit.GetAllNodes()) {
+      LOGS_DEFAULT(VERBOSE) << "Node supported: [" << supported
+                            << "] Operator type: [" << node->OpType()
+                            << "] index: [" << node->Index()
+                            << "] name: [" << node->Name()
+                            << "] as part of the NodeUnit type: [" << node_unit.OpType()
+                            << "] index: [" << node_unit.Index()
+                            << "] name: [" << node_unit.Name()
+                            << "]";
     }
-
-    LOGS_DEFAULT(VERBOSE) << "Node supported: [" << supported
-                          << "] Operator type: [" << node.OpType()
-                          << "] index: [" << node.Index()
-                          << "] name: [" << node.Name()
-                          << "] as part of the NodeUnit type: [" << node_unit->OpType()
-                          << "] index: [" << node_unit->Index()
-                          << "] name: [" << node_unit->Name()
-                          << "]";
 
     if (supported) {
       // We want to save all the output names of nodes in the current group for easy query
       // See nnapi::IsNodeSupportedInGroup()
-      for (const auto* output : node.OutputDefs()) {
-        node_outputs_in_current_group.insert(output->Name());
+      for (const auto* output_node : node_unit.GetOutputNodes()) {
+        for (const auto* output : output_node->OutputDefs()) {
+          node_outputs_in_current_group.insert(output->Name());
+        }
       }
     }
 
@@ -175,8 +164,9 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     return MakeString(NNAPI, "_", model_hash, "_", metadef_id);
   };
 
-  result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed,
-                                            gen_metadef_name, NNAPI);
+  result = utils::CreateSupportedPartitions(graph_viewer, is_node_unit_supported, on_group_closed,
+                                            gen_metadef_name, NNAPI,
+                                            node_unit_holder, node_unit_map);
 
   const auto num_of_partitions = result.size();
   const auto num_of_supported_nodes = std::transform_reduce(

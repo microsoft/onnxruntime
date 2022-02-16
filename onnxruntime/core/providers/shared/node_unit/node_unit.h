@@ -65,14 +65,22 @@ class NodeUnit {
 
   const Node& GetNode() const noexcept { return target_node_; }
   const std::vector<const Node*>& GetOutputNodes() const noexcept { return output_nodes_; }
+  const std::vector<const Node*>& GetAllNodes() const noexcept { return all_nodes_; }
+
+  size_t GetInputEdgesCount() const noexcept { return input_connecting_nodes_.size(); }
+  const std::vector<const Node*>& GetOutputConnectingNodes() const noexcept { return output_connecting_nodes_; }
 
  private:
   const std::vector<const Node*> output_nodes_;  // all the nodes producing outputs for this NodeUnit
+  const std::vector<const Node*> all_nodes_;
   const Node& target_node_;
   const Type type_;
 
   std::vector<NodeUnitIODef> inputs_;
   std::vector<NodeUnitIODef> outputs_;
+
+  const std::vector<const Node*> input_connecting_nodes_;
+  const std::vector<const Node*> output_connecting_nodes_;
 
   // Initializing for a single Node
   void InitForSingleNode();

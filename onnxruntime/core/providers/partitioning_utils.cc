@@ -13,6 +13,10 @@
 #include "core/graph/graph_viewer.h"
 #include "core/providers/common.h"
 
+#ifdef USE_NNAPI
+#include "core/providers/shared/node_unit/node_unit.h"
+#endif
+
 namespace onnxruntime {
 namespace utils {
 
@@ -197,6 +201,115 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
 
   return supported_groups;
 }
+
+#ifdef USE_NNAPI
+std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
+    const GraphViewer& graph_viewer,
+    const IsNodeUnitSupportedFn& is_node_unit_supported_fn,
+    const OnGroupClosedFn& on_group_closed_fn,
+    const std::vector<std::unique_ptr<NodeUnit>>& node_units,
+    const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
+    bool debug_output) {
+#ifdef NDEBUG
+  ORT_UNUSED_PARAMETER(debug_output);
+#endif
+
+  ORT_ENFORCE(is_node_unit_supported_fn, "Node support test is required.");
+
+  std::vector<std::vector<const Node*>> supported_groups{};
+  // number of inputs from unprocessed nodes (in-degree) per node
+  std::unordered_map<const NodeUnit*, size_t> in_degree{};
+  // nodes that are ready to process
+  std::deque<const NodeUnit*> node_units_to_process{};
+  // nodes that will be processed when considering the next partition node group
+  std::deque<const NodeUnit*> node_units_to_process_with_next_group{};
+
+  // initialize in-degrees and find root nodes
+  for (const auto& node_unit : node_units) {
+    const auto input_edge_count = node_unit->GetInputEdgesCount();
+    in_degree.insert({node_unit.get(), input_edge_count});
+    if (input_edge_count == 0) {
+      node_units_to_process.push_back(node_unit.get());
+    }
+  }
+
+  std::vector<const Node*> supported_group{};
+  // the partition node group's border is the aggregate of its nodes' output nodes
+  std::unordered_set<const NodeUnit*> supported_group_border{};
+
+  auto close_group = [&]() {
+    if (!supported_group.empty()) {
+      // if no on_group_closed_fn callback was given, keep the partition
+      // otherwise, let the callback determine whether to keep it
+      const bool keep_partition = !on_group_closed_fn || on_group_closed_fn(supported_group);
+
+      if (keep_partition) {
+        supported_groups.emplace_back(std::move(supported_group));
+      }
+
+      supported_group.clear();
+      supported_group_border.clear();
+    }
+  };
+
+  while (!node_units_to_process.empty() || !node_units_to_process_with_next_group.empty()) {
+    if (node_units_to_process.empty()) {
+      // we have processed all the nodes that we can while building this partition node group, start a new one
+      close_group();
+      node_units_to_process.swap(node_units_to_process_with_next_group);
+      continue;
+    }
+
+    const NodeUnit& node_unit = *node_units_to_process.front();
+    node_units_to_process.pop_front();
+
+    const bool is_node_unit_supported =
+        node_unit.GetExecutionProviderType().empty() &&  // a node that is already assigned to an EP is unsupported
+        is_node_unit_supported_fn(node_unit);
+
+    if (!is_node_unit_supported && Contains(supported_group_border, &node_unit)) {
+      // an unsupported node on the border will be processed after the current partition node group
+      node_units_to_process_with_next_group.push_back(&node_unit);
+      continue;
+    }
+
+    const auto& output_connecting_nodes = node_unit.GetOutputConnectingNodes();
+    if (is_node_unit_supported) {
+      // add nodes in the node_unit to the partition node group
+      for (const auto* _n : node_unit.GetAllNodes()) {
+        supported_group.push_back(_n);
+      }
+
+      // remove node from the border and add its outputs to the border
+      supported_group_border.erase(&node_unit);
+
+      std::for_each(
+          output_connecting_nodes.cbegin(), output_connecting_nodes.cend(),
+          [&supported_group_border, &node_unit_map](const Node* output) {
+            const auto* output_node_unit = node_unit_map.at(output);
+            supported_group_border.insert(output_node_unit);
+          });
+    }
+
+    // adjust in-degrees of the node outputs and add any new nodes to process
+    std::for_each(
+        output_connecting_nodes.cbegin(), output_connecting_nodes.cend(),
+        [&](const Node* output) {
+          const auto* output_node_unit = node_unit_map.at(output);
+          in_degree[output_node_unit]--;
+
+          if (in_degree[output_node_unit] == 0) {
+            node_units_to_process.push_back(output_node_unit);
+          }
+        });
+  }
+
+  close_group();
+
+  return supported_groups;
+}
+#endif
+
 }  // namespace
 
 std::unordered_set<const Node*> CreateExcludedNodeSet(const GraphViewer& graph_viewer,
@@ -328,6 +441,38 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
 
   return partitions;
 }
+
+#ifdef USE_NNAPI
+std::vector<std::unique_ptr<ComputeCapability>>
+CreateSupportedPartitions(const GraphViewer& graph_viewer,
+                          const IsNodeUnitSupportedFn& is_node_unit_supported_fn,
+                          const OnGroupClosedFn& on_group_closed_fn,
+                          const GenerateMetadefNameFn& generate_metadef_name_fn,
+                          const std::string& execution_provider_name,
+                          const std::vector<std::unique_ptr<NodeUnit>>& node_units,
+                          const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
+                          bool debug_output) {
+  const auto groups = CreateSupportedPartitionNodeGroups(graph_viewer,
+                                                         is_node_unit_supported_fn,
+                                                         on_group_closed_fn,
+                                                         node_units,
+                                                         node_unit_map,
+                                                         debug_output);
+
+  std::vector<std::unique_ptr<ComputeCapability>> partitions{};
+  partitions.reserve(groups.size());
+
+  std::transform(
+      groups.begin(), groups.end(),
+      std::back_inserter(partitions),
+      [&](const auto& supported_partition) {
+        return MakeComputeCapability(graph_viewer, supported_partition, generate_metadef_name_fn,
+                                     execution_provider_name);
+      });
+
+  return partitions;
+}
+#endif
 
 std::vector<std::unique_ptr<ComputeCapability>>
 CreateSupportedPartitions(const GraphViewer& graph_viewer,
