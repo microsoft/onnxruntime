@@ -17,6 +17,53 @@ from package_assembly_utils import (  # noqa: E402
     copy_repo_relative_to_dir, gen_file_from_template, load_framework_info)
 
 
+def assemble_c_pod_package(staging_dir: pathlib.Path, pod_version: str,
+                           framework_info_file: pathlib.Path,
+                           public_headers_dir: pathlib.Path, framework_dir: pathlib.Path):
+    '''
+    Assembles the files for the C/C++ pod package in a staging directory.
+
+    :param staging_dir Path to the staging directory for the C/C++ pod files.
+    :param pod_version C/C++ pod version.
+    :param framework_info_file Path to the framework_info.json file containing additional values for the podspec.
+    :param public_headers_dir Path to the public headers directory to include in the pod.
+    :param framework_dir Path to the onnxruntime framework directory to include in the pod.
+    :return Path to the podspec file.
+    '''
+    staging_dir = staging_dir.resolve()
+    framework_info_file = framework_info_file.resolve(strict=True)
+    public_headers_dir = public_headers_dir.resolve(strict=True)
+    framework_dir = framework_dir.resolve(strict=True)
+
+    framework_info = load_framework_info(framework_info_file)
+
+    print(f"Assembling files in staging directory: {staging_dir}")
+    if staging_dir.exists():
+        print("Warning: staging directory already exists", file=sys.stderr)
+
+    # copy the necessary files to the staging directory
+    shutil.copytree(framework_dir, staging_dir / framework_dir.name, dirs_exist_ok=True)
+    shutil.copytree(public_headers_dir, staging_dir / public_headers_dir.name, dirs_exist_ok=True)
+    copy_repo_relative_to_dir(["LICENSE"], staging_dir)
+
+    # generate the podspec file from the template
+    variable_substitutions = {
+        "IOS_DEPLOYMENT_TARGET": framework_info["IOS_DEPLOYMENT_TARGET"],
+        "LICENSE_FILE": '"LICENSE"',
+        "ORT_C_FRAMEWORK": framework_dir.name,
+        "ORT_C_HEADERS_DIR": public_headers_dir.name,
+        "VERSION": pod_version,
+        "WEAK_FRAMEWORK": framework_info["WEAK_FRAMEWORK"],
+    }
+
+    podspec_template = _script_dir / "onnxruntime-mobile-c.podspec.template"
+    podspec = staging_dir / "onnxruntime-mobile-c.podspec"
+
+    gen_file_from_template(podspec_template, podspec, variable_substitutions)
+
+    return podspec
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="""
         Assembles the files for the C/C++ pod package in a staging directory.
@@ -34,7 +81,7 @@ def parse_args():
     parser.add_argument("--public-headers-dir", type=pathlib.Path, required=True,
                         help="Path to the public headers directory to include in the pod.")
     parser.add_argument("--framework-dir", type=pathlib.Path, required=True,
-                        help="Path to the onnxruntime.framework directory to include in the pod.")
+                        help="Path to the onnxruntime framework directory to include in the pod.")
 
     return parser.parse_args()
 
@@ -42,33 +89,11 @@ def parse_args():
 def main():
     args = parse_args()
 
-    framework_info = load_framework_info(args.framework_info_file.resolve())
-
-    staging_dir = args.staging_dir.resolve()
-    print(f"Assembling files in staging directory: {staging_dir}")
-    if staging_dir.exists():
-        print("Warning: staging directory already exists", file=sys.stderr)
-
-    # copy the necessary files to the staging directory
-    framework_dir = args.framework_dir.resolve()
-    shutil.copytree(framework_dir, staging_dir / framework_dir.name, dirs_exist_ok=True)
-    public_headers_dir = args.public_headers_dir.resolve()
-    shutil.copytree(public_headers_dir, staging_dir / public_headers_dir.name, dirs_exist_ok=True)
-    copy_repo_relative_to_dir(["LICENSE"], staging_dir)
-
-    # generate the podspec file from the template
-
-    variable_substitutions = {
-        "VERSION": args.pod_version,
-        "IOS_DEPLOYMENT_TARGET": framework_info["IOS_DEPLOYMENT_TARGET"],
-        "WEAK_FRAMEWORK": framework_info["WEAK_FRAMEWORK"],
-        "LICENSE_FILE": '"LICENSE"',
-    }
-
-    podspec_template = _script_dir / "onnxruntime-mobile-c.podspec.template"
-    podspec = staging_dir / "onnxruntime-mobile-c.podspec"
-
-    gen_file_from_template(podspec_template, podspec, variable_substitutions)
+    assemble_c_pod_package(staging_dir=args.staging_dir,
+                           pod_version=args.pod_version,
+                           framework_info_file=args.framework_info_file,
+                           public_headers_dir=args.public_headers_dir,
+                           framework_dir=args.framework_dir)
 
     return 0
 

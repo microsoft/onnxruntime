@@ -26,7 +26,8 @@ def ort_version():
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Builds an iOS framework and uses it to assemble iOS pod package files.")
+        description="Builds an iOS framework and uses it to assemble iOS pod package files.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument("--build-dir", type=pathlib.Path, default=REPO_DIR / "build" / "ios_framework",
                         help="The build directory. This will contain the iOS framework build output.")

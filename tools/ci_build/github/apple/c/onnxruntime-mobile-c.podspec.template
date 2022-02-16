@@ -7,10 +7,10 @@ Pod::Spec.new do |spec|
     spec.source                 = { :http => "file:///http_source_placeholder" }
     spec.summary                = "ONNX Runtime Mobile C/C++ Pod"
     spec.platform               = :ios, "@IOS_DEPLOYMENT_TARGET@"
-    spec.vendored_frameworks    = "onnxruntime.xcframework"
+    spec.vendored_frameworks    = "@ORT_C_FRAMEWORK@"
     spec.static_framework       = true
     spec.weak_framework         = [ @WEAK_FRAMEWORK@ ]
-    spec.source_files           = "Headers/*.h"
+    spec.source_files           = "@ORT_C_HEADERS_DIR@/*.h"
     spec.preserve_paths         = [ @LICENSE_FILE@ ]
     spec.description            = <<-DESC
     A pod for the ONNX Runtime Mobile C/C++ library.
