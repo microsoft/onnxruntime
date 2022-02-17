@@ -79,7 +79,7 @@ DECLARE_GRADIENT_BUILDER(GetPythonOpGradient)
 DECLARE_GRADIENT_BUILDER(GetScatterNDGradient)
 DECLARE_GRADIENT_BUILDER(GetScatterElementsGradient)
 DECLARE_GRADIENT_BUILDER(GetTriluGradient)
-DECLARE_GRADIENT_BUILDER(GetReduceMaxGradient)
+
 DECLARE_GRADIENT_BUILDER(GetExternalGradient)
 
 }  // namespace training
