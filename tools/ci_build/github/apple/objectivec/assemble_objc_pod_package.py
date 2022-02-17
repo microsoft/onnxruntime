@@ -12,6 +12,7 @@ _script_dir = pathlib.Path(__file__).parent.resolve(strict=True)
 sys.path.append(str(_script_dir.parent))
 
 
+from c.assemble_c_pod_package import get_pod_config_file as get_c_pod_config_file
 from package_assembly_utils import (  # noqa: E402
     copy_repo_relative_to_dir, gen_file_from_template, load_json_config, PackageVariant)
 
@@ -81,6 +82,7 @@ def assemble_objc_pod_package(staging_dir: pathlib.Path, pod_version: str,
 
     framework_info = load_json_config(framework_info_file)
     pod_config = load_json_config(get_pod_config_file(package_variant))
+    c_pod_config = load_json_config(get_c_pod_config_file(package_variant))
 
     pod_name = pod_config["name"]
 
@@ -99,6 +101,7 @@ def assemble_objc_pod_package(staging_dir: pathlib.Path, pod_version: str,
         return ", ".join([f'"{pattern}"' for pattern in patterns])
 
     variable_substitutions = {
+        "C_POD_NAME": c_pod_config["name"],
         "DESCRIPTION": pod_config["description"],
         "INCLUDE_DIR_LIST": path_patterns_as_variable_value(include_dirs),
         "IOS_DEPLOYMENT_TARGET": framework_info["IOS_DEPLOYMENT_TARGET"],

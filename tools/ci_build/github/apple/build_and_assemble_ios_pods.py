@@ -79,6 +79,9 @@ def main():
     build_dir = args.build_dir.resolve()
     staging_dir = args.staging_dir.resolve()
 
+    package_variant = PackageVariant[args.variant]
+    framework_info_file = build_dir / "framework_info.json"
+
     log.info("Building iOS framework.")
 
     build_ios_framework_args = \
@@ -95,13 +98,11 @@ def main():
     if args.test:
         test_ios_packages_args = [sys.executable, str(SCRIPT_DIR / "test_ios_packages.py"),
                                   "--fail_if_cocoapods_missing",
-                                  "--framework_info_file", str(build_dir / "framework_info.json"),
-                                  "--c_framework_dir", str(build_dir / "framework_out")]
+                                  "--framework_info_file", str(framework_info_file),
+                                  "--c_framework_dir", str(build_dir / "framework_out"),
+                                  "--variant", package_variant.name]
 
         run(test_ios_packages_args)
-
-    package_variant = PackageVariant[args.variant]
-    framework_info_file = build_dir / "framework_info.json"
 
     log.info("Assembling C/C++ pod.")
 

@@ -79,7 +79,7 @@ def _test_ios_packages(args):
                                                    framework_info_file=args.framework_info_file,
                                                    public_headers_dir=args.c_framework_dir / "Headers",
                                                    framework_dir=framework_dir,
-                                                   package_variant=PackageVariant.Full)
+                                                   package_variant=PackageVariant[args.variant])
 
         # move podspec out to target_proj_path first
         podspec = shutil.move(podspec, target_proj_path / podspec.name)
@@ -134,6 +134,9 @@ def parse_args():
 
     parser.add_argument('--c_framework_dir', type=pathlib.Path, required=True,
                         help='Provide the parent directory for C/C++ framework')
+
+    parser.add_argument("--variant", choices=[e.name for e in PackageVariant], required=True,
+                        help="Pod package variant.")
 
     parser.add_argument('--test_project_stage_dir', type=pathlib.Path,
                         help='The stage dir for the test project, if not specified, will use a temporary path')
