@@ -1,0 +1,5 @@
+{
+    "name": "onnxruntime-mobile-c",
+    "summary": "ONNX Runtime Mobile C/C++ Pod",
+    "description": "A pod for the ONNX Runtime Mobile C/C++ library."
+}

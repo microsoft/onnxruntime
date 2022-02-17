@@ -1,0 +1,5 @@
+{
+    "name": "onnxruntime-mobile-objc",
+    "summary": "ONNX Runtime Mobile Objective-C Pod",
+    "description": "A pod for the ONNX Runtime Mobile Objective-C API."
+}

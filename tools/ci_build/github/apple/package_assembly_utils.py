@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+import enum
 import json
 import os
 import pathlib
@@ -11,6 +12,12 @@ from typing import Dict, List
 
 _script_dir = pathlib.Path(__file__).parent.resolve(strict=True)
 repo_root = _script_dir.parents[3]
+
+
+class PackageVariant(enum.Enum):
+    Full = 1
+    Mobile = 2
+
 
 _template_variable_pattern = re.compile(r"@(\w+)@")  # match "@var@"
 
@@ -70,15 +77,15 @@ def copy_repo_relative_to_dir(patterns: List[str], dest_dir: pathlib.Path):
         shutil.copy(path, dst_path)
 
 
-def load_framework_info(framework_info_file: pathlib.Path):
+def load_json_config(json_config_file: pathlib.Path):
     '''
-    Loads framework info from a file.
+    Loads configuration info from a JSON file.
 
-    :param framework_info_file The framework info file path.
-    :return The framework info values.
+    :param json_config_file The JSON configuration file path.
+    :return The configuration info values.
     '''
-    with open(framework_info_file, mode="r") as framework_info:
-        return json.load(framework_info)
+    with open(json_config_file, mode="r") as config:
+        return json.load(config)
 
 
 def get_ort_version():

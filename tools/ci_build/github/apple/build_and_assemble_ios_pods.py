@@ -9,19 +9,20 @@ import pathlib
 import sys
 
 
+from c.assemble_c_pod_package import assemble_c_pod_package
+from objectivec.assemble_objc_pod_package import assemble_objc_pod_package
+from package_assembly_utils import get_ort_version, PackageVariant
+
+
 SCRIPT_PATH = pathlib.Path(__file__).resolve()
 SCRIPT_DIR = SCRIPT_PATH.parent
 REPO_DIR = SCRIPT_PATH.parents[4]
+
 
 logging.basicConfig(
     format="%(asctime)s %(name)s [%(levelname)s] - %(message)s",
     level=logging.DEBUG)
 log = logging.getLogger(SCRIPT_PATH.stem)
-
-
-def ort_version():
-    with open(REPO_DIR / "VERSION_NUMBER", mode="r") as version_file:
-        return version_file.read().strip()
 
 
 def parse_args():
@@ -35,8 +36,11 @@ def parse_args():
                         help="The staging directory. This will contain the iOS pod package files. "
                              "The pod package files do not have dependencies on files in the build directory.")
 
-    parser.add_argument("--pod-version", default=f"{ort_version()}-local",
+    parser.add_argument("--pod-version", default=f"{get_ort_version()}-local",
                         help="The version string of the pod. The same version is used for all pods.")
+
+    parser.add_argument("--variant", choices=[e.name for e in PackageVariant], required=True,
+                        help="Pod package variant.")
 
     parser.add_argument("--test", action="store_true",
                         help="Run tests on the framework and pod package files.")
@@ -96,36 +100,38 @@ def main():
 
         run(test_ios_packages_args)
 
-    log.info("Assembling onnxruntime-mobile-c pod.")
+    package_variant = PackageVariant[args.variant]
+    framework_info_file = build_dir / "framework_info.json"
 
-    assemble_c_pod_args = [sys.executable, str(SCRIPT_DIR / "c" / "assemble_c_pod_package.py"),
-                           "--staging-dir", str(staging_dir / "onnxruntime-mobile-c"),
-                           "--pod-version", args.pod_version,
-                           "--framework-info-file", str(build_dir / "framework_info.json"),
-                           "--framework-dir", str(build_dir / "framework_out" / "onnxruntime.xcframework"),
-                           "--public-headers-dir", str(build_dir / "framework_out" / "Headers")]
+    log.info("Assembling C/C++ pod.")
 
-    run(assemble_c_pod_args)
+    c_pod_staging_dir = staging_dir / "c_pod"
+    c_pod_name, c_pod_podspec = assemble_c_pod_package(
+        staging_dir=c_pod_staging_dir,
+        pod_version=args.pod_version,
+        framework_info_file=framework_info_file,
+        framework_dir=build_dir / "framework_out" / "onnxruntime.xcframework",
+        public_headers_dir=build_dir / "framework_out" / "Headers",
+        package_variant=package_variant)
 
     if args.test:
         test_c_pod_args = ["pod", "lib", "lint", "--verbose"]
 
-        run(test_c_pod_args, cwd=staging_dir / "onnxruntime-mobile-c")
+        run(test_c_pod_args, cwd=c_pod_staging_dir)
 
-    log.info("Assembling onnxruntime-mobile-objc pod.")
+    log.info("Assembling Objective-C pod.")
 
-    assemble_objc_pod_args = [sys.executable, str(SCRIPT_DIR / "objectivec" / "assemble_objc_pod_package.py"),
-                              "--staging-dir", str(staging_dir / "onnxruntime-mobile-objc"),
-                              "--pod-version", args.pod_version,
-                              "--framework-info-file", str(build_dir / "framework_info.json")]
-
-    run(assemble_objc_pod_args)
+    objc_pod_staging_dir = staging_dir / "objc_pod"
+    assemble_objc_pod_package(
+        staging_dir=objc_pod_staging_dir,
+        pod_version=args.pod_version,
+        framework_info_file=framework_info_file,
+        package_variant=package_variant)
 
     if args.test:
-        c_podspec_file = staging_dir / "onnxruntime-mobile-c" / "onnxruntime-mobile-c.podspec"
-        test_objc_pod_args = ["pod", "lib", "lint", "--verbose", f"--include-podspecs={c_podspec_file}"]
+        test_objc_pod_args = ["pod", "lib", "lint", "--verbose", f"--include-podspecs={c_pod_podspec}"]
 
-        run(test_objc_pod_args, cwd=staging_dir / "onnxruntime-mobile-objc")
+        run(test_objc_pod_args, cwd=objc_pod_staging_dir)
 
     log.info(f"Successfully assembled iOS pods at '{staging_dir}'.")
 

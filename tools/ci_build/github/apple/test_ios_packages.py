@@ -12,7 +12,7 @@ import tempfile
 
 
 from c.assemble_c_pod_package import assemble_c_pod_package
-from package_assembly_utils import get_ort_version
+from package_assembly_utils import gen_file_from_template, get_ort_version, PackageVariant
 
 
 SCRIPT_PATH = pathlib.Path(__file__).resolve(strict=True)
@@ -74,17 +74,18 @@ def _test_ios_packages(args):
         # We still need a way to test it, replace the xcframework with framework in the podspec
         framework_dir = args.c_framework_dir / framework_name
 
-        podspec = assemble_c_pod_package(staging_dir=local_pods_dir,
-                                         pod_version=get_ort_version(),
-                                         framework_info_file=args.framework_info_file,
-                                         public_headers_dir=(args.c_framework_dir / "Headers"),
-                                         framework_dir=framework_dir)
+        pod_name, podspec = assemble_c_pod_package(staging_dir=local_pods_dir,
+                                                   pod_version=get_ort_version(),
+                                                   framework_info_file=args.framework_info_file,
+                                                   public_headers_dir=args.c_framework_dir / "Headers",
+                                                   framework_dir=framework_dir,
+                                                   package_variant=PackageVariant.Full)
 
         # move podspec out to target_proj_path first
         podspec = shutil.move(podspec, target_proj_path / podspec.name)
 
         # create a zip file contains the framework
-        zip_file_path = (local_pods_dir / 'onnxruntime-mobile-c.zip')
+        zip_file_path = local_pods_dir / f'{pod_name}.zip'
         # shutil.make_archive require target file as full path without extension
         shutil.make_archive(zip_file_path.with_suffix(''), 'zip', root_dir=local_pods_dir)
 
@@ -96,6 +97,11 @@ def _test_ios_packages(args):
 
         with open(podspec, 'w') as file:
             file.write(file_data)
+
+        # generate Podfile to point to pod
+        gen_file_from_template(target_proj_path / "Podfile.template", target_proj_path / "Podfile",
+                               {"C_POD_NAME": pod_name,
+                                "C_POD_PODSPEC": f"./{podspec.name}"})
 
         # clean the Cocoapods cache first, in case the same pod was cached in previous runs
         subprocess.run(['pod', 'cache', 'clean', '--all'], shell=False, check=True, cwd=target_proj_path)
