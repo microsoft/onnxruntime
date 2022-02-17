@@ -380,7 +380,9 @@ TEST(NnapiExecutionProviderTest, TestQDQReshape) {
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQSoftMax) {
-  RunQDQModelTest(BuildQDQSoftMaxTestCase({1, 32} /* input_shape */),
+  RunQDQModelTest(BuildQDQSoftMaxTestCase<uint8_t, uint8_t>(
+                      {1, 32} /* input_shape */,
+                      static_cast<int64_t>(1) /* axis */),
                   "nnapi_qdq_test_graph_softmax",
                   {
                       true /* verify_entire_graph_use_ep */
