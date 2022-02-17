@@ -35,6 +35,8 @@ jobs:
                   --skip_submodule_sync \
                   --parallel \
                   --enable_pybind \
+                  --disable_contrib_ops \
+                  --disable_ml_ops \
                   --skip_onnx_tests \
                   --use_tvm
           workingDirectory: $(Build.SourcesDirectory)
