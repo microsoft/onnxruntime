@@ -39,8 +39,11 @@ class Tensor final {
   static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) {
     return std::make_unique<Tensor>(p_type, shape, std::move(allocator));
   }
-  static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset = 0) {
-    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset);
+
+  static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, void* p_data,
+                                        const OrtMemoryInfo& alloc, ptrdiff_t offset = 0,
+                                        const int64_t* p_strides = nullptr) {
+    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset, p_strides);
   }
 
   Tensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
@@ -53,10 +56,11 @@ class Tensor final {
    * \param p_data A preallocated buffer. Can be NULL if the shape is empty.
    *              Tensor does not own the data and will not delete it
    * \param alloc Where the buffer('p_data') was allocated from
-   * \param offset Offset in bytes to start of Tensor within p_data. 
+   * \param offset Offset in bytes to start of Tensor within p_data.
+   * \param p_strides Pointer to stride array. Can be NULL if the tensor is contiguous.
    */
   Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
-         ptrdiff_t offset = 0);
+         ptrdiff_t offset = 0, const int64_t* p_strides = nullptr);
 
   /// <summary>
   /// Creates an instance of Tensor on the heap using the appropriate __ctor and
@@ -67,9 +71,10 @@ class Tensor final {
   /// <param name="p_data"></param>
   /// <param name="info"></param>
   /// <param name="offset"></param>
+  /// <param name="p_strides"></param>
   static void InitOrtValue(MLDataType p_type, const TensorShape& shape,
                            void* p_data, const OrtMemoryInfo& location,
-                           OrtValue& ort_value);
+                           OrtValue& ort_value, ptrdiff_t offset = 0, const int64_t* p_strides = nullptr);
 
   /**
    * Deprecated. The orginal design is this Tensor class won't do any allocation / release.
@@ -99,10 +104,11 @@ class Tensor final {
    * \param p_data A preallocated buffer. Can be NULL if the shape is empty.
    *              Tensor will own the memory and will delete it when the tensor instance is destructed.
    * \param deleter Allocator used to free the pre-allocated memory
-   * \param offset Offset in bytes to start of Tensor within p_data. 
+   * \param offset Offset in bytes to start of Tensor within p_data.
+   * \param p_strides Pointer to stride array. Can be NULL if the tensor is contiguous.
    */
   Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
-         ptrdiff_t offset = 0);
+         ptrdiff_t offset = 0, const int64_t* p_strides = nullptr);
 
   ~Tensor();
 
@@ -244,15 +250,38 @@ class Tensor final {
   */
   size_t SizeInBytes() const;
 
+  /**
+   * Get the strides of the tensor.
+   */
+  TensorShapeVector Strides() const;
+
+  /**
+   * Get pointer to stride array. Can be NULL if tensor is contiguous.
+   */
+  const int64_t* StridesPtr() const;
+
+  /**
+   * Return if the tensor is contiguous.
+   */
+  bool IsContiguous() const { return is_contiguous_; }
+
+  /**
+   * Set strides.
+   */
+  void SetStrides(const TensorShapeVector& new_strides);
+
   // More API methods.
  private:
   void Init(MLDataType p_type,
             const TensorShape& shape,
             void* p_raw_data,
             AllocatorPtr deleter,
-            ptrdiff_t offset = 0);
+            ptrdiff_t offset = 0,
+            const int64_t* p_strides = nullptr);
 
   void ReleaseBuffer();
+
+  bool CheckIsContiguous() const;
 
   void* p_data_;
   /**
@@ -263,6 +292,9 @@ class Tensor final {
   AllocatorPtr buffer_deleter_;
 
   TensorShape shape_;
+  TensorShapeVector strides_;
+  bool is_contiguous_ = true;
+
   const PrimitiveDataTypeBase* dtype_;
   OrtMemoryInfo alloc_info_;
   ptrdiff_t byte_offset_;

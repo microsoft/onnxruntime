@@ -357,6 +357,40 @@ class PlannerImpl {
         }
       }
     }
+
+    // If any output of the kernel can support strided tensor, and all its consumers' inputs also support
+    // strided tensors at the corresponding position, this output will generate a strided tensor
+    // and share the data from the corresponding input specified in MayStridedOutputsMap.
+    const std::vector<std::pair<int, int>>& may_strided_outputs_map = ci.kernel_def->MayStridedOutput();
+    for (auto pair : may_strided_outputs_map) {
+      if (pair.second == output_arg_num && pair.first >= 0 && static_cast<size_t>(pair.first) < input_args.size() &&
+          input_args[pair.first]->Exists()) {
+        bool can_strided = true;
+        for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
+          const KernelCreateInfo& output_node_ci = GetKernelCreateInfo(kernel_create_info_map_, it->Index());
+          if (!output_node_ci.kernel_def) {
+            can_strided = false;
+            break;
+          }
+          const std::vector<int>& may_strided_inputs = output_node_ci.kernel_def->MayStridedInput();
+          for (size_t i = 0; i < it->InputDefs().size(); ++i) {
+            if (it->InputDefs()[i] == p_output_arg && std::find(may_strided_inputs.begin(), may_strided_inputs.end(),
+                                                                static_cast<int>(i)) == may_strided_inputs.end()) {
+              can_strided = false;
+              break;
+            }
+          }
+          if (!can_strided) {
+            break;
+          }
+        }
+        if (can_strided) {
+          *reusable_input = Index(input_args[pair.first]->Name());
+          return true;
+        }
+      }
+    }
+
     return false;
   }
 
