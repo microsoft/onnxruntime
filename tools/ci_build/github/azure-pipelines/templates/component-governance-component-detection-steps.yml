@@ -4,6 +4,10 @@ parameters:
   type: string
   default: 'succeeded' # could be 'ci_only', 'always', 'succeeded'
 
+variables:
+  # change component detection timeout to 15 min
+  ComponentDetection.Timeout: 900
+
 steps:
 - task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
   displayName: 'Component Detection'
