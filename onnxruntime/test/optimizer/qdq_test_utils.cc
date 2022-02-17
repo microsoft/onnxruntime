@@ -58,5 +58,28 @@ GetQDQTestCaseFn BuildQDQReshapeTestCase(const std::vector<int64_t>& input_shape
   };
 }
 
+GetQDQTestCaseFn BuildQDQSoftMaxTestCase(const std::vector<int64_t>& input_shape) {
+  return [input_shape](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
+                                                 std::numeric_limits<uint8_t>::min(),
+                                                 std::numeric_limits<uint8_t>::max());
+
+    auto* output_arg = builder.MakeOutput();
+
+    // add DQ
+    auto* dq_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<uint8_t>(input_arg, 1.f / 256, 0, dq_output);
+
+    // add SoftMax
+    auto* softmax_output = builder.MakeIntermediate();
+    Node& softmax_node = builder.AddNode("SoftMax", {dq_output}, {softmax_output});
+
+    softmax_node.AddAttribute("axis", static_cast<int64_t>(1));
+
+    // add Q
+    builder.AddQuantizeLinearNode<uint8_t>(softmax_output, 1.f / 256, 0, output_arg);
+  };
+}
+
 }  // namespace test
 }  // namespace onnxruntime

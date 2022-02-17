@@ -306,8 +306,8 @@ TEST(NnapiExecutionProviderTest, TestQDQConv) {
                                        uint8_t /* WeightType */,
                                        int32_t /* BiasType */,
                                        uint8_t /* OutputType */>(
-                      {1, 1, 5, 5} /*input_shape*/,
-                      {1, 1, 3, 3} /*weights_shape*/),
+                      {1, 1, 5, 5} /* input_shape */,
+                      {1, 1, 3, 3} /* weights_shape */),
                   "nnapi_qdq_test_graph_conv",
                   {true /* verify_entire_graph_use_ep */});
 }
@@ -374,6 +374,14 @@ TEST(NnapiExecutionProviderTest, TestQDQReshape) {
   RunQDQModelTest(BuildQDQReshapeTestCase({1, 3, 64, 64} /* input_shape */,
                                           {1, 64, 64, 3} /* reshape_shape */),
                   "nnapi_qdq_test_graph_reshape",
+                  {
+                      true /* verify_entire_graph_use_ep */
+                  });
+}
+
+TEST(NnapiExecutionProviderTest, TestQDQSoftMax) {
+  RunQDQModelTest(BuildQDQSoftMaxTestCase({1, 32} /* input_shape */),
+                  "nnapi_qdq_test_graph_softmax",
                   {
                       true /* verify_entire_graph_use_ep */
                   });

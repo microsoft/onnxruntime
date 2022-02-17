@@ -215,5 +215,7 @@ GetQDQTestCaseFn BuildQDQTransposeTestCase(
 
 GetQDQTestCaseFn BuildQDQReshapeTestCase(const std::vector<int64_t>& input_shape,
                                          const std::vector<int64_t>& reshape_shape);
+
+GetQDQTestCaseFn BuildQDQSoftMaxTestCase(const std::vector<int64_t>& input_shape);
 }  // namespace test
 }  // namespace onnxruntime
