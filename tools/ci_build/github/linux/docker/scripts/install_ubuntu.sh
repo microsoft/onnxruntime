@@ -41,7 +41,6 @@ PACKAGE_LIST="autotools-dev \
 	libcurl4 \
 	libssl1.1 \
 	libkrb5-3 \
-	libicu66 \
 	libtinfo-dev \
 	libtool \
 	openssh-server \
@@ -58,6 +57,13 @@ PACKAGE_LIST="autotools-dev \
 if [ $DEVICE_TYPE = "Normal" ]; then
     PACKAGE_LIST="$PACKAGE_LIST libedit-dev libxml2-dev python3-packaging"
 fi
+
+if [ "$OS_VERSION" = "18.04" ]; then
+    PACKAGE_LIST="$PACKAGE_LIST libicu60"
+else
+    PACKAGE_LIST="$PACKAGE_LIST libicu66"
+fi
+
 apt-get install -y --no-install-recommends $PACKAGE_LIST
 
 locale-gen en_US.UTF-8
