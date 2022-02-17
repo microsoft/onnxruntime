@@ -5,7 +5,9 @@
 
 /// <summary>
 /// Options for the TensorRT provider that are passed to SessionOptionsAppendExecutionProvider_TensorRT_V2.
-/// Please note that this struct is identical to OrtTensorRTProviderOptions but only to be used internally. 
+/// Please note that this struct is *similar* to OrtTensorRTProviderOptions but only to be used internally. 
+/// Going forward, new trt provider options are to be supported via this struct and usage of the publicly defined
+/// OrtTensorRTProviderOptions will be deprecated over time.
 /// User can only get the instance of OrtTensorRTProviderOptionsV2 via CreateTensorRTProviderOptions.
 /// </summary>
 struct OrtTensorRTProviderOptionsV2 {

@@ -121,6 +121,14 @@ def run_ortmodule_experimental_json_config_tests(cwd, log):
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
 
+def run_data_sampler_tests(cwd, log):
+    log.debug('Running: Data sampler tests')
+
+    command = [sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_sampler.py']
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
+
 def main():
     args = parse_arguments()
     cwd = args.cwd
@@ -149,7 +157,9 @@ def main():
 
     run_ortmodule_fallback_tests(cwd, log, args.transformers_cache)
 
-    run_ortmodule_hierarchical_ortmodule_tests(cwd, log,)
+    run_ortmodule_hierarchical_ortmodule_tests(cwd, log)
+
+    run_data_sampler_tests(cwd, log)
 
     return 0
 

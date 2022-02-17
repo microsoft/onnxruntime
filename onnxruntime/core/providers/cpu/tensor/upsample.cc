@@ -571,8 +571,6 @@ void UpsampleBilinear(int64_t batch_size,
                                                            p.dx1[x] * p.dy1[y] * X22);
             }
           }
-          Xdata += input_height * input_width;
-          Ydata += output_width * output_height;
         });
   }
 }

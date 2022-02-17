@@ -40,16 +40,23 @@ static std::vector<const Node*> FindQDQNodes(const GraphViewer& graph_viewer, co
 bool NodeGroupSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Node& node,
                                       const std::vector<const Node*>& dq_nodes,
                                       const std::vector<const Node*>& q_nodes,
-                                      int num_dq_inputs) const {
+                                      int num_dq_inputs,
+                                      bool is_empty_q_nodes_allowed) const {
   if (num_dq_inputs == -1) {
     num_dq_inputs = NumActualValues(node, true);
   }
 
-  int num_outputs = NumActualValues(node, false);  // number of outputs that exist
-
   // The input is a Graph Viewer, so cannot use graph_utils or optimizer_utils
-  return num_dq_inputs == gsl::narrow_cast<int>(dq_nodes.size()) &&
-         num_outputs == gsl::narrow_cast<int>(q_nodes.size()) &&
+  if (num_dq_inputs != gsl::narrow_cast<int>(dq_nodes.size())) {
+    return false;
+  }
+
+  if (q_nodes.empty()) {
+    return is_empty_q_nodes_allowed;
+  }
+
+  int num_outputs = NumActualValues(node, false);  // number of outputs that exist
+  return (num_outputs == gsl::narrow_cast<int>(q_nodes.size())) &&
          q_nodes.size() == node.GetOutputEdgesCount() &&
          !graph_viewer.NodeProducesGraphOutput(node);
 }
@@ -246,6 +253,48 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     // can be converted to MatMulIntegerToFloat if EP supports that.
     return matmulintegertofloat_allowed_;
   }
+}
+
+bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                  const Node& node,
+                                  const std::vector<const Node*>& dq_nodes,
+                                  const std::vector<const Node*>& q_nodes) const {
+  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes,
+                     -1 /*num_dq_inputs*/, true /*is_empty_q_nodes_allowed*/)) {
+    return false;
+  }
+
+  // input and output types need to be same
+  int32_t dt_A = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t dt_B = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+
+  if (dt_A == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+    if (dt_A != dt_B) {  // if A is signed int, B must be signed int
+      return false;
+    }
+  }
+
+  if (!q_nodes.empty()) {
+    int32_t dt_Y = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    if (dt_A != dt_Y) {  // activation and output must be same type
+      return false;
+    }
+  }
+
+  if (dq_nodes.size() < 3) {  // no bias
+    return true;
+  }
+
+  if (node.GetAttributes().at("beta").f() != 1.0) {  // beta needs to be 1.0
+    return false;
+  }
+
+  int32_t dt_bias = dq_nodes[2]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  return dt_bias == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;
+}
+
+void GemmSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
+  builder.input_nodes.resize(3, NodesToOptimizeIndices::kEmptyNodeIndex);
 }
 
 }  // namespace QDQ

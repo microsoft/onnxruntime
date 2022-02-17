@@ -44,6 +44,7 @@
 #include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
+#include "core/optimizer/qdq_transformer/clip_quantizelinear.h"
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
 #include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
 #include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
@@ -99,6 +100,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<ConvAddFusion>());
       rules.push_back(std::make_unique<ConvMulFusion>());
       rules.push_back(std::make_unique<ConvBNFusion>());
+      rules.push_back(std::make_unique<ClipQuantFusion>());
       rules.push_back(std::make_unique<ReluQuantFusion>());
       break;
 
@@ -180,6 +182,11 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
           session_options.free_dimension_overrides));
       auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
       transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
+
+      if (!disable_quant_qdq) {
+        transformers.emplace_back(std::make_unique<QDQPropagationTransformer>());
+      }
+
     } break;
 
     case TransformerLevel::Level2: {
@@ -201,7 +208,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         if (!QDQIsInt8Allowed()) {
           transformers.emplace_back(std::make_unique<QDQS8ToU8Transformer>(cpu_ep));
         }
-        transformers.emplace_back(std::make_unique<QDQPropagationTransformer>(cpu_ep));
         transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>());
       }
 
