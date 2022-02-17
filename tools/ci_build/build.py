@@ -438,7 +438,10 @@ def parse_arguments():
     parser.add_argument(
         "--use_nuphar", action='store_true', help="Build with nuphar")
     parser.add_argument(
-        "--use_stvm", action='store_true', help="Build with standalone TVM")
+        "--use_tvm", action='store_true', help="Build with TVM")
+    parser.add_argument(
+        "--tvm_cuda_runtime", action='store_true', default=False,
+        help="Build TVM with CUDA support")
     parser.add_argument(
         "--use_tensorrt", action='store_true', help="Build with TensorRT")
     parser.add_argument(
@@ -761,15 +764,16 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 args.android or (args.ios and is_macOS())
                 or args.use_rknpu)
             else "OFF"),
-        "-Donnxruntime_USE_TVM=" + ("ON" if (args.use_nuphar or args.use_stvm) else "OFF"),
-        "-Donnxruntime_USE_LLVM=" + ("ON" if (args.use_nuphar or args.use_stvm) else "OFF"),
+        "-Donnxruntime_USE_NUPHAR_TVM=" + ("ON" if args.use_nuphar else "OFF"),
+        "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_nuphar or args.use_tvm else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_TENSORRT_HOME=" + (tensorrt_home if args.use_tensorrt else ""),
-        # set vars for standalone TVM
-        "-Donnxruntime_USE_STVM=" + ("ON" if args.use_stvm else "OFF"),
+        # set vars for TVM
+        "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
+        "-Donnxruntime_TVM_CUDA_RUNTIME=" + ("ON" if args.use_tvm and args.tvm_cuda_runtime else "OFF"),
         # set vars for migraphx
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
         "-Donnxruntime_MIGRAPHX_HOME=" + (migraphx_home if args.use_migraphx else ""),
@@ -929,7 +933,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-DProtobuf_USE_STATIC_LIBS=ON"
         ]
 
-    if (args.use_nuphar or args.use_stvm) and args.llvm_path is not None:
+    if (args.use_nuphar or args.use_tvm) and args.llvm_path is not None:
         cmake_args += ["-DLLVM_DIR=%s" % args.llvm_path]
 
     if args.use_cuda and not is_windows():
@@ -1125,7 +1129,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     for config in configs:
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
-        if args.use_nuphar or args.use_stvm:
+        if args.use_nuphar or args.use_tvm:
             os.environ["PATH"] = (
                 os.path.join(config_build_dir, "_deps", "tvm-build") + os.pathsep +
                 os.path.join(config_build_dir, "_deps", "tvm-src") + os.pathsep +
@@ -1134,7 +1138,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         run_subprocess(
             cmake_args + [
                 "-Donnxruntime_ENABLE_MEMLEAK_CHECKER=" +
-                ("ON" if config.lower() == 'debug' and not (args.use_nuphar or args.use_stvm) and not
+                ("ON" if config.lower() == 'debug' and not (args.use_nuphar or args.use_tvm) and not
                  args.use_openvino and not
                  args.enable_msvc_static_runtime and not
                  args.disable_memleak_checker
@@ -1703,7 +1707,7 @@ def nuphar_run_python_tests(build_dir, configs):
             cwd=cwd, dll_path=dll_path)
 
 
-def stvm_run_python_tests(build_dir, configs):
+def tvm_run_python_tests(build_dir, configs):
     for config in configs:
         if config == 'Debug':
             continue
@@ -1712,7 +1716,7 @@ def stvm_run_python_tests(build_dir, configs):
             cwd = os.path.join(cwd, config)
         dll_path = os.path.join(build_dir, config, "_deps", "tvm-build", config)
         run_subprocess(
-            [sys.executable, 'onnxruntime_test_python_stvm.py'],
+            [sys.executable, 'onnxruntime_test_python_tvm.py'],
             cwd=cwd, dll_path=dll_path)
 
 
@@ -1725,7 +1729,7 @@ def run_nodejs_tests(nodejs_binding_dir):
 
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, cuda_version, use_rocm, rocm_version, use_dnnl,
-        use_tensorrt, use_openvino, use_nuphar, use_stvm, use_vitisai, use_acl, use_armnn, use_dml,
+        use_tensorrt, use_openvino, use_nuphar, use_tvm, use_vitisai, use_acl, use_armnn, use_dml,
         wheel_name_suffix, enable_training, nightly_build=False, default_training_package_device=False,
         use_ninja=False, build_eager_mode=False):
     for config in configs:
@@ -1764,8 +1768,8 @@ def build_python_wheel(
             args.append('--use_dnnl')
         elif use_nuphar:
             args.append('--use_nuphar')
-        elif use_stvm:
-            args.append('--use_stvm')
+        elif use_tvm:
+            args.append('--use_tvm')
         elif use_vitisai:
             args.append('--use_vitisai')
         elif use_acl:
@@ -1786,7 +1790,7 @@ def derive_linux_build_property():
 
 
 def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_nuphar,
-                        use_stvm, use_winml):
+                        use_tvm, use_winml):
     if not (is_windows() or is_linux()):
         raise BuildError(
             'Currently csharp builds and nuget package creation is only supportted '
@@ -1820,8 +1824,8 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Gpu\""
     elif use_nuphar:
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Nuphar\""
-    elif use_stvm:
-        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Stvm\""
+    elif use_tvm:
+        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Tvm\""
     else:
         # use the solution file that includes Xamarin mobile targets
         sln = "OnnxRuntime.CSharp.sln"
@@ -2334,8 +2338,8 @@ def main():
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
             nuphar_run_python_tests(build_dir, configs)
 
-        if args.enable_pybind and not args.skip_onnx_tests and args.use_stvm:
-            stvm_run_python_tests(build_dir, configs)
+        if args.enable_pybind and not args.skip_onnx_tests and args.use_tvm:
+            tvm_run_python_tests(build_dir, configs)
 
         # run node.js binding tests
         if args.build_nodejs and not args.skip_nodejs_tests:
@@ -2362,7 +2366,7 @@ def main():
                 args.use_tensorrt,
                 args.use_openvino,
                 args.use_nuphar,
-                args.use_stvm,
+                args.use_tvm,
                 args.use_vitisai,
                 args.use_acl,
                 args.use_armnn,
@@ -2384,7 +2388,7 @@ def main():
                 args.use_tensorrt,
                 args.use_dnnl,
                 args.use_nuphar,
-                args.use_stvm,
+                args.use_tvm,
                 args.use_winml,
             )
 

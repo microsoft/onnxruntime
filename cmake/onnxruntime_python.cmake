@@ -138,7 +138,7 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_NUPHAR}
-    ${PROVIDERS_STVM}
+    ${PROVIDERS_TVM}
     ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_COREML}
@@ -310,6 +310,9 @@ if (onnxruntime_ENABLE_TRAINING)
   )
   file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_fused_ops_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/cuda/fused_ops/*"
+  )
+  file(GLOB onnxruntime_python_utils_data_srcs CONFIGURE_DEPENDS
+  "${ORTTRAINING_SOURCE_DIR}/python/training/utils/data/*"
   )
 else()
   file(GLOB onnxruntime_python_capi_training_srcs CONFIGURE_DEPENDS
@@ -560,6 +563,7 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cpu/torch_interop_utils
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/torch_gpu_allocator
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/fused_ops
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_capi_training_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
@@ -599,6 +603,9 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_ortmodule_torch_cpp_ext_fused_ops_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/fused_ops/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_utils_data_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/
   )
 endif()
 
@@ -681,25 +688,27 @@ if (onnxruntime_USE_NUPHAR)
   )
 endif()
 
-if (onnxruntime_USE_STVM)
-  file(GLOB onnxruntime_python_providers_stvm_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/python/providers/stvm/*.py"
+if (onnxruntime_USE_TVM)
+  file(GLOB onnxruntime_python_providers_tvm_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/providers/tvm/*.py"
   )
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/stvm
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/tvm
     COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_providers_stvm_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/stvm
+        ${onnxruntime_python_providers_tvm_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/tvm
     COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:onnxruntime_providers_stvm>
+        $<TARGET_FILE:onnxruntime_providers_tvm>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+    # TODO(vvchernov): why?
     COMMAND ${CMAKE_COMMAND} -E copy
         ${tvm_BINARY_DIR}/libtvm*
         ${tvm_SOURCE_DIR}/python/tvm
   )
 
+  # TODO(vvchernov): repeat?
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
       WORKING_DIRECTORY ${tvm_SOURCE_DIR}/python

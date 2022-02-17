@@ -90,34 +90,35 @@ inline constexpr int ArrayTypeToAttributeType<std::string>() {
     }                                                                                              \
   }
 
-#define ORT_DEFINE_GET_ATTRS(IMPL_T, T, list)                                      \
-  template <>                                                                      \
-  template <>                                                                      \
-  Status OpNodeProtoHelper<IMPL_T>::GetAttrs<T>(                                   \
-      const std::string& name, std::vector<T>& values) const {                     \
-    const AttributeProto* attr = TryGetAttribute(name);                            \
-    if (!attr) {                                                                   \
-      return Status(ONNXRUNTIME, FAIL, "No attribute with this name is defined."); \
-    }                                                                              \
-    values.reserve(attr->list##_size());                                           \
-    for (int i = 0; i < attr->list##_size(); ++i) {                                \
-      values.push_back(static_cast<T>(attr->list(i)));                             \
-    }                                                                              \
-    return Status::OK();                                                           \
-  }                                                                                \
-  template <>                                                                      \
-  template <>                                                                      \
-  Status OpNodeProtoHelper<IMPL_T>::GetAttrs<T>(                                   \
-      const std::string& name, gsl::span<T> values) const {                        \
-    const AttributeProto* attr = TryGetAttribute(name);                            \
-    if (!attr) {                                                                   \
-      return Status(ONNXRUNTIME, FAIL, "No attribute with this name is defined."); \
-    }                                                                              \
-    ORT_ENFORCE(values.size() == static_cast<size_t>(attr->list##_size()));        \
-    for (int i = 0; i < attr->list##_size(); ++i) {                                \
-      values[i] = static_cast<T>(attr->list(i));                                   \
-    }                                                                              \
-    return Status::OK();                                                           \
+#define ORT_DEFINE_GET_ATTRS(IMPL_T, T, list)                                                                \
+  template <>                                                                                                \
+  template <>                                                                                                \
+  Status OpNodeProtoHelper<IMPL_T>::GetAttrs<T>(                                                             \
+      const std::string& name, std::vector<T>& values) const {                                               \
+    const AttributeProto* attr = TryGetAttribute(name);                                                      \
+    if (!attr) {                                                                                             \
+      return Status(ONNXRUNTIME, FAIL, "No attribute with this name is defined.");                           \
+    }                                                                                                        \
+    values.reserve(attr->list##_size());                                                                     \
+    for (int i = 0; i < attr->list##_size(); ++i) {                                                          \
+      values.push_back(static_cast<T>(attr->list(i)));                                                       \
+    }                                                                                                        \
+    return Status::OK();                                                                                     \
+  }                                                                                                          \
+  template <>                                                                                                \
+  template <>                                                                                                \
+  Status OpNodeProtoHelper<IMPL_T>::GetAttrs<T>(                                                             \
+      const std::string& name, gsl::span<T> values) const {                                                  \
+    const AttributeProto* attr = TryGetAttribute(name);                                                      \
+    if (!attr) {                                                                                             \
+      return Status(ONNXRUNTIME, FAIL, "No attribute with this name is defined.");                           \
+    }                                                                                                        \
+    ORT_RETURN_IF(values.size() != static_cast<size_t>(attr->list##_size()),                                 \
+       "GetAttrs failed. Expect values.size()=" , (attr->list##_size()) , ", got " , values.size());         \
+    for (int i = 0; i < attr->list##_size(); ++i) {                                                          \
+      values[i] = static_cast<T>(attr->list(i));                                                             \
+    }                                                                                                        \
+    return Status::OK();                                                                                     \
   }
 
 // Will not work for std::strings

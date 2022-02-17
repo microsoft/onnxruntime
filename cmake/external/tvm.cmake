@@ -1,10 +1,10 @@
-if (onnxruntime_USE_STVM)
-  message(STATUS "onnxruntime_USE_STVM: Fetch tvm for STVM.")
+if (onnxruntime_USE_TVM)
+  message(STATUS "onnxruntime_USE_TVM: Fetch tvm for TVM EP")
 
   FetchContent_Declare(
     tvm
     GIT_REPOSITORY https://github.com/apache/tvm.git
-    GIT_TAG        v0.8.0
+    GIT_TAG        36b48a5707321adba8a70e14da443566a9391e5a
   )
 
   FetchContent_GetProperties(tvm)
@@ -13,14 +13,11 @@ if (onnxruntime_USE_STVM)
   endif()
 
   set(tvm_INCLUDE_DIRS ${tvm_SOURCE_DIR}/include)
-  set(onnxruntime_STVM_HOME ${tvm_SOURCE_DIR})
-  message(STATUS "Define onnxruntime_STVM_HOME.")
-  message(STATUS ${onnxruntime_STVM_HOME})
 
 endif()
 
 if (onnxruntime_USE_NUPHAR)
-  message(STATUS "onnxruntime_USE_NUPHAR: Fetch onnxruntime-tvm for NUPHAR.")
+  message(STATUS "onnxruntime_USE_NUPHAR: Fetch onnxruntime-tvm for NUPHAR EP")
 
   FetchContent_Declare(
     tvm
