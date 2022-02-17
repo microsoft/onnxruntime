@@ -664,7 +664,7 @@ class PlannerImpl {
                                     const KernelCreateInfoMap& kernel_create_info_map,
                                     const std::string& subgraph_kernel_create_info_map_key_base,
                                     size_t graph_depth,
-                                    /*out*/ std::vector<std::vector<OrtMemoryInfo>>& locations) {
+                                    /*out*/ std::vector<std::unordered_map<size_t, OrtMemoryInfo>>& locations) {
     for (const auto& node : graph_viewer.Nodes()) {
       const auto& input_node_args = node.InputDefs();
       size_t num_node_inputs = input_node_args.size();
@@ -711,18 +711,25 @@ class PlannerImpl {
         }
 
         auto wt_index = Index(def_name);
-        // TODO: Identify error cases where-in an initializer is used on different
-        // devices within the same graph level.
-        // If we ever encounter that, it means that there is a severe bug in Memcpy
-        // transformer and the model will crash while running. The Memcpy transformer
-        // is supposed to duplicate initializers being used on different devices within
-        // the same graph level and hence we should never see an initializer being used
-        // on different devices here.
-        // The same initializer being used on different devices across graph levels
-        // (subgraphs) is okay and utils::CopyInputsAcrossDevices() will take it to
-        // the right device before subgraph execution.
-        locations[wt_index].emplace_back(
-            GetLocationForNodeInput(node_input_index, node, kernel_create_info_map));
+        OrtMemoryInfo omi = GetLocationForNodeInput(node_input_index, node, kernel_create_info_map);
+
+        std::unordered_map<size_t, OrtMemoryInfo>& depth_omi_map = locations[wt_index];
+        const auto& depth_omi_map_it = depth_omi_map.find(graph_depth);
+        if (depth_omi_map_it == depth_omi_map.end()) {
+          depth_omi_map.emplace(graph_depth, omi);
+        } else {
+          // Identify error cases where-in an initializer is used on different
+          // devices within the same graph level.
+          // If we ever encounter that, it means that there is a severe bug in Memcpy
+          // transformer and the model will crash while running. The Memcpy transformer
+          // is supposed to duplicate initializers being used on different devices within
+          // the same graph level and hence we should never see an initializer being used
+          // on different devices here.
+          // The same initializer being used on different devices across graph levels
+          // (subgraphs) is okay and utils::CopyInputsAcrossDevices() will take it to
+          // the right device before subgraph execution.
+          assert(omi == depth_omi_map_it->second);
+        }
       }
 
       // If the node has subgraphs (i.e.) control flow nodes,
@@ -753,8 +760,6 @@ class PlannerImpl {
   }
 
   Status GeneratePlanForWeights() {
-    // TODO: Move away from usage of vector of `OrtMemoryInfo`s per weight (initializer)
-    // We do not need to maintain a vector of locations that a weight is used in.
     // We only need to know the location of its first usage because:
     // (1) If the initializer is used in the graph level it is introduced in, then it can
     // only be used on one device as the Memcpy transformer will duplicate the initializer
@@ -767,17 +772,19 @@ class PlannerImpl {
     // used on different devices within the same graph level (see (1) for reason), and for
     // nested subgraphs, we can rely on the utils::CopyInputsAcrossDevices() to copy it
     // over to the appropriate device before the subgraphs are executed.
-    std::vector<std::vector<OrtMemoryInfo>> locations(plan_.allocation_plan.size());
+    std::vector<std::unordered_map<size_t, OrtMemoryInfo>> locations(plan_.allocation_plan.size());
 
     GeneratePlanForWeightsHelper(graph_viewer_, graph_viewer_.GetAllInitializedTensors(),
                                  kernel_create_info_map_, "", 0, locations);
 
     for (size_t i = 0; i != locations.size(); ++i) {
-      const std::vector<OrtMemoryInfo>& loc = locations[i];
-      if (loc.empty()) continue;
+      const std::unordered_map<size_t, OrtMemoryInfo>& depth_omi_map = locations[i];
+      if (depth_omi_map.empty()) continue;
       plan_.allocation_plan[i].alloc_kind = AllocKind::kAllocateStatically;
-      // The planned location for an initializer is the location of its first usage.
-      plan_.allocation_plan[i].location = loc[0];
+      // The planned location for an initializer is the location of its first usage at the
+      // outermost graph.
+      const auto& map_with_min_depth_it = std::min_element(depth_omi_map.begin(), depth_omi_map.end());
+      plan_.allocation_plan[i].location = map_with_min_depth_it->second;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
       size_t max_pc = plan_.execution_plan.size();
       std::string node_arg_name;
