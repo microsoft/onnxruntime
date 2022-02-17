@@ -41,10 +41,10 @@ Status ConcatSliceElimination::ApplyImpl(Graph& graph, bool& modified, int graph
 static bool GetSliceInfo(const Graph& graph,
                          const Node& node,
                          const logging::Logger& logger,
-                         std::vector<int64_t>& starts,
-                         std::vector<int64_t>& ends,
-                         std::vector<int64_t>& axes,
-                         std::vector<int64_t>& steps) {
+                         InlinedVector<int64_t>& starts,
+                         InlinedVector<int64_t>& ends,
+                         InlinedVector<int64_t>& axes,
+                         InlinedVector<int64_t>& steps) {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Slice", {1, 10, 11, 13})) {
     return false;
   }
@@ -82,14 +82,14 @@ static bool GetSliceInfo(const Graph& graph,
     };
 
     auto get_initializer_data =
-        [&graph](const ONNX_NAMESPACE::TensorProto* initializer) -> std::vector<int64_t> {
+        [&graph](const ONNX_NAMESPACE::TensorProto* initializer) -> InlinedVector<int64_t> {
       Initializer init(*initializer, graph.ModelPath());
       if (initializer->data_type() == ONNX_NAMESPACE::TensorProto::INT32) {
         int32_t* init_data = init.data<int32_t>();
-        return std::vector<int64_t>(init_data, init_data + init.size());
+        return InlinedVector<int64_t>(init_data, init_data + init.size());
       } else if (initializer->data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
         int64_t* init_data = init.data<int64_t>();
-        return std::vector<int64_t>(init_data, init_data + init.size());
+        return InlinedVector<int64_t>(init_data, init_data + init.size());
       }
       return {};
     };
@@ -214,7 +214,7 @@ bool ConcatSliceElimination::FuseConcatSliceSubgraph(Node& concat, Graph& graph,
   ordered_slice.assign(concat_outputs.begin(), concat_outputs.end());
 
   for (auto slice : concat_outputs) {
-    std::vector<int64_t> starts, ends, axes, steps;
+    InlinedVector<int64_t> starts, ends, axes, steps;
     if (!GetSliceInfo(graph, *slice, logger, starts, ends, axes, steps)) return false;
     if (starts.size() > 1) return false;
     if (axes[0] != 0) return false;

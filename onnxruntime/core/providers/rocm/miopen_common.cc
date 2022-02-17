@@ -31,8 +31,8 @@ Status MiopenTensor::Set(gsl::span<const int64_t> input_dims, miopenDataType_t d
 
   int rank = gsl::narrow_cast<int>(input_dims.size());
   TensorPitches pitches(input_dims);
-  InlinedShapeVector<int> dims(rank);
-  InlinedShapeVector<int> strides(rank);
+  InlinedVector<int> dims(rank);
+  InlinedVector<int> strides(rank);
   for (int i = 0; i < rank; i++) {
     dims[i] = gsl::narrow_cast<int>(input_dims[i]);
     strides[i] = gsl::narrow_cast<int>(pitches[i]);
@@ -63,7 +63,7 @@ Status MiopenTensorDescriptor::Set(gsl::span<const int64_t> filter_dims, miopenD
     MIOPEN_RETURN_IF_ERROR(miopenCreateTensorDescriptor(&desc_));
 
   int rank = gsl::narrow_cast<int>(filter_dims.size());
-  InlinedShapeVector<int> w_dims(rank);
+  InlinedVector<int> w_dims(rank);
   for (int i = 0; i < rank; i++) {
     w_dims[i] = gsl::narrow_cast<int>(filter_dims[i]);
   }

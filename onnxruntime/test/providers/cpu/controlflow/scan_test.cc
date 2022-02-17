@@ -390,7 +390,7 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
 
       // skip if this is an invalid input test and axis is out of the valid range
       if (axis >= -rank && axis < rank) {
-        InlinedShapeVector<size_t> permutations;
+        InlinedVector<size_t> permutations;
         TensorShapeVector new_shape;
         scan::detail::CalculateTransposedShapeForOutput(output_shape, HandleNegativeAxis(axis, rank),
                                                         permutations, new_shape);

@@ -10,7 +10,6 @@
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/session/inference_session.h"
 
-using namespace std;
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {

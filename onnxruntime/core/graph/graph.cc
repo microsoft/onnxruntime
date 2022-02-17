@@ -900,40 +900,41 @@ void Node::AddAttribute(std::string attr_name, std::string value) {
 };
 
 #define ADD_BASIC_ATTR_IMPL(type, enumType, field)                           \
-  void Node::AddAttribute(const std::string& attr_name, const type& value) { \
+  void Node::AddAttribute(std::string attr_name, const type& value) {        \
     AttributeProto a;                                                        \
     a.set_##field(value);                                                    \
-    AddAttributeHelper(*this, attr_name, enumType, std::move(a));            \
+    AddAttributeHelper(*this, std::move(attr_name), enumType, std::move(a)); \
   };
 
 #define ADD_ATTR_IMPL(type, enumType, field)                                 \
-  void Node::AddAttribute(const std::string& attr_name, const type& value) { \
+  void Node::AddAttribute(std::string attr_name, const type& value) {        \
     AttributeProto a;                                                        \
     *(a.mutable_##field()) = value;                                          \
-    AddAttributeHelper(*this, attr_name, enumType, std::move(a));            \
+    AddAttributeHelper(*this, std::move(attr_name), enumType, std::move(a)); \
   }
 
-#define ADD_ATTR_MOVE_IMPL(type, enumType, field)                       \
-  void Node::AddAttribute(const std::string& attr_name, type&& value) { \
-    AttributeProto a;                                                   \
-    *(a.mutable_##field()) = std::move(value);                          \
-    AddAttributeHelper(*this, attr_name, enumType, std::move(a));       \
+#define ADD_ATTR_MOVE_IMPL(type, enumType, field)                            \
+  void Node::AddAttribute(std::string attr_name, type&& value) {             \
+    AttributeProto a;                                                        \
+    *(a.mutable_##field()) = std::move(value);                               \
+    AddAttributeHelper(*this, std::move(attr_name), enumType, std::move(a)); \
   }
 
-#define ADD_LIST_ATTR_IMPL(type, enumType, field)                 \
-  void Node::AddAttribute(const std::string& attr_name,           \
-                          const gsl::span<type const>& values) {  \
-    AttributeProto a;                                             \
-    auto* mutable_field = a.mutable_##field();                    \
-    for (const auto& val : values) {                              \
-      *(mutable_field->Add()) = val;                              \
-    }                                                             \
-    AddAttributeHelper(*this, attr_name, enumType, std::move(a)); \
+#define ADD_LIST_ATTR_IMPL(type, enumType, field)                            \
+  void Node::AddAttribute(std::string attr_name,                             \
+                          gsl::span<type const> values) {                    \
+    AttributeProto a;                                                        \
+    auto* mutable_field = a.mutable_##field();                               \
+    for (const auto& val : values) {                                         \
+      *(mutable_field->Add()) = val;                                         \
+    }                                                                        \
+    AddAttributeHelper(*this, std::move(attr_name), enumType, std::move(a)); \
   }
 
-void Node::AddAttribute(const std::string& attr_name, const GraphProto& value) {
+void Node::AddAttribute(std::string attr_name, const GraphProto& value) {
   AttributeProto a;
   *a.mutable_g() = value;
+  // Do not move attr_name as it is needed below
   AddAttributeHelper(*this, attr_name, AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH, std::move(a));
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -942,9 +943,10 @@ void Node::AddAttribute(const std::string& attr_name, const GraphProto& value) {
 #endif
 };
 
-void Node::AddAttribute(const std::string& attr_name, GraphProto&& value) {
+void Node::AddAttribute(std::string attr_name, GraphProto&& value) {
   AttributeProto a;
   *a.mutable_g() = std::move(value);
+  // Do not move attr_name as it is needed below
   AddAttributeHelper(*this, attr_name, AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH, std::move(a));
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -964,7 +966,6 @@ ADD_LIST_ATTR_IMPL(float, AttributeProto_AttributeType::AttributeProto_Attribute
 ADD_LIST_ATTR_IMPL(int64_t, AttributeProto_AttributeType::AttributeProto_AttributeType_INTS, ints)
 ADD_LIST_ATTR_IMPL(std::string, AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS, strings)
 ADD_LIST_ATTR_IMPL(TensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS, tensors)
-ADD_LIST_ATTR_IMPL(GraphProto, AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPHS, graphs)
 ADD_LIST_ATTR_IMPL(TypeProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TYPE_PROTOS, type_protos)
 #if !defined(DISABLE_SPARSE_TENSORS)
 ADD_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSOR, sparse_tensor)
@@ -1728,11 +1729,11 @@ NodeArg* Graph::GetNodeArgIncludingParentGraphs(const std::string& node_arg_name
   return node_arg;
 }
 
-void Graph::ReverseDFSFrom(const std::vector<NodeIndex>& from,
+void Graph::ReverseDFSFrom(gsl::span<NodeIndex const> from,
                            const std::function<void(const Node*)>& enter,
                            const std::function<void(const Node*)>& leave,
                            const std::function<bool(const Node*, const Node*)>& comp) const {
-  std::vector<const Node*> node_vec;
+  InlinedVector<const Node*> node_vec;
   node_vec.reserve(from.size());
   for (auto i : from) {
     node_vec.push_back(GetNode(i));
@@ -1741,25 +1742,26 @@ void Graph::ReverseDFSFrom(const std::vector<NodeIndex>& from,
   ReverseDFSFrom(node_vec, enter, leave, comp, {});
 }
 
-void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
+void Graph::ReverseDFSFrom(gsl::span<const Node* const> from,
                            const std::function<void(const Node*)>& enter,
                            const std::function<void(const Node*)>& leave,
                            const std::function<bool(const Node*, const Node*)>& comp) const {
   ReverseDFSFrom(from, enter, leave, comp, {});
 }
 
-void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
+void Graph::ReverseDFSFrom(gsl::span<const Node* const> from,
                            const std::function<void(const Node*)>& enter,
                            const std::function<void(const Node*)>& leave,
                            const std::function<bool(const Node*, const Node*)>& comp,
                            const std::function<bool(const Node* from, const Node* to)>& stop) const {
   using WorkEntry = std::pair<const Node*, bool>;  // bool represents leave or not
-  std::vector<WorkEntry> stack(from.size());
-  for (size_t i = 0; i < from.size(); i++) {
-    stack[i] = WorkEntry(from[i], false);
+  InlinedVector<WorkEntry> stack;
+  stack.reserve(from.size());
+  for (auto node : from) {
+    stack.emplace_back(node, false);
   }
 
-  std::vector<bool> visited(MaxNodeIndex(), false);
+  InlinedVector<bool> visited(MaxNodeIndex(), false);
   while (!stack.empty()) {
     const WorkEntry last_entry = stack.back();
     stack.pop_back();
@@ -1784,7 +1786,7 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
     if (leave) stack.emplace_back(&n, true);
 
     if (comp) {
-      std::vector<const Node*> sorted_nodes;
+      InlinedVector<const Node*> sorted_nodes;
       for (auto iter = n.InputNodesBegin(); iter != n.InputNodesEnd(); ++iter) {
         if (stop && stop(&n, &(*iter))) continue;
         sorted_nodes.push_back(&(*iter));
@@ -3272,8 +3274,8 @@ std::string Graph::GenerateNodeName(const std::string& base_name) {
 Node& Graph::AddNode(const std::string& name,
                      const std::string& op_type,
                      const std::string& description,
-                     const gsl::span<NodeArg* const>& input_args,
-                     const gsl::span<NodeArg* const>& output_args,
+                     gsl::span<NodeArg* const> input_args,
+                     gsl::span<NodeArg* const> output_args,
                      const NodeAttributes* attributes,
                      const std::string& domain) {
   std::vector<NodeArg*> inputs;
@@ -4136,8 +4138,13 @@ Status Graph::InlineFunction(Node& node) {
   return Status::OK();
 }
 
-void Graph::SetInputs(const gsl::span<const NodeArg* const>& inputs) {
+void Graph::SetInputs(gsl::span<const NodeArg* const> inputs) {
+  // creating graph from scratch
+  // rely on SetGraphInputsOutputs() to fix up graph_inputs_excluding_initializers_
+  // if is_loaded_from_model_file_ == false
+  graph_inputs_including_initializers_.reserve(inputs.size());
   graph_inputs_including_initializers_.assign(inputs.begin(), inputs.end());
+
   if (is_loaded_from_model_file_) {
     // graph loaded from model file
     graph_inputs_excluding_initializers_.clear();
@@ -4156,7 +4163,8 @@ void Graph::SetInputs(const gsl::span<const NodeArg* const>& inputs) {
   GraphResolveNeeded(true);
 }
 
-void Graph::SetOutputs(const gsl::span<const NodeArg* const>& outputs) {
+void Graph::SetOutputs(gsl::span<const NodeArg* const> outputs) {
+  graph_outputs_.reserve(outputs.size());
   graph_outputs_.assign(outputs.begin(), outputs.end());
 
   graph_outputs_manually_set_ = true;

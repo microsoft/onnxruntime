@@ -1415,7 +1415,7 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
   };
 
   // perform reverse dfs from output node to discover trainable parameters
-  graph.ReverseDFSFrom({graph.GetProducerNode(loss_name)}, add_trainable_initializers, {}, {}, stop_at_untrainable);
+  graph.ReverseDFSFrom(std::array{graph.GetProducerNode(loss_name)}, add_trainable_initializers, {}, {}, stop_at_untrainable);
   return trainable_initializers;
 }
 

@@ -378,7 +378,7 @@ Status PrepareForReduce(const Tensor* X,
   }
 
   const auto input_dims = input_shape.GetDims();
-  InlinedShapeVector<bool> reduced(rank, false);
+  InlinedVector<bool> reduced(rank, false);
   if (axes.size() > 0) {
     prepare_reduce_metadata.output_dims = input_shape.AsShapeVector();
     for (auto axis : axes) {

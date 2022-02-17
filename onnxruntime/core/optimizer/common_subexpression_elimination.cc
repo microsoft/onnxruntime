@@ -89,7 +89,7 @@ class EquivalenceClass {
   bool operator==(const EquivalenceClass& other) const;
 
   friend struct ::std::hash<EquivalenceClass>;
-  friend InlinedVector<InlinedVector<const EquivalenceClass*>> Normalize(const Node& node, const gsl::span<const EquivalenceClass* const>& inputs);
+  friend InlinedVector<InlinedVector<const EquivalenceClass*>> Normalize(const Node& node, gsl::span<const EquivalenceClass* const> inputs);
 
   explicit EquivalenceClass(const NodeArg* non_op_value)
       : attributes_(nullptr),
@@ -141,7 +141,7 @@ class EquivalenceClass {
   const std::size_t hash_;
 };
 
-InlinedVector<InlinedVector<const EquivalenceClass*>> Normalize(const Node& node, const gsl::span<const EquivalenceClass* const>& inputs) {
+InlinedVector<InlinedVector<const EquivalenceClass*>> Normalize(const Node& node, gsl::span<const EquivalenceClass* const> inputs) {
   const auto& arg_count = node.InputArgCount();
   auto input_iter = inputs.begin();
   InlinedVector<InlinedVector<const EquivalenceClass*>> result(arg_count.size());

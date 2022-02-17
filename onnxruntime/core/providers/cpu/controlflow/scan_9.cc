@@ -345,7 +345,7 @@ Status ScanImpl::SetupInputs() {
       auto& input_tensor = *context_.Input<Tensor>(i + info_.num_loop_state_variables);
       const auto& input_shape = input_tensor.Shape();
 
-      InlinedShapeVector<size_t> permutations;
+      InlinedVector<size_t> permutations;
       TensorShapeVector new_shape;
       CalculateTransposedShapeForInput(input_shape, sequence_dim, permutations, new_shape);
 
@@ -478,7 +478,7 @@ Status ScanImpl::TransposeOutput() {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid value in scan_output_axes for output ", i,
                                " of ", axis, ". Output tensor rank was ", output_rank);
 
-      InlinedShapeVector<size_t> permutations;
+      InlinedVector<size_t> permutations;
       TensorShapeVector new_shape;
       CalculateTransposedShapeForOutput(temporary_output_tensor.Shape(), axis, permutations, new_shape);
 

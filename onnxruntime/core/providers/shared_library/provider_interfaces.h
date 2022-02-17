@@ -635,7 +635,7 @@ struct ProviderHost {
   virtual Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const gsl::span<NodeArg* const>& input_args, const gsl::span<NodeArg* const>& output_args, const NodeAttributes* attributes, const std::string& domain) = 0;
 
   virtual const std::vector<const NodeArg*>& Graph__GetOutputs(const Graph* p) noexcept = 0;
-  virtual void Graph__SetOutputs(Graph* p, const gsl::span<const NodeArg* const>& outputs) = 0;
+  virtual void Graph__SetOutputs(Graph* p, gsl::span<const NodeArg* const> outputs) = 0;
 
   virtual const std::vector<const NodeArg*>& Graph__GetInputs(const Graph* p) noexcept = 0;
   virtual bool Graph__GetInitializedTensor(const Graph* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) = 0;

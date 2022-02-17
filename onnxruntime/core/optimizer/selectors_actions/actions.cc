@@ -31,7 +31,7 @@ bool CanSafelyRemoveNode(const Node& node_to_remove, const InlinedHashSet<const 
 }
 
 // remove nodes if it is 'safe' to do so according to the checks in CanSafelyRemoveNode.
-void SafelyRemoveNodes(Graph& graph, const std::vector<Node*>& nodes_to_remove, const Node* ignore_target) {
+void SafelyRemoveNodes(Graph& graph, gsl::span<Node* const> nodes_to_remove, const Node* ignore_target) {
   InlinedHashSet<const Node*> removal_set;
   removal_set.reserve(nodes_to_remove.size());
   removal_set.insert(nodes_to_remove.cbegin(), nodes_to_remove.cend());

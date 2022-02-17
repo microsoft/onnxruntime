@@ -200,7 +200,7 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto
           if (node_op_schema) {
             const auto& types = node_op_schema->inputs().at(i).GetTypes();
             dest_types.reserve(dest_types.size() + types.size());
-            for (const auto s : types) {
+            for (const auto* s : types) {
               dest_types.emplace_back(*s);
             }
           } else {
@@ -228,7 +228,7 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto
           if (node_op_schema) {
             const auto& types = node_op_schema->inputs().at(i).GetTypes();
             dest_types.reserve(dest_types.size() + types.size());
-            for (auto data_type : types) {
+            for (auto* data_type : types) {
               dest_types.emplace_back(*data_type);
             }
           } else {

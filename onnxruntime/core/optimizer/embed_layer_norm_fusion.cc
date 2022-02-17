@@ -32,8 +32,8 @@ static NodeArg* CastToInt32(Graph& graph, NodeArg* input, ProviderType provider_
   Node& node = graph.AddNode(graph.GenerateNodeName(input->Name() + "_Cast"),
                              "Cast",
                              "Cast Input from int64 to int32",
-                             InlinedVector<NodeArg*>{input},
-                             InlinedVector<NodeArg*>{&cast32},
+                             std::array{input},
+                             std::array{&cast32},
                              nullptr,
                              kOnnxDomain);
 
@@ -398,7 +398,7 @@ static bool MatchPositionEmbeddingSubgraph(
   // (2) it is not initializer and matches subgraph 1 (for opset 10) or 2 (for opset 11).
   if (graph_utils::IsConstantInitializer(graph, position_gather_node.MutableInputDefs()[1]->Name())) {
     // Check that the tensor has shape (batch_size, sequence_length)
-    std::vector<int64_t> data;
+    InlinedVector<int64_t> data;
     auto expected_shape = input_ids->Shape();
     if (!optimizer_utils::AppendTensorFromInitializer(graph, *(position_gather_node.MutableInputDefs()[1]), data) ||
         !utils::HasDimValue(expected_shape->dim()[0]) ||

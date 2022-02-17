@@ -847,17 +847,19 @@ const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-void SessionState::UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs) {
-  std::vector<int> sorted_idxs = fetch_mlvalue_idxs;
+void SessionState::UpdateToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_idxs) {
+  InlinedVector<int> sorted_idxs;
+  sorted_idxs.reserve(fetch_mlvalue_idxs.size());
+  sorted_idxs.assign(fetch_mlvalue_idxs.begin(), fetch_mlvalue_idxs.end());
   std::sort(sorted_idxs.begin(), sorted_idxs.end());
   if (to_be_executed_nodes_.find(sorted_idxs) != to_be_executed_nodes_.end())
     return;
 
   // Get the nodes generating the fetches.
-  std::vector<const Node*> nodes;
+  InlinedVector<const Node*> nodes;
   nodes.reserve(fetch_mlvalue_idxs.size());
   InlinedHashSet<NodeIndex> reachable_nodes;
-  reachable_nodes.reserve(fetch_mlvalue_idxs.size());
+  reachable_nodes.reserve(graph_.Nodes().size());
 
   for (auto idx : fetch_mlvalue_idxs) {
     std::string node_arg_name;
@@ -874,8 +876,10 @@ void SessionState::UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue
 }
 
 const InlinedHashSet<NodeIndex>* SessionState::GetToBeExecutedNodes(
-    const std::vector<int>& fetch_mlvalue_idxs) const {
-  std::vector<int> sorted_idxs = fetch_mlvalue_idxs;
+    gsl::span<int const> fetch_mlvalue_idxs) const {
+  InlinedVector<int> sorted_idxs;
+  sorted_idxs.reserve(fetch_mlvalue_idxs.size());
+  sorted_idxs.assign(fetch_mlvalue_idxs.begin(), fetch_mlvalue_idxs.end());
   std::sort(sorted_idxs.begin(), sorted_idxs.end());
   auto it = to_be_executed_nodes_.find(sorted_idxs);
   return (it != to_be_executed_nodes_.end()) ? &it->second : nullptr;

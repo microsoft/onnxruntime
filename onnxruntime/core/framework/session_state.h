@@ -289,8 +289,8 @@ class SessionState {
   const NodeIndexInfo& GetNodeIndexInfo() const;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  void UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs);
-  const InlinedHashSet<NodeIndex>* GetToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs) const;
+  void UpdateToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_idxs);
+  const InlinedHashSet<NodeIndex>* GetToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_idxs) const;
   Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                          flatbuffers::Offset<onnxruntime::fbs::SessionState>& fbs_session_state) const;
 #endif
@@ -501,7 +501,7 @@ class SessionState {
   PrepackedWeightsContainer* const prepacked_weights_container_{};
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::map<std::vector<int>, InlinedHashSet<NodeIndex>> to_be_executed_nodes_;
+  InlinedHashMap<InlinedVector<int>, InlinedHashSet<NodeIndex>> to_be_executed_nodes_;
 #endif
 
   SessionState* parent_ = nullptr;

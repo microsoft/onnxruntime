@@ -39,11 +39,12 @@ static bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const Node
 
 InlinedHashSet<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                const std::string& provider_type,
-                                               const gsl::span<const KernelRegistry* const>& kernel_registries,
-                                               const gsl::span<const NodeIndex>& tentative_nodes) {
+                                               gsl::span<const KernelRegistry* const> kernel_registries,
+                                               gsl::span<const NodeIndex> tentative_nodes) {
+  // automatic conversion from const std::vector&
   gsl::span<const NodeIndex> ordered_nodes = graph.GetNodesInTopologicalOrder();
   InlinedVector<size_t> node_id_to_order_map(graph.MaxNodeIndex());
-  for (size_t id = 0; id < ordered_nodes.size(); ++id) {
+  for (size_t id = 0, limit = ordered_nodes.size(); id < limit; ++id) {
     const NodeIndex& node_id = ordered_nodes[id];
     node_id_to_order_map[node_id] = id;
   }
@@ -106,6 +107,7 @@ InlinedHashSet<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& g
   while (!candidates.empty()) {
     NodeIndex cur = candidates.top();
     candidates.pop();
+
     auto p = visited.insert(cur);
     if (!p.second)
       continue;

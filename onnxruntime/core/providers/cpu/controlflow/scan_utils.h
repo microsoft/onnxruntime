@@ -196,7 +196,7 @@ e.g. if shape is {2, 3, 4} and axis 1 is chosen the permutations will be {1, 0, 
      if axis 2 is chosen the permutations will be {2, 0, 1} and the output shape will be {4, 2, 3}
 */
 void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t axis,
-                                      InlinedShapeVector<size_t>& permutations, TensorShapeVector& transposed_shape);
+                                      InlinedVector<size_t>& permutations, TensorShapeVector& transposed_shape);
 
 /**
 Calculate the transpose permutations and shape by shifting the chosen axis FROM the first dimension.
@@ -205,7 +205,7 @@ e.g. if shape is {4, 2, 3} and axis 2 is chosen, dimension 0 will move to dimens
      the permutations will be {1, 2, 0} and output shape will be {2, 3, 4}
 */
 void CalculateTransposedShapeForOutput(const TensorShape& original_shape, int64_t axis,
-                                       InlinedShapeVector<size_t>& permutations, TensorShapeVector& transposed_shape);
+                                       InlinedVector<size_t>& permutations, TensorShapeVector& transposed_shape);
 
 }  // namespace detail
 }  // namespace scan

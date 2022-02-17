@@ -219,18 +219,18 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
                                        std::string_view domain) {
   return (node.OpType() == op_type && !node.Op()->Deprecated() &&
-          MatchesOpSinceVersion(node, versions) && MatchesOpSetDomain(node, std::string(domain)));
+          MatchesOpSinceVersion(node, versions) && MatchesOpSetDomain(node, domain));
 }
 
 bool MatchesOpSinceVersion(const Node& node, std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions) {
   return std::find(versions.begin(), versions.end(), node.SinceVersion()) != versions.end();
 }
 
-bool MatchesOpSinceVersion(const Node& node, const gsl::span<const ONNX_NAMESPACE::OperatorSetVersion>& versions) {
+bool MatchesOpSinceVersion(const Node& node, gsl::span<const ONNX_NAMESPACE::OperatorSetVersion> versions) {
   return std::find(versions.begin(), versions.end(), node.SinceVersion()) != versions.end();
 }
 
-bool MatchesOpSetDomain(const Node& node, const std::string& domain) {
+bool MatchesOpSetDomain(const Node& node, std::string_view domain) {
   const auto& node_domain = node.Domain();
   // We do a special check for the ONNX domain, as it has two aliases.
   return node_domain == domain ||
@@ -537,7 +537,7 @@ void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node) {
   graph.RemoveNode(second_node.Index());
 }
 
-void FinalizeNodeFusion(Graph& graph, const gsl::span<const std::reference_wrapper<Node>>& nodes, Node& replacement_node_start,
+void FinalizeNodeFusion(Graph& graph, gsl::span<const std::reference_wrapper<Node>> nodes, Node& replacement_node_start,
                         Node& replacement_node_end) {
   MoveAllNodeInputEdges(graph, *nodes.begin(), replacement_node_start);
   MoveAllNodeOutputs(graph, nodes.back(), replacement_node_end);
@@ -566,7 +566,7 @@ const Node* GetInputNode(const Node& node, int arg_index) {
   return &(edge->GetNode());
 }
 
-inline std::string ToString(const gsl::span<const ONNX_NAMESPACE::OperatorSetVersion>& versions) {
+inline std::string ToString(gsl::span<const ONNX_NAMESPACE::OperatorSetVersion> versions) {
   std::ostringstream output;
   if (!versions.empty()) {
     // Convert all but the last element to avoid a trailing ";"
@@ -578,7 +578,7 @@ inline std::string ToString(const gsl::span<const ONNX_NAMESPACE::OperatorSetVer
   return output.str();
 }
 
-bool FindPath(const Node& node, bool is_input_edge, const gsl::span<const EdgeEndToMatch>& edges_to_match,
+bool FindPath(const Node& node, bool is_input_edge, gsl::span<const EdgeEndToMatch> edges_to_match,
               std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger) {
   result.clear();
   result.reserve(edges_to_match.size());
@@ -629,7 +629,7 @@ bool FindPath(const Node& node, bool is_input_edge, const gsl::span<const EdgeEn
   return true;
 }
 
-bool FindPath(Graph& graph, const Node& node, bool is_input_edge, const gsl::span<const EdgeEndToMatch>& edges_to_match, std::vector<std::reference_wrapper<Node>>& result, const logging::Logger& logger) {
+bool FindPath(Graph& graph, const Node& node, bool is_input_edge, gsl::span<const EdgeEndToMatch> edges_to_match, std::vector<std::reference_wrapper<Node>>& result, const logging::Logger& logger) {
   result.clear();
 
   std::vector<const Node::EdgeEnd*> edge_ends;

@@ -346,20 +346,21 @@ class Node {
   void AddAttribute(std::string attr_name, const ONNX_NAMESPACE::AttributeProto& value);
   void AddAttribute(std::string attr_name, ONNX_NAMESPACE::AttributeProto&& value);
 
-#define ADD_ATTR_INTERFACES(TypeName)                                     \
-  void AddAttribute(const std::string& attr_name, const TypeName& value); \
-  void AddAttribute(const std::string& attr_name,                         \
-                    const gsl::span<TypeName const>& values);
+#define ADD_ATTR_INTERFACES(TypeName)                              \
+  void AddAttribute(std::string attr_name, const TypeName& value); \
+  void AddAttribute(std::string attr_name,                         \
+                    gsl::span<TypeName const> values);
 
 #define ADD_ATTR_MOVE_INTERFACE(TypeName) \
-  void AddAttribute(const std::string& attr_name, TypeName&& value);
+  void AddAttribute(std::string attr_name, TypeName&& value);
+
+  void AddAttribute(std::string attr_name, std::string value);
+  void AddAttribute(std::string attr_name, gsl::span<std::string const> values);
 
   ADD_ATTR_INTERFACES(int64_t)
   ADD_ATTR_INTERFACES(float)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TensorProto)
   ADD_ATTR_MOVE_INTERFACE(ONNX_NAMESPACE::TensorProto)
-  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::GraphProto)
-  ADD_ATTR_MOVE_INTERFACE(ONNX_NAMESPACE::GraphProto)
 #if !defined(DISABLE_SPARSE_TENSORS)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::SparseTensorProto)
   ADD_ATTR_MOVE_INTERFACE(ONNX_NAMESPACE::SparseTensorProto)
@@ -367,15 +368,14 @@ class Node {
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TypeProto)
   ADD_ATTR_MOVE_INTERFACE(ONNX_NAMESPACE::TypeProto)
 
-  void AddAttribute(std::string attr_name, std::string value);
-  void AddAttribute(const std::string& attr_name,
-                    const gsl::span<std::string const>& values);
+  void AddAttribute(std::string attr_name, const ONNX_NAMESPACE::GraphProto& value);
+  void AddAttribute(std::string attr_name, ONNX_NAMESPACE::GraphProto&& value);
 
   // The below overloads are made so the compiler does not attempt to resolve
   // C-strings with a gsl::span overloads
   template <size_t N>
-  void AddAttribute(const std::string& attr_name, const char (&value)[N]) {
-    this->AddAttribute(attr_name, std::string(value, N - 1));
+  void AddAttribute(std::string attr_name, const char (&value)[N]) {
+    this->AddAttribute(std::move(attr_name), std::string(value, N - 1));
   }
 
   template <size_t M, size_t N>
@@ -516,6 +516,7 @@ class Node {
     std::vector<NodeArg*> implicit_input_defs;
 
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Definitions);
+
    private:
   };
 
@@ -899,8 +900,8 @@ class Graph {
   Node& AddNode(const std::string& name,
                 const std::string& op_type,
                 const std::string& description,
-                const gsl::span<NodeArg* const>& input_args,
-                const gsl::span<NodeArg* const>& output_args,
+                gsl::span<NodeArg* const> input_args,
+                gsl::span<NodeArg* const> output_args,
                 const NodeAttributes* attributes = nullptr,
                 const std::string& domain = std::string());
 
@@ -920,7 +921,7 @@ class Graph {
   Node& AddNode(const std::string& name,
                 const std::string& op_type,
                 const std::string& description,
-                const gsl::span<NodeArg* const>& input_args,
+                gsl::span<NodeArg* const> input_args,
                 std::initializer_list<NodeArg*> output_args,
                 const NodeAttributes* attributes = nullptr,
                 const std::string& domain = std::string()) {
@@ -934,7 +935,7 @@ class Graph {
                 const std::string& op_type,
                 const std::string& description,
                 std::initializer_list<NodeArg*> input_args,
-                const gsl::span<NodeArg* const>& output_args,
+                gsl::span<NodeArg* const> output_args,
                 const NodeAttributes* attributes = nullptr,
                 const std::string& domain = std::string()) {
     return AddNode(name, op_type, description,
@@ -942,7 +943,6 @@ class Graph {
                    output_args,
                    attributes, domain);
   }
-
 
   /** Remove a Node from this Graph and free it.
   The output edges of this specified node MUST have been removed before removing the node.
@@ -1012,7 +1012,7 @@ class Graph {
   @param leave Visit function invoked on the node after its parents have all been visited.
   @param comp Comparison function to stabilize the traversal order by making Node ordering deterministic.
   */
-  void ReverseDFSFrom(const std::vector<NodeIndex>& from,
+  void ReverseDFSFrom(gsl::span<NodeIndex const> from,
                       const std::function<void(const Node*)>& enter,
                       const std::function<void(const Node*)>& leave,
                       const std::function<bool(const Node*, const Node*)>& comp = {}) const;
@@ -1024,7 +1024,7 @@ class Graph {
   @param leave Visit function invoked on the node after its parents have all been visited.
   @param comp Comparison function to stabilize the traversal order by making Node ordering deterministic.
   */
-  void ReverseDFSFrom(const std::vector<const Node*>& from,
+  void ReverseDFSFrom(gsl::span<const Node* const> from,
                       const std::function<void(const Node*)>& enter,
                       const std::function<void(const Node*)>& leave,
                       const std::function<bool(const Node*, const Node*)>& comp = {}) const;
@@ -1037,7 +1037,7 @@ class Graph {
   @param stop Stop traversal from node n to input node p if stop(n, p) is true.
   @param comp Comparison function to stabilize the traversal order by making Node ordering deterministic.
   */
-  void ReverseDFSFrom(const std::vector<const Node*>& from,
+  void ReverseDFSFrom(gsl::span<const Node* const> from,
                       const std::function<void(const Node*)>& enter,
                       const std::function<void(const Node*)>& leave,
                       const std::function<bool(const Node*, const Node*)>& comp,
@@ -1141,17 +1141,17 @@ class Graph {
   @param inputs NodeArgs that represent complete graph inputs which need to be explicitly ordered.
   @remarks Note that the input order matters for subgraphs.
   */
-  void SetInputs(const gsl::span<const NodeArg* const>& inputs);
+  void SetInputs(gsl::span<const NodeArg* const> inputs);
 
   void SetInputs(std::initializer_list<const NodeArg*> inputs) {
-    SetInputs(gsl::make_span(inputs.begin(), inputs.end()));
+    SetInputs(gsl::make_span(inputs));
   }
 
   /** Explicitly set graph outputs.
   @param outputs NodeArgs that represent complete graph outputs which need to be explicitly ordered.
   @remarks Note that the output order matters for subgraphs.
   */
-  void SetOutputs(const gsl::span<const NodeArg* const>& outputs);
+  void SetOutputs(gsl::span<const NodeArg* const> outputs);
 
   void SetOutputs(std::initializer_list<const NodeArg*> outputs) {
     SetOutputs(gsl::make_span(outputs.begin(), outputs.end()));
@@ -1201,18 +1201,21 @@ class Graph {
     return GetConsumerNodesImpl(*this, node_arg_name);
   }
 
-  void UpdateConsumerNodes(const std::string& node_arg_name, const gsl::span<Node* const>& nodes) {
-    auto iter = node_arg_to_consumer_nodes_.find(node_arg_name);
-    if (iter != node_arg_to_consumer_nodes_.end()) {
-      node_arg_to_consumer_nodes_.erase(iter);
+  void UpdateConsumerNodes(const std::string& node_arg_name, gsl::span<Node* const> nodes) {
+    // Replace nodes for the arg
+    auto& nodes_for_arg = node_arg_to_consumer_nodes_[node_arg_name];
+    if (!nodes_for_arg.empty()) {
+      nodes_for_arg.clear();
     }
+
+    nodes_for_arg.reserve(nodes.size());
     for (Node* node : nodes) {
-      node_arg_to_consumer_nodes_[node_arg_name].insert(node->Index());
+      nodes_for_arg.insert(node->Index());
     }
   }
 
   void UpdateConsumerNodes(const std::string& node_arg_name, std::initializer_list<Node*> nodes) {
-    UpdateConsumerNodes(node_arg_name, gsl::make_span(nodes.begin(), nodes.end()));
+    UpdateConsumerNodes(node_arg_name, gsl::make_span(nodes));
   }
 
   /** During constant folding it may become possible to infer the shape for a node.
@@ -1360,7 +1363,8 @@ class Graph {
         const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
         const logging::Logger& logger);
 
-   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
+
  private:
   void InitializeStateFromModelFileGraphProto();
 

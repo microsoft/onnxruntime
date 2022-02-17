@@ -44,10 +44,10 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
 
 /** Checks if the node has the same operator since version as the given one. */
 bool MatchesOpSinceVersion(const Node& node, std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions);
-bool MatchesOpSinceVersion(const Node& node, const gsl::span<const ONNX_NAMESPACE::OperatorSetVersion>& versions);
+bool MatchesOpSinceVersion(const Node& node, gsl::span<const ONNX_NAMESPACE::OperatorSetVersion> versions);
 
 /** Checks if the node has the same op set domain as the given one. */
-bool MatchesOpSetDomain(const Node& node, const std::string& domain);
+bool MatchesOpSetDomain(const Node& node, std::string_view domain);
 
 /** Returns true if the execution provider assigned to current node is present in the compatible providers list
     or if the compatible_providers list is empty. */
@@ -81,14 +81,35 @@ bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedT
 /** Gets the index of an input arg with the specified input arg name. */
 int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name);
 
+// replacement for InlinedVector
+namespace onnx_repeated_values {
+template <typename T>
+inline InlinedVector<T> RetrieveValues(const ONNX_NAMESPACE::AttributeProto& attr);
+
+template <>
+inline InlinedVector<int64_t> RetrieveValues(const ONNX_NAMESPACE::AttributeProto& attr) {
+  return {attr.ints().begin(), attr.ints().end()};
+}
+
+template <>
+inline InlinedVector<std::string> RetrieveValues(const ONNX_NAMESPACE::AttributeProto& attr) {
+  return {attr.strings().begin(), attr.strings().end()};
+}
+
+template <>
+inline InlinedVector<float> RetrieveValues(const ONNX_NAMESPACE::AttributeProto& attr) {
+  return {attr.floats().begin(), attr.floats().end()};
+}
+}
+
 /** Retrieves the values for a repeated attribute of a node and place them to the values vector. */
 template <typename T>
 bool GetRepeatedNodeAttributeValues(const Node& node,
                                     const std::string& attr_name,
-                                    std::vector<T>& values) {
+                                    InlinedVector<T>& values) {
   const auto* attr = graph_utils::GetNodeAttribute(node, attr_name);
   if (attr) {
-    values = ONNX_NAMESPACE::RetrieveValues<T>(*attr);
+    values = onnx_repeated_values::RetrieveValues<T>(*attr);
     return true;
   }
   return false;
@@ -191,7 +212,7 @@ void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node);
     All nodes in 'nodes' will be removed.
 */
 void FinalizeNodeFusion(Graph& graph,
-                        const gsl::span<const std::reference_wrapper<Node>>& nodes,
+                        gsl::span<const std::reference_wrapper<Node>> nodes,
                         Node& replacement_node_start,
                         Node& replacement_node_end);
 
@@ -199,7 +220,7 @@ inline void FinalizeNodeFusion(Graph& graph,
                                std::initializer_list<std::reference_wrapper<Node>> nodes,
                                Node& replacement_node_start,
                                Node& replacement_node_end) {
-  FinalizeNodeFusion(graph, gsl::make_span(nodes.begin(), nodes.end()), replacement_node_start, replacement_node_end);
+  FinalizeNodeFusion(graph, gsl::make_span(nodes), replacement_node_start, replacement_node_end);
 }
 
 /** Finalize the fusion of two or more nodes which are being replaced with a single node.
@@ -212,7 +233,7 @@ inline void FinalizeNodeFusion(Graph& graph,
     The output definitions and edges from the last node in 'nodes' will be moved to replacement_node.
     All nodes in 'nodes' will be removed.
 */
-inline void FinalizeNodeFusion(Graph& graph, const gsl::span<const std::reference_wrapper<Node>>& nodes, Node& replacement_node) {
+inline void FinalizeNodeFusion(Graph& graph, gsl::span<const std::reference_wrapper<Node>> nodes, Node& replacement_node) {
   FinalizeNodeFusion(graph, nodes, replacement_node, replacement_node);
 }
 
@@ -272,18 +293,18 @@ struct EdgeEndToMatch {
     It is recommended to match path from bottom to top direction to avoid such issue.
     It is because each node input (dst_arg_index) only accepts one input edge.
 */
-bool FindPath(const Node& node, bool is_input_edge, const gsl::span<const EdgeEndToMatch>& edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger);
+bool FindPath(const Node& node, bool is_input_edge, gsl::span<const EdgeEndToMatch> edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger);
 
 inline bool FindPath(const Node& node, bool is_input_edge, std::initializer_list<EdgeEndToMatch> edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger) {
-  return FindPath(node, is_input_edge, gsl::make_span(edges_to_match.begin(), edges_to_match.end()), result, logger);
+  return FindPath(node, is_input_edge, gsl::make_span(edges_to_match), result, logger);
 }
 
 /** Same as FindPath above, but return the references of matched Node
 */
-bool FindPath(Graph& graph, const Node& node, bool is_input_edge, const gsl::span<const EdgeEndToMatch>& edges_to_match, std::vector<std::reference_wrapper<Node>>& result, const logging::Logger& logger);
+bool FindPath(Graph& graph, const Node& node, bool is_input_edge, gsl::span<const EdgeEndToMatch> edges_to_match, std::vector<std::reference_wrapper<Node>>& result, const logging::Logger& logger);
 
 inline bool FindPath(Graph& graph, const Node& node, bool is_input_edge, std::initializer_list<EdgeEndToMatch> edges_to_match, std::vector<std::reference_wrapper<Node>>& result, const logging::Logger& logger) {
-  return FindPath(graph, node, is_input_edge, gsl::make_span(edges_to_match.begin(), edges_to_match.end()), result, logger);
+  return FindPath(graph, node, is_input_edge, gsl::make_span(edges_to_match), result, logger);
 }
 
 /**

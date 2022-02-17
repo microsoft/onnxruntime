@@ -562,7 +562,7 @@ FastReduceKind OptimizeShapeForFastReduce(gsl::span<const int64_t> input_shape,
   fast_output_shape.clear();
   fast_output_shape.reserve(input_shape_size);
   bool empty_reduce = false;
-  InlinedShapeVector<bool> reduce(input_shape_size);
+  InlinedVector<bool> reduce(input_shape_size);
   for (int64_t i = 0; i < input_shape_size; ++i) {
     reduce[i] = axes.find(i) != axes.end();
     if (reduce[i]) {

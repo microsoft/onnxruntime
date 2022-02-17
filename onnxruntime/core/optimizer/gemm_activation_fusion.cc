@@ -13,7 +13,7 @@ namespace {
 // Don't check if the op is Deprecated. In ONNX Runtime's world, there is no deprecation.
 bool IsSupportedOptypeVersionAndDomain(const Node& node, const std::string& op_type,
                                        std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
-                                       const std::string& domain) {
+                                       std::string_view domain) {
   return (node.OpType() == op_type && graph_utils::MatchesOpSinceVersion(node, versions) &&
           graph_utils::MatchesOpSetDomain(node, domain));
 }
