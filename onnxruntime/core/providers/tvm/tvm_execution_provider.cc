@@ -297,7 +297,7 @@ TvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
 
 common::Status TvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
                                               std::vector<NodeComputeInfo>& node_compute_funcs) {
-    PrintProviderOptions();
+  PrintProviderOptions();
   for (auto* fused_node : nodes) {
     auto func_body = fused_node->GetFunctionBody();
     if (!func_body)
