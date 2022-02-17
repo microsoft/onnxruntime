@@ -29,22 +29,44 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   }
   //to check if target device is available
   //using ie_core capability GetAvailableDevices to fetch list of devices plugged in
-  bool device_found = false;
+bool device_found = false;
   auto available_devices = openvino_ep::BackendManager::GetGlobalContext().ie_core.GetAvailableDevices();
-  for (auto device : available_devices) {
-    if (device == info.device_type_) {
-      device_found = true;
-      break;
+  if (info.device_type_ != "") {
+    for (auto device : available_devices){
+      if (device.rfind(info.device_type_, 0) == 0){
+        if(info.device_type_== "GPU" && (info.precision_ == "FP32" || info.precision_ == "FP16")) {
+            device_found = true;
+            break;
+        }
+        if(info.device_type_== "CPU" && info.precision_ == "FP32") {
+          device_found = true;
+          break;
+        }
+        if(info.device_type_== "MYRIAD" && info.precision_ == "FP16") {
+          device_found = true;
+          break;
+        }
+      }
     }
   }
-  //stop execution if target device field is empty or not available in list of available devices
-  if (!device_found || info.device_type_ == "") {
-  std::string err_msg = std::string("Device not found : ") + info.device_id_ + "\nChoose one of:\n";
+  if (info.device_id_ != "") {
+    for (auto device : available_devices) {
+      if (device.rfind(info.device_id_, 0) == 0){
+        if(info.device_id_== "MYRIAD" || info.device_id_== "CPU" || info.device_id_== "GPU"){
+          device_found = true;
+          break;
+        }
+      }
+    }
+  }
+  if (!device_found) {
+    std::string err_msg = std::string("Device not found : ") + info.device_id_ + "\nChoose one of:\n";
     for (auto device : available_devices) {
       err_msg = err_msg + device + "\n";
     }
     ORT_THROW(err_msg);
   }
+  
   openvino_ep::BackendManager::GetGlobalContext().device_id = info.device_id_;
 
   AllocatorCreationInfo device_info(
