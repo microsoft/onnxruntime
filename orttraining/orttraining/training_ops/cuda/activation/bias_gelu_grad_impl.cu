@@ -62,9 +62,24 @@ void LaunchBiasGeluGradDxKernel(
   // given a 2D grid of blocks:
   // each grid row handles bias_size elements
   // there are input_size / bias_size rows
-  constexpr int num_elements_per_thread = GridDim::maxElementsPerThread;
+  //constexpr int num_elements_per_thread = GridDim::maxElementsPerThread;
+  /* 
+  int num_elements_per_thread = GridDim::maxElementsPerThread;
+  int threads_per_block = GridDim::maxThreadsPerBlock;
+  #ifdef __HIP_PLATFORM_HCC__
+  // Optimization for ROCm MI100
+  num_elements_per_thread = 2;
+  threads_per_block = 512;
+  #endif
+
   const int num_threads_per_block =
-      std::min<int>(static_cast<int>(CeilDiv(bias_size, num_elements_per_thread)), static_cast<int>(GridDim::maxThreadsPerBlock));
+      std::min<int>(static_cast<int>(CeilDiv(bias_size, num_elements_per_thread)), static_cast<int>(threads_per_block));
+  */
+  
+  constexpr int num_elements_per_thread = num_elements_per_thread;
+  const int num_threads_per_block =
+      std::min<int>(static_cast<int>(CeilDiv(bias_size, num_elements_per_thread)), static_cast<int>(512));
+  
   const auto grid_width = CeilDiv(bias_size, num_elements_per_thread * num_threads_per_block);
   const auto grid_height = input_size / bias_size;
 
