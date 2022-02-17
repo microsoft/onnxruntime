@@ -180,7 +180,11 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Re-export will be avoided if _skip_check is enabled.
         self._original_model_has_changed = False
 
-        # Load ATen operator executor extension.
+        # flag to control whether the training graph should be exported on a different
+        # device than the one associated with the module
+        self._export_on_device = None
+
+        # Load ATenOp operator executor extension.
         load_aten_op_executor_cpp_extension()
 
     def _get_torch_gpu_allocator_function_addresses(self):
@@ -378,13 +382,29 @@ class GraphExecutionManager(GraphExecutionInterface):
         TODO: How to support dynamic axes? Dimensions are determined by samples
         """
 
+        # Deepcopy inputs, since input values may change after model run.
+        # NOTE: Inputs may contain tensors that have attributes preventing their deepcopy (example grad_fn).
+        # Therefore, deepcopy only the data component of the input tensors for export.
+        sample_inputs_copy, sample_kwargs_copy = _io.deepcopy_model_input(*inputs, **kwargs)
+
+        if self._export_on_device != None:
+            self._original_module = self._original_module.to(self._export_on_device)
+            self._flattened_module = self._flattened_module.to(self._export_on_device)
+            inputs_dev = [value.to(self._export_on_device) for value in sample_inputs_copy]
+            kwargs_dev = {}
+            for name, value  in sample_kwargs_copy.items():
+                if isinstance(value, torch.Tensor):
+                    kwargs_dev[name] = value.to(self._export_on_device)
+            sample_inputs_copy = inputs_dev
+            sample_kwargs_copy = kwargs_dev
+
         # Setup dynamic axes for onnx model
-        self._input_info = _io.parse_inputs_for_onnx_export(self._module_parameters, None, input_schema, inputs, kwargs)
+        self._input_info = _io.parse_inputs_for_onnx_export(self._module_parameters, None, input_schema, inputs, kwargs, sample_inputs_copy, sample_kwargs_copy)
         (
             output_names,
             output_dynamic_axes,
             self._module_output_schema,
-        ) = _io.parse_outputs_for_onnx_export_and_extract_schema(self._original_module, inputs, kwargs)
+        ) = _io.parse_outputs_for_onnx_export_and_extract_schema(self._original_module, inputs, kwargs, sample_inputs_copy, sample_kwargs_copy)
         self._input_info.dynamic_axes.update(output_dynamic_axes)
 
         # FlattenedModule needs _InputInfo to expand user input from *args to *args + **kwargs
@@ -393,10 +413,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Export torch.nn.Module to ONNX
         f = io.BytesIO()
 
-        # Deepcopy inputs, since input values may change after model run.
-        # NOTE: Inputs may contain tensors that have attributes preventing their deepcopy (example grad_fn).
-        # Therefore, deepcopy only the data component of the input tensors for export.
-        sample_inputs_copy, sample_kwargs_copy = _io.deepcopy_model_input(*inputs, **kwargs)
         # NOTE: Flattening the input will change the 'input schema', resulting in a re-export
         sample_inputs_as_tuple = tuple(self._input_info.flatten(sample_inputs_copy, sample_kwargs_copy, self._device))
         # Ops behaving differently under train/eval mode need to exported with the
@@ -430,6 +446,9 @@ class GraphExecutionManager(GraphExecutionInterface):
                     **required_export_kwargs,
                     **self._export_extra_kwargs,
                 )
+                if self._export_on_device != None:
+                    self._original_module = self._original_module.to(self._device)
+                    self._flattened_module = self._flattened_module.to(self._device)
         except Exception as e:
             raise wrap_exception(
                 ORTModuleONNXModelException,
