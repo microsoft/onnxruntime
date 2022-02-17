@@ -22,9 +22,7 @@ namespace test {
 
 using namespace onnxruntime::test;
 
-namespace {
-
-// sin(1, 2, ..., 101)
+// sin(1, 2, ..., 100)
 constexpr std::initializer_list<float> kRandomValuesVectorAligned = {
     0.8414709848078965, 0.9092974268256817, 0.1411200080598672, -0.7568024953079282, -0.9589242746631385,
     -0.27941549819892586, 0.6569865987187891, 0.9893582466233818, 0.4121184852417566, -0.5440211108893698,
@@ -48,6 +46,7 @@ constexpr std::initializer_list<float> kRandomValuesVectorAligned = {
     0.9835877454343449, 0.3796077390275217, -0.5733818719904229, -0.9992068341863537, -0.5063656411097588};
 constexpr std::initializer_list<int64_t> kRandomValuesVectorAlignedDims = {10, 10};
 
+// sin(1, 2, ..., 99)
 constexpr std::initializer_list<float> kRandomValuesVectorUnaligned = {
     0.8414709848078965, 0.9092974268256817, 0.1411200080598672, -0.7568024953079282, -0.9589242746631385,
     -0.27941549819892586, 0.6569865987187891, 0.9893582466233818, 0.4121184852417566, -0.5440211108893698,
@@ -74,7 +73,9 @@ constexpr std::initializer_list<int64_t> kRandomValuesVectorUnalignedDims = {9, 
 constexpr int64_t kMaskSeed = 42;
 constexpr std::initializer_list<float> kTestedRatios = {0.00f, 0.25f, 0.50f, 0.75f, 0.99f};
 
-static std::vector<uint32_t> maskToBitmask(const std::vector<bool>& mask) {
+namespace {
+
+std::vector<uint32_t> maskToBitmask(const std::vector<bool>& mask) {
   std::vector<uint32_t> result;
 
   for (size_t i = 0; i < mask.size(); i++) {
@@ -93,7 +94,7 @@ static std::vector<uint32_t> maskToBitmask(const std::vector<bool>& mask) {
   return result;
 }
 
-static std::vector<uint32_t> maskToBitmask(const bool* data, size_t size) {
+std::vector<uint32_t> maskToBitmask(const bool* data, size_t size) {
   std::vector<uint32_t> result;
 
   for (size_t i = 0; i < size; i++) {

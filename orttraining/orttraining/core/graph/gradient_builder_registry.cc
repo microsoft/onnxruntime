@@ -81,6 +81,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("GlobalAveragePool", GetGlobalAveragePoolGradient);
   REGISTER_GRADIENT_BUILDER("AveragePool", GetAveragePoolGradient);
   REGISTER_GRADIENT_BUILDER("Dropout", GetDropoutGradient)
+  REGISTER_GRADIENT_BUILDER("BitmaskDropout", GetBitmaskDropoutGradient)
   REGISTER_GRADIENT_BUILDER("GatherND", GetGatherNDGradient)
   REGISTER_GRADIENT_BUILDER("GatherElements", GetGatherElementsGradient)
   REGISTER_GRADIENT_BUILDER("Gelu", GetGeluGradient)

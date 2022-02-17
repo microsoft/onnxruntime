@@ -4,6 +4,19 @@
 #include "core/providers/cuda/nn/dropout.h"
 
 namespace onnxruntime {
+
+namespace {
+
+template <typename T>
+struct GetRatioDataImpl {
+  void operator()(const Tensor* ratio, float& ratio_data) const {
+    ratio_data = static_cast<float>(*(ratio->template Data<T>()));
+    ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f, "ratio_data is outside range [0, 1)");
+  }
+};
+
+}  // namespace
+
 namespace cuda {
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -56,7 +69,7 @@ Status Dropout::ComputeInternal(OpKernelContext* context) const {
 
   const Tensor* training_mode = context->Input<Tensor>(2);
   //Check for inference mode.
-  if ((0 == ratio_data) ||(training_mode == nullptr || *(training_mode->Data<bool>()) == false)) {
+  if ((0 == ratio_data) || (training_mode == nullptr || *(training_mode->Data<bool>()) == false)) {
     const void* X_data = X->DataRaw();
     void* Y_data = Y->MutableDataRaw();
     if (Y_data != X_data) {

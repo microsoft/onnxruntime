@@ -1,18 +1,18 @@
 /**
-* Copyright (c) 2016-present, Facebook, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
+ * Copyright (c) 2016-present, Facebook, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 /* Modifications Copyright (c) Microsoft. */
 
@@ -22,15 +22,13 @@
 #include <curand_kernel.h>
 #include <algorithm>
 
-namespace onnxruntime {
-namespace contrib {
-namespace cuda {
-
 constexpr unsigned FULL_MASK = 0XFFFFFFFF;
 constexpr int UNROLL = 4;
 constexpr int WARP_SIZE = 32;
 
-static_assert(WARP_SIZE % UNROLL == 0, "number of threads in warp must be evenly divisble by unroll factor");
+namespace onnxruntime {
+namespace contrib {
+namespace cuda {
 
 template <typename T>
 __global__ void BitmaskDropoutKernel(
@@ -40,6 +38,8 @@ __global__ void BitmaskDropoutKernel(
     const T* X_data,
     T* Y_data,
     uint32_t* mask_data) {
+  static_assert(WARP_SIZE % UNROLL == 0, "number of threads in warp must be evenly divisble by unroll factor");
+
   const float p = 1.0f - ratio;
   const float scale = 1.0f / p;
 
@@ -79,7 +79,7 @@ __global__ void BitmaskDropoutKernel(
     CUDA_LONG bitmask_shift = id % WARP_SIZE;
     uint32_t full_bitmask = __reduce_or_sync(thread_mask, thread_bitmask << bitmask_shift);
 
-    if(bitmask_shift == 0) {
+    if (bitmask_shift == 0) {
       mask_data[bitmask_idx] = full_bitmask;
     }
 
@@ -97,7 +97,7 @@ void BitmaskDropoutKernelImpl(
     const T* X_data,
     T* Y_data,
     uint32_t* mask_data) {
-  const int block_size = 256;
+  constexpr int block_size = 256;
   static_assert(block_size % WARP_SIZE == 0, "number of threads in block must be evenly divisible by warp size");
 
   const int blocks_per_sm = prop.maxThreadsPerMultiProcessor / block_size;

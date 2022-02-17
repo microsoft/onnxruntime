@@ -2385,11 +2385,11 @@ void RegisterContribSchemas() {
       .TypeConstraint(
           "T2",
           {"tensor(bool)"},
-          "Constrain training_mode to boolean tensors")
+          "Constrain 'training_mode' to boolean tensor.")
       .TypeConstraint(
           "T3",
           {"tensor(uint32)"},
-          "Constrain output 'mask' types to bit-packed uint32 tensors.");
+          "Constrain output 'mask' types to bit-packed uint32 tensor.");
 
 #ifndef _OPSCHEMA_LIB_
   // Register the NCHWc schemas if supported by the platform.

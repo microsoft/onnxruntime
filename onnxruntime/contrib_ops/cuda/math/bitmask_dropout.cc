@@ -2,12 +2,25 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/math/bitmask_dropout.h"
-#include "contrib_ops/cuda/math/bitmask_dropout_impl.h"
-#include "core/providers/cuda/nn/dropout.h"
 
+#include "contrib_ops/cuda/math/bitmask_dropout_impl.h"
 #include "core/providers/common.h"
+#include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
+
+namespace {
+
+template <typename T>
+struct GetRatioDataImpl {
+  void operator()(const Tensor* ratio, float& ratio_data) const {
+    ratio_data = static_cast<float>(*(ratio->template Data<T>()));
+    ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f, "ratio_data is outside range [0, 1)");
+  }
+};
+
+}  // namespace
+
 namespace contrib {
 namespace cuda {
 

@@ -11,14 +11,6 @@ namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-struct GetRatioDataImpl {
-  void operator()(const Tensor* ratio, float& ratio_data) const {
-    ratio_data = static_cast<float>(*(ratio->template Data<T>()));
-    ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f, "ratio_data is outside range [0, 1)");
-  }
-};
-
-template <typename T>
 struct DropoutComputeImpl {
   void operator()(const cudaDeviceProp& prop,
                   cudaStream_t stream,
