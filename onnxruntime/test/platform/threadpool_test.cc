@@ -4,7 +4,6 @@
 #include "core/platform/threadpool.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
 #include "core/platform/ort_mutex.h"
-#include "core/common/cpuid_info.h"
 
 #include "gtest/gtest.h"
 #include <algorithm>
