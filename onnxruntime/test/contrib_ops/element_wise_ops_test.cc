@@ -146,9 +146,8 @@ TEST(BiasGeluTest, Two_One_Dim_fp16) {
 }
 #endif
 
-// failed test for CUDA (therefore ROCM as well) to be investigated 
 #if defined(USE_CUDA) || defined(USE_ROCM)
-TEST(BiasGeluTest, DISABLED_Two_One_Dim_bfloat16) {
+TEST(BiasGeluTest, Two_One_Dim_bfloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {

@@ -62,27 +62,6 @@ Status SoftMaxGradComputeHelper(
   return Status::OK();
 }
 
-#define SPECIALIZED_SOFTMAXGRAD_HELPER_IMPL_BFloat16(is_log_softmax)                                           \
-  template <>                                                                                                  \
-  Status SoftMaxGradComputeHelper<BFloat16, is_log_softmax>(hipStream_t stream, const BFloat16* dY,            \
-                                                            const TensorShape& input_shape, const BFloat16* Y, \
-                                                            BFloat16* dX, miopenHandle_t, int64_t axis) {      \
-    typedef typename ToHipType<BFloat16>::MappedType HipT;                                                     \
-    const int64_t normalized_axis = HandleNegativeAxis(axis, input_shape.NumDimensions());                     \
-    int64_t N = input_shape.SizeToDimension(normalized_axis);                                                  \
-    int64_t D = input_shape.SizeFromDimension(normalized_axis);                                                \
-    auto dY_data = reinterpret_cast<const HipT*>(dY);                                                          \
-    auto Y_data = reinterpret_cast<const HipT*>(Y);                                                            \
-    auto dX_data = reinterpret_cast<HipT*>(dX);                                                                \
-    dispatch_softmax_backward<HipT, HipT, AccumulationType_t<HipT>, is_log_softmax>(                           \
-        stream, dX_data, dY_data, Y_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D),                  \
-        gsl::narrow_cast<int>(N));                                                                             \
-    return Status::OK();                                                                                       \
-  }
-
-SPECIALIZED_SOFTMAXGRAD_HELPER_IMPL_BFloat16(true)
-SPECIALIZED_SOFTMAXGRAD_HELPER_IMPL_BFloat16(false)
-
 #define REGISTER_GRADIENT_KERNEL_TYPED(T)                                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
       SoftmaxGrad,                                                                         \

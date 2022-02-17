@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef STVM_EXECUTION_PROVIDER_H
-#define STVM_EXECUTION_PROVIDER_H
+#ifndef TVM_EXECUTION_PROVIDER_H
+#define TVM_EXECUTION_PROVIDER_H
 
 #include <string>
 #include <vector>
@@ -11,29 +11,31 @@
 
 #include "core/common/logging/logging.h"
 #include "core/framework/execution_provider.h"
-#include "core/providers/stvm/stvm_execution_provider_info.h"
 #include "core/platform/ort_mutex.h"
 
-#include "stvm_common.h"
+#include "tvm_common.h"
+#include "tvm_execution_provider_info.h"
 
 namespace onnxruntime {
 
-namespace stvm_env_vars {
-   static const std::string kDumpSubgraphs = "ORT_STVM_DUMP_SUBGRAPHS";
-}  // namespace stvm_env_vars
+namespace tvm {
+namespace env_vars {
+   static const std::string kDumpSubgraphs = "ORT_TVM_DUMP_SUBGRAPHS";
+}  // namespace env_vars
+}  // namespace tvm
 
-class STVMRunner;
+class TVMRunner;
 
-class StvmExecutionProvider : public IExecutionProvider {
-  friend STVMRunner;
+class TvmExecutionProvider : public IExecutionProvider {
+  friend TVMRunner;
 
   using TVMTensorShape = std::vector<int64_t>;
   using TVMTensorShapes = std::vector<TVMTensorShape>;
-  using STVMRunners = std::unordered_map<std::string, std::shared_ptr<STVMRunner>>;
-  using STVMModules = std::unordered_map<std::string, std::shared_ptr<tvm::runtime::Module>>;
+  using TVMRunners = std::unordered_map<std::string, std::shared_ptr<TVMRunner>>;
+  using TVMModules = std::unordered_map<std::string, std::shared_ptr<TvmModule>>;
  public:
-  explicit StvmExecutionProvider(const StvmExecutionProviderInfo& info);
-  virtual ~StvmExecutionProvider();
+  explicit TvmExecutionProvider(const TvmExecutionProviderInfo& info);
+  virtual ~TvmExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
@@ -53,19 +55,19 @@ class StvmExecutionProvider : public IExecutionProvider {
   void PrintInfo() const;
   // Bindings for compute info
   int CreateStateFunc(ComputeContext*, FunctionState*);
-  tvm::runtime::Module* CompileFunc(std::string func_name, const TVMTensorShapes& input_shapes);
+  TvmModule* CompileFunc(std::string func_name, const TVMTensorShapes& input_shapes);
  private:
-  STVMRunners runners_;
+  TVMRunners runners_;
   std::unordered_map<std::string, std::string> buffers_;
   std::unordered_map<std::string, int> opsets_;
   std::unordered_map<std::string, std::string>  model_paths_;
   bool dump_subgraphs_ = false;
-  OrtMutex stvm_mu_;
+  OrtMutex tvm_mu_;
   AllocatorPtr allocator_;
-  StvmExecutionProviderInfo info_;
-  STVMModules modules_;
+  TvmExecutionProviderInfo info_;
+  TVMModules modules_;
 };
 
 }  // namespace onnxruntime
 
-#endif  // STVM_EXECUTION_PROVIDER_H
+#endif  // TVM_EXECUTION_PROVIDER_H

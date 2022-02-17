@@ -6,7 +6,7 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/utils.h"
-#include "core/optimizer/transpose_optimizer/api_impl.h"
+#include "core/optimizer/transpose_optimizer/optimizer_utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -55,7 +55,7 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
 
       if (domain != kMSDomain) {
-        SwapNodeOpTypeAndDomain(*api_graph, *node, "QLinearConv", "com.microsoft");
+        SwapNodeOpTypeAndDomain(*api_graph, *node, "QLinearConv", kMSDomain);
       }
 
       modified = true;

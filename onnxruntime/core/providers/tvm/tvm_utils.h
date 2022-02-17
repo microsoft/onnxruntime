@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef STVM_UTILS_H
-#define STVM_UTILS_H
+#ifndef TVM_UTILS_H
+#define TVM_UTILS_H
 
-#include "stvm_common.h"
+#include "tvm_common.h"
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/ortdevice.h"
@@ -50,4 +50,4 @@ inline DLDevice GetDLDevice(const OrtDevice& device) {
 
 }  // namespace onnxruntime
 
-#endif // STVM_UTILS_H
+#endif // TVM_UTILS_H

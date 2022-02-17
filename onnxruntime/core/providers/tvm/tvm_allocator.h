@@ -1,24 +1,24 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef STVM_ALLOCATOR
-#define STVM_ALLOCATOR
+#ifndef TVM_ALLOCATOR
+#define TVM_ALLOCATOR
 
 #include "core/framework/allocator.h"
-#include "stvm_common.h"
+#include "tvm_common.h"
 
 namespace onnxruntime {
 
-#define STVM_ALLOC_ALIGN 128
+#define TVM_ALLOC_ALIGN 128
 
-class STVMAllocator : public IAllocator {
+class TVMAllocator : public IAllocator {
  public:
-   STVMAllocator() : STVMAllocator(OrtMemoryInfo("TVM",
-                                                 OrtAllocatorType::OrtDeviceAllocator,
-                                                 OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0),
-                                                 0,
-                                                 OrtMemTypeDefault)) {}
-  explicit STVMAllocator(const OrtMemoryInfo& info)
+   TVMAllocator() : TVMAllocator(OrtMemoryInfo("TVM",
+                                               OrtAllocatorType::OrtDeviceAllocator,
+                                               OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0),
+                                               0,
+                                               OrtMemTypeDefault)) {}
+  explicit TVMAllocator(const OrtMemoryInfo& info)
     : IAllocator(info) {
       switch (info.device.Type()) {
       case OrtDevice::CPU:
@@ -39,4 +39,4 @@ class STVMAllocator : public IAllocator {
 };
 
 }  // namespace onnxruntime
-#endif // STVM_ALLOCATOR
+#endif // TVM_ALLOCATOR
