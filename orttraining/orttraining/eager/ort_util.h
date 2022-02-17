@@ -10,15 +10,29 @@
 namespace torch_ort {
 namespace eager {
 
-void CreateMLValue(onnxruntime::AllocatorPtr alloc, 
-                   onnxruntime::MLDataType element_type, 
-                   const std::vector<int64_t>& dims, 
+void CreateMLValue(onnxruntime::AllocatorPtr alloc,
+                   onnxruntime::MLDataType element_type,
+                   const std::vector<int64_t>& dims,
                    OrtValue* p_mlvalue);
 
-void CreateMLValue(void* data_ptr, onnxruntime::MLDataType element_type, const std::vector<int64_t>& dims, OrtValue* p_mlvalue);
-void CreateMLValue(void* data_ptr, onnxruntime::MLDataType element_type, onnxruntime::TensorShape& shape, OrtValue* p_mlvalue);
-void CreateMLValue(void* data_ptr, const OrtMemoryInfo& memory_info, onnxruntime::MLDataType element_type,
-                   const std::vector<int64_t>& dims, ptrdiff_t offset, const std::vector<int64_t>& strides,
+void CreateMLValue(void* data_ptr,
+                   onnxruntime::MLDataType element_type,
+                   const std::vector<int64_t>& dims,
+                   const OrtMemoryInfo& memory_info,
+                   OrtValue* p_mlvalue);
+
+void CreateMLValue(void* data_ptr,
+                   onnxruntime::MLDataType element_type,
+                   onnxruntime::TensorShape& shape,
+                   const OrtMemoryInfo& memory_info,
+                   OrtValue* p_mlvalue);
+
+void CreateMLValue(void* data_ptr,
+                   const OrtMemoryInfo& memory_info,
+                   onnxruntime::MLDataType element_type,
+                   const std::vector<int64_t>& dims,
+                   ptrdiff_t offset,
+                   const std::vector<int64_t>& strides,
                    OrtValue* p_mlvalue);
 
 template <typename T>

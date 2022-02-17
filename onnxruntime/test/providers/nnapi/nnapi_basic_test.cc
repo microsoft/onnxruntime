@@ -315,12 +315,17 @@ TEST(NnapiExecutionProviderTest, TestQDQConv) {
 TEST(NnapiExecutionProviderTest, TestQDQResize) {
   // NNAPI EP does not support the default setting of Resize Op
   // Use bi-linear and asymmetric for NNAPI EP only
+  // Setting verify_entire_graph_use_ep for this test as false. This is because layout transformation adds
+  // Transpose (NCHW -> NHWC) nodes. Post tranformation graph looks like this Transpose -> DQ -> Resize -> Q -> Transpose
+  // NNAPI does not pick the first Transpose as its input is graph/partition input
+  // See https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/helper.cc#L305
+  // onnxruntime::nnapi::IsInternalQuantizationSupported
   RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
                                          {1, 3, 32, 32} /* sizes_data */,
                                          "linear" /* mode */,
                                          "asymmetric" /* coordinate_transformation_mode */),
                   "nnapi_qdq_test_graph_resize",
-                  {true /* verify_entire_graph_use_ep */});
+                  {false /* verify_entire_graph_use_ep */});
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQAveragePool) {
@@ -365,6 +370,15 @@ TEST(NnapiExecutionProviderTest, TestQDQTranspose) {
                       {1, 3, 32, 32} /* input_shape */,
                       {0, 3, 1, 2} /* perms */),
                   "nnapi_qdq_test_graph_transpose",
+                  {
+                      true /* verify_entire_graph_use_ep */
+                  });
+}
+
+TEST(NnapiExecutionProviderTest, TestQDQReshape) {
+  RunQDQModelTest(BuildQDQReshapeTestCase({1, 3, 64, 64} /* input_shape */,
+                                          {1, 64, 64, 3} /* reshape_shape */),
+                  "nnapi_qdq_test_graph_reshape",
                   {
                       true /* verify_entire_graph_use_ep */
                   });

@@ -170,6 +170,12 @@ class ONNXQuantizer:
         self.fuse_dynamic_quant = True
         return opset_version
 
+    def has_QDQ_nodes(self):
+        '''
+            Detect if model already has QuantizeLinear or DequantizeLinear.
+        '''
+        return any(node.op_type == 'QuantizeLinear' or node.op_type == 'DequantizeLinear' for node in self.model.nodes())
+
     def remove_fake_quantized_nodes(self):
         '''
             Detect and remove the quantize/dequantizelinear node pairs(fake quantized nodes in Quantization-Aware training)
@@ -270,7 +276,10 @@ class ONNXQuantizer:
                 self.generated_value_names.add(output_name)
 
     def quantize_model(self):
-        self.remove_fake_quantized_nodes()
+        if self.has_QDQ_nodes():
+            logging.warning(
+                "Please check if the model is already quantized."
+                "Note you don't need to quantize a QAT model. OnnxRuntime support to run QAT model directly.")
 
         for node in self.model.nodes():
             # quantize subgraphes if have

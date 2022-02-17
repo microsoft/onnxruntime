@@ -129,15 +129,15 @@ OrtValue create_ort_value(
   if (impl) {
     return impl->tensor();
   }
-  //todo: figure out correct memory info from aten device.
-  OrtMemoryInfo *cpu_info;
-  Ort::ThrowOnError(Ort::GetApi().CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &cpu_info));
 
+  OrtMemoryInfo *mem_info;
+  Ort::ThrowOnError(Ort::GetApi().CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mem_info));
   auto element_type = ort_scalar_type_from_aten(tensor.scalar_type());
+
   OrtValue ort_tensor;
   CreateMLValue(
     tensor.data_ptr(),
-    *cpu_info,
+    *mem_info,
     element_type,
     tensor.sizes().vec(),
     tensor.storage_offset() * element_type->Size(),

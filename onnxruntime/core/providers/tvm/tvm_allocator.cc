@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "stvm_allocator.h"
+#include "tvm_allocator.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/session_state.h"
 #include "xpu_data_transfer.h"
@@ -9,8 +9,7 @@
 
 namespace onnxruntime {
 
-
-void* STVMAllocator::Alloc(size_t size) {
+void* TVMAllocator::Alloc(size_t size) {
   void* p = nullptr;
   if (size > 0) {
     DLDataType dl_type{kDLInt, 8, 1};
@@ -21,7 +20,7 @@ void* STVMAllocator::Alloc(size_t size) {
   return p;
 }
 
-void STVMAllocator::Free(void* p) {
+void TVMAllocator::Free(void* p) {
     TVMDeviceFreeDataSpace(ctx, p);
 }
 

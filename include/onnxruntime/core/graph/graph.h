@@ -151,6 +151,12 @@ class Node {
   */
   int SinceVersion() const noexcept { return since_version_; }
 
+  /** Sets the since version (opset version that the Node's operator was first defined in.) for this node.
+  @remarks Used during layout transformation for setting since vesion for layout transformed nodes with 
+  domain kMSNHWC.
+  */
+  void SetSinceVersion(int since_version) noexcept { since_version_ = since_version; }
+
 #if !defined(ORT_MINIMAL_BUILD)
   /** Gets the Node's OpSchema.
   @remarks The graph containing this node must be resolved, otherwise nullptr will be returned. */
