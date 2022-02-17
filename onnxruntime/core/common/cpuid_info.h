@@ -39,9 +39,6 @@ class CPUIDInfo {
   */
   int32_t GetCurrentUarch() const;
 
-  // Mock hybrid
-  void MockHybrid(bool is_hybrid) const { is_hybrid_ = is_hybrid; }
-
  private:
   CPUIDInfo();
   bool has_avx_{false};
@@ -51,7 +48,7 @@ class CPUIDInfo {
   bool has_f16c_{false};
   bool has_sse3_{false};
   bool has_sse4_1_{false};
-  mutable bool is_hybrid_{false};
+  bool is_hybrid_{false};
 
 #if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED)
   bool pytorch_cpuinfo_init_{false};

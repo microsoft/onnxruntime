@@ -48,21 +48,19 @@ void ValidateTestData(TestData& test_data, int expected=1) {
 // run with just the main thread.  Note that the thread pool API uses
 // static methods and should operate across all of these cases.
 void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::function<void(ThreadPool*)>& test_body, int dynamic_block_base = 0, bool mock_hybrid = false) {
-  onnxruntime::CPUIDInfo::GetCPUIDInfo().MockHybrid(mock_hybrid);
   if (num_threads > 0) {
     if (dynamic_block_base > 0) {
       onnxruntime::ThreadOptions thread_options;
       thread_options.dynamic_block_base_ = dynamic_block_base;
-      auto tp_dynamic_block_size = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), thread_options, nullptr, num_threads, true);
+      auto tp_dynamic_block_size = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), thread_options, nullptr, num_threads, true, mock_hybrid);
       test_body(tp_dynamic_block_size.get());  // test thread pool with dynamic block size
     } else {
-      auto tp_constant_block_size = std::make_unique < ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions{}, nullptr, num_threads, true);
+      auto tp_constant_block_size = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions{}, nullptr, num_threads, true, mock_hybrid);
       test_body(tp_constant_block_size.get()); // test thread pool with constant block size
     } 
   } else {
     test_body(nullptr);
   }
-  onnxruntime::CPUIDInfo::GetCPUIDInfo().MockHybrid(false);
 }
 
 void TestParallelFor(const std::string& name, int num_threads, int num_tasks) {
