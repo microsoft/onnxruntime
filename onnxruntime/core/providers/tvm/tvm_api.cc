@@ -64,23 +64,24 @@ void TVMSetInputs(TvmModule& mod,
   //tvm::PackedFunc set_input = mod.GetFunction("set_input_zero_copy", false);
 
   TvmPackedFunc set_input = mod.GetFunction("set_input", false);
-  for (auto& i : inds)
+  for (size_t i = 0; i < inds.size(); ++i)
   {
-    set_input(i, &inputs[i]);
+    set_input(inds[i], &inputs[i]);
   }
 }
 
 void TVM_VM_SetInputs(TvmModule& mod,
+                      std::vector<size_t>& inds,
                       std::vector<DLTensor>& inputs)
 {
   // TODO(vvchernov): set_input_zero_copy is more preferable but it does not satisfy alignment conditions.
   //tvm::PackedFunc set_input = mod.GetFunction("set_input_zero_copy", false);
 
-  TvmPackedFunc set_input = mod.GetFunction("set_input", false);
-  for (auto& inp : inputs)
+  TvmPackedFunc set_input = mod.GetFunction("set_input_with_index", false);
+  for (size_t i = 0; i < inds.size(); ++i)
   {
-    set_input("main", &inp);
- }
+    set_input("main", inds[i], &inputs[i]);
+  }
 }
 
 void TVMGetOutputs(TvmModule& mod,

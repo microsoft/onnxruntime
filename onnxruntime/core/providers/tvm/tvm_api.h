@@ -25,7 +25,7 @@ namespace tvm {
                          const std::string& tuning_logfile = "",
                          const std::string& tuning_type = std::string(onnxruntime::tvm::default_tuning_type));
     void TVMSetInputs(TvmModule& mod, std::vector<size_t>& inds, std::vector<DLTensor>& inputs);
-    void TVM_VM_SetInputs(TvmModule& mod, std::vector<DLTensor>& inputs);
+    void TVM_VM_SetInputs(TvmModule& mod, std::vector<size_t>& inds, std::vector<DLTensor>& inputs);
     void TVMGetOutputs(TvmModule& mod, std::vector<DLTensor>& outputs);
     void TVMGet_VM_Outputs(TvmModule& mod, std::vector<DLTensor>& outputs);
     void TVMGetOutputShapes(TvmModule& mod,

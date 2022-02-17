@@ -163,7 +163,7 @@ class TVMRunner {
         inds[counter++] = i;
       }
       if (use_vm_) {
-        tvm::TVM_VM_SetInputs(*mod_, dl_tensors_inputs);
+        tvm::TVM_VM_SetInputs(*mod_, inds, dl_tensors_inputs);
         // Infer once for calculating of output shapes
         if(!probe_infer_) {
           tvm::TVM_VM_Run(*mod_);

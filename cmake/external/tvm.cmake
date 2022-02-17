@@ -3,8 +3,8 @@ if (onnxruntime_USE_TVM)
 
   FetchContent_Declare(
     tvm
-    GIT_REPOSITORY https://github.com/apache/tvm.git
-    GIT_TAG        36b48a5707321adba8a70e14da443566a9391e5a
+    GIT_REPOSITORY https://github.com/Deelvin/tvm.git
+    GIT_TAG        1b705f8f6f372126c2282777d688fa3e810ad208
   )
 
   FetchContent_GetProperties(tvm)
