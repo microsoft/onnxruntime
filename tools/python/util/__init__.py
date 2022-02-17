@@ -3,7 +3,9 @@
 
 from .get_azcopy import get_azcopy
 from .logger import get_logger
-from .platform import (is_windows, is_macOS, is_linux)
+from .platform_helpers import (is_windows, is_macOS, is_linux)
+# Test what is needed here to use in a script
+# from .pytorch_export_helpers import infer_input_info
 from .run import run
 
 try:
