@@ -228,7 +228,8 @@ jobs:
         python3 tools/ci_build/github/apple/test_ios_packages.py \
           --fail_if_cocoapods_missing \
           --framework_info_file "$(Build.BinariesDirectory)/ios_framework/framework_info.json" \
-          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out"
+          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
+          --variant Full
       displayName: "Test iOS framework"
 
     - task: PublishBuildArtifacts@1

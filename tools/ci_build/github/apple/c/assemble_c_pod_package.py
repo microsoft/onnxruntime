@@ -23,6 +23,8 @@ def get_pod_config_file(package_variant: PackageVariant):
         return _script_dir / "onnxruntime-c.config.json"
     elif package_variant == PackageVariant.Mobile:
         return _script_dir / "onnxruntime-mobile-c.config.json"
+    elif package_variant == PackageVariant.Test:
+        return _script_dir / "onnxruntime-test-c.config.json"
     else:
         raise ValueError(f"Unhandled package variant: {package_variant}")
 
@@ -100,7 +102,7 @@ def parse_args():
                         help="Path to the public headers directory to include in the pod.")
     parser.add_argument("--framework-dir", type=pathlib.Path, required=True,
                         help="Path to the onnxruntime framework directory to include in the pod.")
-    parser.add_argument("--variant", choices=[e.name for e in PackageVariant], required=True,
+    parser.add_argument("--variant", choices=PackageVariant.all_variant_names(), required=True,
                         help="Pod package variant.")
 
     return parser.parse_args()

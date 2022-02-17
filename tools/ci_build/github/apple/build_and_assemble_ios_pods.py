@@ -39,7 +39,8 @@ def parse_args():
     parser.add_argument("--pod-version", default=f"{get_ort_version()}-local",
                         help="The version string of the pod. The same version is used for all pods.")
 
-    parser.add_argument("--variant", choices=[e.name for e in PackageVariant], required=True,
+    parser.add_argument("--variant", choices=PackageVariant.release_variant_names(),
+                        default=PackageVariant.Mobile.name,
                         help="Pod package variant.")
 
     parser.add_argument("--test", action="store_true",

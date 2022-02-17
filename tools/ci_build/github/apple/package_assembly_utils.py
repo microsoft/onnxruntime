@@ -15,8 +15,17 @@ repo_root = _script_dir.parents[3]
 
 
 class PackageVariant(enum.Enum):
-    Full = 1
-    Mobile = 2
+    Full = 0  # full ORT build
+    Mobile = 1  # minimal ORT build with reduced ops
+    Test = -1  # for testing purposes only
+
+    @classmethod
+    def release_variant_names(cls):
+        return [v.name for v in cls if v.value >= 0]
+
+    @classmethod
+    def all_variant_names(cls):
+        return [v.name for v in cls]
 
 
 _template_variable_pattern = re.compile(r"@(\w+)@")  # match "@var@"

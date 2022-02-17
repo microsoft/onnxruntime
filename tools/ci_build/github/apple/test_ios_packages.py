@@ -135,7 +135,7 @@ def parse_args():
     parser.add_argument('--c_framework_dir', type=pathlib.Path, required=True,
                         help='Provide the parent directory for C/C++ framework')
 
-    parser.add_argument("--variant", choices=[e.name for e in PackageVariant], required=True,
+    parser.add_argument("--variant", choices=PackageVariant.all_variant_names(), default=PackageVariant.Test.name,
                         help="Pod package variant.")
 
     parser.add_argument('--test_project_stage_dir', type=pathlib.Path,
