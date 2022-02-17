@@ -11,8 +11,9 @@
 #include <string>
 #include <vector>
 
-std::string GetFileName(const std::string& file_path, const std::string& sep = "/") {
-    return {std::next(file_path.begin(), file_path.find_last_of(sep) + sep.size()),
+// TODO(agladyshev): Make conditional choice of sep for Windows and UNIX
+std::string GetFileName(const std::string& file_path, char sep = '/') {
+    return {std::next(file_path.begin(), file_path.find_last_of(sep) + 1),
             file_path.end()};
 }
 
