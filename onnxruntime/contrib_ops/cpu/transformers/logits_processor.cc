@@ -22,8 +22,8 @@ void NextTokenScores<T>::SetScore(int token_id, T score) {
 #ifdef DEBUG_BEAM_SEARCH
 template <typename T>
 void DumpScores(const char* name, const NextTokenScores<T>& next_token_scores) {
-  cout << name << endl;
-  ORT_UNUSED_PARAMETER(scores);
+  std::cout << name << std::endl;
+  ORT_UNUSED_PARAMETER(next_token_scores);
 }
 #endif
 

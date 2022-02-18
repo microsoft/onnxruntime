@@ -353,8 +353,7 @@ Status PickPastState(const std::vector<OrtValue>& last_outputs,
                      std::vector<OrtValue>& next_inputs,
                      gsl::span<const int32_t>& beam_indices,
                      AllocatorPtr allocator,
-                     void* stream,
-                     const transformers::IConsoleDumper* /*dumper*/) {
+                     void* stream) {
   for (size_t i = 1; i < last_outputs.size(); ++i) {
     const OrtValue& present = last_outputs[i];  // shape is like (2, batch_beam_size, 12, past_seq_len, 64)
     const TensorShape& past_shape = present.Get<Tensor>().Shape();
@@ -379,16 +378,6 @@ Status PickPastState(const std::vector<OrtValue>& last_outputs,
       gsl::span<T> past_value = past_span.subspan(past_key_size + j * block_size_per_beam, block_size_per_beam);
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_key.data(), present_key.data(), present_key.size_bytes(), cudaMemcpyDeviceToDevice, reinterpret_cast<cudaStream_t>(stream)));
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_value.data(), present_value.data(), present_value.size_bytes(), cudaMemcpyDeviceToDevice, reinterpret_cast<cudaStream_t>(stream)));
-
-#ifdef DEBUG_BEAM_SEARCH
-      // if (i == 1)  // only dump past_0
-      // {
-      //   dumper->Print("past_key of beam", static_cast<int>(j), true);
-      //   dumper->Print(nullptr, past_key.data(), 1, static_cast<int>(block_size_per_beam));
-      //   dumper->Print("past_value of beam", static_cast<int>(j), true);
-      //   dumper->Print(nullptr, past_value.data(), 1, static_cast<int>(block_size_per_beam));
-      // }
-#endif
     }
 
     next_inputs[i + 2] = past;
@@ -446,6 +435,8 @@ Status UpdateFeeds(
   dumper->Print("input_ids", input_ids);
   dumper->Print("position_ids", position_ids);
   dumper->Print("attention_mask", attention_mask);
+#else
+  ORT_UNUSED_PARAMETER(dumper);
 #endif
 
   // Update past state
@@ -456,7 +447,7 @@ Status UpdateFeeds(
     }
     return Status::OK();
   } else {
-    return PickPastState<T>(last_outputs, next_inputs, beam_indices, allocator, stream, dumper);
+    return PickPastState<T>(last_outputs, next_inputs, beam_indices, allocator, stream);
   }
 }
 

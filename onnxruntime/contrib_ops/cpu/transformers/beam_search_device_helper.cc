@@ -336,11 +336,7 @@ void PickPastState(const std::vector<OrtValue>& last_outputs,
                    std::vector<OrtValue>& next_inputs,
                    gsl::span<const int32_t>& beam_indices,
                    AllocatorPtr allocator,
-                   void* /*stream*/,
-                   const transformers::IConsoleDumper* dumper) {
-#ifndef DEBUG_BEAM_SEARCH
-  ORT_UNUSED_PARAMETER(dumper);
-#endif
+                   void* /*stream*/) {
 
   for (size_t i = 1; i < last_outputs.size(); ++i) {
     const OrtValue& present = last_outputs[i];  // shape is like (2, batch_beam_size, 12, past_seq_len, 64)
@@ -366,16 +362,6 @@ void PickPastState(const std::vector<OrtValue>& last_outputs,
       gsl::span<T> past_value = past_span.subspan(past_key_size + j * block_size_per_beam, block_size_per_beam);
       gsl::copy(present_key, past_key);
       gsl::copy(present_value, past_value);
-
-#ifdef DEBUG_BEAM_SEARCH
-      // if (i == 1)  // only dump past_0
-      // {
-      //   dumper->Print("past_key of beam", static_cast<int>(j), true);
-      //   dumper->Print(nullptr, past_key.data(), 1, static_cast<int>(block_size_per_beam));
-      //   dumper->Print("past_value of beam", static_cast<int>(j), true);
-      //   dumper->Print(nullptr, past_value.data(), 1, static_cast<int>(block_size_per_beam));
-      // }
-#endif
     }
 
     next_inputs[i + 2] = past;
@@ -440,6 +426,8 @@ Status UpdateFeeds(
   dumper->Print("input_ids", input_ids);
   dumper->Print("position_ids", position_ids);
   dumper->Print("attention_mask", attention_mask);
+#else
+  ORT_UNUSED_PARAMETER(dumper);
 #endif
 
   // Update past state
@@ -449,7 +437,7 @@ Status UpdateFeeds(
       next_inputs[i + 2] = last_outputs[i];
     }
   } else {
-    PickPastState<T>(last_outputs, next_inputs, beam_indices, allocator, stream, dumper);
+    PickPastState<T>(last_outputs, next_inputs, beam_indices, allocator, stream);
   }
   return Status::OK();
 }
