@@ -78,4 +78,10 @@ class FbsSessionStateViewer {
   const fbs::SessionState& fbs_session_state_;
 };
 
+/**
+* Get replacement hash for backwards compatibility if we had to modify an existing kernel registration.
+* @param hash Hash to update if needed. 
+*/
+void UpdateHashForBackwardsCompatibility(HashValue& hash);
+
 }  // namespace onnxruntime::fbs::utils
