@@ -28,14 +28,11 @@ TEST(Common, SpanUtilsTests) {
   }
 
   {
-    // Test list
-    auto span = AsSpan({1, 2, 3});
-    // The below does not work
-    // auto make_span = gsl::make_span({1, 2, 3});
-    auto list = {1, 2, 3};
-    ASSERT_EQ(gsl::make_span(list), span);
-    // no type conversion though
-    // f(span);
+    // Compile only test.
+    // This is only valid when passing resulting span
+    // to a function call as the initializer_list remains
+    // orphaned
+    AsSpan({1, 2, 3});
   }
 
   {
