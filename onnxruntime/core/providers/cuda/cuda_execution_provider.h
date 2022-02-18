@@ -118,6 +118,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
       return cublas_handle_;
     }
 
+    cublasLtHandle_t CublasLtHandle() const {
+      return cublas_lt_handle_;
+    }
+
     cudnnHandle_t CudnnHandle() const {
       return cudnn_handle_;
     }
@@ -162,6 +166,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
    private:
     cudaStream_t stream_ = nullptr;
     cublasHandle_t cublas_handle_ = nullptr;
+    cublasLtHandle_t cublas_lt_handle_ = nullptr;
     cudnnHandle_t cudnn_handle_ = nullptr;
 
     // deferred release for temporary CPU pinned memory used in cudaMemcpyAsync

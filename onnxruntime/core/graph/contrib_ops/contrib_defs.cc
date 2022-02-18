@@ -3288,6 +3288,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
 #endif
 
   RegisterQuantizationSchemas();
+  RegisterQOrderedSchemas();  
 }
 }  // namespace contrib
 }  // namespace onnxruntime

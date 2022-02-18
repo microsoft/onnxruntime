@@ -988,5 +988,107 @@ Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
       });
 }
 
+// TODO: refine description
+// Quantization operators in cuda which handle matrix layout
+void RegisterQOrderedSchemas() {
+
+#if defined(USE_CUDA) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  static const char* Longformer_Attention_QOrdered_doc = R"DOC(
+Quantized version of Longformer Self Attention (using int8 with specific matrix Layout).
+Longformer Self Attention with a local context and a global context. Tokens attend locally: Each token
+attends to its W previous tokens and W succeding tokens with W being the window length. A selected few tokens
+attend globally to all other tokens.
+
+The attention mask is of shape (batch_size, sequence_length), where sequence_length is a multiple of 2W after padding.
+Mask value < 0 (like -10000.0) means the token is masked, 0 otherwise.
+
+Global attention flags have value 1 for the tokens attend globally and 0 otherwise.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QOrderedLongformerAttention)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(Longformer_Attention_QOrdered_doc)
+      .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+      .Attr("window", "One sided attention windows length W, or half of total window length", AttributeProto::INT)
+      .Attr("order_input", AttributeProto::INT)
+      .Attr("order_weight", AttributeProto::INT)
+      .Attr("order_bias", AttributeProto::INT)
+      .Attr("order_globale_weight", AttributeProto::INT)
+      .Attr("order_global_bias", AttributeProto::INT)
+      .Attr("order_output", AttributeProto::INT)
+      .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "Q")
+      .Input(1, "scale_input", "scale of the input", "S")
+      .Input(2, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "Q")
+      .Input(3, "scale_weight", "scale of the weight", "S")
+      .Input(4, "bias", "1D input tensor with shape (3 * hidden_size)", "Q")
+      .Input(5, "scale_bias", "scale of the bias", "S")
+      .Input(6, "mask", "Attention mask with shape (batch_size, sequence_length)", "S")
+      .Input(7, "global_weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "Q")
+      .Input(8, "scale_global_weight", "scale of the global_weight", "S")
+      .Input(9, "global_bias", "1D input tensor with shape (3 * hidden_size)", "Q")
+      .Input(10, "scale_global_bias", "scale of the global_bias", "S")
+      .Input(11, "global", "Global attention flags with shape (batch_size, sequence_length)", "G")
+      .Input(12, "scale_output", "scale of the output", "S")
+      .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "Q")
+      .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("S", {"tensor(float)"}, "Constrain scales to float32 tensors.")
+      .TypeConstraint("G", {"tensor(int32)"}, "Constrain to integer types")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+  static const char* QuantizeWithOrder_doc = R"DOC(
+Quantize input matrix to specific layout used in cublaslt.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QuantizeWithOrder)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(QuantizeWithOrder_doc)
+      .Attr("order_input", AttributeProto::INT)
+      .Attr("order_output", AttributeProto::INT)
+      .Input(0, "input", "TODO: input tensor of (ROWS, COLS). if less than 2d, will broadcast to (1, X). If 3d, it is treated as (B, ROWS, COS)", "F")
+      .Input(1, "scale_input", "scale of the input", "F")
+      .Output(0, "output", "output tensor", "Q")
+      .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("F", {"tensor(float)", "tensor(float16)"}, "Constrain to float types")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromDtypeToOutput(ctx, TensorProto::INT8, 0);
+
+        if (!hasInputShape(ctx, 0))
+          return;
+
+        auto& input_shape = getInputShape(ctx, 0);
+        updateOutputShape(ctx, 0, input_shape);
+      });
+
+  static const char* DequantizeWithOrder_doc = R"DOC(
+Dequantize input matrix to specific layout used in cublaslt. attr to specify output type, float16 or float32
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DequantizeWithOrder)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(DequantizeWithOrder_doc)
+      .Attr("order_input", AttributeProto::INT)
+      .Attr("order_output", AttributeProto::INT)
+      .Input(0, "input", "TODO: input tensor of (ROWS, COLS). if less than 2d, will broadcast to (1, X). If 3d, it is treated as (B, ROWS, COS)", "Q")
+      .Input(1, "scale_input", "scale of the input", "F")
+      .Output(0, "output", "output tensor", "F")
+      .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("F", {"tensor(float)", "tensor(float16)"}, "Constrain to float types")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+
+        if (!hasInputShape(ctx, 0))
+          return;
+
+        auto& input_shape = getInputShape(ctx, 0);
+        updateOutputShape(ctx, 0, input_shape);
+      });
+#endif
+
+}
+
+
 }  // namespace contrib
 }  // namespace onnxruntime
