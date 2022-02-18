@@ -8,13 +8,6 @@ parameters:
   - 'production (@latest)'
   - 'custom'
   default: 'nightly (@dev)'
-- name: Pipeline
-  displayName: 'CI or Release pipeline'
-  type: string
-  values:
-  - 'CI'
-  - 'Release'
-  default: 'CI'
 
 variables:
   # pipeline should define the following varaibles
@@ -29,6 +22,11 @@ variables:
     NpmPackagingMode: 'release'
   ${{ if eq(parameters.NpmPublish, 'custom') }}:
     NpmPackagingMode: '$(VersionSuffix)'
+
+  ${{ if eq(system.teamProject, 'Lotus') }}:
+    Pipeline: 'release'
+  ${{ else }}:
+    Pipeline: 'ci'
 
 stages:
 - stage: Extract_commit
@@ -87,7 +85,7 @@ stages:
       BuildConfig: 'Release'
       NpmPackagingMode: '$(NpmPackagingMode)'
 
-- ${{ if eq(system.teamProject, 'Lotus') }}:
+- ${{ if nq(variables.Pipeline, 'release') }}:
   - stage: Test_web_BrowserStack
     dependsOn: Build_wasm_Release
     jobs:
@@ -95,9 +93,10 @@ stages:
       parameters:
         CommitOverride: true
 
-- stage: Test_web_MultiBrowsers
-  dependsOn: Build_wasm_Release
-  jobs:
-  - template: templates/win-web-multi-browsers.yml
-    parameters:
-      CommitOverride: true
+- ${{ if nq(variables.Pipeline, 'release') }}:
+  - stage: Test_web_MultiBrowsers
+    dependsOn: Build_wasm_Release
+    jobs:
+    - template: templates/win-web-multi-browsers.yml
+      parameters:
+        CommitOverride: true
