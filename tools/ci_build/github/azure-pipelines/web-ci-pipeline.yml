@@ -23,7 +23,7 @@ variables:
   ${{ if eq(parameters.NpmPublish, 'custom') }}:
     NpmPackagingMode: '$(VersionSuffix)'
 
-  ${{ if eq(variables['PackagingPipeline'], 'true') }}:
+  ${{ if eq(variables['System.TeamProject'], 'Lotus') }}:
     NpmPackagingPipeline: 'release'
   ${{ else }}:
     NpmPackagingPipeline: 'ci'
