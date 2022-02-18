@@ -3165,6 +3165,96 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_KRK) {
   ASSERT_EQ(fast_axes, expected_fast_axes);
 }
 
+TEST(ReductionOpTest, OptimizeShapeForFastReduce_RKR) {
+  FastReduceKind fast_kind;
+  TensorShapeVector fast_shape, fast_output_shape, fast_axes;
+  TensorShapeVector expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
+
+  // RKR - keep_dims=1
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{0, 2},
+      fast_shape, fast_output_shape, fast_axes, true);
+  expected_fast_shape = TensorShapeVector{9, 10, 11};
+  expected_fast_output_shape = TensorShapeVector{1, 10, 1};
+  expected_fast_axes = TensorShapeVector{0, 2};
+  ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{0, 3},
+      fast_shape, fast_output_shape, fast_axes, true);
+  expected_fast_shape = TensorShapeVector{7, 90, 11};
+  expected_fast_output_shape = TensorShapeVector{1, 9, 10, 1};
+  ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{0, 2, 3},
+      fast_shape, fast_output_shape, fast_axes, true);
+  expected_fast_shape = TensorShapeVector{7, 9, 110};
+  expected_fast_output_shape = TensorShapeVector{1, 9, 1, 1};
+  ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{0, 1, 3},
+      fast_shape, fast_output_shape, fast_axes, true);
+  expected_fast_shape = TensorShapeVector{63, 10, 11};
+  expected_fast_output_shape = TensorShapeVector{1, 1, 10, 1};
+  ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+
+  // KRK - keep_dims=0
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{9, 10, 11}, std::vector<int64_t>{0, 2},
+      fast_shape, fast_output_shape, fast_axes, false);
+  expected_fast_shape = TensorShapeVector{9, 10, 11};
+  expected_fast_output_shape = TensorShapeVector{10};
+  expected_fast_axes = TensorShapeVector{0, 2};
+  ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{0, 3},
+      fast_shape, fast_output_shape, fast_axes, false);
+  expected_fast_shape = TensorShapeVector{7, 90, 11};
+  expected_fast_output_shape = TensorShapeVector{9, 10};
+  ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{0, 2, 3},
+      fast_shape, fast_output_shape, fast_axes, false);
+  expected_fast_shape = TensorShapeVector{7, 9, 110};
+  expected_fast_output_shape = TensorShapeVector{9};
+  ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+
+  fast_kind = OptimizeShapeForFastReduce(
+      std::vector<int64_t>{7, 9, 10, 11}, std::vector<int64_t>{0, 1, 3},
+      fast_shape, fast_output_shape, fast_axes, false);
+  expected_fast_shape = TensorShapeVector{63, 10, 11};
+  expected_fast_output_shape = TensorShapeVector{10};
+  ASSERT_EQ(fast_kind, FastReduceKind::kRKR);
+  ASSERT_EQ(fast_shape, expected_fast_shape);
+  ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
+  ASSERT_EQ(fast_axes, expected_fast_axes);
+}
+
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_NONE) {
   FastReduceKind fast_kind;
   TensorShapeVector fast_shape, fast_output_shape, fast_axes;
@@ -3427,6 +3517,53 @@ TEST(ReductionOpTest, ReduceMax_KRK_keepdims) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceMax_RKR) {
+  OpTester test("ReduceMax");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {2}, {10.f, 12.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMax_RKR_parallel) {
+  OpTester test("ReduceMax");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {2, 16, 2},
+                       {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 
+                        17.0f, 18.0f, 19.0f, 20.0f, 21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f, 27.0f, 28.0f, 29.0f, 30.0f, 31.0f, 32.0f, 
+                        33.0f, 34.0f, 35.0f, 36.0f, 37.0f, 38.0f, 39.0f, 40.0f, 41.0f, 42.0f, 43.0f, 44.0f, 45.0f, 46.0f, 47.0f, 48.0f,
+                        49.0f, 50.0f, 51.0f, 52.0f, 53.0f, 54.0f, 55.0f, 56.0f, 57.0f, 58.0f, 59.0f, 60.0f, 61.0f, 62.0f, 63.0f});
+  test.AddOutput<float>("reduced", {16}, {33.0f, 35.0f, 37.0f, 39.0f, 41.0f, 43.0f, 45.0f, 47.0f, 49.0f, 51.0f, 53.0f, 55.0f, 57.0f, 59.0f, 61.0f, 63.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMax_RKR_keepdims) {
+  OpTester test("ReduceMax");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {1, 2, 1}, {10.f, 12.f});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ReduceMax_RKRK) {
   OpTester test("ReduceMax");
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
@@ -3578,6 +3715,53 @@ TEST(ReductionOpTest, ReduceMean_KRK_keepdims) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {3, 1, 2}, {2.f, 3.f, 6.f, 7.f, 10.f, 11.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMean_RKR) {
+  OpTester test("ReduceMean");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {2}, {5.5f, 7.5f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMean_RKR_parallel) {
+  OpTester test("ReduceMean");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {2, 16, 2},
+                       {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f,
+                        17.0f, 18.0f, 19.0f, 20.0f, 21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f, 27.0f, 28.0f, 29.0f, 30.0f, 31.0f, 32.0f,
+                        33.0f, 34.0f, 35.0f, 36.0f, 37.0f, 38.0f, 39.0f, 40.0f, 41.0f, 42.0f, 43.0f, 44.0f, 45.0f, 46.0f, 47.0f, 48.0f,
+                        49.0f, 50.0f, 51.0f, 52.0f, 53.0f, 54.0f, 55.0f, 56.0f, 57.0f, 58.0f, 59.0f, 60.0f, 61.0f, 62.0f, 63.0f});
+  test.AddOutput<float>("reduced", {16}, {16.5f, 18.5f, 20.5f, 22.5f, 24.5f, 26.5f, 28.5f, 30.5f, 32.5f, 34.5f, 36.5f, 38.5f, 40.5f, 42.5f, 44.5f, 46.5f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMean_RKR_keepdims) {
+  OpTester test("ReduceMean");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {1, 2, 1}, {5.5f, 7.5f});
   test.Run();
 }
 
@@ -3768,6 +3952,53 @@ TEST(ReductionOpTest, ReduceMin_KRK_keepdims) {
                         19.0f, 20.0f,
                         21.0f, 22.0f});
   test.AddOutput<float>("reduced", {3, 1, 2}, {11.f, 12.f, 15.f, 16.f, 19.f, 20.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMin_RKR) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {11.0f, 12.0f,
+                        13.0f, 14.0f,
+
+                        15.0f, 16.0f,
+                        17.0f, 18.0f,
+
+                        19.0f, 20.0f,
+                        21.0f, 22.0f});
+  test.AddOutput<float>("reduced", {2}, {11.f, 13.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMin_RKR_parallel) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {2, 16, 2},
+                       {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f,
+                        17.0f, 18.0f, 19.0f, 20.0f, 21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f, 27.0f, 28.0f, 29.0f, 30.0f, 31.0f, 32.0f,
+                        33.0f, 34.0f, 35.0f, 36.0f, 37.0f, 38.0f, 39.0f, 40.0f, 41.0f, 42.0f, 43.0f, 44.0f, 45.0f, 46.0f, 47.0f, 48.0f,
+                        49.0f, 50.0f, 51.0f, 52.0f, 53.0f, 54.0f, 55.0f, 56.0f, 57.0f, 58.0f, 59.0f, 60.0f, 61.0f, 62.0f, 63.0f});
+  test.AddOutput<float>("reduced", {16}, {0.0f, 2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f, 14.0f, 16.0f, 18.0f, 20.0f, 22.0f, 24.0f, 26.0f, 28.0f, 30.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceMin_RKR_keepdims) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {11.0f, 12.0f,
+                        13.0f, 14.0f,
+
+                        15.0f, 16.0f,
+                        17.0f, 18.0f,
+
+                        19.0f, 20.0f,
+                        21.0f, 22.0f});
+  test.AddOutput<float>("reduced", {1, 2, 1}, {11.f, 13.f});
   test.Run();
 }
 
@@ -4099,6 +4330,126 @@ TEST(ReductionOpTest, ReduceSum_KRK2_keepdims) {
                         21.0f, 22.0f,
                         23.0f, 24.0f});
   test.AddOutput<float>("reduced", {3, 1, 1, 2}, {16.f, 20.f, 48.f, 52.f, 80.f, 84.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_RKR) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {2}, {33.f, 45.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_RKR_parallel) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {2, 16, 2},
+                       {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f,
+                        17.0f, 18.0f, 19.0f, 20.0f, 21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f, 27.0f, 28.0f, 29.0f, 30.0f, 31.0f, 32.0f,
+                        33.0f, 34.0f, 35.0f, 36.0f, 37.0f, 38.0f, 39.0f, 40.0f, 41.0f, 42.0f, 43.0f, 44.0f, 45.0f, 46.0f, 47.0f, 48.0f,
+                        49.0f, 50.0f, 51.0f, 52.0f, 53.0f, 54.0f, 55.0f, 56.0f, 57.0f, 58.0f, 59.0f, 60.0f, 61.0f, 62.0f, 63.0f});
+  test.AddOutput<float>("reduced", {16}, {66.0f, 74.0f, 82.0f, 90.0f, 98.0f, 106.0f, 114.0f, 122.0f, 130.0f, 138.0f, 146.0f, 154.0f, 162.0f, 170.0f, 178.0f, 186.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_RKR_parallel_bigger) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)0);
+  std::vector<float> in_data(512);
+  for (size_t i = 0; i < in_data.size(); ++i)
+    in_data[i] = (float)i;
+  test.AddInput<float>("data", {2, 128, 2}, in_data);
+  std::vector<float> expected(128);
+  for (size_t j = 0; j < 128; ++j) {
+    expected[j] = 0;
+    for (size_t i = 0; i < 2; ++i) {
+      for (size_t k = 0; k < 2; ++k) {
+        expected[j] += in_data[i * 256 + j * 2 + k];
+      }
+    }
+  }
+  test.AddOutput<float>("reduced", {128}, expected);
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_RKR_keepdims) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f});
+  test.AddOutput<float>("reduced", {1, 2, 1}, {33.f, 45.f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_RKR2) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 3});
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<float>("data", {3, 2, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f,
+
+                        13.0f, 14.0f,
+                        15.0f, 16.0f,
+
+                        17.0f, 18.0f,
+                        19.0f, 20.0f,
+
+                        21.0f, 22.0f,
+                        23.0f, 24.0f});
+  test.AddOutput<float>("reduced", {2, 2}, {57.0f, 69.0f, 81.0f, 93.0f});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ReduceSum_RKR2_keepdims) {
+  OpTester test("ReduceSum");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 3});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<float>("data", {3, 2, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f,
+
+                        5.0f, 6.0f,
+                        7.0f, 8.0f,
+
+                        9.0f, 10.0f,
+                        11.0f, 12.0f,
+
+                        13.0f, 14.0f,
+                        15.0f, 16.0f,
+
+                        17.0f, 18.0f,
+                        19.0f, 20.0f,
+
+                        21.0f, 22.0f,
+                        23.0f, 24.0f});
+  test.AddOutput<float>("reduced", {1, 2, 2, 1}, {57.0f, 69.0f, 81.0f, 93.0f});
   test.Run();
 }
 
