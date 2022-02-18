@@ -87,7 +87,7 @@ stages:
       BuildConfig: 'Release'
       NpmPackagingMode: '$(NpmPackagingMode)'
 
-- ${{ if eq(parameters.Pipeline, 'CI') }}:
+- ${{ if eq(system.teamProject, 'Lotus') }}:
   - stage: Test_web_BrowserStack
     dependsOn: Build_wasm_Release
     jobs:
