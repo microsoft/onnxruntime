@@ -34,17 +34,22 @@ constexpr auto AsSpanImpl(P* p, std::size_t s) {
 
 template <class C>
 constexpr auto AsSpan(C& c) {
-  return details::AsSpanImpl(std::data(c), std::size(c));
+  return details::AsSpanImpl(c.data(), c.size());
 }
  
 template <class C>
 constexpr auto AsSpan(const C& c) {
-  return details::AsSpanImpl(std::data(c), std::size(c));
+  return details::AsSpanImpl(c.data(), c.size());
 }
 
 template <class C>
 auto AsSpan(C&& c) {
-  return AsSpanImpl(std::data(c), std::size(c));
+  return details::AsSpanImpl(c.data(), c.size());
+}
+
+template <class T>
+auto AsSpan(std::initializer_list<T> c) {
+  return details::AsSpanImpl(c.begin(), c.size());
 }
 
 template <class T, int N>
