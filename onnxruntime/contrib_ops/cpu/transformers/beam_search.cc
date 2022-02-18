@@ -510,12 +510,12 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
   AllocatorPtr temp_space_allocator;
   ORT_RETURN_IF_ERROR(context_.GetTempSpaceAllocator(&temp_space_allocator));
 
-  beam_scorer_ = std::make_unique<BeamSearchScorer<float>>(parameters_->batch_size,
-                                                           parameters_->num_beams,
-                                                           parameters_->max_length,
+  beam_scorer_ = std::make_unique<BeamSearchScorer<float>>(static_cast<size_t>(parameters_->batch_size),
+                                                           static_cast<size_t>(parameters_->num_beams),
+                                                           static_cast<size_t>(parameters_->max_length),
                                                            parameters_->length_penalty,
                                                            parameters_->early_stopping,
-                                                           parameters_->num_return_sequences,
+                                                           static_cast<size_t>(parameters_->num_return_sequences),
                                                            parameters_->pad_token_id,
                                                            parameters_->eos_token_id);
   beam_scorer_->Initialize(cpu_allocator_, parameters_->sequence_length);

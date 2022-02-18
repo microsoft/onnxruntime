@@ -17,11 +17,12 @@ namespace transformers {
 using ::onnxruntime::rnn::detail::Allocate;
 
 template <typename T>
-BeamHypotheses<T>::BeamHypotheses(int num_beams, T length_penalty, bool early_stopping)
-    : num_beams_(num_beams),
-      length_penalty_(length_penalty),
-      early_stopping_(early_stopping),
-      worst_score_(1e9) {}
+void BeamHypotheses<T>::Init(int num_beams, T length_penalty, bool early_stopping){
+  num_beams_ = num_beams;
+  length_penalty_ = length_penalty;
+  early_stopping_ = early_stopping;
+  worst_score_ = 1e9; // Currently beam search scorer does not support MLFloat16
+}
 
 template <typename T>
 void BeamHypotheses<T>::Add(gsl::span<const int32_t>& hypothesis, T sum_logprobs) {
@@ -88,30 +89,29 @@ void BeamHypotheses<T>::Output(
 }
 
 template <typename T>
-BeamSearchScorer<T>::BeamSearchScorer(int batch_size,
-                                      int num_beams,
-                                      int max_length,
+BeamSearchScorer<T>::BeamSearchScorer(size_t batch_size,
+                                      size_t num_beams,
+                                      size_t max_length,
                                       T length_penalty,
                                       bool early_stopping,
-                                      int num_return_sequences,
+                                      size_t num_return_sequences,
                                       int pad_token_id,
                                       int eos_token_id)
     : batch_size_(batch_size),
       num_beams_(num_beams),
       max_length_(max_length),
+      length_penalty_(length_penalty),
+      early_stopping_(early_stopping),
       num_beam_hyps_to_keep_(num_return_sequences),
       pad_token_id_(pad_token_id),
       eos_token_id_(eos_token_id),
       hypothesis_buffer_length_(0),
       hypothesis_buffer_offset_(0) {
-  for (int batch = 0; batch < batch_size; batch++) {
-    beam_hyps.push_back(BeamHypotheses(num_beams, length_penalty, early_stopping));
-  }
 }
 
 template <typename T>
 bool BeamSearchScorer<T>::IsDone() {
-  for (int batch = 0; batch < batch_size_; batch++) {
+  for (size_t batch = 0; batch < batch_size_; batch++) {
     if (!done_[batch])
       return false;
   }
@@ -122,19 +122,25 @@ template <typename T>
 void BeamSearchScorer<T>::Initialize(AllocatorPtr& allocator, int sequence_length) {
   ORT_ENFORCE(next_beam_scores_.empty());  // Make sure this is called only once.
 
-  size_t batch_beam_size = static_cast<size_t>(batch_size_ * num_beams_);
+  size_t batch_beam_size = batch_size_ * num_beams_;
   constexpr bool no_fill = false;  // do not fill values after allocation
+
+  beam_hyps_ = Allocate<BeamHypotheses<T>>(allocator, batch_size_, beam_hyps_ptr_, no_fill);
+  for (size_t i = 0; i < batch_size_; i++){
+    beam_hyps_[i].Init(num_beams_, length_penalty_, early_stopping_);
+  }
+  
+  done_ = Allocate<bool>(allocator, batch_size_, done_ptr_, no_fill);
+  std::fill_n(done_.data(), done_.size(), false);
+  
   next_beam_scores_ = Allocate<T>(allocator, batch_beam_size, next_beam_scores_ptr_, no_fill);
   next_beam_tokens_ = Allocate<int32_t>(allocator, batch_beam_size, next_beam_tokens_ptr_, no_fill);
   next_beam_indices_ = Allocate<int32_t>(allocator, batch_beam_size, next_beam_indices_ptr_, no_fill);
 
   // Space to store intermediate sequence with length sequence_length, sequence_length + 1, ..., max_sequence_length.
-  int buffer_per_beam = (max_length_ * (max_length_ + 1) - (sequence_length - 1) * sequence_length) / 2;
-  hypothesis_buffer_length_ = batch_beam_size * static_cast<size_t>(buffer_per_beam);
+  size_t buffer_per_beam = (max_length_ * (max_length_ + 1) - (sequence_length - 1) * sequence_length) / 2;
+  hypothesis_buffer_length_ = batch_beam_size * buffer_per_beam;
   hypothesis_buffer_ = Allocate<int32_t>(allocator, hypothesis_buffer_length_, hypothesis_buffer_ptr_, no_fill);
-
-  done_ = Allocate<bool>(allocator, static_cast<size_t>(batch_size_), done_ptr_, no_fill);
-  std::fill_n(done_.data(), done_.size(), false);
 }
 
 template <typename T>
@@ -151,13 +157,13 @@ void BeamSearchScorer<T>::Process(ISequences* sequences,
   ORT_ENFORCE(next_scores.size() == next_tokens.size());
   ORT_ENFORCE(next_scores.size() == next_indices.size());
 
-  for (int batch = 0; batch < batch_size_; batch++) {
-    BeamHypotheses<T>& beam_hyp = beam_hyps[batch];
+  for (size_t batch = 0; batch < batch_size_; batch++) {
+    BeamHypotheses<T>& beam_hyp = beam_hyps_[batch];
     if (done_[batch]) {
       ORT_ENFORCE(beam_hyp.Size() >= num_beams_, "Batch can only be done if all beams have been generated");
 
       // Pad the batch.
-      for (int j = 0; j < num_beams_; j++) {
+      for (size_t j = 0; j < num_beams_; j++) {
         next_beam_scores_[batch * num_beams_ + j] = 0.0f;
         next_beam_tokens_[batch * num_beams_ + j] = pad_token_id_;
         next_beam_indices_[batch * num_beams_ + j] = 0;
@@ -166,14 +172,14 @@ void BeamSearchScorer<T>::Process(ISequences* sequences,
     }
 
     // Next tokens for this sentence.
-    int beam_idx = 0;
-    int top_k = 2 * num_beams_;
-    for (int j = 0; j < top_k; j++) {
+    size_t beam_idx = 0;
+    size_t top_k = 2 * num_beams_;
+    for (size_t j = 0; j < top_k; j++) {
       int32_t next_token = next_tokens[batch * top_k + j];
       T next_score = next_scores[batch * top_k + j];
       int32_t next_index = next_indices[batch * top_k + j];
 
-      int batch_beam_idx = batch * num_beams_ + static_cast<int>(next_index);
+      int batch_beam_idx = static_cast<int>(batch * num_beams_) + next_index;
       // Add to generated hypotheses if end of sentence.
       if ((eos_token_id_ >= 0) && (next_token == eos_token_id_)) {
         bool is_beam_token_worse_than_top_num_beams = (j >= num_beams_);
@@ -224,14 +230,14 @@ void BeamSearchScorer<T>::Finalize(ISequences* sequences,
   ORT_ENFORCE(output_sequences != nullptr);
 
   // Finalize all open beam hypotheses and add to generated hypotheses.
-  for (int batch_index = 0; batch_index < batch_size_; batch_index++) {
-    BeamHypotheses<T>& beam_hyp = beam_hyps[batch_index];
+  for (size_t batch_index = 0; batch_index < batch_size_; batch_index++) {
+    BeamHypotheses<T>& beam_hyp = beam_hyps_[batch_index];
     if (done_[batch_index]) {
       continue;
     }
 
-    for (int beam_index = 0; beam_index < num_beams_; beam_index++) {
-      int batch_beam_index = batch_index * num_beams_ + beam_index;
+    for (size_t beam_index = 0; beam_index < num_beams_; beam_index++) {
+      size_t batch_beam_index = batch_index * num_beams_ + beam_index;
       T final_score = final_beam_scores[batch_beam_index];
       auto final_tokens = sequences->GetSequence(batch_beam_index);
       beam_hyp.Add(final_tokens, final_score);
@@ -254,10 +260,10 @@ void BeamSearchScorer<T>::Finalize(ISequences* sequences,
   gsl::span<T> batch_sequence_score;
 
   // Select the best hypotheses according to number of sequences to return.
-  for (int batch_index = 0; batch_index < batch_size_; batch_index++) {
-    BeamHypotheses<T>& beam_hyp = beam_hyps[batch_index];
+  for (size_t batch_index = 0; batch_index < batch_size_; batch_index++) {
+    BeamHypotheses<T>& beam_hyp = beam_hyps_[batch_index];
 
-    const int num_return_sequences = num_beam_hyps_to_keep_;
+    const size_t num_return_sequences = num_beam_hyps_to_keep_;
     auto batch_output = output.subspan(batch_index * num_return_sequences * max_length_, num_return_sequences * max_length_);
 
     if (output_sequence_scores != nullptr) {
