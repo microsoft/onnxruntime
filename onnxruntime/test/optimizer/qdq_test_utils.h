@@ -195,7 +195,7 @@ GetQDQTestCaseFn BuildQDQTransposeTestCase(
   return [input_shape, perms](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<InputType>(input_shape,
                                                    std::numeric_limits<InputType>::min(),
-                                                   std::numeric_limits<OutputType>::max());
+                                                   std::numeric_limits<InputType>::max());
     auto* output_arg = builder.MakeOutput();
 
     InputType dq_zp = std::numeric_limits<InputType>::max() / 2;
