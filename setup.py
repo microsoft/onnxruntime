@@ -388,6 +388,8 @@ if not enable_training:
 if enable_training:
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
+                     'onnxruntime.training.experimental',
+                     'onnxruntime.training.experimental.gradient_graph',
                      'onnxruntime.training.optim',
                      'onnxruntime.training.ortmodule',
                      'onnxruntime.training.ortmodule.experimental',
