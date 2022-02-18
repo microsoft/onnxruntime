@@ -430,6 +430,10 @@ endif()
 
 set (onnxruntime_test_providers_dependencies ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
+if(onnxruntime_USE_CUDA)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda)
+endif()
+
 if(onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
