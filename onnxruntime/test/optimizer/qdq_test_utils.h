@@ -229,7 +229,7 @@ GetQDQTestCaseFn BuildQDQSoftMaxTestCase(const std::vector<int64_t>& input_shape
 
     // add DQ
     auto* dq_output = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<InputType>(input_arg, 1.f / 256, 0, dq_output);
+    builder.AddDequantizeLinearNode<InputType>(input_arg, .003f, std::numeric_limits<InputType>::max() / 2, dq_output);
 
     // add SoftMax
     auto* softmax_output = builder.MakeIntermediate();
