@@ -26,7 +26,7 @@ variables:
   ${{ if eq(variables.PackagingPipeline, 'true') }}:
     PackagingPipeline: 'release'
   ${{ else }}:
-    PackagingPipeline: 'ci'
+    PackagingPipeline: 'release'
 
 stages:
 - stage: Extract_commit
@@ -85,8 +85,7 @@ stages:
       BuildConfig: 'Release'
       NpmPackagingMode: '$(NpmPackagingMode)'
 
-#- ${{ if ne(variables.PackagingPipeline, 'release') }}:
-- ${{ if eq(1, 0) }}:
+- ${{ if ne(variables.PackagingPipeline, 'release') }}:
   - stage: Test_web_BrowserStack
     dependsOn: Build_wasm_Release
     jobs:
@@ -94,8 +93,7 @@ stages:
       parameters:
         CommitOverride: true
 
-#- ${{ if ne(variables.PackagingPipeline, 'release') }}:
-- ${{ if eq(1, 0) }}:
+- ${{ if ne(variables.PackagingPipeline, 'release') }}:
   - stage: Test_web_MultiBrowsers
     dependsOn: Build_wasm_Release
     jobs:
