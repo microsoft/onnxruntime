@@ -200,7 +200,7 @@ class TVMRunner {
 
       if (use_vm_) {
         tvm::TVM_VM_Run(*mod_);
-        tvm::TVMGet_VM_Outputs(*mod_, tensors_outputs_);
+        tvm::TVM_VM_GetOutputs(*mod_, tensors_outputs_);
       } else {
         tvm::TVMRun(*mod_);
         tvm::TVMGetOutputs(*mod_, tensors_outputs_);

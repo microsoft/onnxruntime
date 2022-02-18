@@ -95,7 +95,7 @@ void TVMGetOutputs(TvmModule& mod,
   }
 }
 
-void TVMGet_VM_Outputs(TvmModule& mod,
+void TVM_VM_GetOutputs(TvmModule& mod,
                        std::vector<DLTensor>& outputs)
 {
   TvmPackedFunc get_output = mod.GetFunction("get_output", false);
