@@ -23,7 +23,7 @@ variables:
   ${{ if eq(parameters.NpmPublish, 'custom') }}:
     NpmPackagingMode: '$(VersionSuffix)'
 
-  ${{ if eq('$(PackagingPipeline)', 'true') }}:
+  ${{ if eq(variables['PackagingPipeline'], 'true') }}:
     PackagingPipeline: 'release'
   ${{ else }}:
     PackagingPipeline: 'ci'
