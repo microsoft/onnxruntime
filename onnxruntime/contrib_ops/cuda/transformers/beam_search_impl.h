@@ -8,6 +8,12 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+void LaunchInitKernel(
+    float* beam_scores,
+    int batch_size,
+    int num_beams,
+    cudaStream_t stream);
+
 template <typename T>
 void LaunchAddProbsKernel(T* log_probs,
                           T* cum_log_probs,
@@ -15,20 +21,6 @@ void LaunchAddProbsKernel(T* log_probs,
                           const int num_beams,
                           const int vocab_size,
                           cudaStream_t stream);
-
-// template <typename T>
-// void LaunchUpdateKernel(T* log_probs,
-//                         T* cum_log_probs,
-//                         bool* finished,
-//                         int* sequence_length,
-//                         int* parent_ids,
-//                         int* word_ids,
-//                         int* output_ids,
-//                         int batch_size,
-//                         int num_beams,
-//                         int vocab_size,
-//                         int eos_token_id,
-//                         cudaStream_t stream);
 
 template <typename T>
 void LaunchLogitsProcessKernel(
@@ -38,18 +30,6 @@ void LaunchLogitsProcessKernel(
     int batch_size,
     int num_beams,
     int vocab_size,
-    cudaStream_t stream);
-
-// void LaunchInitKernel(
-//     half* beam_scores,
-//     int batch_size,
-//     int num_beams,
-//     cudaStream_t stream);
-
-void LaunchInitKernel(
-    float* beam_scores,
-    int batch_size,
-    int num_beams,
     cudaStream_t stream);
 
 void LaunchNextTokenKernel(const int64_t* next_token_indices,
