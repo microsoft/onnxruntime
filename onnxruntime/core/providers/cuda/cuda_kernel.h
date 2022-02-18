@@ -139,6 +139,12 @@ class CudaKernel : public OpKernel {
     return provider_->PerThreadCublasHandle();
   }
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  inline cublasLtHandle_t CublasLtHandle() const {
+    return provider_->PerThreadCublasLtHandle();
+  }
+#endif
+
   inline cudnnHandle_t CudnnHandle() const {
     return provider_->PerThreadCudnnHandle();
   }
