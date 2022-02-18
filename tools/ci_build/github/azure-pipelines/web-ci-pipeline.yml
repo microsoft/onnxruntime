@@ -39,6 +39,8 @@ stages:
   jobs:
   - job: Extract_commit
     pool: ${{ parameters.PoolName }}
+    variables:
+      runCodesignValidationInjection: false
     timeoutInMinutes: 30
     workspace:
       clean: all
