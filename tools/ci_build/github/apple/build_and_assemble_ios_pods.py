@@ -82,6 +82,7 @@ def main():
     build_dir = args.build_dir.resolve()
     staging_dir = args.staging_dir.resolve()
 
+    # build framework
     package_variant = PackageVariant[args.variant]
     framework_info_file = build_dir / "framework_info.json"
 
@@ -108,7 +109,10 @@ def main():
         run(test_ios_packages_args)
 
     # assemble pods and then move them to their target locations (staging_dir/<pod_name>)
-    with tempfile.TemporaryDirectory(dir=staging_dir) as pod_assembly_dir:
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=staging_dir) as pod_assembly_dir_name:
+        pod_assembly_dir = pathlib.Path(pod_assembly_dir_name)
+
         log.info("Assembling C/C++ pod.")
 
         c_pod_staging_dir = pod_assembly_dir / "c_pod"
