@@ -892,7 +892,8 @@ void addGlobalMethods(py::module& m, Environment& env) {
         logging::LoggingManager* default_logging_manager = env.GetLoggingManager();
         default_logging_manager->SetDefaultLoggerVerbosity(vlog_level);
       },
-      "Sets the default logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
+      "Sets the default logging verbosity level. To activate the verbose log, "
+      "you need to set the default logging severity to 0:Verbose level.");
   m.def(
       "get_all_providers", []() -> const std::vector<std::string>& { return GetAllExecutionProviderNames(); },
       "Return list of Execution Providers that this version of Onnxruntime can support. "

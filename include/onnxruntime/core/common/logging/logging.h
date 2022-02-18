@@ -144,6 +144,8 @@ class LoggingManager final {
 
   /**
      Change the maximum verbosity level for log messages to be output by the default logger.
+     @remarks
+     To activate the verbose log, the logger severity must also be set to kVERBOSE.
      @param vlog_level The verbosity level.
   */
   static void SetDefaultLoggerVerbosity(int vlog_level);
@@ -234,6 +236,8 @@ class Logger {
 
   /**
      Change the maximum verbosity level for log messages to be output.
+     @remarks
+     To activate the verbose log, the logger severity must also be set to kVERBOSE.
      @param vlog_level The verbosity.
   */
   void SetVerbosity(int vlog_level) noexcept { max_vlog_level_ = vlog_level; }
