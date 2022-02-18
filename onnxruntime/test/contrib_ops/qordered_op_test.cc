@@ -46,7 +46,6 @@ int64_t OrderedIndex::operator()(int64_t r, int64_t c) {
       {
         int64_t tile_id = c / 32;
         int64_t tile_stride = 32 * rows_;
-        int64_t in_tile_c = c % 32;
         return tile_id * tile_stride + r * 32 + (c % 32);
       }
     case CUBLASLT_ORDER_COL4_4R2_8C:
@@ -75,7 +74,7 @@ template <typename TSrc>
 static std::vector<int8_t> QuantizeTransform(std::vector<int64_t> const& shape, float scale, const std::vector<TSrc>& src, cublasLtOrder_t order) {
   int64_t cols = shape.back();
   int64_t rows = (shape.size() > 1 ? shape[shape.size() - 2] : 1LL);
-  int64_t batch = (shape.size() <= 2 ? 1LL : std::accumulate(shape.data(), shape.data() + (shape.size() - 2), 1LL, std::multiply<int64_t>()));
+  int64_t batch = (shape.size() <= 2 ? 1LL : std::accumulate(shape.data(), shape.data() + (shape.size() - 2), 1LL, std::multiplies<int64_t>()));
   
   OrderedIndex src_indexer(CUBLASLT_ORDER_ROW, rows, cols);
   OrderedIndex dst_indexer(order, rows, cols);
