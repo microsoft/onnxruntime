@@ -298,6 +298,7 @@ ORT_API_STATUS_IMPL(winmla::ModelSetName, _In_ const OrtModel* model, _In_ const
   auto model_proto = model->UseModelProto();
   ONNX_NAMESPACE::GraphProto& graph = *model_proto->mutable_graph();
   graph.set_name(name);
+  return nullptr;
   API_IMPL_END
 }
 
