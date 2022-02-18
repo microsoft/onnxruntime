@@ -11,9 +11,13 @@ parameters:
   type: string
   default: ''
 
+- name: PoolName
+  type: string
+  default: 'Win-CPU-2019'
+
 jobs:
 - job: build_WASM
-  pool: 'Win-CPU-2019'
+  pool: ${{ parameters.PoolName }}
 
   variables:
     EnvSetupScript: setup_env.bat

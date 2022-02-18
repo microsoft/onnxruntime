@@ -11,9 +11,13 @@ parameters:
   type: string
   default: 'dev'
 
+- name: PoolName
+  type: string
+  default: 'Win-CPU-2019'
+
 jobs:
 - job: build_onnxruntime_web
-  pool: 'Win-CPU-2019'
+  pool: ${{ parameters.PoolName }}
 
   timeoutInMinutes: 30
   workspace:
