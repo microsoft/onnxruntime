@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(USE_CUDA) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+// #if defined(USE_CUDA) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -11,14 +11,16 @@
 #include "contrib_ops/cpu/bert/longformer_attention_base.h"
 
 #include <cublasLt.h>
+#include <numeric>
+#include <functional>
 
 namespace onnxruntime {
 namespace test {
 
 template <typename T>
 static std::vector<T> GenData(std::vector<int64_t> const & shape, float scale) {
-  int64_t n = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiply<int64_t>());
-  std::vector<T> fp(n);
+  int64_t n = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<int64_t>());
+  std::vector<T> r(n);
   for (int64_t i = 0; i < n; i++) {
     r[i] = static_cast<T>(((i % 256) - 128) * scale);
   }
@@ -29,13 +31,13 @@ class OrderedIndex {
   cublasLtOrder_t order_;
   int64_t rows_;
   int64_t cols_;
-pulbic:
-  OrderedIndex(cublasLtOrder_t order, int64_t rows, int64_t cols) : order_(order), rows_(rows), cols(cols) { }
+public:
+  OrderedIndex(cublasLtOrder_t order, int64_t rows, int64_t cols) : order_(order), rows_(rows), cols_(cols) { }
   int64_t operator()(int64_t r, int64_t c);
 };
 
 int64_t OrderedIndex::operator()(int64_t r, int64_t c) {
-  swithc (order_) {
+  switch (order_) {
     case CUBLASLT_ORDER_ROW:
       return r * cols_ + c;
     case CUBLASLT_ORDER_COL:
@@ -79,7 +81,7 @@ static std::vector<int8_t> QuantizeTransform(std::vector<int64_t> const& shape, 
   OrderedIndex dst_indexer(order, rows, cols);
 
   std::vector<int8_t> dst(batch * cols * rows);
-  const TSrc* bsrc = src.data(;
+  const TSrc* bsrc = src.data();
   int8_t* bdst = dst.data();
   for (int64_t b = 0, batch_stride = rows * cols; b < batch; b++) {
     for (int64_t r = 0; r < rows; r++) {
@@ -139,14 +141,14 @@ static void RunQOrdered_Quantize_Test(
 TEST(QOrderedTest, FP32_Quantize_COL32) {
   std::vector<int64_t> shape = {1, 5, 32 * 2};
   float scale = 1.0f;
-  std::vector<float> fvec = GenData(shape, scale);
+  std::vector<float> fvec = GenData<float>(shape, scale);
   RunQOrdered_Quantize_Test(fvec, shape, CUBLASLT_ORDER_COL32, scale);
 }
 
 TEST(QOrderedTest, FP32_Quantize_COL4_4R2_8C) {
   std::vector<int64_t> shape = {1, 8 * 3, 32 * 2};
   float scale(1.0f);
-  std::vector<float> fvec = GenData(shape, scale);
+  std::vector<float> fvec = GenData<float>(shape, scale);
   RunQOrdered_Quantize_Test(fvec, shape, CUBLASLT_ORDER_COL4_4R2_8C, scale);
 }
 
@@ -154,4 +156,4 @@ TEST(QOrderedTest, FP32_Quantize_COL4_4R2_8C) {
 }  // namespace test
 }  // namespace onnxruntime
 
-#endif
+// #endif
