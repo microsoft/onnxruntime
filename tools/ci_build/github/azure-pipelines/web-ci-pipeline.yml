@@ -23,10 +23,7 @@ variables:
   ${{ if eq(parameters.NpmPublish, 'custom') }}:
     NpmPackagingMode: '$(VersionSuffix)'
 
-  ${{ if eq(variables['System.TeamProject'], 'Lotus') }}:
-    NpmPackagingPipeline: 'release'
-  ${{ else }}:
-    NpmPackagingPipeline: 'ci'
+  PackagingPipeline: '$(NpmPackagingPipeline)'
 
 stages:
 - stage: Extract_commit
@@ -85,7 +82,7 @@ stages:
       BuildConfig: 'Release'
       NpmPackagingMode: '$(NpmPackagingMode)'
 
-- ${{ if ne(variables['NpmReleasePackagingPipeline'], 'true') }}:
+- ${{ if ne(variables['PackagingPipeline'], 'release') }}:
   - stage: Test_web_BrowserStack
     dependsOn: Build_wasm_Release
     jobs:
@@ -93,7 +90,7 @@ stages:
       parameters:
         CommitOverride: true
 
-- ${{ if ne(variables['NpmReleasePackagingPipeline'], 'true') }}:
+- ${{ if ne(variables['PackagingPipeline'], 'release') }}:
   - stage: Test_web_MultiBrowsers
     dependsOn: Build_wasm_Release
     jobs:
