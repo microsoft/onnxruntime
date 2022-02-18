@@ -10,30 +10,19 @@ namespace onnxruntime {
 /**
 @Class DropoutBitmaskRewrite
 
-Rewrite rule that fuses Gemm and Sum nodes to a single Gemm node.
-This fusion can be applied in the following scenario:
-1) Sum at output of Gemm: when the output of a Gemm is immedietly summed with
-    exactly one other element, we can fuse this Sum with Gemm by using the other
-    Sum input as C, provided that the C input to the Gemm is missing.
-    This is supported for opset >= 11, as this is when Gemm input C became optional.
+Rewrite rule that converts a Dropout op to a BitmaskDropout op, when certain invariants are met that make
+such a transformation possible.
 
-TODO: Support the Add use case: Sum(x, y) ~= Add.
- 
-This patterm is attempted to be triggered only on nodes with op type "Gemm".
+In particular, this transformation is only possible when there are no uses of the Dropout mask output. Only
+DropoutGrad is aware of this different representation, and this is handled by the DropoutBitmaskGradRewrite pattern.
 
-A --> Gemm --> D --> Sum --> E
-       ^              ^
-       |              |
-B -----+              C
+         mask
+Dropout -----> UNUSED
 
-is equivalent to
+can be rewritten to
 
-A --> Gemm --> E
-      ^  ^
-      |  |
-B ----+  C
-
-Where each letter represents a tensor.
+                 mask
+BitmaskDropout -------> UNUSED
 */
 class DropoutBitmaskRewrite : public RewriteRule {
  public:

@@ -20,6 +20,7 @@
 #include "core/optimizer/div_mul_fusion.h"
 #include "core/optimizer/dropout_bitmask_rewrite.h"
 #include "core/optimizer/dropout_elimination.h"
+#include "core/optimizer/dropout_grad_bitmask_rewrite.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
 #include "core/optimizer/expand_elimination.h"
 #include "core/optimizer/fast_gelu_fusion.h"
@@ -86,6 +87,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<NoopElimination>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<DivMulFusion>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<DropoutBitmaskRewrite>()));
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<DropoutGradBitmaskRewrite>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<EliminateDropout>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GemmSumFusion>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GemmTransposeFusion>()));

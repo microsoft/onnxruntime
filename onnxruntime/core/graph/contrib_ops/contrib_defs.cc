@@ -2326,12 +2326,26 @@ void RegisterContribSchemas() {
         updateOutputShape(ctx, 0, output_shape);
       });
 
+static const char *BitmaskDropout_ver1_doc = R"DOC(
+BitmaskDropout takes an input floating-point tensor, an optional input ratio (floating-point scalar) and an optional input training_mode (boolean scalar). It produces two tensor outputs,
+output (floating-point tensor) and mask (optional `Tensor<uint32>`). If `training_mode` is true then the output Y will be a random dropout;
+Note that this Dropout scales the masked input data by the following equation, so to convert the trained model into inference mode,
+the user can simply not pass `training_mode` input or set it to false.
+```
+output = scale * data * mask,
+```
+where
+```
+scale = 1. / (1. - ratio).
+```
+
+This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt that the mask is output as a bit-packed uint32 tensor, instead of a boolean tensor.
+)DOC";
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(BitmaskDropout)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc(
-          "output, dropout_mask = Dropout(data + bias, ratio) + residual, "
-          "Intended to specialize the dropout pattern commonly found in transformer models.")
+      .SetDoc(BitmaskDropout_ver1_doc)
       .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.", AttributeProto::INT, OPTIONAL_VALUE)
       .AllowUncheckedAttributes()
       .Input(0, "data", "The input data as Tensor.", "T")
@@ -2368,7 +2382,7 @@ void RegisterContribSchemas() {
       .Output(
           1,
           "mask",
-          "The output mask.",
+          "The bit-packed output mask.",
           "T3",
           OpSchema::Optional,
           true,

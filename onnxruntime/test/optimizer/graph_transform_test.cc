@@ -769,7 +769,6 @@ TEST_F(GraphTransformationTests, BitmaskDropoutRewriteUsedOutput) {
   ASSERT_EQ(op_to_count["Identity"], 1);
   ASSERT_EQ(graph.NumberOfNodes(), 2);
 
-  ASSERT_STATUS_OK(Model::Save(*p_model, "bitmask_rewrite_test_model_output.onnx"));
   {
     auto dropout_it = std::find_if(graph.Nodes().begin(),
                                 graph.Nodes().end(),

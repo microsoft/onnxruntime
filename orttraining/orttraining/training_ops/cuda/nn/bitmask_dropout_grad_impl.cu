@@ -26,6 +26,9 @@ constexpr int WARP_SIZE = 32;
 namespace onnxruntime {
 namespace cuda {
 
+/**
+ * Reference "bitmask_dropout.cc" for an explanation of how bits are packed into the mask
+ */
 template <typename T>
 __global__ void BitmaskDropoutGradientKernel(
     const int64_t N,
@@ -33,7 +36,6 @@ __global__ void BitmaskDropoutGradientKernel(
     const uint32_t* mask_data,
     const float ratio,
     T* dX_data) {
-
   const float p = 1.0f - ratio;
   const float scale = 1.0f / p;
 
@@ -59,7 +61,6 @@ void BitmaskDropoutGradientKernelImpl(
     const uint32_t* mask_data,
     const float ratio,
     T* dX_data) {
-
   // block size should be perfectly divisble by warp size for optimized performance.
   constexpr int block_size = 256;
 

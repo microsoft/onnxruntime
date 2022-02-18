@@ -16,19 +16,14 @@ namespace onnxruntime {
 // Dropout, in SatisfyCondition? Is this possible?
 constexpr std::initializer_list<const char*> kSupportedExecutionProviders = {kCudaExecutionProvider};
 
-Status DropoutBitmaskRewrite::Apply(Graph& graph, Node& dropout_node, RewriteRuleEffect& modified, const logging::Logger&) const {
+Status DropoutBitmaskRewrite::Apply(Graph& graph, Node& dropout_node, RewriteRuleEffect& modified, const logging::Logger& logger) const {
   Node& new_bitmask_dropout_node = graph.AddNode(/*name=*/graph.GenerateNodeName(dropout_node.Name() + "_bitmask_rewritten"),
                                                  /*op_type=*/"BitmaskDropout",
                                                  /*description=*/"Written from Dropout node",
                                                  /*input_args=*/dropout_node.MutableInputDefs(),
                                                  /*output_args=*/dropout_node.MutableOutputDefs(),
-                                                 /*attributes=*/nullptr,
+                                                 /*attributes=*/&dropout_node.GetAttributes(),
                                                  /*domain=*/kMSDomain);
-
-  const NodeAttributes& dropout_attributes = dropout_node.GetAttributes();
-  if (dropout_attributes.count("seed")) {
-    new_bitmask_dropout_node.AddAttribute("seed", dropout_attributes.at("seed").f());
-  }
 
   new_bitmask_dropout_node.SetExecutionProviderType(dropout_node.GetExecutionProviderType());
 
@@ -62,6 +57,17 @@ Status DropoutBitmaskRewrite::Apply(Graph& graph, Node& dropout_node, RewriteRul
   ORT_ENFORCE(dropout_node.GetOutputEdgesCount() == 0);
   ORT_ENFORCE(graph.RemoveNode(dropout_node.Index()));
 
+  if (new_bitmask_dropout_node.OutputDefs().size() >= 2) {
+    NodeArg* mask_output = new_bitmask_dropout_node.MutableOutputDefs()[1];
+
+    // Update mask output def to be uint32, instead of bool.
+    //
+    // TODO: Ensure this def has correct output size/dims. Should be (num_elements + 31) / 32.
+    ONNX_NAMESPACE::TypeProto type_proto;
+    type_proto.mutable_tensor_type()->set_elem_type(TensorProto::UINT32);
+    ORT_THROW_IF_ERROR(mask_output->UpdateTypeAndShape(type_proto, true, true, logger));
+  }
+
   modified = RewriteRuleEffect::kRemovedCurrentNode;
 
   return Status::OK();
@@ -70,8 +76,11 @@ Status DropoutBitmaskRewrite::Apply(Graph& graph, Node& dropout_node, RewriteRul
 bool DropoutBitmaskRewrite::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
   // Perform a series of checks. If any fail, rewrite may not be performed.
 
-  // Original Dropout must have opset == 13, as BitmaskDropout only supports opset version 13.
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", {13})) {
+  std::cout << "starting dropout rewrite check\n";
+  // Original Dropout must have opset 12 or 13, as BitmaskDropout only supports
+  // opset versions 12/13.
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Dropout", {12, 13})) {
+    std::cout << "invalid version: " << node.SinceVersion() << "\n";
     return false;
   }
 
@@ -79,6 +88,7 @@ bool DropoutBitmaskRewrite::SatisfyCondition(const Graph& graph, const Node& nod
   // has no implementation for the specified EP type), rewrite may not be be performed.
   const std::string node_ep = node.GetExecutionProviderType();
   if (std::find(kSupportedExecutionProviders.begin(), kSupportedExecutionProviders.end(), node_ep) == kSupportedExecutionProviders.end()) {
+    std::cout << "unsupported execution provider: " << node_ep << "\n";
     return false;
   }
 
@@ -92,11 +102,16 @@ bool DropoutBitmaskRewrite::SatisfyCondition(const Graph& graph, const Node& nod
 
     // If mask output is used as a graph output, rewrite is impossible.
     if (graph.IsOutput(mask_output)) {
+      std::cout << "invalid output as graph output\n";
       return false;
     }
 
     // If any nodes consume the mask output (use it as input), rewrite is impossible.
     if (!graph.GetConsumerNodes(mask_output->Name()).empty()) {
+      std::cout << "invalid has consumers: \n";
+      for (const Node* consumer : graph.GetConsumerNodes(mask_output->Name())) {
+        std::cout << "name: " << consumer->Name() << ", type: " << consumer->OpType() << "\n";
+      }
       return false;
     }
   }
