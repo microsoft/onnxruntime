@@ -27,5 +27,5 @@ jobs:
 - template: templates/web-ci.yml
   parameters:
     NpmPublish: ${{ variables.NpmPackagingMode }}
-    Pipeline: 'release'
-    PoolName: 'Win-CPU-2021'
+    Pipeline: 'ci'
+    PoolName: 'Win-CPU-2019'
