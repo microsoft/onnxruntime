@@ -189,22 +189,16 @@ void BinaryElementWiseNoBroadcastImpl(
   if (count == 0)  // special case where there's a dim value of 0 in the output shape
     return;
   
-  int num_elements_per_thread = GridDim::maxElementsPerThread;
-  int num_threads_per_block = GridDim::maxThreadsPerBlock;
   #ifdef USE_ROCM
-  num_elements_per_thread = 2;
-  num_threads_per_block = 512;
+  const int num_elements_per_thread = 2;
+  const int num_threads_per_block = 512;
+  #else
+  const int num_elements_per_thread = GridDim::maxElementsPerThread;
+  const int num_threads_per_block = GridDim::maxThreadsPerBlock;
   #endif
+
   int blocksPerGrid = static_cast<int>(CeilDiv(count, num_threads_per_block * num_elements_per_thread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  /*
-  _BinaryElementWiseSimple<true, true, T, T1, T2, FuncT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-      lhs_data,
-      rhs_data,
-      output_data,
-      func,
-      N);
-  */
   _BinaryElementWiseSimple<true, true, T, T1, T2, FuncT, num_threads_per_block, num_elements_per_thread><<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
       lhs_data,
       rhs_data,
@@ -231,12 +225,14 @@ void BinaryElementWiseImpl(
   if (count == 0)  // special case where there's a dim value of 0 in the output shape
     return;
 
-  int num_elements_per_thread = GridDim::maxElementsPerThread;
-  int num_threads_per_block = GridDim::maxThreadsPerBlock;
   #ifdef USE_ROCM
-  num_elements_per_thread = 2;
-  num_threads_per_block = 512;
+  const int num_elements_per_thread = 2;
+  const int num_threads_per_block = 512;
+  #else
+  const int num_elements_per_thread = GridDim::maxElementsPerThread;
+  const int num_threads_per_block = GridDim::maxThreadsPerBlock;
   #endif
+
   int blocksPerGrid = static_cast<int>(CeilDiv(count, num_threads_per_block * num_elements_per_thread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   if (output_rank_or_simple_broadcast == static_cast<int32_t>(SimpleBroadcast::NoBroadcast)) {
