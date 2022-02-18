@@ -18,6 +18,7 @@
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
 #include "core/optimizer/div_mul_fusion.h"
+#include "core/optimizer/dropout_bitmask_rewrite.h"
 #include "core/optimizer/dropout_elimination.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
 #include "core/optimizer/expand_elimination.h"
@@ -49,10 +50,10 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/optimizer/batchnorm_replacement.h"
 #include "orttraining/core/optimizer/concat_replacement.h"
+#include "orttraining/core/optimizer/graph_transformer_registry.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
 #include "orttraining/core/optimizer/loss_rewriter.h"
-#include "orttraining/core/optimizer/graph_transformer_registry.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
 
 namespace onnxruntime {
@@ -84,6 +85,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<CastElimination>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<NoopElimination>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<DivMulFusion>()));
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<DropoutBitmaskRewrite>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<EliminateDropout>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GemmSumFusion>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GemmTransposeFusion>()));
