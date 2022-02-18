@@ -50,7 +50,7 @@ struct GptSubgraph {
       const std::vector<const OrtValue*>& implicit_inputs,
       int num_beams,
       int pad_token_id,
-      gsl::span<int64_t>& next_positions,
+      gsl::span<int32_t>& sequence_lengths,
       OrtValue& expanded_input_ids,
       std::vector<OrtValue>& feeds,
       const BeamSearchDeviceHelper::CreateInputsFunc& create_inputs_func,
@@ -61,6 +61,8 @@ struct GptSubgraph {
 
   const IExecutionProvider* GetProvider() const;
 
+  bool IsOutputFloat16() const { return is_output_float16_; }
+
  protected:
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                   const std::vector<const NodeArg*>& subgraph_outputs);
@@ -69,6 +71,7 @@ struct GptSubgraph {
   const SessionState* session_state_;
   const SessionState* subgraph_session_state_;
   std::unique_ptr<FeedsFetchesManager> feeds_fetches_manager_;
+  bool is_output_float16_;
 };
 
 }  // namespace transformers

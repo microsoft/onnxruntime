@@ -31,12 +31,15 @@ constexpr int64_t kDefaultSnippetThreshold = 200;
 
 template <typename T>
 void PrintValue(const T& value) {
-  // if (std::is_same<T, MLFloat16>::value)
-  //   std::cout << std::setprecision(8) << (float)value;
   if (std::is_floating_point<T>::value)
     std::cout << std::setprecision(8) << value;
   else
     std::cout << value;
+}
+
+// Explicit specialization for half
+template <> void PrintValue(const MLFloat16& value) {
+     std::cout << std::setprecision(8) << (float)value;
 }
 
 // Print 2D tensor snippet

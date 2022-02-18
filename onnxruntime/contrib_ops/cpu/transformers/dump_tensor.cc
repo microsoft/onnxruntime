@@ -41,6 +41,8 @@ void DumpCpuTensor(const char* name, const Tensor& tensor, int dim0, int dim1, i
   MLDataType dataType = tensor.DataType();
   if (dataType == DataTypeImpl::GetType<float>()) {
     DumpCpuTensor<float>(name, tensor.Data<float>(), dim0, dim1, dim2);
+  } else if (dataType == DataTypeImpl::GetType<MLFloat16>()) {
+    DumpCpuTensor<MLFloat16>(name, tensor.Data<MLFloat16>(), dim0, dim1, dim2);
   } else if (dataType == DataTypeImpl::GetType<int32_t>()) {
     DumpCpuTensor<int32_t>(name, tensor.Data<int32_t>(), dim0, dim1, dim2);
   } else if (dataType == DataTypeImpl::GetType<int64_t>()) {
@@ -54,6 +56,8 @@ void DumpCpuTensor(const char* name, const Tensor& tensor, int dim0, int dim1) {
   MLDataType dataType = tensor.DataType();
   if (dataType == DataTypeImpl::GetType<float>()) {
     DumpCpuTensor<float>(name, tensor.Data<float>(), dim0, dim1);
+  } else if (dataType == DataTypeImpl::GetType<MLFloat16>()) {
+    DumpCpuTensor<MLFloat16>(name, tensor.Data<MLFloat16>(), dim0, dim1);
   } else if (dataType == DataTypeImpl::GetType<int32_t>()) {
     DumpCpuTensor<int32_t>(name, tensor.Data<int32_t>(), dim0, dim1);
   } else if (dataType == DataTypeImpl::GetType<int64_t>()) {
@@ -90,10 +94,22 @@ void CpuTensorConsoleDumper::Print(const char* name, const float* tensor, int di
   DumpCpuTensor<float>(name, tensor, dim0, dim1);
 }
 
+void CpuTensorConsoleDumper::Print(const char* name, const MLFloat16* tensor, int dim0, int dim1) const {
+  if (!is_enabled_)
+    return;
+  DumpCpuTensor<MLFloat16>(name, tensor, dim0, dim1);
+}
+
 void CpuTensorConsoleDumper::Print(const char* name, const int64_t* tensor, int dim0, int dim1) const {
   if (!is_enabled_)
     return;
   DumpCpuTensor<int64_t>(name, tensor, dim0, dim1);
+}
+
+void CpuTensorConsoleDumper::Print(const char* name, const int32_t* tensor, int dim0, int dim1) const {
+  if (!is_enabled_)
+    return;
+  DumpCpuTensor<int32_t>(name, tensor, dim0, dim1);
 }
 
 void CpuTensorConsoleDumper::Print(const char* name, const float* tensor, int dim0, int dim1, int dim2) const {
@@ -102,10 +118,22 @@ void CpuTensorConsoleDumper::Print(const char* name, const float* tensor, int di
   DumpCpuTensor<float>(name, tensor, dim0, dim1, dim2);
 }
 
+void CpuTensorConsoleDumper::Print(const char* name, const MLFloat16* tensor, int dim0, int dim1, int dim2) const {
+  if (!is_enabled_)
+    return;
+  DumpCpuTensor<MLFloat16>(name, tensor, dim0, dim1, dim2);
+}
+
 void CpuTensorConsoleDumper::Print(const char* name, const int64_t* tensor, int dim0, int dim1, int dim2) const {
   if (!is_enabled_)
     return;
   DumpCpuTensor<int64_t>(name, tensor, dim0, dim1, dim2);
+}
+
+void CpuTensorConsoleDumper::Print(const char* name, const int32_t* tensor, int dim0, int dim1, int dim2) const {
+  if (!is_enabled_)
+    return;
+  DumpCpuTensor<int32_t>(name, tensor, dim0, dim1, dim2);
 }
 
 void CpuTensorConsoleDumper::Print(const char* name, const Tensor& tensor) const {

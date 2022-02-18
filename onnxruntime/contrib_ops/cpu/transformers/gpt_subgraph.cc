@@ -36,7 +36,7 @@ GptSubgraph::GptSubgraph(
     const onnxruntime::Node& node_in,
     const std::string& attribute_name,
     const GraphViewer& subgraph_in)
-    : node(node_in), attribute(attribute_name), subgraph(subgraph_in), allocator_(nullptr) {
+    : node(node_in), attribute(attribute_name), subgraph(subgraph_in), allocator_(nullptr), is_output_float16_(false) {
   num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
 
   auto& subgraph_inputs = subgraph.GetInputs();
@@ -111,19 +111,23 @@ Status GptSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
   vocab_size = static_cast<int>(logits_shape->dim(2).dim_value());
   num_layers = static_cast<int>(subgraph_outputs.size()) - 1;
 
-  ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
-                "subgraph input 0 (input_ids) shall have int64 type");
-  ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
-                "subgraph input 1 (position_ids) shall have int64 type");
-  // TODO: support float16
-  ORT_RETURN_IF(subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT,
-                "subgraph input 2 (attention_mask) shall have float type");
-  ORT_RETURN_IF(subgraph_inputs[3]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT,
-                "subgraph input 3 (past_0) shall have float type");
-  ORT_RETURN_IF(subgraph_outputs[0]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT,
-                "subgraph output 0 (logits) shall have float type");
-  ORT_RETURN_IF(subgraph_outputs[1]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT,
-                "subgraph output 1 (present_0) shall have float type");
+  ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
+                "subgraph input 0 (input_ids) shall have int32 type");
+  ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
+                "subgraph input 1 (position_ids) shall have int32 type");
+  ORT_RETURN_IF(subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
+                "subgraph input 2 (attention_mask) shall have int32 type");
+
+  auto output_type = subgraph_outputs[0]->TypeAsProto()->tensor_type().elem_type();
+  ORT_RETURN_IF(output_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT && output_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16,
+                "subgraph output 0 (logits) shall be float or float16 data type");
+
+  ORT_RETURN_IF(subgraph_inputs[3]->TypeAsProto()->tensor_type().elem_type() != output_type,
+                "subgraph input 3 (past_0) shall shall have same data type of logits output");
+  ORT_RETURN_IF(subgraph_outputs[1]->TypeAsProto()->tensor_type().elem_type() != output_type,
+                "subgraph output 1 (present_0) shall shall have same data type of logits output");
+
+  is_output_float16_ = (output_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16);
 
   return Status::OK();
 }
@@ -200,7 +204,7 @@ Status GptSubgraph::CreateInitialFeeds(
     const std::vector<const OrtValue*>& implicit_inputs,
     int num_beams,
     int pad_token_id,
-    gsl::span<int64_t>& sequence_lengths,
+    gsl::span<int32_t>& sequence_lengths,
     OrtValue& expanded_input_ids,
     std::vector<OrtValue>& feeds,
     const BeamSearchDeviceHelper::CreateInputsFunc& create_inputs_func,
@@ -228,7 +232,7 @@ Status GptSubgraph::CreateInitialFeeds(
   allocator_ = default_allocator;
 
   // Initialize empty past state
-  auto past_type = DataTypeImpl::GetType<float>();
+  auto past_type = IsOutputFloat16() ? DataTypeImpl::GetType<MLFloat16>() : DataTypeImpl::GetType<float>();
   int64_t past_state_dims[] = {2, batch_size * num_beams, num_heads, 0, head_size};
   TensorShape past_shape(&past_state_dims[0], 5);
   OrtValue empty_past;

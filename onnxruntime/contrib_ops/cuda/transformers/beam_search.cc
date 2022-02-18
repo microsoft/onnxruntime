@@ -36,13 +36,19 @@ transformers::CudaTensorConsoleDumper g_cuda_dumper;
 BeamSearch::BeamSearch(const OpKernelInfo& info)
     : onnxruntime::contrib::transformers::BeamSearch(info) {
   SetComputeStream(static_cast<void*>(info.GetExecutionProvider()->GetComputeStream()));
-  // TODO: handle float16
+  
   SetDeviceHelpers(BeamSearchCudaDeviceHelper::AddToFeeds,
                    BeamSearchCudaDeviceHelper::TopK);
+
   SetDeviceHelpers(BeamSearchCudaDeviceHelper::ProcessLogits<float>,
                    BeamSearchCudaDeviceHelper::InitBeamState<float>,
                    BeamSearchCudaDeviceHelper::DeviceCopy<float>,
                    BeamSearchCudaDeviceHelper::UpdateFeeds<float>);
+
+  SetDeviceHelpers(BeamSearchCudaDeviceHelper::ProcessLogits<MLFloat16>,
+                   BeamSearchCudaDeviceHelper::InitBeamState<MLFloat16>,
+                   BeamSearchCudaDeviceHelper::UpdateFeeds<MLFloat16>);
+
   SetConsoleDumper(&g_cuda_dumper);
 }
 

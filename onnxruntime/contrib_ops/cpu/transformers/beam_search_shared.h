@@ -19,43 +19,40 @@ namespace transformers {
 
 template <typename T>
 struct IBeamSearchState {
-  gsl::span<T> next_token_logits;     // shape (batch_size * num_beams, vocab_size)
-  gsl::span<T> next_token_scores;     // shape (batch_size, num_beams * vocab_size)
-  gsl::span<int64_t> next_tokens;     // shape (batch_size, 2 * num_beams)
-  gsl::span<int64_t> next_indices;    // shape (batch_size, 2 * num_beams)
-  gsl::span<int64_t> next_positions;  // shape (batch_size, num_beams). Next position value for position_ids.
-  gsl::span<T> beam_scores;           // shape (batch_size, num_beams)
-  gsl::span<T> scores;                // shape (max_length - sequence_length + 1, batch_size, num_beams * vocab_size)
-  gsl::span<T> remaining_scores;      // portion of scores that is avaiable for appending next token scores.
+  gsl::span<T> next_token_logits;      // shape (batch_size * num_beams, vocab_size)
+  gsl::span<float> next_token_scores;  // shape (batch_size, num_beams * vocab_size)
+  gsl::span<int32_t> next_tokens;      // shape (batch_size, 2 * num_beams)
+  gsl::span<int32_t> next_indices;     // shape (batch_size, 2 * num_beams)
+  gsl::span<int32_t> next_positions;   // shape (batch_size, num_beams). Next position value for position_ids.
+  gsl::span<float> beam_scores;        // shape (batch_size, num_beams)
+  gsl::span<float> scores;             // shape (max_length - sequence_length + 1, batch_size, num_beams * vocab_size)
+  gsl::span<float> remaining_scores;   // portion of scores that is avaiable for appending next token scores.
 };
 
 // Data that copied from GPU to CPU
-template <typename T>
 struct IBeamSearchCpuState {
-  gsl::span<int64_t> sequence_lengths;  // shape (batch_size, num_beams), initial sequence length
-  gsl::span<T> topk_scores;             // shape (batch_size, 2*num_beams), scores of topk candidates (K=2*num_beams)
-  gsl::span<int64_t> topk_tokens;       // shape (batch_size, 2*num_beams), tokens of topk candidates
-  gsl::span<int64_t> topk_indices;      // shape (batch_size, 2*num_beams), beam indices of topk candidates
-  gsl::span<T> final_beam_scores;       // shape (batch_size, num_beams)
-  gsl::span<int64_t> sequences_space;   // shape (2, batch_size, num_beams, max_seq_length)
+  gsl::span<int32_t> sequence_lengths;  // shape (batch_size, num_beams), initial sequence length
+  gsl::span<float> topk_scores;         // shape (batch_size, 2*num_beams), scores of topk candidates (K=2*num_beams)
+  gsl::span<int32_t> topk_tokens;       // shape (batch_size, 2*num_beams), tokens of topk candidates
+  gsl::span<int32_t> topk_indices;      // shape (batch_size, 2*num_beams), beam indices of topk candidates
+  gsl::span<float> final_beam_scores;   // shape (batch_size, num_beams)
+  gsl::span<int32_t> sequences_space;   // shape (2, batch_size, num_beams, max_seq_length)
 };
 
 class ISequences {
  public:
   virtual ~ISequences() {}
-  virtual gsl::span<const int64_t> GetSequence(int beam_index) const = 0;
+  virtual gsl::span<const int32_t> GetSequence(int beam_index) const = 0;
   virtual int GetSequenceLength() const = 0;
 };
 
-template <typename T>
 class ILogitsProcessorList {
  public:
   virtual ~ILogitsProcessorList() {}
-  virtual void Process(const ISequences* sequences, gsl::span<T>& next_token_scores, int step) = 0;
+  virtual void Process(const ISequences* sequences, gsl::span<float>& next_token_scores, int step) = 0;
 };
 
 // Interface for all scorers for beam search or beam sample.
-template <typename T>
 class IBeamScorer {
  public:
   virtual ~IBeamScorer() {}
@@ -63,12 +60,12 @@ class IBeamScorer {
   virtual void Initialize(AllocatorPtr& allocator, int sequence_length) = 0;
 
   virtual void Process(ISequences* sequences,
-                       gsl::span<const T>& next_scores,
-                       gsl::span<const int64_t>& next_tokens,
-                       gsl::span<const int64_t>& next_indices) = 0;
+                       gsl::span<const float>& next_scores,
+                       gsl::span<const int32_t>& next_tokens,
+                       gsl::span<const int32_t>& next_indices) = 0;
 
   virtual void Finalize(ISequences* sequences,
-                        gsl::span<const T>& final_beam_scores,
+                        gsl::span<const float>& final_beam_scores,
                         Tensor* output_sequences,
                         Tensor* output_sequence_scores) = 0;
 };
@@ -111,9 +108,13 @@ class IConsoleDumper {
   void Disable() { is_enabled_ = false; }
   bool IsEnabled() const { return is_enabled_; }
   virtual void Print(const char* name, const float* tensor, int dim0, int dim1) const = 0;
+  virtual void Print(const char* name, const MLFloat16* tensor, int dim0, int dim1) const = 0;
   virtual void Print(const char* name, const int64_t* tensor, int dim0, int dim1) const = 0;
+  virtual void Print(const char* name, const int32_t* tensor, int dim0, int dim1) const = 0;
   virtual void Print(const char* name, const float* tensor, int dim0, int dim1, int dim2) const = 0;
+  virtual void Print(const char* name, const MLFloat16* tensor, int dim0, int dim1, int dim2) const = 0;
   virtual void Print(const char* name, const int64_t* tensor, int dim0, int dim1, int dim2) const = 0;
+  virtual void Print(const char* name, const int32_t* tensor, int dim0, int dim1, int dim2) const = 0;
   virtual void Print(const char* name, const Tensor& value) const = 0;
   virtual void Print(const char* name, const OrtValue& value) const = 0;
   virtual void Print(const char* name, int index, bool end_line) const = 0;

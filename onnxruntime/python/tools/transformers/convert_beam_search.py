@@ -179,7 +179,8 @@ def gpt2_to_onnx(args):
     print(f"use convert_to_onnx.py to convert model {model_name} to onnx {args.gpt2_onnx} ...")
     arguments = [
         '--model_name_or_path', model_name, '--output', args.gpt2_onnx, '--optimize_onnx', '--precision',
-        'fp32' if args.precision == Precision.FLOAT32 else 'fp16', '--test_runs', '1', '--test_cases', '10'
+        'fp32' if args.precision == Precision.FLOAT32 else 'fp16', '--test_runs', '1', '--test_cases', '10',
+        '--use_int32_inputs' # BeamSearch requires to use int32 for input_ids, postion_ids and attention_mask
     ]
     if args.use_gpu:
         arguments.append('--use_gpu')
@@ -216,14 +217,22 @@ def shape_inference(gpt2_onnx_path):
 
 
 def create_ort_session(model_path, use_gpu):
-    from onnxruntime import SessionOptions, InferenceSession, __version__ as ort_version, GraphOptimizationLevel
+    from onnxruntime import SessionOptions, InferenceSession, __version__ as ort_version, GraphOptimizationLevel, get_available_providers
     sess_options = SessionOptions()
     sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
     execution_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if use_gpu else ['CPUExecutionProvider']
-
+    if use_gpu:
+        if 'CUDAExecutionProvider' not in get_available_providers():
+            raise RuntimeError("CUDAExecutionProvider is not avaiable for --use_gpu!")
+        else:
+            print("use CUDAExecutionProvider")
+    
     ort_session = InferenceSession(model_path, sess_options, providers=execution_providers)
     return ort_session
 
+def verify_gpt2_subgraph(graph):
+    #TODO: verify names, data types and shapes of inputs and outputs.
+    return
 
 def convert_model(args):
     if os.path.exists(args.gpt2_onnx):
@@ -247,6 +256,8 @@ def convert_model(args):
         vocab_size = args.vocab_size
 
     model = onnx.load(args.gpt2_onnx)
+    verify_gpt2_subgraph(model.graph)
+        
     model.graph.name = "gpt2 subgraph"
     inputs = [
         "input_ids", "max_length", "min_length", "num_beams", "num_return_sequences", "temperature", "length_penalty",

@@ -56,6 +56,15 @@ class BeamSearch : public IControlFlowKernel {
     update_feeds_func_ = update_feeds_func;
   }
 
+  void SetDeviceHelpers(
+      const BeamSearchDeviceHelper::ProcessLogitsFunc<MLFloat16>& process_logits_func,
+      const BeamSearchDeviceHelper::InitBeamStateFunc<MLFloat16>& init_beam_state_func,
+      const BeamSearchDeviceHelper::UpdateFeedsFunc<MLFloat16>& update_feeds_func) {
+    process_logits_fp16_func_ = process_logits_func;
+    init_beam_state_fp16_func_ = init_beam_state_func;
+    update_feeds_fp16_func_ = update_feeds_func;
+  }
+
  private:
   // Device specific functions
   BeamSearchDeviceHelper::CreateInputsFunc create_inputs_func_;
@@ -65,6 +74,10 @@ class BeamSearch : public IControlFlowKernel {
   BeamSearchDeviceHelper::InitBeamStateFunc<float> init_beam_state_func_;
   BeamSearchDeviceHelper::DeviceCopyFunc<float> device_copy_func_;
   BeamSearchDeviceHelper::UpdateFeedsFunc<float> update_feeds_func_;
+
+  BeamSearchDeviceHelper::ProcessLogitsFunc<MLFloat16> process_logits_fp16_func_;
+  BeamSearchDeviceHelper::InitBeamStateFunc<MLFloat16> init_beam_state_fp16_func_;
+  BeamSearchDeviceHelper::UpdateFeedsFunc<MLFloat16> update_feeds_fp16_func_;
 
   // Subgraph and FeedsFetchesManager re-used for each subgraph execution.
   std::unique_ptr<GptSubgraph> gpt_subgraph_;

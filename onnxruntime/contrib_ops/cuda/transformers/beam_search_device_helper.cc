@@ -101,14 +101,14 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   AllocatorPtr pinned_allocator = provider->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
   cudaStream_t stream = static_cast<cudaStream_t>(provider->GetComputeStream());
 
-  size_t bytes = (sizeof(int64_t) + sizeof(int64_t) + sizeof(float)) * elements;
+  size_t bytes = (sizeof(int32_t) + sizeof(int32_t) + sizeof(int32_t)) * elements;
   auto pinned_buffer = IAllocator::MakeUniquePtr<void>(pinned_allocator, bytes);
   char* pinned_data = static_cast<char*>(pinned_buffer.get());
 
   // Copy tensors to one pinned memory buffer (so that we only need copy to GPU once)
-  memcpy(pinned_data, input_ids.Get<Tensor>().Data<int64_t>(), sizeof(int64_t) * elements);
-  memcpy(pinned_data + sizeof(int64_t) * elements, position_ids.Get<Tensor>().Data<int64_t>(), sizeof(int64_t) * elements);
-  memcpy(pinned_data + 2 * sizeof(int64_t) * elements, attention_mask.Get<Tensor>().Data<float>(), sizeof(float) * elements);
+  memcpy(pinned_data, input_ids.Get<Tensor>().Data<int32_t>(), sizeof(int32_t) * elements);
+  memcpy(pinned_data + sizeof(int32_t) * elements, position_ids.Get<Tensor>().Data<int32_t>(), sizeof(int32_t) * elements);
+  memcpy(pinned_data + 2 * sizeof(int32_t) * elements, attention_mask.Get<Tensor>().Data<int32_t>(), sizeof(int32_t) * elements);
 
   if (!buffer) {
     buffer = provider->GetScratchBuffer<char>(bytes);
@@ -129,9 +129,9 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   OrtValue device_position_ids;
   OrtValue device_attention_mask;
   const OrtMemoryInfo& location = provider->GetAllocator(0, OrtMemTypeDefault)->Info();
-  Tensor::InitOrtValue(DataTypeImpl::GetType<int64_t>(), shape, gpu_data, location, device_input_ids);
-  Tensor::InitOrtValue(DataTypeImpl::GetType<int64_t>(), shape, gpu_data + sizeof(int64_t) * elements, location, device_position_ids);
-  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), shape, gpu_data + 2 * sizeof(int64_t) * elements, location, device_attention_mask);
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), shape, gpu_data, location, device_input_ids);
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), shape, gpu_data + sizeof(int32_t) * elements, location, device_position_ids);
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), shape, gpu_data + 2 * sizeof(int32_t) * elements, location, device_attention_mask);
 
   feeds.push_back(device_input_ids);
   feeds.push_back(device_position_ids);
@@ -142,11 +142,11 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
 
 template <typename T>
 void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
-                   transformers::IBeamSearchCpuState<T>* cpu_state,
-                   gsl::span<int64_t>& sequence_lengths,
+                   transformers::IBeamSearchCpuState* cpu_state,
+                   gsl::span<int32_t>& sequence_lengths,
                    int batch_size,
                    int num_beams,
-                   gsl::span<const int64_t> input_ids_in_cpu,
+                   gsl::span<const int32_t> input_ids_in_cpu,
                    int sequence_length,
                    int max_length,
                    void* stream) {
@@ -168,29 +168,28 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
   memset(cpu_state->sequences_space.data(), 0, cpu_state->sequences_space.size_bytes());
 
   // Copy input_ids to sequences[0]
-  gsl::span<int64_t> sequences_0 = cpu_state->sequences_space;
+  gsl::span<int32_t> sequences_0 = cpu_state->sequences_space;
   int batch_beam_size = batch_size * num_beams;
   for (int i = 0; i < batch_beam_size; i++) {
-    gsl::span<const int64_t> source = input_ids_in_cpu.subspan(i * sequence_length, sequence_length);
-    gsl::span<int64_t> target = sequences_0.subspan(i * max_length, sequence_length);
-    // cudaMemcpyAsync(target.data(), source.data(), source.size_bytes(), cudaMemcpyDeviceToDevice, cuda_stream);
-    gsl::copy(source, target);
+    for (int j = 0; j < sequence_length; j++) {
+      sequences_0[SafeInt<gsl::index>(i) * max_length + j] = static_cast<int32_t>(input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length + j]);
+    }
   }
 }
 
 template <typename T>
-Status ProcessLogits(const OrtValue& logits,                                    // logits output of subgraph
-                     transformers::IBeamSearchState<T>* beam_state,             // state
-                     transformers::IBeamSearchCpuState<T>* cpu_state,           // state in CPU
-                     transformers::ISequences* sequences,                       // sequences
-                     AllocatorPtr& allocator,                                   // default allocator
-                     onnxruntime::concurrency::ThreadPool* thread_pool,         // thread pool (for CPU only)
-                     transformers::ILogitsProcessorList<T>* logits_processors,  // logits processors
-                     transformers::IBeamScorer<T>* beam_scorer,                 // beam scorer
-                     const transformers::IBeamSearchParameters* parameters,     // parameters
-                     int step,                                                  // iteration counter
-                     void* stream,                                              // cuda stream (for CUDA only)
-                     const transformers::IConsoleDumper* dumper) {              // tensor dumper
+Status ProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
+                     transformers::IBeamSearchState<T>* beam_state,          // state
+                     transformers::IBeamSearchCpuState* cpu_state,           // state in CPU
+                     transformers::ISequences* sequences,                    // sequences
+                     AllocatorPtr& allocator,                                // default allocator
+                     onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
+                     transformers::ILogitsProcessorList* logits_processors,  // logits processors
+                     transformers::IBeamScorer* beam_scorer,                 // beam scorer
+                     const transformers::IBeamSearchParameters* parameters,  // parameters
+                     int step,                                               // iteration counter
+                     void* stream,                                           // cuda stream (for CUDA only)
+                     const transformers::IConsoleDumper* dumper) {           // tensor dumper
 
   ORT_UNUSED_PARAMETER(logits_processors);
 
@@ -204,7 +203,9 @@ Status ProcessLogits(const OrtValue& logits,                                    
   bool output_scores = parameters->output_scores;
 
   int batch_beam_size = batch_size * num_beams;
-  const T* logits_data = logits.Get<Tensor>().Data<T>();
+
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  const CudaT* logits_data = reinterpret_cast<const CudaT*>(logits.Get<Tensor>().Data<T>());
 
   // Logits has shape (batch_size * num_beams, input_length, vocab_size),
   // where input_length equals to parameters_->sequence_length for first subgraph call, and 1 for the remaining calls.
@@ -220,9 +221,9 @@ Status ProcessLogits(const OrtValue& logits,                                    
   gsl::span<T>& next_token_logits = beam_state->next_token_logits;
   if (input_length > 1) {
     // TODO: use one kernel to replace a loop of memory copy.
-    const T* current_logits = logits_data + (input_length - 1) * vocab_size;
+    const CudaT* current_logits = logits_data + (input_length - 1) * vocab_size;
     for (int i = 0; i < batch_beam_size; i++) {
-      gsl::span<const T> source(current_logits, vocab_size);
+      gsl::span<const T> source(reinterpret_cast<const T*>(current_logits), vocab_size);
       gsl::span<T> target = next_token_logits.subspan(i * vocab_size, vocab_size);
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target.data(), source.data(), sizeof(T) * vocab_size, cudaMemcpyDeviceToDevice, cuda_stream));
       current_logits += input_length * vocab_size;
@@ -235,11 +236,13 @@ Status ProcessLogits(const OrtValue& logits,                                    
 #endif
 
   // Get scores for candidates of next token: next_token_scores = log_softmax(next_token_logits, dim=-1)
-  gsl::span<T>& next_token_scores = beam_state->next_token_scores;
+  gsl::span<float>& next_token_scores = beam_state->next_token_scores;
 
-  T* Y_data = next_token_scores.data();
-  const T* X_data = input_length > 1 ? next_token_logits.data() : logits_data;
-  dispatch_blockwise_softmax_forward<T, T, AccumulationType_t<T>, true>(
+  // The output will be float for consideration of precision and easy integration with remaining parts.
+  float* Y_data = next_token_scores.data();
+  const CudaT* X_data = input_length > 1 ? reinterpret_cast<const CudaT*>(next_token_logits.data()) : logits_data;
+
+  dispatch_blockwise_softmax_forward<CudaT, float, float, true>(
       cuda_stream, Y_data, X_data, vocab_size, vocab_size, batch_size * num_beams);
 
 #ifdef DEBUG_BEAM_SEARCH
@@ -247,10 +250,9 @@ Status ProcessLogits(const OrtValue& logits,                                    
 #endif
 
   // Apply all score processors that updates scores
-  // logits_processors->Process(sequences, next_token_scores);
-  // TODO: implement other processors.
+  // TODO: implement other processors besides vocab mask and prefix vocab mask.
   if (!parameters->vocab_mask.empty()) {
-    cuda::LaunchLogitsProcessKernel<T>(
+    cuda::LaunchLogitsProcessKernel<float>(
         next_token_scores.data(),
         parameters->vocab_mask.data(),
         step > 1 ? nullptr : parameters->prefix_vocab_mask.data(),  // prefix vocab mask is applied to first step only.
@@ -283,7 +285,7 @@ Status ProcessLogits(const OrtValue& logits,                                    
   //   next_token_scores, next_tokens = torch.topk(next_token_scores, 2 * num_beams, dim=1, largest=True, sorted=True)
   int64_t next_token_scores_dims[] = {batch_size, num_beams * vocab_size};
   TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
-  auto element_type = DataTypeImpl::GetType<T>();
+  auto element_type = DataTypeImpl::GetType<float>();
   OrtValue next_token_scores_value;
   Tensor::InitOrtValue(element_type, next_token_scores_shape, next_token_scores.data(), allocator->Info(), next_token_scores_value);
   const Tensor& input = next_token_scores_value.Get<Tensor>();
@@ -308,7 +310,7 @@ Status ProcessLogits(const OrtValue& logits,                                    
   const int64_t* next_token_indices = topk_indices->Data<int64_t>();
   cuda::LaunchNextTokenKernel(next_token_indices, beam_state->next_indices.data(), beam_state->next_tokens.data(), batch_size, top_k, vocab_size, reinterpret_cast<cudaStream_t>(stream));
 
-  const T* data = topk_scores->Data<T>();
+  const float* data = topk_scores->Data<float>();
 
 #ifdef DEBUG_BEAM_SEARCH
   dumper->Print("next_scores before scorer", data, batch_size, top_k);
@@ -316,13 +318,13 @@ Status ProcessLogits(const OrtValue& logits,                                    
   dumper->Print("next_indices before scorer", beam_state->next_indices.data(), batch_size, top_k);
 #endif
 
-  CUDA_RETURN_IF_ERROR(cudaMemcpy(cpu_state->topk_scores.data(), data, topk_scores->Shape().Size() * sizeof(T), cudaMemcpyDeviceToHost));
+  CUDA_RETURN_IF_ERROR(cudaMemcpy(cpu_state->topk_scores.data(), data, topk_scores->Shape().Size() * sizeof(float), cudaMemcpyDeviceToHost));
   CUDA_RETURN_IF_ERROR(cudaMemcpy(cpu_state->topk_tokens.data(), beam_state->next_tokens.data(), beam_state->next_tokens.size_bytes(), cudaMemcpyDeviceToHost));
   CUDA_RETURN_IF_ERROR(cudaMemcpy(cpu_state->topk_indices.data(), beam_state->next_indices.data(), beam_state->next_indices.size_bytes(), cudaMemcpyDeviceToHost));
 
-  gsl::span<const T> next_scores = gsl::make_span(cpu_state->topk_scores.data(), static_cast<typename gsl::span<T>::index_type>(topk_scores->Shape().Size()));
-  gsl::span<const int64_t> next_tokens(cpu_state->topk_tokens.data(), beam_state->next_tokens.size());
-  gsl::span<const int64_t> next_indices(cpu_state->topk_indices.data(), beam_state->next_indices.size());
+  gsl::span<const float> next_scores = gsl::make_span(cpu_state->topk_scores.data(), static_cast<typename gsl::span<float>::index_type>(topk_scores->Shape().Size()));
+  gsl::span<const int32_t> next_tokens(cpu_state->topk_tokens.data(), beam_state->next_tokens.size());
+  gsl::span<const int32_t> next_indices(cpu_state->topk_indices.data(), beam_state->next_indices.size());
 
   // TODO: convert beam scorer to CUDA
   beam_scorer->Process(
@@ -349,7 +351,7 @@ Status DeviceCopy(gsl::span<T> target, gsl::span<const T> source, void* stream, 
 template <typename T>
 Status PickPastState(const std::vector<OrtValue>& last_outputs,
                      std::vector<OrtValue>& next_inputs,
-                     gsl::span<const int64_t>& beam_indices,
+                     gsl::span<const int32_t>& beam_indices,
                      AllocatorPtr allocator,
                      void* stream,
                      const transformers::IConsoleDumper* /*dumper*/) {
@@ -369,7 +371,7 @@ Status PickPastState(const std::vector<OrtValue>& last_outputs,
     gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), past_shape.Size());
     gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), past_shape.Size());
     for (gsl::index j = 0; j < beam_indices.length(); j++) {
-      int64_t beam_index = beam_indices[j];
+      int32_t beam_index = beam_indices[j];
       gsl::span<const T> present_key = present_span.subspan(beam_index * block_size_per_beam, block_size_per_beam);
       gsl::span<const T> present_value = present_span.subspan(past_key_size + beam_index * block_size_per_beam, block_size_per_beam);
 
@@ -403,47 +405,37 @@ Status UpdateFeeds(
     std::vector<OrtValue>& next_inputs,
     int current_length,
     OrtValue& position_ids,
-    gsl::span<const int64_t> beam_next_tokens,
-    gsl::span<const int64_t> beam_indices,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
     int num_beams,
     const transformers::IConsoleDumper* dumper) {
   // Update input_ids with next tokens.
   int batch_beam_size = static_cast<int>(beam_next_tokens.length());
   int64_t dims[] = {batch_beam_size, 1};
   TensorShape input_ids_shape(&dims[0], 2);
-  auto element_type = DataTypeImpl::GetType<int64_t>();
+  auto element_type = DataTypeImpl::GetType<int32_t>();
   OrtValue input_ids;
   Tensor::InitOrtValue(element_type, input_ids_shape, allocator, input_ids);
-  int64_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int64_t>();
+  int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_ids_data, beam_next_tokens.data(), beam_next_tokens.size_bytes(), cudaMemcpyHostToDevice, reinterpret_cast<cudaStream_t>(stream)));
   next_inputs[0] = input_ids;
 
   // Update position IDs
-  int64_t* position_data = position_ids.GetMutable<Tensor>()->MutableData<int64_t>();
+  int32_t* position_data = position_ids.GetMutable<Tensor>()->MutableData<int32_t>();
   next_inputs[1] = position_ids;
 
   // Update attention mask
   const OrtValue& old_mask = next_inputs[2];
-  const T* old_mask_data = old_mask.Get<Tensor>().Data<T>();
+  const int32_t* old_mask_data = old_mask.Get<Tensor>().Data<int32_t>();
   int64_t mask_dims[] = {batch_beam_size, current_length};
   TensorShape mask_shape(&mask_dims[0], 2);
   OrtValue attention_mask;
-  auto mask_type = DataTypeImpl::GetType<T>();
+  auto mask_type = DataTypeImpl::GetType<int32_t>();
   Tensor::InitOrtValue(mask_type, mask_shape, allocator, attention_mask);
-  T* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<T>();
+  int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
 
-  // Launch kernel to update like the following:
-  //  for (int i = 0; i < batch_beam_size; i++) {
-  //    position_data[i]++;
-  //  }
-  //
-  //  for (int i = 0; i < batch_beam_size; i++) {
-  //    for (int j = 0; j < current_length - 1; j++) {
-  //      mask_data[i * current_length + j] = old_mask_data[i * (current_length - 1) + j];
-  //    }
-  //    mask_data[i * current_length + current_length - 1] = 1.0f;
-  //  }
-  cuda::LaunchUpdateKernel<T>(old_mask_data, mask_data, position_data, batch_beam_size, current_length, reinterpret_cast<cudaStream_t>(stream));
+  // Launch kernel to update position_ids and attention_mask for next iteration
+  cuda::LaunchUpdateKernel(old_mask_data, mask_data, position_data, batch_beam_size, current_length, reinterpret_cast<cudaStream_t>(stream));
 
   next_inputs[2] = attention_mask;
 
@@ -470,23 +462,23 @@ Status UpdateFeeds(
 
 // Explicit template instantiations of functions
 template void InitBeamState<float>(transformers::IBeamSearchState<float>* beam_state,
-                                   transformers::IBeamSearchCpuState<float>* cpu_state,
-                                   gsl::span<int64_t>& sequence_lengths,
+                                   transformers::IBeamSearchCpuState* cpu_state,
+                                   gsl::span<int32_t>& sequence_lengths,
                                    int batch_size,
                                    int num_beams,
-                                   gsl::span<const int64_t> input_ids_in_cpu,
+                                   gsl::span<const int32_t> input_ids_in_cpu,
                                    int sequence_length,
                                    int max_length,
                                    void* stream);
 
 template Status ProcessLogits<float>(const OrtValue& logits,
                                      transformers::IBeamSearchState<float>* beam_state,
-                                     transformers::IBeamSearchCpuState<float>* cpu_state,
+                                     transformers::IBeamSearchCpuState* cpu_state,
                                      transformers::ISequences* sequences,
                                      AllocatorPtr& allocator,
                                      onnxruntime::concurrency::ThreadPool* thread_pool,
-                                     transformers::ILogitsProcessorList<float>* logits_processors,
-                                     transformers::IBeamScorer<float>* beam_scorer,
+                                     transformers::ILogitsProcessorList* logits_processors,
+                                     transformers::IBeamScorer* beam_scorer,
                                      const transformers::IBeamSearchParameters* parameters,
                                      int step,
                                      void* stream,
@@ -505,8 +497,44 @@ template Status UpdateFeeds<float>(
     std::vector<OrtValue>& next_inputs,
     int current_length,
     OrtValue& position_ids,
-    gsl::span<const int64_t> beam_next_tokens,
-    gsl::span<const int64_t> beam_indices,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
+    int num_beams,
+    const transformers::IConsoleDumper* dumper);
+
+// Float16
+template void InitBeamState<MLFloat16>(transformers::IBeamSearchState<MLFloat16>* beam_state,
+                                       transformers::IBeamSearchCpuState* cpu_state,
+                                       gsl::span<int32_t>& sequence_lengths,
+                                       int batch_size,
+                                       int num_beams,
+                                       gsl::span<const int32_t> input_ids_in_cpu,
+                                       int sequence_length,
+                                       int max_length,
+                                       void* stream);
+
+template Status ProcessLogits<MLFloat16>(const OrtValue& logits,
+                                         transformers::IBeamSearchState<MLFloat16>* beam_state,
+                                         transformers::IBeamSearchCpuState* cpu_state,
+                                         transformers::ISequences* sequences,
+                                         AllocatorPtr& allocator,
+                                         onnxruntime::concurrency::ThreadPool* thread_pool,
+                                         transformers::ILogitsProcessorList* logits_processors,
+                                         transformers::IBeamScorer* beam_scorer,
+                                         const transformers::IBeamSearchParameters* parameters,
+                                         int step,
+                                         void* stream,
+                                         const transformers::IConsoleDumper* dumper);
+
+template Status UpdateFeeds<MLFloat16>(
+    AllocatorPtr allocator,
+    void* stream,
+    const std::vector<OrtValue>& last_outputs,
+    std::vector<OrtValue>& next_inputs,
+    int current_length,
+    OrtValue& position_ids,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
     int num_beams,
     const transformers::IConsoleDumper* dumper);
 

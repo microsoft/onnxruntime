@@ -41,7 +41,7 @@ using CreateInputsFunc = std::function<Status(
     const Tensor* original_input_ids,
     int num_beams,
     int pad_token_id,
-    gsl::span<int64_t>& sequence_lengths,
+    gsl::span<int32_t>& sequence_lengths,
     AllocatorPtr alloactor,
     OrtValue& expanded_input_ids,
     OrtValue& expanded_position_ids,
@@ -58,29 +58,29 @@ using AddToFeedsFunc = std::function<Status(
 template <typename T>
 using InitBeamStateFunc = std::function<void(
     transformers::IBeamSearchState<T>* beam_state,
-    transformers::IBeamSearchCpuState<T>* cpu_state,
-    gsl::span<int64_t>& sequence_lengths,
+    transformers::IBeamSearchCpuState* cpu_state,
+    gsl::span<int32_t>& sequence_lengths,
     int batch_size,
     int num_beams,
-    gsl::span<const int64_t> input_ids_in_cpu,
+    gsl::span<const int32_t> input_ids_in_cpu,
     int sequence_length,
     int max_length,
     void* stream)>;
 
 template <typename T>
 using ProcessLogitsFunc = std::function<Status(
-    const OrtValue& logits,                                    // logits output of subgraph
-    transformers::IBeamSearchState<T>* beam_state,             // state
-    transformers::IBeamSearchCpuState<T>* cpu_state,           // state in CPU
-    transformers::ISequences* sequences,                       // sequences
-    AllocatorPtr& allocator,                                   // default allocator
-    onnxruntime::concurrency::ThreadPool* thread_pool,         // thread pool (for CPU only)
-    transformers::ILogitsProcessorList<T>* logits_processors,  // logits processors
-    transformers::IBeamScorer<T>* beam_scorer,                 // beam scorer
-    const transformers::IBeamSearchParameters* parameters,     // parameters
-    int step,                                                  // iteration counter
-    void* stream,                                              // cuda stream (for CUDA only)
-    const transformers::IConsoleDumper* dumper)>;              // tensor dumper
+    const OrtValue& logits,                                 // logits output of subgraph
+    transformers::IBeamSearchState<T>* beam_state,          // state
+    transformers::IBeamSearchCpuState* cpu_state,           // state in CPU
+    transformers::ISequences* sequences,                    // sequences
+    AllocatorPtr& allocator,                                // default allocator
+    onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
+    transformers::ILogitsProcessorList* logits_processors,  // logits processors
+    transformers::IBeamScorer* beam_scorer,                 // beam scorer
+    const transformers::IBeamSearchParameters* parameters,  // parameters
+    int step,                                               // iteration counter
+    void* stream,                                           // cuda stream (for CUDA only)
+    const transformers::IConsoleDumper* dumper)>;           // tensor dumper
 
 template <typename T>
 using DeviceCopyFunc = std::function<Status(
@@ -97,8 +97,8 @@ using UpdateFeedsFunc = std::function<Status(
     std::vector<OrtValue>& next_inputs,
     int current_length,
     OrtValue& position_ids,
-    gsl::span<const int64_t> beam_next_tokens,
-    gsl::span<const int64_t> beam_indices,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
     int num_beams,
     const transformers::IConsoleDumper* dumper)>;
 
@@ -118,7 +118,7 @@ Status CreateInputs(
     const Tensor* original_input_ids,
     int num_beams,
     int pad_token_id,
-    gsl::span<int64_t>& sequence_lengths,
+    gsl::span<int32_t>& sequence_lengths,
     AllocatorPtr alloactor,
     OrtValue& expanded_input_ids,
     OrtValue& expanded_position_ids,
@@ -134,29 +134,29 @@ Status AddToFeeds(
 
 template <typename T>
 void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
-                   transformers::IBeamSearchCpuState<T>* cpu_state,
-                   gsl::span<int64_t>& sequence_lengths,
+                   transformers::IBeamSearchCpuState* cpu_state,
+                   gsl::span<int32_t>& sequence_lengths,
                    int batch_size,
                    int num_beams,
-                   gsl::span<const int64_t> input_ids,
+                   gsl::span<const int32_t> input_ids_in_cpu,
                    int sequence_length,
                    int max_length,
                    void* stream);
 
 template <typename T>
-Status ProcessLogits(const OrtValue& logits,                                    // logits output of subgraph
-                     transformers::IBeamSearchState<T>* beam_state,             // state
-                     transformers::IBeamSearchCpuState<T>* cpu_state,           // state in CPU
-                     transformers::ISequences* sequences,                       // sequences
-                     AllocatorPtr& allocator,                                   // default allocator
-                     onnxruntime::concurrency::ThreadPool* thread_pool,         // thread pool (for CPU only)
-                     transformers::ILogitsProcessorList<T>* logits_processors,  // logits processors
-                     transformers::IBeamScorer<T>* beam_scorer,                 // beam scorer
-                     const transformers::IBeamSearchParameters* parameters,     // parameters
-                     int step,                                                  // iteration counter
-                     void* stream,                                              // cuda stream (for CUDA only)
-                     const transformers::IConsoleDumper* dumper);               // tensor dumper
-                     
+Status ProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
+                     transformers::IBeamSearchState<T>* beam_state,          // state
+                     transformers::IBeamSearchCpuState* cpu_state,           // state in CPU
+                     transformers::ISequences* sequences,                    // sequences
+                     AllocatorPtr& allocator,                                // default allocator
+                     onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
+                     transformers::ILogitsProcessorList* logits_processors,  // logits processors
+                     transformers::IBeamScorer* beam_scorer,                 // beam scorer
+                     const transformers::IBeamSearchParameters* parameters,  // parameters
+                     int step,                                               // iteration counter
+                     void* stream,                                           // cuda stream (for CUDA only)
+                     const transformers::IConsoleDumper* dumper);            // tensor dumper
+
 template <typename T>
 Status DeviceCopy(gsl::span<T> target,
                   gsl::span<const T> source,
@@ -171,8 +171,8 @@ Status UpdateFeeds(
     std::vector<OrtValue>& next_inputs,
     int current_length,
     OrtValue& position_ids,
-    gsl::span<const int64_t> beam_next_tokens,
-    gsl::span<const int64_t> beam_indices,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
     int num_beams,
     const transformers::IConsoleDumper* dumper);
 

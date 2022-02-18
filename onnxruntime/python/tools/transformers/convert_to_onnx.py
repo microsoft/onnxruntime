@@ -113,6 +113,10 @@ def parse_arguments(argv=None):
 
     parser.add_argument('-e', '--use_external_data_format', required=False, action='store_true')
     parser.set_defaults(use_external_data_format=False)
+    
+    parser.add_argument('--use_int32_inputs', required=False, action='store_true', help='Use int32 instead of int64 for input_ids, position_ids and attention_mask.')
+    parser.set_defaults(use_int32_inputs=False)
+    
     parser.add_argument('--beam_size', type=int, default=4, help='Beam size if greedy/top-p/top-k sampling is needed')
 
     search_option_group = parser.add_argument_group("configurable one step search options")
@@ -294,7 +298,10 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                                args.verbose,
                                args.use_external_data_format,
                                has_position_ids=use_padding,
-                               has_attention_mask=use_padding)
+                               has_attention_mask=use_padding,
+                               input_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
+                               position_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
+                               attention_mask_dtype=torch.int32 if args.use_int32_inputs else torch.int64)
 
     fp16_params = {"keep_io_types": args.keep_io_types}
     if args.io_block_list:
@@ -344,6 +351,9 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                                                model_class=args.model_class,
                                                has_position_ids=use_padding,
                                                has_attention_mask=use_padding,
+                                               input_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
+                                               position_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
+                                               attention_mask_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
                                                test_cases_per_run=args.test_cases,
                                                total_runs=args.test_runs,
                                                verbose=args.verbose)
@@ -357,6 +367,9 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                                               model_class=args.model_class,
                                               has_position_ids=use_padding,
                                               has_attention_mask=use_padding,
+                                              input_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
+                                              position_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
+                                              attention_mask_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
                                               batch_size=8,
                                               sequence_length=1,
                                               past_sequence_length=32)
@@ -440,9 +453,11 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                         position_ids = (attention_mask.long().cumsum(-1) - 1)
                         position_ids.masked_fill_(position_ids < 0, 0)
 
-                    inputs = {"input_ids": input_ids, "position_ids": position_ids, "attention_mask": attention_mask}
+                    inputs = {"input_ids": input_ids.to(torch.int32) if args.use_int32_inputs else input_ids,
+                              "position_ids": position_ids.to(torch.int32) if args.use_int32_inputs else position_ids,
+                              "attention_mask": attention_mask.to(torch.int32) if args.use_int32_inputs else attention_mask}
                 else:
-                    inputs = {"input_ids": input_ids}
+                    inputs = {"input_ids": input_ids.to(torch.int32) if args.use_int32_inputs else input_ids}
 
                 if model_type == "beam_search_step" or model_type == "configurable_one_step_search":
                     beam_select_idx = torch.zeros([1, input_ids.shape[0]]).long()

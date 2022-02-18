@@ -40,27 +40,17 @@ OrtValue ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocat
 
   OrtValue expanded;
   MLDataType element_type = input.Get<Tensor>().DataType();
+  ORT_ENFORCE(element_type == DataTypeImpl::GetType<int32_t>(), "input_ids, position_ids and attention_mask is required to be int32 data type");
+
   Tensor::InitOrtValue(element_type, expanded_shape, allocator, expanded);
 
-  if (element_type == DataTypeImpl::GetType<int64_t>()) {
-    const int64_t* input_data = input.Get<Tensor>().Data<int64_t>();
-    int64_t* expanded_data = expanded.GetMutable<Tensor>()->MutableData<int64_t>();
-    int64_t* target = expanded_data;
-    for (int i = 0; i < batch_size; i++) {
-      for (int j = 0; j < num_beams; j++) {
-        memcpy(target, input_data + i * sequence_length, sizeof(int64_t) * sequence_length);
-        target += sequence_length;
-      }
-    }
-  } else if (element_type == DataTypeImpl::GetType<float>()) {
-    const float* input_data = input.Get<Tensor>().Data<float>();
-    float* expanded_data = expanded.GetMutable<Tensor>()->MutableData<float>();
-    float* target = expanded_data;
-    for (int i = 0; i < batch_size; i++) {
-      for (int j = 0; j < num_beams; j++) {
-        memcpy(target, input_data + i * sequence_length, sizeof(float) * sequence_length);
-        target += sequence_length;
-      }
+  const int32_t* input_data = input.Get<Tensor>().Data<int32_t>();
+  int32_t* expanded_data = expanded.GetMutable<Tensor>()->MutableData<int32_t>();
+  int32_t* target = expanded_data;
+  for (int i = 0; i < batch_size; i++) {
+    for (int j = 0; j < num_beams; j++) {
+      memcpy(target, input_data + i * sequence_length, sizeof(int32_t) * sequence_length);
+      target += sequence_length;
     }
   }
 
@@ -71,7 +61,7 @@ Status CreateInputs(
     const Tensor* original_input_ids,
     int num_beams,
     int pad_token_id,
-    gsl::span<int64_t>& sequence_lengths,
+    gsl::span<int32_t>& sequence_lengths,
     AllocatorPtr alloactor,
     OrtValue& expanded_input_ids,
     OrtValue& expanded_position_ids,
@@ -82,44 +72,39 @@ Status CreateInputs(
   const int64_t& sequence_length = input_ids_shape[1];
 
   // Allocate position_ids and attention_mask based on shape of input_ids
-  auto element_type = DataTypeImpl::GetType<int64_t>();
+  auto element_type = DataTypeImpl::GetType<int32_t>();
 
-  // input_ids for subgraph is int64, so we need Cast input_ids from int32 to int64.
+  const OrtMemoryInfo& location = alloactor->Info();
+
+  // Use original input_ids. This requires the input_ids for subgraph is also int32.
   // Current shape is (batch_size, sequence_length)
   // Note that we will expand it to (batch_size * num_beams, sequence_length) later.
+  // To avoid cloning input_ids, we use const_cast here since this function does not change its content.
   OrtValue input_ids;
-  Tensor::InitOrtValue(element_type, input_ids_shape, alloactor, input_ids);
-
-  const int32_t* source = original_input_ids->Data<int32_t>();
-  int64_t* target = input_ids.GetMutable<Tensor>()->MutableData<int64_t>();
-  for (int i = 0; i < batch_size; i++) {
-    for (int j = 0; j < sequence_length; j++, source++, target++) {
-      *target = static_cast<int64_t>(*source);
-    }
-  }
+  Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(original_input_ids)->MutableData<int32_t>(), location, input_ids);
 
   OrtValue position_ids;
   Tensor::InitOrtValue(element_type, input_ids_shape, alloactor, position_ids);
 
   OrtValue attention_mask;
-  auto mask_type = DataTypeImpl::GetType<float>();
+  auto mask_type = DataTypeImpl::GetType<int32_t>();
   Tensor::InitOrtValue(mask_type, input_ids_shape, alloactor, attention_mask);
 
   // Set attention mask to be 0 for pad tokens, and 1 for all other tokens.
   // Set position id to be 0 for pad tokens, and accumulated sum of mask in a batch for other tokens
-  float* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<float>();
-  int64_t* position_data = position_ids.GetMutable<Tensor>()->MutableData<int64_t>();
-  source = original_input_ids->Data<int32_t>();
-  float* mask = mask_data;
-  int64_t* position = position_data;
+  int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
+  int32_t* position_data = position_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+  const int32_t* word_id = original_input_ids->Data<int32_t>();
+  int32_t* mask = mask_data;
+  int32_t* position = position_data;
   for (int i = 0; i < batch_size; i++) {
-    int64_t abs_position = 0;
-    for (int j = 0; j < sequence_length; j++, source++, mask++, position++) {
-      if (*source == pad_token_id) {
-        *mask = 0.0f;
+    int32_t abs_position = 0;
+    for (int j = 0; j < sequence_length; j++, word_id++, mask++, position++) {
+      if (*word_id == pad_token_id) {
+        *mask = 0;
         *position = 0;
       } else {
-        *mask = 1.0f;
+        *mask = 1;
         *position = abs_position;
         abs_position++;
       }
@@ -153,11 +138,11 @@ Status AddToFeeds(const IExecutionProvider* /*execution_provider*/,
 
 template <typename T>
 void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
-                   transformers::IBeamSearchCpuState<T>* cpu_state,
-                   gsl::span<int64_t>& sequence_lengths,
+                   transformers::IBeamSearchCpuState* cpu_state,
+                   gsl::span<int32_t>& sequence_lengths,
                    int batch_size,
                    int num_beams,
-                   gsl::span<const int64_t> input_ids_in_cpu,
+                   gsl::span<const int32_t> input_ids_in_cpu,
                    int sequence_length,
                    int max_length,
                    void* /*stream*/) {
@@ -182,29 +167,29 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
   memset(cpu_state->sequences_space.data(), 0, cpu_state->sequences_space.size_bytes());
 
   // Copy input_ids to sequences[0].
-  gsl::span<int64_t> sequences_0 = cpu_state->sequences_space;
+  gsl::span<int32_t> sequences_0 = cpu_state->sequences_space;
   int batch_beam_size = batch_size * num_beams;
   for (int i = 0; i < batch_beam_size; i++) {
-    gsl::span<const int64_t> source = input_ids_in_cpu.subspan(SafeInt<gsl::index>(i) * sequence_length, static_cast<gsl::index>(sequence_length));
-    gsl::span<int64_t> target = sequences_0.subspan(SafeInt<gsl::index>(i) * max_length, static_cast<gsl::index>(sequence_length));
-    gsl::copy(source, target);
+    for (int j = 0; j < sequence_length; j++) {
+      sequences_0[SafeInt<gsl::index>(i) * max_length + j] = static_cast<int32_t>(input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length + j]);
+    }
   }
 }
 
 template <typename T>
-Status ProcessLogits(const OrtValue& logits,                                    // logits output of subgraph
-                     transformers::IBeamSearchState<T>* beam_state,             // state
-                     transformers::IBeamSearchCpuState<T>* cpu_state,           // state in CPU
-                     transformers::ISequences* sequences,                       // sequences
-                     AllocatorPtr& allocator,                                   // default allocator
-                     onnxruntime::concurrency::ThreadPool* thread_pool,         // thread pool (for CPU only)
-                     transformers::ILogitsProcessorList<T>* logits_processors,  // logits processors
-                     transformers::IBeamScorer<T>* beam_scorer,                 // beam scorer
-                     const transformers::IBeamSearchParameters* parameters,     // parameters
-                     int step,                                                  // iteration counter
-                     void* stream,                                              // cuda stream (for CUDA only)
-                     const transformers::IConsoleDumper* dumper){               // tensor dumper
-  ORT_UNUSED_PARAMETER(cpu_state);                     
+Status ProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
+                     transformers::IBeamSearchState<T>* beam_state,          // state
+                     transformers::IBeamSearchCpuState* cpu_state,           // state in CPU
+                     transformers::ISequences* sequences,                    // sequences
+                     AllocatorPtr& allocator,                                // default allocator
+                     onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
+                     transformers::ILogitsProcessorList* logits_processors,  // logits processors
+                     transformers::IBeamScorer* beam_scorer,                 // beam scorer
+                     const transformers::IBeamSearchParameters* parameters,  // parameters
+                     int step,                                               // iteration counter
+                     void* stream,                                           // cuda stream (for CUDA only)
+                     const transformers::IConsoleDumper* dumper) {           // tensor dumper
+  ORT_UNUSED_PARAMETER(cpu_state);
 #ifndef DEBUG_BEAM_SEARCH
   ORT_UNUSED_PARAMETER(dumper);
 #endif
@@ -316,14 +301,14 @@ Status ProcessLogits(const OrtValue& logits,                                    
   offset = 0;
   for (int i = 0; i < batch_size; i++) {
     for (unsigned int j = 0; j < top_k; j++, offset++) {
-      beam_state->next_indices[offset] = next_token_indices[offset] / vocab_size;
-      beam_state->next_tokens[offset] = next_token_indices[offset] % vocab_size;
+      beam_state->next_indices[offset] = gsl::narrow_cast<int32_t>(next_token_indices[offset] / vocab_size);
+      beam_state->next_tokens[offset] = gsl::narrow_cast<int32_t>(next_token_indices[offset] % vocab_size);
     }
   }
 
   gsl::span<const T> next_scores = topk_scores->DataAsSpan<T>();
-  gsl::span<const int64_t> next_tokens(beam_state->next_tokens.data(), beam_state->next_tokens.size());
-  gsl::span<const int64_t> next_indices(beam_state->next_indices.data(), beam_state->next_indices.size());
+  gsl::span<const int32_t> next_tokens(beam_state->next_tokens.data(), beam_state->next_tokens.size());
+  gsl::span<const int32_t> next_indices(beam_state->next_indices.data(), beam_state->next_indices.size());
 
 #ifdef DEBUG_BEAM_SEARCH
   dumper->Print("next_scores before scorer", next_scores.data(), batch_size, top_k);
@@ -349,14 +334,14 @@ Status DeviceCopy(gsl::span<T> target, gsl::span<const T> source, void* /*stream
 template <typename T>
 void PickPastState(const std::vector<OrtValue>& last_outputs,
                    std::vector<OrtValue>& next_inputs,
-                   gsl::span<const int64_t>& beam_indices,
+                   gsl::span<const int32_t>& beam_indices,
                    AllocatorPtr allocator,
                    void* /*stream*/,
                    const transformers::IConsoleDumper* dumper) {
 #ifndef DEBUG_BEAM_SEARCH
   ORT_UNUSED_PARAMETER(dumper);
 #endif
-                     
+
   for (size_t i = 1; i < last_outputs.size(); ++i) {
     const OrtValue& present = last_outputs[i];  // shape is like (2, batch_beam_size, 12, past_seq_len, 64)
     const TensorShape& past_shape = present.Get<Tensor>().Shape();
@@ -373,7 +358,7 @@ void PickPastState(const std::vector<OrtValue>& last_outputs,
     gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), past_shape.Size());
     gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), past_shape.Size());
     for (gsl::index j = 0; j < beam_indices.length(); j++) {
-      int64_t beam_index = beam_indices[j];
+      int32_t beam_index = beam_indices[j];
       gsl::span<const T> present_key = present_span.subspan(beam_index * block_size_per_beam, block_size_per_beam);
       gsl::span<const T> present_value = present_span.subspan(past_key_size + beam_index * block_size_per_beam, block_size_per_beam);
 
@@ -405,8 +390,8 @@ Status UpdateFeeds(
     std::vector<OrtValue>& next_inputs,
     int current_length,
     OrtValue& position_ids,
-    gsl::span<const int64_t> beam_next_tokens,
-    gsl::span<const int64_t> beam_indices,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
     int num_beams,
     const transformers::IConsoleDumper* dumper) {
   // last_outputs: logits, present_0, present_1, ...
@@ -418,18 +403,18 @@ Status UpdateFeeds(
   int batch_beam_size = static_cast<int>(beam_next_tokens.length());
   int64_t dims[] = {batch_beam_size, 1};
   TensorShape input_ids_shape(&dims[0], 2);
-  auto element_type = DataTypeImpl::GetType<int64_t>();
+  auto int32_type = DataTypeImpl::GetType<int32_t>();
   OrtValue input_ids;
   // TODO: Reuse buffer for input_ids to reduce memory allocation.
-  Tensor::InitOrtValue(element_type, input_ids_shape, allocator, input_ids);
-  int64_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int64_t>();
+  Tensor::InitOrtValue(int32_type, input_ids_shape, allocator, input_ids);
+  int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
   for (int i = 0; i < batch_beam_size; i++) {
     input_ids_data[i] = beam_next_tokens[i];
   }
   next_inputs[0] = input_ids;
 
   // Update position IDs
-  int64_t* position_data = position_ids.GetMutable<Tensor>()->MutableData<int64_t>();
+  int32_t* position_data = position_ids.GetMutable<Tensor>()->MutableData<int32_t>();
   for (int i = 0; i < batch_beam_size; i++) {
     position_data[i]++;
   }
@@ -437,18 +422,17 @@ Status UpdateFeeds(
 
   // Update attention mask
   const OrtValue& old_mask = next_inputs[2];
-  const T* old_mask_data = old_mask.Get<Tensor>().Data<T>();
+  const int32_t* old_mask_data = old_mask.Get<Tensor>().Data<int32_t>();
   int64_t mask_dims[] = {batch_beam_size, current_length};
   TensorShape mask_shape(&mask_dims[0], 2);
   OrtValue attention_mask;
-  auto mask_type = DataTypeImpl::GetType<T>();
-  Tensor::InitOrtValue(mask_type, mask_shape, allocator, attention_mask);
-  T* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<T>();
+  Tensor::InitOrtValue(int32_type, mask_shape, allocator, attention_mask);
+  int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
   for (int i = 0; i < batch_beam_size; i++) {
     for (int j = 0; j < current_length - 1; j++) {
       mask_data[i * current_length + j] = old_mask_data[i * (current_length - 1) + j];
     }
-    mask_data[i * current_length + current_length - 1] = 1.0f;
+    mask_data[i * current_length + current_length - 1] = 1;
   }
   next_inputs[2] = attention_mask;
 
@@ -473,11 +457,11 @@ Status UpdateFeeds(
 // Explicit template instantiations of functions
 template void InitBeamState<float>(
     transformers::IBeamSearchState<float>* beam_state,
-    transformers::IBeamSearchCpuState<float>* cpu_state,
-    gsl::span<int64_t>& sequence_lengths,
+    transformers::IBeamSearchCpuState* cpu_state,
+    gsl::span<int32_t>& sequence_lengths,
     int batch_size,
     int num_beams,
-    gsl::span<const int64_t> input_ids_in_cpu,
+    gsl::span<const int32_t> input_ids_in_cpu,
     int sequence_length,
     int max_length,
     void* stream);
@@ -485,12 +469,12 @@ template void InitBeamState<float>(
 template Status ProcessLogits<float>(
     const OrtValue& logits,
     transformers::IBeamSearchState<float>* beam_state,
-    transformers::IBeamSearchCpuState<float>* cpu_state,
+    transformers::IBeamSearchCpuState* cpu_state,
     transformers::ISequences* sequences,
     AllocatorPtr& allocator,
     onnxruntime::concurrency::ThreadPool* thread_pool,
-    transformers::ILogitsProcessorList<float>* logits_processors,
-    transformers::IBeamScorer<float>* beam_scorer,
+    transformers::ILogitsProcessorList* logits_processors,
+    transformers::IBeamScorer* beam_scorer,
     const transformers::IBeamSearchParameters* parameters,
     int step,
     void* stream,
@@ -509,8 +493,8 @@ template Status UpdateFeeds<float>(
     std::vector<OrtValue>& next_inputs,
     int current_length,
     OrtValue& position_ids,
-    gsl::span<const int64_t> beam_next_tokens,
-    gsl::span<const int64_t> beam_indices,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
     int num_beams,
     const transformers::IConsoleDumper* dumper);
 

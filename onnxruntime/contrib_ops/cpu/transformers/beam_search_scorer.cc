@@ -27,9 +27,9 @@ BeamHypotheses<T>::BeamHypotheses(int num_beams, T length_penalty, bool early_st
       worst_score_(1e9) {}
 
 template <typename T>
-void BeamHypotheses<T>::Add(gsl::span<const int64_t>& hypothesis, T sum_logprobs) {
+void BeamHypotheses<T>::Add(gsl::span<const int32_t>& hypothesis, T sum_logprobs) {
   auto length = hypothesis.size();
-  // TODO: when T is FP16, compute in FP32, then cast result back to FP16. length_penalty_ might also be float.
+  // Limitation: this line might not work well when T is FP16, so the scorer uses float right now.
   T score = sum_logprobs / pow(static_cast<T>(length), length_penalty_);
 
   if (this->Size() < num_beams_ || score > worst_score_) {
@@ -75,15 +75,12 @@ void BeamHypotheses<T>::Output(
   int index = top_k - 1;
   while (!beams_.empty()) {
     auto item = beams_.top();
-    gsl::span<const int64_t>& source = item.hypothesis;
+    gsl::span<const int32_t>& source = item.hypothesis;
     gsl::span<int32_t> target = sequences.subspan(index * max_length, max_length);
 
     // Note that word_ids might be less than max_length.
     // Since the sequences has been filled with pad token ID, so padding is not needed here.
-    // Since data type need cast from int64_t to int32_t, we cannot use gsl::copy(word_ids, sequence) here.
-    for (size_t i = 0; i < source.length(); i++) {
-      target[i] = static_cast<int32_t>(source[i]);
-    }
+    gsl::copy(source, target);
 
     if (!sequences_scores.empty())
       sequences_scores[index] = item.score;
@@ -131,13 +128,13 @@ void BeamSearchScorer<T>::Initialize(AllocatorPtr& allocator, int sequence_lengt
   size_t batch_beam_size = static_cast<size_t>(batch_size_ * num_beams_);
   constexpr bool no_fill = false;  // do not fill values after allocation
   next_beam_scores_ = Allocate<T>(allocator, batch_beam_size, next_beam_scores_ptr_, no_fill);
-  next_beam_tokens_ = Allocate<int64_t>(allocator, batch_beam_size, next_beam_tokens_ptr_, no_fill);
-  next_beam_indices_ = Allocate<int64_t>(allocator, batch_beam_size, next_beam_indices_ptr_, no_fill);
+  next_beam_tokens_ = Allocate<int32_t>(allocator, batch_beam_size, next_beam_tokens_ptr_, no_fill);
+  next_beam_indices_ = Allocate<int32_t>(allocator, batch_beam_size, next_beam_indices_ptr_, no_fill);
 
   // Space to store intermediate sequence with length sequence_length, sequence_length + 1, ..., max_sequence_length.
   int buffer_per_beam = (max_length_ * (max_length_ + 1) - (sequence_length - 1) * sequence_length) / 2;
   hypothesis_buffer_length_ = batch_beam_size * static_cast<size_t>(buffer_per_beam);
-  hypothesis_buffer_ = Allocate<int64_t>(allocator, hypothesis_buffer_length_, hypothesis_buffer_ptr_, no_fill);
+  hypothesis_buffer_ = Allocate<int32_t>(allocator, hypothesis_buffer_length_, hypothesis_buffer_ptr_, no_fill);
 
   done_ = Allocate<bool>(allocator, static_cast<size_t>(batch_size_), done_ptr_, no_fill);
   std::fill_n(done_.data(), done_.size(), false);
@@ -146,8 +143,8 @@ void BeamSearchScorer<T>::Initialize(AllocatorPtr& allocator, int sequence_lengt
 template <typename T>
 void BeamSearchScorer<T>::Process(ISequences* sequences,
                                   gsl::span<const T>& next_scores,
-                                  gsl::span<const int64_t>& next_tokens,
-                                  gsl::span<const int64_t>& next_indices) {
+                                  gsl::span<const int32_t>& next_tokens,
+                                  gsl::span<const int32_t>& next_indices) {
   // Sequences shape is (batch_size * num_beams, total_sequence_length)
   // It contains word ID of whole sequence generated so far.
   // It is different from subgraph input_ids, which only need one word when past state is not empty.
@@ -175,9 +172,9 @@ void BeamSearchScorer<T>::Process(ISequences* sequences,
     int beam_idx = 0;
     int top_k = 2 * num_beams_;
     for (int j = 0; j < top_k; j++) {
-      int64_t next_token = next_tokens[batch * top_k + j];
+      int32_t next_token = next_tokens[batch * top_k + j];
       T next_score = next_scores[batch * top_k + j];
-      int64_t next_index = next_indices[batch * top_k + j];
+      int32_t next_index = next_indices[batch * top_k + j];
 
       int batch_beam_idx = batch * num_beams_ + static_cast<int>(next_index);
       // Add to generated hypotheses if end of sentence.
@@ -188,11 +185,11 @@ void BeamSearchScorer<T>::Process(ISequences* sequences,
         }
 
         // Clone the sequence and append to buffer.
-        gsl::span<const int64_t> src = sequences->GetSequence(batch_beam_idx);
+        gsl::span<const int32_t> src = sequences->GetSequence(batch_beam_idx);
         auto clone = hypothesis_buffer_.subspan(hypothesis_buffer_offset_, sequence_length);
         gsl::copy(src, clone);
         hypothesis_buffer_offset_ += sequence_length;
-        auto sequence = clone.template as_span<const int64_t>();
+        auto sequence = clone.template as_span<const int32_t>();
         beam_hyp.Add(sequence, next_score);
       } else {
         // Add next predicted token since it is not eos_token.
