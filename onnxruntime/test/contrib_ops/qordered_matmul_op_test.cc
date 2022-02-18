@@ -95,12 +95,12 @@ static void RunQOrdered_MatMul_Test(
   test_qorder.AddAttribute("order_A", static_cast<int64_t>(ORDER_ROW));
   test_qorder.AddAttribute("order_Y", static_cast<int64_t>(ORDER_ROW));
   test_qorder.AddInput<int8_t>("A", shape_A, vec_A);
-  test_qorder.AddInput<float>("scale_A", {}, {scale_A});
-  test_qorder.AddInput<int8_t>("B", shape_B, vec_B);
-  test_qorder.AddInput<float>("scale_B", {}, {scale_B});
-  test_qorder.AddInput<float>("scale_Y", {}, {scale_Y});
+  test_qorder.AddInput<float>("scale_A", {}, {scale_A}, true);
+  test_qorder.AddInput<int8_t>("B", shape_B, vec_B, true);
+  test_qorder.AddInput<float>("scale_B", {}, {scale_B}, true);
+  test_qorder.AddInput<float>("scale_Y", {}, {scale_Y}, true);
   if (add_bias) {
-    test_qorder.AddInput<float>("bias", bias_shape, bias);
+    test_qorder.AddInput<float>("bias", bias_shape, bias, true);
   } else {
     test_qorder.AddOptionalInputEdge<float>();
   }
