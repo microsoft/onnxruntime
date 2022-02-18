@@ -777,14 +777,16 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
   py::class_<PyGradientGraphBuilder> gradient_graph_builder(m, "GradientGraphBuilder", R"pbdoc(A utility for making a gradient graph that can be used to help train a model.)pbdoc");
   // Set up methods to match the C++ `GradientGraphBuilder` interface.
   gradient_graph_builder.def(py::init([](
-                                          const std::string& model_path,
+                                          const py::bytes& serialized_model,
                                           const std::unordered_set<std::string>& y_node_arg_names,
                                           const std::unordered_set<std::string>& x_node_arg_names,
                                           const std::string loss_node_arg_name) {
-        auto file_path = ToPathString(model_path);
         std::shared_ptr<Model> model;
         auto logger = logging::LoggingManager::DefaultLogger();
-        ORT_THROW_IF_ERROR(Model::Load(file_path, model, nullptr, logger));
+        ONNX_NAMESPACE::ModelProto model_proto;
+        std::istringstream model_istream(serialized_model);
+        ORT_THROW_IF_ERROR(Model::Load(model_istream, &model_proto));
+        ORT_THROW_IF_ERROR(Model::Load(model_proto, model, nullptr, logger));
         GradientGraphConfiguration gradient_graph_config{};
         gradient_graph_config.set_gradients_as_graph_outputs = true;
         // Save some objects, otherwise they get lost.

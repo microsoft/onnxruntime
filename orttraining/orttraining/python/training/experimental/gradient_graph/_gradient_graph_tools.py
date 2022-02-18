@@ -1,3 +1,4 @@
+import io
 from pathlib import Path
 from typing import Any, Callable, Optional, Union
 
@@ -13,7 +14,7 @@ def export_gradient_graph(
         loss_fn: Callable[[Any, Any], Any],
         example_input: torch.Tensor,
         example_labels: torch.Tensor,
-        gradient_graph_path: Union[Path, str], intermediate_graph_path: Optional[Union[Path, str]] = None,
+        gradient_graph_path: Union[Path, str],
         opset_version=12) -> None:
     r"""
     Build a gradient graph for `model` so that you can output gradients in an inference session when given specific input and corresponding labels.
@@ -31,20 +32,11 @@ def export_gradient_graph(
 
         gradient_graph_path (Union[Path, str]): The path to where you would like to save the gradient graph.
 
-        intermediate_graph_path (Optional[Union[Path, str]): The path to where you would like to save any intermediate graphs that are needed to make the gradient graph.
-        Defaults to `gradient_graph_path` and it will be overwritten if this function executes successfully.
-
         opset_version (int): See `torch.onnx.export`.
     """
 
     # Make sure that loss nodes that expect multiple outputs are set up.
     CustomOpSymbolicRegistry.register_all()
-
-    if intermediate_graph_path is None:
-        intermediate_graph_path = gradient_graph_path
-
-    if not isinstance(intermediate_graph_path, str):
-        intermediate_graph_path = str(intermediate_graph_path)
 
     if not isinstance(gradient_graph_path, str):
         gradient_graph_path = str(gradient_graph_path)
@@ -72,9 +64,10 @@ def export_gradient_graph(
         name for name, param in model.named_parameters()
         if param.requires_grad)
 
+    f = io.BytesIO()
     torch.onnx.export(
         wrapped_model, args,
-        intermediate_graph_path,
+        f,
         export_params=True,
         opset_version=opset_version, do_constant_folding=False,
         training=TrainingMode.TRAINING,
@@ -82,7 +75,8 @@ def export_gradient_graph(
         output_names=['output', 'loss'],
         dynamic_axes=dynamic_axes)
 
-    builder = GradientGraphBuilder(intermediate_graph_path,
+    exported_model = f.getvalue()
+    builder = GradientGraphBuilder(exported_model,
                                    {'loss'},
                                    nodes_needing_gradients,
                                    'loss')

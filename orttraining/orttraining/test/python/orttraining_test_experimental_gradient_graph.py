@@ -58,8 +58,6 @@ class GradientGraphBuilderTest(unittest.TestCase):
                           num_classes=2)
         directory_path = Path(os.path.dirname(__file__)).resolve()
 
-        intermediate_graph_path = directory_path / \
-            'gradient_graph_builder_test_model.onnx'
         gradient_graph_path = directory_path/'gradient_graph_model.onnx'
 
         batch_size = 1
@@ -68,7 +66,7 @@ class GradientGraphBuilderTest(unittest.TestCase):
         example_labels = torch.tensor([1])
 
         export_gradient_graph(
-            model, loss_fn, example_input, example_labels, gradient_graph_path, intermediate_graph_path)
+            model, loss_fn, example_input, example_labels, gradient_graph_path)
 
         onnx_model = onnx.load(str(gradient_graph_path))
         onnx.checker.check_model(onnx_model)
