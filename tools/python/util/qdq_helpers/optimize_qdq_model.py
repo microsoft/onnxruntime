@@ -13,7 +13,7 @@ from .qdq_model_utils import fix_dq_nodes_with_multiple_consumers
 def optimize_qdq_model():
     parser = argparse.ArgumentParser(os.path.basename(__file__),
                                      description='''
-                                     Update a QDQ format ONNX model to ensure optimal performance when executed using 
+                                     Update a QDQ format ONNX model to ensure optimal performance when executed using
                                      ONNX Runtime.
                                      ''')
 

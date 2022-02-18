@@ -30,4 +30,3 @@ class TestQDQUtils(unittest.TestCase):
         # additionally the last one also provides a graph output
         # based on that there should be 3 new DQ nodes for the internal consumers and 1 new one for the graph output
         self.assertEqual(len(orig_dq_nodes) + 4, len(new_dq_nodes))
-
