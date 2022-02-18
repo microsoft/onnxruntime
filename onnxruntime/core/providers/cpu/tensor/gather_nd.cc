@@ -33,7 +33,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
         // official ONNX spec only supports `int64_t` for indices
-        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
+        .TypeConstraint("indices", DataTypeImpl::GetTensorType<int64_t>()),
     GatherND);
 
 // opset 12 added batch_dims attribute
@@ -42,7 +42,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     12, 12,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
+        .TypeConstraint("indices", DataTypeImpl::GetTensorType<int64_t>()),
     GatherND);
 
 // spec added BFloat16
@@ -51,7 +51,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     13,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<int64_t>()),
+        .TypeConstraint("indices", DataTypeImpl::GetTensorType<int64_t>()),
     GatherND);
 
 template <typename Tind>

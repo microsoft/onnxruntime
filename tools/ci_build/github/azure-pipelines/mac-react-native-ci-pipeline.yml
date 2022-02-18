@@ -12,10 +12,7 @@ parameters:
 variables:
   build_config: Release
   ${{ if eq(parameters.NpmPublish, 'nightly (@dev)') }}:
-    # 'dev' will skip generating onnxruntime-common package when it's not updated
-    # since react-native e2e always requires both onnxruntime-common and onnxruntime-react-native packages,
-    # use 'custom' type mode here.
-    npm_packaging_mode: '-dev.$(Get-Date -Format yyyyMMdd)-$(git rev-parse --short HEAD)'
+    npm_packaging_mode: 'dev'
   ${{ if eq(parameters.NpmPublish, 'release candidate (@rc)') }}:
     npm_packaging_mode: 'rc'
   ${{ if eq(parameters.NpmPublish, 'production (@latest)') }}:
@@ -195,7 +192,16 @@ jobs:
       targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e
     displayName: Copy onnxruntime-react-native npm package to React Native e2e directory
 
+  # 'dev' npm_packaging_mode doesn't create npm package when onnxruntime-common is not changed.
+  # since e2e requires onnxruntime-common package, it builds and move it to e2e directory.
   - script: |
+      if [ ! -f $(Build.SourcesDirectory)/js/common/*.tgz ]
+      then
+        pushd $(Build.SourcesDirectory)/js/common
+        npm pack
+        mv *.tgz $(Build.SourcesDirectory)/js/react_native/e2e
+        popd
+      fi
       mv onnxruntime-common*.tgz onnxruntime-common.tgz
       yarn add --no-lockfile file:./onnxruntime-common.tgz
       mv onnxruntime-react-native*.tgz onnxruntime-react-native.tgz
@@ -275,6 +281,13 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
     displayName: Restore git changes for e2e tests
 
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Build.SourcesDirectory)/js/common
+      contents: onnxruntime-common*.tgz
+      targetFolder: $(Build.ArtifactStagingDirectory)
+    displayName: 'Create Artifacts onnxruntime-common'
+  
   - task: CopyFiles@2
     inputs:
       sourceFolder: $(Build.SourcesDirectory)/js/react_native
