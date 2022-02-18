@@ -160,7 +160,7 @@ void BeamSearchScorer<T>::Process(ISequences* sequences,
   for (size_t batch = 0; batch < batch_size_; batch++) {
     BeamHypotheses<T>& beam_hyp = beam_hyps_[batch];
     if (done_[batch]) {
-      ORT_ENFORCE(beam_hyp.Size() >= num_beams_, "Batch can only be done if all beams have been generated");
+      ORT_ENFORCE(beam_hyp.Size() >= gsl::narrow_cast<int>(num_beams_), "Batch can only be done if all beams have been generated");
 
       // Pad the batch.
       for (size_t j = 0; j < num_beams_; j++) {
@@ -191,7 +191,7 @@ void BeamSearchScorer<T>::Process(ISequences* sequences,
         gsl::span<const int32_t> src = sequences->GetSequence(batch_beam_idx);
         auto clone = hypothesis_buffer_.subspan(hypothesis_buffer_offset_, sequence_length);
         gsl::copy(src, clone);
-        hypothesis_buffer_offset_ += sequence_length;
+        hypothesis_buffer_offset_ += static_cast<size_t>(sequence_length);
         auto sequence = clone.template as_span<const int32_t>();
         beam_hyp.Add(sequence, next_score);
       } else {

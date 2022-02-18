@@ -122,7 +122,7 @@ class BeamSearchScorer : public IBeamScorer {
   IAllocatorUniquePtr<int32_t> hypothesis_buffer_ptr_;  // Allocated buffer to hold all hypotheses
   gsl::span<int32_t> hypothesis_buffer_;                // Span of the allocated buffer
   size_t hypothesis_buffer_length_;                     // Total number of elements
-  int hypothesis_buffer_offset_;                        // Offset of avaiable buffer, or length of used buffer.
+  size_t hypothesis_buffer_offset_;                     // Offset of avaiable buffer, or length of used buffer.
 };
 
 }  // namespace transformers
