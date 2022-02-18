@@ -85,7 +85,8 @@ stages:
       BuildConfig: 'Release'
       NpmPackagingMode: '$(NpmPackagingMode)'
 
-- ${{ if ne(variables.PackagingPipeline, 'release') }}:
+#- ${{ if ne(variables.PackagingPipeline, 'release') }}:
+- ${{ if eq(1, 0) }}:
   - stage: Test_web_BrowserStack
     dependsOn: Build_wasm_Release
     jobs:
@@ -93,7 +94,8 @@ stages:
       parameters:
         CommitOverride: true
 
-- ${{ if ne(variables.PackagingPipeline, 'release') }}:
+#- ${{ if ne(variables.PackagingPipeline, 'release') }}:
+- ${{ if eq(1, 0) }}:
   - stage: Test_web_MultiBrowsers
     dependsOn: Build_wasm_Release
     jobs:
