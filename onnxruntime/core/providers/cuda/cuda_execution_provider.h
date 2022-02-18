@@ -150,6 +150,12 @@ class CUDAExecutionProvider : public IExecutionProvider {
       return cublas_handle_;
     }
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+    cublasLtHandle_t CublasLtHandle() const {
+      return cublas_lt_handle_;
+    }
+#endif
+
     cudnnHandle_t CudnnHandle() const {
       return cudnn_handle_;
     }
@@ -208,6 +214,9 @@ class CUDAExecutionProvider : public IExecutionProvider {
     std::unique_ptr<cuda::IConstantBuffer<double>> constant_ones_double_;
     std::unique_ptr<cuda::IConstantBuffer<half>> constant_ones_half_;
     std::unique_ptr<cuda::IConstantBuffer<BFloat16>> constant_ones_bfloat16_;
+// #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+    cublasLtHandle_t cublas_lt_handle_ = nullptr;
+// #endif
 
     AllocatorPtr allocator_;
 
