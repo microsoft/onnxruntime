@@ -1075,5 +1075,91 @@ If mask is provided, mask index (that is position of first 0 in mask, or number 
                                   .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
                                   .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float32 tensors.")
                                   .TypeAndShapeInferenceFunction(EmbedLayerNormalizationShapeInference));
-  }  // namespace contrib
+
+  ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedLongformerAttention, 1, OpSchema()
+      .SetDoc(R"DOC(Quantized version of Longformer Self Attention (using int8 with specific matrix Layout).)DOC")
+      .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+      .Attr("window", "One sided attention windows length W, or half of total window length", AttributeProto::INT)
+      .Attr("order_input", "cublasLt order of input matrix", AttributeProto::INT)
+      .Attr("order_weight", "cublasLt order of weight matrix", AttributeProto::INT)
+      .Attr("order_bias", "cublasLt order of bias", AttributeProto::INT)
+      .Attr("order_global_weight", "cublasLt order of global weight matrix", AttributeProto::INT)
+      .Attr("order_global_bias", "cublasLt order of global bias", AttributeProto::INT)
+      .Attr("order_output", "cublasLt order of global bias", AttributeProto::INT)
+      .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "Q")
+      .Input(1, "scale_input", "scale of the input", "S")
+      .Input(2, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "Q")
+      .Input(3, "scale_weight", "scale of the weight", "S")
+      .Input(4, "bias", "1D input tensor with shape (3 * hidden_size)", "Q")
+      .Input(5, "scale_bias", "scale of the bias", "S")
+      .Input(6, "mask", "Attention mask with shape (batch_size, sequence_length)", "S")
+      .Input(7, "global_weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "Q")
+      .Input(8, "scale_global_weight", "scale of the global_weight", "S")
+      .Input(9, "global_bias", "1D input tensor with shape (3 * hidden_size)", "Q")
+      .Input(10, "scale_global_bias", "scale of the global_bias", "S")
+      .Input(11, "global", "Global attention flags with shape (batch_size, sequence_length)", "G")
+      .Input(12, "scale_output", "scale of the output", "S")
+      .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "Q")
+      .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("S", {"tensor(float)"}, "Constrain scales to float32 tensors.")
+      .TypeConstraint("G", {"tensor(int32)"}, "Constrain to integer types")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
+  ONNX_MS_OPERATOR_SET_SCHEMA(QuantizeWithOrder, 1, OpSchema()
+      .SetDoc(R"DOC(Quantize input matrix to specific layout used in cublaslt.)DOC")
+      .Attr("order_input", "cublasLt order of input matrix", AttributeProto::INT)
+      .Attr("order_output", "cublasLt order of output matrix", AttributeProto::INT)
+      .Input(0, "input", "TODO: input tensor of (ROWS, COLS). if less than 2d, will broadcast to (1, X). If 3d, it is treated as (B, ROWS, COS)", "F")
+      .Input(1, "scale_input", "scale of the input", "F")
+      .Output(0, "output", "output tensor", "Q")
+      .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("F", {"tensor(float16)", "tensor(float)"}, "Constrain to float types")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto::INT8, 0);
+
+        if (!hasInputShape(ctx, 0))
+          return;
+
+        auto& input_shape = getInputShape(ctx, 0);
+        updateOutputShape(ctx, 0, input_shape);
+      }));
+
+  ONNX_MS_OPERATOR_SET_SCHEMA(DequantizeWithOrder, 1, OpSchema()
+      .SetDoc(R"DOC(Dequantize input matrix to specific layout used in cublaslt. attr to specify output type, float16 or float32)DOC")
+      .Attr("order_input", "cublasLt order of input matrix", AttributeProto::INT)
+      .Attr("order_output", "cublasLt order of output matrix", AttributeProto::INT)
+      .Input(0, "input", "TODO: input tensor of (ROWS, COLS). if less than 2d, will broadcast to (1, X). If 3d, it is treated as (B, ROWS, COS)", "Q")
+      .Input(1, "scale_input", "scale of the input", "F")
+      .Output(0, "output", "output tensor", "F")
+      .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("F", {"tensor(float16)", "tensor(float)"}, "Constrain to float types")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+
+        if (!hasInputShape(ctx, 0))
+          return;
+
+        auto& input_shape = getInputShape(ctx, 0);
+        updateOutputShape(ctx, 0, input_shape);
+      }));
+
+  ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedMatMul, 1, OpSchema()
+      .SetDoc(R"DOC(Quantize MatMul with order.)DOC")
+      .Attr("order_A", "cublasLt order of matrix A", AttributeProto::INT)
+      .Attr("order_B", "cublasLt order of matrix B", AttributeProto::INT)
+      .Attr("order_Y", "cublasLt order of matrix Y", AttributeProto::INT)
+      .Input(0, "A", "N-dimensional matrix A", "Q")
+      .Input(1, "scale_A", "scale of the input A", "F")
+      .Input(2, "B", "N-dimensional matrix B", "Q")
+      .Input(3, "scale_B", "scale of the input B", "F")
+      .Input(4, "scale_Y", "scale of the output Y", "F")
+      .Output(0, "Y", "Matrix multiply results from A * B", "Q")
+      .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("F", {"tensor(float)"}, "Constrain to float32")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 2);
+      }));
+
+}  // namespace contrib
 }  // namespace onnxruntime
