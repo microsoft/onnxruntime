@@ -87,13 +87,13 @@ stages:
       BuildConfig: 'Release'
       NpmPackagingMode: '$(NpmPackagingMode)'
 
-- stage: Test_web_BrowserStack
-  dependsOn: Build_wasm_Release
-  condition: eq('${{ parameters.Pipeline }}', 'CI')
-  jobs:
-  - template: templates/web-browserstack-ci.yml
-    parameters:
-      CommitOverride: true
+- ${{ if eq(parameters.Pipeline, 'CI') }}:
+  - stage: Test_web_BrowserStack
+    dependsOn: Build_wasm_Release
+    jobs:
+    - template: templates/web-browserstack-ci.yml
+      parameters:
+        CommitOverride: true
 
 - stage: Test_web_MultiBrowsers
   dependsOn: Build_wasm_Release
