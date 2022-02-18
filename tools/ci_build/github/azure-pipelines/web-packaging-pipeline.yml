@@ -9,7 +9,7 @@ parameters:
   - 'custom'
   default: 'nightly (@dev)'
 
-jobs:
+stages:
 - template: web-ci-pipeline.yml
   parameters:
     NpmPublish: ${{ parameters.NpmPublish }}
