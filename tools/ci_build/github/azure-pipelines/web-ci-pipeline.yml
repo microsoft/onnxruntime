@@ -38,7 +38,7 @@ stages:
 - stage: Extract_commit
   jobs:
   - job: Extract_commit
-    pool: ${{ prameters.PoolName }}
+    pool: ${{ parameters.PoolName }}
     timeoutInMinutes: 30
     workspace:
       clean: all
