@@ -4,7 +4,6 @@
 #if defined(USE_CUDA) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 
 #include "gsl/gsl"
-#include "absl/cleanup/cleanup.h"
 
 #include "core/common/common.h"
 #include "core/common/type_list.h"
@@ -85,17 +84,17 @@ static Status Reorder(cublasLtHandle_t cublasLt, cudaStream_t stream,
                       int32_t batchCount, int rows, int cols, cudaDataType_t data_type,
                       const void* input, cublasLtOrder_t order_input, void* output, cublasLtOrder_t order_input) {
   cublasLtMatrixTransformDesc_t transform_desc = nullptr;
+  auto _ = gsl::finally([&transform_desc]() {if (transform_desc) cublasLtMatrixTransformDescDestroy(transform_desc); });
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixTransformDescCreate(&transform_desc, CUDA_R_32F));
-  absl::Cleanup clean_transform_desc = [&transform_desc](void) { cublasLtMatrixTransformDescDestroy(transform_desc); };
 
   cublasLtMatrixLayout_t InputLayout = nullptr;
+  auto _ = gsl::finally([&InputLayout]() {if (InputLayout) cublasLtMatrixLayoutDestroy(InputLayout); });
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&InputLayout, data_type, rows, cols, CalcLeadingDimensionLt(rows, cols, order_input)));
-  absl::Cleanup clean_input_layout = [&InputLayout]() { cublasLtMatrixLayoutDestroy(InputLayout); };
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(InputLayout, CUBLASLT_MATRIX_LAYOUT_ORDER, &order_input_, sizeof(order_input)));
 
   cublasLtMatrixLayout_t OutputLayout = nullptr;
+  auto _ = gsl::finally([&OutputLayout] {} {if (OutputLayout) cublasLtMatrixLayoutDestroy(OutputLayout); });
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&OutputLayout, data_type, rows, cols, CalcLeadingDimensionLt(rows, cols, order_output)));
-  absl::Cleanup clean_output_layout = [&OutputLayout]() { cublasLtMatrixLayoutDestroy(OutputLayout); };
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(OutputLayout, CUBLASLT_MATRIX_LAYOUT_ORDER, &order_output_, sizeof(order_output)));
 
   if (batchCount > 1) {
@@ -161,8 +160,7 @@ Status QuantizeWithOrder::ComputeInternal(OpKernelContext* ctx) const {
   int8_t* dst = order_input_ == order_output_ ? output_tensor->MutableData<int8_t>() : q8_buffer.Get();
   if (input_tensor.IsDataType<float>()) {
     ORT_RETURN_IF_ERROR(CudaQuantizeLinear(stream, input_tensor.template Data<float>(), dst, (const float*)scale, nullptr, n));
-  }
-  else {
+  } else {
     ORT_RETURN_IF_ERROR(CudaQuantizeLinear(stream, input_tensor.template Data<half>(), dst, (const half*)scale, nullptr, n));
   }
 

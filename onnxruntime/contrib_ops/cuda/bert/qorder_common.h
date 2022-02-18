@@ -15,10 +15,6 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-cublasLtOrder_t GetCublasLtOrderAttr(const OpKernelInfo& info, const char* order_attr);
-
-int64_t CalcLeadingDimensionLt(int64_t rows, int64_t cols, cublasLtOrder_t order);}
-
 class QuantizeWithOrder final : public CudaKernel {
  public:
   QuantizeWithOrder(const OpKernelInfo& info);
@@ -39,6 +35,10 @@ class DequantizeWithOrder final : public CudaKernel {
   cublasLtOrder_t order_output_;
   ONNX_NAMESPACE::TensorProto_DataType to_;
 };
+
+cublasLtOrder_t GetCublasLtOrderAttr(const OpKernelInfo& info, const char* order_attr);
+
+int64_t CalcLeadingDimensionLt(int64_t rows, int64_t cols, cublasLtOrder_t order);
 
 }  // namespace cuda
 }  // namespace contrib
