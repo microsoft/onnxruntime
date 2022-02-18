@@ -198,13 +198,25 @@ void CudaTensorConsoleDumper::Print(const char* name, const std::string& value, 
 void CudaTensorConsoleDumper::Print(const char*, const float*, int, int) const {
 }
 
+void CudaTensorConsoleDumper::Print(const char*, const MLFloat16*, int, int) const {
+}
+
 void CudaTensorConsoleDumper::Print(const char*, const int64_t*, int, int) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const int32_t*, int, int) const {
 }
 
 void CudaTensorConsoleDumper::Print(const char*, const float*, int, int, int) const {
 }
 
+void CudaTensorConsoleDumper::Print(const char*, const MLFloat16*, int, int, int) const {
+}
+
 void CudaTensorConsoleDumper::Print(const char*, const int64_t*, int, int, int) const {
+}
+
+void CudaTensorConsoleDumper::Print(const char*, const int32_t*, int, int, int) const {
 }
 
 void CudaTensorConsoleDumper::Print(const char*, const Tensor&) const {

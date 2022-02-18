@@ -212,8 +212,8 @@ void LogitsProcessorList::Init(const BeamSearchParameters& parameters) {
 }
 
 void LogitsProcessorList::Process(const ISequences* sequences,
-                                     gsl::span<float>& next_token_scores,
-                                     int step) {
+                                  gsl::span<float>& next_token_scores,
+                                  int step) {
   NextTokenScores<float> input_scores = {next_token_scores, batch_beam_size_, vocab_size_};
   for (size_t i = 0; i < processor_list_.size(); i++) {
     // Prefix vocab mask is applied to first iteration only.

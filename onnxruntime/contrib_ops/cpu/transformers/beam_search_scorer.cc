@@ -122,8 +122,8 @@ bool BeamSearchScorer<T>::IsDone() {
 }
 
 template <typename T>
-void BeamSearchScorer<T>::Initialize(AllocatorPtr& allocator, int sequence_length){
-  ORT_ENFORCE(next_beam_scores_.empty()); // Make sure this is called only once.
+void BeamSearchScorer<T>::Initialize(AllocatorPtr& allocator, int sequence_length) {
+  ORT_ENFORCE(next_beam_scores_.empty());  // Make sure this is called only once.
 
   size_t batch_beam_size = static_cast<size_t>(batch_size_ * num_beams_);
   constexpr bool no_fill = false;  // do not fill values after allocation
