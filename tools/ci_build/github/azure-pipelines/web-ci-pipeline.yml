@@ -14,7 +14,11 @@ parameters:
   values:
   - 'ci'
   - 'release'
-  default: 'release'
+  default: 'ci'
+- name: PoolName
+  displayName: 'Agent pool name'
+  type: string
+  default: 'Win-CPU-2019'
 
 variables:
   # pipeline should define the following varaibles
