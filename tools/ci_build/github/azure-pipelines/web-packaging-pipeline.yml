@@ -1,0 +1,17 @@
+parameters:
+- name: NpmPublish
+  displayName: 'NPM packages publish configuration'
+  type: string
+  values:
+  - 'nightly (@dev)'
+  - 'release candidate (@rc)'
+  - 'production (@latest)'
+  - 'custom'
+  default: 'nightly (@dev)'
+
+jobs:
+- template: web-ci-pipeline.yml
+  parameters:
+    NpmPublish: ${{ parameters.NpmPublish }}
+    Pipeline: 'release'
+    PoolName: 'Win-CPU-2021'

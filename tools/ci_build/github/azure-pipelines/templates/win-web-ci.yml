@@ -19,6 +19,8 @@ jobs:
 - job: build_onnxruntime_web
   pool: ${{ parameters.PoolName }}
 
+  variables:
+    runCodesignValidationInjection: false
   timeoutInMinutes: 30
   workspace:
     clean: all
