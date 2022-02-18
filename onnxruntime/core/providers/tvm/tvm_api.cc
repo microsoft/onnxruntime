@@ -53,6 +53,7 @@ TvmModule TVMCompile(const std::string& onnx_txt,
           nhwc,
           tuning_logfile,
           tuning_type);
+  ORT_ENFORCE(mod.get() != nullptr, "Compiled TVM Module is nullptr!");
   return mod;
 }
 
