@@ -14,7 +14,7 @@ parameters:
   values:
   - 'ci'
   - 'release'
-  default: 'ci'
+  default: 'release'
 
 variables:
   # pipeline should define the following varaibles
@@ -87,8 +87,7 @@ stages:
       BuildConfig: 'Release'
       NpmPackagingMode: '$(NpmPackagingMode)'
 
-#- ${{ if ne(parameters.Pipeline, 'release') }}:
-- ${{ if ne(1, 1) }}:
+- ${{ if ne(parameters.Pipeline, 'release') }}:
   - stage: Test_web_BrowserStack
     dependsOn: Build_wasm_Release
     jobs:
@@ -96,8 +95,7 @@ stages:
       parameters:
         CommitOverride: true
 
-#- ${{ if ne(parameters.Pipeline, 'release') }}:
-- ${{ if ne(1, 1) }}:
+- ${{ if ne(parameters.Pipeline, 'release') }}:
   - stage: Test_web_MultiBrowsers
     dependsOn: Build_wasm_Release
     jobs:
