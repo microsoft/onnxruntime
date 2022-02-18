@@ -8,6 +8,13 @@ parameters:
   - 'production (@latest)'
   - 'custom'
   default: 'nightly (@dev)'
+- name: Pipeline
+  displayName: 'Npm packaging pipeline'
+  type: string
+  values:
+  - 'ci'
+  - 'release'
+  default: 'ci'
 
 variables:
   # pipeline should define the following varaibles
@@ -22,8 +29,6 @@ variables:
     NpmPackagingMode: 'release'
   ${{ if eq(parameters.NpmPublish, 'custom') }}:
     NpmPackagingMode: '$(VersionSuffix)'
-
-  PackagingPipeline: '$(NpmPackagingPipeline)'
 
 stages:
 - stage: Extract_commit
@@ -82,7 +87,7 @@ stages:
       BuildConfig: 'Release'
       NpmPackagingMode: '$(NpmPackagingMode)'
 
-- ${{ if ne(variables['PackagingPipeline'], 'release') }}:
+- ${{ if ne(parameters.Pipeline, 'release') }}:
   - stage: Test_web_BrowserStack
     dependsOn: Build_wasm_Release
     jobs:
@@ -90,7 +95,7 @@ stages:
       parameters:
         CommitOverride: true
 
-- ${{ if ne(variables['PackagingPipeline'], 'release') }}:
+- ${{ if ne(parameters.Pipeline, 'release') }}:
   - stage: Test_web_MultiBrowsers
     dependsOn: Build_wasm_Release
     jobs:
