@@ -70,6 +70,8 @@ class OnnruntimeModel : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(SaveModel)
   (_In_ const wchar_t* const file_name,
    _In_ unsigned size);
+  STDMETHOD(SetName)
+  (const char* name);
   STDMETHOD(DetachOrtModel)
   (OrtModel** model);
 

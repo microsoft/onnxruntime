@@ -280,8 +280,9 @@ LearningModel::OutputFeatures() try {
 WINML_CATCH_ALL
 
 void LearningModel::SetName(const hstring& name) try {
-  auto name_str = _winml::Strings::UTF8FromHString(name);
-  WINML_THROW_IF_FAILED(model_info_->SetName(name_str));
+  auto name_std_str = _winml::Strings::UTF8FromHString(name);
+  auto name_c_str = name_std_str.c_str();
+  WINML_THROW_IF_FAILED(model_->SetName(name_c_str));
 }
 WINML_CATCH_ALL
 

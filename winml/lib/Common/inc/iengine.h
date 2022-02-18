@@ -103,6 +103,9 @@ IModel : IUnknown {
   (_In_ const wchar_t* const file_name,
    _In_ unsigned size) PURE;
 
+  STDMETHOD(SetName)
+  (const char* name) PURE;
+
   STDMETHOD(AddOperator)
   (_In_ const char* const op_type, _In_ const char* const op_name, _In_ const char* const op_domain,
    _In_ const char* const* op_input_names, _In_ const char* const* actual_input_names, size_t num_inputs,

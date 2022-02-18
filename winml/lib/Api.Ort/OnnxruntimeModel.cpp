@@ -247,6 +247,14 @@ STDMETHODIMP OnnruntimeModel::SaveModel(_In_ const wchar_t* const file_name, _In
   return S_OK;
 }
 
+STDMETHODIMP OnnruntimeModel::SetName(const char* name) {
+  auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
+  RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->ModelSetName(ort_model_.get(), name),
+                          engine_factory_->UseOrtApi());
+  info_->SetName(name);
+  return S_OK;
+}
+
 STDMETHODIMP OnnruntimeModel::DetachOrtModel(OrtModel** model) {
   *model = ort_model_.release();
   return S_OK;
