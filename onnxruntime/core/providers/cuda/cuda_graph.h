@@ -1,4 +1,8 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
+
 #include "core/common/common.h"
 #include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_pch.h"

@@ -96,9 +96,9 @@ class CUDAExecutionProvider : public IExecutionProvider {
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-  bool ConfiguredForGraphCapture() override;
-  bool IsGraphCaptured() override;
-  Status GraphReplay() override;
+  bool IsGraphCaptureEnabled() const override;
+  bool IsGraphCaptured() const override;
+  Status ReplayGraph() override;
 #endif
 
  private:
@@ -165,11 +165,11 @@ class CUDAExecutionProvider : public IExecutionProvider {
     }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-  bool FinishRegularRunsBeforeGraphCapture() const;
+  bool IsGraphCaptureAllowed() const;
   void CaptureBegin();
   void CaptureEnd();
   bool IsGraphCaptured() const;
-  Status GraphReplay();
+  Status ReplayGraph();
   void IncrementRegularRunCountBeforeGraphCapture();
 #endif
 
@@ -194,7 +194,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     std::unique_ptr<CUDAGraph> cuda_graph_;
     bool is_graph_captured_ = false;
     int regular_run_count_before_graph_capture_ = 0;
-    const int default_regular_runs_before_cuda_graph_capture_ = 1; // one regular run is needed before graph capture for the necessary memory allocations.
+    const int min_num_runs_before_cuda_graph_capture_ = 1; // required min regular runs before graph capture for the necessary memory allocations.
 
 #endif
 

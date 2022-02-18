@@ -1422,9 +1422,9 @@ common::Status InferenceSession::Initialize() {
       // If the CUDA EP is part of the providers list for this session AND
       // The CUDA EP is configured to do a graph capture AND
       // All the graph nodes have been assigned to the CUDA EP,
-      // Then the CUDA EP is cached for triggering a GraphReplay() in Run().
+      // Then the CUDA EP is cached for triggering a ReplayGraph() in Run().
       auto* cuda_ep = execution_providers_.Get(onnxruntime::kCudaExecutionProvider);
-      if (cuda_ep && cuda_ep->ConfiguredForGraphCapture()) {
+      if (cuda_ep && cuda_ep->IsGraphCaptureEnabled()) {
         if (HasControlflowNodes(graph)) {
           LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
                                         << " as the model has control flow nodes which can't be supported by CUDA Graphs.";
@@ -1871,7 +1871,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
   if (cached_cuda_execution_provider_for_cuda_graph_replay_ && cached_cuda_execution_provider_for_cuda_graph_replay_->IsGraphCaptured()) {
       LOGS(*session_logger_, INFO) << "Replaying the captured CUDA Graph for this model with tag: " << run_options.run_tag;
       ++current_num_runs_;
-      ORT_RETURN_IF_ERROR_SESSIONID_(cached_cuda_execution_provider_for_cuda_graph_replay_->GraphReplay());
+      ORT_RETURN_IF_ERROR_SESSIONID_(cached_cuda_execution_provider_for_cuda_graph_replay_->ReplayGraph());
   } else {
     std::vector<IExecutionProvider*> exec_providers_to_stop;
     exec_providers_to_stop.reserve(execution_providers_.NumProviders());

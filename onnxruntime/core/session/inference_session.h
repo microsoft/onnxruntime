@@ -736,7 +736,7 @@ class InferenceSession {
 
   // Cache the CUDA EP instance if the user has configured the EP to capture a CUDA graph
   // for the model and all the necessary criteria for CUDA graph capture has been met.
-  // At Run() time, if this member is not nullptr, simply invoke GraphReplay() using it.
+  // At Run() time, if this member is not nullptr, simply invoke ReplayGraph() using it.
   IExecutionProvider* cached_cuda_execution_provider_for_cuda_graph_replay_ = nullptr;
 };
 

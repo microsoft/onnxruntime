@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "core/providers/cuda/cuda_graph.h"
 
 #include "core/providers/cuda/cuda_common.h"
@@ -9,7 +12,7 @@ namespace onnxruntime {
 
 CUDAGraph::CUDAGraph(cudaStream_t stream) : capture_stream_(stream) {
 #if (defined(CUDA_VERSION) && CUDA_VERSION < 10000)
-  ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 11.0");
+  ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 10.0");
 #endif
   CUDA_CALL_THROW(cudaStreamCreateWithFlags(&replay_stream_, cudaStreamNonBlocking));
 }

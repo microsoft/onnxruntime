@@ -160,8 +160,8 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
 }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-bool CUDAExecutionProvider::PerThreadContext::FinishRegularRunsBeforeGraphCapture() const {
-  return regular_run_count_before_graph_capture_ >= default_regular_runs_before_cuda_graph_capture_;
+bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptureAllowed() const {
+  return regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_;
 }
 
 void CUDAExecutionProvider::PerThreadContext::CaptureBegin()  {
@@ -178,14 +178,18 @@ bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptured() const {
   return is_graph_captured_;
 }
 
-Status CUDAExecutionProvider::PerThreadContext::GraphReplay() {
-  if (!FinishRegularRunsBeforeGraphCapture()) {
+Status CUDAExecutionProvider::PerThreadContext::ReplayGraph() {
+  if (!IsGraphCaptureAllowed()) {
     return ORT_MAKE_STATUS(
       ONNXRUNTIME, FAIL,
-      "One regular run is required before graph capture.");
+      std::to_string(min_num_runs_before_cuda_graph_capture_) + " regular runs are required before graph capture.");
   }
   if (!IsGraphCaptured()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Graph is not captured yet.");
+    return ORT_MAKE_STATUS(
+      ONNXRUNTIME, FAIL,
+      "Cuda graph is not captured yet. Please execute " +
+      std::to_string(min_num_runs_before_cuda_graph_capture_ + 1) +
+      " regular runs before replaying cuda graph.");
   }
   return cuda_graph_->Replay();
 }
@@ -372,24 +376,20 @@ Status CUDAExecutionProvider::OnRunStart() {
   CUDA_RETURN_IF_ERROR(cudaEventCreate(&current_deferred_release_event, cudaEventDisableTiming));
   deferred_release_cpu_ptr_.emplace(current_deferred_release_event, DeferredReleaseCPUPtrs());
 
-  if (ConfiguredForGraphCapture() && !GetPerThreadContext().IsGraphCaptured()) {
-    if (GetPerThreadContext().FinishRegularRunsBeforeGraphCapture()) {
-      LOGS_DEFAULT(INFO) << "Capturing the CUDA Graph for this model";
-      GetPerThreadContext().CaptureBegin();
-    } else {
-      LOGS_DEFAULT(INFO) << "Waiting for the regular run before CUDA Graph capture to finish";
-    }
+  if (IsGraphCaptureEnabled() && GetPerThreadContext().IsGraphCaptureAllowed() && !GetPerThreadContext().IsGraphCaptured()) {
+    LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
+    GetPerThreadContext().CaptureBegin();
   }
   return Status::OK();
 }
 
 Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
-  if (ConfiguredForGraphCapture() && !GetPerThreadContext().IsGraphCaptured()) {
-    if (GetPerThreadContext().FinishRegularRunsBeforeGraphCapture()) {
+  if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured()) {
+    if (GetPerThreadContext().IsGraphCaptureAllowed()) {
       GetPerThreadContext().CaptureEnd();
       // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
       // so run the captured graph here to actually execute the work.
-      ORT_RETURN_IF_ERROR(GetPerThreadContext().GraphReplay());
+      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph());
     } else {
       GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture();
     }
@@ -400,7 +400,11 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
   if (sync_stream) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(GetComputeStream())));
   }
-  if (!ConfiguredForGraphCapture()) {
+
+  // If cuda graph is enabled, the per thread context will not be released
+  // because the per thread cuda graph needs to be maintained and replayed for
+  // the next run.
+  if (!IsGraphCaptureEnabled()) {
     ReleasePerThreadContext();
   }
   std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
@@ -422,16 +426,16 @@ Status CUDAExecutionProvider::SetComputeStream(void* stream) {
 }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-bool CUDAExecutionProvider::ConfiguredForGraphCapture() {
+bool CUDAExecutionProvider::IsGraphCaptureEnabled() const {
   return info_.enable_cuda_graph;
 }
 
-bool CUDAExecutionProvider::IsGraphCaptured() {
+bool CUDAExecutionProvider::IsGraphCaptured() const {
   return GetPerThreadContext().IsGraphCaptured();
 }
 
-Status CUDAExecutionProvider::GraphReplay() {
-  return GetPerThreadContext().GraphReplay();
+Status CUDAExecutionProvider::ReplayGraph() {
+  return GetPerThreadContext().ReplayGraph();
 }
 #endif
 
