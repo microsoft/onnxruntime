@@ -111,6 +111,7 @@ class NodeArg {
   Optional inputs are allowed in ONNX and an empty #Name represents a non-existent input argument. */
   bool Exists() const noexcept;
 
+  friend class FunctionIR;
   friend class Graph;
 
   NodeArg(NodeArgInfo&& node_arg_info);

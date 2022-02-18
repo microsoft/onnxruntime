@@ -4,9 +4,17 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/tensorprotoutils.h"
 #include <queue>
 
+namespace ONNX_NAMESPACE {
+class TensorShapeProto;
+std::ostream& operator<<(std::ostream& out, const TensorShapeProto& shape_proto);
+}  // namespace ONNX_NAMESPACE
+
 namespace onnxruntime {
+using namespace ONNX_NAMESPACE;
+using namespace ONNX_NAMESPACE::Utils;
 
 namespace graph_utils {
 
@@ -186,6 +194,90 @@ static void MoveAllNodeOutputs(Graph& graph, Node& src_node, Node& target_node) 
   }
 
   GraphEdge::RemoveGraphEdges(graph, output_edges);
+}
+
+
+Status MergeShapeInfo(const std::string& output_name,
+                             const TypeProto& source, TypeProto& target,
+                             bool strict, const logging::Logger& logger) {
+  if (!(utils::HasTensorType(source) && utils::HasTensorType(target))
+#if !defined(DISABLE_OPTIONAL_TYPE)
+      && !(utils::HasOptionalTensorType(source) && utils::HasOptionalTensorType(target))
+#endif
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+      && !(utils::HasSparseTensorType(source) && utils::HasSparseTensorType(target))
+#endif
+  ) {
+    std::ostringstream ss;
+    ss << "Source and target must both be tensors";
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+    ss << " , or optional typed entities";
+#endif
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+    ss << " , or sparse tensors";
+#endif
+
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ss.str());
+  }
+
+  auto status = Status::OK();
+
+  ORT_TRY {
+    if (utils::HasTensorType(source)) {
+      ONNX_NAMESPACE::mergeInShapeInfo(source.tensor_type(), *target.mutable_tensor_type());
+    }
+#if !defined(DISABLE_OPTIONAL_TYPE)
+    else if (utils::HasOptionalTensorType(source)) {
+      ONNX_NAMESPACE::mergeInShapeInfo(utils::GetOptionalTypeProto(source).tensor_type(),
+                                       *utils::GetMutableOptionalTypeProto(target)->mutable_tensor_type());
+    }
+#endif
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+    else {
+      ONNX_NAMESPACE::mergeInShapeInfo(source.sparse_tensor_type(), *target.mutable_sparse_tensor_type());
+    }
+#endif
+  }
+  ORT_CATCH(const ONNX_NAMESPACE::InferenceError& ex) {
+    // if this model was not created with the latest onnx version, allow the shape inferencing failure (strict == false).
+    // we do this to have strict testing of the latest inferencing to detect bugs, but lenient shape inferencing for
+    // older models in case later changes to the ONNX shape inferencing or ORT break them.
+    if (!strict) {
+      // mergeInShapeInfo does nothing unless source.shape() is not null, and there would be no conflict if
+      // target.shape() was empty. 'assert' just in case that ever changes.
+      assert(utils::HasShape(source) && utils::HasShape(target));
+      LOGS(logger, WARNING) << "Error merging shape info for output. '" << output_name
+                            << "' source:" << utils::GetShape(source) << " target:" << utils::GetShape(target)
+                            << ". Falling back to lenient merge.";
+      if (utils::HasTensorType(source)) {
+        ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *target.mutable_tensor_type());
+      }
+#if !defined(DISABLE_OPTIONAL_TYPE)
+      else if (utils::HasOptionalTensorType(source)) {
+        ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *utils::GetMutableOptionalTypeProto(target)->mutable_tensor_type());
+      }
+#endif
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+      else {
+        ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *target.mutable_sparse_tensor_type());
+      }
+#endif
+    } else {
+      ORT_UNUSED_PARAMETER(logger);
+      ORT_UNUSED_PARAMETER(strict);
+      ORT_UNUSED_PARAMETER(output_name);
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output:", output_name, " ", ex.what());
+      });
+    }
+  }
+
+  return status;
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)

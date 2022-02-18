@@ -280,6 +280,10 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& node);
 */
 NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg);
 
+Status MergeShapeInfo(const std::string& output_name,
+                      const ONNX_NAMESPACE::TypeProto& source, ONNX_NAMESPACE::TypeProto& target,
+                      bool strict, const logging::Logger& logger);
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
