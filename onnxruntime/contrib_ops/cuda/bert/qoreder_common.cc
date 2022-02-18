@@ -162,7 +162,7 @@ Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
   if (input_tensor.IsDataType<float>()) {
     ORT_RETURN_IF_ERROR(CudaQuantizeLinear(stream, input_tensor.Data<float>(), dst, (const float*)scale, (const int8_t*)nullptr, n));
   } else {
-    ORT_RETURN_IF_ERROR(CudaQuantizeLinear(stream, input_tensor.Data<half>(), dst, (const half*)scale, (const int8_t*)nullptr, n));
+    ORT_RETURN_IF_ERROR(CudaQuantizeLinear(stream, (const half*)input_tensor.Data<MLFloat16>(), dst, (const half*)scale, (const int8_t*)nullptr, n));
   }
 
   if (order_input_ != order_output_) {
