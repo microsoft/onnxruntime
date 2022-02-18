@@ -38,7 +38,7 @@ stages:
 - stage: Extract_commit
   jobs:
   - job: Extract_commit
-    pool: 'Win-CPU-2019'
+    pool: ${{ prameters.PoolName }}
     timeoutInMinutes: 30
     workspace:
       clean: all
@@ -63,6 +63,7 @@ stages:
       CommitOverride: true
       BuildConfig: 'Debug'
       ExtraBuildArgs: '$(ExtraBuildArgs)'
+      PoolName: $${{ paramters.PoolName }}
 
 - stage: Build_web_Debug
   dependsOn: Build_wasm_Debug
@@ -72,6 +73,7 @@ stages:
       CommitOverride: true
       BuildConfig: 'Debug'
       NpmPackagingMode: '$(NpmPackagingMode)'
+      PoolName: $${{ paramters.PoolName }}
 
 - stage: Build_wasm_Release
   dependsOn: Extract_commit
@@ -81,6 +83,7 @@ stages:
       CommitOverride: true
       BuildConfig: 'Release'
       ExtraBuildArgs: '--skip_tests --disable_wasm_exception_catching --disable_rtti $(ExtraBuildArgs)'
+      PoolName: $${{ paramters.PoolName }}
 
 - stage: Build_web_Release
   dependsOn: Build_wasm_Release
@@ -90,6 +93,7 @@ stages:
       CommitOverride: true
       BuildConfig: 'Release'
       NpmPackagingMode: '$(NpmPackagingMode)'
+      PoolName: $${{ paramters.PoolName }}
 
 - ${{ if ne(parameters.Pipeline, 'release') }}:
   - stage: Test_web_BrowserStack
