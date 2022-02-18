@@ -6,7 +6,9 @@
 import argparse
 import logging
 import pathlib
+import shutil
 import sys
+import tempfile
 
 
 from c.assemble_c_pod_package import assemble_c_pod_package
@@ -105,35 +107,45 @@ def main():
 
         run(test_ios_packages_args)
 
-    log.info("Assembling C/C++ pod.")
+    # assemble pods and then move them to their target locations (staging_dir/<pod_name>)
+    with tempfile.TemporaryDirectory(dir=staging_dir) as pod_assembly_dir:
+        log.info("Assembling C/C++ pod.")
 
-    c_pod_staging_dir = staging_dir / "c_pod"
-    c_pod_name, c_pod_podspec = assemble_c_pod_package(
-        staging_dir=c_pod_staging_dir,
-        pod_version=args.pod_version,
-        framework_info_file=framework_info_file,
-        framework_dir=build_dir / "framework_out" / "onnxruntime.xcframework",
-        public_headers_dir=build_dir / "framework_out" / "Headers",
-        package_variant=package_variant)
+        c_pod_staging_dir = pod_assembly_dir / "c_pod"
+        c_pod_name, c_pod_podspec = assemble_c_pod_package(
+            staging_dir=c_pod_staging_dir,
+            pod_version=args.pod_version,
+            framework_info_file=framework_info_file,
+            framework_dir=build_dir / "framework_out" / "onnxruntime.xcframework",
+            public_headers_dir=build_dir / "framework_out" / "Headers",
+            package_variant=package_variant)
 
-    if args.test:
-        test_c_pod_args = ["pod", "lib", "lint", "--verbose"]
+        if args.test:
+            test_c_pod_args = ["pod", "lib", "lint", "--verbose"]
 
-        run(test_c_pod_args, cwd=c_pod_staging_dir)
+            run(test_c_pod_args, cwd=c_pod_staging_dir)
 
-    log.info("Assembling Objective-C pod.")
+        log.info("Assembling Objective-C pod.")
 
-    objc_pod_staging_dir = staging_dir / "objc_pod"
-    assemble_objc_pod_package(
-        staging_dir=objc_pod_staging_dir,
-        pod_version=args.pod_version,
-        framework_info_file=framework_info_file,
-        package_variant=package_variant)
+        objc_pod_staging_dir = pod_assembly_dir / "objc_pod"
+        objc_pod_name, objc_pod_podspec = assemble_objc_pod_package(
+            staging_dir=objc_pod_staging_dir,
+            pod_version=args.pod_version,
+            framework_info_file=framework_info_file,
+            package_variant=package_variant)
 
-    if args.test:
-        test_objc_pod_args = ["pod", "lib", "lint", "--verbose", f"--include-podspecs={c_pod_podspec}"]
+        if args.test:
+            test_objc_pod_args = ["pod", "lib", "lint", "--verbose", f"--include-podspecs={c_pod_podspec}"]
 
-        run(test_objc_pod_args, cwd=objc_pod_staging_dir)
+            run(test_objc_pod_args, cwd=objc_pod_staging_dir)
+
+        def move_dir(src, dst):
+            if dst.is_dir():
+                shutil.rmtree(dst)
+            shutil.move(src, dst)
+
+        move_dir(c_pod_staging_dir, staging_dir / c_pod_name)
+        move_dir(objc_pod_staging_dir, staging_dir / objc_pod_name)
 
     log.info(f"Successfully assembled iOS pods at '{staging_dir}'.")
 

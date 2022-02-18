@@ -18,7 +18,7 @@ jobs:
   pool:
     vmImage: "macOS-11"
 
-  timeoutInMinutes: 240
+  timeoutInMinutes: 210
 
   steps:
   - task: InstallAppleCertificate@2
