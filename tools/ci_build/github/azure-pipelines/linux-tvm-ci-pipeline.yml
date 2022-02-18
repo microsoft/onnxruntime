@@ -3,7 +3,7 @@ jobs:
     timeoutInMinutes: 180
     workspace:
       clean: all
-    pool: Linux-TVM-CPU
+    pool: Linux-CPU-2019
     steps:
       - checkout: self
         clean: true
@@ -11,7 +11,7 @@ jobs:
 
       - template: templates/get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.ubuntu_tvm
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.ubuntu
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
           Repository: onnxruntimecpubuild
@@ -29,16 +29,19 @@ jobs:
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
               onnxruntimecpubuild \
-                /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-                  --build_dir /build \
-                  --config Release \
-                  --skip_submodule_sync \
-                  --parallel \
-                  --enable_pybind \
-                  --disable_contrib_ops \
-                  --disable_ml_ops \
-                  --skip_onnx_tests \
-                  --use_tvm
+                /bin/bash -c \
+                  "/onnxruntime_src/tools/ci_build/github/linux/docker/scripts/install_tvm_test_dependencies.sh \
+                    /opt/python/cp38-cp38/bin/python3 && \
+                  /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                    --build_dir /build \
+                    --config Release \
+                    --skip_submodule_sync \
+                    --parallel \
+                    --enable_pybind \
+                    --disable_contrib_ops \
+                    --disable_ml_ops \
+                    --skip_onnx_tests \
+                    --use_tvm"
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: PublishTestResults@2
