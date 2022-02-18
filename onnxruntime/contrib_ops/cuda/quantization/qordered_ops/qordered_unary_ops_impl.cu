@@ -4,6 +4,8 @@
 #include "qordered_unary_ops_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 
+#include "qordered_common.cuh"
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -44,7 +46,7 @@ __global__ void QOrderedUnaryElementWiseSharedMemoryKernel(
 }
 
 template <typename FuncT>
-void QOrderedUnaryElementWiseSharedMemoryImpl(
+Status QOrderedUnaryElementWiseSharedMemoryImpl(
     cudaStream_t stream,
     const int8_t* input_data,
     const float* input_scale,
@@ -59,6 +61,7 @@ void QOrderedUnaryElementWiseSharedMemoryImpl(
     QOrderedUnaryElementWiseSharedMemoryKernel<FuncT><<<blocksPerGrid, kNumThreadsPerBlock, 0, stream>>>(
         input_data, *input_scale, output_data, inverse_output_scale, func, static_cast<CUDA_LONG>(count));
   }
+  return CUDA_CALL(cudaGetLastError());
 }
 
 struct QOrderedUnaryOpGelu {
@@ -70,7 +73,7 @@ struct QOrderedUnaryOpGelu {
 };
 
 QORDERED_UNARY_OP_SHARED_MEMORY_DECLARATION(Gelu) {
-  QOrderedUnaryElementWiseSharedMemoryImpl<QOrderedUnaryOpGelu>(
+  return QOrderedUnaryElementWiseSharedMemoryImpl<QOrderedUnaryOpGelu>(
       stream, input_data, input_scale, output_data, output_scale, QOrderedUnaryOpGelu(), count);
 }
 

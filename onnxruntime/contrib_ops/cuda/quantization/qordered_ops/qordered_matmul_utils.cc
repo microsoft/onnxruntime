@@ -2,24 +2,13 @@
 // Licensed under the MIT License.
 
 #include "qordered_matmul_utils.h"
+#include "qordered_qdq_impl.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
 using namespace onnxruntime::cuda;
-
-int64_t CalcLeadingDimensionLt(int64_t rows, int64_t cols, cublasLtOrder_t order) {
-  switch (order) {
-    case CUBLASLT_ORDER_ROW:
-      return cols;
-    case CUBLASLT_ORDER_COL:
-      return rows;
-      // TODO: Support other CUBLASLT ordering
-    default:
-      return 0;
-  }
-}
 
 static Status cublasLtMatMulInt8SetupAlgo(cublasLtHandle_t cublasLt_handle, cublasLtMatmulAlgo_t& algo,
                                           int algo_id, int swizzle,
@@ -125,10 +114,12 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream,
                        const cudaDeviceProp& device_prop,
                        int32_t batch_count, int64_t m, int64_t n, int64_t k,
                        const float* alpha, const int8_t* A, const int8_t* B, int32_t batch_B,
-                       const float* bias, const float* beta,
-                       const int8_t* C, int32_t batch_C,
-                       int8_t* D, cublasLtOrder_t weight_order) {
-  ORT_ENFORCE(weight_order == CUBLASLT_ORDER_COL, "Weight should be ORDER_COL");
+                       const float* bias,
+                       const float* beta, const int8_t* C, int32_t batch_C,
+                       int8_t* D,
+                       cublasLtOrder_t weight_order,
+                       cublasLtPointerMode_t pointer_mode) {
+  ORT_RETURN_IF(weight_order != CUBLASLT_ORDER_COL, "Weight should be ORDER_COL");
 
   const cublasOperation_t transpose_op = CUBLAS_OP_T;
 
@@ -155,6 +146,10 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream,
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(matmul_desc,
                                                         CUBLASLT_MATMUL_DESC_TRANSA,
                                                         &transpose_op, sizeof(transpose_op)));
+
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(matmul_desc,
+                                                        CUBLASLT_MATMUL_DESC_POINTER_MODE,
+                                                        &pointer_mode, sizeof(pointer_mode)));
 
   if (bias != nullptr) {
     cublasLtEpilogue_t epilogue_bias = CUBLASLT_EPILOGUE_BIAS;

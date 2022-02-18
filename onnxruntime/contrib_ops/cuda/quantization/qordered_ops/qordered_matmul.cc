@@ -3,6 +3,7 @@
 
 #include "qordered_matmul.h"
 #include "qordered_matmul_utils.h"
+#include "qordered_qdq_impl.h"
 
 #include <functional>
 
@@ -12,6 +13,11 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
+constexpr int QOrderedMatMulScaleA = 1;
+constexpr int QOrderedMatMulScaleB = 3;
+constexpr int QOrderedMatMulScaleC = 7;
+constexpr int QOrderedMatMulScaleY = 4;
+
 ONNX_OPERATOR_KERNEL_EX(
     QOrderedMatMul,
     kMSDomain,
@@ -20,10 +26,9 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .TypeConstraint("Q", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("S", DataTypeImpl::GetTensorType<float>())
-        .InputMemoryType(OrtMemTypeCPUInput, 1)   // scale_A
-        .InputMemoryType(OrtMemTypeCPUInput, 3)   // scale_B
-        .InputMemoryType(OrtMemTypeCPUInput, 4)   // scale_Y
-        .InputMemoryType(OrtMemTypeCPUInput, 7),  // scale_C
+        .InputMemoryType(OrtMemTypeCPUInput, QOrderedMatMulScaleA)   // scale_A
+        .InputMemoryType(OrtMemTypeCPUInput, QOrderedMatMulScaleY)   // scale_Y
+        .InputMemoryType(OrtMemTypeCPUInput, QOrderedMatMulScaleC),  // scale_C
     QOrderedMatMul);
 
 static Status ParseRowMajorTensorMetadata(const Tensor& input_tensor, int64_t& rows,
@@ -43,85 +48,119 @@ static Status ParseRowMajorTensorMetadata(const Tensor& input_tensor, int64_t& r
 }
 
 QOrderedMatMul::QOrderedMatMul(const OpKernelInfo& info) : CudaKernel(info) {
-  ORT_ENFORCE(info.GetAttr("order_A", &order_A_).IsOK());
-
-  ORT_ENFORCE(info.GetAttr("order_B", &order_B_).IsOK());
-
-  ORT_ENFORCE(info.GetAttr("order_Y", &order_Y_).IsOK());
-
-  ORT_ENFORCE(order_B_ == CUBLASLT_ORDER_COL &&
-                  order_A_ == CUBLASLT_ORDER_ROW &&
-                  order_Y_ == CUBLASLT_ORDER_ROW,
-              "QOrderedMatMul: Input 1 and output's data ordering should be ROW_MAJOR and "
-              "Input 2's data ordering should be COL_MAJOR");
+  order_A_ = GetCublasLtOrderAttr(info, "order_A");
+  order_B_ = GetCublasLtOrderAttr(info, "order_B");
+  order_Y_ = GetCublasLtOrderAttr(info, "order_Y");
+  if (order_B_ == CUBLASLT_ORDER_COL) {
+    ORT_ENFORCE(order_A_ == CUBLASLT_ORDER_ROW && order_Y_ == CUBLASLT_ORDER_ROW,
+                "When order_B is ORDER_COL, other matrix must be ORDER_ROW");
+  } else {
+    ORT_ENFORCE(order_B_ == CUBLASLT_ORDER_COL4_4R2_8C || order_B_ == CUBLASLT_ORDER_COL32_2R_4R4,
+                "If order_B is not ORDER_COL, it must be either ORDER_COL4_4R2_8C or ORDER_COL32_2R_4R4");
+    ORT_ENFORCE(order_Y_ == CUBLASLT_ORDER_COL32 && order_A_ == CUBLASLT_ORDER_COL32,
+                "If order_B is not ORDER_COL, Only CUBLASLT_ORDER_COL32 is supported for order_A and order_Y");
+  }
+  const_scale_A_ = const_scale_B_ = const_scale_C_ = const_scale_Y_ = 0.0;
+  origin_scale_B_vector_ = nullptr;
 }
 
-Status QOrderedMatMul::QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
-  int64_t rows_A = 0, cols_A = 0, batch_A = 1, elements_A = 0;
-  int64_t rows_B = 0, cols_B = 0, batch_B = 1, elements_B = 0;
-  int64_t rows_C = 0, cols_C = 0, batch_C = 1, elements_C = 0;
+Status QOrderedMatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                               /*out*/ bool& is_packed,
+                               /*out*/ PrePackedWeights* /* prepacked_weights */) {
+  is_packed = false;
+  if (input_idx == QOrderedMatMulScaleA) {
+    ORT_ENFORCE(tensor.Shape().IsScalar(), "scale_A_ must be scala!");
+    const_scale_A_ = *tensor.Data<float>();
+    ORT_ENFORCE(const_scale_A_ > 0.0f, "scale_A_ must > 0.0f");
+  }
+
+  if (input_idx == QOrderedMatMulScaleB) {
+    if (tensor.Shape().IsScalar()) {
+      CUDA_RETURN_IF_ERROR(cudaMemcpy(&const_scale_B_, tensor.Data<float>(), sizeof(float), cudaMemcpyDeviceToHost));
+      ORT_ENFORCE(const_scale_B_ > 0.0f, "scale_B_ must > 0.0f if scalar");
+    } else {
+      ORT_ENFORCE(tensor.Shape().NumDimensions() == 1, "scale_b_ must be 1d array if not scalar!");
+      scale_b_size_ = gsl::narrow_cast<int>(tensor.Shape()[0]);
+      origin_scale_B_vector_ = tensor.Data<float>();
+    }
+  }
+
+  if (input_idx == QOrderedMatMulScaleY) {
+    ORT_ENFORCE(tensor.Shape().IsScalar(), "scale_Y_ must be scala!");
+    const_scale_Y_ = *tensor.Data<float>();
+    ORT_ENFORCE(const_scale_Y_ > 0.0f, "scale_Y_ must > 0.0f");
+    if (origin_scale_B_vector_) {
+      calculated_alpha_ = BufferUniquePtr(alloc->Alloc(scale_b_size_ * sizeof(float)), BufferDeleter(alloc));
+      float rescale = static_cast<float>((double)const_scale_A_ / const_scale_Y_);
+      CUBLAS_RETURN_IF_ERROR(cublasSscal(CublasHandle(), scale_b_size_, &rescale, (float*)calculated_alpha_.get(), 1));
+    }
+  }
+
+  return Status::OK();
+}
+
+Status QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
+  int64_t rowsA = 0, colsA = 0, batchA = 1, elementsA = 0;
+  int64_t rowsB = 0, colsB = 0, batchB = 1, elementsB = 0;
+  int64_t rowsC = 0, colsC = 0, batchC = 1, elementsC = 0;
 
   const Tensor& tensor_A = *context->Input<Tensor>(0);
   const Tensor& tensor_B = *context->Input<Tensor>(2);
 
-  // Support General case only. No broadcasting, is handled now.
+  // Support General case only. Broadcasting is not supported now.
   ORT_ENFORCE(tensor_A.Shape().NumDimensions() == 2 || tensor_A.Shape().NumDimensions() == 3);
   ORT_ENFORCE(tensor_B.Shape().NumDimensions() == 2 || tensor_B.Shape().NumDimensions() == 3);
-
-  ORT_RETURN_IF_ERROR(ParseRowMajorTensorMetadata(tensor_A, rows_A, cols_A, batch_A, elements_A));
-  ORT_RETURN_IF_ERROR(ParseRowMajorTensorMetadata(tensor_B, rows_B, cols_B, batch_B, elements_B));
-
-  const float* scale_A = context->Input<Tensor>(1)->Data<float>();
-  const float* scale_B = context->Input<Tensor>(3)->Data<float>();
-  const float* scale_Y = context->Input<Tensor>(4)->Data<float>();
-  ORT_ENFORCE(*scale_Y > 0.0f && *scale_A > 0.0f && *scale_B > 0.0f);
+  ORT_RETURN_IF_ERROR(CheckTensorOrder(tensor_A, (cublasLtOrder_t)order_A_, (cublasLtOrder_t)order_A_, rowsA, colsA, batchA, elementsA));
+  ORT_RETURN_IF_ERROR(CheckTensorOrder(tensor_B, (cublasLtOrder_t)order_B_, (cublasLtOrder_t)order_B_, rowsB, colsB, batchB, elementsB));
+  ORT_ENFORCE(const_scale_A_ > 0.0f && const_scale_Y_ > 0.0f, "scale_A and scale_Y must be constant value");
+  ORT_ENFORCE(const_scale_B_ > 0.0f || calculated_alpha_.get() != nullptr, "scale_B_ must be constant!");
+  ORT_ENFORCE(calculated_alpha_.get() == nullptr || scale_b_size_ == colsB, "if not scalar, scale_B_ must be of size colsB!");
 
   const Tensor* tensor_bias = context->Input<Tensor>(5);
-  ORT_ENFORCE(tensor_bias == nullptr ||
-              (tensor_bias->Shape().NumDimensions() == 1 && tensor_bias->Shape()[0] == cols_B));
-
+  ORT_ENFORCE(tensor_bias == nullptr || (tensor_bias->Shape().NumDimensions() == 1 && tensor_bias->Shape()[0] == colsB));
   const float* bias = (tensor_bias == nullptr) ? nullptr : tensor_bias->Data<float>();
 
-  ORT_ENFORCE(batch_A == batch_B || batch_B == 1, "Batch count for matrix A and matrix B does not match");
-  ORT_ENFORCE(cols_A == rows_B, "MatMul shape mis-match");
+  ORT_ENFORCE(batchA == batchB || batchB == 1, "batch count for matrix A and matrix B does not match");
+  ORT_ENFORCE(colsA == rowsB, "Sahpe mis-match");
+  TensorShape shapeY(tensor_A.Shape());
+  shapeY[shapeY.NumDimensions() - 1] = colsB;
 
-  TensorShape output_shape(tensor_A.Shape());
-  output_shape[output_shape.NumDimensions() - 1] = cols_B;
-
-  constexpr float zero = 0.0f;
-  const float* scale_C = &zero;
-
+  const float zero = 0.0f;
   const int8_t* C = nullptr;
+  const float* scaleC = &zero;
   const Tensor* tensor_C = context->Input<Tensor>(6);
-
   if (tensor_C != nullptr) {
     ORT_ENFORCE(tensor_C->Shape().NumDimensions() == 2 || tensor_C->Shape().NumDimensions() == 3);
-    ORT_RETURN_IF_ERROR(ParseRowMajorTensorMetadata(*tensor_C, rows_C, cols_C, batch_C, elements_C));
-
-    ORT_ENFORCE(batch_C == batch_A || batch_C == 1);
-    ORT_ENFORCE(rows_C == rows_A && cols_C == cols_B);
-
-    const Tensor* tensor_scale_C = context->Input<Tensor>(7);
-    ORT_ENFORCE(tensor_scale_C != nullptr);
-    scale_C = tensor_scale_C->Data<float>();
-
+    ORT_RETURN_IF_ERROR(CheckTensorOrder(*tensor_C, (cublasLtOrder_t)order_A_, (cublasLtOrder_t)order_A_, rowsC, colsC, batchC, elementsC));
+    ORT_ENFORCE(batchC == batchA || batchC == 1);
+    ORT_ENFORCE(rowsC == rowsA && colsC == colsB);
+    const Tensor* tensor_scaleC = context->Input<Tensor>(7);
+    ORT_ENFORCE(tensor_scaleC != nullptr);
+    scaleC = tensor_scaleC->Data<float>();
     C = tensor_C->Data<int8_t>();
   }
 
-  Tensor* tensor_Y = context->Output(0, output_shape);
+  Tensor* tensor_Y = context->Output(0, shapeY);
   cublasLtHandle_t cublasLt = CublasLtHandle();
   cudaStream_t stream = Stream();
   auto& device_prop = GetDeviceProp();
 
-  const float alpha = *scale_A * *scale_B / *scale_Y;
-  const float beta = *scale_C / *scale_Y;
-
+  float alpha_value = 0.0;
+  const float* alpha = &alpha_value;
+  cublasLtPointerMode_t pointer_mode = CUBLASLT_POINTER_MODE_HOST;
+  if (const_scale_B_ == 0.0f) {
+    alpha = (const float*)calculated_alpha_.get();
+    pointer_mode = CUBLASLT_POINTER_MODE_ALPHA_DEVICE_VECTOR_BETA_HOST;  // (cublasLtPointerMode_t)4
+  } else {
+    alpha_value = const_scale_A_ * const_scale_B_ / const_scale_Y_;
+  }
+  const float beta = *scaleC / const_scale_Y_;
   ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
-                                      static_cast<int32_t>(batch_A), rows_A, cols_B, cols_A,
-                                      &alpha, tensor_A.Data<int8_t>(), tensor_B.Data<int8_t>(),
-                                      static_cast<int32_t>(batch_B), bias,
-                                      &beta, C, static_cast<int32_t>(batch_C),
-                                      tensor_Y->MutableData<int8_t>(), static_cast<cublasLtOrder_t>(order_B_)));
+                                      gsl::narrow<int32_t>(batchA), rowsA, colsB, colsA,
+                                      alpha, tensor_A.Data<int8_t>(), tensor_B.Data<int8_t>(), gsl::narrow<int32_t>(batchB),
+                                      bias, &beta, C, gsl::narrow<int32_t>(batchC),
+                                      tensor_Y->MutableData<int8_t>(), (cublasLtOrder_t)order_B_,
+                                      pointer_mode));
 
   return Status::OK();
 }

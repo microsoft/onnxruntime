@@ -32,10 +32,8 @@ Status QOrderedGelu::ComputeInternal(OpKernelContext* context) const {
 
   Tensor* output = context->Output(0, shape);
 
-  QOrderedUnarySharedMemory_Gelu(Stream(), input.Data<int8_t>(), scale_input, output->MutableData<int8_t>(),
-                                 scale_output, static_cast<size_t>(shape.Size()));
-
-  return Status::OK();
+  return QOrderedUnarySharedMemory_Gelu(Stream(), input.Data<int8_t>(), scale_input, output->MutableData<int8_t>(),
+                                        scale_output, static_cast<size_t>(shape.Size()));
 }
 
 }  // namespace cuda
