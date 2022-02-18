@@ -10,10 +10,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/cpu/rnn/rnn_helpers.h"
 #include "beam_search_scorer.h"
-#ifdef _MSC_VER
-// Could reduce the chance of arithmetic overflow. TODO: fix it
-#pragma warning(disable : 26451)
-#endif
+
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {

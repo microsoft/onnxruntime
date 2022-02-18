@@ -326,7 +326,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   gsl::span<const int32_t> next_tokens(cpu_state->topk_tokens.data(), beam_state->next_tokens.size());
   gsl::span<const int32_t> next_indices(cpu_state->topk_indices.data(), beam_state->next_indices.size());
 
-  // TODO: convert beam scorer to CUDA
+  // Limitation: beam scorer runs in CPU. It might be better to use CUDA kernel to replace it.
   beam_scorer->Process(
       sequences,
       next_scores,

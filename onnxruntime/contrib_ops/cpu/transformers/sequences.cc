@@ -1,10 +1,6 @@
 #include "sequences.h"
 #include "core/common/safeint.h"
 
-#ifdef _MSC_VER
-// Could reduce the chance of arithmetic overflow. TODO: fix it
-#pragma warning(disable : 26451)
-#endif
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {

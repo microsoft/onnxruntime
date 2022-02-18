@@ -1,14 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// there's no way to use a raw pointer as the copy destination with std::copy_n
-// (which gsl::copy uses with span::data() which returns a raw pointer) with the 14.11 toolset
-// without generating a 4996 warning. going through an iterator is way too much overhead so turn off the warning.
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
-
 #include "core/framework/framework_common.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
@@ -18,13 +10,6 @@
 #include "gpt_subgraph.h"
 #include "dump_tensor.h"
 
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
-#ifdef _MSC_VER
-// Could reduce the chance of arithmetic overflow. TODO: fix it
-#pragma warning(disable : 26451)
-#endif
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 
@@ -141,8 +126,6 @@ Status GptSubgraph::Setup(const SessionState& session_state,
   feed_names.reserve(num_subgraph_inputs + num_implicit_inputs);
 
   // Currently, input_ids is in CPU even for CUDA operator, so we have to use logits location as default.
-  //  const auto& node_inputs = node.InputDefs();
-  //  const OrtMemoryInfo& input_ids_location = utils::FindMemoryInfoForValue(session_state, node_inputs[0]->Name());
   const OrtMemoryInfo& default_location = utils::FindMemoryInfoForValue(subgraph_session_state, "logits");
 
   // position_ids, attention_mask, past_0, ... are created by this operator so the name doesn't matter.

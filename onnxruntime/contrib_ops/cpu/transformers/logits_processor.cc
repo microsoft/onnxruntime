@@ -1,10 +1,6 @@
 #include <assert.h>
 #include "logits_processor.h"
 #include "dump_tensor.h"
-#ifdef _MSC_VER
-// Could reduce the chance of arithmetic overflow. TODO: fix it
-#pragma warning(disable : 26451)
-#endif
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {
@@ -12,21 +8,21 @@ namespace transformers {
 template <typename T>
 gsl::span<T> NextTokenScores<T>::GetScores(int batch_beam_index) {
   assert(batch_beam_index >= 0 && batch_beam_index < batch_beam_size);
-  return scores.subspan(batch_beam_index * vocab_size, vocab_size);
+  return scores.subspan(static_cast<gsl::index>(batch_beam_index) * vocab_size, vocab_size);
 }
 
 template <typename T>
 void NextTokenScores<T>::SetScore(int token_id, T score) {
   assert(token_id >= 0 && token_id < vocab_size);
   for (int i = 0; i < batch_beam_size; i++) {
-    scores[i * vocab_size + token_id] = score;
+    scores[static_cast<gsl::index>(i) * vocab_size + token_id] = score;
   }
 }
 
 #ifdef DEBUG_BEAM_SEARCH
 template <typename T>
-void DumpScores(const char* name, gsl::span<T>& scores) {
-  ORT_UNUSED_PARAMETER(name);
+void DumpScores(const char* name, const NextTokenScores<T>& next_token_scores) {
+  cout << name << endl;
   ORT_UNUSED_PARAMETER(scores);
 }
 #endif
@@ -44,7 +40,7 @@ void MinLengthLogitsProcessor<T>::Process(const ISequences* sequences,
   }
 
 #ifdef DEBUG_BEAM_SEARCH
-  DumpScores("MinLengthLogitsProcessor", next_token_scores.scores);
+  DumpScores("MinLengthLogitsProcessor", next_token_scores);
 #endif
 }
 
@@ -76,7 +72,7 @@ void RepetitionPenaltyLogitsProcessor<T>::Process(const ISequences* sequences,
   }
 
 #ifdef DEBUG_BEAM_SEARCH
-  DumpScores("RepetitionPenaltyLogitsProcessor", next_token_scores.scores);
+  DumpScores("RepetitionPenaltyLogitsProcessor", next_token_scores);
 #endif
 }
 
@@ -116,7 +112,7 @@ void NoRepeatNGramLogitsProcessor<T>::Process(const ISequences* sequences,
   }
 
 #ifdef DEBUG_BEAM_SEARCH
-  DumpScores("NoRepeatNGramLogitsProcessor", next_token_scores.scores);
+  DumpScores("NoRepeatNGramLogitsProcessor", next_token_scores);
 #endif
 }
 
@@ -142,7 +138,7 @@ void VocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
   }
 
 #ifdef DEBUG_BEAM_SEARCH
-  DumpScores("VocabMaskLogitsProcessor", next_token_scores.scores);
+  DumpScores("VocabMaskLogitsProcessor", next_token_scores);
 #endif
 }
 
@@ -175,7 +171,7 @@ void PrefixVocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
   }
 
 #ifdef DEBUG_BEAM_SEARCH
-  DumpScores("PrefixVocabMaskLogitsProcessor", next_token_scores.scores);
+  DumpScores("PrefixVocabMaskLogitsProcessor", next_token_scores);
 #endif
 }
 

@@ -32,12 +32,6 @@
 #include "dump_tensor.h"
 #include "beam_search_scorer.h"
 
-#ifdef _MSC_VER
-#pragma warning(pop)
-// Could reduce the chance of arithmetic overflow. TODO: fix it
-#pragma warning(disable : 26451)
-#endif
-
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 
@@ -524,7 +518,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
                                                            parameters_->num_return_sequences,
                                                            parameters_->pad_token_id,
                                                            parameters_->eos_token_id);
-  beam_scorer_->Initialize(cpu_allocator_, parameters_->sequence_length);  // TODO: use device_allocator
+  beam_scorer_->Initialize(cpu_allocator_, parameters_->sequence_length);
 
   BeamSearchCpuState cpu_state;
   cpu_state.Init(cpu_allocator_, static_cast<size_t>(parameters_->BatchBeamSize()), parameters_->max_length);
