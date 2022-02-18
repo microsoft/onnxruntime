@@ -330,7 +330,7 @@ struct TensorCheck<BFloat16> {
     /// XXX: May need to adjust threshold as BFloat is coarse
     float threshold = 0.001f;
 #if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM)
-    threshold = 0.008f;
+    threshold = 0.05f; // expect at least 95% close
 #endif
     for (int i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
@@ -994,6 +994,12 @@ void OpTester::Run(
     std::vector<std::string> output_names;
     FillFeedsAndOutputNames(feeds, output_names);
     // Run the model
+#ifdef USE_TENSORRT
+    // only run trt ep to reduce test time
+    static const std::string all_provider_types[] = {
+        kTensorrtExecutionProvider,
+    };
+#else
     static const std::string all_provider_types[] = {
         kCpuExecutionProvider,
         kCudaExecutionProvider,
@@ -1008,6 +1014,7 @@ void OpTester::Run(
         kRocmExecutionProvider,
         kCoreMLExecutionProvider,
     };
+#endif
 
     bool has_run = false;
 
@@ -1115,7 +1122,7 @@ void OpTester::Run(
           if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
               provider_type == onnxruntime::kNupharExecutionProvider ||
-              // provider_type == onnxruntime::kStvmExecutionProvider ||
+              // provider_type == onnxruntime::kTvmExecutionProvider ||
               provider_type == onnxruntime::kNnapiExecutionProvider ||
               provider_type == onnxruntime::kCoreMLExecutionProvider ||
               provider_type == onnxruntime::kDnnlExecutionProvider)
@@ -1168,8 +1175,14 @@ void OpTester::Run(
         cur_provider = "not set";
       }
 
+#ifdef USE_TENSORRT
+      // We are allowing tests to be run with only TensorRT EP, but TensorRT EP may not support all tests and may be in excluded providers list.
+      // So, no registered EPs were able to run the model is okay for this situation.
+      ORT_UNUSED_PARAMETER(has_run);
+#else
       EXPECT_TRUE(has_run)
           << "No registered execution providers were able to run the model.";
+#endif
     }
   }
   ORT_CATCH(const std::exception& ex) {

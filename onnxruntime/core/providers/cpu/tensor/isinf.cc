@@ -5,10 +5,10 @@
 
 #include "core/common/common.h"
 #include "core/framework/data_types_internal.h"
+#include "core/framework/math.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 // https://github.com/onnx/onnx/blob/master/docs/Operators.md#IsInf

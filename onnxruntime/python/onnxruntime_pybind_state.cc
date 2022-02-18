@@ -27,6 +27,7 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/provider_bridge_ort.h"
+#include "core/providers/tensorrt/tensorrt_provider_options.h"
 
 // Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
 // GCC 4.x doesn't seem to define this and it breaks the pipelines based on CentOS as it uses
@@ -374,7 +375,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       std::string calibration_table, cache_path, lib_path;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
-        OrtTensorRTProviderOptions params{
+        OrtTensorRTProviderOptionsV2 params{
             0,
             0,
             nullptr,
@@ -646,15 +647,15 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     nuphar_settings.clear();
     return p;
 #endif
-  } else if (type == kStvmExecutionProvider) {
-#if USE_STVM
-    onnxruntime::StvmExecutionProviderInfo info{};
+  } else if (type == kTvmExecutionProvider) {
+#if USE_TVM
+    onnxruntime::TvmExecutionProviderInfo info{};
     const auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
-      info = onnxruntime::StvmExecutionProviderInfo::FromProviderOptions(it->second);
+      info = onnxruntime::TvmExecutionProviderInfo::FromProviderOptions(it->second);
     }
 
-    return onnxruntime::CreateExecutionProviderFactory_Stvm(info)->CreateProvider();
+    return onnxruntime::CreateExecutionProviderFactory_Tvm(info)->CreateProvider();
 #endif
   } else if (type == kVitisAIExecutionProvider) {
 #if USE_VITISAI

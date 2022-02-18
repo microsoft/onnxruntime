@@ -9,13 +9,13 @@ set(TEST_INC_DIR ${ONNXRUNTIME_ROOT})
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND TEST_INC_DIR ${ORTTRAINING_ROOT})
 endif()
-if (onnxruntime_USE_TVM)
+if (onnxruntime_USE_NUPHAR_TVM)
   list(APPEND TEST_INC_DIR ${TVM_INCLUDES})
 endif()
 
 set(disabled_warnings)
 function(AddTest)
-  cmake_parse_arguments(_UT "DYN" "TARGET" "LIBS;SOURCES;DEPENDS" ${ARGN})
+  cmake_parse_arguments(_UT "DYN" "TARGET" "LIBS;SOURCES;DEPENDS;TEST_ARGS" ${ARGN})
   list(REMOVE_DUPLICATES _UT_SOURCES)
 
   if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
@@ -96,7 +96,7 @@ function(AddTest)
     target_compile_options(${_UT_TARGET} PRIVATE "-Wno-error=uninitialized")
   endif()
 
-  set(TEST_ARGS)
+  set(TEST_ARGS ${_UT_TEST_ARGS})
   if (onnxruntime_GENERATE_TEST_REPORTS)
     # generate a report file next to the test program
     if (onnxruntime_BUILD_WEBASSEMBLY)
@@ -430,6 +430,10 @@ endif()
 
 set (onnxruntime_test_providers_dependencies ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
+if(onnxruntime_USE_CUDA)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda)
+endif()
+
 if(onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
@@ -460,10 +464,10 @@ if(onnxruntime_USE_COREML)
 endif()
 
 if(onnxruntime_USE_NUPHAR)
-  file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
-    "${TEST_SRC_DIR}/tvm/*.h"
-    "${TEST_SRC_DIR}/tvm/*.cc"
-    )
+  file(GLOB_RECURSE onnxruntime_test_nuphar_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/nuphar_tvm/*.h"
+    "${TEST_SRC_DIR}/nuphar_tvm/*.cc"
+  )
 
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/framework/nuphar/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nuphar)
@@ -495,7 +499,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_COREML}
-    # ${PROVIDERS_STVM}
+    # ${PROVIDERS_TVM}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -519,6 +523,7 @@ set(onnxruntime_test_providers_libs
 
 if(onnxruntime_USE_TENSORRT)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/tensorrt/*)
+  list(APPEND onnxruntime_test_framework_src_patterns  "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/tensorrt_execution_provider_utils.h")
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_tensorrt)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tensorrt onnxruntime_providers_shared)
 endif()
@@ -550,17 +555,17 @@ if(onnxruntime_USE_COREML)
   endif()
 endif()
 
-if (onnxruntime_USE_STVM)
-  file (GLOB_RECURSE onnxruntime_test_stvm_src CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/test/stvm/*.h"
-    "${ONNXRUNTIME_ROOT}/test/stvm/*.cc"
+if (onnxruntime_USE_TVM)
+  file (GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/tvm/*.h"
+    "${TEST_SRC_DIR}/tvm/*.cc"
   )
 
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_stvm)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tvm)
 endif()
 
 if(WIN32)
-  if (onnxruntime_USE_TVM)
+  if (onnxruntime_USE_NUPHAR_TVM)
     list(APPEND disabled_warnings ${DISABLED_WARNINGS_FOR_TVM})
   endif()
 endif()
@@ -645,11 +650,11 @@ if (onnxruntime_ENABLE_TRAINING)
 endif()
 
 if (onnxruntime_USE_NUPHAR)
-  list(APPEND all_tests ${onnxruntime_test_tvm_src})
+  list(APPEND all_tests ${onnxruntime_test_nuphar_src})
 endif()
 
-if (onnxruntime_USE_STVM)
-    list(APPEND all_tests ${onnxruntime_test_stvm_src})
+if (onnxruntime_USE_TVM)
+    list(APPEND all_tests ${onnxruntime_test_tvm_src})
 endif()
 
 if (onnxruntime_USE_OPENVINO)
@@ -685,6 +690,17 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
   endif()
 endif()
 
+set(test_all_args)
+if (onnxruntime_USE_TENSORRT)
+    # TRT EP CI takes much longer time when updating to TRT 8.2
+    # So, we only run trt ep and exclude other eps to reduce CI test time.  
+    #
+    # The test names of model tests were using sequential number in the past.
+    # This PR https://github.com/microsoft/onnxruntime/pull/10220 (Please see ExpandModelName function in model_tests.cc for more details) 
+    # made test name contain the "ep" and "model path" information, so we can easily filter the tests using cuda ep or other ep with *cpu__* or *xxx__*.  
+    list(APPEND test_all_args "--gtest_filter=-*cpu__*:*cuda__*" )
+endif ()
+
 AddTest(
   TARGET onnxruntime_test_all
   SOURCES ${all_tests} ${onnxruntime_unittest_main_src}
@@ -692,6 +708,7 @@ AddTest(
     onnx_test_runner_common ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
     onnx_test_data_proto nlohmann_json::nlohmann_json
   DEPENDS ${all_dependencies}
+  TEST_ARGS ${test_all_args} 
 )
 if (MSVC)
   # The warning means the type of two integral values around a binary operator is narrow than their result.
@@ -782,7 +799,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       )
   endif()
   if(WIN32)
-    if (onnxruntime_USE_TVM)
+    if (onnxruntime_USE_NUPHAR_TVM)
       add_custom_command(
         TARGET ${test_data_target} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:tvm> $<TARGET_FILE_DIR:${test_data_target}>
@@ -839,7 +856,7 @@ if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 endif()
 set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
 
-if (onnxruntime_USE_TVM)
+if (onnxruntime_USE_NUPHAR_TVM)
   if (WIN32)
     target_link_options(onnx_test_runner PRIVATE "/STACK:4000000")
   endif()
@@ -1038,7 +1055,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_link_libraries(onnxruntime_perf_test PRIVATE onnxruntime_language_interop onnxruntime_pyop)
   endif()
 
-  if (onnxruntime_USE_TVM)
+  if (onnxruntime_USE_NUPHAR_TVM)
     if (WIN32)
       target_link_options(onnxruntime_perf_test PRIVATE "/STACK:4000000")
     endif()
@@ -1275,12 +1292,12 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   endif()
 endif()
 
-if (onnxruntime_USE_STVM)
-  # find_library(STVM_LIBS NAMES libtvm.so PATHS ${onnxruntime_STVM_HOME}/lib)
-  # link_directories(onnxruntime_test_all ${STVM_LIBS})
+if (onnxruntime_USE_TVM)
+  # find_library(TVM_LIBS NAMES libtvm.so PATHS ${tvm_SOURCE_DIR}/lib)
+  # link_directories(onnxruntime_test_all ${TVM_LIBS})
   find_library(PYTHON_LIBS NAMES libpython PATHS /usr/local/lib)
   #target_link_libraries(onnxruntime_test_all PRIVATE ${PYTHON_LIBRARIES} -lutil)
-  # set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-rpath,${STVM_LIBS}")
+  # set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-rpath,${TVM_LIBS}")
 endif()
 
 include(onnxruntime_fuzz_test.cmake)

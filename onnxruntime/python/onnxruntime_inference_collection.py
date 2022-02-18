@@ -206,7 +206,7 @@ class Session:
         Compute the predictions.
 
         :param output_names: name of the outputs
-        :param input_feed: dictionary ``{ input_name: input_ort_value }``
+        :param input_dict_ort_values: dictionary ``{ input_name: input_ort_value }``
             See ``OrtValue`` class how to create `OrtValue`
             from numpy array or `SparseTensor`
         :param run_options: See :class:`onnxruntime.RunOptions`.

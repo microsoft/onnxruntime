@@ -3,6 +3,7 @@
 
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -18,6 +19,16 @@ struct MixedPrecisionScaleInputOutput {
     output2_half.resize(output2.size());
     ConvertFloatToMLFloat16(input2.data(), input2_half.data(), int(input2.size()));
     ConvertFloatToMLFloat16(output2.data(), output2_half.data(), int(output2.size()));
+
+    input1_bf16.resize(input1.size());
+    output1_bf16.resize(output1.size());
+    input1_bf16 = FloatsToBFloat16s(input1);
+    output1_bf16 = FloatsToBFloat16s(output1);
+
+    input2_bf16.resize(input2.size());
+    output2_bf16.resize(output2.size());
+    input2_bf16 = FloatsToBFloat16s(input2);
+    output2_bf16 = FloatsToBFloat16s(output2);
   }
 
   // Fp32 Inputs/Output
@@ -32,6 +43,12 @@ struct MixedPrecisionScaleInputOutput {
   std::vector<MLFloat16> input2_half;
   std::vector<MLFloat16> output1_half;
   std::vector<MLFloat16> output2_half;
+
+  // BF16 Inputs/Output
+  std::vector<BFloat16> input1_bf16;
+  std::vector<BFloat16> input2_bf16;
+  std::vector<BFloat16> output1_bf16;
+  std::vector<BFloat16> output2_bf16;
 };
 
 TEST(CudaKernelTest, MixedPrecisionScaleF2F) {
@@ -129,6 +146,128 @@ TEST(CudaKernelTest, MixedPrecisionScaleH2H) {
   test.AddOutput<MLFloat16>("output1", {3}, data.output1_half);
   test.Run();
 }
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST(CudaKernelTest, MixedPrecisionScale_bfloat16_bfloat16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+  MixedPrecisionScaleInputOutput data;
+  OpTester test("MixedPrecisionScale", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("to", int64_t(ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16));
+  test.AddInput<float>("scale", {1}, data.scale);
+  test.AddInput<BFloat16>("input1", {3}, data.input1_bf16);
+  test.AddOutput<BFloat16>("output1", {3}, data.output1_bf16);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(CudaKernelTest, MixedPrecisionScale_float_bfloat16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+  MixedPrecisionScaleInputOutput data;
+  OpTester test("MixedPrecisionScale", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("to", int64_t(ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16));
+  test.AddInput<float>("scale", {1}, data.scale);
+  test.AddInput<float>("input1", {3}, data.input1);
+  test.AddOutput<BFloat16>("output1", {3}, data.output1_bf16);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(CudaKernelTest, MixedPrecisionScale_bfloat16_float) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+  MixedPrecisionScaleInputOutput data;
+  OpTester test("MixedPrecisionScale", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("to", int64_t(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
+  test.AddInput<float>("scale", {1}, data.scale);
+  test.AddInput<BFloat16>("input1", {3}, data.input1_bf16);
+  test.AddOutput<float>("output1", {3}, data.output1);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(CudaKernelTest, MixedPrecisionScale_half_bfloat16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+  MixedPrecisionScaleInputOutput data;
+  OpTester test("MixedPrecisionScale", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("to", int64_t(ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16));
+  test.AddInput<float>("scale", {1}, data.scale);
+  test.AddInput<MLFloat16>("input1", {3}, data.input1_half);
+  test.AddOutput<BFloat16>("output1", {3}, data.output1_bf16);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(CudaKernelTest, MixedPrecisionScale_bfloat16_half) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+  MixedPrecisionScaleInputOutput data;
+  OpTester test("MixedPrecisionScale", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("to", int64_t(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16));
+  test.AddInput<float>("scale", {1}, data.scale);
+  test.AddInput<BFloat16>("input1", {3}, data.input1_bf16);
+  test.AddOutput<MLFloat16>("output1", {3}, data.output1_half);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

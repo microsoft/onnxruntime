@@ -54,7 +54,7 @@ namespace Microsoft.ML.OnnxRuntime
             // dispose managed state (managed objects).
             if (disposing)
             {
-                if(_disposables != null)
+                if (_disposables != null)
                 {
                     _disposables.Dispose();
                     _disposables = null;
@@ -106,10 +106,19 @@ namespace Microsoft.ML.OnnxRuntime
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorElementType(typeAndShape, out el_type));
                     elemType = (TensorElementType)el_type;
                 }
-                TensorElementTypeConverter.GetTypeAndWidth(elemType, out type, out width);
+
+                if (!TensorElementTypeConverter.GetTypeAndWidth(elemType, out type, out width))
+                {
+                    throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
+                        "Unable to query type information for data type: " + elemType.ToString());
+                }
 
                 if (typeof(T) != type)
-                    throw new NotSupportedException(nameof(NativeOnnxTensorMemory<T>) + " does not support T = " + nameof(T));
+                {
+                    var message = String.Format("The NativeOnnxTensorMemory<T> type being instantiated for T = : {0} while supplied OrtValue contains T = {1}",
+                        typeof(T), type);
+                    throw new OnnxRuntimeException(ErrorCode.InvalidArgument, message);
+                }
 
                 ElementType = elemType;
                 ElementWidth = width;
@@ -136,7 +145,7 @@ namespace Microsoft.ML.OnnxRuntime
                     Dimensions[i] = (int)shape[i];
                 }
 
-                if (typeof(T) != typeof(string))
+                if (elemType != TensorElementType.String)
                 {
                     NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorMutableData(ortValue.Handle, out _dataBufferPointer));
                 }
@@ -239,7 +248,7 @@ namespace Microsoft.ML.OnnxRuntime
                 {
                     throw new ArgumentOutOfRangeException(nameof(elementIndex));
                 }
-                return new MemoryHandle((void*)((int)_dataBufferPointer + elementIndex * ElementWidth)); //could not use Unsafe.Add
+                return new MemoryHandle(new IntPtr(_dataBufferPointer.ToInt64() + (long)elementIndex * ElementWidth).ToPointer());
             }
         }
 

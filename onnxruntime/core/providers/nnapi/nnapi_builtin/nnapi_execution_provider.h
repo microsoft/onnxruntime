@@ -33,6 +33,8 @@ class NnapiExecutionProvider : public IExecutionProvider {
 
   uint32_t GetNNAPIFlags() const { return nnapi_flags_; }
 
+  DataLayout GetPreferredLayout() const override;
+
  private:
   // The bit flags which define bool options for NNAPI EP, bits are defined as
   // NNAPIFlags in include/onnxruntime/core/providers/nnapi/nnapi_provider_factory.h
