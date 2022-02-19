@@ -8,17 +8,6 @@ parameters:
   - 'production (@latest)'
   - 'custom'
   default: 'nightly (@dev)'
-- name: Pipeline
-  displayName: 'Npm packaging pipeline'
-  type: string
-  values:
-  - 'ci'
-  - 'release'
-  default: 'ci'
-- name: PoolName
-  displayName: 'Agent pool name'
-  type: string
-  default: 'Win-CPU-2019'
 
 variables:
   # pipeline should define the following varaibles
@@ -35,80 +24,8 @@ variables:
     NpmPackagingMode: '$(VersionSuffix)'
 
 stages:
-- stage: Extract_commit
-  jobs:
-  - job: Extract_commit
-    pool: ${{ parameters.PoolName }}
-    variables:
-      runCodesignValidationInjection: false
-    timeoutInMinutes: 30
-    workspace:
-      clean: all
-    steps:
-    - checkout: none
-      fetchDepth: 1
-      submodules: false
-    - script: |
-        echo.$(Build.SourceVersion)
-        echo.$(Build.SourceVersion)>$(Build.ArtifactStagingDirectory)\__commit.txt
-    - task: PublishPipelineArtifact@0
-      displayName: 'Publish Pipeline Artifact'
-      inputs:
-        artifactName: '__commit'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-
-- stage: Build_wasm_Debug
-  dependsOn: Extract_commit
-  jobs:
-  - template: templates/win-wasm-ci.yml
-    parameters:
-      CommitOverride: true
-      BuildConfig: 'Debug'
-      ExtraBuildArgs: '$(ExtraBuildArgs)'
-      PoolName: ${{ parameters.PoolName }}
-
-- stage: Build_web_Debug
-  dependsOn: Build_wasm_Debug
-  jobs:
-  - template: templates/win-web-ci.yml
-    parameters:
-      CommitOverride: true
-      BuildConfig: 'Debug'
-      NpmPackagingMode: '$(NpmPackagingMode)'
-      PoolName: ${{ parameters.PoolName }}
-
-- stage: Build_wasm_Release
-  dependsOn: Extract_commit
-  jobs:
-  - template: templates/win-wasm-ci.yml
-    parameters:
-      CommitOverride: true
-      BuildConfig: 'Release'
-      ExtraBuildArgs: '--skip_tests --disable_wasm_exception_catching --disable_rtti $(ExtraBuildArgs)'
-      PoolName: ${{ parameters.PoolName }}
-
-- stage: Build_web_Release
-  dependsOn: Build_wasm_Release
-  jobs:
-  - template: templates/win-web-ci.yml
-    parameters:
-      CommitOverride: true
-      BuildConfig: 'Release'
-      NpmPackagingMode: '$(NpmPackagingMode)'
-      PoolName: ${{ parameters.PoolName }}
-
-- ${{ if ne(parameters.Pipeline, 'release') }}:
-  - stage: Test_web_BrowserStack
-    dependsOn: Build_wasm_Release
-    jobs:
-    - template: templates/web-browserstack-ci.yml
-      parameters:
-        CommitOverride: true
-
-- ${{ if ne(parameters.Pipeline, 'release') }}:
-  - stage: Test_web_MultiBrowsers
-    dependsOn: Build_wasm_Release
-    jobs:
-    - template: templates/win-web-multi-browsers.yml
-      parameters:
-        CommitOverride: true
+- template: templates/web-ci.yml
+  parameters:
+    NpmPublish: ${{ variables.NpmPackagingMode }}
+    Pipeline: 'ci'
+    PoolName: 'Win-CPU-2019'

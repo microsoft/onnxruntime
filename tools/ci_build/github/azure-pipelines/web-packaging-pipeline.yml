@@ -23,7 +23,7 @@ variables:
   ${{ if eq(parameters.NpmPublish, 'custom') }}:
     NpmPackagingMode: '$(VersionSuffix)'
 
-jobs:
+stages:
 - template: templates/web-ci.yml
   parameters:
     NpmPublish: ${{ variables.NpmPackagingMode }}
