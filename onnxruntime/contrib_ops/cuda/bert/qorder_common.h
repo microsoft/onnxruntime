@@ -3,8 +3,6 @@
 
 #pragma once
 
-#if defined(USE_CUDA) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
@@ -20,8 +18,8 @@ class QuantizeWithOrder final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  cublasLtOrder_t order_input_;
-  cublasLtOrder_t order_output_;
+  int order_input_;
+  int order_output_;
 };
 
 class DequantizeWithOrder final : public CudaKernel {
@@ -30,17 +28,19 @@ class DequantizeWithOrder final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  cublasLtOrder_t order_input_;
-  cublasLtOrder_t order_output_;
+  int order_input_;
+  int order_output_;
   ONNX_NAMESPACE::TensorProto_DataType to_;
 };
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 
 cublasLtOrder_t GetCublasLtOrderAttr(const OpKernelInfo& info, const char* order_attr);
 
 int64_t CalcLeadingDimensionLt(int64_t rows, int64_t cols, cublasLtOrder_t order);
 
+#endif
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
-
-#endif

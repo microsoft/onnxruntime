@@ -19,7 +19,7 @@ namespace onnxruntime {
 namespace test {
 
 template <typename T>
-static std::vector<T> GenData(std::vector<int64_t> const & shape, float scale) {
+static std::vector<T> GenData(std::vector<int64_t> const& shape, float scale) {
   int64_t n = std::accumulate(shape.begin(), shape.end(), 1LL, std::multiplies<int64_t>());
   std::vector<T> r(n);
   for (int64_t i = 0; i < n; i++) {
@@ -32,8 +32,9 @@ class OrderedIndex {
   cublasLtOrder_t order_;
   int64_t rows_;
   int64_t cols_;
-public:
-  OrderedIndex(cublasLtOrder_t order, int64_t rows, int64_t cols) : order_(order), rows_(rows), cols_(cols) { }
+
+ public:
+  OrderedIndex(cublasLtOrder_t order, int64_t rows, int64_t cols) : order_(order), rows_(rows), cols_(cols) {}
   int64_t operator()(int64_t r, int64_t c);
 };
 
@@ -43,27 +44,24 @@ int64_t OrderedIndex::operator()(int64_t r, int64_t c) {
       return r * cols_ + c;
     case CUBLASLT_ORDER_COL:
       return c * rows_ + r;
-    case CUBLASLT_ORDER_COL32:
-      {
-        int64_t tile_id = c / 32;
-        int64_t tile_stride = 32 * rows_;
-        return tile_id * tile_stride + r * 32 + (c % 32);
-      }
-    case CUBLASLT_ORDER_COL4_4R2_8C:
-      {
-        int64_t tiles_c = c / 32;
-        int64_t tiles_r = r / 8;
-        int64_t tile_idx = tiles_c * (rows_ / 8) + tiles_r;
-        int64_t offset = tile_idx * (32 * 8);
-        offset += (r & 0x1) * (32 * 4);
-        int64_t in_4x4x8_tile_c = c % 32;
-        int64_t in_4x4x8_tile_r = (r % 8) / 2;
-        int64_t in_4x4x8_idx = (in_4x4x8_tile_c / 4) * (4*4) + in_4x4x8_tile_r * 4 + (in_4x4x8_tile_c % 4);
-        offset += in_4x4x8_idx;
-        return offset;
-      }
-    case CUBLASLT_ORDER_COL32_2R_4R4:
-    {
+    case CUBLASLT_ORDER_COL32: {
+      int64_t tile_id = c / 32;
+      int64_t tile_stride = 32 * rows_;
+      return tile_id * tile_stride + r * 32 + (c % 32);
+    }
+    case CUBLASLT_ORDER_COL4_4R2_8C: {
+      int64_t tiles_c = c / 32;
+      int64_t tiles_r = r / 8;
+      int64_t tile_idx = tiles_c * (rows_ / 8) + tiles_r;
+      int64_t offset = tile_idx * (32 * 8);
+      offset += (r & 0x1) * (32 * 4);
+      int64_t in_4x4x8_tile_c = c % 32;
+      int64_t in_4x4x8_tile_r = (r % 8) / 2;
+      int64_t in_4x4x8_idx = (in_4x4x8_tile_c / 4) * (4 * 4) + in_4x4x8_tile_r * 4 + (in_4x4x8_tile_c % 4);
+      offset += in_4x4x8_idx;
+      return offset;
+    }
+    case CUBLASLT_ORDER_COL32_2R_4R4: {
       // TODO:
     }
     default:
@@ -76,7 +74,7 @@ static std::vector<int8_t> QuantizeTransform(std::vector<int64_t> const& shape, 
   int64_t cols = shape.back();
   int64_t rows = (shape.size() > 1 ? shape[shape.size() - 2] : 1LL);
   int64_t batch = (shape.size() <= 2 ? 1LL : std::accumulate(shape.data(), shape.data() + (shape.size() - 2), 1LL, std::multiplies<int64_t>()));
-  
+
   OrderedIndex src_indexer(CUBLASLT_ORDER_ROW, rows, cols);
   OrderedIndex dst_indexer(order, rows, cols);
 
@@ -141,7 +139,6 @@ static void RunQOrdered_Quantize_Test(
 //   test_dq.AddOutput("output", shape, fvec);
 //   test_dq.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 // }
-
 
 TEST(QOrderedTest, FP32_Quantize_COL32) {
   std::vector<int64_t> shape = {1, 5, 32 * 2};

@@ -1,16 +1,9 @@
 
 #include "qorder_common.h"
 
-#if defined(USE_CUDA) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-
 #include <numeric>
 #include <functional>
 #include "gsl/gsl"
-
-// #include "core/common/common.h"
-// #include "core/common/type_list.h"
-// #include "core/framework/data_types_internal.h"
-// #include "core/framework/data_types.h"
 
 #include "core/providers/cuda/tensor/quantize_linear.cuh"
 
@@ -40,6 +33,8 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("Q", DataTypeImpl::GetTensorType<int8_t>()),
     DequantizeWithOrder);
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+
 cublasLtOrder_t GetCublasLtOrderAttr(const OpKernelInfo& info, const char* order_attr) {
   int64_t order_value;
   Status status = info.GetAttr(order_attr, &order_value);
@@ -66,6 +61,9 @@ int64_t CalcLeadingDimensionLt(int64_t rows, int64_t cols, cublasLtOrder_t order
 
 void UpdateTileRequire(cublasLtOrder_t order, int64_t& row_tile, int64_t& col_tile) {
   switch (order) {
+    case CUBLASLT_ORDER_ROW:
+    case CUBLASLT_ORDER_COL:
+      break;
     case CUBLASLT_ORDER_COL32:
       col_tile = std::max(col_tile, 32LL);
       break;
@@ -93,7 +91,7 @@ static Status Reorder(cublasLtHandle_t cublasLt, cudaStream_t stream,
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(InputLayout, CUBLASLT_MATRIX_LAYOUT_ORDER, &order_input, sizeof(order_input)));
 
   cublasLtMatrixLayout_t OutputLayout = nullptr;
-  auto clean_OutputLayout = gsl::finally([&OutputLayout] () {if (OutputLayout) cublasLtMatrixLayoutDestroy(OutputLayout); });
+  auto clean_OutputLayout = gsl::finally([&OutputLayout]() {if (OutputLayout) cublasLtMatrixLayoutDestroy(OutputLayout); });
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&OutputLayout, data_type, rows, cols, CalcLeadingDimensionLt(rows, cols, order_output)));
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(OutputLayout, CUBLASLT_MATRIX_LAYOUT_ORDER, &order_output, sizeof(order_output)));
 
@@ -113,7 +111,6 @@ static Status Reorder(cublasLtHandle_t cublasLt, cudaStream_t stream,
   return Status::OK();
 };
 
-
 static Status CheckTensorOrder(const Tensor& input_tensor, cublasLtOrder_t input_order, cublasLtOrder_t output_order,
                                int64_t& rows, int64_t& cols, int64_t& batchCount, int64_t& elementCount) {
   const auto dims = input_tensor.Shape().GetDims();
@@ -130,27 +127,38 @@ static Status CheckTensorOrder(const Tensor& input_tensor, cublasLtOrder_t input
   return Status::OK();
 }
 
+#endif
+
 QuantizeWithOrder::QuantizeWithOrder(const OpKernelInfo& info) : CudaKernel(info) {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   order_input_ = GetCublasLtOrderAttr(info, "order_input");
   order_output_ = GetCublasLtOrderAttr(info, "order_output");
   ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_ROW, "Only CUBLASLT_ORDER_ROW is support for order_input");
   ORT_ENFORCE(order_output_ == CUBLASLT_ORDER_COL32 || order_output_ == CUBLASLT_ORDER_COL4_4R2_8C || order_output_ == CUBLASLT_ORDER_COL32_2R_4R4,
               "Only CUBLASLT_ORDER_COL32, CUBLASLT_ORDER_COL4_4R2_8C, CUBLASLT_ORDER_COL32_2R_4R4 is support for order_output");
+#else
+  ORT_ENFORCE(false, "CUDA version 11.0 or higher is needed!")
+#endif
 }
 
 DequantizeWithOrder::DequantizeWithOrder(const OpKernelInfo& info) : CudaKernel(info) {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   order_input_ = GetCublasLtOrderAttr(info, "order_input");
   order_output_ = GetCublasLtOrderAttr(info, "order_output");
   ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_COL32 || order_input_ == CUBLASLT_ORDER_COL4_4R2_8C || order_input_ == CUBLASLT_ORDER_COL32_2R_4R4,
               "Only CUBLASLT_ORDER_COL32, CUBLASLT_ORDER_COL4_4R2_8C, CUBLASLT_ORDER_COL32_2R_4R4 is support for order_input");
   ORT_ENFORCE(order_output_ == CUBLASLT_ORDER_ROW, "Only CUBLASLT_ORDER_ROW is support for order_output");
+#else
+  ORT_ENFORCE(false, "CUDA version 11.0 or higher is needed!")
+#endif
 }
 
 Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   int64_t rows = 0, cols = 0, batch = 0, n = 0;
 
   const Tensor& input_tensor = *context->Input<Tensor>(0);
-  ORT_RETURN_IF_ERROR(CheckTensorOrder(input_tensor, order_input_, order_output_, rows, cols, batch, n));
+  ORT_RETURN_IF_ERROR(CheckTensorOrder(input_tensor, (cublasLtOrder_t)order_input_, (cublasLtOrder_t)order_output_, rows, cols, batch, n));
   const void* scale = context->Input<Tensor>(1)->DataRaw();
   Tensor* output_tensor = context->Output(0, input_tensor.Shape());
   cublasLtHandle_t cublasLt = CublasLtHandle();
@@ -167,17 +175,21 @@ Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
 
   if (order_input_ != order_output_) {
     ORT_RETURN_IF_ERROR(Reorder(cublasLt, stream, gsl::narrow_cast<int>(batch), rows, cols, CUDA_R_8I,
-                                q8_buffer.get(), order_input_, output_tensor->MutableDataRaw(), order_output_));
+                                q8_buffer.get(), (cublasLtOrder_t)order_input_, output_tensor->MutableDataRaw(), (cublasLtOrder_t)order_output_));
   }
 
   return Status::OK();
+#else
+  return Status(common::ONNXRUNTIME, common::FAIL, "CUDA version 11.0 or higher is needed!");
+#endif
 }
 
 Status DequantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   int64_t rows = 0, cols = 0, batch = 0, n = 0;
 
   const Tensor& input_tensor = *context->Input<Tensor>(0);
-  ORT_RETURN_IF_ERROR(CheckTensorOrder(input_tensor, order_input_, order_output_, rows, cols, batch, n));
+  ORT_RETURN_IF_ERROR(CheckTensorOrder(input_tensor, (cublasLtOrder_t)order_input_, (cublasLtOrder_t)order_output_, rows, cols, batch, n));
   const void* scale = context->Input<Tensor>(1)->DataRaw();
   Tensor* output_tensor = context->Output(0, input_tensor.Shape());
   cublasLtHandle_t cublasLt = CublasLtHandle();
@@ -195,14 +207,17 @@ Status DequantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
 
   if (order_input_ != order_output_) {
     ORT_RETURN_IF_ERROR(Reorder(cublasLt, stream, gsl::narrow_cast<int>(batch), rows, cols, input_tensor.IsDataType<float>() ? CUDA_R_32F : CUDA_R_16F,
-                                fp_buffer.get(), order_input_, output_tensor->MutableDataRaw(), order_output_));
+                                fp_buffer.get(), (cublasLtOrder_t)order_input_, output_tensor->MutableDataRaw(), (cublasLtOrder_t)order_output_));
   }
 
   return Status::OK();
+#else
+  return Status(common::ONNXRUNTIME, common::FAIL, "CUDA version 11.0 or higher is needed!");
+#endif
 }
 
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
 
-#endif
+// #endif
