@@ -3,13 +3,10 @@ parameters:
   displayName: 'NPM packages publish configuration'
   type: string
   default: 'dev'
-- name: Pipeline
+- name: IsReleasePipeline
   displayName: 'Npm packaging pipeline'
-  type: string
-  values:
-  - 'ci'
-  - 'release'
-  default: 'ci'
+  type: boolean
+  default: false
 - name: PoolName
   displayName: 'Agent pool name'
   type: string
@@ -78,7 +75,7 @@ stages:
       NpmPackagingMode: ${{ parameters.NpmPackagingMode }}
       PoolName: ${{ parameters.PoolName }}
 
-- ${{ if ne(parameters.Pipeline, 'release') }}:
+- ${{ if ne(parameters.IsReleasePipeline, 'true') }}:
   - stage: Test_web_BrowserStack
     dependsOn: Build_wasm_Release
     jobs:
@@ -86,7 +83,7 @@ stages:
       parameters:
         CommitOverride: true
 
-- ${{ if ne(parameters.Pipeline, 'release') }}:
+- ${{ if ne(parameters.IsReleasePipeline, 'true') }}:
   - stage: Test_web_MultiBrowsers
     dependsOn: Build_wasm_Release
     jobs:
