@@ -98,8 +98,6 @@ class BeamSearchScorer : public IBeamScorer {
   size_t batch_size_;
   size_t num_beams_;
   size_t max_length_;
-  float length_penalty_;
-  bool early_stopping_;
   size_t num_beam_hyps_to_keep_;
   int pad_token_id_;
   int eos_token_id_;
