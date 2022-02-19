@@ -65,15 +65,15 @@ void UpdateTileRequire(cublasLtOrder_t order, int64_t& row_tile, int64_t& col_ti
     case CUBLASLT_ORDER_COL:
       break;
     case CUBLASLT_ORDER_COL32:
-      col_tile = std::max(col_tile, 32LL);
+      col_tile = std::max(col_tile, int64_t{32});
       break;
     case CUBLASLT_ORDER_COL4_4R2_8C:
-      col_tile = std::max(col_tile, 32LL);
-      row_tile = std::max(row_tile, 8LL);
+      col_tile = std::max(col_tile, int64_t{32});
+      row_tile = std::max(row_tile, int64_t{8});
       break;
     case CUBLASLT_ORDER_COL32_2R_4R4:
-      col_tile = std::max(col_tile, 32LL);
-      row_tile = std::max(row_tile, 32LL);
+      col_tile = std::max(col_tile, int64_t{32});
+      row_tile = std::max(row_tile, int64_t{32});
       break;
   }
 }
