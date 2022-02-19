@@ -1,5 +1,5 @@
 jobs:
-  - job: Linux_py_TVM_Wheels
+  - job: Linux_TVM_CI
     timeoutInMinutes: 180
     workspace:
       clean: all
@@ -30,9 +30,9 @@ jobs:
               -e BUILD_BUILDNUMBER \
               onnxruntimecpubuild \
                 /bin/bash -c \
-                  "/onnxruntime_src/tools/ci_build/github/linux/docker/scripts/install_tvm_test_dependencies.sh \
-                    /opt/python/cp38-cp38/bin/python3 && \
-                  /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                  "/onnxruntime_src/tools/ci_build/github/linux/tvm/install_tvm_test_dependencies.sh \
+                    python3 && \
+                  python3 /onnxruntime_src/tools/ci_build/build.py \
                     --build_dir /build \
                     --config Release \
                     --skip_submodule_sync \
