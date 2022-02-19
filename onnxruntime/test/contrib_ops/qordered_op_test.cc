@@ -10,9 +10,10 @@
 #include "test/util/include/scoped_env_vars.h"
 #include "contrib_ops/cpu/bert/longformer_attention_base.h"
 
-#include <cublasLt.h>
 #include <numeric>
 #include <functional>
+#include <iostream>
+#include <cublasLt.h>
 
 namespace onnxruntime {
 namespace test {
@@ -53,13 +54,13 @@ int64_t OrderedIndex::operator()(int64_t r, int64_t c) {
         int64_t tiles_c = c / 32;
         int64_t tiles_r = r / 8;
         int64_t tile_idx = tiles_c * (rows_ / 8) + tiles_r;
-        int64_t tile_stride = 32 * 8;
-        int64_t odd = r & 0x1;
-        int64_t odd_stride = 32 * 4;
+        int64_t offset = tile_idx * (32 * 8);
+        offset += (r & 0x1) * (32 * 4);
         int64_t in_4x4x8_tile_c = c % 32;
         int64_t in_4x4x8_tile_r = (r % 8) / 2;
-        int64_t in_4x4x8_idx = (in_4x4x8_tile_c / 4) * (4*8) + in_4x4x8_tile_r * 4 + (in_4x4x8_tile_c % 4);
-        return tile_idx * tile_stride + odd * odd_stride + in_4x4x8_idx;
+        int64_t in_4x4x8_idx = (in_4x4x8_tile_c / 4) * (4*4) + in_4x4x8_tile_r * 4 + (in_4x4x8_tile_c % 4);
+        offset += in_4x4x8_idx;
+        return offset;
       }
     case CUBLASLT_ORDER_COL32_2R_4R4:
     {
@@ -79,16 +80,21 @@ static std::vector<int8_t> QuantizeTransform(std::vector<int64_t> const& shape, 
   OrderedIndex src_indexer(CUBLASLT_ORDER_ROW, rows, cols);
   OrderedIndex dst_indexer(order, rows, cols);
 
-  std::vector<int8_t> dst(batch * cols * rows);
+  std::vector<int8_t> dst(batch * cols * rows, 0);
   const TSrc* bsrc = src.data();
   int8_t* bdst = dst.data();
   for (int64_t b = 0, batch_stride = rows * cols; b < batch; b++) {
     for (int64_t r = 0; r < rows; r++) {
       for (int64_t c = 0; c < cols; c++) {
-        float v = (float)bsrc[src_indexer(r, c)] * scale;
+        int64_t src_idx = src_indexer(r, c);
+        int64_t dst_idx = dst_indexer(r, c);
+        if (src_idx >= batch_stride || dst_idx >= batch_stride || bdst[dst_idx] != 0) {
+          std::cout << "out of bound index calculated, error found in OrderedIndexer" << std::endl;
+        }
+        float v = (float)bsrc[src_idx] * scale;
         v = std::max(TSrc(-128.0f), v);
         v = std::min(TSrc(127.0f), v);
-        bdst[dst_indexer(r, c)] = static_cast<int8_t>(std::round(v));
+        bdst[dst_idx] = static_cast<int8_t>(std::round(v));
       }
     }
     bsrc += batch_stride;
