@@ -103,14 +103,14 @@ static void RunQOrdered_Quantize_Test(
     std::vector<int64_t> const& shape,
     cublasLtOrder_t order_q,
     T scale) {
-  auto qvec = QuantizeTransform(shape, scale,fvec, order_q);
+  auto qvec = QuantizeTransform(shape, scale, fvec, order_q);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
   OpTester test_q("QuantizeWithOrder", 1, onnxruntime::kMSDomain);
   test_q.AddAttribute("order_input", (int64_t)CUBLASLT_ORDER_ROW);
   test_q.AddAttribute("order_output", (int64_t)order_q);
-  test_q.template AddInput<T>("input", shape, fvec);
+  test_q.AddInput<T>("input", shape, fvec);
   test_q.AddInput<T>("scale_input", {}, {scale});
   test_q.AddOutput("output", shape, qvec);
   test_q.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);

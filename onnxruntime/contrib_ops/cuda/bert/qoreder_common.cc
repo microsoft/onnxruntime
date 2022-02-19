@@ -26,8 +26,8 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("F", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<MLFloat16>()})
-        .TypeConstraint("Q", DataTypeImpl::GetTensorType<int8_t>()),
+        .TypeConstraint("Q", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("F", BuildKernelDefConstraints<float, MLFloat16>()),
     QuantizeWithOrder);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -36,7 +36,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("F", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<MLFloat16>()})
+        .TypeConstraint("F", BuildKernelDefConstraints<float, MLFloat16>())
         .TypeConstraint("Q", DataTypeImpl::GetTensorType<int8_t>()),
     DequantizeWithOrder);
 

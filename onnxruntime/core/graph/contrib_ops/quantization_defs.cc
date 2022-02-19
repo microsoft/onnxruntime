@@ -992,7 +992,6 @@ Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
 // Quantization operators in cuda which handle matrix layout
 void RegisterQOrderedSchemas() {
 
-#if defined(USE_CUDA) && defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   static const char* Longformer_Attention_QOrdered_doc = R"DOC(
 Quantized version of Longformer Self Attention (using int8 with specific matrix Layout).
 Longformer Self Attention with a local context and a global context. Tokens attend locally: Each token
@@ -1011,12 +1010,12 @@ Global attention flags have value 1 for the tokens attend globally and 0 otherwi
       .SetDoc(Longformer_Attention_QOrdered_doc)
       .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
       .Attr("window", "One sided attention windows length W, or half of total window length", AttributeProto::INT)
-      .Attr("order_input", AttributeProto::INT)
-      .Attr("order_weight", AttributeProto::INT)
-      .Attr("order_bias", AttributeProto::INT)
-      .Attr("order_globale_weight", AttributeProto::INT)
-      .Attr("order_global_bias", AttributeProto::INT)
-      .Attr("order_output", AttributeProto::INT)
+      .Attr("order_input", "cublasLt order of input matrix", AttributeProto::INT)
+      .Attr("order_weight", "cublasLt order of weight matrix", AttributeProto::INT)
+      .Attr("order_bias", "cublasLt order of bias", AttributeProto::INT)
+      .Attr("order_global_weight", "cublasLt order of global weight matrix", AttributeProto::INT)
+      .Attr("order_global_bias", "cublasLt order of global bias", AttributeProto::INT)
+      .Attr("order_output", "cublasLt order of global bias", AttributeProto::INT)
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "Q")
       .Input(1, "scale_input", "scale of the input", "S")
       .Input(2, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "Q")
@@ -1044,15 +1043,15 @@ Quantize input matrix to specific layout used in cublaslt.
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(QuantizeWithOrder_doc)
-      .Attr("order_input", AttributeProto::INT)
-      .Attr("order_output", AttributeProto::INT)
+      .Attr("order_input", "cublasLt order of input matrix", AttributeProto::INT)
+      .Attr("order_output", "cublasLt order of output matrix", AttributeProto::INT)
       .Input(0, "input", "TODO: input tensor of (ROWS, COLS). if less than 2d, will broadcast to (1, X). If 3d, it is treated as (B, ROWS, COS)", "F")
       .Input(1, "scale_input", "scale of the input", "F")
       .Output(0, "output", "output tensor", "Q")
       .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
-      .TypeConstraint("F", {"tensor(float)", "tensor(float16)"}, "Constrain to float types")
+      .TypeConstraint("F", {"tensor(float16)", "tensor(float)"}, "Constrain to float types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromDtypeToOutput(ctx, TensorProto::INT8, 0);
+        propagateElemTypeFromDtypeToOutput(ctx, ONNX_NAMESPACE::TensorProto::INT8, 0);
 
         if (!hasInputShape(ctx, 0))
           return;
@@ -1069,13 +1068,13 @@ Dequantize input matrix to specific layout used in cublaslt. attr to specify out
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(DequantizeWithOrder_doc)
-      .Attr("order_input", AttributeProto::INT)
-      .Attr("order_output", AttributeProto::INT)
+      .Attr("order_input", "cublasLt order of input matrix", AttributeProto::INT)
+      .Attr("order_output", "cublasLt order of output matrix", AttributeProto::INT)
       .Input(0, "input", "TODO: input tensor of (ROWS, COLS). if less than 2d, will broadcast to (1, X). If 3d, it is treated as (B, ROWS, COS)", "Q")
       .Input(1, "scale_input", "scale of the input", "F")
       .Output(0, "output", "output tensor", "F")
       .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
-      .TypeConstraint("F", {"tensor(float)", "tensor(float16)"}, "Constrain to float types")
+      .TypeConstraint("F", {"tensor(float16)", "tensor(float)"}, "Constrain to float types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 1, 0);
 
@@ -1085,7 +1084,6 @@ Dequantize input matrix to specific layout used in cublaslt. attr to specify out
         auto& input_shape = getInputShape(ctx, 0);
         updateOutputShape(ctx, 0, input_shape);
       });
-#endif
 
 }
 
