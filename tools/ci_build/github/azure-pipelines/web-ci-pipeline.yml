@@ -26,6 +26,6 @@ variables:
 stages:
 - template: templates/web-ci.yml
   parameters:
-    NpmPublish: ${{ variables.NpmPackagingMode }}
+    NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     Pipeline: 'ci'
     PoolName: 'Win-CPU-2019'
