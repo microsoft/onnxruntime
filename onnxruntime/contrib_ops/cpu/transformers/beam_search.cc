@@ -237,7 +237,7 @@ class BeamSearchImpl {
 
   LogitsProcessorList logits_processors_;
 
-  std::unique_ptr<BeamSearchScorer<float>> beam_scorer_;
+  std::unique_ptr<BeamSearchScorer> beam_scorer_;
 
   AllocatorPtr cpu_allocator_;
   AllocatorPtr temp_space_allocator_;
@@ -507,17 +507,18 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
   std::vector<OrtValue> fetches;
 
   // Initialize resources
-  AllocatorPtr temp_space_allocator;
-  ORT_RETURN_IF_ERROR(context_.GetTempSpaceAllocator(&temp_space_allocator));
-
-  beam_scorer_ = std::make_unique<BeamSearchScorer<float>>(static_cast<size_t>(parameters_->batch_size),
-                                                           static_cast<size_t>(parameters_->num_beams),
-                                                           static_cast<size_t>(parameters_->max_length),
-                                                           parameters_->length_penalty,
-                                                           parameters_->early_stopping,
-                                                           static_cast<size_t>(parameters_->num_return_sequences),
-                                                           parameters_->pad_token_id,
-                                                           parameters_->eos_token_id);
+  onnxruntime::OrtStlAllocator<HypothesisScore> hypothesis_score_allocator(cpu_allocator_);
+  onnxruntime::OrtStlAllocator<BeamHypotheses> beam_hyps_allocator(cpu_allocator_);
+  beam_scorer_ = std::make_unique<BeamSearchScorer>(static_cast<size_t>(parameters_->batch_size),
+                                                    static_cast<size_t>(parameters_->num_beams),
+                                                    static_cast<size_t>(parameters_->max_length),
+                                                    parameters_->length_penalty,
+                                                    parameters_->early_stopping,
+                                                    static_cast<size_t>(parameters_->num_return_sequences),
+                                                    parameters_->pad_token_id,
+                                                    parameters_->eos_token_id,
+                                                    hypothesis_score_allocator,
+                                                    beam_hyps_allocator);
   beam_scorer_->Initialize(cpu_allocator_, parameters_->sequence_length);
 
   BeamSearchCpuState cpu_state;
@@ -566,7 +567,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
   OrtValue position_ids;
   int64_t dims[] = {parameters_->BatchBeamSize(), 1};
   TensorShape shape(&dims[0], 2);
-  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), shape, beam_state.next_positions.data(), temp_space_allocator->Info(), position_ids);
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), shape, beam_state.next_positions.data(), temp_space_allocator_->Info(), position_ids);
 
   int current_length = parameters_->sequence_length;
   int iteration_counter = 0;
@@ -607,7 +608,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
 
   gsl::span<const float> final_beam_scores(beam_state.beam_scores.data(), beam_state.beam_scores.size());
   if (IsCuda()) {
-    ORT_RETURN_IF_ERROR(device_copy_func_(cpu_state.final_beam_scores, final_beam_scores, stream_, DeviceCopyDirection::deviceToHost));
+    ORT_RETURN_IF_ERROR(device_copy_func_(cpu_state.final_beam_scores, final_beam_scores, nullptr, DeviceCopyDirection::deviceToHost));
     final_beam_scores = gsl::make_span<const float>(cpu_state.final_beam_scores.data(), cpu_state.final_beam_scores.size());
   }
 
@@ -621,7 +622,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
     gsl::span<float> target = output_scores->MutableDataAsSpan<float>();
     gsl::span<const float> source = gsl::span<const float>(beam_state.scores.data(), beam_state.scores.size());
     assert(target.length() == source.length());
-    ORT_RETURN_IF_ERROR(device_copy_func_(target, source, stream_, DeviceCopyDirection::deviceToDevice));
+    ORT_RETURN_IF_ERROR(device_copy_func_(target, source, nullptr, DeviceCopyDirection::deviceToDevice));
   }
 
   return status;
