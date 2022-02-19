@@ -41,7 +41,7 @@ stages:
 - stage: Build_wasm_Debug
   dependsOn: Extract_commit
   jobs:
-  - template: templates/win-wasm-ci.yml
+  - template: win-wasm-ci.yml
     parameters:
       CommitOverride: true
       BuildConfig: 'Debug'
@@ -51,7 +51,7 @@ stages:
 - stage: Build_web_Debug
   dependsOn: Build_wasm_Debug
   jobs:
-  - template: templates/win-web-ci.yml
+  - template: win-web-ci.yml
     parameters:
       CommitOverride: true
       BuildConfig: 'Debug'
@@ -61,7 +61,7 @@ stages:
 - stage: Build_wasm_Release
   dependsOn: Extract_commit
   jobs:
-  - template: templates/win-wasm-ci.yml
+  - template: win-wasm-ci.yml
     parameters:
       CommitOverride: true
       BuildConfig: 'Release'
@@ -71,7 +71,7 @@ stages:
 - stage: Build_web_Release
   dependsOn: Build_wasm_Release
   jobs:
-  - template: templates/win-web-ci.yml
+  - template: win-web-ci.yml
     parameters:
       CommitOverride: true
       BuildConfig: 'Release'
@@ -82,7 +82,7 @@ stages:
   - stage: Test_web_BrowserStack
     dependsOn: Build_wasm_Release
     jobs:
-    - template: templates/web-browserstack-ci.yml
+    - template: web-browserstack-ci.yml
       parameters:
         CommitOverride: true
 
@@ -90,6 +90,6 @@ stages:
   - stage: Test_web_MultiBrowsers
     dependsOn: Build_wasm_Release
     jobs:
-    - template: templates/win-web-multi-browsers.yml
+    - template: win-web-multi-browsers.yml
       parameters:
         CommitOverride: true
