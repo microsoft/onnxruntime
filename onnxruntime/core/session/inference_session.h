@@ -440,6 +440,8 @@ class InferenceSession {
     */
   Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
 
+  ExecutionProviders& GetProviders() { return execution_providers_; }
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
   /**

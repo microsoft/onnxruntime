@@ -5,6 +5,10 @@
 
 #include "core/framework/op_kernel.h"
 
+#if !defined(ORT_MINIMAL_BUILD)
+#include <unordered_map>
+#endif
+
 namespace onnxruntime {
 
 using KernelCreateMap = std::multimap<std::string, KernelCreateInfo>;
@@ -44,6 +48,10 @@ class KernelRegistry {
   // Check if an execution provider can create kernel for a node and return the kernel if so
   Status TryFindKernel(const Node& node, ProviderType exec_provider,
                        const KernelCreateInfo** out) const;
+
+  Status TryFindKernel(const std::string& op_name, const std::string& domain, const int& version,
+                       const std::unordered_map<std::string, MLDataType>& type_constraints,
+                       ProviderType exec_provider, const KernelCreateInfo** out) const;
 
 #endif
 
