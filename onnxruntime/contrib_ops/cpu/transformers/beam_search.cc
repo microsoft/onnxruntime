@@ -494,7 +494,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
   Tensor* output_sequences_scores = context_.Output(1, sequences_scores_shape);
 
   int64_t scores_dims[] = {
-      parameters_->max_length - parameters_->sequence_length,
+      static_cast<int64_t>(parameters_->max_length) - static_cast<int64_t>(parameters_->sequence_length),
       parameters_->batch_size, parameters_->num_beams, parameters_->vocab_size};
   TensorShape scores_shape(&scores_dims[0], sizeof(scores_dims) / sizeof(scores_dims[0]));
   Tensor* output_scores = context_.Output(2, scores_shape);

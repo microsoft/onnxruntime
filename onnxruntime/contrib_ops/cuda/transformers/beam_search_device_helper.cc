@@ -428,9 +428,6 @@ Status UpdateFeeds(
 
   next_inputs[2] = attention_mask;
 
-  // Make sure data is ready before next subgraph execution.
-  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(reinterpret_cast<cudaStream_t>(stream)));
-
 #ifdef DEBUG_BEAM_SEARCH
   dumper->Print("input_ids", input_ids);
   dumper->Print("position_ids", position_ids);
@@ -449,6 +446,9 @@ Status UpdateFeeds(
   } else {
     return PickPastState<T>(last_outputs, next_inputs, beam_indices, allocator, stream);
   }
+
+  // Make sure data is ready before next subgraph execution.
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(reinterpret_cast<cudaStream_t>(stream)));
 }
 
 // Explicit template instantiations of functions

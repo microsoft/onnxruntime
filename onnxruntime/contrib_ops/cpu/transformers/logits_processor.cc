@@ -1,6 +1,8 @@
 #include <assert.h>
 #include "logits_processor.h"
 #include "dump_tensor.h"
+#include "core/common/safeint.h"
+
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {
@@ -87,7 +89,7 @@ void NoRepeatNGramLogitsProcessor<T>::Process(const ISequences* sequences,
     return;
   }
 
-  const gsl::index prefix_length = static_cast<gsl::index>(ngram_size_ - 1);
+  const gsl::index prefix_length = static_cast<gsl::index>(ngram_size_) - 1;
   int batch_beam_size = next_token_scores.batch_beam_size;
 
   for (int i = 0; i < batch_beam_size; i++) {
@@ -102,7 +104,7 @@ void NoRepeatNGramLogitsProcessor<T>::Process(const ISequences* sequences,
       // Here we use naive algorithm for matching. The complexity is O(batch_beam_size * ngram_size * sequence_length)
       // TODO: build N-Gram index (hash table with prefix of length NGram - 1 as key, and list of last word of NGram as value) for fast matching.
       if (ngram_size_ == 1 || prefix == sequence.subspan(j, prefix_length)) {
-        blocked_word_ids.insert(sequence[j + prefix_length]);
+        blocked_word_ids.insert(sequence[static_cast<gsl::index>(j) + prefix_length]);
       }
     }
 
@@ -160,10 +162,10 @@ void PrefixVocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
   // prefix_vocab_mask shape (batch_szie, vocab_size).
   T* p = next_token_scores.scores.data();
   for (int i = 0; i < batch_size_; i++) {
-    int prefix_vocab_mask_offset = i * next_token_scores.vocab_size;
+    size_t prefix_vocab_mask_offset = SafeInt<size_t>(i) * next_token_scores.vocab_size;
     for (int j = 0; j < num_beams; j++) {
       for (int k = 0; k < next_token_scores.vocab_size; k++, p++) {
-        if (prefix_vocab_mask_[prefix_vocab_mask_offset + k] == 0) {
+        if (prefix_vocab_mask_[prefix_vocab_mask_offset + static_cast<size_t>(k)] == 0) {
           *p = std::numeric_limits<T>::lowest();
         }
       }
