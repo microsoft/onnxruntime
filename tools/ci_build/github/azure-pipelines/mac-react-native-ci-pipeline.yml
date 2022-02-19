@@ -11,6 +11,7 @@ parameters:
 
 variables:
   build_config: Release
+  pool_name: '$(PoolName)'
   ${{ if eq(parameters.NpmPublish, 'nightly (@dev)') }}:
     npm_packaging_mode: 'dev'
   ${{ if eq(parameters.NpmPublish, 'release candidate (@rc)') }}:
@@ -28,7 +29,7 @@ jobs:
     includedOpsConfig: '$(Build.SourcesDirectory)/tools/ci_build/github/android/mobile_package.required_operators.config'
     artifactName: 'onnxruntime-android-mobile-aar'
     job_name_suffix: 'For_React_Native'
-    pool_name: 'Linux-CPU-2019'
+    pool_name: '${{variables.pool_name}}'
 
 - job: ReactNative_CI
   pool:
