@@ -123,7 +123,7 @@ Status GptSubgraph::Setup(const SessionState& session_state,
   subgraph_session_state_ = &subgraph_session_state;
 
   std::vector<std::string> feed_names;
-  feed_names.reserve(num_subgraph_inputs + num_implicit_inputs);
+  feed_names.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
 
   // Currently, input_ids is in CPU even for CUDA operator, so we have to use logits location as default.
   const OrtMemoryInfo& default_location = utils::FindMemoryInfoForValue(subgraph_session_state, "logits");
@@ -222,7 +222,7 @@ Status GptSubgraph::CreateInitialFeeds(
   Tensor::InitOrtValue(past_type, past_shape, default_allocator, empty_past);
 
   // The ordering is the same as used in Setup
-  feeds.reserve(num_subgraph_inputs + num_implicit_inputs);
+  feeds.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
 
   OrtValue expanded_position_ids;
   OrtValue expanded_attention_mask;

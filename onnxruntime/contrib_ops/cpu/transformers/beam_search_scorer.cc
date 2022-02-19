@@ -4,6 +4,7 @@
 #include <queue>
 #include <math.h>
 #include "core/common/common.h"
+#include "core/common/safeint.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
@@ -133,7 +134,7 @@ void BeamSearchScorer::Initialize(AllocatorPtr& allocator, int sequence_length) 
   next_beam_indices_ = Allocate<int32_t>(allocator, batch_beam_size, next_beam_indices_ptr_, no_fill);
 
   // Space to store intermediate sequence with length sequence_length, sequence_length + 1, ..., max_sequence_length.
-  size_t buffer_per_beam = (max_length_ * (max_length_ + 1) - static_cast<size_t>(sequence_length - 1) * sequence_length) / 2;
+  size_t buffer_per_beam = (SafeInt<size_t>(max_length_) * (max_length_ + 1) - SafeInt<size_t>(sequence_length - 1) * sequence_length) / 2;
   hypothesis_buffer_length_ = batch_beam_size * buffer_per_beam;
   hypothesis_buffer_ = Allocate<int32_t>(allocator, hypothesis_buffer_length_, hypothesis_buffer_ptr_, no_fill);
 }

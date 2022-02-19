@@ -19,7 +19,7 @@ using namespace onnxruntime::controlflow;  // namespace of IControlFlowKernel
 
 class BeamSearch : public IControlFlowKernel {
  public:
-  BeamSearch(const OpKernelInfo& info) : IControlFlowKernel(info), stream_(nullptr), dumper_(nullptr) {
+  BeamSearch(const OpKernelInfo& info) : IControlFlowKernel(info), cuda_stream_(nullptr), dumper_(nullptr) {
     Init(info);
   }
 
@@ -32,7 +32,7 @@ class BeamSearch : public IControlFlowKernel {
                                     const SessionState& subgraph_session_state) override;
 
  protected:
-  void SetComputeStream(void* stream) { stream_ = stream; }
+  void SetComputeStream(void* stream) { cuda_stream_ = stream; }
   void SetConsoleDumper(IConsoleDumper* dumper) { dumper_ = dumper; }
 
   void SetDeviceHelpers(
@@ -44,7 +44,7 @@ class BeamSearch : public IControlFlowKernel {
     topk_func_ = topk_func;
   }
 
-  // Type dependent helpers
+  // Type dependent helpers: float
   void SetDeviceHelpers(
       const BeamSearchDeviceHelper::ProcessLogitsFunc<float>& process_logits_func,
       const BeamSearchDeviceHelper::InitBeamStateFunc<float>& init_beam_state_func,
@@ -56,6 +56,7 @@ class BeamSearch : public IControlFlowKernel {
     update_feeds_func_ = update_feeds_func;
   }
 
+  // Type dependent helpers: MLFloat16
   void SetDeviceHelpers(
       const BeamSearchDeviceHelper::ProcessLogitsFunc<MLFloat16>& process_logits_func,
       const BeamSearchDeviceHelper::InitBeamStateFunc<MLFloat16>& init_beam_state_func,
@@ -83,9 +84,10 @@ class BeamSearch : public IControlFlowKernel {
   std::unique_ptr<GptSubgraph> gpt_subgraph_;
   FeedsFetchesManager* feeds_fetches_manager_;
 
-  void* stream_;
+  void* cuda_stream_;
 
   IConsoleDumper* dumper_;
+  
   BeamSearchParameters parameters_;
 };
 

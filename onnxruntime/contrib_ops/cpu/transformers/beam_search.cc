@@ -116,13 +116,17 @@ struct BeamSearchState : public IBeamSearchState<T> {
 struct BeamSearchCpuState : public IBeamSearchCpuState {
   Sequences sequences;
 
-  void Init(AllocatorPtr allocator, size_t batch_beam_size, int max_length) {
+  void Init(AllocatorPtr allocator, size_t batch_beam_size, int max_length, bool is_cuda) {
     this->sequence_lengths = AllocateBuffer<int32_t>(allocator, sequence_lengths_buffer_, batch_beam_size);
-    this->topk_scores = AllocateBuffer<float>(allocator, topk_scores_buffer_, 2 * batch_beam_size);
-    this->topk_tokens = AllocateBuffer<int32_t>(allocator, topk_tokens_buffer_, 2 * batch_beam_size);
-    this->topk_indices = AllocateBuffer<int32_t>(allocator, topk_indices_buffer_, 2 * batch_beam_size);
-    this->final_beam_scores = AllocateBuffer<float>(allocator, final_beam_scores_buffer_, batch_beam_size);
     this->sequences_space = AllocateBuffer<int32_t>(allocator, sequences_space_buffer_, SafeInt<size_t>(2) * batch_beam_size * max_length);
+
+    if (is_cuda) {
+      // buffers used by CUDA operator but not by CPU operator.
+      this->topk_scores = AllocateBuffer<float>(allocator, topk_scores_buffer_, 2 * batch_beam_size);
+      this->topk_tokens = AllocateBuffer<int32_t>(allocator, topk_tokens_buffer_, 2 * batch_beam_size);
+      this->topk_indices = AllocateBuffer<int32_t>(allocator, topk_indices_buffer_, 2 * batch_beam_size);
+      this->final_beam_scores = AllocateBuffer<float>(allocator, final_beam_scores_buffer_, batch_beam_size);
+    }
   }
 
  private:
@@ -141,7 +145,7 @@ class BeamSearchImpl {
                  const SessionState& session_state,
                  GptSubgraph& gpt_subgraph,
                  concurrency::ThreadPool* thread_pool,
-                 void* stream,
+                 void* cuda_stream,
                  IConsoleDumper* cuda_dumper,
                  BeamSearchParameters& params,
                  const BeamSearchDeviceHelper::CreateInputsFunc& create_inputs_func,
@@ -156,7 +160,7 @@ class BeamSearchImpl {
         gpt_subgraph_(gpt_subgraph),
         thread_pool_(thread_pool),
         implicit_inputs_(context_.GetImplicitInputs()),
-        stream_(stream),
+        cuda_stream_(cuda_stream),
         cuda_dumper_(cuda_dumper),
         parameters_(&params),
         cpu_allocator_(nullptr),
@@ -183,7 +187,7 @@ class BeamSearchImpl {
   Status Execute(const FeedsFetchesManager& cached_ffm);
 
  private:
-  bool IsCuda() const { return stream_ != nullptr; }
+  bool IsCuda() const { return cuda_stream_ != nullptr; }
 
   // Validate inputs.
   Status CheckInputs(const OpKernelContextInternal& context);
@@ -227,8 +231,7 @@ class BeamSearchImpl {
 
   const std::vector<const OrtValue*>& implicit_inputs_;
 
-  // Not used in CPU. Stream is for CUDA only.
-  void* stream_;
+  void* cuda_stream_;
 
   IConsoleDumper* cuda_dumper_;
   CpuTensorConsoleDumper cpu_dumper_;
@@ -260,7 +263,7 @@ void BeamSearch::Init(const OpKernelInfo& info) {
 
   parameters_.ParseFromAttributes(info);
 
-  stream_ = nullptr;
+  cuda_stream_ = nullptr;
 }
 
 Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
@@ -290,7 +293,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
 
   // Subgraph has constraint that the output is either float or float16
   if (!gpt_subgraph_->IsOutputFloat16()) {
-    BeamSearchImpl<float> impl{*ctx_internal, *session_state, *gpt_subgraph_, thread_pool, stream_, dumper_, parameters,
+    BeamSearchImpl<float> impl{*ctx_internal, *session_state, *gpt_subgraph_, thread_pool, cuda_stream_, dumper_, parameters,
                                create_inputs_func_ ? create_inputs_func_ : BeamSearchCpuDeviceHelper::CreateInputs,
                                add_to_feeds_func_ ? add_to_feeds_func_ : BeamSearchCpuDeviceHelper::AddToFeeds,
                                topk_func_ ? topk_func_ : BeamSearchCpuDeviceHelper::TopK,
@@ -302,7 +305,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
 
     return impl.Execute(*feeds_fetches_manager_);
   } else {
-    BeamSearchImpl<MLFloat16> impl{*ctx_internal, *session_state, *gpt_subgraph_, thread_pool, stream_, dumper_, parameters,
+    BeamSearchImpl<MLFloat16> impl{*ctx_internal, *session_state, *gpt_subgraph_, thread_pool, cuda_stream_, dumper_, parameters,
                                    create_inputs_func_ ? create_inputs_func_ : BeamSearchCpuDeviceHelper::CreateInputs,
                                    add_to_feeds_func_ ? add_to_feeds_func_ : BeamSearchCpuDeviceHelper::AddToFeeds,
                                    topk_func_ ? topk_func_ : BeamSearchCpuDeviceHelper::TopK,
@@ -433,7 +436,7 @@ Status BeamSearchImpl<T>::ProcessLogits(
     int counter) {
   return process_logits_func_(logits, &beam_state, &cpu_state, &(cpu_state.sequences), allocator,
                               thread_pool_, &logits_processors_, beam_scorer_.get(),
-                              parameters_, counter, stream_, GetConsoleDumper());
+                              parameters_, counter, cuda_stream_, GetConsoleDumper());
 }
 
 template <typename T>
@@ -451,7 +454,7 @@ Status BeamSearchImpl<T>::GenerateNextToken(
   // It is optional to clone beam_scores. Change it to use same buffer also works for CPU:
   //    beam_state.beam_scores = beam_scores
   // Here we make a copy to reduce the coupling with little cost (the buffer size is small).
-  ORT_RETURN_IF_ERROR(device_copy_func_(beam_state.beam_scores, beam_scores, stream_, DeviceCopyDirection::hostToDevice));
+  ORT_RETURN_IF_ERROR(device_copy_func_(beam_state.beam_scores, beam_scores, cuda_stream_, DeviceCopyDirection::hostToDevice));
 
   beam_next_tokens = beam_scorer_->GetNextTokens();
   beam_indices = beam_scorer_->GetNextIndices();
@@ -478,7 +481,7 @@ Status BeamSearchImpl<T>::UpdateFeeds(
     OrtValue& position_ids,
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices) {
-  return update_feeds_func_(temp_space_allocator_, stream_, last_outputs, next_inputs, current_length, position_ids,
+  return update_feeds_func_(temp_space_allocator_, cuda_stream_, last_outputs, next_inputs, current_length, position_ids,
                             beam_next_tokens, beam_indices, parameters_->num_beams, GetConsoleDumper());
 }
 
@@ -522,7 +525,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
   beam_scorer_->Initialize(cpu_allocator_, parameters_->sequence_length);
 
   BeamSearchCpuState cpu_state;
-  cpu_state.Init(cpu_allocator_, static_cast<size_t>(parameters_->BatchBeamSize()), parameters_->max_length);
+  cpu_state.Init(cpu_allocator_, static_cast<size_t>(parameters_->BatchBeamSize()), parameters_->max_length, IsCuda());
 
   // buffer in GPU for input_ids, position_ids and attention_mask
   // size_t buffer_bytes = SafeInt<size_t>(sizeof(int32_t) + sizeof(int32_t) + sizeof(int32_t)) * parameters_->batch_size * parameters_->num_beams * parameters_->sequence_length;
@@ -554,7 +557,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
                         input_ids,
                         parameters_->sequence_length,
                         parameters_->max_length,
-                        stream_);
+                        cuda_stream_);
 
 #ifdef DEBUG_BEAM_SEARCH
   const IConsoleDumper* dumper = GetConsoleDumper();
@@ -627,9 +630,6 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
 
   return status;
 }
-
-// Instantiation
-template class BeamSearchImpl<float>;
 
 }  // namespace transformers
 }  // namespace contrib

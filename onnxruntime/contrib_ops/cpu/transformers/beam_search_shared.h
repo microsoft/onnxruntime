@@ -29,14 +29,15 @@ struct IBeamSearchState {
   gsl::span<float> remaining_scores;   // portion of scores that is avaiable for appending next token scores.
 };
 
-// Data that copied from GPU to CPU
 struct IBeamSearchCpuState {
   gsl::span<int32_t> sequence_lengths;  // shape (batch_size, num_beams), initial sequence length
-  gsl::span<float> topk_scores;         // shape (batch_size, 2*num_beams), scores of topk candidates (K=2*num_beams)
-  gsl::span<int32_t> topk_tokens;       // shape (batch_size, 2*num_beams), tokens of topk candidates
-  gsl::span<int32_t> topk_indices;      // shape (batch_size, 2*num_beams), beam indices of topk candidates
-  gsl::span<float> final_beam_scores;   // shape (batch_size, num_beams)
   gsl::span<int32_t> sequences_space;   // shape (2, batch_size, num_beams, max_seq_length)
+
+  // The following are used only by CUDA operator for data copied from device.
+  gsl::span<float> topk_scores;        // shape (batch_size, 2*num_beams), scores of topk candidates (K=2*num_beams).
+  gsl::span<int32_t> topk_tokens;      // shape (batch_size, 2*num_beams), tokens of topk candidates.
+  gsl::span<int32_t> topk_indices;     // shape (batch_size, 2*num_beams), beam indices of topk candidates.
+  gsl::span<float> final_beam_scores;  // shape (batch_size, num_beams)
 };
 
 class ISequences {
