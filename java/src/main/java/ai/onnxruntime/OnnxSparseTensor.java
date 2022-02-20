@@ -6,6 +6,7 @@ package ai.onnxruntime;
 
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.LongBuffer;
 
 /**
@@ -203,7 +204,9 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @return The indices.
    */
   public LongBuffer getIndexBuffer() {
-    return getIndexBuffer(OnnxRuntime.ortApiHandle, nativeHandle).asLongBuffer();
+    return getIndexBuffer(OnnxRuntime.ortApiHandle, nativeHandle)
+        .order(ByteOrder.nativeOrder())
+        .asLongBuffer();
   }
 
   /**
@@ -215,7 +218,9 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    */
   public LongBuffer getInnerIndexBuffer() {
     if (sparseTensorType == SparseTensorType.CSRC) {
-      return getInnerIndexBuffer(OnnxRuntime.ortApiHandle, nativeHandle).asLongBuffer();
+      return getInnerIndexBuffer(OnnxRuntime.ortApiHandle, nativeHandle)
+          .order(ByteOrder.nativeOrder())
+          .asLongBuffer();
     } else {
       throw new IllegalStateException(
           "Inner indices are only available for CSRC sparse tensors, this sparse tensor is "
@@ -229,7 +234,8 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @return The data buffer.
    */
   public Buffer getDataBuffer() {
-    ByteBuffer buffer = getDataBuffer(OnnxRuntime.ortApiHandle, nativeHandle);
+    ByteBuffer buffer =
+        getDataBuffer(OnnxRuntime.ortApiHandle, nativeHandle).order(ByteOrder.nativeOrder());
     switch (info.type) {
       case FLOAT:
         return buffer.asFloatBuffer();
