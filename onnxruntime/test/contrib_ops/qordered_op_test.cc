@@ -18,8 +18,8 @@ namespace onnxruntime {
 namespace test {
 
 enum OrderCublasLt {
-  ORDER_ROW = 0,
-  ORDER_COL = 1,
+  ORDER_COL = 0,
+  ORDER_ROW = 1,
   ORDER_COL32 = 2,
   ORDER_COL4_4R2_8C = 3,
   ORDER_COL32_2R_4R4 = 4
