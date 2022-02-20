@@ -6,11 +6,15 @@ package ai.onnxruntime;
 
 import static ai.onnxruntime.InferenceTest.getResourcePath;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.LongBuffer;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -163,6 +167,54 @@ public class SparseTensorTest {
         tensor.close();
         inputMap.clear();
         denseIdMatrix.close();
+      }
+    }
+  }
+
+  @Test
+  public void testCOOOutput() throws OrtException {
+    String modelPath = getResourcePath("/sparse_initializer_as_output.onnx").toString();
+    try (OrtEnvironment env = OrtEnvironment.getEnvironment();
+        OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
+      try (OrtSession session = env.createSession(modelPath, options)) {
+        Map<String, NodeInfo> outputs = session.getOutputInfo();
+        assertEquals(1, outputs.size());
+
+        NodeInfo info = outputs.get("values");
+        assertNotNull(info);
+        assertTrue(info.getInfo() instanceof TensorInfo);
+
+        TensorInfo outputInfo = (TensorInfo) info.getInfo();
+        assertArrayEquals(new long[] {3, 3}, outputInfo.getShape());
+        assertEquals(
+            TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, outputInfo.onnxType);
+        assertEquals(OnnxJavaType.FLOAT, outputInfo.type);
+
+        OrtSession.Result result = session.run(Collections.emptyMap());
+        OnnxValue output = result.get("values").get();
+
+        assertTrue(output instanceof OnnxSparseTensor);
+
+        OnnxSparseTensor sparseTensor = (OnnxSparseTensor) output;
+
+        assertEquals(OnnxSparseTensor.SparseTensorType.COO, sparseTensor.getSparseTensorType());
+
+        assertArrayEquals(new long[] {3, 3}, sparseTensor.getInfo().getShape());
+
+        OnnxSparseTensor.SparseTensor javaTensor = sparseTensor.getValue();
+
+        assertTrue(javaTensor instanceof OnnxSparseTensor.COOTensor);
+
+        OnnxSparseTensor.COOTensor cooTensor = (OnnxSparseTensor.COOTensor) javaTensor;
+
+        long[] indices = new long[3];
+        cooTensor.getIndices().get(indices);
+        float[] data = new float[3];
+        ((FloatBuffer) cooTensor.getData()).get(data);
+
+        assertArrayEquals(new long[] {2, 3, 5}, indices);
+        assertArrayEquals(
+            new float[] {1.764052391052246f, 0.40015721321105957f, 0.978738009929657f}, data);
       }
     }
   }

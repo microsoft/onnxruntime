@@ -242,7 +242,7 @@ public class OrtSession implements AutoCloseable {
   /**
    * Scores an input feed dict, returning the map of requested inferred outputs.
    *
-   * <p>The outputs are sorted based on the supplied set traveral order.
+   * <p>The outputs are sorted based on the supplied set traversal order.
    *
    * @param inputs The inputs to score.
    * @param requestedOutputs The requested outputs.
@@ -257,7 +257,7 @@ public class OrtSession implements AutoCloseable {
       RunOptions runOptions)
       throws OrtException {
     if (!closed) {
-      if (inputs.isEmpty() || (inputs.size() > numInputs)) {
+      if ((inputs.isEmpty() && (numInputs != 0)) || (inputs.size() > numInputs)) {
         throw new OrtException(
             "Unexpected number of inputs, expected [1," + numInputs + ") found " + inputs.size());
       }
