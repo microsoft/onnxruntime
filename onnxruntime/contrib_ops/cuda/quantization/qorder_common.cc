@@ -1,6 +1,8 @@
 
 #include "qorder_common.h"
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+
 #include <numeric>
 #include <functional>
 #include "gsl/gsl"
@@ -12,6 +14,7 @@ namespace contrib {
 namespace cuda {
 
 using namespace onnxruntime::cuda;
+
 
 ONNX_OPERATOR_KERNEL_EX(
     QuantizeWithOrder,
@@ -33,7 +36,6 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("Q", DataTypeImpl::GetTensorType<int8_t>()),
     DequantizeWithOrder);
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 
 cublasLtOrder_t GetCublasLtOrderAttr(const OpKernelInfo& info, const char* order_attr) {
   int64_t order_value;
@@ -127,34 +129,23 @@ static Status CheckTensorOrder(const Tensor& input_tensor, cublasLtOrder_t input
   return Status::OK();
 }
 
-#endif
-
 QuantizeWithOrder::QuantizeWithOrder(const OpKernelInfo& info) : CudaKernel(info) {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   order_input_ = GetCublasLtOrderAttr(info, "order_input");
   order_output_ = GetCublasLtOrderAttr(info, "order_output");
   ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_ROW, "Only CUBLASLT_ORDER_ROW is support for order_input");
   ORT_ENFORCE(order_output_ == CUBLASLT_ORDER_COL32 || order_output_ == CUBLASLT_ORDER_COL4_4R2_8C || order_output_ == CUBLASLT_ORDER_COL32_2R_4R4,
               "Only CUBLASLT_ORDER_COL32, CUBLASLT_ORDER_COL4_4R2_8C, CUBLASLT_ORDER_COL32_2R_4R4 is support for order_output");
-#else
-  ORT_ENFORCE(false, "CUDA version 11.0 or higher is needed!")
-#endif
 }
 
 DequantizeWithOrder::DequantizeWithOrder(const OpKernelInfo& info) : CudaKernel(info) {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   order_input_ = GetCublasLtOrderAttr(info, "order_input");
   order_output_ = GetCublasLtOrderAttr(info, "order_output");
   ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_COL32 || order_input_ == CUBLASLT_ORDER_COL4_4R2_8C || order_input_ == CUBLASLT_ORDER_COL32_2R_4R4,
               "Only CUBLASLT_ORDER_COL32, CUBLASLT_ORDER_COL4_4R2_8C, CUBLASLT_ORDER_COL32_2R_4R4 is support for order_input");
   ORT_ENFORCE(order_output_ == CUBLASLT_ORDER_ROW, "Only CUBLASLT_ORDER_ROW is support for order_output");
-#else
-  ORT_ENFORCE(false, "CUDA version 11.0 or higher is needed!")
-#endif
 }
 
 Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   int64_t rows = 0, cols = 0, batch = 0, n = 0;
 
   const Tensor& input_tensor = *context->Input<Tensor>(0);
@@ -179,13 +170,9 @@ Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
   }
 
   return Status::OK();
-#else
-  return Status(common::ONNXRUNTIME, common::FAIL, "CUDA version 11.0 or higher is needed!");
-#endif
 }
 
 Status DequantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   int64_t rows = 0, cols = 0, batch = 0, n = 0;
 
   const Tensor& input_tensor = *context->Input<Tensor>(0);
@@ -211,13 +198,10 @@ Status DequantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
   }
 
   return Status::OK();
-#else
-  return Status(common::ONNXRUNTIME, common::FAIL, "CUDA version 11.0 or higher is needed!");
-#endif
 }
 
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
 
-// #endif
+#endif

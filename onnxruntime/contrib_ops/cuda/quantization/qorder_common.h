@@ -10,6 +10,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+
 using namespace onnxruntime::cuda;
 
 class QuantizeWithOrder final : public CudaKernel {
@@ -32,8 +34,6 @@ class DequantizeWithOrder final : public CudaKernel {
   int order_output_;
   ONNX_NAMESPACE::TensorProto_DataType to_;
 };
-
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 
 cublasLtOrder_t GetCublasLtOrderAttr(const OpKernelInfo& info, const char* order_attr);
 
