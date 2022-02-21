@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef TVM_EXECUTION_PROVIDER_INFO_H
-#define TVM_EXECUTION_PROVIDER_INFO_H
+#ifndef TVM_EXECUTION_PROVIDER_OPTIONS_H
+#define TVM_EXECUTION_PROVIDER_OPTIONS_H
 
 #include <unordered_map>
 #include <vector>
@@ -27,7 +27,7 @@ const std::string LLVM_TARGET_AVX512 = "llvm -mcpu=skylake-avx512";
 using TVMInputShapes = std::unordered_map<std::string, std::vector<int64_t>>;
 
 // Information needed to construct an TVM execution provider.
-struct TvmExecutionProviderInfo {
+struct TvmEPOptions {
   std::string executor{tvm::default_executor_type};
   std::string target{tvm::default_target_str};
   std::string target_host{tvm::default_target_str};
@@ -41,10 +41,10 @@ struct TvmExecutionProviderInfo {
   TVMInputShapes input_shapes{};
 
   static std::string whitespace_trimming(const std::string& str);
-  static TvmExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
-  static TvmExecutionProviderInfo FromOptionsString(const char* options);
+  static TvmEPOptions FromProviderOptions(const ProviderOptions& options);
+  static TvmEPOptions FromOptionsString(const char* options);
 };
 
 }  // namespace onnxruntime
 
-#endif  // TVM_EXECUTION_PROVIDER_INFO_H
+#endif  // TVM_EXECUTION_PROVIDER_OPTIONS_H

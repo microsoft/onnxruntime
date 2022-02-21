@@ -7,7 +7,7 @@
 #include "core/common/common.h"
 #include "core/framework/provider_options_utils.h"
 
-#include "tvm_execution_provider_info.h"
+#include "tvm_ep_options.h"
 
 
 namespace onnxruntime {
@@ -40,7 +40,7 @@ static const std::unordered_set<std::string> valid_keys {
 }  // namespace provider_option_names
 }  // namespace tvm
 
-std::string TvmExecutionProviderInfo::whitespace_trimming(const std::string& str) {
+std::string TvmEPOptions::whitespace_trimming(const std::string& str) {
   const std::string WHITESPACE = " \n\r\t\f\v";
   size_t start = str.find_first_not_of(WHITESPACE);
   if (start == std::string::npos) {
@@ -52,8 +52,8 @@ std::string TvmExecutionProviderInfo::whitespace_trimming(const std::string& str
   }
 }
 
-TvmExecutionProviderInfo TvmExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
-  TvmExecutionProviderInfo info{};
+TvmEPOptions TvmEPOptions::FromProviderOptions(const ProviderOptions& options) {
+  TvmEPOptions info{};
 
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
@@ -72,7 +72,7 @@ TvmExecutionProviderInfo TvmExecutionProviderInfo::FromProviderOptions(const Pro
   return info;
 }
 
-TvmExecutionProviderInfo TvmExecutionProviderInfo::FromOptionsString(const char* opt_str) {
+TvmEPOptions TvmEPOptions::FromOptionsString(const char* opt_str) {
   std::string settings{opt_str};
   ProviderOptions options;
   if (!settings.empty()) {

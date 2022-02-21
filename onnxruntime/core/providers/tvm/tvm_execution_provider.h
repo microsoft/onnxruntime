@@ -14,7 +14,7 @@
 #include "core/platform/ort_mutex.h"
 
 #include "tvm_common.h"
-#include "tvm_execution_provider_info.h"
+#include "tvm_ep_options.h"
 
 namespace onnxruntime {
 
@@ -34,7 +34,7 @@ class TvmExecutionProvider : public IExecutionProvider {
   using TVMRunners = std::unordered_map<std::string, std::shared_ptr<TVMRunner>>;
   using TVMModules = std::unordered_map<std::string, std::shared_ptr<TvmModule>>;
  public:
-  explicit TvmExecutionProvider(const TvmExecutionProviderInfo& info);
+  explicit TvmExecutionProvider(const TvmEPOptions& options);
   virtual ~TvmExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -49,7 +49,7 @@ class TvmExecutionProvider : public IExecutionProvider {
  private:
   bool GPUTargetCheck() const;
   size_t split(const std::string &txt, std::vector<std::string> &strs, char ch) const;
-  void ProcessInfo();
+  void processOptions();
   void ProcessCPUTarget();
   void ProcessGPUTarget();
   void PrintProviderOptions() const;
@@ -64,7 +64,7 @@ class TvmExecutionProvider : public IExecutionProvider {
   bool dump_subgraphs_ = false;
   OrtMutex tvm_mu_;
   AllocatorPtr allocator_;
-  TvmExecutionProviderInfo info_;
+  TvmEPOptions options_;
   TVMModules modules_;
 };
 
