@@ -885,7 +885,7 @@ struct ProviderHostImpl : ProviderHost {
   const OrtMemoryInfo& Tensor__Location(const Tensor* p) override { return p->Location(); }
   int32_t Tensor__GetElementType(const Tensor* p) override { return p->GetElementType(); }
   MLDataType Tensor__DataType(const Tensor* p) override { return p->DataType(); }
-  TensorShapeVector Tensor__Strides(const Tensor* p) override { return p->Strides(); }
+  gsl::span<const int64_t> Tensor__Strides(const Tensor* p) override { return p->Strides(); }
   bool Tensor__IsContiguous(const Tensor* p) override { return p->IsContiguous(); }
   void Tensor__SetStrides(Tensor* p, const TensorShapeVector& new_strides) override { return p->SetStrides(new_strides); }
 

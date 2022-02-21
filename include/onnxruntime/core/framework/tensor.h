@@ -42,8 +42,8 @@ class Tensor final {
 
   static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, void* p_data,
                                         const OrtMemoryInfo& alloc, ptrdiff_t offset = 0,
-                                        const int64_t* p_strides = nullptr) {
-    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset, p_strides);
+                                        gsl::span<const int64_t> strides = {}) {
+    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset, strides);
   }
 
   Tensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
@@ -57,10 +57,10 @@ class Tensor final {
    *              Tensor does not own the data and will not delete it
    * \param alloc Where the buffer('p_data') was allocated from
    * \param offset Offset in bytes to start of Tensor within p_data.
-   * \param p_strides Pointer to stride array. Can be NULL if the tensor is contiguous.
+   * \param strides Strides span. Can be empty if the tensor is contiguous.
    */
   Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
-         ptrdiff_t offset = 0, const int64_t* p_strides = nullptr);
+         ptrdiff_t offset = 0, gsl::span<const int64_t> strides = {});
 
   /// <summary>
   /// Creates an instance of Tensor on the heap using the appropriate __ctor and
@@ -71,10 +71,10 @@ class Tensor final {
   /// <param name="p_data"></param>
   /// <param name="info"></param>
   /// <param name="offset"></param>
-  /// <param name="p_strides"></param>
+  /// <param name="strides"></param>
   static void InitOrtValue(MLDataType p_type, const TensorShape& shape,
                            void* p_data, const OrtMemoryInfo& location,
-                           OrtValue& ort_value, ptrdiff_t offset = 0, const int64_t* p_strides = nullptr);
+                           OrtValue& ort_value, ptrdiff_t offset = 0, gsl::span<const int64_t> strides = {});
 
   /**
    * Deprecated. The orginal design is this Tensor class won't do any allocation / release.
@@ -105,10 +105,10 @@ class Tensor final {
    *              Tensor will own the memory and will delete it when the tensor instance is destructed.
    * \param deleter Allocator used to free the pre-allocated memory
    * \param offset Offset in bytes to start of Tensor within p_data.
-   * \param p_strides Pointer to stride array. Can be NULL if the tensor is contiguous.
+   * \param strides Strides span. Can be empty if the tensor is contiguous.
    */
   Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
-         ptrdiff_t offset = 0, const int64_t* p_strides = nullptr);
+         ptrdiff_t offset = 0, gsl::span<const int64_t> strides = {});
 
   ~Tensor();
 
@@ -253,17 +253,12 @@ class Tensor final {
   /**
    * Get the strides of the tensor.
    */
-  TensorShapeVector Strides() const;
-
-  /**
-   * Get pointer to stride array. Can be NULL if tensor is contiguous.
-   */
-  const int64_t* StridesPtr() const;
+  gsl::span<const int64_t> Strides() const;
 
   /**
    * Return if the tensor is contiguous.
    */
-  bool IsContiguous() const { return is_contiguous_; }
+  bool IsContiguous() const noexcept { return is_contiguous_; }
 
   /**
    * Set strides.
@@ -277,7 +272,7 @@ class Tensor final {
             void* p_raw_data,
             AllocatorPtr deleter,
             ptrdiff_t offset = 0,
-            const int64_t* p_strides = nullptr);
+            gsl::span<const int64_t> strides = {});
 
   void ReleaseBuffer();
 
@@ -292,7 +287,7 @@ class Tensor final {
   AllocatorPtr buffer_deleter_;
 
   TensorShape shape_;
-  TensorShapeVector strides_;
+  mutable TensorShapeVector strides_;
   bool is_contiguous_ = true;
 
   const PrimitiveDataTypeBase* dtype_;

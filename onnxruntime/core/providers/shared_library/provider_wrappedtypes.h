@@ -910,7 +910,7 @@ struct Tensor final {
   MLDataType DataType() const { return g_host->Tensor__DataType(this); }
   bool IsDataTypeString() const { return g_host->Tensor__IsDataTypeString(this); }
 
-  TensorShapeVector Strides() const noexcept { return g_host->Tensor__Strides(this); }
+  gsl::span<const int64_t> Strides() const noexcept { return g_host->Tensor__Strides(this); }
   bool IsContiguous() const { return g_host->Tensor__IsContiguous(this); }
   void SetStrides(const TensorShapeVector& new_strides) { return g_host->Tensor__SetStrides(this, new_strides); }
 

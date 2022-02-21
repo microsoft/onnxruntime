@@ -4,9 +4,9 @@
 #pragma once
 
 #include "core/platform/threadpool.h"
-#include "core/providers/common.h"
-#include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
+#include "core/common/common.h"
+#include "core/framework/tensor.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 
 #include <vector>
 

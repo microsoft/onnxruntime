@@ -6,7 +6,7 @@
 #include "core/framework/tensor.h"
 #include "core/framework/sparse_tensor.h"
 #endif
-#include "core/providers/cpu/tensor/copy.h"
+#include "core/framework/copy.h"
 #include "core/framework/ortdevice.h"
 #include "core/session/environment.h"
 #include "core/common/logging/logging.h"
@@ -51,8 +51,8 @@ common::Status CPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /
   if (!src.IsContiguous() || !dst.IsContiguous()) {
     auto dst_stride_vec = dst.Strides();
     auto src_stride_vec = src.Strides();
-    onnxruntime::TensorShapeVector dst_stride{dst_stride_vec.begin(), dst_stride_vec.begin() + dst_stride_vec.size()};
-    onnxruntime::TensorShapeVector src_stride{src_stride_vec.begin(), src_stride_vec.begin() + src_stride_vec.size()};
+    onnxruntime::TensorShapeVector dst_stride{dst_stride_vec.begin(), dst_stride_vec.end()};
+    onnxruntime::TensorShapeVector src_stride{src_stride_vec.begin(), src_stride_vec.end()};
     return DispatchStridedCopy<element_type_lists::All>(nullptr, dst, dst.ByteOffset(), dst_stride, src.Shape(), src,
                                                         src_stride);
   } else {

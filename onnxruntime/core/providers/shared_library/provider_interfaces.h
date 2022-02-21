@@ -786,7 +786,7 @@ struct ProviderHost {
   virtual const OrtMemoryInfo& Tensor__Location(const Tensor* p) = 0;
   virtual int32_t Tensor__GetElementType(const Tensor* p) = 0;
   virtual MLDataType Tensor__DataType(const Tensor* p) = 0;
-  virtual TensorShapeVector Tensor__Strides(const Tensor* p) = 0;
+  virtual gsl::span<const int64_t> Tensor__Strides(const Tensor* p) = 0;
   virtual bool Tensor__IsContiguous(const Tensor* p) = 0;
   virtual void Tensor__SetStrides(Tensor* p, const TensorShapeVector& new_strides) = 0;
 
