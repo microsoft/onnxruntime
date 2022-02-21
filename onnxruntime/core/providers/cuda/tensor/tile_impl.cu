@@ -124,7 +124,7 @@ void TileMemcpyImpl(
   auto num_per_thread = num_output_elements / num_input_elements;
   // GPU SMs is 100 around, so 128 should be enough blocks to occupy all SMs
   if (blocks >= 128) {
-    std::cout << "used\n\n\n";
+    // std::cout << "used\n\n\n";
     _TileMemcpyKernel_opt<<<blocks, GridDim::maxThreadsPerBlock, 0, stream>>>(
         input_data, num_input_elements, output_data, (CUDA_LONG)num_output_elements, num_per_thread);
   } else {
