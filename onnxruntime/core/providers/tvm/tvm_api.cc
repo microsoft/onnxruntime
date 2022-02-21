@@ -78,7 +78,7 @@ void TVM_VM_SetInputs(TvmModule& mod,
   // TODO(vvchernov): set_input_zero_copy is more preferable but it does not satisfy alignment conditions.
   //tvm::PackedFunc set_input = mod.GetFunction("set_input_zero_copy", false);
 
-  TvmPackedFunc set_input = mod.GetFunction("set_input_with_index", false);
+  TvmPackedFunc set_input = mod.GetFunction("set_one_input", false);
   for (size_t i = 0; i < inds.size(); ++i)
   {
     set_input("main", inds[i], &inputs[i]);
