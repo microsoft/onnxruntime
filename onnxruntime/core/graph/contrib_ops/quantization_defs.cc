@@ -1085,6 +1085,26 @@ Dequantize input matrix to specific layout used in cublaslt. attr to specify out
         updateOutputShape(ctx, 0, input_shape);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QOrderedMatMul)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("QuantizeOrdereed MatMul")
+      .Attr("order_A", "cublasLt order of matrix A", AttributeProto::INT)
+      .Attr("order_B", "cublasLt order of matrix B", AttributeProto::INT)
+      .Attr("order_Y", "cublasLt order of matrix Y", AttributeProto::INT)
+      .Input(0, "A", "N-dimensional matrix A", "Q")
+      .Input(1, "scale_A", "scale of the input A", "F")
+      .Input(2, "B", "N-dimensional matrix B", "Q")
+      .Input(3, "scale_B", "scale of the input B", "F")
+      .Input(4, "scale_Y", "scale of the output Y", "F")
+      .Output(0, "Y", "Matrix multiply results from A * B", "Q")
+      .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("F", {"tensor(float)"}, "Constrain to float32")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
+      });
+
 }
 
 
