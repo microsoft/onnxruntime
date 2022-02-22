@@ -1054,7 +1054,8 @@ def run_onnxruntime(args, models):
                     # resolve providers to create session
                     providers = ep_to_provider_list[ep] 
                     options = onnxruntime.SessionOptions()
-                    options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+                    if args.optimize_graph:
+                        options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
                     
                     # create onnxruntime inference session
                     try:
@@ -1654,6 +1655,8 @@ def parse_arguments():
     parser.add_argument("--track_memory", required=False, default=True, help="Track CUDA and TRT Memory Usage")
 
     parser.add_argument("--io_binding", required=False, default=False, help="Bind Inputs")
+    
+    parser.add_argument("--optimize_graph", required=False, default=False, help="Bind Inputs")
 
     parser.add_argument("--ep", required=False, default=None, help="Specify ORT Execution Provider.")
     
