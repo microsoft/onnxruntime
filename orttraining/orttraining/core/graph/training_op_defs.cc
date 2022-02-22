@@ -1738,28 +1738,9 @@ Example 4:
             if (ctx.hasInput(2)) {
               // ratio specified.
               builder.Add("ratio_elem_type = Cast(ratio)", "to", int64_t(elem_type));
-
-              // std::vector<FunctionBodyHelper::NodeDef> body{
-              //     ONNX_NAMESPACE::Const("C0", 0.0f, elem_type),
-              //     ONNX_NAMESPACE::Const("C1", 1.0f, elem_type),
-              //     {{"ratio_elem_type"}, "Cast", {"ratio"}, {MakeAttribute("to", int64_t(elem_type))}},
-              //     {{"scale"}, "Sub", {"C1", "ratio_elem_type"}},
-              //     {{"scaled_dy"}, "Div", {"dy", "scale"}},
-              //     {{"dx"}, "Where", {"mask", "scaled_dy", "C0"}}};
-
-              // return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
             } else {
               // ratio not specified. Use a value of 0.5
               builder.Const("ratio_elem_type", 0.5f, elem_type);
-              // std::vector<FunctionBodyHelper::NodeDef> body{
-              //     ONNX_NAMESPACE::Const("C0", 0.0f, elem_type),
-              //     ONNX_NAMESPACE::Const("C1", 1.0f, elem_type),
-              //     ONNX_NAMESPACE::Const("ratio_elem_type", 0.5f, elem_type),
-              //     {{"scale"}, "Sub", {"C1", "ratio_elem_type"}},
-              //     {{"scaled_dy"}, "Div", {"dy", "scale"}},
-              //     {{"dx"}, "Where", {"mask", "scaled_dy", "C0"}}};
-
-              // return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
             }
             builder.Add(R"(
                   scale = Sub (C1, ratio_elem_type)
