@@ -13,8 +13,8 @@
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
 
-#include "tvm_common.h"
 #include "tvm_ep_options.h"
+#include "tvm_runner.h"
 
 namespace onnxruntime {
 
@@ -24,14 +24,13 @@ namespace env_vars {
 }  // namespace env_vars
 }  // namespace tvm
 
-class TVMRunner;
-
 class TvmExecutionProvider : public IExecutionProvider {
-  friend TVMRunner;
+  using Runner = tvm::TVMRunner;
+  friend Runner;
 
   using TVMTensorShape = std::vector<int64_t>;
   using TVMTensorShapes = std::vector<TVMTensorShape>;
-  using TVMRunners = std::unordered_map<std::string, std::shared_ptr<TVMRunner>>;
+  using Runners = std::unordered_map<std::string, std::shared_ptr<Runner>>;
   using TVMModules = std::unordered_map<std::string, std::shared_ptr<TvmModule>>;
  public:
   explicit TvmExecutionProvider(const TvmEPOptions& options);
@@ -53,7 +52,7 @@ class TvmExecutionProvider : public IExecutionProvider {
  private:
   TvmEPOptions options_;
   TVMModules modules_;
-  TVMRunners runners_;
+  Runners runners_;
   std::unordered_map<std::string, std::string> buffers_;
   std::unordered_map<std::string, int> opsets_;
   std::unordered_map<std::string, std::string>  model_paths_;
