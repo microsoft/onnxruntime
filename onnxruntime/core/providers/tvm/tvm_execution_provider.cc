@@ -10,7 +10,6 @@
 #include "core/framework/compute_capability.h"
 #include "core/platform/env.h"
 #include "core/graph/model.h"
-#include "core/common/cpuid_info.h"
 
 #include "tvm_execution_provider.h"
 #include "xpu_data_transfer.h"
@@ -250,11 +249,9 @@ class TVMRunner {
     std::vector<DLTensor> tensors_outputs_;
 };
 
-TvmExecutionProvider::TvmExecutionProvider(const TvmEPOptions& info)
+TvmExecutionProvider::TvmExecutionProvider(const TvmEPOptions& options)
     : IExecutionProvider{kTvmExecutionProvider},
-      options_{info} {
-  processOptions();
-
+      options_{options} {
   AllocatorCreationInfo default_memory_info = {[](int) {
                                                  return std::make_unique<TVMAllocator>();
                                                },
@@ -328,7 +325,6 @@ TvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
 
 common::Status TvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
                                              std::vector<NodeComputeInfo>& node_compute_funcs) {
-  PrintProviderOptions();
   for (auto* fused_node : nodes) {
     auto func_body = fused_node->GetFunctionBody();
     if (!func_body)
@@ -378,141 +374,14 @@ common::Status TvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
 }
 
 std::unique_ptr<IDataTransfer> TvmExecutionProvider::GetDataTransfer() const {
-  if (GPUTargetCheck()) {
+  //TODO(vvchernov): target or target host?
+  if (options_.checkGPUTarget()) {
     return std::make_unique<onnxruntime::XPUDataTransfer>();
   } else if (options_.target.find("llvm") != std::string::npos) {
     return std::make_unique<onnxruntime::TvmCPUDataTransfer>();
   } else {
     ORT_NOT_IMPLEMENTED("TVM GetDataTransfer is not implemented for target ", options_.target);
   }
-}
-
-bool TvmExecutionProvider::GPUTargetCheck() const {
-  //TODO(vvchernov): target or target host?
-  bool check = (
-    options_.target.find("cuda") != std::string::npos ||
-    options_.target.find("opencl") != std::string::npos ||
-    options_.target.find("metal") != std::string::npos ||
-    options_.target.find("vulkan") != std::string::npos
-  );
-  return check;
-}
-
-size_t TvmExecutionProvider::split(const std::string &txt, std::vector<std::string> &strs, char ch) const {
-    size_t pos = txt.find( ch );
-    size_t initialPos = 0;
-    strs.clear();
-
-    while( pos != std::string::npos ) {
-        strs.push_back( txt.substr( initialPos, pos - initialPos ) );
-        initialPos = pos + 1;
-
-        pos = txt.find( ch, initialPos );
-    }
-
-    strs.push_back( txt.substr( initialPos, std::min( pos, txt.size() ) - initialPos + 1 ) );
-
-    return strs.size();
-}
-
-void TvmExecutionProvider::processOptions() {
-  if(!options_.input_shapes_str.empty()) {
-    ORT_ENFORCE(!options_.input_names_str.empty(),
-                "Please insert input tensor names. Input shapes only is invalid case");
-    // Parse strings and set to input_shapes map
-    std::vector<std::string> tmp_strs;
-    std::vector<std::string> names_strs;
-
-    std::string names_str = TvmEPOptions::whitespace_trimming(options_.input_names_str);
-    std::string shapes_str = TvmEPOptions::whitespace_trimming(options_.input_shapes_str);
-
-    ORT_ENFORCE(split(names_str, names_strs, ' '), "There is no any input tensor names!");
-    size_t inp_tensors_num = names_strs.size();
-
-    size_t end_pos = shapes_str.find_last_of(']');
-    ORT_ENFORCE(end_pos != std::string::npos, "Invalid string for input shapes. Symbol ] is not found");
-    ORT_ENFORCE(end_pos == (shapes_str.size() - 1),
-                "Invalid string for input shapes. Symbol ] should be last after whitespace trimming");
-    split(shapes_str, tmp_strs, ']');
-    tmp_strs.pop_back();
-    ORT_ENFORCE( tmp_strs.size() == inp_tensors_num,
-                "Number of shapes is not the same as number of input tensor names");
-    for (size_t i = 0; i < inp_tensors_num; ++i) {
-      size_t pos = tmp_strs[i].find('[');
-      ORT_ENFORCE(pos != std::string::npos, "There is no symbol [ as pair for ]");
-      std::string nums_str = tmp_strs[i].substr(pos + 1);
-      std::vector<std::string> nums_strs;
-      ORT_ENFORCE(split(nums_str, nums_strs, ' '), "There is no any numbers between [ and ] symbols");
-      std::vector<int64_t> dims;
-      for(const auto& num_str : nums_strs) {
-        dims.push_back(std::stoi(num_str));
-      }
-
-      options_.input_shapes[names_strs[i]] = dims;
-    }
-  }
-
-  if(options_.target == tvm::cpu_target_str ||
-     options_.target == tvm::llvm_target_str) {
-    ProcessCPUTarget();
-  } else if(options_.target == tvm::gpu_target_str) {
-    ProcessGPUTarget();
-  } else if(options_.target.empty()) {
-    ORT_NOT_IMPLEMENTED("target option is empty!");
-  } else {
-    // TODO(vvchernov): extend mechanism of auto-definition of target
-    // target is gotten from option set up by client
-  }
-
-  if((options_.target_host == tvm::cpu_target_str ||
-      options_.target_host == tvm::llvm_target_str) &&
-      options_.target_host != options_.target) {
-    options_.target_host = options_.target;
-  } else if (options_.target_host.empty()) {
-    options_.target_host = options_.target;
-  } else {
-    // TODO(vvchernov): extend mechanism of auto-definition of target host
-    // target host is gotten from option set up by client
-  }
-
-  if(options_.opt_level < 1) {
-    options_.opt_level = tvm::default_opt_level;
-  }
-}
-
-void TvmExecutionProvider::ProcessCPUTarget() {
-  const auto& cpu_id_info = CPUIDInfo::GetCPUIDInfo();
-  // auto detect from CPU ID
-  if (cpu_id_info.HasAVX512Skylake()) {
-    options_.target = tvm::cpu_targets::LLVM_TARGET_SKYLAKE_AVX512;
-  } else if (cpu_id_info.HasAVX512f()) {
-    options_.target = tvm::cpu_targets::LLVM_TARGET_AVX512;
-  } else if (cpu_id_info.HasAVX2()) {
-    options_.target = tvm::cpu_targets::LLVM_TARGET_AVX2;
-  } else if (cpu_id_info.HasAVX()) {
-    options_.target = tvm::cpu_targets::LLVM_TARGET_AVX;
-  } else  {
-    // TODO(vvchernov): extend mechanism of auto-definition of cpu target
-    options_.target = tvm::llvm_target_str;
-  }
-}
-
-void TvmExecutionProvider::ProcessGPUTarget() {
-  ORT_NOT_IMPLEMENTED("GPU target auto-defenition is not implemented now!");
-}
-
-void TvmExecutionProvider::PrintProviderOptions() const {
-  LOGS(*GetLogger(), INFO) << "TVM EP options:\n" <<
-  "executor type: " << options_.executor << "\n" <<
-  "target: " << options_.target << "\n" <<
-  "target_host: " << options_.target_host << "\n" <<
-  "opt level: " << options_.opt_level << "\n" <<
-  "freeze weights: " << options_.freeze_weights << "\n" <<
-  "tuning file path: " << options_.tuning_file_path << "\n" <<
-  "tuning type: " << options_.tuning_type << "\n" <<
-  "convert layout to NHWC: " << options_.to_nhwc << "\n" <<
-  "input tensor names: " << options_.input_names_str << "\n" <<
-  "input tensor shapes: " << options_.input_shapes_str;
 }
 
 int TvmExecutionProvider::CreateStateFunc(ComputeContext* context, FunctionState* state) {

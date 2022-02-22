@@ -36,13 +36,23 @@ struct TvmEPOptions {
   bool to_nhwc = false;
   std::string tuning_file_path{""};
   std::string tuning_type{tvm::default_tuning_type};
-  std::string input_names_str{""};
-  std::string input_shapes_str{""};
   TVMInputShapes input_shapes{};
 
-  static std::string whitespace_trimming(const std::string& str);
-  static TvmEPOptions FromProviderOptions(const ProviderOptions& options);
   static TvmEPOptions FromOptionsString(const char* options);
+  static TvmEPOptions FromProviderOptions(const ProviderOptions& options);
+  static std::string whitespace_trimming(const std::string& str);
+
+  void optionsPostprocess(const std::string& names = "", const std::string& shapes = "");
+
+  bool checkGPUTarget() const;
+private:
+  void setInputShapes(const std::string& names, const std::string& shapes);
+  void targetPostprocess();
+  void ProcessCPUTarget();
+  void ProcessGPUTarget();
+  void targetHostPostprocess();
+  void optLevelPostprocess();
+  void printOptions(const std::string& names = "", const std::string& shapes = "") const;
 };
 
 }  // namespace onnxruntime

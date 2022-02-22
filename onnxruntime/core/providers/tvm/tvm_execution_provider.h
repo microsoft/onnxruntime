@@ -47,16 +47,12 @@ class TvmExecutionProvider : public IExecutionProvider {
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
  private:
-  bool GPUTargetCheck() const;
-  size_t split(const std::string &txt, std::vector<std::string> &strs, char ch) const;
-  void processOptions();
-  void ProcessCPUTarget();
-  void ProcessGPUTarget();
-  void PrintProviderOptions() const;
   // Bindings for compute info
   int CreateStateFunc(ComputeContext*, FunctionState*);
   TvmModule* CompileFunc(std::string func_name, const TVMTensorShapes& input_shapes);
  private:
+  TvmEPOptions options_;
+  TVMModules modules_;
   TVMRunners runners_;
   std::unordered_map<std::string, std::string> buffers_;
   std::unordered_map<std::string, int> opsets_;
@@ -64,8 +60,6 @@ class TvmExecutionProvider : public IExecutionProvider {
   bool dump_subgraphs_ = false;
   OrtMutex tvm_mu_;
   AllocatorPtr allocator_;
-  TvmEPOptions options_;
-  TVMModules modules_;
 };
 
 }  // namespace onnxruntime
