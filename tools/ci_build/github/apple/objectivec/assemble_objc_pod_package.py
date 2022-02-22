@@ -57,6 +57,9 @@ test_resource_files = [
 
 
 def get_pod_config_file(package_variant: PackageVariant):
+    '''
+    Gets the pod configuration file path for the given package variant.
+    '''
     if package_variant == PackageVariant.Full:
         return _script_dir / "onnxruntime-objc.config.json"
     elif package_variant == PackageVariant.Mobile:

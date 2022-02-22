@@ -19,6 +19,9 @@ from package_assembly_utils import (  # noqa: E402
 
 
 def get_pod_config_file(package_variant: PackageVariant):
+    '''
+    Gets the pod configuration file path for the given package variant.
+    '''
     if package_variant == PackageVariant.Full:
         return _script_dir / "onnxruntime-c.config.json"
     elif package_variant == PackageVariant.Mobile:
