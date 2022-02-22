@@ -1142,7 +1142,7 @@ namespace OperatorHelper
 
         std::vector<uint32_t> inputShape = shapeInformation.GetInputTensorShape(0);
         HandleNegativeAxes(/*inout*/ m_axes, gsl::narrow_cast<uint32_t>(inputShape.size()));
-        HandleEmptyAxes(/*inout*/ m_axes, inputShape, m_noopWithEmptyAxes);
+        HandleEmptyAxes(/*inout*/ m_axes, inputShape, bool(m_noopWithEmptyAxes));
     }
 
     std::vector<EdgeShapes> ReduceHelperBase::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
