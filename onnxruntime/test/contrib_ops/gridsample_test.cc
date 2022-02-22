@@ -128,6 +128,29 @@ TEST(GridsampleContribOpTest, gridsample_mode_bicubic) {
   test.Run();
 }
 
+TEST(GridsampleContribOpTest, gridsample_mode_bicubic_border) {
+  OpTester test("GridSample", 1, kMSDomain);
+  test.AddInput<float>("X", {1, 1, 3, 2}, {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
+  test.AddInput<float>("Grid", {1, 4, 4, 2},
+                       {-1.0000f, -1.0000f, -0.5000f, -0.5000f,
+                        -0.2000f, -0.2000f, 0.0000f, 0.0000f,
+                        0.0000f, 0.0000f, -0.2000f, -0.2000f,
+                        0.5000f, 0.5000f, 1.0000f, 1.0000f,
+                        -1.100f, 0.4000f, -0.400f, -1.100f,
+                         1.100f, -0.400f, 0.400f, 1.100f,
+                        -10.000f,  0.000f, 10.000f, 0.000f,
+                        0.000f, -10.000f, 0.000f, 10.000f});
+  test.AddAttribute("mode", "bicubic");
+  test.AddAttribute("padding_mode", "border");
+  test.AddOutput<float>("Y", {1, 1, 4, 4},
+                       {-0.2812f, 0.3828f, 1.5005f, 2.5000f,
+                        2.5000f, 1.5005f, 4.6172f, 5.2812f,
+                        3.2960f, -0.0374f, 1.7040f, 5.0374f,
+                        2.0000f,  3.0000f, 0.5000f, 4.5000f});
+
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 

@@ -205,11 +205,7 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
               }
 
               if (x < x_min || x > x_max || y < y_min || y > y_max) {  // out of bound
-                if (padding_mode_ == Border) {
-                  // use original border in both align_corner cases
-                  x = std::clamp(x, static_cast<T>(0), static_cast<T>(W_in - 1));
-                  y = std::clamp(y, static_cast<T>(0), static_cast<T>(H_in - 1));
-                } else if (padding_mode_ == Reflection) {
+                if (padding_mode_ == Reflection) {
                   x = GsReflect(x, x_min, x_max);
                   y = GsReflect(y, y_min, y_max);
                 }
