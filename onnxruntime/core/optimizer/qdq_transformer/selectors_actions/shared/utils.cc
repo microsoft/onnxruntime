@@ -34,6 +34,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() { retur
                                                                                    {"Resize", {}}}; }
 
 static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() { return {{"AveragePool", {}},
+                                                                                    {"Softmax", {}},
                                                                                     {"LeakyRelu", {}}}; }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() { return {{"Add", {}},
                                                                                      {"Mul", {}}}; }
@@ -111,7 +112,9 @@ std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& grap
   std::vector<NodeGroup> qdq_selections;
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     const auto* node = graph_viewer.GetNode(index);
-    if (node->Domain() != kOnnxDomain) {
+    // post layout transformation all the layout sensitive nodes are converted to domain
+    // kMSInternalNHWCDomain. Therefore need to allow this domain as well.
+    if (node->Domain() != kOnnxDomain && node->Domain() != kMSInternalNHWCDomain) {
       continue;
     }
 

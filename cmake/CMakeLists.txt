@@ -60,7 +60,7 @@ option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 
-option(onnxruntime_USE_TVM "Build TVM for code generation." OFF)
+option(onnxruntime_USE_NUPHAR_TVM "Build TVM for code generation for NUPHAR EP" OFF)
 option(onnxruntime_USE_LLVM "Build TVM with LLVM" OFF)
 
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
@@ -104,7 +104,8 @@ option(onnxruntime_USE_MIMALLOC "Override new/delete and arena allocator with mi
 #It's default OFF because it's experimental now.
 option(onnxruntime_PREFER_SYSTEM_LIB "Experimental: Build with the preinstalled libraries in your system" OFF)
 option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
-option(onnxruntime_USE_STVM "Build with standalone TVM support" OFF)
+option(onnxruntime_USE_TVM "Build with TVM support" OFF)
+option(onnxruntime_TVM_CUDA_RUNTIME "Build TVM with CUDA support" OFF)
 
 # Options related to reducing the binary size produced by the build
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
@@ -346,10 +347,11 @@ if (onnxruntime_MINIMAL_BUILD)
   if (onnxruntime_EXTENDED_MINIMAL_BUILD)
     # enable EPs that compile kernels at runtime
     add_compile_definitions(ORT_EXTENDED_MINIMAL_BUILD)
-
-    if (onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
-      add_compile_definitions(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
-    endif()
+    # enable runtime optimizations. These are required for NNAPI.
+    # TODO remove onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD since these optimzations are now
+    # enabled for all extended minimal builds.
+    SET(onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD ON)
+    add_compile_definitions(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   endif()
 
   if (onnxruntime_MINIMAL_BUILD_CUSTOM_OPS)
@@ -818,7 +820,6 @@ if (onnxruntime_USE_CUDA AND "${onnxruntime_CUDNN_HOME}" STREQUAL "")
   message(FATAL_ERROR "onnxruntime_CUDNN_HOME required for onnxruntime_USE_CUDA")
 endif()
 
-
 get_filename_component(ONNXRUNTIME_ROOT "${ONNXRUNTIME_ROOT}" ABSOLUTE)
 get_filename_component(ORTTRAINING_ROOT "${ORTTRAINING_ROOT}" ABSOLUTE)
 get_filename_component(REPO_ROOT "${REPO_ROOT}" ABSOLUTE)
@@ -1100,10 +1101,10 @@ if (onnxruntime_USE_NUPHAR)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_NUPHAR=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES nuphar)
 endif()
-if (onnxruntime_USE_STVM)
-    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_STVM=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_STVM=1)
-    list(APPEND ONNXRUNTIME_PROVIDER_NAMES stvm)
+if (onnxruntime_USE_TVM)
+    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_TVM=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_TVM=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES tvm)
 endif()
 if (onnxruntime_USE_WINML)
   list(APPEND ORT_PROVIDER_FLAGS  -DUSE_WINML=1)
@@ -1337,66 +1338,96 @@ if (onnxruntime_USE_DNNL)
   include(dnnl)
 endif()
 
-# TVM
-if (onnxruntime_USE_TVM)
+# NUPHAR EP
+if (onnxruntime_USE_NUPHAR_TVM)
   if (NOT TARGET tvm)
     message(STATUS "Include TVM(*).")
     include(tvm)
   endif()
   if (onnxruntime_USE_CUDA)
-    if (onnxruntime_USE_STVM)
-      set(USE_CUDA ${onnxruntime_CUDA_HOME} CACHE BOOL "Only defined for TVM")
-      set(USE_MKLDNN ON CACHE BOOL "Only defined for TVM")
-      set(USE_CUDNN ON CACHE BOOL "Only defined for TVM")
-    endif()
-    if (onnxruntime_USE_NUPHAR)
-      set(USE_CUDA ON CACHE BOOL "Only defined for TVM")
-    endif()
+    set(USE_CUDA ON CACHE BOOL "Only defined for TVM")
   endif()
   if (onnxruntime_USE_LLVM)
     set(USE_LLVM ON CACHE BOOL "Only defined for TVM")
-    add_definitions(-DUSE_TVM_WITH_LLVM)
+    add_definitions(-DUSE_NUPHAR_TVM_WITH_LLVM)
   endif()
 
-  if (onnxruntime_USE_STVM)
-    set(USE_OPENMP gnu CACHE STRING "Only defined for TVM")
-    set(USE_MICRO OFF CACHE BOOL "Only defined for TVM")
-  endif()
-  message(STATUS "TVM BEFORE USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} USE_MICRO=${USE_MICRO} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
+  message(STATUS "TVM BEFORE USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
   message(STATUS "tvm_SOURCE_DIR=${tvm_SOURCE_DIR}")
   message(STATUS "tvm_BINARY_DIR=${tvm_BINARY_DIR}")
   add_subdirectory(${tvm_SOURCE_DIR} ${tvm_BINARY_DIR} EXCLUDE_FROM_ALL)
-  message(STATUS "TVM AFTER USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} USE_MICRO=${USE_MICRO} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
+  message(STATUS "TVM AFTER USE_LLVM=${USE_LLVM} USE_OPENMP=${USE_OPENMP} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} USE_CUDA=${USE_CUDA} USE_GTEST=${USE_GTEST} CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
 
-  if (onnxruntime_USE_NUPHAR)
-    set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
-    set_target_properties(tvm_topi PROPERTIES FOLDER ${tvm_SOURCE_DIR})
-    set_target_properties(tvm_runtime PROPERTIES FOLDER ${tvm_SOURCE_DIR})
+  set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
+  set_target_properties(tvm_topi PROPERTIES FOLDER ${tvm_SOURCE_DIR})
+  set_target_properties(tvm_runtime PROPERTIES FOLDER ${tvm_SOURCE_DIR})
 
-    set(TVM_INCLUDES ${tvm_SOURCE_DIR}/include
-      ${tvm_SOURCE_DIR}/3rdparty/dmlc-core/include
-      ${tvm_SOURCE_DIR}/3rdparty/dlpack/include
-      $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>
-      $<TARGET_PROPERTY:tvm_topi,INTERFACE_INCLUDE_DIRECTORIES>)
+  set(TVM_INCLUDES ${tvm_SOURCE_DIR}/include
+    ${tvm_SOURCE_DIR}/3rdparty/dmlc-core/include
+    ${tvm_SOURCE_DIR}/3rdparty/dlpack/include
+    $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>
+    $<TARGET_PROPERTY:tvm_topi,INTERFACE_INCLUDE_DIRECTORIES>)
+
+  add_definitions(-DUSE_NUPHAR_TVM)
+
+  set(onnxruntime_tvm_libs onnxruntime_codegen_tvm)
+
+  # needs to link with stdc++fs in Linux
+  if (UNIX)
+    if (NOT APPLE)
+      set(FS_STDLIB stdc++fs)
+    endif()
+  endif()
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ${FS_STDLIB})
+  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
+
+  if (WIN32 AND MSVC)
+    # wd4100: identifier' : unreferenced formal parameter
+    # wd4244: conversion from 'int' to 'char', possible loss of data
+    # wd4251: class X needs to have dll-interface to be used by clients of class Y
+    # wd4267: 'initializing': conversion from 'size_t' to 'int', possible loss of data
+    # wd4275: non dll-interface class X used as base for dll-interface class Y
+    # wd4389: signed/unsigned mismatch
+    # wd4456: declaration of X hides previous local declaration
+    set(DISABLED_WARNINGS_FOR_TVM "/wd4100" "/wd4244" "/wd4251" "/wd4267" "/wd4275" "/wd4389" "/wd4456")
+  else()
+    set(DISABLED_WARNINGS_FOR_TVM "-Wno-error=ignored-qualifiers" "-Wno-unused-parameter" "-Wno-ignored-qualifiers")
+    list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error=unused-parameter")
+    if (HAS_CATCH_VALUE)
+      #TODO: send a PR to TVM and fix it
+      list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error=catch-value")
+    endif()
   endif()
 
-  if (onnxruntime_USE_STVM)
-    set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
+  include(onnxruntime_codegen.cmake)
+endif(onnxruntime_USE_NUPHAR_TVM)
 
-    set(TVM_INCLUDES ${tvm_SOURCE_DIR}/include
-      ${tvm_SOURCE_DIR}/3rdparty/dmlc-core/include
-      ${tvm_SOURCE_DIR}/3rdparty/dlpack/include
-      $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>)
+# TVM EP
+if (onnxruntime_USE_TVM)
+  if (NOT TARGET tvm)
+    message(STATUS "Include TVM(*).")
+    include(tvm)
   endif()
 
-  add_definitions(-DUSE_TVM)
+  if (onnxruntime_USE_LLVM)
+    set(USE_LLVM ON CACHE BOOL "Only defined for TVM")
+  endif()
 
-  if (onnxruntime_USE_NUPHAR)
-    set(onnxruntime_tvm_libs onnxruntime_codegen_tvm)
+  if (onnxruntime_TVM_CUDA_RUNTIME)
+    set(USE_CUDA ON CACHE BOOL "Only defined for TVM" FORCE)
   endif()
-  if (onnxruntime_USE_STVM)
-    set(onnxruntime_tvm_libs onnxruntime_providers_stvm)
-  endif()
+
+  set(USE_OPENMP gnu CACHE STRING "Only defined for TVM")
+  add_subdirectory(${tvm_SOURCE_DIR} ${tvm_BINARY_DIR} EXCLUDE_FROM_ALL)
+
+  set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
+
+  set(TVM_INCLUDES ${tvm_SOURCE_DIR}/include
+    ${tvm_SOURCE_DIR}/3rdparty/dmlc-core/include
+    ${tvm_SOURCE_DIR}/3rdparty/dlpack/include
+    $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>)
+
+  set(onnxruntime_tvm_libs onnxruntime_providers_tvm)
 
   # needs to link with stdc++fs in Linux
   if (UNIX)
@@ -1671,6 +1702,16 @@ if (onnxruntime_USE_CUDA)
   endif()
 endif()
 
+if (onnxruntime_USE_TENSORRT)
+  # needs to link with stdc++fs in Linux
+  if (UNIX)
+    if (NOT APPLE)
+      set(FS_STDLIB stdc++fs)
+    endif()
+  endif()
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${FS_STDLIB})
+endif()
+
 if (onnxruntime_USE_MIGRAPHX)
   if (WIN32)
     message(FATAL_ERROR "MIGraphX does not support build in Windows!")
@@ -1710,29 +1751,6 @@ if (onnxruntime_USE_ROCM)
   message("ROCM_VERSION_DEV_PATCH: ${ROCM_VERSION_DEV_PATCH}")
   message("ROCM_VERSION_DEV_INT:   ${ROCM_VERSION_DEV_INT}")
   add_definitions(-DROCM_VERSION=${ROCM_VERSION_DEV_INT})
-endif()
-
-if (onnxruntime_USE_TVM)
-  if (WIN32 AND MSVC)
-    # wd4100: identifier' : unreferenced formal parameter
-    # wd4244: conversion from 'int' to 'char', possible loss of data
-    # wd4251: class X needs to have dll-interface to be used by clients of class Y
-    # wd4267: 'initializing': conversion from 'size_t' to 'int', possible loss of data
-    # wd4275: non dll-interface class X used as base for dll-interface class Y
-    # wd4389: signed/unsigned mismatch
-    # wd4456: declaration of X hides previous local declaration
-    set(DISABLED_WARNINGS_FOR_TVM "/wd4100" "/wd4244" "/wd4251" "/wd4267" "/wd4275" "/wd4389" "/wd4456")
-  else()
-    set(DISABLED_WARNINGS_FOR_TVM "-Wno-error=ignored-qualifiers" "-Wno-unused-parameter" "-Wno-ignored-qualifiers")
-    list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error=unused-parameter")
-    if (HAS_CATCH_VALUE)
-      #TODO: send a PR to TVM and fix it
-      list(APPEND DISABLED_WARNINGS_FOR_TVM "-Wno-error=catch-value")
-    endif()
-  endif()
-  if (onnxruntime_USE_NUPHAR)
-    include(onnxruntime_codegen.cmake)
-  endif()
 endif()
 
 if (onnxruntime_ENABLE_MICROSOFT_INTERNAL)

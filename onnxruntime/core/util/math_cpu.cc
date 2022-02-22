@@ -15,9 +15,11 @@
 */
 // Modifications Copyright (c) Microsoft.
 
-#include <algorithm>
-#include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
+#include "core/util/math.h"
+
+#include <algorithm>
+#include <gsl/gsl>
 #include "core/mlas/inc/mlas.h"
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
@@ -859,10 +861,10 @@ SPECIALIZED_ROWWISESUM(int64_t)
 SPECIALIZED_ROWWISESUM(double)
 #undef SPECIALIZED_ROWWISESUM
 
-#define SPECIALIZED_SUM(T)                                                                             \
-  template <>                                                                                          \
-  void Sum<T, CPUMathUtil>(int N, const T* x, T* y, CPUMathUtil* /* unused */, Tensor* /* unused */) { \
-    *y = ConstEigenVectorMap<T>(x, N).sum();                                                           \
+#define SPECIALIZED_SUM(T)                                                       \
+  template <>                                                                    \
+  void Sum<T, CPUMathUtil>(int N, const T* x, T* y, CPUMathUtil* /* unused */) { \
+    *y = ConstEigenVectorMap<T>(x, N).sum();                                     \
   }
 
 SPECIALIZED_SUM(float);
