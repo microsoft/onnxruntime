@@ -71,13 +71,15 @@ def _test_ios_packages(args):
         # We will only publish xcframework, however, assembly of the xcframework is a post process
         # and it cannot be done by CMake for now. See, https://gitlab.kitware.com/cmake/cmake/-/issues/21752
         # For a single sysroot and arch built by build.py or cmake, we can only generate framework
-        # We still need a way to test it, replace the xcframework with framework in the podspec
+        # We still need a way to test it. framework_dir and public_headers_dir have different values when testing a
+        # framework and a xcframework.
         framework_dir = args.c_framework_dir / framework_name
+        public_headers_dir = framework_dir / "Headers" if has_framework else args.c_framework_dir / "Headers"
 
         pod_name, podspec = assemble_c_pod_package(staging_dir=local_pods_dir,
                                                    pod_version=get_ort_version(),
                                                    framework_info_file=args.framework_info_file,
-                                                   public_headers_dir=args.c_framework_dir / "Headers",
+                                                   public_headers_dir=public_headers_dir,
                                                    framework_dir=framework_dir,
                                                    package_variant=PackageVariant[args.variant])
 
