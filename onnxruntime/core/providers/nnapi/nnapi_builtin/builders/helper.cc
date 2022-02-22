@@ -82,6 +82,8 @@ QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit) {
       return QuantizedOpType::QDQTranspose;
     else if (op_type == "Reshape")
       return QuantizedOpType::QDQReshape;
+    else if (op_type == "Softmax")
+      return QuantizedOpType::QDQSoftmax;
   } else {
     // throw?
   }
