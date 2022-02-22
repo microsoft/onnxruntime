@@ -29,6 +29,7 @@ from onnx_model_bert_tf import BertOnnxModelTF
 from onnx_model_bert_keras import BertOnnxModelKeras
 from onnx_model_gpt2 import Gpt2OnnxModel
 from onnx_model_tnlr import TnlrOnnxModel
+from onnx_model_wav2vec2 import Wav2vec2OnnxModel
 from fusion_options import FusionOptions
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,7 @@ MODEL_TYPES = {
     "gpt2": (Gpt2OnnxModel, "pytorch", 1),
     "gpt2_tf": (Gpt2OnnxModel, 'tf2onnx', 0),  # might add a class for GPT2OnnxModel for TF later.
     "tnlr": (TnlrOnnxModel, "pytorch", 1),
+    "wav2vec2": (Wav2vec2OnnxModel, "pytorch", 1),
 }
 
 
