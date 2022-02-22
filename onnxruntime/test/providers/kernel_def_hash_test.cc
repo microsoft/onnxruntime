@@ -200,9 +200,12 @@ TEST(KernelDefHashTest, ExpectedCpuKernelDefHashes) {
 // Adding this test here because resolution for this test failure requires fetching the hash
 // for one of the ops in the list below and this file has information around that.
 // Please update the following 3 places:
-// 1. api_impl.cc "onnx_ops_available_versions" map, include the latest version in the map
-// 2. static_kernel_def_hashes.cc "static_kernel_hashes" include an entry for latest version and it's associated hash
-// 3. This file "onnx_ops_available_versions" map, include the latest version in the map
+// 1. optimizer/transpose_optimizer/optimizer_api_impl.cc "onnx_ops_available_versions" map,
+//    include the latest version in the map
+// 2. framework/kernel_def_hash_helpers.cc:GetHashValueFromStaticKernelHashMap "static_kernel_hashes" map,
+//    add an entry for latest version and its associated hash
+// 3. KernelDefHashTest.TestNewOpsVersionSupportDuringLayoutTransform "onnx_ops_available_versions" map,
+//    include the latest version in the map
 TEST(KernelDefHashTest, TestNewOpsVersionSupportDuringLayoutTransform) {
   static const std::unordered_map<std::string, std::vector<int>> onnx_ops_available_versions = {
       {"Squeeze", {1, 11, 13}},
