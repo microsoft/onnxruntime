@@ -179,12 +179,12 @@ class BeamSearchImpl {
                          ->GetAllocator(0, OrtMemTypeDefault);
   }
 
-  // Initialize by validating all the inputs, and allocating the   tensors.
+  // Initialize by validating all the inputs, and allocating the output tensors.
   Status Initialize();
 
   // Execute beam search in iterations util stopping criteria is reached.
   // In each iteration, GPT subgraph is called, and next token for each sequence is generated.
-  Status Execute(const FeedsFetchesManager& cached_ffm);
+  Status Execute(const FeedsFetchesManager& feeds_fetches_manager);
 
  private:
   bool IsCuda() const { return cuda_stream_ != nullptr; }
@@ -486,7 +486,7 @@ Status BeamSearchImpl<T>::UpdateFeeds(
 }
 
 template <typename T>
-Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
+Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& feeds_fetches_manager) {
   auto status = Status::OK();
   int64_t sequences_dims[] = {parameters_->batch_size, parameters_->num_return_sequences, parameters_->max_length};
   TensorShape sequences_shape(&sequences_dims[0], sizeof(sequences_dims) / sizeof(sequences_dims[0]));
@@ -581,7 +581,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& ffm) {
     dumper->Print("***CurrentLength", cur_len, true);
 #endif
 
-    status = utils::ExecuteSubgraph(session_state_, ffm, feeds, fetches, {},
+    status = utils::ExecuteSubgraph(session_state_, feeds_fetches_manager, feeds, fetches, {},
                                     ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger());
 
     ORT_RETURN_IF_ERROR(status);

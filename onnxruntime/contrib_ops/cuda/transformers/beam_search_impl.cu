@@ -54,63 +54,137 @@ void LaunchNextTokenKernel(const int64_t* next_token_indices,
   NextTokenKernel<<<gridSize, blockSize, 0, stream>>>(next_token_indices, next_indices, next_tokens, vocab_size, total_elements);
 }
 
-
-
 template <typename T>
 __global__ void LogitsProcessKernel(
-    T* log_probs,
+    T* next_token_scores,
     const int* vocab_mask,
     const int* prefix_vocab_mask,
     int num_beams,
     int vocab_size,
-    int total_elements) {
+    int total_elements,
+    int demote_token_id,
+    int32_t* sequences,
+    int max_sequence_length,
+    int current_sequence_length,
+    float repetition_penalty,
+    int no_repeat_ngram_size) {
   int index = blockIdx.x * blockDim.x + threadIdx.x;
-  int word_id = index % vocab_size;
-
   if (index < total_elements) {
-    if (vocab_mask != nullptr && vocab_mask[word_id] == 0) {
-      log_probs[index] = std::numeric_limits<T>::lowest();
+    int batch_beam_index = index / vocab_size;
+    int word_id = index % vocab_size;
+
+    // RepetitionPenaltyLogitsProcessor
+    if (repetition_penalty != 1.0f) {
+      int32_t* current_sequence = sequences + batch_beam_index * max_sequence_length;
+      bool found = false;
+      for (int i = 0; i < current_sequence_length; i++) {
+        if (current_sequence[i] == word_id) {
+          found = true;
+          break;
+        }
+      }
+      if (found) {
+        float score = (float)next_token_scores[index];
+        next_token_scores[index] = (T)(score < 0 ? score * repetition_penalty : score / repetition_penalty);
+      }
     }
 
-    int batch_id = (index / vocab_size) / num_beams;
+    // NoRepeatNGramLogitsProcessor
+    if (no_repeat_ngram_size > 0 && current_sequence_length >= no_repeat_ngram_size) {
+      int32_t* current_sequence = sequences + batch_beam_index * max_sequence_length;
+      bool found = false;
+      for (int i = no_repeat_ngram_size - 1; i < current_sequence_length; i++) {
+        if (current_sequence[i] == word_id) {  // last token of n-gram matched
+          found = true;
+          for (int j = 0; j < no_repeat_ngram_size - 1; j++) {  // match the remaining N-1 tokens
+            if (current_sequence[i - j - 1] != current_sequence[current_sequence_length - 1 - j]) {
+              found = false;
+              break;
+            }
+          }
+          if (found) {
+            break;
+          }
+        }
+      }
+
+      if (found) {
+        next_token_scores[index] = std::numeric_limits<T>::lowest();
+        return;
+      }
+    }
+
+    // VocabMaskLogitsProcessor
+    if (vocab_mask != nullptr && vocab_mask[word_id] == 0) {
+      next_token_scores[index] = std::numeric_limits<T>::lowest();
+      return;
+    }
+
+    // PrefixVocabMaskLogitsProcessor
+    int batch_id = batch_beam_index / num_beams;
     if (prefix_vocab_mask != nullptr && prefix_vocab_mask[batch_id * vocab_size + word_id] == 0) {
-      log_probs[index] = std::numeric_limits<T>::lowest();
+      next_token_scores[index] = std::numeric_limits<T>::lowest();
+      return;
+    }
+
+    // MinLengthLogitsProcessor
+    if (word_id == demote_token_id) {
+      next_token_scores[index] = std::numeric_limits<T>::lowest();
     }
   }
 }
 
 template <typename T>
 void LaunchLogitsProcessKernel(
-    T* log_probs,
+    T* next_token_scores,
     const int* vocab_mask,
     const int* prefix_vocab_mask,
     int batch_size,
     int num_beams,
     int vocab_size,
+    int demote_token_id,
+    int32_t* sequences,
+    int max_sequence_length,
+    int current_sequence_length,
+    float repetition_penalty,
+    int no_repeat_ngram_size,
     cudaStream_t stream) {
   int total_elements = batch_size * num_beams * vocab_size;
   constexpr int blockSize = 256;
   const int gridSize = (total_elements + blockSize - 1) / blockSize;
-  LogitsProcessKernel<T><<<gridSize, blockSize, 0, stream>>>(log_probs, vocab_mask, prefix_vocab_mask, num_beams, vocab_size, total_elements);
+  LogitsProcessKernel<T><<<gridSize, blockSize, 0, stream>>>(next_token_scores, vocab_mask, prefix_vocab_mask, num_beams, vocab_size, total_elements, demote_token_id,
+                                                             sequences, max_sequence_length, current_sequence_length, repetition_penalty, no_repeat_ngram_size);
 }
 
 // Instantiation
 template void LaunchLogitsProcessKernel(
-    float* log_probs,
+    float* next_token_scores,
     const int* vocab_mask,
     const int* prefix_vocab_mask,
     int batch_size,
     int num_beams,
     int vocab_size,
+    int demote_token_id,
+    int32_t* sequences,
+    int max_sequence_length,
+    int current_sequence_length,
+    float repetition_penalty,
+    int no_repeat_ngram_size,
     cudaStream_t stream);
 
 template void LaunchLogitsProcessKernel(
-    half* log_probs,
+    half* next_token_scores,
     const int* vocab_mask,
     const int* prefix_vocab_mask,
     int batch_size,
     int num_beams,
     int vocab_size,
+    int demote_token_id,
+    int32_t* sequences,
+    int max_sequence_length,
+    int current_sequence_length,
+    float repetition_penalty,
+    int no_repeat_ngram_size,
     cudaStream_t stream);
 
 __global__ void AddProbsKernel(float* log_probs,

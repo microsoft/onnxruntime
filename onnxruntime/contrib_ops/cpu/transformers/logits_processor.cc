@@ -130,7 +130,7 @@ void VocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
   // Process vocabulary mask and set tokens with mask value 0 to -inf.
   T* p = next_token_scores.scores.data();
   // next_token_scores shape (batch_size * num_beams, vocab_size)
-  // vocab_mask shape (vocab_size). TODO: support shape (batch_size, vocab_size)
+  // vocab_mask shape (vocab_size).
   for (int i = 0; i < next_token_scores.batch_beam_size; i++) {
     for (int j = 0; j < next_token_scores.vocab_size; j++, p++) {
       if (vocab_mask_[j] == 0) {

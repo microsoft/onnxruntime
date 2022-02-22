@@ -24,12 +24,18 @@ void LaunchAddProbsKernel(T* log_probs,
 
 template <typename T>
 void LaunchLogitsProcessKernel(
-    T* log_probs,
+    T* next_token_scores,
     const int* vocab_mask,
     const int* prefix_vocab_mask,
     int batch_size,
     int num_beams,
     int vocab_size,
+    int demote_token_id,
+    int32_t* sequences,
+    int max_sequence_length,
+    int current_sequence_length,
+    float repetition_penalty,
+    int no_repeat_ngram_size,
     cudaStream_t stream);
 
 void LaunchNextTokenKernel(const int64_t* next_token_indices,
