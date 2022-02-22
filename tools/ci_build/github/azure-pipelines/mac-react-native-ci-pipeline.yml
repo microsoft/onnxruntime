@@ -176,38 +176,15 @@ jobs:
   - task: PowerShell@2
     inputs:
       filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/js/pack-npm-packages.ps1'
-      arguments: '"${{variables.npm_packaging_mode}}" $(Build.SourcesDirectory) react_native'
+      arguments: '"-dev.$(Get-Date -Format yyyyMMdd)-$(git rev-parse --short HEAD)" $(Build.SourcesDirectory) react_native'
       workingDirectory: '$(Build.SourcesDirectory)'
       errorActionPreference: stop
     displayName: Pack NPM packages
 
-  - task: CopyFiles@2
-    inputs:
-      sourceFolder: $(Build.SourcesDirectory)/js/common
-      contents: onnxruntime-common*.tgz
-      targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e
-    displayName: Copy onnxruntime-common npm package to React Native e2e directory
-
-  - task: CopyFiles@2
-    inputs:
-      sourceFolder: $(Build.SourcesDirectory)/js/react_native
-      contents: onnxruntime-react-native*.tgz
-      targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e
-    displayName: Copy onnxruntime-react-native npm package to React Native e2e directory
-
-  # 'dev' npm_packaging_mode doesn't create npm package when onnxruntime-common is not changed.
-  # since e2e requires onnxruntime-common package, it builds and move it to e2e directory.
   - script: |
-      if [ ! -f $(Build.SourcesDirectory)/js/common/*.tgz ]
-      then
-        pushd $(Build.SourcesDirectory)/js/common
-        npm pack
-        mv *.tgz $(Build.SourcesDirectory)/js/react_native/e2e
-        popd
-      fi
-      mv onnxruntime-common*.tgz onnxruntime-common.tgz
+      mv $(Build.SourcesDirectory)/js/common/onnxruntime-common*.tgz onnxruntime-common.tgz
       yarn add --no-lockfile file:./onnxruntime-common.tgz
-      mv onnxruntime-react-native*.tgz onnxruntime-react-native.tgz
+      mv $(Build.SourcesDirectory)/js/react_native/onnxruntime-react-native*.tgz onnxruntime-react-native.tgz
       yarn add --no-lockfile file:./onnxruntime-react-native.tgz
       yarn
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
@@ -281,8 +258,17 @@ jobs:
 
   - script: |
       git restore .
+      yarn prepack-rel
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
-    displayName: Restore git changes for e2e tests
+    displayName: Restore git changes and prepack for npm publish
+
+  - task: PowerShell@2
+    inputs:
+      filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/js/pack-npm-packages.ps1'
+      arguments: '"${{variables.npm_packaging_mode}}" $(Build.SourcesDirectory) react_native'
+      workingDirectory: '$(Build.SourcesDirectory)'
+      errorActionPreference: stop
+    displayName: Pack NPM packages
 
   - task: CopyFiles@2
     inputs:

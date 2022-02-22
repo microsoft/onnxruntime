@@ -25,6 +25,9 @@ jobs:
   workspace:
     clean: all
   steps:
+  - script: |
+    git config --global core.autocrlf false
+    displayName: Set git config core.autocrlf
   - checkout: self
     submodules: false
   - task: DownloadPipelineArtifact@2
