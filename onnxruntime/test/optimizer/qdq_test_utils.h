@@ -193,7 +193,9 @@ GetQDQTestCaseFn BuildQDQTransposeTestCase(
     const std::vector<int64_t>& input_shape,
     const std::vector<int64_t>& perms) {
   return [input_shape, perms](ModelTestBuilder& builder) {
-    auto* input_arg = builder.MakeInput<InputType>(input_shape, -128, 127);
+    auto* input_arg = builder.MakeInput<InputType>(input_shape,
+                                                   std::numeric_limits<InputType>::min(),
+                                                   std::numeric_limits<InputType>::max());
     auto* output_arg = builder.MakeOutput();
 
     InputType dq_zp = std::numeric_limits<InputType>::max() / 2;
@@ -215,5 +217,30 @@ GetQDQTestCaseFn BuildQDQTransposeTestCase(
 
 GetQDQTestCaseFn BuildQDQReshapeTestCase(const std::vector<int64_t>& input_shape,
                                          const std::vector<int64_t>& reshape_shape);
+
+template <typename InputType, typename OutputType>
+GetQDQTestCaseFn BuildQDQSoftMaxTestCase(const std::vector<int64_t>& input_shape, const int64_t& axis = -1) {
+  return [input_shape, axis](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<InputType>(input_shape,
+                                                   std::numeric_limits<InputType>::min(),
+                                                   std::numeric_limits<InputType>::max());
+
+    auto* output_arg = builder.MakeOutput();
+
+    // add DQ
+    auto* dq_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<InputType>(input_arg, .003f, std::numeric_limits<InputType>::max() / 2, dq_output);
+
+    // add SoftMax
+    auto* softmax_output = builder.MakeIntermediate();
+    Node& softmax_node = builder.AddNode("Softmax", {dq_output}, {softmax_output});
+
+    softmax_node.AddAttribute("axis", axis);
+
+    // add Q
+    builder.AddQuantizeLinearNode<OutputType>(softmax_output, 1.f / 256, 0, output_arg);
+  };
+}
+
 }  // namespace test
 }  // namespace onnxruntime
