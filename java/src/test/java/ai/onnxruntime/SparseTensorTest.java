@@ -81,6 +81,7 @@ public class SparseTensorTest {
         inputMap.clear();
 
         /* disabled as sparse_dense_matmul doesn't support COO tensors with 1d indices
+        // Run the same tensor through, but using 1d indexing rather than 2d indexing
         indices = ByteBuffer.allocateDirect(5 * 8).order(ByteOrder.LITTLE_ENDIAN).asLongBuffer();
         indices.put(1);
         indices.put(3);
@@ -88,14 +89,6 @@ public class SparseTensorTest {
         indices.put(6);
         indices.put(8);
         indices.rewind();
-
-        data = ByteBuffer.allocateDirect(5 * 4).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer();
-        data.put(1);
-        data.put(1);
-        data.put(1);
-        data.put(4);
-        data.put(6);
-        data.rewind();
 
         cooTensor = new OnnxSparseTensor.COOTensor(indices, data, shape, OnnxJavaType.FLOAT, 5);
         tensor = OnnxSparseTensor.createSparseTensor(env, cooTensor);
@@ -108,7 +101,6 @@ public class SparseTensorTest {
         outputTensor = (OnnxTensor) result.get(0);
         assertArrayEquals(shape, outputTensor.getInfo().getShape());
         output = outputTensor.getFloatBuffer().array();
-        expected = new float[] {0, 1, 0, 1, 0, 1, 4, 0, 6};
         assertArrayEquals(expected, output, 1e-6f);
         result.close();
         tensor.close();
