@@ -16,7 +16,7 @@ from tvm.relay import vm
 from tvm.contrib import graph_executor
 from tvm import autotvm
 
-log = logging.getLogger("TVM EP python API logger")
+log = logging.getLogger("tvm_ep")
 
 ANSOR_TYPE = "Ansor"
 AUTO_TVM_TYPE = "AutoTVM"
