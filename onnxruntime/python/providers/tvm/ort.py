@@ -97,10 +97,15 @@ def onnx_compile(model_string,
                         }
                     ):
                     if nhwc:
-                        irmod = relay.transform.InferType()(irmod)
-                        model_nhwc = relay.transform.ConvertLayout(desired_layouts)(irmod)
-                        model_nhwc = relay.transform.EliminateCommonSubexpr()(model_nhwc)
-                        irmod = relay.transform.FoldConstant()(model_nhwc)
+                        seq = tvm.transform.Sequential(
+                            [
+                                relay.transform.InferType(),
+                                relay.transform.ConvertLayout(desired_layouts),
+                                relay.transform.EliminateCommonSubexpr(),
+                                relay.transform.FoldConstant(),
+                            ]
+                        )
+                        irmod = seq(irmod)
                     lib = get_tvm_executor(irmod, executor, target, target_host, params)
         elif tuning_type == AUTO_TVM_TYPE:
             with relay.build_config(opt_level=opt_level):
