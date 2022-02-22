@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <tvm/runtime/registry.h>
+#include <tvm/runtime/device_api.h>
 #include <tvm/target/codegen.h>
 
 #include "core/common/common.h"
@@ -61,13 +62,15 @@ void TVMSetInputs(TvmModule& mod,
                   std::vector<size_t>& inds,
                   std::vector<DLTensor>& inputs)
 {
-  // TODO(vvchernov): set_input_zero_copy is more preferable but it does not satisfy alignment conditions.
-  //tvm::PackedFunc set_input = mod.GetFunction("set_input_zero_copy", false);
-
   TvmPackedFunc set_input = mod.GetFunction("set_input", false);
+  TvmPackedFunc set_input_zero_copy = mod.GetFunction("set_input_zero_copy", false);
   for (size_t i = 0; i < inds.size(); ++i)
   {
-    set_input(inds[i], &inputs[i]);
+    if (reinterpret_cast<size_t>(inputs[i].data) % ::tvm::runtime::kAllocAlignment == 0) {
+      set_input_zero_copy(inds[i], &inputs[i]);
+    } else {
+      set_input(inds[i], &inputs[i]);
+    }
   }
 }
 
@@ -75,9 +78,6 @@ void TVM_VM_SetInputs(TvmModule& mod,
                       std::vector<size_t>& inds,
                       std::vector<DLTensor>& inputs)
 {
-  // TODO(vvchernov): set_input_zero_copy is more preferable but it does not satisfy alignment conditions.
-  //tvm::PackedFunc set_input = mod.GetFunction("set_input_zero_copy", false);
-
   TvmPackedFunc set_input = mod.GetFunction("set_one_input", false);
   for (size_t i = 0; i < inds.size(); ++i)
   {
