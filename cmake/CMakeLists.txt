@@ -347,10 +347,11 @@ if (onnxruntime_MINIMAL_BUILD)
   if (onnxruntime_EXTENDED_MINIMAL_BUILD)
     # enable EPs that compile kernels at runtime
     add_compile_definitions(ORT_EXTENDED_MINIMAL_BUILD)
-
-    if (onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
-      add_compile_definitions(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
-    endif()
+    # enable runtime optimizations. These are required for NNAPI.
+    # TODO remove onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD since these optimzations are now
+    # enabled for all extended minimal builds.
+    SET(onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD ON)
+    add_compile_definitions(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   endif()
 
   if (onnxruntime_MINIMAL_BUILD_CUSTOM_OPS)
@@ -1699,6 +1700,16 @@ if (onnxruntime_USE_CUDA)
   if (onnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO)
     add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:--generate-line-info>")
   endif()
+endif()
+
+if (onnxruntime_USE_TENSORRT)
+  # needs to link with stdc++fs in Linux
+  if (UNIX)
+    if (NOT APPLE)
+      set(FS_STDLIB stdc++fs)
+    endif()
+  endif()
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${FS_STDLIB})
 endif()
 
 if (onnxruntime_USE_MIGRAPHX)
