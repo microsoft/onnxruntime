@@ -26,31 +26,25 @@
 using namespace onnxruntime::concurrency;
 
 namespace onnxruntime {
-ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
-    RoiAlign,
-    10,
-    15,
-    float,
-    KernelDefBuilder()
-    .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-    .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),
-    RoiAlign<float>);
+#define ADD_VERSIONED_TYPED_ROIALIGN_OP(data_type)                  \
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                           \
+    RoiAlign,                                                       \
+    10,                                                             \
+    15,                                                             \
+    data_type,                                                      \
+    KernelDefBuilder()                                              \
+    .TypeConstraint("T1", DataTypeImpl::GetTensorType<data_type>()) \
+    .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),  \
+    RoiAlign<data_type>);
 
-ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
-    RoiAlign,
-    10,
-    15,
-    double,
-    KernelDefBuilder()
-    .TypeConstraint("T", DataTypeImpl::GetTensorType<double>())
-    .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),
-    RoiAlign<double>);
+ADD_VERSIONED_TYPED_ROIALIGN_OP(float);
+ADD_VERSIONED_TYPED_ROIALIGN_OP(double);
 
-#define ADD_TYPED_ROIALIGN_OP(data_type)                                                            \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(RoiAlign, 16, data_type,                                           \
-                                 KernelDefBuilder()                                                 \
-                                     .TypeConstraint("T1", DataTypeImpl::GetTensorType<data_type>()) \
-                                     .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()), \
+#define ADD_TYPED_ROIALIGN_OP(data_type)                                                                \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(RoiAlign, 16, data_type,                                               \
+                                 KernelDefBuilder()                                                     \
+                                     .TypeConstraint("T1", DataTypeImpl::GetTensorType<data_type>())    \
+                                     .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),     \
                                  RoiAlign<data_type>);
 
 ADD_TYPED_ROIALIGN_OP(float);
