@@ -10,6 +10,7 @@ from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._custom_gradient_registry import CustomGradientRegistry
 from . import _utils
 from .debug_options import DebugOptions
+from .provider_configs import ProviderConfigs
 from ._fallback import (_FallbackManager,
                         _FallbackPolicy,
                         ORTModuleFallbackException)
@@ -36,7 +37,7 @@ class ORTModule(torch.nn.Module):
         debug_options (:obj:`DebugOptions`, optional): debugging options for ORTModule.
     """
 
-    def __init__(self, module, debug_options=None):
+    def __init__(self, module, debug_options=None, provider_configs=None):
 
         # NOTE: torch.nn.Modules that call setattr on their internal attributes regularly
         #       (for example PyTorch Lightning), will trigger regular re-exports. This is
@@ -55,6 +56,9 @@ class ORTModule(torch.nn.Module):
         if not debug_options:
             debug_options = DebugOptions()
 
+        if not provider_configs:
+            provider_configs = ProviderConfigs()
+
         # Fallback settings
         self._fallback_manager = _FallbackManager(pytorch_module=module,
                                                   policy=ortmodule.ORTMODULE_FALLBACK_POLICY,
@@ -67,13 +71,13 @@ class ORTModule(torch.nn.Module):
 
             super(ORTModule, self).__init__()
 
-            self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager)
+            self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager, provider_configs)
 
             _utils.patch_ortmodule_forward_method(self)
 
             # Support contrib OPs
             pytorch_export_contrib_ops.register()
-            if not os.environ["OPENVINO_PT_ENABLE"]:
+            if not provider_configs.provider == "openvino":
                CustomOpSymbolicRegistry.register_all()
                CustomGradientRegistry.register_all()
 
