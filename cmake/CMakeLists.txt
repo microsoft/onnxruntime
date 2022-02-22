@@ -965,8 +965,6 @@ if (WIN32)
         # warning C4800: Implicit conversion from 'X' to bool. Possible information loss
         if (onnxruntime_USE_OPENVINO OR onnxruntime_ENABLE_EAGER_MODE)
            list(APPEND ORT_WARNING_FLAGS "/wd4800")
-        else()
-           list(APPEND ORT_WARNING_FLAGS "/w34800")
         endif()
         # operator 'operator-name': deprecated between enumerations of different types
         list(APPEND ORT_WARNING_FLAGS "/wd5054")
