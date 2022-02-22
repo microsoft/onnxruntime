@@ -3680,6 +3680,126 @@ TEST(TransposeOptimizerTests, TestTransposeGraphOutput) {
                     /*opset_version*/ 15);
 }
 
+TEST(TransposeOptimizerTests, TestSimpleReshapeAsTranspose) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({1, 1, 1, 3}, 0.0, 1.0);
+    auto* input1_arg = builder.MakeInput<float>({1, 3}, 0.0, 1.0);
+    auto* const_1 = builder.MakeInitializer<int64_t>({4}, {1, 1, 1, 3});
+    auto* mul_1_out_0 = builder.MakeOutput();
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* reshape_1_out_0 = builder.MakeIntermediate();
+    auto* identity_1_out_0 = builder.MakeOutput();
+
+    builder.AddNode("Mul", {input0_arg, input1_arg}, {mul_1_out_0});
+    auto& transpose_1 = builder.AddNode("Transpose", {mul_1_out_0}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("Reshape", {transpose_1_out_0, const_1}, {reshape_1_out_0});
+    builder.AddNode("Identity", {reshape_1_out_0}, {identity_1_out_0});
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    // Transpose cancels with the following reshape node so both the nodes
+    // should be removed
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+TEST(TransposeOptimizerTests, TestReshapeAsTransposeGraphOutput) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({1, 1, 1, 3}, 0.0, 1.0);
+    auto* input1_arg = builder.MakeInput<float>({1, 3}, 0.0, 1.0);
+    auto* const_1 = builder.MakeInitializer<int64_t>({4}, {1, 1, 1, 3});
+    auto* mul_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* reshape_1_out_0 = builder.MakeOutput();
+
+    builder.AddNode("Mul", {input0_arg, input1_arg}, {mul_1_out_0});
+    auto& transpose_1 = builder.AddNode("Transpose", {mul_1_out_0}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("Reshape", {transpose_1_out_0, const_1}, {reshape_1_out_0});
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    // Transpose cancels with the following reshape node so both the nodes
+    // should be removed
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+TEST(TransposeOptimizerTests, TestCancelingNodesGraphOutputs) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({1, 1, 1, 3}, 0.0, 1.0);
+    auto* input1_arg = builder.MakeInput<float>({1, 3}, 0.0, 1.0);
+    auto* const_1 = builder.MakeInitializer<int64_t>({4}, {1, 1, 1, 3});
+    auto* mul_1_out_0 = builder.MakeOutput();
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* reshape_1_out_0 = builder.MakeOutput();
+
+    builder.AddNode("Mul", {input0_arg, input1_arg}, {mul_1_out_0});
+    auto& transpose_1 = builder.AddNode("Transpose", {mul_1_out_0}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("Reshape", {transpose_1_out_0, const_1}, {reshape_1_out_0});
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    // Transpose cancels with the following reshape node so both the nodes
+    // should be removed
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
+TEST(TransposeOptimizerTests, TestNonCancelingReshape) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = builder.MakeInput<float>({1, 1, 1, 3}, 0.0, 1.0);
+    auto* input1_arg = builder.MakeInput<float>({1, 3}, 0.0, 1.0);
+    auto* input3_arg = builder.MakeInput<int64_t>({4}, {1, 1, 1, 3});
+    auto* mul_1_out_0 = builder.MakeOutput();
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* reshape_1_out_0 = builder.MakeIntermediate();
+    auto* identity_1_out_0 = builder.MakeOutput();
+
+    builder.AddNode("Mul", {input0_arg, input1_arg}, {mul_1_out_0});
+    auto& transpose_1 = builder.AddNode("Transpose", {mul_1_out_0}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("Reshape", {transpose_1_out_0, input3_arg}, {reshape_1_out_0});
+    builder.AddNode("Identity", {reshape_1_out_0}, {identity_1_out_0});
+  };
+
+  auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    // Transpose on mul output cannot be removed since rshape's shape input
+    // is not const
+    EXPECT_EQ(transpose_cost, 1);
+  };
+
+  TransformerTester(build_test_case,
+                    check_optimized_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    /*opset_version*/ 15);
+}
+
 TEST(TransposeOptimizerTests, TestPushBroadcastUnsqueezeTranspose) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({4, 6, 10}, 0.0, 1.0);
