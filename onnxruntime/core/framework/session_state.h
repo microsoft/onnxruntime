@@ -393,6 +393,9 @@ class SessionState {
   // KernelCreateInfo for each node so we do kernel lookup once
   KernelCreateInfoMap kernel_create_info_map_;
 
+  //fused_funcs_mgr_ must live longer than the session_kernels_, becaues a kernel could be created from this manager
+  FuncManager fused_funcs_mgr_;
+
   // If we compile kernels in a minimal build we need a way to find the kernel using the hash.
   // We populate this map when doing the kernel compilation in GraphPartitioner, and use it in LoadFromOrtFormat.
   std::unordered_map<std::string, HashValue> compiled_kernel_hashes_;

@@ -18,9 +18,12 @@
 * limitations under the License.
 */
 
+#include "core/providers/cpu/math/softmax_shared.h"
+
 #include <algorithm>
 #include <cmath>
-#include "core/providers/cpu/math/softmax_shared.h"
+#include <gsl/gsl>
+
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"

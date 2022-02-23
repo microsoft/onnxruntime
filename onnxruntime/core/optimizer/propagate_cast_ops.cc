@@ -67,8 +67,8 @@ static std::string GetName(const std::pair<const NodeArg*, std::vector<Node*>>& 
 using NodeIndices = std::unordered_set<NodeIndex>;
 using FP16AllowOps = PropagateCastOps::FP16AllowOps;
 
-static constexpr std::array<std::string_view, 8> level1_fp16_allow_ops = {"Expand", "Transpose", "Relu", "Reshape", "Split", "Tanh", "Squeeze", "Unsqueeze"};
-static constexpr std::array<std::string_view, 8> level2_fp16_allow_ops = {"Add", "BiasGelu", "Dropout", "FastGelu", "Gather", "Gelu", "LayerNormalization", "Where"};
+static constexpr std::array level1_fp16_allow_ops = {"Expand", "Transpose", "Relu", "Reshape", "Split", "Tanh", "Squeeze", "Unsqueeze"};
+static constexpr std::array level2_fp16_allow_ops = {"Add", "BiasGelu", "Dropout", "FastGelu", "Gather", "Gelu", "LayerNormalization", "Where"};
 
 /*
  *  Check if the input is relevant to consider for cast propagation for the given node.
@@ -1465,10 +1465,11 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
 PropagateCastOps::PropagateCastOps(GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy strategy,
                                    size_t level, const std::vector<std::string>& allow_list,
                                    const std::unordered_set<std::string>& compatible_execution_providers) noexcept
-    : GraphTransformer("PropagateCastOps", compatible_execution_providers), level_(level), fp16_allow_ops_(3), strategy_(strategy) {
-  std::copy(allow_list.begin(), allow_list.end(), std::inserter(fp16_allow_ops_[0], fp16_allow_ops_[0].begin()));
-  std::transform(level1_fp16_allow_ops.begin(), level1_fp16_allow_ops.end(), std::inserter(fp16_allow_ops_[1], fp16_allow_ops_[1].end()), [](const std::string_view& sv) { return std::string(sv); });
-  std::transform(level2_fp16_allow_ops.begin(), level2_fp16_allow_ops.end(), std::inserter(fp16_allow_ops_[2], fp16_allow_ops_[2].end()), [](const std::string_view& sv) { return std::string(sv); });
+    : GraphTransformer("PropagateCastOps", compatible_execution_providers), level_(level),
+      fp16_allow_ops_{std::unordered_set<std::string>(allow_list.begin(), allow_list.end()),
+		      std::unordered_set<std::string>(level1_fp16_allow_ops.begin(), level1_fp16_allow_ops.end()),
+		      std::unordered_set<std::string>(level2_fp16_allow_ops.begin(), level2_fp16_allow_ops.end())},
+      strategy_(strategy) {
 }
 
 }  // namespace onnxruntime

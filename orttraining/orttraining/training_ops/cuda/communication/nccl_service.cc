@@ -5,7 +5,7 @@
 
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "core/common/common.h"
-#include "core/profile/context.h"
+#include "core/providers/cuda/nvtx_profile_context.h"
 #include "core/providers/cuda/cuda_check_memory.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"

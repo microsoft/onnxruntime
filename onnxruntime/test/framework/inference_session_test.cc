@@ -99,7 +99,10 @@ ONNX_OPERATOR_KERNEL_EX(FuseAdd,
                         kFuseTest,
                         1,
                         kFuseExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                        KernelDefBuilder(),
+                        // there's no OpSchema so there's nothing to validate the type constraint against and it
+                        // will just be ignored
+                        // .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                         FuseAdd);
 
 Status RegisterOperatorKernels(KernelRegistry& kernel_registry) {

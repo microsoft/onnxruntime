@@ -20,7 +20,7 @@ if platform.system() == 'Windows' and sys.version_info.major >= 3 and sys.versio
 
 available_providers = [
     provider for provider in onnxrt.get_available_providers()
-    if provider not in {'StvmExecutionProvider'}]
+    if provider not in {'TvmExecutionProvider'}]
 
 
 class TestInferenceSession(unittest.TestCase):
@@ -33,7 +33,7 @@ class TestInferenceSession(unittest.TestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
     def testTvmImported(self):
-        if "StvmExecutionProvider" not in onnxrt.get_available_providers():
+        if "TvmExecutionProvider" not in onnxrt.get_available_providers():
             return
         import tvm
         self.assertTrue(tvm is not None)
@@ -41,7 +41,7 @@ class TestInferenceSession(unittest.TestCase):
     def testModelSerialization(self):
         try:
             so = onnxrt.SessionOptions()
-            so.log_verbosity_level = 1
+            so.log_severity_level = 1
             so.logid = "TestModelSerialization"
             so.optimized_model_filepath = "./PythonApiTestOptimizedModel.onnx"
             onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so, providers=['CPUExecutionProvider'])
