@@ -116,7 +116,7 @@ if ($MODE -eq "dev") {
     Write-Host "Compare package.json"
     $latest_package_json=Join-Path -Path ".." -ChildPath "latest\package\package.json"
     $current_package_json=Join-Path -Path ".." -ChildPath "current\package\package.json"
-    npx json-diff $latest_package_json $current_package_json
+    #npx json-diff $latest_package_json $current_package_json
     $use_latest=$?
     Write-Host "Result: $use_latest"
     if ($use_latest) {
@@ -131,11 +131,18 @@ if ($MODE -eq "dev") {
         rm $latest_package_json
         rm $current_package_json
 
+        Write-Host "Replace CRLF to LF in README.md"
+        $latest_readme=Join-Path -Path ".." -ChildPath "latest\package\README.md"
+        $current_readme=Join-Path -Path ".." -ChildPath "current\package\README.md"
+        ((Get-Content $latest_readme) -join "`n") + "`n" | Set-Content -NoNewline $latest_readme
+        ((Get-Content $current_readme) -join "`n") + "`n" | Set-Content -NoNewline $current_readme
+
         Write-Host "Compare package contents"
         $latest_package_dir=Join-Path -Path ".." -ChildPath "latest\package"
         $current_package_dir=Join-Path -Path ".." -ChildPath "current\package"
         npx dircompare -c $latest_package_dir $current_package_dir
         $use_latest=$?
+
         Write-Host "Result: $use_latest"
     }
 
