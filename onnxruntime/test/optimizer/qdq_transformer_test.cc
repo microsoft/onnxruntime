@@ -5,10 +5,12 @@
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 #include "core/providers/partitioning_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
 
@@ -1757,9 +1759,9 @@ TEST(QDQTransformerTests, QDQPropagation_QBackward) {
 
   // TODO re-enable tests after updating ONNX to get QuantizeLinear shape inference fix
   // https://github.com/onnx/onnx/pull/3806
-  //test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
+  // test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, true);
-  //test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false);
+  // test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false);
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, true);
 }
 
@@ -1834,9 +1836,9 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward) {
 
   // TODO re-enable tests after updating ONNX to get QuantizeLinear shape inference fix
   // https://github.com/onnx/onnx/pull/3806
-  //test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
+  // test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, true);
-  //test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false);
+  // test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false);
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, true);
 }
 
@@ -2138,6 +2140,56 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
       ASSERT_TRUE(result.empty());
     }
   }
+}
+
+// test that when we don't run the QDQ processing we can remove left over Q -> DQ node pairs if the option
+// to do that is enabled.
+TEST(QDQTransformerTests, FinalCleanup) {
+  auto test_case = [&](const std::vector<std::vector<int64_t>>& input_shapes) {
+    // create model with float input to multiple -> Q -> DQ -> Concat -> Q -> DQ -> output
+    // If we enable cleanup and don't run the QDQ transformer we should drop all the Q->DQ pairs
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto input_count = input_shapes.size();
+      std::vector<NodeArg*> input_args;
+      std::vector<NodeArg*> q_input_args;
+      for (size_t i = 0; i < input_count; i++) {
+        input_args.push_back(builder.MakeInput<float>(input_shapes[i], -1.f, 1.f));
+        q_input_args.push_back(AddQDQNodePair<uint8_t>(builder, input_args.back(), 0.05f, 128));
+      }
+      auto* concat_output = builder.MakeIntermediate();
+      Node& concat_node = builder.AddNode("Concat", q_input_args, {concat_output});
+      concat_node.AddAttribute("axis", int64_t(1));
+
+      auto* q_concat_output = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<uint8_t>(concat_output, 0.05f, 128, q_concat_output);
+
+      auto* output_arg = builder.MakeOutput();
+      builder.AddDequantizeLinearNode<uint8_t>(q_concat_output, 0.05f, 128, output_arg);
+    };
+
+    auto check_graph = [&input_shapes](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+      EXPECT_EQ(op_to_count["Concat"], 1);
+    };
+
+    std::function<void(SessionOptions&)> func = [](SessionOptions& so) {
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQCleanup, "1"));
+    };
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/,
+                      0.01f /*per_sample_tolerance*/,
+                      0.01f /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQFinalCleanupTransformer>(),
+                      &func);
+  };
+
+  test_case({{1, 6, 36}, {1, 3, 36}});
 }
 
 }  // namespace test
