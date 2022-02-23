@@ -18,8 +18,16 @@ Below is a quick guide to get the packages installed to use ONNX for model seria
 
 ## Install ONNX Runtime (ORT)
 
-```python
+On CPU
+
+```bash
 pip install onnxruntime
+```
+
+On GPU
+
+```bash
+pip install onnxruntime-gpu
 ```
 
 ## Install ONNX for model export
