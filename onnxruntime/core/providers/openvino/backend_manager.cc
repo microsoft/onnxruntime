@@ -150,8 +150,6 @@ std::unique_ptr<ONNX_NAMESPACE::ModelProto>
 BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node, 
                                            const onnxruntime::GraphViewer& subgraph, 
                                            const logging::Logger& logger) const {
-  const std::string& name = fused_node.Name();
-  
   auto model = subgraph.CreateModel(logger);
 
   auto model_proto = model->ToProto();
@@ -160,6 +158,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
 
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
+    const std::string& name = fused_node.Name();
     std::fstream dump(name + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
     model_proto->SerializeToOstream(dump);
   }
