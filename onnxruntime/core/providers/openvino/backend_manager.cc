@@ -162,6 +162,8 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     std::fstream dump(name + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
     model_proto->SerializeToOstream(dump);
   }
+#else
+  ORT_UNUSED_PARAMETER(fused_node);
 #endif
 
   return model_proto;
