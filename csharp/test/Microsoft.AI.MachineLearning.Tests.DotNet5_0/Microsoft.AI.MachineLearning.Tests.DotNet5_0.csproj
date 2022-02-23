@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AI.MachineLearning" Version="1.4.0-dev-20200728-0957-6cb93ccb5" />
+    <PackageReference Include="Microsoft.AI.MachineLearning" Version="1.10.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -21,4 +21,7 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Microsoft.AI.MachineLearning.Tests.Lib.DotNet5_0\Microsoft.AI.MachineLearning.Tests.Lib.DotNet5_0.csproj" />
+  </ItemGroup>
 </Project>
