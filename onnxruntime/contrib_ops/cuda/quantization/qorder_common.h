@@ -57,7 +57,7 @@ class CublasLtMMAlgoMap {
  public:
   static CublasLtMMAlgoMap& instance();
 
-  void GetAlgo(cublasLtMatmulAlgo_t& algo, const cudaDeviceProp& device_prop,
+  void GetAlgo(cublasLtHandle_t cublasLt_handle, cublasLtMatmulAlgo_t& algo, const cudaDeviceProp& device_prop,
                int batch_count, int m, int n, int k,
                cublasLtOrder_t weight_order, cublasLtOrder_t input_output_order = CUBLASLT_ORDER_COL32) const;
 
@@ -79,7 +79,7 @@ class CublasLtMMAlgoMap {
   std::unordered_map<std::string, CublasLtMatmulAlgoInfo> best_algos_;
 };
 
-void QOrdered_MatMul(
+Status QOrdered_MatMul(
     cublasLtHandle_t cublasLt_handle, cudaStream_t stream, const cudaDeviceProp& device_prop,
     int batchCount, int m, int n, int k,
     const float* alpha,
