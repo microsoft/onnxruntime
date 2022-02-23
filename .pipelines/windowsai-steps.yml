@@ -1,7 +1,23 @@
 parameters:
-  BuildArch: 'x64'
-  Runtime: 'dynamic'
-  PythonPackageName: python
+- name: UploadSymbols
+  displayName: Upload Symbols to Microsoft symbol server?
+  type: boolean
+  default: false
+  
+- name: BuildArch
+  displayName: BuildArch
+  type: string
+  default: 'x64'
+  
+- name: Runtime
+  displayName: MSVC Runtime, should be 'dynamic' or 'static'.
+  type: string
+  default: 'dynamic'
+  
+- name: PythonPackageName
+  displayName: PythonPackageName on nuget.org to use
+  type: string
+  default: 'python'
 
 jobs:
 - job: Windows_Packaging_${{ parameters.BuildArch }}_${{ parameters.Runtime }}
@@ -11,8 +27,7 @@ jobs:
   variables:
     ob_outputDirectory: '$(Build.ArtifactStagingDirectory)'
     ob_sdl_binskim_break: true 
-    ${{ if startsWith(variables['Build.SourceBranch'], 'ref/heads/snnn/rel-') }}:
-      ob_symbolsPublishing_enabled: true
+    ob_symbolsPublishing_enabled: ${{ parameters.UploadSymbols }}
   steps:
     - template: ../tools/ci_build/github/azure-pipelines/templates/telemetry-steps.yml@self
 
