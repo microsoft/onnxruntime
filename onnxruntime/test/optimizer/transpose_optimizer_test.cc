@@ -3698,10 +3698,12 @@ TEST(TransposeOptimizerTests, TestSimpleReshapeAsTranspose) {
   };
 
   auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
-    int transpose_cost = EstimateTransposeCost(session.GetGraph());
     // Transpose cancels with the following reshape node so both the nodes
     // should be removed
-    EXPECT_EQ(transpose_cost, 0);
+    std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
+    ASSERT_TRUE(op_to_count["Mul"] == 1);
+    ASSERT_TRUE(op_to_count["Transpose"] == 0);
+    ASSERT_TRUE(op_to_count["Reshape"] == 0);
   };
 
   TransformerTester(build_test_case,
@@ -3727,10 +3729,12 @@ TEST(TransposeOptimizerTests, TestReshapeAsTransposeGraphOutput) {
   };
 
   auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
-    int transpose_cost = EstimateTransposeCost(session.GetGraph());
     // Transpose cancels with the following reshape node so both the nodes
     // should be removed
-    EXPECT_EQ(transpose_cost, 0);
+    std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
+    ASSERT_TRUE(op_to_count["Mul"] == 1);
+    ASSERT_TRUE(op_to_count["Transpose"] == 0);
+    ASSERT_TRUE(op_to_count["Reshape"] == 0);
   };
 
   TransformerTester(build_test_case,
@@ -3756,10 +3760,12 @@ TEST(TransposeOptimizerTests, TestCancelingNodesGraphOutputs) {
   };
 
   auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
-    int transpose_cost = EstimateTransposeCost(session.GetGraph());
     // Transpose cancels with the following reshape node so both the nodes
     // should be removed
-    EXPECT_EQ(transpose_cost, 0);
+    std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
+    ASSERT_TRUE(op_to_count["Mul"] == 1);
+    ASSERT_TRUE(op_to_count["Transpose"] == 0);
+    ASSERT_TRUE(op_to_count["Reshape"] == 0);
   };
 
   TransformerTester(build_test_case,
@@ -3787,9 +3793,14 @@ TEST(TransposeOptimizerTests, TestNonCancelingReshape) {
   };
 
   auto check_optimized_graph = [&](InferenceSessionWrapper& session) {
-    int transpose_cost = EstimateTransposeCost(session.GetGraph());
-    // Transpose on mul output cannot be removed since rshape's shape input
+    // Transpose on mul output cannot be removed since reshape's shape input
     // is not const
+    std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
+    ASSERT_TRUE(op_to_count["Mul"] == 1);
+    ASSERT_TRUE(op_to_count["Transpose"] == 1);
+    ASSERT_TRUE(op_to_count["Reshape"] == 1);
+
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
     EXPECT_EQ(transpose_cost, 1);
   };
 
