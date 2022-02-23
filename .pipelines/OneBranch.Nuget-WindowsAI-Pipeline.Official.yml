@@ -94,6 +94,7 @@ extends:
           ob_outputDirectory: '$(Build.ArtifactStagingDirectory)'
           ob_sdl_binskim_break: false
           ob_symbolsPublishing_enabled: ${{ parameters.UploadSymbols }}
+          ob_linuxSymbolsPublishing_symbolsFolder: $(Build.SourcesDirectory)\unzipped
         dependsOn:
         - Windows_Packaging_x64_dynamic
         - Windows_Packaging_x86_dynamic
@@ -363,4 +364,6 @@ extends:
               Start-Process -FilePath $zip_tool -ArgumentList "-r $merged_nuget ." -WorkingDirectory $x64_nupkg_unzipped_directory -NoNewWindow -Wait
 
               Copy-Item -Path $merged_nuget -Destination $merged_nuget_as_zip
+              
+              7z x -o$(Build.SourcesDirectory)\unzipped $merged_nuget.fullname
             workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
