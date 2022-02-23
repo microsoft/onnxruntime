@@ -484,7 +484,6 @@ class SessionState {
   concurrency::ThreadPool* const thread_pool_{};
   concurrency::ThreadPool* const inter_op_thread_pool_{};
 
-  FuncManager fused_funcs_mgr_;
   const DataTransferManager& data_transfer_mgr_;
 
   bool use_deterministic_compute_;
