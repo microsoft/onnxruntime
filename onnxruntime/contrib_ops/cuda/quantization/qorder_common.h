@@ -81,12 +81,12 @@ class CublasLtMMAlgoMap {
 
 Status QOrdered_MatMul(
     cublasLtHandle_t cublasLt_handle, cudaStream_t stream, const cudaDeviceProp& device_prop,
-    int batchCount, int m, int n, int k,
+    int batchCount, int m, int n, int k,  /* if batchCount == 1, batch_stride_* will be ignored */  
     const float* alpha,
     const int8_t* A, int64_t batch_stride_A,
     const int8_t* B, int64_t batch_stride_B,
     const float* beta,
-    const int8_t* C, int64_t ldc,
+    const int8_t* C, int64_t ldc, int64_t batch_stride_C, /* when C == D, ldc, batch_stride_C will be ignored */
     int8_t* D, int64_t batch_stride_D,
     cublasLtOrder_t weight_order);
 

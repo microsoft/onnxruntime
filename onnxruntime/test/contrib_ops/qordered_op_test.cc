@@ -197,21 +197,13 @@ static void RunQOrdered_Dequantize_Test(
   test_dq.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-
+// Dequantize only work for ORDER_COL32 input
 TEST(QOrderedTest, FP32_Dequantize_COL32) {
   std::vector<int64_t> shape = {1, 5, 32 * 2};
   float scale = 1.0f;
   std::vector<int8_t> qvec = GenData<int8_t>(shape, scale);
   RunQOrdered_Dequantize_Test(qvec, shape, ORDER_COL32, scale);
 }
-
-TEST(QOrderedTest, FP32_Dequantize_COL4_4R2_8C) {
-  std::vector<int64_t> shape = {1, 8 * 3, 32 * 2};
-  float scale(1.0f);
-  std::vector<int8_t> qvec = GenData<int8_t>(shape, scale);
-  RunQOrdered_Dequantize_Test(qvec, shape, ORDER_COL4_4R2_8C, scale);
-}
-
 
 static void RunQOrdered_MatMul_Test(
     std::vector<int64_t> const& shapeA,
@@ -231,7 +223,7 @@ static void RunQOrdered_MatMul_Test(
 
   int64_t colsB = 0, rowsB = 0, batchB = 0;
   BatchRowColFromShape(shapeB, batchB, rowsB, colsB);
-  OrderedIndex indexerB(order_weight, rowsB, colsB);
+  OrderedIndex indexerB(order_weight, colsB, rowsB); // B need Transpose
 
   int64_t colsY = 0, rowsY = 0, batchY = 0;
   BatchRowColFromShape(shapeY, batchY, rowsY, colsY);
@@ -248,7 +240,7 @@ static void RunQOrdered_MatMul_Test(
         float sum = 0.0f;
         for (int64_t k = 0; k < colsA; k++) {
           auto posA = indexerA(m, k);
-          auto posB = indexerB(k, n);
+          auto posB = indexerB(n, k); // Transpose B
           sum += A[posA] * B[posB] * scale;
         }
         auto posY = indexerY(m, n);
@@ -266,12 +258,12 @@ static void RunQOrdered_MatMul_Test(
   OpTester test_dq("QOrderedMatMul", 1, onnxruntime::kMSDomain);
   test_dq.AddAttribute("order_A", (int64_t)ORDER_COL32);
   test_dq.AddAttribute("order_B", (int64_t)order_weight);
-  test_dq.AddAttribute("order_C", (int64_t)ORDER_COL32);
+  test_dq.AddAttribute("order_Y", (int64_t)ORDER_COL32);
   test_dq.AddInput<int8_t>("A", shapeA, vecA);
   test_dq.AddInput<float>("scale_A", {}, {scaleA});
   test_dq.AddInput<int8_t>("B", shapeB, vecB);
   test_dq.AddInput<float>("scale_B", {}, {scaleB});
-  test_dq.AddInput<float>("scale_C", {}, {scaleY});
+  test_dq.AddInput<float>("scale_Y", {}, {scaleY});
   test_dq.AddOutput<int8_t>("Y", shapeY, vecY);
   test_dq.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
@@ -280,15 +272,15 @@ static void RunQOrdered_MatMul_Test(
 TEST(QOrderedTest, MatMul_COL4_4R2_8C_16x32x32) {
   std::vector<int64_t> shapeA = {16, 32};
   std::vector<int64_t> shapeB = {32, 32};
-  std::vector<int64_t> shapeC = {16, 32};
-  RunQOrdered_MatMul_Test(shapeA, shapeB, shapeC, ORDER_COL32_2R_4R4, 2.0f, 3.0f, 5.0f);
+  std::vector<int64_t> shapeY = {16, 32};
+  RunQOrdered_MatMul_Test(shapeA, shapeB, shapeY, ORDER_COL32_2R_4R4, 2.0f, 3.0f, 5.0f);
 }
 
 TEST(QOrderedTest, MatMul_COL4_4R2_8C_16x32x32_b2_1) {
   std::vector<int64_t> shapeA = {2, 16, 32};
   std::vector<int64_t> shapeB = {1, 32, 32};
-  std::vector<int64_t> shapeC = {2, 16, 32};
-  RunQOrdered_MatMul_Test(shapeA, shapeB, shapeC, ORDER_COL32_2R_4R4, 2.0f, 3.0f, 5.0f);
+  std::vector<int64_t> shapeY = {2, 16, 32};
+  RunQOrdered_MatMul_Test(shapeA, shapeB, shapeY, ORDER_COL32_2R_4R4, 2.0f, 3.0f, 5.0f);
 }
 
 

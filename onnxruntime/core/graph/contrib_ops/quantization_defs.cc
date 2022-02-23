@@ -1102,7 +1102,7 @@ Dequantize input matrix to specific layout used in cublaslt. attr to specify out
       .TypeConstraint("F", {"tensor(float)"}, "Constrain to float32")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
-        ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
+        ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 2);
       });
 
 }

@@ -143,7 +143,7 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream, co
                        const int8_t* A, int64_t batch_stride_A,
                        const int8_t* B, int64_t batch_stride_B,
                        const float* beta,
-                       const int8_t* C, int64_t ldc,
+                       const int8_t* C, int64_t ldc, int64_t batch_stride_C,
                        int8_t* D, int64_t batch_stride_D,
                        cublasLtOrder_t order_weight) {
   const cublasComputeType_t compute_type = CUBLAS_COMPUTE_32I;
@@ -154,7 +154,7 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream, co
   cublasLtMatrixLayout_t desc_A = nullptr, desc_B = nullptr, desc_C = nullptr, desc_D = nullptr;
 
   int lda = CalcLeadingDimensionLt(m, k, order_ACD);
-  int ldb = CalcLeadingDimensionLt(k, n, order_weight);
+  int ldb = CalcLeadingDimensionLt(n, k, order_weight); // Transpose B
   int ldd = CalcLeadingDimensionLt(m, n, order_ACD);
 
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescCreate(&matmul_desc, compute_type, scale_type));
@@ -165,13 +165,13 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream, co
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&desc_A, CUDA_R_8I, m, k, lda));
   auto clean_desc_A = gsl::finally([&desc_A]() {if (desc_A) cublasLtMatrixLayoutDestroy(desc_A); });
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(desc_A, CUBLASLT_MATRIX_LAYOUT_ORDER, &order_ACD, sizeof(order_ACD)));
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&desc_B, CUDA_R_8I, n, k, ldb));
+
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&desc_B, CUDA_R_8I, n, k, ldb)); // Transpose B
   auto clean_desc_B = gsl::finally([&desc_B]() {if (desc_B) cublasLtMatrixLayoutDestroy(desc_B); });
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(desc_B, CUBLASLT_MATRIX_LAYOUT_ORDER, &order_weight, sizeof(order_weight)));
 
   auto clean_desc_C = gsl::finally([&desc_C]() {if (desc_C) cublasLtMatrixLayoutDestroy(desc_C); });
-  if (C != nullptr) {
-    if (ldc != 0) ldc = ldd;
+  if (C != D) {
     CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutCreate(&desc_C, CUDA_R_8I, m, n, ldc));
     CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(desc_C, CUBLASLT_MATRIX_LAYOUT_ORDER, &order_ACD, sizeof(order_ACD)));
   }
@@ -183,8 +183,7 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream, co
     CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(desc_A, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &batch_stride_A, sizeof(batch_stride_A)));
     CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(desc_B, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batchCount, sizeof(batchCount)));
     CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(desc_B, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &batch_stride_B, sizeof(batch_stride_B)));
-    if (desc_C) {
-      int64_t batch_stride_C = (ldc == 0 ? 0LL : batch_stride_D);
+    if (C != D) {
       CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(desc_C, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batchCount, sizeof(batchCount)));
       CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(desc_C, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &batch_stride_C, sizeof(batch_stride_C)));
     }
@@ -197,7 +196,7 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream, co
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmul(cublasLt_handle, matmul_desc,
                                         &alpha, A, desc_A, B, desc_B,
                                         &beta, C, (C == D ? desc_D : desc_C), D, desc_D,
-                                        &algo, nullptr, 0,  // algo, workspace, workspace_size
+                                        nullptr, nullptr, 0,  // algo, workspace, workspace_size
                                         stream));
 
   return Status::OK();
@@ -208,7 +207,7 @@ static Status Reorder(cublasLtHandle_t cublasLt, cudaStream_t stream,
                       const void* input, cublasLtOrder_t order_input, void* output, cublasLtOrder_t order_output) {
   cublasLtMatrixTransformDesc_t transform_desc = nullptr;
   auto clean_transform_desc = gsl::finally([&transform_desc]() {if (transform_desc) cublasLtMatrixTransformDescDestroy(transform_desc); });
-  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixTransformDescCreate(&transform_desc, CUDA_R_32F));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixTransformDescCreate(&transform_desc, CUDA_R_32I));
 
   cublasLtMatrixLayout_t InputLayout = nullptr;
   auto clean_InputLayout = gsl::finally([&InputLayout]() {if (InputLayout) cublasLtMatrixLayoutDestroy(InputLayout); });
@@ -228,8 +227,8 @@ static Status Reorder(cublasLtHandle_t cublasLt, cudaStream_t stream,
     CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(OutputLayout, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &batch_stride_input, sizeof(batch_stride_input)));
   }
 
-  float alpha = 1.0f;
-  float beta = 0.0f;
+  int32_t alpha = 1;
+  int32_t beta = 0;
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixTransform(cublasLt, transform_desc, &alpha, input, InputLayout,
                                                  &beta, nullptr, nullptr, output, OutputLayout, stream));
 
@@ -263,8 +262,7 @@ QuantizeWithOrder::QuantizeWithOrder(const OpKernelInfo& info) : CudaKernel(info
 DequantizeWithOrder::DequantizeWithOrder(const OpKernelInfo& info) : CudaKernel(info) {
   order_input_ = GetCublasLtOrderAttr(info, "order_input");
   order_output_ = GetCublasLtOrderAttr(info, "order_output");
-  ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_COL32 || order_input_ == CUBLASLT_ORDER_COL4_4R2_8C || order_input_ == CUBLASLT_ORDER_COL32_2R_4R4,
-              "Only CUBLASLT_ORDER_COL32, CUBLASLT_ORDER_COL4_4R2_8C, CUBLASLT_ORDER_COL32_2R_4R4 is supported for order_input");
+  ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_input");
   ORT_ENFORCE(order_output_ == CUBLASLT_ORDER_ROW, "Only CUBLASLT_ORDER_ROW are supported for order_output");
 }
 
@@ -309,24 +307,24 @@ Status DequantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
 
   const Tensor& input_tensor = *context->Input<Tensor>(0);
   ORT_RETURN_IF_ERROR(CheckTensorOrder(input_tensor, (cublasLtOrder_t)order_output_, (cublasLtOrder_t)order_output_, rows, cols, batch, n));
-  const void* scale = context->Input<Tensor>(1)->DataRaw();
+  const Tensor& scale_tensor = *context->Input<Tensor>(1);
+  const void* scale = scale_tensor.DataRaw();
   Tensor* output_tensor = context->Output(0, input_tensor.Shape());
   cublasLtHandle_t cublasLt = CublasLtHandle();
   cudaStream_t stream = Stream();
 
   // TODO: Currently use existing quantize kernel first, may merge into one kernel if performance needed
-  int64_t element_size = input_tensor.IsDataType<float>() ? sizeof(float) : sizeof(half);
-  auto fp_buffer = GetScratchBuffer<int8_t>(order_input_ == order_output_ ? 0LL : (element_size * n));
-  void* dst = order_input_ == order_output_ ? output_tensor->MutableDataRaw() : (void*)fp_buffer.get();
-  if (input_tensor.IsDataType<float>()) {
-    ORT_RETURN_IF_ERROR(CudaDequantizeLinear(stream, input_tensor.Data<int8_t>(), (float*)dst, (const float*)scale, (const int8_t*)nullptr, n));
-  } else {
-    ORT_RETURN_IF_ERROR(CudaDequantizeLinear(stream, input_tensor.Data<int8_t>(), (half*)dst, (const half*)scale, (const int8_t*)nullptr, n));
-  }
-
+  const int8_t* src = input_tensor.Data<int8_t>();
+  auto q8_buffer = GetScratchBuffer<int8_t>(order_input_ == order_output_ ? 0LL : n);
   if (order_input_ != order_output_) {
-    ORT_RETURN_IF_ERROR(Reorder(cublasLt, stream, gsl::narrow_cast<int>(batch), rows, cols, input_tensor.IsDataType<float>() ? CUDA_R_32F : CUDA_R_16F,
-                                fp_buffer.get(), (cublasLtOrder_t)order_input_, output_tensor->MutableDataRaw(), (cublasLtOrder_t)order_output_));
+    src = (const int8_t*)q8_buffer.get();
+    ORT_RETURN_IF_ERROR(Reorder(cublasLt, stream, gsl::narrow_cast<int>(batch), rows, cols, CUDA_R_8I,
+                                input_tensor.DataRaw(), (cublasLtOrder_t)order_input_, q8_buffer.get(), (cublasLtOrder_t)order_output_));
+  }
+  if (scale_tensor.IsDataType<float>()) {
+    ORT_RETURN_IF_ERROR(CudaDequantizeLinear(stream, src, output_tensor->MutableData<float>(), (const float*)scale, (const int8_t*)nullptr, n));
+  } else {
+    ORT_RETURN_IF_ERROR(CudaDequantizeLinear(stream, src, (half*)output_tensor->MutableData<MLFloat16>(), (const half*)scale, (const int8_t*)nullptr, n));
   }
 
   return Status::OK();
@@ -344,12 +342,12 @@ Status QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
   const float* scaleB = context->Input<Tensor>(3)->Data<float>();
   const float* scaleY = context->Input<Tensor>(4)->Data<float>();
 
-  // Just handle simple case here. 
+  // Just handle simple case here.
   // TODO: check broadcast and correct the spae
   ORT_ENFORCE(batchA == batchB || batchB == 1, "batch count for matrix A and matrix B does not match");
   ORT_ENFORCE(colsA == rowsB, "Sahpe mis-match");
   TensorShape shapeY(tensor_A.Shape());
-  shapeY[shapeY.NumDimensions() ? size_t{0} : (shapeY.NumDimensions() - 1)] = colsB;
+  shapeY[shapeY.NumDimensions() <= 1 ? size_t{0} : (shapeY.NumDimensions() - 1)] = colsB;
   Tensor* tensor_Y = context->Output(0, shapeY);
 
   cublasLtHandle_t cublasLt = CublasLtHandle();
@@ -364,7 +362,7 @@ Status QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
                                       tensor_A.Data<int8_t>(), rowsA * colsA,
                                       tensor_B.Data<int8_t>(), (batchB <= 1 ? int64_t{0} : rowsB * colsB),
                                       &beta,
-                                      nullptr, 0,
+                                      tensor_Y->MutableData<int8_t>(), int64_t{0}, int64_t{0},
                                       tensor_Y->MutableData<int8_t>(), rowsA * colsB,
                                       (cublasLtOrder_t)order_B_));
 
