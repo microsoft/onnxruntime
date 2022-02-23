@@ -148,21 +148,21 @@ jobs:
 
     - template: mac-packaging.yml
       parameters :
-        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --build_java --build_nodejs --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
+        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --build_java --build_nodejs --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
         MacosArch: arm64
         BuildJava: true
         BuildNodejs: true
 
     - template: mac-packaging.yml
       parameters :
-        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }}  --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
         MacosArch: universal2
         BuildJava: false
         BuildNodejs: false
 
     - template: mac-packaging.yml
       parameters :
-        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --build_java --build_nodejs
+        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --build_java --build_nodejs  --use_coreml
         MacosArch: x86_64
         BuildJava: true
         BuildNodejs: true
