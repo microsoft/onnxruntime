@@ -311,7 +311,7 @@ bool is_input_node(const Node* node, const std::string& name)
   });
 }
 
-static bool can_eval_shape_general(const GraphViewer& graph, const Node* node, const logging::Logger& logger, std::vector<NodeIndex>& input_nodes)
+static bool can_eval_shape_general(const GraphViewer& graph, const Node* node, std::vector<NodeIndex>& input_nodes)
 {
   if (node == nullptr)
   {
@@ -362,7 +362,7 @@ static bool can_eval_shape_general(const GraphViewer& graph, const Node* node, c
       continue;
     }
 
-    if (can_eval_shape_general(graph, input_node, logger, input_nodes))
+    if (can_eval_shape_general(graph, input_node, input_nodes))
     {
       continue;
     }
@@ -408,7 +408,7 @@ static bool can_eval_node_argument(const GraphViewer& graph, const Node* node, s
       return false;
     }
 
-    if (!can_eval_shape_general(graph, *nit, logger, input_nodes))
+    if (!can_eval_shape_general(graph, *nit, input_nodes))
     {
       return false;
     }
