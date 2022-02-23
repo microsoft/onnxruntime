@@ -1238,11 +1238,7 @@ NodeArg& CastMaskToInt32(Graph& graph, NodeArg* mask_input, ProviderType provide
                              kOnnxDomain);
 
   // Add attribute: "to" = 6
-  ONNX_NAMESPACE::AttributeProto to;
-  to.set_name("to");
-  to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-  to.set_i(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32));
-  node.AddAttribute("to", std::move(to));
+  node.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32));
 
   node.SetExecutionProviderType(provider_type);
   return cast32;

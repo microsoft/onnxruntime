@@ -149,10 +149,8 @@ static bool IsFP16Allow(const std::string& op_type, size_t level, const FP16Allo
       {level1_fp16_allow_set, level2_fp16_allow_set};
 
   bool fp16_allow = Contains(fp16_allow_level0_ops, op_type);
-  if (!fp16_allow) {
-    for (size_t i = 1, limit = std::min(level, MaxSupportedOptimizationLevel); i <= limit && !fp16_allow; ++i) {
-      fp16_allow = Contains(allowed_ops[i - 1].get(), op_type);
-    }
+  for (size_t i = 1, limit = std::min(level, MaxSupportedOptimizationLevel); i <= limit && !fp16_allow; ++i) {
+    fp16_allow = Contains(allowed_ops[i - 1].get(), op_type);
   }
   return fp16_allow;
 }
@@ -171,15 +169,6 @@ static bool IsCastTo(const Node* node, TensorProto_DataType data_type) {
            attr_hit->second.i() == static_cast<int64_t>(data_type);
   }
   return false;
-}
-
-static void AddToAttribute(TensorProto_DataType data_type, NodeAttributes& attributes) {
-  ONNX_NAMESPACE::AttributeProto to_attribute;
-  static const std::string to_name = "to";
-  to_attribute.set_name(to_name);
-  to_attribute.set_type(ONNX_NAMESPACE::AttributeProto::INT);
-  to_attribute.set_i(static_cast<int64_t>(data_type));
-  attributes.emplace(to_name, std::move(to_attribute));
 }
 
 // Check whether the node-arg element type is same the specified data type
@@ -240,15 +229,13 @@ static Status InsertCastNodes(Graph& graph,
     const std::array cast_inputs = {&cast_input};
     const std::array cast_outputs = {&cast_output};
 
-    NodeAttributes attributes;
-    AddToAttribute(data_type, attributes);
-
     Node& cast = graph.AddNode(graph.GenerateNodeName(node_arg->Name() + "_cast"),
                                "Cast",
                                "Created a new Cast node",
                                cast_inputs,
-                               cast_outputs,
-                               &attributes);
+                               cast_outputs);
+    cast.AddAttribute("to", static_cast<int64_t>(data_type));
+
     inserted_nodes.insert(cast.Index());
     Node* producer = graph.GetMutableProducerNode(node_arg->Name());
     auto consumers = graph.GetMutableConsumerNodes(node_arg->Name());
@@ -351,7 +338,7 @@ static Status InsertCastNodes(Graph& graph,
  *                              V
  */
 
-static Status RemoveCastNodesChain(Graph& graph, const gsl::span<Node* const>& casts, NodeIndices& removed_nodes) {
+static Status RemoveCastNodesChain(Graph& graph, gsl::span<Node* const> casts, NodeIndices& removed_nodes) {
   ORT_ENFORCE(!casts.empty(), "Casts must not be empty");
   Node* lead_cast = *casts.begin();
   Node* trail_cast = casts.back();
@@ -837,7 +824,7 @@ static bool PropagateBackwards(Graph& graph, Node* node,
  *          |_________|    |__________|
  *               |              |
  */
-static void FuseNodes(Graph& graph, const NodeArg* input, const gsl::span<Node* const>& nodes,
+static void FuseNodes(Graph& graph, const NodeArg* input, gsl::span<Node* const> nodes,
                       NodeIndices& removed_nodes,
                       NodeIndices& inserted_nodes) {
   ORT_ENFORCE(!nodes.empty(), "Nodes to fuse must not be empty");
@@ -1129,8 +1116,8 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
           }
         }
       }
-      if (graph.IsOutput(output) && !Contains(non_cast_consumers_map, output)) {
-        non_cast_consumers_map[output];
+      if (graph.IsOutput(output)) {
+        non_cast_consumers_map.emplace(output, InlinedVector<Node*>());
       }
       if (non_cast_consumers_map.empty()) {
         require_type_change.insert(output);
@@ -1176,9 +1163,6 @@ static Node& CreateCast(Graph& graph, NodeArg* node_arg, TensorProto_DataType da
   type_proto.mutable_tensor_type()->set_elem_type(is_graph_output ? (data_type == TensorProto::FLOAT ? TensorProto::FLOAT16 : TensorProto::FLOAT) : data_type);
   NodeArg& new_node_arg = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node_arg->Name()), &type_proto);
 
-  NodeAttributes attributes;
-  AddToAttribute(data_type, attributes);
-
   NodeArg& cast_input = is_graph_output ? new_node_arg : *node_arg;
   NodeArg& cast_output = is_graph_output ? *node_arg : new_node_arg;
   const std::array inputs = {&cast_input};
@@ -1187,8 +1171,8 @@ static Node& CreateCast(Graph& graph, NodeArg* node_arg, TensorProto_DataType da
                              "Cast",
                              "Created a new Cast node",
                              inputs,
-                             outputs,
-                             &attributes);
+                             outputs);
+  node.AddAttribute("to", static_cast<int64_t>(data_type));
   inserted_nodes.insert(node.Index());
   return node;
 }
@@ -1378,7 +1362,7 @@ Status PropagateCastOps::ApplyImpl(Graph& graph, bool& modified, int graph_level
       }
     }
   }
-  std::vector<std::string> removed_node_names;
+  InlinedVector<std::string> removed_node_names;
   int pass = 0;
   do {
     LOGS(logger, VERBOSE) << "Propagate Cast Operations Pass " << pass << ":";

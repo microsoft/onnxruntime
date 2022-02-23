@@ -109,8 +109,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       if (config.enable_gelu_approximation) {
         transformers.emplace_back(std::make_unique<GeluApproximation>(compatible_eps));
       }
+      InlinedHashSet<std::string> excluded_initializers(weights_to_train.begin(), weights_to_train.end());
       transformers.emplace_back(std::make_unique<ConstantFolding>(
-          execution_provider, false /*skip_dequantize_linear*/, compatible_eps, weights_to_train));
+          execution_provider, false /*skip_dequantize_linear*/, compatible_eps, excluded_initializers));
       transformers.emplace_back(std::make_unique<ReshapeFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<ConcatSliceElimination>(compatible_eps));
 #if defined(USE_CUDA) || defined(USE_ROCM)
@@ -198,7 +199,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cuda_rocm_execution_providers));
       transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_rocm_execution_providers));
       transformers.emplace_back(std::make_unique<BiasSoftmaxFusion>(l1_execution_providers));
-      transformers.emplace_back(std::make_unique<MatMulScaleFusion>(l1_execution_providers, weights_to_train));
+      InlinedHashSet<std::string> excluded_initializers(weights_to_train.begin(), weights_to_train.end());
+      transformers.emplace_back(std::make_unique<MatMulScaleFusion>(l1_execution_providers, excluded_initializers));
 
       rule_transformer = optimizer_utils::GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable,
                                                                             l1_execution_providers);

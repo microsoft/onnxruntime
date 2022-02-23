@@ -35,7 +35,6 @@
 #include "core/common/exceptions.h"
 #include "core/common/make_string.h"
 #include "core/common/status.h"
-#include "core/common/span_utils.h"
 #include "core/common/gsl_suppress.h"
 
 

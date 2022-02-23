@@ -558,7 +558,7 @@ common::Status GenerateSubgraph(Graph& graph, Node* start_node) {
   // graph.SetInputs({visited_inputs.begin(), visited_inputs.end()});
 
   // update the grah with only visited outputs
-  std::vector<const NodeArg*> visited_flat;
+  InlinedVector<const NodeArg*> visited_flat;
   visited_flat.reserve(visited_outputs.size());
   visited_flat.assign(visited_outputs.begin(), visited_outputs.end());
   graph.SetOutputs(visited_flat);

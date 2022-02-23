@@ -1024,7 +1024,7 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
     scales_arg = input_defs[1];
   }
 
-  TensorShapeVector scales_attr(4);
+  InlinedVector<int64_t> scales_attr(4);
 
   if (sizes_arg != nullptr) {
     // Require that the sizes tensor be static.

@@ -26,7 +26,7 @@ Other
 * Prefer passing 'gsl::span<const T>' by value (or 'std::span' when supported) as input arguments when passing const references to containers with contiguous storage (like 'std::vector'). This allows to make the function container independent, represent arbitrary memory spans or pass sub-spans as an argument.
 * Use 'AsSpan({1, 2, 3})' to convert std::initializer<T> list to a span. You can also use 'std::array'
 * Prefer passing 'std::string_view' by value instead of 'const std::string&'
-* Prefer returning 'gsl::span<T>' by value instead of a const reference to a contigious member container.
+* Prefer returning 'gsl::span<T>' by value instead of a const reference to a contiguous member container.
 * The use of the following container typedefs to reduce memory allocations is preferred:
   * Use 'TensorShapeVector' typedef to build or modify shapes from core/framework/tensor_shape.h. It is based on a vector implementation that features small buffer optimization. Its small buffer size is the same to that of in TensorShape. Use 'InlinedShapeVector<T>'    for shape related operations, but of different type.
   * Use 'InlinedVector<T>' typedef instead of std::vector. By default, it provides 64 bytes of inlined storage. You can customize inlined size with the second template non-type parameter N.

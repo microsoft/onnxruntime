@@ -364,7 +364,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithShapeToInitializer) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 3);
 
   InlinedHashSet<std::string_view> compatible_eps;
-  std::unordered_set<std::string> excluded_initializers;
+  InlinedHashSet<std::string> excluded_initializers;
   excluded_initializers.insert("matmul_weight");
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   std::unique_ptr<CPUExecutionProvider> e =
@@ -4427,7 +4427,7 @@ static void TestMatMulScaleFusion(
     GraphPreprocessFn graph_preprocess_fn,
     GraphTransformationCheckFn graph_transformation_check_fn,
     const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
-    const std::unordered_set<std::string>& excluded_initializer_names = {}) {
+    const InlinedHashSet<std::string>& excluded_initializer_names = {}) {
   SCOPED_TRACE(ORT_TSTR("model path: ") + model_path);
 
   std::shared_ptr<Model> model;
@@ -4454,7 +4454,7 @@ static void TestMatMulScaleFusion(
     const PathString& model_path, const Logger& logger,
     GraphTransformationCheckFn graph_transformation_check,
     const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
-    const std::unordered_set<std::string>& excluded_initializer_names = {}) {
+    const InlinedHashSet<std::string>& excluded_initializer_names = {}) {
   TestMatMulScaleFusion(
       model_path, logger,
       [](Graph&) {}, graph_transformation_check,

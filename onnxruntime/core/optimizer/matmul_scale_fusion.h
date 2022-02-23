@@ -27,9 +27,9 @@ class MatMulScaleFusion : public GraphTransformer {
    */
   MatMulScaleFusion(
       const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
-      const std::unordered_set<std::string>& excluded_initializer_names = {})
+      const InlinedHashSet<std::string>& excluded_initializer_names = {})
       : GraphTransformer{"MatMulScaleFusion", compatible_execution_providers},
-        excluded_initializer_names_{excluded_initializer_names.cbegin(), excluded_initializer_names.cend()} {
+        excluded_initializer_names_{excluded_initializer_names} {
   }
 
  private:

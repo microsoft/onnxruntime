@@ -66,7 +66,7 @@ static bool CheckInput(NodeArg* input, const logging::Logger& logger) {
   return true;
 }
 
-static bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Node::NodeConstIterator end, const gsl::span<const std::string>& expected_types) {
+static bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Node::NodeConstIterator end, gsl::span<const std::string> expected_types) {
   for (const std::string& expected_type : expected_types) {
     if (start == end || (*start).OpType().compare(expected_type) != 0) {
       return false;
@@ -76,8 +76,8 @@ static bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Nod
   return start == end;
 }
 
-static bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Node::NodeConstIterator end, std::initializer_list<std::string> expected_types) {
-  return IsNeighborNodeExpectedTypes(start, end, gsl::make_span(expected_types.begin(), expected_types.end()));
+static inline bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Node::NodeConstIterator end, std::initializer_list<std::string> expected_types) {
+  return IsNeighborNodeExpectedTypes(start, end, gsl::make_span(expected_types));
 }
 
 /** Match subgraph like the following:

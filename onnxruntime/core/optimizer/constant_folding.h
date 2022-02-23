@@ -25,7 +25,7 @@ class ConstantFolding : public GraphTransformer {
   ConstantFolding(const IExecutionProvider& execution_provider,
                   bool skip_dequantize_linear,
                   const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
-                  const std::unordered_set<std::string>& excluded_initializers = {}) noexcept;
+                  const InlinedHashSet<std::string>& excluded_initializers = {}) noexcept;
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
