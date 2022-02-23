@@ -11,3 +11,7 @@
 
 # make sure build.sh retains Unix line endings, even when checked out on windows.
 *.sh text eol=lf
+
+# make sure ts, js files retains Unix line endings, even when checked out on windows.
+*.ts text eol=lf
+*.js text eol=lf
