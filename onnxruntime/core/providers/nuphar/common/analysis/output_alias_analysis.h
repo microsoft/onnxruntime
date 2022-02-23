@@ -33,7 +33,7 @@ class OutputAliasAnalysis : public NupharAnalysis {
   // a map from an output alias to its input
   std::map<NodeKey, const onnxruntime::NodeArg*> alias_use_defs_;
 
-  void Traverse(const gsl::span<const Node* const>& nodes,
+  void Traverse(gsl::span<const Node* const> nodes,
                 const InlinedHashSet<std::string_view>& graph_inputs,
                 const InlinedHashSet<std::string_view>& graph_outputs);
 

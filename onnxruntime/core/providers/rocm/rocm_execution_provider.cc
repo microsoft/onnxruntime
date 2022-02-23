@@ -2174,7 +2174,7 @@ void ROCMExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
                                      info_.external_allocator_info, info_.default_memory_arena_cfg);
     allocator_manager->InsertAllocator(rocm_alloc);
   }
-  TryInsertAllocator(rocm_alloc);
+  TryInsertAllocator(std::move(rocm_alloc));
 
   // OrtMemTypeCPUOutput -- allocated by hipHostMalloc, used to copy ROCM device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
@@ -2190,7 +2190,7 @@ void ROCMExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
     rocm_pinned_alloc = CreateAllocator(pinned_memory_info);
     allocator_manager->InsertAllocator(rocm_pinned_alloc);
   }
-  TryInsertAllocator(rocm_pinned_alloc);
+  TryInsertAllocator(std::move(rocm_pinned_alloc));
 
   // OrtMemTypeCPUInput -- ROCM op place the input on CPU and will not be accessed by ROCM kernel, no sync issue
   auto rocm_cpu_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUInput);

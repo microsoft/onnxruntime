@@ -62,7 +62,7 @@ class RuleBasedGraphTransformer : public GraphTransformer {
       applying rules on this node.
       @returns Status indicating success or providing error information. */
   common::Status ApplyRulesOnNode(Graph& graph, Node& node,
-                                  const gsl::span<const std::reference_wrapper<const RewriteRule>>& rules,
+                                  gsl::span<const std::reference_wrapper<const RewriteRule>> rules,
                                   RewriteRule::RewriteRuleEffect& rule_effect, const logging::Logger& logger) const;
 
  private:

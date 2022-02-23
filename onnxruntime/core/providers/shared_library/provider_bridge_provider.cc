@@ -348,8 +348,8 @@ std::string GetEnvironmentVar(const std::string& var_name) {
 
 InlinedHashSet<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                const std::string& provider_type,
-                                               const gsl::span<const KernelRegistry* const>& kernel_registries,
-                                               const gsl::span<const NodeIndex>& tentative_nodes) {
+                                               gsl::span<const KernelRegistry* const> kernel_registries,
+                                               gsl::span<const NodeIndex> tentative_nodes) {
   return g_host->GetCpuPreferredNodes(graph, provider_type, kernel_registries, tentative_nodes);
 }
 

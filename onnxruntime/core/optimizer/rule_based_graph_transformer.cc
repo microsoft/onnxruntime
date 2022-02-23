@@ -27,7 +27,7 @@ Status RuleBasedGraphTransformer::Register(std::unique_ptr<RewriteRule> rule) {
 }
 
 Status RuleBasedGraphTransformer::ApplyRulesOnNode(Graph& graph, Node& node,
-                                                   const gsl::span<const std::reference_wrapper<const RewriteRule>>& rules,
+                                                   gsl::span<const std::reference_wrapper<const RewriteRule>> rules,
                                                    RuleEffect& rule_effect, const logging::Logger& logger) const {
   for (const RewriteRule& rule : rules) {
     ORT_RETURN_IF_ERROR(rule.CheckConditionAndApply(graph, node, rule_effect, logger));

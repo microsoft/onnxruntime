@@ -192,11 +192,7 @@ class InferenceSession {
     * Calling this API is optional.
     * @return OK if success.
     */
-  common::Status FilterEnabledOptimizers(const InlinedHashSet<std::string>& optimizers_to_disable)
-      ORT_MUST_USE_RESULT;
-
-  common::Status FilterEnabledOptimizers(InlinedHashSet<std::string>&& optimizers_to_disable)
-      ORT_MUST_USE_RESULT;
+  common::Status FilterEnabledOptimizers(InlinedHashSet<std::string> optimizers_to_disable);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

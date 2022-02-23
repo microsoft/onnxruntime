@@ -207,8 +207,8 @@ struct ProviderHostImpl : ProviderHost {
 
   InlinedHashSet<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                  const std::string& provider_type,
-                                                 const gsl::span<const KernelRegistry* const>& kernel_registries,
-                                                 const gsl::span<const NodeIndex>& tentative_nodes) override {
+                                                 gsl::span<const KernelRegistry* const> kernel_registries,
+                                                 gsl::span<const NodeIndex> tentative_nodes) override {
     return onnxruntime::GetCpuPreferredNodes(graph, provider_type, kernel_registries, tentative_nodes);
   }
 

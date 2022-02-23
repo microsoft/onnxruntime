@@ -13,6 +13,7 @@ namespace test {
 namespace {
 void f(gsl::span<const int64_t> s) {
   std::copy(s.begin(), s.end(), std::ostream_iterator<int64_t>(std::cout, ", "));
+  std::cout << std::endl;
 }
 }
 
@@ -24,15 +25,11 @@ TEST(Common, SpanUtilsTests) {
     ASSERT_EQ(gsl::make_span(list), span);
     // no type conversion int -> int64_t
     // use std::array
-    // f(span);
   }
 
   {
-    // Compile only test.
-    // This is only valid when passing resulting span
-    // to a function call as the initializer_list remains
-    // orphaned
-    AsSpan({1, 2, 3});
+    AsSpan({1, 2, 3}); // -> gsl::span<const int>
+    f(AsSpan<int64_t>({1, 2, 3})); //  -> gsl::span<const int64_t>
   }
 
   {
