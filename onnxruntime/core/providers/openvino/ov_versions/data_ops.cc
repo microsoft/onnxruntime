@@ -178,7 +178,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Scatter", V_2021_1, {"MYRIAD"}},
     {"Scatter", V_2022_1, {"All"}},
     {"ScatterElements", V_2021_2, {"MYRIAD"}},
-    {"ScatterND", V_2022_1, {"CPU","GPU"}},
+    //{"ScatterND", V_2022_1, {"CPU","GPU"}},
     {"Selu", V_2020_4, {"CPU", "GPU"}},
     {"Shape", V_2020_4, {"All"}},
     {"Shrink", V_2022_1, {"CPU", "GPU"}},

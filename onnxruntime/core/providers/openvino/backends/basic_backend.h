@@ -4,13 +4,12 @@
 #pragma once
 
 #include <memory>
-#include <inference_engine.hpp>
 
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/openvino/contexts.h"
 #include "core/providers/openvino/ibackend.h"
-
+#include "core/providers/openvino/ov_interface.h"
 #include <vector>
 #include <iostream>
 #include <string>
@@ -30,30 +29,36 @@ class BasicBackend : public IBackend {
   void Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) override;
 
  private:
-  void StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<InferenceEngine::InferRequest> infer_request);
+  bool ImportBlob(std::string hw_target, bool vpu_status);
+  void PopulateCompiledDirectory(std::string, std::string&, std::string&, bool&);
+  bool ValidateSubgraph(std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
+  void PopulateConfigValue(ov_config& config);
+  void EnableCaching();
+  void EnableGPUThrottling(ov_config& config);
+  void StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<ov_infer_request> infer_request);
 
 #ifdef IO_BUFFER_ENABLED
-  void StartRemoteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<InferenceEngine::InferRequest> infer_request);
+  void StartRemoteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<ov_infer_request> infer_request);
 #endif
 
-  void CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<InferenceEngine::InferRequest> infer_request);
+  void CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<ov_infer_request> infer_request);
 
   GlobalContext& global_context_;
   SubGraphContext subgraph_context_;
   mutable std::mutex compute_lock_;
-  std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network_;
-  InferenceEngine::ExecutableNetwork exe_network_;
+  std::shared_ptr<ov_network> ie_cnn_network_;
+  ov_exe_network exe_network_;
   std::map<std::string, std::shared_ptr<ngraph::Node>> const_outputs_map_;
   std::unique_ptr<InferRequestsQueue> inferRequestsQueue_;
-  InferenceEngine::RemoteContext::Ptr remote_context_;
+  ov_remote_context_ptr remote_context_;
 };
 
 class InferRequestsQueue {
  public:
-  InferRequestsQueue(InferenceEngine::ExecutableNetwork& net, size_t nireq) {
-    InferenceEngine::InferRequest::Ptr infer_request;
+  InferRequestsQueue(ov_exe_network& net, size_t nireq) {
+    ov_infer_request_ptr infer_request;
     for (size_t id = 0; id < nireq; id++) {
-      infer_request = std::make_shared<InferenceEngine::InferRequest>(net.CreateInferRequest());
+      infer_request = std::make_shared<ov_infer_request>(net.create_infer_request());
       infer_requests_.push_back(infer_request);
     }
   }
@@ -69,18 +74,18 @@ class InferRequestsQueue {
   void printstatus() {
     std::cout << "printing elements of the vector (infer_requests_): " << std::endl;
     for (auto i = infer_requests_.begin(); i != infer_requests_.end(); ++i) {
-      std::cout << *i << " ";
+      i->get()->query_status();
     }
     std::cout << '\n';
   }
 
-  void putIdleRequest(InferenceEngine::InferRequest::Ptr infer_request) {
+  void putIdleRequest(ov_infer_request_ptr infer_request) {
     std::unique_lock<std::mutex> lock(_mutex);
     infer_requests_.push_back(infer_request);
     _cv.notify_one();
   }
 
-  InferenceEngine::InferRequest::Ptr getIdleRequest() {
+  ov_infer_request_ptr getIdleRequest() {
     std::unique_lock<std::mutex> lock(_mutex);
     _cv.wait(lock, [this] { return infer_requests_.size() > 0; });
     auto request = infer_requests_.at(0);
@@ -91,7 +96,7 @@ class InferRequestsQueue {
  private:
   std::mutex _mutex;
   std::condition_variable _cv;
-  std::vector<InferenceEngine::InferRequest::Ptr> infer_requests_;
+  std::vector<ov_infer_request_ptr> infer_requests_;
 };
 
 }  // namespace openvino_ep
