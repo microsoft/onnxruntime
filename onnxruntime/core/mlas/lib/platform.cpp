@@ -389,6 +389,7 @@ Return Value:
     if (HasP10Instructions) {
         this->GemmFloatKernel = MlasSgemmKernelPOWER10;
         this->GemmDoubleKernel = MlasDgemmKernelPOWER10;
+        this->GemmU8X8Dispatch = &MlasGemm8X8DispatchPOWER10;
     }
 #endif
 #endif
