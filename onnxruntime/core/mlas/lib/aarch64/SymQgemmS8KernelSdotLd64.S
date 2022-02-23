@@ -77,17 +77,15 @@ Return Value:
 
         stp     d8,d9,[sp,#-.LGemmS8S8KernelFrame_SavedRegisters]!
         ldr     x8,[sp,#.LGemmS8S8KernelFrame_ColumnSumBuffer]
-        stp     d10,d11,[sp,#16]
-        stp     x20,x21,[sp,#32]
-
-        // compute C pointers: x2, x16, x17, x6
         cmp     x4,#2                   // M < 2 ?
+        stp     d10,d11,[sp,#16]
         add     x16,x2,x6,lsl #2        // x16 -> C1
         add     x17,x2,x6,lsl #3        // x17 -> C2
+        stp     x20,x21,[sp,#32]
         csel    x16,x2,x16,lo           // if M < 2  x16/C1 -> C0
+        mov     x12,#4                  // set max M to 4
         csel    x17,x16,x17,ls          // if M <= 2  x17/C2 -> C1
         cmp     x4,#4                   // M < 4 ?
-        mov     x12,#4                  // set max M to 4
         add     x6,x16,x6,lsl #3        // x6 -> C3
         mov     x9,x0                   // save A0
         mov     x10,x3                  // save K
