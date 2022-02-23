@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -85,11 +85,6 @@ public class OnnxTensor extends OnnxTensorLike {
         return carrier;
       }
     }
-  }
-
-  @Override
-  public TensorInfo getInfo() {
-    return info;
   }
 
   @Override

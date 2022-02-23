@@ -25,6 +25,13 @@ public abstract class OnnxTensorLike implements OnnxValue {
 
   protected final TensorInfo info;
 
+  /**
+   * Constructs a tensor-like (the base class of OnnxTensor and OnnxSparseTensor).
+   *
+   * @param nativeHandle The pointer to the tensor.
+   * @param allocatorHandle The pointer to the memory allocator.
+   * @param info The tensor info.
+   */
   OnnxTensorLike(long nativeHandle, long allocatorHandle, TensorInfo info) {
     this.nativeHandle = nativeHandle;
     this.allocatorHandle = allocatorHandle;
@@ -38,5 +45,15 @@ public abstract class OnnxTensorLike implements OnnxValue {
    */
   long getNativeHandle() {
     return nativeHandle;
+  }
+
+  /**
+   * Returns a {@link TensorInfo} for this tensor.
+   *
+   * @return The tensor info.
+   */
+  @Override
+  public TensorInfo getInfo() {
+    return info;
   }
 }

@@ -63,7 +63,8 @@ public class SparseTensorTest {
         data.rewind();
 
         OnnxSparseTensor.COOTensor cooTensor =
-            new OnnxSparseTensor.COOTensor(indices, data, shape, OnnxJavaType.FLOAT, 5);
+            new OnnxSparseTensor.COOTensor(
+                indices, new long[] {5, 2}, data, shape, OnnxJavaType.FLOAT, 5);
         OnnxSparseTensor tensor = OnnxSparseTensor.createSparseTensor(env, cooTensor);
 
         inputMap.put("sparse_A", tensor);
@@ -90,7 +91,7 @@ public class SparseTensorTest {
         indices.put(8);
         indices.rewind();
 
-        cooTensor = new OnnxSparseTensor.COOTensor(indices, data, shape, OnnxJavaType.FLOAT, 5);
+        cooTensor = new OnnxSparseTensor.COOTensor(indices, new long[]{5}, data, shape, OnnxJavaType.FLOAT, 5);
         tensor = OnnxSparseTensor.createSparseTensor(env, cooTensor);
 
         inputMap.put("sparse_A", tensor);
@@ -135,8 +136,12 @@ public class SparseTensorTest {
         data.rewind();
 
         cooTensor =
-            new OnnxSparseTensor.COOTensor(indices, data, rectangularShape, OnnxJavaType.FLOAT, 4);
+            new OnnxSparseTensor.COOTensor(
+                indices, new long[] {4, 2}, data, rectangularShape, OnnxJavaType.FLOAT, 4);
         tensor = OnnxSparseTensor.createSparseTensor(env, cooTensor);
+
+        assertArrayEquals(new long[] {4, 2}, tensor.getIndicesShape());
+        assertArrayEquals(new long[] {4}, tensor.getValuesShape());
 
         inputMap.put("sparse_A", tensor);
         inputMap.put("dense_B", denseIdMatrix);
@@ -177,8 +182,12 @@ public class SparseTensorTest {
         data.rewind();
 
         cooTensor =
-            new OnnxSparseTensor.COOTensor(indices, data, vectorShape, OnnxJavaType.FLOAT, 2);
+            new OnnxSparseTensor.COOTensor(
+                indices, new long[] {2, 2}, data, vectorShape, OnnxJavaType.FLOAT, 2);
         tensor = OnnxSparseTensor.createSparseTensor(env, cooTensor);
+
+        assertArrayEquals(new long[] {2, 2}, tensor.getIndicesShape());
+        assertArrayEquals(new long[] {2}, tensor.getValuesShape());
 
         inputMap.put("sparse_A", tensor);
         inputMap.put("dense_B", denseIdMatrix);
@@ -226,6 +235,8 @@ public class SparseTensorTest {
 
         assertEquals(OnnxSparseTensor.SparseTensorType.COO, sparseTensor.getSparseTensorType());
 
+        assertArrayEquals(new long[] {3}, sparseTensor.getIndicesShape());
+        assertArrayEquals(new long[] {3}, sparseTensor.getValuesShape());
         assertArrayEquals(new long[] {3, 3}, sparseTensor.getInfo().getShape());
 
         OnnxSparseTensor.SparseTensor javaTensor = sparseTensor.getValue();
