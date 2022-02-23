@@ -93,6 +93,7 @@ extends:
         variables:
           ob_outputDirectory: '$(Build.ArtifactStagingDirectory)'
           ob_sdl_binskim_break: false
+          ob_symbolsPublishing_enabled: ${{ parameters.UploadSymbols }}
         dependsOn:
         - Windows_Packaging_x64_dynamic
         - Windows_Packaging_x86_dynamic
