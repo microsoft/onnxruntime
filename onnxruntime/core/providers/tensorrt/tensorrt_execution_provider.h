@@ -199,5 +199,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   Otherwise, the constructed unique_lock is not associated with any mutex therefore no locking/unlocking will happen.
   */
   std::unique_lock<OrtMutex> GetEngineBuildLock() const;
+
+  std::unique_lock<OrtMutex> GetCreateInferRuntimeLock() const;
 };
 }  // namespace onnxruntime
