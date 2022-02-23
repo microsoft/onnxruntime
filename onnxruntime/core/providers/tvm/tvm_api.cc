@@ -17,16 +17,9 @@ using TvmPackedFunc = ::tvm::PackedFunc;
 
 TvmModule TVMCompile(const std::string& onnx_txt,
                      const std::string& model_path,
-                     const std::string& executor,
-                     const std::string& target,
-                     const std::string& target_host,
-                     int opt_level,
+                     const TvmEPOptions& options,
                      int opset,
-                     bool freeze_params,
-                     const std::vector<std::vector<int64_t>>& input_shapes,
-                     bool nhwc,
-                     const std::string& tuning_logfile,
-                     const std::string& tuning_type)
+                     const std::vector<std::vector<int64_t>>& input_shapes)
 {
   ::tvm::Array<TvmIntArray> shapes;
   for (size_t i = 0; i < input_shapes.size(); ++i)
@@ -44,16 +37,16 @@ TvmModule TVMCompile(const std::string& onnx_txt,
   TvmModule mod = (*compile)(
           TVMByteArray{onnx_txt.data(), onnx_txt.size()},
           model_path,
-          executor,
-          target,
-          target_host,
-          opt_level,
+          options.executor,
+          options.target,
+          options.target_host,
+          options.opt_level,
           opset,
-          freeze_params,
+          options.freeze_weights,
           shapes,
-          nhwc,
-          tuning_logfile,
-          tuning_type);
+          options.to_nhwc,
+          options.tuning_file_path,
+          options.tuning_type);
   ORT_ENFORCE(mod.get() != nullptr, "Compiled TVM Module is nullptr!");
   return mod;
 }

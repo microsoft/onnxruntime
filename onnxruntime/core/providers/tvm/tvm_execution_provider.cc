@@ -53,10 +53,6 @@ TvmExecutionProvider::TvmExecutionProvider(const TvmEPOptions& options)
 
 TvmExecutionProvider::~TvmExecutionProvider() {}
 
-AllocatorPtr TvmExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
-  return allocator_;
-}
-
 std::vector<std::unique_ptr<ComputeCapability>>
 TvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
                                      const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
@@ -167,6 +163,10 @@ std::unique_ptr<IDataTransfer> TvmExecutionProvider::GetDataTransfer() const {
   }
 }
 
+AllocatorPtr TvmExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+  return allocator_;
+}
+
 int TvmExecutionProvider::CreateStateFunc(ComputeContext* context, FunctionState* state) {
   auto* state_ptr = new TVMFuncState();
   *state_ptr = {context->allocate_func,
@@ -189,16 +189,9 @@ TvmModule* TvmExecutionProvider::CompileFunc(std::string func_name,
 
   TvmModule mod_f = tvm::TVMCompile(buffers_[func_name],
                                     model_paths_[func_name],
-                                    options_.executor,
-                                    options_.target,
-                                    options_.target_host,
-                                    options_.opt_level,
+                                    options_,
                                     opsets_[func_name],
-                                    options_.freeze_weights,
-                                    input_shapes,
-                                    options_.to_nhwc,
-                                    options_.tuning_file_path,
-                                    options_.tuning_type);
+                                    input_shapes);
   auto module_ptr = std::make_shared<TvmModule>();
   *module_ptr = mod_f;
   modules_[func_name] = module_ptr;
