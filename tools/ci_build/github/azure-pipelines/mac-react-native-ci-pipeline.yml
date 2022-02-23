@@ -258,8 +258,9 @@ jobs:
 
   - script: |
       git restore .
+      cd react_native
       yarn prepack-rel
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
+    workingDirectory: '$(Build.SourcesDirectory)/js'
     displayName: Restore git changes and prepack for npm publish
 
   - task: PowerShell@2
