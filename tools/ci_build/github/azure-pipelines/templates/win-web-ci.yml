@@ -26,7 +26,7 @@ jobs:
     clean: all
   steps:
   - script: |
-     git config --global core.autocrlf false
+     git config --global core.autocrlf true
     displayName: Set git config core.autocrlf
   - checkout: self
     submodules: false
