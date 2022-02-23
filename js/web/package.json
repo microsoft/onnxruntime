@@ -20,7 +20,7 @@
     "onnxruntime-common": "file:../common"
   }, 
   "scripts": {
-    "prepare": "tsc --newLine lf", 
+    "prepare": "tsc", 
     "build:doc": "node ./script/generate-operator-md", 
     "pull:wasm": "node ./script/pull-prebuilt-wasm-artifacts", 
     "test:e2e": "node ./test/e2e/run", 

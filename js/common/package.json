@@ -11,7 +11,7 @@
   "version": "1.11.0",
   "jsdelivr": "dist/ort-common.min.js",
   "scripts": {
-    "prepare": "tsc --newLine lf && webpack"
+    "prepare": "tsc && webpack"
   },
   "keywords": [
     "ONNX",

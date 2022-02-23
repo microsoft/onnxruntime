@@ -38,7 +38,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "source": "lib/index",
-  "version": "1.11.0-dev.20220223-b23b338f7",
+  "version": "1.11.0",
   "main": "dist/commonjs/index",
   "homepage": "https://github.com/Microsoft/onnxruntime/js/react_native#readme",
   "files": [
@@ -79,7 +79,7 @@
     "onnxruntime-common": "file:../common"
   },
   "scripts": {
-    "typescript": "tsc --newLine lf --noEmit",
+    "typescript": "tsc --noEmit",
     "prepare": "bob build",
     "bootstrap": "yarn pack-common && yarn unpack-common && yarn pack-libs && yarn unpack-libs && yarn e2e && yarn pods",
     "test": "jest",
@@ -87,8 +87,8 @@
     "unpack-common": "cd e2e && yarn add --no-lockfile file:./onnxruntime-common.tgz",
     "pack-libs": "yarn prepack-e2e && npm pack && mv -f onnxruntime-react-native-*.tgz e2e/onnxruntime-react-native.tgz",
     "unpack-libs": "cd e2e && yarn add --no-lockfile file:./onnxruntime-react-native.tgz",
-    "prepack-rel": "tsc --newLine lf --build ./tsconfig.scripts.json && node ./scripts/prepack",
-    "prepack-e2e": "tsc --newLine lf --build ./tsconfig.scripts.json && node ./scripts/prepack-e2e",
+    "prepack-rel": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack",
+    "prepack-e2e": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack-e2e",
     "pods": "cd e2e && pod-install --quiet",
     "e2e": "yarn --cwd e2e"
   },

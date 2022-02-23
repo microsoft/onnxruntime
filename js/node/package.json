@@ -18,15 +18,15 @@
     "onnxruntime-common": "file:../common"
   }, 
   "scripts": {
-    "buildr": "tsc --newLine lf && node ./script/build --config=RelWithDebInfo", 
-    "prepare": "tsc --newLine lf --build script && tsc --newLine lf", 
-    "rebuild": "tsc --newLine lf && node ./script/build --rebuild", 
-    "rebuildd": "tsc --newLine lf && node ./script/build --rebuild --config=Debug", 
-    "buildd": "tsc --newLine lf && node ./script/build --config=Debug", 
-    "build": "tsc --newLine lf && node ./script/build", 
-    "test": "tsc --newLine lf --build test && mocha ./test/test-main", 
+    "buildr": "tsc && node ./script/build --config=RelWithDebInfo", 
+    "prepare": "tsc --build script && tsc", 
+    "rebuild": "tsc && node ./script/build --rebuild", 
+    "rebuildd": "tsc && node ./script/build --rebuild --config=Debug", 
+    "buildd": "tsc && node ./script/build --config=Debug", 
+    "build": "tsc && node ./script/build", 
+    "test": "tsc --build test && mocha ./test/test-main", 
     "prepack": "node ./script/prepack", 
-    "rebuildr": "tsc --newLine lf && node ./script/build --rebuild --config=RelWithDebInfo"
+    "rebuildr": "tsc && node ./script/build --rebuild --config=RelWithDebInfo"
   }, 
   "keywords": [
     "ONNX", 

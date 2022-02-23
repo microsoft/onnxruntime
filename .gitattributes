@@ -13,5 +13,6 @@
 *.sh text eol=lf
 
 # make sure ts, js files retains Unix line endings, even when checked out on windows.
+# it ensures npm packages built from Unix and Windows are the same.
 *.ts text eol=lf
 *.js text eol=lf
