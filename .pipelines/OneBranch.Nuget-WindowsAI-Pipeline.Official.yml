@@ -43,48 +43,40 @@ extends:
       - template: .pipelines/windowsai-steps.yml@self
         parameters:
           BuildArch: x64
-          UploadSymbols: ${{ parameters.UploadSymbols }}
           
       - template: .pipelines/windowsai-steps.yml@self
         parameters:
           BuildArch: x86
           PythonPackageName: pythonx86
-          UploadSymbols: ${{ parameters.UploadSymbols }}
           
       - template: .pipelines/windowsai-steps.yml@self
         parameters:
           BuildArch: arm
-          UploadSymbols: ${{ parameters.UploadSymbols }}
           
       - template: .pipelines/windowsai-steps.yml@self
         parameters:
           BuildArch: arm64
-          UploadSymbols: ${{ parameters.UploadSymbols }}
           
       - template: .pipelines/windowsai-steps.yml@self
         parameters:
           BuildArch: x64
           Runtime: static
-          UploadSymbols: ${{ parameters.UploadSymbols }}
           
       - template: .pipelines/windowsai-steps.yml@self
         parameters:
           BuildArch: x86
           PythonPackageName: pythonx86
           Runtime: static
-          UploadSymbols: ${{ parameters.UploadSymbols }}
           
       - template: .pipelines/windowsai-steps.yml@self
         parameters:
           BuildArch: arm
           Runtime: static
-          UploadSymbols: ${{ parameters.UploadSymbols }}
           
       - template: .pipelines/windowsai-steps.yml@self
         parameters:
           BuildArch: arm64
           Runtime: static
-          UploadSymbols: ${{ parameters.UploadSymbols }}
           
           
       - job: NuGet_Packaging
