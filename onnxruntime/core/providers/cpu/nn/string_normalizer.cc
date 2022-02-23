@@ -25,7 +25,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     StringNormalizer,
     10,
     KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<std::string>()),
+        .TypeConstraint("X", DataTypeImpl::GetTensorType<std::string>()),
     StringNormalizer);
 
 namespace string_normalizer {

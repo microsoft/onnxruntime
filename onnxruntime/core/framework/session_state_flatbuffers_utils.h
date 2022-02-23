@@ -77,5 +77,4 @@ class FbsSessionStateViewer {
  private:
   const fbs::SessionState& fbs_session_state_;
 };
-
 }  // namespace onnxruntime::fbs::utils

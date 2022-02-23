@@ -5,12 +5,12 @@ from parity_utilities import find_transformers_source
 if find_transformers_source():
     from onnx_exporter import export_onnx_model_from_pt
     from huggingface_models import MODELS
-    from benchmark_helper import Precision
+    from benchmark_helper import Precision, OptimizerInfo
     from shape_infer_helper import SymbolicShapeInferenceHelper
 else:
     from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_pt
     from onnxruntime.transformers.huggingface_models import MODELS
-    from onnxruntime.transformers.benchmark_helper import Precision
+    from onnxruntime.transformers.benchmark_helper import Precision, OptimizerInfo
     from onnxruntime.transformers.shape_infer_helper import SymbolicShapeInferenceHelper
 
 
@@ -22,7 +22,7 @@ class SymbolicShapeInferenceHelperTest(unittest.TestCase):
         with torch.no_grad():
             export_onnx_model_from_pt(model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3],
                                       None, '../cache_models', base_path, input_names[:1], False, Precision.FLOAT32,
-                                      True, True, True, False, {})
+                                      OptimizerInfo.BYSCRIPT, True, True, False, {})
         model_path = base_path + model_name.replace('-', '_') + "_1.onnx"
         import onnx
         return onnx.load_model(model_path)

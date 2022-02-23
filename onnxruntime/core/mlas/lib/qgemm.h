@@ -802,7 +802,8 @@ struct MLAS_GEMM_QUANT_DISPATCH {
 };
 
 struct MLAS_SYMM_QGEMM_DISPATCH {
-    MLAS_SYMM_QGEMM_OPERATION* Operation;
+    MLAS_SYMM_QGEMM_OPERATION* LitOperation; /// running on little cores with narrow memory load
+    MLAS_SYMM_QGEMM_OPERATION* BigOperation; /// running on big cores with wider memory load
     MLAS_GEMM_QUANT_COPY_PACKB_ROUTINE* CopyPackBRoutine;
     size_t StrideM; /**< num of rows processed by kernel at a time */
     size_t PackedK;

@@ -20,13 +20,13 @@ if find_transformers_source():
     from onnx_model import OnnxModel
     from onnx_exporter import export_onnx_model_from_tf, export_onnx_model_from_pt
     from huggingface_models import MODELS
-    from benchmark_helper import Precision
+    from benchmark_helper import Precision, OptimizerInfo
 else:
     from onnxruntime.transformers.optimizer import optimize_model
     from onnxruntime.transformers.onnx_model import OnnxModel
     from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_tf, export_onnx_model_from_pt
     from onnxruntime.transformers.huggingface_models import MODELS
-    from onnxruntime.transformers.benchmark_helper import Precision
+    from onnxruntime.transformers.benchmark_helper import Precision, OptimizerInfo
 
 BERT_TEST_MODELS = {
     "bert_keras_0": ('models', 'TFBertForSequenceClassification_1.onnx'),  # bert_mrpc_tensorflow2.1_opset10
@@ -78,7 +78,7 @@ class TestBertOptimization(unittest.TestCase):
                                                                      MODELS[model_name][2], MODELS[model_name][3], None,
                                                                      './cache_models', './onnx_models',
                                                                      input_names[:inputs_count], False,
-                                                                     Precision.FLOAT32, True, True, True, True,
+                                                                     Precision.FLOAT32, OptimizerInfo.BYSCRIPT, True, True, True,
                                                                      model_fusion_statistics)
 
         onnx_model = list(model_fusion_statistics.keys())[0]
