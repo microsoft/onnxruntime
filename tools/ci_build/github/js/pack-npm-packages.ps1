@@ -116,7 +116,7 @@ if ($MODE -eq "dev") {
     Write-Host "Compare package.json"
     $latest_package_json=Join-Path -Path ".." -ChildPath "latest\package\package.json"
     $current_package_json=Join-Path -Path ".." -ChildPath "current\package\package.json"
-    #npx json-diff $latest_package_json $current_package_json
+    npx json-diff $latest_package_json $current_package_json
     $use_latest=$?
     Write-Host "Result: $use_latest"
     if ($use_latest) {
