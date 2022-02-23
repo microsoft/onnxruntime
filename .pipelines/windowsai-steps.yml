@@ -11,7 +11,7 @@ jobs:
   variables:
     ob_outputDirectory: '$(Build.ArtifactStagingDirectory)'
     ob_sdl_binskim_break: true 
-    ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/master') }}:
+    ${{ if startsWith(variables['Build.SourceBranchName'], 'snnn/rel-') }}:
       ob_symbolsPublishing_enabled: true
   steps:
     - template: ../tools/ci_build/github/azure-pipelines/templates/telemetry-steps.yml@self
