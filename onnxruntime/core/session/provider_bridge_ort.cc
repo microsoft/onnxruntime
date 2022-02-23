@@ -750,9 +750,9 @@ struct ProviderHostImpl : ProviderHost {
 
   const std::vector<NodeIndex>& GraphViewer__GetNodesInTopologicalOrder(const GraphViewer* p) override { return p->GetNodesInTopologicalOrder(); }
   const std::vector<const NodeArg*>& GraphViewer__GetInputsIncludingInitializers(const GraphViewer* p) noexcept override { return p->GetInputsIncludingInitializers(); }
-  ONNX_NAMESPACE::GraphProto GraphViewer__ToProto(const GraphViewer* p, bool include_initializers) noexcept {
+  void GraphViewer__ToProto(const GraphViewer* p, ONNX_NAMESPACE::GraphProto& graph_proto, bool include_initializers) noexcept {
     GraphProtoSerializer serializer(p);
-    return serializer.ToProto(include_initializers);
+    serializer.ToProto(graph_proto, include_initializers);
   }
 
   // Path (wrapped)

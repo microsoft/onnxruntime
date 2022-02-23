@@ -242,7 +242,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
   if (dump_subgraphs_) {
     auto model = graph_viewer.CreateModel(*GetLogger());
     auto model_proto = model->ToProto();
-    *model_proto->mutable_graph() = graph_viewer.ToProto(false);
+    graph_viewer.ToProto(*model_proto->mutable_graph(), false);
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     HashValue model_hash;
     int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
@@ -262,7 +262,7 @@ Status DNNLExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
     if (dump_subgraphs_) {
       auto model = graph_body_viewer.CreateModel(*GetLogger());
       auto model_proto = model->ToProto();
-      *model_proto->mutable_graph() = graph_body_viewer.ToProto(false);
+      graph_body_viewer.ToProto(*model_proto->mutable_graph(), false);
       model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
       std::fstream dump(fused_node.Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
       model_proto->SerializeToOstream(dump);

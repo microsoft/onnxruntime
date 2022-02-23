@@ -1,9 +1,8 @@
 #include "core/graph/graph_proto_serializer.h"
 
 namespace onnxruntime {
- 
-ONNX_NAMESPACE::GraphProto GraphProtoSerializer::ToProto(bool include_initializers) {
-  ONNX_NAMESPACE::GraphProto graph_proto;
+
+void GraphProtoSerializer::ToProto(ONNX_NAMESPACE::GraphProto& graph_proto, bool include_initializer) {
   graph_proto.set_name(graph_viewer_->Name());
   graph_proto.set_doc_string(graph_viewer_->Description());
 
@@ -35,15 +34,13 @@ ONNX_NAMESPACE::GraphProto GraphProtoSerializer::ToProto(bool include_initialize
     p_node->ToProto(*node_proto, /* update_subgraphs */ true);
   }
 
-  if (include_initializers) {
+  if (include_initializer) {
     auto& initializers = graph_viewer_->GetGraph().GetAllInitializedTensors();
     for (auto& it : initializers) {
       auto* p_initializer = graph_proto.add_initializer();
       *p_initializer = *(it.second);
     }
   }
-
-  return graph_proto;
 }
 
 }

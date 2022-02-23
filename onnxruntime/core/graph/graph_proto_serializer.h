@@ -11,7 +11,7 @@ class GraphProtoSerializer {
  public:
   GraphProtoSerializer(const GraphViewer* graph_view) : graph_viewer_(graph_view) {}
 
-  ONNX_NAMESPACE::GraphProto ToProto(bool include_initializer);
+  void ToProto(ONNX_NAMESPACE::GraphProto& graph_proto, bool include_initializer);
 
  private:
   const GraphViewer* graph_viewer_;
