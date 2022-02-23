@@ -503,8 +503,18 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Scan,
                                    Scan<9>);
 
 // Opset 11 starts to support Neg Axis.
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Scan,
+                                   11,
+                                   15,
+                                   KernelDefBuilder()
+                                       // 'I' is in the ONNX spec but is not actually used for any inputs or outputs
+                                       //.TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+                                   Scan<9>);
+
+// Opset 16 starts to support BFloat16 type for the type constraint "V"
 ONNX_CPU_OPERATOR_KERNEL(Scan,
-                         11,
+                         16,
                          KernelDefBuilder()
                              // 'I' is in the ONNX spec but is not actually used for any inputs or outputs
                              //.TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())

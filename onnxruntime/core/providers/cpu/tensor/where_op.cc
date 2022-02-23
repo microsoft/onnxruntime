@@ -11,9 +11,17 @@
 namespace onnxruntime {
 // kernel builder functions
 #define WHERE_TYPED_KERNEL_WITH_TYPE_NAME(type, type_name)                         \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                        \
       Where,                                                                       \
       9,                                                                           \
+      15,                                                                          \
+      type_name,                                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
+      Where<type>)                                                                 \
+  /* Opset-16 adds BFloat16 to allowed types for the Where operator */             \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
+      Where,                                                                       \
+      16,                                                                          \
       type_name,                                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
       Where<type>)
