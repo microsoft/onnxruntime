@@ -971,32 +971,26 @@ static bool HandleResize(HandlerArgs& args) {
   auto inputs = args.node.Inputs();
   int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
 
-  auto p = ChannelFirstToLastPerm(rank_int);
-  auto& perm = p == args.perm ? args.perm : args.perm_inv;
-  auto& perm_inv = p == args.perm ? args.perm_inv : args.perm;
-
   if (args.ctx.opset < 11) {
-    PermuteInput(args.ctx.graph, args.node, 1, perm);
+    PermuteInput(args.ctx.graph, args.node, 1, args.perm_inv);
   } else {
     if (inputs[1] != "") {
-      std::vector<int64_t> double_perm_inv = perm;
-      double_perm_inv.reserve(2 * args.perm.size());
-      for (int64_t p1 : perm) {
-        double_perm_inv.push_back(p1 + rank_int);
+      std::vector<int64_t> double_perm_inv = args.perm_inv;
+      double_perm_inv.reserve(2 * args.perm_inv.size());
+      for (int64_t p : args.perm_inv) {
+        double_perm_inv.push_back(p + rank_int);
       }
       PermuteInput(args.ctx.graph, args.node, 1, double_perm_inv);
     }
     for (size_t i = 2; i < inputs.size(); ++i) {
       if (inputs[i] != "") {
-        PermuteInput(args.ctx.graph, args.node, i, perm);
+        PermuteInput(args.ctx.graph, args.node, i, args.perm_inv);
       }
     }
   }
 
-  TransposeFirstInput(args.ctx, args.node, perm);
-  TransposeOutputs(args.ctx, args.node, perm_inv);
-
-  SwapNodeOpTypeAndDomain(args.ctx.graph, args.node, args.node.OpType(), "com.microsoft.nhwc");
+  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+  TransposeOutputs(args.ctx, args.node, args.perm);
 
   return true;
 }
