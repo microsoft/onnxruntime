@@ -4309,18 +4309,23 @@ static void RunGatherNDE2EGraph(std::vector<OrtValue>& run_results, const PathSt
   CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_unsqueezed_masked_lm_positions,
                          values_unsqueezed_masked_lm_positions, &input2);
 
-  NameMLValMap feeds;
-  feeds.insert(std::make_pair("input", input1));
-  feeds.insert(std::make_pair("unsqueezed_masked_lm_positions", input2));
+  std::vector<OrtValue> inputs{input1, input2};
+  std::vector<std::string> input_names{"input", "unsqueezed_masked_lm_positions"};
 
   // prepare outputs
   std::vector<std::string> output_names;
   output_names.push_back("output");
   output_names.push_back("gather_output");
 
+  // force outputs to be on CPU.
+  std::vector<OrtDevice> output_devices(
+    output_names.size(),
+    OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0));
+
   // Now run
   RunOptions run_options;
-  st = session_object.Run(run_options, feeds, output_names, &run_results);
+  st = session_object.Run(
+    run_options, input_names, inputs, output_names, &run_results, &output_devices);
 
   EXPECT_TRUE(st.IsOK());
 }
