@@ -20,10 +20,6 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  FusionStyle GetFusionStyle() const override {
-    return FusionStyle::FilteredGraphViewer;
-  }
-
  private:
   const std::string ep_name_;
 

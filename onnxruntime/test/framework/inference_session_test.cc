@@ -1241,6 +1241,8 @@ TEST(ExecutionProviderTest, FunctionTest) {
   status = session_object_2.Load(model_file_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object_2.Initialize();
+  if (!status.IsOK())
+    std::cout << "ErrorMessage: " << status.ErrorMessage() << std::endl;
   ASSERT_TRUE(status.IsOK());
   status = session_object_2.Run(run_options, feeds, output_names, &fetches);
   ASSERT_TRUE(status.IsOK());

@@ -143,6 +143,8 @@ class GraphViewer {
   /** Get the internal graph*/
   const Graph& GetGraph() const { return *graph_; }
 
+  const std::unordered_set<std::string>& GetOuterScopeNodeArgNames() const noexcept;
+
   /**
   returns true if 'name' is an initializer, and is constant and cannot be overridden at runtime.
   @param check_outer_scope If true and the 'graph_' is a subgraph, check parent graph/s for 'name'

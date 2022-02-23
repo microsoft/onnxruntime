@@ -275,9 +275,6 @@ class SessionState {
   concurrency::ThreadPool* GetThreadPool() const noexcept { return thread_pool_; }
   concurrency::ThreadPool* GetInterOpThreadPool() const noexcept { return inter_op_thread_pool_; }
 
-  bool ExportDll() const noexcept { return export_fused_dll_; }
-  void SetExportDllFlag(bool flag) noexcept { export_fused_dll_ = flag; }
-
   const FuncManager& GetFuncMgr() const noexcept { return fused_funcs_mgr_; }
   FuncManager& GetMutableFuncMgr() noexcept { return fused_funcs_mgr_; }
 
@@ -484,7 +481,6 @@ class SessionState {
   concurrency::ThreadPool* const thread_pool_{};
   concurrency::ThreadPool* const inter_op_thread_pool_{};
 
-  bool export_fused_dll_ = false;
   FuncManager fused_funcs_mgr_;
   const DataTransferManager& data_transfer_mgr_;
 

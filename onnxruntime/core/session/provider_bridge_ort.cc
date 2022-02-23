@@ -26,6 +26,7 @@
 #include "core/util/math.h"
 #include "core/framework/sparse_utils.h"
 #include "core/common/string_helper.h"
+#include "core/graph/graph_proto_serializer.h"
 
 #ifdef ENABLE_TRAINING
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
@@ -263,13 +264,6 @@ struct ProviderHostImpl : ProviderHost {
   void IExecutionProvider__TryInsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) override { return p->IExecutionProvider::TryInsertAllocator(allocator); }
   std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
                                                                                     const std::vector<const KernelRegistry*>& kernel_registries) override { return p->IExecutionProvider::GetCapability(graph_viewer, kernel_registries); }
-  common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<onnxruntime::Node*>& fused_nodes, std::vector<NodeComputeInfo>& node_compute_funcs) override {
-    return p->IExecutionProvider::Compile(fused_nodes, node_compute_funcs);
-  }
-
-  common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<onnxruntime::Node*>& fused_nodes, std::string& dll_path) override {
-    return p->IExecutionProvider::Compile(fused_nodes, dll_path);
-  }
 
   common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) override {
     return p->IExecutionProvider::Compile(fused_nodes_and_graphs, node_compute_funcs);
@@ -756,6 +750,10 @@ struct ProviderHostImpl : ProviderHost {
 
   const std::vector<NodeIndex>& GraphViewer__GetNodesInTopologicalOrder(const GraphViewer* p) override { return p->GetNodesInTopologicalOrder(); }
   const std::vector<const NodeArg*>& GraphViewer__GetInputsIncludingInitializers(const GraphViewer* p) noexcept override { return p->GetInputsIncludingInitializers(); }
+  ONNX_NAMESPACE::GraphProto GraphViewer__ToProto(const GraphViewer* p, bool include_initializers) noexcept {
+    GraphProtoSerializer serializer(p);
+    return serializer.ToProto(include_initializers);
+  }
 
   // Path (wrapped)
   PathString Path__ToPathString(const Path* p) noexcept override { return p->ToPathString(); }

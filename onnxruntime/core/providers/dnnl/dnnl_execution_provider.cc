@@ -269,7 +269,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
   if (dump_subgraphs_) {
     auto model = graph_viewer.CreateModel(*GetLogger());
     auto model_proto = model->ToProto();
-    ToGraphProtoInternal(graph_viewer, *model_proto->mutable_graph());
+    *model_proto->mutable_graph() = graph_viewer.ToProto(false);
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     HashValue model_hash;
     int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
@@ -280,39 +280,34 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
   return result;
 }
 
-Status DNNLExecutionProvider::Compile(const std::vector<Node*>& fused_nodes,
+Status DNNLExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                       std::vector<NodeComputeInfo>& node_compute_funcs) {
   //follow from coreml ep's Compile
-  for (const auto* fused_node : fused_nodes) {
-    const auto* func_body = fused_node->GetFunctionBody();
-    if (!func_body) {
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
-    }
-    const Graph& graph_body = func_body->Body();
-    auto graph_body_viewer = graph_body.CreateGraphViewer();
-
+  for (auto& fused_node_graph : fused_nodes_and_graphs) {
+    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
+    const Node& fused_node = fused_node_graph.fused_node;
     if (dump_subgraphs_) {
-      auto model = graph_body_viewer->CreateModel(*GetLogger());
+      auto model = graph_body_viewer.CreateModel(*GetLogger());
       auto model_proto = model->ToProto();
-      *model_proto->mutable_graph() = *graph_body.ToGraphProto();
+      *model_proto->mutable_graph() = graph_body_viewer.ToProto(false);
       model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-      std::fstream dump(fused_node->Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+      std::fstream dump(fused_node.Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
       model_proto->SerializeToOstream(dump);
     }
 
     //subgraph
-    auto dnnl_subgraph = std::make_unique<ort_dnnl::DnnlSubgraph>(ort_dnnl::DnnlSubgraph(*graph_body_viewer.get()));
-    subgraphs_.emplace(fused_node->Name(), std::move(dnnl_subgraph));
+    auto dnnl_subgraph = std::make_unique<ort_dnnl::DnnlSubgraph>(ort_dnnl::DnnlSubgraph(graph_body_viewer));
+    subgraphs_.emplace(fused_node.Name(), std::move(dnnl_subgraph));
 
     //apply transformation to subgraph
     if (enable_fusion_) {
-      ort_dnnl::DnnlGraphTransformer().Apply(*subgraphs_[fused_node->Name()].get());
+      ort_dnnl::DnnlGraphTransformer().Apply(*subgraphs_[fused_node.Name()].get());
     }
 
     //subgraph primitive
-    auto dnnl_subgraph_primitive = std::make_unique<ort_dnnl::DnnlSubgraphPrimitive>(*subgraphs_[fused_node->Name()].get());
+    auto dnnl_subgraph_primitive = std::make_unique<ort_dnnl::DnnlSubgraphPrimitive>(*subgraphs_[fused_node.Name()].get());
     {
-      const auto& input_defs = fused_node->InputDefs();
+      const auto& input_defs = fused_node.InputDefs();
       std::vector<std::string> onnx_input_names(input_defs.size());
       for (size_t i = 0, end = input_defs.size(); i < end; ++i) {
         onnx_input_names[i] = input_defs[i]->Name();
@@ -320,7 +315,7 @@ Status DNNLExecutionProvider::Compile(const std::vector<Node*>& fused_nodes,
       dnnl_subgraph_primitive->SetOrderedInputs(std::move(onnx_input_names));
     }
     {
-      const auto& output_defs = fused_node->OutputDefs();
+      const auto& output_defs = fused_node.OutputDefs();
       std::vector<std::string> onnx_output_names(output_defs.size());
       for (size_t i = 0, end = output_defs.size(); i < end; ++i) {
         onnx_output_names[i] = output_defs[i]->Name();
@@ -328,7 +323,7 @@ Status DNNLExecutionProvider::Compile(const std::vector<Node*>& fused_nodes,
       dnnl_subgraph_primitive->SetOrderedOutputs(std::move(onnx_output_names));
     }
 
-    subgraph_primitives_.emplace(fused_node->Name(), std::move(dnnl_subgraph_primitive));
+    subgraph_primitives_.emplace(fused_node.Name(), std::move(dnnl_subgraph_primitive));
 
     NodeComputeInfo compute_info;
 

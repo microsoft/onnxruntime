@@ -1167,6 +1167,10 @@ class Graph {
     return Resolve(default_options);
   }
 
+  const std::unordered_set<std::string>& GetOuterScopeNodeArgNames() const noexcept{
+    return outer_scope_node_arg_names_;
+  }
+
   common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                  flatbuffers::Offset<onnxruntime::fbs::Graph>& fbs_graph) const;
 

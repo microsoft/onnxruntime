@@ -276,4 +276,8 @@ const ONNX_NAMESPACE::TensorProto* GraphViewer::GetConstantInitializer(const std
   return graph_->GetConstantInitializer(initializer_name, check_outer_scope);
 }
 
+const std::unordered_set<std::string>& GraphViewer::GetOuterScopeNodeArgNames() const noexcept {
+  return graph_->GetOuterScopeNodeArgNames();
+}
+
 }  // namespace onnxruntime
