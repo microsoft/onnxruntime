@@ -25,13 +25,10 @@ namespace env_vars {
 }  // namespace tvm
 
 class TvmExecutionProvider : public IExecutionProvider {
-  using TVMTensorShape = std::vector<int64_t>;
-  using TVMTensorShapes = std::vector<TVMTensorShape>;
   using Compiler = tvm::TVMCompiler;
   using Compilers = std::unordered_map<std::string, std::shared_ptr<Compiler>>;
   using Runner = tvm::TVMRunner;
   using Runners = std::unordered_map<std::string, std::shared_ptr<Runner>>;
-  using TVMModules = std::unordered_map<std::string, std::shared_ptr<TvmModule>>;
 
   friend Runner;
  public:
@@ -48,17 +45,11 @@ class TvmExecutionProvider : public IExecutionProvider {
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
  private:
-  // Bindings for compute info
   int CreateStateFunc(ComputeContext*, FunctionState*);
-  TvmModule* CompileFunc(std::string func_name, const TVMTensorShapes& input_shapes);
  private:
   TvmEPOptions options_;
-  TVMModules modules_;
   Compilers compilers_;
   Runners runners_;
-  std::unordered_map<std::string, std::string> buffers_;
-  std::unordered_map<std::string, int> opsets_;
-  std::unordered_map<std::string, std::string>  model_paths_;
   bool dump_subgraphs_ = false;
   OrtMutex tvm_mu_;
   AllocatorPtr allocator_;

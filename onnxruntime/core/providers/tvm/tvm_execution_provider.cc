@@ -27,9 +27,7 @@ struct TVMFuncState {
   AllocateFunc allocate_func = nullptr;
   DestroyFunc release_func = nullptr;
   AllocatorHandle allocator = nullptr;
-  TvmModule* module = nullptr;
-  std::function<TvmModule*(std::string func_name,
-                const std::vector<std::vector<int64_t>>& input_shapes)> compiler = nullptr;
+  std::shared_ptr<tvm::TVMCompiler> compiler = nullptr;
 };
 
 TvmExecutionProvider::TvmExecutionProvider(const TvmEPOptions& options)
@@ -120,11 +118,11 @@ common::Status TvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
     opset->set_domain(kOnnxDomain);
     opset->set_version(node_graph.DomainToVersionMap().at(kOnnxDomain));
 
-    std::string string_buf;
-    model_proto.SerializeToString(&string_buf);
-    buffers_[func_name] = string_buf;
-    opsets_[func_name] = int(opset->version());
-    model_paths_[func_name] = fused_node->ModelPath().ToPathString();;
+    std::string onnx_model_str;
+    model_proto.SerializeToString(&onnx_model_str);
+    compilers_[func_name] = std::make_shared<Compiler>(std::move(onnx_model_str),
+                              fused_node->ModelPath().ToPathString(),
+                              int(opset->version()));
 
     if (dump_subgraphs_) {
         std::fstream dump("/tmp/" + fused_node->Name() + ".onnx",
@@ -144,7 +142,7 @@ common::Status TvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
     };
     // TODO(vvchernov): implement ops checking and mechanism of gracefully passing the responsibility to other EPs
     // if the checking fails due to unsupported op(s)
-    runners_[func_name] = std::make_shared<Runner>(this, func_name, node_graph);
+    runners_[func_name] = std::make_shared<Runner>(options_, compilers_[func_name], node_graph);
     compute_info.compute_func = *runners_[func_name].get();
 
     node_compute_funcs.push_back(compute_info);
@@ -170,35 +168,12 @@ AllocatorPtr TvmExecutionProvider::GetAllocator(int id, OrtMemType mem_type) con
 int TvmExecutionProvider::CreateStateFunc(ComputeContext* context, FunctionState* state) {
   auto* state_ptr = new TVMFuncState();
   *state_ptr = {context->allocate_func,
-                 context->release_func,
-                 context->allocator_handle,
-                 nullptr,
-                 std::bind(&TvmExecutionProvider::CompileFunc,
-                           this,
-                           std::placeholders::_1,
-                           std::placeholders::_2)};
+                context->release_func,
+                context->allocator_handle,
+                compilers_[context->node_name]};
+  // TODO(vvchernov): Who and when release state?
   *state = state_ptr;
   return 0;
-}
-
-TvmModule* TvmExecutionProvider::CompileFunc(std::string func_name,
-                                             const TVMTensorShapes& input_shapes) {
-  if (modules_.count(func_name)) {
-    return modules_[func_name].get();
-  }
-
-  TvmModule mod_f = tvm::TVMCompile(buffers_[func_name],
-                                    model_paths_[func_name],
-                                    options_,
-                                    opsets_[func_name],
-                                    input_shapes);
-  auto module_ptr = std::make_shared<TvmModule>();
-  *module_ptr = mod_f;
-  modules_[func_name] = module_ptr;
-  // Release memory after module generation
-  buffers_.erase(func_name);
-  opsets_.erase(func_name);
-  return modules_[func_name].get();
 }
 
 }  // namespace onnxruntime

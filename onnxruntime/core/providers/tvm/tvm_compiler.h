@@ -17,17 +17,21 @@ namespace tvm {
 class TVMCompiler {
     using ModulePtr = std::shared_ptr<TvmModule>;
 public:
-    TVMCompiler();
+    TVMCompiler() = delete;
     ~TVMCompiler() = default;
 
-    ModulePtr getModule(const std::string& onnx_model_str,
-                        const std::string& model_path,
-                        const TvmEPOptions& options,
-                        int opset,
-                        const std::vector<std::vector<int64_t>>& input_shapes);
+    TVMCompiler(std::string&& onnx_model_str,
+                const std::string& model_path,
+                int opset);
+
+    ModulePtr operator()(const TvmEPOptions& options,
+                         const std::vector<std::vector<int64_t>>& input_shapes);
 
 private:
     ModulePtr mod_;
+    std::string onnx_model_str_;
+    std::string model_path_;
+    int opset_;
 };
 
 }   // namespace tvm

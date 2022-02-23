@@ -6,7 +6,7 @@
 
 #include "tvm_runner.h"
 #include "tvm_utils.h"
-#include "tvm_execution_provider.h"
+#include "tvm_compiler.h"
 #include "tvm_api.h"
 
 
@@ -14,22 +14,22 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace tvm {
 
-TVMRunner::TVMRunner(TvmExecutionProvider* ep,
-                     const std::string& name,
+TVMRunner::TVMRunner(TvmEPOptions options,
+                     std::shared_ptr<TVMCompiler> compiler,
                      const Graph& graph) :
-  use_vm_(ep->options_.executor == "vm") {
+  use_vm_(options.executor == "vm") {
     // Extract input shapes
     const ORTGraphNodes& all_nodes = graph.GetInputsIncludingInitializers();
     TVMTensorShapes input_shapes;
     size_t indx = 0;
-    if (ep->options_.freeze_weights) {
+    if (options.freeze_weights) {
       for (const auto* node : all_nodes) {
         const auto& node_name = node->Name();
         if(!graph.IsInitializedTensor(node_name)) {
           TVMTensorShape ishape;
-          if(!ep->options_.input_shapes.empty() &&
-              ep->options_.input_shapes.count(node_name)) {
-            ishape = ep->options_.input_shapes[node_name];
+          if(!options.input_shapes.empty() &&
+              options.input_shapes.count(node_name)) {
+            ishape = options.input_shapes[node_name];
             inputs_info_[indx] = ishape;
             update_output_shapes_ = true;
           } else {
@@ -43,9 +43,9 @@ TVMRunner::TVMRunner(TvmExecutionProvider* ep,
       for (const auto* node : all_nodes) {
         const auto& node_name = node->Name();
         TVMTensorShape ishape;
-        if(!ep->options_.input_shapes.empty() &&
-            ep->options_.input_shapes.count(node_name)) {
-          ishape = ep->options_.input_shapes[node_name];
+        if(!options.input_shapes.empty() &&
+            options.input_shapes.count(node_name)) {
+          ishape = options.input_shapes[node_name];
           inputs_info_[indx++] = ishape;
           update_output_shapes_ = true;
         } else {
@@ -58,7 +58,7 @@ TVMRunner::TVMRunner(TvmExecutionProvider* ep,
     }
 
     // Get module from tvm
-    mod_ = ep->CompileFunc(name, input_shapes);
+    mod_ = compiler->operator()(options, input_shapes);
 
     // Prepare draft for output tvm tensors
     const ORTGraphNodes& ort_outputs_info = graph.GetOutputs();
