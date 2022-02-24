@@ -939,6 +939,9 @@ def run_onnxruntime(args, models):
     model_to_fail_ep = {} # model -> failing ep
     model_to_session = {} # models -> session creation time 
     
+    if args.running_mode == "benchmark": 
+        model_to_session = read_map_from_file(SESSION_FILE)
+        
     ep_list = []
     if args.ep:
         ep_list.append(args.ep)
@@ -995,9 +998,9 @@ def run_onnxruntime(args, models):
             # Set environment variables for ort-trt benchmarking 
             if "ORT-TRT" in ep:
                 os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1" if "Fp16" in ep else "0"
-                os.environ["ORT_TENSORRT_ENGINE_CACHE_ENABLE"] = "1"
                 os.environ["ORT_TENSORRT_MAX_WORKSPACE_SIZE"] = "4294967296"
-           
+                if args.enable_cache:
+                    os.environ["ORT_TENSORRT_ENGINE_CACHE_ENABLE"] = "1"
             fp16 = False
             
             # use float16.py for cuda fp16 only            
@@ -1059,12 +1062,17 @@ def run_onnxruntime(args, models):
                     
                     # create onnxruntime inference session
                     try:
-                        sess, _ = create_session(model_path, providers, options)
+                        sess, second_creation_time = create_session(model_path, providers, options)
+                        logger.info("Second creation {}".format(second_creation_time))
 
                     except Exception as e:
                         logger.error(e)
                         update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
                         continue
+
+
+                    if second_creation_time:                     
+                        model_to_session[name] = copy.deepcopy({ep + second: second_creation_time})
                     
                     logger.info("start to inference {} with {} ...".format(name, ep))
                     logger.info(sess.get_providers())
@@ -1084,6 +1092,8 @@ def run_onnxruntime(args, models):
                         "device": ep,
                         "fp16": fp16,
                         "io_binding": args.io_binding,
+                        "graph_optimizations": args.optimize_graph,
+                        "enable_cache": args.enable_cache,
                         "model_name": name,
                         "inputs": len(sess.get_inputs()),
                         "batch_size": batch_size,
@@ -1103,6 +1113,7 @@ def run_onnxruntime(args, models):
                         continue
                 
                 if result:
+                    
                     latency_result[ep] = {}
                     latency_result[ep]["average_latency_ms"] = result["average_latency_ms"]
                     latency_result[ep]["latency_90_percentile"] = result["latency_90_percentile"]
@@ -1234,9 +1245,7 @@ def output_details(results, csv_filename):
 
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
-            "engine", "version", "device", "fp16", "io_binding", "model_name", "inputs", "batch_size",
-            "sequence_length", "datetime", "test_times", "QPS", "average_latency_ms", "latency_variance",
-            "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
+                "engine", "version", "device", "fp16", "io_binding", "graph_optimizations", "enable_cache", "model_name", "inputs", "batch_size", "sequence_length", "datetime", "test_times", "QPS", "average_latency_ms", "latency_variance", "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
         ]
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
@@ -1370,6 +1379,7 @@ def output_session_creation(results, csv_filename):
         column_names = [model_title]
         for provider in ort_provider_list: 
             column_names.append(provider + session_ending)
+            column_names.append(provider + second_session_ending)
 
         csv_writer = csv.writer(csv_file)
 
@@ -1384,7 +1394,13 @@ def output_session_creation(results, csv_filename):
         trt_fp32_time = ""
         cuda_fp16_time = ""
         trt_fp16_time = ""
+        cpu_time_2 = ""
+        cuda_fp32_time_2 = ""
+        trt_fp32_time_2 = ""
+        cuda_fp16_time_2 = ""
+        trt_fp16_time_2 = ""
 
+        print(results)
         for model_name, ep_dict in results.items():
             for ep, time in ep_dict.items():
                 if ep == cpu: 
@@ -1397,15 +1413,30 @@ def output_session_creation(results, csv_filename):
                     cuda_fp16_time = time
                 elif ep == trt_fp16:
                     trt_fp16_time = time
+                if ep == cpu + second: 
+                    cpu_time_2 = time 
+                elif ep == cuda + second: 
+                    cuda_fp32_time_2 = time
+                elif ep == trt + second: 
+                    trt_fp32_time_2 = time
+                elif ep == cuda_fp16 + second: 
+                    cuda_fp16_time_2 = time
+                elif ep == trt_fp16 + second:
+                    trt_fp16_time_2 = time
                 else: 
                     continue
                     
             row = [model_name,
                    cpu_time, 
+                   cpu_time_2,
                    cuda_fp32_time, 
+                   cuda_fp32_time_2, 
                    trt_fp32_time, 
+                   trt_fp32_time_2, 
                    cuda_fp16_time, 
-                   trt_fp16_time] 
+                   cuda_fp16_time_2, 
+                   trt_fp16_time, 
+                   trt_fp16_time_2] 
             csv_writer.writerow(row)
 
 
@@ -1656,7 +1687,9 @@ def parse_arguments():
 
     parser.add_argument("--io_binding", required=False, default=False, help="Bind Inputs")
     
-    parser.add_argument("--optimize_graph", required=False, default=False, help="Bind Inputs")
+    parser.add_argument("--optimize_graph", required=False, default=True, help="Enable Graph Optimization")
+    
+    parser.add_argument("--enable_cache", required=False, default=True, help="Enable ORT-TRT Caching")
 
     parser.add_argument("--ep", required=False, default=None, help="Specify ORT Execution Provider.")
     

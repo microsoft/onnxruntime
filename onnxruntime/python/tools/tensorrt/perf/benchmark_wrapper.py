@@ -120,6 +120,7 @@ def main():
             output_metrics(model_to_metrics, os.path.join(path, benchmark_metrics_csv))
             logger.info("\nSaved model metrics results to {}".format(benchmark_metrics_csv)) 
     
+    elif args.running_mode == "benchmark":
         logger.info("\n=========================================")
         logger.info("======= Models/EPs session creation =======")
         logger.info("=========================================")
@@ -129,8 +130,7 @@ def main():
             pretty_print(pp, model_to_session)
             output_session_creation(model_to_session, os.path.join(path, benchmark_session_csv))
             logger.info("\nSaved session creation results to {}".format(benchmark_session_csv)) 
-    
-    elif args.running_mode == "benchmark":
+        
         logger.info("\n=========================================================")
         logger.info("========== Failing Models/EPs (accumulated) ==============")
         logger.info("==========================================================")
