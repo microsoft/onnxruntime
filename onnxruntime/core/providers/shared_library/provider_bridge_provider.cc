@@ -515,7 +515,7 @@ Status ScatterNDBase::ValidateShapes(const TensorShape& input_shape,
 Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) { return g_host_cpu.PadBase__HandleDimValueZero(mode, input_shape, output_shape); }
 
 Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, const ConcatBase::InlinedTensorsVector& input_tensors,
-                                     Prepare& p) const { 
+                                     Prepare& p) const {
   return g_host_cpu.ConcatBase__PrepareForCompute(this, ctx, reinterpret_cast<const ConcatBase_InlinedTensorsVector&>(input_tensors), p); }
 
 PhiloxGenerator& PhiloxGenerator::Default() { return g_host->PhiloxGenerator__Default(); }
@@ -570,7 +570,7 @@ Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state, co
 
 #ifdef ENABLE_TRAINING
 namespace contrib {
-Status ATenOp::Compute(OpKernelContext* p_ctx) const { return g_host_cpu.ATenOp__Compute(this, p_ctx); }
+Status ATen::Compute(OpKernelContext* p_ctx) const { return g_host_cpu.ATen__Compute(this, p_ctx); }
 Status Group::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__Group__Compute(this, context); }
 Status PassThrough::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__PassThrough__Compute(this, context); }
 Status YieldOp::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__YieldOp__Compute(this, context); }
