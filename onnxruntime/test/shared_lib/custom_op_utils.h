@@ -23,11 +23,15 @@ struct OrtTensorDimensions : std::vector<int64_t> {
 };
 
 struct MyCustomKernel {
-  MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/, void* compute_stream)
-      : ort_(ort), compute_stream_(compute_stream) {
-  }
+
+  MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* info, void* compute_stream);
+ 
+  //MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/, void* compute_stream)
+  //    : ort_(ort), compute_stream_(compute_stream) {
+  //}
 
   void Compute(OrtKernelContext* context);
+  void* kernel_add{};
 
  private:
   Ort::CustomOpApi ort_;

@@ -339,4 +339,25 @@ ORT_API_STATUS_IMPL(UpdateCUDAProviderOptions, _Inout_ OrtCUDAProviderOptionsV2*
                     size_t num_keys);
 ORT_API_STATUS_IMPL(GetCUDAProviderOptionsAsString, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 ORT_API(void, ReleaseCUDAProviderOptions, _Frees_ptr_opt_ OrtCUDAProviderOptionsV2*);
+
+ORT_API_STATUS_IMPL(CreateEagerKernel,
+                    _In_ const void* kernel_info,
+                    _In_ const char* op_name,
+                    _In_ const char* domain,
+                    _In_ const int& version,
+                    _In_ const char** type_constraint_names,
+                    _In_ const int* type_constraint_values,
+                    _In_ const int& num_type_constraint,
+                    _In_ const void* attrs,
+                    _In_ const int& num_attrs,
+                    _Outptr_ void** kernel);
+
+ORT_API_STATUS_IMPL(InvokeEagerKernel,
+                    _In_ const void* context,
+                    _In_ const void* kernel,
+                    _In_ const void* const* inputs,
+                    _In_ const int& input_len,
+                    _Inout_ void* const* outputs,
+                    _In_ const int& output_len);
+
 }  // namespace OrtApis

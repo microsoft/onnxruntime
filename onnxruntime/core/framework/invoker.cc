@@ -5,6 +5,9 @@
 #include "core/framework/data_types.h"
 #include "core/session/inference_session.h"
 #include "core/framework/kernel_registry.h"
+//#include "core/session/onnxruntime_c_api.h"
+#include "core/framework/error_code_helper.h"
+#include "core/session/ort_apis.h"
 #include <unordered_map>
 
 namespace onnxruntime {
@@ -69,7 +72,7 @@ class EagerKernelPool final {
 //todo: make key a const
 std::unordered_map<const IExecutionProvider*, std::unique_ptr<EagerKernelPool>> sess_invoker_map;
 
-int CreateEagerKernel(const void* execution_provier,
+int CreateKernel(const void* kernel_info,
                       const char* op_name,
                       const char* domain,
                       const int& version,
@@ -79,7 +82,8 @@ int CreateEagerKernel(const void* execution_provier,
                       const void* attrs,
                       const int& num_attrs,
                       void** kernel) {
-  const IExecutionProvider* ep = reinterpret_cast<const IExecutionProvider*>(execution_provier);
+  auto info = reinterpret_cast<const OpKernelInfo*>(kernel_info);
+  const IExecutionProvider* ep = reinterpret_cast<const IExecutionProvider*>(info->GetExecutionProvider());
   auto iter = sess_invoker_map.find(ep);  //todo: add rw lock for thread safety
   if (iter == sess_invoker_map.end()) {
     auto ret = sess_invoker_map.emplace(ep, std::make_unique<EagerKernelPool>(*ep));
@@ -105,14 +109,59 @@ int CreateEagerKernel(const void* execution_provier,
   }
 }
 
-/*
-int CallEagerKernel(const void* kernel, const void** inputs, const int& num_inputs, void** output, const int& num_outptus) {
-  auto op_kernel = reinterpret_cast<const onnxruntime::OpKernel*>(kernel);
-  OpKernelContext ctx;
-  op_kernel->Compute(&ctx);
-  return 0;
+int InvokeKernel(const void* context,
+                      const void* kernel,
+                      const void* const* inputs,
+                      const int& input_len,
+                      void* const* outputs,
+                      const int& output_len) {
+  auto ctx = reinterpret_cast<const OpKernelContext*>(context);
+  AllocatorPtr allocator{};
+  auto ret = ctx->GetTempSpaceAllocator(&allocator); //todo: deal with allocator == nullptr
+  if (!ret.IsOK()) {
+    return ret.Code();
+  }
+  EagerKernelContext eager_ctx(reinterpret_cast<const OrtValue* const*>(inputs),
+                               input_len,
+                               reinterpret_cast<OrtValue* const*>(outputs),
+                               output_len,
+                               allocator,
+                               ctx->GetOperatorThreadPool(),
+                               ctx->Logger());
+  auto eager_kernel = reinterpret_cast<const OpKernel*>(kernel);
+  ret = eager_kernel->Compute(&eager_ctx);
+  return ret.Code();
 }
-*/
 
 }  // namespace invoker
 }  // namespace onnxruntime
+
+ORT_API_STATUS_IMPL(OrtApis::CreateEagerKernel,
+                    _In_ const void* kernel_info,
+                    _In_ const char* op_name,
+                    _In_ const char* domain,
+                    _In_ const int& version,
+                    _In_ const char** type_constraint_names,
+                    _In_ const int* type_constraint_values,
+                    _In_ const int& num_type_constraint,
+                    _In_ const void* attrs,
+                    _In_ const int& num_attrs,
+                    _Outptr_ void** kernel) {
+  API_IMPL_BEGIN
+  onnxruntime::invoker::CreateKernel(kernel_info, op_name, domain, version, type_constraint_names, type_constraint_values, num_type_constraint, attrs, num_attrs, kernel);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::InvokeEagerKernel,
+                    _In_ const void* context,
+                    _In_ const void* kernel,
+                    _In_ const void* const* inputs,
+                    _In_ const int& input_len,
+                    _Inout_ void* const* outputs,
+                    _In_ const int& output_len) {
+  API_IMPL_BEGIN
+  onnxruntime::invoker::InvokeKernel(context, kernel, inputs, input_len, outputs, output_len);
+  return nullptr;
+  API_IMPL_END
+}

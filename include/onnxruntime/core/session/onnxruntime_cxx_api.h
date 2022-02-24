@@ -967,6 +967,24 @@ struct CustomOpApi {
 
   void ThrowOnError(OrtStatus* result);
 
+  void CreateEagerKernel(const void* kernel_info,
+                         const char* op_name,
+                         const char* domain,
+                         const int& version,
+                         const char** type_constraint_names,
+                         const int* type_constraint_values,
+                         const int& num_type_constraint,
+                         const void* attrs,
+                         const int& num_attrs,
+                         void** kernel);
+
+  void InvokeEagerKernel(const void* context,
+                         const void* kernel,
+                         const void* const* inputs,
+                         const int& input_len,
+                         void* const* outputs,
+                         const int& output_len);
+
  private:
   const OrtApi& api_;
 };
