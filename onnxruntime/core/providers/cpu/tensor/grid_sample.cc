@@ -11,6 +11,18 @@
 
 namespace onnxruntime {
 
+#define REGISTER_KERNEL_TYPED(T)                                    \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                   \
+      GridSample,                                                   \
+      16,                                                           \
+      T,                                                            \
+      KernelDefBuilder()                                            \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())   \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),  \
+      GridSample<T>);
+
+REGISTER_KERNEL_TYPED(float)
+
 template <typename T>
 GridSample<T>::GridSample(const OpKernelInfo& info) : OpKernel(info) {
   std::string mode_str = info.GetAttrOrDefault<std::string>("mode", "bilinear");
@@ -257,17 +269,5 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
   }
   return Status::OK();
 }
-
-#define REGISTER_KERNEL_TYPED(T)                                    \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                   \
-      GridSample,                                                   \
-      16,                                                           \
-      T,                                                            \
-      KernelDefBuilder()                                            \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())   \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),  \
-      GridSample<T>);
-
-REGISTER_KERNEL_TYPED(float)
 
 }  // namespace onnxruntime
