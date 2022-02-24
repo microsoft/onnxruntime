@@ -270,7 +270,7 @@ extends:
               }
 
               $merged_nuget = [System.IO.Path]::Combine($merged_nuget_path, $x64_nuget_package_name)
-              Start-Process -FilePath "7z" -ArgumentList "-tzip -r $merged_nuget ." -WorkingDirectory $x64_nupkg_unzipped_directory -NoNewWindow -Wait
+              Start-Process -FilePath "7z" -ArgumentList "-tzip a -r $merged_nuget ." -WorkingDirectory $x64_nupkg_unzipped_directory -NoNewWindow -Wait
         
             workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
 
