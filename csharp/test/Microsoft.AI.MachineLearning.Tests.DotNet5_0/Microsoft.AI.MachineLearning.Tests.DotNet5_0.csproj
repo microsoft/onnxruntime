@@ -8,7 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AI.DirectML" Version="1.8.0" />
-    <PackageReference Include="Microsoft.AI.MachineLearning" Version="1.10.0" />
+    <PackageReference Include="Microsoft.AI.MachineLearning" Version="1.4.0-dev-20200728-0957-6cb93ccb5" />
   </ItemGroup>
 
   <ItemGroup>
