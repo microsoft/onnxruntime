@@ -12,7 +12,7 @@
 # make sure build.sh retains Unix line endings, even when checked out on windows.
 *.sh text eol=lf
 
-# make sure ts, js files retains Unix line endings, even when checked out on windows.
-# it ensures npm packages built from Unix and Windows are the same.
+# make sure ts and js files retain Unix line endings, even when checked out on windows.
+# it ensures npm packages built from Unix and Windows have the same contents.
 *.ts text eol=lf
 *.js text eol=lf
