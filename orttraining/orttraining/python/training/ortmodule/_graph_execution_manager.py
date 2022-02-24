@@ -4,6 +4,7 @@
 # --------------------------------------------------------------------------
 
 from .debug_options import DebugOptions, LogLevel
+from .provider_configs import ProviderConfigs
 from . import (_utils,
                _io,
                _logger,
@@ -72,13 +73,14 @@ class _SkipCheck(IntFlag):
 
 
 class GraphExecutionManager(GraphExecutionInterface):
-    def __init__(self, module, debug_options: DebugOptions, fallback_manager: _FallbackManager):
+    def __init__(self, module, debug_options: DebugOptions, fallback_manager: _FallbackManager, provider_configs = ProviderConfigs):
         """Manages construction and execution of ONNX graphs"""
 
         super(GraphExecutionManager, self).__init__(module._original_module)
 
         # IMPORTANT: Debug and Fallback must the configured first
         self._debug_options = debug_options
+        self._provider_configs = provider_configs
         self._fallback_manager = fallback_manager
 
         # Original and flattened (tranformed) output module
@@ -257,33 +259,37 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         providers = None
         provider_options = None
-        if not os.environ["OPENVINO_PT_ENABLE"]:
-           if self._device.type == 'cuda':
-             # Configure the InferenceSessions to use the specific GPU on which the model is placed.
-             providers = (["ROCMExecutionProvider"] if self.is_rocm_pytorch else [
-                           "CUDAExecutionProvider"])
-             providers.append("CPUExecutionProvider")
-             provider_option_map = {"device_id": str(self._device.index)}
-             if not self.is_rocm_pytorch:
-                # Set Conv algo search mode to HEURISTIC, which is same as PyTorch's default setting.
+        if self._device.type == 'cuda':
+            # Configure the InferenceSessions to use the specific GPU on which the model is placed.
+            providers = (["ROCMExecutionProvider"] if self.is_rocm_pytorch else [
+                        "CUDAExecutionProvider"])
+            providers.append("CPUExecutionProvider")
+            provider_option_map = {"device_id": str(self._device.index)}
+            if not self.is_rocm_pytorch:
+            # Set Conv algo search mode to HEURISTIC, which is same as PyTorch's default setting.
                 provider_option_map["cudnn_conv_algo_search"] = "HEURISTIC"
                 provider_option_map["cudnn_conv_use_max_workspace"] = "1"
-             if self._use_external_gpu_allocator:
+            if self._use_external_gpu_allocator:
                 provider_option_map["gpu_external_alloc"] = str(self._torch_alloc)
                 provider_option_map["gpu_external_free"] = str(self._torch_free)
                 provider_option_map["gpu_external_empty_cache"] = str(self._torch_empty_cache)
                 provider_options = [provider_option_map, {}]
-           elif self._device.type == 'cpu':
+        elif self._device.type == 'cpu':
+            if self._provider_configs.provider == "openvino":
+                backend = self._provider_configs.backend
+                providers = ["OpenVINOExecutionProvider"]
+                provider_option_map = {}
+                if backend:
+                    provider_option_map["device_type"] = backend
+                provider_options = [provider_option_map]
+            else:
                 providers = ["CPUExecutionProvider"]
                 provider_options = [{}]
-           elif self._device.type == 'ort':
-                provider_info = C.get_ort_device_provider_info(self._device.index)
-                assert len(provider_info.keys()) == 1
-                providers = list(provider_info.keys())
-                provider_options = [provider_info[providers[0]]]
-        else:
-            providers = ["OpenVINOExecutionProvider"]
-            provider_options = [{}]
+        elif self._device.type == 'ort':
+            provider_info = C.get_ort_device_provider_info(self._device.index)
+            assert len(provider_info.keys()) == 1
+            providers = list(provider_info.keys())
+            provider_options = [provider_info[providers[0]]]
 
         session_options = onnxruntime.SessionOptions()
         session_options.enable_mem_pattern = False
@@ -371,11 +377,12 @@ class GraphExecutionManager(GraphExecutionInterface):
         # correct training flag to reflect the expected behavior.
         # For example, the Dropout node in a model is dropped under eval mode.
         assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
-        if not os.environ["OPENVINO_PT_ENABLE"]:
+        provider = self._provider_configs.provider
+        if not provider == "openvino":
            try:
                with torch.set_grad_enabled(self._enable_custom_autograd_function), \
                       _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level):
-               
+
                    required_export_kwargs = {'input_names': self._input_info.names,
                                               'output_names': output_names,
                                               'opset_version': ortmodule.ONNX_OPSET_VERSION,
@@ -429,7 +436,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                                     RuntimeError(f'There was an error while exporting the PyTorch model to ONNX: '
                                                  f'\n\n{_utils.get_exception_as_string(e)}'))
            exported_model = onnx.load_model_from_string(f.getvalue())
-            
+
         return exported_model
 
     def _set_device_from_module(self, inputs, kwargs):
