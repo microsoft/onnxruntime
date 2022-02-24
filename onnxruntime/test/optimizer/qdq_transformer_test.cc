@@ -2183,7 +2183,7 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_Basic) {
     // if we block removal of the DQ node the Q node in the pair will not be removed either
     int expected_qdq_count = 0 + (block_removal_of_first_dq ? 1 : 0) + (block_removal_of_last_dq ? 1 : 0);
 
-    auto check_graph = [&input_shapes, expected_qdq_count](InferenceSessionWrapper& session) {
+    auto check_graph = [expected_qdq_count](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["QuantizeLinear"], expected_qdq_count);
       EXPECT_EQ(op_to_count["DequantizeLinear"], expected_qdq_count);
