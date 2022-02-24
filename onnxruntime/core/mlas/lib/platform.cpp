@@ -31,12 +31,6 @@ Abstract:
 #define PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE 43
 #endif
 #elif defined(__linux__)
-#include <unistd.h>
-#include <sys/syscall.h>
-#if !defined(__NR_getcpu)
-#include <asm-generic/unistd.h>
-#endif
-
 #include <sys/auxv.h>
 #include <asm/hwcap.h>
 // N.B. Support building with older versions of asm/hwcap.h that do not define
@@ -403,6 +397,14 @@ Return Value:
 #endif
 #endif
 
+    // Init the table describing the type (big or litte) of each core
+#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
+    // TODO!! implemente core uarch detection in Windows
+    auto tbl_size = std::thread::hardware_concurrency();
+    if (tbl_size > 0) {
+        mlas_coretype_tbl.resize(tbl_size, mlas_core_unknown);    
+    }
+#endif
 }
 
 size_t
@@ -432,60 +434,5 @@ Return Value:
     return GetMlasPlatform().PreferredBufferAlignment;
 #else
     return MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
-#endif
-}
-
-#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
-static MlasCoreType* mlas_coretype_tbl = nullptr;
-static uint32_t mlas_coretype_tbl_size = 0;
-static std::once_flag mlas_init_coretype_tbl;
-#endif
-
-MlasCoreType
-MlasGetCoreType()
-{
-
-#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
-    std::call_once(mlas_init_coretype_tbl, []() {
-        mlas_coretype_tbl_size = std::thread::hardware_concurrency();
-        if (mlas_coretype_tbl_size == 0) {
-            return;
-        }
-        mlas_coretype_tbl = (MlasCoreType*)malloc(sizeof(MlasCoreType) * mlas_coretype_tbl_size);
-        for (uint32_t i = 0; i < mlas_coretype_tbl_size; i++) {
-            mlas_coretype_tbl[i] = mlas_core_unknown;
-        }
-    });
-
-    if (mlas_coretype_tbl_size == 0) {
-        // functionality missing, return default
-        return mlas_core_big;
-    }
-
-    unsigned cpu = 0;
-    if (syscall(__NR_getcpu, &cpu, NULL, NULL) != 0) {
-            // failed to detect current core id. give up
-            return mlas_core_big;
-    }
-
-    if (cpu >= mlas_coretype_tbl_size) {
-        return mlas_core_big;
-    }
-
-    auto core_type = mlas_coretype_tbl[cpu];
-    if (core_type == mlas_core_unknown) {
-        auto uarch = MLAS_CPUIDINFO::GetCPUIDInfo().GetCurrentUarch();
-        if (uarch == cpuinfo_uarch_cortex_a53 || uarch == cpuinfo_uarch_cortex_a55r0 ||
-            uarch == cpuinfo_uarch_cortex_a55) {
-            core_type = mlas_core_little;
-        } else {
-            core_type = mlas_core_big;
-        }
-        mlas_coretype_tbl[cpu] = core_type;
-    }
-    return core_type;
-
-#else
-    return mlas_core_big;
 #endif
 }
