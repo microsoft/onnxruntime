@@ -25,9 +25,7 @@ namespace cuda {
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 REGISTER_KERNEL_TYPED(BFloat16)
-#endif
 
 using namespace ONNX_NAMESPACE;
 
@@ -46,6 +44,9 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, input->Shape());
 
   int64_t input_length = input->Shape().Size();
+  if (input_length == 0) {
+    return Status::OK();
+  }
   int64_t bias_length = (nullptr == bias) ? 0 : bias->Shape().Size();
   typedef typename ToCudaType<T>::MappedType CudaT;
 

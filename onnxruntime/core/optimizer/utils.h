@@ -3,8 +3,10 @@
 
 #pragma once
 
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph.h"
+#endif  // !#if !defined(ORT_MINIMAL_BUILD)
 
 namespace onnxruntime {
 class Graph;
@@ -12,11 +14,10 @@ class NodeArg;
 
 namespace optimizer_utils {
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 // Check if TensorProto contains a floating point type.
 bool IsFloatingPointDataType(const ONNX_NAMESPACE::TensorProto& tensor_proto);
-
-// Check if NodeArg takes in a scalar tensor.
-bool IsScalar(const NodeArg& input_arg);
 
 /** Check whether a input is initializer with specified float value.
 @param expected_value is the expected value of the initializer.
@@ -100,6 +101,20 @@ bool IsSupportedDataType(const Node& node, const T& supported_data_types) {
 bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_output_edges);
 
 bool IsOperationDeterministic(const std::string& domain, const std::string& op);
+
+/** Get min/max values from Clip if they are constant.
+@returns false if mutable and cannot be used.
+*/
+bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, float& max);
+
+#endif  // !#if !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+// Check if NodeArg takes in a scalar tensor.
+bool IsScalar(const NodeArg& input_arg);
+
+#endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 }  // namespace optimizer_utils
 }  // namespace onnxruntime

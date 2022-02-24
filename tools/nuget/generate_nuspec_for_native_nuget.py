@@ -71,6 +71,8 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
                 child = child / 'lib'
                 if cpu_arch == 'x86_64':
                     cpu_arch = 'x64'
+                elif cpu_arch == 'aarch64':
+                    cpu_arch = 'arm64'
                 for child_file in child.iterdir():
                     if not child_file.is_file():
                         continue

@@ -70,7 +70,7 @@ Status SaveRuntimeTensor(
   };
 
   // TODO is the encoding correct? https://github.com/onnx/onnx/issues/2392
-  add_external_data("location", ToMBString(relative_data_path));
+  add_external_data("location", ToUTF8String(relative_data_path));
   const std::streamoff offset = data_file.tellp();
   add_external_data("offset", std::to_string(offset));
   const auto length = tensor_data.size_bytes();
@@ -87,7 +87,7 @@ Status SaveRuntimeTensor(
 
   ORT_RETURN_IF_NOT(
       data_file.write(tensor_data.data(), length),
-      "Failed to write to data file: ", ToMBString(relative_data_path));
+      "Failed to write to data file: ", ToUTF8String(relative_data_path));
 
   tensor_proto = std::move(saved_tensor_proto);
   return Status::OK();
@@ -207,7 +207,7 @@ Status SaveModelCheckpoint(
     const DataTransferManager& data_transfer_manager,
     const NameMLValMap& runtime_tensors,
     const std::unordered_map<std::string, std::string>& properties) {
-  LOGS_DEFAULT(INFO) << "Saving model checkpoint files to " << ToMBString(checkpoint_path);
+  LOGS_DEFAULT(INFO) << "Saving model checkpoint files to " << ToUTF8String(checkpoint_path);
 
   LOGS_DEFAULT_IF(Env::Default().FolderExists(checkpoint_path), WARNING)
       << "Checkpoint directory exists - data may be overwritten.";
@@ -245,7 +245,7 @@ Status UpdateTensorsExternalDataLocations(
     ORT_RETURN_IF_NOT(location_it != external_data.end(), "location_it == external_data.end()");
 
     // TODO is the encoding correct? https://github.com/onnx/onnx/issues/2392
-    location_it->set_value(ToMBString(external_data_path));
+    location_it->set_value(ToUTF8String(external_data_path));
   }
 
   return Status::OK();
@@ -257,7 +257,7 @@ Status LoadModelCheckpoint(
     const PathString& model_path,
     std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
     std::unordered_map<std::string, std::string>& properties) {
-  LOGS_DEFAULT(INFO) << "Loading model checkpoint files from " << ToMBString(checkpoint_path);
+  LOGS_DEFAULT(INFO) << "Loading model checkpoint files from " << ToUTF8String(checkpoint_path);
 
   // read tensors file
   std::vector<ONNX_NAMESPACE::TensorProto> loaded_tensor_protos{};

@@ -698,6 +698,13 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchDefault;
 
 //
+// Symmetric quantized qgemm dispatch structure
+//
+struct MLAS_SYMM_QGEMM_DISPATCH;
+extern const MLAS_SYMM_QGEMM_DISPATCH MlasSymmQgemmS8DispatchNeon;
+extern const MLAS_SYMM_QGEMM_DISPATCH MlasSymmQgemmS8DispatchSdot;
+
+//
 // Symmetric quantized integer convolution dispatch structure.
 //
 
@@ -707,8 +714,10 @@ extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx2;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvxVnni;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Core;
 extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni;
-extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchNeon;
-extern const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchDot;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchNeon;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchNeon;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchDot;
+extern const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchDot;
 
 //
 // Quantized depthwise convolution kernels.
@@ -761,19 +770,6 @@ struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
     int32_t OutputZeroPoint;
 };
 
-typedef
-void
-(MLASCALL MLAS_CONV_SYM_DEPTHWISE_ROUTINE_KERNELSIZE)(
-    void const* const* InputIndirection,
-    int8_t const* Filter,
-    size_t Channels,
-    void* Output,
-    size_t OutputCount,
-    MLAS_CONV_SYM_POST_PROCESS_PARAMS const* PostProcessParams,
-    unsigned KernelFlags,
-    bool InputIsSigned
-    );
-
 //
 // Environment information class.
 //
@@ -792,6 +788,7 @@ struct MLAS_PLATFORM {
 #elif defined(MLAS_TARGET_ARM64)
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8X8Dispatch;
 #endif
+    const MLAS_SYMM_QGEMM_DISPATCH* SymmQgemmDispatch{nullptr};
 
     const MLAS_CONV_SYM_DISPATCH* ConvSymU8S8Dispatch{nullptr};
     const MLAS_CONV_SYM_DISPATCH* ConvSymS8S8Dispatch{nullptr};
@@ -841,7 +838,11 @@ struct MLAS_PLATFORM {
 
 };
 
-extern MLAS_PLATFORM MlasPlatform;
+inline
+MLAS_PLATFORM& GetMlasPlatform(){
+    static MLAS_PLATFORM MlasPlatform;
+    return MlasPlatform;
+}
 
 //
 // Threading support.
@@ -861,6 +862,13 @@ MlasExecuteThreaded(
     ptrdiff_t Iterations,
     MLAS_THREADPOOL* ThreadPool
     );
+
+constexpr
+size_t
+MlasDivRoundup(size_t up, size_t down)
+{
+    return (up + down - 1) / down;
+}
 
 /**
  * @brief Distribute multiple iterations of work over a thread pool if supported
@@ -1979,3 +1987,72 @@ MlasReadTimeStampCounter(void)
 #endif
 #endif
 }
+
+/**
+ * @brief IDs for cpu microarchitectures.
+ *
+ * Copied from python cpuinfo package. Can't use the definition
+ * from cpuinfo directly as it causes lots of compilation issues
+ * in many platforms that we support.
+ */
+enum MlasUArch {
+    cpuinfo_uarch_unknown = 0,
+
+    /** ARM Cortex-A32. */
+    cpuinfo_uarch_cortex_a32 = 0x00300332,
+    /** ARM Cortex-A35. */
+    cpuinfo_uarch_cortex_a35 = 0x00300335,
+    /** ARM Cortex-A53. */
+    cpuinfo_uarch_cortex_a53 = 0x00300353,
+    /** ARM Cortex-A55 revision 0 (restricted dual-issue capabilities compared to revision 1+). */
+    cpuinfo_uarch_cortex_a55r0 = 0x00300354,
+    /** ARM Cortex-A55. */
+    cpuinfo_uarch_cortex_a55 = 0x00300355,
+    /** ARM Cortex-A57. */
+    cpuinfo_uarch_cortex_a57 = 0x00300357,
+    /** ARM Cortex-A65. */
+    cpuinfo_uarch_cortex_a65 = 0x00300365,
+    /** ARM Cortex-A72. */
+    cpuinfo_uarch_cortex_a72 = 0x00300372,
+    /** ARM Cortex-A73. */
+    cpuinfo_uarch_cortex_a73 = 0x00300373,
+    /** ARM Cortex-A75. */
+    cpuinfo_uarch_cortex_a75 = 0x00300375,
+    /** ARM Cortex-A76. */
+    cpuinfo_uarch_cortex_a76 = 0x00300376,
+    /** ARM Cortex-A77. */
+    cpuinfo_uarch_cortex_a77 = 0x00300377,
+    /** ARM Cortex-A78. */
+    cpuinfo_uarch_cortex_a78 = 0x00300378,
+};
+
+enum MlasCoreType { mlas_core_unknown = 0, mlas_core_little = 2, mlas_core_big = 3 };
+
+/**
+ *  @return 2 current core is little core with narrow memory load (e.g. ARMv8 a53)
+ *          3 current core is big core with wider load (e.g. ARMv8 a72)
+ */
+MLAS_FORCEINLINE
+int32_t
+MlasGetCoreUArch()
+{
+    thread_local int32_t core_type = mlas_core_unknown;
+    if (core_type == mlas_core_unknown) {
+        // initialization needed
+#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
+        auto uarch = MLAS_CPUIDINFO::GetCPUIDInfo().GetCurrentUarch();
+        if (uarch == cpuinfo_uarch_cortex_a53 || uarch == cpuinfo_uarch_cortex_a55r0 ||
+            uarch == cpuinfo_uarch_cortex_a55) {
+            core_type = mlas_core_little;
+        } else {
+            core_type = mlas_core_big;
+        }
+#else
+        core_type = mlas_core_big;
+#endif  // MLAS_TARGET_ARM64
+
+    }
+    return core_type;
+}
+
+

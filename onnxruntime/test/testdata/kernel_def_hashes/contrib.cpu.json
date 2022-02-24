@@ -93,7 +93,7 @@
     ],
     [
         "CropAndResize com.microsoft CPUExecutionProvider",
-        7642430665819070720
+        8620498355864235632
     ],
     [
         "DequantizeLinear com.microsoft CPUExecutionProvider",
@@ -285,10 +285,14 @@
     ],
     [
       "QGemm com.microsoft CPUExecutionProvider",
+      13009794669709617232
+    ],
+    [
+      "QGemm com.microsoft CPUExecutionProvider",
       13737193491843065240
     ],
     [
       "GridSample com.microsoft CPUExecutionProvider",
-      15019666093341768288
+      11924582339825775592
     ]
 ]

@@ -49,7 +49,7 @@ ThreadPoolProfiler::ThreadPoolProfiler(int num_threads, const CHAR_TYPE* thread_
   child_thread_stats_.assign(num_threads, {});
   if (thread_pool_name) {
 #ifdef _WIN32
-    thread_pool_name_ = ToMBString(thread_pool_name);
+    thread_pool_name_ = ToUTF8String(thread_pool_name);
 #else
     thread_pool_name_ = thread_pool_name;
 #endif
@@ -261,13 +261,12 @@ struct alignas(CACHE_LINE_BYTES) LoopCounterShard {
 };
 
 static_assert(sizeof(LoopCounterShard) == CACHE_LINE_BYTES, "Expected loop counter shards to match cache-line size");
-
+ 
 class alignas(CACHE_LINE_BYTES) LoopCounter {
  public:
   LoopCounter(uint64_t num_iterations,
               uint64_t d_of_p,
-              uint64_t block_size = 1) : _block_size(block_size),
-                                         _num_shards(GetNumShards(num_iterations,
+              uint64_t block_size = 1) : _num_shards(GetNumShards(num_iterations,
                                                                   d_of_p,
                                                                   block_size)) {
     // Divide the iteration space between the shards.  If the iteration
@@ -308,14 +307,15 @@ class alignas(CACHE_LINE_BYTES) LoopCounter {
   bool ClaimIterations(unsigned my_home_shard,
                        unsigned& my_shard,
                        uint64_t& my_start,
-                       uint64_t& my_end) {
+                       uint64_t& my_end,
+                       uint64_t block_size) {
     do {
       if (_shards[my_shard]._next < _shards[my_shard]._end) {
         // Appears to be work in the current shard, try to claim with atomic fetch-and-add
-        uint64_t temp_start = _shards[my_shard]._next.fetch_add(_block_size);
+        uint64_t temp_start = _shards[my_shard]._next.fetch_add(block_size);
         if (temp_start < _shards[my_shard]._end) {
           my_start = temp_start;
-          my_end = std::min(_shards[my_shard]._end, temp_start + _block_size);
+          my_end = std::min(_shards[my_shard]._end, temp_start + block_size);
           return true;
         }
       }
@@ -357,7 +357,6 @@ class alignas(CACHE_LINE_BYTES) LoopCounter {
   }
 
   alignas(CACHE_LINE_BYTES) LoopCounterShard _shards[MAX_SHARDS];
-  const uint64_t _block_size;
   const unsigned _num_shards;
 };
 
@@ -369,8 +368,9 @@ ThreadPool::ThreadPool(Env* env,
                        const ThreadOptions& thread_options,
                        const NAME_CHAR_TYPE* name,
                        int degree_of_parallelism,
-                       bool low_latency_hint)
-    : thread_options_(thread_options) {
+                       bool low_latency_hint,
+                       bool force_hybrid)
+    : thread_options_(thread_options), force_hybrid_(force_hybrid) {
   // In the current implementation, a thread pool with degree_of_parallelism==1 uses
   // the caller as one of the threads for executing work.  Hence we only create
   // additional thread(s) for degree_of_parallelism>=2.
@@ -403,29 +403,52 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(const std::ptrdiff_t total,
     return;
   }
 
-  // Split the work across threads in the pool.  Each work item will run a loop claiming iterations,
-  // hence we need at most one for each thread, even if the numberof blocks of iterations is larger.
   auto d_of_p = DegreeOfParallelism(this);
-  auto num_blocks = total / block_size;
-  auto num_threads_inc_main = NumThreads() + 1;
-  int num_work_items = static_cast<int>(std::min(static_cast<std::ptrdiff_t>(num_threads_inc_main), num_blocks));
-  assert(num_work_items > 0);
+  if (thread_options_.dynamic_block_base_ <= 0) {
+    // Split the work across threads in the pool.  Each work item will run a loop claiming iterations,
+    // hence we need at most one for each thread, even if the number of blocks of iterations is larger.
+    auto num_blocks = total / block_size;
+    auto num_threads_inc_main = NumThreads() + 1;
+    int num_work_items = static_cast<int>(std::min(static_cast<std::ptrdiff_t>(num_threads_inc_main), num_blocks));
+    assert(num_work_items > 0);
 
-  LoopCounter lc(total, d_of_p, block_size);
-  std::function<void(unsigned)> run_work = [&](unsigned idx) {
-    unsigned my_home_shard = lc.GetHomeShard(idx);
-    unsigned my_shard = my_home_shard;
-    uint64_t my_iter_start, my_iter_end;
-    while (lc.ClaimIterations(my_home_shard, my_shard, my_iter_start, my_iter_end)) {
-      fn(static_cast<std::ptrdiff_t>(my_iter_start),
-         static_cast<std::ptrdiff_t>(my_iter_end));
-    }
-  };
-
-  // Run the work in the thread pool (and in the current thread).  Synchronization with helping
-  // threads is handled within RunInParallel, hence we can deallocate lc and other state captured by
-  // run_work.
-  RunInParallel(run_work, num_work_items, block_size);
+    LoopCounter lc(total, d_of_p, block_size);
+    std::function<void(unsigned)> run_work = [&](unsigned idx) {
+      unsigned my_home_shard = lc.GetHomeShard(idx);
+      unsigned my_shard = my_home_shard;
+      uint64_t my_iter_start, my_iter_end;
+      while (lc.ClaimIterations(my_home_shard, my_shard, my_iter_start, my_iter_end, block_size)) {
+        fn(static_cast<std::ptrdiff_t>(my_iter_start),
+           static_cast<std::ptrdiff_t>(my_iter_end));
+      }
+    };
+    // Run the work in the thread pool (and in the current thread).  Synchronization with helping
+    // threads is handled within RunInParallel, hence we can deallocate lc and other state captured by
+    // run_work.
+    RunInParallel(run_work, num_work_items, block_size);
+  } else {
+    int num_of_blocks = d_of_p * thread_options_.dynamic_block_base_;
+    std::ptrdiff_t base_block_size = static_cast<std::ptrdiff_t>(std::max(1LL, std::llroundl(static_cast<long double>(total) / num_of_blocks)));
+    alignas(CACHE_LINE_BYTES) std::atomic<std::ptrdiff_t> left{total};
+    LoopCounter lc(total, d_of_p, base_block_size);
+    std::function<void(unsigned)> run_work = [&](unsigned idx) {
+      std::ptrdiff_t b = base_block_size;
+      unsigned my_home_shard = lc.GetHomeShard(idx);
+      unsigned my_shard = my_home_shard;
+      uint64_t my_iter_start, my_iter_end;
+      while (lc.ClaimIterations(my_home_shard, my_shard, my_iter_start, my_iter_end, b)) {
+        fn(static_cast<std::ptrdiff_t>(my_iter_start),
+           static_cast<std::ptrdiff_t>(my_iter_end));
+        auto todo = left.fetch_sub(static_cast<std::ptrdiff_t>(my_iter_end - my_iter_start), std::memory_order_relaxed);
+        if (b > 1) {
+          b = static_cast<std::ptrdiff_t>(std::max(1LL, std::llroundl(static_cast<long double>(todo) / num_of_blocks)));
+        }
+      }
+    };
+    // Distribute task among all threads in the pool, reduce number of work items if 
+    // num_of_blocks is smaller than number of threads.
+    RunInParallel(run_work, std::min(NumThreads() + 1, num_of_blocks), base_block_size);
+  }
 }
 
 void ThreadPool::SimpleParallelFor(std::ptrdiff_t total, const std::function<void(std::ptrdiff_t)>& fn) {
@@ -603,7 +626,7 @@ int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
   // When not using OpenMP, we parallelise over the N threads created by the pool
   // tp, plus 1 for the thread entering a loop.
   if (tp) {
-    if (CPUIDInfo::GetCPUIDInfo().IsHybrid()) {
+    if (tp->force_hybrid_ || CPUIDInfo::GetCPUIDInfo().IsHybrid()) {
       return ((tp->NumThreads() + 1)) * TaskGranularityFactor;
     } else {
       return ((tp->NumThreads() + 1));

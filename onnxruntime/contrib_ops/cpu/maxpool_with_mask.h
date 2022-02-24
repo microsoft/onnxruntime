@@ -26,8 +26,8 @@ struct MaxpoolWithMask1DTask final {
   int64_t stride_h;
   int64_t height;
   int64_t total_mask_channels;
-  const std::vector<int64_t>& kernel_shape;
-  const std::vector<int64_t>& pads;
+  const TensorShapeVector& kernel_shape;
+  const TensorShapeVector& pads;
   TensorOpCost Cost() {
     double loop_count = static_cast<double>(pooled_height * kernel_shape[0]);
     return TensorOpCost{loop_count, loop_count, loop_count};
@@ -73,8 +73,8 @@ struct MaxpoolWithMask2DTask final {
   int64_t height;
   int64_t width;
   int64_t total_mask_channels;
-  const std::vector<int64_t>& kernel_shape;
-  const std::vector<int64_t>& pads;
+  const TensorShapeVector& kernel_shape;
+  const TensorShapeVector& pads;
   TensorOpCost Cost() {
     double loop_count = static_cast<double>(pooled_height * kernel_shape[0]);
     return TensorOpCost{loop_count, loop_count, loop_count};
@@ -133,8 +133,8 @@ struct MaxpoolWithMask3DTask final {
   int64_t width;
   int64_t depth;
   int64_t total_mask_channels;
-  const std::vector<int64_t>& kernel_shape;
-  const std::vector<int64_t>& pads;
+  const TensorShapeVector& kernel_shape;
+  const TensorShapeVector& pads;
   TensorOpCost Cost() {
     double loop_count = static_cast<double>(pooled_height * kernel_shape[0]);
     return TensorOpCost{loop_count, loop_count, loop_count};
@@ -204,10 +204,10 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
     // ONNXRUNTIME_RETURN_IF_NOT((x_shape[2] == m_shape[2]) && (x_shape[3] == m_shape[3]), " Input shape and mask shape
     // mismatch: ", x_shape, " vs ", m_shape);
 
-    std::vector<int64_t> pads = pool_attrs_.pads;
-    std::vector<int64_t> kernel_shape = pool_attrs_.kernel_shape;
+    TensorShapeVector pads = pool_attrs_.pads;
+    TensorShapeVector kernel_shape = pool_attrs_.kernel_shape;
 
-    std::vector<int64_t> output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
+    TensorShapeVector output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
     Tensor* Y = context->Output(0, TensorShape(output_dims));
 
     const float* X_data = X->template Data<float>();

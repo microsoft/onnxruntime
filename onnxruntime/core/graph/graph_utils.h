@@ -16,6 +16,23 @@ namespace onnxruntime {
 
 namespace graph_utils {
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+
+/** Returns the attribute of a Node with a given name. */
+const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name);
+
+/** Add a new initializer to 'graph'.
+Checks that new_initializer does not already exist in 'graph' before adding it.
+@returns The NodeArg for the new initializer.
+@remarks No matching graph input is created, so the initializer will be constant.
+*/
+NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
+
+/** Gets the index of an output arg with the specified output arg name. */
+int GetNodeOutputIndexFromOutputName(const Node& node, const std::string& output_name);
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+
 #if !defined(ORT_MINIMAL_BUILD)
 /** Checks if the operator's type, version, and domain of the given node match the given values. */
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
@@ -55,13 +72,6 @@ bool IsInitializer(const Graph& graph, const std::string& name, bool check_outer
 */
 bool IsConstantInitializer(const Graph& graph, const std::string& name, bool check_outer_scope = true);
 
-/** Add a new initializer to 'graph'.
-Checks that new_initializer does not already exist in 'graph' before adding it.
-@returns The NodeArg for the new initializer.
-@remarks No matching graph input is created, so the initializer will be constant.
-*/
-NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
-
 /** Checks if the given NodeArg is constant, i.e., it appears in the graph's initializers but not in its inputs. */
 bool NodeArgIsConstant(const Graph& graph, const NodeArg& node_arg);
 
@@ -72,12 +82,6 @@ bool AllNodeInputsAreConstant(const Graph& graph, const Node& node, InitializedT
 
 /** Gets the index of an input arg with the specified input arg name. */
 int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name);
-
-/** Gets the index of an output arg with the specified output arg name. */
-int GetNodeOutputIndexFromOutputName(const Node& node, const std::string& output_name);
-
-/** Returns the attribute of a Node with a given name. */
-const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name);
 
 /** Retrieves the values for a repeated attribute of a node and place them to the values vector. */
 template <typename T>
@@ -95,18 +99,8 @@ bool GetRepeatedNodeAttributeValues(const Node& node,
 /** Find the first child of the specified op type. */
 const Node* FirstChildByType(const Node& node, const std::string& child_type);
 
-/** Find node children by op types.
-    @returns The matched children are sorted by source argument index of their corresponding edge.
-**/
-std::vector<const Node*> FindChildrenByType(const Node& node, const std::string& child_type);
-
 /** Find the first parent of the specified op type. */
 const Node* FirstParentByType(const Node& node, const std::string& parent_type);
-
-/** Find node parents by op types.
-    @returns The matched parents are sorted by destination argument index of their corresponding edge.
-**/
-std::vector<const Node*> FindParentsByType(const Node& node, const std::string& parent_type);
 
 /** Tests if we can remove a node and merge its input edge (if any) with its output edges.
 Conditions:
@@ -289,6 +283,16 @@ NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg);
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+/** Find node parents by op types.
+    @returns The matched parents are sorted by destination argument index of their corresponding edge.
+**/
+std::vector<const Node*> FindParentsByType(const Node& node, const std::string& parent_type);
+
+/** Find node children by op types.
+    @returns The matched children are sorted by source argument index of their corresponding edge.
+**/
+std::vector<const Node*> FindChildrenByType(const Node& node, const std::string& child_type);
 
 /** Gets the name of the incoming NodeArg with the specified index for the given node. */
 const std::string& GetNodeInputName(const Node& node, int index);

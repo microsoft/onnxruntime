@@ -31,6 +31,17 @@ class Precision(Enum):
         return self.value
 
 
+class OptimizerInfo(Enum):
+    # no_opt means using the raw ONNX model, but OnnxRuntime might still apply optimization as long as
+    # graph optimization level is not 0 (disable all).
+    NOOPT = 'no_opt'
+    BYORT = 'by_ort'
+    BYSCRIPT = 'by_script'
+
+    def __str__(self):
+        return self.value
+
+
 IO_BINDING_DATA_TYPE_MAP = {
     "float32": numpy.float32,
     # TODO: Add more.
@@ -39,11 +50,11 @@ IO_BINDING_DATA_TYPE_MAP = {
 
 def create_onnxruntime_session(onnx_model_path,
                                use_gpu,
+                               provider=None,
                                enable_all_optimization=True,
                                num_threads=-1,
                                enable_profiling=False,
-                               verbose=False,
-                               use_dml=False):
+                               verbose=False):
     session = None
     try:
         from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel, __version__ as onnxruntime_version
@@ -68,8 +79,16 @@ def create_onnxruntime_session(onnx_model_path,
 
         logger.debug(f"Create session for onnx model: {onnx_model_path}")
         if use_gpu:
-            if use_dml:
+            if provider == 'dml':
                 execution_providers = ['DmlExecutionProvider', 'CPUExecutionProvider']
+            elif provider == 'rocm':
+                execution_providers = ['ROCMExecutionProvider', 'CPUExecutionProvider']
+            elif provider == 'migraphx':
+                execution_providers = ['MIGraphXExecutionProvider', 'ROCMExecutionProvider', 'CPUExecutionProvider']
+            elif provider == 'cuda':
+                execution_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+            elif provider == 'tensorrt':
+                execution_providers = ['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
             else:
                 execution_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
         else:
@@ -89,7 +108,7 @@ def setup_logger(verbose=True):
         logging.getLogger("transformers").setLevel(logging.WARNING)
 
 
-def prepare_environment(cache_dir, output_dir, use_gpu, use_dml=False):
+def prepare_environment(cache_dir, output_dir, use_gpu, provider=None):
     if cache_dir and not os.path.exists(cache_dir):
         os.makedirs(cache_dir)
 
@@ -98,14 +117,13 @@ def prepare_environment(cache_dir, output_dir, use_gpu, use_dml=False):
 
     import onnxruntime
     if use_gpu:
-        if use_dml:
+        if provider == 'dml':
             assert 'DmlExecutionProvider' in onnxruntime.get_available_providers(
             ), "Please install onnxruntime-directml package to test GPU inference."
 
         else:
             assert 'CUDAExecutionProvider' in onnxruntime.get_available_providers(
             ), "Please install onnxruntime-gpu package to test GPU inference."
-
 
     import transformers
     logger.info(f'PyTorch Version:{torch.__version__}')
@@ -138,9 +156,9 @@ def get_latency_result(runtimes, batch_size):
 def output_details(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
-            "engine", "version", "device", "precision", "optimizer", "io_binding", "model_name", "inputs", "threads",
-            "batch_size", "sequence_length", "datetime", "test_times", "QPS", "average_latency_ms", "latency_variance",
-            "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
+            "engine", "version", "providers", "device", "precision", "optimizer", "io_binding", "model_name", "inputs",
+            "threads", "batch_size", "sequence_length", "datetime", "test_times", "QPS", "average_latency_ms",
+            "latency_variance", "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
         ]
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
@@ -154,7 +172,8 @@ def output_details(results, csv_filename):
 def output_summary(results, csv_filename, args):
     with open(csv_filename, mode="a", newline='') as csv_file:
         header_names = [
-            "model_name", "inputs", "engine", "version", "device", "precision", "optimizer", "io_binding", "threads"
+            "model_name", "inputs", "engine", "version", "providers", "device", "precision", "optimizer", "io_binding",
+            "threads"
         ]
         data_names = []
         for batch_size in args.batch_sizes:
@@ -205,8 +224,9 @@ def output_fusion_statistics(model_fusion_statistics, csv_filename):
     logger.info(f"Fusion statistics is saved to csv file: {csv_filename}")
 
 
-def inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_size):
+def inference_ort(ort_session, ort_inputs, result_template, repeat_times, batch_size, warm_up_repeat=0):
     result = {}
+    timeit.repeat(lambda: ort_session.run(None, ort_inputs), number=1, repeat=warm_up_repeat)  # Dry run
     runtimes = timeit.repeat(lambda: ort_session.run(None, ort_inputs), number=1, repeat=repeat_times)
     result.update(result_template)
     result.update({"io_binding": False})
@@ -224,7 +244,8 @@ def inference_ort_with_io_binding(ort_session,
                                   output_buffer_max_sizes,
                                   batch_size,
                                   device,
-                                  data_type=numpy.longlong):
+                                  data_type=numpy.longlong,
+                                  warm_up_repeat=0):
     result = {}
 
     # Bind inputs and outputs to onnxruntime session
@@ -242,6 +263,7 @@ def inference_ort_with_io_binding(ort_session,
     for i in range(len(ort_output_names)):
         io_binding.bind_output(ort_output_names[i], output_buffers[i].device.type, 0, numpy.float32,
                                ort_outputs[i].shape, output_buffers[i].data_ptr())
+    timeit.repeat(lambda: ort_session.run_with_iobinding(io_binding), number=1, repeat=warm_up_repeat)  # Dry run
     runtimes = timeit.repeat(lambda: ort_session.run_with_iobinding(io_binding), number=1, repeat=repeat_times)
     result.update(result_template)
     result.update({"io_binding": True})

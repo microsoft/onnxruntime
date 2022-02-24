@@ -36,7 +36,7 @@
 #ifdef ENABLE_NVTX_PROFILE
 #include <set>
 #include <thread>
-#include "core/profile/context.h"
+#include "core/providers/cuda/nvtx_profile_context.h"
 #endif
 
 namespace onnxruntime {
@@ -995,7 +995,7 @@ Status TrainingSession::SaveWithExternalInitializers(const PathString& model_uri
                                                      const std::string& external_file_name,
                                                      size_t initializer_size_threshold) {
   // Delete the old files before saving.
-  std::remove(ToMBString(model_uri).c_str());
+  std::remove(ToUTF8String(model_uri).c_str());
   std::remove(external_file_name.c_str());
 
   return Model::SaveWithExternalInitializers(*model_, model_uri, external_file_name, initializer_size_threshold);
@@ -1003,7 +1003,7 @@ Status TrainingSession::SaveWithExternalInitializers(const PathString& model_uri
 
 Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveOption opt) {
   // Delete the old file before saving.
-  std::remove(ToMBString(model_uri).c_str());  // TODO would be good to have something like RemoveFile(PathString)
+  std::remove(ToUTF8String(model_uri).c_str());  // TODO would be good to have something like RemoveFile(PathString)
 
   if (opt == TrainingSession::SaveOption::NO_RELOAD) {
     return Model::Save(*model_, model_uri);
@@ -1055,7 +1055,7 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
 
   if (!status.IsOK()) {
     LOGS(*session_logger_, WARNING)
-        << "Error when saving model " << ToMBString(model_uri) << " : " << status.ErrorMessage();
+        << "Error when saving model " << ToUTF8String(model_uri) << " : " << status.ErrorMessage();
   }
 
   return status;

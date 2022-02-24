@@ -58,12 +58,12 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Nuphar,
 }
 #endif
 
-#ifndef USE_STVM
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Stvm,
+#ifndef USE_TVM
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tvm,
                     _In_ OrtSessionOptions* options, _In_ const char* settings) {
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(settings);
-  return CreateNotEnabledStatus("Stvm");
+  return CreateNotEnabledStatus("Tvm");
 }
 #endif
 
@@ -200,6 +200,13 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString,
 
 ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptionsV2* ptr) {
   ORT_UNUSED_PARAMETER(ptr);
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX,
+                    _In_ OrtSessionOptions* options, _In_ const OrtMIGraphXProviderOptions* migraphx_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(migraphx_options);
+  return CreateNotEnabledStatus("MIGraphX");
 }
 
 #endif

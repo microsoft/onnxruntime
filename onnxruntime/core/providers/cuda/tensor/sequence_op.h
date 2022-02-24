@@ -121,7 +121,7 @@ class ConcatFromSequence final : public CudaKernel, public ConcatBase {
   Status ComputeInternal(OpKernelContext* context) const override {
     const TensorSeq* X = context->Input<TensorSeq>(0);
     int64_t input_count = static_cast<int64_t>(X->Size());
-    std::vector<const Tensor*> input_tensors;
+    InlinedTensorsVector input_tensors;
     for (int64_t i = 0; i < input_count; ++i) {
       input_tensors.push_back(&X->Get(i));
     }

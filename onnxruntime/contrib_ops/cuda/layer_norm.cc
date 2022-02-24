@@ -35,9 +35,7 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(float, float)
 REGISTER_KERNEL_TYPED(double, double)
 REGISTER_KERNEL_TYPED(MLFloat16, float)
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 REGISTER_KERNEL_TYPED(BFloat16, float)
-#endif
 
 template <typename T, typename U, bool simplified>
 LayerNorm<T, U, simplified>::LayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
@@ -61,12 +59,6 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
   auto bias_data = (simplified || (nullptr == bias)) ? nullptr : reinterpret_cast<const CudaT*>(bias->template Data<T>());
 
   const TensorShape& x_shape = X->Shape();
-  // Sometimes due to conversion issue, the input 'X' has no data which is a case that cuda kernel cannot handle.
-  // Provide more error infomation here instead of CUDA errors.
-  if (X->SizeInBytes() == 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'X' has no data from upstream nodes");
-  }
-
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
 
   int n1 = gsl::narrow<int>(x_shape.SizeToDimension(axis));
@@ -101,6 +93,10 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
   CudaU* inv_var_data = nullptr;
   if (var != nullptr) {
     inv_var_data = reinterpret_cast<CudaU*>(var->template MutableData<U>());
+  }
+
+  if (x_shape.Size() == 0) {
+    return Status::OK();
   }
 
   HostApplyLayerNorm<CudaT, CudaU, simplified>(GetDeviceProp(), Stream(), Y_data, mean_data, inv_var_data, X_data, n1, n2, epsilon_, scale_data, bias_data);

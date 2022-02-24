@@ -1,4 +1,8 @@
-#include "thread_utils.h"
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "core/util/thread_utils.h"
+
 #include <algorithm>
 
 #ifdef _WIN32
@@ -32,6 +36,7 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   to.custom_create_thread_fn = options.custom_create_thread_fn;
   to.custom_thread_creation_options = options.custom_thread_creation_options;
   to.custom_join_thread_fn = options.custom_join_thread_fn;
+  to.dynamic_block_base_ = options.dynamic_block_base_;
   if (to.custom_create_thread_fn) {
     ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set");
   }

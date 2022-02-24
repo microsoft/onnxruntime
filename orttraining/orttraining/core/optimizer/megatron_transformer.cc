@@ -15,9 +15,9 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 struct OpInfo {
-  OpInfo(const std::string& op_type,
+  OpInfo(const char* op_type,
          const std::initializer_list<OperatorSetVersion>& supported_versions,
-         const std::string& domain = kOnnxDomainAlias,
+         const char* domain = kOnnxDomainAlias,
          const size_t output_count = 1) : op_type(op_type),
                                           supported_versions(supported_versions),
                                           domain(domain),
@@ -150,11 +150,11 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
   if (rank == 2 && utils::HasDimValue(shape->dim(0)) && utils::HasDimValue(shape->dim(1))) {
     row_count = shape->dim(0).dim_value();
     column_count = shape->dim(1).dim_value();
-    weight_partition_info_[original_name].original_dim = std::vector<int64_t>{row_count, column_count};
+    weight_partition_info_[original_name].original_dim = TensorShapeVector{row_count, column_count};
   } else if (rank == 1) {
     row_count = 1;
     column_count = shape->dim(0).dim_value();
-    weight_partition_info_[original_name].original_dim = std::vector<int64_t>{column_count};
+    weight_partition_info_[original_name].original_dim = TensorShapeVector{column_count};
   } else {
     LOGS_DEFAULT(WARNING) << "Initializer tensor's rank is " << rank << " (expected to be 1 or 2).";
     return false;
@@ -291,11 +291,11 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
   if (rank == 2 && utils::HasDimValue(shape->dim(0)) && utils::HasDimValue(shape->dim(1))) {
     row_count = shape->dim(0).dim_value();
     column_count = shape->dim(1).dim_value();
-    weight_partition_info_[original_name].original_dim = std::vector<int64_t>{row_count, column_count};
+    weight_partition_info_[original_name].original_dim = {row_count, column_count};
   } else if (rank == 1) {
     row_count = shape->dim(0).dim_value();
     column_count = 1;
-    weight_partition_info_[original_name].original_dim = std::vector<int64_t>{row_count};
+    weight_partition_info_[original_name].original_dim = {row_count};
   } else {
     LOGS_DEFAULT(WARNING) << "Initializer tensor's rank is more than " << rank
                           << " (expected to be 1 or 2).";
@@ -1359,12 +1359,10 @@ Status MegatronTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_le
   std::unordered_set<Node*> dropout_nodes_to_transform;
   int32_t dropout_changed = 0;
 
-  ORT_ENFORCE(DoTransform(graph, modified, graph_level, logger,
-                          nodes_to_clear_shape, dropout_nodes_to_transform)
-                  .IsOK());
-  ORT_ENFORCE(TransformDropout(graph, modified, graph_level, logger,
-                               dropout_nodes_to_transform, dropout_changed)
-                  .IsOK());
+  ORT_RETURN_IF_ERROR(DoTransform(graph, modified, graph_level, logger,
+                          nodes_to_clear_shape, dropout_nodes_to_transform));
+  ORT_RETURN_IF_ERROR(TransformDropout(graph, modified, graph_level, logger,
+                               dropout_nodes_to_transform, dropout_changed));
 
   auto& graph_inputs = graph.GetInputs();
   for (auto node : nodes_to_clear_shape) {
@@ -1392,13 +1390,12 @@ Status MegatronTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_le
   if (modified) {
     graph.SetGraphResolveNeeded();
     auto ret = graph.Resolve();
-    LOGS_DEFAULT(WARNING) << "Megatron transformer result: Reset seed for " << dropout_changed
+    LOGS(logger, WARNING) << "Megatron transformer result: Reset seed for " << dropout_changed
                           << " Dropout nodes. Error Message (if there is): " << ret.ErrorMessage();
-    ORT_ENFORCE(ret.IsOK());
-  } else {
-    LOGS_DEFAULT(WARNING) << "Megatron transformer result : unmodified\n";
+    return ret;
   }
 
+  LOGS(logger, WARNING) << "Megatron transformer result : unmodified\n";  
   return Status::OK();
 }
 

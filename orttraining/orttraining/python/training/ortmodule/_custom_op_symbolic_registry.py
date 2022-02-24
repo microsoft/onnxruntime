@@ -136,6 +136,18 @@ def binary_cross_entropy_with_logits(g, self, target, weight, pos_weight, reduct
     from torch.onnx.symbolic_opset12 import binary_cross_entropy_with_logits as bce
     return bce(g, self, target, weight, pos_weight, reduction)
 
+@register_symbolic('numpy_T')
+def numpy_T(g, self):
+    # Numpy-style `a.T`: returns the tensor
+    # with dims reversed
+    rank = sym_help._get_tensor_rank(self)
+    if rank is not None:
+        axes = list(reversed(range(rank)))
+        return g.op("Transpose", self, perm_i=axes)
+    else:
+        # if we don't have dim information we cannot
+        # output a permute so use ATen instead
+        return g.op("com.microsoft::ATenOp", self, name_s='aten::numpy_T')
 
 # For torch.einsum.
 def parse_equation(equation):

@@ -1,0 +1,6 @@
+jobs:
+- template: linux-gpu-tensorrt-daily-perf-pipeline.yml
+  parameters: 
+    PostToDashboard: 'false'
+    ModelGroups: []
+    PublishWheel: 'true'
