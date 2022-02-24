@@ -107,6 +107,13 @@ bool GetProviderInstanceHash(const std::string& type,
   }
 #endif
   }
+  else if (type == kOpenVINOExecutionProvider){
+#ifdef USE_OPENVINO
+    // for CPU, only 1 instance
+    hash = 0;
+    return true;
+#endif
+  }
   else{
     const auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
