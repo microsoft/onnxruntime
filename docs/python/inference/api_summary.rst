@@ -13,8 +13,8 @@ API Overview
 
 The data consumed and produced by the model can be specified and accessed in the way that best matches your scenario.
 
-Inference Session
------------------
+Load and run a model
+--------------------
 
 InferenceSession is the main class of ONNX Runtime. It is used to load and run an ONNX model,
 as well as specify environment and application configuration options. 
