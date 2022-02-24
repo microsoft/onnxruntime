@@ -357,5 +357,6 @@ extends:
 
               Copy-Item -Path $merged_nuget -Destination $merged_nuget_as_zip
               
-              7z x -o$(Build.SourcesDirectory)\unzipped $merged_nuget.fullname
+              7z x -o$(Build.SourcesDirectory)\unzipped $merged_nuget
+              
             workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
