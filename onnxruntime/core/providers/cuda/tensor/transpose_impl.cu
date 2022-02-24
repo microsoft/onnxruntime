@@ -7,27 +7,32 @@
 namespace onnxruntime {
 namespace cuda {
 
-constexpr unsigned int TILE_DIM = 16;
+constexpr unsigned int TILE_DIM = 32;
 
 template <typename T>
 __global__ void Transpose3DKernel(const TArray<int64_t> input_shape,
                                   const TArray<int64_t> input_strides,
-                                  const T* input_data, T* output_data) {
+                                  const T* __restrict__ input_data, T* __restrict__ output_data) {
   // __shared__ T tile[TILE_DIM * (TILE_DIM + 1)];
-  __shared__ T tile[TILE_DIM][TILE_DIM + 1];
+  __shared__ T tile[TILE_DIM][66];
 
   int x = blockIdx.x * TILE_DIM + threadIdx.x;
   int y = blockIdx.y * TILE_DIM + threadIdx.y;
 
   // tile[threadIdx.y * TILE_DIM + threadIdx.x] = input_data[blockIdx.z * input_strides[0] + y * input_shape[2] + x];
-  tile[threadIdx.y][threadIdx.x] = input_data[blockIdx.z * input_strides[0] + y * input_shape[2] + x];
+  // #pragma unroll
+  for (int i = 0; i < 32; i += 4)
+    tile[threadIdx.y + i][threadIdx.x] = input_data[blockIdx.z * input_strides[0] + (y + i) * input_shape[2] + x];
+
   __syncthreads();
 
   x = blockIdx.y * TILE_DIM + threadIdx.x;
   y = blockIdx.x * TILE_DIM + threadIdx.y;
 
   // output_data[blockIdx.z * input_strides[0] + y * input_shape[1] + x] = tile[threadIdx.x * TILE_DIM + threadIdx.y];
-  output_data[blockIdx.z * input_strides[0] + y * input_shape[1] + x] = tile[threadIdx.x][threadIdx.y];
+  // #pragma unroll
+  for (int i = 0; i < 32; i += 4)
+    output_data[blockIdx.z * input_strides[0] + (y + i) * input_shape[1] + x] = tile[threadIdx.x][threadIdx.y + i];
 }
 
 bool CanDoTranspose3D(const cudaDeviceProp& prop,
@@ -45,7 +50,8 @@ bool CanDoTranspose3D(const cudaDeviceProp& prop,
     int grid_size_z = static_cast<int>(input_dims[0]);
 
     if (grid_size_x <= prop.maxGridSize[0] && grid_size_y <= prop.maxGridSize[1] && grid_size_z <= prop.maxGridSize[2]) {
-      block_size = dim3(TILE_DIM, TILE_DIM);
+      // each thread do more work.
+      block_size = dim3(TILE_DIM, TILE_DIM / 8);
       grid_size = dim3(static_cast<unsigned int>(grid_size_x),
                        static_cast<unsigned int>(grid_size_y),
                        static_cast<unsigned int>(grid_size_z));
