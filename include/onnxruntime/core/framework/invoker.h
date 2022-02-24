@@ -7,7 +7,18 @@ namespace onnxruntime {
 namespace invoker {
 
 // todo: disable this when it is minimal build
-void* CreateOp(void* sess, const char* domain, const char* op_name, const int& version);
+int CreateEagerKernel(const void* execution_provier,
+                      const char* op_name,
+                      const char* domain,
+                      const int& version,
+                      const char** type_constraint_names,
+                      const int* type_constraint_values,
+                      const int& num_type_constraint,
+                      const void* attrs,
+                      const int& num_attrs,
+                      void** kernel);
+
+//int CallEagerKernel(const void* kernel, const void** inputs, const int& num_inputs, void** output, const int& num_outptus);
 
 }//invoker
 }//onnxruntime

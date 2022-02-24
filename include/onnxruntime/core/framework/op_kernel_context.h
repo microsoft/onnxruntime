@@ -21,10 +21,10 @@ class OpKernelContext {
   @param arg_num The operator argument number.
   @returns Number of inputs the argument has.
   */
-  int NumVariadicInputs(size_t arg_num) const;
+  virtual int NumVariadicInputs(size_t arg_num) const;
 
-  MLDataType InputType(int index) const;
-  MLDataType OutputType(int index) const;
+  virtual MLDataType InputType(int index) const;
+  virtual MLDataType OutputType(int index) const;
 
   const OrtValue* GetInputOrtValue(int index) const {
     return GetInputMLValue(index);
@@ -98,29 +98,29 @@ class OpKernelContext {
   // Retrieve indexed shape obtained from memory planning before actual
   // computation. If the indexed shape cannot be inferred, this function returns
   // false.
-  bool TryGetInferredInputShape(int index, TensorShape& shape) const;
+  virtual bool TryGetInferredInputShape(int index, TensorShape& shape) const;
 
   // Retrieve indexed shape obtained from memory planning before actual
   // computation. If the indexed shape cannot be inferred, this function returns
   // false.
-  bool TryGetInferredOutputShape(int index, TensorShape& shape) const;
+  virtual bool TryGetInferredOutputShape(int index, TensorShape& shape) const;
 
   const logging::Logger& Logger() const {
     return *logger_;
   }
 
   // always >= 0
-  int InputCount() const {
+  virtual int InputCount() const {
     return static_cast<int>(kernel_->Node().InputDefs().size());
   }
 
   // always >= 0
-  int ImplicitInputCount() const {
+  virtual int ImplicitInputCount() const {
     return static_cast<int>(kernel_->Node().ImplicitInputDefs().size());
   }
 
   // always >= 0
-  int OutputCount() const {
+  virtual int OutputCount() const {
     return static_cast<int>(kernel_->Node().OutputDefs().size());
   }
 
@@ -128,7 +128,7 @@ class OpKernelContext {
    Return an allocator on device 0, with memtype of OrtMemTypeDefault.
    @remarks Use SafeInt when calculating the size of memory to allocate using AllocatorPtr->Alloc.
    */
-  Status GetTempSpaceAllocator(AllocatorPtr* output) const ORT_MUST_USE_RESULT;
+  virtual Status GetTempSpaceAllocator(AllocatorPtr* output) const ORT_MUST_USE_RESULT;
 
   /**
   Return the fence of current node's input.
@@ -136,7 +136,7 @@ class OpKernelContext {
   @returns Point to the Fence of the input OrtValue.
   It is null if the input OrtValue doesn't have fence or the input is optional.
   */
-  Fence_t InputFence(int index) const;
+  virtual Fence_t InputFence(int index) const;
 
   /**
   Return the fence of current node's implicit input.
@@ -144,7 +144,7 @@ class OpKernelContext {
   @returns Point to the Fence of the implicit input OrtValue.
   It is null if the input OrtValue doesn't have fence or the input is optional.
   */
-  Fence_t ImplicitInputFence(int index) const;
+  virtual Fence_t ImplicitInputFence(int index) const;
 
   /**
   Return the fence of current node's output identifed by index.
@@ -152,12 +152,12 @@ class OpKernelContext {
   @returns Point to the Fence of the output OrtValue.
   It is null if the output OrtValue doesn't have fence or the output is optional.
   */
-  Fence_t OutputFence(int index) const;
+  virtual Fence_t OutputFence(int index) const;
 
   /**
   Return the device id that current kernel runs on.
   */
-  int GetDeviceId() const {
+  virtual int GetDeviceId() const {
     return kernel_->Info().GetExecutionProvider()->GetDeviceId();
   }
 
@@ -165,24 +165,24 @@ class OpKernelContext {
   Return the compute stream associated with the EP that the kernel is partitioned to.
   For EPs that do not have a compute stream (e.g. CPU EP), a nullptr is returned.
   */
-  void* GetComputeStream() const {
+  virtual void* GetComputeStream() const {
     return kernel_->Info().GetExecutionProvider()->GetComputeStream();
   }
 
   /**
   Returns the opset domain of the underlying kernel
   **/
-  const std::string& GetOpDomain() const;
+  virtual const std::string& GetOpDomain() const;
 
   /**
   Returns the optype of the underlying kernel
   **/
-  const std::string& GetOpType() const;
+  virtual const std::string& GetOpType() const;
 
   /**
   Returns the node name of the underlying kernel
   **/
-  const std::string& GetNodeName() const;
+  virtual const std::string& GetNodeName() const;
 
   /**
   Returns the intra-op threadpool, if available.
@@ -197,9 +197,12 @@ class OpKernelContext {
   }
 
  protected:
+
+  OpKernelContext(_In_opt_ concurrency::ThreadPool* threadpool, const logging::Logger& logger);
+
   onnxruntime::NodeIndex GetNodeIndex() const;
 
-  const OrtValue* GetInputMLValue(int index) const;
+  virtual const OrtValue* GetInputMLValue(int index) const;
   const OrtValue* GetImplicitInputMLValue(int index) const;
   OrtValue* GetOutputMLValue(int index);
 
@@ -208,21 +211,20 @@ class OpKernelContext {
 #endif
 
   // Creates the OrtValue* based on the shape, if it does not exist
-  OrtValue* OutputMLValue(int index, const TensorShape& shape);
+  virtual OrtValue* OutputMLValue(int index, const TensorShape& shape);
+
+  virtual OrtValue* GetOrCreateOutputMLValue(int index);
 
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpKernelContext);
-
-  OrtValue* GetOrCreateOutputMLValue(int index);
-
   int GetInputArgIndex(int index) const;
   int GetImplicitInputArgIndex(int index) const;
   int GetOutputArgIndex(int index) const;
 
-  IExecutionFrame* const execution_frame_;
-  const OpKernel* const kernel_;
-  concurrency::ThreadPool* const threadpool_;
-  const logging::Logger* const logger_;
+  IExecutionFrame* const execution_frame_ = nullptr;
+  const OpKernel* const kernel_ = nullptr;
+  concurrency::ThreadPool* const threadpool_ = nullptr;
+  const logging::Logger* const logger_ = nullptr;
 
   // The argument starting index in ExecutionFrame.
   int node_input_start_index_{-1};
@@ -246,5 +248,46 @@ inline SparseTensor* OpKernelContext::Output<SparseTensor>(int index) {
   return p_ml_value->GetMutable<SparseTensor>();
 }
 #endif
+
+/////////////////////// EagerKernelContext ///////////////////////
+
+class EagerKernelContext : public OpKernelContext {
+ public:
+  //todo: add SAL annotations
+  EagerKernelContext(const OrtValue* const* inputs, const int& input_len,
+                     OrtValue* const* outputs, const int& output_len,
+                     AllocatorPtr allocator, onnxruntime::concurrency::ThreadPool* threadpool,
+                     const logging::Logger& logger);
+  //std::vector<std::unique_ptr<OrtValue>> FetchOutputs();
+  int NumVariadicInputs(size_t arg_num) const override;
+  MLDataType InputType(int index) const override;
+  MLDataType OutputType(int index) const override;
+  bool TryGetInferredInputShape(int index, TensorShape& shape) const override;
+  bool TryGetInferredOutputShape(int index, TensorShape& shape) const override;
+  int InputCount() const override;
+  int ImplicitInputCount() const override;
+  int OutputCount() const override;
+  Status GetTempSpaceAllocator(AllocatorPtr* output) const ORT_MUST_USE_RESULT override;
+  Fence_t InputFence(int index) const override;
+  Fence_t ImplicitInputFence(int index) const override;
+  Fence_t OutputFence(int index) const override;
+  int GetDeviceId() const override;
+  void* GetComputeStream() const override;
+  const std::string& GetOpDomain() const override;
+  const std::string& GetOpType() const override;
+  const std::string& GetNodeName() const override;
+
+ protected:
+  const OrtValue* GetInputMLValue(int index) const override;
+  OrtValue* OutputMLValue(int index, const TensorShape& shape) override;
+  OrtValue* GetOrCreateOutputMLValue(int index) override;
+
+  const OrtValue* const* inputs_;
+  const int input_len_;
+  OrtValue* const* outputs_;
+  const int output_len_;
+  AllocatorPtr allocator_;
+  //std::map<int, std::unique_ptr<OrtValue>> outputs_;
+};
 
 }  // namespace onnxruntime

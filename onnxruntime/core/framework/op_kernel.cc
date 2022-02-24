@@ -36,6 +36,10 @@ OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKe
   node_output_start_index_ = node_implicit_input_start_index_ + ImplicitInputCount();
 }
 
+OpKernelContext::OpKernelContext(_In_opt_ concurrency::ThreadPool* threadpool,
+                                 _In_ const logging::Logger& logger) : threadpool_(threadpool), logger_(&logger) {
+}
+
 Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
   auto p_ml_value = OutputMLValue(index, shape);
   return p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
@@ -205,5 +209,163 @@ Status OpKernelContext::SetOutputMLValue(int index, const OrtValue& ort_value) {
   return execution_frame_->SetOutputMLValue(output_arg_index, ort_value);
 }
 #endif
+
+/////////////////////// EagerKernelContext ///////////////////////
+
+EagerKernelContext::EagerKernelContext(const OrtValue* const* inputs, const int& input_len,
+                                       OrtValue* const* outputs, const int& output_len,
+                                       AllocatorPtr allocator, onnxruntime::concurrency::ThreadPool* threadpool,
+                                       const logging::Logger& logger) : OpKernelContext(threadpool, logger),
+                                                                        inputs_(inputs),
+                                                                        input_len_(input_len),
+                                                                        outputs_(outputs),
+                                                                        output_len_(output_len),
+                                                                        allocator_(allocator) {}
+
+//std::vector<std::unique_ptr<OrtValue>> EagerKernelContext::FetchOutputs() {
+//  std::vector<std::unique_ptr<OrtValue>> outputs;
+//  for (auto iter = outputs_.begin(); iter != outputs_.end(); ++iter) {
+//    outputs.push_back(std::move(iter->second));
+//  }
+//  return std::move(outputs);
+//}
+
+//todo: is zero a valid output for default case?
+int EagerKernelContext::NumVariadicInputs(size_t /*arg_num*/) const {
+  /*
+  auto ort_value = inputs_[arg_num];
+  if (ort_value->IsTensor()) {
+    return ort_value->Get<Tensor>().Shape().Size();
+  } else if (ort_value->IsTensorSequence()) {
+    return ort_value->Get<TensorSeq>().Size();
+  } else if (ort_value->IsSparseTensor()) {
+    return ort_value->Get<SparseTensor>().Values().Shape().Size();
+  }*/
+  return 0;
+}
+
+MLDataType EagerKernelContext::InputType(int index) const {
+  if (index >= input_len_) {
+    return nullptr;
+  } else {
+    return inputs_[index]->Type();
+  }
+}
+
+MLDataType EagerKernelContext::OutputType(int index) const {
+  if (index >= output_len_) {
+    return nullptr;
+  } else {
+    return outputs_[index]->Type();
+  }
+}
+
+const OrtValue* EagerKernelContext::GetInputMLValue(int index) const {
+  if (index >= input_len_) {
+    return nullptr;
+  } else {
+    return inputs_[index];
+  }
+}
+
+OrtValue* EagerKernelContext::OutputMLValue(int index, const TensorShape& shape) {
+  if (index >= output_len_) {
+    return nullptr;
+  } else {
+    auto ort_value = outputs_[index];
+    if (!ort_value->IsAllocated()) {
+      if (ort_value->IsTensor()) {
+        Tensor::InitOrtValue(ort_value->Type(), shape, allocator_, *ort_value);
+      }  // todo: deal with TensorSeq and SparseTensor
+    }
+    return ort_value;
+  }
+}
+
+OrtValue* EagerKernelContext::GetOrCreateOutputMLValue(int index) {
+  if (index >= output_len_) {
+    return nullptr;
+  } else {
+    return outputs_[index];
+  }
+}
+
+bool EagerKernelContext::TryGetInferredInputShape(int index, TensorShape& shape) const {
+  if (index < input_len_) {
+    //todo: deal with Seq and Sparse
+    shape = inputs_[index]->Get<Tensor>().Shape();
+    return true;
+  } else {
+    return false;
+  }
+}
+
+bool EagerKernelContext::TryGetInferredOutputShape(int index, TensorShape& shape) const {
+  if (index < output_len_) {
+    //todo: deal with Seq and Sparse
+    shape = outputs_[index]->Get<Tensor>().Shape();
+    return true;
+  } else {
+    return false;
+  }
+}
+
+int EagerKernelContext::InputCount() const {
+  return input_len_;
+}
+
+int EagerKernelContext::ImplicitInputCount() const {
+  return 0;
+}
+
+int EagerKernelContext::OutputCount() const {
+  return output_len_;
+}
+
+Status EagerKernelContext::GetTempSpaceAllocator(AllocatorPtr* output) const {
+    *output = allocator_;
+  return Status::OK();
+}
+
+Fence_t EagerKernelContext::InputFence(int index) const {
+  if (index >= input_len_) {
+    return nullptr;
+  } else {
+    return inputs_[index]->Fence();
+  }
+}
+
+Fence_t EagerKernelContext::ImplicitInputFence(int /*index*/) const {
+  return nullptr;
+}
+
+Fence_t EagerKernelContext::OutputFence(int index) const {
+  if (index >= output_len_) {
+    return nullptr;
+  } else {
+    return outputs_[index]->Fence();
+  }
+}
+
+int EagerKernelContext::GetDeviceId() const {
+  return 0;
+}
+
+void* EagerKernelContext::GetComputeStream() const {
+  return nullptr;
+}
+
+std::string none = "";
+
+const std::string& EagerKernelContext::GetOpDomain() const {
+  return none;
+}
+
+const std::string& EagerKernelContext::GetOpType() const {
+  return none;
+}
+const std::string& EagerKernelContext::GetNodeName() const {
+  return none;
+}
 
 }  // namespace onnxruntime

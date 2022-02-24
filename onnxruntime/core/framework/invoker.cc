@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/invoker.h"
+#include "core/framework/data_types.h"
 #include "core/session/inference_session.h"
 #include "core/framework/kernel_registry.h"
 #include <unordered_map>
@@ -9,23 +10,28 @@
 namespace onnxruntime {
 namespace invoker {
 
-class Invoker final {
+class EagerKernelPool final {
  public:
-  Invoker(const IExecutionProvider& execution_provier) : execution_provier_(execution_provier) {}
+  EagerKernelPool(const IExecutionProvider& execution_provier) : execution_provier_(execution_provier) {}
 
   //todo: return err msg with details;
-  Status CreateKernel(const char* op_name, const char* domain, const int& version,
-                      const char** type_names, const void** type_values, const int& num_types,
-                      const char** attr_names, const int* attr_types, const void** attr_values, const int& num_attrs,
-                     onnxruntime::OpKernel** kernel) {
-    *kernel = nullptr; //todo: validate kernel
+  Status CreateKernel(const char* op_name,
+                      const char* domain,
+                      const int& version,
+                      const char** type_constraint_names,
+                      const int* type_constraint_values,
+                      const int& num_type_constraint,
+                      const ONNX_NAMESPACE::AttributeProto* attrs,
+                      const int& num_attrs,
+                      onnxruntime::OpKernel** kernel) {
+    *kernel = nullptr;  //todo: validate kernel
     auto kernel_registry = execution_provier_.GetKernelRegistry();
-    // std::unique_ptr<OpKernel> kernel;
     const KernelCreateInfo* kernel_create_info{};
     std::unordered_map<std::string, MLDataType> type_constraint_map;
-    for (int i = 0; i < num_types; ++i) {
-      //todo: make type_values to be of Tensor data type
-      type_constraint_map[type_names[i]] = static_cast<MLDataType>(type_values[i]);
+    for (int i = 0; i < num_type_constraint; ++i) {
+      ONNX_NAMESPACE::TypeProto proto;
+      proto.mutable_tensor_type()->set_elem_type(type_constraint_values[i]);
+      type_constraint_map[type_constraint_names[i]] = DataTypeImpl::TypeFromProto(proto);
     }
     auto status = kernel_registry->TryFindKernel(op_name,
                                                  domain,
@@ -38,14 +44,7 @@ class Invoker final {
     }
     onnxruntime::Node node;
     for (int i = 0; i < num_attrs; ++i) {
-      ONNX_NAMESPACE::AttributeProto attr;
-      attr.set_name(attr_names[i]);
-      if (attr_types[i] == static_cast<int>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
-        attr.set_f(*static_cast<const float*>(attr_values[i]));
-      } else if (attr_types[i] == static_cast<int>(ONNX_NAMESPACE::TensorProto_DataType_INT32)) {
-        attr.set_i(*static_cast<const int*>(attr_values[i]));
-      }
-      node.AddAttribute(type_names[i], attr);
+      node.AddAttribute(attrs[i].name(), attrs[i]);
     }
     OpKernelInfo kernel_info(node, KernelDef{}, execution_provier_, {}, {}, {});
     std::unique_ptr<onnxruntime::OpKernel> op_kernel;
@@ -53,40 +52,67 @@ class Invoker final {
     status = kernel_create_info->kernel_create_func(func_mgr, kernel_info, op_kernel);
     if (op_kernel) {
       *kernel = op_kernel.get();
-      op_kernels_.push_back(std::move(op_kernel));
+      //op_kernels_.push_back(std::move(op_kernel));
+      op_kernels_[std::move(op_kernel)] = execution_provier_.GetAllocators()[0];
     }
     return status;
   }
 
-  /*
-  void* CreateKernel(const char* domain, const char* op_name, const int& version) {
-    for (auto iter = execution_providers_.begin(); iter != execution_providers_.end(); ++iter) {
-      auto kernel_registry = iter->get()->GetKernelRegistry();
-      // kernel_registry.get()->TryCreateKernel();
-    }
-    return nullptr;
-  }*/
   //todo: disable move and copy
  private:
   //todo: make execution_provier_ const
-  std::list<std::unique_ptr<OpKernel>> op_kernels_;
+  //std::list<std::unique_ptr<OpKernel>> op_kernels_;
+  std::unordered_map<std::unique_ptr<OpKernel>, AllocatorPtr> op_kernels_;
   const IExecutionProvider& execution_provier_;
 };
 
 //todo: make key a const
-std::unordered_map<onnxruntime::InferenceSession*, std::unique_ptr<Invoker>> sess_invoker_map;
+std::unordered_map<const IExecutionProvider*, std::unique_ptr<EagerKernelPool>> sess_invoker_map;
 
-/*
-void* CreateOp(void* sess, const char* domain, const char* op_name, const int& version) {
-  onnxruntime::InferenceSession* session = reinterpret_cast<onnxruntime::InferenceSession*>(sess);
-  auto iter = sess_invoker_map.find(session);  //todo: add rw lock for thread safety
+int CreateEagerKernel(const void* execution_provier,
+                      const char* op_name,
+                      const char* domain,
+                      const int& version,
+                      const char** type_constraint_names,
+                      const int* type_constraint_values,
+                      const int& num_type_constraint,
+                      const void* attrs,
+                      const int& num_attrs,
+                      void** kernel) {
+  const IExecutionProvider* ep = reinterpret_cast<const IExecutionProvider*>(execution_provier);
+  auto iter = sess_invoker_map.find(ep);  //todo: add rw lock for thread safety
   if (iter == sess_invoker_map.end()) {
-    auto ret = sess_invoker_map.emplace(session, std::make_unique<Invoker>(session));
-    return ret.first->second->CreateKernel(domain, op_name, version);  // todo: deal with ret.second == false
+    auto ret = sess_invoker_map.emplace(ep, std::make_unique<EagerKernelPool>(*ep));
+    return ret.first->second->CreateKernel(op_name,
+                                           domain,
+                                           version,
+                                           type_constraint_names,
+                                           type_constraint_values,
+                                           num_type_constraint,
+                                           reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attrs),
+                                           num_attrs,
+                                           reinterpret_cast<onnxruntime::OpKernel**>(kernel)).Code();  // todo: deal with ret.second == false
   } else {
-    return iter->second->CreateKernel(domain, op_name, version);
+    return iter->second->CreateKernel(op_name,
+                                      domain,
+                                      version,
+                                      type_constraint_names,
+                                      type_constraint_values,
+                                      num_type_constraint,
+                                      reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attrs),
+                                      num_attrs,
+                                      reinterpret_cast<onnxruntime::OpKernel**>(kernel)).Code();
   }
 }
+
+/*
+int CallEagerKernel(const void* kernel, const void** inputs, const int& num_inputs, void** output, const int& num_outptus) {
+  auto op_kernel = reinterpret_cast<const onnxruntime::OpKernel*>(kernel);
+  OpKernelContext ctx;
+  op_kernel->Compute(&ctx);
+  return 0;
+}
 */
+
 }  // namespace invoker
 }  // namespace onnxruntime
