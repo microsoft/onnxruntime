@@ -22,6 +22,172 @@ import org.junit.jupiter.api.Test;
 public class SparseTensorTest {
 
   @Test
+  public void testCSRC() throws OrtException {
+    String modelPath = getResourcePath("/generic_sparse_to_dense_matmul.onnx").toString();
+    try (OrtEnvironment env = OrtEnvironment.getEnvironment();
+        OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
+      try (OrtSession session = env.createSession(modelPath, options)) {
+        Map<String, OnnxTensorLike> inputMap = new HashMap<>();
+
+        OnnxTensor denseIdMatrix = makeIdentityMatrix(env, 3);
+        long[] shape = new long[] {3, 3};
+        /*
+         * Sparse matrix:
+         * [
+         *  0 1 0
+         *  1 0 1
+         *  4 0 6
+         * ]
+         */
+        LongBuffer outerIndices =
+            ByteBuffer.allocateDirect(4 * 8).order(ByteOrder.LITTLE_ENDIAN).asLongBuffer();
+        outerIndices.put(0);
+        outerIndices.put(1);
+        outerIndices.put(3);
+        outerIndices.put(5);
+        outerIndices.rewind();
+        LongBuffer innerIndices =
+            ByteBuffer.allocateDirect(5 * 8).order(ByteOrder.LITTLE_ENDIAN).asLongBuffer();
+        innerIndices.put(1);
+        innerIndices.put(0);
+        innerIndices.put(2);
+        innerIndices.put(0);
+        innerIndices.put(2);
+        innerIndices.rewind();
+
+        FloatBuffer data =
+            ByteBuffer.allocateDirect(5 * 4).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer();
+        data.put(1);
+        data.put(1);
+        data.put(1);
+        data.put(4);
+        data.put(6);
+        data.rewind();
+
+        OnnxSparseTensor.CSRCTensor csrcTensor =
+            new OnnxSparseTensor.CSRCTensor(
+                outerIndices, innerIndices, data, shape, OnnxJavaType.FLOAT, 5);
+        OnnxSparseTensor tensor = OnnxSparseTensor.createSparseTensor(env, csrcTensor);
+
+        inputMap.put("sparse_A", tensor);
+        inputMap.put("dense_B", denseIdMatrix);
+
+        OrtSession.Result result = session.run(inputMap);
+
+        OnnxTensor outputTensor = (OnnxTensor) result.get(0);
+        assertArrayEquals(shape, outputTensor.getInfo().getShape());
+        float[] output = outputTensor.getFloatBuffer().array();
+        float[] expected = new float[] {0, 1, 0, 1, 0, 1, 4, 0, 6};
+        assertArrayEquals(expected, output, 1e-6f);
+        result.close();
+        tensor.close();
+        inputMap.clear();
+
+        long[] rectangularShape = new long[] {2, 3};
+        /*
+         * Sparse matrix:
+         * [
+         *   1 0 3
+         *   0 5 6
+         * ]
+         */
+        outerIndices =
+            ByteBuffer.allocateDirect(3 * 8).order(ByteOrder.LITTLE_ENDIAN).asLongBuffer();
+        outerIndices.put(0);
+        outerIndices.put(2);
+        outerIndices.put(4);
+        outerIndices.rewind();
+        innerIndices =
+            ByteBuffer.allocateDirect(4 * 8).order(ByteOrder.LITTLE_ENDIAN).asLongBuffer();
+        innerIndices.put(0);
+        innerIndices.put(2);
+        innerIndices.put(1);
+        innerIndices.put(2);
+        innerIndices.rewind();
+
+        data = ByteBuffer.allocateDirect(4 * 4).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer();
+        data.put(1);
+        data.put(3);
+        data.put(5);
+        data.put(6);
+        data.rewind();
+
+        csrcTensor =
+            new OnnxSparseTensor.CSRCTensor(
+                outerIndices, innerIndices, data, rectangularShape, OnnxJavaType.FLOAT, 4);
+        tensor = OnnxSparseTensor.createSparseTensor(env, csrcTensor);
+
+        assertArrayEquals(new long[] {3}, tensor.getIndicesShape());
+        assertArrayEquals(new long[] {4}, tensor.getInnerIndicesShape());
+        assertArrayEquals(new long[] {4}, tensor.getValuesShape());
+
+        inputMap.put("sparse_A", tensor);
+        inputMap.put("dense_B", denseIdMatrix);
+
+        result = session.run(inputMap);
+
+        outputTensor = (OnnxTensor) result.get(0);
+        assertArrayEquals(rectangularShape, outputTensor.getInfo().getShape());
+        output = outputTensor.getFloatBuffer().array();
+        expected = new float[] {1, 0, 3, 0, 5, 6};
+        assertArrayEquals(expected, output, 1e-6f);
+        result.close();
+        tensor.close();
+        inputMap.clear();
+        denseIdMatrix.close();
+
+        denseIdMatrix = makeIdentityMatrix(env, 4);
+        long[] vectorShape = new long[] {1, 4};
+        /*
+         * Sparse matrix:
+         * [
+         *   1 0 0 4
+         * ]
+         */
+        outerIndices =
+            ByteBuffer.allocateDirect(2 * 8).order(ByteOrder.LITTLE_ENDIAN).asLongBuffer();
+        outerIndices.put(0);
+        outerIndices.put(2);
+        outerIndices.rewind();
+        innerIndices =
+            ByteBuffer.allocateDirect(2 * 8).order(ByteOrder.LITTLE_ENDIAN).asLongBuffer();
+        innerIndices.put(0);
+        innerIndices.put(3);
+        innerIndices.rewind();
+
+        data = ByteBuffer.allocateDirect(2 * 4).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer();
+        data.put(1);
+        data.put(4);
+        data.rewind();
+
+        csrcTensor =
+            new OnnxSparseTensor.CSRCTensor(
+                outerIndices, innerIndices, data, vectorShape, OnnxJavaType.FLOAT, 2);
+        tensor = OnnxSparseTensor.createSparseTensor(env, csrcTensor);
+
+        assertArrayEquals(new long[] {2}, tensor.getIndicesShape());
+        assertArrayEquals(new long[] {2}, tensor.getInnerIndicesShape());
+        assertArrayEquals(new long[] {2}, tensor.getValuesShape());
+
+        inputMap.put("sparse_A", tensor);
+        inputMap.put("dense_B", denseIdMatrix);
+
+        result = session.run(inputMap);
+
+        outputTensor = (OnnxTensor) result.get(0);
+        assertArrayEquals(vectorShape, outputTensor.getInfo().getShape());
+        output = outputTensor.getFloatBuffer().array();
+        expected = new float[] {1, 0, 0, 4};
+        assertArrayEquals(expected, output, 1e-6f);
+        result.close();
+        tensor.close();
+        inputMap.clear();
+        denseIdMatrix.close();
+      }
+    }
+  }
+
+  @Test
   public void testCOO() throws OrtException {
     String modelPath = getResourcePath("/generic_sparse_to_dense_matmul.onnx").toString();
     try (OrtEnvironment env = OrtEnvironment.getEnvironment();
