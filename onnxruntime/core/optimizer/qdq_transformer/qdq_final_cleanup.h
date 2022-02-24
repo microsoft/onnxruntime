@@ -14,13 +14,20 @@ namespace onnxruntime {
     Remove any remaining back-to-back QuantizeLinear and DequantizeLinear pairs.
 
     This is the final cleanup where no quantized operator was available and we're going to run the operators
-    using fp32. As such there's no point going between quantized and fp32.
+    using fp32.
 
-    e.g. if we have Op -> Q -> DQ -> Op2 and no more QDQ processing to run, the Q -> DQ is pointless
-    (assuming you don't want to lose accuracy and performance to run them).
+    e.g. if we have Op -> Q -> DQ -> Op2 and no more QDQ processing to run, the Q -> DQ can potentially be removed.
 
-    TODO: I'm sure there's a scenario where we may have a DQ -> Q remaining. Check when that happens to document
-    and add support for that pair
+    The impact on performance and accuracy of removing the pair will depend on the model.
+
+    If it was quantized with Quantization Aware Training (QAT) it may be better to pay the performance cost of keeping
+    the pair as the model was trained with a round-trip from float -> 8-bit -> float.
+
+    If the model was quantized with Post Training Quantization (PTQ) it is most likely better to remove the pair as the
+    loss of precision from the round trip of float -> 8-bit -> float was not present when the model was trained.
+
+    As we have no knowledge of how the model was quantized we require the user to specify an option to enable this
+    transformer.
     */
 class QDQFinalCleanupTransformer : public GraphTransformer {
  public:

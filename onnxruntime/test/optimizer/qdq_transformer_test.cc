@@ -2142,10 +2142,11 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
   }
 }
 
-// test that when we don't run the QDQ processing we can remove left over Q -> DQ node pairs if the option
-// to do that is enabled.
-TEST(QDQTransformerTests, FinalCleanup) {
-  auto test_case = [&](const std::vector<std::vector<int64_t>>& input_shapes) {
+// test removal of Q->DQ pairs by QDQFinalCleanupTransformer
+TEST(QDQTransformerTests, QDQFinalCleanupTransformer_Basic) {
+  auto test_case = [&](const std::vector<std::vector<int64_t>>& input_shapes,
+                       bool block_removal_of_last_dq = false,
+                       bool block_removal_of_first_dq = false) {
     // create model with float input to multiple -> Q -> DQ -> Concat -> Q -> DQ -> output
     // If we enable cleanup and don't run the QDQ transformer we should drop all the Q->DQ pairs
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -2155,6 +2156,12 @@ TEST(QDQTransformerTests, FinalCleanup) {
       for (size_t i = 0; i < input_count; i++) {
         input_args.push_back(builder.MakeInput<float>(input_shapes[i], -1.f, 1.f));
         q_input_args.push_back(AddQDQNodePair<uint8_t>(builder, input_args.back(), 0.05f, 128));
+
+        if (i == 0 && block_removal_of_first_dq) {
+          // add another edge to the DQ node
+          auto* output = builder.MakeOutput();
+          builder.AddNode("Identity", {q_input_args.back()}, {output});
+        }
       }
       auto* concat_output = builder.MakeIntermediate();
       Node& concat_node = builder.AddNode("Concat", q_input_args, {concat_output});
@@ -2164,13 +2171,22 @@ TEST(QDQTransformerTests, FinalCleanup) {
       builder.AddQuantizeLinearNode<uint8_t>(concat_output, 0.05f, 128, q_concat_output);
 
       auto* output_arg = builder.MakeOutput();
-      builder.AddDequantizeLinearNode<uint8_t>(q_concat_output, 0.05f, 128, output_arg);
+      Node& dq_node = builder.AddDequantizeLinearNode<uint8_t>(q_concat_output, 0.05f, 128, output_arg);
+
+      if (block_removal_of_last_dq) {
+        // add another edge to the DQ node
+        auto* output = builder.MakeOutput();
+        builder.AddNode("Identity", {dq_node.MutableOutputDefs()[0]}, {output});
+      }
     };
 
-    auto check_graph = [&input_shapes](InferenceSessionWrapper& session) {
+    // if we block removal of the DQ node the Q node in the pair will not be removed either
+    int expected_qdq_count = 0 + (block_removal_of_first_dq ? 1 : 0) + (block_removal_of_last_dq ? 1 : 0);
+
+    auto check_graph = [&input_shapes, expected_qdq_count](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+      EXPECT_EQ(op_to_count["QuantizeLinear"], expected_qdq_count);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], expected_qdq_count);
       EXPECT_EQ(op_to_count["Concat"], 1);
     };
 
@@ -2178,18 +2194,60 @@ TEST(QDQTransformerTests, FinalCleanup) {
       ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQCleanup, "1"));
     };
 
+    // we increase the tolerance as removing the QDQ nodes means there's no round-trip to 8-bit and back
+    // essentially rounding the input values.
     TransformerTester(build_test_case,
                       check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       12 /*opset_version*/,
-                      0.01f /*per_sample_tolerance*/,
+                      0.025f /*per_sample_tolerance*/,
                       0.01f /*relative_per_sample_tolerance*/,
                       std::make_unique<QDQFinalCleanupTransformer>(),
                       &func);
   };
 
-  test_case({{1, 6, 36}, {1, 3, 36}});
+  test_case({{1, 2, 4}, {1, 3, 4}});
+  // test_case({{1, 2, 4}, {1, 3, 4}}, true);         // block removal of first dq
+  // test_case({{1, 2, 4}, {1, 3, 4}}, false, true);  // block removal of last dq
+  // test_case({{1, 2, 4}, {1, 3, 4}}, true, true);   // block removal of first and last dq
+}
+
+// test removal when we have graph input -> Q -> DQ -> graph output
+TEST(QDQTransformerTests, QDQFinalCleanupTransformer_GraphInputToOutput) {
+  // create model with float input to -> Q -> DQ -> output
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    NodeArg* input = builder.MakeInput<float>({1, 2, 4}, -1.f, 1.f);
+    NodeArg* q_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(input, 0.05f, 128, q_output);
+    auto* output_arg = builder.MakeOutput();
+    builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, output_arg);
+  };
+
+  // with the Q->DQ being dropped we should have inserted an Identity node
+  // to connect the graph input to the graph output
+  auto check_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
+    EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+    EXPECT_EQ(op_to_count["Identity"], 1);
+  };
+
+  std::function<void(SessionOptions&)> func = [](SessionOptions& so) {
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQCleanup, "1"));
+  };
+
+  // we increase the tolerance as removing the QDQ nodes means there's no round-trip to 8-bit and back
+  // essentially rounding the input values.
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    12 /*opset_version*/,
+                    0.025f /*per_sample_tolerance*/,
+                    0.01f /*relative_per_sample_tolerance*/,
+                    std::make_unique<QDQFinalCleanupTransformer>(),
+                    &func);
 }
 
 }  // namespace test
