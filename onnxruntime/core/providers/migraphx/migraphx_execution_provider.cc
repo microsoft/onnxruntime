@@ -115,8 +115,7 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
 
   // dump unsupported ops
   const std::string dump_model_ops_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::dumpModelOps);
-  if (!dump_model_ops_env.empty())
-  {
+  if (!dump_model_ops_env.empty()) {
     dump_model_ops_ = (std::stoi(dump_model_ops_env) == 0 ? false : true);
   }
 }
@@ -1077,8 +1076,7 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   model_proto->SerializeToString(onnx_string_buffer);
 
   // dump onnx file if environment var is set
-  if (dump_model_ops_)
-  {
+  if (dump_model_ops_) {
     std::string model_name = graph_viewer.Name() + ".onnx";
     std::ofstream ofs(model_name);
     ofs.write(onnx_string_buffer.c_str(), onnx_string_buffer.size());
@@ -1096,8 +1094,7 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     auto sub_graph = GetSubGraph(node_indices, graph_viewer);
     result.push_back(ComputeCapability::Create(std::move(sub_graph)));
   } else {  // unsupported_nodes_idx.empty()
-    if (dump_model_ops_)
-    {
+    if (dump_model_ops_) {
       std::cout << "============= Unsupported nodes ====================" << std::endl;
       for (auto idx : unsupported_nodes)
       {
@@ -1200,8 +1197,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     std::string onnx_string_buffer;
     model_proto->SerializeToString(onnx_string_buffer);
 
-    if (dump_model_ops_)
-    {
+    if (dump_model_ops_) {
       std::string onnx_name = fused_node->Name() + ".onnx";
       std::ofstream ofs(onnx_name);
       ofs.write(onnx_string_buffer.data(), onnx_string_buffer.size());
