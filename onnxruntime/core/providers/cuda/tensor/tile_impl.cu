@@ -22,7 +22,7 @@ __global__ void _UnRolledTileKernel(
   CUDA_LONG input_index = 0;
   CUDA_LONG output_index = id;
 
-  #pragma unroll
+#pragma unroll
   for (int dim = 0; dim < MAX_DIMS; ++dim) {
     if (dim == shape_rank) {
       break;
@@ -124,7 +124,6 @@ void TileMemcpyImpl(
   auto num_per_thread = num_output_elements / num_input_elements;
   // GPU SMs is 100 around, so 128 should be enough blocks to occupy all SMs
   if (blocks >= 128) {
-    std::cout << "used\n\n\n";
     _TileMemcpyKernel_opt<<<blocks, GridDim::maxThreadsPerBlock, 0, stream>>>(
         input_data, num_input_elements, output_data, (CUDA_LONG)num_output_elements, num_per_thread);
   } else {
@@ -168,7 +167,7 @@ void TileBatchedMemcpyImpl(
       (CUDA_LONG)num_output_elements);
 }
 
-#define SPECIALIZED_IMPL(T)                                                                                                                                                                                                                \
+#define SPECIALIZED_IMPL(T)                                                                                                                                                                                                                                     \
   template void TileImpl<T>(cudaStream_t stream, const size_t shape_rank, const TArray<fast_divmod>& fdm_input_shape, const TArray<int64_t>& input_stride, const T* input_data, const TArray<fast_divmod>& fdm_output_strides, T* output_data, const size_t N); \
   template void TileMemcpyImpl<T>(cudaStream_t stream, const T* input_data, const size_t num_input_elements, T* output_data, const size_t num_output_elements);                                                                                                 \
   template void TileBatchedMemcpyImpl<T>(cudaStream_t stream, const T* input_data, const size_t num_of_elements_per_input_batch, const size_t num_input_batch_count, const fast_divmod& num_of_elements_per_output_batch, T* output_data, const size_t num_output_elements);
