@@ -86,7 +86,7 @@ extends:
           ob_outputDirectory: '$(Build.ArtifactStagingDirectory)'
           ob_sdl_binskim_break: false
           ob_symbolsPublishing_enabled: ${{ parameters.UploadSymbols }}
-          ob_linuxSymbolsPublishing_symbolsFolder: $(Build.SourcesDirectory)\unzipped
+          ob_symbolsPublishing_symbolsFolder: $(Build.SourcesDirectory)/unzipped
         dependsOn:
         - Windows_Packaging_x64_dynamic
         - Windows_Packaging_x86_dynamic
@@ -360,3 +360,6 @@ extends:
               7z x -o$(Build.SourcesDirectory)\unzipped $merged_nuget
               
             workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
+            
+        - script: |
+            dir $(Build.SourcesDirectory)\unzipped

@@ -22,6 +22,7 @@ jobs:
   variables:
     ob_outputDirectory: '$(Build.ArtifactStagingDirectory)'
     ob_sdl_binskim_break: true
+    ob_sdl_binskim_scanOutputDirectoryOnly: true
   steps:
     - template: ../tools/ci_build/github/azure-pipelines/templates/telemetry-steps.yml@self
 
