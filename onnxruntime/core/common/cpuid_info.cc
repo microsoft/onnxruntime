@@ -1,13 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(_M_IX86) || (defined(_M_X64) && !defined(_M_ARM64EC)) || defined(__i386__) || defined(__x86_64__)
-#define CPUIDINFO_ARCH_X86
-#endif
-
-#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
-#define CPUIDINFO_ARCH_ARM
-#endif
+#include "core/common/cpuid_info.h"
+#include "core/common/logging/logging.h"
+#include "core/common/logging/severity.h"
 
 #if defined(CPUIDINFO_ARCH_X86)
 #include <memory>
@@ -30,9 +26,6 @@
 #endif
 
 #include <mutex>
-#include "core/common/cpuid_info.h"
-#include "core/common/logging/logging.h"
-#include "core/common/logging/severity.h"
 
 #if _WIN32
 #define HAS_WINDOWS_DESKTOP WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
@@ -64,8 +57,6 @@ static inline int XGETBV() {
 #endif
 }
 #endif  // CPUIDINFO_ARCH_X86
-
-CPUIDInfo CPUIDInfo::instance_;
 
 
 CPUIDInfo::CPUIDInfo() {
@@ -125,6 +116,23 @@ CPUIDInfo::CPUIDInfo() {
 #endif
 #endif
 
+}
+
+int32_t CPUIDInfo::GetCurrentUarch() const {
+#if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED)
+  if (!pytorch_cpuinfo_init_) {
+    return -1;
+  }
+  const auto uarchIdx = cpuinfo_get_current_uarch_index();
+  const struct cpuinfo_uarch_info* uarch_info = cpuinfo_get_uarch(uarchIdx);
+  if (uarch_info == NULL) {
+    return -1;
+  }
+  return uarch_info->uarch;
+
+#else
+  return -1;
+#endif
 }
 
 }  // namespace onnxruntime

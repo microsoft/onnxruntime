@@ -181,6 +181,7 @@ Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
 SPECIALIZED_GRADIENT(float)
 // SPECIALIZED_GRADIENT(double)
 SPECIALIZED_GRADIENT(MLFloat16)
+SPECIALIZED_GRADIENT(BFloat16)
 
 }  // namespace rocm
 }  // namespace onnxruntime

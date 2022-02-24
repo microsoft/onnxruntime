@@ -12,6 +12,8 @@ jobs:
       value: 44
     - name: render
       value: 109
+    - name: onnxruntimeBuildSucceeded
+      value: false
   
   # generated from tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile 
   container: 
@@ -50,17 +52,21 @@ jobs:
       --skip_tests
     displayName: 'Build onnxruntime'
   
+  - bash: |-
+      echo "##vso[task.setvariable variable=onnxruntimeBuildSucceeded]true"
+    displayName: 'Set Onnxruntime Build Succeeded'
+
   - script: |-
       cd ./build/RelWithDebInfo &&\
       ../../tools/ci_build/github/pai/pai_test_launcher.sh
     displayName: 'Run onnxruntime unit tests'
-  
+
   - script: |-
       cd ./build/RelWithDebInfo
       export PYTHONPATH=$PWD
       python -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
     displayName: 'Compile torch extensions into build directory'
-    condition: succeededOrFailed() # ensure all tests are run
+    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
   
   - script: |-
       cd ./build/RelWithDebInfo
@@ -85,7 +91,7 @@ jobs:
         ci-pipeline-actual.json \
         ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.bert-large-rocm4.3.1.json
     displayName: 'Run Python Hugging-Face BERT-L test'
-    condition: succeededOrFailed() # ensure all tests are run
+    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
   
   - script: |-
       cd ./build/RelWithDebInfo
@@ -111,7 +117,7 @@ jobs:
         ci-pipeline-actual.json \
         ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.gpt2-rocm4.3.1.json
     displayName: 'Run Python Hugging-Face GPT2 test'
-    condition: succeededOrFailed() # ensure all tests are run
+    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
   
 #  - script: |-
 #      cd ./build/RelWithDebInfo
@@ -191,7 +197,7 @@ jobs:
         ci-pipeline-actual.json \
         ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.distilbert-base-rocm4.3.1.json
     displayName: 'Run Python Hugging-Face DistilBERT test'
-    condition: succeededOrFailed() # ensure all tests are run
+    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
   
   #- script: |-
   #    cd ./build/RelWithDebInfo
@@ -250,7 +256,7 @@ jobs:
         --azure_blob_url https://onnxruntimetestdata.blob.core.windows.net/training/onnxruntime_training_data.zip?snapshot=2020-06-15T23:17:35.8314853Z \
         --target_dir training_e2e_test_data \
         --archive_sha256_digest B01C169B6550D1A0A6F1B4E2F34AE2A8714B52DBB70AC04DA85D371F691BDFF9
-    condition: succeededOrFailed() # ensure all tests are run
+    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
     displayName: 'Download onnxruntime_training_data.zip data'
   
   - script: |-
@@ -259,7 +265,7 @@ jobs:
         --model_root training_e2e_test_data/models \
        --gpu_sku MI100_32G
     displayName: 'Run C++ BERT-L batch size test'
-    condition: succeededOrFailed() # ensure all tests are run
+    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
   
   - script: |-
       python orttraining/tools/ci_test/run_bert_perf_test.py \
@@ -268,7 +274,7 @@ jobs:
         --training_data_root training_e2e_test_data/data \
         --gpu_sku MI100_32G
     displayName: 'Run C++ BERT-L performance test'
-    condition: succeededOrFailed() # ensure all tests are run
+    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
   
   - script: |-
       python orttraining/tools/ci_test/run_convergence_test.py \
@@ -277,4 +283,4 @@ jobs:
         --training_data_root training_e2e_test_data/data \
         --gpu_sku MI100_32G
     displayName: 'Run C++ BERT-L convergence test'
-    condition: succeededOrFailed() # ensure all tests are run
+    condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed

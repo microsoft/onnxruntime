@@ -32,6 +32,7 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/utils.h"
+#include "core/framework/kernel_def_hash_helpers.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/optimizer/graph_transformer_utils.h"
@@ -40,6 +41,7 @@
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 #include "core/optimizer/transformer_memcpy.h"
+#include "core/optimizer/transpose_optimizer/optimizer_utils.h"
 #include "core/platform/Barrier.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
@@ -120,11 +122,10 @@ Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_verbose,
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
     // recurse into subgraphs
-    const auto subgraphs = node.GetSubgraphs();
-    for (const auto& subgraph : subgraphs) {
-      const auto status = VerifyEachNodeIsAssignedToAnEpImpl(*subgraph, is_verbose, node_placements);
-      if (!status.IsOK()) {
-        return status;
+    if (node.ContainsSubgraph()) {
+      const auto subgraphs = node.GetSubgraphs();
+      for (const auto& subgraph : subgraphs) {
+        ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(*subgraph, is_verbose, node_placements));
       }
     }
   }
@@ -679,7 +680,7 @@ common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
   common::Status st = Load(loader, "model_loading_uri");
   if (!st.IsOK()) {
     std::ostringstream oss;
-    oss << "Load model from " << ToMBString(model_uri) << " failed:" << st.ErrorMessage();
+    oss << "Load model from " << ToUTF8String(model_uri) << " failed:" << st.ErrorMessage();
     return common::Status(st.Category(), st.Code(), oss.str());
   }
   return Status::OK();
@@ -914,7 +915,8 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   // Do partitioning based on execution providers' capability.
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state.ExportDll(),
-                                                       session_state.GetMutableFuncMgr(), mode));
+                                                       session_state.GetMutableFuncMgr(),
+                                                       layout_transformer::TransformLayout, mode));
 
   // apply transformers except default transformers
   // Default transformers are required for correctness and they are owned and run by inference session
@@ -958,7 +960,7 @@ static Status LoadOrtModelBytes(const std::basic_string<T>& model_uri,
 
   if (!bytes_stream) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Load model from ", ToMBString(model_uri), " failed. Only ",
+                           "Load model from ", ToUTF8String(model_uri), " failed. Only ",
                            bytes_stream.gcount(), "/", num_bytes, " bytes were able to be read.");
   }
 
@@ -1139,6 +1141,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(),
                                             session_state.GetMutableFuncMgr(),
+                                            layout_transformer::TransformLayout,
                                             GraphPartitioner::Mode::kOrtFormatLoad,
                                             &compiled_kernel_hashes));
 
@@ -1149,7 +1152,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   return Status::OK();
 }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 Status ReplaySavedRuntimeOptimizations(
     onnxruntime::Graph& graph, const logging::Logger& logger, const SessionOptions& session_options) {
   bool modified = false;
@@ -1167,7 +1170,7 @@ Status ReplaySavedRuntimeOptimizations(
 
   return Status::OK();
 }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs_session_state,
@@ -1207,12 +1210,23 @@ Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs
     ORT_RETURN_IF_ERROR(set_node_ep(node_kernel_info.node_index, node_kernel_info.kernel_def_hash));
   }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   for (const auto& [node_index, kernel_def_hash] :
        graph.RuntimeOptimizationReplayCtx().produced_node_index_to_kernel_def_hash) {
     ORT_RETURN_IF_ERROR(set_node_ep(node_index, kernel_def_hash));
   }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+
+  // layout transformer which is enabled in extended minimal build can add new nodes.
+  // The following loop fetches the hash values for these nodes.
+  for (const auto& node : graph.Nodes()) {
+    if (node.GetExecutionProviderType().empty()) {
+      auto kernel_hash = utils::GetHashValueFromStaticKernelHashMap(node.OpType(), node.SinceVersion());
+      if (kernel_hash.has_value()) {
+        ORT_RETURN_IF_ERROR(set_node_ep(node.Index(), kernel_hash.value()));
+      }
+    }
+  }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
   return Status::OK();
 }
@@ -1237,7 +1251,7 @@ static void ResolveMemoryPatternFlags(SessionState& session_state) {
 }
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
-//VC++ reports: "Releasing unheld lock 'l' in function 'onnxruntime::InferenceSession::Initialize'". But I don't see anything wrong.
+// VC++ reports: "Releasing unheld lock 'l' in function 'onnxruntime::InferenceSession::Initialize'". But I don't see anything wrong.
 #pragma warning(disable : 26117)
 #endif
 common::Status InferenceSession::Initialize() {
@@ -1398,9 +1412,9 @@ common::Status InferenceSession::Initialize() {
                                                     *session_state_));
       }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
       ORT_RETURN_IF_ERROR_SESSIONID_(ReplaySavedRuntimeOptimizations(graph, *session_logger_, session_options_));
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
       ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashes(graph, *serialized_session_state, kernel_registry_manager_,

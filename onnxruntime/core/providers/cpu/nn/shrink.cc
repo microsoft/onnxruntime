@@ -4,9 +4,9 @@
 #include "core/providers/cpu/nn/shrink.h"
 
 #include "core/framework/element_type_lists.h"
+#include "core/framework/math.h"
 #include "core/framework/utils.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/util/math_cpuonly.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {

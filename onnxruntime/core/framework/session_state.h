@@ -204,17 +204,19 @@ class SessionState {
 
   /**
   Get cached memory pattern based on input shapes
+  Must be called only when all values contain tensors
   */
   const MemoryPatternGroup* GetMemoryPatternGroup(
-      const std::vector<std::reference_wrapper<const TensorShape>>& input_shapes,
+      const gsl::span<const OrtValue>& tensor_inputs,
       const std::vector<int>& feed_mlvalue_idxs,
       std::unordered_map<int, TensorShape>& inferred_shapes) const;
 
   /**
   Set generated memory pattern with a given input shapes.
   Const as it's an internal cache update only.
+  All inputs must represent Tensors
   */
-  Status UpdateMemoryPatternGroupCache(const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
+  Status UpdateMemoryPatternGroupCache(const gsl::span<const OrtValue>& tensor_inputs,
                                        std::unique_ptr<MemoryPatternGroup> mem_patterns) const;
 
   bool GetUseDeterministicCompute() const { return use_deterministic_compute_; }
@@ -380,7 +382,7 @@ class SessionState {
 
 #ifdef ENABLE_TRAINING
   Status GeneratePatternGroupCache(
-      const std::vector<std::reference_wrapper<const TensorShape>>& input_shape,
+      const gsl::span<const OrtValue>& inputs,
       const std::vector<int>& feed_mlvalue_idxs,
       MemoryPatternGroup* output,
       std::unordered_map<int, TensorShape>& inferred_shapes) const;
@@ -393,6 +395,9 @@ class SessionState {
 
   // KernelCreateInfo for each node so we do kernel lookup once
   KernelCreateInfoMap kernel_create_info_map_;
+
+  //fused_funcs_mgr_ must live longer than the session_kernels_, becaues a kernel could be created from this manager
+  FuncManager fused_funcs_mgr_;
 
   // If we compile kernels in a minimal build we need a way to find the kernel using the hash.
   // We populate this map when doing the kernel compilation in GraphPartitioner, and use it in LoadFromOrtFormat.
@@ -483,7 +488,6 @@ class SessionState {
   concurrency::ThreadPool* const inter_op_thread_pool_{};
 
   bool export_fused_dll_ = false;
-  FuncManager fused_funcs_mgr_;
   const DataTransferManager& data_transfer_mgr_;
 
   bool use_deterministic_compute_;

@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "default_providers.h"
 
 namespace onnxruntime {
@@ -161,6 +162,61 @@ TEST(MathOpTest, MatMulInt64Type) {
 TEST(MathOpTest, MatMulUint64Type) {
   RunMatMulTest<uint64_t>(9);
 }
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST(MathOpTest, MatMul_Float16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
+#endif
+  OpTester test("MatMul", 14);
+
+  std::vector<float> A{1.0f, 2.0f, 3.0f, 4.0f,
+                       -1.0f, -2.0f, -3.0f, -4.0f};
+  std::vector<float> B(12, 1.0f);
+  std::vector<float> Y{10.0f, 10.0f, 10.0f,
+                       -10.0f, -10.0f, -10.0f};
+
+  std::vector<MLFloat16> f_A(8);
+  std::vector<MLFloat16> f_B(12);
+  std::vector<MLFloat16> f_Y(6);
+  ConvertFloatToMLFloat16(A.data(), f_A.data(), 8);
+  ConvertFloatToMLFloat16(B.data(), f_B.data(), 12);
+  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
+
+  test.AddInput<MLFloat16>("A", {2, 4}, f_A);
+  test.AddInput<MLFloat16>("B", {4, 3}, f_B);
+  test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: fp16 is not supported
+}
+#endif
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST(MathOpTest, MatMul_BFloat16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+  OpTester test("MatMul", 14);
+
+  test.AddInput<BFloat16>("A", {2, 4}, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f}));
+  test.AddInput<BFloat16>("B", {4, 3}, MakeBFloat16({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f}));
+  test.AddOutput<BFloat16>("Y", {2, 3}, MakeBFloat16({10.0f, 10.0f, 10.0f, -10.0f, -10.0f, -10.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
 
 #ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
 TEST(MathOpTest, MatMulSharedPrepackedWeights) {

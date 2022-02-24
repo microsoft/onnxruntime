@@ -608,6 +608,21 @@ extern "C" {
         const int32_t* ZeroPointB,
         bool ZeroMode
         );
+
+    size_t
+    MLASCALL
+    MlasSymQgemmS8KernelNeon(
+        const int8_t* A,
+        const int8_t* B,
+        int32_t* C,
+        size_t PackedCountK,
+        size_t CountM,
+        size_t CountN,
+        size_t ldc,
+        size_t lda,
+        const int32_t* ColumnSumVector
+        );
+
 }
 
 struct MLAS_GEMM_X8S8_KERNEL_NEON {
@@ -1174,6 +1189,24 @@ MlasGemmQuantKernel<MLAS_GEMM_X8S8_KERNEL_NEON>(
         RowSumBuffer, ColumnSumBuffer, ZeroPointB, ZeroMode);
 }
 
+ 
+template<>
+MLAS_FORCEINLINE
+size_t MlasSymmQGemmKernel<MLAS_GEMM_X8S8_KERNEL_NEON>(
+    const int8_t* A,
+    const int8_t* B,
+    int32_t* C,
+    size_t PackedCountK,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    size_t lda,
+    const int32_t* ColumnSumVector
+)
+{
+    return MlasSymQgemmS8KernelNeon(A, B, C, PackedCountK, CountM, CountN, ldc, lda,
+                                    ColumnSumVector);
+}
 
 const MLAS_GEMM_QUANT_DISPATCH MlasGemmX8S8DispatchNeon = {
     MlasGemmQuantOperation<MLAS_GEMM_X8S8_KERNEL_NEON>,
@@ -1181,6 +1214,14 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmX8S8DispatchNeon = {
     MlasGemmQuantCopyPackB<MLAS_GEMM_X8S8_KERNEL_NEON>,
     MLAS_GEMM_X8S8_KERNEL_NEON::PackedK,
     MLAS_GEMM_X8S8_KERNEL_NEON::PackedStrides.K,
+};
+
+const MLAS_SYMM_QGEMM_DISPATCH MlasSymmQgemmS8DispatchNeon = {
+    MlasSymmQGemmPackedOperation<MLAS_GEMM_X8S8_KERNEL_NEON>,
+    MlasSymmQGemmPackedOperation<MLAS_GEMM_X8S8_KERNEL_NEON>,
+    MlasGemmQuantCopyPackB<MLAS_GEMM_X8S8_KERNEL_NEON>,
+    4,   // StrideM
+    MLAS_GEMM_X8S8_KERNEL_NEON::PackedK
 };
 
 #endif  //defined(MLAS_TARGET_ARM64)

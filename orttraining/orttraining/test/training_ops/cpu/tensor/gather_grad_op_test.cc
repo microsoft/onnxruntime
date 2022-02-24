@@ -53,7 +53,7 @@ void ConfigureGatherGradRandomDataOpTester(
   ASSERT_LT(static_cast<size_t>(axis), X_shape.NumDimensions());
 
   const TensorShape dY_shape = [&]() {
-    std::vector<int64_t> dY_dims = X_shape.GetDimsAsVector();
+    TensorShapeVector dY_dims = X_shape.AsShapeVector();
     auto it = dY_dims.erase(dY_dims.begin() + axis);
     dY_dims.insert(
         it, indices_shape.GetDims().begin(), indices_shape.GetDims().end());
@@ -66,11 +66,13 @@ void ConfigureGatherGradRandomDataOpTester(
   const auto output = CalculateOutput(axis, X_shape, grad, indices);
 
   test.AddAttribute<int64_t>("axis", axis);
+  //auto shape_dims = X_shape.GetDims();
+  //std::vector<int64_t> v_dims(shape_dims.cbegin(), shape_dims.cend());
   test.AddInput<int64_t>(
-      "shape", {static_cast<int64_t>(X_shape.NumDimensions())}, X_shape.GetDimsAsVector());
-  test.AddInput<int64_t>("indices", indices_shape.GetDimsAsVector(), indices);
-  test.AddInput<T>("grad", dY_shape.GetDimsAsVector(), grad);
-  test.AddOutput<T>("output", X_shape.GetDimsAsVector(), output);
+      "shape", {static_cast<int64_t>(X_shape.NumDimensions())}, X_shape.AsShapeVector());
+  test.AddInput<int64_t>("indices", indices_shape.AsShapeVector(), indices);
+  test.AddInput<T>("grad", dY_shape.AsShapeVector(), grad);
+  test.AddOutput<T>("output", X_shape.AsShapeVector(), output);
 }
 
 template <typename T>

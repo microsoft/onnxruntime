@@ -91,8 +91,6 @@ namespace onnxruntime {
 
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
-ProviderInfo_MIGRAPHX* TryGetProviderInfo_MIGRAPHX();
-ProviderInfo_MIGRAPHX& GetProviderInfo_MIGRAPHX();
 ProviderInfo_ROCM* TryGetProviderInfo_ROCM();
 ProviderInfo_ROCM& GetProviderInfo_ROCM();
 ProviderHostCPU& GetProviderHostCPU();
@@ -145,6 +143,8 @@ struct Node__EdgeIterator_Impl : Node__EdgeIterator {
   Node::EdgeConstIterator v_;
 };
 #if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26436)
 #pragma warning(disable : 26409)
 #endif
 // wrapped = The internal object is exposed as an opaque pointer, so we wrap it in a class that forwards every call to the real calls. No members are ever directly accessed
@@ -186,12 +186,6 @@ struct ProviderHostImpl : ProviderHost {
 
   bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_false(retCode, exprString, libName, successCode, msg); }
   bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_true(retCode, exprString, libName, successCode, msg); }
-#endif
-
-#ifdef USE_MIGRAPHX
-  std::unique_ptr<IAllocator> CreateHIPAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_MIGRAPHX().CreateHIPAllocator(device_id, name); }
-  std::unique_ptr<IAllocator> CreateHIPPinnedAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_MIGRAPHX().CreateHIPPinnedAllocator(device_id, name); }
-  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) override { return GetProviderInfo_MIGRAPHX().CreateGPUDataTransfer(stream); }
 #endif
 
 #ifdef USE_ROCM
@@ -803,6 +797,9 @@ struct ProviderHostImpl : ProviderHost {
   Status OpKernelInfo__GetAttrs(const OpKernelInfo* p, const std::string& name, std::vector<int64_t>& values) override { return p->GetAttrs(name, values); }
   Status OpKernelInfo__GetAttrs(const OpKernelInfo* p, const std::string& name, std::vector<float>& values) override { return p->GetAttrs(name, values); }
   Status OpKernelInfo__GetAttrs(const OpKernelInfo* p, const std::string& name, std::vector<std::string>& values) override { return p->GetAttrs(name, values); }
+  Status OpKernelInfo__GetAttrsAsSpan(const OpKernelInfo* p, const std::string& name, gsl::span<const int64_t>& values) override {
+    return p->GetAttrsAsSpan(name, values);
+  }
 
   const DataTransferManager& OpKernelInfo__GetDataTransferManager(const OpKernelInfo* p) noexcept override { return p->GetDataTransferManager(); }
   const KernelDef& OpKernelInfo__GetKernelDef(const OpKernelInfo* p) override { return p->GetKernelDef(); }
@@ -938,7 +935,9 @@ struct ProviderHostImpl : ProviderHost {
 
   ProviderHostCPU& GetProviderHostCPU() override { return onnxruntime::GetProviderHostCPU(); }
 } provider_host_;
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 struct ProviderSharedLibrary {
   bool Ensure() {
     if (handle_)
@@ -1081,12 +1080,6 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
   return nullptr;
 }
 
-std::unique_ptr<IAllocator> CreateHIPPinnedAllocator(int16_t device_id, const char* name) {
-  if (auto* info = onnxruntime::TryGetProviderInfo_MIGRAPHX())
-    return info->CreateHIPPinnedAllocator(device_id, name);
-
-  return nullptr;
-}
 std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) {
   if (auto* info = onnxruntime::TryGetProviderInfo_ROCM())
     return info->CreateROCMPinnedAllocator(device_id, name);
@@ -1155,7 +1148,43 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGrap
   return nullptr;
 }
 
+// Adapter to convert the legacy OrtTensorRTProviderOptions to the latest OrtTensorRTProviderOptionsV2
+OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOptionsV2(const OrtTensorRTProviderOptions* legacy_trt_options) {
+  OrtTensorRTProviderOptionsV2 trt_options_converted;
+
+  trt_options_converted.device_id = legacy_trt_options->device_id;
+  trt_options_converted.has_user_compute_stream = legacy_trt_options->has_user_compute_stream;
+  trt_options_converted.user_compute_stream = legacy_trt_options->user_compute_stream;
+  trt_options_converted.trt_max_partition_iterations = legacy_trt_options->trt_max_partition_iterations;
+  trt_options_converted.trt_min_subgraph_size = legacy_trt_options->trt_min_subgraph_size;
+  trt_options_converted.trt_max_workspace_size = legacy_trt_options->trt_max_workspace_size;
+  trt_options_converted.trt_fp16_enable = legacy_trt_options->trt_fp16_enable;
+  trt_options_converted.trt_int8_enable = legacy_trt_options->trt_int8_enable;
+  trt_options_converted.trt_int8_calibration_table_name = legacy_trt_options->trt_int8_calibration_table_name;
+  trt_options_converted.trt_int8_use_native_calibration_table = legacy_trt_options->trt_int8_use_native_calibration_table;
+  trt_options_converted.trt_dla_enable = legacy_trt_options->trt_dla_enable;
+  trt_options_converted.trt_dla_core = legacy_trt_options->trt_dla_core;
+  trt_options_converted.trt_dump_subgraphs = legacy_trt_options->trt_dump_subgraphs;
+  trt_options_converted.trt_engine_cache_enable = legacy_trt_options->trt_engine_cache_enable;
+  trt_options_converted.trt_engine_cache_path = legacy_trt_options->trt_engine_cache_path;
+  trt_options_converted.trt_engine_decryption_enable = legacy_trt_options->trt_engine_decryption_enable;
+  trt_options_converted.trt_engine_decryption_lib_path = legacy_trt_options->trt_engine_decryption_lib_path;
+  trt_options_converted.trt_force_sequential_engine_build = legacy_trt_options->trt_force_sequential_engine_build;
+  // Add new provider option below
+  // Use default value as this field is not available in OrtTensorRTProviderOptionsV
+
+  return trt_options_converted;
+}
+
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* provider_options) {
+  OrtTensorRTProviderOptionsV2 trt_options_converted = onnxruntime::OrtTensorRTProviderOptionsToOrtTensorRTProviderOptionsV2(provider_options);
+  if (auto* provider = s_library_tensorrt.Get())
+    return provider->CreateExecutionProviderFactory(&trt_options_converted);
+
+  return nullptr;
+}
+
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptionsV2* provider_options) {
   if (auto* provider = s_library_tensorrt.Get())
     return provider->CreateExecutionProviderFactory(provider_options);
 
@@ -1196,25 +1225,11 @@ ProviderInfo_CUDA& GetProviderInfo_CUDA() {
   ORT_THROW("CUDA Provider not available, can't get interface for it");
 }
 
-ProviderInfo_MIGRAPHX* TryGetProviderInfo_MIGRAPHX() {
-  if (auto* provider = s_library_migraphx.Get())
-    return reinterpret_cast<ProviderInfo_MIGRAPHX*>(provider->GetInfo());
-
-  return nullptr;
-}
-
 ProviderInfo_ROCM* TryGetProviderInfo_ROCM() {
   if (auto* provider = s_library_rocm.Get())
     return reinterpret_cast<ProviderInfo_ROCM*>(provider->GetInfo());
 
   return nullptr;
-}
-
-ProviderInfo_MIGRAPHX& GetProviderInfo_MIGRAPHX() {
-  if (auto* info = TryGetProviderInfo_MIGRAPHX())
-    return *info;
-
-  ORT_THROW("MIGRAPHX Provider not available, can't get interface for it");
 }
 
 ProviderInfo_ROCM& GetProviderInfo_ROCM() {
@@ -1441,7 +1456,15 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM, _In_ Or
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options) {
-  return OrtApis::SessionOptionsAppendExecutionProvider_TensorRT(options, reinterpret_cast<const OrtTensorRTProviderOptions*>(tensorrt_options));
+  API_IMPL_BEGIN
+  auto factory = onnxruntime::CreateExecutionProviderFactory_Tensorrt(tensorrt_options);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_TensorRT: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptionsV2** out) {

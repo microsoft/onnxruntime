@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 #include "utils.h"
 
 #include <iostream>
@@ -10,7 +12,6 @@
 #include <core/graph/graph_viewer.h>
 #include <core/providers/common.h>
 
-#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 
 namespace onnxruntime {
@@ -33,6 +34,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() { retur
                                                                                    {"Resize", {}}}; }
 
 static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() { return {{"AveragePool", {}},
+                                                                                    {"Softmax", {}},
                                                                                     {"LeakyRelu", {}}}; }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() { return {{"Add", {}},
                                                                                      {"Mul", {}}}; }
@@ -101,7 +103,7 @@ void SelectorManager::InitializeSelectorsMap() {
   }
 }
 
-void SelectorManager::Initialize() {
+SelectorManager::SelectorManager() {
   CreateSelectors();
   InitializeSelectorsMap();
 }
@@ -110,7 +112,9 @@ std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& grap
   std::vector<NodeGroup> qdq_selections;
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     const auto* node = graph_viewer.GetNode(index);
-    if (node->Domain() != kOnnxDomain) {
+    // post layout transformation all the layout sensitive nodes are converted to domain
+    // kMSInternalNHWCDomain. Therefore need to allow this domain as well.
+    if (node->Domain() != kOnnxDomain && node->Domain() != kMSInternalNHWCDomain) {
       continue;
     }
 
@@ -142,3 +146,5 @@ std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& grap
 
 }  // namespace QDQ
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

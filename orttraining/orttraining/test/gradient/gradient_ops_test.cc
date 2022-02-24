@@ -90,8 +90,8 @@ static void RunReductionTests(const OpDef& op_def,
   float max_error;
   for (size_t i = 0; i < x_shapes.size(); i++) {
     max_error = 0;
-    TensorShape x_shape = x_shapes[i];
-    TensorShape y_shape = y_shapes[i];
+    TensorShape x_shape(gsl::make_span(x_shapes[i]));
+    TensorShape y_shape(gsl::make_span(y_shapes[i]));
     std::vector<int64_t> axes = axes_vec[i];
     std::vector<std::vector<float>> x_datas;
     RandomValueGenerator random{};
@@ -101,7 +101,8 @@ static void RunReductionTests(const OpDef& op_def,
     if (keepdims_ip[i] != -1) attributes.push_back(MakeAttribute("keepdims", keepdims_ip[i]));
     if (axes_as_input) {
       std::vector<float> axes_float;
-      std::transform(begin(axes), end(axes), std::back_inserter(axes_float), [](int64_t i) { return static_cast<float>(i); });
+      axes_float.reserve(axes.size());
+      std::transform(std::begin(axes), std::end(axes), std::back_inserter(axes_float), [](int64_t i) { return static_cast<float>(i); });
       TensorInfo axes_info({static_cast<int64_t>(axes.size())}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
       input.push_back(axes_info);
       x_datas.push_back(axes_float);
@@ -1327,8 +1328,8 @@ static void RunSqueezeUnsqueezeTests(const OpDef& op_def,
   float error_tolerance = 1e-3f;
 
   for (size_t i = 0; i < x_shapes.size(); i++) {
-    TensorShape x_shape = x_shapes[i];
-    TensorShape y_shape = y_shapes[i];
+    TensorShape x_shape(gsl::make_span(x_shapes[i]));
+    TensorShape y_shape(gsl::make_span(y_shapes[i]));
     std::vector<int64_t> axes = axes_ip[i];
     std::vector<std::vector<float>> x_datas;
     RandomValueGenerator random{};
@@ -1650,7 +1651,7 @@ void TestSparseSoftmaxCrossEntropyGrad(const TensorShape& index_shape, const std
 
   // without weight
   {
-    std::vector<int64_t> logit_shape(index_shape.GetDimsAsVector());
+    auto logit_shape(index_shape.AsShapeVector());
     logit_shape.emplace_back(D);
 
     TensorInfo x_info(logit_shape);
@@ -1664,7 +1665,7 @@ void TestSparseSoftmaxCrossEntropyGrad(const TensorShape& index_shape, const std
 
   // with weight
   {
-    std::vector<int64_t> logit_shape(index_shape.GetDimsAsVector());
+    auto logit_shape(index_shape.AsShapeVector());
     logit_shape.emplace_back(D);
 
     TensorInfo x_info(logit_shape);
@@ -1712,7 +1713,7 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape,  //label_sh
 
   // without weight and ignore_index
   {
-    std::vector<int64_t> logit_shape(index_shape.GetDimsAsVector());
+    TensorShapeVector logit_shape(index_shape.AsShapeVector());
     auto it = logit_shape.begin() + 1;
     logit_shape.insert(it, D);
     TensorInfo loss_info = {};
@@ -1732,7 +1733,7 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape,  //label_sh
 
   // with weight and no ignore_index
   {
-    std::vector<int64_t> logit_shape(index_shape.GetDimsAsVector());
+    TensorShapeVector logit_shape(index_shape.AsShapeVector());
     auto it = logit_shape.begin() + 1;
     logit_shape.insert(it, D);
     TensorInfo loss_info = {};
@@ -1753,7 +1754,7 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape,  //label_sh
 
   // without weight and ignore index
   {
-    std::vector<int64_t> logit_shape(index_shape.GetDimsAsVector());
+    TensorShapeVector logit_shape(index_shape.AsShapeVector());
     auto it = logit_shape.begin() + 1;
     logit_shape.insert(it, D);
     TensorInfo loss_info = {};
@@ -1773,7 +1774,7 @@ void TestSoftmaxCrossEntropyLossGrad(const TensorShape& index_shape,  //label_sh
 
   // with weight and ignore_index
   {
-    std::vector<int64_t> logit_shape(index_shape.GetDimsAsVector());
+    TensorShapeVector logit_shape(index_shape.AsShapeVector());
     auto it = logit_shape.begin() + 1;
     logit_shape.insert(it, D);
     TensorInfo loss_info = {};
@@ -1930,11 +1931,11 @@ void TestDropoutOp(float ratio, TensorShape& x_shape, bool default_ratio = true)
   std::vector<float> x_data(x_shape.Size(), input_constant);
   std::vector<float> y_data(x_shape.Size(), 3.0f);
 
-  test.AddInput<float>("x", x_shape.GetDimsAsVector(), x_data);
+  test.AddInput<float>("x", x_shape.AsShapeVector(), x_data);
   if (!default_ratio)
     test.AddInput<float>("ratio", {}, {ratio});
-  test.AddOutput<float>("y", x_shape.GetDimsAsVector(), y_data);
-  test.AddOutput<bool>("mask", x_shape.GetDimsAsVector(), {true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true});
+  test.AddOutput<float>("y", x_shape.AsShapeVector(), y_data);
+  test.AddOutput<bool>("mask", x_shape.AsShapeVector(), {true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true});
   test.Run();
 
   //Check output
@@ -1975,9 +1976,9 @@ void TestDropoutGradOp(float ratio, TensorShape& x_shape, bool default_ratio = t
                               output_constant, 0, output_constant, 0,
                               output_constant, 0, output_constant, 0});
 
-  test.AddInput<float>("dy", x_shape.GetDimsAsVector(), dy_data);
+  test.AddInput<float>("dy", x_shape.AsShapeVector(), dy_data);
 
-  test.AddInput<bool>("mask", x_shape.GetDimsAsVector(), {true, true, true, false,   //
+  test.AddInput<bool>("mask", x_shape.AsShapeVector(), {true, true, true, false,   //
                                                           true, false, true, false,  //
                                                           true, false, true, false,  //
                                                           true, false, true, false});
@@ -1989,7 +1990,7 @@ void TestDropoutGradOp(float ratio, TensorShape& x_shape, bool default_ratio = t
 
   test.AddInput("training_mode", {}, {true});
 
-  test.AddOutput<float>("dx", x_shape.GetDimsAsVector(), dx_data);
+  test.AddOutput<float>("dx", x_shape.AsShapeVector(), dx_data);
 
   test.Run();
 }
@@ -2215,7 +2216,7 @@ TEST(GradientCheckerTest, WhereGrad) {
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"Where"};
 
-  std::vector<int64_t> shape{4, 3, 2};
+  TensorShapeVector shape{4, 3, 2};
   TensorInfo x_info(shape), y_info(shape);
   std::function<float(float)> transformer = [](float x) {
     return static_cast<float>(std::fmod(std::fabs(x), 1.0f) > 0.5f);
@@ -2755,6 +2756,60 @@ TEST(GradientCheckerTest, ScatterNDGrad) {
 
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indices_info, updates_info},
                                                            {output_info}, &max_error, input_datas));
+    EXPECT_IS_TINY(max_error);
+  }
+}
+
+TEST(GradientCheckerTest, ScatterElementsGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"ScatterElements", kOnnxDomain, 13};
+
+  {  // without axis
+    TensorInfo data_info({3, 3}, true);
+    TensorInfo indices_info({2, 3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo updates_info({2, 3}, true);
+    std::vector<std::vector<float>> input_datas = {{ 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                                     0.0f, 0.0f, 0.0f, 0.0f},
+                                                   {1, 0, 2, 0, 2, 1},
+                                                   {1.0f, 1.1f, 1.2f, 2.0f, 2.1f, 2.2f}};
+
+    TensorInfo output_info({3, 3}, true);
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indices_info, updates_info},
+                                                           {output_info}, &max_error, input_datas));
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {  // with axis
+    TensorInfo data_info({1, 5}, true);
+    TensorInfo indices_info({1, 2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo updates_info({1, 2}, true);
+    std::vector<std::vector<float>> input_datas = {{1.0f, 2.0f, 3.0f, 4.0f, 5.0f},
+                                                   {1, 3},
+                                                   {1.1f, 2.1f}};
+
+    TensorInfo output_info({1, 5}, true);
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indices_info, updates_info},
+                                                           {output_info}, &max_error, input_datas,
+                                                           {MakeAttribute("axis", static_cast<int64_t>(1))}));
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {  // with -ve axis
+    TensorInfo data_info({1, 5}, true);
+    TensorInfo indices_info({1, 2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo updates_info({1, 2}, true);
+    std::vector<std::vector<float>> input_datas = {{1.0f, 2.0f, 3.0f, 4.0f, 5.0f},
+                                                   {1, 3},
+                                                   {1.1f, 2.1f}};
+
+    TensorInfo output_info({1, 5}, true);
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indices_info, updates_info},
+                                                           {output_info}, &max_error, input_datas,
+                                                           {MakeAttribute("axis", static_cast<int64_t>(-1))}));
     EXPECT_IS_TINY(max_error);
   }
 }
