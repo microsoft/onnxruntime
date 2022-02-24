@@ -20,7 +20,8 @@ InferenceSession is the main class of ONNX Runtime. It is used to load and run a
 as well as specify environment and application configuration options. 
 
 .. code-block:: python
-    session = onnxruntime.InferenceSession('model.onnx')
+
+	session = onnxruntime.InferenceSession('model.onnx')
 
 	outputs = session.run([output names], inputs)
 
@@ -32,17 +33,19 @@ Without any configuration, the inference session runs on CPU. Other execution pr
 configured using the `providers` parameter.
 
 .. code-block:: python
-    session = onnxruntime.InferenceSession(model, providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
 
-The list of available execution providers can be found here: https://onnxruntime.ai/docs/execution-providers_.
+	session = onnxruntime.InferenceSession(model, providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+
+The list of available execution providers can be found here: `Execution Providers <https://onnxruntime.ai/docs/execution-providers>_`.
 
 You can supply other session configuration via the `session options` parameter. For example, to enable
 profiling on the session:
 
 .. code-block:: python
-    options = onnxruntime.SessionOptions()
+
+	options = onnxruntime.SessionOptions()
 	options.enable_profiling=True
-    session = onnxruntime.InferenceSession('model.onnx', sess_options=options)
+	session = onnxruntime.InferenceSession('model.onnx', sess_options=options)
 
 
 Data inputs and outputs
