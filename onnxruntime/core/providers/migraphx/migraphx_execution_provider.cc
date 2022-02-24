@@ -5,6 +5,7 @@
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/safeint.h"
+#include "core/common/logging/severity.h"
 #include "migraphx_execution_provider.h"
 #include "hip_allocator.h"
 #include "hip_fence.h"
@@ -1095,12 +1096,12 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     result.push_back(ComputeCapability::Create(std::move(sub_graph)));
   } else {  // unsupported_nodes_idx.empty()
     if (dump_model_ops_) {
-      std::cout << "============= Unsupported nodes ====================" << std::endl;
+      LOGS_DEFAULT(INFO) << "============= Unsupported nodes ====================" << std::endl;
       for (auto idx : unsupported_nodes)
       {
-        std::cout << graph_viewer.GetNode(idx)->OpType() << std::endl;
+        LOGS_DEFAULT(INFO) << graph_viewer.GetNode(idx)->OpType() << std::endl;
       }
-      std::cout << "************* Unsupported nodes ********************" << std::endl;
+      LOGS_DEFAULT(INFO) << "************* Unsupported nodes ********************" << std::endl;
     }
 
     if (unsupported_nodes.size() > 10)
