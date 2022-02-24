@@ -270,19 +270,8 @@ extends:
               }
 
               $merged_nuget = [System.IO.Path]::Combine($merged_nuget_path, $x64_nuget_package_name)
-              $merged_nuget_as_zip = [System.IO.Path]::ChangeExtension($merged_nuget, '.zip')
-
-              $zip_tool_directory = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory_root, 'ziptool')
-              if (!(Test-Path $zip_tool_directory)) {
-                  New-Item -Path $zip_tool_directory -ItemType Directory
-              }
-
-              $zip_tool = [System.IO.Path]::Combine($zip_tool_directory, 'zip.exe')
-
-              Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile $zip_tool
-              Start-Process -FilePath $zip_tool -ArgumentList "-r $merged_nuget ." -WorkingDirectory $x64_nupkg_unzipped_directory -NoNewWindow -Wait
+              Start-Process -FilePath "7z" -ArgumentList "-tzip -r $merged_nuget ." -WorkingDirectory $x64_nupkg_unzipped_directory -NoNewWindow -Wait
         
-              Copy-Item -Path $merged_nuget -Destination $merged_nuget_as_zip
             workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
 
         - task: PowerShell@2
@@ -343,23 +332,17 @@ extends:
               }
 
               $merged_nuget = [System.IO.Path]::Combine($merged_nuget_path, $x64_nuget_package_name)
-              $merged_nuget_as_zip = [System.IO.Path]::ChangeExtension($merged_nuget, '.symbols.zip')
 
-              $zip_tool_directory = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory_root, 'ziptool')
-              if (!(Test-Path $zip_tool_directory)) {
-                    New-Item -Path $zip_tool_directory -ItemType Directory
-              }
-        
-              $zip_tool = [System.IO.Path]::Combine($zip_tool_directory, 'zip.exe')
+              Start-Process -FilePath "7z" -ArgumentList "-tzip a -r $merged_nuget ." -WorkingDirectory $x64_nupkg_unzipped_directory -NoNewWindow -Wait
 
-              Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile $zip_tool
-              Start-Process -FilePath $zip_tool -ArgumentList "-r $merged_nuget ." -WorkingDirectory $x64_nupkg_unzipped_directory -NoNewWindow -Wait
+	      $merged_nuget_without_pdb = [System.IO.Path]::ChangeExtension($merged_nuget, '.nupkg')
 
-              Copy-Item -Path $merged_nuget -Destination $merged_nuget_as_zip
-              
-              7z x -o$(Build.SourcesDirectory)\unzipped $merged_nuget
+              # Now we combine the DLLs and PDBs together, put them back in a folder under $(Build.SourcesDirectory)
+	      # We won't upload the unzipped folder. We will just feed it to BinSkim.
+              7z x -o$(Build.SourcesDirectory)\unzipped $merged_nuget	      
+	      7z -y x -o$(Build.SourcesDirectory)\unzipped $merged_nuget_without_pdb
               
             workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
             
         - script: |
-            dir $(Build.SourcesDirectory)\unzipped
+            dir $(Build.SourcesDirectory)\unzipped\runtimes\win-x64\_native
