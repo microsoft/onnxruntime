@@ -9,59 +9,83 @@ API
 API Overview
 ============
 
-*ONNX Runtime* loads and runs inference on a model in ONNX format, or ORT format (for memory and disk constrained environments).
+*ONNX Runtime* loads and runs inference on a model in ONNX graph format, or ORT format (for memory and disk constrained environments).
 
-The main class *InferenceSession* wraps model loading and running, as well as user specified configuration.
+The data consumed and produced by the model can be specified and accessed in the way that best matches your scenario.
 
-The data consumed by the model and the outputs that the model produces can be provided in a number of different ways.
+Inference Session
+-----------------
+
+InferenceSession is the main class of ONNX Runtime. It is used to load and run an ONNX model,
+as well as specify environment and application configuration options. 
+
+.. code-block:: python
+    session = onnxruntime.InferenceSession('model.onnx')
+
+	outputs = session.run([output names], inputs)
+
+ONNX and ORT format models consist of a graph of computations, modeled as operators,
+and implemented as optimized operator kernels for different hardware targets.
+ONNX Runtime orchestrates the execution of operator kernels via `execution providers`.
+An execution provider contains the set of kernels for a specific execution target (CPU, GPU, IoT etc).
+Without any configuration, the inference session runs on CPU. Other execution provides are
+configured using the `providers` parameter.
+
+.. code-block:: python
+    session = onnxruntime.InferenceSession(model, providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+
+The list of available execution providers can be found here: https://onnxruntime.ai/docs/execution-providers_.
+
+You can supply other session configuration via the `session options` parameter. For example, to enable
+profiling on the session:
+
+.. code-block:: python
+    options = onnxruntime.SessionOptions()
+	options.enable_profiling=True
+    session = onnxruntime.InferenceSession('model.onnx', sess_options=options)
+
+
+Data inputs and outputs
+-----------------------
+
+The ONNX Runtime Inference Session consumes and produces data using its OrtValue class.
 
 Data on CPU
------------
+^^^^^^^^^^^
 
-*ONNX Runtime* works with native Python data structures which are mapped into ONNX data formats:
-Numpy arrays (tensors), dictionaries (maps), and a list of Numpy arrays (sequences).
-The data backing these are on CPU.
-
-Below is an example showing creation of an *OrtValue* from a Numpy array while placing its backing memory
-on a CUDA device:
-
-Scenario 1:
+On CPU (the default), OrtValues can be mapped to and from native Python data structures: numpy arrays, dictionaries and lists of
+numpy arrays. 
 
 .. code-block:: python
 
-	# X is numpy array on cpu, create an OrtValue and place it on cuda device id = 0
-	ortvalue = onnxruntime.OrtValue.ortvalue_from_numpy(X, 'cuda', 0)
-	ortvalue.device_name()  # 'cuda'
-	ortvalue.shape()  # shape of the numpy array X
-	ortvalue.data_type()  # 'tensor(float)'
-	ortvalue.is_tensor()  # 'True'
+	# X is numpy array on cpu
+	ortvalue = onnxruntime.OrtValue.ortvalue_from_numpy(X)
+	ortvalue.device_name()  # 'cpu'
+	ortvalue.shape()        # shape of the numpy array X
+	ortvalue.data_type()    # 'tensor(float)'
+	ortvalue.is_tensor()    # 'True'
 	np.array_equal(ortvalue.numpy(), X)  # 'True'
 
 	# ortvalue can be provided as part of the input feed to a model
-	ses = onnxruntime.InferenceSession('model.onnx')
-	res = sess.run(["Y"], {"X": ortvalue})
+	session = onnxruntime.InferenceSession('model.onnx')
+	results = session.run(["Y"], {"X": ortvalue})
 
-By default, *ONNX Runtime* always places input(s) and output(s) on CPU, which 
+By default, *ONNX Runtime* always places input(s) and output(s) on CPU. Having the data on CPU
 may not optimal if the input or output is consumed and produced on a device
 other than CPU because it introduces data copy between CPU and the device.
-See the sections below for way to minimize data copying and maximize I/O throughput.
+
 
 Data on device
---------------
+^^^^^^^^^^^^^^
 
 *ONNX Runtime* supports a custom data structure that supports all ONNX data formats that allows users
-to place the data backing these on a device, for example, on a CUDA supported device. In ONNX Runtime, this called `IOBinding`.
+to place the data backing these on a device, for example, on a CUDA supported device. In ONNX Runtime,
+this called `IOBinding`.
 
-To use the `IOBinding` feature the `InferenceSession.run()` is replaced by `InferenceSession.run_with_iobinding()`.
-
-
-(In the following code snippets, *model.onnx* is the model to execute, 
-*X* is the input data to feed, and *Y* is the output data.)
-
-Scenario 2:
+To use the `IOBinding` feature, replace `InferenceSession.run()` with `InferenceSession.run_with_iobinding()`.
 
 A graph is executed on a device other than CPU, for instance CUDA. Users can 
-use IOBinding to put input on CUDA as the follows.
+use IOBinding to copy the data onto the GPU.
 
 .. code-block:: python
 
@@ -73,8 +97,6 @@ use IOBinding to put input on CUDA as the follows.
 	io_binding.bind_output('output')
 	session.run_with_iobinding(io_binding)
 	Y = io_binding.copy_outputs_to_cpu()[0]
-
-Scenario 3:
 
 The input data is on a device, users directly use the input. The output data is on CPU.
 
@@ -89,9 +111,7 @@ The input data is on a device, users directly use the input. The output data is 
 	session.run_with_iobinding(io_binding)
 	Y = io_binding.copy_outputs_to_cpu()[0]
 
-Scenario 4:
-
-The input data and output data are both on a device, users directly use the input and also place output on the device.
+The input data and output data are both on a device, users directly use the input and also place output on the device.	
 
 .. code-block:: python
 
@@ -104,7 +124,6 @@ The input data and output data are both on a device, users directly use the inpu
 	io_binding.bind_output(name='output', device_type=Y_ortvalue.device_name(), device_id=0, element_type=np.float32, shape=Y_ortvalue.shape(), buffer_ptr=Y_ortvalue.data_ptr())
 	session.run_with_iobinding(io_binding)
 
-Scenario 5:
 
 Users can request *ONNX Runtime* to allocate an output on a device. This is particularly useful for dynamic shaped outputs.
 Users can use the *get_outputs()* API to get access to the *OrtValue* (s) corresponding to the allocated output(s).
@@ -124,14 +143,7 @@ Users can thus consume the *ONNX Runtime* allocated memory for the output as an 
 	ort_output = io_binding.get_outputs()[0]
 
 
-Access data directly
---------------------
-
 In addition, *ONNX Runtime* supports directly working with *OrtValue* (s) while inferencing a model if provided as part of the input feed.
-
-but you can also provide pointers to Pytorch tensor storage
-
-Scenario 6:
 
 Users can bind *OrtValue* (s) directly.
 
@@ -148,48 +160,45 @@ Users can bind *OrtValue* (s) directly.
 	session.run_with_iobinding(io_binding)
 
 
-Scenario 7:
-
 You can also bind inputs and outputs directly to a PyTorch tensor.
 
 .. code-block:: python
 
-    io_binding = session.io_binding()
-    for input_onnx in session.get_inputs():
-        tensor: torch.Tensor = inputs[input_onnx.name]
-        tensor = tensor.contiguous()
-        if tensor.dtype in [torch.int64, torch.long]:
-            # int32 mandatory as input of bindings, int64 not supported
-            tensor = tensor.type(dtype=torch.int32).to(device)
-        io_binding.bind_input(
-            name=input_onnx.name,
-            device_type=device,
-            device_id=device_id,
-            element_type=torch_to_numpy_dtype_dict[tensor.dtype],
-            shape=tuple(tensor.shape),
-            buffer_ptr=tensor.data_ptr(),
+    # X is a PyTorch tensor on device
+    session = onnxruntime.InferenceSession('model.onnx')
+    binding = session.io_binding()
+
+    X_tensor = X.contiguous()
+
+    binding.bind_input(
+        name='X',
+        device_type='cuda',
+        device_id=0,
+        element_type=np.float32,
+        shape=tuple(x_tensor.shape),
+        buffer_ptr=x_tensor.data_ptr(),
         )
-        inputs[input_onnx.name] = tensor
-    outputs = dict()
-    output_shapes = ...
-    for axis_name, shape in output_shapes.items():
-        tensor = torch.empty(shape, dtype=torch.float32, device=device).contiguous()
-        outputs[axis_name] = tensor
-        binding.bind_output(
-            name=axis_name,
-            device_type=device,
-            device_id=device_id,
-            element_type=np.float32,  # hard coded output type
-            shape=tuple(shape),
-            buffer_ptr=tensor.data_ptr(),
-        )
+
+    ## Allocate the PyTorch tensor for the model output
+	Y_shape = ... # You need to specify the output PyTorch tensor shape
+    Y_tensor = torch.empty(Y_shape, dtype=torch.float32, device='cuda:0'.contiguous()
+    binding.bind_output(
+        name='z',
+        device_type='cuda',
+        device_id=0,
+        element_type=np.float32,
+        shape=tuple(Y_tensor.shape),
+        buffer_ptr=Y_tensor.data_ptr(),
+    )
+
     session.run_with_iobinding(binding)
+
 
 API Details
 ===========
 
 
-Main class
+InferenceSession
 ----------
 
 .. autoclass:: onnxruntime.InferenceSession
