@@ -186,7 +186,7 @@ You can also bind inputs and outputs directly to a PyTorch tensor.
 	Y_shape = ... # You need to specify the output PyTorch tensor shape
     Y_tensor = torch.empty(Y_shape, dtype=torch.float32, device='cuda:0'.contiguous()
     binding.bind_output(
-        name='z',
+        name='Y',
         device_type='cuda',
         device_id=0,
         element_type=np.float32,
