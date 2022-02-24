@@ -475,8 +475,8 @@ jobs:
       script: |
         msbuild Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj /p:Platform=x64 /t:Restore
         msbuild Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj /p:Platform=x64
-        msbuild Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj /p:Platform=AnyCpu /t:Restore
-        msbuild Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj /p:Platform=AnyCpu
+        msbuild Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj /p:Platform=x86 /t:Restore
+        msbuild Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj /p:Platform=x86
       workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.DotNet5_0
 
 
@@ -537,12 +537,12 @@ jobs:
         .\Microsoft.AI.MachineLearning.Tests.exe
         popd
         
-        Write-Host "Run Microsoft.AI.MachineLearning CSharp Tests (DotNet5_0)"
-        pushd .\Microsoft.AI.MachineLearning.Tests.DotNet5_0\bin\Debug\net5.0-windows10.0.17763.0
+        Write-Host "Run Microsoft.AI.MachineLearning CSharp Tests (DotNet5_0 x86)"
+        pushd .\Microsoft.AI.MachineLearning.Tests.DotNet5_0\bin\x86\Debug\net5.0-windows10.0.17763.0
         .\Microsoft.AI.MachineLearning.Tests.DotNet5_0.exe
         popd
         
-        Write-Host "Run Microsoft.AI.MachineLearning CSharp Tests (AnyCpu)"
+        Write-Host "Run Microsoft.AI.MachineLearning CSharp Tests ((DotNet5_0 x64)"
         pushd .\Microsoft.AI.MachineLearning.Tests.DotNet5_0\bin\x64\Debug\net5.0-windows10.0.17763.0
         .\Microsoft.AI.MachineLearning.Tests.DotNet5_0.exe
         popd
