@@ -13,18 +13,21 @@ template <typename T>
 __global__ void Transpose3DKernel(const TArray<int64_t> input_shape,
                                   const TArray<int64_t> input_strides,
                                   const T* input_data, T* output_data) {
-  __shared__ T tile[TILE_DIM * (TILE_DIM + 1)];
+  // __shared__ T tile[TILE_DIM * (TILE_DIM + 1)];
+  __shared__ T tile[TILE_DIM][TILE_DIM + 1];
 
   int x = blockIdx.x * TILE_DIM + threadIdx.x;
   int y = blockIdx.y * TILE_DIM + threadIdx.y;
 
-  tile[threadIdx.y * TILE_DIM + threadIdx.x] = input_data[blockIdx.z * input_strides[0] + y * input_shape[2] + x];
+  // tile[threadIdx.y * TILE_DIM + threadIdx.x] = input_data[blockIdx.z * input_strides[0] + y * input_shape[2] + x];
+  tile[threadIdx.y][threadIdx.x] = input_data[blockIdx.z * input_strides[0] + y * input_shape[2] + x];
   __syncthreads();
 
   x = blockIdx.y * TILE_DIM + threadIdx.x;
   y = blockIdx.x * TILE_DIM + threadIdx.y;
 
-  output_data[blockIdx.z * input_strides[0] + y * input_shape[1] + x] = tile[threadIdx.x * TILE_DIM + threadIdx.y];
+  // output_data[blockIdx.z * input_strides[0] + y * input_shape[1] + x] = tile[threadIdx.x * TILE_DIM + threadIdx.y];
+  output_data[blockIdx.z * input_strides[0] + y * input_shape[1] + x] = tile[threadIdx.x][threadIdx.y];
 }
 
 bool CanDoTranspose3D(const cudaDeviceProp& prop,
