@@ -66,8 +66,8 @@ elif parse_arg_remove_boolean(sys.argv, '--use_dnnl'):
     package_name = 'onnxruntime-dnnl'
 elif parse_arg_remove_boolean(sys.argv, '--use_nuphar'):
     package_name = 'onnxruntime-nuphar'
-elif parse_arg_remove_boolean(sys.argv, '--use_stvm'):
-    package_name = 'onnxruntime-stvm'
+elif parse_arg_remove_boolean(sys.argv, '--use_tvm'):
+    package_name = 'onnxruntime-tvm'
 elif parse_arg_remove_boolean(sys.argv, '--use_vitisai'):
     package_name = 'onnxruntime-vitisai'
 elif parse_arg_remove_boolean(sys.argv, '--use_acl'):
@@ -165,7 +165,7 @@ try:
                         # the global table of functions. Registration is carried out through the JIT interface,
                         # so it is necessary to call special functions for registration.
                         # To do this, we need to make the following import.
-                        import onnxruntime.providers.stvm
+                        import onnxruntime.providers.tvm
                     except ImportError as e:
                         warnings.warn(
                             f"WARNING: Failed to register python functions to work with TVM EP. More details: {e}"
@@ -235,7 +235,7 @@ try:
                 self._rewrite_ld_preload(to_preload)
                 self._rewrite_ld_preload_cuda(to_preload_cuda)
                 self._rewrite_ld_preload_tensorrt(to_preload_tensorrt)
-            if package_name == 'onnxruntime-stvm':
+            if package_name == 'onnxruntime-tvm':
                 self._rewrite_ld_preload_tvm()
             _bdist_wheel.run(self)
             if is_manylinux and not disable_auditwheel_repair:
@@ -388,6 +388,8 @@ if not enable_training:
 if enable_training:
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
+                     'onnxruntime.training.experimental',
+                     'onnxruntime.training.experimental.gradient_graph',
                      'onnxruntime.training.optim',
                      'onnxruntime.training.ortmodule',
                      'onnxruntime.training.ortmodule.experimental',
@@ -397,7 +399,8 @@ if enable_training:
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator',
-                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops'])
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops',
+                     'onnxruntime.training.utils.data'])
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor'] = ['*.cc']
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils'] = ['*.cc']
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator'] = ['*.cc']
@@ -429,8 +432,8 @@ if package_name == 'onnxruntime-nuphar':
     packages += ["onnxruntime.nuphar"]
     extra += [path.join('nuphar', 'NUPHAR_CACHE_VERSION')]
 
-if package_name == 'onnxruntime-stvm':
-    packages += ['onnxruntime.providers.stvm']
+if package_name == 'onnxruntime-tvm':
+    packages += ['onnxruntime.providers.tvm']
 
 package_data["onnxruntime"] = data + examples + extra
 

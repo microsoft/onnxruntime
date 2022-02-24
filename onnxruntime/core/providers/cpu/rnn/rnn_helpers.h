@@ -10,6 +10,7 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
+#include "core/framework/tensor.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"

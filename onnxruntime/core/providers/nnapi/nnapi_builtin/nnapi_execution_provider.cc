@@ -176,7 +176,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   };
 
   result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed,
-                                            gen_metadef_name, NNAPI);
+                                            gen_metadef_name, NNAPI, kNnapiExecutionProvider);
 
   const auto num_of_partitions = result.size();
   const auto num_of_supported_nodes = std::transform_reduce(
@@ -201,6 +201,10 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   }
 
   return result;
+}
+
+DataLayout NnapiExecutionProvider::GetPreferredLayout() const {
+  return nnapi_flags_ & NNAPI_FLAG_USE_NCHW ? DataLayout::NCHW : DataLayout::NHWC;
 }
 
 #ifdef __ANDROID__
