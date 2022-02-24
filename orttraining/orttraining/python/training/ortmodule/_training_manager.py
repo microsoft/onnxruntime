@@ -316,19 +316,28 @@ class TrainingManager(GraphExecutionManager):
 
         session_options, providers, provider_options = self._get_session_config()
         fw_feed_names = [input.name for input in self._onnx_models.optimized_model.graph.input]
-        fw_outputs_device_info = [
-            C.OrtDevice(get_ort_device_type(self._device),
-                        C.OrtDevice.default_memory(),
-                        _utils.get_device_index(self._device)
-                        )] * (len(self._graph_info.user_output_names) +
-                              len(self._graph_info.frontier_node_arg_map))
+        device_type = self._device if type(self._device) is str else self._device.type.lower()
+        if device_type == 'ort':
+            fw_outputs_device_info = [C.get_ort_device(self._device.index)] * (len(self._graph_info.user_output_names) +
+                                len(self._graph_info.frontier_node_arg_map))
+        else:
+            fw_outputs_device_info = [
+                C.OrtDevice(get_ort_device_type(self._device),
+                            C.OrtDevice.default_memory(),
+                            _utils.get_device_index(self._device)
+                            )] * (len(self._graph_info.user_output_names) +
+                                len(self._graph_info.frontier_node_arg_map))
 
         bw_fetches_names = [output.name for output in self._onnx_models.optimized_model.graph.output]
-        bw_outputs_device_info = [
-            C.OrtDevice(get_ort_device_type(self._device),
-                        C.OrtDevice.default_memory(),
-                        _utils.get_device_index(self._device)
-                        )] * len(bw_fetches_names)
+        if device_type == 'ort':
+            bw_outputs_device_info = [
+                    C.get_ort_device(self._device.index)] * len(bw_fetches_names)
+        else:
+            bw_outputs_device_info = [
+                C.OrtDevice(get_ort_device_type(self._device),
+                            C.OrtDevice.default_memory(),
+                            _utils.get_device_index(self._device)
+                            )] * len(bw_fetches_names)
 
         self._execution_agent = TrainingAgent(self._onnx_models.optimized_model.SerializeToString(),
                                               fw_feed_names,
