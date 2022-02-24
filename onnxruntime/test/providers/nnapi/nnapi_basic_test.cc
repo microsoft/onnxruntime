@@ -394,6 +394,19 @@ TEST(NnapiExecutionProviderTest, TestQDQSoftMax) {
                   });
 }
 
+TEST(NnapiExecutionProviderTest, TestQDQConcat) {
+  RunQDQModelTest(BuildQDQConcatTestCase(
+                      {
+                          {1, 6, 36},
+                          {1, 6, 8},
+                          {1, 6, 2},
+                      } /* input_shapes */,
+                      2 /* axis */),
+                  "nnapi_qdq_test_graph_concat", {
+                                                     true /* verify_entire_graph_use_ep */
+                                                 });
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
