@@ -214,10 +214,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>());
       }
 
-      if (enable_quant_qdq_cleanup) {
-        transformers.emplace_back(std::make_unique<QDQFinalCleanupTransformer>());
-      }
-
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<DynamicQuantizeMatMulFusion>(cpu_ep));
@@ -248,6 +244,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 
 #endif
+      if (enable_quant_qdq_cleanup) {
+        transformers.emplace_back(std::make_unique<QDQFinalCleanupTransformer>());
+      }
     } break;
 
     case TransformerLevel::Level3: {
