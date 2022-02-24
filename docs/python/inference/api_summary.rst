@@ -36,7 +36,7 @@ configured using the `providers` parameter.
 
 	session = onnxruntime.InferenceSession(model, providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
 
-The list of available execution providers can be found here: `Execution Providers <https://onnxruntime.ai/docs/execution-providers>_`.
+The list of available execution providers can be found here: `Execution Providers <https://onnxruntime.ai/docs/execution-providers>`_.
 
 You can supply other session configuration via the `session options` parameter. For example, to enable
 profiling on the session:
