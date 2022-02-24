@@ -372,7 +372,7 @@ class HistogramCalibrater(CalibraterBase):
     def compute_range(self):
         ''' 
         Compute the min-max range of tensor
-        :return: dictionary mapping: {added node names: (ReduceMin, ReduceMax) pairs }
+        :return: dictionary mapping: {tensor name: (min value, max value)}
         '''
         if not self.collector:
             raise ValueError("No collector created and can't generate calibration data.")
