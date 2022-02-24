@@ -29,7 +29,7 @@ def process_file(onnx_file):
             cast_ops.append(f"{node.name}")
         if node.op_type == "ATen":
             for attr in node.attribute:
-                if attr.name == "operator":
+                if attr.name == "operator_name":
                     aten_ops.append(f"{node.name}: {attr.s.decode('utf-8')}")
         if node.op_type == "PythonOp":
             for attr in node.attribute:

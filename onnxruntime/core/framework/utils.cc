@@ -788,8 +788,8 @@ bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index)
 #ifdef ENABLE_TRAINING
   if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATen" && node.Domain() == kPytorchAtenDomain) {
     const auto& attrs = node.GetAttributes();
-    ORT_ENFORCE(utils::HasString(attrs.at("operator")));
-    std::string op_name = attrs.at("operator").s();
+    ORT_ENFORCE(utils::HasString(attrs.at("operator_name")));
+    std::string op_name = attrs.at("operator_name").s();
     std::string overload_name = "";
     if (attrs.find("overload_name") != attrs.end() && utils::HasString(attrs.at("overload_name"))) {
       overload_name = attrs.at("overload_name").s();

@@ -11,7 +11,7 @@ namespace contrib {
 class ATen : public OpKernel {
  public:
   ATen(const OpKernelInfo& info) : OpKernel(info) {
-    ORT_THROW_IF_ERROR(info.GetAttr("operator", &op_name_));
+    ORT_THROW_IF_ERROR(info.GetAttr("operator_name", &op_name_));
     overload_name_ = info.GetAttrOrDefault<std::string>("overload_name", "");
   }
 

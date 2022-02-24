@@ -3005,7 +3005,7 @@ Return true if all elements are true and false otherwise.
       .Output(0, "outputs", "ATen Op outputs.", "T", OpSchema::Variadic,
               /*is_homogeneous*/ false,
               /*min_arity*/ 1)
-      .Attr("operator", "Name of ATen operator.", AttributeProto::STRING)
+      .Attr("operator_name", "Name of ATen operator.", AttributeProto::STRING)
       .Attr("overload_name", "Overload name of ATen operator.", AttributeProto::STRING, false)
       .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.");
 #endif

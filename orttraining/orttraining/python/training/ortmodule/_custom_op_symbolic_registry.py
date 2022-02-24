@@ -65,7 +65,7 @@ def nll_loss(g, self, target, weight, reduction, ignore_index):
 @register_symbolic('embedding')
 def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
     output = g.op("org.pytorch.aten::ATen", weight, indices, padding_idx, scale_grad_by_freq, sparse,
-                  operator_s='aten::embedding')
+                  operator_name_s='aten::embedding')
     indices_shape = _get_tensor_sizes(indices)
     if indices_shape is not None and hasattr(weight.type(), 'with_sizes'):
         output_type = weight.type().with_sizes(
@@ -81,7 +81,7 @@ def bitwise_or(g, self, other):
 @register_symbolic('diagonal')
 def diagonal(g, self, offset, dim1, dim2):
     return g.op("org.pytorch.aten::ATen", self, offset, dim1, dim2,
-                operator_s='aten::diagonal')
+                operator_name_s='aten::diagonal')
 
 
 @register_symbolic('multinomial')
@@ -89,7 +89,7 @@ def multinomial(g, self, num_samples, replacement=False, generator=None):
     if generator is not None and not sym_help._is_none(generator):
         raise RuntimeError("Unsupported: ONNX does not support generator for multinomial")
     return g.op("org.pytorch.aten::ATen", self, num_samples, replacement, generator,
-                operator_s='aten::multinomial')
+                operator_name_s='aten::multinomial')
 
 
 @register_symbolic('max_pool2d')
@@ -98,17 +98,17 @@ def max_pool2d(g, self, kernel_size, stride, padding, dilation, ceil_mode):
     if not stride_val:
         stride = kernel_size
     return g.op("org.pytorch.aten::ATen", self, kernel_size, stride, padding, dilation, ceil_mode,
-                operator_s='aten::max_pool2d_with_indices', outputs=2)[0]
+                operator_name_s='aten::max_pool2d_with_indices', outputs=2)[0]
 
 
 @register_symbolic('unfold')
 def unfold(g, input, dimension, size, step):
-    return g.op("org.pytorch.aten::ATen", input, dimension, size, step, operator_s='aten::unfold')
+    return g.op("org.pytorch.aten::ATen", input, dimension, size, step, operator_name_s='aten::unfold')
 
 
 @register_symbolic('argmax')
 def argmax(g, input, dim, keepdim):
-    return g.op("org.pytorch.aten::ATen", input, dim, keepdim, operator_s='aten::argmax')
+    return g.op("org.pytorch.aten::ATen", input, dim, keepdim, operator_name_s='aten::argmax')
 
 
 @register_symbolic('avg_pool2d')
@@ -117,12 +117,12 @@ def avg_pool2d(g, self, kernel_size, stride, padding, ceil_mode, count_include_p
     if not stride_val:
         stride = kernel_size
     return g.op("org.pytorch.aten::ATen", self, kernel_size, stride, padding, ceil_mode,
-                count_include_pad, divisor_override, operator_s='aten::avg_pool2d')
+                count_include_pad, divisor_override, operator_name_s='aten::avg_pool2d')
 
 
 @register_symbolic('adaptive_avg_pool2d')
 def adaptive_avg_pool2d(g, self, output_size):
-    return g.op("org.pytorch.aten::ATen", self, output_size, operator_s='aten::_adaptive_avg_pool2d')
+    return g.op("org.pytorch.aten::ATen", self, output_size, operator_name_s='aten::_adaptive_avg_pool2d')
 
 
 @register_symbolic('binary_cross_entropy_with_logits')
@@ -132,7 +132,7 @@ def binary_cross_entropy_with_logits(g, self, target, weight, pos_weight, reduct
     # So doesn't support non-None weight for now.
     if weight is None or sym_help._is_none(weight):
         return g.op("org.pytorch.aten::ATen", self, target, weight, pos_weight, reduction,
-                    operator_s='aten::binary_cross_entropy_with_logits')
+                    operator_name_s='aten::binary_cross_entropy_with_logits')
     from torch.onnx.symbolic_opset12 import binary_cross_entropy_with_logits as bce
     return bce(g, self, target, weight, pos_weight, reduction)
 

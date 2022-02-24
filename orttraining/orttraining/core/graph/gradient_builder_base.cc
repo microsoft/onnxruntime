@@ -132,8 +132,8 @@ std::string GetGradientDefinitionKeyByNode(const Node& node) {
   std::string key = node.Domain() + "::" + op_type;
   if (op_type == "ATen") {
     const auto& attrs = node.GetAttributes();
-    ORT_ENFORCE(utils::HasString(attrs.at("operator")));
-    key = key + "::" + attrs.at("operator").s();
+    ORT_ENFORCE(utils::HasString(attrs.at("operator_name")));
+    key = key + "::" + attrs.at("operator_name").s();
     std::string overload_name = "";
     if (attrs.find("overload_name") != attrs.end() && utils::HasString(attrs.at("overload_name"))) {
       overload_name = attrs.at("overload_name").s();

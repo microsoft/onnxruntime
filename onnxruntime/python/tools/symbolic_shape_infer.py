@@ -1901,7 +1901,7 @@ class SymbolicShapeInference:
             elif node.op_type == 'ATen' and node.domain == 'org.pytorch.aten':
                 for attr in node.attribute:
                     # TODO: Is overload_name needed?
-                    if attr.name == 'operator':
+                    if attr.name == 'operator_name':
                         aten_op_name = attr.s.decode('utf-8') if isinstance(attr.s, bytes) else attr.s
                         if aten_op_name in self.aten_op_dispatcher_:
                             known_aten_op = True
