@@ -335,12 +335,12 @@ extends:
 
               Start-Process -FilePath "7z" -ArgumentList "-tzip a -r $merged_nuget ." -WorkingDirectory $x64_nupkg_unzipped_directory -NoNewWindow -Wait
 
-	      $merged_nuget_without_pdb = [System.IO.Path]::ChangeExtension($merged_nuget, '.nupkg')
+              $merged_nuget_without_pdb = [System.IO.Path]::ChangeExtension($merged_nuget, '.nupkg')
 
               # Now we combine the DLLs and PDBs together, put them back in a folder under $(Build.SourcesDirectory)
-	      # We won't upload the unzipped folder. We will just feed it to BinSkim.
-              7z x -o$(Build.SourcesDirectory)\unzipped $merged_nuget	      
-	      7z -y x -o$(Build.SourcesDirectory)\unzipped $merged_nuget_without_pdb
+              # We won't upload the unzipped folder. We will just feed it to BinSkim.
+              7z x -o$(Build.SourcesDirectory)\unzipped $merged_nuget     
+              7z -y x -o$(Build.SourcesDirectory)\unzipped $merged_nuget_without_pdb
               
             workingDirectory: $(Build.BinariesDirectory)\nuget-artifact-x64
             
