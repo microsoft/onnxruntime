@@ -190,10 +190,10 @@ class MLOperatorTensorShapeDescription
         return ret;
     }
 
-    Microsoft::WRL::ComPtr<IMLOperatorTensorShapeDescription> GetInterface() const { return m_impl; }
+    Microsoft::WRL::ComPtr<IMLOperatorTensorShapeDescription> GetInterface() const noexcept { return m_impl; }
 
  protected:
-    Microsoft::WRL::ComPtr<IMLOperatorTensorShapeDescription> m_impl ;
+    Microsoft::WRL::ComPtr<IMLOperatorTensorShapeDescription> m_impl;
 };
 
 class MLOperatorAttributes
@@ -201,6 +201,12 @@ class MLOperatorAttributes
  public:
     MLOperatorAttributes(IMLOperatorAttributes* impl) : m_impl(impl)
     {
+    }
+
+    // For cases of interop where the caller needs to pass the unwrapped class across a boundary.
+    Microsoft::WRL::ComPtr<IMLOperatorAttributes> GetInterface() const noexcept
+    {
+        return m_impl;
     }
 
     uint32_t GetAttributeElementCount(
@@ -638,7 +644,7 @@ public:
     MLOperatorTypeInferenceContext(IMLOperatorTypeInferenceContext* impl) : MLOperatorAttributes(impl), m_impl(impl) {}
 
     // For cases of interop where the caller needs to pass the unwrapped class across a boundary.
-     Microsoft::WRL::ComPtr<IMLOperatorTypeInferenceContext> GetInterface() const noexcept
+    Microsoft::WRL::ComPtr<IMLOperatorTypeInferenceContext> GetInterface() const noexcept
     {
         return m_impl;
     }
