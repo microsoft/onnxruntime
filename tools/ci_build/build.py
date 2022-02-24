@@ -355,6 +355,7 @@ def parse_arguments():
 
     # WebAssembly build
     parser.add_argument("--build_wasm", action='store_true', help="Build for WebAssembly")
+    parser.add_argument("--build_wasm_static_lib", action='store_true', help="Build for WebAssembly static library")
     parser.add_argument("--enable_wasm_simd", action='store_true', help="Enable WebAssembly SIMD")
     parser.add_argument(
         "--disable_wasm_exception_catching", action='store_true',
@@ -375,7 +376,7 @@ def parse_arguments():
     parser.add_argument(
         "--wasm_malloc", default="dlmalloc", help="Specify memory allocator for WebAssembly")
     parser.add_argument(
-        "--emsdk_version", default="2.0.26", help="Specify version of emsdk")
+        "--emsdk_version", default="2.0.34", help="Specify version of emsdk")
 
     # Enable onnxruntime-extensions
     parser.add_argument(
@@ -438,8 +439,6 @@ def parse_arguments():
         "--use_nuphar", action='store_true', help="Build with nuphar")
     parser.add_argument(
         "--use_stvm", action='store_true', help="Build with standalone TVM")
-    parser.add_argument(
-        "--stvm_home", help="Path to TVM installation for the standalone TVM execution provider.")
     parser.add_argument(
         "--use_tensorrt", action='store_true', help="Build with TensorRT")
     parser.add_argument(
@@ -762,8 +761,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 args.android or (args.ios and is_macOS())
                 or args.use_rknpu)
             else "OFF"),
-        "-Donnxruntime_USE_TVM=" + ("ON" if args.use_nuphar else "OFF"),
-        "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_nuphar else "OFF"),
+        "-Donnxruntime_USE_TVM=" + ("ON" if (args.use_nuphar or args.use_stvm) else "OFF"),
+        "-Donnxruntime_USE_LLVM=" + ("ON" if (args.use_nuphar or args.use_stvm) else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
@@ -771,7 +770,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_TENSORRT_HOME=" + (tensorrt_home if args.use_tensorrt else ""),
         # set vars for standalone TVM
         "-Donnxruntime_USE_STVM=" + ("ON" if args.use_stvm else "OFF"),
-        "-Donnxruntime_STVM_HOME=" + (os.path.join(source_dir, "cmake", "external", "tvm_update")),
         # set vars for migraphx
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
         "-Donnxruntime_MIGRAPHX_HOME=" + (migraphx_home if args.use_migraphx else ""),
@@ -822,6 +820,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + ("ON" if args.enable_memory_profile else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=" + ("ON" if args.enable_cuda_line_info else "OFF"),
         "-Donnxruntime_BUILD_WEBASSEMBLY=" + ("ON" if args.build_wasm else "OFF"),
+        "-Donnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB=" + ("ON" if args.build_wasm_static_lib else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING=" + ("OFF" if args.disable_wasm_exception_catching
                                                                   else "ON"),
@@ -930,7 +929,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-DProtobuf_USE_STATIC_LIBS=ON"
         ]
 
-    if args.use_nuphar and args.llvm_path is not None:
+    if (args.use_nuphar or args.use_stvm) and args.llvm_path is not None:
         cmake_args += ["-DLLVM_DIR=%s" % args.llvm_path]
 
     if args.use_cuda and not is_windows():
@@ -1078,6 +1077,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     if args.build_eager_mode:
         import torch
         cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
+        cmake_args += ['-D_GLIBCXX_USE_CXX11_ABI=' + str(int(torch._C._GLIBCXX_USE_CXX11_ABI))]
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
@@ -1125,15 +1125,16 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     for config in configs:
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
-        if args.use_nuphar:
-            os.environ["PATH"] = os.path.join(
-                config_build_dir, "external", "tvm",
-                config) + os.pathsep + os.path.dirname(sys.executable) + os.pathsep + os.environ["PATH"]
+        if args.use_nuphar or args.use_stvm:
+            os.environ["PATH"] = (
+                os.path.join(config_build_dir, "_deps", "tvm-build") + os.pathsep +
+                os.path.join(config_build_dir, "_deps", "tvm-src") + os.pathsep +
+                os.path.dirname(sys.executable) + os.pathsep + os.environ["PATH"])
 
         run_subprocess(
             cmake_args + [
                 "-Donnxruntime_ENABLE_MEMLEAK_CHECKER=" +
-                ("ON" if config.lower() == 'debug' and not args.use_nuphar and not
+                ("ON" if config.lower() == 'debug' and not (args.use_nuphar or args.use_stvm) and not
                  args.use_openvino and not
                  args.enable_msvc_static_runtime and not
                  args.disable_memleak_checker
@@ -1532,8 +1533,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             continue
         dll_path_list = []
         if args.use_nuphar:
-            dll_path_list.append(os.path.join(
-                build_dir, config, "external", "tvm", config))
+            dll_path_list.append(os.path.join(build_dir, "_deps", "tvm-build"))
         if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, 'lib'))
         # Adding the torch lib path for loading DLLs for onnxruntime in eager mode
@@ -1697,9 +1697,22 @@ def nuphar_run_python_tests(build_dir, configs):
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
             cwd = os.path.join(cwd, config)
-        dll_path = os.path.join(build_dir, config, "external", "tvm", config)
+        dll_path = os.path.join(build_dir, config, "_deps", "tvm-build", config)
         run_subprocess(
             [sys.executable, 'onnxruntime_test_python_nuphar.py'],
+            cwd=cwd, dll_path=dll_path)
+
+
+def stvm_run_python_tests(build_dir, configs):
+    for config in configs:
+        if config == 'Debug':
+            continue
+        cwd = get_config_build_dir(build_dir, config)
+        if is_windows():
+            cwd = os.path.join(cwd, config)
+        dll_path = os.path.join(build_dir, config, "_deps", "tvm-build", config)
+        run_subprocess(
+            [sys.executable, 'onnxruntime_test_python_stvm.py'],
             cwd=cwd, dll_path=dll_path)
 
 
@@ -2035,6 +2048,9 @@ def main():
     if args.use_tensorrt:
         args.use_cuda = True
 
+    if args.use_migraphx:
+        args.use_rocm = True
+
     if args.build_wheel or args.gen_doc:
         args.enable_pybind = True
 
@@ -2055,6 +2071,9 @@ def main():
             raise BuildError("Using --nnapi_min_api requires --use_nnapi")
         if args.nnapi_min_api < 27:
             raise BuildError("--nnapi_min_api should be 27+")
+
+    if args.build_wasm_static_lib:
+        args.build_wasm = True
 
     if args.build_wasm:
         if not args.disable_wasm_exception_catching and args.disable_exceptions:
@@ -2314,6 +2333,9 @@ def main():
 
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
             nuphar_run_python_tests(build_dir, configs)
+
+        if args.enable_pybind and not args.skip_onnx_tests and args.use_stvm:
+            stvm_run_python_tests(build_dir, configs)
 
         # run node.js binding tests
         if args.build_nodejs and not args.skip_nodejs_tests:

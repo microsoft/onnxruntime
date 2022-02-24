@@ -208,6 +208,12 @@ bool IsContiguousTensor(const DLTensor& tensor) {
 
 }  // namespace
 
+//This function should use smart pointers inside
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26409)
+#pragma warning(disable : 26400)
+#endif
 // This function returns a pointer to DLManagedTensor constructed from an OrtValue
 // The OrtValue inside OrtDLManagedTensor will increase its own buffer's ref count by one
 // When the consumer of DLManagedTensor is done with the tensor, it should invoke the deleter.
@@ -228,7 +234,9 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
   ort_dlmanaged_tensor->tensor.dl_tensor.byte_offset = 0;
   return &(ort_dlmanaged_tensor->tensor);
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
   // ORT only supports contiguous tensor for now.
   ORT_ENFORCE(IsContiguousTensor(dlpack->dl_tensor), "ORT only supports contiguous tensor for now.");

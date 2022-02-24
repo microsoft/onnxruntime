@@ -175,8 +175,8 @@ __launch_bounds__(kNmsBlockDim* kNmsBlockDim, 4) __global__
 // Variadic template helpers for Index selecting multiple arrays at the same
 // time
 template <typename Index>
-__device__ inline void SelectHelper(const Index i_selected,
-                                    const Index i_original) {}
+__device__ inline void SelectHelper(const Index /*i_selected */,
+                                    const Index /* i_original */) {}
 
 template <typename Index, typename T, typename... Args>
 __device__ inline void SelectHelper(const Index i_selected,

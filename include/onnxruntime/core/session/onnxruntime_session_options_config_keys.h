@@ -100,8 +100,9 @@ static const char* const kOrtSessionOptionsConfigNnapiEpPartitioningStopOps = "e
 // Enabling dynamic block-sizing for multithreading.
 // With a positive value, thread pool will split a task of N iterations to blocks of size starting from:
 // N / (num_of_threads * dynamic_block_base)
-// As execution progresses, the size will decrease according to the diminishing residual of N, 
+// As execution progresses, the size will decrease according to the diminishing residual of N,
 // meaning the task will be distributed in smaller granularity for better parallelism.
-// For some models, it helps to reduce the variance of E2E inference latency and boost performane.
+// For some models, it helps to reduce the variance of E2E inference latency and boost performance.
 // The feature will not function by default, specify any positive integer, e.g. "4", to enable it.
+// Available since version 1.11.
 static const char* const kOrtSessionOptionsConfigDynamicBlockBase = "session.dynamic_block_base";

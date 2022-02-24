@@ -21,8 +21,6 @@
 #include "core/providers/nnapi/nnapi_builtin/model.h"
 #endif
 
-using onnxruntime::NodeUnit;
-
 namespace onnxruntime {
 
 namespace {
@@ -119,22 +117,46 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     }
   }
 
+  // Get all the NodeUnits in the graph_viewer
+  std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
+  std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
+
+  std::tie(node_unit_holder, node_unit_map) = GetAllNodeUnits(graph_viewer);
+
+  // This holds the result of whether a NodeUnit is supported or not,
+  // to prevent nodes in a NodeUnit to be checked for multiple times
+  std::unordered_map<const NodeUnit*, bool> node_unit_supported_result;
+  node_unit_supported_result.reserve(node_unit_holder.size());
+
   const auto excluded_nodes = utils::CreateExcludedNodeSet(graph_viewer, partitioning_stop_ops_);
   const bool check_excluded_nodes = !excluded_nodes.empty();
 
   std::unordered_set<std::string> node_outputs_in_current_group{};
 
   const auto is_node_supported = [&](const Node& node) -> bool {
-    const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node);
-    // TODO, cache NodeUnit(s) and not generate new instance every time
-    const NodeUnit node_unit(node);
-    const bool supported = !excluded &&
-                           nnapi::IsNodeSupportedInGroup(node_unit, graph_viewer, params,
-                                                         node_outputs_in_current_group);
-    LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node_unit.OpType()
-                          << "] index: [" << node_unit.Index()
-                          << "] name: [" << node_unit.Name()
-                          << "] supported: [" << supported
+    const NodeUnit* node_unit = node_unit_map.at(&node);
+    bool supported = false;
+
+    // If we have visited one of the nodes in the node_unit, use the result directly
+    const auto it = node_unit_supported_result.find(node_unit);
+    if (it != node_unit_supported_result.cend()) {
+      supported = it->second;
+    } else {
+      // We only check the target node of the node unit for exclusion
+      const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node_unit->GetNode());
+      supported = !excluded &&
+                  nnapi::IsNodeSupportedInGroup(*node_unit, graph_viewer, params,
+                                                node_outputs_in_current_group);
+      node_unit_supported_result[node_unit] = supported;
+    }
+
+    LOGS_DEFAULT(VERBOSE) << "Node supported: [" << supported
+                          << "] Operator type: [" << node.OpType()
+                          << "] index: [" << node.Index()
+                          << "] name: [" << node.Name()
+                          << "] as part of the NodeUnit type: [" << node_unit->OpType()
+                          << "] index: [" << node_unit->Index()
+                          << "] name: [" << node_unit->Name()
                           << "]";
 
     if (supported) {
@@ -189,14 +211,6 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 }
 
 #ifdef __ANDROID__
-static Status GetOutputBuffer(Ort::CustomOpApi& ort,
-                              OrtKernelContext* context,
-                              const nnapi::Model& model,
-                              const std::string& output_name,
-                              const std::vector<uint32_t>& output_shape,
-                              const android::nn::wrapper::Type output_type,
-                              void** output_buffer) ORT_MUST_USE_RESULT;
-
 static Status GetOutputBuffer(Ort::CustomOpApi& ort,
                               OrtKernelContext* context,
                               const nnapi::Model& model,

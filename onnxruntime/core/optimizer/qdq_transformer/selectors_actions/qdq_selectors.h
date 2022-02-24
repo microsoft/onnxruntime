@@ -3,7 +3,7 @@
 
 #pragma once
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
 
@@ -51,6 +51,16 @@ class NodeGroupSelector {
 // Single DQ -> node that does not change data -> Q.
 // Zero point and scale are constant scalars and must match
 class DropQDQNodeGroupSelector : public NodeGroupSelector {
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+};
+
+// Single DQ -> node.
+class DropDQNodeGroupSelector : public NodeGroupSelector {
+  // base check that we have the expected number of DQ inputs.
+  bool CheckDQNodes(const Node& node, const std::vector<const Node*>& dq_nodes) const;
+
   bool Check(const GraphViewer& graph_viewer, const Node& node,
              const std::vector<const Node*>& dq_nodes,
              const std::vector<const Node*>& q_nodes) const override;
@@ -142,6 +152,11 @@ class DropQDQNodesSelector : public BaseSelector {
   DropQDQNodesSelector() : BaseSelector(std::make_unique<DropQDQNodeGroupSelector>()) {}
 };
 
+class DropDQNodesSelector : public BaseSelector {
+ public:
+  DropDQNodesSelector() : BaseSelector(std::make_unique<DropDQNodeGroupSelector>()) {}
+};
+
 class UnarySelector : public BaseSelector {
  public:
   UnarySelector() : BaseSelector(std::make_unique<UnaryNodeGroupSelector>()) {}
@@ -178,4 +193,4 @@ class MatMulSelector : public BaseSelector {
 }  // namespace QDQ
 }  // namespace onnxruntime
 
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

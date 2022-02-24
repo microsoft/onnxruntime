@@ -94,8 +94,39 @@ struct SetOptionalZeroPoint {
   static void UpdateNodes(Graph&, const NodesToOptimize& selected_nodes);
 
  private:
-  static const ONNX_NAMESPACE::TensorProto optional_zero_point_int8_;
-  static const ONNX_NAMESPACE::TensorProto optional_zero_point_uint8_;
+  // We assume this function won't fail
+  static const ONNX_NAMESPACE::TensorProto init_optional_zero_point_int8() {
+    // guid as arbitrary name to provide a unique value
+    const char* const name = "init_optional_zero_point_int8_b33fd0fa-cd7b-4b10-ae5a-df64cabfe1f8";
+    std::array<uint8_t, 1> a{0};
+    ONNX_NAMESPACE::TensorProto tensor_proto;
+    tensor_proto.set_name(name);
+    tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
+    tensor_proto.set_raw_data(a.data(), sizeof(int8_t));
+
+    return tensor_proto;
+  };
+
+  // We assume this function won't fail
+  static const ONNX_NAMESPACE::TensorProto init_optional_zero_point_uint8() {
+    // guid as arbitrary name to provide a unique value
+    const char* const name = "init_optional_zero_point_uint8_b33f88f7-c464-43e3-8692-97ac832bb14a";
+    std::array<uint8_t, 1> a{0};
+    ONNX_NAMESPACE::TensorProto tensor_proto;
+    tensor_proto.set_name(name);
+    tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+    tensor_proto.set_raw_data(a.data(), sizeof(uint8_t));
+
+    return tensor_proto;
+  };
+  static ONNX_NAMESPACE::TensorProto GetOptionalZeroPointInt8() {
+    static ONNX_NAMESPACE::TensorProto proto = init_optional_zero_point_int8();
+    return proto;
+  }
+  static ONNX_NAMESPACE::TensorProto GetOptionalZeroPointUint8() {
+    static ONNX_NAMESPACE::TensorProto proto = init_optional_zero_point_uint8();
+    return proto;
+  }
 };
 
 void SetOptionalZeroPoint::UpdateNodes(Graph& graph, const NodesToOptimize& selected_nodes) {
@@ -126,8 +157,8 @@ void SetOptionalZeroPoint::UpdateNodes(Graph& graph, const NodesToOptimize& sele
     }
 
     const ONNX_NAMESPACE::TensorProto& zp_tensor_proto = is_default_zp_signed
-                                                             ? optional_zero_point_int8_
-                                                             : optional_zero_point_uint8_;
+                                                             ? GetOptionalZeroPointInt8()
+                                                             : GetOptionalZeroPointUint8();
 
     const ONNX_NAMESPACE::TensorProto* dummy_zp_tensor_proto;
     if (!graph.GetInitializedTensor(zp_tensor_proto.name(), dummy_zp_tensor_proto)) {
@@ -142,26 +173,6 @@ void SetOptionalZeroPoint::UpdateNodes(Graph& graph, const NodesToOptimize& sele
     }
   }
 }
-
-const ONNX_NAMESPACE::TensorProto SetOptionalZeroPoint::optional_zero_point_int8_ = []() {
-  const char* const name = "b33fd0fa-cd7b-4b10-ae5a-df64cabfe1f8";  // guid as arbitrary name to provide a unique value
-  ONNX_NAMESPACE::TensorProto tensor_proto;
-  tensor_proto.set_name(name);
-  tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
-  tensor_proto.set_raw_data(std::vector<int8_t>{0}.data(), sizeof(int8_t));
-
-  return tensor_proto;
-}();
-
-const ONNX_NAMESPACE::TensorProto SetOptionalZeroPoint::optional_zero_point_uint8_ = []() {
-  const char* const name = "b33f88f7-c464-43e3-8692-97ac832bb14a";  // guid as arbitrary name to provide a unique value
-  ONNX_NAMESPACE::TensorProto tensor_proto;
-  tensor_proto.set_name(name);
-  tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
-  tensor_proto.set_raw_data(std::vector<uint8_t>{0}.data(), sizeof(uint8_t));
-
-  return tensor_proto;
-}();
 
 }  // namespace
 
