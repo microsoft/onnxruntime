@@ -1497,20 +1497,32 @@ static bool HandleTranspose(HandlerArgs& args) {
 constexpr HandlerInfo transpose_handler = {&FirstInput, &HandleTranspose, /*transposes_outputs*/ false};
 
 static bool HandleReshape(HandlerArgs& args) {
-  // We check for a very specific case where Tranpose is replaced by Reshape 
+  // We check for a very specific case where Transpose is replaced by Reshape 
   // for performance. For example Transpose(input {1, 1, 1, X}, perm{0, 3, 2, 1}) can be replaced by Reshape
   // Reshape(input{1, 1, 1, X}, shape{1, X, 1, 1})
-  // During tranpose optimization we need to detect such reshape nodes so that we can remove them if possible.
-
-  // Get shape input of reshape node
-  auto shape_data = args.ctx.graph.GetConstant(args.node.Inputs()[1]);
-  if (shape_data == nullptr || shape_data->Data().size() == 0) {
-    return false;
-  }
+  // During transpose optimization we need to detect such reshape nodes so that we can remove them if possible.
 
   // Get transpose input shape and validate rank
   auto transpose_input_shape = args.ctx.graph.GetValueInfo(args.transpose.Inputs()[0])->Shape();
   if (!transpose_input_shape.has_value() || transpose_input_shape->size() != 4) {
+    return false;
+  }
+
+  // Check only 1 dim is not equal to 1. This is to validate that tranpose and reshape are truly canceling nodes 
+  // and can be therefore removed.
+  int num_dims_not_equal_to_1 = 0;
+  for (int i = 0; i < 4; i++) {
+    if (transpose_input_shape->data()[i] != 1) {
+      num_dims_not_equal_to_1++;
+      if (num_dims_not_equal_to_1 > 1) {
+        return false;
+      }
+    }
+  }
+
+  // Get shape input of reshape node
+  auto shape_data = args.ctx.graph.GetConstant(args.node.Inputs()[1]);
+  if (shape_data == nullptr || shape_data->Data().size() == 0) {
     return false;
   }
 
