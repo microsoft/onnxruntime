@@ -75,7 +75,7 @@ hand_implemented = {
   'aten::softshrink': Shrink('self', bias='lambd', lambd='lambd'), #yes, bias is set to 'lambd'
   'aten::hardshrink': Shrink('self', bias=0, lambd='lambd'),
   'aten::gelu' : Gelu('self'),
-  'aten::gelu_backward' : GeluGrad('grad', 'self'),
+  'aten::gelu_backward' : GeluGrad('grad_output', 'self'),
   'aten::max' : ReduceMax('self', keepdims=1),
   'aten::min' : ReduceMin('self', keepdims=1),
   'aten::slice.Tensor' : Slice('self', 'start', 'end', 'dim', 'step'),

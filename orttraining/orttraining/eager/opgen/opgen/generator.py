@@ -285,6 +285,9 @@ class ORTGen:
           if i == 0:
             writer.push_indent()
           cpp_param = cpp_func.get_parameter(op_input)
+          if cpp_param is None:
+            import pdb
+            pdb.set_trace()
           supported_types = ','.join([type for type in onnx_op.input_types[idx]])
           writer.write('!IsSupportedType(%s, {%s})' % (cpp_param.identifier.value, supported_types))
           i += 1
