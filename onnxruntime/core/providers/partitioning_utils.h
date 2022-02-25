@@ -8,6 +8,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "core/common/inlined_containers.h"
 #include "core/graph/basic_types.h"
 
 namespace onnxruntime {
@@ -120,7 +121,7 @@ Stop op nodes and nodes downstream from them will be excluded.
 
 @return The set of excluded nodes.
 */
-std::unordered_set<const Node*> CreateExcludedNodeSet(const GraphViewer& graph_viewer,
-                                                      const std::unordered_set<std::string>& stop_ops);
+InlinedHashSet<const Node*> CreateExcludedNodeSet(const GraphViewer& graph_viewer,
+                                                  const std::unordered_set<std::string>& stop_ops);
 }  // namespace utils
 }  // namespace onnxruntime

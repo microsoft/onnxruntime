@@ -69,7 +69,7 @@ python3 -m pip install $whl_path
 Package for TVM EP:
 ```bash
 cd <path_to_onnx_runtime>
-python3 -m pip3 uninstall onnxruntime onnxruntime-tvm -y
+python3 -m pip uninstall onnxruntime onnxruntime-tvm -y
 whl_path=$(find ./build/<OS_NAME>/Release/dist -name "*.whl")
 python3 -m pip install $whl_path
 ```
@@ -126,7 +126,7 @@ tvm_session = onnxruntime.InferenceSession(model_path, sess_options=so, provider
 ```
 
 ## Samples
-- [Sample notebook for ResNet50 inference with TVM EP](https://github.com/octoml/onnxruntime/blob/vc/rename/docs/python/inference/notebooks/onnxruntime-tvm-tutorial.ipynb)
+- [Sample notebook for ResNet50 inference with TVM EP](https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/notebooks/onnxruntime-tvm-tutorial.ipynb)
 
 ## Known issues
 - At this moment, the TVM EP has only been verified on UNIX/Linux systems.
