@@ -23,6 +23,8 @@ inline DLDataType GetDataType(ONNXTensorElementDataType type) {
     return {kDLInt, 64, 1};
   } else if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
     return {kDLInt, 32, 1};
+  } else if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL) {
+    return {kDLUInt, 1, 1};
   } else {
     ORT_NOT_IMPLEMENTED("Unsupported data type");
   }

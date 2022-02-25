@@ -18,7 +18,7 @@ namespace {
 // As we can't easily remove a NodeArg from the Node::OutputDefs for the node being removed, we do not check if the
 // node provides graph outputs here. The optimizer must correctly handle nodes producing graph outputs
 // and not attempt to delete one of those nodes unless it has created a new source for the graph output.
-bool CanSafelyRemoveNode(const Node& node_to_remove, const std::unordered_set<const Node*>& removal_set) {
+bool CanSafelyRemoveNode(const Node& node_to_remove, const InlinedHashSet<const Node*>& removal_set) {
   bool safe = true;
   for (auto iter = node_to_remove.OutputEdgesBegin(), end = node_to_remove.OutputEdgesEnd(); iter != end; ++iter) {
     if (removal_set.find(&iter->GetNode()) == removal_set.cend()) {
@@ -31,8 +31,10 @@ bool CanSafelyRemoveNode(const Node& node_to_remove, const std::unordered_set<co
 }
 
 // remove nodes if it is 'safe' to do so according to the checks in CanSafelyRemoveNode.
-void SafelyRemoveNodes(Graph& graph, const std::vector<Node*>& nodes_to_remove, const Node* ignore_target) {
-  std::unordered_set<const Node*> removal_set(nodes_to_remove.cbegin(), nodes_to_remove.cend());
+void SafelyRemoveNodes(Graph& graph, gsl::span<Node* const> nodes_to_remove, const Node* ignore_target) {
+  InlinedHashSet<const Node*> removal_set;
+  removal_set.reserve(nodes_to_remove.size());
+  removal_set.insert(nodes_to_remove.cbegin(), nodes_to_remove.cend());
 
   for (Node* node : nodes_to_remove) {
     if (node && node != ignore_target && CanSafelyRemoveNode(*node, removal_set)) {

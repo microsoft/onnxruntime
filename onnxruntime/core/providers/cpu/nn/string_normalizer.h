@@ -3,11 +3,11 @@
 
 #pragma once
 
+#include "core/common/inlined_containers.h"
 #include "core/framework/op_kernel.h"
 
 #include <locale>
 #include <string>
-#include <unordered_set>
 
 namespace onnxruntime {
 
@@ -30,8 +30,8 @@ class StringNormalizer : public OpKernel {
   CaseAction compare_caseaction_;  // used for case-insensitive compare
   std::string locale_name_;
   // Either if these are populated but not both
-  std::unordered_set<std::string> stopwords_;
-  std::unordered_set<std::wstring> wstopwords_;
+  InlinedHashSet<std::string> stopwords_;
+  InlinedHashSet<std::wstring> wstopwords_;
 };
 
 }  // namespace onnxruntime
