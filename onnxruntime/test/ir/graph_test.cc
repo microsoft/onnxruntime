@@ -696,7 +696,8 @@ TEST_F(GraphTest, GraphConstruction_VerifyNodeAndOpMatch) {
   graph.AddNode("node_1", "OpNotExist", "node 1", inputs, outputs);
   auto status = graph.Resolve();
   EXPECT_FALSE(status.IsOK());
-  EXPECT_EQ(0u, status.ErrorMessage().find_first_of("This is an invalid model. No Schema registered for OpNotExist"));
+  size_t pos = status.ErrorMessage().find("This is an invalid model. No Schema registered for OpNotExist");
+  EXPECT_NE(std::string::npos, pos);
 }
 
 TEST_F(GraphTest, GraphConstruction_CheckIsAcyclic) {
