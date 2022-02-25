@@ -31,7 +31,7 @@ namespace onnxruntime {
     */
 class QDQFinalCleanupTransformer : public GraphTransformer {
  public:
-  QDQFinalCleanupTransformer(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  QDQFinalCleanupTransformer(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("QDQFinalCleanupTransformer", compatible_execution_providers) {}
 
  private:
