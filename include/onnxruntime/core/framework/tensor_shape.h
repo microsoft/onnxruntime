@@ -10,7 +10,23 @@
 #include <gsl/gsl>
 #include "onnxruntime_config.h"
 
-#include "core/common/inlined_containers.h"
+// I have to bring it here because including inline_containers.h
+// causes CUDA 10.2 compilers to fail
+#ifdef _MSC_VER
+#pragma warning(push)
+// C4127: conditional expression is constant
+#pragma warning(disable : 4127)
+// C4324: structure was padded due to alignment specifier
+// Usage of alignas causes some internal padding in places.
+#pragma warning(disable : 4324)
+#endif
+
+#include <absl/container/inlined_vector.h>
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+
 
 namespace onnxruntime {
 #ifdef __GNUC__
@@ -23,7 +39,7 @@ namespace onnxruntime {
 constexpr size_t kTensorShapeSmallBufferElementsSize = 5;
 
 // Use this type to build a shape and then create TensorShape.
-using TensorShapeVector = InlinedVector<int64_t, kTensorShapeSmallBufferElementsSize>;
+using TensorShapeVector = absl::InlinedVector<int64_t, kTensorShapeSmallBufferElementsSize>;
 
 inline TensorShapeVector ToShapeVector(const gsl::span<const int64_t>& span) {
   TensorShapeVector out;

@@ -18,7 +18,7 @@
 #include <stddef.h>
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
-#include "core/common/inlined_containers.h"
+#include "core/common/inlined_containers_fwd.h"
 #include "core/common/type_list.h"
 #include "core/common/logging/severity.h"
 #include "core/framework/allocator.h"

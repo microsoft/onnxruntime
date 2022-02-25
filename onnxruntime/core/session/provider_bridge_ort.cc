@@ -3,6 +3,8 @@
 
 // This is the Onnxruntime side of the bridge to allow providers to be built as a DLL
 // It implements onnxruntime::ProviderHost
+
+#include "core/common/inlined_containers.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/data_types.h"
