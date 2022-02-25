@@ -124,7 +124,7 @@
       <DependentUpon>App.xaml</DependentUpon>
     </Compile>
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="../Microsoft.AI.MachineLearning.Tests.DotNet5_0/SessionAPITests.cs" />
+    <Compile Include="..\Microsoft.AI.MachineLearning.Tests.DotNet5_0\SessionAPITests.cs" />
   </ItemGroup>
   <ItemGroup>
     <AppxManifest Include="Package.appxmanifest">
