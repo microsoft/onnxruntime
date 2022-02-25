@@ -527,7 +527,8 @@ def parse_arguments():
         help="Build ONNXRuntime micro-benchmarks.")
 
     # options to reduce binary size
-    parser.add_argument("--minimal_build", default=None, nargs='*', type=str.lower,
+    parser.add_argument("--minimal_build", default=None, nargs='?', type=str.lower,
+                        choices=["extended", "disabled"],
                         help="Create a build that only supports ORT format models. "
                         "See https://onnxruntime.ai/docs/tutorials/mobile/ for more information. "
                         "RTTI is automatically disabled in a minimal build. "
@@ -592,7 +593,10 @@ def parse_arguments():
         "--enable_cuda_profiling", action='store_true', help="enable cuda kernel profiling, \
         cupti library must be added to PATH beforehand.")
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.minimal_build == "disabled":
+        args.minimal_build = None
+    return args
 
 
 def is_reduced_ops_build(args):
@@ -796,7 +800,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_DISABLE_EXCEPTIONS=" + ("ON" if args.disable_exceptions else "OFF"),
         # Need to use 'is not None' with minimal_build check as it could be an empty list.
         "-Donnxruntime_MINIMAL_BUILD=" + ("ON" if args.minimal_build is not None else "OFF"),
-        "-Donnxruntime_EXTENDED_MINIMAL_BUILD=" + ("ON" if args.minimal_build and 'extended' in args.minimal_build
+        "-Donnxruntime_EXTENDED_MINIMAL_BUILD=" + ("ON" if args.minimal_build and 'extended' == args.minimal_build
                                                    else "OFF"),
         "-Donnxruntime_MINIMAL_BUILD_CUSTOM_OPS=" + ("ON" if (args.minimal_build is not None and ('custom_ops' in
                                                      args.minimal_build or args.use_extensions))
