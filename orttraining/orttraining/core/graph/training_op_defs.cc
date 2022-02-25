@@ -1732,15 +1732,15 @@ Example 4:
             FunctionBuilder builder(functionProto);
             builder
                 .AddOpset("", 16)
-                .Const("C0", 0.0f, elem_type)
-                .Const("C1", 1.0f, elem_type);
+                .Const("C0", ToTensor(0.0f, elem_type))
+                .Const("C1", ToTensor(1.0f, elem_type));
 
             if (ctx.hasInput(2)) {
               // ratio specified.
               builder.Add("ratio_elem_type = Cast(ratio)", "to", int64_t(elem_type));
             } else {
               // ratio not specified. Use a value of 0.5
-              builder.Const("ratio_elem_type", 0.5f, elem_type);
+              builder.Const("ratio_elem_type", ToTensor(0.5f, elem_type));
             }
             builder.Add(R"(
                   scale = Sub (C1, ratio_elem_type)

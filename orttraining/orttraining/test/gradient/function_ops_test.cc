@@ -160,7 +160,6 @@ void CheckDropoutGradWithoutRatio(bool inline_call) {
 }
 
 TEST_F(FunExpansionTest, DropoutGrad_WithoutRatio2) {
-  // bfloat16 not yet supported by ONNX op Where
   CheckDropoutGradWithoutRatio<BFloat16>(true);
   CheckDropoutGradWithoutRatio<MLFloat16>(true);
 }
@@ -180,7 +179,6 @@ void CheckDropoutGradWithRatio(bool inline_call) {
 }
 
 TEST_F(FunExpansionTest, DropoutGrad_WithRatio2) {
-  // bfloat16 not yet supported by ONNX op Where
   CheckDropoutGradWithRatio<BFloat16>(true);
   CheckDropoutGradWithRatio<MLFloat16>(true);
 }
