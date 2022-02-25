@@ -120,7 +120,7 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
 
   std::vector<const Node*> supported_group{};
   // the partition node group's border is the aggregate of its nodes' output nodes
-  std::unordered_set<const Node*> supported_group_border{};
+  InlinedHashSet<const Node*> supported_group_border{};
 
   auto close_group = [&]() {
     if (!supported_group.empty()) {
@@ -205,9 +205,9 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
 }
 }  // namespace
 
-std::unordered_set<const Node*> CreateExcludedNodeSet(const GraphViewer& graph_viewer,
-                                                      const std::unordered_set<std::string>& stop_ops) {
-  std::unordered_set<const Node*> excluded_nodes;
+InlinedHashSet<const Node*> CreateExcludedNodeSet(const GraphViewer& graph_viewer,
+                                                  const std::unordered_set<std::string>& stop_ops) {
+  InlinedHashSet<const Node*> excluded_nodes;
 
   for (const auto& node : graph_viewer.Nodes()) {
     if (!Contains(excluded_nodes, &node) && Contains(stop_ops, node.OpType())) {

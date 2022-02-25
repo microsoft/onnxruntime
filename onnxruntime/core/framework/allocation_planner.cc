@@ -7,11 +7,11 @@
 #include <algorithm>
 #include <sstream>
 #include "core/common/exceptions.h"
+#include "core/common/inlined_containers.h"
 #include "core/platform/env.h"
 #include "core/framework/data_types.h"
 #include "core/framework/kernel_def_builder.h"
 #include "core/framework/mldata_type_utils.h"
-#include "core/framework/inlined_containers.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"

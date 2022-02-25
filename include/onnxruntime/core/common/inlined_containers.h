@@ -29,12 +29,15 @@
 #include <absl/container/flat_hash_set.h>
 #include <absl/container/flat_hash_map.h>
 
+#include <absl/container/node_hash_set.h>
+#include <absl/container/node_hash_map.h>
+
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
 
 namespace onnxruntime {
-/// Inspired by LLVM SmallVector with ONNX Runtime adjuments for abseil.
+/// Inspired by LLVM SmallVector with ONNX Runtime adjustments for abseil.
 ///
 /// Helper class for calculating the default number of inline elements for
 /// `InlinedVector<T>`.
@@ -44,7 +47,7 @@ namespace onnxruntime {
 //     int32_t -> 11
 //     int64_t -> 6
 //     std::string 40 -> 1
-template <typename T>
+template<typename T>
 struct CalculateInlinedVectorDefaultInlinedElements {
   // Parameter controlling the default number of inlined elements
   // for `InlinedVector<T>`.
@@ -103,8 +106,9 @@ using InlinedVector = absl::InlinedVector<T, N, Allocator>;
 // hash based containers. They store their values in the
 // buckets array that is allocated in one shot. It eliminates
 // per-node new/delete calls. Always call reserve() on any hash set/map
-// when the number of items is known in advance
-template <typename T,
+// when the number of items is known in advance.
+// This does not allocate a dummy 'end' node on default construction.
+template <typename T, 
           typename Hash = absl::container_internal::hash_default_hash<T>,
           typename Eq = absl::container_internal::hash_default_eq<T>,
           typename Allocator = std::allocator<T>>
@@ -115,5 +119,23 @@ template <typename K, typename V,
           typename Eq = absl::container_internal::hash_default_eq<K>,
           typename Allocator = std::allocator<std::pair<const K, V>>>
 using InlinedHashMap = absl::flat_hash_map<K, V, Hash, Eq, Allocator>;
+
+
+
+// Use this hash set/map where pointer stability is required, otherwise use
+// InlinedHashSet and InlinedHashMap
+// This does not allocate a dummy 'end' node on default construction.
+// Use reserve() when the number of elements is known.
+template <class T, 
+          class Hash = absl::container_internal::hash_default_hash<T>,
+          class Eq = absl::container_internal::hash_default_eq<T>,
+          class Alloc = std::allocator<T>>
+using NodeHashSet = absl::node_hash_set<T, Hash, Eq, Alloc>;
+
+template <class Key, class Value,
+          class Hash = absl::container_internal::hash_default_hash<Key>,
+          class Eq = absl::container_internal::hash_default_eq<Key>,
+          class Alloc = std::allocator<std::pair<const Key, Value>>>
+using NodeHashMap = absl::node_hash_map<Key, Value, Hash, Eq, Alloc>;
 
 }  // namespace onnxruntime
