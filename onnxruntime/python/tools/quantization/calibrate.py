@@ -283,7 +283,7 @@ class HistogramCalibrater(CalibraterBase):
                  op_types_to_calibrate=[],
                  augmented_model_path='augmented_model.onnx',
                  method='percentile',
-                 symmetric=True,
+                 symmetric=False,
                  num_bins=128,
                  num_quantized_bins=2048,
                  percentile=99.999):
@@ -406,7 +406,7 @@ class PercentileCalibrater(HistogramCalibrater):
                  op_types_to_calibrate=[],
                  augmented_model_path='augmented_model.onnx',
                  method='percentile',
-                 symmetric=True,
+                 symmetric=False,
                  num_bins=2048,
                  percentile=99.999):
         '''
@@ -579,11 +579,12 @@ class HistogramCollector(CalibrationDataCollector):
             hist_edges = histogram[1]
             total = hist.sum()
             cdf = np.cumsum(hist/total)
-            idx_right = np.searchsorted(cdf, percentile/100)
             if self.symmetric:
+                idx_right = np.searchsorted(cdf, percentile/100)
                 thresholds_dict[tensor] = (-float(hist_edges[idx_right]), float(hist_edges[idx_right]))
             else:
-                idx_left = np.searchsorted(cdf, (1.0 - percentile/100))
+                idx_right = np.searchsorted(cdf, percentile/200)
+                idx_left = np.searchsorted(cdf, (1.0 - percentile/200))
                 thresholds_dict[tensor] = (float(hist_edges[idx_left]), float(hist_edges[idx_right]))
 
             # Plot histogram for debug only
