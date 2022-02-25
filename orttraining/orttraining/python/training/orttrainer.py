@@ -121,8 +121,6 @@ class ORTTrainer(object):
     """
 
     def __init__(self, model, model_desc, optim_config,
-                 optimization_step=0,
-                 step=0,
                  loss_fn=None,
                  options=None):
         assert model is not None, "'model' is required and must be either a 'torch.nn.Module' or ONNX model"
@@ -205,7 +203,9 @@ class ORTTrainer(object):
         # TODO: Remove when experimental checkpoint functions are removed.
         self._state_dict = {}
 
-        self._train_step_info = TrainStepInfo(self.optim_config, optimization_step=optimization_step, step=step)
+        self._train_step_info = TrainStepInfo(self.optim_config,
+                                              optimization_step=self.options.train_step_info_options.optimization_step,
+                                              step=self.options.train_step_info_options.step)
         self._training_session = None
         self._load_state_dict = None
         self._init_session(provider_options=self.options._validated_opts['provider_options'],
