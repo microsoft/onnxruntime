@@ -4,16 +4,18 @@
 #pragma once
 #include <string>
 #include "core/framework/tensorprotoutils.h"
-#include "beam_search_shared.h"
+#include "core/framework/ort_value.h"
+#include "contrib_ops/cpu/transformers/beam_search_shared.h"
 
 namespace onnxruntime {
 namespace contrib {
+namespace cuda {
 namespace transformers {
 
-class CpuTensorConsoleDumper : public IConsoleDumper {
+class CudaTensorConsoleDumper : public onnxruntime::contrib::transformers::IConsoleDumper {
  public:
-  CpuTensorConsoleDumper() = default;
-  virtual ~CpuTensorConsoleDumper() {}
+  CudaTensorConsoleDumper() = default;
+  virtual ~CudaTensorConsoleDumper() {}
   void Print(const char* name, const float* tensor, int dim0, int dim1) const override;
   void Print(const char* name, const MLFloat16* tensor, int dim0, int dim1) const override;
   void Print(const char* name, const int64_t* tensor, int dim0, int dim1) const override;
@@ -29,5 +31,6 @@ class CpuTensorConsoleDumper : public IConsoleDumper {
 };
 
 }  // namespace transformers
+}  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
