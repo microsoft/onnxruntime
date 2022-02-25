@@ -27,7 +27,7 @@ Status RuleBasedGraphTransformer::Register(std::unique_ptr<RewriteRule> rule) {
 }
 
 Status RuleBasedGraphTransformer::ApplyRulesOnNode(Graph& graph, Node& node,
-                                                   const std::vector<std::reference_wrapper<const RewriteRule>>& rules,
+                                                   gsl::span<const std::reference_wrapper<const RewriteRule>> rules,
                                                    RuleEffect& rule_effect, const logging::Logger& logger) const {
   for (const RewriteRule& rule : rules) {
     ORT_RETURN_IF_ERROR(rule.CheckConditionAndApply(graph, node, rule_effect, logger));
@@ -61,7 +61,7 @@ Status RuleBasedGraphTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
     // First apply rewrite rules that are registered for the op type of the current node; then apply rules that are
     // registered to be applied regardless of the op type; then recursively apply rules to subgraphs (if any).
     // Stop further rule application for the current node, if the node gets removed by a rule.
-    const std::vector<std::reference_wrapper<const RewriteRule>>* rules = nullptr;
+    const InlinedVector<std::reference_wrapper<const RewriteRule>>* rules = nullptr;
 
     rules = GetRewriteRulesForOpType(node->OpType());
     if (rules) {

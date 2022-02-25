@@ -4,9 +4,9 @@
 #include <typeinfo>
 #include <cmath>
 
+#include "core/common/inlined_containers.h"
 #include "core/framework/data_types.h"
 #include "core/framework/data_types_internal.h"
-#include "core/framework/inlined_containers.h"
 #include "core/graph/onnx_protobuf.h"
 #include "gtest/gtest.h"
 

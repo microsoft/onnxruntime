@@ -6,6 +6,7 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph.h"
+#include "core/common/inlined_containers.h"
 #endif  // !#if !defined(ORT_MINIMAL_BUILD)
 
 namespace onnxruntime {
@@ -51,7 +52,7 @@ bool IsAttributeWithExpectedValues(const Node& node, const std::string& attr_nam
 /** Get values of an integer tensor from initializer, and append them to a vector.
 @remarks only support int32 and int64 tensor. This function does not clear vector before appending.
 */
-bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, std::vector<int64_t>& data, bool require_constant = true);
+bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, InlinedVector<int64_t>& data, bool require_constant = true);
 
 /** Check Shape of node input or output.
 @remarks when expected dim value > 0, the dim is expected to known and match the dim value.
