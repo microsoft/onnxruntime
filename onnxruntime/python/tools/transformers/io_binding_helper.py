@@ -6,16 +6,18 @@ from onnxruntime import InferenceSession
 
 logger = logging.getLogger(__name__)
 
+
 class TypeHelper:
+
     @staticmethod
-    def get_input_type(ort_session:InferenceSession, name:str) -> str:
+    def get_input_type(ort_session: InferenceSession, name: str) -> str:
         for i, input in enumerate(ort_session.get_inputs()):
             if input.name == name:
                 return input.type
         raise ValueError(f"input name {name} not found")
 
     @staticmethod
-    def get_output_type(ort_session, name:str) -> str:
+    def get_output_type(ort_session, name: str) -> str:
         for i, output in enumerate(ort_session.get_outputs()):
             if output.name == name:
                 return output.type
@@ -26,7 +28,7 @@ class TypeHelper:
     def ort_type_to_numpy_type(ort_type: str):
         ort_type_to_numpy_type_map = {
             "tensor(int64)": numpy.longlong,
-            "tensor(int32)": numpy.int32, #numpy.intc?
+            "tensor(int32)": numpy.int32,  #numpy.intc?
             "tensor(float)": numpy.float32,
             "tensor(float16)": numpy.float16,
         }
@@ -74,9 +76,8 @@ class TypeHelper:
 
         return torch_type_to_numpy_type_map[torch_type]
 
-
     @staticmethod
-    def get_io_numpy_type_map(ort_session:InferenceSession) -> Dict[str, numpy.dtype]:
+    def get_io_numpy_type_map(ort_session: InferenceSession) -> Dict[str, numpy.dtype]:
         """Create a mapping from input/output name to numpy data type"""
         name_to_numpy_type = {}
         for input in ort_session.get_inputs():
@@ -86,9 +87,11 @@ class TypeHelper:
             name_to_numpy_type[output.name] = TypeHelper.ort_type_to_numpy_type(output.type)
         return name_to_numpy_type
 
+
 class IOBindingHelper:
+
     @staticmethod
-    def get_output_buffers(ort_session:InferenceSession, output_shapes, device):
+    def get_output_buffers(ort_session: InferenceSession, output_shapes, device):
         """ Returns a dictionary of output name as key, and 1D tensor as value. The tensor has enough space for given shape.
         """
         output_buffers = {}
@@ -98,13 +101,12 @@ class IOBindingHelper:
             output_buffers[name] = torch.empty(numpy.prod(shape), dtype=torch_type, device=device)
         return output_buffers
 
-
     @staticmethod
     def prepare_io_binding(ort_session,
-                           input_ids:torch.Tensor,
-                           position_ids:torch.Tensor,
-                           attention_mask:torch.Tensor,
-                           past:List[torch.Tensor],
+                           input_ids: torch.Tensor,
+                           position_ids: torch.Tensor,
+                           attention_mask: torch.Tensor,
+                           past: List[torch.Tensor],
                            output_buffers,
                            output_shapes,
                            name_to_np_type=None):
@@ -118,7 +120,8 @@ class IOBindingHelper:
 
         # Bind inputs
         assert input_ids.is_contiguous()
-        io_binding.bind_input('input_ids', input_ids.device.type, 0, name_to_np_type['input_ids'], list(input_ids.size()), input_ids.data_ptr())
+        io_binding.bind_input('input_ids', input_ids.device.type, 0, name_to_np_type['input_ids'],
+                              list(input_ids.size()), input_ids.data_ptr())
 
         if past is not None:
             for i, past_i in enumerate(past):
@@ -130,7 +133,8 @@ class IOBindingHelper:
                     # Here we workaround and pass data pointer of input_ids. Actual data is not used for past so it does not matter.
                     data_ptr = input_ids.data_ptr()
 
-                io_binding.bind_input(f'past_{i}', past_i.device.type, 0, name_to_np_type[f'past_{i}'], list(past_i.size()), data_ptr)
+                io_binding.bind_input(f'past_{i}', past_i.device.type, 0, name_to_np_type[f'past_{i}'],
+                                      list(past_i.size()), data_ptr)
 
         if attention_mask is not None:
             assert attention_mask.is_contiguous()
@@ -147,11 +151,11 @@ class IOBindingHelper:
             output_name = output.name
             output_buffer = output_buffers[output_name]
             logger.debug(f"{output_name} device type={output_buffer.device.type} shape={list(output_buffer.size())}")
-            io_binding.bind_output(output_name, output_buffer.device.type, 0, name_to_np_type[output_name], output_shapes[output_name],
-                                   output_buffer.data_ptr())
+            io_binding.bind_output(output_name, output_buffer.device.type, 0, name_to_np_type[output_name],
+                                   output_shapes[output_name], output_buffer.data_ptr())
 
         return io_binding
-    
+
     @staticmethod
     def get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes, return_numpy=True):
         """ Copy results to cpu. Returns a list of numpy array.

@@ -113,10 +113,13 @@ def parse_arguments(argv=None):
 
     parser.add_argument('-e', '--use_external_data_format', required=False, action='store_true')
     parser.set_defaults(use_external_data_format=False)
-    
-    parser.add_argument('--use_int32_inputs', required=False, action='store_true', help='Use int32 instead of int64 for input_ids, position_ids and attention_mask.')
+
+    parser.add_argument('--use_int32_inputs',
+                        required=False,
+                        action='store_true',
+                        help='Use int32 instead of int64 for input_ids, position_ids and attention_mask.')
     parser.set_defaults(use_int32_inputs=False)
-    
+
     parser.add_argument('--beam_size', type=int, default=4, help='Beam size if greedy/top-p/top-k sampling is needed')
 
     search_option_group = parser.add_argument_group("configurable one step search options")
@@ -342,37 +345,39 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
 
     session = create_onnxruntime_session(output_path, args.use_gpu, enable_all_optimization=True, verbose=args.verbose)
     if args.model_class == "GPT2LMHeadModel" and session is not None:
-        parity_result = gpt2helper.test_parity(session,
-                                               model,
-                                               device,
-                                               is_io_float16,
-                                               rtol=args.tolerance,
-                                               atol=args.tolerance,
-                                               model_class=args.model_class,
-                                               has_position_ids=use_padding,
-                                               has_attention_mask=use_padding,
-                                               input_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-                                               position_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-                                               attention_mask_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-                                               test_cases_per_run=args.test_cases,
-                                               total_runs=args.test_runs,
-                                               verbose=args.verbose)
+        parity_result = gpt2helper.test_parity(
+            session,
+            model,
+            device,
+            is_io_float16,
+            rtol=args.tolerance,
+            atol=args.tolerance,
+            model_class=args.model_class,
+            has_position_ids=use_padding,
+            has_attention_mask=use_padding,
+            input_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
+            position_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
+            attention_mask_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
+            test_cases_per_run=args.test_cases,
+            total_runs=args.test_runs,
+            verbose=args.verbose)
 
-        latency = gpt2helper.test_performance(session,
-                                              model,
-                                              device,
-                                              is_io_float16,
-                                              total_runs=100,
-                                              use_io_binding=True,
-                                              model_class=args.model_class,
-                                              has_position_ids=use_padding,
-                                              has_attention_mask=use_padding,
-                                              input_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-                                              position_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-                                              attention_mask_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
-                                              batch_size=8,
-                                              sequence_length=1,
-                                              past_sequence_length=32)
+        latency = gpt2helper.test_performance(
+            session,
+            model,
+            device,
+            is_io_float16,
+            total_runs=100,
+            use_io_binding=True,
+            model_class=args.model_class,
+            has_position_ids=use_padding,
+            has_attention_mask=use_padding,
+            input_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
+            position_ids_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
+            attention_mask_dtype=torch.int32 if args.use_int32_inputs else torch.int64,
+            batch_size=8,
+            sequence_length=1,
+            past_sequence_length=32)
 
         if args.precision == Precision.FLOAT16:
             logger.info(f"fp16 conversion parameters:{fp16_params}")
@@ -453,9 +458,11 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                         position_ids = (attention_mask.long().cumsum(-1) - 1)
                         position_ids.masked_fill_(position_ids < 0, 0)
 
-                    inputs = {"input_ids": input_ids.to(torch.int32) if args.use_int32_inputs else input_ids,
-                              "position_ids": position_ids.to(torch.int32) if args.use_int32_inputs else position_ids,
-                              "attention_mask": attention_mask.to(torch.int32) if args.use_int32_inputs else attention_mask}
+                    inputs = {
+                        "input_ids": input_ids.to(torch.int32) if args.use_int32_inputs else input_ids,
+                        "position_ids": position_ids.to(torch.int32) if args.use_int32_inputs else position_ids,
+                        "attention_mask": attention_mask.to(torch.int32) if args.use_int32_inputs else attention_mask
+                    }
                 else:
                     inputs = {"input_ids": input_ids.to(torch.int32) if args.use_int32_inputs else input_ids}
 
