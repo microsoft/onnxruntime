@@ -8,9 +8,6 @@
 #include "core/common/cpuid_info.h"
 #include "core/framework/provider_options_utils.h"
 
-// TODO(vvchernov): transfer to ONNX runtime logger
-#include "tvm/runtime/logging.h"
-
 #include "tvm_ep_options.h"
 
 
@@ -111,7 +108,6 @@ std::string TvmEPOptions::whitespace_trimming(const std::string& str) {
 TvmEPOptions TvmEPOptions::FromProviderOptions(const ProviderOptions& pr_options) {
   TvmEPOptions options{};
 
-  std::string input_names, input_shapes;
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddAssignmentToReference(tvm::provider_option_names::kExecutor, options.executor)
@@ -122,22 +118,20 @@ TvmEPOptions TvmEPOptions::FromProviderOptions(const ProviderOptions& pr_options
           .AddAssignmentToReference(tvm::provider_option_names::kToNHWC, options.to_nhwc)
           .AddAssignmentToReference(tvm::provider_option_names::kTuningFilePath, options.tuning_file_path)
           .AddAssignmentToReference(tvm::provider_option_names::kTuningType, options.tuning_type)
-          .AddAssignmentToReference(tvm::provider_option_names::kInputNames, input_names)
-          .AddAssignmentToReference(tvm::provider_option_names::kInputShapes, input_shapes)
+          .AddAssignmentToReference(tvm::provider_option_names::kInputNames, options.input_names_str)
+          .AddAssignmentToReference(tvm::provider_option_names::kInputShapes, options.input_shapes_str)
           .Parse(pr_options));
 
-  options.optionsPostprocess(input_names, input_shapes);
+  options.optionsPostprocess();
 
   return options;
 }
 
-void TvmEPOptions::optionsPostprocess(const std::string& names, const std::string& shapes) {
-  setInputShapes(names, shapes);
+void TvmEPOptions::optionsPostprocess() {
+  setInputShapes();
   targetPostprocess();
   targetHostPostprocess();
   optLevelPostprocess();
-
-  printOptions(names, shapes);
 }
 
 bool TvmEPOptions::checkGPUTarget() const {
@@ -150,17 +144,18 @@ bool TvmEPOptions::checkGPUTarget() const {
   return check;
 }
 
-void TvmEPOptions::setInputShapes(const std::string& names, const std::string& shapes) {
-  if (names.empty() && shapes.empty())
+void TvmEPOptions::setInputShapes() {
+  if (input_names_str.empty() && input_shapes_str.empty())
     return;
-  ORT_ENFORCE(!names.empty() && !shapes.empty(), "Both provider options \"input_names\" and \"input_shapes\" should be empty or full");
+  ORT_ENFORCE(!input_names_str.empty() && !input_shapes_str.empty(),
+    "Both provider options \"input_names\" and \"input_shapes\" should be empty or full");
 
   std::vector<std::string> name_set;
-  std::string trimmed_names = TvmEPOptions::whitespace_trimming(names);
+  std::string trimmed_names = TvmEPOptions::whitespace_trimming(input_names_str);
   size_t inp_tensors_num = split(trimmed_names, name_set, ' ');
   ORT_ENFORCE(inp_tensors_num, "There is no any input tensor names!");
 
-  std::string trimmed_shapes = TvmEPOptions::whitespace_trimming(shapes);
+  std::string trimmed_shapes = TvmEPOptions::whitespace_trimming(input_shapes_str);
   size_t end_pos = trimmed_shapes.find_last_of(']');
   ORT_ENFORCE(end_pos != std::string::npos, "Invalid string for input shapes. Symbol ] is not found");
   ORT_ENFORCE(end_pos == (trimmed_shapes.size() - 1),
@@ -242,20 +237,19 @@ void TvmEPOptions::optLevelPostprocess() {
   }
 }
 
-void TvmEPOptions::printOptions(const std::string& names, const std::string& shapes) const {
-  // TODO(vvchernov): check by Alexey
-  // LOGS(*GetLogger(), INFO) << "TVM EP options:\n" <<
-  LOG(INFO) << "TVM EP options:\n" <<
-  "executor type: " << executor << "\n" <<
-  "target: " << target << "\n" <<
-  "target_host: " << target_host << "\n" <<
-  "opt level: " << opt_level << "\n" <<
-  "freeze weights: " << freeze_weights << "\n" <<
-  "tuning file path: " << tuning_file_path << "\n" <<
-  "tuning type: " << tuning_type << "\n" <<
-  "convert layout to NHWC: " << to_nhwc << "\n" <<
-  "input tensor names: " << names << "\n" <<
-  "input tensor shapes: " << shapes;
+std::ostream& operator<<(std::ostream& out, const TvmEPOptions& options) {
+  out << "TVM EP options:\n" <<
+  "executor type: " << options.executor << "\n" <<
+  "target: " << options.target << "\n" <<
+  "target_host: " << options.target_host << "\n" <<
+  "opt level: " << options.opt_level << "\n" <<
+  "freeze weights: " << options.freeze_weights << "\n" <<
+  "tuning file path: " << options.tuning_file_path << "\n" <<
+  "tuning type: " << options.tuning_type << "\n" <<
+  "convert layout to NHWC: " << options.to_nhwc << "\n" <<
+  "input tensor names: " << options.input_names_str << "\n" <<
+  "input tensor shapes: " << options.input_shapes_str;
+  return out;
 }
 
 }  // namespace onnxruntime

@@ -102,6 +102,7 @@ TvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
 
 common::Status TvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
                                              std::vector<NodeComputeInfo>& node_compute_funcs) {
+  printOptions();
   for (auto* fused_node : nodes) {
     auto func_body = fused_node->GetFunctionBody();
     if (!func_body)
@@ -174,6 +175,10 @@ int TvmExecutionProvider::CreateStateFunc(ComputeContext* context, FunctionState
   // TODO(vvchernov): Who and when release state?
   *state = state_ptr;
   return 0;
+}
+
+void TvmExecutionProvider::printOptions() {
+  LOGS(*GetLogger(), INFO) << options_;
 }
 
 }  // namespace onnxruntime

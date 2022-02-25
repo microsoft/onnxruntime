@@ -46,6 +46,7 @@ class TvmExecutionProvider : public IExecutionProvider {
 
  private:
   int CreateStateFunc(ComputeContext*, FunctionState*);
+  void printOptions();
  private:
   TvmEPOptions options_;
   Compilers compilers_;
