@@ -30,6 +30,7 @@
 #include "contrib_ops/cpu/bert/bias_gelu_helper.h"
 #include "contrib_ops/cpu/bert/embed_layer_norm_helper.h"
 #include "contrib_ops/cpu/bert/longformer_attention_base.h"
+#include "contrib_ops/cpu/transformers/beam_search.h"
 #endif
 
 #ifdef ENABLE_TRAINING
@@ -545,6 +546,11 @@ Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, 
   return g_host_cpu.AttentionBase__GetPresent(this, context, past, batch_size, head_size, sequence_length, past_sequence_length);
 }
 
+namespace transformers {
+void BeamSearch::Init(const OpKernelInfo& info) { g_host_cpu.BeamSearch__Init(this, info); }
+Status BeamSearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.BeamSearch__Compute(this, ctx); }
+Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) { return g_host_cpu.BeamSearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state); }
+}  // namespace transformers
 }  // namespace contrib
 #endif
 
