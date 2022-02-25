@@ -11,6 +11,7 @@
 namespace onnxruntime {
 class Graph;
 class NodeArg;
+class GraphViewer;
 
 namespace optimizer_utils {
 
@@ -106,6 +107,7 @@ bool IsOperationDeterministic(const std::string& domain, const std::string& op);
 @returns false if mutable and cannot be used.
 */
 bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, float& max);
+bool GetClipConstantMinMax(const GraphViewer& graph, const Node& node, float& min, float& max);
 
 #endif  // !#if !defined(ORT_MINIMAL_BUILD)
 

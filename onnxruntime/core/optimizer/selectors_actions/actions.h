@@ -99,12 +99,15 @@ struct MergeIntoTarget : public Action {
   RemoveNodes node_remover_{true};  // preserve target node when removing selected_nodes
 };
 
-// replace the selected_nodes with a new node. the inputs and outputs values for the replaced nodes should be
-// moved to the new node using value_moves. all nodes in selected_nodes will be removed.
+// replace the selected_nodes with a new node. all nodes in selected_nodes will be removed.
 struct ReplaceWithNew : public Action {
   ReplaceWithNew(const std::string& domain,
-                 const std::string& op_name,
-                 std::vector<NodeAndMoveInfo>&& value_moves);
+                 const std::string& op_type,
+                 std::vector<NodeAndMoveInfo>&& value_moves)
+      : domain_{domain},
+        op_{op_type},
+        value_moves_{std::move(value_moves)} {
+  }
 
   Status Run(Graph& graph, const NodesToOptimize& selected_nodes) const override;
 
@@ -114,13 +117,31 @@ struct ReplaceWithNew : public Action {
                     SavedState& saved_state, bool& graph_modified) const override;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
- private:
-  // support usage where operator name is determined at runtime from the selected nodes
-  virtual std::string OpType(const NodesToOptimize&) const { return op_; }
+ protected:
+  // contains runtime state that may be used when overriding virtual methods below
+  struct RuntimeState {
+    const Graph& graph;
+    const NodesToOptimize& selected_nodes;
+  };
 
+  // replacement node Op type
+  virtual std::string OpType(const RuntimeState&) const { return op_; }
+
+  // replacement node domain
+  virtual std::string Domain(const RuntimeState&) const { return domain_; }
+
+  // replacement node attributes
+  virtual NodeAttributes Attributes(const RuntimeState& state) const {
+    return state.selected_nodes.Target().GetAttributes();
+  }
+
+  // specifies how the inputs and outputs for the replaced nodes are moved to the new node
+  virtual std::vector<NodeAndMoveInfo> ValueMoves(const RuntimeState&) const { return value_moves_; }
+
+ private:
   const std::string domain_;
   const std::string op_;
-  std::vector<NodeAndMoveInfo> value_moves_;
+  const std::vector<NodeAndMoveInfo> value_moves_;
   RemoveNodes node_remover_;
 };
 

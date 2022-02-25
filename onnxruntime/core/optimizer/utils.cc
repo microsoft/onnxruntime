@@ -286,12 +286,16 @@ bool IsOperationDeterministic(const std::string& domain, const std::string& op) 
   return false;
 }
 
-bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, float& max) {
+using GetConstantInitializerFn = std::function<const ONNX_NAMESPACE::TensorProto*(const std::string&)>;
+
+static bool GetClipConstantMinMaxImpl(const GetConstantInitializerFn& get_constant_initializer_fn,
+                                      const Path& model_path,
+                                      const Node& node, float& min, float& max) {
   min = std::numeric_limits<float>::lowest();
   max = std::numeric_limits<float>::max();
 
   // Clip opset 1 and 6 has min and max as attributes. they're inputs from opset 11 on.
-  bool min_max_are_attributes = graph_utils::IsSupportedOptypeVersionAndDomain(node, "Clip", {1, 6});
+  bool min_max_are_attributes = node.SinceVersion() == 1 || node.SinceVersion() == 6;
   bool min_max_are_constant_values = true;
 
   if (min_max_are_attributes) {
@@ -301,7 +305,8 @@ bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, flo
     // update min/max if provided via a constant initializer
     // return true if value is default or coming from a constant initializer and update 'value'
     // return false if value is mutable
-    auto update_if_constant_value = [&graph](const Node& node, size_t input_idx, float& value) {
+    auto update_if_constant_value =
+        [&get_constant_initializer_fn, &model_path](const Node& node, size_t input_idx, float& value) {
       const auto& input_defs = node.InputDefs();
       const NodeArg* input = (input_defs.size() > input_idx) ? input_defs[input_idx] : nullptr;
 
@@ -311,9 +316,9 @@ bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, flo
       }
 
       bool is_constant = true;
-      const ONNX_NAMESPACE::TensorProto* initializer = graph_utils::GetConstantInitializer(graph, input->Name());
+      const ONNX_NAMESPACE::TensorProto* initializer = get_constant_initializer_fn(input->Name());
       if (initializer) {
-        Initializer i(*initializer, graph.ModelPath());
+        Initializer i(*initializer, model_path);
         switch (initializer->data_type()) {
           case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
             value = *i.data<float>();
@@ -342,6 +347,20 @@ bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, flo
   }
 
   return min_max_are_constant_values;
+}
+
+bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, float& max) {
+  auto get_constant_initializer = [&graph](const std::string& name) {
+    return graph_utils::GetConstantInitializer(graph, name);
+  };
+  return GetClipConstantMinMaxImpl(get_constant_initializer, graph.ModelPath(), node, min, max);
+}
+
+bool GetClipConstantMinMax(const GraphViewer& graph_viewer, const Node& node, float& min, float& max) {
+  auto get_constant_initializer = [&graph_viewer](const std::string& name) {
+    return graph_viewer.GetConstantInitializer(name, true);
+  };
+  return GetClipConstantMinMaxImpl(get_constant_initializer, graph_viewer.ModelPath(), node, min, max);
 }
 
 #endif  // #if !defined(ORT_MINIMAL_BUILD)
