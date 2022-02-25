@@ -1061,5 +1061,9 @@ jobs:
   parameters:
     artifactName: 'onnxruntime-android-mobile-aar'
     job_name_suffix: 'Mobile'
+    packageName: 'onnxruntime-mobile'
 
-
+- template: android-java-api-aar-test.yml
+  parameters:
+    artifactName: 'onnxruntime-android-full-aar'
+    job_name_suffix: 'Full'
