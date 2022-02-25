@@ -81,31 +81,5 @@ namespace Microsoft.AI.MachineLearning.Tests.Uwp
             var session = new Microsoft.AI.MachineLearning.LearningModelSession(model, new LearningModelDevice(LearningModelDeviceKind.Cpu));
             Console.WriteLine("Created LearningModelSession.");
         }
-
-        public void CreateSessionDeviceDirectX()
-        {
-            var model = Microsoft.AI.MachineLearning.LearningModel.LoadFromFilePath("squeezenet.onnx");
-            Console.WriteLine("Creating LearningModelSession.");
-            var session = new Microsoft.AI.MachineLearning.LearningModelSession(model, new LearningModelDevice(LearningModelDeviceKind.DirectX));
-            Console.WriteLine("Created LearningModelSession.");
-        }
-
-        [TestMethod]
-        public void CreateSessionDeviceDirectXHighPerformance()
-        {
-            var model = Microsoft.AI.MachineLearning.LearningModel.LoadFromFilePath("squeezenet.onnx");
-            Console.WriteLine("Creating LearningModelSession.");
-            var session = new Microsoft.AI.MachineLearning.LearningModelSession(model, new LearningModelDevice(LearningModelDeviceKind.DirectXHighPerformance));
-            Console.WriteLine("Created LearningModelSession.");
-        }
-
-        [TestMethod]
-        public void CreateSessionDeviceDirectXMinimumPower()
-        {
-            var model = Microsoft.AI.MachineLearning.LearningModel.LoadFromFilePath("squeezenet.onnx");
-            Console.WriteLine("Creating LearningModelSession.");
-            var session = new Microsoft.AI.MachineLearning.LearningModelSession(model, new LearningModelDevice(LearningModelDeviceKind.DirectXMinPower));
-            Console.WriteLine("Created LearningModelSession.");
-        }
     }
 }
