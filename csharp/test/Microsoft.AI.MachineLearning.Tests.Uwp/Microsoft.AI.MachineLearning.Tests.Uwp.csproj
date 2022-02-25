@@ -16,6 +16,7 @@
     <MinimumVisualStudioVersion>14</MinimumVisualStudioVersion>
     <FileAlignment>512</FileAlignment>
     <ProjectTypeGuids>{A5A43C5B-DE2A-4C0C-9213-0A381AF9435A};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
+    <UnitTestPlatformVersion Condition="'$(UnitTestPlatformVersion)' == ''">$(VisualStudioVersion)</UnitTestPlatformVersion>
     <WindowsXamlEnableOverview>true</WindowsXamlEnableOverview>
     <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
   </PropertyGroup>
@@ -116,13 +117,14 @@
     <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
   </PropertyGroup>
   <ItemGroup>
+    <SDKReference Include="TestPlatform.Universal, Version=$(UnitTestPlatformVersion)" />
+  </ItemGroup>
+  <ItemGroup>
     <Compile Include="App.xaml.cs">
       <DependentUpon>App.xaml</DependentUpon>
     </Compile>
-    <Compile Include="MainPage.xaml.cs">
-      <DependentUpon>MainPage.xaml</DependentUpon>
-    </Compile>
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="../Microsoft.AI.MachineLearning.Tests.DotNet5_0/SessionAPITests.cs" />
   </ItemGroup>
   <ItemGroup>
     <AppxManifest Include="Package.appxmanifest">
@@ -144,21 +146,27 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
-    <Page Include="MainPage.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </Page>
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AI.MachineLearning">
-      <Version>1.9.1</Version>
+      <Version>1.11.0-dev-20220223-0733-8cfa4b1c1</Version>
     </PackageReference>
     <PackageReference Include="Microsoft.NETCore.UniversalWindowsPlatform">
       <Version>6.2.12</Version>
     </PackageReference>
+    <PackageReference Include="MSTest.TestAdapter">
+      <Version>2.2.3</Version>
+    </PackageReference>
+    <PackageReference Include="MSTest.TestFramework">
+      <Version>2.2.3</Version>
+    </PackageReference>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\testdata\squeezenet.onnx">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <Visible>true</Visible>
+    </None>
+    <None Include="..\..\..\winml\test\collateral\images\kitten_224.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Visible>true</Visible>
     </None>

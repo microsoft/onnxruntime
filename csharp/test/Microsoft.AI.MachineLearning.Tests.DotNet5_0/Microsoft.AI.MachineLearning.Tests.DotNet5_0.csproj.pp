@@ -1,14 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net5.0-windows10.0.17763.0</TargetFramework>
+    <TargetFramework>net5.0-windows10.0.19041.0</TargetFramework>
     <Platforms>x86;x64</Platforms>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AI.DirectML" Version="1.8.0" />
     <PackageReference Include="Microsoft.AI.MachineLearning" Version="[PackageVersion]" />
+    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="1.5.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -23,6 +21,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Microsoft.AI.MachineLearning.Tests.Lib.DotNet5_0\Microsoft.AI.MachineLearning.Tests.Lib.DotNet5_0.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.7.1" />
+    <PackageReference Include="MSTest.TestAdapter" Version="2.1.1" />
+    <PackageReference Include="MSTest.TestFramework" Version="2.1.1" />
+    <PackageReference Include="coverlet.collector" Version="1.3.0" />
   </ItemGroup>
 </Project>

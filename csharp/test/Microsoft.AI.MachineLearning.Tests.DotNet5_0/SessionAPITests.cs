@@ -1,12 +1,14 @@
 ﻿using System;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace Microsoft.AI.MachineLearning.Tests.Lib.DotNet5_0
+namespace Microsoft.AI.MachineLearning.Tests.Uwp
 {
+    [TestClass]
     public class SessionAPITests
     {
-        public static void LoadBindEval()
+        [TestMethod]
+        public void LoadBindEval()
         {
-            Console.WriteLine("Running test: " + System.Reflection.MethodBase.GetCurrentMethod().Name);
             Console.WriteLine("Load kitten_224.png as StorageFile.");
             var name = AppDomain.CurrentDomain.BaseDirectory + "kitten_224.png";
             var getFileFromPathTask = Windows.Storage.StorageFile.GetFileFromPathAsync(name);
@@ -60,52 +62,50 @@ namespace Microsoft.AI.MachineLearning.Tests.Lib.DotNet5_0
                             }
                         }
                     })
-                .Wait();  
+                .Wait();
         }
 
-        public static void CreateSessionDeviceDefault()
+        [TestMethod]
+        public void CreateSessionDeviceDefault()
         {
-            Console.WriteLine("Running test: " + System.Reflection.MethodBase.GetCurrentMethod().Name);
             var model = Microsoft.AI.MachineLearning.LearningModel.LoadFromFilePath("squeezenet.onnx");
             Console.WriteLine("Creating LearningModelSession.");
             var session = new Microsoft.AI.MachineLearning.LearningModelSession(model, new LearningModelDevice(LearningModelDeviceKind.Default));
             Console.WriteLine("Created LearningModelSession.");
         }
 
-        public static void CreateSessionDeviceCpu() {
-            Console.WriteLine("Running test: " + System.Reflection.MethodBase.GetCurrentMethod().Name);
+        [TestMethod]
+        public void CreateSessionDeviceCpu() {
             var model = Microsoft.AI.MachineLearning.LearningModel.LoadFromFilePath("squeezenet.onnx");
             Console.WriteLine("Creating LearningModelSession.");
             var session = new Microsoft.AI.MachineLearning.LearningModelSession(model, new LearningModelDevice(LearningModelDeviceKind.Cpu));
             Console.WriteLine("Created LearningModelSession.");
         }
 
-        public static void CreateSessionDeviceDirectX()
+        public void CreateSessionDeviceDirectX()
         {
-            Console.WriteLine("Running test: " + System.Reflection.MethodBase.GetCurrentMethod().Name);
             var model = Microsoft.AI.MachineLearning.LearningModel.LoadFromFilePath("squeezenet.onnx");
             Console.WriteLine("Creating LearningModelSession.");
             var session = new Microsoft.AI.MachineLearning.LearningModelSession(model, new LearningModelDevice(LearningModelDeviceKind.DirectX));
             Console.WriteLine("Created LearningModelSession.");
         }
 
-        public static void CreateSessionDeviceDirectXHighPerformance()
+        [TestMethod]
+        public void CreateSessionDeviceDirectXHighPerformance()
         {
-            Console.WriteLine("Running test: " + System.Reflection.MethodBase.GetCurrentMethod().Name);
             var model = Microsoft.AI.MachineLearning.LearningModel.LoadFromFilePath("squeezenet.onnx");
             Console.WriteLine("Creating LearningModelSession.");
             var session = new Microsoft.AI.MachineLearning.LearningModelSession(model, new LearningModelDevice(LearningModelDeviceKind.DirectXHighPerformance));
             Console.WriteLine("Created LearningModelSession.");
         }
 
-        public static void CreateSessionDeviceDirectXMinimumPower()
+        [TestMethod]
+        public void CreateSessionDeviceDirectXMinimumPower()
         {
-            Console.WriteLine("Running test: " + System.Reflection.MethodBase.GetCurrentMethod().Name);
             var model = Microsoft.AI.MachineLearning.LearningModel.LoadFromFilePath("squeezenet.onnx");
             Console.WriteLine("Creating LearningModelSession.");
             var session = new Microsoft.AI.MachineLearning.LearningModelSession(model, new LearningModelDevice(LearningModelDeviceKind.DirectXMinPower));
             Console.WriteLine("Created LearningModelSession.");
         }
-
     }
 }
