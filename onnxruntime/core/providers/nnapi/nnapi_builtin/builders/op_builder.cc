@@ -1483,7 +1483,7 @@ class SoftMaxOpBuilder : public BaseOpBuilder {
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
-  bool IsQuantizedOp(const NodeUnit& node_unit) const override;  // TODO, see if we want to move this to BaseOpBuilder
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
 bool SoftMaxOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {

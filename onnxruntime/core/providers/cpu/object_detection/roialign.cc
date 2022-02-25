@@ -27,11 +27,11 @@ using namespace onnxruntime::concurrency;
 
 namespace onnxruntime {
 
-#define ADD_TYPED_ROIALIGN_OP(data_type)                                                            \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(RoiAlign, 10, data_type,                                           \
-                                 KernelDefBuilder()                                                 \
-                                     .TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()) \
-                                     .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()), \
+#define ADD_TYPED_ROIALIGN_OP(data_type)                                                             \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(RoiAlign, 10, data_type,                                            \
+                                 KernelDefBuilder()                                                  \
+                                     .TypeConstraint("T1", DataTypeImpl::GetTensorType<data_type>()) \
+                                     .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()),  \
                                  RoiAlign<data_type>);
 
 ADD_TYPED_ROIALIGN_OP(float);

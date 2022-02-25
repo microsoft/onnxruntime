@@ -272,9 +272,9 @@ static bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, con
   return true;
 }
 
-// Some Quanitzed NNAPI operations has required output scale and zero point
-// e.g. Softmax (uint8) requires output scale be 1.f/256 and ZP be 0
-// This helper function is to check if the given io_def has the required scale and ZP
+// Some Quantized NNAPI operations have required output scale and zero point
+// e.g. Softmax (uint8) requires output scale be 1.f/256 and zp be 0
+// This helper function checks if the given io_def has required scale and zp
 static bool HasRequiredScaleAndZeroPoint(const InitializedTensorSet& initializers,
                                          const std::string& op_desc,
                                          const NodeUnitIODef& io_def,
@@ -1185,7 +1185,7 @@ class SoftMaxOpSupportChecker : public BaseOpSupportChecker {
 
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
 
-  bool IsQuantizedOp(const NodeUnit& node_unit) const override;  // TODO, see if we want to move this to BaseOpBuilder
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
 bool SoftMaxOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {

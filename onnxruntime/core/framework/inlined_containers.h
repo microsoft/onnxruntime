@@ -8,8 +8,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // This file contains code and comments derived from llvm/ADT/SmallVector.h
-// 
-// Specifically CalculateInlinedVectorDefaultInlinedElements<T>() template is derived from 
+//
+// Specifically CalculateInlinedVectorDefaultInlinedElements<T>() template is derived from
 // CalculateSmallVectorDefaultInlinedElements<T>() and its comments.
 
 #pragma once
@@ -20,6 +20,9 @@
 #pragma warning(push)
 // C4127: conditional expression is constant
 #pragma warning(disable : 4127)
+// C4324: structure was padded due to alignment specifier
+// Usage of alignas causes some internal padding in places.
+#pragma warning(disable : 4324)
 #endif
 
 #include <absl/container/inlined_vector.h>
@@ -38,10 +41,10 @@ namespace onnxruntime {
 /// This produces the following on MSVC x64
 ///    int8_t  -> 41
 //     int16_t -> 21
-//     int32_t -> 11 
+//     int32_t -> 11
 //     int64_t -> 6
 //     std::string 40 -> 1
-template<typename T>
+template <typename T>
 struct CalculateInlinedVectorDefaultInlinedElements {
   // Parameter controlling the default number of inlined elements
   // for `InlinedVector<T>`.
@@ -91,7 +94,7 @@ struct CalculateInlinedVectorDefaultInlinedElements {
 // Use InlinedVector for small arrays that can fit on a stack with a default
 // value pre-calculated.
 // Use TensorShapeVector for shapes.
-template <typename T, 
+template <typename T,
           size_t N = CalculateInlinedVectorDefaultInlinedElements<T>::value,
           typename Allocator = std::allocator<T>>
 using InlinedVector = absl::InlinedVector<T, N, Allocator>;
@@ -101,7 +104,7 @@ using InlinedVector = absl::InlinedVector<T, N, Allocator>;
 // buckets array that is allocated in one shot. It eliminates
 // per-node new/delete calls. Always call reserve() on any hash set/map
 // when the number of items is known in advance
-template <typename T, 
+template <typename T,
           typename Hash = absl::container_internal::hash_default_hash<T>,
           typename Eq = absl::container_internal::hash_default_eq<T>,
           typename Allocator = std::allocator<T>>
