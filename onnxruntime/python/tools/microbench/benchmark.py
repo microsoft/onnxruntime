@@ -1,8 +1,24 @@
 import time
 import onnxruntime as ort
+import torch
 
 
-def create_session(onnx_file, provider, profiling=False):
+def create_io_binding(sess, inputs, outputs):
+    io_binding = sess.io_binding()
+    device = "cuda"
+
+    for name, array in inputs.items():
+      tensor = torch.from_numpy(array).to(device)
+      io_binding.bind_input(name, tensor.device.type, 0, array.dtype, tensor.shape, tensor.data_ptr())
+
+    for name, array in outputs.items():
+      tensor = torch.from_numpy(array).to(device)
+      io_binding.bind_output(name, tensor.device.type, 0, array.dtype, tensor.shape, tensor.data_ptr())
+  
+    return io_binding
+
+
+def create_session(onnx_file, provider, profiling):
     sess_opt = ort.SessionOptions()
     sess_opt.enable_profiling = profiling
     if provider == "rocm":
@@ -14,7 +30,10 @@ def create_session(onnx_file, provider, profiling=False):
     return sess
  
 
-def benchmark(sess, io_binding):
+def benchmark(onnx_file, inputs, outputs, provider, profiling=False):
+    sess = create_session(onnx_file, provider, profiling)
+    io_binding = create_io_binding(sess, inputs, outputs)
+
     # warm up    
     for iter in range(10):
       sess.run_with_iobinding(io_binding)    
