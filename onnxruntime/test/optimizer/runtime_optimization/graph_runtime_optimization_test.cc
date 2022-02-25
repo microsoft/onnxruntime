@@ -34,7 +34,10 @@ class TestTransformer : public SelectorActionTransformer {
   static constexpr const char* kSelectorActionId = "remove_identity";
 
   TestTransformer(const SatApplyContextVariant& apply_context)
-      : SelectorActionTransformer{kTransformerName, CreateSelectorActionRegistry(), apply_context} {
+      : SelectorActionTransformer{kTransformerName,
+                                  CreateSelectorActionRegistry(),
+                                  apply_context,
+                                  {kCpuExecutionProvider}} {
   }
 
  private:

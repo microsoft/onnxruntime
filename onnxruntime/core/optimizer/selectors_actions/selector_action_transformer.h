@@ -115,7 +115,7 @@ class SelectorActionTransformer : public GraphTransformer {
  protected:
   SelectorActionTransformer(const std::string& name, SelectorActionRegistry&& selector_action_registry,
                             const SatApplyContextVariant& apply_context,
-                            const std::unordered_set<std::string>& compatible_execution_providers = {});
+                            const InlinedHashSet<std::string_view>& compatible_execution_providers);
 
   // can't copy/assign selector_action_registry_
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(SelectorActionTransformer);

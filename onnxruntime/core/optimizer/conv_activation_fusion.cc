@@ -5,8 +5,8 @@
 
 #include <string_view>
 
+#include "core/common/inlined_containers.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/framework/inlined_containers.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
@@ -64,7 +64,7 @@ class ConvActivation : public NodeSelector {
 
       if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Clip", {6, 11, 12, 13})) {
         float min, max;
-        if (!optimizer_utils::GetClipConstantMinMax(graph_viewer, node, min, max)) {
+        if (!optimizer_utils::GetClipConstantMinMax(graph_viewer, activation_node, min, max)) {
           return false;
         }
         return true;
@@ -163,14 +163,16 @@ class FuseConvActivation : public ReplaceWithNew {
 
  private:
   NodeAttributes Attributes(const RuntimeState& state) const override {
+    const auto& conv = state.selected_nodes.Target();
+    NodeAttributes fused_conv_attributes = conv.GetAttributes();
+
     const auto* activation = state.selected_nodes.Output(0);
     ORT_ENFORCE(activation != nullptr, "Expected activation node.");
 
     const auto& activation_op_type = activation->OpType();
-    NodeAttributes fused_conv_attributes{};
     SetStringAttribute("activation", activation_op_type, fused_conv_attributes);
 
-    std::vector<float> activation_params;
+    InlinedVector<float> activation_params;
     if (activation_op_type == "LeakyRelu") {
       activation_params.push_back(graph_utils::GetNodeAttribute(*activation, "alpha")->f());
     } else if (activation_op_type == "Clip") {
@@ -188,7 +190,9 @@ class FuseConvActivation : public ReplaceWithNew {
       activation_params.push_back(beta);
     }
 
-    SetFloatsAttribute("activation_params", activation_params, fused_conv_attributes);
+    if (!activation_params.empty()) {
+      SetFloatsAttribute("activation_params", activation_params, fused_conv_attributes);
+    }
 
     return fused_conv_attributes;
   }
@@ -212,8 +216,9 @@ class FuseConvAddRelu : public ReplaceWithNew {
   }
 
  private:
-  NodeAttributes Attributes(const RuntimeState&) const override {
-    NodeAttributes fused_conv_attributes{};
+  NodeAttributes Attributes(const RuntimeState& state) const override {
+    const auto& conv = state.selected_nodes.Target();
+    NodeAttributes fused_conv_attributes = conv.GetAttributes();
     SetStringAttribute("activation", "Relu", fused_conv_attributes);
     return fused_conv_attributes;
   }
@@ -262,13 +267,13 @@ SelectorActionRegistry CreateSelectorActionRegistry() {
 
 }  // namespace
 
-ConvActivationFusion2::ConvActivationFusion2(const std::unordered_set<std::string>& compatible_execution_providers,
+ConvActivationFusion2::ConvActivationFusion2(const InlinedHashSet<std::string_view>& compatible_execution_providers,
                                              const SatApplyContextVariant& apply_context)
     : SelectorActionTransformer{
           "ConvActivationFusion", CreateSelectorActionRegistry(), apply_context, compatible_execution_providers} {
 }
 
-Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+Status ConvActivationFusionOriginal::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& order = graph_viewer.GetNodesInTopologicalOrder();
 

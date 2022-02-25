@@ -7,9 +7,9 @@
 
 namespace onnxruntime {
 
-class ConvActivationFusion : public GraphTransformer {
+class ConvActivationFusionOriginal : public GraphTransformer {
  public:
-  ConvActivationFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
+  ConvActivationFusionOriginal(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("ConvActivationFusion", compatible_execution_providers) {}
 
  private:
@@ -18,8 +18,9 @@ class ConvActivationFusion : public GraphTransformer {
 
 class ConvActivationFusion2 : public SelectorActionTransformer {
  public:
-  ConvActivationFusion2(const std::unordered_set<std::string>& compatible_execution_providers = {},
+  ConvActivationFusion2(const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
                         const SatApplyContextVariant& apply_context = {});
 };
 
+using ConvActivationFusion = ConvActivationFusion2;
 }  // namespace onnxruntime

@@ -69,7 +69,7 @@ auto SelectorActionRegistry::LookUpByOpType(const std::string& op_type) const
 SelectorActionTransformer::SelectorActionTransformer(const std::string& name,
                                                      SelectorActionRegistry&& selector_action_registry,
                                                      const SatApplyContextVariant& apply_context,
-                                                     const std::unordered_set<std::string>& compatible_execution_providers)
+                                                     const InlinedHashSet<std::string_view>& compatible_execution_providers)
     : GraphTransformer{name, compatible_execution_providers},
       selector_action_registry_{std::move(selector_action_registry)},
       apply_context_{apply_context} {}

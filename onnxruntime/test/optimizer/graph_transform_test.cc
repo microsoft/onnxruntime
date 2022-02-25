@@ -744,6 +744,7 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
 #endif
   for (const auto& model : model_to_op_name) {
     auto model_uri = MODEL_FOLDER + model.first;
+    SCOPED_TRACE(ORT_TSTR("model file: ") + model_uri);
     std::shared_ptr<Model> p_model;
     ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
     Graph& graph = p_model->MainGraph();
@@ -792,11 +793,13 @@ TEST_F(GraphTransformationTests, FuseConvClip11Activation) {
       const auto& params = attr_proto.floats();
       // check expected values for each. Conv0 is explicitly specified. Conv2 are defaults
       if (node.Name() == "Conv0") {
-        EXPECT_TRUE(params.Get(0) == -1.f);
-        EXPECT_TRUE(params.Get(1) == 1.f);
+        EXPECT_EQ(params.Get(0), -1.f);
+        EXPECT_EQ(params.Get(1), 10.f);
       } else if (node.Name() == "Conv2") {
-        EXPECT_TRUE(params.Get(0) == std::numeric_limits<float>::lowest());
-        EXPECT_TRUE(params.Get(1) == std::numeric_limits<float>::max());
+        EXPECT_EQ(params.Get(0), std::numeric_limits<float>::lowest());
+        EXPECT_EQ(params.Get(1), std::numeric_limits<float>::max());
+      } else {
+        FAIL() << "Unexpected fused node name: '" << node.Name() << "'.";
       }
     }
   }
