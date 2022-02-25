@@ -285,34 +285,18 @@ MlasGemmQuantCopyPackA8x8(
             vx2 = vec_xxpermdi (vx, vx1, 0);
             vx3 = reinterpret_cast<vec_t>(vec_sub (vx2, vmask));
             vsum2 = vec_sum4s (vx3, vsum2);
-            if (CountK < 16) {
-                if (CountK >= 12) {
-                    *reinterpret_cast<vec_t *>(&D[64]) = vx3;
-                    D += 80;
-                } else if (CountK >= 8) {
-                    *reinterpret_cast<vec_t *>(&D[48]) = vx3;
-                    D += 64;
-                } else if (CountK >= 4) {
-                    *reinterpret_cast<vec_t *>(&D[32]) = vx3;
-                    D += 48;
-                } else {
-                    *reinterpret_cast<vec_t *>(&D[16]) = vx3;
-                    D += 16 * 2;
-                }
+            if (CountK % 16 >= 12) {
+                *reinterpret_cast<vec_t *>(&D[64]) = vx3;
+                D += 80;
+            } else if (CountK % 16 >= 8) {
+                *reinterpret_cast<vec_t *>(&D[48]) = vx3;
+                D += 64;
+            } else if (CountK % 16 >= 4) {
+                *reinterpret_cast<vec_t *>(&D[32]) = vx3;
+                D += 48;
             } else {
-                if (CountK % 16 >= 12) {
-                    *reinterpret_cast<vec_t *>(&D[64]) = vx3;
-                    D += 80;
-                } else if (CountK % 16 >= 8) {
-                    *reinterpret_cast<vec_t *>(&D[48]) = vx3;
-                    D += 64;
-                } else if (CountK % 16 >= 4) {
-                    *reinterpret_cast<vec_t *>(&D[32]) = vx3;
-                    D += 48;
-                } else {
-                    *reinterpret_cast<vec_t *>(&D[16]) = vx3;
-                    D += 16 * 2;
-                }
+                *reinterpret_cast<vec_t *>(&D[16]) = vx3;
+                D += 16 * 2;
             }
             a += 16;
         }
@@ -851,6 +835,50 @@ MlasQgemmStoreScalarMMA(
         }
     }
 };
+template<bool CountM, size_t CountK>
+MLAS_FORCEINLINE
+void
+MlasQgemmComputeMMA(
+    __vector_quad *acc0,
+    __vector_quad *acc1,
+    __vector unsigned char *va,
+    __vector unsigned char *vb
+    )
+{
+    if (CountK == 16) {
+        __builtin_mma_xvi8ger4pp (acc0, va[0], vb[0]);
+        __builtin_mma_xvi8ger4pp (acc0, va[1], vb[1]);
+        __builtin_mma_xvi8ger4pp (acc0, va[2], vb[2]);
+        __builtin_mma_xvi8ger4pp (acc0, va[3], vb[3]);
+        if (CountM) {
+            __builtin_mma_xvi8ger4pp (acc1, va[4], vb[0]);
+            __builtin_mma_xvi8ger4pp (acc1, va[5], vb[1]);
+            __builtin_mma_xvi8ger4pp (acc1, va[6], vb[2]);
+            __builtin_mma_xvi8ger4pp (acc1, va[7], vb[3]);
+        }
+    } else if (CountK == 12) {
+        __builtin_mma_xvi8ger4pp (acc0, va[0], vb[0]);
+        __builtin_mma_xvi8ger4pp (acc0, va[1], vb[1]);
+        __builtin_mma_xvi8ger4pp (acc0, va[2], vb[2]);
+        if (CountM) {
+            __builtin_mma_xvi8ger4pp (acc1, va[3], vb[0]);
+            __builtin_mma_xvi8ger4pp (acc1, va[4], vb[1]);
+            __builtin_mma_xvi8ger4pp (acc1, va[5], vb[2]);
+        }
+    } else if (CountK == 8) {
+        __builtin_mma_xvi8ger4pp (acc0, va[0], vb[0]);
+        __builtin_mma_xvi8ger4pp (acc0, va[1], vb[1]);
+        if (CountM) {
+            __builtin_mma_xvi8ger4pp (acc1, va[2], vb[0]);
+            __builtin_mma_xvi8ger4pp (acc1, va[3], vb[1]);
+        }
+    } else {
+        __builtin_mma_xvi8ger4pp (acc0, va[0], vb[0]);
+        if (CountM) {
+            __builtin_mma_xvi8ger4pp (acc1, va[1], vb[0]);
+        }
+    }
+};
 template<>
 size_t
 MlasGemmQuantKernel<MLAS_GEMM_QUANT_KERNEL_POWER10>(
@@ -867,8 +895,6 @@ MlasGemmQuantKernel<MLAS_GEMM_QUANT_KERNEL_POWER10>(
     bool ZeroMode
     )
 {
-    MLAS_UNREFERENCED_PARAMETER(CountM);
-    MLAS_UNREFERENCED_PARAMETER(ldc);
     if (CountM < 8 && CountM >= 4) {
         CountM = 4;
     }
@@ -895,56 +921,36 @@ MlasGemmQuantKernel<MLAS_GEMM_QUANT_KERNEL_POWER10>(
         __builtin_mma_xxsetaccz(&acc7);
         MLAS_INT32X4 result[4] = {0};
         MLAS_INT32X4 result1[4] = {0};
-        size_t k = PackedCountK*4;
+        size_t k = PackedCountK * MLAS_GEMM_QUANT_KERNEL_POWER10::PackedK;
         size_t k1 = PackedCountK;
         //
         // Compute the output block using POWER10 MMA builtins.
         //
         while (k >= 16) {
-            vec_t *va = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&a[0]));
-            vec_t *vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[0]));
-            __builtin_mma_xvi8ger4pp (&acc0, va[0], vb[0]);
-            __builtin_mma_xvi8ger4pp (&acc0, va[1], vb[1]);
-            __builtin_mma_xvi8ger4pp (&acc0, va[2], vb[2]);
-            __builtin_mma_xvi8ger4pp (&acc0, va[3], vb[3]);
+            vec_t *va = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(a));
+            vec_t *vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(b));
             if (CountM >= 8) {
-                __builtin_mma_xvi8ger4pp (&acc4, va[4], vb[0]);
-                __builtin_mma_xvi8ger4pp (&acc4, va[5], vb[1]);
-                __builtin_mma_xvi8ger4pp (&acc4, va[6], vb[2]);
-                __builtin_mma_xvi8ger4pp (&acc4, va[7], vb[3]);
+                MlasQgemmComputeMMA<true, 16>(&acc0, &acc4, va, vb);
+            } else {
+                MlasQgemmComputeMMA<false, 16>(&acc0, &acc4, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*16]));
-            __builtin_mma_xvi8ger4pp (&acc1, va[0], vb[0]);
-            __builtin_mma_xvi8ger4pp (&acc1, va[1], vb[1]);
-            __builtin_mma_xvi8ger4pp (&acc1, va[2], vb[2]);
-            __builtin_mma_xvi8ger4pp (&acc1, va[3], vb[3]);
             if (CountM >= 8) {
-                __builtin_mma_xvi8ger4pp (&acc5, va[4], vb[0]);
-                __builtin_mma_xvi8ger4pp (&acc5, va[5], vb[1]);
-                __builtin_mma_xvi8ger4pp (&acc5, va[6], vb[2]);
-                __builtin_mma_xvi8ger4pp (&acc5, va[7], vb[3]);
+                MlasQgemmComputeMMA<true, 16>(&acc1, &acc5, va, vb);
+            } else {
+                MlasQgemmComputeMMA<false, 16>(&acc1, &acc5, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*32]));
-            __builtin_mma_xvi8ger4pp (&acc2, va[0], vb[0]);
-            __builtin_mma_xvi8ger4pp (&acc2, va[1], vb[1]);
-            __builtin_mma_xvi8ger4pp (&acc2, va[2], vb[2]);
-            __builtin_mma_xvi8ger4pp (&acc2, va[3], vb[3]);
             if (CountM >= 8) {
-                __builtin_mma_xvi8ger4pp (&acc6, va[4], vb[0]);
-                __builtin_mma_xvi8ger4pp (&acc6, va[5], vb[1]);
-                __builtin_mma_xvi8ger4pp (&acc6, va[6], vb[2]);
-                __builtin_mma_xvi8ger4pp (&acc6, va[7], vb[3]);
+                MlasQgemmComputeMMA<true, 16>(&acc2, &acc6, va, vb);
+            } else {
+                MlasQgemmComputeMMA<false, 16>(&acc2, &acc6, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*48]));
-            __builtin_mma_xvi8ger4pp (&acc3, va[0], vb[0]);
-            __builtin_mma_xvi8ger4pp (&acc3, va[1], vb[1]);
-            __builtin_mma_xvi8ger4pp (&acc3, va[2], vb[2]);
-            __builtin_mma_xvi8ger4pp (&acc3, va[3], vb[3]);
             if (CountM >= 8) {
-                __builtin_mma_xvi8ger4pp (&acc7, va[4], vb[0]);
-                __builtin_mma_xvi8ger4pp (&acc7, va[5], vb[1]);
-                __builtin_mma_xvi8ger4pp (&acc7, va[6], vb[2]);
-                __builtin_mma_xvi8ger4pp (&acc7, va[7], vb[3]);
+                MlasQgemmComputeMMA<true, 16>(&acc3, &acc7, va, vb);
+            } else {
+                MlasQgemmComputeMMA<false, 16>(&acc3, &acc7, va, vb);
             }
             b += 64;
             if (CountM >= 8) {
@@ -954,43 +960,31 @@ MlasGemmQuantKernel<MLAS_GEMM_QUANT_KERNEL_POWER10>(
             }
             k -= 16;
         }
-       if (k >= 12) {
-            vec_t *va = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&a[0]));
-            vec_t *vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[0]));
-            __builtin_mma_xvi8ger4pp (&acc0, va[0], vb[0]);
-            __builtin_mma_xvi8ger4pp (&acc0, va[1], vb[1]);
-            __builtin_mma_xvi8ger4pp (&acc0, va[2], vb[2]);
+        if (k >= 12) {
+            vec_t *va = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(a));
+            vec_t *vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(b));
             if (CountM >= 8) {
-                __builtin_mma_xvi8ger4pp (&acc4, va[3], vb[0]);
-                __builtin_mma_xvi8ger4pp (&acc4, va[4], vb[1]);
-                __builtin_mma_xvi8ger4pp (&acc4, va[5], vb[2]);
+                MlasQgemmComputeMMA<true, 12>(&acc0, &acc4, va, vb);
+            } else {
+                MlasQgemmComputeMMA<false, 12>(&acc0, &acc4, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*16]));
-            __builtin_mma_xvi8ger4pp (&acc1, va[0], vb[0]);
-            __builtin_mma_xvi8ger4pp (&acc1, va[1], vb[1]);
-            __builtin_mma_xvi8ger4pp (&acc1, va[2], vb[2]);
             if (CountM >= 8) {
-                __builtin_mma_xvi8ger4pp (&acc5, va[3], vb[0]);
-                __builtin_mma_xvi8ger4pp (&acc5, va[4], vb[1]);
-                __builtin_mma_xvi8ger4pp (&acc5, va[5], vb[2]);
+                MlasQgemmComputeMMA<true, 12>(&acc1, &acc5, va, vb);
+            } else {
+                MlasQgemmComputeMMA<false, 12>(&acc1, &acc5, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*32]));
-            __builtin_mma_xvi8ger4pp (&acc2, va[0], vb[0]);
-            __builtin_mma_xvi8ger4pp (&acc2, va[1], vb[1]);
-            __builtin_mma_xvi8ger4pp (&acc2, va[2], vb[2]);
             if (CountM >= 8) {
-                __builtin_mma_xvi8ger4pp (&acc6, va[3], vb[0]);
-                __builtin_mma_xvi8ger4pp (&acc6, va[4], vb[1]);
-                __builtin_mma_xvi8ger4pp (&acc6, va[5], vb[2]);
+                MlasQgemmComputeMMA<true, 12>(&acc2, &acc6, va, vb);
+            } else {
+                MlasQgemmComputeMMA<false, 12>(&acc2, &acc6, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*48]));
-            __builtin_mma_xvi8ger4pp (&acc3, va[0], vb[0]);
-            __builtin_mma_xvi8ger4pp (&acc3, va[1], vb[1]);
-            __builtin_mma_xvi8ger4pp (&acc3, va[2], vb[2]);
             if (CountM >= 8) {
-                __builtin_mma_xvi8ger4pp (&acc7, va[3], vb[0]);
-                __builtin_mma_xvi8ger4pp (&acc7, va[4], vb[1]);
-                __builtin_mma_xvi8ger4pp (&acc7, va[5], vb[2]);
+                MlasQgemmComputeMMA<true, 12>(&acc3, &acc7, va, vb);
+            } else {
+                MlasQgemmComputeMMA<false, 12>(&acc3, &acc7, va, vb);
             }
             if (CountM >= 8) {
                 a += 96;
@@ -1001,34 +995,30 @@ MlasGemmQuantKernel<MLAS_GEMM_QUANT_KERNEL_POWER10>(
             k -= 12;
         }
         if (k >= 8) {
-            vec_t *va = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&a[0]));
-            vec_t *vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[0]));
-            __builtin_mma_xvi8ger4pp (&acc0, va[0], vb[0]);
-            __builtin_mma_xvi8ger4pp (&acc0, va[1], vb[1]);
+            vec_t *va = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(a));
+            vec_t *vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(b));
             if (CountM >= 8) {
-                __builtin_mma_xvi8ger4pp (&acc4, va[2], vb[0]);
-                __builtin_mma_xvi8ger4pp (&acc4, va[3], vb[1]);
+                MlasQgemmComputeMMA<true, 8>(&acc0, &acc4, va, vb);
+            } else {
+                MlasQgemmComputeMMA<false, 8>(&acc0, &acc4, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*16]));
-            __builtin_mma_xvi8ger4pp (&acc1, va[0], vb[0]);
-            __builtin_mma_xvi8ger4pp (&acc1, va[1], vb[1]);
             if (CountM >= 8) {
-                __builtin_mma_xvi8ger4pp (&acc5, va[2], vb[0]);
-                __builtin_mma_xvi8ger4pp (&acc5, va[3], vb[1]);
+                MlasQgemmComputeMMA<true, 8>(&acc1, &acc5, va, vb);
+            } else {
+                MlasQgemmComputeMMA<false, 8>(&acc1, &acc5, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*32]));
-            __builtin_mma_xvi8ger4pp (&acc2, va[0], vb[0]);
-            __builtin_mma_xvi8ger4pp (&acc2, va[1], vb[1]);
             if (CountM >= 8) {
-                __builtin_mma_xvi8ger4pp (&acc6, va[2], vb[0]);
-                __builtin_mma_xvi8ger4pp (&acc6, va[3], vb[1]);
+                MlasQgemmComputeMMA<true, 8>(&acc2, &acc6, va, vb);
+            } else {
+                MlasQgemmComputeMMA<false, 8>(&acc2, &acc6, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*48]));
-            __builtin_mma_xvi8ger4pp (&acc3, va[0], vb[0]);
-            __builtin_mma_xvi8ger4pp (&acc3, va[1], vb[1]);
             if (CountM >= 8) {
-                __builtin_mma_xvi8ger4pp (&acc7, va[2], vb[0]);
-                __builtin_mma_xvi8ger4pp (&acc7, va[3], vb[1]);
+                MlasQgemmComputeMMA<true, 8>(&acc3, &acc7, va, vb);
+            } else {
+                MlasQgemmComputeMMA<false, 8>(&acc3, &acc7, va, vb);
             }
             if (CountM >= 8) {
                 a += 64;
@@ -1039,26 +1029,30 @@ MlasGemmQuantKernel<MLAS_GEMM_QUANT_KERNEL_POWER10>(
             k -= 8;
         }
         if (k >= 4) {
-            vec_t *va = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&a[0]));
-            vec_t *vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[0]));
-            __builtin_mma_xvi8ger4pp (&acc0, va[0], vb[0]);
+            vec_t *va = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(a));
+            vec_t *vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(b));
             if (CountM >= 8) {
-                __builtin_mma_xvi8ger4pp (&acc4, va[1], vb[0]);
+                MlasQgemmComputeMMA<true, 4>(&acc0, &acc4, va, vb);
+            } else {
+                MlasQgemmComputeMMA<false, 4>(&acc0, &acc4, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*16]));
-            __builtin_mma_xvi8ger4pp (&acc1, va[0], vb[0]);
             if (CountM >= 8) {
-                __builtin_mma_xvi8ger4pp (&acc5, va[1], vb[0]);
+                MlasQgemmComputeMMA<true, 4>(&acc1, &acc5, va, vb);
+            } else {
+                MlasQgemmComputeMMA<false, 4>(&acc1, &acc5, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*32]));
-            __builtin_mma_xvi8ger4pp (&acc2, va[0], vb[0]);
             if (CountM >= 8) {
-                __builtin_mma_xvi8ger4pp (&acc6, va[1], vb[0]);
+                MlasQgemmComputeMMA<true, 4>(&acc2, &acc6, va, vb);
+            } else {
+                MlasQgemmComputeMMA<false, 4>(&acc2, &acc6, va, vb);
             }
             vb = const_cast<vec_t *>(reinterpret_cast<const vec_t *>(&b[k1*48]));
-            __builtin_mma_xvi8ger4pp (&acc3, va[0], vb[0]);
             if (CountM >= 8) {
-                __builtin_mma_xvi8ger4pp (&acc7, va[1], vb[0]);
+                MlasQgemmComputeMMA<true, 4>(&acc3, &acc7, va, vb);
+            } else {
+                MlasQgemmComputeMMA<false, 4>(&acc3, &acc7, va, vb);
             }
         }
         // Store matrix C with accumulator result.
