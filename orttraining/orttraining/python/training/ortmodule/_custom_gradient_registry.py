@@ -133,8 +133,8 @@ def adaptive_avg_pool2d_gradient():
          'GI(0)'], {'operator': {'value': 'aten::_adaptive_avg_pool2d_backward', 'dtype': 'string'}}),
     ]
 
-CustomGradientRegistry.register_custom_stop_gradient_edges([0], 'org.pytorch.aten', 'ATep', 'aten::argmax', '')
-CustomGradientRegistry.register_custom_stop_gradient_edges([0], 'org.pytorch.aten', 'ATep', 'aten::multinomial', '')
+CustomGradientRegistry.register_custom_stop_gradient_edges([0], 'org.pytorch.aten', 'ATen', 'aten::argmax', '')
+CustomGradientRegistry.register_custom_stop_gradient_edges([0], 'org.pytorch.aten', 'ATen', 'aten::multinomial', '')
 
 @register_gradient('org.pytorch.aten', 'ATen', 'aten::binary_cross_entropy_with_logits', '')
 def binary_cross_entropy_with_logits_gradient():

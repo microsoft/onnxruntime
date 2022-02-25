@@ -76,7 +76,7 @@ def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
 @register_symbolic('bitwise_or')
 def bitwise_or(g, self, other):
     return g.op("org.pytorch.aten::ATen", self, other,
-                operator_name_s='aten::bitwise_or', overload_name_s='Tensor')
+                operator_s='aten::bitwise_or', overload_name_s='Tensor')
 
 @register_symbolic('diagonal')
 def diagonal(g, self, offset, dim1, dim2):
