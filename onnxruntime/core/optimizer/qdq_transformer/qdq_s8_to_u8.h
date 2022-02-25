@@ -15,7 +15,7 @@ namespace onnxruntime {
     */
 class QDQS8ToU8Transformer : public GraphTransformer {
  public:
-  QDQS8ToU8Transformer(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  QDQS8ToU8Transformer(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("QDQS8ToU8Transformer", compatible_execution_providers) {}
 
  private:

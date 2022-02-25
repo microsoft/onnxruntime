@@ -194,7 +194,7 @@ class GraphConstantInitializerGetter {
 };
 
 Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
-                          const std::unordered_set<std::string>& compatible_eps,
+                          const InlinedHashSet<std::string_view>& compatible_eps,
                           const logging::Logger& logger,
                           bool& modified) {
   for (auto node_index : node_indices) {
@@ -244,7 +244,7 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
 }
 
 Status PropagateQBackward(Graph& graph, gsl::span<const NodeIndex> node_indices,
-                          const std::unordered_set<std::string>& compatible_eps,
+                          const InlinedHashSet<std::string_view>& compatible_eps,
                           const logging::Logger& logger,
                           bool& modified) {
   for (auto node_index : node_indices) {

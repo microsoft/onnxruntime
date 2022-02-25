@@ -8,7 +8,7 @@
 #pragma warning(disable : 4996)
 #endif
 #include "unique.h"
-#include "core/framework/inlined_containers.h"
+#include "core/common/inlined_containers.h"
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {

@@ -5,7 +5,7 @@
 // for Slice op, which can be called from other ops or EPs.
 #pragma once
 #include "core/providers/cpu/tensor/slice_compute_metadata.h"
-#include "core/framework/inlined_containers.h"
+#include "core/common/inlined_containers.h"
 #include "core/framework/ort_stl_allocator.h"
 
 namespace onnxruntime {
