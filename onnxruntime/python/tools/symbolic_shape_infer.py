@@ -1956,7 +1956,8 @@ class SymbolicShapeInference:
                     if node.output[i_o] in self.sympy_data_:
                         logger.debug('  Sympy Data: ' + str(self.sympy_data_[node.output[i_o]]))
 
-                if (out_shape is not None and None in out_shape) or out_type_undefined:
+                # onnx >= 1.11.0, use unk__#index instead of None when the shape dim is uncertain
+                if (out_shape is not None and None in out_shape) or (out_shape is not None and not all('unk__' not in out for out in out_shape if type(out) == str)) or out_type_undefined:
                     if self.auto_merge_:
                         if node.op_type in [
                                 'Add', 'Sub', 'Mul', 'Div', 'MatMul', 'MatMulInteger', 'MatMulInteger16', 'Concat',
@@ -1964,8 +1965,11 @@ class SymbolicShapeInference:
                         ]:
                             shapes = [self._get_shape(node, i) for i in range(len(node.input))]
                             if node.op_type in ['MatMul', 'MatMulInteger', 'MatMulInteger16']:
-                                if None in out_shape:
-                                    idx = out_shape.index(None)
+                                if None in out_shape or not all('unk__' not in out for out in out_shape if type(out) == str):
+                                    if None in out_shape:
+                                        idx = out_shape.index(None)
+                                    else:
+                                        idx = out_shape.index(next(out for out in out_shape if type(out) == str and 'unk__' in out))
                                     dim_idx = [len(s) - len(out_shape) + idx for s in shapes]
                                     # only support auto merge for MatMul for dim < rank-2 when rank > 2
                                     assert len(shapes[0]) > 2 and dim_idx[0] < len(shapes[0]) - 2
@@ -1978,7 +1982,7 @@ class SymbolicShapeInference:
 
                         if shapes:
                             for idx in range(len(out_shape)):
-                                if out_shape[idx] is not None:
+                                if out_shape[idx] is not None and not (type(out_shape[idx]) == str and 'unk__' in out_shape[idx]):
                                     continue
                                 # note that the broadcasting rule aligns from right to left
                                 # if a tensor has a lower rank (dim_idx[idx] < 0), it would automatically broadcast and need no merge
