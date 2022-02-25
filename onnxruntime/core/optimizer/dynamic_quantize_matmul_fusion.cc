@@ -31,7 +31,7 @@ DynamicQuantizeMatMulFusion will fuse subgraph like below into DynamicQuantizeMa
 Status DynamicQuantizeMatMulFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  std::vector<std::reference_wrapper<Node>> nodes_to_remove;
+  InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
 
   for (auto node_index : node_topology_list) {
     auto* node_ptr = graph.GetNode(node_index);
@@ -72,7 +72,7 @@ Status DynamicQuantizeMatMulFusion::ApplyImpl(Graph& graph, bool& modified, int 
 
     NodeArg optional_node_arg("", nullptr);
     std::string op_type_to_fuse = "DynamicQuantizeMatMul";
-    std::vector<NodeArg*> input_defs{
+    InlinedVector<NodeArg*> input_defs{
         dynamic_quant_linear.MutableInputDefs()[0],
         mtf_input_args[1],  // B of MatmulIntegerToFloat
         mtf_input_args[3],  // B_Scale of MatmulIntegerToFloat

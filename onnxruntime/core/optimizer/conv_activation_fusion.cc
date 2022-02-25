@@ -104,7 +104,7 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     } else {
       // Test if this is an activation that can be fused and also extract the
       // activation's parameters.
-      std::vector<float> activation_params;
+      InlinedVector<float> activation_params;
       if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Relu", {6, 13, 14}) &&
           !graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Sigmoid", {6, 13}) &&
           !graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Tanh", {6, 13})) {
@@ -146,7 +146,7 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
       // Add attributes to specify the activation type and parameters.
       fused_conv.AddAttribute("activation", next_node.OpType());
-      if (activation_params.size() > 0) {
+      if (!activation_params.empty()) {
         fused_conv.AddAttribute("activation_params", activation_params);
       }
 

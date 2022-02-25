@@ -1,6 +1,8 @@
 #pragma once
 #include "sequences.h"
 #include "beam_search_parameters.h"
+
+#include "core/common/inlined_containers.h"
 #include "beam_search_shared.h"
 
 namespace onnxruntime {
@@ -99,7 +101,7 @@ class LogitsProcessorList : public ILogitsProcessorList {
  private:
   int batch_beam_size_;
   int vocab_size_;
-  std::vector<ILogitsProcessor<float>*> processor_list_;
+  InlinedVector<ILogitsProcessor<float>*> processor_list_;
 
   std::unique_ptr<RepetitionPenaltyLogitsProcessor<float>> repetition_penalty_processor_;
   std::unique_ptr<NoRepeatNGramLogitsProcessor<float>> no_repeat_ngram_processor_;

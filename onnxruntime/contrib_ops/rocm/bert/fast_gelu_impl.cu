@@ -113,6 +113,16 @@ bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int i
   return HIP_CALL(hipPeekAtLastError());
 }
 
+template <>
+bool LaunchFastGeluKernel(const hipDeviceProp_t& prop, hipStream_t stream, int input_length, int bias_length,
+                          const BFloat16* input, const BFloat16* bias, BFloat16* output, bool /*use_half2*/) {
+  constexpr int blockSize = 256;
+  const int gridSize = (input_length + blockSize - 1) / blockSize;
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(FastGeluKernel<BFloat16, blockSize>), dim3(gridSize), dim3(blockSize), 0, stream,
+                     A, B, C, input_length, bias_length, input, bias, output);
+  return HIP_CALL(hipPeekAtLastError());
+}
+
 }  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

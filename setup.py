@@ -12,7 +12,6 @@ from shutil import copyfile
 import platform
 import subprocess
 import sys
-import textwrap
 import datetime
 
 from pathlib import Path
@@ -66,8 +65,8 @@ elif parse_arg_remove_boolean(sys.argv, '--use_dnnl'):
     package_name = 'onnxruntime-dnnl'
 elif parse_arg_remove_boolean(sys.argv, '--use_nuphar'):
     package_name = 'onnxruntime-nuphar'
-elif parse_arg_remove_boolean(sys.argv, '--use_stvm'):
-    package_name = 'onnxruntime-stvm'
+elif parse_arg_remove_boolean(sys.argv, '--use_tvm'):
+    package_name = 'onnxruntime-tvm'
 elif parse_arg_remove_boolean(sys.argv, '--use_vitisai'):
     package_name = 'onnxruntime-vitisai'
 elif parse_arg_remove_boolean(sys.argv, '--use_acl'):
@@ -146,33 +145,6 @@ try:
                     f.write('    import os\n')
                     f.write('    os.environ["ORT_TENSORRT_UNAVAILABLE"] = "1"\n')
 
-        def _rewrite_ld_preload_tvm(self):
-            with open('onnxruntime/capi/_ld_preload.py', 'a') as f:
-                f.write(textwrap.dedent(
-                    """
-                    import warnings
-
-                    try:
-                        # This import is necessary in order to delegate the loading of libtvm.so to TVM.
-                        import tvm
-                    except ImportError as e:
-                        warnings.warn(
-                            f"WARNING: Failed to import TVM, libtvm.so was not loaded. More details: {e}"
-                        )
-                    try:
-                        # Working between the C++ and Python parts in TVM EP is done using the PackedFunc and
-                        # Registry classes. In order to use a Python function in C++ code, it must be registered in
-                        # the global table of functions. Registration is carried out through the JIT interface,
-                        # so it is necessary to call special functions for registration.
-                        # To do this, we need to make the following import.
-                        import onnxruntime.providers.stvm
-                    except ImportError as e:
-                        warnings.warn(
-                            f"WARNING: Failed to register python functions to work with TVM EP. More details: {e}"
-                        )
-                    """
-                ))
-
         def run(self):
             if is_manylinux:
                 source = 'onnxruntime/capi/onnxruntime_pybind11_state.so'
@@ -235,8 +207,6 @@ try:
                 self._rewrite_ld_preload(to_preload)
                 self._rewrite_ld_preload_cuda(to_preload_cuda)
                 self._rewrite_ld_preload_tensorrt(to_preload_tensorrt)
-            if package_name == 'onnxruntime-stvm':
-                self._rewrite_ld_preload_tvm()
             _bdist_wheel.run(self)
             if is_manylinux and not disable_auditwheel_repair:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
@@ -388,6 +358,8 @@ if not enable_training:
 if enable_training:
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
+                     'onnxruntime.training.experimental',
+                     'onnxruntime.training.experimental.gradient_graph',
                      'onnxruntime.training.optim',
                      'onnxruntime.training.ortmodule',
                      'onnxruntime.training.ortmodule.experimental',
@@ -397,7 +369,8 @@ if enable_training:
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator',
-                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops'])
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops',
+                     'onnxruntime.training.utils.data'])
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor'] = ['*.cc']
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils'] = ['*.cc']
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator'] = ['*.cc']
@@ -429,8 +402,8 @@ if package_name == 'onnxruntime-nuphar':
     packages += ["onnxruntime.nuphar"]
     extra += [path.join('nuphar', 'NUPHAR_CACHE_VERSION')]
 
-if package_name == 'onnxruntime-stvm':
-    packages += ['onnxruntime.providers.stvm']
+if package_name == 'onnxruntime-tvm':
+    packages += ['onnxruntime.providers.tvm']
 
 package_data["onnxruntime"] = data + examples + extra
 

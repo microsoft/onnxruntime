@@ -16,11 +16,8 @@ training_ops_path = 'orttraining/orttraining/training_ops'
 
 contrib_ops_excluded_files = [
                     'bert/attention.cc',
-                    'bert/attention.h',
                     'bert/attention_impl.cu',
-                    'bert/attention_impl.h',
-                    'bert/attention_transpose.cu',
-                    'bert/attention_concat.cu',
+                    'bert/attention_softmax.h',
                     'bert/decoder_attention.h',
                     'bert/decoder_attention.cc',
                     'bert/embed_layer_norm.cc',
