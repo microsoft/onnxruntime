@@ -137,7 +137,7 @@ class ConvAddRelu : public NodeSelector {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 namespace actions {
-// TODO refactor to lift common logic from Graph::AddAttribute()
+// TODO refactor to lift common logic from Node::AddAttribute()
 void SetStringAttribute(std::string name, std::string value, NodeAttributes& attributes) {
   ONNX_NAMESPACE::AttributeProto a{};
   a.set_name(name);
