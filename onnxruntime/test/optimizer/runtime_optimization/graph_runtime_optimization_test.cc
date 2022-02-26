@@ -245,7 +245,7 @@ void SaveAndLoadRuntimeOptimizationsForModel(
 }
 }  // namespace
 
-TEST(GraphRuntimeOptimizationTest, QDQFusion) {
+TEST(GraphRuntimeOptimizationTest, QDQConv) {
   SaveAndLoadRuntimeOptimizationsForModel(
       ORT_TSTR("testdata/transform/runtime_optimization/qdq_convs.onnx"),
       ORT_TSTR("testdata/transform/runtime_optimization/qdq_convs.runtime_optimizations.ort"),

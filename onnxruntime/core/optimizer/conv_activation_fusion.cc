@@ -271,6 +271,7 @@ void RegisterConvAddReluFusionRules(SelectorActionRegistry& registry) {
 SelectorActionRegistry CreateSelectorActionRegistry() {
   SelectorActionRegistry registry{};
   RegisterConvActivationFusionRules(registry);
+  RegisterConvAddReluFusionRules(registry);
   return registry;
 }
 
