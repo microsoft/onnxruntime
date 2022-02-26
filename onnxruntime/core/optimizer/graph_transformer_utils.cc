@@ -5,6 +5,7 @@
 
 #include <algorithm>
 
+#include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -18,7 +19,6 @@
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/constant_folding.h"
-#include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
@@ -280,11 +280,20 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForRuntimeO
   switch (level) {
     case TransformerLevel::Level1:
       break;
-    case TransformerLevel::Level2:
+    case TransformerLevel::Level2: {
+      const InlinedHashSet<std::string_view> cpu_cuda_rocm_acl_armnn_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                            onnxruntime::kCudaExecutionProvider,
+                                                                            onnxruntime::kRocmExecutionProvider,
+                                                                            onnxruntime::kAclExecutionProvider,
+                                                                            onnxruntime::kArmNNExecutionProvider};
+
+      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_eps,
+                                                                       apply_context));
       if (!disable_quant_qdq) {
         transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(apply_context));
       }
       break;
+    }
     case TransformerLevel::Level3:
       break;
     default:

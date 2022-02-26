@@ -7,6 +7,7 @@
 
 namespace onnxruntime {
 
+// TODO remove original version
 class ConvActivationFusionOriginal : public GraphTransformer {
  public:
   ConvActivationFusionOriginal(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept

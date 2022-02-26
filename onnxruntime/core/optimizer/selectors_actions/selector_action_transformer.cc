@@ -235,6 +235,9 @@ Status SelectorActionTransformer::ApplySavedRuntimeOptimizations(
 
   const auto records = graph.MutableRuntimeOptimizations().RemoveRecordsForOptimizer(Name());
   for (const auto& record : records) {
+    LOGS(logger, VERBOSE) << "Applying runtime optimization action " << record.action_id
+                          << " for transformer " << Name();
+
     const auto* selector_action_entry = selector_action_registry_.LookUp(record.action_id);
     if (!selector_action_entry) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Missing action ", record.action_id, " for transformer ", Name());
@@ -243,6 +246,7 @@ Status SelectorActionTransformer::ApplySavedRuntimeOptimizations(
     NodesToOptimize nodes_to_optimize{graph, record.nodes_to_optimize_indices};
 
     if (!nodes_to_optimize.IsValid()) {
+      LOGS(logger, VERBOSE) << "Nodes to optimize are not valid, skipping action.";
       continue;
     }
 
