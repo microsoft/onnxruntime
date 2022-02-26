@@ -9,10 +9,9 @@
 #include <memory>
 #include <map>
 
-#include "core/framework/func_api.h"
-
-#include "tvm_common.h"
+#include "tvm_runner_impl.h"
 #include "tvm_ep_options.h"
+
 
 namespace ONNX_NAMESPACE {
     struct TensorShapeProto;
@@ -32,13 +31,14 @@ public:
     using ORTGraphNodes = std::vector<const NodeArg*>;
 
     TVMRunner() = delete;
-    ~TVMRunner() = default;
+    virtual ~TVMRunner() = default;
 
     TVMRunner(TvmEPOptions options,
               std::shared_ptr<TVMCompiler> compiler,
               const Graph& graph);
 
     common::Status operator()(FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context);
+
 private:
     void getTensorInfo(const ONNX_NAMESPACE::TensorShapeProto& shape_proto,
                        TVMTensorShape& ishape,
@@ -47,6 +47,7 @@ private:
     bool compare_shapes(const TVMTensorShape& shape1, const TVMTensorShape& shape2);
 
 private:
+    std::shared_ptr<RunnerImpl> runner_;
     std::shared_ptr<TvmModule> mod_;
     bool use_vm_ = true;
     bool probe_infer_ = false;
