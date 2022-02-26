@@ -104,15 +104,19 @@ bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_outp
 
 bool IsOperationDeterministic(const std::string& domain, const std::string& op);
 
+#endif  // !#if !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 /** Get min/max values from Clip if they are constant.
 @returns false if mutable and cannot be used.
 */
 bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, float& max);
+
+/** Get min/max values from Clip if they are constant.
+@returns false if mutable and cannot be used.
+*/
 bool GetClipConstantMinMax(const GraphViewer& graph, const Node& node, float& min, float& max);
-
-#endif  // !#if !defined(ORT_MINIMAL_BUILD)
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 // Check if NodeArg takes in a scalar tensor.
 bool IsScalar(const NodeArg& input_arg);
