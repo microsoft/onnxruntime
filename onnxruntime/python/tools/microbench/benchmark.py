@@ -45,5 +45,5 @@ def benchmark(onnx_file, inputs, outputs, provider, profiling=False):
         sess.run_with_iobinding(io_binding)    
     
     # time is in milliseconds
-    elapsed_time = (time.time() - start_time)*1000/max_iters
+    elapsed_time = (time.time() - start_time) * 1000 / max_iters
     return elapsed_time
