@@ -142,7 +142,6 @@ static std::vector<T> DequantizeTransform(std::vector<int64_t> const& shape, flo
   return dst;
 }
 
-
 template <typename T>
 static void RunQOrdered_Quantize_Test(
     std::vector<T> const& fvec,
@@ -175,7 +174,6 @@ TEST(QOrderedTest, FP32_Quantize_COL4_4R2_8C) {
   std::vector<float> fvec = GenData<float>(shape, scale);
   RunQOrdered_Quantize_Test(fvec, shape, ORDER_COL4_4R2_8C, scale);
 }
-
 
 template <typename T>
 static void RunQOrdered_Dequantize_Test(
@@ -211,7 +209,6 @@ static void RunQOrdered_MatMul_Test(
     std::vector<int64_t> const& shapeY,
     OrderCublasLt order_weight,
     float scaleA, float scaleB, float scaleY) {
-
   int64_t nY = std::accumulate(shapeY.begin(), shapeY.end(), int64_t{1LL}, std::multiplies<int64_t>());
   std::vector<int8_t> vecA = GenData<int8_t>(shapeA, 1.0f);
   std::vector<int8_t> vecB = GenData<int8_t>(shapeB, 1.0f);
@@ -223,7 +220,7 @@ static void RunQOrdered_MatMul_Test(
 
   int64_t colsB = 0, rowsB = 0, batchB = 0;
   BatchRowColFromShape(shapeB, batchB, rowsB, colsB);
-  OrderedIndex indexerB(order_weight, colsB, rowsB); // B need Transpose
+  OrderedIndex indexerB(order_weight, colsB, rowsB);  // B need Transpose
 
   int64_t colsY = 0, rowsY = 0, batchY = 0;
   BatchRowColFromShape(shapeY, batchY, rowsY, colsY);
@@ -240,11 +237,11 @@ static void RunQOrdered_MatMul_Test(
         float sum = 0.0f;
         for (int64_t k = 0; k < colsA; k++) {
           auto posA = indexerA(m, k);
-          auto posB = indexerB(n, k); // Transpose B
+          auto posB = indexerB(n, k);  // Transpose B
           sum += A[posA] * B[posB] * scale;
         }
         auto posY = indexerY(m, n);
-        Y[posY] = static_cast<int8_t>((int)std::round(std::min(255.0f, std::max(-256.0f, sum))));
+        Y[posY] = static_cast<int8_t>((int)std::round(std::min(127.0f, std::max(-128.0f, sum))));
       }
     }
     A += (batchA <= 1 ? int64_t{0} : (rowsA * colsA));
@@ -268,21 +265,19 @@ static void RunQOrdered_MatMul_Test(
   test_dq.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-
 TEST(QOrderedTest, MatMul_COL4_4R2_8C_16x32x32) {
   std::vector<int64_t> shapeA = {16, 32};
   std::vector<int64_t> shapeB = {32, 32};
   std::vector<int64_t> shapeY = {16, 32};
-  RunQOrdered_MatMul_Test(shapeA, shapeB, shapeY, ORDER_COL32_2R_4R4, 2.0f, 3.0f, 5.0f);
+  RunQOrdered_MatMul_Test(shapeA, shapeB, shapeY, ORDER_COL4_4R2_8C, 0.025f, 0.025f, 0.25f);
 }
 
 TEST(QOrderedTest, MatMul_COL4_4R2_8C_16x32x32_b2_1) {
   std::vector<int64_t> shapeA = {2, 16, 32};
   std::vector<int64_t> shapeB = {1, 32, 32};
   std::vector<int64_t> shapeY = {2, 16, 32};
-  RunQOrdered_MatMul_Test(shapeA, shapeB, shapeY, ORDER_COL32_2R_4R4, 2.0f, 3.0f, 5.0f);
+  RunQOrdered_MatMul_Test(shapeA, shapeB, shapeY, ORDER_COL4_4R2_8C, 0.025f, 0.025f, 0.25f);
 }
-
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -1144,7 +1144,7 @@ TODO: Support them if needed in the future.
              "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, past_sequence_length + sequence_length)"
              "or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).",
              "G", OpSchema::Optional)
-      .Input(7, "mask_index_bias", "scale of the mask_index", "S")
+      .Input(7, "scale_output", "scale of the output", "S")
       .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "Q")
       .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
       .TypeConstraint("S", {"tensor(float)"}, "Constrain scales to float32 tensors.")

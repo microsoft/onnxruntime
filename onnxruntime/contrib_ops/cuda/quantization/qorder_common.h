@@ -81,14 +81,18 @@ class CublasLtMMAlgoMap {
 
 Status QOrdered_MatMul(
     cublasLtHandle_t cublasLt_handle, cudaStream_t stream, const cudaDeviceProp& device_prop,
-    int batchCount, int m, int n, int k,  /* if batchCount == 1, batch_stride_* will be ignored */  
-    const float* alpha,
-    const int8_t* A, int64_t batch_stride_A,
-    const int8_t* B, int64_t batch_stride_B,
-    const float* beta,
-    const int8_t* C, int64_t ldc, int64_t batch_stride_C, /* when C == D, ldc, batch_stride_C will be ignored */
-    int8_t* D, int64_t batch_stride_D,
-    cublasLtOrder_t weight_order);
+    int32_t batchCount, int64_t m, int64_t n, int64_t k,
+    const float* scale, const int8_t* A, const int8_t* B, int8_t* C,
+    cublasLtOrder_t order_weight);
+
+Status QOrdered_Gemm(
+  cublasLtHandle_t cublasLt_handle, cudaStream_t stream,
+  const cublasOperation_t transpose_A, const cublasOperation_t transpose_B,
+  int32_t batchCount, int64_t m, int64_t n, int64_t k,
+  const float* alpha, const int8_t* A, const int8_t* B,
+  const float* beta, int8_t* C,
+  cublasLtOrder_t order_A, cublasLtOrder_t order_B, cublasLtOrder_t order_C,
+  const cudaDeviceProp& device_prop);
 
 #endif
 
