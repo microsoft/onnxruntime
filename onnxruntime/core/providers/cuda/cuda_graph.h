@@ -30,9 +30,7 @@ private:
   bool has_graph_exec_ = false;
 
   CaptureId_t id_;
-  cudaStream_t capture_stream_ = nullptr;
-  cudaStream_t replay_stream_ = nullptr;
-  OrtMutex lock_;
+  cudaStream_t stream_ = nullptr; // Does not own the stream
   };
  
 } // namespace onnxruntime

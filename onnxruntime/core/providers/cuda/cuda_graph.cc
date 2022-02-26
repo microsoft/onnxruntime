@@ -10,11 +10,10 @@
 
 namespace onnxruntime {
 
-CUDAGraph::CUDAGraph(cudaStream_t stream) : capture_stream_(stream) {
+CUDAGraph::CUDAGraph(cudaStream_t stream) : stream_(stream) {
 #if (defined(CUDA_VERSION) && CUDA_VERSION < 10000)
   ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 10.0");
 #endif
-  CUDA_CALL_THROW(cudaStreamCreateWithFlags(&replay_stream_, cudaStreamNonBlocking));
 }
 
 void CUDAGraph::CaptureBegin() {
@@ -23,8 +22,8 @@ void CUDAGraph::CaptureBegin() {
               "This cuda graph has already captured a graph. "
               "Create a new instance to capture a new graph.");
 
-  CUDA_CALL_THROW(cudaDeviceSynchronize());
-  CUDA_CALL_THROW(cudaStreamBeginCapture(capture_stream_, cudaStreamCaptureModeGlobal));
+  CUDA_CALL_THROW(cudaStreamSynchronize(stream_));
+  CUDA_CALL_THROW(cudaStreamBeginCapture(stream_, cudaStreamCaptureModeThreadLocal));
 #else
   ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 10.0");
 #endif
@@ -32,7 +31,7 @@ void CUDAGraph::CaptureBegin() {
 
 void CUDAGraph::CaptureEnd() {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-  CUDA_CALL_THROW(cudaStreamEndCapture(capture_stream_, &graph_));
+  CUDA_CALL_THROW(cudaStreamEndCapture(stream_, &graph_));
   if (graph_ == NULL) {
     ORT_THROW("CUDAGraph::CaptureEnd: graph_ is NULL");
   }
@@ -48,11 +47,10 @@ void CUDAGraph::CaptureEnd() {
 }
 
 Status CUDAGraph::Replay() {
-  std::lock_guard<OrtMutex> lock(lock_);
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-  LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << replay_stream_;
-  CUDA_RETURN_IF_ERROR(cudaGraphLaunch(graph_exec_, replay_stream_));
-  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(replay_stream_));
+  LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_;
+  CUDA_RETURN_IF_ERROR(cudaGraphLaunch(graph_exec_, stream_));
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
 #else
   ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 10.0");
 #endif
@@ -76,7 +74,6 @@ void CUDAGraph::Reset() {
 
 CUDAGraph::~CUDAGraph() {
   Reset();
-  CUDA_CALL_THROW(cudaStreamDestroy(replay_stream_));
 }
 
 } // namespace onnxruntime

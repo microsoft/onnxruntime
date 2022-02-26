@@ -39,7 +39,9 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   Status SetComputeStream(void* stream) override;
 
-  void* GetComputeStream() const override { return static_cast<void*>(stream_); }
+  void* GetComputeStream() const override {
+    return static_cast<void*>(GetPerThreadContext().GetComputeStream());
+  }
 
   cublasHandle_t PerThreadCublasHandle() {
     return GetPerThreadContext().CublasHandle();
@@ -104,8 +106,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
  private:
   CUDAExecutionProviderInfo info_;
   cudaDeviceProp device_prop_;
-  bool external_stream_ = false;
-  cudaStream_t stream_ = nullptr;
 
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
@@ -117,7 +117,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   class PerThreadContext final {
    public:
-    PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
+    PerThreadContext(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                      CUDAExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
     ~PerThreadContext();
 
@@ -132,6 +132,12 @@ class CUDAExecutionProvider : public IExecutionProvider {
     cudaEvent_t& GetCurrentDeferredReleaseEvent() {
       return current_deferred_release_event_;
     }
+
+    void* GetComputeStream() const {
+      return static_cast<void*>(stream_);
+    }
+
+    Status SetComputeStream(void* stream);
 
     template <typename T>
     const T* GetConstOnes(size_t count) {
@@ -175,6 +181,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
    private:
     cudaStream_t stream_ = nullptr;
+    bool external_stream_ = false;
     cublasHandle_t cublas_handle_ = nullptr;
     cudnnHandle_t cudnn_handle_ = nullptr;
 
