@@ -23,9 +23,9 @@ def add_benchmark_case(benchmark_cases, batch_size, seq_len, hidden_size, interm
     ]
 
 
-def create_benchmark_cases(fp16=True):
+def create_benchmark_cases(precision="fp16"):
     benchmark_cases = []
-    if fp16:
+    if precision == "fp16":
       model = "models/matmul_fp16.onnx"
       data_type = np.float16
     else:
