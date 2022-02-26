@@ -15,7 +15,7 @@ repo_root = _script_dir.parents[3]
 
 
 class PackageVariant(enum.Enum):
-    Full = 0  # full ORT build
+    Full = 0  # full ORT build with all opsets, ops, and types
     Mobile = 1  # minimal ORT build with reduced ops
     Test = -1  # for testing purposes only
 
