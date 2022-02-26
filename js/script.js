@@ -1138,7 +1138,7 @@ var validCombos = {
 
     //power
     "linux,C-API,Power,DefaultCPU":
-        "pip install onnxruntime-powerpc64lens",
+        "pip install onnxruntime-powerpc64le",
     
      "linux,C++,Power,DefaultCPU":
         "pip install onnxruntime-powerpc64le",
