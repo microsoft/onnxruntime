@@ -8,7 +8,6 @@
 #include "core/common/inlined_containers.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_utils.h"
-#include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
 #include "core/optimizer/selectors_actions/actions.h"
 
