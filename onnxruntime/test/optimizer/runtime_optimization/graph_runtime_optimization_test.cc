@@ -262,6 +262,7 @@ TEST(GraphRuntimeOptimizationTest, QDQConv) {
       });
 }
 
+#if !defined(DISABLE_CONTRIB_OPS)
 TEST(GraphRuntimeOptimizationTest, ConvActivation) {
   SaveAndLoadRuntimeOptimizationsForModel(
       ORT_TSTR("testdata/transform/fusion/conv_clip11.onnx"),
@@ -280,5 +281,6 @@ TEST(GraphRuntimeOptimizationTest, ConvActivation) {
                               {"com.microsoft.FusedConv", expected_num_fusions}}));
       });
 }
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 }  // namespace onnxruntime::test

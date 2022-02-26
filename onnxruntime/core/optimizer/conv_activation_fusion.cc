@@ -54,7 +54,7 @@ class ConvActivation : public NodeSelector {
       return std::nullopt;
     }
 
-    auto is_supported_non_cuda_ep_activation = [&graph_viewer, &node](const Node& activation_node) {
+    auto is_supported_non_cuda_ep_activation = [&graph_viewer](const Node& activation_node) {
       if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Relu", {6, 13, 14}) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Sigmoid", {6, 13}) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Tanh", {6, 13}) ||
