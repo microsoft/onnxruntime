@@ -13,13 +13,13 @@ namespace contrib {
 
 template <typename T>
 GridSample<T>::GridSample(const OpKernelInfo& info) : OpKernel(info) {
-  std::string mode_str = info.GetAttrOrDefault<std::string>("mode", "bilinear") ;
+  std::string mode_str = info.GetAttrOrDefault<std::string>("mode", "bilinear");
   std::string padding_mode_str = info.GetAttrOrDefault<std::string>("padding_mode", "zeros");
   align_corners_ = static_cast<bool>(info.GetAttrOrDefault<int64_t>("align_corners", 0));
   ORT_ENFORCE(mode_str == "bilinear" || mode_str == "nearest" || mode_str == "bicubic",
-      "mode \"", mode_str, "\" not supported, expect bilinear, nearest or bicubic");
+              "mode \"", mode_str, "\" not supported, expect bilinear, nearest or bicubic");
   ORT_ENFORCE(padding_mode_str == "zeros" || padding_mode_str == "border" || padding_mode_str == "reflection",
-      "padding_mode \"", padding_mode_str, "\" not supported, expect zeros, border or reflection");
+              "padding_mode \"", padding_mode_str, "\" not supported, expect zeros, border or reflection");
   if (mode_str == "bicubic") {
     mode_ = Bicubic;
   } else if (mode_str == "nearest") {
@@ -107,19 +107,19 @@ T GsBicubicInterpolate(T p[4][4], float x, float y) {
     v[i] = coeffs[0] * p[i][0] + coeffs[1] * p[i][1] + coeffs[2] * p[i][2] + coeffs[3] * p[i][3];
   }
   GsGetCubicCoeffs(y, coeffs);
-  return static_cast<T>(coeffs[0] * v[0] + coeffs[1] * v[1] + coeffs[2] * v[2]  + coeffs[3] * v[3]);
+  return static_cast<T>(coeffs[0] * v[0] + coeffs[1] * v[1] + coeffs[2] * v[2] + coeffs[3] * v[3]);
 }
 
 template <typename T>
 T GridSample<T>::PixelAtGrid(const T* image, int64_t r, int64_t c, int64_t H, int64_t W, float border[/* 4 */]) const {
   T pixel = {};  // default 0
   if (padding_mode_ == Zeros) {
-    if (c >= 0 && c < W && r >=0 && r < H) {
+    if (c >= 0 && c < W && r >= 0 && r < H) {
       pixel = image[r * W + c];
     }
   } else if (padding_mode_ == Border) {
-    c = std::clamp<int64_t>(c, 0,  W - 1);
-    r = std::clamp<int64_t>(r, 0,  H - 1);
+    c = std::clamp<int64_t>(c, 0, W - 1);
+    r = std::clamp<int64_t>(r, 0, H - 1);
     pixel = image[r * W + c];
   } else {  // (padding_mode_ == Reflection)
     c = static_cast<int64_t>(GsReflect(static_cast<T>(c), border[0], border[2]));
@@ -170,7 +170,7 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
   // Force float here to avoid possible issue in integer T case
   float x_min = -0.5f;
   float x_max = W_in - 0.5f;
-  float y_min = -0.5f;;
+  float y_min = -0.5f;
   float y_max = H_in - 0.5f;
 
   if (align_corners_) {
@@ -183,7 +183,7 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
 
   concurrency::ThreadPool* tp = H_out * W_out > 64 ? context->GetOperatorThreadPool() : nullptr;
   for (int64_t n = 0; n < N; n++) {
-    const T* grid_data = grid->Data<T>() + n *  (H_out * W_out) * 2;
+    const T* grid_data = grid->Data<T>() + n * (H_out * W_out) * 2;
     concurrency::ThreadPool::TrySimpleParallelFor(
         tp, C,
         [&](std::ptrdiff_t c) {
@@ -209,7 +209,7 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
                   // use original border in both align_corner cases
                   x = std::clamp(x, static_cast<T>(0), static_cast<T>(W_in - 1));
                   y = std::clamp(y, static_cast<T>(0), static_cast<T>(H_in - 1));
-                } else if (padding_mode_== Reflection) {
+                } else if (padding_mode_ == Reflection) {
                   x = GsReflect(x, x_min, x_max);
                   y = GsReflect(y, y_min, y_max);
                 }
@@ -258,15 +258,16 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      GridSample,                                                 \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCpuExecutionProvider,                                      \
-      KernelDefBuilder()                                          \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_TYPED(T)                                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
+      GridSample,                                                  \
+      kMSDomain,                                                   \
+      1,                                                           \
+      T,                                                           \
+      kCpuExecutionProvider,                                       \
+      KernelDefBuilder()                                           \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
       GridSample<T>);
 
 REGISTER_KERNEL_TYPED(float)
