@@ -9,7 +9,6 @@ import ai.onnxruntime.providers.NNAPIFlags;
 import ai.onnxruntime.providers.OrtCUDAProviderOptions;
 import ai.onnxruntime.providers.OrtFlags;
 import ai.onnxruntime.providers.OrtTensorRTProviderOptions;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -775,6 +774,7 @@ public class OrtSession implements AutoCloseable {
 
     /**
      * Adds CUDA as an execution backend, using the specified CUDA options.
+     *
      * @param cudaOpts The CUDA execution provider options.
      * @throws OrtException If there was an error in the native code.
      */
@@ -784,7 +784,7 @@ public class OrtSession implements AutoCloseable {
         addCUDAV2(OnnxRuntime.ortApiHandle, nativeHandle, cudaOpts.nativeHandle);
       } else {
         throw new OrtException(
-                OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find CUDA shared provider");
+            OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find CUDA shared provider");
       }
     }
 
@@ -871,7 +871,7 @@ public class OrtSession implements AutoCloseable {
         addTensorrt(OnnxRuntime.ortApiHandle, nativeHandle, deviceNum);
       } else {
         throw new OrtException(
-                OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find TensorRT shared provider");
+            OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find TensorRT shared provider");
       }
     }
 
@@ -1058,7 +1058,7 @@ public class OrtSession implements AutoCloseable {
     private native void addCPU(long apiHandle, long nativeHandle, int useArena) throws OrtException;
 
     private native void addCUDA(long apiHandle, long nativeHandle, int deviceNum)
-            throws OrtException;
+        throws OrtException;
 
     private native void addCUDAV2(long apiHandle, long nativeHandle, long cudaOptsHandle)
         throws OrtException;
@@ -1073,7 +1073,7 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
 
     private native void addTensorrt(long apiHandle, long nativeHandle, int deviceNum)
-            throws OrtException;
+        throws OrtException;
 
     private native void addTensorrtV2(long apiHandle, long nativeHandle, long tensorrtOptsHandle)
         throws OrtException;
