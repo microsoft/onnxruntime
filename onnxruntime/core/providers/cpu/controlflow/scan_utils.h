@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "core/common/common.h"
+#include "core/common/inlined_containers.h"
 #include "core/framework/allocator.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/ort_value.h"

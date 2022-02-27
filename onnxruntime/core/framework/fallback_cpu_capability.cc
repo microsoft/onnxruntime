@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/fallback_cpu_capability.h"
+#include "core/common/inlined_containers.h"
 
 #include <queue>
 
