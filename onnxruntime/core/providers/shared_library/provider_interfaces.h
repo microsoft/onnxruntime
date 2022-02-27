@@ -4,7 +4,7 @@
 // Public wrappers around internal ort interfaces (currently)
 #include "core/providers/shared_library/provider_host_api.h"
 
-#include "core/common/inlined_containers.h"
+#include "core/common/inlined_containers_fwd.h"
 #include "core/providers/shared/common.h"
 
 #define PROVIDER_DISALLOW_ALL(TypeName)     \

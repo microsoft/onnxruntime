@@ -5,6 +5,8 @@
 
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
+#include "core/common/inlined_containers.h"
+#include "core/framework/tensor_shape.h"
 #include "core/framework/op_kernel.h"
 #endif
 

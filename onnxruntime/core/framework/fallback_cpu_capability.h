@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/common/inlined_containers.h"
+#include "core/common/inlined_containers_fwd.h"
 #include "core/framework/kernel_registry.h"
 #include "core/graph/graph_viewer.h"
 #include <gsl/gsl>
