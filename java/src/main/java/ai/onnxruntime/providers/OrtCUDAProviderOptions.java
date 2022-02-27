@@ -5,6 +5,7 @@
 package ai.onnxruntime.providers;
 
 import ai.onnxruntime.OrtException;
+import ai.onnxruntime.OrtProvider;
 
 /**
  * Options for configuring the CUDA execution provider.
@@ -12,6 +13,7 @@ import ai.onnxruntime.OrtException;
  * <p> Supported options are listed on the <a href="https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#configuration-options">ORT website</a>.
  */
 public final class OrtCUDAProviderOptions extends StringConfigProviderOptions {
+    private static final OrtProvider PROVIDER = OrtProvider.CUDA;
 
     /**
      * Constructs CUDA execution provider options for device 0.
@@ -27,7 +29,7 @@ public final class OrtCUDAProviderOptions extends StringConfigProviderOptions {
      * @throws OrtException If CUDA is unavailable.
      */
     public OrtCUDAProviderOptions(int deviceId) throws OrtException {
-        super(create(getApiHandle()));
+        super(loadLibraryAndCreate(PROVIDER, () -> create(getApiHandle())));
         if (deviceId < 0) {
             close();
             throw new IllegalArgumentException("Device id must be non-negative, received " + deviceId);
@@ -36,6 +38,11 @@ public final class OrtCUDAProviderOptions extends StringConfigProviderOptions {
         String id = "" + deviceId;
         this.options.put("device_id",id);
         add(getApiHandle(),this.nativeHandle,"device_id", id);
+    }
+
+    @Override
+    public OrtProvider getProvider() {
+        return PROVIDER;
     }
 
     /**

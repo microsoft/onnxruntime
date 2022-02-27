@@ -5,6 +5,7 @@
 package ai.onnxruntime.providers;
 
 import ai.onnxruntime.OrtException;
+import ai.onnxruntime.OrtProvider;
 
 /**
  * Options for configuring the TensorRT execution provider.
@@ -12,6 +13,7 @@ import ai.onnxruntime.OrtException;
  * <p> Supported options are listed on the <a href="https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#execution-provider-options">ORT website</a>.
  */
 public final class OrtTensorRTProviderOptions extends StringConfigProviderOptions {
+    private static final OrtProvider PROVIDER = OrtProvider.TENSOR_RT;
 
     /**
      * Constructs TensorRT execution provider options for device 0.
@@ -27,7 +29,7 @@ public final class OrtTensorRTProviderOptions extends StringConfigProviderOption
      * @throws OrtException If TensorRT is unavailable.
      */
     public OrtTensorRTProviderOptions(int deviceId) throws OrtException {
-        super(create(getApiHandle()));
+        super(loadLibraryAndCreate(PROVIDER, () -> create(getApiHandle())));
         if (deviceId < 0) {
             close();
             throw new IllegalArgumentException("Device id must be non-negative, received " + deviceId);
@@ -36,6 +38,11 @@ public final class OrtTensorRTProviderOptions extends StringConfigProviderOption
         String id = "" + deviceId;
         this.options.put("device_id",id);
         add(getApiHandle(),this.nativeHandle,"device_id", id);
+    }
+
+    @Override
+    public OrtProvider getProvider() {
+        return PROVIDER;
     }
 
     /**
