@@ -2208,9 +2208,9 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_Basic) {
   };
 
   test_case({{1, 2, 4}, {1, 3, 4}});
-  // test_case({{1, 2, 4}, {1, 3, 4}}, true);         // block removal of first dq
-  // test_case({{1, 2, 4}, {1, 3, 4}}, false, true);  // block removal of last dq
-  // test_case({{1, 2, 4}, {1, 3, 4}}, true, true);   // block removal of first and last dq
+  test_case({{1, 2, 4}, {1, 3, 4}}, true);         // block removal of first dq
+  test_case({{1, 2, 4}, {1, 3, 4}}, false, true);  // block removal of last dq
+  test_case({{1, 2, 4}, {1, 3, 4}}, true, true);   // block removal of first and last dq
 }
 
 // test removal when we have graph input -> Q -> DQ -> graph output
