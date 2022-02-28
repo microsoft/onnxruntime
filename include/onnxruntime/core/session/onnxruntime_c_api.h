@@ -3323,6 +3323,8 @@ struct OrtApi {
                   _In_ const int& input_len,
                   _Inout_ void* const* outputs,
                   _In_ const int& output_len);
+
+  ORT_API2_STATUS(ReleaseEagerKernel, _In_ const void* kernel);
 };
 
 /*

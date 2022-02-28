@@ -360,4 +360,6 @@ ORT_API_STATUS_IMPL(InvokeEagerKernel,
                     _Inout_ void* const* outputs,
                     _In_ const int& output_len);
 
+ORT_API_STATUS_IMPL(ReleaseEagerKernel, _In_ const void* kernel);
+
 }  // namespace OrtApis

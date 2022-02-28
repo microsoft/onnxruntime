@@ -369,8 +369,6 @@ TEST(CApiTest, SparseInputModel) {
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 TEST(CApiTest, custom_op_handler) {
-  std::cout << "Running custom op inference" << std::endl;
-
   std::vector<Input> inputs(1);
   Input& input = inputs[0];
   input.name = "X";
@@ -400,6 +398,24 @@ TEST(CApiTest, custom_op_handler) {
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
                        custom_op_domain, nullptr);
 #endif
+}
+
+TEST(CApiTest, eager_op_handler) {
+  std::vector<Input> inputs(1);
+  Input& input = inputs[0];
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
+
+  EagerCustomOp eager_op{onnxruntime::kCpuExecutionProvider, nullptr};
+  Ort::CustomOpDomain custom_op_domain("");
+  custom_op_domain.Add(&eager_op);
+
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
+                       custom_op_domain, nullptr);
 }
 
 #ifdef ENABLE_EXTENSION_CUSTOM_OPS

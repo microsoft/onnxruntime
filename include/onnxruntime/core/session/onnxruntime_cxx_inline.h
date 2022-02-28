@@ -1183,26 +1183,30 @@ inline void* CustomOpApi::KernelContext_GetGPUComputeStream(const OrtKernelConte
   return out;
 }
 
-inline void CustomOpApi::CreateEagerKernel(const void* kernel_info,
-                                           const char* op_name,
-                                           const char* domain,
-                                           const int& version,
-                                           const char** type_constraint_names,
-                                           const int* type_constraint_values,
-                                           const int& num_type_constraint,
-                                           const void* attrs,
-                                           const int& num_attrs,
-                                           void** kernel) {
+inline void CustomOpApi::CreateOperator(const void* kernel_info,
+                                        const char* op_name,
+                                        const char* domain,
+                                        const int& version,
+                                        const char** type_constraint_names,
+                                        const int* type_constraint_values,
+                                        const int& num_type_constraint,
+                                        const void* attrs,
+                                        const int& num_attrs,
+                                        void** kernel) {
   ThrowOnError(api_.CreateEagerKernel(kernel_info, op_name, domain, version, type_constraint_names, type_constraint_values, num_type_constraint, attrs, num_attrs, kernel));
 }
 
- inline void CustomOpApi::InvokeEagerKernel(const void* context,
-                                           const void* kernel,
-                                           const void* const* inputs,
-                                           const int& input_len,
-                                           void* const* outputs,
-                                           const int& output_len) {
+inline void CustomOpApi::InvokeOperator(const void* context,
+                                        const void* kernel,
+                                        const void* const* inputs,
+                                        const int& input_len,
+                                        void* const* outputs,
+                                        const int& output_len) {
   ThrowOnError(api_.InvokeEagerKernel(context, kernel, inputs, input_len, outputs, output_len));
+}
+
+inline void CustomOpApi::ReleaseOperator(const void* kernel) {
+  ThrowOnError(api_.ReleaseEagerKernel(kernel));
 }
 
 inline SessionOptions& SessionOptions::DisablePerSessionThreads() {

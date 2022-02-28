@@ -23,15 +23,11 @@ struct OrtTensorDimensions : std::vector<int64_t> {
 };
 
 struct MyCustomKernel {
-
-  MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* info, void* compute_stream);
- 
-  //MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/, void* compute_stream)
-  //    : ort_(ort), compute_stream_(compute_stream) {
-  //}
+  MyCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* /*info*/, void* compute_stream)
+      : ort_(ort), compute_stream_(compute_stream) {
+  }
 
   void Compute(OrtKernelContext* context);
-  void* kernel_add{};
 
  private:
   Ort::CustomOpApi ort_;
@@ -210,4 +206,36 @@ struct SliceCustomOp : Ort::CustomOpBase<SliceCustomOp, SliceCustomOpKernel> {
 
  private:
   const char* provider_;
+};
+
+struct EagerCustomKernel {
+  EagerCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* info, void* compute_stream);
+
+  ~EagerCustomKernel();
+  void Compute(OrtKernelContext* context);
+
+ private:
+  Ort::CustomOpApi ort_;
+  void* compute_stream_;
+  void* operator_add{};
+};
+
+struct EagerCustomOp : Ort::CustomOpBase<EagerCustomOp, EagerCustomKernel> {
+  explicit EagerCustomOp(const char* provider, void* compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
+
+  void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo* info) const { return new EagerCustomKernel(api, info, compute_stream_); };
+  const char* GetName() const { return "Foo"; };
+  const char* GetExecutionProviderType() const { return provider_; };
+
+  size_t GetInputTypeCount() const { return 2; };
+  ONNXTensorElementDataType GetInputType(size_t /*index*/) const {
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+  };
+
+  size_t GetOutputTypeCount() const { return 1; };
+  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+
+ private:
+  const char* provider_;
+  void* compute_stream_;
 };

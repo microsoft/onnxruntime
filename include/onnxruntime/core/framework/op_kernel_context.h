@@ -249,8 +249,7 @@ inline SparseTensor* OpKernelContext::Output<SparseTensor>(int index) {
 }
 #endif
 
-/////////////////////// EagerKernelContext ///////////////////////
-
+//EagerKernelContext for calling into a kenrel without a graph
 class EagerKernelContext : public OpKernelContext {
  public:
   //todo: add SAL annotations
@@ -287,7 +286,6 @@ class EagerKernelContext : public OpKernelContext {
   OrtValue* const* outputs_;
   const int output_len_;
   AllocatorPtr allocator_;
-  //std::map<int, std::unique_ptr<OrtValue>> outputs_;
 };
 
 }  // namespace onnxruntime
