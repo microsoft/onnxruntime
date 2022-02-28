@@ -191,8 +191,8 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream, [[
   return Status::OK();
 }
 
+// Matmul descriptor must specify CUBLAS_OP_T on matrix B and CUBLAS_OP_N (default) on matrix A and C
 Status QOrdered_Gemm(cublasLtHandle_t cublasLt_handle, cudaStream_t stream,
-                     const cublasOperation_t transpose_A, const cublasOperation_t transpose_B,
                      int32_t batchCount, int64_t m, int64_t n, int64_t k,
                      const float* alpha, const int8_t* A, const int8_t* B,
                      const float* beta, int8_t* C,
@@ -201,6 +201,10 @@ Status QOrdered_Gemm(cublasLtHandle_t cublasLt_handle, cudaStream_t stream,
   cublasLtMatmulDesc_t matmul_desc = nullptr;
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescCreate(&matmul_desc, CUBLAS_COMPUTE_32I, CUDA_R_32F));
   auto clean_matmul_desc = gsl::finally([&matmul_desc]() {if (matmul_desc) cublasLtMatmulDescDestroy(matmul_desc); });
+
+  const cublasOperation_t transpose_A = CUBLAS_OP_N;
+  const cublasOperation_t transpose_B = CUBLAS_OP_T;
+
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(matmul_desc, CUBLASLT_MATMUL_DESC_TRANSA, &transpose_A, sizeof(transpose_A)));
   CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(matmul_desc, CUBLASLT_MATMUL_DESC_TRANSB, &transpose_B, sizeof(transpose_B)));
   cublasLtPointerMode_t const pointMode = CUBLASLT_POINTER_MODE_HOST;

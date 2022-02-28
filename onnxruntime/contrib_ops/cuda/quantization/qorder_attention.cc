@@ -38,6 +38,7 @@ QOrderedAttention<T>::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(i
 
 template <typename T>
 Status QOrderedAttention<T>::ComputeInternal(OpKernelContext* context) const {
+  // inputs are column based
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(2);
   const Tensor* bias = context->Input<Tensor>(4);
@@ -83,26 +84,26 @@ Status QOrderedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int k = input_hidden_size;
   auto gemm_buffer = GetScratchBuffer<T>(batch_size * sequence_length * 3 * hidden_size * element_size);
 
-  typedef typename ToCudaType<T>::MappedType CudaT;
-  CudaT one = ToCudaType<T>::FromFloat(1.0f);
-  CudaT zero = ToCudaType<T>::FromFloat(0.0f);
+  // typedef typename ToCudaType<T>::MappedType CudaT;
+  // CudaT one = ToCudaType<T>::FromFloat(1.0f);
+  // CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
   cudaStream_t stream = Stream();
 
-  // Bias shape is (N), broadcast using B(N, M) = 1 * bias(N, 1) x ones(1, M) + 0 * B.
-  // TODO: use custom kernel of expand to improve the performance.
-  CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-      cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
-      reinterpret_cast<const CudaT*>(bias->template Data<T>()), n,
-      GetConstOnes<CudaT>(m), 1,
-      &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
+  // Bias shape is (N), broadcast using scale_bias * B(M, N) = scale_bias * ones(M, 1) x bias(1, N) + 0 * B.
+  CUBLAS_RETURN_IF_ERROR(
+    QOrdered_Gemm(cublasLt, stream, (int)1, m, n, 1,
+                  scale_bias, GetConstOnes<int8_t>(m), reinterpret_cast<const int8_t*>(bias->template Data<int8_t>()),
+                  0.0f, reinterpret_cast<int8_t*>(gemm_buffer.get()),
+                  order_bias_, order_bias_, order_bias_, device_prop));
 
-  // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x B.
-  CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-      cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-      reinterpret_cast<const CudaT*>(weights->template Data<T>()), n,
-      reinterpret_cast<const CudaT*>(input->template Data<T>()), k,
-      &one, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
+  // Gemm result(M, N) = scale_input * input * scale_weights * weights + scale_bias x B.
+  CUBLAS_RETURN_IF_ERROR(
+    QOrdered_Gemm(cublasLt, stream, (int)1, m, n, k, scale_alpha,
+                  reinterpret_cast<const int8_t*>(input->template Data<int8_t>()),
+                  reinterpret_cast<const int8_t*>(weights->template Data<int8_t>()),
+                  0.0f, reinterpret_cast<int8_t*>(gemm_buffer.get()),
+                  order_input_, order_weights_, order_bias_, device_prop));
 
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, past_sequence_length);
   auto temp_buffer = GetScratchBuffer<void>(workSpaceSize);

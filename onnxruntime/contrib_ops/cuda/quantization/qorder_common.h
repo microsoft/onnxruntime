@@ -87,7 +87,6 @@ Status QOrdered_MatMul(
 
 Status QOrdered_Gemm(
   cublasLtHandle_t cublasLt_handle, cudaStream_t stream,
-  const cublasOperation_t transpose_A, const cublasOperation_t transpose_B,
   int32_t batchCount, int64_t m, int64_t n, int64_t k,
   const float* alpha, const int8_t* A, const int8_t* B,
   const float* beta, int8_t* C,
