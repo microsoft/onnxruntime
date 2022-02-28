@@ -35,7 +35,7 @@ void GraphProtoSerializer::ToProto(ONNX_NAMESPACE::GraphProto& graph_proto, bool
   }
 
   if (include_initializer) {
-    auto& initializers = graph_viewer_->GetGraph().GetAllInitializedTensors();
+    auto& initializers = graph_viewer_->GetAllInitializedTensors();
     for (auto& it : initializers) {
       auto* p_initializer = graph_proto.add_initializer();
       *p_initializer = *(it.second);
