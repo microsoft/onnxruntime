@@ -24,7 +24,8 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        int opset_version,
                        double per_sample_tolerance,
                        double relative_per_sample_tolerance,
-                       std::unique_ptr<GraphTransformer> transformer) {
+                       std::unique_ptr<GraphTransformer> transformer,
+                       const std::function<void(SessionOptions&)>* add_session_options) {
   // Build the model for this test.
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = opset_version;
@@ -49,6 +50,9 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
     session_options.optimized_model_filepath =
         ToPathString("model" + std::to_string(static_cast<int>(level)) + ".onnx");
 #endif
+    if (add_session_options) {
+      (*add_session_options)(session_options);
+    }
     InferenceSessionWrapper session{session_options, GetEnvironment()};
     ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
     if (transformer) {
