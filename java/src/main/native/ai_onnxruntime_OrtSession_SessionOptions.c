@@ -389,7 +389,8 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addCUD
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong optsHandle) {
     (void)jobj;
   #ifdef USE_CUDA
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,SessionOptionsAppendExecutionProvider_CUDA_V2((OrtSessionOptions*) handle, (const OrtCUDAProviderOptionsV2*) optsHandle));
+    const OrtApi* api = (OrtApi*) apiHandle;
+    checkOrtStatus(jniEnv,api,api->SessionOptionsAppendExecutionProvider_CUDA_V2((OrtSessionOptions*) handle, (const OrtCUDAProviderOptionsV2*) optsHandle));
   #else
     (void)apiHandle;(void)handle;(void)optsHandle; // Parameters used when CUDA is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with CUDA support.");
@@ -455,7 +456,8 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addTen
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jlong optsHandle) {
     (void)jobj;
   #ifdef USE_TENSORRT
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,SessionOptionsAppendExecutionProvider_TensorRT_V2((OrtSessionOptions*) handle, (const OrtTensorRTProviderOptionsV2*) optsHandle));
+    const OrtApi* api = (OrtApi*) apiHandle;
+    checkOrtStatus(jniEnv,api,api->SessionOptionsAppendExecutionProvider_TensorRT_V2((OrtSessionOptions*) handle, (const OrtTensorRTProviderOptionsV2*) optsHandle));
   #else
     (void)apiHandle;(void)handle;(void)optsHandle; // Parameters used when TensorRT is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with TensorRT support.");
