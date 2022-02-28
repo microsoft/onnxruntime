@@ -83,7 +83,7 @@ BackendManager::BackendManager(const onnxruntime::Node& fused_node,
     concrete_backend_ = BackendFactory::MakeBackend(*model_copy, GetGlobalContext(), subgraph_context_);
     subgraph_context_.has_dynamic_input_shape = false;
 
-  } else if (ModelHasSymbolicInputDims(&fused_node)) {
+  } else if (ModelHasSymbolicInputDims(subgraph)) {
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims. Defering backend initialization";
     subgraph_context_.has_dynamic_input_shape = true;
   } else {
@@ -125,9 +125,9 @@ bool BackendManager::ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& mod
   return has_batched_inputs;
 }
 
-bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::Node* fused_node) const {
+bool BackendManager::ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& subgraph) const {
   bool has_sym_dims = false;
-  auto graph_inputs = fused_node->GetFunctionBody()->Body().GetInputs();
+  auto graph_inputs = subgraph.GetInputs();
   for (auto input : graph_inputs) {
     if (input->Shape() == nullptr) {
       has_sym_dims = true;

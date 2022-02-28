@@ -23,7 +23,7 @@ class BackendManager {
  private:
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> GetModelProtoFromFusedNode(
       const onnxruntime::Node& fused_node, const onnxruntime::GraphViewer& subgraph, const logging::Logger& logger) const;
-  bool ModelHasSymbolicInputDims(const onnxruntime::Node* fused_node) const;
+  bool ModelHasSymbolicInputDims(const onnxruntime::GraphViewer& subgraph) const;
   bool ModelHasBatchedInputs(const ONNX_NAMESPACE::ModelProto& model_proto) const;
 
   std::shared_ptr<ONNX_NAMESPACE::ModelProto>
