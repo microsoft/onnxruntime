@@ -336,7 +336,18 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(
                 NativeMethods.OrtSessionOptionsAppendExecutionProvider_CoreML(handle, (uint)coremlFlags));
 #else
-            throw new NotSupportedException("The CoreML Execution Provider is not supported in this build");
+#if !__ANDROID__
+            // the CoreML EP entry point is registered unless this is Android but is only valid if this is OSX
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                NativeApiStatus.VerifySuccess(
+                    NativeMethods.OrtSessionOptionsAppendExecutionProvider_CoreML(handle, (uint)coremlFlags));
+            }
+            else
+#endif
+            {
+                throw new NotSupportedException("The CoreML Execution Provider is not supported in this build");
+            }
 #endif
         }
 
@@ -739,11 +750,11 @@ namespace Microsoft.ML.OnnxRuntime
         }
         private ExecutionMode _executionMode = ExecutionMode.ORT_SEQUENTIAL;
 
-        #endregion
+#endregion
 
-        #region Private Methods
+#region Private Methods
 
-#if! __MOBILE__
+#if !__MOBILE__
         // Declared, but called only if OS = Windows.
         [DllImport("kernel32.dll")]
         private static extern IntPtr LoadLibrary(string dllToLoad);

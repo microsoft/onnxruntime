@@ -209,7 +209,7 @@ MlasSymmQgemmBatch(
     if (ThreadPool == nullptr) {
         // So our caller handles threaded job partition.
         // Call single threaded operation directly
-        auto uarch = MlasGetCoreUArch();
+        auto uarch = GetMlasPlatform().GetCoreType();
         MLAS_SYMM_QGEMM_OPERATION* operation =
             uarch == mlas_core_little ? dispatch->LitOperation : dispatch->BigOperation;
 
@@ -260,7 +260,7 @@ MlasSymmQgemmBatch(
     ThreadsPerGemm = ThreadCountM * ThreadCountN;
 
     MlasTrySimpleParallel(ThreadPool, ThreadsPerGemm * BatchN, [&](ptrdiff_t tid) {
-        auto uarch = MlasGetCoreUArch();
+        auto uarch = GetMlasPlatform().GetCoreType();
         MLAS_SYMM_QGEMM_OPERATION* operation =
             uarch == mlas_core_little ? dispatch->LitOperation : dispatch->BigOperation;
 

@@ -13,7 +13,7 @@ Fuse DynamicQuantizeLinear + MatMulInteger and following cast and mul to Dynamic
 */
 class DynamicQuantizeMatMulFusion : public GraphTransformer {
  public:
-  DynamicQuantizeMatMulFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  DynamicQuantizeMatMulFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("DynamicQuantizeMatMulFusion", compatible_execution_providers) {
   }
 

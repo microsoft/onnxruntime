@@ -14,10 +14,10 @@ namespace onnxruntime {
 namespace training {
 
 typedef GenericRegistry<GraphTransformer,
-                        const std::unordered_set<std::string>&> // supported EP list
+                        const InlinedHashSet<std::string_view>&> // supported EP list
     GraphTransformerRegistryType;
 
-typedef std::function<std::unique_ptr<GraphTransformer>(const std::unordered_set<std::string>&)> GraphTransformerCreator;
+typedef std::function<std::unique_ptr<GraphTransformer>(const InlinedHashSet<std::string_view>&)> GraphTransformerCreator;
 
 struct GraphTransformerMeta {
   TransformerLevel level;
@@ -44,7 +44,7 @@ class GraphTransformerRegistry {
     return name_to_meta_map_;
   }
 
-  std::unique_ptr<GraphTransformer> CreateTransformer(const std::string& name, const std::unordered_set<std::string>& ep_list) const {
+  std::unique_ptr<GraphTransformer> CreateTransformer(const std::string& name, const InlinedHashSet<std::string_view>& ep_list) const {
     return transformer_registry_.MakeUnique(name, ep_list);
   }
 
@@ -86,7 +86,7 @@ class GraphTransformerRegisterOnce final {
 void GenerateExternalTransformers(
     TransformerLevel level,
     bool before_gradient_builder,
-    const std::unordered_set<std::string>& ep_list,
+    const InlinedHashSet<std::string_view>& ep_list,
     std::vector<std::unique_ptr<GraphTransformer>>& output);
 
 }  // namespace training

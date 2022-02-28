@@ -200,16 +200,18 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override {
-    std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacement_defs;
 
     auto output_args = graph.GetOutputs();
-    const std::unordered_set<const onnxruntime::NodeArg*> graph_outputs(output_args.begin(), output_args.end());
+    InlinedHashSet<const onnxruntime::NodeArg*> graph_outputs;
+    graph_outputs.reserve(output_args.size());
+    graph_outputs.insert(output_args.begin(), output_args.end());
+    const auto graph_outputs_end = graph_outputs.end();
 
     for (auto& node : graph.Nodes()) {
       bool removed = false;
       if (node.OpType() == "Cast") {
-        std::vector<std::reference_wrapper<Node>> nodes_to_remove;
-        std::vector<std::reference_wrapper<Node>> cast_nodes_to_keep;
+        InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
+        InlinedVector<std::reference_wrapper<Node>> cast_nodes_to_keep;
 
         // if cast's next node is also cast:
         //     - if the next cast's output type is equal to cast's input type, remove these two casts.
@@ -257,7 +259,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
             }
 
             // Cannot remove node if it's output is also an output of the graph
-            if (graph_outputs.find(output_node.OutputDefs()[0]) == graph_outputs.end() &&
+            if (graph_outputs.find(output_node.OutputDefs()[0]) == graph_outputs_end &&
                 src_type == dst_type1 && src_type1 == dst_type) {
               // get a mutable reference to the output node and save it
               nodes_to_remove.push_back(*graph.GetNode(output_node.Index()));
@@ -315,7 +317,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
         // If all the child nodes are either removed or another Cast node and we're not providing graph output,
         // we can remove this node. Connect those remaining child Cast nodes to current Cast node's input.
         if (num_children > 0 && nodes_to_remove.size() + cast_nodes_to_keep.size() == num_children &&
-            graph_outputs.find(node.OutputDefs()[0]) == graph_outputs.end()) {
+            graph_outputs.find(node.OutputDefs()[0]) == graph_outputs_end) {
           for (auto& n : cast_nodes_to_keep) {
             Node& cast_node_to_keep = n;
             graph.SetNodeArgType(*cast_node_to_keep.MutableInputDefs()[0], *node.InputDefs()[0]->TypeAsProto());
