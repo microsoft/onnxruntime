@@ -1600,33 +1600,33 @@ bool ConcatOpSupportChecker::HasSupportedInputOutputsImpl(
     if (params.android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
       std::vector<float> input_scales(input_size);
       std::vector<int32_t> input_zps(input_size);
-      for (const auto input_idx : input_indices) {
-        auto status = GetQuantizationScaleAndZeroPoint(
-            initializers, node_unit.Inputs()[input_idx], node_unit.ModelPath(), input_scales[input_idx], input_zps[input_idx]);
-        if (!status.IsOK()) {
-          LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
-                              << "] GetQuantizationScaleAndZeroPoint for input_scale/zp failed, message: "
-                              << status.ErrorMessage();
+      size_t input_idx = 0;
+
+      auto status = GetQuantizationScaleAndZeroPoint(
+          initializers, node_unit.Inputs()[input_idx], node_unit.ModelPath(),
+          input_scales[input_idx], input_zps[input_idx]);
+
+      if (!status.IsOK()) {
+        LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
+                            << "] GetQuantizationScaleAndZeroPoint for input_scale/zp failed, message: "
+                            << status.ErrorMessage();
+        return false;
+      }
+
+      for (++input_idx; input_idx < input_size; ++input_idx) {
+        if (!HasRequiredScaleAndZeroPoint(initializers,
+                                          MakeString("Op [", op_type, "] name [", op_name, "] input ", input_idx),
+                                          node_unit.Inputs()[input_idx],
+                                          node_unit.ModelPath(),
+                                          input_scales[0] /* required_scale */,
+                                          input_zps[0] /* required_zp */)) {
           return false;
         }
       }
 
-      // verify all of the input scales and zps are the same
-      if (!all_of(input_scales.begin(), input_scales.end(), [&](float scale) { return scale == input_scales[0]; })) {
-        LOGS_DEFAULT(VERBOSE) << "Op [" << op_type << "] name [" << op_name
-                              << "] does not have same scales for all inputs, this is required by NNAPI 28-";
-        return false;
-      }
-
-      if (!all_of(input_zps.begin(), input_zps.end(), [&](int32_t zp) { return zp == input_zps[0]; })) {
-        LOGS_DEFAULT(VERBOSE) << "Op [" << op_type << "] name [" << op_name
-                              << "] does not have same zero points for all inputs, this is required by NNAPI 28-";
-        return false;
-      }
-
       // NNAPI (28-) requires the output scale and zp be the same as the input 0
       if (!HasRequiredScaleAndZeroPoint(initializers,
-                                        MakeString("Op [", op_type, "] name [", op_name, "]'s output 0 "),
+                                        MakeString("Op [", op_type, "] name [", op_name, "]'s output 0"),
                                         node_unit.Outputs()[0], node_unit.ModelPath(),
                                         input_scales[0] /* required_scale */,
                                         input_zps[0] /* required_zp */)) {

@@ -290,6 +290,7 @@ static void RunQDQModelTest(const GetQDQTestCaseFn& build_test_case,
                             std::make_unique<NnapiExecutionProvider>(0),
                             helper.feeds_, params);
 #else
+  ORT_UNUSED_PARAMETER(params);
   // test load only
   SessionOptions so;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
