@@ -42,12 +42,16 @@ public class ProviderOptionsTest {
     runProvider(OrtProvider.CUDA, sessionOpts);
 
     // Test invalid device num throws
-    assertThrows(OrtException.class, () -> new OrtCUDAProviderOptions(-1));
+    assertThrows(IllegalArgumentException.class, () -> new OrtCUDAProviderOptions(-1));
 
     // Test invalid key name throws
-    OrtCUDAProviderOptions invalidOpts = new OrtCUDAProviderOptions(0);
+    OrtCUDAProviderOptions invalidKeyOpts = new OrtCUDAProviderOptions(0);
     assertThrows(
-        OrtException.class, () -> invalidOpts.add("not_a_real_provider_option", "not a number"));
+        OrtException.class, () -> invalidKeyOpts.add("not_a_real_provider_option", "not a number"));
+    // Test invalid value throws
+    OrtCUDAProviderOptions invalidValueOpts = new OrtCUDAProviderOptions(0);
+    assertThrows(
+        OrtException.class, () -> invalidValueOpts.add("gpu_mem_limit", "not a number"));
   }
 
   @Test
@@ -61,12 +65,16 @@ public class ProviderOptionsTest {
     runProvider(OrtProvider.TENSOR_RT, sessionOpts);
 
     // Test invalid device num throws
-    assertThrows(OrtException.class, () -> new OrtTensorRTProviderOptions(-1));
+    assertThrows(IllegalArgumentException.class, () -> new OrtTensorRTProviderOptions(-1));
 
     // Test invalid key name throws
-    OrtTensorRTProviderOptions invalidOpts = new OrtTensorRTProviderOptions(0);
+    OrtTensorRTProviderOptions invalidKeyOpts = new OrtTensorRTProviderOptions(0);
     assertThrows(
-        OrtException.class, () -> invalidOpts.add("not_a_real_provider_option", "not a number"));
+        OrtException.class, () -> invalidKeyOpts.add("not_a_real_provider_option", "not a number"));
+    // Test invalid value throws
+    OrtTensorRTProviderOptions invalidValueOpts = new OrtTensorRTProviderOptions(0);
+    assertThrows(
+        OrtException.class, () -> invalidValueOpts.add("trt_max_workspace_size", "not a number"));
   }
 
   private static void runProvider(OrtProvider provider, OrtSession.SessionOptions options)
