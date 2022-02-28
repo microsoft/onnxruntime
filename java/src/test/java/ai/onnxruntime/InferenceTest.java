@@ -7,6 +7,7 @@ package ai.onnxruntime;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -54,6 +55,15 @@ public class InferenceTest {
   private static final Pattern outputPBPattern = Pattern.compile("output_*.pb");
 
   private static final OrtEnvironment env = OrtEnvironment.getEnvironment();
+
+  @Test
+  public void environmentTest() {
+    // Checks that the environment instance is the same.
+    OrtEnvironment otherEnv = OrtEnvironment.getEnvironment();
+    assertSame(env, otherEnv);
+    otherEnv = OrtEnvironment.getEnvironment("test-name");
+    assertSame(env, otherEnv);
+  }
 
   @Test
   public void createSessionFromPath() throws OrtException {
@@ -1052,31 +1062,30 @@ public class InferenceTest {
 
   @Test
   public void testModelMetadata() throws OrtException {
-    String modelPath = TestHelpers.getResourcePath("/model_with_valid_ort_config_json.onnx").toString();
+    String modelPath =
+        TestHelpers.getResourcePath("/model_with_valid_ort_config_json.onnx").toString();
 
-    try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelMetadata")) {
-      try (OrtSession session = env.createSession(modelPath)) {
-        OnnxModelMetadata modelMetadata = session.getMetadata();
+    try (OrtSession session = env.createSession(modelPath)) {
+      OnnxModelMetadata modelMetadata = session.getMetadata();
 
-        Assertions.assertEquals(1, modelMetadata.getVersion());
+      Assertions.assertEquals(1, modelMetadata.getVersion());
 
-        Assertions.assertEquals("Hari", modelMetadata.getProducerName());
+      Assertions.assertEquals("Hari", modelMetadata.getProducerName());
 
-        Assertions.assertEquals("matmul test", modelMetadata.getGraphName());
+      Assertions.assertEquals("matmul test", modelMetadata.getGraphName());
 
-        Assertions.assertEquals("", modelMetadata.getDomain());
+      Assertions.assertEquals("", modelMetadata.getDomain());
 
-        Assertions.assertEquals(
-            "This is a test model with a valid ORT config Json", modelMetadata.getDescription());
+      Assertions.assertEquals(
+          "This is a test model with a valid ORT config Json", modelMetadata.getDescription());
 
-        Assertions.assertEquals("graph description", modelMetadata.getGraphDescription());
+      Assertions.assertEquals("graph description", modelMetadata.getGraphDescription());
 
-        Assertions.assertEquals(2, modelMetadata.getCustomMetadata().size());
-        Assertions.assertEquals("dummy_value", modelMetadata.getCustomMetadata().get("dummy_key"));
-        Assertions.assertEquals(
-            "{\"session_options\": {\"inter_op_num_threads\": 5, \"intra_op_num_threads\": 2, \"graph_optimization_level\": 99, \"enable_profiling\": 1}}",
-            modelMetadata.getCustomMetadata().get("ort_config"));
-      }
+      Assertions.assertEquals(2, modelMetadata.getCustomMetadata().size());
+      Assertions.assertEquals("dummy_value", modelMetadata.getCustomMetadata().get("dummy_key"));
+      Assertions.assertEquals(
+          "{\"session_options\": {\"inter_op_num_threads\": 5, \"intra_op_num_threads\": 2, \"graph_optimization_level\": 99, \"enable_profiling\": 1}}",
+          modelMetadata.getCustomMetadata().get("ort_config"));
     }
   }
 
