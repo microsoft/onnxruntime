@@ -50,8 +50,7 @@ public class ProviderOptionsTest {
         OrtException.class, () -> invalidKeyOpts.add("not_a_real_provider_option", "not a number"));
     // Test invalid value throws
     OrtCUDAProviderOptions invalidValueOpts = new OrtCUDAProviderOptions(0);
-    assertThrows(
-        OrtException.class, () -> invalidValueOpts.add("gpu_mem_limit", "not a number"));
+    assertThrows(OrtException.class, () -> invalidValueOpts.add("gpu_mem_limit", "not a number"));
   }
 
   @Test
