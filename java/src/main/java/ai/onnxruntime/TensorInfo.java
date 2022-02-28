@@ -304,13 +304,13 @@ public class TensorInfo implements ValueInfo {
    * @return A TensorInfo for a sparse tensor.
    * @throws OrtException If the supplied tensor has too many elements for it's shape.
    */
-  public static TensorInfo constructFromSparseTensor(OnnxSparseTensor.SparseTensor tensor)
-      throws OrtException {
-    long[] shape = tensor.getShape();
+  public static <T extends Buffer> TensorInfo constructFromSparseTensor(
+      OnnxSparseTensor.SparseTensor<T> tensor) throws OrtException {
+    long[] shape = tensor.getDenseShape();
 
     long elementCount = OrtUtil.elementCount(shape);
 
-    long bufferRemaining = tensor.getData().remaining();
+    long bufferRemaining = tensor.getValues().remaining();
 
     if (elementCount < bufferRemaining) {
       throw new OrtException(

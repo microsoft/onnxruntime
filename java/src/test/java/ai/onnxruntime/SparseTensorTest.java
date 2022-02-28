@@ -7,9 +7,11 @@ package ai.onnxruntime;
 import static ai.onnxruntime.InferenceTest.getResourcePath;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
@@ -80,8 +82,22 @@ public class SparseTensorTest {
         float[] expected = new float[] {0, 1, 0, 1, 0, 1, 4, 0, 6};
         assertArrayEquals(expected, output, 1e-6f);
         result.close();
-        tensor.close();
         inputMap.clear();
+
+        // check that the get methods return new buffers which exist past the tensor lifetime.
+        Buffer valuesOne = tensor.getValuesBuffer();
+        Buffer valuesTwo = tensor.getValuesBuffer();
+        Buffer indicesOne = tensor.getIndicesBuffer();
+        Buffer indicesTwo = tensor.getIndicesBuffer();
+        Buffer innerIndicesOne = tensor.getInnerIndicesBuffer();
+        Buffer innerIndicesTwo = tensor.getInnerIndicesBuffer();
+        tensor.close();
+        assertEquals(valuesOne, valuesTwo);
+        assertFalse(valuesOne == valuesTwo);
+        assertEquals(indicesOne, indicesTwo);
+        assertFalse(indicesOne == indicesTwo);
+        assertEquals(innerIndicesOne, innerIndicesTwo);
+        assertFalse(innerIndicesOne == innerIndicesTwo);
 
         long[] rectangularShape = new long[] {2, 3};
         /*
@@ -405,7 +421,7 @@ public class SparseTensorTest {
         assertArrayEquals(new long[] {3}, sparseTensor.getValuesShape());
         assertArrayEquals(new long[] {3, 3}, sparseTensor.getInfo().getShape());
 
-        OnnxSparseTensor.SparseTensor javaTensor = sparseTensor.getValue();
+        OnnxSparseTensor.SparseTensor<? extends Buffer> javaTensor = sparseTensor.getValue();
 
         assertTrue(javaTensor instanceof OnnxSparseTensor.COOTensor);
 
@@ -414,7 +430,7 @@ public class SparseTensorTest {
         long[] indices = new long[3];
         cooTensor.getIndices().get(indices);
         float[] data = new float[3];
-        ((FloatBuffer) cooTensor.getData()).get(data);
+        ((FloatBuffer) cooTensor.getValues()).get(data);
 
         assertArrayEquals(new long[] {2, 3, 5}, indices);
         assertArrayEquals(

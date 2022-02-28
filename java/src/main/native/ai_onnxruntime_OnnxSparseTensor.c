@@ -10,10 +10,10 @@
 
 /*
  * Class:     ai_onnxruntime_OnnxSparseTensor
- * Method:    getIndexBuffer
+ * Method:    getIndicesBuffer
  * Signature: (JJ)Ljava/nio/ByteBuffer;
  */
-JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getIndexBuffer
+JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getIndicesBuffer
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
@@ -60,10 +60,10 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getIndexBuffer
 
 /*
  * Class:     ai_onnxruntime_OnnxSparseTensor
- * Method:    getInnerIndexBuffer
+ * Method:    getInnerIndicesBuffer
  * Signature: (JJ)Ljava/nio/ByteBuffer;
  */
-JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getInnerIndexBuffer
+JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getInnerIndicesBuffer
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;
@@ -106,10 +106,10 @@ JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getInnerIndexBuff
 
 /*
  * Class:     ai_onnxruntime_OnnxSparseTensor
- * Method:    getDataBuffer
+ * Method:    getValuesBuffer
  * Signature: (JJ)Ljava/nio/ByteBuffer;
  */
-JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getDataBuffer
+JNIEXPORT jobject JNICALL Java_ai_onnxruntime_OnnxSparseTensor_getValuesBuffer
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle) {
     (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
     const OrtApi* api = (const OrtApi*) apiHandle;

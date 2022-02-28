@@ -274,7 +274,7 @@ public class OnnxTensor extends OnnxTensorLike {
    * @param input A uint16_t representing an IEEE half precision float.
    * @return A float.
    */
-  private static float fp16ToFloat(short input) {
+  static float fp16ToFloat(short input) {
     int output =
         ((input & 0x8000) << 16) | (((input & 0x7c00) + 0x1C000) << 13) | ((input & 0x03FF) << 13);
     return Float.intBitsToFloat(output);

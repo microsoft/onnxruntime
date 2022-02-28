@@ -4,11 +4,16 @@
  */
 package ai.onnxruntime;
 
+import static ai.onnxruntime.OnnxTensor.fp16ToFloat;
+
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.DoubleBuffer;
+import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
+import java.nio.ShortBuffer;
 import java.util.Arrays;
 
 /**
@@ -23,7 +28,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
   // Held to prevent deallocation while used in native code.
   private final Buffer indices;
   private final LongBuffer innerIndices;
-  private final Buffer data;
+  private final Buffer values;
 
   /**
    * Construct a sparse tensor from JNI.
@@ -46,7 +51,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @param sparseType The sparsity type.
    * @param info The tensor info.
    * @param indices The indices buffer.
-   * @param data The data buffer.
+   * @param values The data buffer.
    */
   OnnxSparseTensor(
       long nativeHandle,
@@ -54,8 +59,8 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
       SparseTensorType sparseType,
       TensorInfo info,
       Buffer indices,
-      Buffer data) {
-    this(nativeHandle, allocatorHandle, sparseType, info, indices, null, data);
+      Buffer values) {
+    this(nativeHandle, allocatorHandle, sparseType, info, indices, null, values);
   }
 
   /**
@@ -69,7 +74,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @param info The tensor info.
    * @param indices The indices buffer.
    * @param innerIndices The inner indices buffer.
-   * @param data The data buffer.
+   * @param values The data buffer.
    */
   OnnxSparseTensor(
       long nativeHandle,
@@ -78,12 +83,12 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
       TensorInfo info,
       Buffer indices,
       LongBuffer innerIndices,
-      Buffer data) {
+      Buffer values) {
     super(nativeHandle, allocatorHandle, info);
     this.sparseTensorType = sparseType;
     this.indices = indices;
     this.innerIndices = innerIndices;
-    this.data = data;
+    this.values = values;
   }
 
   /**
@@ -94,18 +99,18 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @return The sparse tensor in ORT.
    * @throws OrtException If the tensor could not be created or was invalid.
    */
-  public static OnnxSparseTensor createSparseTensor(OrtEnvironment env, SparseTensor tensor)
-      throws OrtException {
+  public static <T extends Buffer> OnnxSparseTensor createSparseTensor(
+      OrtEnvironment env, SparseTensor<T> tensor) throws OrtException {
     return createSparseTensor(env, env.defaultAllocator, tensor);
   }
 
-  static OnnxSparseTensor createSparseTensor(
-      OrtEnvironment env, OrtAllocator allocator, SparseTensor tensor) throws OrtException {
+  static <T extends Buffer> OnnxSparseTensor createSparseTensor(
+      OrtEnvironment env, OrtAllocator allocator, SparseTensor<T> tensor) throws OrtException {
     if ((!env.isClosed()) && (!allocator.isClosed())) {
       TensorInfo info = TensorInfo.constructFromSparseTensor(tensor);
       OnnxJavaType indicesType = tensor.getIndicesType();
       OrtUtil.BufferTuple indicesTuple = OrtUtil.prepareBuffer(tensor.getIndices(), indicesType);
-      OrtUtil.BufferTuple dataTuple = OrtUtil.prepareBuffer(tensor.getData(), info.type);
+      OrtUtil.BufferTuple valuesTuple = OrtUtil.prepareBuffer(tensor.getValues(), info.type);
       if (!((indicesTuple.data instanceof LongBuffer)
           || (indicesTuple.data instanceof IntBuffer))) {
         throw new IllegalStateException(
@@ -124,8 +129,8 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
                   indicesTuple.data,
                   indicesTuple.pos,
                   indicesTuple.size,
-                  dataTuple.data,
-                  dataTuple.pos,
+                  valuesTuple.data,
+                  valuesTuple.pos,
                   info.shape,
                   tensor.getIndicesShape(),
                   tensor.getValuesShape(),
@@ -135,7 +140,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
               tensor.getSparsityType(),
               info,
               indicesTuple.data,
-              dataTuple.data);
+              valuesTuple.data);
         case CSRC:
           OrtUtil.BufferTuple innerIndicesTuple =
               OrtUtil.prepareBuffer(((CSRCTensor) tensor).getInnerIndices(), indicesType);
@@ -149,8 +154,8 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
                   innerIndicesTuple.data,
                   innerIndicesTuple.pos,
                   innerIndicesTuple.size,
-                  dataTuple.data,
-                  dataTuple.pos,
+                  valuesTuple.data,
+                  valuesTuple.pos,
                   info.shape,
                   tensor.getValuesShape(),
                   info.onnxType.value),
@@ -158,7 +163,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
               tensor.getSparsityType(),
               info,
               indicesTuple.data,
-              dataTuple.data);
+              valuesTuple.data);
         case UNDEFINED:
         default:
           throw new IllegalArgumentException("Cannot create an UNDEFINED sparse tensor.");
@@ -175,13 +180,13 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
   }
 
   @Override
-  public SparseTensor getValue() throws OrtException {
-    Buffer buffer = getDataBuffer();
+  public SparseTensor<? extends Buffer> getValue() throws OrtException {
+    Buffer buffer = getValuesBuffer();
     long[] indicesShape = getIndicesShape(OnnxRuntime.ortApiHandle, allocatorHandle, nativeHandle);
     switch (sparseTensorType) {
       case COO:
         return new COOTensor(
-            (LongBuffer) getIndexBuffer(),
+            (LongBuffer) getIndicesBuffer(),
             indicesShape,
             buffer,
             info.shape,
@@ -189,8 +194,8 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
             buffer.remaining());
       case CSRC:
         return new CSRCTensor(
-            (LongBuffer) getIndexBuffer(),
-            getInnerIndexBuffer(),
+            (LongBuffer) getIndicesBuffer(),
+            getInnerIndicesBuffer(),
             buffer,
             info.shape,
             info.type,
@@ -199,7 +204,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
         long[] valuesShape =
             getValuesShape(OnnxRuntime.ortApiHandle, allocatorHandle, nativeHandle);
         return new BlockSparseTensor(
-            (IntBuffer) getIndexBuffer(),
+            (IntBuffer) getIndicesBuffer(),
             indicesShape,
             buffer,
             valuesShape,
@@ -235,17 +240,31 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    *
    * @return The indices.
    */
-  public Buffer getIndexBuffer() {
+  public Buffer getIndicesBuffer() {
     switch (sparseTensorType) {
       case COO:
       case CSRC:
-        return getIndexBuffer(OnnxRuntime.ortApiHandle, nativeHandle)
-            .order(ByteOrder.nativeOrder())
-            .asLongBuffer();
+        {
+          LongBuffer longBuf =
+              getIndicesBuffer(OnnxRuntime.ortApiHandle, nativeHandle)
+                  .order(ByteOrder.nativeOrder())
+                  .asLongBuffer();
+          LongBuffer output = LongBuffer.allocate(longBuf.capacity());
+          output.put(longBuf);
+          output.rewind();
+          return output;
+        }
       case BLOCK_SPARSE:
-        return getIndexBuffer(OnnxRuntime.ortApiHandle, nativeHandle)
-            .order(ByteOrder.nativeOrder())
-            .asIntBuffer();
+        {
+          IntBuffer intBuf =
+              getIndicesBuffer(OnnxRuntime.ortApiHandle, nativeHandle)
+                  .order(ByteOrder.nativeOrder())
+                  .asIntBuffer();
+          IntBuffer output = IntBuffer.allocate(intBuf.capacity());
+          output.put(intBuf);
+          output.rewind();
+          return output;
+        }
       case UNDEFINED:
       default:
         throw new IllegalStateException("UNDEFINED sparse tensor type.");
@@ -259,11 +278,16 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    *
    * @return The inner indices.
    */
-  public LongBuffer getInnerIndexBuffer() {
+  public LongBuffer getInnerIndicesBuffer() {
     if (sparseTensorType == SparseTensorType.CSRC) {
-      return getInnerIndexBuffer(OnnxRuntime.ortApiHandle, nativeHandle)
-          .order(ByteOrder.nativeOrder())
-          .asLongBuffer();
+      LongBuffer buf =
+          getInnerIndicesBuffer(OnnxRuntime.ortApiHandle, nativeHandle)
+              .order(ByteOrder.nativeOrder())
+              .asLongBuffer();
+      LongBuffer output = LongBuffer.allocate(buf.capacity());
+      output.put(buf);
+      output.rewind();
+      return output;
     } else {
       throw new IllegalStateException(
           "Inner indices are only available for CSRC sparse tensors, this sparse tensor is "
@@ -274,26 +298,77 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
   /**
    * Gets a copy of the data buffer.
    *
+   * <p>As with {@link OnnxTensor} fp16 values are upcast into fp32 and returned as a {@link
+   * FloatBuffer}.
+   *
    * @return The data buffer.
    */
-  public Buffer getDataBuffer() {
+  public Buffer getValuesBuffer() {
     ByteBuffer buffer =
-        getDataBuffer(OnnxRuntime.ortApiHandle, nativeHandle).order(ByteOrder.nativeOrder());
+        getValuesBuffer(OnnxRuntime.ortApiHandle, nativeHandle).order(ByteOrder.nativeOrder());
     switch (info.type) {
       case FLOAT:
-        return buffer.asFloatBuffer();
+        if (info.onnxType == TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
+          ShortBuffer shortBuffer = buffer.asShortBuffer();
+          int bufferCap = shortBuffer.capacity();
+          FloatBuffer output = FloatBuffer.allocate(bufferCap);
+          for (int i = 0; i < bufferCap; i++) {
+            output.put(fp16ToFloat(shortBuffer.get(i)));
+          }
+          output.rewind();
+          return output;
+        } else if (info.onnxType
+            == TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16) {
+          throw new IllegalArgumentException("BFloat16 is not supported.");
+        } else {
+          // regular fp32
+          FloatBuffer floatBuf = buffer.asFloatBuffer();
+          FloatBuffer output = FloatBuffer.allocate(floatBuf.capacity());
+          output.put(floatBuf);
+          output.rewind();
+          return output;
+        }
       case DOUBLE:
-        return buffer.asDoubleBuffer();
+        {
+          DoubleBuffer doubleBuf = buffer.asDoubleBuffer();
+          DoubleBuffer output = DoubleBuffer.allocate(doubleBuf.capacity());
+          output.put(doubleBuf);
+          output.rewind();
+          return output;
+        }
       case INT16:
-        return buffer.asShortBuffer();
+        {
+          ShortBuffer shortBuf = buffer.asShortBuffer();
+          ShortBuffer output = ShortBuffer.allocate(shortBuf.capacity());
+          output.put(shortBuf);
+          output.rewind();
+          return output;
+        }
       case INT32:
-        return buffer.asIntBuffer();
+        {
+          IntBuffer intBuf = buffer.asIntBuffer();
+          IntBuffer output = IntBuffer.allocate(intBuf.capacity());
+          output.put(intBuf);
+          output.rewind();
+          return output;
+        }
       case INT64:
-        return buffer.asLongBuffer();
+        {
+          LongBuffer longBuf = buffer.asLongBuffer();
+          LongBuffer output = LongBuffer.allocate(longBuf.capacity());
+          output.put(longBuf);
+          output.rewind();
+          return output;
+        }
       case BOOL:
       case INT8:
       case UINT8:
-        return buffer;
+        {
+          ByteBuffer output = ByteBuffer.allocate(buffer.capacity());
+          output.put(buffer);
+          output.rewind();
+          return output;
+        }
       case STRING:
         throw new IllegalStateException("Unsupported data type String");
       case UNKNOWN:
@@ -373,7 +448,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @param nativeHandle The OrtSparseTensor pointer.
    * @return A ByteBuffer wrapping the indices.
    */
-  private native ByteBuffer getIndexBuffer(long apiHandle, long nativeHandle);
+  private native ByteBuffer getIndicesBuffer(long apiHandle, long nativeHandle);
 
   /**
    * Wraps the inner indices in a direct byte buffer.
@@ -382,7 +457,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @param nativeHandle The OrtSparseTensor pointer.
    * @return A ByteBuffer wrapping the inner indices.
    */
-  private native ByteBuffer getInnerIndexBuffer(long apiHandle, long nativeHandle);
+  private native ByteBuffer getInnerIndicesBuffer(long apiHandle, long nativeHandle);
 
   /**
    * Wraps the data in a direct byte buffer.
@@ -391,7 +466,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    * @param nativeHandle The OrtSparseTensor pointer.
    * @return A ByteBuffer wrapping the indices.
    */
-  private native ByteBuffer getDataBuffer(long apiHandle, long nativeHandle);
+  private native ByteBuffer getValuesBuffer(long apiHandle, long nativeHandle);
 
   /**
    * Closes the sparse tensor.
@@ -406,13 +481,13 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    *
    * @param apiHandle The ORT API pointer.
    * @param allocatorHandle The allocator pointer.
-   * @param indexData The outer indices.
-   * @param indexBufferPos The outer indices position in bytes.
-   * @param indexBufferSize The outer indices buffer size in longs.
-   * @param innerIndexData The inner indices.
-   * @param innerIndexBufferPos The inner indices position in bytes.
-   * @param innerIndexBufferSize The inner indices buffer size in longs.
-   * @param data The data.
+   * @param indicesData The outer indices.
+   * @param indicesBufferPos The outer indices position in bytes.
+   * @param indicesBufferSize The outer indices buffer size in longs.
+   * @param innerIndicesData The inner indices.
+   * @param innerIndicesBufferPos The inner indices position in bytes.
+   * @param innerIndicesBufferSize The inner indices buffer size in longs.
+   * @param values The data.
    * @param bufferPos The data position in bytes.
    * @param denseShape The dense shape of the tensor.
    * @param valuesShape The shape of the values (should be a vector).
@@ -423,13 +498,13 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
   private static native long createCSRCSparseTensorFromBuffer(
       long apiHandle,
       long allocatorHandle,
-      Buffer indexData,
-      int indexBufferPos,
-      long indexBufferSize,
-      Buffer innerIndexData,
-      int innerIndexBufferPos,
-      long innerIndexBufferSize,
-      Buffer data,
+      Buffer indicesData,
+      int indicesBufferPos,
+      long indicesBufferSize,
+      Buffer innerIndicesData,
+      int innerIndicesBufferPos,
+      long innerIndicesBufferSize,
+      Buffer values,
       int bufferPos,
       long[] denseShape,
       long[] valuesShape,
@@ -441,10 +516,10 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
    *
    * @param apiHandle The ORT API pointer.
    * @param allocatorHandle The allocator pointer.
-   * @param indexData The indices.
-   * @param indexBufferPos The indices position in bytes.
-   * @param indexBufferSize The indices buffer size in longs.
-   * @param data The data.
+   * @param indicesData The indices.
+   * @param indicesBufferPos The indices position in bytes.
+   * @param indicesBufferSize The indices buffer size in longs.
+   * @param values The data.
    * @param bufferPos The data position in bytes.
    * @param denseShape The dense shape of the tensor.
    * @param indicesShape The shape of the indices (a vector or matrix for COO, and a matrix for
@@ -459,10 +534,10 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
   private static native long createSparseTensorFromBuffer(
       long apiHandle,
       long allocatorHandle,
-      Buffer indexData,
-      int indexBufferPos,
-      long indexBufferSize,
-      Buffer data,
+      Buffer indicesData,
+      int indicesBufferPos,
+      long indicesBufferSize,
+      Buffer values,
       int bufferPos,
       long[] denseShape,
       long[] indicesShape,
@@ -519,57 +594,118 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
   }
 
   /**
-   * Top level interfaces for the Java side representation of a sparse tensor.
+   * Abstract base class for Java sparse tensors
    *
-   * <p>Will be sealed to {@link COOTensor}, {@link CSRCTensor} and {@link BlockSparseTensor} when
-   * possible.
-   *
-   * <p>Does not support Strings as a data type.
-   *
-   * @param <T> The indices buffer type.
+   * <p>Will be sealed to {@link COOTensor}, {@link CSRCTensor} and {@link BlockSparseTensor} one
+   * day.
    */
-  public static interface SparseTensor<T extends Buffer> {
+  public abstract static class SparseTensor<T extends Buffer> {
+    private final long[] indicesShape;
+    private final long[] valuesShape;
+    private final long[] denseShape;
+    private final OnnxJavaType type;
+    private final long numNonZero;
+
+    final T indices;
+    final Buffer values;
+
+    SparseTensor(
+        T indices,
+        long[] indicesShape,
+        Buffer values,
+        long[] valuesShape,
+        long[] denseShape,
+        OnnxJavaType type,
+        long numNonZero) {
+      this.indices = indices;
+      this.indicesShape = indicesShape;
+      this.values = values;
+      this.valuesShape = valuesShape;
+      this.denseShape = denseShape;
+      this.type = type;
+      this.numNonZero = numNonZero;
+      if (values.remaining() != numNonZero) {
+        throw new IllegalArgumentException(
+            "Expected numNonZero and data.remaining to be equal, found "
+                + numNonZero
+                + " and "
+                + values.remaining()
+                + " respectively");
+      }
+      if (type == OnnxJavaType.STRING) {
+        throw new IllegalArgumentException("String SparseTensors are not supported.");
+      }
+    }
+
     /**
      * Gets the dense shape of the sparse tensor.
      *
      * @return The sparse tensor shape.
      */
-    public long[] getShape();
-
-    /**
-     * Gets the shape of the values of the sparse tensor.
-     *
-     * @return The sparse tensor value shape.
-     */
-    public long[] getValuesShape();
-
-    /**
-     * Gets the shape of the indices of the sparse tensor.
-     *
-     * @return The sparse tensor indices shape.
-     */
-    public long[] getIndicesShape();
+    public long[] getDenseShape() {
+      return denseShape;
+    }
 
     /**
      * The data type of the sparse tensor.
      *
      * @return The sparse tensor data type.
      */
-    public OnnxJavaType getType();
-
-    /**
-     * The sparsity type of the sparse tensor.
-     *
-     * @return The sparse tensor sparsity type.
-     */
-    public SparseTensorType getSparsityType();
+    public OnnxJavaType getType() {
+      return type;
+    }
 
     /**
      * The number of non-zero elements.
      *
      * @return The number of non-zero elements.
      */
-    public long getNumNonZeroElements();
+    public long getNumNonZeroElements() {
+      return numNonZero;
+    }
+
+    /**
+     * Get the indices buffer.
+     *
+     * @return The indices buffer.
+     */
+    public T getIndices() {
+      return indices;
+    }
+
+    /**
+     * Get the value buffer.
+     *
+     * @return The value buffer.
+     */
+    public Buffer getValues() {
+      return values;
+    }
+
+    /**
+     * Gets the shape of the values of the sparse tensor.
+     *
+     * @return The sparse tensor value shape.
+     */
+    public long[] getValuesShape() {
+      return valuesShape;
+    }
+
+    /**
+     * Gets the shape of the indices of the sparse tensor.
+     *
+     * @return The sparse tensor indices shape.
+     */
+    public long[] getIndicesShape() {
+      return indicesShape;
+    }
+
+    /**
+     * The sparsity type of the sparse tensor.
+     *
+     * @return The sparse tensor sparsity type.
+     */
+    public abstract SparseTensorType getSparsityType();
 
     /**
      * The indices type of the sparse tensor.
@@ -578,99 +714,29 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
      *
      * @return The sparse tensor indices type.
      */
-    public OnnxJavaType getIndicesType();
-
-    /**
-     * Get the indices buffer.
-     *
-     * @return The indices buffer.
-     */
-    public T getIndices();
-
-    /**
-     * Get the data buffer.
-     *
-     * @return The data buffer.
-     */
-    public Buffer getData();
-  }
-
-  /** Abstract base class for Java sparse tensors */
-  private abstract static class BaseSparseTensor<T extends Buffer> implements SparseTensor<T> {
-    private final long[] shape;
-    private final OnnxJavaType type;
-    private final long numNonZero;
-
-    final T indices;
-    final Buffer data;
-
-    BaseSparseTensor(T indices, Buffer data, long[] shape, OnnxJavaType type, long numNonZero) {
-      this.indices = indices;
-      this.data = data;
-      this.shape = shape;
-      this.type = type;
-      this.numNonZero = numNonZero;
-      if (data.remaining() != numNonZero) {
-        throw new IllegalArgumentException(
-            "Expected numNonZero and data.remaining to be equal, found "
-                + numNonZero
-                + " and "
-                + data.remaining()
-                + " respectively");
-      }
-      if (type == OnnxJavaType.STRING) {
-        throw new IllegalArgumentException("String SparseTensors are not supported.");
-      }
-    }
-
-    @Override
-    public long[] getShape() {
-      return shape;
-    }
-
-    @Override
-    public OnnxJavaType getType() {
-      return type;
-    }
-
-    @Override
-    public long getNumNonZeroElements() {
-      return numNonZero;
-    }
-
-    @Override
-    public T getIndices() {
-      return indices;
-    }
-
-    @Override
-    public Buffer getData() {
-      return data;
-    }
+    public abstract OnnxJavaType getIndicesType();
   }
 
   /** The Java side representation of a COO sparse tensor. */
-  public static final class COOTensor extends BaseSparseTensor<LongBuffer> {
-    private final long[] indicesShape;
-
+  public static final class COOTensor extends SparseTensor<LongBuffer> {
     /**
      * Creates a COO sparse tensor suitable for constructing an ORT Sparse Tensor.
      *
      * @param indices The indices. Should be a 1d vector, or a 2d vector.
      * @param indicesShape The shape of the indices.
-     * @param data The data.
-     * @param shape The dense shape.
+     * @param values The data.
+     * @param denseShape The dense shape.
      * @param type The data type.
      * @param numNonZero The number of non-zero elements.
      */
     public COOTensor(
         LongBuffer indices,
         long[] indicesShape,
-        Buffer data,
-        long[] shape,
+        Buffer values,
+        long[] denseShape,
         OnnxJavaType type,
         long numNonZero) {
-      super(indices, data, shape, type, numNonZero);
+      super(indices, indicesShape, values, new long[] {numNonZero}, denseShape, type, numNonZero);
       if ((indicesShape.length > 2)
           || (indicesShape.length == 0)
           || (indicesShape[0] != numNonZero)) {
@@ -686,24 +752,13 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
                 + " found "
                 + indices.remaining());
       }
-      this.indicesShape = indicesShape;
-      if (data.remaining() != numNonZero) {
+      if (values.remaining() != numNonZero) {
         throw new IllegalArgumentException(
             "Expected data.remaining() - "
-                + data.remaining()
+                + values.remaining()
                 + " to equal numNonZero - "
                 + numNonZero);
       }
-    }
-
-    @Override
-    public long[] getValuesShape() {
-      return new long[] {getNumNonZeroElements()};
-    }
-
-    @Override
-    public long[] getIndicesShape() {
-      return indicesShape;
     }
 
     @Override
@@ -718,7 +773,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
   }
 
   /** The Java side representation of a CSRC sparse tensor. */
-  public static final class CSRCTensor extends BaseSparseTensor<LongBuffer> {
+  public static final class CSRCTensor extends SparseTensor<LongBuffer> {
     private final LongBuffer innerIndices;
 
     /**
@@ -726,21 +781,28 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
      *
      * @param outerIndices The outer indices.
      * @param innerIndices The inner indices.
-     * @param data The data.
-     * @param shape The dense shape.
+     * @param values The data.
+     * @param denseShape The dense shape.
      * @param type The data type.
      * @param numNonZero The number of non-zero elements.
      */
     public CSRCTensor(
         LongBuffer outerIndices,
         LongBuffer innerIndices,
-        Buffer data,
-        long[] shape,
+        Buffer values,
+        long[] denseShape,
         OnnxJavaType type,
         long numNonZero) {
-      super(outerIndices, data, shape, type, numNonZero);
+      super(
+          outerIndices,
+          new long[] {outerIndices.remaining()},
+          values,
+          new long[] {numNonZero},
+          denseShape,
+          type,
+          numNonZero);
       this.innerIndices = innerIndices;
-      long expectedRows = shape[0] + 1;
+      long expectedRows = denseShape[0] + 1;
       if (outerIndices.remaining() != expectedRows) {
         throw new IllegalArgumentException(
             "Outer indices should be equal to the number of rows + 1 in the dense shape, found "
@@ -755,16 +817,6 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
                 + ", expected "
                 + numNonZero);
       }
-    }
-
-    @Override
-    public long[] getValuesShape() {
-      return new long[] {getNumNonZeroElements()};
-    }
-
-    @Override
-    public long[] getIndicesShape() {
-      return new long[] {indices.remaining()};
     }
 
     /**
@@ -797,17 +849,14 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
   }
 
   /** The Java side representation of a block sparse tensor. */
-  public static final class BlockSparseTensor extends BaseSparseTensor<IntBuffer> {
-    private final long[] indicesShape;
-    private final long[] dataShape;
-
+  public static final class BlockSparseTensor extends SparseTensor<IntBuffer> {
     /**
      * Construct a block sparse tensor.
      *
      * @param indices The indices.
      * @param indicesShape The shape of the indices.
-     * @param data The data.
-     * @param dataShape The shape of the data.
+     * @param values The data.
+     * @param valuesShape The shape of the data.
      * @param denseShape The dense shape.
      * @param type The data type.
      * @param numNonZero The number of non-zero elements.
@@ -815,22 +864,22 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
     public BlockSparseTensor(
         IntBuffer indices,
         long[] indicesShape,
-        Buffer data,
-        long[] dataShape,
+        Buffer values,
+        long[] valuesShape,
         long[] denseShape,
         OnnxJavaType type,
         long numNonZero) {
-      super(indices, data, denseShape, type, numNonZero);
-      if (OrtUtil.elementCount(dataShape) != numNonZero) {
+      super(indices, indicesShape, values, valuesShape, denseShape, type, numNonZero);
+      if (OrtUtil.elementCount(valuesShape) != numNonZero) {
         throw new IllegalArgumentException(
             "Expected "
                 + numNonZero
                 + " entries in the data shape, found "
-                + Arrays.toString(dataShape));
+                + Arrays.toString(valuesShape));
       }
-      if (numNonZero != data.remaining()) {
+      if (numNonZero != values.remaining()) {
         throw new IllegalArgumentException(
-            "Expected " + numNonZero + " elements in the data buffer, found " + data.remaining());
+            "Expected " + numNonZero + " elements in the data buffer, found " + values.remaining());
       }
       if (OrtUtil.elementCount(indicesShape) != indices.remaining()) {
         throw new IllegalArgumentException(
@@ -839,28 +888,16 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
                 + " elements in the indices buffer, found "
                 + indices.remaining());
       }
-      if (dataShape.length < 3) {
+      if (valuesShape.length < 3) {
         throw new IllegalArgumentException(
             "Expected [numBlocks, blockSize, blockSize] or larger, but data shape was "
-                + Arrays.toString(dataShape));
+                + Arrays.toString(valuesShape));
       }
       if (indicesShape.length < 2) {
         throw new IllegalArgumentException(
             "Expected [numBlocks, co-ordinates] or larger, but indices shape was "
                 + Arrays.toString(indicesShape));
       }
-      this.indicesShape = Arrays.copyOf(indicesShape, indicesShape.length);
-      this.dataShape = Arrays.copyOf(dataShape, dataShape.length);
-    }
-
-    @Override
-    public long[] getValuesShape() {
-      return dataShape;
-    }
-
-    @Override
-    public long[] getIndicesShape() {
-      return indicesShape;
     }
 
     @Override
