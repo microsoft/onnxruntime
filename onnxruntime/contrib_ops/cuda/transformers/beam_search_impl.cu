@@ -4,6 +4,7 @@
 #include "beam_search_impl.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "cub/util_type.cuh"
 
 namespace onnxruntime {
 namespace contrib {
@@ -109,27 +110,27 @@ __global__ void LogitsProcessKernel(
       }
 
       if (found) {
-        next_token_scores[index] = std::numeric_limits<T>::lowest();
+        next_token_scores[index] = cub::FpLimits<T>::Lowest();
         return;
       }
     }
 
     // VocabMaskLogitsProcessor
     if (vocab_mask != nullptr && vocab_mask[word_id] == 0) {
-      next_token_scores[index] = std::numeric_limits<T>::lowest();
+      next_token_scores[index] = cub::FpLimits<T>::Lowest();
       return;
     }
 
     // PrefixVocabMaskLogitsProcessor
     int batch_id = batch_beam_index / num_beams;
     if (prefix_vocab_mask != nullptr && prefix_vocab_mask[batch_id * vocab_size + word_id] == 0) {
-      next_token_scores[index] = std::numeric_limits<T>::lowest();
+      next_token_scores[index] = cub::FpLimits<T>::Lowest();
       return;
     }
 
     // MinLengthLogitsProcessor
     if (word_id == demote_token_id) {
-      next_token_scores[index] = std::numeric_limits<T>::lowest();
+      next_token_scores[index] = cub::FpLimits<T>::Lowest();
     }
   }
 }
