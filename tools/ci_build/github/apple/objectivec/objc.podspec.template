@@ -1,23 +1,19 @@
 Pod::Spec.new do |s|
-  s.name             = 'onnxruntime-mobile-objc'
-  s.version          = '@VERSION@'
-  s.summary          = 'ONNX Runtime Mobile Objective-C Pod'
-
-  s.description      = <<-DESC
-    A pod for the ONNX Runtime Mobile Objective-C API.
-                       DESC
-
-  s.homepage         = 'https://github.com/microsoft/onnxruntime'
-  s.license          = { :type => 'MIT', :file => @LICENSE_FILE@ }
+  s.name             = "@NAME@"
+  s.version          = "@VERSION@"
+  s.summary          = "@SUMMARY@"
+  s.description      = "@DESCRIPTION@"
+  s.homepage         = "https://github.com/microsoft/onnxruntime"
+  s.license          = { :type => "MIT", :file => "@LICENSE_FILE@" }
   s.author           = { "ONNX Runtime" => "onnxruntime@microsoft.com" }
   s.source           = { :http => "file:///http_source_placeholder" }
-  s.ios.deployment_target = '@IOS_DEPLOYMENT_TARGET@'
-  s.preserve_paths = [ @LICENSE_FILE@ ]
+  s.ios.deployment_target = "@IOS_DEPLOYMENT_TARGET@"
+  s.preserve_paths = [ "@LICENSE_FILE@" ]
   s.default_subspec = "Core"
   s.static_framework = true
 
   s.subspec "Core" do |core|
-    core.dependency "onnxruntime-mobile-c", "#{s.version}"
+    core.dependency "@C_POD_NAME@", "#{s.version}"
     core.requires_arc = true
     core.compiler_flags = "-std=c++17", "-fobjc-arc-exceptions", "-Wall", "-Wextra", "-Werror"
 
