@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2021, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2021, 2022, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -1164,6 +1164,36 @@ public class InferenceTest {
           }
           OnnxValue.close(container);
         }
+      }
+    }
+  }
+
+  @Test
+  public void testModelMetadata() throws OrtException {
+    String modelPath = getResourcePath("/model_with_valid_ort_config_json.onnx").toString();
+
+    try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelMetadata")) {
+      try (OrtSession session = env.createSession(modelPath)) {
+        OnnxModelMetadata modelMetadata = session.getMetadata();
+
+        Assertions.assertEquals(1, modelMetadata.getVersion());
+
+        Assertions.assertEquals("Hari", modelMetadata.getProducerName());
+
+        Assertions.assertEquals("matmul test", modelMetadata.getGraphName());
+
+        Assertions.assertEquals("", modelMetadata.getDomain());
+
+        Assertions.assertEquals(
+            "This is a test model with a valid ORT config Json", modelMetadata.getDescription());
+
+        Assertions.assertEquals("graph description", modelMetadata.getGraphDescription());
+
+        Assertions.assertEquals(2, modelMetadata.getCustomMetadata().size());
+        Assertions.assertEquals("dummy_value", modelMetadata.getCustomMetadata().get("dummy_key"));
+        Assertions.assertEquals(
+            "{\"session_options\": {\"inter_op_num_threads\": 5, \"intra_op_num_threads\": 2, \"graph_optimization_level\": 99, \"enable_profiling\": 1}}",
+            modelMetadata.getCustomMetadata().get("ort_config"));
       }
     }
   }
