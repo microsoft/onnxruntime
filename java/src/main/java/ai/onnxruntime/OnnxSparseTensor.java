@@ -163,6 +163,7 @@ public final class OnnxSparseTensor extends OnnxTensorLike {
               tensor.getSparsityType(),
               info,
               indicesTuple.data,
+              (LongBuffer) innerIndicesTuple.data,
               valuesTuple.data);
         case UNDEFINED:
         default:
