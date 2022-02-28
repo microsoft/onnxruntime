@@ -177,6 +177,8 @@ TEST(GraphRuntimeOptimizationTest, SaveRuntimeOptimizationToOrtFormat) {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+#if !defined(DISABLE_CONTRIB_OPS)
+
 namespace {
 using GraphOpCountsCheckerFn = std::function<void(const OpCountMap& loaded_ops, const OpCountMap& initialized_ops)>;
 
@@ -262,7 +264,6 @@ TEST(GraphRuntimeOptimizationTest, QDQConv) {
       });
 }
 
-#if !defined(DISABLE_CONTRIB_OPS)
 TEST(GraphRuntimeOptimizationTest, ConvActivation) {
   SaveAndLoadRuntimeOptimizationsForModel(
       ORT_TSTR("testdata/transform/fusion/conv_clip11.onnx"),
@@ -281,6 +282,7 @@ TEST(GraphRuntimeOptimizationTest, ConvActivation) {
                               {"com.microsoft.FusedConv", expected_num_fusions}}));
       });
 }
+
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
 }  // namespace onnxruntime::test
