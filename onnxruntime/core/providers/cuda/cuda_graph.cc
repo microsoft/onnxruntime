@@ -23,6 +23,10 @@ void CUDAGraph::CaptureBegin() {
               "Create a new instance to capture a new graph.");
 
   CUDA_CALL_THROW(cudaStreamSynchronize(stream_));
+  // CUDA EP maintains a separate compute stream and a separate cuda graph for
+  // each thread. To support the run of inference session with cuda graph on multiple
+  // threads, use `cudaStreamCaptureModeThreadLocal` instead of `cudaStreamCaptureModeGlobal`
+  // to allow each thread to capture its own local cuda graph.
   CUDA_CALL_THROW(cudaStreamBeginCapture(stream_, cudaStreamCaptureModeThreadLocal));
 #else
   ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 10.0");
@@ -47,6 +51,8 @@ void CUDAGraph::CaptureEnd() {
 }
 
 Status CUDAGraph::Replay() {
+  // Although this function is not thread safe, the lock is not needed here because
+  // CUDA EP maintains a separate cuda graph per thread
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
   LOGS_DEFAULT(INFO) << "Replaying CUDA graph on stream " << stream_;
   CUDA_RETURN_IF_ERROR(cudaGraphLaunch(graph_exec_, stream_));

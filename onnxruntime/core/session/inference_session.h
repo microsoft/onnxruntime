@@ -734,10 +734,34 @@ class InferenceSession {
   // the cache is valid until any session reliant on it is still in scope.
   PrepackedWeightsContainer* prepacked_weights_container_ = nullptr;
 
-  // Cache the CUDA EP instance if the user has configured the EP to capture a CUDA graph
-  // for the model and all the necessary criteria for CUDA graph capture has been met.
-  // At Run() time, if this member is not nullptr, simply invoke ReplayGraph() using it.
-  IExecutionProvider* cached_cuda_execution_provider_for_cuda_graph_replay_ = nullptr;
+  // Cache the EP instance if the user has configured the EP to capture a graph
+  // for the model and all the necessary criteria for graph capture has been met.
+  // At Run() time, if this member is not nullptr and the captured graph is ready
+  // to replay, simply invoke ReplayGraph().
+  struct CachedExecutionProviderForGraphReplay {
+    CachedExecutionProviderForGraphReplay(IExecutionProvider* execution_provider) {
+      cached_execution_provider_for_graph_replay_ = execution_provider;
+    }
+
+    bool IsGraphCaptureEnabled() const {
+      return cached_execution_provider_for_graph_replay_ != nullptr && cached_execution_provider_for_graph_replay_->IsGraphCaptureEnabled();
+    }
+
+    bool IsGraphCaptured() const {
+      return cached_execution_provider_for_graph_replay_ != nullptr && cached_execution_provider_for_graph_replay_->IsGraphCaptured();
+    }
+
+    Status ReplayGraph() {
+      if (cached_execution_provider_for_graph_replay_) {
+        return cached_execution_provider_for_graph_replay_->ReplayGraph();
+      }
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cached EP instance for graph replay is not set yet before calling ReplayGraph()");
+    }
+
+    IExecutionProvider* cached_execution_provider_for_graph_replay_ = nullptr;
+  };
+
+  std::unique_ptr<CachedExecutionProviderForGraphReplay> cached_execution_provider_for_graph_replay_ = std::make_unique<CachedExecutionProviderForGraphReplay>(nullptr);
 };
 
 struct SessionIOBinding {
