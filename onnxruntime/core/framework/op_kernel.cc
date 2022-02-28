@@ -210,38 +210,28 @@ Status OpKernelContext::SetOutputMLValue(int index, const OrtValue& ort_value) {
 }
 #endif
 
-/////////////////////// EagerKernelContext ///////////////////////
+// EagerKernelContext
+EagerKernelContext::EagerKernelContext(_In_ const OrtValue* const* inputs, _In_ const int& input_len,
+                                       _Inout_ OrtValue* const* outputs, _In_ const int& output_len,
+                                       _In_ AllocatorPtr allocator, _In_ onnxruntime::concurrency::ThreadPool* threadpool,
+                                       _In_ const logging::Logger& logger) : OpKernelContext(threadpool, logger),
+                                                                             inputs_(inputs),
+                                                                             input_len_(input_len),
+                                                                             outputs_(outputs),
+                                                                             output_len_(output_len),
+                                                                             allocator_(allocator) {}
 
-EagerKernelContext::EagerKernelContext(const OrtValue* const* inputs, const int& input_len,
-                                       OrtValue* const* outputs, const int& output_len,
-                                       AllocatorPtr allocator, onnxruntime::concurrency::ThreadPool* threadpool,
-                                       const logging::Logger& logger) : OpKernelContext(threadpool, logger),
-                                                                        inputs_(inputs),
-                                                                        input_len_(input_len),
-                                                                        outputs_(outputs),
-                                                                        output_len_(output_len),
-                                                                        allocator_(allocator) {}
-
-//std::vector<std::unique_ptr<OrtValue>> EagerKernelContext::FetchOutputs() {
-//  std::vector<std::unique_ptr<OrtValue>> outputs;
-//  for (auto iter = outputs_.begin(); iter != outputs_.end(); ++iter) {
-//    outputs.push_back(std::move(iter->second));
-//  }
-//  return std::move(outputs);
-//}
-
-//todo: is zero a valid output for default case?
-int EagerKernelContext::NumVariadicInputs(size_t /*arg_num*/) const {
-  /*
+int EagerKernelContext::NumVariadicInputs(size_t arg_num) const {
   auto ort_value = inputs_[arg_num];
   if (ort_value->IsTensor()) {
-    return ort_value->Get<Tensor>().Shape().Size();
+    return static_cast<int>(ort_value->Get<Tensor>().Shape().Size());
   } else if (ort_value->IsTensorSequence()) {
-    return ort_value->Get<TensorSeq>().Size();
+    return static_cast<int>(ort_value->Get<TensorSeq>().Size());
   } else if (ort_value->IsSparseTensor()) {
-    return ort_value->Get<SparseTensor>().Values().Shape().Size();
-  }*/
-  return 0;
+    return static_cast<int>(ort_value->Get<SparseTensor>().Values().Shape().Size());
+  } else {
+    return 0;
+  }
 }
 
 MLDataType EagerKernelContext::InputType(int index) const {
@@ -276,7 +266,21 @@ OrtValue* EagerKernelContext::OutputMLValue(int index, const TensorShape& shape)
     if (!ort_value->IsAllocated()) {
       if (ort_value->IsTensor()) {
         Tensor::InitOrtValue(ort_value->Type(), shape, allocator_, *ort_value);
-      }  // todo: deal with TensorSeq and SparseTensor
+      } else if (ort_value->IsTensorSequence()) {
+        auto ml_type = ort_value->Type();
+        auto element_type = ml_type->AsSequenceTensorType()->GetElementType();
+        auto p_sequence = std::make_unique<TensorSeq>(element_type);
+        auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
+        ort_value->Init(p_sequence.release(), ml_tensor_sequence, ml_tensor_sequence->GetDeleteFunc());
+      } else if (ort_value->IsSparseTensor()) {
+#if !defined(DISABLE_SPARSE_TENSORS)
+        auto ml_type = ort_value->Type();
+        auto element_type = ml_type->AsSparseTensorType()->GetElementType();
+        SparseTensor::InitOrtValue(element_type, shape, allocator_, *ort_value);
+#else
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Sparse tensor is not supported in this build");
+#endif
+      }
     }
     return ort_value;
   }
@@ -290,24 +294,12 @@ OrtValue* EagerKernelContext::GetOrCreateOutputMLValue(int index) {
   }
 }
 
-bool EagerKernelContext::TryGetInferredInputShape(int index, TensorShape& shape) const {
-  if (index < input_len_) {
-    //todo: deal with Seq and Sparse
-    shape = inputs_[index]->Get<Tensor>().Shape();
-    return true;
-  } else {
-    return false;
-  }
+bool EagerKernelContext::TryGetInferredInputShape(int /*index*/, TensorShape& /*shape*/) const {
+  return false; // no shape inference in eager mode
 }
 
-bool EagerKernelContext::TryGetInferredOutputShape(int index, TensorShape& shape) const {
-  if (index < output_len_) {
-    //todo: deal with Seq and Sparse
-    shape = outputs_[index]->Get<Tensor>().Shape();
-    return true;
-  } else {
-    return false;
-  }
+bool EagerKernelContext::TryGetInferredOutputShape(int /*index*/, TensorShape& /*shape*/) const {
+  return false; // no shape inference in eager mode
 }
 
 int EagerKernelContext::InputCount() const {
@@ -323,7 +315,7 @@ int EagerKernelContext::OutputCount() const {
 }
 
 Status EagerKernelContext::GetTempSpaceAllocator(AllocatorPtr* output) const {
-    *output = allocator_;
+  *output = allocator_;
   return Status::OK();
 }
 
@@ -353,19 +345,6 @@ int EagerKernelContext::GetDeviceId() const {
 
 void* EagerKernelContext::GetComputeStream() const {
   return nullptr;
-}
-
-std::string none = "";
-
-const std::string& EagerKernelContext::GetOpDomain() const {
-  return none;
-}
-
-const std::string& EagerKernelContext::GetOpType() const {
-  return none;
-}
-const std::string& EagerKernelContext::GetNodeName() const {
-  return none;
 }
 
 }  // namespace onnxruntime

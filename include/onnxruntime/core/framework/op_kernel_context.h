@@ -172,17 +172,17 @@ class OpKernelContext {
   /**
   Returns the opset domain of the underlying kernel
   **/
-  virtual const std::string& GetOpDomain() const;
+  const std::string& GetOpDomain() const;
 
   /**
   Returns the optype of the underlying kernel
   **/
-  virtual const std::string& GetOpType() const;
+  const std::string& GetOpType() const;
 
   /**
   Returns the node name of the underlying kernel
   **/
-  virtual const std::string& GetNodeName() const;
+  const std::string& GetNodeName() const;
 
   /**
   Returns the intra-op threadpool, if available.
@@ -252,11 +252,11 @@ inline SparseTensor* OpKernelContext::Output<SparseTensor>(int index) {
 //EagerKernelContext for calling into a kenrel without a graph
 class EagerKernelContext : public OpKernelContext {
  public:
-  //todo: add SAL annotations
-  EagerKernelContext(const OrtValue* const* inputs, const int& input_len,
-                     OrtValue* const* outputs, const int& output_len,
-                     AllocatorPtr allocator, onnxruntime::concurrency::ThreadPool* threadpool,
-                     const logging::Logger& logger);
+  EagerKernelContext(_In_ const OrtValue* const* inputs, _In_ const int& input_len,
+                     _Inout_ OrtValue* const* outputs, _In_ const int& output_len,
+                     _In_ AllocatorPtr allocator, _In_ onnxruntime::concurrency::ThreadPool* threadpool,
+                     _In_ const logging::Logger& logger);
+
   //std::vector<std::unique_ptr<OrtValue>> FetchOutputs();
   int NumVariadicInputs(size_t arg_num) const override;
   MLDataType InputType(int index) const override;
@@ -272,11 +272,9 @@ class EagerKernelContext : public OpKernelContext {
   Fence_t OutputFence(int index) const override;
   int GetDeviceId() const override;
   void* GetComputeStream() const override;
-  const std::string& GetOpDomain() const override;
-  const std::string& GetOpType() const override;
-  const std::string& GetNodeName() const override;
 
  protected:
+
   const OrtValue* GetInputMLValue(int index) const override;
   OrtValue* OutputMLValue(int index, const TensorShape& shape) override;
   OrtValue* GetOrCreateOutputMLValue(int index) override;

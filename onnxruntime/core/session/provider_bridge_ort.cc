@@ -16,9 +16,6 @@
 #include "core/framework/provider_options.h"
 #include "core/framework/fallback_cpu_capability.h"
 #include "core/framework/random_generator.h"
-
-#include "core/framework/invoker.h"
-
 #include "core/graph/model.h"
 #include "core/platform/env.h"
 #include "core/providers/common.h"
