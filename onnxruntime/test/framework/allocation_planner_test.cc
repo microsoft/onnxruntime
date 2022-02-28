@@ -635,8 +635,8 @@ TEST_F(PlannerTest, LocationPlanningForPassThroughExplicitAndImplicitSubgraphInp
     // Abs-1
     auto& abs_data_1_in = main_graph.GetOrCreateNodeArg("abs_data_1_in", &float_tensor);
     auto& abs_data_1_out = main_graph.GetOrCreateNodeArg("abs_data_1_out", &float_tensor);
-    std::vector<onnxruntime::NodeArg*> abs_1_inputs = {&abs_data_1_in};
-    std::vector<onnxruntime::NodeArg*> abs_1_outputs = {&abs_data_1_out};
+    const std::array<onnxruntime::NodeArg*, 1> abs_1_inputs = {&abs_data_1_in};
+    const std::array<onnxruntime::NodeArg*, 1> abs_1_outputs = {&abs_data_1_out};
     main_graph.AddNode("abs_1", "Abs", "node abs", abs_1_inputs, abs_1_outputs);
 
     // Loop

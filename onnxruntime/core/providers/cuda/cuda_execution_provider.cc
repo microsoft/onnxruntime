@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/inlined_containers.h"
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_common.h"
@@ -1112,6 +1113,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, bool, Pad);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, SpaceToDepth);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, DepthToSpace);
+
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 13, BFloat16, Add);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 13, BFloat16, Sub);
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 13, BFloat16, Mul);
@@ -1952,6 +1954,7 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, bool, Pad)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, SpaceToDepth)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, DepthToSpace)>,
+      
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 13, BFloat16, Add)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 13, BFloat16, Sub)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCudaExecutionProvider, kOnnxDomain, 13, 13, BFloat16, Mul)>,
@@ -2205,7 +2208,7 @@ std::unique_ptr<onnxruntime::IDataTransfer> CUDAExecutionProvider::GetDataTransf
 std::vector<std::unique_ptr<ComputeCapability>>
 CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                      const std::vector<const KernelRegistry*>& kernel_registries) const {
-  std::vector<NodeIndex> candidates;
+  InlinedVector<NodeIndex> candidates;
   for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
     const auto* p_node = graph.GetNode(node_index);
     if (p_node == nullptr)
@@ -2266,7 +2269,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // For CUDA EP, exclude the subgraph that is preferred to be placed in CPU
   // These are usually shape related computation subgraphs
   // Following logic can be extended for other EPs
-  std::unordered_set<NodeIndex> cpu_nodes = GetCpuPreferredNodes(graph, Type(), kernel_registries, candidates);
+  auto cpu_nodes = GetCpuPreferredNodes(graph, Type(), kernel_registries, candidates);
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {
     if (cpu_nodes.count(node_index) > 0)
@@ -2295,7 +2298,7 @@ void CUDAExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
                                      info_.external_allocator_info, info_.default_memory_arena_cfg);
     allocator_manager->InsertAllocator(cuda_alloc);
   }
-  TryInsertAllocator(cuda_alloc);
+  TryInsertAllocator(std::move(cuda_alloc));
 
   // OrtMemTypeCPUOutput -- allocated by cudaMallocHost, used to copy CUDA device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
@@ -2311,7 +2314,7 @@ void CUDAExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
     cuda_pinned_alloc = CreateAllocator(pinned_memory_info);
     allocator_manager->InsertAllocator(cuda_pinned_alloc);
   }
-  TryInsertAllocator(cuda_pinned_alloc);
+  TryInsertAllocator(std::move(cuda_pinned_alloc));
 
   // OrtMemTypeCPUInput -- CUDA op place the input on CPU and will not be accessed by CUDA kernel, no sync issue
   auto cuda_cpu_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUInput);
@@ -2331,7 +2334,7 @@ void CUDAExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
     cuda_cpu_alloc = CreateAllocator(cpu_memory_info);
     allocator_manager->InsertAllocator(cuda_cpu_alloc);
   }
-  TryInsertAllocator(cuda_cpu_alloc);
+  TryInsertAllocator(std::move(cuda_cpu_alloc));
 }
 
 }  // namespace onnxruntime

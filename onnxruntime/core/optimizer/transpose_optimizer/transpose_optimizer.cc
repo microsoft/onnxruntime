@@ -967,41 +967,35 @@ static void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, con
   node.SetInput(i, gather_output);
 }
 
-// static bool HandleResize(HandlerArgs& args) {
-//  auto inputs = args.node.Inputs();
-//  int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
-//
-//  auto p = ChannelFirstToLastPerm(rank_int);
-//  auto& perm = p == args.perm ? args.perm : args.perm_inv;
-//  auto& perm_inv = p == args.perm ? args.perm_inv : args.perm;
-//
-//  if (args.ctx.opset < 11) {
-//     PermuteInput(args.ctx.graph, args.node, 1, perm);
-//   } else {
-//     if (inputs[1] != "") {
-//       std::vector<int64_t> double_perm_inv = perm;
-//       double_perm_inv.reserve(2 * args.perm.size());
-//       for (int64_t p1 : perm) {
-//         double_perm_inv.push_back(p1 + rank_int);
-//       }
-//       PermuteInput(args.ctx.graph, args.node, 1, double_perm_inv);
-//     }
-//     for (size_t i = 2; i < inputs.size(); ++i) {
-//       if (inputs[i] != "") {
-//         PermuteInput(args.ctx.graph, args.node, i, perm);
-//       }
-//     }
-//   }
-//
-//   TransposeFirstInput(args.ctx, args.node, perm);
-//   TransposeOutputs(args.ctx, args.node, perm_inv);
-//
-//   SwapNodeOpTypeAndDomain(args.ctx.graph, args.node, args.node.OpType(), "com.microsoft.nhwc");
-//
-//   return true;
-// }
+static bool HandleResize(HandlerArgs& args) {
+  auto inputs = args.node.Inputs();
+  int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
 
-// constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
+  if (args.ctx.opset < 11) {
+    PermuteInput(args.ctx.graph, args.node, 1, args.perm_inv);
+  } else {
+    if (inputs[1] != "") {
+      std::vector<int64_t> double_perm_inv = args.perm_inv;
+      double_perm_inv.reserve(2 * args.perm_inv.size());
+      for (int64_t p : args.perm_inv) {
+        double_perm_inv.push_back(p + rank_int);
+      }
+      PermuteInput(args.ctx.graph, args.node, 1, double_perm_inv);
+    }
+    for (size_t i = 2; i < inputs.size(); ++i) {
+      if (inputs[i] != "") {
+        PermuteInput(args.ctx.graph, args.node, i, args.perm_inv);
+      }
+    }
+  }
+
+  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
+  TransposeOutputs(args.ctx, args.node, args.perm);
+
+  return true;
+}
+
+constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
 
 static bool HandlePad(HandlerArgs& args) {
   size_t rank = args.perm.size();
@@ -1418,73 +1412,130 @@ static bool HandleTile(HandlerArgs& args) {
 
 constexpr HandlerInfo tile_handler = {&FirstInput, &HandleTile};
 
-static bool HandleTranspose(HandlerArgs& args) {
-  // In this handler a transpose leads to another transpose. "transpose" if the 1st and "node" is the 2nd.
+// Helper to remove cancelling Transpose -> Transpose or 
+// Transpose -> Reshape nodes.
+static void RemoveCancelingTransposeNodes(HandlerArgs& args) {
+  // Input to 1st transpose
+  std::string_view transpose_input = args.transpose.Inputs()[0];
+  // Output of 2nd transpose or reshape
+  std::string_view node_output = args.node.Outputs()[0];
 
+  auto consumers = args.ctx.graph.GetValueConsumers(node_output);
+  if (consumers->comprehensive) {
+    // If possible, replace references to output of 2nd transpose/reshape with input to 1st
+    ReplaceValueReferences(consumers->nodes, node_output, transpose_input);
+  } else {
+    // Otherwise, (ex: 2nd transpose/reshape is a graph output, a reasonably common case) the output name of the 2nd
+    // transpose/reshape must be maintained. Attempt to move the output directly to the 1st transpose's parent.
+    auto transpose_inp_consumers = args.ctx.graph.GetValueConsumers(transpose_input);
+    std::unique_ptr<api::NodeRef> transpose_inp_node = args.ctx.graph.GetNodeProducingOutput(transpose_input);
+
+    if (transpose_inp_node != nullptr && transpose_inp_consumers->comprehensive) {
+      // Will move output to parent. First replace parent references with name of 2nd transpose/reshape output.
+      args.node.SetInput(0, "");
+      ReplaceValueReferences(transpose_inp_consumers->nodes, transpose_input, node_output);
+      const std::vector<std::string_view>& transpose_inp_outputs = transpose_inp_node->Outputs();
+
+      // Find index of output from parent node
+      size_t i;
+      for (i = 0; i < transpose_inp_outputs.size(); ++i) {
+        if (transpose_inp_outputs[i] == transpose_input) break;
+      }
+
+      // Move 2nd transpose/reshape output (possible graph output) over top of it.
+      args.ctx.graph.MoveOutput(args.node, 0, *transpose_inp_node, i);
+    } else {
+      // Worst-case scenario: Both parent output and 2nd transpose/reshape output cannot be removed (both graph outputs)
+      // despite computing the same value. Use an Identity op instead.
+      std::vector<std::string_view> single_empty_input{""};
+      auto identity_ptr = args.ctx.graph.AddNode("Identity", single_empty_input, /*num_outputs*/ 1);
+      api::NodeRef& identity = *identity_ptr;
+      args.ctx.graph.MoveOutput(args.node, 0, identity, 0);
+      identity.SetInput(0, transpose_input);
+    }
+  }
+  // Remove 2nd transpose/reshape node.
+  args.ctx.graph.RemoveNode(args.node);
+
+  // 2nd transpose/reshape no longer references 1st. Remove first if possible.
+  if (!args.ctx.graph.HasValueConsumers(args.transpose.Outputs()[0])) {
+    args.ctx.graph.RemoveNode(args.transpose);
+  }
+}
+
+static bool HandleTranspose(HandlerArgs& args) {
+  // In this handler a transpose leads to another transpose. "transpose" is the 1st and "node" is the 2nd.
   std::optional<std::vector<int64_t>> node_perm = GetPermAttrIfValid(args.node);
   if (node_perm == std::nullopt || node_perm->size() != args.perm.size()) {
     return false;
   }
 
-  // Input to 1st transpose
-  std::string_view transpose_input = args.transpose.Inputs()[0];
-  // Output of 2nd transpose
-  std::string_view node_output = args.node.Outputs()[0];
-
   if (args.perm_inv == *node_perm) {
     // Case 1: Permutations cancel.
-    auto consumers = args.ctx.graph.GetValueConsumers(node_output);
-    if (consumers->comprehensive) {
-      // If possible, replace references to output of 2nd transpose with input to 1st
-      ReplaceValueReferences(consumers->nodes, node_output, transpose_input);
-    } else {
-      // Otherwise, (ex: 2nd transpose is a graph output, a reasonably common case) the output name of the 2nd
-      // transpose must be maintained. Attempt to move the output directly to the 1st transpose's parent.
-      auto transpose_inp_consumers = args.ctx.graph.GetValueConsumers(transpose_input);
-      std::unique_ptr<api::NodeRef> transpose_inp_node = args.ctx.graph.GetNodeProducingOutput(transpose_input);
-
-      if (transpose_inp_node != nullptr && transpose_inp_consumers->comprehensive) {
-        // Will move output to parent. First replace parent references with name of 2nd transpose output.
-        args.node.SetInput(0, "");
-        ReplaceValueReferences(transpose_inp_consumers->nodes, transpose_input, node_output);
-        const std::vector<std::string_view>& transpose_inp_outputs = transpose_inp_node->Outputs();
-
-        // Find index of output from parent node
-        size_t i;
-        for (i = 0; i < transpose_inp_outputs.size(); ++i) {
-          if (transpose_inp_outputs[i] == transpose_input) break;
-        }
-
-        // Move 2nd transpose output (possible graph output) over top of it.
-        args.ctx.graph.MoveOutput(args.node, 0, *transpose_inp_node, i);
-      } else {
-        // Worst-case scenario: Both parent output and 2nd transpose output cannot be removed (both graph outputs)
-        // despite computing the same value. Use an Identity op instead.
-        std::vector<std::string_view> single_empty_input{""};
-        auto identity_ptr = args.ctx.graph.AddNode("Identity", single_empty_input, /*num_outputs*/ 1);
-        api::NodeRef& identity = *identity_ptr;
-        args.ctx.graph.MoveOutput(args.node, 0, identity, 0);
-        identity.SetInput(0, transpose_input);
-      }
-    }
-    // In any case, the 2nd transpose can be removed.
-    args.ctx.graph.RemoveNode(args.node);
+    RemoveCancelingTransposeNodes(args);
   } else {
     // Case 2: Permutations don't cancel. Compose permutations.
     std::vector<int64_t> new_perm = ComposePerm(args.perm, *node_perm);
     args.node.SetAttributeInts("perm", new_perm);
-    args.node.SetInput(0, transpose_input);
-  }
+    args.node.SetInput(0, args.transpose.Inputs()[0]);
 
-  // 2nd transpose no longer references 1st. Remove first if possible.
-  if (!args.ctx.graph.HasValueConsumers(args.transpose.Outputs()[0])) {
-    args.ctx.graph.RemoveNode(args.transpose);
+    // 2nd transpose no longer references 1st. Remove first if possible.
+    if (!args.ctx.graph.HasValueConsumers(args.transpose.Outputs()[0])) {
+      args.ctx.graph.RemoveNode(args.transpose);
+    }
   }
 
   return true;
 }
 
 constexpr HandlerInfo transpose_handler = {&FirstInput, &HandleTranspose, /*transposes_outputs*/ false};
+
+static bool HandleReshape(HandlerArgs& args) {
+  // We check for a very specific case where Transpose is replaced by Reshape 
+  // for performance. For example Transpose(input {1, 1, 1, X}, perm{0, 3, 2, 1}) can be replaced by Reshape
+  // Reshape(input{1, 1, 1, X}, shape{1, X, 1, 1})
+  // During transpose optimization we need to detect such reshape nodes so that we can remove them if possible.
+
+  // Get transpose input shape and validate rank
+  auto transpose_input_shape = args.ctx.graph.GetValueInfo(args.transpose.Inputs()[0])->Shape();
+  if (!transpose_input_shape.has_value() || transpose_input_shape->size() != 4) {
+    return false;
+  }
+
+  // Check only 1 dim is not equal to 1. This is to validate that tranpose and reshape are truly canceling nodes 
+  // and can be therefore removed.
+  int num_dims_not_equal_to_1 = 0;
+  for (int i = 0; i < 4; i++) {
+    if (transpose_input_shape->data()[i] != 1) {
+      num_dims_not_equal_to_1++;
+      if (num_dims_not_equal_to_1 > 1) {
+        return false;
+      }
+    }
+  }
+
+  // Get shape input of reshape node
+  auto shape_data = args.ctx.graph.GetConstant(args.node.Inputs()[1]);
+  if (shape_data == nullptr || shape_data->Data().size() == 0) {
+    return false;
+  }
+
+  // Check whether transpose cancels with reshape node
+  // We check if shape of transpose node's input matches the shape data 
+  // provided for reshape node.
+  auto reshape_output_shape = DataInt64(*shape_data);
+  if (reshape_output_shape != transpose_input_shape) {
+    return false;
+  }
+
+  // Transpose and Reshape cancel each other. Remove both the nodes.
+  // reshape is really a transpose which is converting the layout from NHWC -> NCHW or vice-versa
+  RemoveCancelingTransposeNodes(args);
+
+  return true;
+}
+
+constexpr HandlerInfo reshape_handler = {&FirstInput, &HandleReshape, /*transposes_outputs*/ false};
 
 static bool HandleQLinearConcat(HandlerArgs& args) {
   return HandleSimpleNodeWithAxis(args);
@@ -1640,9 +1691,7 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
     {"Split", split_handler},
     {"Shape", shape_handler},
     {"Pad", pad_handler},
-    // Todo: renable resize handler after adding NHWC support in upsample op on cpu
-    // https://github.com/microsoft/onnxruntime/issues/9857
-    //  {"Resize", resize_handler},
+    {"Resize", resize_handler},
     {"ReduceSum", reduce_sum_handler},
 
     {"ReduceLogSum", reduce_op_handler},
@@ -1669,7 +1718,7 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
 
     {"QuantizeLinear", quantize_dequantize_linear_handler},
     {"DequantizeLinear", quantize_dequantize_linear_handler},
-};
+    {"Reshape", reshape_handler}};
 
 static const std::unordered_map<std::string_view, const HandlerInfo&> extended_handler_map{
     {"com.microsoft.QLinearReduceMean", reduce_op_handler},

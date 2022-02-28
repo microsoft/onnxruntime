@@ -10,13 +10,13 @@
 #include "core/common/safeint.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/allocator.h"
+#include "core/framework/kernel_def_hash_helpers.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/session_state_flatbuffers_utils.h"
 #include "core/framework/session_state_utils.h"
 #include "core/framework/utils.h"
-#include "core/framework/static_kernel_def_hashes.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -847,16 +847,19 @@ const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-void SessionState::UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs) {
-  std::vector<int> sorted_idxs = fetch_mlvalue_idxs;
+void SessionState::UpdateToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_idxs) {
+  InlinedVector<int> sorted_idxs;
+  sorted_idxs.reserve(fetch_mlvalue_idxs.size());
+  sorted_idxs.assign(fetch_mlvalue_idxs.begin(), fetch_mlvalue_idxs.end());
   std::sort(sorted_idxs.begin(), sorted_idxs.end());
   if (to_be_executed_nodes_.find(sorted_idxs) != to_be_executed_nodes_.end())
     return;
 
   // Get the nodes generating the fetches.
-  std::vector<const Node*> nodes;
+  InlinedVector<const Node*> nodes;
   nodes.reserve(fetch_mlvalue_idxs.size());
-  std::unordered_set<NodeIndex> reachable_nodes;
+  InlinedHashSet<NodeIndex> reachable_nodes;
+  reachable_nodes.reserve(graph_.Nodes().size());
 
   for (auto idx : fetch_mlvalue_idxs) {
     std::string node_arg_name;
@@ -869,12 +872,14 @@ void SessionState::UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue
   // Reversely traverse to get reachable nodes.
   graph_.ReverseDFSFrom(
       nodes, {}, [&reachable_nodes](const Node* n) { reachable_nodes.insert(n->Index()); });
-  to_be_executed_nodes_.insert(std::make_pair(sorted_idxs, reachable_nodes));
+  to_be_executed_nodes_.emplace(std::move(sorted_idxs), std::move(reachable_nodes));
 }
 
-const std::unordered_set<NodeIndex>* SessionState::GetToBeExecutedNodes(
-    const std::vector<int>& fetch_mlvalue_idxs) const {
-  std::vector<int> sorted_idxs = fetch_mlvalue_idxs;
+const InlinedHashSet<NodeIndex>* SessionState::GetToBeExecutedNodes(
+    gsl::span<int const> fetch_mlvalue_idxs) const {
+  InlinedVector<int> sorted_idxs;
+  sorted_idxs.reserve(fetch_mlvalue_idxs.size());
+  sorted_idxs.assign(fetch_mlvalue_idxs.begin(), fetch_mlvalue_idxs.end());
   std::sort(sorted_idxs.begin(), sorted_idxs.end());
   auto it = to_be_executed_nodes_.find(sorted_idxs);
   return (it != to_be_executed_nodes_.end()) ? &it->second : nullptr;
@@ -971,7 +976,7 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
   auto add_kernel_by_hash =
       [&kernel_registry_manager, this](const Node& node, HashValue hash) {
         const KernelCreateInfo* kci = nullptr;
-        fbs::utils::UpdateHashForBackwardsCompatibility(hash);
+        utils::UpdateHashForBackwardsCompatibility(hash);
 
         ORT_RETURN_IF_NOT(kernel_registry_manager.SearchKernelRegistriesByHash(hash, &kci),
                           "Failed to find kernel def hash (", hash, ") in kernel registries for ",
@@ -1024,7 +1029,7 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
   for (const auto& node : graph_.Nodes()) {
     if (kernel_create_info_map_.count(node.Index()) == 0) {
       if (node.Domain() == kOnnxDomain || node.Domain() == kOnnxDomainAlias) {
-        auto kernel_hash = GetHashValueFromStaticKernelHashMap(node.OpType(), node.SinceVersion());
+        auto kernel_hash = utils::GetHashValueFromStaticKernelHashMap(node.OpType(), node.SinceVersion());
         if (kernel_hash.has_value()) {
           ORT_RETURN_IF_ERROR(add_kernel_by_hash(node, *kernel_hash));
         } else {

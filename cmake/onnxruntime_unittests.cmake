@@ -1272,8 +1272,8 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   )
 
   onnxruntime_add_shared_library_module(test_execution_provider ${test_execution_provider_srcs})
-  add_dependencies(test_execution_provider onnxruntime_providers_shared onnx)
-  target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared)
+  add_dependencies(test_execution_provider onnxruntime_providers_shared onnx absl::raw_hash_set)
+  target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared absl::raw_hash_set)
   target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
   target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
   target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${ORTTRAINING_ROOT})
@@ -1289,14 +1289,6 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   else()
     message(FATAL_ERROR "test_execution_provider unknown platform, need to specify shared library exports for it")
   endif()
-endif()
-
-if (onnxruntime_USE_TVM)
-  # find_library(TVM_LIBS NAMES libtvm.so PATHS ${tvm_SOURCE_DIR}/lib)
-  # link_directories(onnxruntime_test_all ${TVM_LIBS})
-  find_library(PYTHON_LIBS NAMES libpython PATHS /usr/local/lib)
-  #target_link_libraries(onnxruntime_test_all PRIVATE ${PYTHON_LIBRARIES} -lutil)
-  # set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-rpath,${TVM_LIBS}")
 endif()
 
 include(onnxruntime_fuzz_test.cmake)

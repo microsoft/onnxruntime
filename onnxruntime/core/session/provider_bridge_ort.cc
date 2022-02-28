@@ -3,6 +3,8 @@
 
 // This is the Onnxruntime side of the bridge to allow providers to be built as a DLL
 // It implements onnxruntime::ProviderHost
+
+#include "core/common/inlined_containers.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/data_types.h"
@@ -205,10 +207,10 @@ struct ProviderHostImpl : ProviderHost {
 
   std::string GetEnvironmentVar(const std::string& var_name) override { return Env::Default().GetEnvironmentVar(var_name); }
 
-  std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                     const std::string& provider_type,
-                                                     const std::vector<const KernelRegistry*>& kernel_registries,
-                                                     const std::vector<NodeIndex>& tentative_nodes) override {
+  InlinedHashSet<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
+                                                 const std::string& provider_type,
+                                                 gsl::span<const KernelRegistry* const> kernel_registries,
+                                                 gsl::span<const NodeIndex> tentative_nodes) override {
     return onnxruntime::GetCpuPreferredNodes(graph, provider_type, kernel_registries, tentative_nodes);
   }
 
@@ -716,12 +718,12 @@ struct ProviderHostImpl : ProviderHost {
 
   Status Graph__Resolve(Graph* p) override { return p->Resolve(); }
   void Graph__AddInitializedTensor(Graph* p, const ONNX_NAMESPACE::TensorProto& tensor) override { p->AddInitializedTensor(tensor); }
-  Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const std::vector<NodeArg*>& input_args, const std::vector<NodeArg*>& output_args, const NodeAttributes* attributes, const std::string& domain) override {
+  Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const gsl::span<NodeArg* const> & input_args, const gsl::span<NodeArg* const>& output_args, const NodeAttributes* attributes, const std::string& domain) override {
     return p->AddNode(name, op_type, description, input_args, output_args, attributes, domain);
   }
 
   const std::vector<const NodeArg*>& Graph__GetOutputs(const Graph* p) noexcept override { return p->GetOutputs(); }
-  void Graph__SetOutputs(Graph* p, const std::vector<const NodeArg*>& outputs) override { p->SetOutputs(outputs); }
+  void Graph__SetOutputs(Graph* p, gsl::span<const NodeArg* const> outputs) override { p->SetOutputs(outputs); }
 
   const std::vector<const NodeArg*>& Graph__GetInputs(const Graph* p) noexcept override { return p->GetInputs(); }
   bool Graph__GetInitializedTensor(const Graph* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) override { return p->GetInitializedTensor(tensor_name, value); }
