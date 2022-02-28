@@ -11,7 +11,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import ai.onnxruntime.InferenceTest;
 import ai.onnxruntime.NodeInfo;
 import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OnnxValue;
@@ -30,6 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 public class ProviderOptionsTest {
+  private static final OrtEnvironment env = OrtEnvironment.getEnvironment();
 
   @Test
   @EnabledIfSystemProperty(named = "USE_CUDA", matches = "1")
@@ -69,15 +69,14 @@ public class ProviderOptionsTest {
         OrtException.class, () -> invalidOpts.add("not_a_real_provider_option", "not a number"));
   }
 
-  private void runProvider(OrtProvider provider, OrtSession.SessionOptions options)
+  private static void runProvider(OrtProvider provider, OrtSession.SessionOptions options)
       throws OrtException {
     EnumSet<OrtProvider> providers = OrtEnvironment.getAvailableProviders();
     assertTrue(providers.size() > 1);
     assertTrue(providers.contains(OrtProvider.CPU));
     assertTrue(providers.contains(provider));
-    InferenceTest.SqueezeNetTuple tuple = openSessionSqueezeNet(options);
-    try (OrtEnvironment env = tuple.env;
-        OrtSession session = tuple.session) {
+    SqueezeNetTuple tuple = openSessionSqueezeNet(options);
+    try (OrtSession session = tuple.session) {
       float[] inputData = tuple.inputData;
       float[] expectedOutput = tuple.outputData;
       NodeInfo inputMeta = session.getInputInfo().values().iterator().next();
@@ -104,14 +103,26 @@ public class ProviderOptionsTest {
    * @return The squeezenet session, input and output.
    * @throws OrtException If the native code failed.
    */
-  private static InferenceTest.SqueezeNetTuple openSessionSqueezeNet(
-      OrtSession.SessionOptions options) throws OrtException {
+  private static SqueezeNetTuple openSessionSqueezeNet(OrtSession.SessionOptions options)
+      throws OrtException {
     Path squeezeNet = getResourcePath("/squeezenet.onnx");
     String modelPath = squeezeNet.toString();
-    OrtEnvironment env = OrtEnvironment.getEnvironment();
     OrtSession session = env.createSession(modelPath, options);
     float[] inputData = loadTensorFromFile(getResourcePath("/bench.in"));
     float[] expectedOutput = loadTensorFromFile(getResourcePath("/bench.expected_out"));
-    return new InferenceTest.SqueezeNetTuple(env, session, inputData, expectedOutput);
+    return new SqueezeNetTuple(session, inputData, expectedOutput);
+  }
+
+  /** Carrier tuple for the squeeze net model. */
+  public static class SqueezeNetTuple {
+    public final OrtSession session;
+    public final float[] inputData;
+    public final float[] outputData;
+
+    public SqueezeNetTuple(OrtSession session, float[] inputData, float[] outputData) {
+      this.session = session;
+      this.inputData = inputData;
+      this.outputData = outputData;
+    }
   }
 }
