@@ -10,6 +10,7 @@ if (onnxruntime_USE_TVM)
   FetchContent_GetProperties(tvm)
   if(NOT tvm_POPULATED)
     FetchContent_Populate(tvm)
+    file(CREATE_LINK ${tvm_BINARY_DIR} ${tvm_SOURCE_DIR}/build SYMBOLIC)
   endif()
 
   set(tvm_INCLUDE_DIRS ${tvm_SOURCE_DIR}/include)

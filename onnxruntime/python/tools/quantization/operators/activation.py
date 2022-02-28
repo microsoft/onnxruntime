@@ -78,3 +78,8 @@ class QDQRemovableActivation(QDQOperatorBase):
 
         if self.quantizer.try_replacing_upstream_output(node.input[0], node.output[0]):
             self.quantizer.remove_node(self.node)
+        else:
+            self.quantizer.quantize_tensor(node.input[0])
+
+        if not self.disable_qdq_for_node_output:
+            self.quantizer.quantize_tensor(node.output[0])

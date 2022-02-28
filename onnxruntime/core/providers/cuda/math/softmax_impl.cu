@@ -137,5 +137,10 @@ SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(float, float, float)
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(half, half, float)
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(double, double, double)
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(BFloat16, BFloat16, float)
+
+#ifndef DISABLE_CONTRIB_OPS
+SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(half, float, float) // used by BeamSearch op
+#endif
+
 }
 }

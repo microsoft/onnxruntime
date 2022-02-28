@@ -133,6 +133,7 @@ def adaptive_avg_pool2d_gradient():
          'GI(0)'], {'name': {'value': 'aten::_adaptive_avg_pool2d_backward', 'dtype': 'string'}}),
     ]
 
+CustomGradientRegistry.register_custom_stop_gradient_edges([0], 'com.microsoft', 'ATenOp', 'aten::argmax', '')
 CustomGradientRegistry.register_custom_stop_gradient_edges([0], 'com.microsoft', 'ATenOp', 'aten::multinomial', '')
 
 @register_gradient('com.microsoft', 'ATenOp', 'aten::binary_cross_entropy_with_logits', '')

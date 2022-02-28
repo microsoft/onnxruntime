@@ -103,6 +103,13 @@ struct WinmlAdapterApi {
   OrtStatus*(ORT_API_CALL* ModelGetName)(_In_ const OrtModel* model, _Out_ const char** const name, _Out_ size_t* len)NO_EXCEPTION;
 
   /**
+    * ModelSetName
+	* This api set the model name from the OrtModel.
+	* This is used by the Windows ML Samples Gallery to change the model name for telemetry.
+    */
+  OrtStatus*(ORT_API_CALL* ModelSetName)(_In_ const OrtModel* model, _In_ const char* name)NO_EXCEPTION;
+
+  /**
     * ModelGetDomain
 	 * This api gets the model domain from the OrtModel.
 	 * This is used by WinML to support model reflection APIs.

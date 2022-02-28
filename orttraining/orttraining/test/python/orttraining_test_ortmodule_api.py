@@ -1305,6 +1305,29 @@ def test_aten_multinomial(input_shape, num_samples, replacement):
 
     _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
 
+@pytest.mark.parametrize("input_shape", ([4,2],))
+def test_aten_argmax(input_shape):
+    import torch.nn.functional as F
+    class TopKGate(torch.nn.Module):
+        def forward(self, input: torch.Tensor):
+            indices = torch.argmax(input, dim = 1)
+            device = 'cpu' if indices.get_device() < 0 else indices.get_device()
+            ret = torch.zeros(indices.shape[0], 2, dtype=torch.int64, device=device)
+            ret = ret.scatter(-1, indices.unsqueeze(-1), 1) + input
+            return ret
+
+    device = 'cuda'
+    pt_model = TopKGate()
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    pt_input = torch.rand(input_shape, dtype=torch.float, device=device, requires_grad=True)
+    ort_input = copy.deepcopy(pt_input)
+    pt_output = pt_model(pt_input)
+    ort_output = ort_model(ort_input)
+    loss = ort_output[0].sum()
+    loss.backward()
+
+    _test_helpers.assert_values_are_close(ort_output, pt_output)
+
 @pytest.mark.parametrize("input_shape", ([], [5], [2,5], [3,2,5]))
 def test_numpy_T(input_shape):
     class NeuralNet(torch.nn.Module):
