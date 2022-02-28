@@ -63,7 +63,7 @@ void operator delete(void* p, size_t /*size*/) noexcept { return Provider_GetHos
 namespace onnxruntime {
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
-// "Global initializer calls a non-constexpr function." 
+// "Global initializer calls a non-constexpr function."
 #pragma warning(disable : 26426)
 #endif
 ProviderHost* g_host = Provider_GetHost();
@@ -577,7 +577,7 @@ Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state, co
 
 #ifdef ENABLE_TRAINING
 namespace contrib {
-Status ATenOp::Compute(OpKernelContext* p_ctx) const { return g_host_cpu.ATenOp__Compute(this, p_ctx); }
+Status ATen::Compute(OpKernelContext* p_ctx) const { return g_host_cpu.ATen__Compute(this, p_ctx); }
 Status Group::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__Group__Compute(this, context); }
 Status PassThrough::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__PassThrough__Compute(this, context); }
 Status YieldOp::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__YieldOp__Compute(this, context); }

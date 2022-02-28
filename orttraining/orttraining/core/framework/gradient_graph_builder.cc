@@ -139,7 +139,7 @@ NodeSet GradientGraphBuilder::BFSWithStopGradient(const std::unordered_set<std::
     for (auto edge_it = n->OutputEdgesBegin(); edge_it != n->OutputEdgesEnd(); ++edge_it) {
       const Node& node = edge_it->GetNode();
 
-      const std::unordered_set<size_t>* edges = GetStopGradientEdges(node);  
+      const std::unordered_set<size_t>* edges = GetStopGradientEdges(node);
       if (edges != nullptr && edges->count(edge_it->GetDstArgIndex())) {
         continue;
       }
@@ -163,7 +163,7 @@ NodeSet GradientGraphBuilder::ReverseBFSWithStopGradient(const NodeSet& nodes) c
     queue.pop_front();
 
     for (auto edge_it = n->InputEdgesBegin(); edge_it != n->InputEdgesEnd(); ++edge_it) {
-      const std::unordered_set<size_t>* edges = GetStopGradientEdges(*n);  
+      const std::unordered_set<size_t>* edges = GetStopGradientEdges(*n);
       if (edges != nullptr && edges->count(edge_it->GetDstArgIndex())) {
         LOGS(logger_, INFO) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
                             << " of node: " << n->Name();
@@ -203,7 +203,7 @@ Status GradientGraphBuilder::CheckNodeArgsReachable() const {
 const std::unordered_set<size_t>* GradientGraphBuilder::GetStopGradientEdges(const Node& node) const {
   std::string op_type = node.OpType();
 
-  if (op_type == "ATenOp") {
+  if (op_type == "ATen") {
     std::string key = GetGradientDefinitionKeyByNode(node);
     return GradientDefinitionRegistry::Instance().GetStopGradientEdgesForNode(key);
   } else {
