@@ -272,9 +272,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForRuntimeO
     const SessionOptions& session_options,
     const SatApplyContextVariant& apply_context,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable) {
-  const bool disable_quant_qdq =
-      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
-
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
 
   switch (level) {
@@ -282,6 +279,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForRuntimeO
       break;
     case TransformerLevel::Level2: {
 #if !defined(DISABLE_CONTRIB_OPS)
+      const bool disable_quant_qdq =
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
+
       // runtime optimizations only support CPU EP now
       const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
 
@@ -291,6 +291,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForRuntimeO
 
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_ep,
                                                                        apply_context));
+#else   // !defined(DISABLE_CONTRIB_OPS)
+      ORT_UNUSED_PARAMETER(session_options);
+      ORT_UNUSED_PARAMETER(apply_context);
 #endif  // !defined(DISABLE_CONTRIB_OPS)
       break;
     }
