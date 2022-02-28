@@ -77,8 +77,6 @@ class ValidNodes {
 
   bool empty() const noexcept { return nodes_->empty(); }
 
-  size_t size() const noexcept { return nodes_->size(); }
-
   /**
   @class NodeIterator
   Iterator to provide const and non-const access to valid Node instances in a Graph.
