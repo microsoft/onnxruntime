@@ -739,7 +739,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   }
 
 #ifdef ENABLE_TRAINING
-  // Use ATenOp for ReduceSum if possible.
+  // Use ATen for ReduceSum if possible.
   const TensorShape& input_shape = X->Shape();
   if (contrib::IsATenOperatorExecutorInitialized() && cudnn_reduce_op == CUDNN_REDUCE_TENSOR_ADD && !calculate_log_ &&
       !calculate_sqt_ && !log_sum_exp_ && input_shape.Size() > 0) {
@@ -747,7 +747,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
       axes.resize(input_shape.NumDimensions());
       std::iota(axes.begin(), axes.end(), 0);
     }
-    ORT_RETURN_IF_ERROR(contrib::ExecuteReduceSumATenOp(ctx, axes, keepdims_));
+    ORT_RETURN_IF_ERROR(contrib::ExecuteReduceSumATen(ctx, axes, keepdims_));
     return Status::OK();
   }
 #endif
