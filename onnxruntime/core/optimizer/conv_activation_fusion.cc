@@ -18,7 +18,7 @@ namespace {
 #if !defined(ORT_MINIMAL_BUILD)
 namespace selectors {
 const Node* GetLoneConsumerNode(const GraphViewer& graph_viewer, const Node& node) {
-  if (graph_viewer.NodeProducesGraphOutput(node) || node.GetOutputEdgesCount() != 1) {
+  if (!optimizer_utils::CheckOutputEdges(graph_viewer, node, 1)) {
     return nullptr;
   }
   return &*node.OutputNodesBegin();
@@ -157,21 +157,19 @@ void SetFloatsAttribute(std::string name, gsl::span<float> value, NodeAttributes
 using NTO = NodesToOptimize;
 
 class FuseConvActivation : public ReplaceWithNew {
- public:
-  FuseConvActivation()
-      : ReplaceWithNew{kMSDomain, "FusedConv", CreateValueMoves()} {
-  }
-
  private:
-  NodeAttributes Attributes(const RuntimeState& state) const override {
-    const auto& conv = state.selected_nodes.Target();
-    NodeAttributes fused_conv_attributes = conv.GetAttributes();
+  std::string OpType(const RuntimeState&) const override { return "FusedConv"; }
+
+  std::string Domain(const RuntimeState&) const override { return kMSDomain; }
+
+  NodeAttributes ExtraAttributes(const RuntimeState& state) const override {
+    NodeAttributes extra_fused_conv_attributes;
 
     const auto* activation = state.selected_nodes.Output(0);
     ORT_ENFORCE(activation != nullptr, "Expected activation node.");
 
     const auto& activation_op_type = activation->OpType();
-    SetStringAttribute("activation", activation_op_type, fused_conv_attributes);
+    SetStringAttribute("activation", activation_op_type, extra_fused_conv_attributes);
 
     InlinedVector<float> activation_params;
     if (activation_op_type == "LeakyRelu") {
@@ -192,13 +190,13 @@ class FuseConvActivation : public ReplaceWithNew {
     }
 
     if (!activation_params.empty()) {
-      SetFloatsAttribute("activation_params", activation_params, fused_conv_attributes);
+      SetFloatsAttribute("activation_params", activation_params, extra_fused_conv_attributes);
     }
 
-    return fused_conv_attributes;
+    return extra_fused_conv_attributes;
   }
 
-  static std::vector<NodeAndMoveInfo> CreateValueMoves() {
+  std::vector<NodeAndMoveInfo> ValueMoves(const RuntimeState&) const override {
     const NTO::NodeLocation conv{NTO::NodeType::kTarget, 0};
     const NTO::NodeLocation activation{NTO::NodeType::kOutput, 0};
 
@@ -210,18 +208,15 @@ class FuseConvActivation : public ReplaceWithNew {
 };
 
 class FuseConvAddRelu : public ReplaceWithNew {
- public:
-  FuseConvAddRelu()
-      : ReplaceWithNew{
-            kMSDomain, "FusedConv", {}} {
-  }
-
  private:
-  NodeAttributes Attributes(const RuntimeState& state) const override {
-    const auto& conv = state.selected_nodes.Target();
-    NodeAttributes fused_conv_attributes = conv.GetAttributes();
-    SetStringAttribute("activation", "Relu", fused_conv_attributes);
-    return fused_conv_attributes;
+  std::string OpType(const RuntimeState&) const override { return "FusedConv"; }
+
+  std::string Domain(const RuntimeState&) const override { return kMSDomain; }
+
+  NodeAttributes ExtraAttributes(const RuntimeState&) const override {
+    NodeAttributes extra_fused_conv_attributes;
+    SetStringAttribute("activation", "Relu", extra_fused_conv_attributes);
+    return extra_fused_conv_attributes;
   }
 
   std::vector<NodeAndMoveInfo> ValueMoves(const RuntimeState& state) const override {

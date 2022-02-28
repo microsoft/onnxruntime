@@ -267,12 +267,21 @@ int32_t IndexOfNodeOutput(const Node& node, const NodeArg& node_arg) {
   return -1;
 }
 
-bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_output_edges) {
+template <typename ReadonlyGraph>
+static bool CheckOutputEdgesImpl(const ReadonlyGraph& graph, const Node& node, size_t expected_output_edges) {
   if (graph.NodeProducesGraphOutput(node)) {
     return false;
   }
 
   return node.GetOutputEdgesCount() == expected_output_edges;
+}
+
+bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_output_edges) {
+  return CheckOutputEdgesImpl(graph, node, expected_output_edges);
+}
+
+bool CheckOutputEdges(const GraphViewer& graph, const Node& node, size_t expected_output_edges) {
+  return CheckOutputEdgesImpl(graph, node, expected_output_edges);
 }
 
 // Allow certain domains/ops. We don't know anything about unknown domains/ops (e.g. custom ops),

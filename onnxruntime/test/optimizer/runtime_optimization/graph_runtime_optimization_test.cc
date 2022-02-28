@@ -82,7 +82,7 @@ class TestTransformer : public SelectorActionTransformer {
   static SelectorActionRegistry CreateSelectorActionRegistry() {
     SelectorActionRegistry result{};
     auto selector = std::make_unique<SurroundingIdentitySelector>();
-    auto action = std::make_unique<ReplaceWithNew>(kOnnxDomain, "Add", GetBinaryMoves());
+    auto action = std::make_unique<ReplaceWithNewFixed>(kOnnxDomain, "Add", GetBinaryMoves());
     result.RegisterSelectorAndAction(kSelectorActionId, {{"Add", {}}}, std::move(selector), std::move(action));
     return result;
   }

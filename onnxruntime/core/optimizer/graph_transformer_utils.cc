@@ -281,17 +281,17 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForRuntimeO
     case TransformerLevel::Level1:
       break;
     case TransformerLevel::Level2: {
-      const InlinedHashSet<std::string_view> cpu_cuda_rocm_acl_armnn_eps = {onnxruntime::kCpuExecutionProvider,
-                                                                            onnxruntime::kCudaExecutionProvider,
-                                                                            onnxruntime::kRocmExecutionProvider,
-                                                                            onnxruntime::kAclExecutionProvider,
-                                                                            onnxruntime::kArmNNExecutionProvider};
+#if !defined(DISABLE_CONTRIB_OPS)
+      // runtime optimizations only support CPU EP now
+      const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
 
-      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_eps,
-                                                                       apply_context));
       if (!disable_quant_qdq) {
         transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(apply_context));
       }
+
+      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_ep,
+                                                                       apply_context));
+#endif  // !defined(DISABLE_CONTRIB_OPS)
       break;
     }
     case TransformerLevel::Level3:

@@ -18,7 +18,7 @@ graph = helper.make_graph(
     ],
     "ConvClipFusion",  # name
     [  # inputs
-
+        # each Conv has a distinct X input so that the common subexpression elimination does not combine them
         helper.make_tensor_value_info('X0', TensorProto.FLOAT, [1, 1, 7]),
         helper.make_tensor_value_info('X1', TensorProto.FLOAT, [1, 1, 7]),
         helper.make_tensor_value_info('X2', TensorProto.FLOAT, [1, 1, 7]),
