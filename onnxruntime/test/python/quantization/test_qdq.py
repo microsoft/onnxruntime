@@ -248,6 +248,7 @@ class TestQDQFormatConv(TestQDQFormat):
                         quant_format=QuantFormat.QDQ,
                         per_channel = per_channel,
                         reduce_range = per_channel,
+                        activation_type = QuantType.QInt8 if is_weight_int8 else QuantType.QUInt8,
                         weight_type = QuantType.QInt8 if is_weight_int8 else QuantType.QUInt8
                         )
         data_reader.rewind()
@@ -262,6 +263,7 @@ class TestQDQFormatConv(TestQDQFormat):
                         quant_format=QuantFormat.QOperator,
                         per_channel = per_channel,
                         reduce_range = per_channel,
+                        activation_type = QuantType.QInt8 if is_weight_int8 else QuantType.QUInt8,
                         weight_type = QuantType.QInt8 if is_weight_int8 else QuantType.QUInt8
                         )
         data_reader.rewind()
@@ -346,6 +348,7 @@ class TestQDQFormatConvClip(TestQDQFormat):
                         quant_format=QuantFormat.QDQ,
                         per_channel = per_channel,
                         reduce_range = per_channel,
+                        activation_type = QuantType.QInt8 if is_weight_int8 else QuantType.QUInt8,
                         weight_type = QuantType.QInt8 if is_weight_int8 else QuantType.QUInt8
                         )
         data_reader.rewind()
@@ -360,6 +363,7 @@ class TestQDQFormatConvClip(TestQDQFormat):
                         quant_format=QuantFormat.QOperator,
                         per_channel = per_channel,
                         reduce_range = per_channel,
+                        activation_type = QuantType.QInt8 if is_weight_int8 else QuantType.QUInt8,
                         weight_type = QuantType.QInt8 if is_weight_int8 else QuantType.QUInt8
                         )
         data_reader.rewind()
