@@ -23,7 +23,7 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     float);
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Clip, 12, Input, 0,
-    float, double, int8_t, uint8_t, int64_t, uint64_t);
+    float, double, int8_t, uint8_t, int32_t, int64_t, uint64_t);
 }  // namespace op_kernel_type_control
 
 using Clip11Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
