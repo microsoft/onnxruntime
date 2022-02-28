@@ -1033,10 +1033,18 @@ IMPLEMENT_GRADIENT_BUILDER(GetReduceMeanGradient) {
   }
 
   ArgDef grad = GO(0);
-  if (!keepdims && attributes.find("axes") != attributes.end()) {
-    std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
-    grad = IA("Unqueezed_Grad");
-    result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
+  if (!keepdims) {
+    if (attributes.find("axes") != attributes.end()) {
+      std::vector<int64_t> axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
+      grad = IA("Unqueezed_Grad");
+      if (SrcNodeOpsetVersion() < 13) {  // axes is attribute for unsqueeze
+        result.push_back(NodeDef("Unsqueeze", {GO(0)}, {grad}, {MakeAttribute("axes", axes_values)}));
+      }else{
+        NodeDef axes_values_node = ConstantVectorNode(axes_values, Name("axes_values"));
+        result.push_back(axes_values_node);
+        result.push_back(NodeDef(OpDef{"Unsqueeze", kOnnxDomain, 13}, {GO(0), axes_values_node.output_args[0]}, {grad}));
+      }
+    } 
   }
 
   result.push_back(NodeDef("Size", {I(0)}, {IA("Sized_X")}));
