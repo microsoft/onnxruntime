@@ -290,6 +290,15 @@ ORT_API_STATUS_IMPL(winmla::ModelGetName, _In_ const OrtModel* model, _Out_ cons
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(winmla::ModelSetName, _In_ const OrtModel* model, _In_ const char* const name) {
+  API_IMPL_BEGIN
+  auto model_proto = model->UseModelProto();
+  ONNX_NAMESPACE::GraphProto& graph = *model_proto->mutable_graph();
+  graph.set_name(name);
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(winmla::ModelGetDomain, _In_ const OrtModel* model, _Out_ const char** const domain, _Out_ size_t* len) {
   API_IMPL_BEGIN
   *domain = model->UseModelInfo()->domain_.c_str();

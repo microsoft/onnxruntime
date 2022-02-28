@@ -363,8 +363,8 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithShapeToInitializer) {
   ASSERT_TRUE(op_to_count["MatMul"] == 2);
   ASSERT_TRUE(op_to_count["Unsqueeze"] == 3);
 
-  std::unordered_set<std::string> compatible_eps;
-  std::unordered_set<std::string> excluded_initializers;
+  InlinedHashSet<std::string_view> compatible_eps;
+  InlinedHashSet<std::string> excluded_initializers;
   excluded_initializers.insert("matmul_weight");
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   std::unique_ptr<CPUExecutionProvider> e =
@@ -394,7 +394,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithScalarShapeToInitializer) {
   ASSERT_TRUE(op_to_count["ConstantOfShape"] == 1);
   ASSERT_TRUE(op_to_count["Add"] == 1);
 
-  std::unordered_set<std::string> compatible_eps;
+  InlinedHashSet<std::string_view> compatible_eps;
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   std::unique_ptr<CPUExecutionProvider> e =
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
@@ -3673,7 +3673,7 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormWithCastsFusionTest_Precisio
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
 
-  std::unordered_set<std::string> compatible_eps;
+  InlinedHashSet<std::string_view> compatible_eps;
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps, true), TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
@@ -4426,8 +4426,8 @@ static void TestMatMulScaleFusion(
     const PathString& model_path, const Logger& logger,
     GraphPreprocessFn graph_preprocess_fn,
     GraphTransformationCheckFn graph_transformation_check_fn,
-    const std::unordered_set<std::string>& compatible_execution_providers = {},
-    const std::unordered_set<std::string>& excluded_initializer_names = {}) {
+    const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
+    const InlinedHashSet<std::string>& excluded_initializer_names = {}) {
   SCOPED_TRACE(ORT_TSTR("model path: ") + model_path);
 
   std::shared_ptr<Model> model;
@@ -4453,8 +4453,8 @@ template <typename GraphTransformationCheckFn>
 static void TestMatMulScaleFusion(
     const PathString& model_path, const Logger& logger,
     GraphTransformationCheckFn graph_transformation_check,
-    const std::unordered_set<std::string>& compatible_execution_providers = {},
-    const std::unordered_set<std::string>& excluded_initializer_names = {}) {
+    const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
+    const InlinedHashSet<std::string>& excluded_initializer_names = {}) {
   TestMatMulScaleFusion(
       model_path, logger,
       [](Graph&) {}, graph_transformation_check,
@@ -4786,7 +4786,7 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
       Graph& transformed_graph = p_model->MainGraph();
       ASSERT_STATUS_OK(transformed_graph.Resolve());
       std::map<std::string, int> op_to_count = CountOpsInGraph(transformed_graph);
-      ASSERT_TRUE(op_to_count["Cast"] == expected_casts_count);
+      ASSERT_EQ(op_to_count["Cast"], expected_casts_count);
     }
   }
 }

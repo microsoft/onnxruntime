@@ -52,7 +52,7 @@ class TvmExecutionProvider : public IExecutionProvider {
   void ProcessInfo();
   void ProcessCPUTarget();
   void ProcessGPUTarget();
-  void PrintInfo() const;
+  void PrintProviderOptions() const;
   // Bindings for compute info
   int CreateStateFunc(ComputeContext*, FunctionState*);
   TvmModule* CompileFunc(std::string func_name, const TVMTensorShapes& input_shapes);
