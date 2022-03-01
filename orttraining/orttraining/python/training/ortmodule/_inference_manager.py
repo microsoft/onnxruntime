@@ -86,7 +86,9 @@ class InferenceManager(GraphExecutionManager):
             if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) is False or \
                 not self._onnx_models.exported_model:
                 # Exporting module to ONNX for the first time
+                random_states = _utils.get_random_states()
                 build_graph = self._export_model(*inputs, **kwargs)
+                _utils.set_random_states(random_states)
                 if build_graph:
                     # If model was exported, then initialize the graph builder
                     self._initialize_graph_builder(training=False)
