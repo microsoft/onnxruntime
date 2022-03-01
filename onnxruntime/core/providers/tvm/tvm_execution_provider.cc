@@ -298,7 +298,7 @@ TvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
 common::Status TvmExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                              std::vector<NodeComputeInfo>& node_compute_funcs) {
   PrintProviderOptions();
-  for (auto* fused_node : nodes) {
+  for (auto& fused_node_graph : fused_nodes_and_graphs) {
     const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
     const Node& fused_node = fused_node_graph.fused_node;
     const std::string func_name = fused_node.Name();
