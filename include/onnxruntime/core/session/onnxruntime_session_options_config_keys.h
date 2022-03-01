@@ -69,6 +69,11 @@ static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session
 // has to guarantee that the model bytes are valid until the ORT session using the model bytes is destroyed.
 static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "session.use_ort_model_bytes_directly";
 
+// It controls whether qdq is int8 allowed in QDQ format model or not.
+// "0": not allowed; "1": allowed. It is used as a forced option when exporting to ort format model do disable certain
+// usage of unsupported qdq transformers(in minimal build), such as QDQS8ToU8Transformer.
+static const char* const kOrtSessionOptionsQDQIsInt8Allowed = "session.qdqisint8allowed";
+
 // Save information for replaying graph optimizations later instead of applying them directly.
 //
 // When an ONNX model is loaded, ORT can perform various optimizations on the graph.

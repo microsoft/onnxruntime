@@ -197,6 +197,11 @@ def parse_args():
                         help='Specify the list of NNAPI EP partitioning stop ops. '
                              'In particular, specify the value of the "ep.nnapi.partitioning_stop_ops" session '
                              'options config entry.')
+    
+    parser.add_argument('--target_platform', type=str, default='arm', choices=['arm', 'amd64'],
+                        help='Specify the target platform where the exported model will be used.'
+                             'This parameter can be used to choose between platform specifically related options,'
+                             'such as QDQIsInt8Allowed or not, NCHWc (amd64) and NHWC (arm) format optimizer level options,etc.')
 
     parser.add_argument('model_path_or_dir', type=pathlib.Path,
                         help='Provide path to ONNX model or directory containing ONNX model/s to convert. '
@@ -227,6 +232,9 @@ def convert_onnx_models_to_ort():
 
     if args.nnapi_partitioning_stop_ops is not None:
         session_options_config_entries["ep.nnapi.partitioning_stop_ops"] = args.nnapi_partitioning_stop_ops
+    
+    if args.target_platform == 'arm':
+        session_options_config_entries["session.qdqisint8allowed"] = "1"
 
     for optimization_level in args.optimization_level:
         print(f"Converting models and creating configuration file for optimization level '{optimization_level}'")

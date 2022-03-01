@@ -18,7 +18,7 @@ inline constexpr bool QDQIsInt8Allowed(){
 
 
 /**
-Transformer that fuses QDQ and fp32 ops into quantized ops. 
+Transformer that fuses QDQ and fp32 ops into quantized ops.
 */
 class QDQSelectorActionTransformer : public SelectorActionTransformer {
  public:
