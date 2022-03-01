@@ -3,7 +3,6 @@
 
 #include "custom_op_utils.h"
 #include "core/common/common.h"
-//#include "core/framework/invoker.h"
 
 #ifdef USE_CUDA
 #include <cuda_runtime.h>
