@@ -88,10 +88,10 @@ void CreateBaseModel(std::string model_name, std::string graph_name, std::vector
   status = onnxruntime::Model::Save(model, model_name);
 }
 
-void RunInference(std::string model_name, int i) {
-  std::cout << i << std::endl;
+void RunInference(std::string model_name, std::string sess_log_id) {
+  //std::cout << i << std::endl;
   SessionOptions so;
-  so.session_logid = "TensorrtExecutionProviderMultiThreadingTest";
+  so.session_logid = sess_log_id;
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
   InferenceSession session_object{so, GetEnvironment()};
@@ -167,13 +167,14 @@ TEST(TensorrtExecutionProviderTest, MultiThreadsTest) {
   std::vector<std::thread> threads;
   std::string model_name = "trt_execution_provider_multithreading_test.onnx";
   std::string graph_name = "multithreading_test";
+  std::string sess_log_id = "TensorrtExecutionProviderMultiThreadingTest";
   std::vector<int> dims = {1, 3, 2};
-  int num_thread = 3;
+  int num_thread = 5;
 
   CreateBaseModel(model_name, graph_name, dims);
 
   for (int i = 0; i < num_thread; ++i)
-    threads.push_back(std::thread(RunInference, model_name, i));
+    threads.push_back(std::thread(RunInference, model_name, sess_log_id));
 
   for (auto& th : threads)
     th.join();
