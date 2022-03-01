@@ -9,9 +9,9 @@
 #include "core/common/common.h"
 #include "core/framework/element_type_lists.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/common.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 #if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
 #include "orttraining/training_ops/cpu/tensor/gather_elements_grad_impl.h"
 #endif

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/inlined_containers.h"
+#include "core/common/inlined_containers.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
 #include "core/providers/common.h"
 //TODO: fix the warnings
@@ -570,7 +570,7 @@ FastReduceKind OptimizeShapeForFastReduce(gsl::span<const int64_t> input_shape,
   fast_output_shape.clear();
   fast_output_shape.reserve(input_shape_size);
   bool empty_reduce = false;
-  InlinedShapeVector<bool> reduce(input_shape_size);
+  InlinedVector<bool> reduce(input_shape_size);
   for (int64_t i = 0; i < input_shape_size; ++i) {
     reduce[i] = axes.find(i) != axes.end();
     if (reduce[i]) {

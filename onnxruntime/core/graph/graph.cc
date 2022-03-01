@@ -762,7 +762,7 @@ Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, const log
         subgraphs_.push_back(std::move(subgraph));
       }
 
-      AddAttribute(attr_proto.name(), attr_proto);
+      AddAttribute(attr_proto.name(), std::move(attr_proto));
     }
   }
 
@@ -872,56 +872,82 @@ void Node::CreateSubgraph(const std::string& attr_name) {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-void Node::AddAttribute(const std::string& attr_name, const AttributeProto& value) {
+void Node::AddAttribute(std::string attr_name, const ONNX_NAMESPACE::AttributeProto& value) {
   graph_->SetGraphResolveNeeded();
   graph_->SetGraphProtoSyncNeeded();
-  attributes_[attr_name] = value;
+  attributes_[std::move(attr_name)] = value;
 }
 
+void Node::AddAttribute(std::string attr_name, ONNX_NAMESPACE::AttributeProto&& value) {
+  graph_->SetGraphResolveNeeded();
+  graph_->SetGraphProtoSyncNeeded();
+  attributes_[std::move(attr_name)] = std::move(value);
+}
+
+static void AddAttributeHelper(Node& node, std::string attr_name,
+                               AttributeProto_AttributeType attr_type, AttributeProto&& a) {
+  a.set_name(attr_name);
+  a.set_type(attr_type);
+  node.AddAttribute(std::move(attr_name), std::move(a));
+}
+
+void Node::AddAttribute(std::string attr_name, std::string value) {
+  AttributeProto a;
+  *(a.mutable_s()) = std::move(value);
+  AddAttributeHelper(*this, std::move(attr_name),
+                     AttributeProto_AttributeType::AttributeProto_AttributeType_STRING,
+                     std::move(a));
+};
+
 #define ADD_BASIC_ATTR_IMPL(type, enumType, field)                           \
-  void Node::AddAttribute(const std::string& attr_name, const type& value) { \
-    graph_->SetGraphResolveNeeded();                                         \
-    graph_->SetGraphProtoSyncNeeded();                                       \
+  void Node::AddAttribute(std::string attr_name, const type& value) {        \
     AttributeProto a;                                                        \
-    a.set_name(attr_name);                                                   \
-    a.set_type(enumType);                                                    \
     a.set_##field(value);                                                    \
-    attributes_[attr_name] = a;                                              \
+    AddAttributeHelper(*this, std::move(attr_name), enumType, std::move(a)); \
   };
 
 #define ADD_ATTR_IMPL(type, enumType, field)                                 \
-  void Node::AddAttribute(const std::string& attr_name, const type& value) { \
-    graph_->SetGraphResolveNeeded();                                         \
-    graph_->SetGraphProtoSyncNeeded();                                       \
+  void Node::AddAttribute(std::string attr_name, const type& value) {        \
     AttributeProto a;                                                        \
-    a.set_name(attr_name);                                                   \
-    a.set_type(enumType);                                                    \
     *(a.mutable_##field()) = value;                                          \
-    attributes_[attr_name] = a;                                              \
-  };
+    AddAttributeHelper(*this, std::move(attr_name), enumType, std::move(a)); \
+  }
 
-#define ADD_LIST_ATTR_IMPL(type, enumType, field)            \
-  void Node::AddAttribute(const std::string& attr_name,      \
-                          const std::vector<type>& values) { \
-    graph_->SetGraphResolveNeeded();                         \
-    graph_->SetGraphProtoSyncNeeded();                       \
-    AttributeProto a;                                        \
-    a.set_name(attr_name);                                   \
-    a.set_type(enumType);                                    \
-    for (const auto& val : values) {                         \
-      *(a.mutable_##field()->Add()) = val;                   \
-    }                                                        \
-    attributes_[attr_name] = a;                              \
-  };
+#define ADD_ATTR_MOVE_IMPL(type, enumType, field)                            \
+  void Node::AddAttribute(std::string attr_name, type&& value) {             \
+    AttributeProto a;                                                        \
+    *(a.mutable_##field()) = std::move(value);                               \
+    AddAttributeHelper(*this, std::move(attr_name), enumType, std::move(a)); \
+  }
 
-void Node::AddAttribute(const std::string& attr_name, const GraphProto& value) {
-  graph_->SetGraphResolveNeeded();
-  graph_->SetGraphProtoSyncNeeded();
+#define ADD_LIST_ATTR_IMPL(type, enumType, field)                            \
+  void Node::AddAttribute(std::string attr_name,                             \
+                          gsl::span<type const> values) {                    \
+    AttributeProto a;                                                        \
+    auto* mutable_field = a.mutable_##field();                               \
+    for (const auto& val : values) {                                         \
+      *(mutable_field->Add()) = val;                                         \
+    }                                                                        \
+    AddAttributeHelper(*this, std::move(attr_name), enumType, std::move(a)); \
+  }
+
+void Node::AddAttribute(std::string attr_name, const GraphProto& value) {
   AttributeProto a;
-  a.set_name(attr_name);
-  a.set_type(AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH);
   *a.mutable_g() = value;
-  attributes_[attr_name] = a;
+  // Do not move attr_name as it is needed below
+  AddAttributeHelper(*this, attr_name, AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH, std::move(a));
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // subgraph is created via deserialization and not here in a minimal build
+  CreateSubgraph(attr_name);
+#endif
+};
+
+void Node::AddAttribute(std::string attr_name, GraphProto&& value) {
+  AttributeProto a;
+  *a.mutable_g() = std::move(value);
+  // Do not move attr_name as it is needed below
+  AddAttributeHelper(*this, attr_name, AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH, std::move(a));
 
 #if !defined(ORT_MINIMAL_BUILD)
   // subgraph is created via deserialization and not here in a minimal build
@@ -931,17 +957,19 @@ void Node::AddAttribute(const std::string& attr_name, const GraphProto& value) {
 
 ADD_BASIC_ATTR_IMPL(float, AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT, f)
 ADD_BASIC_ATTR_IMPL(int64_t, AttributeProto_AttributeType::AttributeProto_AttributeType_INT, i)
-ADD_BASIC_ATTR_IMPL(std::string, AttributeProto_AttributeType::AttributeProto_AttributeType_STRING, s)
 ADD_ATTR_IMPL(TensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TENSOR, t)
+ADD_ATTR_MOVE_IMPL(TensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TENSOR, t)
 ADD_ATTR_IMPL(TypeProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TYPE_PROTO, tp)
+ADD_ATTR_MOVE_IMPL(TypeProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TYPE_PROTO, tp)
+
 ADD_LIST_ATTR_IMPL(float, AttributeProto_AttributeType::AttributeProto_AttributeType_FLOATS, floats)
 ADD_LIST_ATTR_IMPL(int64_t, AttributeProto_AttributeType::AttributeProto_AttributeType_INTS, ints)
 ADD_LIST_ATTR_IMPL(std::string, AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS, strings)
 ADD_LIST_ATTR_IMPL(TensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS, tensors)
-ADD_LIST_ATTR_IMPL(GraphProto, AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPHS, graphs)
 ADD_LIST_ATTR_IMPL(TypeProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TYPE_PROTOS, type_protos)
 #if !defined(DISABLE_SPARSE_TENSORS)
 ADD_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSOR, sparse_tensor)
+ADD_ATTR_MOVE_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSOR, sparse_tensor)
 ADD_LIST_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSORS, sparse_tensors)
 #endif
 
@@ -1701,11 +1729,11 @@ NodeArg* Graph::GetNodeArgIncludingParentGraphs(const std::string& node_arg_name
   return node_arg;
 }
 
-void Graph::ReverseDFSFrom(const std::vector<NodeIndex>& from,
+void Graph::ReverseDFSFrom(gsl::span<NodeIndex const> from,
                            const std::function<void(const Node*)>& enter,
                            const std::function<void(const Node*)>& leave,
                            const std::function<bool(const Node*, const Node*)>& comp) const {
-  std::vector<const Node*> node_vec;
+  InlinedVector<const Node*> node_vec;
   node_vec.reserve(from.size());
   for (auto i : from) {
     node_vec.push_back(GetNode(i));
@@ -1714,25 +1742,26 @@ void Graph::ReverseDFSFrom(const std::vector<NodeIndex>& from,
   ReverseDFSFrom(node_vec, enter, leave, comp, {});
 }
 
-void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
+void Graph::ReverseDFSFrom(gsl::span<const Node* const> from,
                            const std::function<void(const Node*)>& enter,
                            const std::function<void(const Node*)>& leave,
                            const std::function<bool(const Node*, const Node*)>& comp) const {
   ReverseDFSFrom(from, enter, leave, comp, {});
 }
 
-void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
+void Graph::ReverseDFSFrom(gsl::span<const Node* const> from,
                            const std::function<void(const Node*)>& enter,
                            const std::function<void(const Node*)>& leave,
                            const std::function<bool(const Node*, const Node*)>& comp,
                            const std::function<bool(const Node* from, const Node* to)>& stop) const {
   using WorkEntry = std::pair<const Node*, bool>;  // bool represents leave or not
-  std::vector<WorkEntry> stack(from.size());
-  for (size_t i = 0; i < from.size(); i++) {
-    stack[i] = WorkEntry(from[i], false);
+  InlinedVector<WorkEntry> stack;
+  stack.reserve(from.size());
+  for (auto node : from) {
+    stack.emplace_back(node, false);
   }
 
-  std::vector<bool> visited(MaxNodeIndex(), false);
+  InlinedVector<bool> visited(MaxNodeIndex(), false);
   while (!stack.empty()) {
     const WorkEntry last_entry = stack.back();
     stack.pop_back();
@@ -1757,7 +1786,7 @@ void Graph::ReverseDFSFrom(const std::vector<const Node*>& from,
     if (leave) stack.emplace_back(&n, true);
 
     if (comp) {
-      std::vector<const Node*> sorted_nodes;
+      InlinedVector<const Node*> sorted_nodes;
       for (auto iter = n.InputNodesBegin(); iter != n.InputNodesEnd(); ++iter) {
         if (stop && stop(&n, &(*iter))) continue;
         sorted_nodes.push_back(&(*iter));
@@ -3245,8 +3274,8 @@ std::string Graph::GenerateNodeName(const std::string& base_name) {
 Node& Graph::AddNode(const std::string& name,
                      const std::string& op_type,
                      const std::string& description,
-                     const std::vector<NodeArg*>& input_args,
-                     const std::vector<NodeArg*>& output_args,
+                     gsl::span<NodeArg* const> input_args,
+                     gsl::span<NodeArg* const> output_args,
                      const NodeAttributes* attributes,
                      const std::string& domain) {
   std::vector<NodeArg*> inputs;
@@ -4109,10 +4138,15 @@ Status Graph::InlineFunction(Node& node) {
   return Status::OK();
 }
 
-void Graph::SetInputs(const std::vector<const NodeArg*>& inputs) {
+void Graph::SetInputs(gsl::span<const NodeArg* const> inputs) {
+  // creating graph from scratch
+  // rely on SetGraphInputsOutputs() to fix up graph_inputs_excluding_initializers_
+  // if is_loaded_from_model_file_ == false
+  graph_inputs_including_initializers_.reserve(inputs.size());
+  graph_inputs_including_initializers_.assign(inputs.begin(), inputs.end());
+
   if (is_loaded_from_model_file_) {
     // graph loaded from model file
-    graph_inputs_including_initializers_ = inputs;
     graph_inputs_excluding_initializers_.clear();
     for (const auto* input : inputs) {
       ORT_ENFORCE(input->Exists(), "Input to set must exist.");
@@ -4122,10 +4156,6 @@ void Graph::SetInputs(const std::vector<const NodeArg*>& inputs) {
     }
 
     ComputeOverridableInitializers();
-  } else {
-    // creating graph from scratch
-    // rely on SetGraphInputsOutputs() to fix up graph_inputs_excluding_initializers_
-    graph_inputs_including_initializers_ = inputs;
   }
 
   graph_inputs_manually_set_ = true;
@@ -4133,8 +4163,9 @@ void Graph::SetInputs(const std::vector<const NodeArg*>& inputs) {
   GraphResolveNeeded(true);
 }
 
-void Graph::SetOutputs(const std::vector<const NodeArg*>& outputs) {
-  graph_outputs_ = outputs;
+void Graph::SetOutputs(gsl::span<const NodeArg* const> outputs) {
+  graph_outputs_.reserve(outputs.size());
+  graph_outputs_.assign(outputs.begin(), outputs.end());
 
   graph_outputs_manually_set_ = true;
   GraphProtoSyncNeeded(true);

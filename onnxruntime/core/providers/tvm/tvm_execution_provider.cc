@@ -297,6 +297,7 @@ TvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
 
 common::Status TvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
                                               std::vector<NodeComputeInfo>& node_compute_funcs) {
+  PrintProviderOptions();
   for (auto* fused_node : nodes) {
     auto func_body = fused_node->GetFunctionBody();
     if (!func_body)
@@ -446,8 +447,6 @@ void TvmExecutionProvider::ProcessInfo() {
   if(info_.opt_level < 1) {
     info_.opt_level = default_opt_level;
   }
-
-  PrintInfo();
 }
 
 void TvmExecutionProvider::ProcessCPUTarget() {
@@ -471,8 +470,8 @@ void TvmExecutionProvider::ProcessGPUTarget() {
   ORT_NOT_IMPLEMENTED("GPU target auto-defenition is not implemented now!");
 }
 
-void TvmExecutionProvider::PrintInfo() const {
-  LOG(INFO) << "TVM EP options:\n" <<
+void TvmExecutionProvider::PrintProviderOptions() const {
+  LOGS(*GetLogger(), INFO) << "TVM EP options:\n" <<
   "target: " << info_.target << "\n" <<
   "target_host: " << info_.target_host << "\n" <<
   "opt level: " << info_.opt_level << "\n" <<
