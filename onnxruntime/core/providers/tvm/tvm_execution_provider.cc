@@ -8,6 +8,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/compute_capability.h"
+#include "core/graph/graph_proto_serializer.h"
 #include "core/platform/env.h"
 #include "core/graph/model.h"
 #include "core/common/cpuid_info.h"
@@ -306,7 +307,9 @@ common::Status TvmExecutionProvider::Compile(const std::vector<FusedNodeAndGraph
                 IOnnxRuntimeOpSchemaRegistryList(), graph_body_viewer.DomainToVersionMap(),
                              std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-    graph_body_viewer.ToProto(*model_proto->mutable_graph(), true);
+    //TVM EP is using static lib approach, so invoke serializer directly.
+    GraphProtoSerializer serializer(graph_body_viewer);
+    serializer.ToProto(*model_proto->mutable_graph(), true);
     auto opset = model_proto.add_opset_import();
     opset->set_domain(kOnnxDomain);
     opset->set_version(graph_body_viewer.DomainToVersionMap().at(kOnnxDomain));
