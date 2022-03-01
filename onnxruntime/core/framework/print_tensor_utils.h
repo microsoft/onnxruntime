@@ -37,9 +37,21 @@ void PrintValue(const T& value) {
     std::cout << value;
 }
 
-// Explicit specialization for half
+// Explicit specialization
 template <> void PrintValue(const MLFloat16& value) {
-     std::cout << std::setprecision(8) << (float)value;
+     std::cout << std::setprecision(8) << value.ToFloat();
+}
+
+template <> void PrintValue(const BFloat16& value) {
+     std::cout << std::setprecision(8) << value.ToFloat();
+}
+
+template <> void PrintValue(const uint8_t value) {
+  std::cout << static_cast<uint32_t>(value);
+}
+
+template <> void PrintValue(const int8_t value) {
+  std::cout << static_cast<int32_t>(value);
 }
 
 // Print 2D tensor snippet
