@@ -1844,9 +1844,28 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 #pragma region op_concat
 
 class ConcatOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const override;
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
+
+bool ConcatOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
+  // TODO add support of QLinearConcat
+  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQConcat;
+}
+
+void ConcatOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
+  if (IsQuantizedOp(node_unit)) {
+    for (size_t i = 0; i < node_unit.Inputs().size(); ++i) {
+      AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Inputs()[i].quant_param);
+    }
+
+    AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
+  }
+}
 
 Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   auto& shaper(model_builder.GetShaper());
@@ -1859,21 +1878,40 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   const auto& input0 = inputs[0].node_arg.Name();
   const auto node_input_size = inputs.size();
 
-  // First if the inputs are uint8, we need verify all the inputs have same scale and zero points
-  if (operand_types.at(input0).type == android::nn::wrapper::Type::TENSOR_QUANT8_ASYMM) {
-    auto scale = operand_types.at(input0).operandType.scale;
-    auto zero_point = operand_types.at(input0).operandType.zeroPoint;
+  bool is_quant_op = IsQuantizedOp(node_unit);
 
-    // Compare scale and zp of input0 to input1~n
-    for (size_t i = 1; i < node_input_size; i++) {
-      const auto& type = operand_types.at(inputs[i].node_arg.Name());
-      ORT_RETURN_IF_NOT(scale == type.operandType.scale,
-                        "Input[", i, "]'s scale: ", type.operandType.scale,
-                        " is different than input[0]'s scale: ", scale);
+  if (!is_quant_op) {
+    // If the inputs are uint8 and this is not a quantized Concat, we need to verify all the inputs have the
+    // same scale and zero points.
+    // [Side note: int8 input is not supported currently by the NNAPI EP (enforced in ConcatOpSupportChecker).
+    // it is supported by NNAPI though and int8 input is allowed to have different scale  and zp values.]
+    //
+    // ONNX allows Concat (not QlinearConcat, not QDQ concat) to run directly on uint8 without scales and zps.
+    // NNAPI requires all uint8 inputs to have scale values > 0. (zero point can be 0.)
+    // See https://android.googlesource.com/platform/frameworks/ml/+/master/nn/common/Validation.cpp#486
+    //
+    // We need to use the scales and zps from the NNAPI input directly, there is no easy way to get the input
+    // scales and zps in OpSupportChecker, so we need to verify here.
+    // Also we have to assume the output scale and zp are the same as input 0
+    if (operand_types.at(input0).type == android::nn::wrapper::Type::TENSOR_QUANT8_ASYMM) {
+      auto scale = operand_types.at(input0).operandType.scale;
+      auto zero_point = operand_types.at(input0).operandType.zeroPoint;
 
-      ORT_RETURN_IF_NOT(zero_point == type.operandType.zeroPoint,
-                        "Input[", i, "]'s zero_point: ", type.operandType.zeroPoint,
-                        " is different than input[0]'s zero_point: ", zero_point);
+      // TODO: if we see scale == 0 in real models we could consider using 1 as a default. This is what TF does
+      // https://github.com/tensorflow/tensorflow/blob/7737c518a864e54be9b676fe063436ccbbef21b9/tensorflow/lite/delegates/nnapi/nnapi_delegate.cc#L468-L471
+      ORT_RETURN_IF_NOT(scale > 0, "NNAPI requires scale to be > 0.");
+
+      // Compare scale and zp of input0 to input1~n
+      for (size_t i = 1; i < node_input_size; i++) {
+        const auto& type = operand_types.at(inputs[i].node_arg.Name());
+        ORT_RETURN_IF_NOT(scale == type.operandType.scale,
+                          "Input[", i, "]'s scale: ", type.operandType.scale,
+                          " is different than input[0]'s scale: ", scale);
+
+        ORT_RETURN_IF_NOT(zero_point == type.operandType.zeroPoint,
+                          "Input[", i, "]'s zero_point: ", type.operandType.zeroPoint,
+                          " is different than input[0]'s zero_point: ", zero_point);
+      }
     }
   }
 
@@ -1881,8 +1919,29 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   input_names.reserve(node_input_size);
   for (size_t i = 0; i < node_input_size; i++) {
     const auto& input = inputs[i].node_arg.Name();
+
+    if (is_quant_op) {
+      // scale and zp values consistency was checked in ConcatOpSupportChecker
+      float scale = 0.0f;
+      int32_t zero_point = 0;
+      ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
+          model_builder.GetInitializerTensors(), node_unit.Inputs()[i], node_unit.ModelPath(),
+          scale, zero_point));
+
+      ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, scale, zero_point));
+    }
+
     input_indices.push_back(operand_indices.at(input));
     input_names.push_back(input);
+  }
+
+  // Get the output scale and zp for quantized concat, default value is from input 0
+  float y_scale = operand_types.at(input0).operandType.scale;
+  int32_t y_zero_point = operand_types.at(input0).operandType.zeroPoint;
+  if (is_quant_op) {
+    ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
+        model_builder.GetInitializerTensors(), node_unit.Outputs()[0], node_unit.ModelPath(),
+        y_scale, y_zero_point));
   }
 
   int rank = shaper[input0].size();
@@ -1892,8 +1951,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
   ORT_RETURN_IF_ERROR(shaper.Concat(input_names, axis, output));
-  OperandType output_operand_type = operand_types.at(input0);
-  output_operand_type.SetDimensions(shaper[output]);
+  OperandType output_operand_type(operand_types.at(input0).type, shaper[output], y_scale, y_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(ANEURALNETWORKS_CONCATENATION, input_indices,
                                                  {output}, {output_operand_type}));
   return Status::OK();

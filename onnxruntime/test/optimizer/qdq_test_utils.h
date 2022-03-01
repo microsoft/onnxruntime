@@ -215,9 +215,6 @@ GetQDQTestCaseFn BuildQDQTransposeTestCase(
   };
 }
 
-GetQDQTestCaseFn BuildQDQReshapeTestCase(const std::vector<int64_t>& input_shape,
-                                         const std::vector<int64_t>& reshape_shape);
-
 template <typename InputType, typename OutputType>
 GetQDQTestCaseFn BuildQDQSoftMaxTestCase(const std::vector<int64_t>& input_shape, const int64_t& axis = -1) {
   return [input_shape, axis](ModelTestBuilder& builder) {
@@ -241,6 +238,15 @@ GetQDQTestCaseFn BuildQDQSoftMaxTestCase(const std::vector<int64_t>& input_shape
     builder.AddQuantizeLinearNode<OutputType>(softmax_output, 1.f / 256, 0, output_arg);
   };
 }
+
+GetQDQTestCaseFn BuildQDQReshapeTestCase(const std::vector<int64_t>& input_shape,
+                                         const std::vector<int64_t>& reshape_shape);
+
+GetQDQTestCaseFn BuildQDQConcatTestCase(const std::vector<std::vector<int64_t>>& input_shapes,
+                                        int64_t axis,
+                                        bool has_input_float = false,
+                                        bool has_input_int8 = false,
+                                        bool has_output_int8 = false);
 
 }  // namespace test
 }  // namespace onnxruntime
