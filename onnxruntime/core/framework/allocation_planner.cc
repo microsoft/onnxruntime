@@ -664,7 +664,7 @@ class PlannerImpl {
                                     const KernelCreateInfoMap& kernel_create_info_map,
                                     const std::string& subgraph_kernel_create_info_map_key_base,
                                     size_t graph_depth,
-                                    /*out*/ std::vector<std::unordered_map<OrtMemoryInfo, int>>& locations) {
+                                    /*out*/ std::vector<std::map<OrtMemoryInfo, int>>& locations) {
     for (const auto& node : graph_viewer.Nodes()) {
       const auto& input_node_args = node.InputDefs();
       size_t num_node_inputs = input_node_args.size();
@@ -713,7 +713,7 @@ class PlannerImpl {
         auto wt_index = Index(def_name);
         OrtMemoryInfo omi = GetLocationForNodeInput(node_input_index, node, kernel_create_info_map);
 
-        std::unordered_map<OrtMemoryInfo, int>& omi_count_map = locations[wt_index];
+        std::map<OrtMemoryInfo, int>& omi_count_map = locations[wt_index];
 
         const auto& omi_count_map_it = omi_count_map.find(omi);
         if (omi_count_map_it == omi_count_map.end()) {
@@ -781,13 +781,13 @@ class PlannerImpl {
     // used on different devices within the same graph level (see (1) for reason), and for
     // nested subgraphs, we can rely on the utils::CopyInputsAcrossDevices() to copy it
     // over to the appropriate device before the subgraphs are executed.
-    std::vector<std::unordered_map<OrtMemoryInfo, int>> locations(plan_.allocation_plan.size());
+    std::vector<std::map<OrtMemoryInfo, int>> locations(plan_.allocation_plan.size());
 
     GeneratePlanForWeightsHelper(graph_viewer_, graph_viewer_.GetAllInitializedTensors(),
                                  kernel_create_info_map_, "", 0, locations);
 
     for (size_t i = 0; i != locations.size(); ++i) {
-      const std::unordered_map<OrtMemoryInfo, int>& omi_count_map = locations[i];
+      const std::map<OrtMemoryInfo, int>& omi_count_map = locations[i];
       if (omi_count_map.empty()) continue;
       plan_.allocation_plan[i].alloc_kind = AllocKind::kAllocateStatically;
       // The planned location for an initializer is the location of its most usage if it's
