@@ -206,6 +206,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     if (w_dims_changed)
       ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
 
+    // We must delay returning early until here so that the weight dims have been cached properly
     if (s_.Y->Shape().Size() == 0) {
       return Status::OK();
     }
