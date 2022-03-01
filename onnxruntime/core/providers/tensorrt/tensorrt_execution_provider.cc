@@ -7,7 +7,6 @@
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/safeint.h"
-#include "core/common/shared_ptr_thread_safe_wrapper.h"
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_execution_provider_utils.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
@@ -227,20 +226,23 @@ static Status RegisterTensorrtKernels(KernelRegistry& kernel_registry) {
   return Status::OK();
 }
 
-static std::shared_ptr<KernelRegistry> CreateTensorrtKernelRegistry() {
-  std::shared_ptr<KernelRegistry> registry = KernelRegistry::Create();
-  ORT_THROW_IF_ERROR(RegisterTensorrtKernels(*registry));
-  return registry;
+static std::shared_ptr<KernelRegistry>& TensorrtKernelRegistry() {
+  // static local variable ensures thread-safe initialization
+  static std::shared_ptr<KernelRegistry> tensorrt_kernel_registry = []() {
+    std::shared_ptr<KernelRegistry> registry = KernelRegistry::Create();
+    ORT_THROW_IF_ERROR(RegisterTensorrtKernels(*registry));
+    return registry;
+  }();
+
+  return tensorrt_kernel_registry;
 }
 
-static SharedPtrThreadSafeWrapper<KernelRegistry> s_kernel_registry{&CreateTensorrtKernelRegistry};
-
 void Shutdown_DeleteRegistry() {
-  s_kernel_registry.Reset();
+  TensorrtKernelRegistry().reset();
 }
 
 std::shared_ptr<KernelRegistry> TensorrtExecutionProvider::GetKernelRegistry() const {
-  return s_kernel_registry.GetInitialized();
+  return TensorrtKernelRegistry();
 }
 
 // Per TensorRT documentation, logger needs to be a singleton.
