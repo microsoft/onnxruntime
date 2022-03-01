@@ -664,7 +664,7 @@ class PlannerImpl {
                                     const KernelCreateInfoMap& kernel_create_info_map,
                                     const std::string& subgraph_kernel_create_info_map_key_base,
                                     size_t graph_depth,
-                                    /*out*/ std::vector<std::vector<OrtMemoryInfo>>& locations) {
+                                    /*out*/ std::vector<std::unordered_map<OrtMemoryInfo, int>>& locations) {
     for (const auto& node : graph_viewer.Nodes()) {
       const auto& input_node_args = node.InputDefs();
       size_t num_node_inputs = input_node_args.size();
@@ -711,6 +711,18 @@ class PlannerImpl {
         }
 
         auto wt_index = Index(def_name);
+        OrtMemoryInfo omi = GetLocationForNodeInput(node_input_index, node, kernel_create_info_map);
+
+        std::unordered_map<OrtMemoryInfo, int>& omi_count_map = locations[wt_index];
+
+        const auto& omi_count_map_it = omi_count_map.find(omi);
+        if (omi_count_map_it == omi_count_map.end()) {
+          omi_count_map.emplace(omi, graph_depth > 0 ? 1 : -1);
+        } else if (omi_count_map_it->second > 0 && graph_depth > 0) {
+          ++omi_count_map_it->second;
+        } else {
+          omi_count_map_it->second = -1;
+        }
         // TODO: Identify error cases where-in an initializer is used on different
         // devices within the same graph level.
         // If we ever encounter that, it means that there is a severe bug in Memcpy
@@ -721,8 +733,7 @@ class PlannerImpl {
         // The same initializer being used on different devices across graph levels
         // (subgraphs) is okay and utils::CopyInputsAcrossDevices() will take it to
         // the right device before subgraph execution.
-        locations[wt_index].emplace_back(
-            GetLocationForNodeInput(node_input_index, node, kernel_create_info_map));
+        // Note: the assertion may cause DNNL and Android pipeline failure.
       }
 
       // If the node has subgraphs (i.e.) control flow nodes,
@@ -753,9 +764,12 @@ class PlannerImpl {
   }
 
   Status GeneratePlanForWeights() {
-    // TODO: Move away from usage of vector of `OrtMemoryInfo`s per weight (initializer)
-    // We do not need to maintain a vector of locations that a weight is used in.
-    // We only need to know the location of its first usage because:
+    // The general rule extends the first usage rule which is to allocate the
+    // initializers to the devices that be most referenced. There is a special case that
+    // if an initializer is referenced at both main graph and subgraph, it will be
+    // allocated to where it needs at main graph level.
+
+    // Reserve the comments for first usage rule below.
     // (1) If the initializer is used in the graph level it is introduced in, then it can
     // only be used on one device as the Memcpy transformer will duplicate the initializer
     // (with a different name) in case it is used on multiple devices.
@@ -767,17 +781,32 @@ class PlannerImpl {
     // used on different devices within the same graph level (see (1) for reason), and for
     // nested subgraphs, we can rely on the utils::CopyInputsAcrossDevices() to copy it
     // over to the appropriate device before the subgraphs are executed.
-    std::vector<std::vector<OrtMemoryInfo>> locations(plan_.allocation_plan.size());
+    std::vector<std::unordered_map<OrtMemoryInfo, int>> locations(plan_.allocation_plan.size());
 
     GeneratePlanForWeightsHelper(graph_viewer_, graph_viewer_.GetAllInitializedTensors(),
                                  kernel_create_info_map_, "", 0, locations);
 
     for (size_t i = 0; i != locations.size(); ++i) {
-      const std::vector<OrtMemoryInfo>& loc = locations[i];
-      if (loc.empty()) continue;
+      const std::unordered_map<OrtMemoryInfo, int>& omi_count_map = locations[i];
+      if (omi_count_map.empty()) continue;
       plan_.allocation_plan[i].alloc_kind = AllocKind::kAllocateStatically;
-      // The planned location for an initializer is the location of its first usage.
-      plan_.allocation_plan[i].location = loc[0];
+      // The planned location for an initializer is the location of its most usage if it's
+      // not referenced at both main graph and subgraph. Otherwise set the location to
+      // where it needs at main graph level.
+      int max_count = 0;
+      const auto& omi_count_map_it = omi_count_map.begin();
+      while (omi_count_map_it != omi_count_map.end()) {
+        int count = omi_count_map_it->second;
+        OrtMemoryInfo omi = omi_count_map_it->first;
+        if (count == -1) {
+          plan_.allocation_plan[i].location = omi;
+          break;
+        }
+        if (count > max_count) {
+          plan_.allocation_plan[i].location = omi;
+          max_count = count;
+        }
+      }
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
       size_t max_pc = plan_.execution_plan.size();
       std::string node_arg_name;
