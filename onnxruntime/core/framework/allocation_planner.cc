@@ -500,7 +500,8 @@ class PlannerImpl {
     // Note: for every ml-value, its definition must appear before all its uses in a topological sort of a valid model
     using GraphInputsSet = InlinedHashSet<std::string_view>;
     const auto& graph_inputs_nodes = graph_viewer_.GetInputsIncludingInitializers();
-    GraphInputsSet graph_inputs(graph_inputs_nodes.size());
+    GraphInputsSet graph_inputs;
+    graph_inputs.reserve(graph_inputs_nodes.size());
     for (auto& graph_input : graph_inputs_nodes) {
       graph_inputs.insert(graph_input->Name());
     }

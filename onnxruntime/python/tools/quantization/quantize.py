@@ -205,6 +205,7 @@ def quantize_static(model_input,
                                                             and it's effective only when per channel quantization is supported and per_channel is True.
                                                             If specific op type supports per channel quantization but not explicitly specified with channel axis,
                                                             default channel axis will be used.
+            CalibTensorRangeSymmetric = True/False : Default is False. If enabled, the final range of tensor during calibration will be explicitly set to symmetric to central point "0".
     '''
 
     mode = QuantizationMode.QLinearOps
@@ -214,7 +215,8 @@ def quantize_static(model_input,
 
     model = load_model(Path(model_input), optimize_model, False)
 
-    calibrator = create_calibrator(model, op_types_to_quantize, calibrate_method=calibrate_method)
+    calib_extra_options = {} if 'CalibTensorRangeSymmetric' not in extra_options else {'symmetric': extra_options['CalibTensorRangeSymmetric']} 
+    calibrator = create_calibrator(model, op_types_to_quantize, calibrate_method=calibrate_method, extra_options=calib_extra_options)
     calibrator.collect_data(calibration_data_reader)
     tensors_range = calibrator.compute_range()
 

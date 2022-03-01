@@ -137,7 +137,7 @@ struct ProviderHostCPU {
 #endif
 
 #ifdef ENABLE_TRAINING
-  virtual Status ATenOp__Compute(const contrib::ATenOp* p, OpKernelContext* p_ctx) = 0;
+  virtual Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) = 0;
   virtual void contrib__record_event_in_tensor(const Tensor& event_id_tensor) = 0;
   virtual void contrib__wait_event_in_tensor(const Tensor& event_id_tensor) = 0;
   virtual Status contrib__Group__Compute(const contrib::Group* p, OpKernelContext* context) = 0;
@@ -150,7 +150,7 @@ struct ProviderHostCPU {
 
   // From aten_op.h
   virtual bool contrib__IsATenOperatorExecutorInitialized() = 0;
-  virtual Status contrib__ExecuteReduceSumATenOp(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) = 0;
+  virtual Status contrib__ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) = 0;
 #endif
 #endif
 };
@@ -220,7 +220,7 @@ inline Status PrepareForTrainingCompute(const TensorShape& input_shape, int num_
 
 // From aten_op.h
 inline bool IsATenOperatorExecutorInitialized() { return g_host_cpu.contrib__IsATenOperatorExecutorInitialized(); }
-inline Status ExecuteReduceSumATenOp(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) { return g_host_cpu.contrib__ExecuteReduceSumATenOp(p_ctx, axes, keepdims); }
+inline Status ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) { return g_host_cpu.contrib__ExecuteReduceSumATen(p_ctx, axes, keepdims); }
 }  // namespace contrib
 #endif  // ENABLE_TRAINING
 #endif  // USE_CUDA || USE_ROCM

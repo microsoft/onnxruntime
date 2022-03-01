@@ -45,6 +45,7 @@
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/qdq_transformer/clip_quantizelinear.h"
+#include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
 #include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
 #include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
@@ -158,6 +159,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   const bool disable_quant_qdq =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
+  const bool enable_quant_qdq_cleanup =
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQCleanup, "0") == "1";
 #ifndef DISABLE_CONTRIB_OPS
   const bool enable_gelu_approximation =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
@@ -241,6 +244,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 
 #endif
+      if (enable_quant_qdq_cleanup) {
+        transformers.emplace_back(std::make_unique<QDQFinalCleanupTransformer>());
+      }
     } break;
 
     case TransformerLevel::Level3: {
