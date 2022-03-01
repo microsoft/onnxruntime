@@ -976,16 +976,16 @@ struct CustomOpApi {
                       const int& num_type_constraint,
                       const void* attrs,
                       const int& num_attrs,
-                      void** kernel);
+                      void** ort_op);
 
   void InvokeOperator(const void* context,
-                      const void* kernel,
+                      const void* ort_op,
                       const void* const* inputs,
                       const int& input_len,
                       void* const* outputs,
                       const int& output_len);
 
-  void ReleaseOperator(const void* kernel);
+  void ReleaseOperator(const void* ort_op);
 
  private:
   const OrtApi& api_;

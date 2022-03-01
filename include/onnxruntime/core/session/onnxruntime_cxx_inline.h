@@ -1192,21 +1192,21 @@ inline void CustomOpApi::CreateOperator(const void* kernel_info,
                                         const int& num_type_constraint,
                                         const void* attrs,
                                         const int& num_attrs,
-                                        void** kernel) {
-  ThrowOnError(api_.CreateEagerKernel(kernel_info, op_name, domain, version, type_constraint_names, type_constraint_values, num_type_constraint, attrs, num_attrs, kernel));
+                                        void** ort_op) {
+  ThrowOnError(api_.CreateEagerKernel(kernel_info, op_name, domain, version, type_constraint_names, type_constraint_values, num_type_constraint, attrs, num_attrs, ort_op));
 }
 
 inline void CustomOpApi::InvokeOperator(const void* context,
-                                        const void* kernel,
+                                        const void* ort_op,
                                         const void* const* inputs,
                                         const int& input_len,
                                         void* const* outputs,
                                         const int& output_len) {
-  ThrowOnError(api_.InvokeEagerKernel(context, kernel, inputs, input_len, outputs, output_len));
+  ThrowOnError(api_.InvokeEagerKernel(context, ort_op, inputs, input_len, outputs, output_len));
 }
 
-inline void CustomOpApi::ReleaseOperator(const void* kernel) {
-  ThrowOnError(api_.ReleaseEagerKernel(kernel));
+inline void CustomOpApi::ReleaseOperator(const void* ort_op) {
+  ThrowOnError(api_.ReleaseEagerKernel(ort_op));
 }
 
 inline SessionOptions& SessionOptions::DisablePerSessionThreads() {
