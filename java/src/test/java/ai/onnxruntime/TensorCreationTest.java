@@ -12,117 +12,114 @@ public class TensorCreationTest {
 
   @Test
   public void testScalarCreation() throws OrtException {
-    try (OrtEnvironment env = OrtEnvironment.getEnvironment()) {
-      String[] stringValues = new String[] {"true", "false"};
-      for (String s : stringValues) {
-        try (OnnxTensor t = OnnxTensor.createTensor(env, s)) {
-          Assertions.assertEquals(s, t.getValue());
-        }
+    OrtEnvironment env = OrtEnvironment.getEnvironment();
+    String[] stringValues = new String[] {"true", "false"};
+    for (String s : stringValues) {
+      try (OnnxTensor t = OnnxTensor.createTensor(env, s)) {
+        Assertions.assertEquals(s, t.getValue());
       }
+    }
 
-      boolean[] boolValues = new boolean[] {true, false};
-      for (boolean b : boolValues) {
-        try (OnnxTensor t = OnnxTensor.createTensor(env, b)) {
-          Assertions.assertEquals(b, t.getValue());
-        }
+    boolean[] boolValues = new boolean[] {true, false};
+    for (boolean b : boolValues) {
+      try (OnnxTensor t = OnnxTensor.createTensor(env, b)) {
+        Assertions.assertEquals(b, t.getValue());
       }
+    }
 
-      int[] intValues =
-          new int[] {-1, 0, 1, 12345678, -12345678, Integer.MAX_VALUE, Integer.MIN_VALUE};
-      for (int i : intValues) {
-        try (OnnxTensor t = OnnxTensor.createTensor(env, i)) {
-          Assertions.assertEquals(i, t.getValue());
-        }
+    int[] intValues =
+        new int[] {-1, 0, 1, 12345678, -12345678, Integer.MAX_VALUE, Integer.MIN_VALUE};
+    for (int i : intValues) {
+      try (OnnxTensor t = OnnxTensor.createTensor(env, i)) {
+        Assertions.assertEquals(i, t.getValue());
       }
+    }
 
-      long[] longValues =
-          new long[] {-1L, 0L, 1L, 12345678L, -12345678L, Long.MAX_VALUE, Long.MIN_VALUE};
-      for (long l : longValues) {
-        try (OnnxTensor t = OnnxTensor.createTensor(env, l)) {
-          Assertions.assertEquals(l, t.getValue());
-        }
+    long[] longValues =
+        new long[] {-1L, 0L, 1L, 12345678L, -12345678L, Long.MAX_VALUE, Long.MIN_VALUE};
+    for (long l : longValues) {
+      try (OnnxTensor t = OnnxTensor.createTensor(env, l)) {
+        Assertions.assertEquals(l, t.getValue());
       }
+    }
 
-      float[] floatValues =
-          new float[] {
-            -1.0f,
-            0.0f,
-            -0.0f,
-            1.0f,
-            1234.5678f,
-            -1234.5678f,
-            (float) Math.PI,
-            (float) Math.E,
-            Float.MAX_VALUE,
-            Float.MIN_VALUE
-          };
-      for (float f : floatValues) {
-        try (OnnxTensor t = OnnxTensor.createTensor(env, f)) {
-          Assertions.assertEquals(f, t.getValue());
-        }
+    float[] floatValues =
+        new float[] {
+          -1.0f,
+          0.0f,
+          -0.0f,
+          1.0f,
+          1234.5678f,
+          -1234.5678f,
+          (float) Math.PI,
+          (float) Math.E,
+          Float.MAX_VALUE,
+          Float.MIN_VALUE
+        };
+    for (float f : floatValues) {
+      try (OnnxTensor t = OnnxTensor.createTensor(env, f)) {
+        Assertions.assertEquals(f, t.getValue());
       }
+    }
 
-      double[] doubleValues =
-          new double[] {
-            -1.0,
-            0.0,
-            -0.0,
-            1.0,
-            1234.5678,
-            -1234.5678,
-            Math.PI,
-            Math.E,
-            Double.MAX_VALUE,
-            Double.MIN_VALUE
-          };
-      for (double d : doubleValues) {
-        try (OnnxTensor t = OnnxTensor.createTensor(env, d)) {
-          Assertions.assertEquals(d, t.getValue());
-        }
+    double[] doubleValues =
+        new double[] {
+          -1.0,
+          0.0,
+          -0.0,
+          1.0,
+          1234.5678,
+          -1234.5678,
+          Math.PI,
+          Math.E,
+          Double.MAX_VALUE,
+          Double.MIN_VALUE
+        };
+    for (double d : doubleValues) {
+      try (OnnxTensor t = OnnxTensor.createTensor(env, d)) {
+        Assertions.assertEquals(d, t.getValue());
       }
     }
   }
 
   @Test
   public void testStringCreation() throws OrtException {
-    try (OrtEnvironment env = OrtEnvironment.getEnvironment()) {
-      String[] arrValues = new String[] {"this", "is", "a", "single", "dimensional", "string"};
-      try (OnnxTensor t = OnnxTensor.createTensor(env, arrValues)) {
-        Assertions.assertArrayEquals(new long[] {6}, t.getInfo().shape);
-        String[] output = (String[]) t.getValue();
-        Assertions.assertArrayEquals(arrValues, output);
-      }
+    OrtEnvironment env = OrtEnvironment.getEnvironment();
+    String[] arrValues = new String[] {"this", "is", "a", "single", "dimensional", "string"};
+    try (OnnxTensor t = OnnxTensor.createTensor(env, arrValues)) {
+      Assertions.assertArrayEquals(new long[] {6}, t.getInfo().shape);
+      String[] output = (String[]) t.getValue();
+      Assertions.assertArrayEquals(arrValues, output);
+    }
 
-      String[][] stringValues =
-          new String[][] {{"this", "is", "a"}, {"multi", "dimensional", "string"}};
-      try (OnnxTensor t = OnnxTensor.createTensor(env, stringValues)) {
-        Assertions.assertArrayEquals(new long[] {2, 3}, t.getInfo().shape);
-        String[][] output = (String[][]) t.getValue();
-        Assertions.assertArrayEquals(stringValues, output);
-      }
+    String[][] stringValues =
+        new String[][] {{"this", "is", "a"}, {"multi", "dimensional", "string"}};
+    try (OnnxTensor t = OnnxTensor.createTensor(env, stringValues)) {
+      Assertions.assertArrayEquals(new long[] {2, 3}, t.getInfo().shape);
+      String[][] output = (String[][]) t.getValue();
+      Assertions.assertArrayEquals(stringValues, output);
+    }
 
-      String[][][] deepStringValues =
-          new String[][][] {
-            {{"this", "is", "a"}, {"multi", "dimensional", "string"}},
-            {{"with", "lots", "more"}, {"dimensions", "than", "before"}}
-          };
-      try (OnnxTensor t = OnnxTensor.createTensor(env, deepStringValues)) {
-        Assertions.assertArrayEquals(new long[] {2, 2, 3}, t.getInfo().shape);
-        String[][][] output = (String[][][]) t.getValue();
-        Assertions.assertArrayEquals(deepStringValues, output);
-      }
+    String[][][] deepStringValues =
+        new String[][][] {
+          {{"this", "is", "a"}, {"multi", "dimensional", "string"}},
+          {{"with", "lots", "more"}, {"dimensions", "than", "before"}}
+        };
+    try (OnnxTensor t = OnnxTensor.createTensor(env, deepStringValues)) {
+      Assertions.assertArrayEquals(new long[] {2, 2, 3}, t.getInfo().shape);
+      String[][][] output = (String[][][]) t.getValue();
+      Assertions.assertArrayEquals(deepStringValues, output);
     }
   }
 
   @Test
   public void testUint8Creation() throws OrtException {
-    try (OrtEnvironment env = OrtEnvironment.getEnvironment()) {
-      byte[] buf = new byte[] {0, 1};
-      ByteBuffer data = ByteBuffer.wrap(buf);
-      long[] shape = new long[] {2};
-      try (OnnxTensor t = OnnxTensor.createTensor(env, data, shape, OnnxJavaType.UINT8)) {
-        Assertions.assertArrayEquals(buf, (byte[]) t.getValue());
-      }
+    OrtEnvironment env = OrtEnvironment.getEnvironment();
+    byte[] buf = new byte[] {0, 1};
+    ByteBuffer data = ByteBuffer.wrap(buf);
+    long[] shape = new long[] {2};
+    try (OnnxTensor t = OnnxTensor.createTensor(env, data, shape, OnnxJavaType.UINT8)) {
+      Assertions.assertArrayEquals(buf, (byte[]) t.getValue());
     }
   }
 }
