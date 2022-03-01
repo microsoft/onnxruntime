@@ -12,13 +12,11 @@ namespace test {
 TEST(CumSumTest, _1DTest) {
   OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
   test.AddInput<float>("x", {5}, {1., 2., 3., 4., 5.});
-
-
-#include "core/providers/openvino/openvino_provider_factory.h"
-
-#endif
-
+  #ifdef USE_OPENVINO
   test.AddInput<int32_t>("axis", 0);
+  #else
+  test.AddInput<int32_t>("axis", {1}, {0});
+  #endif 
   test.AddOutput<float>("y", {5}, {1., 3., 6., 10., 15.});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
@@ -26,13 +24,7 @@ TEST(CumSumTest, _1DTestFloat16) {
   if (DefaultCudaExecutionProvider().get() != nullptr) {
     OpTester test("CumSum", 14, onnxruntime::kOnnxDomain);
     test.AddInput<MLFloat16>("x", {3}, {MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(2.0f)), MLFloat16(math::floatToHalf(3.0f))});
-
-    #ifdef USE_OPENVINO
-    test.AddInput<int32_t>("axis", 0);
-    #else
     test.AddInput<int32_t>("axis", {1}, {0});
-    #endif 
-
     test.AddOutput<MLFloat16>("y", {3}, {MLFloat16(math::floatToHalf(1.0f)), MLFloat16(math::floatToHalf(3.0f)), MLFloat16(math::floatToHalf(6.0f))});
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCpuExecutionProvider});
   }
