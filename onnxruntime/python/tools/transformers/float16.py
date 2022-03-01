@@ -17,6 +17,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 def _npfloat16_to_int(np_list):
     '''
     Convert numpy float16 to python int.
@@ -160,7 +161,9 @@ def convert_float_to_float16(model,
     op_block_list = set(op_block_list)
     node_block_list = set(node_block_list)
 
-    logger.debug(f"fp16 parameters: min_positive_val={min_positive_val} max_finite_val={max_finite_val} keep_io_types={keep_io_types} disable_shape_infer={disable_shape_infer} op_block_list={op_block_list} node_block_list={node_block_list} force_fp16_initializers={force_fp16_initializers}")
+    logger.debug(
+        f"fp16 parameters: min_positive_val={min_positive_val} max_finite_val={max_finite_val} keep_io_types={keep_io_types} disable_shape_infer={disable_shape_infer} op_block_list={op_block_list} node_block_list={node_block_list} force_fp16_initializers={force_fp16_initializers}"
+    )
 
     # create a queue for BFS
     queue = []
@@ -332,6 +335,7 @@ def convert_float_to_float16(model,
                     break
     return model
 
+
 def float_to_float16_max_diff(tensor, min_positive_val=5.96e-08, max_finite_val=65504.0):
     """Measure the maximum absolute difference after converting a float tensor to float16."""
     if not isinstance(tensor, onnx_proto.TensorProto):
@@ -341,7 +345,7 @@ def float_to_float16_max_diff(tensor, min_positive_val=5.96e-08, max_finite_val=
 
     if tensor.float_data:
         float32_data = np.array(tensor.float_data)
-        
+
     if tensor.raw_data:
         float32_data = np.fromstring(tensor.raw_data, dtype='float32')
 

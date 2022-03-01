@@ -32,6 +32,7 @@ DEFAULT_TOLERANCE = {Precision.FLOAT32: 0.0005, Precision.FLOAT16: 0.2, Precisio
 class GPT2ModelNoPastState(GPT2Model):
     """ Here we wrap a class to disable past state output.
     """
+
     def __init__(self, config):
         super().__init__(config)
 
@@ -42,6 +43,7 @@ class GPT2ModelNoPastState(GPT2Model):
 class TFGPT2ModelNoPastState(TFGPT2Model):
     """ Here we wrap a class to disable past state output.
     """
+
     def __init__(self, config):
         config.use_cache = False
         super().__init__(config)
@@ -53,6 +55,7 @@ class TFGPT2ModelNoPastState(TFGPT2Model):
 class MyGPT2Model(GPT2Model):
     """ Here we wrap a class for Onnx model conversion for GPT2Model with past state.
     """
+
     def __init__(self, config):
         super().__init__(config)
 
@@ -82,6 +85,7 @@ class MyGPT2Model(GPT2Model):
 class MyGPT2LMHeadModel(GPT2LMHeadModel):
     """ Here we wrap a class for Onnx model conversion for GPT2LMHeadModel with past state.
     """
+
     def __init__(self, config):
         super().__init__(config)
 
@@ -100,6 +104,7 @@ class MyGPT2LMHeadModel_NoPadding(GPT2LMHeadModel):
         When you always use batch_size=1 in inference, there is no padding in inputs. In such case, position_ids
         and attention_mask need no be in inputs.
     """
+
     def __init__(self, config):
         super().__init__(config)
 
@@ -118,6 +123,7 @@ MODEL_CLASSES = {
 
 
 class Gpt2Inputs:
+
     def __init__(self, input_ids, position_ids, attention_mask, past):
         self.input_ids: torch.LongTensor = input_ids
         self.position_ids: torch.LongTensor = position_ids
@@ -138,7 +144,8 @@ class Gpt2Inputs:
         # For attention mask, only convert fp16 to fp32, and keep the original type if it is integer.
         attention_mask = None
         if self.attention_mask is not None:
-            attention_mask = self.attention_mask.to(dtype=torch.float32) if (self.attention_mask.dtype == torch.float16) else self.attention_mask
+            attention_mask = self.attention_mask.to(
+                dtype=torch.float32) if (self.attention_mask.dtype == torch.float16) else self.attention_mask
 
         past = [p.to(dtype=torch.float32) for p in self.past]
         return Gpt2Inputs(self.input_ids, self.position_ids, attention_mask, past)
@@ -147,6 +154,7 @@ class Gpt2Inputs:
 class Gpt2Helper:
     """ A helper class for Gpt2 model conversion, inference and verification.
     """
+
     @staticmethod
     def get_dummy_inputs(batch_size: int,
                          past_sequence_length: int,
@@ -189,7 +197,7 @@ class Gpt2Helper:
             position_ids = (attention_mask.long().cumsum(-1) - 1)
             position_ids.masked_fill_(position_ids < 0, 0)
             position_ids = position_ids[:, past_sequence_length:].to(position_ids_dtype)
-        
+
         return Gpt2Inputs(input_ids, position_ids, attention_mask, past)
 
     @staticmethod
@@ -441,7 +449,7 @@ class Gpt2Helper:
         m.save_model_to_file(optimized_model_path, use_external_data_format)
 
     @staticmethod
-    def auto_mixed_precision(onnx_model:OnnxModel,
+    def auto_mixed_precision(onnx_model: OnnxModel,
                              op_block_list: List[str] = ['Add', 'LayerNormalization', 'FastGelu']):
         """Convert GPT-2 model to mixed precision.
            It detects whether original model has fp16 precision weights, and set parameters for float16 conversion automatically.
@@ -455,7 +463,7 @@ class Gpt2Helper:
         fp32_op_set = set(op_block_list)
         fp16_op_set = op_full_set.difference(fp32_op_set)
         logger.info(f"fp32 op: {fp32_op_set} fp16 op: {fp16_op_set}")
-        
+
         # logits is the first output
         logits_output_name = onnx_model.graph().output[0].name
 
@@ -474,7 +482,7 @@ class Gpt2Helper:
                 if initializer is not None:
                     break
 
-            # when the max difference of value after converting float to float16 is lower than a threshold (1e-6), 
+            # when the max difference of value after converting float to float16 is lower than a threshold (1e-6),
             # we can deduce that the weights are stored in float16 precision.
             max_diff = float_to_float16_max_diff(initializer)
             logger.debug(f"max diff of converting weights in last MatMul node {node.name}: {max_diff}")
@@ -490,7 +498,12 @@ class Gpt2Helper:
             keep_io_types = [logits_output_name]
             node_block_list = [last_matmul_node.name]
 
-        parameters = { "keep_io_types": keep_io_types, "op_block_list": op_block_list, "node_block_list": node_block_list, "force_fp16_initializers": is_weight_fp16_precision}
+        parameters = {
+            "keep_io_types": keep_io_types,
+            "op_block_list": op_block_list,
+            "node_block_list": node_block_list,
+            "force_fp16_initializers": is_weight_fp16_precision
+        }
 
         logger.info(f"auto_mixed_precision parameters: {parameters}")
         onnx_model.convert_float_to_float16(use_symbolic_shape_infer=True, **parameters)
@@ -498,9 +511,9 @@ class Gpt2Helper:
         fusion_utils = FusionUtils(onnx_model)
         fusion_utils.remove_cascaded_cast_nodes()
         fusion_utils.remove_useless_cast_nodes()
-        
+
         return parameters
-    
+
     @staticmethod
     def pytorch_inference(model, inputs: Gpt2Inputs, total_runs: int = 0):
         """ Run inference of PyTorch model, and returns average latency in ms when total_runs > 0 besides outputs.
@@ -565,13 +578,15 @@ class Gpt2Helper:
     def prepare_io_binding(ort_session, input_ids, position_ids, attention_mask, past, output_buffers, output_shapes):
         """ Returnas IO binding object for a session.
         """
-        return IOBindingHelper.prepare_io_binding(ort_session, input_ids, position_ids, attention_mask, past, output_buffers, output_shapes)
+        return IOBindingHelper.prepare_io_binding(ort_session, input_ids, position_ids, attention_mask, past,
+                                                  output_buffers, output_shapes)
 
     @staticmethod
     def get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes, return_numpy=True):
         """ Copy results to cpu. Returns a list of numpy array.
         """
-        return IOBindingHelper.get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes, return_numpy)
+        return IOBindingHelper.get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes,
+                                                                  return_numpy)
 
     @staticmethod
     def onnxruntime_inference_with_binded_io(ort_session,
@@ -681,9 +696,16 @@ class Gpt2Helper:
 
             logger.debug(
                 f"Running parity test for batch_size={batch_size} past_sequence_length={past_sequence_length}...")
-            dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size, past_sequence_length, sequence_length,
-                                                       config.num_attention_heads, config.hidden_size, config.n_layer,
-                                                       config.vocab_size, device, is_float16, has_position_ids,
+            dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size,
+                                                       past_sequence_length,
+                                                       sequence_length,
+                                                       config.num_attention_heads,
+                                                       config.hidden_size,
+                                                       config.n_layer,
+                                                       config.vocab_size,
+                                                       device,
+                                                       is_float16,
+                                                       has_position_ids,
                                                        has_attention_mask,
                                                        input_ids_dtype=input_ids_dtype,
                                                        position_ids_dtype=position_ids_dtype,
@@ -768,9 +790,16 @@ class Gpt2Helper:
                                                          model_class)
             output_buffers = Gpt2Helper.get_output_buffers(output_shapes, device, is_float16)
 
-        dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size, past_sequence_length, sequence_length,
-                                                   config.num_attention_heads, config.hidden_size, config.n_layer,
-                                                   config.vocab_size, device, is_float16, has_position_ids,
+        dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size,
+                                                   past_sequence_length,
+                                                   sequence_length,
+                                                   config.num_attention_heads,
+                                                   config.hidden_size,
+                                                   config.n_layer,
+                                                   config.vocab_size,
+                                                   device,
+                                                   is_float16,
+                                                   has_position_ids,
                                                    has_attention_mask,
                                                    input_ids_dtype=input_ids_dtype,
                                                    position_ids_dtype=position_ids_dtype,
