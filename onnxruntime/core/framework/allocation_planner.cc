@@ -794,10 +794,9 @@ class PlannerImpl {
       // not referenced at both main graph and subgraph. Otherwise set the location to
       // where it needs at main graph level.
       int max_count = 0;
-      const auto& omi_count_map_it = omi_count_map.begin();
-      while (omi_count_map_it != omi_count_map.end()) {
-        int count = omi_count_map_it->second;
-        OrtMemoryInfo omi = omi_count_map_it->first;
+      for (auto const& omi_count : omi_count_map) {
+        int count = omi_count.second;
+        OrtMemoryInfo omi = omi_count.first;
         if (count == -1) {
           plan_.allocation_plan[i].location = omi;
           break;
