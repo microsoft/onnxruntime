@@ -369,6 +369,8 @@ TEST(CApiTest, SparseInputModel) {
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 TEST(CApiTest, custom_op_handler) {
+  std::cout << "Running custom op inference" << std::endl;
+
   std::vector<Input> inputs(1);
   Input& input = inputs[0];
   input.name = "X";

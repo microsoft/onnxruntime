@@ -75,7 +75,7 @@ class Node {
     Fused = 1,      ///< The node refers to a function.
   };
 
-  Node() = default;
+  explicit Node() = default;
   ~Node() = default;
 
   /**

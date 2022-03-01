@@ -221,10 +221,10 @@ class OpKernelContext {
   int GetImplicitInputArgIndex(int index) const;
   int GetOutputArgIndex(int index) const;
 
-  IExecutionFrame* const execution_frame_ = nullptr;
-  const OpKernel* const kernel_ = nullptr;
-  concurrency::ThreadPool* const threadpool_ = nullptr;
-  const logging::Logger* const logger_ = nullptr;
+  IExecutionFrame* const execution_frame_{nullptr};
+  const OpKernel* const kernel_{nullptr};
+  concurrency::ThreadPool* const threadpool_{nullptr};
+  const logging::Logger* const logger_{nullptr};
 
   // The argument starting index in ExecutionFrame.
   int node_input_start_index_{-1};
@@ -249,7 +249,7 @@ inline SparseTensor* OpKernelContext::Output<SparseTensor>(int index) {
 }
 #endif
 
-//EagerKernelContext for calling into a kenrel without a graph
+//EagerKernelContext for invoking kenrel in eager mode
 class EagerKernelContext : public OpKernelContext {
  public:
   EagerKernelContext(_In_ const OrtValue* const* inputs, _In_ const int& input_len,
@@ -257,7 +257,6 @@ class EagerKernelContext : public OpKernelContext {
                      _In_ AllocatorPtr allocator, _In_ onnxruntime::concurrency::ThreadPool* threadpool,
                      _In_ const logging::Logger& logger);
 
-  //std::vector<std::unique_ptr<OrtValue>> FetchOutputs();
   int NumVariadicInputs(size_t arg_num) const override;
   MLDataType InputType(int index) const override;
   MLDataType OutputType(int index) const override;
@@ -274,7 +273,6 @@ class EagerKernelContext : public OpKernelContext {
   void* GetComputeStream() const override;
 
  protected:
-
   const OrtValue* GetInputMLValue(int index) const override;
   OrtValue* OutputMLValue(int index, const TensorShape& shape) override;
   OrtValue* GetOrCreateOutputMLValue(int index) override;
