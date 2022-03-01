@@ -200,6 +200,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   */
   std::unique_lock<OrtMutex> GetEngineBuildLock() const;
 
+  /**Get a unique_lock object to control the concurrency behavior of calling nvinfer1::createInferRuntime()*/
   std::unique_lock<OrtMutex> GetCreateInferRuntimeLock() const;
 };
 }  // namespace onnxruntime
