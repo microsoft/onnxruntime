@@ -56,4 +56,4 @@ setup() {
 
 setup
 python3 benchmark_wrapper.py -r validate -m $MODEL_PATH -o result/$OPTION $OPTIONAL_ARGS 
-#python3 benchmark_wrapper.py -r benchmark -t 1200 -m $MODEL_PATH -o result/$OPTION $OPTIONAL_ARGS
+python3 benchmark_wrapper.py -r benchmark -t 1200 -m $MODEL_PATH -o result/$OPTION $OPTIONAL_ARGS
