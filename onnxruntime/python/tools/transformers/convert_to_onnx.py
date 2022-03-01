@@ -160,6 +160,7 @@ def parse_arguments(argv=None):
         "float to float16 conversion parameters that works when \"--precision fp16\" is specified")
 
     fp16_option_group.add_argument(
+        '-a',
         '--auto_mixed_precision',
         required=False,
         action='store_true',
