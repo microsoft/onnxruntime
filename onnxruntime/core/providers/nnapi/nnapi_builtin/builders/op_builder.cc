@@ -1884,10 +1884,12 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     // If the inputs are uint8 and this is not a quantized Concat, we need to verify all the inputs have the
     // same scale and zero points.
     // [Side note: int8 input is not supported currently by the NNAPI EP (enforced in ConcatOpSupportChecker).
-    //             It is supported by NNAPI, and int8 input is allowed to have different scale and zp values.]
+    // it is supported by NNAPI though and int8 input is allowed to have different scale  and zp values.]
     //
     // ONNX allows Concat (not QlinearConcat, not QDQ concat) to run directly on uint8 without scales and zps.
-    // NNAPI requires all uint8 inputs to have scale values > 0, and zero point values.
+    // NNAPI requires all uint8 inputs to have scale values > 0. (zero point can be 0.)
+    // See https://android.googlesource.com/platform/frameworks/ml/+/master/nn/common/Validation.cpp#486
+    //
     // We need to use the scales and zps from the NNAPI input directly, there is no easy way to get the input
     // scales and zps in OpSupportChecker, so we need to verify here.
     // Also we have to assume the output scale and zp are the same as input 0
