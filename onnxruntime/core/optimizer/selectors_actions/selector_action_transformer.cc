@@ -102,7 +102,7 @@ static Status MatchAndProcess(
     const SelectorActionRegistry::Entry* selector_action_entry_ptr = nullptr;
 
     const auto selector_action_entries = selector_action_registry.LookUpByOpType(node.OpType());
-    for (const auto entry : selector_action_entries) {
+    for (const auto& entry : selector_action_entries) {
       // check the supported versions if specified
       const auto& versions = entry->ops_and_versions.find(node.OpType())->second;
       if (!versions.empty()) {
