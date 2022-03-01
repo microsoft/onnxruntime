@@ -287,10 +287,10 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |-
-      python orttraining/tools/ci_test/run_batch_size_test.py \
-          --binary_dir build/RelWithDebInfo \
-          --model_root training_e2e_test_data/models \
-        --gpu_sku MI100_32G
+        python orttraining/tools/ci_test/run_batch_size_test.py \
+            --binary_dir build/RelWithDebInfo \
+            --model_root training_e2e_test_data/models \
+          --gpu_sku MI100_32G
     displayName: 'Run C++ BERT-L batch size test'
     retryCountOnTaskFailure: 2
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
