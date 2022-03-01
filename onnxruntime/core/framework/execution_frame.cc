@@ -593,6 +593,8 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
   }
 
   void* reuse_buffer = reuse_tensor->MutableDataRaw();
+  gsl::span<const int64_t> strides =
+      reuse_tensor->IsContiguous() ? gsl::span<const int64_t>() : reuse_tensor->Strides();
 
   // create fence on reused ort_value if needed
   // TODO: differentiate reuse and alias, by add AllocKind::kAlias?
@@ -603,14 +605,15 @@ Status ExecutionFrame::AllocateMLValueTensorPreAllocateBuffer(OrtValue& ort_valu
 
   // reused OrtValue share the same fence
   ort_value.ShareFenceWith(ort_value_reuse);
-  return AllocateTensorWithPreAllocateBufferHelper(ort_value, reuse_buffer, element_type, location, shape);
+  return AllocateTensorWithPreAllocateBufferHelper(ort_value, reuse_buffer, element_type, location, shape, strides);
 }
 
 Status ExecutionFrame::AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_value, void* pBuffer,
                                                                  MLDataType element_type,
                                                                  const OrtMemoryInfo& location,
-                                                                 const TensorShape& shape) {
-  Tensor::InitOrtValue(element_type, shape, pBuffer, location, ort_value);
+                                                                 const TensorShape& shape,
+                                                                 gsl::span<const int64_t> strides) {
+  Tensor::InitOrtValue(element_type, shape, pBuffer, location, ort_value, 0L, strides);
   return Status::OK();
 }
 

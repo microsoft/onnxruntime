@@ -32,7 +32,7 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/utils.h"
-#include "core/framework/static_kernel_def_hashes.h"
+#include "core/framework/kernel_def_hash_helpers.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/optimizer/graph_transformer_utils.h"
@@ -573,8 +573,8 @@ common::Status InferenceSession::RegisterGraphTransformer(
   return graph_transformation_mgr_.Register(std::move(p_graph_transformer), level);
 }
 
-common::Status InferenceSession::FilterEnabledOptimizers(const std::unordered_set<std::string>& optimizers_to_disable) {
-  optimizers_to_disable_ = optimizers_to_disable;
+common::Status InferenceSession::FilterEnabledOptimizers(InlinedHashSet<std::string> optimizers_to_disable) {
+  optimizers_to_disable_ = std::move(optimizers_to_disable);
   return Status::OK();
 }
 
@@ -1220,7 +1220,7 @@ Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs
   // The following loop fetches the hash values for these nodes.
   for (const auto& node : graph.Nodes()) {
     if (node.GetExecutionProviderType().empty()) {
-      auto kernel_hash = GetHashValueFromStaticKernelHashMap(node.OpType(), node.SinceVersion());
+      auto kernel_hash = utils::GetHashValueFromStaticKernelHashMap(node.OpType(), node.SinceVersion());
       if (kernel_hash.has_value()) {
         ORT_RETURN_IF_ERROR(set_node_ep(node.Index(), kernel_hash.value()));
       }
@@ -1914,7 +1914,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
   telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
 
   // time to send telemetry?
-  if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > telemetry_.kDurationBetweenSending) {
+  if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > Telemetry::kDurationBetweenSending) {
     // send the telemetry
     env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
                                               telemetry_.total_run_duration_since_last_);

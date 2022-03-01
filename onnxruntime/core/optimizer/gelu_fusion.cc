@@ -157,7 +157,7 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
       p_mul2_node = &mul2_node;
     }
 
-    const std::vector<NodeArg*> gelu_input_defs{div.MutableInputDefs()[0]};
+    const std::array gelu_input_defs{div.MutableInputDefs()[0]};
     Node& gelu_node = graph.AddNode(graph.GenerateNodeName("Gelu"),
                                     "Gelu",
                                     "fused Gelu subgraphs ",

@@ -64,7 +64,7 @@ void ComputeBroadcastBackwardAxes(
            B_dim = B_dims[j].dim_param();
       if (A_dim != B_dim) {
         LOGS_DEFAULT(INFO) << "Gradient building for node " << node_name << ": symbolic dimension expects to match. " <<
-                  "A_dims:" << ToString(A_dims) << ", B_dims:" << ToString(B_dims) <<   
+                  "A_dims:" << ToString(A_dims) << ", B_dims:" << ToString(B_dims) <<
                   " This is a relaxing case, and the kernel might run into problem later if A_dims and B_dims turns out not broadcastable.";
       }
     } else if (A_dims[i].has_dim_param() && B_dims[j].has_dim_value()) {
@@ -73,8 +73,8 @@ void ComputeBroadcastBackwardAxes(
 
       if (B_dim != 1) {
         LOGS_DEFAULT(INFO) << "Gradient building for node " << node_name << ": symbolic broadcasting expects the B_dimension to be 1. " <<
-                  "A_dims:" << ToString(A_dims) << ", B_dims:" << ToString(B_dims) <<   
-                  " This is a relaxing case, and the kernel might run into problem later if A_dims and B_dims turns out not broadcastable.";   
+                  "A_dims:" << ToString(A_dims) << ", B_dims:" << ToString(B_dims) <<
+                  " This is a relaxing case, and the kernel might run into problem later if A_dims and B_dims turns out not broadcastable.";
       } else {
         if (B_axes) {
           B_axes->push_back(gsl::narrow_cast<int64_t>(k));
@@ -86,7 +86,7 @@ void ComputeBroadcastBackwardAxes(
 
       if (A_dim != 1) {
         LOGS_DEFAULT(INFO) << "Gradient building for node " << node_name << ": symbolic broadcasting expects the A_dimension to be 1. " <<
-                  "A_dims:" << ToString(A_dims) << ", B_dims:" << ToString(B_dims) <<   
+                  "A_dims:" << ToString(A_dims) << ", B_dims:" << ToString(B_dims) <<
                   " This is a relaxing case, and the kernel might run into problem later if A_dims and B_dims turns out not broadcastable.";
       } else {
         if (A_axes) {
@@ -130,10 +130,10 @@ Status GetShape(const ArgDef& arg_def, std::vector<Dimension>& shape) {
 std::string GetGradientDefinitionKeyByNode(const Node& node) {
   std::string op_type = node.OpType();
   std::string key = node.Domain() + "::" + op_type;
-  if (op_type == "ATenOp") {
+  if (op_type == "ATen") {
     const auto& attrs = node.GetAttributes();
-    ORT_ENFORCE(utils::HasString(attrs.at("name")));
-    key = key + "::" + attrs.at("name").s();
+    ORT_ENFORCE(utils::HasString(attrs.at("operator")));
+    key = key + "::" + attrs.at("operator").s();
     std::string overload_name = "";
     if (attrs.find("overload_name") != attrs.end() && utils::HasString(attrs.at("overload_name"))) {
       overload_name = attrs.at("overload_name").s();

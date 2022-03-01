@@ -10,23 +10,6 @@
 namespace torch_ort {
 namespace eager {
 
-void CreateMLValue(onnxruntime::AllocatorPtr alloc, 
-                   onnxruntime::MLDataType element_type, 
-                   const std::vector<int64_t>& dims, 
-                   OrtValue* p_mlvalue);
-
-void CreateMLValue(void* data_ptr, 
-                   onnxruntime::MLDataType element_type, 
-                   const std::vector<int64_t>& dims, 
-                   const OrtMemoryInfo& memory_info, 
-                   OrtValue* p_mlvalue);
-
-void CreateMLValue(void* data_ptr, 
-                   onnxruntime::MLDataType element_type, 
-                   onnxruntime::TensorShape& shape, 
-                   const OrtMemoryInfo& memory_info, 
-                   OrtValue* p_mlvalue);
-
 template <typename T>
 inline void CopyVectorToTensor(onnxruntime::ORTInvoker& invoker,
                                const T* value_ptr,
@@ -63,7 +46,7 @@ inline void CopyVectorToTensor<bool>(onnxruntime::ORTInvoker& /*invoker*/,
   }
 }
 
-std::vector<int64_t> GetStrides(gsl::span<const int64_t> shape);
+onnxruntime::TensorShapeVector GetStrides(gsl::span<const int64_t> shape);
 
 } // namespace eager
 } // namespace torch_ort
