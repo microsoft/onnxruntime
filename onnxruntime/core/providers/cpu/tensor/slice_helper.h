@@ -33,7 +33,8 @@ inline Status PrepareForComputeHelper(const gsl::span<const int64_t>& raw_starts
   // Iterate through the provided axes and override the start/end ranges
   using AxesSet = InlinedHashSet<int64_t>;
   const auto axes_count = axes.size();
-  AxesSet unique_axes(axes_count);
+  AxesSet unique_axes;
+  unique_axes.reserve(axes_count);
 
   const auto dimension_count = compute_metadata.input_dimensions_.size();
   for (size_t axis_index = 0; axis_index < axes_count; ++axis_index) {
@@ -91,7 +92,8 @@ inline Status PrepareForComputeHelper(const gsl::span<const int64_t>& raw_starts
   // Iterate through the provided axes and override the start/end/steps ranges
   using AxesSet = InlinedHashSet<int64_t>;
   const auto axes_count = axes.size();
-  AxesSet unique_axes(axes_count);
+  AxesSet unique_axes;
+  unique_axes.reserve(axes_count);
 
   const auto dimension_count = compute_metadata.input_dimensions_.size();
   for (size_t axis_index = 0; axis_index < axes_count; ++axis_index) {
