@@ -34,7 +34,6 @@ jobs:
   #       orttraining/orttraining/python/training/ortmodule/_graph_execution_manager.py
   #  displayName: 'Toggle ON deterministic compute mode for ORTModule'
 
-
   - task: CmdLine@2
     displayName: 'Check Variable'
     inputs:
