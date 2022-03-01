@@ -1,117 +1,117 @@
 jobs:
-- job: WindowsAI_DirectML_X64
-  timeoutInMinutes: 120
-  workspace:
-    clean: all
-  pool:
-    name: 'onnxruntime-gpu-winbuild'
-    demands: []
-  steps:
-  - template: ../../templates/windowsai-nuget-build.yml
-    parameters:
-      BuildArch: 'x64'
+# - job: WindowsAI_DirectML_X64
+#   timeoutInMinutes: 120
+#   workspace:
+#     clean: all
+#   pool:
+#     name: 'onnxruntime-gpu-winbuild'
+#     demands: []
+#   steps:
+#   - template: ../../templates/windowsai-nuget-build.yml
+#     parameters:
+#       BuildArch: 'x64'
 
-- job: WindowsAI_DirectML_X86
-  timeoutInMinutes: 120
-  workspace:
-    clean: all
-  pool:
-    name: 'onnxruntime-gpu-winbuild'
-    demands: []
-  steps:
-  - template: ../../templates/windowsai-nuget-build.yml
-    parameters:
-      BuildArch: 'x86'
+# - job: WindowsAI_DirectML_X86
+#   timeoutInMinutes: 120
+#   workspace:
+#     clean: all
+#   pool:
+#     name: 'onnxruntime-gpu-winbuild'
+#     demands: []
+#   steps:
+#   - template: ../../templates/windowsai-nuget-build.yml
+#     parameters:
+#       BuildArch: 'x86'
       
-- job: WindowsAI_DirectML_ARM64
-  timeoutInMinutes: 120
-  workspace:
-    clean: all
-  pool:
-    name: 'onnxruntime-gpu-winbuild'
-    demands: []
-  steps:
-  - template: ../../templates/windowsai-nuget-build.yml
-    parameters:
-      BuildArch: 'arm64'
+# - job: WindowsAI_DirectML_ARM64
+#   timeoutInMinutes: 120
+#   workspace:
+#     clean: all
+#   pool:
+#     name: 'onnxruntime-gpu-winbuild'
+#     demands: []
+#   steps:
+#   - template: ../../templates/windowsai-nuget-build.yml
+#     parameters:
+#       BuildArch: 'arm64'
 
-- job: WindowsAI_DirectML_ARM
-  timeoutInMinutes: 120
-  workspace:
-    clean: all
-  pool:
-    name: 'onnxruntime-gpu-winbuild'
-    demands: []
-  steps:
-  - template: ../../templates/windowsai-nuget-build.yml
-    parameters:
-      BuildArch: 'arm'
+# - job: WindowsAI_DirectML_ARM
+#   timeoutInMinutes: 120
+#   workspace:
+#     clean: all
+#   pool:
+#     name: 'onnxruntime-gpu-winbuild'
+#     demands: []
+#   steps:
+#   - template: ../../templates/windowsai-nuget-build.yml
+#     parameters:
+#       BuildArch: 'arm'
 
-- job: WindowsAI_DirectML_X64_StaticRuntime
-  timeoutInMinutes: 120
-  workspace:
-    clean: all
-  pool:
-    name: 'onnxruntime-gpu-winbuild'
-    demands: [ ]
-  steps:
-    - template: ../../templates/windowsai-nuget-build.yml
-      parameters:
-        BuildArch: 'x64'
-        Runtime: 'static'
+# - job: WindowsAI_DirectML_X64_StaticRuntime
+#   timeoutInMinutes: 120
+#   workspace:
+#     clean: all
+#   pool:
+#     name: 'onnxruntime-gpu-winbuild'
+#     demands: [ ]
+#   steps:
+#     - template: ../../templates/windowsai-nuget-build.yml
+#       parameters:
+#         BuildArch: 'x64'
+#         Runtime: 'static'
 
-- job: WindowsAI_DirectML_X86_StaticRuntime
-  timeoutInMinutes: 120
-  workspace:
-    clean: all
-  pool:
-    name: 'onnxruntime-gpu-winbuild'
-    demands: [ ]
-  steps:
-    - template: ../../templates/windowsai-nuget-build.yml
-      parameters:
-        BuildArch: 'x86'
-        Runtime: 'static'
+# - job: WindowsAI_DirectML_X86_StaticRuntime
+#   timeoutInMinutes: 120
+#   workspace:
+#     clean: all
+#   pool:
+#     name: 'onnxruntime-gpu-winbuild'
+#     demands: [ ]
+#   steps:
+#     - template: ../../templates/windowsai-nuget-build.yml
+#       parameters:
+#         BuildArch: 'x86'
+#         Runtime: 'static'
 
-- job: WindowsAI_DirectML_ARM64_StaticRuntime
-  timeoutInMinutes: 120
-  workspace:
-    clean: all
-  pool:
-    name: 'onnxruntime-gpu-winbuild'
-    demands: [ ]
-  steps:
-    - template: ../../templates/windowsai-nuget-build.yml
-      parameters:
-        BuildArch: 'arm64'
-        Runtime: 'static'
+# - job: WindowsAI_DirectML_ARM64_StaticRuntime
+#   timeoutInMinutes: 120
+#   workspace:
+#     clean: all
+#   pool:
+#     name: 'onnxruntime-gpu-winbuild'
+#     demands: [ ]
+#   steps:
+#     - template: ../../templates/windowsai-nuget-build.yml
+#       parameters:
+#         BuildArch: 'arm64'
+#         Runtime: 'static'
 
-- job: WindowsAI_DirectML_ARM_StaticRuntime
-  timeoutInMinutes: 120
-  workspace:
-    clean: all
-  pool:
-    name: 'onnxruntime-gpu-winbuild'
-    demands: [ ]
-  steps:
-    - template: ../../templates/windowsai-nuget-build.yml
-      parameters:
-        BuildArch: 'arm'
-        Runtime: 'static'
+# - job: WindowsAI_DirectML_ARM_StaticRuntime
+#   timeoutInMinutes: 120
+#   workspace:
+#     clean: all
+#   pool:
+#     name: 'onnxruntime-gpu-winbuild'
+#     demands: [ ]
+#   steps:
+#     - template: ../../templates/windowsai-nuget-build.yml
+#       parameters:
+#         BuildArch: 'arm'
+#         Runtime: 'static'
 
 - job: NuGet_Packaging
   workspace:
     clean: all
   pool: 'onnxruntime-gpu-winbuild'
-  dependsOn:
-  - WindowsAI_DirectML_X64
-  - WindowsAI_DirectML_X86
-  - WindowsAI_DirectML_ARM64
-  - WindowsAI_DirectML_ARM
-  - WindowsAI_DirectML_X64_StaticRuntime
-  - WindowsAI_DirectML_X86_StaticRuntime
-  - WindowsAI_DirectML_ARM64_StaticRuntime
-  - WindowsAI_DirectML_ARM_StaticRuntime
+  # dependsOn:
+  # - WindowsAI_DirectML_X64
+  # - WindowsAI_DirectML_X86
+  # - WindowsAI_DirectML_ARM64
+  # - WindowsAI_DirectML_ARM
+  # - WindowsAI_DirectML_X64_StaticRuntime
+  # - WindowsAI_DirectML_X86_StaticRuntime
+  # - WindowsAI_DirectML_ARM64_StaticRuntime
+  # - WindowsAI_DirectML_ARM_StaticRuntime
   condition: succeeded()
   steps:
   - task: DownloadPipelineArtifact@0
