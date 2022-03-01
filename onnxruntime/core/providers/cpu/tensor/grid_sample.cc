@@ -6,7 +6,7 @@
 #include "core/framework/element_type_lists.h"
 #include "core/framework/TensorSeq.h"
 #include "core/providers/common.h"
-#include "core/providers/cpu/tensor/copy.h"
+#include "core/framework/copy.h"
 #include "core/providers/op_kernel_type_control.h"
 
 namespace onnxruntime {
