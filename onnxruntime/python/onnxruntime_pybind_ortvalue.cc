@@ -9,6 +9,7 @@
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
+#include "python/numpy_helper.h"
 
 #include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
@@ -107,7 +108,7 @@ void addOrtValueMethods(pybind11::module& m) {
 
         auto ml_value = std::make_unique<OrtValue>();
         auto ml_type = NumpyTypeToOnnxRuntimeType(type_num);
-        Tensor::InitOrtValue(ml_type, shape, std::move(allocator), *ml_value);
+        Tensor::InitOrtValue(ml_type, gsl::make_span(shape), std::move(allocator), *ml_value);
         return ml_value;
       })
 

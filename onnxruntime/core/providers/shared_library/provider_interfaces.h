@@ -4,6 +4,7 @@
 // Public wrappers around internal ort interfaces (currently)
 #include "core/providers/shared_library/provider_host_api.h"
 
+#include "core/common/inlined_containers_fwd.h"
 #include "core/providers/shared/common.h"
 
 #define PROVIDER_DISALLOW_ALL(TypeName)     \
@@ -113,6 +114,13 @@ struct Node__EdgeIterator {
 // a specific implementation of a virtual class member. Trying to get a pointer to member of a virtual function will return a thunk that
 // calls the virtual function (which will lead to infinite recursion in the bridge). There is no known way to get the non virtual member
 // function pointer implementation in this case.
+//The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
+//However, we do not allocate this type on heap.
+//Please do not new or delete this type(and subtypes).
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26436)
+#endif
 struct ProviderHost {
   virtual const OrtApiBase* OrtGetApiBase() = 0;
 
@@ -165,10 +173,10 @@ struct ProviderHost {
   virtual bool RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
 #endif
 
-  virtual std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                             const std::string& provider_type,
-                                                             const std::vector<const KernelRegistry*>& kernel_registries,
-                                                             const std::vector<NodeIndex>& tentative_nodes) = 0;
+  virtual InlinedHashSet<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
+                                                         const std::string& provider_type,
+                                                         gsl::span<const KernelRegistry* const> kernel_registries,
+                                                         gsl::span<const NodeIndex> tentative_nodes) = 0;
 
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ bool* p_data, size_t expected_size) = 0;
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ float* p_data, size_t expected_size) = 0;
@@ -429,6 +437,7 @@ struct ProviderHost {
   virtual ONNX_NAMESPACE::OperatorStatus& IndexedSubGraph_MetaDef__status(IndexedSubGraph_MetaDef* p) = 0;
   virtual std::vector<std::string>& IndexedSubGraph_MetaDef__inputs(IndexedSubGraph_MetaDef* p) = 0;
   virtual std::vector<std::string>& IndexedSubGraph_MetaDef__outputs(IndexedSubGraph_MetaDef* p) = 0;
+  virtual std::vector<std::string>& IndexedSubGraph_MetaDef__constant_initializers(IndexedSubGraph_MetaDef* p) = 0;
   virtual NodeAttributes& IndexedSubGraph_MetaDef__attributes(IndexedSubGraph_MetaDef* p) = 0;
   virtual std::string& IndexedSubGraph_MetaDef__doc_string(IndexedSubGraph_MetaDef* p) = 0;
 
@@ -623,10 +632,10 @@ struct ProviderHost {
 
   virtual Status Graph__Resolve(Graph* p) = 0;
   virtual void Graph__AddInitializedTensor(Graph* p, const ONNX_NAMESPACE::TensorProto& tensor) = 0;
-  virtual Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const std::vector<NodeArg*>& input_args, const std::vector<NodeArg*>& output_args, const NodeAttributes* attributes, const std::string& domain) = 0;
+  virtual Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const gsl::span<NodeArg* const>& input_args, const gsl::span<NodeArg* const>& output_args, const NodeAttributes* attributes, const std::string& domain) = 0;
 
   virtual const std::vector<const NodeArg*>& Graph__GetOutputs(const Graph* p) noexcept = 0;
-  virtual void Graph__SetOutputs(Graph* p, const std::vector<const NodeArg*>& outputs) = 0;
+  virtual void Graph__SetOutputs(Graph* p, gsl::span<const NodeArg* const> outputs) = 0;
 
   virtual const std::vector<const NodeArg*>& Graph__GetInputs(const Graph* p) noexcept = 0;
   virtual bool Graph__GetInitializedTensor(const Graph* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) = 0;
@@ -697,6 +706,7 @@ struct ProviderHost {
   virtual Status OpKernelInfo__GetAttrs(const OpKernelInfo* p, const std::string& name, std::vector<int64_t>& values) = 0;
   virtual Status OpKernelInfo__GetAttrs(const OpKernelInfo* p, const std::string& name, std::vector<float>& values) = 0;
   virtual Status OpKernelInfo__GetAttrs(const OpKernelInfo* p, const std::string& name, std::vector<std::string>& values) = 0;
+  virtual Status OpKernelInfo__GetAttrsAsSpan(const OpKernelInfo* p, const std::string& name, gsl::span<const int64_t>& values) = 0;
 
   virtual const DataTransferManager& OpKernelInfo__GetDataTransferManager(const OpKernelInfo* p) noexcept = 0;
   virtual const KernelDef& OpKernelInfo__GetKernelDef(const OpKernelInfo* p) = 0;
@@ -819,5 +829,7 @@ struct ProviderHost {
 
   virtual ProviderHostCPU& GetProviderHostCPU() = 0;
 };
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 }  // namespace onnxruntime

@@ -17,6 +17,9 @@ Abstract:
 
 #include "mlasi.h"
 
+#include <thread>
+#include <mutex>
+
 #if defined(MLAS_TARGET_POWER) && defined(__linux__)
 #include <sys/auxv.h>
 #endif
@@ -42,12 +45,6 @@ MLASCPUIDInfo::MLASCPUIDInfo() { has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWC
 
 #endif
 #endif // MLAS_TARGET_ARM64
-
-//
-// Stores the platform information.
-//
-
-MLAS_PLATFORM MlasPlatform;
 
 #ifdef MLAS_TARGET_AMD64_IX86
 
@@ -358,7 +355,9 @@ Return Value:
 #if defined(MLAS_TARGET_ARM64)
 
     this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
-    this->ConvSymU8S8Dispatch = &MlasConvSymDispatchNeon;
+    this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchNeon;
+    this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchNeon;
+    this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchNeon;
 
     //
     // Check if the processor supports ASIMD dot product instructions.
@@ -376,7 +375,9 @@ Return Value:
 
     if (HasDotProductInstructions) {
         this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchUdot;
-        this->ConvSymU8S8Dispatch = &MlasConvSymDispatchDot;
+        this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchSdot;
+        this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchDot;
+        this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
     }
 
 #endif // MLAS_TARGET_ARM64
@@ -396,6 +397,14 @@ Return Value:
 #endif
 #endif
 
+    // Init the table describing the type (big or litte) of each core
+#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
+    // TODO!! implemente core uarch detection in Windows
+    auto tbl_size = std::thread::hardware_concurrency();
+    if (tbl_size > 0) {
+        mlas_coretype_tbl.resize(tbl_size, mlas_core_unknown);    
+    }
+#endif
 }
 
 size_t
@@ -422,7 +431,7 @@ Return Value:
 --*/
 {
 #if defined(MLAS_TARGET_AMD64)
-    return MlasPlatform.PreferredBufferAlignment;
+    return GetMlasPlatform().PreferredBufferAlignment;
 #else
     return MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
 #endif

@@ -13,6 +13,7 @@ from . import JSON_PATH_ENVIRONMENT_KEY
 from ..._fallback import _FallbackPolicy
 from ..._graph_execution_manager import _SkipCheck
 from ...debug_options import DebugOptions, LogLevel, _SaveOnnxOptions
+from onnxruntime.training import ortmodule
 
 log = logging.getLogger(__name__)
 
@@ -190,6 +191,16 @@ def _load_fallback_policy(ortmodule_config_accessor, data):
         ortmodule_config_accessor._fallback_manager.policy = fallback_policy
 
 
+def _load_onnx_opset_version(ortmodule_config_accessor, data):
+    """Loads OnnxOpsetVersion from json file onto ORTModule."""
+
+    assert hasattr(data, _load_onnx_opset_version.loading_key)
+    log.info(f"Found keyword {_load_onnx_opset_version.loading_key} in json. Loading attributes from file.")
+
+    assert isinstance(data.OnnxOpsetVersion, int), f"{_load_onnx_opset_version.loading_key} must be an int"
+    ortmodule.ONNX_OPSET_VERSION = data.OnnxOpsetVersion
+
+
 def _define_load_function_keys():
     """Define static key variables for each loading function"""
 
@@ -204,6 +215,7 @@ def _define_load_function_keys():
     _load_debug_options.loading_key = "DebugOptions"
     _load_use_memory_efficient_gradient.loading_key = "UseMemoryEfficientGradient"
     _load_fallback_policy.loading_key = "FallbackPolicy"
+    _load_onnx_opset_version.loading_key = "OnnxOpsetVersion"
 
 
 def load_from_json(ortmodule, path=None):
@@ -246,6 +258,7 @@ def load_from_json(ortmodule, path=None):
             "FALLBACK_UNSUPPORTED_ONNX_MODEL",
             "FALLBACK_BAD_INITIALIZATION",
         ],
+        "OnnxOpsetVersion": 14 # int defining the opset version to be used during export
     }
 
     Args:
@@ -281,7 +294,8 @@ def load_from_json(ortmodule, path=None):
         _load_skip_check.loading_key: _load_skip_check,
         _load_debug_options.loading_key: _load_debug_options,
         _load_use_memory_efficient_gradient.loading_key: _load_use_memory_efficient_gradient,
-        _load_fallback_policy.loading_key: _load_fallback_policy
+        _load_fallback_policy.loading_key: _load_fallback_policy,
+        _load_onnx_opset_version.loading_key: _load_onnx_opset_version
     }
 
     for training_mode in [True, False]:

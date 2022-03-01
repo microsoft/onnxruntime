@@ -531,7 +531,7 @@ Return Value:
         size_t RowsHandled;
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined (MLAS_TARGET_POWER)
-        RowsHandled = MlasPlatform.GemmDoubleKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
+        RowsHandled = GetMlasPlatform().GemmDoubleKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
 #else
         if (ZeroMode) {
             RowsHandled = MlasDgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
@@ -805,6 +805,7 @@ Return Value:
 
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
+// Chance of arithmetic overflow could be reduced
 #pragma warning(disable : 26451)
 #endif
 void
@@ -829,10 +830,10 @@ MlasGemmBatch(
 
     ptrdiff_t TargetThreadCount;
 
-    if (Complexity < double(MLAS_DGEMM_THREAD_COMPLEXITY * MlasPlatform.MaximumThreadCount)) {
+    if (Complexity < double(MLAS_DGEMM_THREAD_COMPLEXITY * GetMlasPlatform().MaximumThreadCount)) {
         TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_DGEMM_THREAD_COMPLEXITY)) + 1;
     } else {
-        TargetThreadCount = MlasPlatform.MaximumThreadCount;
+        TargetThreadCount = GetMlasPlatform().MaximumThreadCount;
     }
 
     ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);

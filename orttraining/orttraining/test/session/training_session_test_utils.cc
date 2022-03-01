@@ -167,7 +167,7 @@ std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
 
   std::unique_ptr<TrainingSession> training_session = std::make_unique<TrainingSession>(so, *env);
 
-  std::cout << "Loading source model file = " << ToMBString(forward_model_file) << "\n";
+  std::cout << "Loading source model file = " << ToUTF8String(forward_model_file) << "\n";
 
   ORT_THROW_IF_ERROR(training_session->Load(forward_model_file));
 

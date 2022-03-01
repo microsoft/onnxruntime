@@ -43,7 +43,7 @@ def is_this_file_needed(ep, filename):
 # ep: cuda, tensorrt, None
 # files_list: a list of xml string pieces to append
 # This function has no return value. It updates files_list directly
-def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
+def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs):
     for child in nuget_artifacts_dir.iterdir():
         if not child.is_dir():
             continue
@@ -52,7 +52,8 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
             if child.name == get_package_name('win', cpu_arch, ep):
                 child = child / 'lib'
                 for child_file in child.iterdir():
-                    if child_file.suffix in ['.dll', '.pdb', '.lib'] and is_this_file_needed(ep, child_file.name):
+                    suffixes = ['.dll', '.lib', '.pdb'] if include_pdbs else ['.dll', '.lib']
+                    if child_file.suffix in suffixes and is_this_file_needed(ep, child_file.name):
                         files_list.append('<file src="' + str(child_file) +
                                           '" target="runtimes/win-%s/native"/>' % cpu_arch)
         for cpu_arch in ['x86_64', 'arm64']:
@@ -71,6 +72,8 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
                 child = child / 'lib'
                 if cpu_arch == 'x86_64':
                     cpu_arch = 'x64'
+                elif cpu_arch == 'aarch64':
+                    cpu_arch = 'arm64'
                 for child_file in child.iterdir():
                     if not child_file.is_file():
                         continue
@@ -395,6 +398,8 @@ def generate_files(list, args):
     # Process onnxruntime import lib, dll, and pdb
     if is_windows_build:
         nuget_artifacts_dir = Path(args.native_build_path) / 'nuget-artifacts'
+        # the winml package includes pdbs. for other packages exclude them.
+        include_pdbs = includes_winml
         if nuget_artifacts_dir.exists():
             # Code path for ADO build pipeline, the files under 'nuget-artifacts' are
             # downloaded from other build jobs
@@ -403,7 +408,7 @@ def generate_files(list, args):
             else:
                 ep_list = [None]
             for ep in ep_list:
-                generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list)
+                generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs)
             is_ado_packaging_build = True
         else:
             # Code path for local dev build
@@ -411,7 +416,7 @@ def generate_files(list, args):
                               runtimes + ' />')
             files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.dll') +
                               runtimes + ' />')
-            if os.path.exists(os.path.join(args.native_build_path, 'onnxruntime.pdb')):
+            if include_pdbs and os.path.exists(os.path.join(args.native_build_path, 'onnxruntime.pdb')):
                 files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') +
                                   runtimes + ' />')
     else:

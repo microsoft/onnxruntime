@@ -2,7 +2,9 @@
 # Licensed under the MIT License.
 
 import concurrent.futures
+import functools
 import os
+import shutil
 import subprocess
 from logger import get_logger
 
@@ -14,11 +16,8 @@ training_ops_path = 'orttraining/orttraining/training_ops'
 
 contrib_ops_excluded_files = [
                     'bert/attention.cc',
-                    'bert/attention.h',
                     'bert/attention_impl.cu',
-                    'bert/attention_impl.h',
-                    'bert/attention_transpose.cu',
-                    'bert/attention_concat.cu',
+                    'bert/attention_softmax.h',
                     'bert/decoder_attention.h',
                     'bert/decoder_attention.cc',
                     'bert/embed_layer_norm.cc',
@@ -62,6 +61,14 @@ contrib_ops_excluded_files = [
                     'tensor/image_scaler.h',
                     'tensor/image_scaler_impl.cu',
                     'tensor/image_scaler_impl.h',
+                    'transformers/beam_search.cc',
+                    'transformers/beam_search.h',
+                    'transformers/beam_search_device_helper.cc',
+                    'transformers/beam_search_device_helper.h',
+                    'transformers/beam_search_impl.cu',
+                    'transformers/beam_search_impl.h',
+                    'transformers/dump_cuda_tensor.cc',
+                    'transformers/dump_cuda_tensor.h',
                     'conv_transpose_with_dynamic_pads.cc',
                     'conv_transpose_with_dynamic_pads.h',
                     'cuda_contrib_kernels.cc',
@@ -173,7 +180,25 @@ training_ops_excluded_files = [
                     'cuda_training_kernels.h',
 ]
 
-HIPIFY_PERL = '/opt/rocm/bin/hipify-perl'
+
+@functools.lru_cache(maxsize=1)
+def get_hipify_path():
+    # prefer the hipify-perl in PATH
+    HIPIFY_PERL = shutil.which('hipify-perl')
+    # if not found, attempt hard-coded location 1
+    if HIPIFY_PERL is None:
+        print('hipify-perl not found, trying default location 1')
+        hipify_path = '/opt/rocm/hip/bin/hipify-perl'
+        HIPIFY_PERL = hipify_path if os.access(hipify_path, os.X_OK) else None
+    # if not found, attempt hard-coded location 2
+    if HIPIFY_PERL is None:
+        print('hipify-perl not found, trying default location 2')
+        hipify_path = '/opt/rocm/bin/hipify-perl'
+        HIPIFY_PERL = hipify_path if os.access(hipify_path, os.X_OK) else None
+    # fail
+    if HIPIFY_PERL is None:
+        raise RuntimeError('Could not locate hipify-perl script')
+    return HIPIFY_PERL
 
 
 def hipify(src_file_path, dst_file_path):
@@ -182,7 +207,7 @@ def hipify(src_file_path, dst_file_path):
     if not os.path.exists(dir_name):
         os.makedirs(dir_name, exist_ok=True)
     # Run hipify-perl first, capture output
-    s = subprocess.run([HIPIFY_PERL, src_file_path], stdout=subprocess.PIPE, universal_newlines=True).stdout
+    s = subprocess.run([get_hipify_path(), src_file_path], stdout=subprocess.PIPE, universal_newlines=True).stdout
 
     # Additional exact-match replacements.
     # Order matters for all of the following replacements, reglardless of appearing in logical sections.
@@ -323,6 +348,8 @@ def list_files(prefix, path):
 
 
 def amd_hipify(config_build_dir):
+    # determine hipify script path now to avoid doing so concurrently in the thread pool
+    print('Using %s' % get_hipify_path())
     with concurrent.futures.ThreadPoolExecutor() as executor:
         cuda_path = os.path.join(contrib_ops_path, 'cuda')
         rocm_path = os.path.join(config_build_dir, 'amdgpu', contrib_ops_path, 'rocm')

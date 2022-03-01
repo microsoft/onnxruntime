@@ -15,11 +15,12 @@
 
 #include <algorithm>
 #include <random>
+#include <type_traits>
 
 namespace onnxruntime {
 namespace test {
 
-template <typename ScalarB, typename ScalarOutput>
+template <typename ActType, typename WeightType, typename ScalarOutput>
 void RunQuantGemmU8X8Test(const int M,
                           const int N,
                           const int K,
@@ -29,36 +30,42 @@ void RunQuantGemmU8X8Test(const int M,
                           bool B_is_initializer,
                           bool per_column = false) {
   static std::default_random_engine e(123);
-  static std::uniform_int_distribution<int> n_unsigned(0, 127);
-  static std::uniform_int_distribution<int> n_xint8(std::numeric_limits<ScalarB>::min(), std::numeric_limits<ScalarB>::max());
+  static std::uniform_int_distribution<int> random_A(std::numeric_limits<ActType>::min(),
+                                                     std::numeric_limits<ActType>::max());
+
+  constexpr int overflow_adjust = std::is_signed_v<WeightType> ? 2 : 1;
+  constexpr int random_B_min = std::numeric_limits<WeightType>::min() / overflow_adjust;
+  constexpr int random_B_max = std::numeric_limits<WeightType>::max() / overflow_adjust;
+  static std::uniform_int_distribution<int> random_B(random_B_min,
+                                                     random_B_max);
   static std::uniform_real_distribution<float> n_apha(1.0f, 2.0f);
   static std::uniform_real_distribution<float> n_scale(0.003f, 0.004f);
 
   Eigen::MatrixXi matrix_a = Eigen::MatrixXi::Random(K, M)
-                                 .unaryExpr([](int) { return n_unsigned(e); });
-  std::vector<uint8_t> matrix_a_data;
+                                 .unaryExpr([](int) { return random_A(e); });
+  std::vector<ActType> matrix_a_data;
   if (is_A_trans) {
     Eigen::MatrixXi matrix_a_trans = matrix_a.transpose().eval();
-    matrix_a_data = ToVector<uint8_t>(matrix_a_trans.data(), M * K);
+    matrix_a_data = ToVector<ActType>(matrix_a_trans.data(), M * K);
   } else {
-    matrix_a_data = ToVector<uint8_t>(matrix_a.data(), M * K);
+    matrix_a_data = ToVector<ActType>(matrix_a.data(), M * K);
   }
-  uint8_t a_zero_point = GetMiddle(matrix_a_data);
+  ActType a_zero_point = GetMiddle(matrix_a_data);
   Eigen::MatrixXi matrix_a_offset = matrix_a - a_zero_point * Eigen::MatrixXi::Ones(K, M);
   float a_scale = n_scale(e);
 
   Eigen::MatrixXi matrix_b = Eigen::MatrixXi::Random(N, K)
-                                 .unaryExpr([](int) { return n_xint8(e); });
-  std::vector<ScalarB> matrix_b_data;
+                                 .unaryExpr([](int) { return random_B(e); });
+  std::vector<WeightType> matrix_b_data;
   if (is_B_trans) {
     Eigen::MatrixXi matrix_b_trans = matrix_b.transpose().eval();
-    matrix_b_data = ToVector<ScalarB>(matrix_b_trans.data(), N * K);
+    matrix_b_data = ToVector<WeightType>(matrix_b_trans.data(), N * K);
   } else {
-    matrix_b_data = ToVector<ScalarB>(matrix_b.data(), N * K);
+    matrix_b_data = ToVector<WeightType>(matrix_b.data(), N * K);
   }
-  ScalarB b_zero_point = GetMiddle(matrix_b_data);
+  WeightType b_zero_point = GetMiddle(matrix_b_data);
   std::vector<float> b_scale({n_scale(e)});
-  std::vector<ScalarB> b_zp_per_column({b_zero_point});
+  std::vector<WeightType> b_zp_per_column({b_zero_point});
   Eigen::MatrixXi b_zp_matrix = b_zero_point * Eigen::MatrixXi::Ones(N, K);
   Eigen::MatrixXf b_scale_matrix = b_scale[0] * Eigen::MatrixXf::Ones(N, M);
   if (per_column) {
@@ -74,7 +81,7 @@ void RunQuantGemmU8X8Test(const int M,
   float alpha = n_apha(e);
 
   Eigen::MatrixXi matrix_c = Eigen::MatrixXi::Random(N, M)
-                                 .unaryExpr([](int) { return n_xint8(e); });
+                                 .unaryExpr([](int) { return random_A(e); });
 
   Eigen::MatrixXi matrix_int32 = (matrix_b - b_zp_matrix) * matrix_a_offset;
   if (has_C) {
@@ -86,12 +93,12 @@ void RunQuantGemmU8X8Test(const int M,
   test.AddAttribute<int64_t>("transA", is_A_trans ? 1 : 0);
   test.AddAttribute<int64_t>("transB", is_B_trans ? 1 : 0);
   test.AddAttribute<float>("alpha", alpha);
-  test.AddInput<uint8_t>("A", is_A_trans ? std::vector<int64_t>({K, M}) : std::vector<int64_t>({M, K}), std::move(matrix_a_data));
+  test.AddInput<ActType>("A", is_A_trans ? std::vector<int64_t>({K, M}) : std::vector<int64_t>({M, K}), std::move(matrix_a_data));
   test.AddInput<float>("a_scale", {}, {a_scale});
-  test.AddInput<uint8_t>("a_zero_point", {}, {a_zero_point});
-  test.AddInput<ScalarB>("B", is_B_trans ? std::vector<int64_t>({N, K}) : std::vector<int64_t>({K, N}), std::move(matrix_b_data), B_is_initializer);
+  test.AddInput<ActType>("a_zero_point", {}, {a_zero_point});
+  test.AddInput<WeightType>("B", is_B_trans ? std::vector<int64_t>({N, K}) : std::vector<int64_t>({K, N}), std::move(matrix_b_data), B_is_initializer);
   test.AddInput<float>("b_scale", {SafeInt<int64_t>(b_scale.size())}, b_scale);
-  test.AddInput<ScalarB>("b_zero_point", {SafeInt<int64_t>(b_zp_per_column.size())}, b_zp_per_column);
+  test.AddInput<WeightType>("b_zero_point", {SafeInt<int64_t>(b_zp_per_column.size())}, b_zp_per_column);
 
   if (has_C) {
     test.AddInput<int32_t>("C", {M, N}, ToVector<int32_t>(matrix_c.data(), M * N));
@@ -101,14 +108,14 @@ void RunQuantGemmU8X8Test(const int M,
 
   if constexpr (std::is_same_v<ScalarOutput, float>) {
     test.AddOptionalInputEdge<float>();
-    test.AddOptionalInputEdge<uint8_t>();
+    test.AddOptionalInputEdge<ActType>();
     test.AddOutput<float>("Y", {M, N}, std::vector<float>(matrix_output.data(), matrix_output.data() + M * N));
   } else {
-    std::vector<uint8_t> quant_output(M * N);
-    quantization::Params<uint8_t> quant_param = quantization::QuantizeLinear(matrix_output.data(), quant_output.data(), M * N);
+    std::vector<ActType> quant_output(M * N);
+    quantization::Params<ActType> quant_param = quantization::QuantizeLinear(matrix_output.data(), quant_output.data(), M * N);
     test.AddInput<float>("y_scale", {}, {quant_param.scale});
-    test.AddInput<uint8_t>("y_zero_point", {}, {quant_param.zero_point});
-    test.AddOutput<uint8_t>("Y", {M, N}, quant_output);
+    test.AddInput<ActType>("y_zero_point", {}, {quant_param.zero_point});
+    test.AddOutput<ActType>("Y", {M, N}, quant_output);
   }
 
   test.Run();
@@ -122,10 +129,13 @@ void RunQuantGemmTest(const int M,
                       bool has_C,
                       bool B_is_initializer,
                       bool per_column = false) {
-  RunQuantGemmU8X8Test<int8_t, float>(M, N, K, is_A_trans, is_B_trans, has_C, B_is_initializer, per_column);
-  RunQuantGemmU8X8Test<int8_t, uint8_t>(M, N, K, is_A_trans, is_B_trans, has_C, B_is_initializer, per_column);
-  RunQuantGemmU8X8Test<uint8_t, float>(M, N, K, is_A_trans, is_B_trans, has_C, B_is_initializer, per_column);
-  RunQuantGemmU8X8Test<uint8_t, uint8_t>(M, N, K, is_A_trans, is_B_trans, has_C, B_is_initializer, per_column);
+  RunQuantGemmU8X8Test<uint8_t, int8_t, float>(M, N, K, is_A_trans, is_B_trans, has_C, B_is_initializer, per_column);
+  RunQuantGemmU8X8Test<uint8_t, int8_t, uint8_t>(M, N, K, is_A_trans, is_B_trans, has_C, B_is_initializer, per_column);
+  RunQuantGemmU8X8Test<uint8_t, uint8_t, float>(M, N, K, is_A_trans, is_B_trans, has_C, B_is_initializer, per_column);
+  RunQuantGemmU8X8Test<uint8_t, uint8_t, uint8_t>(M, N, K, is_A_trans, is_B_trans, has_C, B_is_initializer, per_column);
+
+  RunQuantGemmU8X8Test<int8_t, int8_t, float>(M, N, K, is_A_trans, is_B_trans, has_C, B_is_initializer, per_column);
+  RunQuantGemmU8X8Test<int8_t, int8_t, int8_t>(M, N, K, is_A_trans, is_B_trans, has_C, B_is_initializer, per_column);
 }
 
 void RunQuantGemmTestBatch(const int M, const int N, const int K) {

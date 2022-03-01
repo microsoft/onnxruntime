@@ -14,10 +14,12 @@ import sys
 import datetime
 # ingest from dataframe
 import pandas
-from azure.kusto.data import KustoConnectionStringBuilder
+from azure.kusto.data import (
+    DataFormat,
+    KustoConnectionStringBuilder,
+)
 from azure.kusto.ingest import (
     IngestionProperties,
-    DataFormat,
     ReportLevel,
     QueuedIngestClient,
 )
@@ -25,7 +27,7 @@ from azure.kusto.ingest import (
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
-        description="ONNXRuntime test coverge report uploader for dashboard")
+        description="ONNXRuntime test coverage report uploader for dashboard")
     parser.add_argument("--report_url", type=str, help="URL to the LLVM json report")
     parser.add_argument(
         "--report_file", type=str, help="Path to the local JSON/TXT report", required=True)

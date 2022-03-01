@@ -85,7 +85,7 @@ void TestCaseRequestContext::Request(const Callback& cb, PThreadPool tpool,
     concurrent_runs = 1;
   }
 
-  std::unique_ptr<TestCaseRequestContext> self(new TestCaseRequestContext(cb, tpool, c, env, session_opts, test_case_id));
+  std::unique_ptr<TestCaseRequestContext> self = std::make_unique<TestCaseRequestContext>(cb, tpool, c, env, session_opts, test_case_id);
   CallableFactory<TestCaseRequestContext, void, size_t> f(self.get());
   auto runnable = f.GetCallable<&TestCaseRequestContext::RunAsync>();
   onnxruntime::concurrency::ThreadPool::Schedule(tpool, [runnable, concurrent_runs]() { runnable.Invoke(concurrent_runs); });

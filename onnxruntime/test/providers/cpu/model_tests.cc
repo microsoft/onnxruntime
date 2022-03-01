@@ -8,9 +8,13 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_env.h"
+#include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "asserts.h"
 #include <core/platform/path_lib.h>
 #include "default_providers.h"
+#include <string>
+#include <codecvt>
+#include <locale>
 
 // test infrastructure
 #include "test/onnx/TestCase.h"
@@ -52,7 +56,7 @@ TEST_P(ModelTest, Run) {
   std::basic_string<ORTCHAR_T> param = GetParam();
   size_t pos = param.find(ORT_TSTR("_"));
   ASSERT_NE(pos, std::string::npos);
-  std::string provider_name = ToMBString(param.substr(0, pos));
+  std::string provider_name = ToUTF8String(param.substr(0, pos));
   std::basic_string<ORTCHAR_T> model_path = param.substr(pos + 1);
   double per_sample_tolerance = 1e-3;
   // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
@@ -537,7 +541,7 @@ TEST_P(ModelTest, Run) {
   if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0)
     test_case_name = test_case_name.substr(5);
   {
-    BrokenTest t = {ToMBString(test_case_name), ""};
+    BrokenTest t = {ToUTF8String(test_case_name), ""};
     auto iter = broken_tests.find(t);
     auto model_version = model_info->GetModelVersion();
     if (iter != broken_tests.end() &&
@@ -548,7 +552,7 @@ TEST_P(ModelTest, Run) {
 
     for (auto iter2 = broken_tests_keyword_set.begin(); iter2 != broken_tests_keyword_set.end(); ++iter2) {
         std::string keyword = *iter2;
-        if (ToMBString(test_case_name).find(keyword) != std::string::npos) {
+        if (ToUTF8String(test_case_name).find(keyword) != std::string::npos) {
           return;
         }
     }
@@ -564,7 +568,7 @@ TEST_P(ModelTest, Run) {
     use_single_thread.push_back(true);
 
 
-  std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToMBString(test_case_name), std::move(model_info),
+  std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToUTF8String(test_case_name), std::move(model_info),
                                                     per_sample_tolerance, relative_per_sample_tolerance);
 
   for (bool is_single_thread : use_single_thread) {
@@ -575,7 +579,7 @@ TEST_P(ModelTest, Run) {
       else
         so.intra_op_param.thread_pool_size = 1;  // Disable intra op thread pool
       so.execution_mode = execution_mode;
-      so.session_logid = ToMBString(test_case_name);
+      so.session_logid = ToUTF8String(test_case_name);
       so.session_log_severity_level = (int)logging::Severity::kERROR;
       InferenceSession session_object(so, (**ort_env).GetEnvironment());
       if (provider_name == "cuda") {
@@ -588,7 +592,7 @@ TEST_P(ModelTest, Run) {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultNupharExecutionProvider()));
       } else if (provider_name == "tensorrt") {
         if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
-          OrtTensorRTProviderOptions params{
+          OrtTensorRTProviderOptionsV2 params{
               0,
               0,
               nullptr,
@@ -990,7 +994,43 @@ TEST_P(ModelTest, Run) {
   return v;
 }
 
-INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::ValuesIn(GetParameterStrings()));
+auto ExpandModelName  = [](const ::testing::TestParamInfo<ModelTest::ParamType>& info) {
+  // use info.param here to generate the test suffix
+  std::basic_string<ORTCHAR_T> name = info.param;
+
+  // the original name here is the combination of provider name and model path name
+  // remove the trailing 'xxxxxxx/model.onnx' of name
+  if (name.size() > 11 && name.substr(name.size() - 11) == ORT_TSTR("/model.onnx")) {
+    name = name.substr(0, info.param.size() - 11);
+  }
+  // remove the trailing 'xxxxxx.onnx' of name
+  else if (name.size() > 5 && name.substr(name.size() - 5) == ORT_TSTR(".onnx")) {
+    name = name.substr(0, info.param.size() - 5);
+  }
+
+  // Note: test name only accepts '_' and alphanumeric
+  // replace '/' or '\' with '_'
+  std::replace(name.begin(), name.end(), '/', '_');
+  std::replace(name.begin(), name.end(), '\\', '_');
+
+  // Note: test name only accepts '_' and alphanumeric
+  // remove '.' and '-'
+  char chars[] = ".-";
+  for (unsigned int i = 0; i < strlen(chars); ++i) {
+    name.erase(std::remove(name.begin(), name.end(), chars[i]), name.end());
+  }
+#ifdef _WIN32
+  // Note: The return value of INSTANTIATE_TEST_SUITE_P accpets std::basic_string<char...>.
+  // Need conversion of wchar_t to char.
+  return std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(name);
+#else
+  return name;
+#endif
+};
+
+// The optional last argument is a function or functor that generates custom test name suffixes based on the test parameters.
+// Specify the last argument to make test name more meaningful and clear instead of just the sequential number.
+INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::ValuesIn(GetParameterStrings()), ExpandModelName);
 
 }  // namespace test
 }  // namespace onnxruntime

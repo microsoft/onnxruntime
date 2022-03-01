@@ -96,7 +96,7 @@ bool ProviderIsCpuBased(const std::string& provider_type) {
   return provider_type == onnxruntime::kCpuExecutionProvider ||
          provider_type == onnxruntime::kDnnlExecutionProvider ||
          provider_type == onnxruntime::kNupharExecutionProvider ||
-         provider_type == onnxruntime::kStvmExecutionProvider ||
+         provider_type == onnxruntime::kTvmExecutionProvider ||
          provider_type == onnxruntime::kVitisAIExecutionProvider ||
          provider_type == onnxruntime::kOpenVINOExecutionProvider ||
          provider_type == onnxruntime::kNnapiExecutionProvider ||
@@ -268,9 +268,12 @@ const OrtMemoryInfo& FindMemoryInfoForValue(const SessionState& session_state,
 static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session_state,
                                                      const std::string& input_name,
                                                      MLValueCopyInfo& copy_info) {
-#ifdef ENABLE_TRAINING
   std::vector<SessionState::NodeInfo> node_info_vec;
+#ifdef ENABLE_TRAINING
   if (session_state.GetInputNodeInfo(input_name, node_info_vec) == Status::OK()) {
+#else
+  ORT_RETURN_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
+#endif
     const auto& node_info = node_info_vec.front();  // all consumers of a feed have the same device so first entry is fine
 
     if (node_info.p_node == nullptr) {
@@ -280,6 +283,7 @@ static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session
 
     copy_info.target_device = *node_info.device;
 
+#ifdef ENABLE_TRAINING
   } else {
     // This input might be for an intermediate tensor for partial graph execution.
     const auto* exec_plan = session_state.GetExecutionPlan();
@@ -289,22 +293,9 @@ static common::Status CalculateStaticCopyInfoForFeed(const SessionState& session
     const auto& device = exec_plan->GetLocation(index).device;
     copy_info.target_device = device;
   }
-
-  return Status::OK();
-#else
-  std::vector<SessionState::NodeInfo> node_info_vec;
-  ORT_RETURN_IF_ERROR(session_state.GetInputNodeInfo(input_name, node_info_vec));
-  const auto& node_info = node_info_vec.front();  // all consumers of a feed have the same device so first entry is fine
-
-  if (node_info.p_node == nullptr) {
-    // ignore dummy entry for an input that we didn't find a use of in the graph.
-    return Status::OK();
-  }
-
-  copy_info.target_device = *node_info.device;
-
-  return Status::OK();
 #endif
+
+  return Status::OK();
 }
 
 static common::Status CalculateStaticCopyInfoForFeeds(const SessionState& session_state,
@@ -508,6 +499,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
   }
 
   MLValueCopyInfo copy_info;
+  // Sets copy_info.target_device.
   ORT_RETURN_IF_ERROR(CalculateStaticCopyInfoForFeed(session_state, input_name, copy_info));
 #if !defined(DISABLE_SPARSE_TENSORS)
   copy_info.source_device = (orig_mlvalue.IsTensor())
@@ -517,6 +509,7 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
   copy_info.source_device = orig_mlvalue.Get<Tensor>().Location().device;
 #endif
 
+  // copy_info.target_device is not set leaving to be equal to CPU.
   return BatchOrCopyMLValue(session_state, copy_info, orig_mlvalue, new_mlvalue);
 }
 
@@ -563,14 +556,14 @@ static common::Status ExecuteGraphImpl(const SessionState& session_state,
                                        const logging::Logger& logger, const bool only_execute_path_to_fetches = false) {
   std::unique_ptr<IExecutor> p_exec;
   if (execution_mode == ExecutionMode::ORT_SEQUENTIAL) {
-    p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag, only_execute_path_to_fetches));
+    p_exec = std::make_unique<SequentialExecutor>(terminate_flag, only_execute_path_to_fetches);
   } else if (execution_mode == ExecutionMode::ORT_PARALLEL) {
     auto* p_inter_op_thread_pool = session_state.GetInterOpThreadPool();
     if (!p_inter_op_thread_pool) {
       LOGS(logger, WARNING) << "Only one thread was configured for parallel execution. Hence will use sequential execution.";
-      p_exec = std::unique_ptr<IExecutor>(new SequentialExecutor(terminate_flag, only_execute_path_to_fetches));
+      p_exec = std::make_unique<SequentialExecutor>(terminate_flag, only_execute_path_to_fetches);
     } else {
-      p_exec = std::unique_ptr<IExecutor>(new ParallelExecutor(session_state, terminate_flag));
+      p_exec = std::make_unique<ParallelExecutor>(session_state, terminate_flag);
     }
   }
 
@@ -793,10 +786,10 @@ bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index)
   }
 
 #ifdef ENABLE_TRAINING
-  if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATenOp" && node.Domain() == kMSDomain) {
+  if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATen" && node.Domain() == kPytorchAtenDomain) {
     const auto& attrs = node.GetAttributes();
-    ORT_ENFORCE(utils::HasString(attrs.at("name")));
-    std::string op_name = attrs.at("name").s();
+    ORT_ENFORCE(utils::HasString(attrs.at("operator")));
+    std::string op_name = attrs.at("operator").s();
     std::string overload_name = "";
     if (attrs.find("overload_name") != attrs.end() && utils::HasString(attrs.at("overload_name"))) {
       overload_name = attrs.at("overload_name").s();

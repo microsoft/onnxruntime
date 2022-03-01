@@ -121,8 +121,6 @@ repositories {
 }
 
 dependencies {
-  def onnxruntimeMobileVersion = project.properties['Onnxruntime_mobileVersion']
-
   // noinspection GradleDynamicVersion
   api "com.facebook.react:react-native:+"
   api "org.mockito:mockito-core:2.28.2"
@@ -134,5 +132,5 @@ dependencies {
 
   androidTestImplementation "com.linkedin.dexmaker:dexmaker-mockito-inline-extended:2.28.1"
 
-  implementation "com.microsoft.onnxruntime:onnxruntime-mobile:$onnxruntimeMobileVersion@aar"
+  implementation "com.microsoft.onnxruntime:onnxruntime-mobile:latest.integration@aar"
 }

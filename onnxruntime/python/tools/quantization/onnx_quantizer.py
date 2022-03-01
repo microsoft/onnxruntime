@@ -170,6 +170,12 @@ class ONNXQuantizer:
         self.fuse_dynamic_quant = True
         return opset_version
 
+    def has_QDQ_nodes(self):
+        '''
+            Detect if model already has QuantizeLinear or DequantizeLinear.
+        '''
+        return any(node.op_type == 'QuantizeLinear' or node.op_type == 'DequantizeLinear' for node in self.model.nodes())
+
     def remove_fake_quantized_nodes(self):
         '''
             Detect and remove the quantize/dequantizelinear node pairs(fake quantized nodes in Quantization-Aware training)
@@ -270,7 +276,10 @@ class ONNXQuantizer:
                 self.generated_value_names.add(output_name)
 
     def quantize_model(self):
-        self.remove_fake_quantized_nodes()
+        if self.has_QDQ_nodes():
+            logging.warning(
+                "Please check if the model is already quantized."
+                "Note you don't need to quantize a QAT model. OnnxRuntime support to run QAT model directly.")
 
         for node in self.model.nodes():
             # quantize subgraphes if have
@@ -553,7 +562,7 @@ class ONNXQuantizer:
             return self.parent.find_quantized_value(input_name)
         return None
 
-    def quantize_bias_static(self, bias_name, input_name, weight_name):
+    def quantize_bias_static(self, bias_name, input_name, weight_name, beta = 1.0):
         '''
         Quantized the bias. Zero Point == 0 and Scale == Input_Scale * Weight_Scale
         '''
@@ -584,7 +593,7 @@ class ONNXQuantizer:
         input_scale = self.tensor_proto_to_array(inputscale_initializer)
 
         # calcuate scale for bias
-        bias_scale = input_scale * weight_scale
+        bias_scale = input_scale * weight_scale * beta
 
         # quantize bias
         quantized_data = (np.asarray(bias_data) / bias_scale).round().astype(np.int32)
@@ -860,7 +869,7 @@ class ONNXQuantizer:
         quantization_params = {}
         for tensor_name in self.tensors_range.keys():
             rmin, rmax = self.tensors_range[tensor_name]
-            qmin, qmax = get_qmin_qmax_for_qType(self.input_qType)
+            qmin, qmax = get_qmin_qmax_for_qType(self.input_qType, symmetric=self.is_activation_symmetric)
 
             quantization_params[tensor_name] = compute_scale_zp(rmin, rmax,
                                                                 qmin, qmax,

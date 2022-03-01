@@ -8,6 +8,7 @@
 #pragma warning(disable : 4996)
 #endif
 #include "unique.h"
+#include "core/common/inlined_containers.h"
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
@@ -30,40 +31,42 @@ Status Unique<float>::Compute(OpKernelContext* ctx) const {
 
   // obtain raw input data
   const float* input_data = input->Data<float>();
-  size_t num_elements = static_cast<size_t>(input->Shape().Size());
+  const auto num_elements = input->Shape().Size();
 
   // 'idx' output has same output shape as input
   Tensor* output_idx = ctx->Output(1, input->Shape());
   int64_t* output_idx_data = output_idx->template MutableData<int64_t>();
 
-  // container to hold the unique elements (in the order it was first seen)
-  std::vector<float> unique_elements;
-  // number of unique elements is atmost number of elements in the raw data
-  unique_elements.reserve(num_elements);
+  struct ElementData {
+    int64_t input_pos_; // original index
+    int64_t output_pos_;
+    int64_t count_; // number of times encountered
+  };
 
-  // containers to store other metadata needed for other output tensors
-  std::unordered_map<float, size_t> mapped_indices;
-  std::unordered_map<float, size_t> element_counts;
+  // XXX: Refactoring for less memory allocations. unordered_map
+  // used originally for float uniqueness, is this correct?
+  using IndexingMap = InlinedHashMap<float, ElementData>;
+  IndexingMap mapped_indices;
+  mapped_indices.reserve(num_elements);
 
   // processing
-  for (size_t i = 0; i < num_elements; ++i) {
-    float temp = input_data[i];
+  for (int64_t i = 0; i < num_elements; ++i) {
+    float value = input_data[i];
 
-    const auto iter = mapped_indices.find(temp);
-    if (iter == mapped_indices.end()) {
-      // element is being seen for the first time
-      element_counts[temp] = 1;
-      output_idx_data[i] = mapped_indices[temp] = unique_elements.size();
-      unique_elements.push_back(temp);
+    const auto original_index = i;
+    const auto num_unique = static_cast<int64_t>(mapped_indices.size());
+    auto insert_result = mapped_indices.emplace(value, ElementData{original_index, num_unique, 1});
+    if (insert_result.second) {
+      output_idx_data[i] = num_unique;
     } else {
-      // element has been seen before
-      output_idx_data[i] = iter->second;
-      ++element_counts[temp];
+      // Seen before
+      output_idx_data[i] = insert_result.first->second.output_pos_;
+      insert_result.first->second.count_++;
     }
   }
 
   // 'uniques' output
-  TensorShape output_shape({static_cast<int64_t>(unique_elements.size())});
+  TensorShape output_shape({static_cast<int64_t>(mapped_indices.size())});
   Tensor* output_uniques = ctx->Output(0, output_shape);
   float* output_uniques_data = output_uniques->template MutableData<float>();
 
@@ -71,16 +74,12 @@ Status Unique<float>::Compute(OpKernelContext* ctx) const {
   Tensor* output_counts = ctx->Output(2, output_shape);
   int64_t* output_counts_data = output_counts->template MutableData<int64_t>();
 
-  size_t iter = 0;
-  for (const float& e : unique_elements) {
+  for (const auto& e : mapped_indices) {
     // 'uniques' data
-    output_uniques_data[iter] = e;
-
+    const auto output_pos = e.second.output_pos_;
+    output_uniques_data[output_pos] = e.first;
     // 'counts' data
-    const auto iter_map = element_counts.find(e);
-    output_counts_data[iter] = static_cast<int64_t>(iter_map->second);
-
-    ++iter;
+    output_counts_data[output_pos] = e.second.count_;
   }
 
   return Status::OK();

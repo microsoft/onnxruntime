@@ -206,7 +206,7 @@ class Session:
         Compute the predictions.
 
         :param output_names: name of the outputs
-        :param input_feed: dictionary ``{ input_name: input_ort_value }``
+        :param input_dict_ort_values: dictionary ``{ input_name: input_ort_value }``
             See ``OrtValue`` class how to create `OrtValue`
             from numpy array or `SparseTensor`
         :param run_options: See :class:`onnxruntime.RunOptions`.
@@ -349,6 +349,8 @@ class InferenceSession(Session):
         # Tensorrt can fall back to CUDA. All others fall back to CPU.
         if 'TensorrtExecutionProvider' in available_providers:
             self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        elif 'MIGraphXExecutionProvider' in available_providers:
+            self._fallback_providers = ['ROCMExecutionProvider', 'CPUExecutionProvider']
         else:
             self._fallback_providers = ['CPUExecutionProvider']
 

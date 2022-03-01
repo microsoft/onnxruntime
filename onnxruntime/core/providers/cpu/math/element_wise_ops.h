@@ -4,13 +4,19 @@
 #pragma once
 
 #include "core/common/common.h"
+#include "core/common/inlined_containers.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/cpu/element_wise_ranged_transform.h"
 
 namespace onnxruntime {
 namespace functors {
-
+// TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// Do not use raw new/delete.
+#pragma warning(disable : 26409)
+#endif
 template <typename T>
 struct Log final : public ElementWiseRangedTransform<T> {
   Status Init(const onnxruntime::NodeAttributes) {
@@ -459,7 +465,7 @@ auto MakeEigenArrayMap(const Tensor& t) -> ConstEigenVectorArrayMap<T> {
 }
 
 struct BroadcastIterator {
-  size_t Current() const { return index_; }
+  size_t Current() const noexcept { return index_; }
 
   size_t AdvanceBy(size_t delta) {
     size_t index = index_;
@@ -501,6 +507,18 @@ struct BroadcastIterator {
     count_ *= axis;
   }
 
+  void AllocateCounters() {
+    counters_.resize(counts_.size(), 0);
+  }
+
+  ptrdiff_t GetCountsFront() const {
+    return counts_.front();
+  }
+
+  ptrdiff_t GetDeltasFront() const {
+    return deltas_.front();
+  }
+
   void Append(ptrdiff_t axis, ptrdiff_t largest) {
     ORT_ENFORCE(axis == 1 || axis == largest, "Attempting to broadcast an axis by a dimension other than 1. ", axis, " by ", largest);
 
@@ -527,12 +545,14 @@ struct BroadcastIterator {
     counts_.push_back(1);
   }
 
-  std::vector<ptrdiff_t> counters_;
-  std::vector<ptrdiff_t> deltas_;
-  std::vector<ptrdiff_t> counts_;
+ private:
+  using BroadCastVector = InlinedVector<ptrdiff_t, kTensorShapeSmallBufferElementsSize>;
+
+  BroadCastVector counters_;
+  BroadCastVector deltas_;
+  BroadCastVector counts_;
   ptrdiff_t count_{1};  // Running total count of entries in tensor, used while building up the entries
 
- private:
   size_t index_{};
 };
 
@@ -635,14 +655,14 @@ struct Broadcaster {
     }
 
     // Allocate the counters
-    iterator1_.counters_.resize(iterator1_.counts_.size(), 0);
-    iterator2_.counters_.resize(iterator2_.counts_.size(), 0);
+    iterator1_.AllocateCounters();
+    iterator2_.AllocateCounters();
   }
 
-  size_t GetSpanSize() const { return std::min(iterator1_.counts_.front(), iterator2_.counts_.front()); }
+  size_t GetSpanSize() const { return std::min(iterator1_.GetCountsFront(), iterator2_.GetCountsFront()); }
 
   BroadcastIterator iterator1_, iterator2_;
-  std::vector<int64_t> output_shape_;
+  TensorShapeVector output_shape_;
 };
 
 struct InputBroadcaster {
@@ -671,8 +691,8 @@ struct InputBroadcaster {
   // before calling any methods that require input 1 to have data.
   bool HaveTwoTensors() const { return input_tensor1_ != nullptr; }
 
-  bool IsInput0Scalar() const { return broadcaster_.iterator1_.deltas_.front() == 0; }
-  bool IsInput1Scalar() const { return broadcaster_.iterator2_.deltas_.front() == 0; }
+  bool IsInput0Scalar() const { return broadcaster_.iterator1_.GetDeltasFront() == 0; }
+  bool IsInput1Scalar() const { return broadcaster_.iterator2_.GetDeltasFront() == 0; }
 
   size_t Input0ElementSize() const { return input0_element_size_; }
   size_t Input1ElementSize() const { return input1_element_size_; }
@@ -982,4 +1002,7 @@ struct TensorAllocator {
  private:
   AllocatorPtr allocator_;
 };
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 }  // namespace onnxruntime

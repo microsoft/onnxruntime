@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "test/optimizer/graph_transform_test_builder.h"
+
 #include <functional>
 #include <string>
 #include <vector>
@@ -9,9 +11,8 @@
 #include "core/session/inference_session.h"
 #include "test/compare_ortvalue.h"
 #include "test/test_environment.h"
+#include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
-
-#include "graph_transform_test_builder.h"
 
 namespace onnxruntime {
 namespace test {
@@ -23,7 +24,8 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        int opset_version,
                        double per_sample_tolerance,
                        double relative_per_sample_tolerance,
-                       std::unique_ptr<GraphTransformer> transformer) {
+                       std::unique_ptr<GraphTransformer> transformer,
+                       const std::function<void(SessionOptions&)>* add_session_options) {
   // Build the model for this test.
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = opset_version;
@@ -34,39 +36,36 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
   ModelTestBuilder helper(graph);
   build_test_case(helper);
   helper.SetGraphOutputs();
-  ASSERT_TRUE(model.MainGraph().Resolve().IsOK());
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
 
   // Serialize the model to a string.
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
 
-  auto run_model = [&](TransformerLevel level, std::vector<OrtValue>& fetches, std::unique_ptr<GraphTransformer> transformer = nullptr) {
+  auto run_model = [&](TransformerLevel level, std::vector<OrtValue>& fetches,
+                       std::unique_ptr<GraphTransformer> transformer = nullptr) {
     SessionOptions session_options;
     session_options.graph_optimization_level = transformer ? baseline_level : level;
 #if 0  // enable to dump model for debugging
-    session_options.optimized_model_filepath = L"model" + std::to_wstring(static_cast<int>(level)) + L".onnx";
+    session_options.optimized_model_filepath =
+        ToPathString("model" + std::to_string(static_cast<int>(level)) + ".onnx");
 #endif
+    if (add_session_options) {
+      (*add_session_options)(session_options);
+    }
     InferenceSessionWrapper session{session_options, GetEnvironment()};
-    ASSERT_TRUE(session.Load(model_data.data(), static_cast<int>(model_data.size())).IsOK());
+    ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
     if (transformer) {
-      ASSERT_TRUE(session.RegisterGraphTransformer(std::move(transformer), level).IsOK());
+      ASSERT_STATUS_OK(session.RegisterGraphTransformer(std::move(transformer), level));
     }
 
-    auto status = session.Initialize();
-    if (!status.IsOK()) {
-      std::cout << "Model initialized failed with status message: " << status.ErrorMessage() << std::endl;
-    }
-    ASSERT_TRUE(status.IsOK());
+    ASSERT_STATUS_OK(session.Initialize());
 
     RunOptions run_options;
-    status = session.Run(run_options,
-                         helper.feeds_,
-                         helper.output_names_,
-                         &fetches);
-    if (!status.IsOK()) {
-      std::cout << "Run failed with status message: " << status.ErrorMessage() << std::endl;
-    }
-    ASSERT_TRUE(status.IsOK());
+    ASSERT_STATUS_OK(session.Run(run_options,
+                                 helper.feeds_,
+                                 helper.output_names_,
+                                 &fetches));
 
     if (level == target_level) {
       check_transformed_graph(session);
@@ -74,13 +73,13 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
   };
 
   std::vector<OrtValue> baseline_fetches;
-  run_model(baseline_level, baseline_fetches);
+  ASSERT_NO_FATAL_FAILURE(run_model(baseline_level, baseline_fetches));
 
   std::vector<OrtValue> target_fetches;
-  run_model(target_level, target_fetches, std::move(transformer));
+  ASSERT_NO_FATAL_FAILURE(run_model(target_level, target_fetches, std::move(transformer)));
 
   size_t num_outputs = baseline_fetches.size();
-  ASSERT_TRUE(num_outputs == target_fetches.size());
+  ASSERT_EQ(num_outputs, target_fetches.size());
 
   for (size_t i = 0; i < num_outputs; i++) {
     std::pair<COMPARE_RESULT, std::string> ret =

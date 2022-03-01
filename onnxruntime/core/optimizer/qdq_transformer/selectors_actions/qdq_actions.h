@@ -23,7 +23,7 @@ struct QDQReplaceWithNew : public ReplaceWithNew {
 
 #if !defined(ORT_MINIMAL_BUILD)
   Status RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
-                    const RuntimeOptimizationSaveContext& save_context,
+                    const SatRuntimeOptimizationSaveContext& save_context,
                     SavedState& saved_state, bool& graph_modified) const override;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 };
@@ -65,6 +65,26 @@ struct MatMulReplaceWithQLinear : public Action {
  private:
   QDQReplaceWithNew matmul_int_to_float_replacer_;
   BinaryReplaceWithQLinear qlinear_matmul_replacer_;
+};
+
+struct GemmReplaceWithQuant : public Action {
+  GemmReplaceWithQuant();
+
+  Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  Status RunForSave(Graph& /*graph*/, const NodesToOptimize& /*selected_nodes*/,
+                    const SatRuntimeOptimizationSaveContext& /*save_context*/,
+                    SavedState& /*saved_state*/, bool& /*graph_modified*/) const override;
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+  static inline void RemoveAttrBeta(const NodesToOptimize& selected_nodes) {
+    selected_nodes.Target().ClearAttribute("beta");
+  }
+
+ private:
+  QDQReplaceWithNew qgemm_with_float_as_output_replacer_;
+  QDQReplaceWithNew qgemm_with_8bits_as_output_replacer_;
 };
 
 }  // namespace QDQ

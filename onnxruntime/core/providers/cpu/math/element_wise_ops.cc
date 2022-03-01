@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/data_types_internal.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
+
+#include "core/framework/data_types_internal.h"
+#include "core/framework/math.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/op_kernel_type_control.h"
 #include <unsupported/Eigen/SpecialFunctions>
@@ -383,8 +385,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     Not,
     1,
     KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<bool>())
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<bool>()),
     Not);
 
 ONNX_CPU_OPERATOR_KERNEL(
@@ -1794,8 +1795,8 @@ void UntypedBroadcastTwo(OpKernelContext& context, const ProcessBroadcastSpanFun
 
     concurrency::ThreadPool::TryParallelFor(
         tp, output_size / span_size,
-        TensorOpCost{static_cast<float>(input_broadcaster.Input0ElementSize() * span_size),
-                     static_cast<float>(output_tensor.DataType()->Size() * span_size),
+        TensorOpCost{static_cast<double>(input_broadcaster.Input0ElementSize()) * span_size,
+                     static_cast<double>(output_tensor.DataType()->Size()) * span_size,
                      unit_cost * span_size},
         [span_size, &const_input_broadcaster, &output_tensor, &funcs, user_data](std::ptrdiff_t first_span,
                                                                                  std::ptrdiff_t last_span) {

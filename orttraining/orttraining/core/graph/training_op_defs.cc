@@ -2100,16 +2100,16 @@ Example 4:
                 .Const("C_MinusHalf", -0.5f, elem_type)
                 .Const("C_alpha", kAlpha, elem_type)
                 .Add(R"(
-                    ErfArg = Mul (X, C_SqrtHalf) 
-                    ErfTerm = Erf (ErfArg) 
-                    PartialSum = Add (ErfTerm, C_One) 
-                    HalfPartialSum = Mul (C_Half, PartialSum) 
-                    AlphaX = Mul (X, C_alpha) 
-                    MinusHalfX = Mul (C_MinusHalf, X) 
-                    ExpArg = Mul (MinusHalfX, X) 
-                    ExpTerm = Exp (ExpArg) 
-                    Term3 = Mul (AlphaX, ExpTerm) 
-                    FullSum = Add (HalfPartialSum, Term3) 
+                    ErfArg = Mul (X, C_SqrtHalf)
+                    ErfTerm = Erf (ErfArg)
+                    PartialSum = Add (ErfTerm, C_One)
+                    HalfPartialSum = Mul (C_Half, PartialSum)
+                    AlphaX = Mul (X, C_alpha)
+                    MinusHalfX = Mul (C_MinusHalf, X)
+                    ExpArg = Mul (MinusHalfX, X)
+                    ExpTerm = Exp (ExpArg)
+                    Term3 = Mul (AlphaX, ExpTerm)
+                    FullSum = Add (HalfPartialSum, Term3)
                     dX = Mul (dY, FullSum)
                 )");
 
@@ -2814,7 +2814,7 @@ Return true if all elements are true and false otherwise.
       .Output(0, "dX", "Gradient of the input.", "T")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
@@ -2994,18 +2994,18 @@ Return true if all elements are true and false otherwise.
       });
 
 #ifdef ENABLE_TRAINING
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ATenOp)
-      .SetDomain(kMSDomain)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ATen)
+      .SetDomain(kPytorchAtenDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("ATenOp")
-      .Input(0, "inputs", "ATenOp inputs.", "T", OpSchema::Variadic,
+      .SetDoc("ATen")
+      .Input(0, "inputs", "ATen Op inputs.", "T", OpSchema::Variadic,
              /*is_homogeneous*/ false,
              /*min_arity*/ 1)
-      .Output(0, "outputs", "ATenOp outputs.", "T", OpSchema::Variadic,
+      .Output(0, "outputs", "ATen Op outputs.", "T", OpSchema::Variadic,
               /*is_homogeneous*/ false,
               /*min_arity*/ 1)
-      .Attr("name", "Name of ATen operator.", AttributeProto::STRING)
+      .Attr("operator", "Name of ATen operator.", AttributeProto::STRING)
       .Attr("overload_name", "Overload name of ATen operator.", AttributeProto::STRING, false)
       .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.");
 #endif
@@ -3445,9 +3445,8 @@ Return true if all elements are true and false otherwise.
 
 void RegisterOrtOpSchemas() {
   auto& domainToVersionRangeInstance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
-  if (domainToVersionRangeInstance.Map().find(onnxruntime::kMSDomain) == domainToVersionRangeInstance.Map().end())
-  {
-    // External shared providers may have already added kMSDomain 
+  if (domainToVersionRangeInstance.Map().find(onnxruntime::kMSDomain) == domainToVersionRangeInstance.Map().end()) {
+    // External shared providers may have already added kMSDomain
     domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
   }
   domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);

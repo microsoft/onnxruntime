@@ -218,41 +218,29 @@ jobs:
         $arm_static_runtime_nupkg_unzipped_directory = [System.IO.Path]::Combine($arm_static_runtime_nupkg_unzipped_directory_root, 'binaries', [System.IO.Path]::GetFileNameWithoutExtension($arm_static_runtime_nuget_package))
         [System.IO.Compression.ZipFile]::ExtractToDirectory($arm_static_runtime_nuget_package, $arm_static_runtime_nupkg_unzipped_directory)
 
-        $x64_store_runtime_path_old = [System.IO.Path]::Combine($x64_static_runtime_nupkg_unzipped_directory, 'runtimes', 'win-x64', '_native')
-        $x64_store_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-x64', 'lib\\uap10.0')
         $x64_static_runtime_path_old = [System.IO.Path]::Combine($x64_static_runtime_nupkg_unzipped_directory, 'runtimes', 'win-x64', '_native')
         $x64_static_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-x64', '_native', 'static')
         $x86_runtime_path_old = [System.IO.Path]::Combine($x86_nupkg_unzipped_directory, 'runtimes', 'win-x86', '_native')
         $x86_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-x86', '_native')
-        $x86_store_runtime_path_old = [System.IO.Path]::Combine($x86_static_runtime_nupkg_unzipped_directory, 'runtimes', 'win-x86', '_native')
-        $x86_store_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-x86', 'lib\\uap10.0')
         $x86_static_runtime_path_old = [System.IO.Path]::Combine($x86_static_runtime_nupkg_unzipped_directory, 'runtimes', 'win-x86', '_native')
         $x86_static_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-x86', '_native', 'static')
         $arm64_runtime_path_old = [System.IO.Path]::Combine($arm64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', '_native')
         $arm64_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', '_native')
-        $arm64_store_runtime_path_old = [System.IO.Path]::Combine($arm64_static_runtime_nupkg_unzipped_directory, 'runtimes', 'win-arm64', '_native')
-        $arm64_store_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', 'lib\\uap10.0')
         $arm64_static_runtime_path_old = [System.IO.Path]::Combine($arm64_static_runtime_nupkg_unzipped_directory, 'runtimes', 'win-arm64', '_native')
         $arm64_static_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm64', '_native', 'static')
         $arm_runtime_path_old = [System.IO.Path]::Combine($arm_nupkg_unzipped_directory, 'runtimes', 'win-arm', '_native')
         $arm_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm', '_native')
-        $arm_store_runtime_path_old = [System.IO.Path]::Combine($arm_static_runtime_nupkg_unzipped_directory, 'runtimes', 'win-arm', '_native')
-        $arm_store_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm', 'lib\\uap10.0')
         $arm_static_runtime_path_old = [System.IO.Path]::Combine($arm_static_runtime_nupkg_unzipped_directory, 'runtimes', 'win-arm', '_native')
         $arm_static_runtime_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'runtimes', 'win-arm', '_native', 'static')
         $uap_build_path_old = [System.IO.Path]::Combine($x64_static_runtime_nupkg_unzipped_directory, 'build', 'native')
         $uap_build_path_new = [System.IO.Path]::Combine($x64_nupkg_unzipped_directory, 'build', 'uap10.0')
 
-        New-Item -Path $x64_store_runtime_path_new -ItemType Directory
         New-Item -Path $x64_static_runtime_path_new -ItemType Directory
         New-Item -Path $x86_runtime_path_new -ItemType Directory
-        New-Item -Path $x86_store_runtime_path_new -ItemType Directory
         New-Item -Path $x86_static_runtime_path_new -ItemType Directory
         New-Item -Path $arm64_runtime_path_new -ItemType Directory
-        New-Item -Path $arm64_store_runtime_path_new -ItemType Directory
         New-Item -Path $arm64_static_runtime_path_new -ItemType Directory
         New-Item -Path $arm_runtime_path_new -ItemType Directory
-        New-Item -Path $arm_store_runtime_path_new -ItemType Directory
         New-Item -Path $arm_static_runtime_path_new -ItemType Directory
 
         Copy-Item ([System.IO.Path]::Combine($x86_runtime_path_old, 'onnxruntime.dll'))                    $x86_runtime_path_new
@@ -269,26 +257,6 @@ jobs:
         Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'onnxruntime.lib'))                    $arm_runtime_path_new
         Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'microsoft.ai.machinelearning.dll'))   $arm_runtime_path_new
         Copy-Item ([System.IO.Path]::Combine($arm_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   $arm_runtime_path_new
-
-        Copy-Item ([System.IO.Path]::Combine($x64_store_runtime_path_old, 'onnxruntime.dll'))                    $x64_store_runtime_path_new
-        Copy-Item ([System.IO.Path]::Combine($x64_store_runtime_path_old, 'onnxruntime.lib'))                    $x64_store_runtime_path_new
-        Copy-Item ([System.IO.Path]::Combine($x64_store_runtime_path_old, 'microsoft.ai.machinelearning.dll'))   $x64_store_runtime_path_new
-        Copy-Item ([System.IO.Path]::Combine($x64_store_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   $x64_store_runtime_path_new
-
-        Copy-Item ([System.IO.Path]::Combine($x86_store_runtime_path_old, 'onnxruntime.dll'))                    $x86_store_runtime_path_new
-        Copy-Item ([System.IO.Path]::Combine($x86_store_runtime_path_old, 'onnxruntime.lib'))                    $x86_store_runtime_path_new
-        Copy-Item ([System.IO.Path]::Combine($x86_store_runtime_path_old, 'microsoft.ai.machinelearning.dll'))   $x86_store_runtime_path_new
-        Copy-Item ([System.IO.Path]::Combine($x86_store_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   $x86_store_runtime_path_new
-
-        Copy-Item ([System.IO.Path]::Combine($arm64_store_runtime_path_old, 'onnxruntime.dll'))                  $arm64_store_runtime_path_new
-        Copy-Item ([System.IO.Path]::Combine($arm64_store_runtime_path_old, 'onnxruntime.lib'))                  $arm64_store_runtime_path_new
-        Copy-Item ([System.IO.Path]::Combine($arm64_store_runtime_path_old, 'microsoft.ai.machinelearning.dll')) $arm64_store_runtime_path_new
-        Copy-Item ([System.IO.Path]::Combine($arm64_store_runtime_path_old, 'microsoft.ai.machinelearning.lib')) $arm64_store_runtime_path_new
-
-        Copy-Item ([System.IO.Path]::Combine($arm_store_runtime_path_old, 'onnxruntime.dll'))                    $arm_store_runtime_path_new
-        Copy-Item ([System.IO.Path]::Combine($arm_store_runtime_path_old, 'onnxruntime.lib'))                    $arm_store_runtime_path_new
-        Copy-Item ([System.IO.Path]::Combine($arm_store_runtime_path_old, 'microsoft.ai.machinelearning.dll'))   $arm_store_runtime_path_new
-        Copy-Item ([System.IO.Path]::Combine($arm_store_runtime_path_old, 'microsoft.ai.machinelearning.lib'))   $arm_store_runtime_path_new
 
         Copy-Item ([System.IO.Path]::Combine($x64_static_runtime_path_old, 'onnxruntime.dll'))                    ([System.IO.Path]::Combine($x64_static_runtime_path_new, 'onnxruntime.dll'))
         Copy-Item ([System.IO.Path]::Combine($x64_static_runtime_path_old, 'onnxruntime.lib'))                    ([System.IO.Path]::Combine($x64_static_runtime_path_new, 'onnxruntime.lib'))
@@ -510,6 +478,49 @@ jobs:
         msbuild Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj /p:Platform=AnyCpu /t:Restore
         msbuild Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj /p:Platform=AnyCpu
       workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.DotNet5_0
+
+
+  - task: PowerShell@2  
+    displayName: 'NuGet Tests: Fix Nuget Package references (C# UWP)' 
+    inputs: 
+      targetType: 'inline'  
+      script: | 
+        Add-Type -AssemblyName "System.IO.Compression.FileSystem"   
+        $src_root_dir = $Env:BUILD_SOURCESDIRECTORY;    
+        $artifacts_staging_dir = $Env:BUILD_ARTIFACTSTAGINGDIRECTORY;   
+        $merged_nuget_path = [System.IO.Path]::Combine($artifacts_staging_dir, 'merged')    
+        $nupkgs = (Get-ChildItem -Filter Microsoft.AI.MachineLearning*) 
+        $merged_nuget_package = $nupkgs[0]  
+        $merged_nuget_package_name = $merged_nuget_package.Name 
+        $matched_name = ($merged_nuget_package_name -match "Microsoft.AI.MachineLearning.(?<version>.*).nupkg") 
+        $package_version = $matches['version']  
+        $src_dir = [System.IO.Path]::Combine($src_root_dir, 'csharp', 'test', 'Microsoft.AI.MachineLearning.Tests.Uwp')   
+        $input_csproj = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.Uwp.csproj.pp')   
+        $csproj = [System.IO.Path]::Combine($src_dir, 'Microsoft.AI.MachineLearning.Tests.Uwp.csproj')    
+        $input_csproj_content = Get-Content -Path $input_csproj 
+        $csproj_content = $input_csproj_content -replace '\[PackageVersion\]', $package_version 
+        Set-Content -Path $csproj -Value $csproj_content    
+        $input_nuget_config = [System.IO.Path]::Combine($src_dir, 'NuGet.config.pp')    
+        $nuget_config = [System.IO.Path]::Combine($src_dir, 'NuGet.config') 
+        $input_nuget_config_content = Get-Content -Path $input_nuget_config 
+        $nuget_config_content = $input_nuget_config_content -replace '\[BuildPackageSource\]', $merged_nuget_path   
+        Set-Content -Path $nuget_config -Value $nuget_config_content    
+      workingDirectory: $(Build.ArtifactStagingDirectory)\merged
+
+  - task: PowerShell@2
+    displayName: 'NuGet Tests: Build Tests (C# UWP)'
+    inputs:
+      targetType: 'inline'
+      script: |
+        msbuild Microsoft.AI.MachineLearning.Tests.Uwp.csproj /p:Platform=x64 /t:Restore
+        msbuild Microsoft.AI.MachineLearning.Tests.Uwp.csproj /p:Platform=x64
+        msbuild Microsoft.AI.MachineLearning.Tests.Uwp.csproj /p:Platform=x86 /t:Restore
+        msbuild Microsoft.AI.MachineLearning.Tests.Uwp.csproj /p:Platform=x86
+        msbuild Microsoft.AI.MachineLearning.Tests.Uwp.csproj /p:Platform=ARM /t:Restore
+        msbuild Microsoft.AI.MachineLearning.Tests.Uwp.csproj /p:Platform=ARM
+        msbuild Microsoft.AI.MachineLearning.Tests.Uwp.csproj /p:Platform=ARM64 /t:Restore
+        msbuild Microsoft.AI.MachineLearning.Tests.Uwp.csproj /p:Platform=ARM64
+      workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.Uwp
 
   - task: PowerShell@2
     displayName: 'NuGet Tests: Run Tests'

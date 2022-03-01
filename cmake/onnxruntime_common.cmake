@@ -108,6 +108,8 @@ if (onnxruntime_USE_MIMALLOC)
     endif()
 endif()
 
+include(external/abseil-cpp.cmake)
+
 onnxruntime_add_include_to_target(onnxruntime_common date_interface wil)
 target_include_directories(onnxruntime_common
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS}
@@ -115,7 +117,7 @@ target_include_directories(onnxruntime_common
     PUBLIC
         ${OPTIONAL_LITE_INCLUDE_DIR})
 
-target_link_libraries(onnxruntime_common safeint_interface Boost::mp11)
+target_link_libraries(onnxruntime_common safeint_interface Boost::mp11 absl::throw_delegate)
 
 if(NOT WIN32)
   target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
@@ -126,11 +128,6 @@ add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/common  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 set_target_properties(onnxruntime_common PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_common PROPERTIES FOLDER "ONNXRuntime")
-
-if(WIN32)
-    # Add Code Analysis properties to enable C++ Core checks. Have to do it via a props file include.
-    set_target_properties(onnxruntime_common PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
-endif()
 
 # check if we need to link against librt on Linux
 include(CheckLibraryExists)

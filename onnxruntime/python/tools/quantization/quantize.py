@@ -42,15 +42,16 @@ def optimize_model(model_path: Path):
     return optimized_model
 
 
-def load_model(model_path: Path, optimize=True):
-    if optimize:
-        #optimize the original model
-        onnx_model = ONNXModel(optimize_model(Path(model_path)))
-        # to support GEMM
+def load_model(model_path: Path, optimize=True, handle_gemm_with_matmul=True):
+
+    model = optimize_model(Path(model_path)) if optimize else onnx.load(Path(model_path))
+
+    if handle_gemm_with_matmul:
+        onnx_model = ONNXModel(model)
         onnx_model.replace_gemm_with_matmul()
         return onnx_model.model
 
-    return onnx.load(Path(model_path))
+    return model
 
 
 def quantize(model,
@@ -141,7 +142,7 @@ def quantize_static(model_input,
                     per_channel=False,
                     reduce_range=False,
                     activation_type=QuantType.QUInt8,
-                    weight_type=QuantType.QUInt8,
+                    weight_type=QuantType.QInt8,
                     nodes_to_quantize=[],
                     nodes_to_exclude=[],
                     optimize_model=True,
@@ -161,8 +162,8 @@ def quantize_static(model_input,
     :param op_types: operators to quantize
     :param per_channel: quantize weights per channel
     :param reduce_range: quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode
-    :param activation_type: quantization data type of activation
-    :param weight_type: quantization data type of weight
+    :param activation_type: quantization data type of activation. Please refer to https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
+    :param weight_type: quantization data type of weight. Please refer to https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
     :param nodes_to_quantize:
         List of nodes names to quantize. When this list is not None only the nodes in this list
         are quantized.
@@ -204,6 +205,7 @@ def quantize_static(model_input,
                                                             and it's effective only when per channel quantization is supported and per_channel is True.
                                                             If specific op type supports per channel quantization but not explicitly specified with channel axis,
                                                             default channel axis will be used.
+            CalibTensorRangeSymmetric = True/False : Default is False. If enabled, the final range of tensor during calibration will be explicitly set to symmetric to central point "0".
     '''
 
     mode = QuantizationMode.QLinearOps
@@ -211,9 +213,10 @@ def quantize_static(model_input,
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(QLinearOpsRegistry.keys())
 
-    model = load_model(Path(model_input), optimize_model)
+    model = load_model(Path(model_input), optimize_model, False)
 
-    calibrator = create_calibrator(model, op_types_to_quantize, calibrate_method=calibrate_method)
+    calib_extra_options = {} if 'CalibTensorRangeSymmetric' not in extra_options else {'symmetric': extra_options['CalibTensorRangeSymmetric']} 
+    calibrator = create_calibrator(model, op_types_to_quantize, calibrate_method=calibrate_method, extra_options=calib_extra_options)
     calibrator.collect_data(calibration_data_reader)
     tensors_range = calibrator.compute_range()
 
@@ -256,7 +259,7 @@ def quantize_dynamic(model_input: Path,
                      per_channel=False,
                      reduce_range=False,
                      activation_type=QuantType.QUInt8,
-                     weight_type=QuantType.QUInt8,
+                     weight_type=QuantType.QInt8,
                      nodes_to_quantize=[],
                      nodes_to_exclude=[],
                      optimize_model=True,
@@ -270,8 +273,8 @@ def quantize_dynamic(model_input: Path,
     :param per_channel: quantize weights per channel
     :param reduce_range: quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode
     :param nbits: number of bits to represent quantized data. Currently only supporting 8-bit types
-    :param activation_type: quantization data type of activation
-    :param weight_type: quantization data type of weight
+    :param activation_type: quantization data type of activation. Please refer to https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
+    :param weight_type: quantization data type of weight. Please refer to https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
     :param nodes_to_quantize:
         List of nodes names to quantize. When this list is not None only the nodes in this list
         are quantized.
@@ -319,63 +322,6 @@ def quantize_dynamic(model_input: Path,
         nodes_to_exclude,
         op_types_to_quantize,
         extra_options)
-
-    quantizer.quantize_model()
-    quantizer.model.save_model_to_file(model_output, use_external_data_format)
-
-
-def quantize_qat(model_input: Path,
-                 model_output: Path,
-                 op_types_to_quantize=[],
-                 per_channel=False,
-                 reduce_range=False,
-                 activation_type=QuantType.QUInt8,
-                 weight_type=QuantType.QUInt8,
-                 nodes_to_quantize=[],
-                 nodes_to_exclude=[],
-                 use_external_data_format=False):
-    '''
-        Given a quantize-aware traning onnx model, create a quantized onnx model and save it into a file
-    :param model_input: file path of model to quantize
-    :param model_output: file path of quantized model
-    :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default
-    :param per_channel: quantize weights per channel
-    :param reduce_range: quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode
-    :param activation_type: quantization data type of activation
-    :param nodes_to_quantize:
-        List of nodes names to quantize. When this list is not None only the nodes in this list
-        are quantized.
-        example:
-        [
-            'Conv__224',
-            'Conv__252'
-        ]
-    :param nodes_to_exclude:
-        List of nodes names to exclude. The nodes in this list will be excluded from quantization
-        when it is not None.
-    :parma use_external_data_format: option used for large size (>2GB) model. Set to False by default. 
-    '''
-
-    mode = QuantizationMode.IntegerOps
-
-    #optimize the original model
-    optimized_model = optimize_model(Path(model_input))
-
-    if not op_types_to_quantize or len(op_types_to_quantize) == 0:
-        op_types_to_quantize = list(IntegerOpsRegistry.keys())
-
-    quantizer = ONNXQuantizer(
-        optimized_model,
-        per_channel,
-        reduce_range,
-        mode,
-        False,  #static
-        weight_type,
-        activation_type,
-        None,
-        nodes_to_quantize,
-        nodes_to_exclude,
-        op_types_to_quantize)
 
     quantizer.quantize_model()
     quantizer.model.save_model_to_file(model_output, use_external_data_format)

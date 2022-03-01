@@ -34,7 +34,7 @@ static inline T8Bits quantize_value(float y, float y_scale, T8Bits y_zero_point)
   return static_cast<T8Bits>(std::max(min_8bits, std::min(static_cast<int32_t>(std::nearbyintf(y / y_scale + y_zero_point)), max_8bits)));
 }
 
-static void SwitchDimsNchwNhwc(std::vector<int64_t>& dims, bool from_nchw_to_nhwc) {
+static void SwitchDimsNchwNhwc(TensorShapeVector& dims, bool from_nchw_to_nhwc) {
   if (from_nchw_to_nhwc) {
     int64_t channel = dims[1];
     dims.erase(dims.begin() + 1);
@@ -56,8 +56,8 @@ struct QLinearPool1DTask final {
   int64_t pooled_height;
   int64_t stride_h;
   int64_t height;
-  const std::vector<int64_t>& kernel_shape;
-  const std::vector<int64_t>& pads;
+  const TensorShapeVector& kernel_shape;
+  const TensorShapeVector& pads;
   const PoolProcessContext& pool_context_;
   const PoolAttributes& pool_attrs_;
 
@@ -104,8 +104,8 @@ struct QLinearPoolNhwc1DTask final {
   int64_t pooled_height;
   int64_t stride_h;
   int64_t height;
-  const std::vector<int64_t>& kernel_shape;
-  const std::vector<int64_t>& pads;
+  const TensorShapeVector& kernel_shape;
+  const TensorShapeVector& pads;
   const PoolProcessContext& pool_context_;
   const PoolAttributes& pool_attrs_;
 
@@ -119,7 +119,7 @@ struct QLinearPoolNhwc1DTask final {
     int64_t batch = begin / y_image_size;
     int64_t offset = begin % y_image_size;
 
-    for (int64_t remains = end - begin; remains > 0; offset = 0, batch++) {
+    for (std::ptrdiff_t remains = end - begin; remains > 0; offset = 0, batch++) {
       if (offset + remains <= y_image_size) {
         operator()(std::ptrdiff_t(batch), std::ptrdiff_t(offset), std::ptrdiff_t(offset + remains));
         remains = 0;
@@ -170,8 +170,8 @@ struct QLinearPool2DTask final {
   int64_t stride_w;
   int64_t height;
   int64_t width;
-  const std::vector<int64_t>& kernel_shape;
-  const std::vector<int64_t>& pads;
+  const TensorShapeVector& kernel_shape;
+  const TensorShapeVector& pads;
   const PoolProcessContext& pool_context_;
   const PoolAttributes& pool_attrs_;
 
@@ -233,8 +233,8 @@ struct QLinearPoolNhwc2DTask final {
   int64_t stride_w;
   int64_t height;
   int64_t width;
-  const std::vector<int64_t>& kernel_shape;
-  const std::vector<int64_t>& pads;
+  const TensorShapeVector& kernel_shape;
+  const TensorShapeVector& pads;
   const PoolProcessContext& pool_context_;
   const PoolAttributes& pool_attrs_;
 
@@ -247,7 +247,7 @@ struct QLinearPoolNhwc2DTask final {
     int64_t batch = begin / y_image_size;
     int64_t offset = begin % y_image_size;
 
-    for (int64_t remains = end - begin; remains > 0; offset = 0, batch++) {
+    for (int64_t remains = static_cast<int64_t>(end) - begin; remains > 0; offset = 0, batch++) {
       if (offset + remains <= y_image_size) {
         operator()(std::ptrdiff_t(batch), std::ptrdiff_t(offset), std::ptrdiff_t(offset + remains));
         remains = 0;
@@ -268,7 +268,7 @@ struct QLinearPoolNhwc2DTask final {
     start_pw -= (start_ph * pooled_width);
 
     int64_t pool_index = channels * begin;
-    int64_t remains = end - begin;
+    std::ptrdiff_t remains = end - begin;
     std::vector<float> Yh(channels);
 
     for (int64_t ph = start_ph; remains > 0 && ph < pooled_height; ++ph) {
@@ -281,7 +281,7 @@ struct QLinearPoolNhwc2DTask final {
         wstart = std::max(wstart, static_cast<int64_t>(0));
 
         // do the pooling here
-        float pool_init_value = PoolType::Initialize();
+        constexpr float pool_init_value = PoolType::Initialize();
         std::fill(Yh.data(), Yh.data() + channels, pool_init_value);
         for (int64_t h = hstart; h < hend; ++h) {
           int64_t input_index = channels * (h * width + wstart);
@@ -325,8 +325,8 @@ struct QLinearPool3DTask final {
   int64_t height;
   int64_t width;
   int64_t depth;
-  const std::vector<int64_t>& kernel_shape;
-  const std::vector<int64_t>& pads;
+  const TensorShapeVector& kernel_shape;
+  const TensorShapeVector& pads;
   const PoolProcessContext& pool_context_;
   const PoolAttributes& pool_attrs_;
 
@@ -401,8 +401,8 @@ struct QLinearPoolNhwc3DTask final {
   int64_t height;
   int64_t width;
   int64_t depth;
-  const std::vector<int64_t>& kernel_shape;
-  const std::vector<int64_t>& pads;
+  const TensorShapeVector& kernel_shape;
+  const TensorShapeVector& pads;
   const PoolProcessContext& pool_context_;
   const PoolAttributes& pool_attrs_;
 
@@ -415,7 +415,7 @@ struct QLinearPoolNhwc3DTask final {
     int64_t batch = begin / y_image_size;
     int64_t offset = begin % y_image_size;
 
-    for (int64_t remains = end - begin; remains > 0; offset = 0, batch++) {
+    for (int64_t remains = static_cast<int64_t>(end) - begin; remains > 0; offset = 0, batch++) {
       if (offset + remains <= y_image_size) {
         operator()(std::ptrdiff_t(batch), std::ptrdiff_t(offset), std::ptrdiff_t(offset + remains));
         remains = 0;
@@ -437,7 +437,7 @@ struct QLinearPoolNhwc3DTask final {
     int64_t start_pw = start_pd / pooled_depth;
     start_pd = start_pd - start_pw * pooled_depth;
     int64_t pool_index = channels * begin;
-    int64_t remains = end - begin;
+    int64_t remains = static_cast<int64_t>(end) - begin;
 
     std::vector<float> Yh(channels);
 
@@ -537,16 +537,16 @@ Status QLinearAveragePool::ComputeImpl(OpKernelContext* context) const {
   T8Bits y_zero_point = (tensor_y_zero_point ? *(tensor_y_zero_point->Data<T8Bits>()) : (T8Bits)0);
 
   ORT_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
-  std::vector<int64_t> pads = pool_attrs_.pads;
-  std::vector<int64_t> strides = pool_attrs_.strides;
-  std::vector<int64_t> kernel_shape = pool_attrs_.kernel_shape;
+  TensorShapeVector pads = pool_attrs_.pads;
+  TensorShapeVector strides = pool_attrs_.strides;
+  TensorShapeVector kernel_shape = pool_attrs_.kernel_shape;
 
   if (channels_last_) {
-    std::vector<int64_t> x_dims = x_shape.GetDimsAsVector();
+    TensorShapeVector x_dims = x_shape.AsShapeVector();
     SwitchDimsNchwNhwc(x_dims, false);
     x_shape = TensorShape(x_dims);
   }
-  std::vector<int64_t> output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
+  TensorShapeVector output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
 
   int64_t batch_count = x_shape[0];
   const int64_t channels = x_shape[1];

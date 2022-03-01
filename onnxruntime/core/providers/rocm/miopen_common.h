@@ -44,7 +44,7 @@ class MiopenTensorDescriptor final {
   ~MiopenTensorDescriptor();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MiopenTensorDescriptor);
 
-  Status Set(const std::vector<int64_t>& filter_dims, miopenDataType_t data_typ);
+  Status Set(gsl::span<const int64_t> filter_dims, miopenDataType_t data_typ);
 
   operator miopenTensorDescriptor_t() const { return desc_; }
 
@@ -64,6 +64,12 @@ struct Consts<half> {
   static const float One;
 };
 
+template <>
+struct Consts<BFloat16> {
+  static const float Zero;
+  static const float One;
+};
+
 template <typename ElemType>
 struct ReduceConsts {
   static const ElemType Zero;
@@ -76,6 +82,12 @@ struct ReduceConsts {
 // MIOpen/cuDNN APIs where alpha/beta are float when input type is half (float16).
 template <>
 struct ReduceConsts<half> {
+  static const float Zero;
+  static const float One;
+};
+
+template <>
+struct ReduceConsts<BFloat16> {
   static const float Zero;
   static const float One;
 };

@@ -1,13 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(_M_IX86) || (defined(_M_X64) && !defined(_M_ARM64EC)) || defined(__i386__) || defined(__x86_64__)
-#define CPUIDINFO_ARCH_X86
-#endif
-
-#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
-#define CPUIDINFO_ARCH_ARM
-#endif
+#include "core/common/cpuid_info.h"
+#include "core/common/logging/logging.h"
+#include "core/common/logging/severity.h"
 
 #if defined(CPUIDINFO_ARCH_X86)
 #include <memory>
@@ -18,8 +14,18 @@
 #endif
 #endif
 
+#if defined(CPUIDINFO_ARCH_ARM) && defined(CPUINFO_SUPPORTED) && defined(__linux__)
+#include <sys/auxv.h>
+#include <asm/hwcap.h>
+// N.B. Support building with older versions of asm/hwcap.h that do not define
+// this capability bit.
+#ifndef HWCAP_ASIMDDP
+#define HWCAP_ASIMDDP (1 << 20)
+#endif
+
+#endif
+
 #include <mutex>
-#include "core/common/cpuid_info.h"
 
 #if _WIN32
 #define HAS_WINDOWS_DESKTOP WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
@@ -52,15 +58,13 @@ static inline int XGETBV() {
 }
 #endif  // CPUIDINFO_ARCH_X86
 
-CPUIDInfo CPUIDInfo::instance_;
-
 
 CPUIDInfo::CPUIDInfo() {
 #if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED)
-    if (!cpuinfo_initialize()) {
-      // Unfortunately we can not capture cpuinfo log!!
-      ORT_THROW("Failed to initialize CPU info.");
-    }
+  pytorch_cpuinfo_init_ = cpuinfo_initialize();
+  if (!pytorch_cpuinfo_init_) {
+    LOGS_DEFAULT(WARNING) << "Failed to init pytorch cpuinfo library, may cause CPU EP performance degradation due to undetected CPU features.";
+  }
 #endif
 
 #if defined(CPUIDINFO_ARCH_X86)
@@ -96,17 +100,39 @@ CPUIDInfo::CPUIDInfo() {
 #endif
 
 #if defined(CPUIDINFO_ARCH_ARM)
-#ifdef CPUINFO_SUPPORTED
+#ifdef HWCAP_ASIMDDP
 
     // only works on ARM linux or android, does not work on Windows
-    is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
-    has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
+    if (pytorch_cpuinfo_init_) {
+      is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
+      has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
+    } else {
+      has_arm_neon_dot_ = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0);
+    }
+
 #elif defined(_WIN32)
     // TODO implement hardware feature detection in windows.
     is_hybrid_ = true;
 #endif
 #endif
 
+}
+
+int32_t CPUIDInfo::GetCurrentUarch() const {
+#if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED)
+  if (!pytorch_cpuinfo_init_) {
+    return -1;
+  }
+  const auto uarchIdx = cpuinfo_get_current_uarch_index();
+  const struct cpuinfo_uarch_info* uarch_info = cpuinfo_get_uarch(uarchIdx);
+  if (uarch_info == NULL) {
+    return -1;
+  }
+  return uarch_info->uarch;
+
+#else
+  return -1;
+#endif
 }
 
 }  // namespace onnxruntime

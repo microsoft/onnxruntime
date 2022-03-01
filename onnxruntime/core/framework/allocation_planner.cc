@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <sstream>
 #include "core/common/exceptions.h"
+#include "core/common/inlined_containers.h"
 #include "core/platform/env.h"
 #include "core/framework/data_types.h"
 #include "core/framework/kernel_def_builder.h"
@@ -497,8 +498,11 @@ class PlannerImpl {
 
   Status ComputeUseCounts() {
     // Note: for every ml-value, its definition must appear before all its uses in a topological sort of a valid model
-    std::unordered_set<std::string> graph_inputs;
-    for (auto& graph_input : graph_viewer_.GetInputsIncludingInitializers()) {
+    using GraphInputsSet = InlinedHashSet<std::string_view>;
+    const auto& graph_inputs_nodes = graph_viewer_.GetInputsIncludingInitializers();
+    GraphInputsSet graph_inputs;
+    graph_inputs.reserve(graph_inputs_nodes.size());
+    for (auto& graph_input : graph_inputs_nodes) {
       graph_inputs.insert(graph_input->Name());
     }
 
@@ -522,7 +526,7 @@ class PlannerImpl {
       UseCount(initializer_name)++;
     }
 
-    std::unordered_set<OrtValueIndex> set_node_arg_has_explicit_consumer;
+    InlinedHashSet<OrtValueIndex> set_node_arg_has_explicit_consumer;
 
     for (SequentialExecutionPlan::NodeExecutionPlan& step : plan_.execution_plan) {
       auto pnode = graph_viewer_.GetNode(step.node_index);

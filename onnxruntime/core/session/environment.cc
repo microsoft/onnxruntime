@@ -10,6 +10,8 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets_ml.h"
+#include "core/graph/contrib_ops/ms_opset.h"
+#include "core/graph/contrib_ops/onnx_deprecated_opset.h"
 #if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
 #include "onnx/defs/operator_sets_training.h"
 #endif
@@ -23,6 +25,7 @@
 
 #include "core/platform/env.h"
 #include "core/util/thread_utils.h"
+
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
 #include "core/platform/tracing.h"
@@ -50,7 +53,7 @@ Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_mana
                            std::unique_ptr<Environment>& environment,
                            const OrtThreadingOptions* tp_options,
                            bool create_global_thread_pools) {
-  environment = std::unique_ptr<Environment>(new Environment());
+  environment = std::make_unique<Environment>();
   auto status = environment->Initialize(std::move(logging_manager), tp_options, create_global_thread_pools);
   return status;
 }
@@ -119,7 +122,7 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
   // We use these allocators instead of the arena
   create_arena = false;
 #elif !(defined(__amd64__) || defined(_M_AMD64))
-  //Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
+  // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
   create_arena = false;
 #endif
 
@@ -213,19 +216,24 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
     // Register Microsoft domain with min/max op_set version as 1/1.
     std::call_once(schemaRegistrationOnceFlag, []() {
       auto& domainToVersionRangeInstance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
-      if (domainToVersionRangeInstance.Map().find(onnxruntime::kMSDomain) == domainToVersionRangeInstance.Map().end())
-      {
-        // External shared providers may have already added kMSDomain 
+      if (domainToVersionRangeInstance.Map().find(onnxruntime::kMSDomain) == domainToVersionRangeInstance.Map().end()) {
+        // External shared providers may have already added kMSDomain
         domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
       }
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
+      domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSInternalNHWCDomain, 1, 1);
+      domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kPytorchAtenDomain, 1, 1);
 #ifdef USE_DML
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDmlDomain, 1, 1);
 #endif
 // Register contributed schemas.
 // The corresponding kernels are registered inside the appropriate execution provider.
 #ifndef DISABLE_CONTRIB_OPS
+#ifndef ORT_MINIMAL_BUILD
+      RegisterOpSetSchema<contrib::OpSet_Microsoft_ver1>();
+      RegisterOpSetSchema<contrib::OpSet_ONNX_Deprecated>();
+#endif
       contrib::RegisterContribSchemas();
 #endif
 #ifdef USE_DML
@@ -265,7 +273,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       all_types.insert(all_types.end(), all_tensor_types.begin(), all_tensor_types.end());
       all_types.insert(all_types.end(), all_sequence_types.begin(), all_sequence_types.end());
       all_types.emplace_back("seq(tensor(bfloat16))");
-      all_types.erase(std::remove_if(all_types.begin(), all_types.end(), 
+      all_types.erase(std::remove_if(all_types.begin(), all_types.end(),
                       [](const std::string& s) { return s.find("string") != std::string::npos; }), all_types.end());
       return all_types; }();
 

@@ -256,7 +256,8 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
         gradient_graph.GenerateNodeArgName(output_grad_name + "_add_output"), type_info);
     Node& add_node = gradient_graph.AddNode(
         output_grad_name + "_add", "Add", "",
-        {&external_node_arg, producer_node->MutableOutputDefs()[producer_node_arg_index]}, {&output_node_arg});
+        std::array{&external_node_arg, producer_node->MutableOutputDefs()[producer_node_arg_index]},
+        std::array{&output_node_arg});
     graph_utils::ReplaceDownstreamNodeInput(gradient_graph, *producer_node, producer_node_arg_index, add_node, 0);
   }
 

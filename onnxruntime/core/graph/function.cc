@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/inlined_containers.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/function_impl.h"
 #include "core/graph/graph_viewer.h"
@@ -8,7 +9,7 @@
 #include "onnx/shape_inference/implementation.h"
 
 namespace ONNX_NAMESPACE {
-// Infer shape for functions. This also supports 
+// Infer shape for functions. This also supports
 // nested model local functions.
 // TODO: Add this to onnx instead of adding it here.
 void InferShapeForFunctionNode(
@@ -150,12 +151,24 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto
                             const std::unordered_map<std::string, int>& output_name_idx_map) {
   std::vector<std::pair<std::string, std::string>> input_types_list(onnx_func_proto_.input_size());
   std::vector<std::pair<std::string, std::string>> output_types_list(onnx_func_proto_.output_size());
-  std::unordered_map<std::string, std::vector<std::string>> type_constraint_map;
-  std::unordered_map<std::string, ONNX_NAMESPACE::AttributeProto_AttributeType> attribute_type_map;
+
+  size_t num_of_inputs = 0;
+  size_t num_of_outputs = 0;
+  for (const auto& node : onnx_func_proto_.node()) {
+    num_of_inputs += node.input_size();
+    num_of_outputs += node.output_size();
+  }
+
+  InlinedHashMap<std::string, std::vector<std::string>> type_constraint_map;
+  type_constraint_map.reserve(num_of_inputs + num_of_outputs);
+  InlinedHashMap<std::string_view, ONNX_NAMESPACE::AttributeProto_AttributeType> attribute_type_map;
+  attribute_type_map.reserve(onnx_func_proto_.node_size());
 
   // Create an all permissive list of data types. This will be used in case of model local functions
   // when we cannot infer the type constraints from function proto body
-  std::unordered_set<std::string> all_types;
+  InlinedHashSet<std::string_view> all_types;
+  all_types.reserve(ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat().size() +
+                    ONNX_NAMESPACE::OpSchema::all_tensor_sequence_types().size());
   all_types.insert(ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat().cbegin(),
                    ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat().cend());
   all_types.insert(ONNX_NAMESPACE::OpSchema::all_tensor_sequence_types().cbegin(),
@@ -163,10 +176,10 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto
 
   auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
   std::unordered_map<std::string, int> opset_imports;
-  for (auto& relied_opset : onnx_func_proto_.opset_import()) {
+  for (const auto& relied_opset : onnx_func_proto_.opset_import()) {
     opset_imports[relied_opset.domain()] = static_cast<int>(relied_opset.version());
   }
-  for (auto& node : onnx_func_proto_.node()) {
+  for (const auto& node : onnx_func_proto_.node()) {
     int domain_version = GetVersionForDomain(node.domain(), opset_imports);
     ORT_ENFORCE(domain_version != -1, "No opset registered for domain " + node.domain() + " in function opset imports.");
     const auto node_op_schema =
@@ -183,13 +196,17 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto
           // else add all types to allowed types list. It is OK to add all types. Any issues will be
           // caught later if we try to inline the nodes and there is no kernl available for
           // the requested types.
+          auto& dest_types = type_constraint_map[type_str];
           if (node_op_schema) {
-            for (auto s : node_op_schema->inputs().at(i).GetTypes()) {
-              type_constraint_map[type_str].emplace_back(*s);
+            const auto& types = node_op_schema->inputs().at(i).GetTypes();
+            dest_types.reserve(dest_types.size() + types.size());
+            for (const auto* s : types) {
+              dest_types.emplace_back(*s);
             }
           } else {
+            dest_types.reserve(dest_types.size() + all_types.size());
             for (const auto& s : all_types) {
-              type_constraint_map[type_str].emplace_back(s);
+              dest_types.emplace_back(s);
             }
           }
         }
@@ -207,13 +224,17 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto
           // else add all types to allowed types list. It is OK to add all types. Any issues will be
           // caught later if we try to inline the nodes and there is no kernel available for
           // the requested types.
+          auto& dest_types = type_constraint_map[type_str];
           if (node_op_schema) {
-            for (auto data_type : node_op_schema->outputs().at(i).GetTypes()) {
-              type_constraint_map[type_str].emplace_back(*data_type);
+            const auto& types = node_op_schema->inputs().at(i).GetTypes();
+            dest_types.reserve(dest_types.size() + types.size());
+            for (auto* data_type : types) {
+              dest_types.emplace_back(*data_type);
             }
           } else {
+            dest_types.reserve(dest_types.size() + all_types.size());
             for (const auto& data_type : all_types) {
-              type_constraint_map[type_str].emplace_back(data_type);
+              dest_types.emplace_back(data_type);
             }
           }
         }
@@ -260,12 +281,12 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto
   @param is_nested_function True if this is a nested function. For nested functions graph resolved is delayed until parent function body is fully initialized.
 */
 static void InitNestedModelLocalFunction(onnxruntime::Graph& graph,
-                                  const onnxruntime::NodeIndex& node_index,
-                                  ONNX_NAMESPACE::FunctionProto& onnx_function_proto,
-                                  const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& in_model_function_protos,
-                                  std::vector<std::unique_ptr<onnxruntime::Function>>& function_container,
-                                  const logging::Logger& logger,
-                                  bool is_nested_function) {
+                                         const onnxruntime::NodeIndex& node_index,
+                                         ONNX_NAMESPACE::FunctionProto& onnx_function_proto,
+                                         const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& in_model_function_protos,
+                                         std::vector<std::unique_ptr<onnxruntime::Function>>& function_container,
+                                         const logging::Logger& logger,
+                                         bool is_nested_function) {
   ORT_TRY {
     auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(graph, node_index, onnx_function_proto,
                                                                 in_model_function_protos, function_container,
@@ -279,7 +300,7 @@ static void InitNestedModelLocalFunction(onnxruntime::Graph& graph,
                           << onnx_function_proto.name()
 #ifndef ORT_NO_EXCEPTIONS
                           << "'. Error message " << e.what()
-#endif //ORT_NO_EXCEPTIONS
+#endif  //ORT_NO_EXCEPTIONS
                           << ". Execution will fail if ORT does not have a specialized kernel for this op";
     // Return without using this function op's expansion. No need to fail just yet.
     // If ORT has a specialized kernel for this op then execution will proceed
@@ -301,10 +322,10 @@ static void InitNestedModelLocalFunction(onnxruntime::Graph& graph,
 // (5) A map containing the output name from the op schema to the corresponding index
 // E.g. For Range-11, {"output" : 0}
 static void UpdateSubgraphsWithinFunctionBody(ONNX_NAMESPACE::GraphProto& subgraph_proto,
-                                                  const Graph& parent_graph,
-                                                  const ONNX_NAMESPACE::NodeProto& function_node_in_parent_graph,
-                                                  const std::unordered_map<std::string, int>& input_name_idx_map,
-                                                  const std::unordered_map<std::string, int>& output_name_idx_map) {
+                                              const Graph& parent_graph,
+                                              const ONNX_NAMESPACE::NodeProto& function_node_in_parent_graph,
+                                              const std::unordered_map<std::string, int>& input_name_idx_map,
+                                              const std::unordered_map<std::string, int>& output_name_idx_map) {
   // Iterate through all the nodes in the subgraph
   for (auto subgraph_node = subgraph_proto.mutable_node()->begin();
        subgraph_node != subgraph_proto.mutable_node()->end(); ++subgraph_node) {
@@ -341,8 +362,8 @@ static void UpdateSubgraphsWithinFunctionBody(ONNX_NAMESPACE::GraphProto& subgra
       // Recurse into any subgraphs in the current subgraph being processed
       if ((*subgraph_node_attr).has_g()) {
         UpdateSubgraphsWithinFunctionBody(*(*subgraph_node_attr).mutable_g(),
-                                              parent_graph, function_node_in_parent_graph,
-                                              input_name_idx_map, output_name_idx_map);
+                                          parent_graph, function_node_in_parent_graph,
+                                          input_name_idx_map, output_name_idx_map);
       }
     }
   }
@@ -399,7 +420,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
       body_("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
             graph.ModelPath().ToPathString(),
             IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}),
-            graph.DomainToVersionMap(), {} , logger) {
+            graph.DomainToVersionMap(), {}, logger) {
   auto& function_body_graph = body_.MainGraph();
 
   auto* meta_def = nodes_to_fuse.GetMetaDef();
@@ -454,6 +475,16 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
       if (!function_body_graph.GetInitializedTensor(input, subgraph_initializer)) {
         function_body_graph.AddInitializedTensor(*initializer);
       }
+    }
+  }
+
+  for (const auto& constant_initializer : meta_def->constant_initializers) {
+    const ONNX_NAMESPACE::TensorProto* initializer = graph.GetConstantInitializer(constant_initializer, true);
+    ORT_ENFORCE(initializer != nullptr, "Initializer " + constant_initializer + " is not found or is not constant initializer.");
+    // meta_def->constant_initializers could have duplicates so make sure we only add once
+    const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
+    if (!function_body_graph.GetInitializedTensor(constant_initializer, subgraph_initializer)) {
+      function_body_graph.AddInitializedTensor(*initializer);
     }
   }
 
@@ -538,7 +569,7 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
     op_schema_->TypeAndShapeInferenceFunction(
         [this, &model_local_functions](ONNX_NAMESPACE::InferenceContext& ctx) {
           auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
-          ONNX_NAMESPACE::ShapeInferenceOptions options {true, 1, false};
+          ONNX_NAMESPACE::ShapeInferenceOptions options{true, 1, false};
           InferShapeForFunctionNode(ctx, onnx_func_proto_, body_.MainGraph().DomainToVersionMap(), options, schema_registry, model_local_functions, function_utils::GetFunctionIdentifier);
         });
   } else {
@@ -557,15 +588,19 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
 
   ONNX_NAMESPACE::NodeProto function_op_node_proto;  // NodeProto pertaining to the op with a FunctionBody
   node_in_parent_graph->ToProto(function_op_node_proto);
-  std::unordered_set<std::string> node_input_outputs;
 
-  for (const auto* input_def : node_in_parent_graph->InputDefs()) {
+  InlinedHashSet<std::string_view> node_input_outputs;
+  auto parent_input_defs = node_in_parent_graph->InputDefs();
+  auto parent_output_defs = node_in_parent_graph->OutputDefs();
+  node_input_outputs.reserve(parent_input_defs.size() + parent_output_defs.size());
+
+  for (const auto* input_def : parent_input_defs) {
     if (input_def->Exists()) {
       node_input_outputs.insert(input_def->Name());
     }
   }
 
-  for (const auto* output_def : node_in_parent_graph->OutputDefs()) {
+  for (const auto* output_def : parent_output_defs) {
     if (output_def->Exists()) {
       node_input_outputs.insert(output_def->Name());
     }
@@ -577,8 +612,8 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
 
   // iterate over each node in the FunctionProto and fix inputs/outputs
   for (auto node = onnx_func_proto_.mutable_node()->begin(); node != onnx_func_proto_.mutable_node()->end(); ++node) {
-    std::vector<onnxruntime::NodeArg*> inputs;
-    std::vector<onnxruntime::NodeArg*> outputs;
+    InlinedVector<onnxruntime::NodeArg*> inputs;
+    InlinedVector<onnxruntime::NodeArg*> outputs;
     std::string uniq_identifier = (*node).name();
     if (!utils::HasName(*node)) {
       std::stringstream ss;
@@ -691,13 +726,14 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
     }
 
     onnxruntime::NodeAttributes new_attr_map;
+    new_attr_map.reserve(node->attribute_size());
     for (auto node_attr = (*node).mutable_attribute()->begin();
          node_attr != (*node).mutable_attribute()->end(); ++node_attr) {
       // If this node contains subgraphs, the node inputs/outputs within them needs to be fixed as well
       if ((*node_attr).has_g()) {
         UpdateSubgraphsWithinFunctionBody(*(*node_attr).mutable_g(),
-                                              *parent_graph_, function_op_node_proto,
-                                              input_name_idx_map, output_name_idx_map);
+                                          *parent_graph_, function_op_node_proto,
+                                          input_name_idx_map, output_name_idx_map);
       }
 
       if (!(*node_attr).ref_attr_name().empty()) {
@@ -705,7 +741,7 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
         if (entry != attr_map.cend()) {
           onnx::AttributeProto attr_copy = entry->second;
           attr_copy.set_name(node_attr->name());
-          new_attr_map[(*node_attr).name()] = attr_copy;
+          new_attr_map[(*node_attr).name()] = std::move(attr_copy);
         }
       } else {
         new_attr_map[(*node_attr).name()] = *node_attr;
@@ -771,7 +807,7 @@ const onnxruntime::Graph& FunctionImpl::Body() const {
 }
 
 onnxruntime::Graph& FunctionImpl::MutableBody() {
-    return body_.MainGraph();
+  return body_.MainGraph();
 }
 
 ViewerFunctionImpl::ViewerFunctionImpl(const onnxruntime::Graph& graph,
