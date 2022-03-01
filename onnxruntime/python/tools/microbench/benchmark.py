@@ -1,19 +1,30 @@
 import time
+import numpy
 import onnxruntime as ort
 import torch
 
 
-def create_io_binding(sess, inputs, outputs):
-    io_binding = sess.io_binding()
+def create_input_output_tensors(inputs, outputs):
     device = "cuda"
+    input_tensors = {name: torch.from_numpy(array).to(device) for name, array in inputs.items()}
+    output_tensors = {name: torch.from_numpy(array).to(device) for name, array in outputs.items()}
+    return input_tensors, output_tensors
 
-    for name, array in inputs.items():
-      tensor = torch.from_numpy(array).to(device)
-      io_binding.bind_input(name, tensor.device.type, 0, array.dtype, tensor.shape, tensor.data_ptr())
 
-    for name, array in outputs.items():
-      tensor = torch.from_numpy(array).to(device)
-      io_binding.bind_output(name, tensor.device.type, 0, array.dtype, tensor.shape, tensor.data_ptr())
+def numpy_type(torch_type):
+    type_map = {torch.float32: numpy.float32,
+                torch.float16: numpy.float16}
+    return type_map[torch_type]
+
+
+def create_io_binding(sess, input_tensors, output_tensors):
+    io_binding = sess.io_binding()
+
+    for name, tensor in input_tensors.items():
+        io_binding.bind_input(name, tensor.device.type, 0, numpy_type(tensor.dtype), tensor.shape, tensor.data_ptr())
+
+    for name, tensor in output_tensors.items():
+        io_binding.bind_output(name, tensor.device.type, 0, numpy_type(tensor.dtype), tensor.shape, tensor.data_ptr())
   
     return io_binding
 
@@ -32,7 +43,8 @@ def create_session(onnx_file, provider, profiling):
 
 def benchmark(onnx_file, inputs, outputs, provider, profiling=False):
     sess = create_session(onnx_file, provider, profiling)
-    io_binding = create_io_binding(sess, inputs, outputs)
+    input_tensors, output_tensors = create_input_output_tensors(inputs, outputs)
+    io_binding = create_io_binding(sess, input_tensors, output_tensors)
 
     # warm up    
     for iter in range(10):
