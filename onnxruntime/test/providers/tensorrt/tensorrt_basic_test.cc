@@ -89,7 +89,6 @@ void CreateBaseModel(std::string model_name, std::string graph_name, std::vector
 }
 
 void RunInference(std::string model_name, std::string sess_log_id) {
-  //std::cout << i << std::endl;
   SessionOptions so;
   so.session_logid = sess_log_id;
   RunOptions run_options;
