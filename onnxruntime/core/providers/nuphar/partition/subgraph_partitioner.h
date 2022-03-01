@@ -20,6 +20,7 @@ class SubgraphPartitioner : public Partitioner {
 
   Status Partition(
       const Node& node,
+      const GraphViewer& graph_viewer,
       std::vector<NupharSubgraphUnit>& subgraphs,
       FindInitializerFunc find_initializer_func);
 

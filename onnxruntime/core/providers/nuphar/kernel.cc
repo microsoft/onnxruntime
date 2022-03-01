@@ -20,6 +20,7 @@ thread_local std::unique_ptr<NupharFuncStateToComputeCtxMap> NupharKernelState::
 
 NupharKernelState::NupharKernelState(
     const Node& node,
+    const GraphViewer graph_viewer,
     const ComputeContext& ctx,
     const NupharExecutionProvider& provider)
     : provider_(provider),
@@ -32,6 +33,7 @@ NupharKernelState::NupharKernelState(
   SubgraphPartitioner subgraph_partitioner;
   ORT_THROW_IF_ERROR(subgraph_partitioner.Partition(
       node,
+      graph_viewer,
       subgraphs,
       [&](const std::string& name) { return provider_.GetConstantInitializer(name); }));
 

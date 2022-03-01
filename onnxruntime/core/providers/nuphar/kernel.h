@@ -31,6 +31,7 @@ class NupharKernelState {
  public:
   explicit NupharKernelState(
       const Node& fused_node,
+      const GraphViewer graph_viewer,
       const ComputeContext& ctx,
       const NupharExecutionProvider& provider);
 
