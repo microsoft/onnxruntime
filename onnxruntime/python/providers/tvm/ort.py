@@ -95,7 +95,7 @@ def onnx_compile(model_string,
                         "relay.backend.use_auto_scheduler": True,
                         "relay.FuseOps.max_depth": 30,
                         }
-                    ):
+                ):
                     if nhwc:
                         seq = tvm.transform.Sequential(
                             [
@@ -130,7 +130,7 @@ def onnx_compile(model_string,
         m = graph_executor.GraphModule(lib["default"](ctx))
     else:
         print("ERROR: Executor type {} is unsupported. ".format(executor),
-            "Only \"vm\" and \"graph\" types are supported")
+              "Only \"vm\" and \"graph\" types are supported")
         return None
 
     return m.module
