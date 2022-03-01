@@ -475,8 +475,8 @@ jobs:
       script: |
         msbuild Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj /p:Platform=x64 /t:Restore
         msbuild Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj /p:Platform=x64
-        msbuild Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj /p:Platform=x86 /t:Restore
-        msbuild Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj /p:Platform=x86
+        msbuild Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj /p:Platform=AnyCpu /t:Restore
+        msbuild Microsoft.AI.MachineLearning.Tests.DotNet5_0.csproj /p:Platform=AnyCpu
       workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.DotNet5_0
 
 
@@ -537,18 +537,32 @@ jobs:
         .\Microsoft.AI.MachineLearning.Tests.exe
         popd
         
-        Write-Host "Run Microsoft.AI.MachineLearning CSharp Tests (DotNet5_0 x86)"
-        pushd .\Microsoft.AI.MachineLearning.Tests.DotNet5_0\bin\x86\Debug\net5.0-windows10.0.17763.0
-        .\Microsoft.AI.MachineLearning.Tests.DotNet5_0.exe
-        popd
+        # Write-Host "Run Microsoft.AI.MachineLearning CSharp Tests (DotNet5_0 AnyCpu)"
+        # pushd .\Microsoft.AI.MachineLearning.Tests.DotNet5_0\bin\x86\Debug\net5.0-windows10.0.17763.0
+        # .\Microsoft.AI.MachineLearning.Tests.DotNet5_0.exe
+        # popd
         
-        Write-Host "Run Microsoft.AI.MachineLearning CSharp Tests ((DotNet5_0 x64)"
-        pushd .\Microsoft.AI.MachineLearning.Tests.DotNet5_0\bin\x64\Debug\net5.0-windows10.0.17763.0
-        .\Microsoft.AI.MachineLearning.Tests.DotNet5_0.exe
-        popd
+        # Write-Host "Run Microsoft.AI.MachineLearning CSharp Tests ((DotNet5_0 x64)"
+        # pushd .\Microsoft.AI.MachineLearning.Tests.DotNet5_0\bin\x64\Debug\net5.0-windows10.0.17763.0
+        # .\Microsoft.AI.MachineLearning.Tests.DotNet5_0.exe
+        # popd
         
         Write-Host "Done!"
       workingDirectory: $(Build.SourcesDirectory)\csharp\test
+
+  - task: VSTest@2
+    displayName: 'Test DotNet5_0'
+    inputs:
+      testSelector: 'testAssemblies'
+      testAssemblyVer2: '.\bin\*\Release\net5.0-windows10.0.19041.0\Microsoft.AI.MachineLearning.Tests.DotNet5_0.dll'
+      searchFolder: '$(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.DotNet5_0'
+  
+  - task: VSTest@2
+    displayName: 'Test UWP'
+    inputs:
+      testSelector: 'testAssemblies'
+      testAssemblyVer2: '.\bin\*\Release\*.appxrecipe'
+      searchFolder: '$(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.Uwp'
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'
