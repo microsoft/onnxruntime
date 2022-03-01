@@ -1882,19 +1882,22 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
   if (!is_quant_op) {
     // If the inputs are uint8 and this is not a quantized Concat, we need to verify all the inputs have the
-    // same scale and zero points. 
-    // [Side note: int8 input is not supported currently by the NNAPI EP(enforced in ConcatOpSupportChecker).
-    // it is supported by NNAPI though and int8 input is allowed to have different scale  and zp values.]
+    // same scale and zero points.
+    // [Side note: int8 input is not supported currently by the NNAPI EP (enforced in ConcatOpSupportChecker).
+    //             It is supported by NNAPI, and int8 input is allowed to have different scale and zp values.]
     //
     // ONNX allows Concat (not QlinearConcat, not QDQ concat) to run directly on uint8 without scales and zps.
-    // NNAPI requires all uint8 inputs to have scale values, and zero points that are != 0.
-    //   TODO: Clarify this. The NNAPI doco for ANEURALNETWORKS_CONCATENATION does not mention a != 0 requirement.
+    // NNAPI requires all uint8 inputs to have scale values > 0, and zero point values.
     // We need to use the scales and zps from the NNAPI input directly, there is no easy way to get the input
     // scales and zps in OpSupportChecker, so we need to verify here.
     // Also we have to assume the output scale and zp are the same as input 0
     if (operand_types.at(input0).type == android::nn::wrapper::Type::TENSOR_QUANT8_ASYMM) {
       auto scale = operand_types.at(input0).operandType.scale;
       auto zero_point = operand_types.at(input0).operandType.zeroPoint;
+
+      // TODO: if we see scale == 0 in real models we could consider using 1 as a default. This is what TF does
+      // https://github.com/tensorflow/tensorflow/blob/7737c518a864e54be9b676fe063436ccbbef21b9/tensorflow/lite/delegates/nnapi/nnapi_delegate.cc#L468-L471
+      ORT_RETURN_IF_NOT(scale > 0, "NNAPI requires scale to be > 0.");
 
       // Compare scale and zp of input0 to input1~n
       for (size_t i = 1; i < node_input_size; i++) {
