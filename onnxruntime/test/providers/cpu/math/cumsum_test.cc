@@ -177,7 +177,6 @@ TEST(CumSumTest, _3DTestAxis0ReverseExclusive) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 TEST(CumSumTest, _3DTestAxis1ReverseExclusive) {
-  std::cout << "rever exclusive 1" << std::endl;
   OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
   test.AddAttribute<int64_t>("reverse", 1);
   test.AddAttribute<int64_t>("exclusive", 1);
@@ -219,7 +218,7 @@ TEST(CumSumTest, _1DTestdouble) {
 TEST(CumSumTest, _1DTestdouble_WithInt64Axis) {
   OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
   test.AddInput<double>("x", {5}, {1., 2., 3., 4., 5.});
-  test.AddInput<int64_t>("axis", {0}, {0});
+  test.AddInput<int64_t>("axis", 0);
   test.AddOutput<double>("y", {5}, {1., 3., 6., 10., 15.});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
