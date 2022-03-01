@@ -123,6 +123,23 @@ class FusionUtils:
 
         return None
 
+    def remove_cascaded_cast_nodes(self):
+        # Remove Cast node that are overrided by another Cast node like  --> Cast --> Cast -->
+        # Note that this shall be used carefully since it might introduce semantic change.
+        # For example, float -> int -> float could get different value than the original float value.
+        # So, it is recommended to used only in post-processing of mixed precision conversion.
+        removed_count = 0
+        for node in self.model.nodes():
+            if node.op_type == "Cast":
+                parent = self.model.get_parent(node, 0)
+                if parent and parent.op_type == "Cast":
+                    node.input[0] = parent.input[0]
+                    removed_count += 1
+
+        if removed_count > 0:
+            logger.info(f"Removed {removed_count} cascaded Cast nodes")
+            self.model.prune_graph()
+    
     def remove_useless_cast_nodes(self):
         """Remove cast nodes that are not needed: input and output has same data type.
         """

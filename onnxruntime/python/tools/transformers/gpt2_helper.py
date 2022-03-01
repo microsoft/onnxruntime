@@ -477,7 +477,7 @@ class Gpt2Helper:
             # when the max difference of value after converting float to float16 is lower than a threshold (1e-6), 
             # we can deduce that the weights are stored in float16 precision.
             max_diff = float_to_float16_max_diff(initializer)
-            logger.info(f"max diff of converting weights in last MatMul node {node.name}: {max_diff}")
+            logger.debug(f"max diff of converting weights in last MatMul node {node.name}: {max_diff}")
             is_weight_fp16_precision = (max_diff < 1E-6)
         else:
             logger.warning(f"Failed to find MatMul node for logits. Found {node.op_type} of node {node.name}")
@@ -488,11 +488,11 @@ class Gpt2Helper:
         else:
             # When original weight is float32 precision, keep logits and last MatMul in float32 could get better precision.
             keep_io_types = [logits_output_name]
-            node_block_list = [last_matmul_node]
+            node_block_list = [last_matmul_node.name]
 
         parameters = { "keep_io_types": keep_io_types, "op_block_list": op_block_list, "node_block_list": node_block_list, "force_fp16_initializers": is_weight_fp16_precision}
 
-        logger.debug(f"auto_mixed_precision parameters: {parameters}")
+        logger.info(f"auto_mixed_precision parameters: {parameters}")
         onnx_model.convert_float_to_float16(use_symbolic_shape_infer=True, **parameters)
 
         fusion_utils = FusionUtils(onnx_model)

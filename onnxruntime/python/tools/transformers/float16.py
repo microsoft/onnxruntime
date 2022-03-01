@@ -336,11 +336,12 @@ def float_to_float16_max_diff(tensor, min_positive_val=5.96e-08, max_finite_val=
     """Measure the maximum absolute difference after converting a float tensor to float16."""
     if not isinstance(tensor, onnx_proto.TensorProto):
         raise ValueError('Expected input type is an ONNX TensorProto but got %s' % type(tensor))
-    if tensor.data_type == onnx_proto.TensorProto.FLOAT:
+    if tensor.data_type != onnx_proto.TensorProto.FLOAT:
         raise ValueError('Expected tensor data type is float.')
 
     if tensor.float_data:
         float32_data = np.array(tensor.float_data)
+        
     if tensor.raw_data:
         float32_data = np.fromstring(tensor.raw_data, dtype='float32')
 
