@@ -18,7 +18,7 @@ namespace {
 #if !defined(ORT_MINIMAL_BUILD)
 namespace selectors {
 const Node* GetLoneConsumerNode(const GraphViewer& graph_viewer, const Node& node) {
-  if (!optimizer_utils::CheckOutputEdges(graph_viewer, node, 1)) {
+  if (!optimizer_utils::CheckOutputEdges(graph_viewer.GetGraph(), node, 1)) {
     return nullptr;
   }
   return &*node.OutputNodesBegin();
@@ -64,7 +64,7 @@ class ConvActivation : public NodeSelector {
 
       if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Clip", {6, 11, 12, 13})) {
         float min, max;
-        if (!optimizer_utils::GetClipConstantMinMax(graph_viewer, activation_node, min, max)) {
+        if (!optimizer_utils::GetClipConstantMinMax(graph_viewer.GetGraph(), activation_node, min, max)) {
           return false;
         }
         return true;

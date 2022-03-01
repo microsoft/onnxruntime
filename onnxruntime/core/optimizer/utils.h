@@ -102,7 +102,6 @@ bool IsSupportedDataType(const Node& node, const T& supported_data_types) {
 @returns false when the node has graph output, or number of output edges are not expected.
 */
 bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_output_edges);
-bool CheckOutputEdges(const GraphViewer& graph, const Node& node, size_t expected_output_edges);
 
 bool IsOperationDeterministic(const std::string& domain, const std::string& op);
 
@@ -114,7 +113,6 @@ bool IsOperationDeterministic(const std::string& domain, const std::string& op);
 @returns false if mutable and cannot be used.
 */
 bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, float& max);
-bool GetClipConstantMinMax(const GraphViewer& graph, const Node& node, float& min, float& max);
 
 // Check if NodeArg takes in a scalar tensor.
 bool IsScalar(const NodeArg& input_arg);

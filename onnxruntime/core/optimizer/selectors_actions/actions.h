@@ -118,6 +118,7 @@ struct ReplaceWithNew : public Action {
     const NodesToOptimize& selected_nodes;
   };
 
+ private:
   // replacement node Op type
   virtual std::string OpType(const RuntimeState&) const = 0;
 
@@ -132,7 +133,6 @@ struct ReplaceWithNew : public Action {
   // specifies how the inputs and outputs for the replaced nodes are moved to the new node
   virtual std::vector<NodeAndMoveInfo> ValueMoves(const RuntimeState&) const = 0;
 
- private:
   RemoveNodes node_remover_;
 };
 

@@ -98,37 +98,39 @@ static Status MatchAndProcess(
       break;
     }
 
+    std::optional<NodesToOptimizeIndices> node_selection_opt{};
+    const SelectorActionRegistry::Entry* selector_action_entry_ptr = nullptr;
+
     const auto selector_action_entries = selector_action_registry.LookUpByOpType(node.OpType());
+    for (const auto entry : selector_action_entries) {
+      // check the supported versions if specified
+      const auto& versions = entry->ops_and_versions.find(node.OpType())->second;
+      if (!versions.empty()) {
+        if (std::find(versions.cbegin(), versions.cend(), node.SinceVersion()) == versions.cend()) {
+          continue;
+        }
+      }
 
-    std::optional<NodesToOptimizeIndices> node_selection_opt;
-    const auto selector_action_entry_it = std::find_if(
-        selector_action_entries.begin(), selector_action_entries.end(),
-        [&graph_viewer, &node = std::as_const(node), &node_selection_opt](
-            gsl::not_null<const SelectorActionRegistry::Entry*> entry) {
-          // check the supported versions if specified
-          const auto& versions = entry->ops_and_versions.find(node.OpType())->second;
-          if (!versions.empty()) {
-            if (std::find(versions.cbegin(), versions.cend(), node.SinceVersion()) == versions.cend()) {
-              return false;
-            }
-          }
+      auto selection = entry->selector->Select(graph_viewer, node);
+      if (!selection.has_value()) {
+        continue;
+      }
 
-          node_selection_opt = entry->selector->Select(graph_viewer, node);
-          return node_selection_opt.has_value();
-        });
-
-    if (selector_action_entry_it == selector_action_entries.end()) {
+      node_selection_opt = std::move(selection);
+      selector_action_entry_ptr = entry.get();
       break;
     }
 
-    const auto& selector_action_entry = **selector_action_entry_it;
-
-    const auto& node_selection = *node_selection_opt;
+    if (!selector_action_entry_ptr) {
+      break;
+    }
 
     LOGS(logger, VERBOSE) << "Matched " << node.OpType();
 
+    const auto& selector_action_entry = *selector_action_entry_ptr;
     const auto& action = *selector_action_entry.action;
-    NodesToOptimize node_group(graph, node_selection);
+    const auto& node_selection = *node_selection_opt;
+    const NodesToOptimize node_group(graph, node_selection);
 
     if (save_context) {
       // don't save a runtime optimization again if it already exists
