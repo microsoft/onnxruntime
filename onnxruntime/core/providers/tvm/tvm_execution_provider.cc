@@ -45,7 +45,7 @@ class TVMRunner {
 
     TVMRunner(TvmExecutionProvider* ep,
                const std::string& name,
-               const Graph& graph) {
+               const GraphViewer& graph) {
         // Extract input shapes
         const ORTGraphNodes& all_nodes = graph.GetInputsIncludingInitializers();
         TVMTensorShapes input_shapes;
@@ -295,32 +295,29 @@ TvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   return result;
 }
 
-common::Status TvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
-                                              std::vector<NodeComputeInfo>& node_compute_funcs) {
+common::Status TvmExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                             std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (auto* fused_node : nodes) {
-    auto func_body = fused_node->GetFunctionBody();
-    if (!func_body)
-      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
-    const std::string func_name = fused_node->Name();
-    const Graph& node_graph = func_body->Body();
-    Model model(node_graph.Name(), true, ModelMetaData(), PathString(),
-                             IOnnxRuntimeOpSchemaRegistryList(), node_graph.DomainToVersionMap(),
+    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
+    const Node& fused_node = fused_node_graph.fused_node;
+    const std::string func_name = fused_node.Name();
+    Model model(graph_body_viewer.Name(), true, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), graph_body_viewer.DomainToVersionMap(),
                              std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-
-    *(model_proto.mutable_graph()) = node_graph.ToGraphProto();
+    graph_body_viewer.ToProto(*model_proto->mutable_graph(), true);
     auto opset = model_proto.add_opset_import();
     opset->set_domain(kOnnxDomain);
-    opset->set_version(node_graph.DomainToVersionMap().at(kOnnxDomain));
+    opset->set_version(graph_body_viewer.DomainToVersionMap().at(kOnnxDomain));
 
     std::string string_buf;
     model_proto.SerializeToString(&string_buf);
     buffers_[func_name] = string_buf;
     opsets_[func_name] = int(opset->version());
-    model_paths_[func_name] = fused_node->ModelPath().ToPathString();;
+    model_paths_[func_name] = fused_node.ModelPath().ToPathString();;
 
     if (dump_subgraphs_) {
-        std::fstream dump("/tmp/" + fused_node->Name() + ".onnx",
+        std::fstream dump("/tmp/" + fused_node.Name() + ".onnx",
                           std::ios::out | std::ios::trunc | std::ios::binary);
         model_proto.SerializeToOstream(&dump);
     }
@@ -337,7 +334,7 @@ common::Status TvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
     };
     // TODO(vvchernov): implement ops checking and mechanism of gracefully passing the responsibility to other EPs
     // if the checking fails due to unsupported op(s)
-    runners_[func_name] = std::make_shared<TVMRunner>(this, func_name, node_graph);
+    runners_[func_name] = std::make_shared<TVMRunner>(this, func_name, graph_body_viewer);
     compute_info.compute_func = *runners_[func_name].get();
 
     node_compute_funcs.push_back(compute_info);
