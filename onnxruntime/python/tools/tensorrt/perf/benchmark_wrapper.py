@@ -64,7 +64,7 @@ def main():
         
         model_list_file = os.path.join(os.getcwd(), model +'.json')
         write_model_info_to_file([model_info], model_list_file)
-        
+
         for ep in ep_list:
             
             command =  ["python3",

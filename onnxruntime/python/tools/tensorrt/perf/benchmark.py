@@ -1683,17 +1683,17 @@ def parse_arguments():
     
     parser.add_argument("-w", "--workspace", required=False, default="/", help="Workspace to find tensorrt and perf script (with models if parsing with model file)")
     
-    parser.add_argument("--track_memory", required=False, default=True, help="Track CUDA and TRT Memory Usage")
+    parser.add_argument("-e", "--ep_list", nargs="+", required=False, default=None, help="Specify ORT Execution Providers list.")
+    
+    parser.add_argument("-z", "--track_memory", required=False, default=True, help="Track CUDA and TRT Memory Usage")
 
-    parser.add_argument("--io_binding", required=False, default=False, help="Bind Inputs")
+    parser.add_argument("-b", "--io_binding", required=False, default=False, help="Bind Inputs")
     
-    parser.add_argument("--optimize_graph", required=False, default=True, help="Enable Graph Optimization")
+    parser.add_argument("-g", "--optimize_graph", required=False, default=True, help="Enable Graph Optimization")
     
-    parser.add_argument("--enable_cache", required=False, default=True, help="Enable ORT-TRT Caching")
+    parser.add_argument("-n", "--enable_cache", required=False, default=True, help="Enable ORT-TRT Caching")
 
-    parser.add_argument("--ep", required=False, default=None, help="Specify ORT Execution Provider.")
-    
-    parser.add_argument("--ep_list", nargs="+", required=False, default=None, help="Specify ORT Execution Providers list.")
+    parser.add_argument("--ep", required=False, default=None, help="Specify ORT Execution Provider.") 
 
     parser.add_argument("--fp16", required=False, default=True, action="store_true", help="Inlcude Float16 into benchmarking.")
 
@@ -1729,12 +1729,13 @@ def setup_logger(verbose):
         logging.getLogger("transformers").setLevel(logging.WARNING)
 
 def parse_models_helper(args, models): 
-    if ".json" in args.model_source:
+    model_source = os.path.join(args.workspace, args.model_source)
+    if ".json" in model_source:
         logger.info("Parsing model information from file ...")
-        parse_models_info_from_file(args.workspace, args.model_source, models)
+        parse_models_info_from_file(args.workspace, model_source, models)
     else:
         logger.info("Parsing model information from directory ...")
-        parse_models_info_from_directory(args.model_source, models)
+        parse_models_info_from_directory(model_source, models)
 
 def main():
     args = parse_arguments()
