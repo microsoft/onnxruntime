@@ -16,6 +16,9 @@ import pickle
 from pathlib import Path
 from typing import List, Dict, Tuple, Union
 from transformers import GPT2Model, GPT2LMHeadModel, GPT2Config, TFGPT2Model
+from float16 import float_to_float16_max_diff
+from onnx_model import OnnxModel
+from fusion_utils import FusionUtils
 from benchmark_helper import Precision
 from io_binding_helper import IOBindingHelper
 
@@ -410,6 +413,7 @@ class Gpt2Helper:
                       num_attention_heads,
                       hidden_size,
                       use_external_data_format=False,
+                      auto_mixed_precision=False,
                       **kwargs):
         """ Optimize ONNX model with an option to convert it to use mixed precision.
         """
@@ -429,14 +433,74 @@ class Gpt2Helper:
                            use_gpu=False)
 
         if is_float16:
-            op_full_list = set([node.op_type for node in m.nodes()])
-            op_block_list = set(kwargs["op_block_list"]) if "op_block_list" in kwargs else set()
-            op_remain_list = op_full_list.difference(op_block_list)
-            logger.info(f"op_block_list={op_block_list} op_remain_list={op_remain_list}")
-            m.convert_float_to_float16(use_symbolic_shape_infer=True, **kwargs)
+            if auto_mixed_precision:
+                Gpt2Helper.auto_mixed_precision(m)
+            else:
+                m.convert_float_to_float16(use_symbolic_shape_infer=True, **kwargs)
 
         m.save_model_to_file(optimized_model_path, use_external_data_format)
 
+    @staticmethod
+    def auto_mixed_precision(onnx_model:OnnxModel,
+                             op_block_list: List[str] = ['Add', 'LayerNormalization', 'FastGelu']):
+        """Convert GPT-2 model to mixed precision.
+           It detects whether original model has fp16 precision weights, and set parameters for float16 conversion automatically.
+        Args:
+            onnx_model (OnnxModel): optimized ONNX model
+            op_block_list (List[str], optional): . Defaults to ['Add', 'LayerNormalization', 'FastGelu']
+        Returns:
+            parameters(dict): a dictionary of parameters used in float16 conversion
+        """
+        op_full_set = set([node.op_type for node in onnx_model.nodes()])
+        fp32_op_set = set(op_block_list)
+        fp16_op_set = op_full_set.difference(fp32_op_set)
+        logger.info(f"fp32 op: {fp32_op_set} fp16 op: {fp16_op_set}")
+        
+        # logits is the first output
+        logits_output_name = onnx_model.graph().output[0].name
+
+        # We use the weight in last MatMul node to detect whether the model is stored with float16 weights from training.
+        is_weight_fp16_precision = False
+        output_name_to_node = onnx_model.output_name_to_node()
+        assert logits_output_name in output_name_to_node
+        node = output_name_to_node[logits_output_name]
+        last_matmul_node = None
+        if node.op_type == "MatMul":
+            last_matmul_node = node
+            logger.info(f"Found last MatMul node for logits: {node.name}")
+            initializer = None
+            for input in node.input:
+                initializer = onnx_model.get_initializer(input)
+                if initializer is not None:
+                    break
+
+            # when the max difference of value after converting float to float16 is lower than a threshold (1e-6), 
+            # we can deduce that the weights are stored in float16 precision.
+            max_diff = float_to_float16_max_diff(initializer)
+            logger.info(f"max diff of converting weights in last MatMul node {node.name}: {max_diff}")
+            is_weight_fp16_precision = (max_diff < 1E-6)
+        else:
+            logger.warning(f"Failed to find MatMul node for logits. Found {node.op_type} of node {node.name}")
+
+        if is_weight_fp16_precision:
+            keep_io_types = []
+            node_block_list = []
+        else:
+            # When original weight is float32 precision, keep logits and last MatMul in float32 could get better precision.
+            keep_io_types = [logits_output_name]
+            node_block_list = [last_matmul_node]
+
+        parameters = { "keep_io_types": keep_io_types, "op_block_list": op_block_list, "node_block_list": node_block_list, "force_fp16_initializers": is_weight_fp16_precision}
+
+        logger.debug(f"auto_mixed_precision parameters: {parameters}")
+        onnx_model.convert_float_to_float16(use_symbolic_shape_infer=True, **parameters)
+
+        fusion_utils = FusionUtils(onnx_model)
+        fusion_utils.remove_cascaded_cast_nodes()
+        fusion_utils.remove_useless_cast_nodes()
+        
+        return parameters
+    
     @staticmethod
     def pytorch_inference(model, inputs: Gpt2Inputs, total_runs: int = 0):
         """ Run inference of PyTorch model, and returns average latency in ms when total_runs > 0 besides outputs.
@@ -747,9 +811,10 @@ class Gpt2Helper:
         """ Build a  path name for given model based on given attributes.
         """
         model_name = model_name_or_path
-        if not re.match(r'^[\w_-]+$', model_name_or_path):  # It is not a name, shall be a path
-            assert os.path.isdir(model_name_or_path)
+        if os.path.isdir(model_name_or_path):
             model_name = Path(model_name_or_path).parts[-1]
+        else:
+            model_name.split('/')[-1]
 
         if model_class != 'GPT2LMHeadModel':
             model_name += "_" + model_class
