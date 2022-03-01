@@ -2102,7 +2102,7 @@ std::unique_ptr<onnxruntime::IDataTransfer> ROCMExecutionProvider::GetDataTransf
 std::vector<std::unique_ptr<ComputeCapability>>
 ROCMExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                      const std::vector<const KernelRegistry*>& kernel_registries) const {
-  std::vector<NodeIndex> candidates;
+  InlinedVector<NodeIndex> candidates;
   for (auto& node_index : graph.GetNodesInTopologicalOrder()) {
     const auto* p_node = graph.GetNode(node_index);
     if (p_node == nullptr)
@@ -2152,7 +2152,7 @@ ROCMExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // For ROCM EP, exclude the subgraph that is preferred to be placed in CPU
   // These are usually shape related computation subgraphs
   // Following logic can be extended for other EPs
-  std::unordered_set<NodeIndex> cpu_nodes = GetCpuPreferredNodes(graph, Type(), kernel_registries, candidates);
+  auto cpu_nodes = GetCpuPreferredNodes(graph, Type(), kernel_registries, candidates);
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {
@@ -2175,7 +2175,7 @@ void ROCMExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
                                      info_.external_allocator_info, info_.default_memory_arena_cfg);
     allocator_manager->InsertAllocator(rocm_alloc);
   }
-  TryInsertAllocator(rocm_alloc);
+  TryInsertAllocator(std::move(rocm_alloc));
 
   // OrtMemTypeCPUOutput -- allocated by hipHostMalloc, used to copy ROCM device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
@@ -2191,7 +2191,7 @@ void ROCMExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
     rocm_pinned_alloc = CreateAllocator(pinned_memory_info);
     allocator_manager->InsertAllocator(rocm_pinned_alloc);
   }
-  TryInsertAllocator(rocm_pinned_alloc);
+  TryInsertAllocator(std::move(rocm_pinned_alloc));
 
   // OrtMemTypeCPUInput -- ROCM op place the input on CPU and will not be accessed by ROCM kernel, no sync issue
   auto rocm_cpu_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUInput);
@@ -2211,7 +2211,7 @@ void ROCMExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> 
     rocm_cpu_alloc = CreateAllocator(cpu_memory_info);
     allocator_manager->InsertAllocator(rocm_cpu_alloc);
   }
-  TryInsertAllocator(rocm_cpu_alloc);
+  TryInsertAllocator(std::move(rocm_cpu_alloc));
 }
 
 }  // namespace onnxruntime

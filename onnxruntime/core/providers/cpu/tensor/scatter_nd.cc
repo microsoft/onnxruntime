@@ -4,9 +4,9 @@
 #include "core/providers/cpu/tensor/scatter_nd.h"
 
 #include "core/framework/element_type_lists.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {

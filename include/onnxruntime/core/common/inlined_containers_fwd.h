@@ -1,20 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-//===- llvm/ADT/SmallVector.h - 'Normally small' vectors --------*- C++ -*-===//
-//
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// This file contains code and comments derived from llvm/ADT/SmallVector.h
-//
-// Specifically CalculateInlinedVectorDefaultInlinedElements<T>() template is derived from
-// CalculateSmallVectorDefaultInlinedElements<T>() and its comments.
-
 #pragma once
 
-#include <cmath>
+#include <memory>
+#include <utility>
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -26,15 +16,29 @@
 #endif
 
 #include <absl/container/inlined_vector.h>
-#include <absl/container/flat_hash_set.h>
-#include <absl/container/flat_hash_map.h>
 
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
 
+// Forward declarations for contexts where abseil can not be compiled and
+// not really needed but we want to have it in the headers that are included
+// e.g. CUDA 10 and .CU files
+// InlinedVector seems to be fine with old CUDA
+
+//===- llvm/ADT/SmallVector.h - 'Normally small' vectors --------*- C++ -*-===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// This file contains code and comments derived from llvm/ADT/SmallVector.h
+//
+// Specifically CalculateInlinedVectorDefaultInlinedElements<T>() template is derived from
+// CalculateSmallVectorDefaultInlinedElements<T>() and its comments.
+
 namespace onnxruntime {
-/// Inspired by LLVM SmallVector with ONNX Runtime adjuments for abseil.
+/// Inspired by LLVM SmallVector with ONNX Runtime adjustments for abseil.
 ///
 /// Helper class for calculating the default number of inline elements for
 /// `InlinedVector<T>`.
@@ -99,21 +103,19 @@ template <typename T,
           typename Allocator = std::allocator<T>>
 using InlinedVector = absl::InlinedVector<T, N, Allocator>;
 
-// InlinedHashSet and InlinedHashMap are preferred
-// hash based containers. They store their values in the
-// buckets array that is allocated in one shot. It eliminates
-// per-node new/delete calls. Always call reserve() on any hash set/map
-// when the number of items is known in advance
 template <typename T,
-          typename Hash = absl::container_internal::hash_default_hash<T>,
-          typename Eq = absl::container_internal::hash_default_eq<T>,
           typename Allocator = std::allocator<T>>
-using InlinedHashSet = absl::flat_hash_set<T, Hash, Eq, Allocator>;
+class InlinedHashSet;
 
-template <typename K, typename V,
-          typename Hash = absl::container_internal::hash_default_hash<K>,
-          typename Eq = absl::container_internal::hash_default_eq<K>,
-          typename Allocator = std::allocator<std::pair<const K, V>>>
-using InlinedHashMap = absl::flat_hash_map<K, V, Hash, Eq, Allocator>;
+template <typename Key, typename Value,
+          typename Allocator = std::allocator<std::pair<const Key, Value>>>
+class InlinedHashMap;
 
-}  // namespace onnxruntime
+template <typename T, typename Alloc = std::allocator<T>>
+class NodeHashSet;
+
+template <typename Key, typename Value, 
+          typename Alloc = std::allocator<std::pair<const Key, Value>>>
+class NodeHashMap;
+
+}

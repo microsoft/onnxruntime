@@ -573,8 +573,8 @@ common::Status InferenceSession::RegisterGraphTransformer(
   return graph_transformation_mgr_.Register(std::move(p_graph_transformer), level);
 }
 
-common::Status InferenceSession::FilterEnabledOptimizers(const std::unordered_set<std::string>& optimizers_to_disable) {
-  optimizers_to_disable_ = optimizers_to_disable;
+common::Status InferenceSession::FilterEnabledOptimizers(InlinedHashSet<std::string> optimizers_to_disable) {
+  optimizers_to_disable_ = std::move(optimizers_to_disable);
   return Status::OK();
 }
 
@@ -1914,7 +1914,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
   telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
 
   // time to send telemetry?
-  if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > telemetry_.kDurationBetweenSending) {
+  if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > Telemetry::kDurationBetweenSending) {
     // send the telemetry
     env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
                                               telemetry_.total_run_duration_since_last_);

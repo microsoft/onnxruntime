@@ -263,8 +263,8 @@ public class ScoreMNIST {
       return;
     }
 
-    try (OrtEnvironment env = OrtEnvironment.getEnvironment();
-        OrtSession.SessionOptions opts = new SessionOptions()) {
+    OrtEnvironment env = OrtEnvironment.getEnvironment();
+    try (OrtSession.SessionOptions opts = new SessionOptions()) {
 
       opts.setOptimizationLevel(OptLevel.BASIC_OPT);
 
