@@ -4,9 +4,9 @@
 #pragma once
 
 #include "core/platform/threadpool.h"
-#include "core/providers/common.h"
-#include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
+#include "core/common/common.h"
+#include "core/framework/tensor.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 
 #include <vector>
 
@@ -74,7 +74,8 @@ struct NdCounter {
   */
   std::ptrdiff_t NextStepSize() const {
     auto elements_in_dimension = last_dim_size - current_index[dims - 1];
-    std::ptrdiff_t span_end = std::min<std::ptrdiff_t>(last, current_offset + elements_in_dimension);
+    std::ptrdiff_t span_end =
+        std::min<std::ptrdiff_t>(last, current_offset + static_cast<std::ptrdiff_t>(elements_in_dimension));
     return span_end - current_offset;
   }
 
@@ -143,19 +144,19 @@ void StridedCopy(concurrency::ThreadPool* thread_pool,
     //
     // After coalescing, the case is actually quite common since all tensors in ORT are contiguous
 
-    int64_t dst_stride = dims == 2 ? dst_strides[0] : 0;
-    int64_t src_stride = dims == 2 ? src_strides[0] : 0;
+    std::ptrdiff_t dst_stride = static_cast<std::ptrdiff_t>(dims == 2 ? dst_strides[0] : 0);
+    std::ptrdiff_t src_stride = static_cast<std::ptrdiff_t>(dims == 2 ? src_strides[0] : 0);
 
     // the size of contiguous spans that we can copy before having to advance the non-contiguous stride
-    int64_t contiguous_span_size = dims == 2 ? copy_shape[1] : copy_shape[0];
+    std::ptrdiff_t contiguous_span_size = static_cast<std::ptrdiff_t>(dims == 2 ? copy_shape[1] : copy_shape[0]);
 
     concurrency::ThreadPool::TryParallelFor(
-        thread_pool, num_iterations,
+        thread_pool, static_cast<std::ptrdiff_t>(num_iterations),
         {static_cast<float>(sizeof(T)), static_cast<float>(sizeof(T)), 1.0F},
         [src_stride, dst_stride, dst, src, contiguous_span_size](std::ptrdiff_t first, std::ptrdiff_t last) {
           // get the current inner and outer index
-          int64_t inner = first % contiguous_span_size;
-          int64_t outer = first / contiguous_span_size;
+          std::ptrdiff_t inner = first % contiguous_span_size;
+          std::ptrdiff_t outer = first / contiguous_span_size;
 
           std::ptrdiff_t dst_idx = outer * dst_stride + inner;
           std::ptrdiff_t src_idx = outer * src_stride + inner;
@@ -195,7 +196,7 @@ void StridedCopy(concurrency::ThreadPool* thread_pool,
     const TensorShapeVector& const_copy_shape = copy_shape;
 
     concurrency::ThreadPool::TryParallelFor(
-        thread_pool, num_iterations,
+        thread_pool, static_cast<std::ptrdiff_t>(num_iterations),
         {static_cast<float>(sizeof(T)), static_cast<float>(sizeof(T)), 1.0F},
         [&const_copy_shape, &const_dst_strides, dst, src, &const_src_strides, dims](std::ptrdiff_t first,
                                                                                     std::ptrdiff_t last) {
@@ -210,8 +211,8 @@ void StridedCopy(concurrency::ThreadPool* thread_pool,
             std::ptrdiff_t dst_idx = 0;
             std::ptrdiff_t src_idx = 0;
             for (std::size_t dim = 0; dim < dims; dim++) {
-              dst_idx += counter.current_index[dim] * const_dst_strides[dim];
-              src_idx += counter.current_index[dim] * const_src_strides[dim];
+              dst_idx += static_cast<std::ptrdiff_t>(counter.current_index[dim] * const_dst_strides[dim]);
+              src_idx += static_cast<std::ptrdiff_t>(counter.current_index[dim] * const_src_strides[dim]);
             }
             // we can copy until the current dimension is done (or until we hit the last element we are trying to copy)
             strided_copy_detail::Copy1D<T>(dst + dst_idx, last_dst_stride, src + src_idx, last_src_stride, iter_size);

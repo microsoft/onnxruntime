@@ -7,11 +7,11 @@
 #include <unordered_map>
 
 #include "core/framework/element_type_lists.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/tensor/slice_helper.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 
 using namespace ::onnxruntime::common;
 

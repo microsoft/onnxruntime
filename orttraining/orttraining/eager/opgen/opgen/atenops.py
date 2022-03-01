@@ -60,6 +60,10 @@ hand_implemented = {
   'aten::_reshape_alias': SignatureOnly(),
   'aten::view': SignatureOnly(),
   'aten::_copy_from_and_resize' : SignatureOnly(),
+  'aten::as_strided' : SignatureOnly(),
+  # manually implement Slice using stride and offset.
+  'aten::slice.Tensor' : SignatureOnly(),
+
   'aten::addmm': Gemm('mat1', 'mat2', 'self', alpha='alpha', beta='beta'),
   'aten::add_.Tensor': SignatureOnly(),
   'aten::t': Transpose('self'),
@@ -78,7 +82,6 @@ hand_implemented = {
   'aten::gelu_backward' : GeluGrad('grad', 'self'),
   'aten::max' : ReduceMax('self', keepdims=1),
   'aten::min' : ReduceMin('self', keepdims=1),
-  'aten::slice.Tensor' : Slice('self', 'start', 'end', 'dim', 'step'),
   'aten::_cat': Concat('tensors', 'dim'),
 
   'aten::ne.Scalar':MakeTorchFallback(),
@@ -88,7 +91,6 @@ hand_implemented = {
   'aten::eq.Tensor_out':MakeTorchFallback(),
   'aten::bitwise_and.Tensor_out' : MakeTorchFallback(),
   'aten::masked_select' : MakeTorchFallback(),
-  'aten::as_strided' : MakeTorchFallback(),
   'aten::_local_scalar_dense' : MakeTorchFallback(),
   'aten::gt.Scalar_out' : MakeTorchFallback(),
 }

@@ -196,8 +196,8 @@ using NameMLValMap = std::unordered_map<std::string, OrtValue>;
 #include "core/framework/op_kernel.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/common.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {
