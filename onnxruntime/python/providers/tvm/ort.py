@@ -35,18 +35,17 @@ def onnx_compile(model_string,
                  nhwc=False,
                  tuning_logfile="",
                  tuning_type=AUTO_TVM_TYPE):
-    def get_tvm_executor(irmod, executor, target, target_host, params):
+    def get_tvm_executor(irmod, executor, target, params):
         if executor == "vm":
             log.info("Build TVM virtual machine")
             lib = vm.compile(
                 copy.deepcopy(irmod),
                 target,
                 params=params,
-                target_host=target_host,
             )
         elif executor == "graph":
             log.info("Build TVM graph executor")
-            lib = relay.build(irmod, target=target, target_host=target_host, params=params)
+            lib = relay.build(irmod, target=target, params=params)
         else:
             log.error("Executor type {} is unsupported. ".format(executor) +
                       "Only \"vm\" and \"graph\" types are supported")
@@ -79,6 +78,7 @@ def onnx_compile(model_string,
     if tuning_logfile == "":
         tuning_logfile = os.getenv("AUTOTVM_TUNING_LOG")
     lib = None
+    tvm_target = tvm.target.Target(target, host=target_host)
     if tuning_logfile:
         if tuning_type == ANSOR_TYPE:
             desired_layouts = {
@@ -106,19 +106,19 @@ def onnx_compile(model_string,
                             ]
                         )
                         irmod = seq(irmod)
-                    lib = get_tvm_executor(irmod, executor, target, target_host, params)
+                    lib = get_tvm_executor(irmod, executor, tvm_target, params)
         elif tuning_type == AUTO_TVM_TYPE:
             with relay.build_config(opt_level=opt_level):
                 log.info("Use tuning file from ", AUTO_TVM_TYPE, ": ", tuning_logfile)
                 with autotvm.apply_history_best(tuning_logfile):
-                    lib = get_tvm_executor(irmod, executor, target, target_host, params)
+                    lib = get_tvm_executor(irmod, executor, tvm_target, params)
         else:
             log.error("Tuning log type {} is unsupported. ".format(tuning_type) +
                       "Only {} and {} types are supported".format(ANSOR_TYPE, AUTO_TVM_TYPE))
             return None
     else:
         with tvm.transform.PassContext(opt_level=opt_level):
-            lib = get_tvm_executor(irmod, executor, target, target_host, params)
+            lib = get_tvm_executor(irmod, executor, tvm_target, params)
 
     if lib is None:
         return None
