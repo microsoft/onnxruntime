@@ -49,7 +49,7 @@
     <PackageProjectUrl>https://github.com/Microsoft/onnxruntime</PackageProjectUrl>
     <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
-    <Icon>ORT_icon_for_light_bg.png</Icon>
+    <PackageIcon>ORT_icon_for_light_bg.png</PackageIcon>
     <PackageReleaseNotes>
       Release Def:
         Branch: $(BUILD_SOURCEBRANCH)
