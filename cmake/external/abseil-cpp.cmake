@@ -29,6 +29,6 @@ execute_process(COMMAND  git apply --ignore-space-change --ignore-whitespace ${P
 
 include_directories("${abseil_cpp_SOURCE_DIR}")
 
-list(APPEND onnxruntime_EXTERNAL_LIBRARIES absl::inlined_vector absl::flat_hash_set absl::flat_hash_map absl::base absl::throw_delegate absl::raw_hash_set absl::hash absl::city absl::low_level_hash absl::raw_logging_internal)
-list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES absl::inlined_vector absl::flat_hash_set absl::flat_hash_map absl::base absl::throw_delegate absl::raw_hash_set absl::hash absl::city absl::low_level_hash absl::raw_logging_internal)
+list(APPEND onnxruntime_EXTERNAL_LIBRARIES absl::inlined_vector absl::flat_hash_set absl::flat_hash_map absl::node_hash_set absl::node_hash_map absl::base absl::throw_delegate absl::raw_hash_set absl::hash absl::city absl::low_level_hash absl::raw_logging_internal)
+list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES absl::inlined_vector absl::flat_hash_set absl::flat_hash_map absl::node_hash_set absl::node_hash_map absl::base absl::throw_delegate absl::raw_hash_set absl::hash absl::city absl::low_level_hash absl::raw_logging_internal)
 

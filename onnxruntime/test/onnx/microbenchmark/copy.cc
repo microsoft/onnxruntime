@@ -1,7 +1,7 @@
 #include "common.h"
 #include "core/util/thread_utils.h"
 
-#include <core/providers/cpu/tensor/copy.h>
+#include <core/framework/copy.h>
 #include <benchmark/benchmark.h>
 #include <core/platform/threadpool.h>
 

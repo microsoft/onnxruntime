@@ -4,6 +4,7 @@
 // Public wrappers around internal ort interfaces (currently)
 #include "core/providers/shared_library/provider_host_api.h"
 
+#include "core/common/inlined_containers_fwd.h"
 #include "core/providers/shared/common.h"
 
 #define PROVIDER_DISALLOW_ALL(TypeName)     \
@@ -172,10 +173,10 @@ struct ProviderHost {
   virtual bool RocmCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) = 0;
 #endif
 
-  virtual std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                             const std::string& provider_type,
-                                                             const std::vector<const KernelRegistry*>& kernel_registries,
-                                                             const std::vector<NodeIndex>& tentative_nodes) = 0;
+  virtual InlinedHashSet<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
+                                                         const std::string& provider_type,
+                                                         gsl::span<const KernelRegistry* const> kernel_registries,
+                                                         gsl::span<const NodeIndex> tentative_nodes) = 0;
 
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ bool* p_data, size_t expected_size) = 0;
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ float* p_data, size_t expected_size) = 0;
@@ -477,6 +478,8 @@ struct ProviderHost {
   virtual void KernelDefBuilder__VariadicAlias(KernelDefBuilder* p, int input_offset, int output_offset) = 0;
   virtual void KernelDefBuilder__ExternalOutputs(KernelDefBuilder* p) = 0;
   virtual void KernelDefBuilder__AllocateInputsContiguously(KernelDefBuilder* p) = 0;
+  virtual void KernelDefBuilder__MayStridedInput(KernelDefBuilder* p, int input_index) = 0;
+  virtual void KernelDefBuilder__MayStridedOutput(KernelDefBuilder* p, int input_index, int output_index) = 0;
 
   virtual std::unique_ptr<KernelDef> KernelDefBuilder__Build(KernelDefBuilder* p) = 0;
 
@@ -631,10 +634,10 @@ struct ProviderHost {
 
   virtual Status Graph__Resolve(Graph* p) = 0;
   virtual void Graph__AddInitializedTensor(Graph* p, const ONNX_NAMESPACE::TensorProto& tensor) = 0;
-  virtual Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const std::vector<NodeArg*>& input_args, const std::vector<NodeArg*>& output_args, const NodeAttributes* attributes, const std::string& domain) = 0;
+  virtual Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const gsl::span<NodeArg* const>& input_args, const gsl::span<NodeArg* const>& output_args, const NodeAttributes* attributes, const std::string& domain) = 0;
 
   virtual const std::vector<const NodeArg*>& Graph__GetOutputs(const Graph* p) noexcept = 0;
-  virtual void Graph__SetOutputs(Graph* p, const std::vector<const NodeArg*>& outputs) = 0;
+  virtual void Graph__SetOutputs(Graph* p, gsl::span<const NodeArg* const> outputs) = 0;
 
   virtual const std::vector<const NodeArg*>& Graph__GetInputs(const Graph* p) noexcept = 0;
   virtual bool Graph__GetInitializedTensor(const Graph* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) = 0;
@@ -784,6 +787,9 @@ struct ProviderHost {
   virtual const OrtMemoryInfo& Tensor__Location(const Tensor* p) = 0;
   virtual int32_t Tensor__GetElementType(const Tensor* p) = 0;
   virtual MLDataType Tensor__DataType(const Tensor* p) = 0;
+  virtual gsl::span<const int64_t> Tensor__Strides(const Tensor* p) = 0;
+  virtual bool Tensor__IsContiguous(const Tensor* p) = 0;
+  virtual void Tensor__SetStrides(Tensor* p, const TensorShapeVector& new_strides) = 0;
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   // SparseTensor
