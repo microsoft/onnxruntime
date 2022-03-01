@@ -96,7 +96,7 @@ class TestOpSqueezeUnsqueeze(unittest.TestCase):
 
         # Verify QOperator mode
         data_reader = self.input_feeds(1, {'input': [1, 2, 26, 42]})
-        quantize_static(model_fp32_path, model_uint8_path, data_reader,
+        quantize_static(model_fp32_path, model_uint8_path, data_reader, quant_format=QuantFormat.QOperator,
                         activation_type=activation_type, weight_type=weight_type, extra_options=extra_options)
 
         # make sure squeezes become xint8 operator, its input name could tell that
