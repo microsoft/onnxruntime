@@ -30,19 +30,31 @@ constexpr int64_t kDefaultSnippetThreshold = 200;
   }
 
 template <typename T>
-void PrintValue(const T& value) {
+inline void PrintValue(const T& value) {
   if (std::is_floating_point<T>::value)
     std::cout << std::setprecision(8) << value;
   else
     std::cout << value;
 }
 
-// Explicit specialization for half
-template <> void PrintValue(const MLFloat16& value) {
-     std::cout << std::setprecision(8) << (float)value;
+// Explicit specialization
+template <> inline void PrintValue(const MLFloat16& value) {
+  std::cout << std::setprecision(8) << value.ToFloat();
 }
 
-// Print 2D tensor snippet
+template <> inline void PrintValue(const BFloat16& value) {
+  std::cout << std::setprecision(8) << value.ToFloat();
+}
+
+template <> inline void PrintValue(const uint8_t& value) {
+  std::cout << static_cast<uint32_t>(value);
+}
+
+template <> inline void PrintValue(const int8_t& value) {
+  std::cout << static_cast<int32_t>(value);
+}
+
+// Print snippet of 2D tensor with shape (dim0, dim1)
 template <typename T>
 void PrintCpuTensorSnippet(const T* tensor, int64_t dim0, int64_t dim1, int64_t edge_items) {
   for (int64_t i = 0; i < dim0; i++) {
@@ -58,7 +70,7 @@ void PrintCpuTensorSnippet(const T* tensor, int64_t dim0, int64_t dim1, int64_t 
   std::cout << std::endl;
 }
 
-// Print 3D tensor
+// Print snippet of 3D tensor with shape (dim0, dim1, dim2)
 template <typename T>
 void PrintCpuTensorSnippet(const T* tensor, int64_t dim0, int64_t dim1, int64_t dim2, int64_t edge_items) {
   for (int64_t i = 0; i < dim0; i++) {
@@ -66,7 +78,7 @@ void PrintCpuTensorSnippet(const T* tensor, int64_t dim0, int64_t dim1, int64_t 
     for (int64_t j = 0; j < dim1; j++) {
       SKIP_NON_EDGE_ITEMS(dim1, j, edge_items);
       PrintValue(tensor[i * dim1 * dim2 + j * dim2]);
-      for (int64_t k = 0; k < dim2; k++) {
+      for (int64_t k = 1; k < dim2; k++) {
         SKIP_NON_EDGE_ITEMS_LAST_DIM(dim2, k, edge_items);
         std::cout << ", ";
         PrintValue(tensor[i * dim1 * dim2 + j * dim2 + k]);
@@ -98,7 +110,7 @@ void PrintCpuTensorFull(const T* tensor, int64_t dim0, int64_t dim1, int64_t dim
   for (int64_t i = 0; i < dim0; i++) {
     for (int64_t j = 0; j < dim1; j++) {
       PrintValue(tensor[i * dim1 * dim2 + j * dim2]);
-      for (int64_t k = 0; k < dim2; k++) {
+      for (int64_t k = 1; k < dim2; k++) {
         std::cout << ", ";
         PrintValue(tensor[i * dim1 * dim2 + j * dim2 + k]);
       }
