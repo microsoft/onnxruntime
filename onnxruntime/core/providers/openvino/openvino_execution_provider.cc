@@ -79,6 +79,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
       }
       ORT_THROW(err_msg);
     }
+    ORT_THROW(err_msg);
   }
   openvino_ep::BackendManager::GetGlobalContext().device_id = info.device_id_;
 
@@ -134,6 +135,13 @@ common::Status OpenVINOExecutionProvider::Compile(
     std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto& fused_node : fused_nodes) {
     NodeComputeInfo compute_info;
+    
+    #if defined (OPENVINO_2022_1)
+    openvino_ep::BackendManager::GetGlobalContext().use_api_2 = true;
+    # else
+    openvino_ep::BackendManager::GetGlobalContext().use_api_2 = false;
+    #endif 
+
     std::shared_ptr<openvino_ep::BackendManager> backend_manager = std::make_shared<openvino_ep::BackendManager>(fused_node, *GetLogger());
 
     compute_info.create_state_func =

@@ -3,8 +3,7 @@
 
 #pragma once
 
-#include <inference_engine.hpp>
-
+#include "ov_interface.h"
 #include "contexts.h"
 #include "ibackend.h"
 
