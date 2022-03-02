@@ -54,9 +54,9 @@ public abstract class OrtProviderOptions implements AutoCloseable {
    * Native close method.
    *
    * @param apiHandle The api pointer.
-   * @param nativePointer The native options pointer.
+   * @param nativeHandle The native options pointer.
    */
-  protected abstract void close(long apiHandle, long nativePointer);
+  protected abstract void close(long apiHandle, long nativeHandle);
 
   /**
    * Loads the provider's shared library (if necessary) and calls the create provider function.
