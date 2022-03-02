@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/rocm/reduction/reduction_ops.h"
-#include "orttraining/training_ops/rocm/reduction/reduction_ops_impl.h"
 #include "core/providers/common.h"
 #include "core/providers/rocm/miopen_common.h"
 #include "core/providers/rocm/math/unary_elementwise_ops_impl.h"
