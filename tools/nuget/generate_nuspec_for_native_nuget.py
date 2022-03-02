@@ -151,8 +151,8 @@ def generate_tags(list, tags):
     list.append('<tags>' + tags + '</tags>')
 
 
-def generate_icon_url(list, icon_url):
-    list.append('<iconUrl>' + icon_url + '</iconUrl>')
+def generate_icon(list, icon_file):
+    list.append('<icon>' + icon_file + '</icon>')
 
 
 def generate_license(list):
@@ -257,7 +257,7 @@ def generate_metadata(list, args):
     generate_description(metadata_list, args.package_name)
     generate_copyright(metadata_list, '\xc2\xa9 ' + 'Microsoft Corporation. All rights reserved.')
     generate_tags(metadata_list, 'ONNX ONNX Runtime Machine Learning')
-    generate_icon_url(metadata_list, 'https://go.microsoft.com/fwlink/?linkid=2049168')
+    generate_icon(metadata_list, 'ORT_icon_for_light_bg.png')
     generate_license(metadata_list)
     generate_project_url(metadata_list, 'https://github.com/Microsoft/onnxruntime')
     generate_repo_url(metadata_list, 'https://github.com/Microsoft/onnxruntime.git', args.commit_id)
@@ -613,6 +613,8 @@ def generate_files(list, args):
                       '" target="ThirdPartyNotices.txt" />')
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'docs', 'Privacy.md') +
                       '" target="Privacy.md" />')
+    files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'ORT_icon_for_light_bg.png') +
+                      '" target="ORT_icon_for_light_bg.png" />')
     files_list.append('</files>')
 
     list += files_list

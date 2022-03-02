@@ -376,7 +376,7 @@ def parse_arguments():
     parser.add_argument(
         "--wasm_malloc", default="dlmalloc", help="Specify memory allocator for WebAssembly")
     parser.add_argument(
-        "--emsdk_version", default="2.0.34", help="Specify version of emsdk")
+        "--emsdk_version", default="3.1.3", help="Specify version of emsdk")
 
     # Enable onnxruntime-extensions
     parser.add_argument(

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 
+#include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -18,7 +19,6 @@
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/constant_folding.h"
-#include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
@@ -45,6 +45,7 @@
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/qdq_transformer/clip_quantizelinear.h"
+#include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
 #include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
 #include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
@@ -158,6 +159,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   const bool disable_quant_qdq =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
+  const bool enable_quant_qdq_cleanup =
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQCleanup, "0") == "1";
 #ifndef DISABLE_CONTRIB_OPS
   const bool enable_gelu_approximation =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
@@ -241,6 +244,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 
 #endif
+      if (enable_quant_qdq_cleanup) {
+        transformers.emplace_back(std::make_unique<QDQFinalCleanupTransformer>());
+      }
     } break;
 
     case TransformerLevel::Level3: {
@@ -272,19 +278,31 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForRuntimeO
     const SessionOptions& session_options,
     const SatApplyContextVariant& apply_context,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable) {
-  const bool disable_quant_qdq =
-      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
-
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
 
   switch (level) {
     case TransformerLevel::Level1:
       break;
-    case TransformerLevel::Level2:
+    case TransformerLevel::Level2: {
+#if !defined(DISABLE_CONTRIB_OPS)
+      const bool disable_quant_qdq =
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
+
+      // runtime optimizations only support CPU EP now
+      const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
+
       if (!disable_quant_qdq) {
         transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(apply_context));
       }
+
+      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_ep,
+                                                                       apply_context));
+#else   // !defined(DISABLE_CONTRIB_OPS)
+      ORT_UNUSED_PARAMETER(session_options);
+      ORT_UNUSED_PARAMETER(apply_context);
+#endif  // !defined(DISABLE_CONTRIB_OPS)
       break;
+    }
     case TransformerLevel::Level3:
       break;
     default:

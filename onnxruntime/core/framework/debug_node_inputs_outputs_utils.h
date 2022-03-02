@@ -53,6 +53,13 @@ constexpr const char* kSqliteDbPrefix = "ORT_DEBUG_NODE_IO_SQLITE_DB_PREFIX";
 // set to non-zero to confirm that dumping data files for all nodes is acceptable
 constexpr const char* kDumpingDataToFilesForAllNodesIsOk =
     "ORT_DEBUG_NODE_IO_DUMPING_DATA_TO_FILES_FOR_ALL_NODES_IS_OK";
+
+// Total number of elements which trigger snippet rather than full dump (default 200). Value 0 disables snippet.
+constexpr const char* kSnippetThreshold = "ORT_DEBUG_NODE_IO_SNIPPET_THRESHOLD";
+// Number of array items in snippet at beginning and end of each dimension (default 3)
+constexpr const char* kSnippetEdgeItems = "ORT_DEBUG_NODE_IO_SNIPPET_EDGE_ITEMS";
+
+
 }  // namespace debug_node_inputs_outputs_env_vars
 
 constexpr char kFilterPatternDelimiter = ';';
@@ -102,6 +109,12 @@ struct NodeDumpOptions {
   Path output_dir;
   // the sqlite3 db to append dumped data
   Path sqlite_db_prefix;
+
+  // Total number of elements which trigger snippet rather than full array for Stdout. Value 0 disables snippet.
+  int snippet_threshold;
+
+  // Number of array items in snippet at beginning and end of each dimension for Stdout.
+  int snippet_edge_items;
 };
 
 struct NodeDumpContext {

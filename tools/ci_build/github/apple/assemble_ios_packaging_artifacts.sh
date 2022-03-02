@@ -21,7 +21,7 @@ ORT_POD_VERSION=${3:?${USAGE_TEXT}}
 SHOULD_UPLOAD_ARCHIVES=${4:?${USAGE_TEXT}}
 
 STORAGE_ACCOUNT_NAME="onnxruntimepackages"
-STORAGE_ACCOUNT_CONTAINER_NAME="ortmobilestore"
+STORAGE_ACCOUNT_CONTAINER_NAME="ortmobilestore"  # TODO look into moving to '$web'
 STORAGE_URL_PREFIX="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${STORAGE_ACCOUNT_CONTAINER_NAME}"
 
 assemble_and_upload_pod() {
@@ -50,8 +50,9 @@ assemble_and_upload_pod() {
 }
 
 assemble_and_upload_pod "onnxruntime-mobile-c"
-
 assemble_and_upload_pod "onnxruntime-mobile-objc"
+assemble_and_upload_pod "onnxruntime-c"
+assemble_and_upload_pod "onnxruntime-objc"
 
 cd ${BINARIES_STAGING_DIR}/objc_api_docs
 zip -r ${ARTIFACTS_STAGING_DIR}/objc_api_docs.zip *

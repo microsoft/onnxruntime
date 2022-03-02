@@ -10,8 +10,8 @@
 #include <gsl/gsl>
 #include "onnxruntime_config.h"
 
-// I have to bring it here because including inline_containers.h
-// causes CUDA 10.2 compilers to fail
+// Need to include abseil inlined_vector.h header directly here
+// as hash tables cause CUDA 10.2 compilers to fail. inlined_vector.h is fine.
 #ifdef _MSC_VER
 #pragma warning(push)
 // C4127: conditional expression is constant

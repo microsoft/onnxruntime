@@ -167,6 +167,7 @@ test {
 	java {
 		dependsOn spotlessJava
 	}
+	forkEvery 1 // Forces each test class to be run in a separate JVM, which is necessary for testing the environment thread pool
 	useJUnitPlatform()
 	if (cmakeBuildDir != null) {
 		workingDir cmakeBuildDir

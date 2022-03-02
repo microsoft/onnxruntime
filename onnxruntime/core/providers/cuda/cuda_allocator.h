@@ -5,7 +5,6 @@
 
 #include <unordered_set>
 #include "core/framework/allocator.h"
-#include "core/common/inlined_containers.h"
 #include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
@@ -48,7 +47,7 @@ class CUDAExternalAllocator : public CUDAAllocator {
   ExternalAlloc alloc_;
   ExternalFree free_;
   ExternalEmptyCache empty_cache_;
-  InlinedHashSet<void*> reserved_;
+  std::unordered_set<void*> reserved_;
 };
 
 //TODO: add a default constructor

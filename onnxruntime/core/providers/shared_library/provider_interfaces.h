@@ -478,6 +478,8 @@ struct ProviderHost {
   virtual void KernelDefBuilder__VariadicAlias(KernelDefBuilder* p, int input_offset, int output_offset) = 0;
   virtual void KernelDefBuilder__ExternalOutputs(KernelDefBuilder* p) = 0;
   virtual void KernelDefBuilder__AllocateInputsContiguously(KernelDefBuilder* p) = 0;
+  virtual void KernelDefBuilder__MayStridedInput(KernelDefBuilder* p, int input_index) = 0;
+  virtual void KernelDefBuilder__MayStridedOutput(KernelDefBuilder* p, int input_index, int output_index) = 0;
 
   virtual std::unique_ptr<KernelDef> KernelDefBuilder__Build(KernelDefBuilder* p) = 0;
 
@@ -785,6 +787,9 @@ struct ProviderHost {
   virtual const OrtMemoryInfo& Tensor__Location(const Tensor* p) = 0;
   virtual int32_t Tensor__GetElementType(const Tensor* p) = 0;
   virtual MLDataType Tensor__DataType(const Tensor* p) = 0;
+  virtual gsl::span<const int64_t> Tensor__Strides(const Tensor* p) = 0;
+  virtual bool Tensor__IsContiguous(const Tensor* p) = 0;
+  virtual void Tensor__SetStrides(Tensor* p, const TensorShapeVector& new_strides) = 0;
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   // SparseTensor
