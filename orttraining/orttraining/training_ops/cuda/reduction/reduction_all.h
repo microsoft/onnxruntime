@@ -16,13 +16,5 @@ class ReduceAllL2 final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-template <typename TIn, typename TOut>
-struct MultiTensorReduceL2 {
-  void operator()(cudaStream_t stream, ChunkGroup<1> chunk_group, TOut* output);
-};
-
-template<typename Tin, typename Tout>
-void ScalarSqrt(cudaStream_t stream, Tin* input, Tout* output);
-
 }  // namespace cuda
 }  // namespace onnxruntime

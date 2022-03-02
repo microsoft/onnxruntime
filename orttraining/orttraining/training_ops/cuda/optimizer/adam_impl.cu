@@ -4,8 +4,8 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "orttraining/training_ops/cuda/optimizer/common.cuh"
-#include "orttraining/training_ops/cuda/optimizer/adam.h"
 #include "orttraining/training_ops/cuda/optimizer/common.h"
+#include "orttraining/training_ops/cuda/optimizer/adam_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

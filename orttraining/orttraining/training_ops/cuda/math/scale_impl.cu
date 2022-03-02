@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "orttraining/training_ops/cuda/math/scale.h"
+#include "orttraining/training_ops/cuda/math/scale_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

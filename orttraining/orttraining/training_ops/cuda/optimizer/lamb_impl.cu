@@ -2,14 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/atomic/common.cuh"
 #include "core/providers/cuda/reduction/reduction_utils.cuh"
 #include "contrib_ops/cuda/math/isfinite.cuh"
-#include "orttraining/training_ops/cuda/optimizer/common.h"
 #include "orttraining/training_ops/cuda/optimizer/common.cuh"
-#include "orttraining/training_ops/cuda/optimizer/lamb.h"
+#include "orttraining/training_ops/cuda/optimizer/lamb_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

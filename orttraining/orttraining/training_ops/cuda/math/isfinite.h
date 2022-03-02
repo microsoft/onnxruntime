@@ -18,8 +18,5 @@ class IsFiniteOp final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-template <typename TSrc>
-void IsFinite(cudaStream_t stream, const TSrc* input, bool* output, size_t N);
-
 }  // namespace cuda
 }  // namespace onnxruntime

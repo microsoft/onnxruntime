@@ -7,7 +7,7 @@
 
 #include <cuda_fp16.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "mixed_precision_scale.h"
+#include "mixed_precision_scale_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

@@ -5,6 +5,7 @@
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "sg.h"
+#include "sg_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

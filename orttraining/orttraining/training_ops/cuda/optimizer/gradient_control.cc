@@ -6,6 +6,7 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #include "common.h"
 #include "gradient_control.h"
+#include "gradient_control_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

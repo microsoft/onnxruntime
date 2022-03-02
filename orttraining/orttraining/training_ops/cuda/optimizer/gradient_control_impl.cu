@@ -5,7 +5,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/atomic/common.cuh"
-#include "gradient_control.h"
+#include "gradient_control_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

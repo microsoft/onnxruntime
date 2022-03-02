@@ -4,7 +4,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/atomic/common.cuh"
-#include "sg.h"
+#include "sg_impl.h"
 
 namespace onnxruntime {
 namespace cuda {
