@@ -633,7 +633,7 @@ jobs:
     inputs:
       testSelector: 'testAssemblies'
       testAssemblyVer2: 'Microsoft.AI.MachineLearning.Tests.DotNet5_0.dll'
-      searchFolder: '$(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.DotNet5_0\bin\x64\Debug\net5.0-windows10.0.19041.0\'
+      searchFolder: '$(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.DotNet5_0\bin\*\Debug\net5.0-windows10.0.19041.0\'
   
   - task: VSTest@2
     displayName: 'Test UWP'
