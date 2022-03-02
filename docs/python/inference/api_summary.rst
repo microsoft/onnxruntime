@@ -29,12 +29,15 @@ ONNX and ORT format models consist of a graph of computations, modeled as operat
 and implemented as optimized operator kernels for different hardware targets.
 ONNX Runtime orchestrates the execution of operator kernels via `execution providers`.
 An execution provider contains the set of kernels for a specific execution target (CPU, GPU, IoT etc).
-Without any configuration, the inference session runs on CPU. Other execution provides are
-configured using the `providers` parameter.
+Execution provides are configured using the `providers` parameter. Kernels from different execution
+providers are chosen in the priority order give in the list of providers. In th e example below
+if there is a kernel in the CUDA execution provider ONNX Runtime executes that on GPU. If not
+the kernel is executed on CPU.
 
 .. code-block:: python
 
-	session = onnxruntime.InferenceSession(model, providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+	session = onnxruntime.InferenceSession(model,
+	                                       providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
 
 The list of available execution providers can be found here: `Execution Providers <https://onnxruntime.ai/docs/execution-providers>`_.
 
@@ -184,7 +187,7 @@ You can also bind inputs and outputs directly to a PyTorch tensor.
 
     ## Allocate the PyTorch tensor for the model output
 	Y_shape = ... # You need to specify the output PyTorch tensor shape
-    Y_tensor = torch.empty(Y_shape, dtype=torch.float32, device='cuda:0'.contiguous()
+    Y_tensor = torch.empty(Y_shape, dtype=torch.float32, device='cuda:0'.contiguous())
     binding.bind_output(
         name='Y',
         device_type='cuda',
