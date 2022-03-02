@@ -1016,10 +1016,13 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
   for (const auto& [node_index, kernel_def_hash] :
        graph_.RuntimeOptimizationReplayCtx().produced_node_index_to_kernel_def_hash) {
     const auto* node = graph_.GetNode(node_index);
-    ORT_RETURN_IF(node == nullptr,
-                  "Can't find runtime optimization produced node with index ", node_index);
 
-    ORT_RETURN_IF_ERROR(add_kernel_by_hash(*node, kernel_def_hash));
+    // NHWC optimizer may replace a node, so a missing node isn't necessarily an error
+    // ORT_RETURN_IF(node == nullptr, "Can't find runtime optimization produced node with index ", node_index);
+    
+    if (node != nullptr) {
+      ORT_RETURN_IF_ERROR(add_kernel_by_hash(*node, kernel_def_hash));
+    }
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
@@ -1028,8 +1031,13 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
   // as they were created at runtime.
   for (const auto& node : graph_.Nodes()) {
     if (kernel_create_info_map_.count(node.Index()) == 0) {
-      if (node.Domain() == kOnnxDomain || node.Domain() == kOnnxDomainAlias) {
+      if (node.Domain() == kOnnxDomain || node.Domain() == kOnnxDomainAlias || node.Domain() == kMSDomain) {
+        // two possible places to get hash from
         auto kernel_hash = utils::GetHashValueFromStaticKernelHashMap(node.OpType(), node.SinceVersion());
+        if (!kernel_hash.has_value()) {
+          kernel_hash = utils::GetInternalNhwcOpHash(node);
+        }
+
         if (kernel_hash.has_value()) {
           ORT_RETURN_IF_ERROR(add_kernel_by_hash(node, *kernel_hash));
         } else {

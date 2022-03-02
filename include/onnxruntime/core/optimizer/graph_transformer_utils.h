@@ -55,16 +55,28 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
-/** Generates all predefined transformers which support runtime optimizations for this level.
+/** Generates all predefined transformers which are can be used to provide runtime optimizations for this level
+    in a minimal build.
     Any transformers or rewrite rules named in rules_and_transformers_to_disable will be excluded.
 
     This is a distinct function from GenerateTransformers() because:
-    - Runtime optimizations are used in a different scenario than normal graph optimization.
-    - The set of transformers which support runtime optimizations is different. */
-InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForRuntimeOptimizations(
+    - An ORT format model used in a minimal build will have been pre-optimized to at least level 1 when created, so
+      level 1 transformers are not included.
+    - In a minimal build we have limited optimization/Graph capabilities
+      - Graph::Resolve is not available so the transformer must keep the Graph in a valid state
+      - Limited graph_utils capabilities are included
+    - Only a small subset of transformers support storing/replaying runtime optimizations with an ORT format model
+      - this capability is provided by the SelectionActionTransformer infrastructure
+      - the logic to determine the set of nodes a transformer should modify is captured during creation of the ORT
+        format model
+      - this information is saved in the ORT format model
+      - only the logic to modify the set of nodes is included in the minimal build
+*/
+InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalBuild(
     TransformerLevel level,
     const SessionOptions& session_options,
     const SatApplyContextVariant& apply_context,
+    const IExecutionProvider& cpu_execution_provider,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable = {});
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)

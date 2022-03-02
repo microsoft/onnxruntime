@@ -226,7 +226,7 @@ class NodeRef {
   virtual const std::string& GetExecutionProviderType() const = 0;
 
   /// <summary>
-  /// Returns the schema since version for the op_type of this node. Value os -1 means it is not set.
+  /// Returns the schema since version for the op_type of this node. Value of -1 means it is not set.
   /// </summary>
   /// <returns>since version or default value -1</returns>
   virtual int SinceVersion() const = 0;

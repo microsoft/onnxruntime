@@ -1151,18 +1151,19 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
 
   return Status::OK();
 }
-
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
-Status ReplaySavedRuntimeOptimizations(
-    onnxruntime::Graph& graph, const logging::Logger& logger, const SessionOptions& session_options) {
+Status ApplyOrtFormatModelRuntimeOptimizations(
+    onnxruntime::Graph& graph, const logging::Logger& logger, const SessionOptions& session_options,
+    const IExecutionProvider& cpu_ep) {
   bool modified = false;
 
   for (int level = static_cast<int>(TransformerLevel::Level2);
        level <= static_cast<int>(session_options.graph_optimization_level);
        ++level) {
     // don't need to specify optimizers to disable, optimizers will process whatever runtime optimizations there are
-    const auto transformers = optimizer_utils::GenerateTransformersForRuntimeOptimizations(
-        static_cast<TransformerLevel>(level), session_options, SatRuntimeOptimizationLoadContext{});
+    const auto transformers = optimizer_utils::GenerateTransformersForMinimalBuild(
+        static_cast<TransformerLevel>(level), session_options, SatRuntimeOptimizationLoadContext{}, cpu_ep);
+
     for (const auto& transformer : transformers) {
       ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, logger));
     }
@@ -1413,7 +1414,9 @@ common::Status InferenceSession::Initialize() {
       }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
-      ORT_RETURN_IF_ERROR_SESSIONID_(ReplaySavedRuntimeOptimizations(graph, *session_logger_, session_options_));
+      const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
+      ORT_RETURN_IF_ERROR_SESSIONID_(
+          ApplyOrtFormatModelRuntimeOptimizations(graph, *session_logger_, session_options_, cpu_ep));
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
@@ -2292,8 +2295,8 @@ common::Status InferenceSession::AddPredefinedTransformers(GraphTransformerManag
                                                        optimizers_to_disable_);
         } else {
           SatRuntimeOptimizationSaveContext save_context{kernel_registry_manager_};
-          return optimizer_utils::GenerateTransformersForRuntimeOptimizations(level, session_options_, save_context,
-                                                                              optimizers_to_disable_);
+          return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, save_context, cpu_ep,
+                                                                      optimizers_to_disable_);
         }
       }();
 

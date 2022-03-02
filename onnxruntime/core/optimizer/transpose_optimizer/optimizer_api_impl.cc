@@ -680,7 +680,8 @@ std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
 std::unique_ptr<api::NodeRef> ApiGraph::CopyNode(const api::NodeRef& source_node, std::string_view op_type,
                                                  std::string_view domain) {
   Node& node = CreateNodeHelper(graph_, op_type, source_node.Inputs(),
-                                source_node.Outputs().size(), domain, source_node.SinceVersion(), source_node.GetExecutionProviderType());
+                                source_node.Outputs().size(), domain, source_node.SinceVersion(),
+                                source_node.GetExecutionProviderType());
 
   std::unique_ptr<api::NodeRef> new_node = std::make_unique<ApiNode>(node, graph_);
   new_node->CopyAttributes(source_node);
