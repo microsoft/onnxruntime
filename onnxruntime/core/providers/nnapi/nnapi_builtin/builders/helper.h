@@ -91,6 +91,9 @@ enum class QuantizedOpType : uint8_t {
   QDQAdd,
   QDQMul,
   QDQTranspose,
+  QDQReshape,
+  QDQSoftmax,
+  QDQConcat,
   // TODO, add other QDQ NodeUnit types
 };
 

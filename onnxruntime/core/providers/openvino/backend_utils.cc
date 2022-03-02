@@ -143,13 +143,23 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalCont
     ngraph::pass::ConstantFolding().run_on_function(ng_function);
     auto& results = const_cast<::ngraph::ResultVector&>(ng_function->get_results());
     size_t index = results.size() - 1;
-    for (auto it = results.rbegin(); it != results.rend(); ++it) {
+    #if defined (OPENVINO_2022_1)
+      for (auto it = results.rbegin(); it != results.rend(); ++it) {
       if (auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>((*it)->input_value(0).get_node_shared_ptr())) {
-        const_outputs_map[result_to_output.at((*it)->get_friendly_name())] = const_node;
+        const_outputs_map[(*it)->get_friendly_name()] = const_node;
         results.erase(results.begin() + index);
       }
       --index;
     }
+    #else
+      for (auto it = results.rbegin(); it != results.rend(); ++it) {
+        if (auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>((*it)->input_value(0).get_node_shared_ptr())) {
+          const_outputs_map[result_to_output.at((*it)->get_friendly_name())] = const_node;
+          results.erase(results.begin() + index);
+        }
+        --index;
+      }
+    #endif
   }
 
   return std::make_shared<InferenceEngine::CNNNetwork>(ng_function);

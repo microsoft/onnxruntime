@@ -8,7 +8,7 @@
 #pragma warning(disable : 4996)
 #endif
 #include "unique.h"
-#include "core/framework/inlined_containers.h"
+#include "core/common/inlined_containers.h"
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
@@ -46,7 +46,8 @@ Status Unique<float>::Compute(OpKernelContext* ctx) const {
   // XXX: Refactoring for less memory allocations. unordered_map
   // used originally for float uniqueness, is this correct?
   using IndexingMap = InlinedHashMap<float, ElementData>;
-  IndexingMap mapped_indices(num_elements);
+  IndexingMap mapped_indices;
+  mapped_indices.reserve(num_elements);
 
   // processing
   for (int64_t i = 0; i < num_elements; ++i) {

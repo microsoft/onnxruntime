@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import List, Dict, Tuple, Union
 from transformers import GPT2Model, GPT2LMHeadModel, GPT2Config, TFGPT2Model
 from benchmark_helper import Precision
+from io_binding_helper import IOBindingHelper
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +118,7 @@ class Gpt2Inputs:
     def __init__(self, input_ids, position_ids, attention_mask, past):
         self.input_ids: torch.LongTensor = input_ids
         self.position_ids: torch.LongTensor = position_ids
-        self.attention_mask: Union[torch.FloatTensor, torch.HalfTensor] = attention_mask
+        self.attention_mask: Union[torch.LongTensor, torch.FloatTensor, torch.HalfTensor] = attention_mask
         self.past: Union[List[torch.FloatTensor], List[torch.HalfTensor]] = past
 
     def to_list(self) -> List:
@@ -131,7 +132,11 @@ class Gpt2Inputs:
         return tuple(v for v in [self.input_ids, self.position_ids, self.attention_mask, self.past] if v is not None)
 
     def to_fp32(self):
-        attention_mask = self.attention_mask.to(dtype=torch.float32) if self.attention_mask is not None else None
+        # For attention mask, only convert fp16 to fp32, and keep the original type if it is integer.
+        attention_mask = None
+        if self.attention_mask is not None:
+            attention_mask = self.attention_mask.to(dtype=torch.float32) if (self.attention_mask.dtype == torch.float16) else self.attention_mask
+
         past = [p.to(dtype=torch.float32) for p in self.past]
         return Gpt2Inputs(self.input_ids, self.position_ids, attention_mask, past)
 
@@ -150,7 +155,10 @@ class Gpt2Helper:
                          device: torch.device,
                          float16: bool = False,
                          has_position_ids: bool = True,
-                         has_attention_mask: bool = True) -> Gpt2Inputs:
+                         has_attention_mask: bool = True,
+                         input_ids_dtype: torch.dtype = torch.int32,
+                         position_ids_dtype: torch.dtype = torch.int32,
+                         attention_mask_dtype: torch.dtype = torch.int32) -> Gpt2Inputs:
         """ Create random inputs for GPT2 model.
         Returns torch tensors of input_ids, position_ids, attention_mask and a list of past state tensors.
         """
@@ -161,13 +169,13 @@ class Gpt2Helper:
         input_ids = torch.randint(low=0,
                                   high=vocab_size - 1,
                                   size=(batch_size, sequence_length),
-                                  dtype=torch.int64,
+                                  dtype=input_ids_dtype,
                                   device=device)
 
         attention_mask = None
         if has_attention_mask:
             total_sequence_length = past_sequence_length + sequence_length
-            attention_mask = torch.ones([batch_size, total_sequence_length], dtype=float_type, device=device)
+            attention_mask = torch.ones([batch_size, total_sequence_length], dtype=attention_mask_dtype, device=device)
             if total_sequence_length >= 2:
                 padding_position = random.randint(0, total_sequence_length - 1)  # test input with padding.
                 attention_mask[:, padding_position] = 0
@@ -177,8 +185,8 @@ class Gpt2Helper:
         if has_position_ids:
             position_ids = (attention_mask.long().cumsum(-1) - 1)
             position_ids.masked_fill_(position_ids < 0, 0)
-            position_ids = position_ids[:, past_sequence_length:]
-
+            position_ids = position_ids[:, past_sequence_length:].to(position_ids_dtype)
+        
         return Gpt2Inputs(input_ids, position_ids, attention_mask, past)
 
     @staticmethod
@@ -318,7 +326,10 @@ class Gpt2Helper:
                     verbose: bool = False,
                     use_external_data_format: bool = False,
                     has_position_ids: bool = True,
-                    has_attention_mask: bool = True):
+                    has_attention_mask: bool = True,
+                    input_ids_dtype: torch.dtype = torch.int32,
+                    position_ids_dtype: torch.dtype = torch.int32,
+                    attention_mask_dtype: torch.dtype = torch.int32):
         """ Export GPT-2 model with past state to ONNX model.
         """
         config: GPT2Config = model.config
@@ -333,7 +344,10 @@ class Gpt2Helper:
                                                    device=device,
                                                    float16=False,
                                                    has_position_ids=has_position_ids,
-                                                   has_attention_mask=has_attention_mask)
+                                                   has_attention_mask=has_attention_mask,
+                                                   input_ids_dtype=input_ids_dtype,
+                                                   position_ids_dtype=position_ids_dtype,
+                                                   attention_mask_dtype=attention_mask_dtype)
         input_list = dummy_inputs.to_list()
 
         with torch.no_grad():
@@ -487,65 +501,13 @@ class Gpt2Helper:
     def prepare_io_binding(ort_session, input_ids, position_ids, attention_mask, past, output_buffers, output_shapes):
         """ Returnas IO binding object for a session.
         """
-
-        # Bind inputs and outputs to onnxruntime session
-        io_binding = ort_session.io_binding()
-
-        # Bind inputs
-        assert input_ids.is_contiguous()
-        io_binding.bind_input('input_ids', input_ids.device.type, 0, numpy.longlong, list(input_ids.size()),
-                              input_ids.data_ptr())
-
-        data_type = output_buffers[ort_session.get_outputs()[0].name].dtype
-        float_type = numpy.float16 if data_type == torch.float16 else numpy.float32
-
-        if past is not None:
-            for i, past_i in enumerate(past):
-                assert past_i.is_contiguous()
-
-                data_ptr = past_i.data_ptr()
-                if data_ptr == 0:
-                    # When past_sequence_length is 0, its data_ptr will be zero. IO Binding asserts that data_ptr shall not be zero.
-                    # Here we workaround and pass data pointer of input_ids. Actual data is not used for past so it does not matter.
-                    data_ptr = input_ids.data_ptr()
-
-                io_binding.bind_input(f'past_{i}', past_i.device.type, 0, float_type, list(past_i.size()), data_ptr)
-
-        if attention_mask is not None:
-            assert attention_mask.is_contiguous()
-            io_binding.bind_input('attention_mask', attention_mask.device.type, 0, float_type,
-                                  list(attention_mask.size()), attention_mask.data_ptr())
-
-        if position_ids is not None:
-            assert position_ids.is_contiguous()
-            io_binding.bind_input('position_ids', position_ids.device.type, 0, numpy.longlong,
-                                  list(position_ids.size()), position_ids.data_ptr())
-
-        # Bind outputs
-        for output in ort_session.get_outputs():
-            output_name = output.name
-            output_buffer = output_buffers[output_name]
-            logger.debug(f"{output_name} device type={output_buffer.device.type} shape={list(output_buffer.size())}")
-            io_binding.bind_output(output_name, output_buffer.device.type, 0, float_type, output_shapes[output_name],
-                                   output_buffer.data_ptr())
-
-        return io_binding
+        return IOBindingHelper.prepare_io_binding(ort_session, input_ids, position_ids, attention_mask, past, output_buffers, output_shapes)
 
     @staticmethod
     def get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes, return_numpy=True):
         """ Copy results to cpu. Returns a list of numpy array.
         """
-        ort_outputs = []
-        for output in ort_session.get_outputs():
-            output_name = output.name
-            buffer = output_buffers[output_name]
-            shape = output_shapes[output_name]
-            copy_tensor = buffer[0:numpy.prod(shape)].reshape(shape).clone().detach()
-            if return_numpy:
-                ort_outputs.append(copy_tensor.cpu().numpy())
-            else:
-                ort_outputs.append(copy_tensor)
-        return ort_outputs
+        return IOBindingHelper.get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes, return_numpy)
 
     @staticmethod
     def onnxruntime_inference_with_binded_io(ort_session,
@@ -617,6 +579,9 @@ class Gpt2Helper:
                     model_class="GPT2LMHeadModel",
                     has_position_ids=True,
                     has_attention_mask=True,
+                    input_ids_dtype=torch.int32,
+                    position_ids_dtype=torch.int32,
+                    attention_mask_dtype=torch.int32,
                     verbose=False,
                     enable_pickle_output=False):
         """ Generate random inputs and compare the results of PyTorch and Onnx Runtime.
@@ -655,7 +620,10 @@ class Gpt2Helper:
             dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size, past_sequence_length, sequence_length,
                                                        config.num_attention_heads, config.hidden_size, config.n_layer,
                                                        config.vocab_size, device, is_float16, has_position_ids,
-                                                       has_attention_mask)
+                                                       has_attention_mask,
+                                                       input_ids_dtype=input_ids_dtype,
+                                                       position_ids_dtype=position_ids_dtype,
+                                                       attention_mask_dtype=attention_mask_dtype)
             outputs = Gpt2Helper.pytorch_inference(model, dummy_inputs)
             if use_io_binding:
                 ort_outputs = Gpt2Helper.onnxruntime_inference(ort_session, dummy_inputs)
@@ -719,6 +687,9 @@ class Gpt2Helper:
                          model_class="GPT2LMHeadModel",
                          has_position_ids=True,
                          has_attention_mask=True,
+                         input_ids_dtype=torch.int32,
+                         position_ids_dtype=torch.int32,
+                         attention_mask_dtype=torch.int32,
                          batch_size=8,
                          sequence_length=1,
                          past_sequence_length=32):
@@ -736,7 +707,10 @@ class Gpt2Helper:
         dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size, past_sequence_length, sequence_length,
                                                    config.num_attention_heads, config.hidden_size, config.n_layer,
                                                    config.vocab_size, device, is_float16, has_position_ids,
-                                                   has_attention_mask)
+                                                   has_attention_mask,
+                                                   input_ids_dtype=input_ids_dtype,
+                                                   position_ids_dtype=position_ids_dtype,
+                                                   attention_mask_dtype=attention_mask_dtype)
 
         if use_io_binding:
             _, latency = Gpt2Helper.onnxruntime_inference(ort_session, dummy_inputs, total_runs)

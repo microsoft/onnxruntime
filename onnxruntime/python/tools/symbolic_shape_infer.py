@@ -1898,9 +1898,10 @@ class SymbolicShapeInference:
                 vi = self.known_vi_[node.output[0]]
                 if len(vi.type.tensor_type.shape.dim) == 0:
                     vi.type.tensor_type.elem_type = onnx.TensorProto.UNDEFINED
-            elif node.op_type == 'ATenOp' and node.domain == 'com.microsoft':
+            elif node.op_type == 'ATen' and node.domain == 'org.pytorch.aten':
                 for attr in node.attribute:
-                    if attr.name == 'name':
+                    # TODO: Is overload_name needed?
+                    if attr.name == 'operator':
                         aten_op_name = attr.s.decode('utf-8') if isinstance(attr.s, bytes) else attr.s
                         if aten_op_name in self.aten_op_dispatcher_:
                             known_aten_op = True

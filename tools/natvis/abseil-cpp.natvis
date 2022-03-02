@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+  <Type Name="absl::InlinedVector&lt;*&gt;">
+    <DisplayString>{{ size={storage_.metadata_.value >> 1} }}</DisplayString>
+    <Expand>
+      <Item Name="[N]" ExcludeView="simple">$T2</Item>
+      <Item Name="[capacity]" ExcludeView="simple" Condition="(storage_.metadata_.value &amp; 1) == 0">$T2</Item>
+      <Item Name="[capacity]" ExcludeView="simple" Condition="(storage_.metadata_.value &amp; 1) == 1">storage_.data_.allocated.allocated_capacity</Item>
+      <Item Name="[allocator]" ExcludeView="simple">storage_.metadata_</Item>
+      <IndexListItems Condition="(storage_.metadata_.value &amp; 1) == 0">
+        <Size>storage_.metadata_.value &gt;&gt; 1</Size>
+        <ValueNode>(($T1 &amp;)(storage_.data_.inlined.inlined_data[$i]))</ValueNode>
+      </IndexListItems>
+      <IndexListItems Condition="(storage_.metadata_.value &amp; 1) == 1">
+        <Size>storage_.metadata_.value &gt;&gt; 1</Size>
+        <ValueNode>storage_.data_.allocated.allocated_data[$i]</ValueNode>
+      </IndexListItems>
+    </Expand>
+  </Type>
+  <!-- Should handle both flat hash_set and hash_map -->
+  <Type Name="absl::container_internal::raw_hash_set&lt;*&gt;">
+    <DisplayString Condition="size_ == 0">empty</DisplayString>
+    <DisplayString>{{ size={size_} }}</DisplayString>
+    <Expand>
+      <Item Name="[size]" ExcludeView="simple">size_</Item>
+      <Item Name="[capacity]" ExcludeView="simple">capacity_</Item>
+      <CustomListItems MaxItemsPerView="5000">
+        <Variable Name="nslot" InitialValue="0" />
+        <Size>size_</Size>
+        <Loop>
+          <!-- bool IsFull(ctrl_t c) const { return c >= 0; } -->
+          <If Condition="ctrl_[nslot] &gt;= 0">
+            <Item>slots_[nslot]</Item>
+          </If>
+          <Exec>nslot++</Exec>
+          <Break Condition="nslot == capacity_" />
+        </Loop>
+      </CustomListItems>
+    </Expand>
+  </Type>
+  <Type Name="absl::container_internal::map_slot_type&lt;*&gt;">
+    <DisplayString>{{ {value.first}:{value.second} }}</DisplayString>
+    <Expand>
+      <Item Name="[key]" ExcludeView="simple">value.first</Item>
+      <Item Name="[value]" ExcludeView="simple">value.second</Item>
+    </Expand>
+  </Type>
+</AutoVisualizer>

@@ -72,6 +72,10 @@ static bool HasExternalInitializer(const InitializedTensorSet& initializers, con
   return false;
 }
 
+inline bool IsNodeLayoutNHWC(const NodeUnit& node_unit) {
+  return node_unit.Domain() == kMSInternalNHWCDomain;
+}
+
 static bool IsQuantizationScaleSupported(const InitializedTensorSet& initializers,
                                          const NodeUnitIODef& io_def,
                                          const OpSupportCheckParams& params,
@@ -268,6 +272,42 @@ static bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, con
   return true;
 }
 
+// Some Quantized NNAPI operations have required output scale and zero point
+// e.g. Softmax (uint8) requires output scale be 1.f/256 and zp be 0
+// This helper function checks if the given io_def has required scale and zp
+static bool HasRequiredScaleAndZeroPoint(const InitializedTensorSet& initializers,
+                                         const std::string& op_desc,
+                                         const NodeUnitIODef& io_def,
+                                         const Path& path,
+                                         float required_scale, int32_t required_zp) {
+  float scale = 0.0f;
+  int32_t zp = 0;
+  auto status = GetQuantizationScaleAndZeroPoint(initializers, io_def, path,
+                                                 scale, zp);
+  if (!status.IsOK()) {
+    LOGS_DEFAULT(ERROR) << op_desc
+                        << " GetQuantizationScaleAndZeroPoint failed, message: "
+                        << status.ErrorMessage();
+    return false;
+  }
+
+  if (scale != required_scale) {
+    LOGS_DEFAULT(VERBOSE) << op_desc
+                          << " scale can only be [" << required_scale
+                          << "], actual scale: " << scale;
+    return false;
+  }
+
+  if (zp != required_zp) {
+    LOGS_DEFAULT(VERBOSE) << op_desc
+                          << "] zero point can only be [" << required_zp
+                          << "], actual zero point: " << scale;
+    return false;
+  }
+
+  return true;
+}
+
 #pragma endregion helpers
 
 #pragma region op_base
@@ -288,6 +328,8 @@ class BaseOpSupportChecker : public IOpSupportChecker {
                                  const OpSupportCheckParams& /* params */) const {
     return true;
   }
+
+  virtual bool IsQuantizedOp(const NodeUnit& /* node_unit */) const { return false; }
 
   virtual int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
                                                    const OpSupportCheckParams& /* params */) const {
@@ -453,7 +495,7 @@ class BinaryOpSupportChecker : public BaseOpSupportChecker {
   int GetMinSupportedOpSet(const NodeUnit& node_unit) const override;
 
   bool IsNodeUnitTypeSupported(const NodeUnit& node_unit) const override;
-  static bool IsQuantizedOp(const NodeUnit& node_unit);
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
 /* static */ void BinaryOpSupportChecker::CreateSharedOpSupportChecker(
@@ -481,7 +523,7 @@ bool BinaryOpSupportChecker::IsNodeUnitTypeSupported(const NodeUnit& node_unit) 
   return true;
 }
 
-/* static */ bool BinaryOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
+bool BinaryOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
   const auto quant_type = GetQuantizedOpType(node_unit);
   return quant_type == QuantizedOpType::QLinearAdd ||
          quant_type == QuantizedOpType::QLinearMul ||
@@ -593,10 +635,10 @@ class TransposeOpSupportChecker : public BaseOpSupportChecker {
       const InitializedTensorSet& initializers, const NodeUnit& node_unit,
       const OpSupportCheckParams& params) const override;
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
-  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
-/* static */ bool TransposeOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
+bool TransposeOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQTranspose;
 }
 
@@ -653,7 +695,16 @@ class ReshapeOpSupportChecker : public BaseOpSupportChecker {
 
   // Reshape opset 4- uses attributes for new shape which we do not support for now
   int GetMinSupportedOpSet(const NodeUnit& /* node_unit */) const override { return 5; }
+  bool HasSupportedInputOutputsImpl(
+      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
+      const OpSupportCheckParams& /* params */) const override;
+  bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
+
+bool ReshapeOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
+  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQReshape;
+}
 
 bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
                                                 const OpSupportCheckParams& /* params */) const {
@@ -685,7 +736,7 @@ bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
   const auto perm_size = SafeInt<uint32_t>(perm_tensor.dims()[0]);
 
   NodeAttrHelper helper(node_unit);
-  const bool allow_zero = helper.Get("allowzero ", 0) == 1;
+  const bool allow_zero = helper.Get("allowzero", 0) == 1;
   for (uint32_t i = 0; i < perm_size; i++) {
     // NNAPI reshape does not support 0 as dimension
     if (raw_perm[i] == 0) {
@@ -699,6 +750,24 @@ bool ReshapeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& init
         return false;
       }
     }
+  }
+
+  return true;
+}
+
+bool ReshapeOpSupportChecker::HasSupportedInputOutputsImpl(
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+    const OpSupportCheckParams& params) const {
+  if (!IsQuantizedOp(node_unit)) {
+    return BaseOpSupportChecker::HasSupportedInputOutputsImpl(initializers, node_unit, params);
+  }
+
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Input)) {
+    return false;
+  }
+
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Output)) {
+    return false;
   }
 
   return true;
@@ -790,7 +859,7 @@ class PoolOpSupportChecker : public BaseOpSupportChecker {
       const InitializedTensorSet& initializers, const NodeUnit& node_unit,
       const OpSupportCheckParams& params) const override;
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override;
-  static bool IsQuantizedOp(const NodeUnit& node_unit);
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
 /* static */ void PoolOpSupportChecker::CreateSharedOpSupportChecker(
@@ -815,7 +884,7 @@ bool PoolOpSupportChecker::IsNodeUnitTypeSupported(const NodeUnit& node_unit) co
   return true;
 }
 
-/* static */ bool PoolOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
+bool PoolOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
   return IsQuantizedPool(GetQuantizedOpType(node_unit));
 }
 
@@ -979,7 +1048,7 @@ class ConvOpSupportChecker : public BaseOpSupportChecker {
       const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
       const OpSupportCheckParams& /* params */) const override;
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
-  static bool IsQuantizedOp(const NodeUnit& node_unit);
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
 /* static */ void ConvOpSupportChecker::CreateSharedOpSupportChecker(
@@ -992,7 +1061,7 @@ class ConvOpSupportChecker : public BaseOpSupportChecker {
       });
 }
 
-/* static */ bool ConvOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
+bool ConvOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
   return IsQuantizedConv(GetQuantizedOpType(node_unit));
 }
 
@@ -1109,7 +1178,18 @@ class SoftMaxOpSupportChecker : public BaseOpSupportChecker {
                                            const OpSupportCheckParams& /* params */) const override {
     return ANEURALNETWORKS_FEATURE_LEVEL_2;
   }
+  bool HasSupportedInputOutputsImpl(
+      const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+      const OpSupportCheckParams& params) const override;
+
+  bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
+
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
+
+bool SoftMaxOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
+  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQSoftmax;
+}
 
 bool SoftMaxOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                                 const OpSupportCheckParams& params) const {
@@ -1133,6 +1213,32 @@ bool SoftMaxOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* i
           << " input axis: " << axis;
       return false;
     }
+  }
+
+  return true;
+}
+
+bool SoftMaxOpSupportChecker::HasSupportedInputOutputsImpl(
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+    const OpSupportCheckParams& params) const {
+  if (!IsQuantizedOp(node_unit)) {
+    return BaseOpSupportChecker::HasSupportedInputOutputsImpl(initializers, node_unit, params);
+  }
+
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Input)) {
+    return false;
+  }
+
+  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Output)) {
+    return false;
+  }
+
+  // NNAPI requires the scale be 1.f/256 and zero point to be 0
+  if (!HasRequiredScaleAndZeroPoint(initializers,
+                                    MakeString("Op [", node_unit.OpType(), "] name [", node_unit.Name(), "]'s output 0 "),
+                                    node_unit.Outputs()[0], node_unit.ModelPath(),
+                                    1.f / 256 /* required_scale */, 0 /* required_zp */)) {
+    return false;
   }
 
   return true;
@@ -1410,29 +1516,13 @@ int UnaryOpSupportChecker::GetMinSupportedOpSet(const NodeUnit& node_unit) const
     const InitializedTensorSet& initializers, const NodeUnit& node_unit, const OpSupportCheckParams& /* params */) {
   const auto& op_type = node_unit.OpType();
   ORT_ENFORCE(op_type == "QLinearSigmoid");
-  const auto& op_name = node_unit.Name();
 
   // NNAPI requires the scale be 1.f/256 and zero point to be 0
   // See https://android.googlesource.com/platform/frameworks/ml/+/refs/heads/android10-c2f2-release/nn/common/operations/Activation.cpp#180
-  float output_scale = 0.0f;
-  int32_t output_zp = 0;
-  auto status = GetQuantizationScaleAndZeroPoint(initializers, node_unit.Outputs()[0], node_unit.ModelPath(),
-                                                 output_scale, output_zp);
-  if (!status.IsOK()) {
-    LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
-                        << "] GetQuantizationScaleAndZeroPoint failed, message: " << status.ErrorMessage();
-    return false;
-  }
-
-  if (output_scale != 1.f / 256) {
-    LOGS_DEFAULT(VERBOSE) << "Op [" << op_type << "] name [" << op_name
-                          << "] output scale can only be 1.f/256, actual scale: " << output_scale;
-    return false;
-  }
-
-  if (output_zp != 0) {
-    LOGS_DEFAULT(VERBOSE) << "Op [" << op_type << "] name [" << op_name
-                          << "] output zero point can only be 0, actual zero point: " << output_scale;
+  if (!HasRequiredScaleAndZeroPoint(initializers,
+                                    MakeString("Op [", op_type, "] name [", node_unit.Name(), "]'s output 0 "),
+                                    node_unit.Outputs()[0], node_unit.ModelPath(),
+                                    1.f / 256 /* required_scale */, 0 /* required_zp */)) {
     return false;
   }
 
@@ -1449,9 +1539,17 @@ class ConcatOpSupportChecker : public BaseOpSupportChecker {
                          const OpSupportCheckParams& params) const override;
 
   bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-      const OpSupportCheckParams& /* params */) const override;
+      const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+      const OpSupportCheckParams& params) const override;
+
+  bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
+
+bool ConcatOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
+  // TODO add support of QLinearConcat
+  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQConcat;
+}
 
 bool ConcatOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                                const OpSupportCheckParams& /* params */) const {
@@ -1470,8 +1568,11 @@ bool ConcatOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* in
 }
 
 bool ConcatOpSupportChecker::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-    const OpSupportCheckParams& /* params */) const {
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+    const OpSupportCheckParams& params) const {
+  const auto& op_type = node_unit.OpType();
+  const auto& op_name = node_unit.Name();
+  const auto input_size = node_unit.Inputs().size();
   int32_t input_type;
   if (!GetType(node_unit.Inputs()[0].node_arg, input_type))
     return false;
@@ -1482,6 +1583,56 @@ bool ConcatOpSupportChecker::HasSupportedInputOutputsImpl(
                           << "] Input type: [" << input_type
                           << "] is not supported for now";
     return false;
+  }
+
+  if (IsQuantizedOp(node_unit)) {
+    std::vector<size_t> input_indices(input_size);
+    std::iota(input_indices.begin(), input_indices.end(), 0);
+    if (!IsQuantizedIOSupported(initializers, node_unit, input_indices, params, IOKind::Input)) {
+      return false;
+    }
+
+    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Output)) {
+      return false;
+    }
+
+    // Need to verify all the input and output has the same scale and zp for API 28-
+    if (params.android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
+      std::vector<float> input_scales(input_size);
+      std::vector<int32_t> input_zps(input_size);
+      size_t input_idx = 0;
+
+      auto status = GetQuantizationScaleAndZeroPoint(
+          initializers, node_unit.Inputs()[input_idx], node_unit.ModelPath(),
+          input_scales[input_idx], input_zps[input_idx]);
+
+      if (!status.IsOK()) {
+        LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
+                            << "] GetQuantizationScaleAndZeroPoint for input_scale/zp failed, message: "
+                            << status.ErrorMessage();
+        return false;
+      }
+
+      for (++input_idx; input_idx < input_size; ++input_idx) {
+        if (!HasRequiredScaleAndZeroPoint(initializers,
+                                          MakeString("Op [", op_type, "] name [", op_name, "] input ", input_idx),
+                                          node_unit.Inputs()[input_idx],
+                                          node_unit.ModelPath(),
+                                          input_scales[0] /* required_scale */,
+                                          input_zps[0] /* required_zp */)) {
+          return false;
+        }
+      }
+
+      // NNAPI (28-) requires the output scale and zp be the same as the input 0
+      if (!HasRequiredScaleAndZeroPoint(initializers,
+                                        MakeString("Op [", op_type, "] name [", op_name, "]'s output 0"),
+                                        node_unit.Outputs()[0], node_unit.ModelPath(),
+                                        input_scales[0] /* required_scale */,
+                                        input_zps[0] /* required_zp */)) {
+        return false;
+      }
+    }
   }
 
   return true;
@@ -1642,10 +1793,10 @@ class ResizeOpSupportChecker : public BaseOpSupportChecker {
       const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
       const OpSupportCheckParams& /* params */) const override;
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
-  static bool IsQuantizedOp(const NodeUnit& node_unit) ORT_MUST_USE_RESULT;  // TODO, see if we want to move this to BaseOpBuilder
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
 
-/* static */ bool ResizeOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) {
+bool ResizeOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQResize;
 }
 
@@ -1739,7 +1890,7 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
       }
       const float* scales_data = reinterpret_cast<const float*>(unpacked_tensor.data());
       float scale_n = scales_data[0];
-      float scale_c = scales_data[1];
+      float scale_c = IsNodeLayoutNHWC(node_unit) ? scales_data[3] : scales_data[1];
       if (scale_n != 1.0f || scale_c != 1.0f) {
         LOGS_DEFAULT(VERBOSE) << "Scales of N/C channel should be 1"
                               << "Resize of N/C channels are not supported"
@@ -1756,14 +1907,16 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
         LOGS_DEFAULT(ERROR) << "Error while unpacking sizes_tensor: " << status.ErrorMessage();
         return false;
       }
+
+      int channel_idx = IsNodeLayoutNHWC(node_unit) ? 3 : 1;
       const int64_t* sizes_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
       uint32_t size_n = SafeInt<uint32_t>(sizes_data[0]);
-      uint32_t size_c = SafeInt<uint32_t>(sizes_data[1]);
-      if (size_n != input_shape[0] || size_c != input_shape[1]) {
-        LOGS_DEFAULT(VERBOSE) << "Output sizes of N/C chanel should match the input sizes, "
+      uint32_t size_c = SafeInt<uint32_t>(sizes_data[channel_idx]);
+      if (size_n != input_shape[0] || size_c != input_shape[channel_idx]) {
+        LOGS_DEFAULT(VERBOSE) << "Output sizes of N/C channel should match the input sizes, "
                               << "Resize of N/C channels are not supported"
                               << ", input_size_n, " << input_shape[0] << ", output_size_n, " << size_n
-                              << ". input_size_c, " << input_shape[1] << ", output_size_c, " << size_c;
+                              << ". input_size_c, " << input_shape[channel_idx] << ", output_size_c, " << size_c;
         return false;
       }
     }

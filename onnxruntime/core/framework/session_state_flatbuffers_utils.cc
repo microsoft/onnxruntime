@@ -3,6 +3,8 @@
 
 #include "core/framework/session_state_flatbuffers_utils.h"
 
+#include "core/framework/kernel_def_hash_helpers.h"
+
 namespace onnxruntime::fbs::utils {
 
 std::string GetSubgraphId(const NodeIndex node_idx, const std::string& attr_name) {
@@ -47,7 +49,10 @@ FbsSessionStateViewer::NodeKernelInfo FbsSessionStateViewer::GetNodeKernelInfo(I
   const auto* const fbs_node_indices = fbs_kcis->node_indices();
   const auto* const fbs_kernel_def_hashes = fbs_kcis->kernel_def_hashes();
 
-  return {fbs_node_indices->Get(idx), fbs_kernel_def_hashes->Get(idx)};
+  HashValue hash = fbs_kernel_def_hashes->Get(idx);
+  onnxruntime::utils::UpdateHashForBackwardsCompatibility(hash);
+
+  return {fbs_node_indices->Get(idx), hash};
 }
 
 FbsSessionStateViewer::Index FbsSessionStateViewer::GetNumNodeKernelInfos() const {
@@ -73,5 +78,4 @@ Status FbsSessionStateViewer::GetSubgraphSessionState(NodeIndex node_idx, const 
   fbs_subgraph_session_state_out = fbs_subgraph_session_state;
   return Status::OK();
 }
-
 }  // namespace onnxruntime::fbs::utils
