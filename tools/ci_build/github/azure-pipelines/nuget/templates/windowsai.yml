@@ -642,14 +642,14 @@ jobs:
     displayName: 'Test DotNet5_0'
     inputs:
       testSelector: 'testAssemblies'
-      testAssemblyVer2: '.\bin\*\Release\net5.0-windows10.0.19041.0\Microsoft.AI.MachineLearning.Tests.DotNet5_0.dll'
+      testAssemblyVer2: '.\bin\x64\Release\net5.0-windows10.0.19041.0\Microsoft.AI.MachineLearning.Tests.DotNet5_0.dll'
       searchFolder: '$(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.DotNet5_0'
   
   - task: VSTest@2
     displayName: 'Test UWP'
     inputs:
       testSelector: 'testAssemblies'
-      testAssemblyVer2: '.\bin\*\Release\*.appxrecipe'
+      testAssemblyVer2: '.\bin\x64\Release\*.appxrecipe'
       searchFolder: '$(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.Uwp'
 
   - task: PublishPipelineArtifact@0
