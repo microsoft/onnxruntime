@@ -47,8 +47,8 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVI
 namespace onnxruntime {
 struct ProviderInfo_OpenVINO_Impl : ProviderInfo_OpenVINO {
   std::vector<std::string> GetAvailableDevices() const override {
-    openvino_ep::ov_core ie_core;
-    return ie_core.get_available_devices();
+    openvino_ep::OVCore ie_core;
+    return ie_core.GetAvailableDevices();
   }
 } g_info;
 

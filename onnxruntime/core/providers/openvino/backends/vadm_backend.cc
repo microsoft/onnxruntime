@@ -42,7 +42,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
     SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);
   #endif
-  ov_config config;
+  OVConfig config;
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     config["PERF_COUNT"] = CONFIG_VALUE(YES);
@@ -58,18 +58,18 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
   // Loading model to the plugin
   //If graph is fully supported and batching is enabled, load the network onto all VPU's and infer
-  std::vector<ov_exe_network> exe_networks;
+  std::vector<OVExeNetwork> exe_networks;
   if (global_context_.is_wholly_supported_graph && subgraph_context_.enable_batching) {
     for (int j = 0; j < 8; j++) {
-      ov_exe_network exe_network;
+      OVExeNetwork exe_network;
       config[InferenceEngine::HDDL_DEVICE_TAG] = global_context_.deviceTags[j];
-      exe_network = global_context_.ie_core.load_network(ie_cnn_network_, hw_target, config, subgraph_context_.subgraph_name);
+      exe_network = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, config, subgraph_context_.subgraph_name);
       exe_networks.push_back(exe_network);
     }
     LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
     for (size_t j = 0; j < num_inf_reqs_; j++) {
-      ov_infer_request_ptr infRequest;
-      infRequest = std::make_shared<ov_infer_request>(exe_networks[j].create_infer_request());
+      OVInferRequestPtr infRequest;
+      infRequest = std::make_shared<OVInferRequest>(exe_networks[j].CreateInferRequest());
       infer_requests_.push_back(infRequest);
     }
     LOGS_DEFAULT(INFO) << log_tag << "Infer Requests created: " << num_inf_reqs_ << std::endl;
@@ -80,11 +80,11 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     i = GetFirstAvailableDevice(global_context);
     LOGS_DEFAULT(INFO) << log_tag << "Device Tag is: " << i;
     config[InferenceEngine::HDDL_DEVICE_TAG] = global_context_.deviceTags[i];
-    ov_exe_network exe_network;
-    exe_network = global_context_.ie_core.load_network(ie_cnn_network_, hw_target, config, subgraph_context_.subgraph_name);
+    OVExeNetwork exe_network;
+    exe_network = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, config, subgraph_context_.subgraph_name);
     LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
-    ov_infer_request_ptr infRequest;
-    infRequest = std::make_shared<ov_infer_request>(exe_network.create_infer_request());
+    OVInferRequestPtr infRequest;
+    infRequest = std::make_shared<OVInferRequest>(exe_network.CreateInferRequest());
     infer_requests_.push_back(infRequest);
     LOGS_DEFAULT(INFO) << log_tag << "Infer Requests created: 1" << std::endl;
   }
@@ -101,8 +101,8 @@ void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* c
     for (auto input_info_iter = graph_input_info.begin();
       input_info_iter != graph_input_info.end(); ++input_info_iter) {
       std::string input_name = input_info_iter->get_node()->get_name();
-      ov_tensor_ptr graph_input_blob; 
-      graph_input_blob = infer_request->get_tensor(input_name);
+      OVTensorPtr graph_input_blob; 
+      graph_input_blob = infer_request->GetTensor(input_name);
       FillInputBlob(graph_input_blob, batch_slice_idx, input_name, ort, context, subgraph_context_);
     }        
   #else 
@@ -110,17 +110,17 @@ void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* c
   for (auto input_info_iter = graph_input_info.begin();
        input_info_iter != graph_input_info.end(); ++input_info_iter) {
     // Get OpenVINO's input buffer
-    ov_tensor_ptr graph_input_blob;
+    OVTensorPtr graph_input_blob;
     std::string input_name = input_info_iter->first;
     auto precision = input_info_iter->second->getPrecision();
-    ov_tensor graph_input_blob; 
-    graph_input_blob = infer_request->get_tensor(input_name);
+    OVTensor graph_input_blob; 
+    graph_input_blob = infer_request->GetTensor(input_name);
     FillInputBlob(graph_input_blob, batch_slice_idx, input_name, ort, context, precision, subgraph_context_);
   }
   #endif 
 
   // Start Async inference
-  infer_request->start_async();
+  infer_request->StartAsync();
   
 }
 
@@ -132,15 +132,15 @@ void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext
   auto infer_request = infer_requests_[infer_req_idx];
 
   // Wait for Async inference completion
-  infer_request->wait();
+  infer_request->Wait();
   
   #if defined (OPENVINO_2022_1)
   auto graph_output_info = ie_cnn_network_->outputs();
   for (auto output_info_iter = graph_output_info.begin();
        output_info_iter != graph_output_info.end(); ++output_info_iter) {
-    ov_tensor_ptr graph_output_blob;
+    OVTensorPtr graph_output_blob;
     auto output_name = output_info_iter->get_node()->get_name();
-    graph_output_blob = infer_request->get_tensor(output_name);
+    graph_output_blob = infer_request->GetTensor(output_name);
     auto output_tensor = GetOutputTensor(ort, context, batch_size, infer_request, output_name, subgraph_context_.output_names);
     FillOutputBlob(graph_output_blob, output_tensor, ort, batch_slice_idx);
   }
@@ -149,9 +149,9 @@ void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext
   for (auto output_info_iter = graph_output_info.begin();
        output_info_iter != graph_output_info.end(); ++output_info_iter) {
     // Get OpenVINO's output blob
-    ov_tensor_ptr graph_output_blob;
+    OVTensorPtr graph_output_blob;
     auto output_name = output_info_iter->first;
-    graph_output_blob = infer_request->get_tensor(output_name);
+    graph_output_blob = infer_request->GetTensor(output_name);
     auto output_tensor = GetOutputTensor(ort, context, batch_size, infer_request, output_name, subgraph_context_.output_names);
     auto precision = output_info_iter->second->getPrecision();
     FillOutputBlob(graph_output_blob, output_tensor, ort, precision, batch_slice_idx);

@@ -123,7 +123,7 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalCont
     }
   #elif defined (OPENVINO_2021_4)
     const std::string model = model_proto.SerializeAsString();
-    auto cnn_network = global_context.ie_core.read_model(model);
+    auto cnn_network = global_context.ie_core.ReadModel(model);
     ng_function = cnn_network.getFunction();
   #else
      ORT_UNUSED_PARAMETER(model_proto);
@@ -169,7 +169,7 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
 #endif
 
   const std::string model = model_proto.SerializeAsString();
-  auto cnn_network = global_context.ie_core.read_model(model);
+  auto cnn_network = global_context.ie_core.ReadModel(model);
   if (global_context.device_type.find("GPU") != std::string::npos &&
       subgraph_context.precision == InferenceEngine::Precision::FP16) {
     //FP16 transformations
@@ -177,9 +177,8 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
     pass_obj.run_on_model(cnn_network);
     cnn_network.get()->validate_nodes_and_infer_types();
   }
-
+  //Check for Constant Folding
   if (!global_context.is_wholly_supported_graph) {
-      
     ov::pass::ConstantFolding pass_const_obj;
     pass_const_obj.run_on_model(cnn_network);
     auto& results = const_cast<ov::ResultVector&>(cnn_network.get()->get_results());
@@ -260,12 +259,11 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
 
 OrtValue*
 GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_size,
-                ov_infer_request_ptr infer_request,
+                OVInferRequestPtr infer_request,
                 std::string output_name,
                 std::unordered_map<std::string, int> output_names) {
   OrtValue* output_tensor;
-
-  auto graph_output_blob = infer_request->get_tensor(output_name);
+  auto graph_output_blob = infer_request->GetTensor(output_name);
   
   #if defined (OPENVINO_2022_1)
   auto graph_output_dims = graph_output_blob->get_shape();
@@ -287,9 +285,7 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_s
     ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
   }
   int index = it->second;
-
   output_tensor = ort.KernelContext_GetOutput(context, index, output_shape.get(), num_dims);
-
   return output_tensor;
 }
 
@@ -456,46 +452,34 @@ perfCountersSorted(std::map<std::string, InferenceEngine::InferenceEngineProfile
   return sorted;
 }
 
-void FillInputBlob(ov_tensor_ptr inputBlob, size_t batch_slice_idx,
+void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
                    std::string input_name, Ort::CustomOpApi& ort, OrtKernelContext* context,
                    const SubGraphContext& subgraph_context) {
 
     size_t input_data_size = inputBlob->get_byte_size();    
-    
     auto input_data = inputBlob->data();
-
     const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context.input_names.at(input_name));
-    
     auto mem_info = ort.GetTensorMemoryInfo(tensor);
-    
     if (strcmp(mem_info->name, OpenVINO_GPU) == 0) {
       ORT_THROW(log_tag + "IO Buffering is not enabled, Please enable Input on CPU");
     }
-  
     // Copy input data into OpenVINO's input buffer
     const char* tensor_data = ort.GetTensorData<char>(tensor);
-
     const char* batch_memory_offset = tensor_data + input_data_size * batch_slice_idx;
-    
     std::memcpy(input_data, batch_memory_offset, input_data_size);
 }
 
-void FillOutputBlob(ov_tensor_ptr outputBlob, OrtValue* output_tensor,
+void FillOutputBlob(OVTensorPtr outputBlob, OrtValue* output_tensor,
                     Ort::CustomOpApi& ort, size_t batch_slice_idx) {
-  
   auto output_data = outputBlob->data();
-
   size_t output_data_size = outputBlob->get_byte_size();
-
   char* tensor_data = ort.GetTensorMutableData<char>(output_tensor);
-
   char* batch_memory_offset = tensor_data + output_data_size * batch_slice_idx;
-
   std::memcpy(batch_memory_offset, output_data, output_data_size);
 }
 
 
-void printPerformanceCounts(const std::vector<ov_profiling_info>& performanceMap,
+void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
                             std::ostream& stream, std::string deviceName) {
   long long totalTime = 0;
   // Print performance counts
@@ -513,13 +497,13 @@ void printPerformanceCounts(const std::vector<ov_profiling_info>& performanceMap
     }
     stream << std::setw(maxLayerName) << std::left << toPrint;
     switch (it.status) {
-      case ov_profiling_info::Status::EXECUTED:
+      case OVProfilingInfo::Status::EXECUTED:
         stream << std::setw(15) << std::left << "EXECUTED";
         break;
-      case ov_profiling_info::Status::NOT_RUN:
+      case OVProfilingInfo::Status::NOT_RUN:
         stream << std::setw(15) << std::left << "NOT_RUN";
         break;
-      case ov_profiling_info::Status::OPTIMIZED_OUT:
+      case OVProfilingInfo::Status::OPTIMIZED_OUT:
         stream << std::setw(15) << std::left << "OPTIMIZED_OUT";
         break;
     }
@@ -581,12 +565,12 @@ void printPerformanceCounts(const std::map<std::string, InferenceEngine::Inferen
   std::cout << std::endl;
 }
 
-void printPerformanceCounts(ov_infer_request_ptr request, std::ostream& stream, std::string deviceName) {
+void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std::string deviceName) {
   #if defined (OPENVINO_2022_1)
-    auto performanceMap = request->getNewObj().get_profiling_info();
+    auto performanceMap = request->GetNewObj().get_profiling_info();
     printPerformanceCounts(performanceMap, stream, deviceName);
   #else
-    auto performanceMap = request->getObj().GetPerformanceCounts();
+    auto performanceMap = request->GetObj().GetPerformanceCounts();
     printPerformanceCounts(performanceMap, stream, deviceName);
   #endif 
 }

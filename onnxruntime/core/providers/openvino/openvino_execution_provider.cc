@@ -30,7 +30,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   //to check if target device is available
   //using ie_core capability GetAvailableDevices to fetch list of devices plugged in
   bool device_found = false;
-  auto available_devices = openvino_ep::BackendManager::GetGlobalContext().ie_core.get_available_devices();
+  auto available_devices = openvino_ep::BackendManager::GetGlobalContext().ie_core.GetAvailableDevices();
   for (auto device : available_devices) {
     if (device == info.device_type_) {
       device_found = true;

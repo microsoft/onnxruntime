@@ -10,7 +10,7 @@ namespace openvino_ep {
 
 // Holds context applicable to the entire EP instance.
 struct GlobalContext {
-  ov_core ie_core;
+  OVCore ie_core;
   bool is_wholly_supported_graph = false;
   bool enable_vpu_fast_compile = false;
   bool use_compiled_network = false;
@@ -40,7 +40,7 @@ struct SubGraphContext {
   std::vector<int> input_indexes;
   std::unordered_map<std::string, int> input_names;
   std::unordered_map<std::string, int> output_names;
-  ov_precision precision;
+  OVPrecision precision;
 };
 
 }  // namespace openvino_ep

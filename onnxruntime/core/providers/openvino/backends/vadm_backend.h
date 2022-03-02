@@ -30,9 +30,9 @@ class VADMBackend : public IBackend {
 
   GlobalContext& global_context_;
   SubGraphContext subgraph_context_;
-  std::shared_ptr<ov_network> ie_cnn_network_;
+  std::shared_ptr<OVNetwork> ie_cnn_network_;
   std::map<std::string, std::shared_ptr<ngraph::Node>> const_outputs_map_;
-  std::vector<ov_infer_request_ptr> infer_requests_;
+  std::vector<OVInferRequestPtr> infer_requests_;
   size_t num_inf_reqs_;
   mutable std::mutex compute_lock_;
 };

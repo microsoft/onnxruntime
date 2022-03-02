@@ -68,15 +68,15 @@ ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type, std::
 
 OrtValue*
 GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_size,
-                ov_infer_request_ptr infer_request,
+                OVInferRequestPtr infer_request,
                 std::string output_name,
                 std::unordered_map<std::string, int> output_names);
 
-void FillInputBlob(ov_tensor_ptr inputBlob, size_t batch_slice_idx,
+void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
                    std::string input_name, Ort::CustomOpApi& ort, OrtKernelContext* context,
                    const SubGraphContext& subgraph_context);
 
-void FillOutputBlob(ov_tensor_ptr outputBlob, OrtValue* output_tensor,
+void FillOutputBlob(OVTensorPtr outputBlob, OrtValue* output_tensor,
                     Ort::CustomOpApi& ort, size_t batch_slice_idx);
 
 void printPerformanceCounts(const std::map<std::string, InferenceEngine::InferenceEngineProfileInfo>& performanceMap,
@@ -92,10 +92,10 @@ void FillInputBlob(InferenceEngine::Blob::Ptr& inputBlob, size_t batch_slice_idx
 void FillOutputBlob(InferenceEngine::Blob::Ptr& outputBlob, OrtValue* output_tensor,
                     Ort::CustomOpApi& ort, InferenceEngine::Precision precision, size_t batch_slice_idx);
 
-void printPerformanceCounts(const std::vector<ov_profiling_info>& performanceMap,
+void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
                             std::ostream& stream, std::string deviceName);
 
-void printPerformanceCounts(ov_infer_request_ptr request, std::ostream& stream, std::string deviceName);
+void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std::string deviceName);
 
 }  // namespace backend_utils
 }  // namespace openvino_ep
