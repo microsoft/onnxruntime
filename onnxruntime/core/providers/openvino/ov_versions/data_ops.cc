@@ -119,6 +119,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Greater", V_2020_4, {"All"}},
     {"GreaterOrEqual", V_2022_1, {"All"}},
     {"Identity", V_2020_4, {"All"}},
+    {"ImageScaler", V_2022_1, {"All"}},
     {"InstanceNormalization", V_2020_4, {"All"}},
     {"HardSigmoid", V_2020_4, {"CPU", "GPU"}},
     {"HardMax", V_2022_1, {"CPU", "GPU"}},
@@ -152,6 +153,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"PRelu", V_2020_4, {"All"}},
     {"QuantizeLinear", V_2021_4, {"CPU", "GPU"}},
     {"Range", V_2021_2, {"MYRIAD"}},
+    {"Range", V_2022_1, {"All"}},
     {"Reciprocal", V_2020_4, {"All"}},
     {"ReduceL1", V_2022_1, {"CPU", "GPU"}},
     {"ReduceL2", V_2022_1, {"CPU", "GPU"}},
@@ -178,7 +180,8 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Scatter", V_2021_1, {"MYRIAD"}},
     {"Scatter", V_2022_1, {"All"}},
     {"ScatterElements", V_2021_2, {"MYRIAD"}},
-    //{"ScatterND", V_2022_1, {"CPU","GPU"}},
+    {"ScatterElements", V_2022_1, {"All"}},
+    {"ScatterND", V_2022_1, {"CPU","GPU"}},
     {"Selu", V_2020_4, {"CPU", "GPU"}},
     {"Shape", V_2020_4, {"All"}},
     {"Shrink", V_2022_1, {"CPU", "GPU"}},
@@ -208,7 +211,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"TopK", V_2020_4, {"All"}},
     {"Unsqueeze", V_2020_4, {"All"}},
     {"Upsample", V_2021_1, {"CPU"}},
-    {"Upsample", V_2021_4, {"All"}},
+    {"Upsample", V_2022_1, {"All"}},
     {"Where", V_2021_2, {"MYRIAD"}},
     {"Where", V_2022_1, {"All"}},
     {"Xor", V_2022_1, {"CPU", "GPU"}},
@@ -271,6 +274,7 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Resize", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Equal", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Reshape", V_2021_3, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"Reshape", V_2022_1, {"All"}});
   no_dimension_supported_.push_back({"Ceil", V_2021_3, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Ceil", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"Loop", V_2021_3, {"MYRIAD"}});
@@ -1205,6 +1209,11 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
   //Check 3b
   const auto opset = op_map.find(domain);
   if (opset == op_map.end() || opset->second.find(optype) == opset->second.end()) {
+#ifndef NDEBUG
+    if (openvino_ep::backend_utils::IsDebugEnabled()) {
+      std::cout << "Failed in Unsupported onnx model domain or the operator is not available in OpenVINO ngraph operators list" << std::endl;
+    }
+#endif
     return false;
   } else {
     return true;
