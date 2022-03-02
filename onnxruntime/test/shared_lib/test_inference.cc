@@ -1978,3 +1978,36 @@ TEST(CApiTest, crop_and_resize) {
 #endif
 
 }  // namespace TestPerSessionCustomThreadHooks
+
+#ifdef USE_CUDA
+TEST(CApiTest, GitHubIssue10179) {
+  // https://github.com/microsoft/onnxruntime/issues/10179
+  // the issue was caused by a race condition in CUDAExecutionProvider::GetKernelRegistry()
+  // if the test runs to completion, consider that run successful
+  auto load_model_thread_fn = []() {
+    try {
+      const auto* model_path = MODEL_URI;
+      Ort::SessionOptions session_options{};
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+      Ort::Session session{*ort_env, model_path, session_options};
+    } catch (const std::exception& e) {
+      std::cerr << "exception: " << e.what() << "\n";
+      throw e;
+    }
+  };
+
+  constexpr int num_threads = 4;
+  constexpr int num_iterations = 10;
+
+  for (int i = 0; i < num_iterations; ++i) {
+    std::vector<std::thread> threads(num_threads);
+    for (auto& thread : threads) {
+      thread = std::thread{load_model_thread_fn};
+    }
+
+    for (auto& thread : threads) {
+      thread.join();
+    }
+  }
+}
+#endif
