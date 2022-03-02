@@ -369,20 +369,19 @@ Most TensorFlow operations used by a CNN support both NHWC and NCHW data format.
 
 ### Mitigate high latency variance
 
-On some platforms, onnxruntime may exhibit high latency variance during inferencing. This is caused by the constant cost model that onnxruntime use to breakdown tasks in the thread pool.
+On some platforms, onnxruntime may exhibit high latency variance during inferencing. This is caused by the constant cost model that onnxruntime use to parallelize tasks in the thread pool.
 To offer a way as possible mitigation, onnxruntime provides a dynamic cost model which could be enbabled by session option:
 
 ```
 sess_options.add_session_config_entry('session.dynamic_block_base', '2') #python API
 ```
 
-Whenever "dynamic_block_base" set to a positive value, onnxruntime thread pool will break down internal tasks dynamically.
-Specifically, assume there is a function expected to run N number of times by the thread pool, with the dynamic model enabled, a thread will run
+Whenever set positive value, onnxruntime thread pool will parallelize internal tasks with a diminishing granularity.
+Specifically, assume there is a function expected to run N number of times by the thread pool, with the dynamic model enabled, each thread in the pool will claim
 
 ```
 residual_of_N/(dynamic_block_base \* num_of_threads)
 ```
 
-number of times of that function eveytime when it claims a CPU core. So over a period of time, threads in the pool are likely to be better load-balanced, thereby lowering the variance of E2E inferencing latency.
-Due to the same reason, the dynamic cost model may also better the performance for certains cases.
-
+whenever it is ready to run. So over a period of time, threads in the pool are likely to be better load-balanced, thereby lowering the variance of E2E latency.
+Due to the same reason, the dynamic cost model may also better the performance for certain cases.
