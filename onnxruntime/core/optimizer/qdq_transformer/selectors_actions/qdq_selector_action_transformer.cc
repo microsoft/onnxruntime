@@ -204,11 +204,14 @@ SelectorActionRegistry CreateSelectorActionRegistry(bool is_int8_allowed) {
 
 }  // namespace
 
-QDQSelectorActionTransformer::QDQSelectorActionTransformer(const SatApplyContextVariant& apply_context)
+QDQSelectorActionTransformer::QDQSelectorActionTransformer(
+    const SatApplyContextVariant& apply_context)
     : SelectorActionTransformer{
           "QDQSelectorActionTransformer",
           CreateSelectorActionRegistry(QDQIsInt8Allowed()),
-          apply_context} {
+          apply_context,
+          // this transformer is only compatible with the CPU EP
+          {kCpuExecutionProvider}} {
 }
 
 }  // namespace onnxruntime
