@@ -803,7 +803,7 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
   return ort_layout_senstive_ops;
 }
 
-Status TransformLayout(Graph& graph, bool& modified, IExecutionProvider& execution_provider) {
+Status TransformLayoutForCompilingEP(Graph& graph, bool& modified, IExecutionProvider& execution_provider) {
   // sub graph recurse will be added later
   auto api_graph = MakeApiGraph(graph, execution_provider.GetAllocator(0, OrtMemTypeDefault), nullptr);
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();

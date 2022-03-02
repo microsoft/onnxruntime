@@ -286,7 +286,7 @@ void CheckNhwcTransformerIsApplied() {
         if (node.OpType() == "QLinearConv") {
           EXPECT_EQ(node.Domain(), kMSDomain);
           bool has_channels_last_set = false;
-          for (const auto attr : node.GetAttributes()) {
+          for (const auto& attr : node.GetAttributes()) {
             if (attr.first == "channels_last") {
               EXPECT_EQ(attr.second.i(), 1);
               has_channels_last_set = true;

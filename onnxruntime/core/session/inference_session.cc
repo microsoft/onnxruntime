@@ -916,7 +916,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state.ExportDll(),
                                                        session_state.GetMutableFuncMgr(),
-                                                       layout_transformer::TransformLayout, mode));
+                                                       layout_transformer::TransformLayoutForCompilingEP, mode));
 
   // apply transformers except default transformers
   // Default transformers are required for correctness and they are owned and run by inference session
@@ -1141,7 +1141,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph, session_state.ExportDll(),
                                             session_state.GetMutableFuncMgr(),
-                                            layout_transformer::TransformLayout,
+                                            layout_transformer::TransformLayoutForCompilingEP,
                                             GraphPartitioner::Mode::kOrtFormatLoad,
                                             &compiled_kernel_hashes));
 
