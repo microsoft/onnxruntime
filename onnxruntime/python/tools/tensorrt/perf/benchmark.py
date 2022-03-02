@@ -1054,8 +1054,15 @@ def run_onnxruntime(args, models):
                     # resolve providers to create session
                     providers = ep_to_provider_list[ep] 
                     options = onnxruntime.SessionOptions()
-                    if args.optimize_graph:
+                    enablement = args.graph_enablement
+                    if enablement == enable_all:
                         options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+                    elif enablement == extended: 
+                        options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+                    elif enablement == basic: 
+                        options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
+                    else: # disable 
+                        options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
                     
                     # create onnxruntime inference session
                     try:
@@ -1656,7 +1663,7 @@ def parse_arguments():
 
     parser.add_argument("--io_binding", required=False, default=False, help="Bind Inputs")
     
-    parser.add_argument("--optimize_graph", required=False, default=True, help="Enable graph optimization.")
+    parser.add_argument("--graph_enablement", required=False, default=enable_all, choices=[disable, basic, extended, enable_all], help="Choose graph optimizationenablement.")
 
     parser.add_argument("--ep", required=False, default=None, help="Specify ORT Execution Provider.")
     
