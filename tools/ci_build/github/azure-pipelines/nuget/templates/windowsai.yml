@@ -640,17 +640,19 @@ jobs:
 
   - task: VSTest@2
     displayName: 'Test DotNet5_0'
+    continueOnError: true
     inputs:
       testSelector: 'testAssemblies'
       testAssemblyVer2: 'Microsoft.AI.MachineLearning.Tests.DotNet5_0.dll'
-      searchFolder: '$(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.DotNet5_0\bin\x64\Release\net5.0-windows10.0.19041.0\'
+      searchFolder: '$(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.DotNet5_0\bin\x64\Debug\net5.0-windows10.0.19041.0\'
   
   - task: VSTest@2
     displayName: 'Test UWP'
+    continueOnError: true
     inputs:
       testSelector: 'testAssemblies'
       testAssemblyVer2: 'Microsoft.AI.MachineLearning.Tests.Uwp.build.appxrecipe'
-      searchFolder: '$(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.Uwp\bin\x64\Release\'
+      searchFolder: '$(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.Uwp\bin\x64\Debug\'
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline NuGet Artifact'
