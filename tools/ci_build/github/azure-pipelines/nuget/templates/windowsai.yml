@@ -102,7 +102,7 @@ jobs:
 - job: NuGet_Packaging
   workspace:
     clean: all
-  pool: 'onnxruntime-gpu-winbuild'
+  pool: 'windows-latest'
   # dependsOn:
   # - WindowsAI_DirectML_X64
   # - WindowsAI_DirectML_X86
