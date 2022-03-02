@@ -610,22 +610,22 @@ jobs:
         msbuild Microsoft.AI.MachineLearning.Tests.Uwp.csproj /p:Platform=ARM64
       workingDirectory: $(Build.SourcesDirectory)\csharp\test\Microsoft.AI.MachineLearning.Tests.Uwp
 
-  - task: PowerShell@2
-    displayName: 'NuGet Tests: Run Tests'
-    continueOnError: true
-    inputs:
-      targetType: 'inline'
-      script: |
-        Write-Host "Run Microsoft.AI.MachineLearning CppWinRT Tests (x86)"
-        pushd .\Microsoft.AI.MachineLearning.Tests\Debug
-        .\Microsoft.AI.MachineLearning.Tests.exe
-        popd
-        Write-Host "Run Microsoft.AI.MachineLearning CppWinRT Tests (x64)"
-        pushd .\Microsoft.AI.MachineLearning.Tests\x64\Debug
-        .\Microsoft.AI.MachineLearning.Tests.exe
-        popd
-        Write-Host "Done!"
-      workingDirectory: $(Build.SourcesDirectory)\csharp\test
+  # - task: PowerShell@2
+  #   displayName: 'NuGet Tests: Run Tests'
+  #   continueOnError: true
+  #   inputs:
+  #     targetType: 'inline'
+  #     script: |
+  #       Write-Host "Run Microsoft.AI.MachineLearning CppWinRT Tests (x86)"
+  #       pushd .\Microsoft.AI.MachineLearning.Tests\Debug
+  #       .\Microsoft.AI.MachineLearning.Tests.exe
+  #       popd
+  #       Write-Host "Run Microsoft.AI.MachineLearning CppWinRT Tests (x64)"
+  #       pushd .\Microsoft.AI.MachineLearning.Tests\x64\Debug
+  #       .\Microsoft.AI.MachineLearning.Tests.exe
+  #       popd
+  #       Write-Host "Done!"
+  #     workingDirectory: $(Build.SourcesDirectory)\csharp\test
 
   - task: VSTest@2
     displayName: 'Test DotNet5_0'
