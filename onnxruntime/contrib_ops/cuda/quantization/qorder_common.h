@@ -79,6 +79,10 @@ class CublasLtMMAlgoMap {
   std::unordered_map<std::string, CublasLtMatmulAlgoInfo> best_algos_;
 };
 
+static Status Reorder(cublasLtHandle_t cublasLt, cudaStream_t stream,
+                      int32_t batchCount, int64_t rows, int64_t cols, cudaDataType_t data_type,
+                      const void* input, cublasLtOrder_t order_input, void* output, cublasLtOrder_t order_output);
+
 Status QOrdered_MatMul(
     cublasLtHandle_t cublasLt_handle, cudaStream_t stream, const cudaDeviceProp& device_prop,
     int32_t batchCount, int64_t m, int64_t n, int64_t k,

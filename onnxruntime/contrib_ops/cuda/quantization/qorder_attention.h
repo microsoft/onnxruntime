@@ -4,8 +4,10 @@
 #pragma once
 
 #include "core/providers/cuda/cuda_kernel.h"
+#include "core/providers/cuda/tensor/quantize_linear.cuh"
 #include "contrib_ops/cpu/bert/attention_base.h"
 #include "qorder_common.h"
+
 
 namespace onnxruntime {
 namespace contrib {
@@ -13,7 +15,6 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-template <typename T>
 class QOrderedAttention final : public CudaKernel, public AttentionBase {
  public:
   QOrderedAttention(const OpKernelInfo& info);
