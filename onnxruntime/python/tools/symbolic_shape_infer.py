@@ -417,6 +417,7 @@ class SymbolicShapeInference:
                                           [make_named_value_info(i) for i in node.output], initializers)
 
             self.tmp_mp_.graph.CopyFrom(tmp_graph)
+
             self.tmp_mp_ = shape_inference.infer_shapes(self.tmp_mp_)
 
         for i_o in range(len(node.output)):
@@ -1056,23 +1057,23 @@ class SymbolicShapeInference:
         else:
             pads = self._try_get_value(node, 1)
 
+        sympy_shape = self._get_sympy_shape(node, 0)
+        rank = len(sympy_shape)
+
+        if pads is not None:
+            assert len(pads) == 2 * rank
+            new_sympy_shape = [
+                d + pad_up + pad_down for d, pad_up, pad_down in zip(sympy_shape, pads[:rank], pads[rank:])
+            ]
+            self._update_computed_dims(new_sympy_shape)
+        else:
+            # dynamic pads, create new symbolic dimensions
+            new_sympy_shape = self._new_symbolic_shape(rank, node)
+        output_tp = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+
         vi = self.known_vi_[node.output[0]]
-        output_shape = get_shape_from_type_proto(vi.type)
-        if len(output_shape) == 0 or None in output_shape:
-            sympy_shape = self._get_sympy_shape(node, 0)
-            rank = len(sympy_shape)
-            if pads is not None:
-                assert len(pads) == 2 * rank
-                new_sympy_shape = [
-                    d + pad_up + pad_down for d, pad_up, pad_down in zip(sympy_shape, pads[:rank], pads[rank:])
-                ]
-                self._update_computed_dims(new_sympy_shape)
-            else:
-                # dynamic pads, create new symbolic dimensions
-                new_sympy_shape = self._new_symbolic_shape(rank, node)
-            output_tp = self.known_vi_[node.input[0]].type.tensor_type.elem_type
-            vi.CopyFrom(
-                helper.make_tensor_value_info(node.output[0], output_tp, get_shape_from_sympy_shape(new_sympy_shape)))
+        vi.CopyFrom(
+            helper.make_tensor_value_info(node.output[0], output_tp, get_shape_from_sympy_shape(new_sympy_shape)))
 
     def _infer_Pool(self, node):
         sympy_shape = self._compute_conv_pool_shape(node)
