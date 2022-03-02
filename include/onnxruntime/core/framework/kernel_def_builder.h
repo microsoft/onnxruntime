@@ -90,6 +90,9 @@ class KernelDef {
 
   bool HasExternalOutputs() const { return external_outputs_; }
 
+  const std::vector<int>& MayStridedInput() const { return may_strided_inputs_; }
+  const std::vector<std::pair<int, int>>& MayStridedOutput() const { return may_strided_output_map_; }
+
   OrtMemType OutputMemoryType(size_t output_index) const {
     auto it = output_memory_type_args_.find(output_index);
     if (it == output_memory_type_args_.end())
@@ -162,6 +165,12 @@ class KernelDef {
 
   // Whether the outputs are from external.
   bool external_outputs_ = false;
+
+  // An element i means i-th input can be strided tensor.
+  std::vector<int> may_strided_inputs_;
+
+  // An element <i, j> means j-th output can be a strided tensor, which share the data from i-th input.
+  std::vector<std::pair<int, int>> may_strided_output_map_;
 
   // The memory types of inputs/outputs of this kernel
   MemTypeMap input_memory_type_args_;
@@ -297,6 +306,17 @@ class KernelDefBuilder {
     kernel_def_->external_outputs_ = true;
     return *this;
   }
+
+  /**
+     Specify that the input_index-th input can be strided tensor.
+   */
+  KernelDefBuilder& MayStridedInput(int input_index);
+
+  /**
+     Specify that the output_index-th output can be strided tensor, and share the data
+     from input_index-th input.
+   */
+  KernelDefBuilder& MayStridedOutput(int input_index, int output_index);
 
   /**
      Specify that this kernel requires an input arg

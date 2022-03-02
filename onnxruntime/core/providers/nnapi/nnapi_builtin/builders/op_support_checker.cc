@@ -1539,9 +1539,17 @@ class ConcatOpSupportChecker : public BaseOpSupportChecker {
                          const OpSupportCheckParams& params) const override;
 
   bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-      const OpSupportCheckParams& /* params */) const override;
+      const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+      const OpSupportCheckParams& params) const override;
+
+  bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
+
+bool ConcatOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
+  // TODO add support of QLinearConcat
+  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQConcat;
+}
 
 bool ConcatOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
                                                const OpSupportCheckParams& /* params */) const {
@@ -1560,8 +1568,11 @@ bool ConcatOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* in
 }
 
 bool ConcatOpSupportChecker::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
-    const OpSupportCheckParams& /* params */) const {
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+    const OpSupportCheckParams& params) const {
+  const auto& op_type = node_unit.OpType();
+  const auto& op_name = node_unit.Name();
+  const auto input_size = node_unit.Inputs().size();
   int32_t input_type;
   if (!GetType(node_unit.Inputs()[0].node_arg, input_type))
     return false;
@@ -1572,6 +1583,56 @@ bool ConcatOpSupportChecker::HasSupportedInputOutputsImpl(
                           << "] Input type: [" << input_type
                           << "] is not supported for now";
     return false;
+  }
+
+  if (IsQuantizedOp(node_unit)) {
+    std::vector<size_t> input_indices(input_size);
+    std::iota(input_indices.begin(), input_indices.end(), 0);
+    if (!IsQuantizedIOSupported(initializers, node_unit, input_indices, params, IOKind::Input)) {
+      return false;
+    }
+
+    if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, IOKind::Output)) {
+      return false;
+    }
+
+    // Need to verify all the input and output has the same scale and zp for API 28-
+    if (params.android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
+      std::vector<float> input_scales(input_size);
+      std::vector<int32_t> input_zps(input_size);
+      size_t input_idx = 0;
+
+      auto status = GetQuantizationScaleAndZeroPoint(
+          initializers, node_unit.Inputs()[input_idx], node_unit.ModelPath(),
+          input_scales[input_idx], input_zps[input_idx]);
+
+      if (!status.IsOK()) {
+        LOGS_DEFAULT(ERROR) << "Op [" << op_type << "] name [" << op_name
+                            << "] GetQuantizationScaleAndZeroPoint for input_scale/zp failed, message: "
+                            << status.ErrorMessage();
+        return false;
+      }
+
+      for (++input_idx; input_idx < input_size; ++input_idx) {
+        if (!HasRequiredScaleAndZeroPoint(initializers,
+                                          MakeString("Op [", op_type, "] name [", op_name, "] input ", input_idx),
+                                          node_unit.Inputs()[input_idx],
+                                          node_unit.ModelPath(),
+                                          input_scales[0] /* required_scale */,
+                                          input_zps[0] /* required_zp */)) {
+          return false;
+        }
+      }
+
+      // NNAPI (28-) requires the output scale and zp be the same as the input 0
+      if (!HasRequiredScaleAndZeroPoint(initializers,
+                                        MakeString("Op [", op_type, "] name [", op_name, "]'s output 0"),
+                                        node_unit.Outputs()[0], node_unit.ModelPath(),
+                                        input_scales[0] /* required_scale */,
+                                        input_zps[0] /* required_zp */)) {
+        return false;
+      }
+    }
   }
 
   return true;

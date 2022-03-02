@@ -859,7 +859,7 @@ void SessionState::UpdateToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_id
   InlinedVector<const Node*> nodes;
   nodes.reserve(fetch_mlvalue_idxs.size());
   InlinedHashSet<NodeIndex> reachable_nodes;
-  reachable_nodes.reserve(graph_.Nodes().size());
+  reachable_nodes.reserve(graph_.NumberOfNodes());
 
   for (auto idx : fetch_mlvalue_idxs) {
     std::string node_arg_name;

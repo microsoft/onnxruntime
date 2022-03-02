@@ -167,7 +167,7 @@ template <typename T>
 struct EinsumTypedComputeProcessor;
 
 namespace contrib {
-class ATenOp;
+class ATen;
 class Group;
 class PassThrough;
 class YieldOp;
@@ -196,8 +196,8 @@ using NameMLValMap = std::unordered_map<std::string, OrtValue>;
 #include "core/framework/op_kernel.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/common.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {
@@ -228,6 +228,7 @@ struct DeleteOnUnloadPtr {
 
 constexpr const char* kOnnxDomain = "";
 constexpr const char* kMSDomain = "com.microsoft";
+constexpr const char* kPytorchAtenDomain = "org.pytorch.aten";
 constexpr const char* kNGraphDomain = "com.intel.ai";
 constexpr const char* kCudaExecutionProvider = "CUDAExecutionProvider";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";

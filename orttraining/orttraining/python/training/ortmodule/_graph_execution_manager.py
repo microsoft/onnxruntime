@@ -179,7 +179,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Re-export will be avoided if _skip_check is enabled.
         self._original_model_has_changed = False
 
-        # Load ATenOp executor extension.
+        # Load ATen operator executor extension.
         load_aten_op_executor_cpp_extension()
 
     def _get_torch_gpu_allocator_function_addresses(self):

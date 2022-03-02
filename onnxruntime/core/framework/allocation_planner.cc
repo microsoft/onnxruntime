@@ -308,9 +308,9 @@ class PlannerImpl {
       return false;
     }
 
-    const std::vector<std::pair<int, int>>& alias_map = ci.kernel_def->Alias();
+    const auto& alias_map = ci.kernel_def->Alias();
     auto input_args = node.InputDefs();
-    for (auto pair : alias_map) {
+    for (auto& pair : alias_map) {
       if (pair.second == output_arg_num) {
         // we _must_ reuse this input to satisfy aliasing requirement: (e.g., for reshape)
         if ((0 <= pair.first) && (static_cast<size_t>(pair.first) < input_args.size())) {
@@ -323,7 +323,7 @@ class PlannerImpl {
       }
     }
 
-    const optional<std::pair<int, int>>& variadic_alias_offsets = ci.kernel_def->VariadicAlias();
+    const auto& variadic_alias_offsets = ci.kernel_def->VariadicAlias();
     if (variadic_alias_offsets.has_value()) {
       int input_offset = variadic_alias_offsets->first;
       int output_offset = variadic_alias_offsets->second;
@@ -338,8 +338,8 @@ class PlannerImpl {
       }
     }
 
-    const std::vector<std::pair<int, int>>& inplace_map = ci.kernel_def->MayInplace();
-    for (auto pair : inplace_map) {
+    const auto& inplace_map = ci.kernel_def->MayInplace();
+    for (auto& pair : inplace_map) {
       if (pair.second == output_arg_num) {
         if ((0 <= pair.first) && (static_cast<size_t>(pair.first) < input_args.size())) {
           auto p_input_arg = input_args[pair.first];
@@ -357,6 +357,40 @@ class PlannerImpl {
         }
       }
     }
+
+    // If any output of the kernel can support strided tensor, and all its consumers' inputs also support
+    // strided tensors at the corresponding position, this output will generate a strided tensor
+    // and share the data from the corresponding input specified in MayStridedOutputsMap.
+    const auto& may_strided_outputs_map = ci.kernel_def->MayStridedOutput();
+    for (auto& pair : may_strided_outputs_map) {
+      if (pair.second == output_arg_num && pair.first >= 0 && static_cast<size_t>(pair.first) < input_args.size() &&
+          input_args[pair.first]->Exists()) {
+        bool can_strided = true;
+        for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
+          const KernelCreateInfo& output_node_ci = GetKernelCreateInfo(kernel_create_info_map_, it->Index());
+          if (!output_node_ci.kernel_def) {
+            can_strided = false;
+            break;
+          }
+          const auto& may_strided_inputs = output_node_ci.kernel_def->MayStridedInput();
+          for (size_t i = 0; i < it->InputDefs().size(); ++i) {
+            if (it->InputDefs()[i] == p_output_arg && std::find(may_strided_inputs.begin(), may_strided_inputs.end(),
+                                                                static_cast<int>(i)) == may_strided_inputs.end()) {
+              can_strided = false;
+              break;
+            }
+          }
+          if (!can_strided) {
+            break;
+          }
+        }
+        if (can_strided) {
+          *reusable_input = Index(input_args[pair.first]->Name());
+          return true;
+        }
+      }
+    }
+
     return false;
   }
 
@@ -500,7 +534,8 @@ class PlannerImpl {
     // Note: for every ml-value, its definition must appear before all its uses in a topological sort of a valid model
     using GraphInputsSet = InlinedHashSet<std::string_view>;
     const auto& graph_inputs_nodes = graph_viewer_.GetInputsIncludingInitializers();
-    GraphInputsSet graph_inputs(graph_inputs_nodes.size());
+    GraphInputsSet graph_inputs;
+    graph_inputs.reserve(graph_inputs_nodes.size());
     for (auto& graph_input : graph_inputs_nodes) {
       graph_inputs.insert(graph_input->Name());
     }
