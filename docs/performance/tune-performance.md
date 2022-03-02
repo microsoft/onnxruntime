@@ -370,8 +370,8 @@ Most TensorFlow operations used by a CNN support both NHWC and NCHW data format.
 ### Mitigate high latency variance
 
 On some platforms, onnxruntime may exhibit high latency variance during inferencing. This is caused by the constant cost model that onnxruntime use to parallelize tasks in the thread pool.
-The constant cost model breaks down a task with a calculated granularity, which stays constant to the end of task parallelization, sometimes this approach causes imbalanced load on threads.
-To offer a way as mitigation, onnxruntime provides a dynamic cost model which could be enbabled by session option:
+The constant cost model breaks down a task with a calculated granularity, which stays constant to the end of task parallelization, sometimes this approach causes imbalanced load among threads.
+To offer an option as possible mitigation, onnxruntime provides a dynamic cost model which could be enbabled by session option:
 
 ```
 sess_options.add_session_config_entry('session.dynamic_block_base', '2') #python API
