@@ -63,7 +63,7 @@ If an operator called multiple kernels during execution, the performance numbers
 {"cat":"Kernel", "name":<name of the kernel called first>, ...}
 {"cat":"Kernel", "name":<name of the kernel called next>, ...}
 ```
-onnxruntime also offers a way to render the statistics as a summarized view in brower, please find the tool [here](https://github.com/microsoft/onnxruntime/tree/master/tools/perf_view).
+onnxruntime also offers some [utility](https://github.com/microsoft/onnxruntime/tree/master/tools/perf_view) to render the statistics as a summarized view in the brower.
 
 ## Using different Execution Providers
 
