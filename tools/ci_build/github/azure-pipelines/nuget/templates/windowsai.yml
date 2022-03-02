@@ -114,53 +114,141 @@ jobs:
   # - WindowsAI_DirectML_ARM_StaticRuntime
   condition: succeeded()
   steps:
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet DirectML x64'
-    inputs:
-      artifactName: 'Microsoft.AI.MachineLearning.x64'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x64'
+  # - task: DownloadPipelineArtifact@0
+  #   displayName: 'Download Pipeline Artifact - NuGet DirectML x64'
+  #   inputs:
+  #     artifactName: 'Microsoft.AI.MachineLearning.x64'
+  #     targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x64'
 
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet DirectML x86'
-    inputs:
-      artifactName: 'Microsoft.AI.MachineLearning.x86'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x86'
+  # - task: DownloadPipelineArtifact@0
+  #   displayName: 'Download Pipeline Artifact - NuGet DirectML x86'
+  #   inputs:
+  #     artifactName: 'Microsoft.AI.MachineLearning.x86'
+  #     targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x86'
       
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet DirectML arm64'
+  # - task: DownloadPipelineArtifact@0
+  #   displayName: 'Download Pipeline Artifact - NuGet DirectML arm64'
+  #   inputs:
+  #     artifactName: 'Microsoft.AI.MachineLearning.arm64'
+  #     targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64'
+
+  # - task: DownloadPipelineArtifact@0
+  #   displayName: 'Download Pipeline Artifact - NuGet DirectML arm'
+  #   inputs:
+  #     artifactName: 'Microsoft.AI.MachineLearning.arm'
+  #     targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm'
+
+  # - task: DownloadPipelineArtifact@0
+  #   displayName: 'Download Pipeline Artifact - NuGet DirectML x64 StaticRuntime'
+  #   inputs:
+  #     artifactName: 'Microsoft.AI.MachineLearning.x64.StaticRuntime'
+  #     targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x64-static-runtime'
+
+  # - task: DownloadPipelineArtifact@0
+  #   displayName: 'Download Pipeline Artifact - NuGet DirectML x86 StaticRuntime'
+  #   inputs:
+  #     artifactName: 'Microsoft.AI.MachineLearning.x86.StaticRuntime'
+  #     targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x86-static-runtime'
+
+  # - task: DownloadPipelineArtifact@0
+  #   displayName: 'Download Pipeline Artifact - NuGet DirectML arm64 StaticRuntime'
+  #   inputs:
+  #     artifactName: 'Microsoft.AI.MachineLearning.arm64.StaticRuntime'
+  #     targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64-static-runtime'
+
+  # - task: DownloadPipelineArtifact@0
+  #   displayName: 'Download Pipeline Artifact - NuGet DirectML arm StaticRuntime'
+  #   inputs:
+  #     artifactName: 'Microsoft.AI.MachineLearning.arm.StaticRuntime'
+  #     targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm-static-runtime'
+
+  - task: DownloadBuildArtifacts@1
     inputs:
+      buildType: 'specific'
+      project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
+      pipeline: '797'
+      buildVersionToDownload: 'specific'
+      buildId: '196284'
+      downloadType: 'single'
+      artifactName: 'Microsoft.AI.MachineLearning.x64'
+      downloadPath: '$(Build.BinariesDirectory)/nuget-artifact-x64'
+  
+  - task: DownloadBuildArtifacts@1
+    inputs:
+      buildType: 'specific'
+      project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
+      pipeline: '797'
+      buildVersionToDownload: 'specific'
+      buildId: '196284'
+      downloadType: 'single'
+      artifactName: 'Microsoft.AI.MachineLearning.x86'
+      downloadPath: '$(Build.BinariesDirectory)/nuget-artifact-x86'
+  
+  - task: DownloadBuildArtifacts@1
+    inputs:
+      buildType: 'specific'
+      project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
+      pipeline: '797'
+      buildVersionToDownload: 'specific'
+      buildId: '196284'
+      downloadType: 'single'
       artifactName: 'Microsoft.AI.MachineLearning.arm64'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64'
-
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet DirectML arm'
+      downloadPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64'
+  
+  - task: DownloadBuildArtifacts@1
     inputs:
+      buildType: 'specific'
+      project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
+      pipeline: '797'
+      buildVersionToDownload: 'specific'
+      buildId: '196284'
+      downloadType: 'single'
       artifactName: 'Microsoft.AI.MachineLearning.arm'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm'
-
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet DirectML x64 StaticRuntime'
+      downloadPath: '$(Build.BinariesDirectory)/nuget-artifact-arm'
+  
+  - task: DownloadBuildArtifacts@1
     inputs:
+      buildType: 'specific'
+      project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
+      pipeline: '797'
+      buildVersionToDownload: 'specific'
+      buildId: '196284'
+      downloadType: 'single'
       artifactName: 'Microsoft.AI.MachineLearning.x64.StaticRuntime'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x64-static-runtime'
-
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet DirectML x86 StaticRuntime'
+      downloadPath: '$(Build.BinariesDirectory)/nuget-artifact-x64-static-runtime'
+  
+  - task: DownloadBuildArtifacts@1
     inputs:
+      buildType: 'specific'
+      project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
+      pipeline: '797'
+      buildVersionToDownload: 'specific'
+      buildId: '196284'
+      downloadType: 'single'
       artifactName: 'Microsoft.AI.MachineLearning.x86.StaticRuntime'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-x86-static-runtime'
-
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet DirectML arm64 StaticRuntime'
+      downloadPath: '$(Build.BinariesDirectory)/nuget-artifact-x86-static-runtime'
+  
+  - task: DownloadBuildArtifacts@1
     inputs:
+      buildType: 'specific'
+      project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
+      pipeline: '797'
+      buildVersionToDownload: 'specific'
+      buildId: '196284'
+      downloadType: 'single'
       artifactName: 'Microsoft.AI.MachineLearning.arm64.StaticRuntime'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64-static-runtime'
-
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - NuGet DirectML arm StaticRuntime'
+      downloadPath: '$(Build.BinariesDirectory)/nuget-artifact-arm64-static-runtime'
+  
+  - task: DownloadBuildArtifacts@1
     inputs:
+      buildType: 'specific'
+      project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
+      pipeline: '797'
+      buildVersionToDownload: 'specific'
+      buildId: '196284'
+      downloadType: 'single'
       artifactName: 'Microsoft.AI.MachineLearning.arm.StaticRuntime'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact-arm-static-runtime'
+      downloadPath: '$(Build.BinariesDirectory)/nuget-artifact-arm-static-runtime'
 
   - task: PowerShell@2
     displayName: 'Bundle NuGet and other binaries'
