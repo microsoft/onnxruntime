@@ -42,7 +42,6 @@ namespace onnxruntime {
                 return exe;
             #else 
                 auto obj = oe.LoadNetwork(*ie_cnn_network, hw_target, config);
-                std::cout << "load network\n";
                 ov_exe_network exe(obj);
                 return exe;
             #endif     

@@ -125,6 +125,8 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalCont
     const std::string model = model_proto.SerializeAsString();
     auto cnn_network = global_context.ie_core.read_model(model);
     ng_function = cnn_network.getFunction();
+  #else
+     ORT_UNUSED_PARAMETER(model_proto);
   #endif 
 
   if (global_context.device_type.find("GPU") != std::string::npos &&
