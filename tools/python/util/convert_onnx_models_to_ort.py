@@ -199,9 +199,9 @@ def parse_args():
                              'options config entry.')
     
     parser.add_argument('--target_platform', type=str, default=None, choices=['arm', 'amd64'],
-                        help='Specify the target platform where the exported model will be used.'
-                             'This parameter can be used to choose between platform specific options,'
-                             'such as QDQIsInt8Allowed(arm), NCHWc (amd64) and NHWC (arm/amd64) format different'
+                        help='Specify the target platform where the exported model will be used. '
+                             'This parameter can be used to choose between platform specific options, '
+                             'such as QDQIsInt8Allowed(arm), NCHWc (amd64) and NHWC (arm/amd64) format different '
                              'optimizer level options,etc.')
 
     parser.add_argument('model_path_or_dir', type=pathlib.Path,
