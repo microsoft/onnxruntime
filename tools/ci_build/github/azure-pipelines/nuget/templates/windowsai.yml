@@ -624,17 +624,6 @@ jobs:
         pushd .\Microsoft.AI.MachineLearning.Tests\x64\Debug
         .\Microsoft.AI.MachineLearning.Tests.exe
         popd
-        
-        # Write-Host "Run Microsoft.AI.MachineLearning CSharp Tests (DotNet5_0 AnyCpu)"
-        # pushd .\Microsoft.AI.MachineLearning.Tests.DotNet5_0\bin\x86\Debug\net5.0-windows10.0.17763.0
-        # .\Microsoft.AI.MachineLearning.Tests.DotNet5_0.exe
-        # popd
-        
-        # Write-Host "Run Microsoft.AI.MachineLearning CSharp Tests ((DotNet5_0 x64)"
-        # pushd .\Microsoft.AI.MachineLearning.Tests.DotNet5_0\bin\x64\Debug\net5.0-windows10.0.17763.0
-        # .\Microsoft.AI.MachineLearning.Tests.DotNet5_0.exe
-        # popd
-        
         Write-Host "Done!"
       workingDirectory: $(Build.SourcesDirectory)\csharp\test
 
