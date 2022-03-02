@@ -193,7 +193,9 @@ GetQDQTestCaseFn BuildQDQTransposeTestCase(
     const std::vector<int64_t>& input_shape,
     const std::vector<int64_t>& perms) {
   return [input_shape, perms](ModelTestBuilder& builder) {
-    auto* input_arg = builder.MakeInput<InputType>(input_shape, -128, 127);
+    auto* input_arg = builder.MakeInput<InputType>(input_shape,
+                                                   std::numeric_limits<InputType>::min(),
+                                                   std::numeric_limits<InputType>::max());
     auto* output_arg = builder.MakeOutput();
 
     InputType dq_zp = std::numeric_limits<InputType>::max() / 2;
@@ -212,5 +214,39 @@ GetQDQTestCaseFn BuildQDQTransposeTestCase(
     builder.AddQuantizeLinearNode<OutputType>(transpose_output, .003f, q_zp, output_arg);
   };
 }
+
+template <typename InputType, typename OutputType>
+GetQDQTestCaseFn BuildQDQSoftMaxTestCase(const std::vector<int64_t>& input_shape, const int64_t& axis = -1) {
+  return [input_shape, axis](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<InputType>(input_shape,
+                                                   std::numeric_limits<InputType>::min(),
+                                                   std::numeric_limits<InputType>::max());
+
+    auto* output_arg = builder.MakeOutput();
+
+    // add DQ
+    auto* dq_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<InputType>(input_arg, .003f, std::numeric_limits<InputType>::max() / 2, dq_output);
+
+    // add SoftMax
+    auto* softmax_output = builder.MakeIntermediate();
+    Node& softmax_node = builder.AddNode("Softmax", {dq_output}, {softmax_output});
+
+    softmax_node.AddAttribute("axis", axis);
+
+    // add Q
+    builder.AddQuantizeLinearNode<OutputType>(softmax_output, 1.f / 256, 0, output_arg);
+  };
+}
+
+GetQDQTestCaseFn BuildQDQReshapeTestCase(const std::vector<int64_t>& input_shape,
+                                         const std::vector<int64_t>& reshape_shape);
+
+GetQDQTestCaseFn BuildQDQConcatTestCase(const std::vector<std::vector<int64_t>>& input_shapes,
+                                        int64_t axis,
+                                        bool has_input_float = false,
+                                        bool has_input_int8 = false,
+                                        bool has_output_int8 = false);
+
 }  // namespace test
 }  // namespace onnxruntime

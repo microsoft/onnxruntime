@@ -13,7 +13,6 @@ target 'OnnxruntimeModuleExample' do
   if File.exist?('../../local_pods/onnxruntime-mobile-c.zip')
     pod 'onnxruntime-mobile-c', :podspec => '../../onnxruntime-mobile-c.podspec'
   end
-  #pod 'onnxruntime-react-native', :path => '../node_modules/onnxruntime-react-native'
   pod 'onnxruntime-react-native', :path => '../..'
 
   inherit! :search_paths
