@@ -701,7 +701,7 @@ class PlannerImpl {
                                     size_t graph_depth,
                                     /*out*/ std::vector<std::vector<OrtMemoryInfo>>& locations) {
     // Iterate over nodes in current level firstly to record location of usages
-    // in main graph
+    // in current graph
     for (const auto& node : graph_viewer.Nodes()) {
       const auto& input_node_args = node.InputDefs();
       size_t num_node_inputs = input_node_args.size();
@@ -795,8 +795,8 @@ class PlannerImpl {
   Status GeneratePlanForWeights() {
     // TODO: Move away from usage of vector of `OrtMemoryInfo`s per weight (initializer)
     // We do not need to maintain a vector of locations that a weight is used in.
-    // We only need to know the location of its first usage(if it has consumers in main
-    // graph level, then adopt the location of that usage in main graph) because:
+    // We only need to know the location of its first usage according to the nodes
+    // iteration rule in GeneratePlanForWeightsHelper() because:
     // (1) If the initializer is used in the graph level it is introduced in, then it can
     // only be used on one device as the Memcpy transformer will duplicate the initializer
     // (with a different name) in case it is used on multiple devices.
