@@ -1663,7 +1663,7 @@ def parse_arguments():
 
     parser.add_argument("--io_binding", required=False, default=False, help="Bind Inputs")
     
-    parser.add_argument("--graph_enablement", required=False, default=enable_all, choices=[disable, basic, extended, enable_all], help="Choose graph optimizationenablement.")
+    parser.add_argument("--graph_enablement", required=False, default=enable_all, choices=[disable, basic, extended, enable_all], help="Choose graph optimization enablement.")
 
     parser.add_argument("--ep", required=False, default=None, help="Specify ORT Execution Provider.")
     
