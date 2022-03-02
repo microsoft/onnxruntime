@@ -107,7 +107,7 @@ jobs:
           ci-pipeline-actual.json \
           ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.bert-large-rocm4.3.1.json
     displayName: 'Run Python Hugging-Face BERT-L test'
-    retryCountOnTaskFailure: 2
+    retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
   
   - task: CmdLine@2
@@ -136,7 +136,7 @@ jobs:
           ci-pipeline-actual.json \
           ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.gpt2-rocm4.3.1.json
     displayName: 'Run Python Hugging-Face GPT2 test'
-    retryCountOnTaskFailure: 2
+    retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
   
 #  - script: |-
@@ -219,7 +219,7 @@ jobs:
           ci-pipeline-actual.json \
           ../../orttraining/tools/ci_test/results/ci-mi100.huggingface.distilbert-base-rocm4.3.1.json
     displayName: 'Run Python Hugging-Face DistilBERT test'
-    retryCountOnTaskFailure: 2
+    retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
   
   #- script: |-
@@ -292,7 +292,7 @@ jobs:
             --model_root training_e2e_test_data/models \
           --gpu_sku MI100_32G
     displayName: 'Run C++ BERT-L batch size test'
-    retryCountOnTaskFailure: 2
+    retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
   
   - task: CmdLine@2
@@ -304,7 +304,7 @@ jobs:
           --training_data_root training_e2e_test_data/data \
           --gpu_sku MI100_32G
     displayName: 'Run C++ BERT-L performance test'
-    retryCountOnTaskFailure: 2
+    retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
   
   - task: CmdLine@2
@@ -316,5 +316,5 @@ jobs:
           --training_data_root training_e2e_test_data/data \
           --gpu_sku MI100_32G
     displayName: 'Run C++ BERT-L convergence test'
-    retryCountOnTaskFailure: 2
+    retryCountOnTaskFailure: 1
     condition: and(succeededOrFailed(), eq(variables.onnxruntimeBuildSucceeded, 'true')) # ensure all tests are run when the build successed
