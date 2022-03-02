@@ -194,13 +194,10 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   void RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph) const;
 
   /** 
-  Get a unique_lock object to control the concurrency behavior of TensorRT engine building. When force_sequential_engine_build
-  is set to true, the lock object is associated with a mutex shared across all providers to enforce sequential engine build. 
-  Otherwise, the constructed unique_lock is not associated with any mutex therefore no locking/unlocking will happen.
+  Get a unique_lock object to control the concurrency behavior. 
+  Every api call not in the thread-safe operations(https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading)
+  shoud be protected by a lock for multi-threading situation.
   */
-  std::unique_lock<OrtMutex> GetEngineBuildLock() const;
-
-  /**Get a unique_lock object to control the concurrency behavior of calling nvinfer1::createInferRuntime()*/
-  std::unique_lock<OrtMutex> GetCreateInferRuntimeLock() const;
+  std::unique_lock<OrtMutex> GetLock() const;
 };
 }  // namespace onnxruntime
