@@ -301,7 +301,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
 
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_ep, apply_context));
 #else   // !defined(DISABLE_CONTRIB_OPS)
-      ORT_UNUSED_PARAMETER(session_options);
       ORT_UNUSED_PARAMETER(apply_context);
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
@@ -319,6 +318,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
 #ifndef DISABLE_CONTRIB_OPS
         auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
         transformers.emplace_back(std::make_unique<NhwcTransformer>(std::move(cpu_allocator)));
+#else
+        ORT_UNUSED_PARAMETER(cpu_execution_provider);
 #endif
       }
     } break;
