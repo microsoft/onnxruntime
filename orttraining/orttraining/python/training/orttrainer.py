@@ -203,9 +203,7 @@ class ORTTrainer(object):
         # TODO: Remove when experimental checkpoint functions are removed.
         self._state_dict = {}
 
-        self._train_step_info = TrainStepInfo(self.optim_config,
-                                              optimization_step=self.options.train_step_info_options.optimization_step,
-                                              step=self.options.train_step_info_options.step)
+        self._train_step_info = TrainStepInfo(self.optim_config)
         self._training_session = None
         self._load_state_dict = None
         self._init_session(provider_options=self.options._validated_opts['provider_options'],
