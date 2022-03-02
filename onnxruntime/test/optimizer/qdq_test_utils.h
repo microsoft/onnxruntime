@@ -26,6 +26,16 @@ AddQDQNodePair(ModelTestBuilder& builder, NodeArg* q_input, float scale, T zp = 
   return dq_output;
 }
 
+template <typename T>
+typename std::enable_if<IsTypeQuantLinearCompatible<T>::value, NodeArg*>::type
+AddQDQNodePairWithOutputAsGraphOutput(ModelTestBuilder& builder, NodeArg* q_input, float scale, T zp = T()) {
+  auto* q_output = builder.MakeIntermediate();
+  auto* dq_output = builder.MakeOutput();
+  builder.AddQuantizeLinearNode<T>(q_input, scale, zp, q_output);
+  builder.AddDequantizeLinearNode<T>(q_output, scale, zp, dq_output);
+  return dq_output;
+}
+
 template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
 GetQDQTestCaseFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
   return [input_shape, weights_shape](ModelTestBuilder& builder) {
@@ -112,6 +122,36 @@ GetQDQTestCaseFn BuildQDQAveragePoolTestCase(const std::vector<int64_t>& input_s
     // add QDQ output
     auto* q_output = builder.MakeIntermediate();
     builder.AddQuantizeLinearNode<OutputType>(averagepool_output,
+                                              pool_output_scale,
+                                              pool_output_zp,
+                                              q_output);
+    builder.AddDequantizeLinearNode<OutputType>(q_output,
+                                                q_scale,
+                                                q_zp,
+                                                output_arg);
+  };
+}
+
+template <typename InputType, typename OutputType>
+GetQDQTestCaseFn BuildQDQGlobalAveragePoolTestCase(const std::vector<int64_t>& input_shape) {
+  return [input_shape](ModelTestBuilder& builder) {
+    float dq_scale = 0.0035f;
+    float pool_output_scale = 0.0038f;
+    float q_scale = 0.0039f;
+    InputType dq_zp = 7;
+    InputType pool_output_zp = std::numeric_limits<OutputType>::max() / 2;
+    InputType q_zp = std::numeric_limits<OutputType>::max() / 2;
+
+    auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
+    auto* output_arg = builder.MakeOutput();
+    // add QDQ + GlobalAveragePool
+    auto* dq_output = AddQDQNodePair<InputType>(builder, input_arg, dq_scale, dq_zp);
+    auto* globalaveragepool_output = builder.MakeIntermediate();
+    builder.AddNode("GlobalAveragePool", {dq_output}, {globalaveragepool_output});
+
+    // add QDQ output
+    auto* q_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<OutputType>(globalaveragepool_output,
                                               pool_output_scale,
                                               pool_output_zp,
                                               q_output);

@@ -27,5 +27,5 @@ stages:
 - template: templates/web-ci.yml
   parameters:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
-    IsReleasePipeline: false
-    PoolName: 'Win-CPU-2019'
+    IsReleasePipeline: true
+    PoolName: 'Win-CPU-2021'

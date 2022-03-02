@@ -12,6 +12,7 @@
 namespace onnxruntime {
 class Graph;
 class NodeArg;
+class GraphViewer;
 
 namespace optimizer_utils {
 
@@ -94,6 +95,7 @@ bool IsSupportedDataType(const Node& node, const T& supported_data_types) {
   }
   return true;
 }
+
 /** Check whether node's output edges count is expected.
 @remarks graph output is not included in output edges, and this node shall not have graph output.
         A node with graph output cannot be fused unless the graph output also exists in outputs of fused node.
@@ -103,14 +105,14 @@ bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_outp
 
 bool IsOperationDeterministic(const std::string& domain, const std::string& op);
 
+#endif  // !#if !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 /** Get min/max values from Clip if they are constant.
 @returns false if mutable and cannot be used.
 */
 bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, float& max);
-
-#endif  // !#if !defined(ORT_MINIMAL_BUILD)
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 // Check if NodeArg takes in a scalar tensor.
 bool IsScalar(const NodeArg& input_arg);
