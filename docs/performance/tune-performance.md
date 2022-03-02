@@ -63,7 +63,7 @@ If an operator called multiple kernels during execution, the performance numbers
 {"cat":"Kernel", "name":<name of the kernel called first>, ...}
 {"cat":"Kernel", "name":<name of the kernel called next>, ...}
 ```
-onnxruntime also offers some [utility](https://github.com/microsoft/onnxruntime/tree/master/tools/perf_view) to render the statistics as a summarized view in the brower.
+onnxruntime also offers a [tool](https://github.com/microsoft/onnxruntime/tree/master/tools/perf_view) to render the statistics as a summarized view in the browser.
 
 ## Using different Execution Providers
 
@@ -369,20 +369,21 @@ Most TensorFlow operations used by a CNN support both NHWC and NCHW data format.
 
 ### Mitigate high latency variance
 
-On some platforms, onnxruntime may exhibit high latency variance during inferencing. This is caused by the constant cost model that onnxruntime use to parallelize tasks in the thread pool.
-The constant cost model breaks down a task with a calculated granularity, which stays constant to the end of task parallelization, sometimes this approach causes imbalanced load among threads.
-To offer an option as possible mitigation, onnxruntime provides a dynamic cost model which could be enbabled by session option:
+On some platforms, onnxruntime may exhibit high latency variance during inferencing. This is caused by the constant cost model that onnxruntime uses to parallelize tasks in the thread pool.
+For each task, the constant cost model will calculate a granularity for parallelization among threads, which stays constant to the end of the task execution. This approach can bring imbalanced load sometimes, causing high latency variance.
+To mitigate this, onnxruntime provides a dynamic cost model which could be enbabled by session option:
 
 ```
-sess_options.add_session_config_entry('session.dynamic_block_base', '2') #python API
+sess_options.add_session_config_entry('session.dynamic_block_base', '4') #python API
 ```
 
-Whenever set with a positive value, onnxruntime thread pool will parallelize internal tasks with a diminishing granularity.
+Whenever set with a positive value, onnxruntime thread pool will parallelize internal tasks with a decreasing granularity.
 Specifically, assume there is a function expected to run N number of times by the thread pool, with the dynamic cost model enabled, each thread in the pool will claim
 
 ```
 residual_of_N / (dynamic_block_base * num_of_threads)
 ```
 
-whenever it is ready to run. So over a period of time, threads in the pool are likely to be better load-balanced, thereby lowering the variance of E2E latency.
-Due to the same reason, the dynamic cost model may also better the performance for certain cases.
+whenever it is ready to run. So over a period of time, threads in the pool are likely to be better load balanced, thereby lowering the latency variance.
+Due to the same reason, the dynamic cost model may also better the performance for cases when threads are more likely be preempted.
+Per our tests, by far the best configuration for dynamic_block_base is 4, which lowers the variance while keeping the performance as good. 
