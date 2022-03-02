@@ -61,8 +61,8 @@ def check_static_quant_arguments(quant_format : QuantFormat,
         raise ValueError("ONNXRuntime quantization doesn't support data format:"
                          "activation_type=QuantType.QInt8, weight_type = QuantType.QUInt8")
 
-    if activation_type == QuantType.QInt8 or \
-       weight_type == QuantType.QInt8 or \
+    if activation_type == QuantType.QInt8 and \
+       weight_type == QuantType.QInt8 and \
        quant_format != QuantFormat.QDQ: \
         logging.warning("Please use QuantFormat.QDQ for activation type QInt8 and weight type QInt8. "
                         "Or it will lead to bad performance on x64.")
