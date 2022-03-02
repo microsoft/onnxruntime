@@ -36,8 +36,8 @@ Foreach-Object {
 
 # copy android AAR.
 # for full build of onnxruntime Android AAR, there should only be one .aar file
-# called onnxruntime-x.y.z.aar but sanity check that
-$aars = Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filter onnxruntime-*.aar
+# called onnxruntime-android-x.y.z.aar but sanity check that
+$aars = Get-ChildItem $Env:BUILD_BINARIESDIRECTORY\nuget-artifact -Filter onnxruntime-android-*.aar
 
 if ($aars.Count -eq 1) {
   $aar = $aars[0]

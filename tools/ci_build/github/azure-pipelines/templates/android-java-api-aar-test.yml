@@ -10,10 +10,10 @@ parameters:
   default: ''
 
 - name: packageName
-  # now we can build onnxruntime or onnxruntime-mobile for Android, need specify it here
+  # now we can build onnxruntime-android or onnxruntime-mobile for Android, need specify it here
   displayName: Package Name
   type: string
-  default: 'onnxruntime'
+  default: 'onnxruntime-android'
 
 jobs:
 - job: Final_AAR_Testing_Android_${{ parameters.job_name_suffix }}
