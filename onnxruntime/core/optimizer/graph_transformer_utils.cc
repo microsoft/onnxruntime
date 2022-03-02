@@ -6,6 +6,7 @@
 #include <algorithm>
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
+#include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -159,7 +160,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   const bool disable_quant_qdq =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
   const bool qdq_is_int8_allowed =
-      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQIsInt8Allowed, "1") == "1";
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQIsInt8Allowed, QDQIsInt8Allowed() ? "1" : "0") == "1";
 #ifndef DISABLE_CONTRIB_OPS
   const bool enable_gelu_approximation =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
@@ -213,7 +214,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         if (!qdq_is_int8_allowed) {
           transformers.emplace_back(std::make_unique<QDQS8ToU8Transformer>(cpu_ep));
         }
-        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>());
+        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(SatApplyContextVariant{}, qdq_is_int8_allowed));
       }
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
