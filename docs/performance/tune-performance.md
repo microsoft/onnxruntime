@@ -365,3 +365,22 @@ Depending on which execution provider you're using, it may not have full support
 NCHW and NHWC are two different memory layout for 4-D tensors.
 
 Most TensorFlow operations used by a CNN support both NHWC and NCHW data format. The Tensorflow team suggests that on GPU NCHW is faster but on CPU NHWC is sometimes faster in Tensorflow. However, ONNX only supports NCHW. As a result, if the original model is in NHWC format, when the model is converted extra transposes may be added. The [tensorflow-onnx](https://github.com/onnx/tensorflow-onnx) converter does remove many of these transposes, but if this doesn't help sufficiently, consider retraining the model using NCHW.
+
+### Mitigate high latency variance
+
+On some platforms, onnxruntime may exhibit high latency variance during inferencing. Sometimes this is caused by the constant cost model that onnxruntime use to breakdown tasks in the thread pool.
+To offer a way as possible mitigation, onnxruntime provides a dynamic cost model which could be enbabled by session option:
+
+```
+sess_options.add_session_config_entry('session.dynamic_block_base', '2') #python API
+```
+
+Whenever "dynamic_block_base" set to a positive value, onnxruntime thread pool will start to break down internal task in a dynamic way.
+E.g. Assume there is a function expected to run N number of times by the thread pool, with this dynamic model enabled, a thread will run
+
+```
+(N - num_of_completed)/)(dynamic_block_base \* num_of_threads)
+```
+
+number of times of that function eveytime when it claims a CPu core. So over a period of time, threads in the pool are more likely to be load-balanced, thereby lower the average E2E inferencing latency.
+
