@@ -1161,5 +1161,42 @@ If mask is provided, mask index (that is position of first 0 in mask, or number 
         ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 2);
       }));
 
+  ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedAdd, 1, OpSchema()
+      .SetDoc(R"DOC(Ordered Quantize Add.)DOC")
+      .Attr("order_A", "cublasLt order of input A", AttributeProto::INT)
+      .Attr("order_B", "cublasLt order of input B", AttributeProto::INT)
+      .Attr("order_Y", "cublasLt order of matrix Y", AttributeProto::INT)
+      .Input(0, "A", "N-dimensional input A", "Q")
+      .Input(1, "scale_A", "scale of the input A", "F")
+      .Input(2, "B", "N-dimensional input B", "Q")
+      .Input(3, "scale_B", "scale of the input B", "F")
+      .Input(4, "scale_Y", "scale of the output Y", "F")
+      .Output(0, "Y", "Added results from A + B", "Q")
+      .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("F", {"tensor(float)"}, "Constrain to float32")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2))
+          bidirectionalBroadcastShapeInference(
+              ctx.getInputType(0)->tensor_type().shape(),
+              ctx.getInputType(2)->tensor_type().shape(),
+              *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape());
+      }));
+
+  ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedBiasGelu, 1, OpSchema()
+      .SetDoc(R"DOC(Ordered Quantize Add Bias and then Gelu.)DOC")
+      .Attr("order_A", "cublasLt order of input A", AttributeProto::INT)
+      .Attr("order_B", "cublasLt order of input B", AttributeProto::INT)
+      .Attr("order_Y", "cublasLt order of matrix Y", AttributeProto::INT)
+      .Input(0, "A", "N-dimensional input A", "Q")
+      .Input(1, "scale_A", "scale of the input A", "F")
+      .Input(2, "B", "N-dimensional input B", "Q")
+      .Input(3, "scale_B", "scale of the input B", "F")
+      .Input(4, "scale_Y", "scale of the output Y", "F")
+      .Output(0, "Y", "Added results from A + B", "Q")
+      .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("F", {"tensor(float)"}, "Constrain to float32")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
 }  // namespace contrib
 }  // namespace onnxruntime

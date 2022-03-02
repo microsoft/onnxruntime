@@ -32,6 +32,8 @@ class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QLinearSigmoid);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QuantizeLinear);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, ReduceSumInteger);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QOrderedMatMul);
+class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QOrderedAdd);
+class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QOrderedBiasGelu);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, DequantizeWithOrder);
 class ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QuantizeWithOrder);
 
@@ -101,6 +103,8 @@ class OpSet_Microsoft_ver1 {
     fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QuantizeLinear)>());
     fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, ReduceSumInteger)>());
     fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QOrderedMatMul)>());
+    fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QOrderedAdd)>());
+    fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QOrderedBiasGelu)>());
     fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, DequantizeWithOrder)>());
     fn(GetOpSchema<ONNX_OPERATOR_SET_SCHEMA_CLASS_NAME(Microsoft, 1, QuantizeWithOrder)>());
 
