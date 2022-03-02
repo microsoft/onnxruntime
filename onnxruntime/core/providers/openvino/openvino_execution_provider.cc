@@ -79,6 +79,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
       }
       ORT_THROW(err_msg);
     }
+    ORT_THROW(err_msg);
   }
   openvino_ep::BackendManager::GetGlobalContext().device_id = info.device_id_;
 
