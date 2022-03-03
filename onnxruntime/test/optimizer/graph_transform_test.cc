@@ -8,7 +8,11 @@
 #include <random>
 #include "core/graph/onnx_protobuf.h"
 
+#include "gtest/gtest.h"
+#include "gmock/gmock.h"
+
 #include "asserts.h"
+#include "core/common/span_utils.h"
 #include "core/framework/data_types.h"
 #include "core/framework/ort_value.h"
 #include "core/graph/graph_utils.h"
@@ -64,7 +68,6 @@
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/util/math.h"
-#include "gtest/gtest.h"
 #include "test/capturing_sink.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/compare_ortvalue.h"
@@ -684,11 +687,11 @@ TEST_F(GraphTransformationTests, FuseCudaConvAddRelu) {
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(), TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Add"] == 0);   //Add removed from graph
-  ASSERT_TRUE(op_to_count["Relu"] == 0);  //Relu removed from graph
+  ASSERT_TRUE(op_to_count["Add"] == 0);   // Add removed from graph
+  ASSERT_TRUE(op_to_count["Relu"] == 0);  // Relu removed from graph
 }
 
-//Conv->Add->Relu will be left intact since there is Identity depend on Add
+// Conv->Add->Relu will be left intact since there is Identity depend on Add
 TEST_F(GraphTransformationTests, FuseCudaConvAddReluIdentity) {
   auto model_uri = MODEL_FOLDER "fusion/conv_add_relu_identity.onnx";
   std::shared_ptr<Model> p_model;
@@ -705,12 +708,12 @@ TEST_F(GraphTransformationTests, FuseCudaConvAddReluIdentity) {
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(), TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Add"] == 1);       //Add remains
-  ASSERT_TRUE(op_to_count["Relu"] == 1);      //Relu remains
-  ASSERT_TRUE(op_to_count["Identity"] == 1);  //Identity remains
+  ASSERT_TRUE(op_to_count["Add"] == 1);       // Add remains
+  ASSERT_TRUE(op_to_count["Relu"] == 1);      // Relu remains
+  ASSERT_TRUE(op_to_count["Identity"] == 1);  // Identity remains
 }
 
-//Conv->Add will be left intact since there is no Relu follows
+// Conv->Add will be left intact since there is no Relu follows
 TEST_F(GraphTransformationTests, FuseCudaConvAdd) {
   auto model_uri = MODEL_FOLDER "fusion/conv_add.onnx";
   std::shared_ptr<Model> p_model;
@@ -725,25 +728,26 @@ TEST_F(GraphTransformationTests, FuseCudaConvAdd) {
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(), TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Add"] == 1);  //Add remains, no transform applied to the graph
+  ASSERT_TRUE(op_to_count["Add"] == 1);  // Add remains, no transform applied to the graph
 }
 
 #endif
 
-#ifndef DISABLE_CONTRIB_OPS
+#if !defined(DISABLE_CONTRIB_OPS)
 TEST_F(GraphTransformationTests, FuseConvActivation) {
 #ifdef USE_CUDA
-  std::unordered_map<std::basic_string<ORTCHAR_T>, std::string> model_to_op_name{{ORT_TSTR("fusion/conv_relu.onnx"), "Relu"}};
+  std::unordered_map<PathString, std::string> model_to_op_name{{ORT_TSTR("fusion/conv_relu.onnx"), "Relu"}};
 #else
-  std::unordered_map<std::basic_string<ORTCHAR_T>, std::string> model_to_op_name{{ORT_TSTR("fusion/conv_relu.onnx"), "Relu"},
-                                                                                 {ORT_TSTR("fusion/conv_clip.onnx"), "Clip"},
-                                                                                 {ORT_TSTR("fusion/conv_sigmoid.onnx"), "Sigmoid"},
-                                                                                 {ORT_TSTR("fusion/conv_tanh.onnx"), "Tanh"},
-                                                                                 {ORT_TSTR("fusion/conv_leakyrelu.onnx"), "LeakyRelu"},
-                                                                                 {ORT_TSTR("fusion/conv_hardsigmoid.onnx"), "HardSigmoid"}};
+  std::unordered_map<PathString, std::string> model_to_op_name{{ORT_TSTR("fusion/conv_relu.onnx"), "Relu"},
+                                                               {ORT_TSTR("fusion/conv_clip.onnx"), "Clip"},
+                                                               {ORT_TSTR("fusion/conv_sigmoid.onnx"), "Sigmoid"},
+                                                               {ORT_TSTR("fusion/conv_tanh.onnx"), "Tanh"},
+                                                               {ORT_TSTR("fusion/conv_leakyrelu.onnx"), "LeakyRelu"},
+                                                               {ORT_TSTR("fusion/conv_hardsigmoid.onnx"), "HardSigmoid"}};
 #endif
   for (const auto& model : model_to_op_name) {
     auto model_uri = MODEL_FOLDER + model.first;
+    SCOPED_TRACE(ORT_TSTR("model file: ") + model_uri);
     std::shared_ptr<Model> p_model;
     ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
     Graph& graph = p_model->MainGraph();
@@ -792,16 +796,51 @@ TEST_F(GraphTransformationTests, FuseConvClip11Activation) {
       const auto& params = attr_proto.floats();
       // check expected values for each. Conv0 is explicitly specified. Conv2 are defaults
       if (node.Name() == "Conv0") {
-        EXPECT_TRUE(params.Get(0) == -1.f);
-        EXPECT_TRUE(params.Get(1) == 1.f);
+        EXPECT_EQ(params.Get(0), -1.f);
+        EXPECT_EQ(params.Get(1), 10.f);
       } else if (node.Name() == "Conv2") {
-        EXPECT_TRUE(params.Get(0) == std::numeric_limits<float>::lowest());
-        EXPECT_TRUE(params.Get(1) == std::numeric_limits<float>::max());
+        EXPECT_EQ(params.Get(0), std::numeric_limits<float>::lowest());
+        EXPECT_EQ(params.Get(1), std::numeric_limits<float>::max());
+      } else {
+        FAIL() << "Unexpected fused node name: '" << node.Name() << "'.";
       }
     }
   }
 }
-#endif
+
+TEST_F(GraphTransformationTests, FuseConvActivationPreservingAttributes) {
+  auto model_uri = MODEL_FOLDER "fusion/conv_with_padding_relu.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Relu"], 1);
+
+  // Apply transformer
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Relu"], 0);
+
+  ASSERT_EQ(graph.NumberOfNodes(), 1);
+  const auto& fused_conv_node = *graph.Nodes().begin();
+  ASSERT_EQ(fused_conv_node.OpType(), "FusedConv");
+
+  auto check_ints_attr =
+      [&fused_conv_node](const std::string& attr_name, gsl::span<const int64_t> expected_values) {
+        const auto& attrs = fused_conv_node.GetAttributes();
+        const auto attr_it = attrs.find(attr_name);
+        ASSERT_NE(attr_it, attrs.end());
+        EXPECT_THAT(attr_it->second.ints(), testing::ContainerEq(expected_values));
+      };
+
+  check_ints_attr("pads", AsSpan<int64_t>({1, 1, 1, 1}));
+  check_ints_attr("kernel_shape", AsSpan<int64_t>({3, 3}));
+}
+#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 TEST_F(GraphTransformationTests, FuseConvMulNoBias) {
   auto model_uri = MODEL_FOLDER "fusion/fuse-conv-mul-no-bias.onnx";
@@ -867,8 +906,7 @@ TEST_F(GraphTransformationTests, NegativeFuseConvAddNoBias) {
   ASSERT_TRUE(op_to_count["Unsqueeze"] != 0);
 }
 
-template <typename CharType>
-static void TestFuseConvAddMul(logging::Logger& logger, const CharType* model_uri) {
+static void TestFuseConvAddMul(logging::Logger& logger, const PathChar* model_uri) {
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, logger));
   Graph& graph = p_model->MainGraph();
@@ -4023,7 +4061,7 @@ static void TestEmbedLayerNormFusionDistilBert(const std::basic_string<ORTCHAR_T
   op_to_count = CountOpsInGraph(graph);
 }
 
-//DistilBert
+// DistilBert
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat7) {
   std::map<std::string, int> op_to_count;
   TestEmbedLayerNormFusionDistilBert(MODEL_FOLDER "fusion/embed_layer_norm_format7.onnx", op_to_count, logger_.get());

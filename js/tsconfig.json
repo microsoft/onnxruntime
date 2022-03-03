@@ -16,6 +16,7 @@
     "strictNullChecks": true,
     "pretty": true,
     "allowUnreachableCode": false,
-    "incremental": true
+    "incremental": true,
+    "newLine": "LF"
   }
 }

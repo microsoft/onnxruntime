@@ -464,6 +464,7 @@ Status UpdateFeeds(
 
   // Make sure data is ready before next subgraph execution.
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(reinterpret_cast<cudaStream_t>(stream)));
+  return Status::OK();
 }
 
 // Explicit template instantiations of functions
