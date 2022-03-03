@@ -12,6 +12,7 @@ namespace test {
 TEST(CumSumTest, _1DTest) {
   OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
   test.AddInput<float>("x", {5}, {1., 2., 3., 4., 5.});
+  // Pass in 0D Axis for all OpenVINO tests, and keep one 1D Axis test for coverage.
   #ifdef USE_OPENVINO
   test.AddInput<int32_t>("axis", {}, {0});
   #else
