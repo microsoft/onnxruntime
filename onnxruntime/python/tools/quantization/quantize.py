@@ -61,8 +61,8 @@ def check_static_quant_arguments(quant_format : QuantFormat,
         raise ValueError("ONNXRuntime quantization doesn't support data format:"
                          "activation_type=QuantType.QInt8, weight_type = QuantType.QUInt8")
 
-    if activation_type == QuantType.QInt8 or \
-       weight_type == QuantType.QInt8 or \
+    if activation_type == QuantType.QInt8 and \
+       weight_type == QuantType.QInt8 and \
        quant_format != QuantFormat.QDQ: \
         logging.warning("Please use QuantFormat.QDQ for activation type QInt8 and weight type QInt8. "
                         "Or it will lead to bad performance on x64.")
@@ -236,7 +236,13 @@ def quantize_static(model_input,
     model = load_model(Path(model_input), optimize_model, False)
 
     calib_extra_options = {} if 'CalibTensorRangeSymmetric' not in extra_options else {'symmetric': extra_options['CalibTensorRangeSymmetric']} 
-    calibrator = create_calibrator(model, op_types_to_quantize, calibrate_method=calibrate_method, extra_options=calib_extra_options)
+    calibrator = create_calibrator(
+        model,
+        op_types_to_quantize,
+        calibrate_method=calibrate_method,
+        use_external_data_format=use_external_data_format,
+        extra_options=calib_extra_options
+    )
     calibrator.collect_data(calibration_data_reader)
     tensors_range = calibrator.compute_range()
 

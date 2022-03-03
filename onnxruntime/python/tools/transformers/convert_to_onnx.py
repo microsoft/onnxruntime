@@ -159,6 +159,14 @@ def parse_arguments(argv=None):
     fp16_option_group = parser.add_argument_group(
         "float to float16 conversion parameters that works when \"--precision fp16\" is specified")
 
+    fp16_option_group.add_argument(
+        '-a',
+        '--auto_mixed_precision',
+        required=False,
+        action='store_true',
+        help='Convert to mixed precision automatically. Other float16 conversion parameters will be ignored.')
+    fp16_option_group.set_defaults(auto_mixed_precision=False)
+
     fp16_option_group.add_argument('--keep_io_types',
                                    required=False,
                                    action='store_true',
@@ -322,9 +330,14 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
         output_path = onnx_model_paths[str(args.precision) if args.precision != Precision.INT8 else 'fp32']
 
         logger.info(f"Optimizing model to {output_path}")
-        gpt2helper.optimize_onnx(raw_onnx_model, output_path, args.precision == Precision.FLOAT16,
-                                 model.config.num_attention_heads, model.config.hidden_size,
-                                 args.use_external_data_format, **fp16_params)
+        gpt2helper.optimize_onnx(raw_onnx_model,
+                                 output_path,
+                                 args.precision == Precision.FLOAT16,
+                                 model.config.num_attention_heads,
+                                 model.config.hidden_size,
+                                 args.use_external_data_format,
+                                 auto_mixed_precision=args.auto_mixed_precision,
+                                 **fp16_params)
     else:
         output_path = raw_onnx_model
 
@@ -391,8 +404,8 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
             column_names = [
                 "experiment", "run_id", "model_name", "model_class", "gpu", "precision", "optimizer", "test_cases",
                 "runs", "keep_io_types", "io_block_list", "op_block_list", "node_block_list", "force_fp16_initializers",
-                "ORT_TRANSFORMER_OPTIONS", "ORT_CUDA_GEMM_OPTIONS", "onnxruntime", latency_name, "top1_match_rate",
-                "onnx_size_in_MB", "diff_50_percentile", "diff_90_percentile", "diff_95_percentile",
+                "auto_mixed_precision", "ORT_TRANSFORMER_OPTIONS", "ORT_CUDA_GEMM_OPTIONS", "onnxruntime", latency_name,
+                "top1_match_rate", "onnx_size_in_MB", "diff_50_percentile", "diff_90_percentile", "diff_95_percentile",
                 "diff_99_percentile", "diff_pass_rate", "nan_rate", "top1_match_rate_per_run"
             ]
             csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
@@ -413,6 +426,7 @@ def main(argv=None, experiment_name="", run_id=0, csv_filename="gpt2_parity_resu
                 "op_block_list": args.op_block_list,
                 "node_block_list": args.node_block_list,
                 "force_fp16_initializers": args.force_fp16_initializers,
+                "auto_mixed_precision": args.auto_mixed_precision,
                 "ORT_TRANSFORMER_OPTIONS": os.getenv('ORT_TRANSFORMER_OPTIONS'),
                 "ORT_CUDA_GEMM_OPTIONS": os.getenv('ORT_CUDA_GEMM_OPTIONS'),
                 "onnxruntime": ort_version,

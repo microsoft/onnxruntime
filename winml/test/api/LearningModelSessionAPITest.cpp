@@ -1090,6 +1090,7 @@ static void SetIntraOpThreadSpinning() {
  }
 
  static void SetName() {
+ #ifndef BUILD_INBOX
    // load the model with name 'squeezenet_old'
    LearningModel model = nullptr;
    WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", model));
@@ -1111,6 +1112,7 @@ static void SetIntraOpThreadSpinning() {
    WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model_name_changed.onnx", model_name_changed));
    model_name = model_name_changed.Name();
    WINML_EXPECT_EQUAL(model_name, new_name);
+ #endif
  }
 
 
