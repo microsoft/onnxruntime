@@ -21,12 +21,12 @@ ORT_POD_VERSION=${3:?${USAGE_TEXT}}
 SHOULD_UPLOAD_ARCHIVES=${4:?${USAGE_TEXT}}
 
 STORAGE_ACCOUNT_NAME="onnxruntimepackages"
-STORAGE_ACCOUNT_CONTAINER_NAME="ortmobilestore"  # TODO look into moving to '$web'
-STORAGE_URL_PREFIX="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${STORAGE_ACCOUNT_CONTAINER_NAME}"
+STORAGE_ACCOUNT_CONTAINER_NAME='$web'
+STORAGE_URL_PREFIX="https://onnxruntimepackages.z14.web.core.windows.net"
 
 assemble_and_upload_pod() {
   local POD_NAME=${1:?"Expected pod name as first argument."}
-  local POD_ARCHIVE_BASENAME="${POD_NAME}-${ORT_POD_VERSION}.zip"
+  local POD_ARCHIVE_BASENAME="${POD_NAME}-${ORT_POD_VERSION}-pod-archive.zip"
   local PODSPEC_BASENAME="${POD_NAME}.podspec"
 
   pushd ${BINARIES_STAGING_DIR}/${POD_NAME}

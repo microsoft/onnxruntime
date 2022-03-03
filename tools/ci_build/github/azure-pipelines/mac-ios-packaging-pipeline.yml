@@ -1,13 +1,16 @@
 parameters:
-- name: IsReleaseBuild
-  displayName: Is this a release build? Set this parameter to true if you are doing an Onnx Runtime release.
-  type: boolean
-  default: false
-
-- name: ShouldUploadArchives
-  displayName: Should the package archives be uploaded? The archives will always be uploaded for a release build.
-  type: boolean
-  default: false
+- name: BuildType
+  displayName: |-
+    Type of build. Valid values:
+    "release": A release build to be published for an official ONNX Runtime release.
+    "prerelease": A pre-release build to be published for validation prior to release.
+    "normal": A normal build not for publication.
+  type: string
+  values:
+  - release
+  - prerelease
+  - normal
+  default: normal
 
 name: "$(Date:yyyyMMdd)$(Rev:rrr)"  # build number format
 
@@ -46,17 +49,20 @@ jobs:
     displayName: "Install Python requirements"
 
   - bash: |
-      BASE_VERSION=$(cat VERSION_NUMBER)
-      IS_RELEASE_BUILD=$(echo "${{ parameters.IsReleaseBuild }}" | tr "[:upper:]" "[:lower:]")
-      SHOULD_UPLOAD_ARCHIVES=$(echo "${{ parameters.ShouldUploadArchives }}" | tr "[:upper:]" "[:lower:]")
+      BUILD_TYPE="${{ parameters.BuildType }}"
+      BASE_VERSION="$(cat ./VERSION_NUMBER)"
+      DEV_VERSION="${BASE_VERSION}-dev+$(Build.BuildNumber)"
 
-      if [[ "${IS_RELEASE_BUILD}" == "true" ]]; then
-        VERSION=${BASE_VERSION}
-        # always upload archives for a release build
-        SHOULD_UPLOAD_ARCHIVES="true"
-      else
-        VERSION="${BASE_VERSION}-dev+$(Build.BuildNumber)"
-      fi
+      case "${BUILD_TYPE}" in
+        ("release")
+          VERSION="${BASE_VERSION}"; SHOULD_UPLOAD_ARCHIVES="true" ;;
+        ("prerelease")
+          VERSION="${DEV_VERSION}";  SHOULD_UPLOAD_ARCHIVES="true" ;;
+        ("normal")
+          VERSION="${DEV_VERSION}";  SHOULD_UPLOAD_ARCHIVES="false" ;;
+        (*)
+          echo "Invalid build type: ${BUILD_TYPE}"; exit 1 ;;
+      esac
 
       set_var() {
         local VAR_NAME=${1:?}
