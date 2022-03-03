@@ -266,6 +266,11 @@ def load_pt_model(model_name, model_class, cache_dir):
     if hasattr(config, 'return_dict'):
         config.return_dict = False
 
+    num_layers = os.getenv('NUM_HIDDEN_LAYERS')
+    if num_layers is not None:
+        config.num_hidden_layers = int(num_layers)
+        logger.info(f"Modifying pytorch model's number of hidden layers to: {config.num_hidden_layers}")
+
     model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class)
 
     return config, model
