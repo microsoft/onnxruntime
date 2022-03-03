@@ -1,10 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "isfinite_impl.h"
 #include <cuda_fp16.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/math/isfinite.cuh"
-#include "isfinite_impl.h"
+
 
 namespace onnxruntime {
 namespace cuda {

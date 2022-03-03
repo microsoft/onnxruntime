@@ -3,9 +3,13 @@
 
 #pragma once
 
+#include <cuda_runtime.h>
+#include "core/providers/cuda/cuda_kernel.h"
+#include "core/providers/cuda/multi_tensor/common.cuh"
+
 namespace onnxruntime {
 namespace cuda {
-// Implementation can be found in cuda file, optimizers_impl.cu
+// Implementation can be found in cuda file.
 // T1's precision should be higher than T2. It's used for
 // large tensors. Small tensors should use multi-tensor version
 // of this.
@@ -30,7 +34,7 @@ void LambComputeDirection(
     T3* moment_2_out,
     size_t count);
 
-// Implementation can be found in cuda file, optimizers_impl.cu
+// Implementation can be found in cuda file.
 // T2's precision should be higher than T1. It's used for
 // large tensors. Small tensors should use multi-tensor version
 // of this.

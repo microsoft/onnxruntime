@@ -6,14 +6,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename ScaleT>
-struct GetScaleValueImpl {
-  void operator()(const Tensor* scale, float& scale_value) const {
-    ORT_ENFORCE(scale->Shape().Size() == 1, "Scale input should have a single value.");
-    scale_value = static_cast<float>(*(scale->template Data<ScaleT>()));
-    ORT_ENFORCE(scale_value != 0.0f, "Scale value must not be 0.");
-  }
-};
+#include <cuda_runtime.h>
 
 template <typename T>
 void Impl_Scale(

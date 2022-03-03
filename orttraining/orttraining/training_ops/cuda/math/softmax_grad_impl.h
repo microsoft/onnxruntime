@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cuda_runtime.h>
+
 namespace onnxruntime {
 namespace cuda {
 template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>

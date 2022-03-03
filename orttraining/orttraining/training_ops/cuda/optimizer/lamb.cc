@@ -1,13 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <cmath>
+
+#include "orttraining/training_ops/cuda/optimizer/lamb.h"
+#include "orttraining/training_ops/cuda/optimizer/lamb_impl.h"
+
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "orttraining/training_ops/cuda/optimizer/common.h"
-#include "orttraining/training_ops/cuda/optimizer/lamb.h"
-#include "orttraining/training_ops/cuda/optimizer/lamb_impl.h"
+
+#include <cmath>
 
 namespace onnxruntime {
 namespace cuda {

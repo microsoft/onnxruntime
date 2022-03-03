@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <cuda_runtime.h>
+#include "core/providers/cuda/multi_tensor/common.cuh"
+
 namespace onnxruntime {
 namespace cuda {
 template <typename TIn, typename TOut>

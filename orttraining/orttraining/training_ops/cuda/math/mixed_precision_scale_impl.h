@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cuda_runtime.h>
+
 namespace onnxruntime {
 namespace cuda {
 template <typename SrcT, typename DstT>

@@ -3,9 +3,11 @@
 
 #pragma once
 
+#include <cuda_runtime.h>
+
 namespace onnxruntime {
 namespace cuda {
-// Implementation can be found in cuda file, optimizers_impl.cu
+// Implementation can be found in cuda file
 template <typename T, typename T_GRAD>
 void InPlaceAccumulatorImpl(
     cudaStream_t stream,
