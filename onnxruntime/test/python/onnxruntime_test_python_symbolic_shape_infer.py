@@ -25,6 +25,8 @@ def unique_element(lst):
 
 class TestSymbolicShapeInference(unittest.TestCase):
     def test_symbolic_shape_infer(self):
+        # skip these tests before this issue is fixed:
+        # https://github.com/microsoft/onnxruntime/issues/10761
         test_skip_due_to_onnx_1_11_shape_inference_change = ["GPT2", "GPT2_LM_HEAD", "test_GPT2"]
 
         cwd = os.getcwd()

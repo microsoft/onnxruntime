@@ -270,31 +270,42 @@ struct Func_Mul_ND<BFloat16> {
 
 template <typename TData>
 struct ScatterNDDispatchTarget {
-  Status operator()(OpKernelContext* context, concurrency::ThreadPool* tp, const std::string &reduction) const {
+  Status operator()(OpKernelContext* context, concurrency::ThreadPool* tp, ScatterND::Reduction reduction) const {
     Prepare<TData> prepare;
     ORT_RETURN_IF_ERROR(PrepareForCompute(context, prepare));
 
     auto lambda = [&](int64_t i) {
-      if (reduction == "add") {
-        auto func = Func_Add_ND<TData>();
-        func(
-          prepare.output_base + prepare.element_offsets[i],
-          prepare.input_base + i * prepare.element_to_copy,
-          prepare.element_to_copy);
-      } else if (reduction == "mul") {
-        auto func = Func_Mul_ND<TData>();
-        func(
-          prepare.output_base + prepare.element_offsets[i],
-          prepare.input_base + i * prepare.element_to_copy,
-          prepare.element_to_copy);
-      } else {
-        auto func = Func_Copy_ND<TData>();
-        func(
-          prepare.output_base + prepare.element_offsets[i],
-          prepare.input_base + i * prepare.element_to_copy,
-          prepare.element_to_copy);
+      switch(reduction) {
+        case ScatterND::Reduction::Add:
+        {
+          auto func = Func_Add_ND<TData>();
+          func(
+            prepare.output_base + prepare.element_offsets[i],
+            prepare.input_base + i * prepare.element_to_copy,
+            prepare.element_to_copy);
         }
-      };
+        break;
+        case ScatterND::Reduction::Mul:
+        {
+          auto func = Func_Mul_ND<TData>();
+          func(
+            prepare.output_base + prepare.element_offsets[i],
+            prepare.input_base + i * prepare.element_to_copy,
+            prepare.element_to_copy);
+        }
+        break;
+        default:
+        case ScatterND::Reduction::None:
+        {
+          auto func = Func_Copy_ND<TData>();
+          func(
+            prepare.output_base + prepare.element_offsets[i],
+            prepare.input_base + i * prepare.element_to_copy,
+            prepare.element_to_copy);
+        }
+        break;
+      }
+    };
     concurrency::ThreadPool::TryParallelFor(
       tp, prepare.element_offsets.size(), static_cast<double>(prepare.element_to_copy),
       [&lambda](ptrdiff_t first, ptrdiff_t last) {

@@ -12,11 +12,6 @@
 #include "onnx/defs/function.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 
-// have to put declaration here before a fix in onnx repo
-namespace ONNX_NAMESPACE {
-void propagateElemTypeFromTensorInputToOutput(InferenceContext& ctx, size_t inputIndex, size_t outputIndex);
-}
-
 namespace onnxruntime {
 namespace training {
 
