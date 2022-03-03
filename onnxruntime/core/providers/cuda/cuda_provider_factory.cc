@@ -7,6 +7,7 @@
 #include "core/providers/cuda/cuda_provider_options.h"
 
 #include <memory>
+#include <chrono>
 
 #include "gsl/gsl"
 
@@ -187,6 +188,18 @@ struct CUDA_Provider : Provider {
   void* GetInfo() override { return &g_info; }
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
+
+    // Time a trivial CUDA function to see if it takes more than 30 seconds, if so tell the user why
+    {
+      auto start_time = std::chrono::steady_clock::now();
+      int num_devices;
+      ::cudaGetDeviceCount(&num_devices);
+      auto end_time = std::chrono::steady_clock::now();
+      if (std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time) > std::chrono::seconds{30}) {
+        LOGS_DEFAULT(WARNING) << "CUDA took more than 30 seconds to start, please see this issue for how to fix it: https://github.com/microsoft/onnxruntime/issues/10746";
+      }
+    }
+
     auto params = reinterpret_cast<const OrtCUDAProviderOptionsV2*>(void_params);
 
     CUDAExecutionProviderInfo info{};
