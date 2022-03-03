@@ -240,13 +240,12 @@ def quantize_static(model_input,
 
     model = load_model(Path(model_input), optimize_model, False)
 
-    calib_extra_options = {}
-    if 'CalibTensorRangeSymmetric' in extra_options:
-        calib_extra_options.update({'symmetric': extra_options['CalibTensorRangeSymmetric']})
-    if 'CalibMovingAverage' in extra_options:
-        calib_extra_options.update({"moving_average": extra_options['CalibMovingAverage']})
-    if 'CalibMovingAverageConstant' in extra_options:
-        calib_extra_options.update({"averaging_constant": extra_options['CalibMovingAverageConstant']})
+    calib_extra_options_keys = [
+        ('CalibTensorRangeSymmetric', 'symmetric'),
+        ('CalibMovingAverage', 'moving_average'),
+        ('CalibMovingAverageConstant', 'averaging_constant')
+    ]
+    calib_extra_options = {key: extra_options.get(name) for (name, key) in calib_extra_options_keys if name in extra_options}
     calibrator = create_calibrator(
         model,
         op_types_to_quantize,
