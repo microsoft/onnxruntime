@@ -36,13 +36,6 @@ def create_benchmark_cases(precision="fp16"):
     intermediate_dimension = hidden_size * 4
     add_benchmark_case(benchmark_cases, batch_size, seq_len, intermediate_dimension, data_type, model)
 
-    # bert-base
-    hidden_size = 768
-    seq_len = 384
-    batch_size = 1
-    intermediate_dimension = hidden_size * 4
-    add_benchmark_case(benchmark_cases, batch_size, seq_len, intermediate_dimension, data_type, model)
-
     return benchmark_cases
 
 
