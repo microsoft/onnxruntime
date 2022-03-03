@@ -91,10 +91,10 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   if (!ImportBlob(hw_target, vpu_status)) {
   
   #if defined (OPENVINO_2021_4) 
-    auto ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
+    ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
     SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);  
   #else
-    auto ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
+    ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
   #endif 
 
   if (ValidateSubgraph(const_outputs_map_))
@@ -140,8 +140,8 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   inferRequestsQueue_ = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network_, nireq));
 }
 
-bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map_) {
-  if (const_outputs_map_.size() == subgraph_context_.output_names.size())
+bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
+  if (const_outputs_map.size() == subgraph_context_.output_names.size())
     subgraph_context_.is_constant = true;
   if (subgraph_context_.is_constant) {
     LOGS_DEFAULT(INFO) << log_tag << "The subgraph is a const. Directly moving to Infer stage.";

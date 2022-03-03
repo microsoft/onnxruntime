@@ -51,8 +51,9 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
           }
         }
       }
+    } else {
+      device_found = true;
     }
-    device_found = true;
   }
   if (!device_found) {
     std::string err_msg = std::string("Device Type not found : ") + info.device_type_ + "\nChoose the right precision with one of:\n";
