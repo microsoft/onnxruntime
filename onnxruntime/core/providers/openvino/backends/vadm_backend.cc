@@ -110,11 +110,9 @@ void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* c
   for (auto input_info_iter = graph_input_info.begin();
        input_info_iter != graph_input_info.end(); ++input_info_iter) {
     // Get OpenVINO's input buffer
-    OVTensorPtr graph_input_blob;
     std::string input_name = input_info_iter->first;
     auto precision = input_info_iter->second->getPrecision();
-    OVTensor graph_input_blob; 
-    graph_input_blob = infer_request->GetTensor(input_name);
+    auto graph_input_blob = infer_request->GetTensor(input_name);
     FillInputBlob(graph_input_blob, batch_slice_idx, input_name, ort, context, precision, subgraph_context_);
   }
   #endif 

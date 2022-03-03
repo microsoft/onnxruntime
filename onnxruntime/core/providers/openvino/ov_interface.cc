@@ -19,13 +19,15 @@ namespace onnxruntime {
 
     const std::string log_tag = "[OpenVINO-EP] ";
     std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model) const {
-        OVTensor weights;
         try {
             #if defined (OPENVINO_2022_1)
+            OVTensor weights;
             return oe.read_model(model, weights);
             #else
             OVTensorPtr blob = {nullptr};
-            return oe.ReadNetwork(model, blob);
+            auto network = oe.ReadNetwork(model, blob);
+            auto obj = std::make_shared<OVNetwork>(network);
+            return obj;
             #endif
             } catch (const Exception& e) {
                 ORT_THROW(log_tag + "[OpenVINO-EP] Exception while Reading network: " + std::string(e.what()));
@@ -110,7 +112,7 @@ namespace onnxruntime {
                 OVInferRequest inf_obj(infReq);
                 return inf_obj;
             #else 
-                auto infReq = obj.CreateInferRequest(infReq);
+                auto infReq = obj.CreateInferRequest();
                 OVInferRequest inf_obj(infReq);
                 return inf_obj;
             #endif 
@@ -128,7 +130,7 @@ namespace onnxruntime {
           OVTensorPtr blob = std::make_shared<OVTensor>(tobj);
           return blob;
           #else 
-          auto blob = infReq.Blob(input_name);
+          auto blob = infReq.GetBlob(input_name);
           return blob;
           #endif 
         } catch (const Exception& e) {
@@ -138,12 +140,12 @@ namespace onnxruntime {
         }
     }
 
-    void OVInferRequest::SetTensor(OVTensor& blob, std::string& name) {
+    void OVInferRequest::SetTensor(std::string& name, OVTensorPtr& blob) {
         try {
           #if defined(OPENVINO_2022_1)
           ovInfReq.set_tensor(name, blob);
           #else
-          infReq.SetBlob(blob, name);
+          infReq.SetBlob(name, blob);
           #endif 
         } catch (const Exception& e) {
           ORT_THROW(log_tag + " Cannot set Remote Blob for output: " + name + e.what());
@@ -184,7 +186,7 @@ namespace onnxruntime {
         #if defined (OPENVINO_2022_1)
         std::cout << "ovInfReq.query_state()" << " ";
         #else 
-        std::cout << infReq << " "; 
+        std::cout << &infReq << " "; 
         #endif 
     }
   }

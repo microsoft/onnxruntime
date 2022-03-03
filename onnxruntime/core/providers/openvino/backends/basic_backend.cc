@@ -259,13 +259,13 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* 
     FillInputBlob(graph_input_blob, batch_slice_idx, input_name, ort, context, subgraph_context_);
   }        
   #else
-  auto graph_input_info = exe_network_.get().GetInputsInfo();
+  auto graph_input_info = exe_network_.Get().GetInputsInfo();
   for (auto input_info_iter = graph_input_info.begin();
        input_info_iter != graph_input_info.end(); ++input_info_iter) {
     // Get OpenVINO's input buffer
     OVTensorPtr graph_input_blob;
     std::string input_name = input_info_iter->first;
-    graph_input_blob = infer_request->GetBlob(input_name);
+    graph_input_blob = infer_request->GetTensor(input_name);
     auto precision = input_info_iter->second->getPrecision();
     size_t batch_slice = 0;
     FillInputBlob(graph_input_blob, batch_slice, input_name, ort, context, precision, subgraph_context_);
@@ -389,13 +389,13 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContex
     }
   }
   #else
-  auto graph_output_info = exe_network_.get().GetOutputsInfo();
+  auto graph_output_info = exe_network_.Get().GetOutputsInfo();
   for (auto output_info_iter = graph_output_info.begin();
        output_info_iter != graph_output_info.end(); ++output_info_iter) {
     // Get OpenVINO's output blob
     OVTensorPtr graph_output_blob;
     auto output_name = output_info_iter->first;
-    graph_output_blob = infer_request->GetBlob(output_name);
+    graph_output_blob = infer_request->GetTensor(output_name);
     size_t batch_size = 1;
     auto output_tensor = GetOutputTensor(ort, context, batch_size, infer_request, output_name, subgraph_context_.output_names);
     auto mem_info = ort.GetTensorMemoryInfo(output_tensor);

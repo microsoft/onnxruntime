@@ -74,7 +74,11 @@ class InferRequestsQueue {
   void printstatus() {
     std::cout << "printing elements of the vector (infer_requests_): " << std::endl;
     for (auto i = infer_requests_.begin(); i != infer_requests_.end(); ++i) {
+      #if defined (OPENVINO_2022_1)
       i->get()->QueryStatus();
+      #else 
+      std::cout << *i << "\n";
+      #endif 
     }
     std::cout << '\n';
   }

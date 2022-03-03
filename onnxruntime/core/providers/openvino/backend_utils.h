@@ -47,9 +47,6 @@ void SetIODefs(const ONNX_NAMESPACE::ModelProto& model_proto,
 std::shared_ptr<InferenceEngine::CNNNetwork>
 CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
 
-std::shared_ptr<ov::Model>
-CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
-
 int GetFirstAvailableDevice(GlobalContext& global_context);
 
 void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::shared_ptr<ngraph::Node> node, OrtValue* out_tensor);
@@ -72,12 +69,20 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_s
                 std::string output_name,
                 std::unordered_map<std::string, int> output_names);
 
+#if defined (OPENVINO_2022_1)
 void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
                    std::string input_name, Ort::CustomOpApi& ort, OrtKernelContext* context,
                    const SubGraphContext& subgraph_context);
 
 void FillOutputBlob(OVTensorPtr outputBlob, OrtValue* output_tensor,
                     Ort::CustomOpApi& ort, size_t batch_slice_idx);
+
+std::shared_ptr<OVNetwork>
+CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
+
+void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
+                            std::ostream& stream, std::string deviceName);
+#endif
 
 void printPerformanceCounts(const std::map<std::string, InferenceEngine::InferenceEngineProfileInfo>& performanceMap,
                             std::ostream& stream, std::string deviceName);
@@ -91,9 +96,6 @@ void FillInputBlob(InferenceEngine::Blob::Ptr& inputBlob, size_t batch_slice_idx
 
 void FillOutputBlob(InferenceEngine::Blob::Ptr& outputBlob, OrtValue* output_tensor,
                     Ort::CustomOpApi& ort, InferenceEngine::Precision precision, size_t batch_slice_idx);
-
-void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
-                            std::ostream& stream, std::string deviceName);
 
 void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std::string deviceName);
 

@@ -124,7 +124,7 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalCont
   #elif defined (OPENVINO_2021_4)
     const std::string model = model_proto.SerializeAsString();
     auto cnn_network = global_context.ie_core.ReadModel(model);
-    ng_function = cnn_network.getFunction();
+    ng_function = cnn_network->getFunction();
   #else
      ORT_UNUSED_PARAMETER(model_proto);
   #endif 
@@ -165,7 +165,8 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalCont
   return std::make_shared<InferenceEngine::CNNNetwork>(ng_function);
 };
 
-std::shared_ptr<ov::Model>
+#if defined (OPENVINO_2022_1)
+std::shared_ptr<OVNetwork>
 CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
  
   if(IsCILogEnabled()) {
@@ -204,6 +205,7 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
   }
   return cnn_network;
 }
+#endif 
 
 InferenceEngine::Precision ConvertPrecisionONNXToOpenVINO(const ONNX_NAMESPACE::TypeProto& onnx_type, std::string device) {
   ONNX_NAMESPACE::DataType type_string = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(onnx_type);
@@ -278,7 +280,7 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_s
   #if defined (OPENVINO_2022_1)
   auto graph_output_dims = graph_output_blob->get_shape();
   #else 
-  auto graph_output_dims = graph_output_blob->TensorDesc().getDims();
+  auto graph_output_dims = graph_output_blob->getTensorDesc().getDims();
   #endif
 
   if (batch_size > 1) {
@@ -462,6 +464,7 @@ perfCountersSorted(std::map<std::string, InferenceEngine::InferenceEngineProfile
   return sorted;
 }
 
+#if defined (OPENVINO_2022_1)
 void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
                    std::string input_name, Ort::CustomOpApi& ort, OrtKernelContext* context,
                    const SubGraphContext& subgraph_context) {
@@ -487,7 +490,6 @@ void FillOutputBlob(OVTensorPtr outputBlob, OrtValue* output_tensor,
   char* batch_memory_offset = tensor_data + output_data_size * batch_slice_idx;
   std::memcpy(batch_memory_offset, output_data, output_data_size);
 }
-
 
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
                             std::ostream& stream, std::string deviceName) {
@@ -530,6 +532,7 @@ void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
   std::cout << "Full device name: " << deviceName << std::endl;
   std::cout << std::endl;
 }
+#endif
 
 void printPerformanceCounts(const std::map<std::string, InferenceEngine::InferenceEngineProfileInfo>& performanceMap,
                             std::ostream& stream, std::string deviceName) {
