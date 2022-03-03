@@ -69,15 +69,34 @@ class WindowsThread : public EnvThread {
     custom_thread_creation_options = thread_options.custom_thread_creation_options;
     custom_join_thread_fn = thread_options.custom_join_thread_fn;
     std::unique_ptr<Param> local_param = std::make_unique<Param>(name_prefix, index, start_address, param, thread_options);
+
+    int nNumGroups = GetActiveProcessorGroupCount();
+
     if (custom_create_thread_fn) {
       custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, (OrtThreadWorkerFn)CustomThreadMain, local_param.release());
       if (!custom_thread_handle) {
         ORT_THROW("custom_create_thread_fn returned invalid handle.");
       }
     } else {
-      hThread.reset(reinterpret_cast<HANDLE>(_beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
-                                                            local_param.release(), 0,
-                                                            &threadID)));
+      auto hndl = reinterpret_cast<HANDLE>(_beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
+                                 +new Param{name_prefix, index, start_address, param, thread_options}, 0,
+                                 +&threadID));
+
+      DWORD result = WaitForSingleObject(hndl, 0);
+
+      if (result != WAIT_OBJECT_0) {
+        GROUP_AFFINITY oldaffinity;
+        GetThreadGroupAffinity(hndl, &oldaffinity);
+        GROUP_AFFINITY affinity;
+        affinity = oldaffinity;
+
+        if (nNumGroups > 1) {
+          affinity.Group = unsigned short(index % nNumGroups);
+          SetThreadGroupAffinity(hndl, &affinity, nullptr);
+        }
+
+        hThread.reset(hndl);
+      }
     }
   }
 
