@@ -251,24 +251,6 @@ void SaveAndLoadRuntimeOptimizationsForModel(
 #endif  // !defined(ORT_MINIMAL_BUILD)
   run_test(/* do_save */ false);
 }
-}  // namespace
-
-TEST(GraphRuntimeOptimizationTest, QDQConv) {
-  SaveAndLoadRuntimeOptimizationsForModel(
-      ORT_TSTR("testdata/transform/runtime_optimization/qdq_convs.onnx"),
-      ORT_TSTR("testdata/transform/runtime_optimization/qdq_convs.runtime_optimizations.ort"),
-      [](const OpCountMap& loaded_ops, const OpCountMap& initialized_ops) {
-        constexpr int n = 3;  // expected number of QDQ Convs to fuse
-
-        EXPECT_EQ(loaded_ops,
-                  (OpCountMap{{"DequantizeLinear", n * 3},
-                              {"QuantizeLinear", n},
-                              {"Conv", n}}));
-
-        EXPECT_EQ(initialized_ops,
-                  (OpCountMap{{"QLinearConv", n}}));
-      });
-}
 
 // if level 3 optimizations are enabled the NHWC transformer should convert the QLinearConv nodes to use channels_last
 void CheckNhwcTransformerIsApplied() {
@@ -316,6 +298,24 @@ void CheckNhwcTransformerIsApplied() {
         },
         &checker_fn));
   }
+}
+}  // namespace
+
+TEST(GraphRuntimeOptimizationTest, QDQConv) {
+  SaveAndLoadRuntimeOptimizationsForModel(
+      ORT_TSTR("testdata/transform/runtime_optimization/qdq_convs.onnx"),
+      ORT_TSTR("testdata/transform/runtime_optimization/qdq_convs.runtime_optimizations.ort"),
+      [](const OpCountMap& loaded_ops, const OpCountMap& initialized_ops) {
+        constexpr int n = 3;  // expected number of QDQ Convs to fuse
+
+        EXPECT_EQ(loaded_ops,
+                  (OpCountMap{{"DequantizeLinear", n * 3},
+                              {"QuantizeLinear", n},
+                              {"Conv", n}}));
+
+        EXPECT_EQ(initialized_ops,
+                  (OpCountMap{{"QLinearConv", n}}));
+      });
 }
 
 TEST(GraphRuntimeOptimizationTest, ConvActivation) {

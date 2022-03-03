@@ -55,7 +55,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
-/** Generates all predefined transformers which are can be used to provide runtime optimizations for this level
+/** Generates all predefined transformers which can be used to provide runtime optimizations for this level
     in a minimal build.
     Any transformers or rewrite rules named in rules_and_transformers_to_disable will be excluded.
 
@@ -71,6 +71,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         format model
       - this information is saved in the ORT format model
       - only the logic to modify the set of nodes is included in the minimal build
+    - The QDQFinalCleanupTransformer and NhwcTransformer transformers are also supported in a minimal build
 */
 InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalBuild(
     TransformerLevel level,

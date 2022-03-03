@@ -22,8 +22,8 @@ namespace utils {
 std::optional<HashValue> GetHashValueFromStaticKernelHashMap(const std::string& op_type, int since_version);
 
 /**
- * Get hash value for com.microsoft ops that the NHWC optimizer may insert. Required when that optimizer is run using
- * a minimal build and ORT format model.
+ * Get hash value for com.microsoft ops with CPU EP implementations that the NHWC optimizer may insert.
+ * These are required when that optimizer is run using a minimal build and ORT format model.
  * @param Node Node to find hash for.
  */
 std::optional<HashValue> GetInternalNhwcOpHash(const Node& node);

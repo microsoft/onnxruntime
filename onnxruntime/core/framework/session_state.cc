@@ -1019,12 +1019,11 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
 
     // NHWC optimizer may replace a node, so a missing node isn't necessarily an error
     // ORT_RETURN_IF(node == nullptr, "Can't find runtime optimization produced node with index ", node_index);
-    
+
     if (node != nullptr) {
       ORT_RETURN_IF_ERROR(add_kernel_by_hash(*node, kernel_def_hash));
     }
   }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
   // lookup the hashes for any nodes we compiled or added during graph partitioning.
   // These node indexes for compiled nodes as well as newly added nodes are not in node_indices
@@ -1051,6 +1050,7 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
       }
     }
   }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
   if (!subgraph_session_states_.empty()) {
     for (const auto& [node_idx, session_states] : subgraph_session_states_) {
