@@ -319,13 +319,11 @@ jobs:
       Repository: onnxruntimecuda11build
   - task: CmdLine@2
     displayName: 'Test C API application for GPU package'
-    parameters:
-      PackageName: 'onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
     inputs:
       script: |
         docker run --gpus all -e CC=/opt/rh/devtoolset-10/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-10/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src \
         --volume $(Build.ArtifactStagingDirectory):/artifact_src -e NIGHTLY_BUILD onnxruntimecuda11build \
-        /onnxruntime_src/tools/capi_test/run_capi_application.sh -p /artifact_src/${{parameters.PackageName}} -w /onnxruntime_src/tools/capi_test/
+        /onnxruntime_src/tools/capi_test/run_capi_application.sh -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /onnxruntime_src/tools/capi_test/
       workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
   - task: PublishPipelineArtifact@1
