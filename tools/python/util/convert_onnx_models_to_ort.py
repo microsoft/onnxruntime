@@ -62,7 +62,7 @@ def _create_session_options(optimization_level: ort.GraphOptimizationLevel,
 
 def _convert(model_path_or_dir: pathlib.Path, optimization_level_str: str, use_nnapi: bool, use_coreml: bool,
              custom_op_library: pathlib.Path, create_optimized_onnx_model: bool, allow_conversion_failures: bool,
-             session_options_config_entries: typing.Dict[str, str]):
+             target_platform: str, session_options_config_entries: typing.Dict[str, str]):
 
     optimization_level = get_optimization_level(optimization_level_str)
 
@@ -91,7 +91,7 @@ def _convert(model_path_or_dir: pathlib.Path, optimization_level_str: str, use_n
     # If someone really really really wants to run it they could manually create an optimized onnx model first,
     # or they could comment out this code.
     optimizer_filter = None
-    if optimization_level == ort.GraphOptimizationLevel.ORT_ENABLE_ALL:
+    if optimization_level == ort.GraphOptimizationLevel.ORT_ENABLE_ALL and target_platform != 'amd64' :
         optimizer_filter = ['NchwcTransformer']
 
     num_failures = 0
@@ -197,7 +197,7 @@ def parse_args():
                         help='Specify the list of NNAPI EP partitioning stop ops. '
                              'In particular, specify the value of the "ep.nnapi.partitioning_stop_ops" session '
                              'options config entry.')
-    
+
     parser.add_argument('--target_platform', type=str, default=None, choices=['arm', 'amd64'],
                         help='Specify the target platform where the exported model will be used. '
                              'This parameter can be used to choose between platform specific options, '
@@ -233,7 +233,7 @@ def convert_onnx_models_to_ort():
 
     if args.nnapi_partitioning_stop_ops is not None:
         session_options_config_entries["ep.nnapi.partitioning_stop_ops"] = args.nnapi_partitioning_stop_ops
-    
+
     if args.target_platform == 'arm':
         session_options_config_entries["session.qdqisint8allowed"] = "1"
     else:
@@ -242,7 +242,8 @@ def convert_onnx_models_to_ort():
     for optimization_level in args.optimization_level:
         print(f"Converting models and creating configuration file for optimization level '{optimization_level}'")
         _convert(model_path_or_dir, optimization_level, args.use_nnapi, args.use_coreml, custom_op_library,
-                 args.save_optimized_onnx_model, args.allow_conversion_failures, session_options_config_entries)
+                 args.save_optimized_onnx_model, args.allow_conversion_failures, args.target_platform,
+                 session_options_config_entries)
 
         _create_config_file_from_ort_models(model_path_or_dir, optimization_level, args.enable_type_reduction)
 

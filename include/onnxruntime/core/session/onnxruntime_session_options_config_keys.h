@@ -78,10 +78,8 @@ static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session
 // has to guarantee that the model bytes are valid until the ORT session using the model bytes is destroyed.
 static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "session.use_ort_model_bytes_directly";
 
-// Configure whether int8 is allowed in QDQ format model or not. 
-// Should be specified based on different target platform. e.g. on ARM we allow int8_t as input/output, on amd64 we do not.
-// "0": not allowed; "1": allowed. It's used as a forced option when exporting to ort model to disable certain usage of 
-// unsupported qdq transformers (in minimal build), such as QDQS8ToU8Transformer and also passed into several qdq selectors.
+// This should only be specified when exporting an ORT format model for use on a different platform.
+// If the ORT format model will be used on ARM platforms set to "1". For other platforms set to "0"
 static const char* const kOrtSessionOptionsQDQIsInt8Allowed = "session.qdqisint8allowed";
 
 // Save information for replaying graph optimizations later instead of applying them directly.
