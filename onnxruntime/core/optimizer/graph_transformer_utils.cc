@@ -162,9 +162,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
   const bool enable_quant_qdq_cleanup =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQCleanup, "0") == "1";
+#ifndef DISABLE_CONTRIB_OPS
   const bool qdq_is_int8_allowed =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQIsInt8Allowed, QDQIsInt8Allowed() ? "1" : "0") == "1";
-#ifndef DISABLE_CONTRIB_OPS
   const bool enable_gelu_approximation =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
 #endif
