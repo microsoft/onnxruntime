@@ -10,13 +10,9 @@
 
 #include "core/framework/provider_options.h"
 
+#include "tvm_defaults.h"
+
 namespace onnxruntime {
-
-constexpr const char* default_target_str = "cpu";
-constexpr const char* llvm_target_str = "llvm";
-
-constexpr const char* cpu_target_str = "cpu";
-constexpr const char* gpu_target_str = "gpu";
 
 namespace tvm {
 namespace cpu_targets {
@@ -28,19 +24,18 @@ const std::string LLVM_TARGET_AVX512 = "llvm -mcpu=skylake-avx512";
 }  // namespace cpu_targets
 }  // namespace tvm
 
-constexpr const unsigned int default_opt_level = 3;
-
 using TVMInputShapes = std::unordered_map<std::string, std::vector<int64_t>>;
 
 // Information needed to construct an TVM execution provider.
 struct TvmExecutionProviderInfo {
-  std::string target{default_target_str};
-  std::string target_host{default_target_str};
-  unsigned int opt_level{default_opt_level};
+  std::string executor{tvm::default_executor_type};
+  std::string target{tvm::default_target_str};
+  std::string target_host{tvm::default_target_str};
+  unsigned int opt_level{tvm::default_opt_level};
   bool freeze_weights = true;
   bool to_nhwc = false;
   std::string tuning_file_path{""};
-  std::string tuning_type{"AutoTVM"};
+  std::string tuning_type{tvm::default_tuning_type};
   std::string input_names_str{""};
   std::string input_shapes_str{""};
   TVMInputShapes input_shapes{};

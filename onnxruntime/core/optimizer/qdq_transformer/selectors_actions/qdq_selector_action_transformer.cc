@@ -37,7 +37,9 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
                                                           {"Reshape", {}},
                                                           {"Transpose", {}},
                                                           {"MaxPool", {12}},
-                                                          {"Resize", {}}},
+                                                          {"Resize", {}},
+                                                          {"Squeeze", {}},
+                                                          {"Unsqueeze", {}}},
                                                          std::move(selector),
                                                          std::move(action));
 #else
@@ -78,7 +80,8 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::UnarySelector>();
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"AveragePool", {}},
-                                                          {"LeakyRelu", {}}},
+                                                          {"LeakyRelu", {}},
+                                                          {"GlobalAveragePool", {}}},
                                                          std::move(selector),
                                                          std::move(action));
 #else
