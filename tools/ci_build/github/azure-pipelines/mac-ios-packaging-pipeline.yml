@@ -51,7 +51,8 @@ jobs:
   - bash: |
       BUILD_TYPE="${{ parameters.BuildType }}"
       BASE_VERSION="$(cat ./VERSION_NUMBER)"
-      DEV_VERSION="${BASE_VERSION}-dev+$(Build.BuildNumber)"
+      SHORT_COMMIT_HASH="$(git rev-parse --short HEAD)"
+      DEV_VERSION="${BASE_VERSION}-dev+$(Build.BuildNumber).${SHORT_COMMIT_HASH}"
 
       case "${BUILD_TYPE}" in
         ("release")
