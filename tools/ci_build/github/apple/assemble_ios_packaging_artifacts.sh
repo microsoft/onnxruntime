@@ -20,8 +20,7 @@ ARTIFACTS_STAGING_DIR=$(abspath "${2:?${USAGE_TEXT}}")
 ORT_POD_VERSION=${3:?${USAGE_TEXT}}
 SHOULD_UPLOAD_ARCHIVES=${4:?${USAGE_TEXT}}
 
-#STORAGE_ACCOUNT_NAME="onnxruntimepackages"
-STORAGE_ACCOUNT_NAME="edchstoragetest"
+STORAGE_ACCOUNT_NAME="onnxruntimepackages"
 STORAGE_ACCOUNT_CONTAINER_NAME='$web'
 STORAGE_URL_PREFIX="https://onnxruntimepackages.z14.web.core.windows.net"
 
