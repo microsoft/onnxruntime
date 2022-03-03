@@ -684,7 +684,7 @@ common::Status InferenceSession::Load(const std::basic_string<T>& model_uri) {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
-common::Status InferenceSession::FilterEnabledOptimizers(InlinedHashSet<std::string> optimizers_to_disable) {
+common::Status InferenceSession::FilterEnabledOptimizers(InlinedHashSet<std::string>&& optimizers_to_disable) {
   optimizers_to_disable_ = std::move(optimizers_to_disable);
   return Status::OK();
 }
@@ -1156,7 +1156,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 Status ApplyOrtFormatModelRuntimeOptimizations(
     onnxruntime::Graph& graph, const logging::Logger& logger, const SessionOptions& session_options,
-    InlinedHashSet<std::string> optimizers_to_disable, const IExecutionProvider& cpu_ep) {
+    const InlinedHashSet<std::string>& optimizers_to_disable, const IExecutionProvider& cpu_ep) {
   bool modified = false;
 
   for (int level = static_cast<int>(TransformerLevel::Level2);
