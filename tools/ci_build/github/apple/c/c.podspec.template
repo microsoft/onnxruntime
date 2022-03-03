@@ -1,20 +1,18 @@
 Pod::Spec.new do |spec|
-    spec.name                   = "onnxruntime-mobile-c"
+    spec.name                   = "@NAME@"
     spec.version                = "@VERSION@"
     spec.authors                = { "ONNX Runtime" => "onnxruntime@microsoft.com" }
-    spec.license                = { :type => "MIT", :file => @LICENSE_FILE@ }
+    spec.license                = { :type => "MIT", :file => "@LICENSE_FILE@" }
     spec.homepage               = "https://github.com/microsoft/onnxruntime"
     spec.source                 = { :http => "file:///http_source_placeholder" }
-    spec.summary                = "ONNX Runtime Mobile C/C++ Pod"
+    spec.summary                = "@SUMMARY@"
     spec.platform               = :ios, "@IOS_DEPLOYMENT_TARGET@"
-    spec.vendored_frameworks    = "onnxruntime.xcframework"
+    spec.vendored_frameworks    = "@ORT_C_FRAMEWORK@"
     spec.static_framework       = true
     spec.weak_framework         = [ @WEAK_FRAMEWORK@ ]
-    spec.source_files           = "Headers/*.h"
-    spec.preserve_paths         = [ @LICENSE_FILE@ ]
-    spec.description            = <<-DESC
-    A pod for the ONNX Runtime Mobile C/C++ library.
-                                    DESC
+    spec.source_files           = "@ORT_C_HEADERS_DIR@/*.h"
+    spec.preserve_paths         = [ "@LICENSE_FILE@" ]
+    spec.description            = "@DESCRIPTION@"
     spec.library                = "c++"
     spec.pod_target_xcconfig    = {
         "OTHER_CPLUSPLUSFLAGS" => "-fvisibility=hidden -fvisibility-inlines-hidden",

@@ -28,13 +28,14 @@ def _npfloat16_to_int(np_list):
     return [int(bin(_.view('H'))[2:].zfill(16), 2) for _ in np_list]
 
 
-def convert_np_to_float16(np_array, min_positive_val=1e-7, max_finite_val=1e4):
+def convert_np_to_float16(np_array, min_positive_val=5.96e-08, max_finite_val=65504.0):
     '''
     Convert float32 numpy array to float16 without changing sign or finiteness.
     Positive values less than min_positive_val are mapped to min_positive_val.
     Positive finite values greater than max_finite_val are mapped to max_finite_val.
     Similar for negative values. NaN, 0, inf, and -inf are unchanged.
     '''
+
     def between(a, b, c):
         return np.logical_and(a < b, b < c)
 
@@ -45,7 +46,7 @@ def convert_np_to_float16(np_array, min_positive_val=1e-7, max_finite_val=1e4):
     return np.float16(np_array)
 
 
-def convert_tensor_float_to_float16(tensor, min_positive_val=1e-7, max_finite_val=1e4):
+def convert_tensor_float_to_float16(tensor, min_positive_val=5.96e-08, max_finite_val=65504.0):
     """Convert tensor float to float16.
 
     Args:
@@ -97,6 +98,7 @@ DEFAULT_OP_BLOCK_LIST = [
 
 class InitializerTracker:
     """Class for keeping track of initializer."""
+
     def __init__(self, initializer: onnx_proto.TensorProto):
         self.initializer = initializer
         self.fp32_nodes = []
@@ -110,8 +112,8 @@ class InitializerTracker:
 
 
 def convert_float_to_float16(model,
-                             min_positive_val=1e-7,
-                             max_finite_val=1e4,
+                             min_positive_val=5.96e-08,
+                             max_finite_val=65504.0,
                              keep_io_types=False,
                              disable_shape_infer=False,
                              op_block_list=None,
@@ -121,8 +123,8 @@ def convert_float_to_float16(model,
 
     Args:
         model (ModelProto): The ONNX model to convert.
-        min_positive_val (float, optional): minimal positive value. Defaults to 1e-7.
-        max_finite_val (float, optional): maximal finite value. Defaults to 1e4.
+        min_positive_val (float, optional): minimal positive value. Defaults to 5.96e-08.
+        max_finite_val (float, optional): maximal finite value of float16. Defaults to 65504.
         keep_io_types (Union[bool, List[str]], optional): It could be boolean or a list of float32 input/output names.
                                                           If True, model inputs/outputs should be left as float32. Defaults to False.
         disable_shape_infer (bool, optional): Skips running onnx shape/type inference. Useful if shape inference has been done. Defaults to False.
@@ -158,6 +160,10 @@ def convert_float_to_float16(model,
         node_block_list = []
     op_block_list = set(op_block_list)
     node_block_list = set(node_block_list)
+
+    logger.debug(
+        f"fp16 parameters: min_positive_val={min_positive_val} max_finite_val={max_finite_val} keep_io_types={keep_io_types} disable_shape_infer={disable_shape_infer} op_block_list={op_block_list} node_block_list={node_block_list} force_fp16_initializers={force_fp16_initializers}"
+    )
 
     # create a queue for BFS
     queue = []
@@ -328,3 +334,20 @@ def convert_float_to_float16(model,
                     node.output[i] = input_name
                     break
     return model
+
+
+def float_to_float16_max_diff(tensor, min_positive_val=5.96e-08, max_finite_val=65504.0):
+    """Measure the maximum absolute difference after converting a float tensor to float16."""
+    if not isinstance(tensor, onnx_proto.TensorProto):
+        raise ValueError('Expected input type is an ONNX TensorProto but got %s' % type(tensor))
+    if tensor.data_type != onnx_proto.TensorProto.FLOAT:
+        raise ValueError('Expected tensor data type is float.')
+
+    if tensor.float_data:
+        float32_data = np.array(tensor.float_data)
+
+    if tensor.raw_data:
+        float32_data = np.fromstring(tensor.raw_data, dtype='float32')
+
+    float16_data = convert_np_to_float16(float32_data, min_positive_val, max_finite_val)
+    return np.amax(np.abs(float32_data - np.float32(float16_data)))

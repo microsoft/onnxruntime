@@ -965,8 +965,6 @@ if (WIN32)
         # warning C4800: Implicit conversion from 'X' to bool. Possible information loss
         if (onnxruntime_USE_OPENVINO OR onnxruntime_ENABLE_EAGER_MODE)
            list(APPEND ORT_WARNING_FLAGS "/wd4800")
-        else()
-           list(APPEND ORT_WARNING_FLAGS "/w34800")
         endif()
         # operator 'operator-name': deprecated between enumerations of different types
         list(APPEND ORT_WARNING_FLAGS "/wd5054")
@@ -1417,10 +1415,15 @@ if (onnxruntime_USE_TVM)
     set(USE_CUDA ON CACHE BOOL "Only defined for TVM" FORCE)
   endif()
 
+  # TODO(vvchernov): customized tvm logger is hidden due to the issue on TVM side (https://github.com/apache/tvm/issues/10139)
+  # add_compile_definitions(TVM_LOG_CUSTOMIZE=1)
+  # add_library(tvm_custom_logger STATIC ${ONNXRUNTIME_ROOT}/core/providers/tvm/custom_logging.cc)
+
   set(USE_OPENMP gnu CACHE STRING "Only defined for TVM")
   add_subdirectory(${tvm_SOURCE_DIR} ${tvm_BINARY_DIR} EXCLUDE_FROM_ALL)
 
   set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
+  # target_link_libraries(tvm PUBLIC tvm_custom_logger)
 
   set(TVM_INCLUDES ${tvm_SOURCE_DIR}/include
     ${tvm_SOURCE_DIR}/3rdparty/dmlc-core/include
