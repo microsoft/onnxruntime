@@ -22,7 +22,7 @@ SHOULD_UPLOAD_ARCHIVES=${4:?${USAGE_TEXT}}
 
 STORAGE_ACCOUNT_NAME="onnxruntimepackages"
 STORAGE_ACCOUNT_CONTAINER_NAME='$web'
-STORAGE_URL_PREFIX="https://onnxruntimepackages.z14.web.core.windows.net"
+STORAGE_URL_PREFIX=$(az storage account show --name ${STORAGE_ACCOUNT_NAME} --query "primaryEndpoints.web" --output tsv)
 
 assemble_and_upload_pod() {
   local POD_NAME=${1:?"Expected pod name as first argument."}
@@ -42,7 +42,7 @@ assemble_and_upload_pod() {
       --file ${ARTIFACTS_STAGING_DIR}/${POD_ARCHIVE_BASENAME} --name ${POD_ARCHIVE_BASENAME} \
       --if-none-match "*"
 
-    sed -i "" -e "s|file:///http_source_placeholder|${STORAGE_URL_PREFIX}/${POD_ARCHIVE_BASENAME}|" \
+    sed -i "" -e "s|file:///http_source_placeholder|${STORAGE_URL_PREFIX}${POD_ARCHIVE_BASENAME}|" \
       ${ARTIFACTS_STAGING_DIR}/${PODSPEC_BASENAME}
   fi
 
