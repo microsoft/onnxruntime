@@ -140,19 +140,32 @@ class CalibraterBase:
 
 
 class MinMaxCalibrater(CalibraterBase):
-    def __init__(self, model, op_types_to_calibrate=[], augmented_model_path='augmented_model.onnx', symmetric=False, use_external_data_format=False):
+    def __init__(self, 
+                model,
+                op_types_to_calibrate=[],
+                augmented_model_path='augmented_model.onnx',
+                symmetric=False,
+                use_external_data_format=False,
+                moving_average=False,
+                averaging_constant=0.01):
         '''
         :param model: ONNX model to calibrate. It can be a ModelProto or a model path
         :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
         :param augmented_model_path: save augmented model to this path.
         :param symmetric: make range of tensor symmetric (central point is 0).
         :param use_external_data_format: use external data format to store model which size is >= 2Gb
+        :param moving_average: compute the moving average of the minimum and maximum values instead of the global minimum and maximum.
+        :param averaging_constant: constant smoothing factor to use when computing the moving average.
         '''
         super(MinMaxCalibrater, self).__init__(model, op_types_to_calibrate, augmented_model_path, symmetric, use_external_data_format)
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
         self.num_model_outputs = len(self.model.graph.output)
         self.model_original_outputs = set(output.name for output in self.model.graph.output)
+        self.moving_average = moving_average
+        if moving_average and (averaging_constant < 0 or averaging_constant > 1):
+            raise ValueError("Invalid averaging constant, which should not be < 0 or > 1.")
+        self.averaging_constant = averaging_constant
 
     def augment_graph(self):
         '''
@@ -222,8 +235,12 @@ class MinMaxCalibrater(CalibraterBase):
             return new_range
 
         for key, value in old_range.items(): 
-            min_value = min(value[0], new_range[key][0])
-            max_value = max(value[1], new_range[key][1])
+            if self.moving_average:
+                min_value = value[0] + self.averaging_constant * (new_range[key][0] - value[0])
+                max_value = value[1] + self.averaging_constant * (new_range[key][1] - value[1])
+            else:
+                min_value = min(value[0], new_range[key][0])
+                max_value = max(value[1], new_range[key][1])
             new_range[key] = (min_value, max_value)
 
         return new_range
@@ -258,8 +275,12 @@ class MinMaxCalibrater(CalibraterBase):
         for i in range(0, len(added_output_names), 2):
             min_value = 0
             max_value = 0
-            min_value_array = min(merged_added_output_dict[added_output_names[i]])
-            max_value_array = max(merged_added_output_dict[added_output_names[i + 1]])
+            if self.moving_average:
+                min_value_array = np.mean(merged_added_output_dict[added_output_names[i]], axis = 0)
+                max_value_array = np.mean(merged_added_output_dict[added_output_names[i + 1]], axis = 0)
+            else:
+                min_value_array = min(merged_added_output_dict[added_output_names[i]])
+                max_value_array = max(merged_added_output_dict[added_output_names[i + 1]])
             if type(min_value_array) == int or min_value_array.size > 0:
                 min_value = float(min_value_array)
             if type(max_value_array) == int or max_value_array.size > 0:
@@ -716,10 +737,14 @@ def create_calibrator(model,
     if calibrate_method == CalibrationMethod.MinMax:
         # default settings for min-max algorithm
         symmetric = False if 'symmetric' not in extra_options else extra_options['symmetric']
+        moving_average = False if 'moving_average' not in extra_options else extra_options['moving_average']
+        averaging_constant = 0.01 if 'averaging_constant' not in extra_options else extra_options['averaging_constant']
         return MinMaxCalibrater(
             model, op_types_to_calibrate, augmented_model_path,
             use_external_data_format=use_external_data_format,
-            symmetric=symmetric
+            symmetric=symmetric,
+            moving_average=moving_average,
+            averaging_constant=averaging_constant
         )
     elif calibrate_method == CalibrationMethod.Entropy:
         # default settings for entropy algorithm
