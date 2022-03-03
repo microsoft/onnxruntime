@@ -91,7 +91,7 @@ def _convert(model_path_or_dir: pathlib.Path, optimization_level_str: str, use_n
     # If someone really really really wants to run it they could manually create an optimized onnx model first,
     # or they could comment out this code.
     optimizer_filter = None
-    if optimization_level == ort.GraphOptimizationLevel.ORT_ENABLE_ALL and target_platform != 'amd64' :
+    if optimization_level == ort.GraphOptimizationLevel.ORT_ENABLE_ALL and target_platform != 'amd64':
         optimizer_filter = ['NchwcTransformer']
 
     num_failures = 0
