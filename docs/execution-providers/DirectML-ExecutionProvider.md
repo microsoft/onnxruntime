@@ -15,7 +15,7 @@ DirectML is a high-performance, hardware-accelerated DirectX 12 library for mach
 
 When used standalone, the DirectML API is a low-level DirectX 12 library and is suitable for high-performance, low-latency applications such as frameworks, games, and other real-time applications. The seamless interoperability of DirectML with Direct3D 12 as well as its low overhead and conformance across hardware makes DirectML ideal for accelerating machine learning when both high performance is desired, and the reliability and predictability of results across hardware is critical.
 
-The DirectML Execution Provider currently uses DirectML version 1.4.2.
+The DirectML Execution Provider currently uses DirectML version [1.8.0](https://www.nuget.org/packages/Microsoft.AI.DirectML/1.8.0) and supports up to ONNX opset 12 ([ONNX v1.7](https://github.com/onnx/onnx/releases/tag/v1.7.0)). Evaluating models which require a higher opset version is unsupported and will yield poor performance.
 
 ## Contents
 {: .no_toc }
@@ -116,12 +116,6 @@ In this case, there are three options:
 ## Samples
 
 A complete sample of onnxruntime using the DirectML execution provider can be found under [samples/c_cxx/fns_candy_style_transfer](https://github.com/microsoft/onnxruntime/tree/master/samples//c_cxx/fns_candy_style_transfer).
-
-## Support Coverage
-**ONNX Opset**
-
-The DirectML execution provider currently supports ONNX opset 12 ([ONNX v1.7](https://github.com/onnx/onnx/releases/tag/v1.7.0)). Evaluating models which require a higher opset version is not supported, and may produce unexpected results.
-
 
 ## Additional Resources
 
