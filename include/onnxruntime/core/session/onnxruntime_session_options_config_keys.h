@@ -78,6 +78,10 @@ static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session
 // has to guarantee that the model bytes are valid until the ORT session using the model bytes is destroyed.
 static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "session.use_ort_model_bytes_directly";
 
+// This should only be specified when exporting an ORT format model for use on a different platform.
+// If the ORT format model will be used on ARM platforms set to "1". For other platforms set to "0"
+static const char* const kOrtSessionOptionsQDQIsInt8Allowed = "session.qdqisint8allowed";
+
 // Save information for replaying graph optimizations later instead of applying them directly.
 //
 // When an ONNX model is loaded, ORT can perform various optimizations on the graph.
