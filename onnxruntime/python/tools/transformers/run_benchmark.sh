@@ -44,7 +44,7 @@ fi
 # Enable optimizer (use script instead of OnnxRuntime for graph optimization)
 use_optimizer=true
 
-# Set custom num_hidden_layers to e.g 16. Modify as needed.
+# Set num_hidden_layers
 if [ "$use_custom_layer_num" = true ] ; then
   unset NUM_HIDDEN_LAYERS
   export NUM_HIDDEN_LAYERS=16
