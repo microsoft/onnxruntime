@@ -210,6 +210,7 @@ def convert_onnx_models_to_ort():
     args = parse_args()
 
     optimization_style = OptimizationStyle[args.optimization_style]
+    optimization_level_str = 'all'  # hardcoded for now
     model_path_or_dir = args.model_path_or_dir.resolve()
     custom_op_library = args.custom_op_library.resolve() if args.custom_op_library else None
 
@@ -228,8 +229,6 @@ def convert_onnx_models_to_ort():
         session_options_config_entries["session.qdqisint8allowed"] = "1"
     else:
         session_options_config_entries["session.qdqisint8allowed"] = "0"
-
-    optimization_level_str = 'all'
 
     print(f"Converting models and creating configuration file for optimization level '{optimization_level_str}' "
           f"and optimization style '{optimization_style.name}'")
