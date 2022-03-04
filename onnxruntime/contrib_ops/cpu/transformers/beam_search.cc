@@ -283,7 +283,7 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
 }
 
 Status BeamSearch::Compute(OpKernelContext* ctx) const {
-  if (parameters_->model_type != 0) {
+  if (parameters_.model_type != 0) {
     // TODO: support encoder decoder model like T5
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Support of 'model_type' != 0 is not implemented");
   }
