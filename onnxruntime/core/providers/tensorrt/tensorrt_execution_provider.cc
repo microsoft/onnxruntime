@@ -250,7 +250,7 @@ TensorrtLogger& GetTensorrtLogger() {
   return trt_logger;
 }
 
-std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetLock() const {
+std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetApiLock() const {
   static OrtMutex singleton;
   return std::unique_lock<OrtMutex>(singleton);
 }
@@ -401,7 +401,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       }
     }
     {
-      auto lock = GetLock();
+      auto lock = GetApiLock();
       runtime_ = tensorrt_ptr::unique_pointer<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger()));
     }
   }
@@ -1197,7 +1197,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
 
         // Build engine
         {
-          auto lock = GetLock();
+          auto lock = GetApiLock();
           trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
         }
         if (trt_engine == nullptr) {
@@ -1538,7 +1538,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
 
         // Build engine
         {
-          auto lock = GetLock();
+          auto lock = GetApiLock();
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
               trt_builder->buildEngineWithConfig(*trt_state->network->get(), *trt_config));
         }

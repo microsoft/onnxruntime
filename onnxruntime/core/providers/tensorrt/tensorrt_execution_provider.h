@@ -196,8 +196,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   /** 
   Get a unique_lock object to control the concurrency behavior. 
   Every api call not in the thread-safe operations(https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading)
-  shoud be protected by a lock for multi-threading situation.
+  should be protected by a lock when invoked by multiple threads concurrently.
   */
-  std::unique_lock<OrtMutex> GetLock() const;
+  std::unique_lock<OrtMutex> GetApiLock() const;
 };
 }  // namespace onnxruntime
