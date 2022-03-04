@@ -1424,8 +1424,9 @@ common::Status InferenceSession::Initialize() {
       // The CUDA EP is configured to do a graph capture AND
       // All the graph nodes have been assigned to the CUDA EP,
       // Then the CUDA EP is cached for triggering a ReplayGraph() in Run().
-      for (auto execution_provider : execution_providers_) {
-        if (execution_provider->IsGraphCaptureEnabled()) {
+      auto* cuda_ep = execution_providers_.Get(onnxruntime::kCudaExecutionProvider);
+      if (cuda_ep && cuda_ep->IsGraphCaptureEnabled()) {
+        if (cuda_ep->IsGraphCaptureEnabled()) {
           if (HasControlflowNodes(graph)) {
             LOGS(*session_logger_, ERROR) << "This session cannot use the CUDA Graph feature as requested by the user "
                                           << " as the model has control flow nodes which can't be supported by CUDA Graphs.";
@@ -1449,8 +1450,7 @@ common::Status InferenceSession::Initialize() {
 
           } else {
             LOGS(*session_logger_, INFO) << "This session will use the CUDA Graph feature as requested by the user.";
-            cached_execution_provider_for_graph_replay_.SetExecutionProvider(execution_provider.get());
-            break;
+            cached_execution_provider_for_graph_replay_.SetExecutionProvider(cuda_ep);
           }
         }
       }
@@ -1872,7 +1872,9 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
   // Check if this Run() is simply going to be a CUDA Graph replay.
   if (cached_execution_provider_for_graph_replay_.IsGraphCaptured()) {
-      LOGS(*session_logger_, INFO) << "Replaying the captured CUDA Graph for this model with tag: " << run_options.run_tag;
+      LOGS(*session_logger_, INFO) << "Replaying the captured "
+                                   << cached_execution_provider_for_graph_replay_.Type()
+                                   << " CUDA Graph for this model with tag: " << run_options.run_tag;
       ++current_num_runs_;
       ORT_RETURN_IF_ERROR_SESSIONID_(cached_execution_provider_for_graph_replay_.ReplayGraph());
   } else {
@@ -2005,8 +2007,11 @@ Status InferenceSession::Run(const RunOptions& run_options,
   // are needed before replaying the captured graph, here run the inference again
   // to capture the graph, so that users just need one session run to capture
   // the graph.
-  if (cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled() &&
+  if (retval.IsOK() &&  cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled() &&
       !cached_execution_provider_for_graph_replay_.IsGraphCaptured()) {
+    LOGS(*session_logger_, INFO) << "Start the second Run() to capture the graph. "
+                                    "The first one is for necessary memory allocation;"
+                                    "The second one is for capturing the graph.";
     ORT_RETURN_IF_ERROR(Run(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info));
   }
   return retval;

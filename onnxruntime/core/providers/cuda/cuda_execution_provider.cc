@@ -179,18 +179,7 @@ bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptured() const {
 }
 
 Status CUDAExecutionProvider::PerThreadContext::ReplayGraph() {
-  if (!IsGraphCaptureAllowed()) {
-    return ORT_MAKE_STATUS(
-      ONNXRUNTIME, FAIL,
-      std::to_string(min_num_runs_before_cuda_graph_capture_) + " regular runs are required before graph capture.");
-  }
-  if (!IsGraphCaptured()) {
-    return ORT_MAKE_STATUS(
-      ONNXRUNTIME, FAIL,
-      "Cuda graph is not captured yet. Please execute " +
-      std::to_string(min_num_runs_before_cuda_graph_capture_ + 1) +
-      " regular runs before replaying cuda graph.");
-  }
+  ORT_ENFORCE(IsGraphCaptured());
   return cuda_graph_.Replay();
 }
 

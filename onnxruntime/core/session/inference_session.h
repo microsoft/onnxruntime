@@ -739,11 +739,9 @@ class InferenceSession {
   // At Run() time, if this member is not nullptr and the captured graph is ready
   // to replay, simply invoke ReplayGraph().
   struct CachedExecutionProviderForGraphReplay {
-    CachedExecutionProviderForGraphReplay() {}
+    CachedExecutionProviderForGraphReplay() = default;
 
-    CachedExecutionProviderForGraphReplay(IExecutionProvider* execution_provider) {
-      cached_execution_provider_for_graph_replay_ = execution_provider;
-    }
+    CachedExecutionProviderForGraphReplay(IExecutionProvider* execution_provider) : cached_execution_provider_for_graph_replay_(execution_provider) {}
 
     void SetExecutionProvider(IExecutionProvider* execution_provider) {
       cached_execution_provider_for_graph_replay_ = execution_provider;
@@ -758,10 +756,15 @@ class InferenceSession {
     }
 
     Status ReplayGraph() {
+      ORT_ENFORCE(IsGraphCaptured());
       if (cached_execution_provider_for_graph_replay_) {
         return cached_execution_provider_for_graph_replay_->ReplayGraph();
       }
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cached EP instance for graph replay is not set yet before calling ReplayGraph()");
+    }
+
+    const std::string& Type() const {
+      return cached_execution_provider_for_graph_replay_->Type();
     }
 
     IExecutionProvider* cached_execution_provider_for_graph_replay_ = nullptr;
