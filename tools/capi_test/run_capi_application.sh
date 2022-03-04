@@ -9,7 +9,8 @@ w) WORKSPACE=${OPTARG};;
 esac
 done
 
-ONNX_MODEL_URL="https://github.com/onnx/models/raw/main/vision/classification/squeezenet/model/squeezenet1.0-7.onnx"
+#ONNX_MODEL_URL="https://github.com/onnx/models/raw/main/vision/classification/squeezenet/model/squeezenet1.0-7.onnx"
+ONNX_MODEL_URL="https://media.githubusercontent.com/media/onnx/models/main/vision/classification/squeezenet/model/squeezenet1.0-7.onnx"
 ONNX_MODEL="squeezenet.onnx"
 
 CUR_PWD=$(pwd)
@@ -26,7 +27,8 @@ cd build
 
 cmake ..
 make -j4
-wget ${ONNX_MODEL_URL} -O ${ONNX_MODEL}
+#wget ${ONNX_MODEL_URL} -O ${ONNX_MODEL}
+curl ${ONNX_MODEL_URL} --output ${ONNX_MODEL}
 ./capi_test
 
 if [ $? -ne 0 ]
