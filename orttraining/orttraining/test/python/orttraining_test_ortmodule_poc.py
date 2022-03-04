@@ -131,6 +131,8 @@ def main():
                         help='how many batches to wait before logging training status (default: 300)')
     parser.add_argument('--view-graphs', action='store_true', default=False,
                         help='views forward and backward graphs')
+    parser.add_argument('--export-onnx-graphs', action='store_true', default=False,
+                        help='export ONNX graphs to current directory')
     parser.add_argument('--epochs', type=int, default=5, metavar='N',
                         help='number of epochs to train (default: 10)')
     parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], default='WARNING',
@@ -169,7 +171,7 @@ def main():
         print('Training MNIST on ORTModule....')
 
         # Just for future debugging
-        debug_options = DebugOptions(save_onnx=False, onnx_prefix='MNIST')
+        debug_options = DebugOptions(save_onnx=args.export_onnx_graphs, onnx_prefix='MNIST')
 
         model = ORTModule(model, debug_options)
 
