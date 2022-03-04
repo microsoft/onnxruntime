@@ -1,5 +1,18 @@
+#-------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+#-------------------------------------------------------------------------
+
+"""
+This converts GPT2 or T5 model to onnx with beam search operator.
+
+Example 1: convert gpt2 model with beam search:
+   python convert_beam_search.py -m gpt2 --decoder_onnx .\onnx_models\gpt2_past_fp32.onnx --output .\onnx_models\gpt2_beam_search.onnx --output_sequences_scores
+   
+Example 2: convert T5 model with beam search:
+   python ./models/t5/convert_to_onnx.py -m t5-small -s
+   python convert_beam_search.py -m t5-small --decoder_onnx ./onnx_models/t5_small_decoder.onnx --output ./onnx_models/t5_small_beam_search.onnx
+"""
 
 import os
 import time
@@ -16,12 +29,7 @@ from gpt2_helper import PRETRAINED_GPT2_MODELS
 from convert_to_onnx import main as convert_gpt2_to_onnx
 from benchmark_helper import Precision
 from onnx import onnx_pb as onnx_proto
-"""
-This converts GPT2 model to onnx with beam search operator.
 
-Examples:
-   python convert_beam_search.py -m gpt2 --decoder_onnx .\onnx_models\gpt2_past_fp32.onnx --output .\onnx_models\gpt2_beam_search.onnx --output_sequences_scores
-"""
 
 config: Union[GPT2Config, T5Config] = None
 
