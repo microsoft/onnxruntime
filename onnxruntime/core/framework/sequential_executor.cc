@@ -77,8 +77,9 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
                          << "\n";
 #endif
       total_output_sizes += tensor_size;
-      ss << "{\"" << DataTypeImpl::ToString(tensor.DataType()) << "\":"
-         << tensor.Shape().ToString() << (i == output_count - 1 ? "}" : "},");
+      auto shape_str = tensor.Shape().ToString();
+      ss << "{\"" << DataTypeImpl::ToString(tensor.DataType()) << "\":["
+         << shape_str.substr(1, shape_str.size() - 2) << "]" << (i == output_count - 1 ? "}" : "},");
     }
   }
   ss << "]";
@@ -122,8 +123,9 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
       } else {
         input_activation_sizes += tensor_size;
       }
-      ss << "{\"" << DataTypeImpl::ToString(p_tensor->DataType()) << "\":"
-         << p_tensor->Shape().ToString() << (i == input_count - 1 ? "}" : "},");
+      auto shape_str = p_tensor->Shape().ToString();
+      ss << "{\"" << DataTypeImpl::ToString(p_tensor->DataType()) << "\":["
+         << shape_str.substr(1, shape_str.size() - 2) << "]" << (i == input_count - 1 ? "}" : "},");
     }
   }
   ss << "]";
