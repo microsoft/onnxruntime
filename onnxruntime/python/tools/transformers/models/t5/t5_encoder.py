@@ -3,6 +3,7 @@
 # Licensed under the MIT License.  See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
+
 import random
 from pathlib import Path
 from typing import List
@@ -138,10 +139,7 @@ class T5EncoderHelper:
                                               vocab_size=model.config.vocab_size,
                                               device=device)
         input_list = inputs.to_list()
-
-        # Run inference of PyTorch model
-        with torch.no_grad():
-            torch_outputs = model(*input_list)
+        torch_outputs = model(*input_list)
 
         ort_outputs = T5EncoderHelper.onnxruntime_inference(ort_session, inputs)
 

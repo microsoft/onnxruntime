@@ -17,8 +17,6 @@ from past_helper import PastKeyValuesHelper
 
 logger = logging.getLogger(__name__)
 
-PRETRAINED_T5_MODELS = ["t5-small", "t5-base", "t5-large", "t5-3B", "t5-11B"]
-
 
 class T5EncoderDecoderInit(torch.nn.Module):
     """ A combination of T5Encoder and T5DecoderInit.

@@ -104,7 +104,6 @@ def export_onnx_models(model_name_or_path,
     for name, model in models.items():
         filename_suffix = "_" + name
 
-        # Export encoder to ONNX
         onnx_path = T5Helper.get_onnx_path(output_dir,
                                            model_name_or_path,
                                            suffix=filename_suffix,

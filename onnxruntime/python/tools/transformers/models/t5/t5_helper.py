@@ -3,9 +3,9 @@
 # Licensed under the MIT License.  See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
+
 import os
 import sys
-import re
 from pathlib import Path
 from typing import Union
 import logging
@@ -37,10 +37,10 @@ class T5Helper:
             [type]: [description]
         """
         model_name = model_name_or_path
-        if model_name not in PRETRAINED_T5_MODELS and not re.match(
-                r'^[\w_-]+$', model_name_or_path):  # It is not a name, shall be a path
-            assert os.path.isdir(model_name_or_path)
+        if os.path.isdir(model_name_or_path):
             model_name = Path(model_name_or_path).parts[-1]
+        else:
+            model_name.split('/')[-1]
 
         model_name += suffix
 
