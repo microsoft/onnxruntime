@@ -339,6 +339,7 @@ TEST(NnapiExecutionProviderTest, TestQDQResize) {
                   {false /* verify_entire_graph_use_ep */});
 }
 
+#if !defined(__ANDROID__)
 TEST(NnapiExecutionProviderTest, TestQDQResize_UnsupportedDefaultSetting) {
   RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
                                          {1, 3, 32, 32} /* sizes_data */),
@@ -346,6 +347,7 @@ TEST(NnapiExecutionProviderTest, TestQDQResize_UnsupportedDefaultSetting) {
                   {false /* verify_entire_graph_use_ep */},
                   false /* nnapi_qdq_model_supported */);
 }
+#endif
 
 TEST(NnapiExecutionProviderTest, TestQDQAveragePool) {
   // NNAPI use different rounding, which may cause ~1% difference in the result
@@ -415,6 +417,7 @@ TEST(NnapiExecutionProviderTest, TestQDQSoftMax) {
                   });
 }
 
+#if !defined(__ANDROID__)
 // See https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/op_support_checker.cc#L1236
 TEST(NnapiExecutionProviderTest, TestQDQSoftMax_UnsupportedOutputScaleAndZp) {
   RunQDQModelTest(BuildQDQSoftMaxTestCase<uint8_t, uint8_t>(
@@ -428,6 +431,7 @@ TEST(NnapiExecutionProviderTest, TestQDQSoftMax_UnsupportedOutputScaleAndZp) {
                   },
                   false /* nnapi_qdq_model_supported */);
 }
+#endif
 
 TEST(NnapiExecutionProviderTest, TestQDQConcat) {
   // This is to verify all the inputs have the same scale and zp as input 0
