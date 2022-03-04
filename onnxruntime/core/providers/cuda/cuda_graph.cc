@@ -16,6 +16,10 @@ CUDAGraph::CUDAGraph(cudaStream_t stream) : stream_(stream) {
 #endif
 }
 
+void CUDAGraph::SetStream(cudaStream_t stream) {
+  stream_ = stream;
+}
+
 void CUDAGraph::CaptureBegin() {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
   ORT_ENFORCE(!has_graph_exec_,
@@ -23,11 +27,11 @@ void CUDAGraph::CaptureBegin() {
               "Create a new instance to capture a new graph.");
 
   CUDA_CALL_THROW(cudaStreamSynchronize(stream_));
-  // CUDA EP maintains a separate compute stream and a separate cuda graph for
-  // each thread. To support the run of inference session with cuda graph on multiple
-  // threads, use `cudaStreamCaptureModeThreadLocal` instead of `cudaStreamCaptureModeGlobal`
-  // to allow each thread to capture its own local cuda graph.
-  CUDA_CALL_THROW(cudaStreamBeginCapture(stream_, cudaStreamCaptureModeThreadLocal));
+  // For now cuda graph can only work with a single thread. In the future, we
+  // will support multiple threads. For multiple threads with multiple graphs
+  // and streams, `cudaStreamCaptureModeGlobal` needs to be changed to
+  // `cudaStreamCaptureModeThreadLocal`
+  CUDA_CALL_THROW(cudaStreamBeginCapture(stream_, cudaStreamCaptureModeGlobal));
 #else
   ORT_THROW("CUDA graphs can only be used in Onnxruntime built with CUDA >= 10.0");
 #endif

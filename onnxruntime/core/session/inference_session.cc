@@ -1449,7 +1449,7 @@ common::Status InferenceSession::Initialize() {
 
           } else {
             LOGS(*session_logger_, INFO) << "This session will use the CUDA Graph feature as requested by the user.";
-            cached_execution_provider_for_graph_replay_ = std::make_unique<CachedExecutionProviderForGraphReplay>(execution_provider.get());
+            cached_execution_provider_for_graph_replay_.SetExecutionProvider(execution_provider.get());
             break;
           }
         }
@@ -1871,10 +1871,10 @@ Status InferenceSession::Run(const RunOptions& run_options,
   const Env& env = Env::Default();
 
   // Check if this Run() is simply going to be a CUDA Graph replay.
-  if (cached_execution_provider_for_graph_replay_->IsGraphCaptured()) {
+  if (cached_execution_provider_for_graph_replay_.IsGraphCaptured()) {
       LOGS(*session_logger_, INFO) << "Replaying the captured CUDA Graph for this model with tag: " << run_options.run_tag;
       ++current_num_runs_;
-      ORT_RETURN_IF_ERROR_SESSIONID_(cached_execution_provider_for_graph_replay_->ReplayGraph());
+      ORT_RETURN_IF_ERROR_SESSIONID_(cached_execution_provider_for_graph_replay_.ReplayGraph());
   } else {
     std::vector<IExecutionProvider*> exec_providers_to_stop;
     exec_providers_to_stop.reserve(execution_providers_.NumProviders());
@@ -2000,6 +2000,15 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   TraceLoggingWriteStop(ortrun_activity, "OrtRun");
 #endif
+
+  // As two inference runs (one for memory allocation and one for graph capturing)
+  // are needed before replaying the captured graph, here run the inference again
+  // to capture the graph, so that users just need one session run to capture
+  // the graph.
+  if (cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled() &&
+      !cached_execution_provider_for_graph_replay_.IsGraphCaptured()) {
+    ORT_RETURN_IF_ERROR(Run(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info));
+  }
   return retval;
 }
 

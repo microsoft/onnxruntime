@@ -12,9 +12,11 @@ namespace onnxruntime {
 using CaptureId_t = unsigned long long;
 
 struct CUDAGraph {
+  CUDAGraph() {};
   CUDAGraph(cudaStream_t stream);
   ~CUDAGraph();
 
+  void SetStream(cudaStream_t stream);
   void CaptureBegin();
   void CaptureEnd();
   Status Replay();
@@ -31,6 +33,6 @@ private:
 
   CaptureId_t id_;
   cudaStream_t stream_ = nullptr; // Does not own the stream
-  };
- 
+};
+
 } // namespace onnxruntime

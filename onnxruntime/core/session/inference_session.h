@@ -739,7 +739,13 @@ class InferenceSession {
   // At Run() time, if this member is not nullptr and the captured graph is ready
   // to replay, simply invoke ReplayGraph().
   struct CachedExecutionProviderForGraphReplay {
+    CachedExecutionProviderForGraphReplay() {}
+
     CachedExecutionProviderForGraphReplay(IExecutionProvider* execution_provider) {
+      cached_execution_provider_for_graph_replay_ = execution_provider;
+    }
+
+    void SetExecutionProvider(IExecutionProvider* execution_provider) {
       cached_execution_provider_for_graph_replay_ = execution_provider;
     }
 
@@ -761,7 +767,7 @@ class InferenceSession {
     IExecutionProvider* cached_execution_provider_for_graph_replay_ = nullptr;
   };
 
-  std::unique_ptr<CachedExecutionProviderForGraphReplay> cached_execution_provider_for_graph_replay_ = std::make_unique<CachedExecutionProviderForGraphReplay>(nullptr);
+  CachedExecutionProviderForGraphReplay cached_execution_provider_for_graph_replay_;
 };
 
 struct SessionIOBinding {

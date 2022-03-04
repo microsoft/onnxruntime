@@ -1496,7 +1496,6 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           },
           py::return_value_policy::reference_internal)
       .def("run_with_iobinding", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {
-        py::gil_scoped_release release;
         Status status;
         if (!run_options)
           status = sess->GetSessionHandle()->Run(*io_binding.Get());

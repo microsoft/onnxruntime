@@ -1195,8 +1195,8 @@ TEST(CApiTest, cuda_graph) {
   Ort::IoBinding binding(session);
   binding.BindInput("X", bound_x);
   binding.BindOutput("Y", bound_y);
-  
-  // One regular run before CUDA graph capturing for necessary memory allocation
+
+  // One regular run for necessary memory allocation and graph capturing
   session.Run(Ort::RunOptions(), binding);
 
   // Check the values against the bound raw memory (needs copying from device to host first)
@@ -1204,17 +1204,12 @@ TEST(CApiTest, cuda_graph) {
   cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
   ASSERT_TRUE(std::equal(std::begin(y_values), std::end(y_values), std::begin(expected_y)));
 
-  // This run captures CUDA graph
-  session.Run(Ort::RunOptions(), binding);
-  cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
-  ASSERT_TRUE(std::equal(std::begin(y_values), std::end(y_values), std::begin(expected_y)));
-  
   // Replay the captured CUDA graph
   session.Run(Ort::RunOptions(), binding);
   cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
   ASSERT_TRUE(std::equal(std::begin(y_values), std::end(y_values), std::begin(expected_y)));
-  
-  // Change the input and replay the CUDA graph again. 
+
+  // Change the input and replay the CUDA graph again.
   x_values = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
   cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
   session.Run(Ort::RunOptions(), binding);

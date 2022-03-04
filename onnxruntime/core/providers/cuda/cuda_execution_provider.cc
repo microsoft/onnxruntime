@@ -122,23 +122,23 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaAllocator(OrtDevice::DeviceId devi
   }
 }
 
-CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, size_t gpu_mem_limit,
+CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t gpu_mem_limit,
                                                           ArenaExtendStrategy arena_extend_strategy, CUDAExecutionProviderExternalAllocatorInfo external_allocator_info,
                                                           OrtArenaCfg* default_memory_arena_cfg) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
-  CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
+  stream_ = stream;
 
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
-  CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream_));
+  CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
 
   CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
-  CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream_));
+  CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
 
   // CUDA malloc/free is expensive so always use an arena
   allocator_ = CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-  cuda_graph_ = std::make_unique<CUDAGraph>(stream_);
+  cuda_graph_.SetStream(stream_);
 #endif
 }
 
@@ -157,30 +157,6 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(ERROR) << "cudnnDestroy threw:" << ex.what();
   }
-
-  if (!external_stream_ && stream_) {
-    CUDA_CALL(cudaStreamDestroy(stream_));
-  }
-}
-
-Status CUDAExecutionProvider::PerThreadContext::SetComputeStream(void* stream) {
-  if (stream != stream_) {
-    if (stream_) {
-      CUDA_RETURN_IF_ERROR(cudaStreamDestroy(stream_));
-    }
-
-    external_stream_ = true;
-    stream_ = static_cast<cudaStream_t>(stream);
-
-    CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream_));
-    CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream_));
-
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
-    cuda_graph_ = std::make_unique<CUDAGraph>(stream_);
-#endif
-
-  }
-  return Status::OK();
 }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
@@ -189,12 +165,12 @@ bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptureAllowed() const {
 }
 
 void CUDAExecutionProvider::PerThreadContext::CaptureBegin()  {
-  cuda_graph_->Reset();
-  cuda_graph_->CaptureBegin();
+  cuda_graph_.Reset();
+  cuda_graph_.CaptureBegin();
 }
 
 void CUDAExecutionProvider::PerThreadContext::CaptureEnd() {
-  cuda_graph_->CaptureEnd();
+  cuda_graph_.CaptureEnd();
   is_graph_captured_ = true;
 }
 
@@ -215,7 +191,7 @@ Status CUDAExecutionProvider::PerThreadContext::ReplayGraph() {
       std::to_string(min_num_runs_before_cuda_graph_capture_ + 1) +
       " regular runs before replaying cuda graph.");
   }
-  return cuda_graph_->Replay();
+  return cuda_graph_.Replay();
 }
 
 void CUDAExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGraphCapture() {
@@ -236,14 +212,13 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   ORT_ENFORCE(!(info.has_user_compute_stream && info.external_allocator_info.UseExternalAllocator()));
 
   if (info.has_user_compute_stream) {
-    ORT_THROW_IF_ERROR(
-      GetPerThreadContext().SetComputeStream(static_cast<cudaStream_t>(info.user_compute_stream)));
+    external_stream_ = true;
+    stream_ = static_cast<cudaStream_t>(info.user_compute_stream);
   } else {
     if (info.external_allocator_info.UseExternalAllocator()) {
-      ORT_THROW_IF_ERROR(
-        GetPerThreadContext().SetComputeStream(nullptr));
+      stream_ = nullptr;
     } else {
-      GetPerThreadContext();
+      CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream_, cudaStreamNonBlocking));
     }
   }
 
@@ -279,6 +254,10 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
       ORT_IGNORE_RETURN_VALUE(cache->erase(this));
     }
   }
+
+  if (!external_stream_ && stream_) {
+    CUDA_CALL(cudaStreamDestroy(stream_));
+  }
 }
 
 std::unique_ptr<profiling::EpProfiler> CUDAExecutionProvider::GetProfiler() {
@@ -303,7 +282,7 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
-      context = std::make_shared<PerThreadContext>(info_.device_id, info_.gpu_mem_limit,
+      context = std::make_shared<PerThreadContext>(info_.device_id, static_cast<cudaStream_t>(GetComputeStream()), info_.gpu_mem_limit,
                                                    info_.arena_extend_strategy, info_.external_allocator_info, info_.default_memory_arena_cfg);
     } else {
       context = context_state_.retired_context_pool.back();
@@ -435,7 +414,15 @@ Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
 }
 
 Status CUDAExecutionProvider::SetComputeStream(void* stream) {
-  return GetPerThreadContext().SetComputeStream(stream);
+  if (stream != stream_) {
+    if (stream_) {
+      CUDA_RETURN_IF_ERROR(cudaStreamDestroy(stream_));
+    }
+
+    external_stream_ = true;
+    stream_ = static_cast<cudaStream_t>(stream);
+  }
+  return Status::OK();
 }
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
