@@ -1396,7 +1396,6 @@ if (onnxruntime_USE_NUPHAR_TVM)
     endif()
   endif()
 
-  include(onnxruntime_codegen.cmake)
 endif(onnxruntime_USE_NUPHAR_TVM)
 
 # TVM EP
@@ -1872,8 +1871,11 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
 endif()
 
-#names in this var must match the directory names under onnxruntime/core/providers
+
 set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
+if (onnxruntime_USE_NUPHAR_TVM)
+  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_codegen_tvm)  
+endif()
 if (onnxruntime_ENABLE_EAGER_MODE)
   if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
     message(
