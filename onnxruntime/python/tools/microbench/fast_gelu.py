@@ -1,5 +1,6 @@
+import argparse
 import numpy as np
-from benchmark import benchmark 
+from benchmark import benchmark, add_arguments
 
 
 def create_inputs_outputs(batch, seq_len, intermediate_dimension, data_type):
@@ -20,7 +21,7 @@ def add_benchmark_case(benchmark_cases, batch_size, seq_len, intermediate_dimens
     ]
 
 
-def create_benchmark_cases(precision="fp16"):
+def create_benchmark_cases(precision):
     benchmark_cases = []
     if precision == "fp16":
       model = "models/fast_gelu_fp16.onnx"
@@ -39,15 +40,19 @@ def create_benchmark_cases(precision="fp16"):
     return benchmark_cases
 
 
-def benchmark_fast_gelu(batch, seq_len, intermediate_dimension, data_type, onnx_file):
+def benchmark_fast_gelu(batch, seq_len, intermediate_dimension, data_type, onnx_file, args):
     inputs, outputs = create_inputs_outputs(batch, seq_len, intermediate_dimension, data_type)
-    time = benchmark(onnx_file, inputs, outputs, "rocm")
+    time = benchmark(onnx_file, inputs, outputs, args)
     return time
 
 
 def main():
-    for (batch, seq_len, intermediate_dimension, data_type, onnx_file) in create_benchmark_cases(): 
-        time = benchmark_fast_gelu(batch, seq_len, intermediate_dimension, data_type, onnx_file)
+    parser = argparse.ArgumentParser()
+    add_arguments(parser)
+    args = parser.parse_args()
+
+    for (batch, seq_len, intermediate_dimension, data_type, onnx_file) in create_benchmark_cases(args.precision):
+        time = benchmark_fast_gelu(batch, seq_len, intermediate_dimension, data_type, onnx_file, args)
         print(f"(batch seq_len inter_dim) = ({batch} {seq_len} {intermediate_dimension}), {time:7.4f} ms")
 
 

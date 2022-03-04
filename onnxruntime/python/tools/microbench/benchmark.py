@@ -1,7 +1,14 @@
+from argparse import ArgumentParser
 import time
 import numpy
 import onnxruntime as ort
 import torch
+
+
+def add_arguments(parser: ArgumentParser):
+    parser.add_argument("--provider", required=False, type=str, default="rocm", help="Execution provider to use")
+    parser.add_argument("--precision", required=False, type=str, default="fp16", help="Number format to use")
+    parser.add_argument('--profiling', type=bool, default=False, help='If enable profiling')
 
 
 def create_input_output_tensors(inputs, outputs):
@@ -29,20 +36,28 @@ def create_io_binding(sess, input_tensors, output_tensors):
     return io_binding
 
 
-def create_session(onnx_file, provider, profiling):
+def create_session(onnx_file, args):
     sess_opt = ort.SessionOptions()
-    sess_opt.enable_profiling = profiling
-    if provider == "rocm":
+    sess_opt.enable_profiling = args.profiling
+    if args.provider == "rocm":
         execution_provider = ["ROCMExecutionProvider"] 
-    else:
+    elif args.provider == "cuda":
         execution_provider = ["CUDAExecutionProvider"] 
-        
+    else:
+        raise ValueError(f"The script doesn't support provider type '{args.provider}' yet.")
+
     sess = ort.InferenceSession(onnx_file, sess_options=sess_opt, providers=execution_provider)
+
+    if args.provider == "rocm":
+        assert 'ROCMExecutionProvider' in sess.get_providers()
+    elif args.provider == "cuda":
+        assert 'CUDAExecutionProvider' in sess.get_providers()
+
     return sess
  
 
-def benchmark(onnx_file, inputs, outputs, provider, profiling=False):
-    sess = create_session(onnx_file, provider, profiling)
+def benchmark(onnx_file, inputs, outputs, args):
+    sess = create_session(onnx_file, args)
     input_tensors, output_tensors = create_input_output_tensors(inputs, outputs)
     io_binding = create_io_binding(sess, input_tensors, output_tensors)
 
