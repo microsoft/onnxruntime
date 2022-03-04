@@ -544,7 +544,8 @@ class WindowsEnv : public Env {
 #endif
     if (!*handle) {
       const auto error_code = GetLastError();
-      LPVOID lpMsgBuf;
+      static const DWORD bufferLength = 64 * 1024;
+      std::string s(bufferLength, '\0');
       FormatMessageW(
           FORMAT_MESSAGE_ALLOCATE_BUFFER |
               FORMAT_MESSAGE_FROM_SYSTEM |
@@ -552,14 +553,13 @@ class WindowsEnv : public Env {
           NULL,
           error_code,
           MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-          (LPWSTR)&lpMsgBuf,
+          (LPWSTR)s.data(),
           0, NULL);
       std::wostringstream oss;
-      oss << L"LoadLibrary failed with error " << error_code << L" \"" << (LPWSTR)lpMsgBuf << L"\" when trying to load \"" << wlibrary_filename << L"\"";
+      oss << L"LoadLibrary failed with error " << error_code << L" \"" << (LPWSTR)s.c_str() << L"\" when trying to load \"" << wlibrary_filename << L"\"";
       std::wstring errmsg = oss.str();
       // TODO: trim the ending '\r' and/or '\n'
       common::Status status(common::ONNXRUNTIME, common::FAIL, ToUTF8String(errmsg));
-      LocalFree(lpMsgBuf);
       return status;
     }
     return Status::OK();
@@ -577,7 +577,8 @@ class WindowsEnv : public Env {
     *symbol = ::GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol_name.c_str());
     if (!*symbol) {
       const auto error_code = GetLastError();
-      LPVOID lpMsgBuf;
+      static const DWORD bufferLength = 64 * 1024;
+      std::string s(bufferLength, '\0');
       FormatMessageW(
           FORMAT_MESSAGE_ALLOCATE_BUFFER |
               FORMAT_MESSAGE_FROM_SYSTEM |
@@ -585,14 +586,13 @@ class WindowsEnv : public Env {
           NULL,
           error_code,
           MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-          (LPWSTR)&lpMsgBuf,
+          (LPWSTR)s.data(),
           0, NULL);
       std::wostringstream oss;
-      oss << L"Failed to find symbol " << ToWideString(symbol_name) << L" in library, error code: " << error_code << L" \"" << (LPWSTR)lpMsgBuf << L"\"";
+      oss << L"Failed to find symbol " << ToWideString(symbol_name) << L" in library, error code: " << error_code << L" \"" << (LPWSTR)s.c_str() << L"\"";
       std::wstring errmsg = oss.str();
       // TODO: trim the ending '\r' and/or '\n'
       common::Status status(common::ONNXRUNTIME, common::FAIL, ToUTF8String(errmsg));
-      LocalFree(lpMsgBuf);
       return status;
     }
     return Status::OK();
