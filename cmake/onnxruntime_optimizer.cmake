@@ -36,6 +36,10 @@ if (onnxruntime_MINIMAL_BUILD)
       "${ONNXRUNTIME_ROOT}/core/optimizer/graph_transformer_utils.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/initializer.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/initializer.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/nhwc_transformer.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/nhwc_transformer.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/qdq_final_cleanup.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/qdq_final_cleanup.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/qdq_util.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/qdq_util.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/qdq_transformer/selectors_actions/*.h"
@@ -65,6 +69,10 @@ else()
     "${ONNXRUNTIME_ROOT}/core/optimizer/transpose_optimizer/*.cc"
   )
 endif()
+
+# handle the overlap between the NNAPI files and the runtime optimization files
+# TODO: simplify this setup 
+list(REMOVE_DUPLICATES onnxruntime_optimizer_src_patterns)
 
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_optimizer_src_patterns

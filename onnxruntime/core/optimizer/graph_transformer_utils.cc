@@ -4,8 +4,11 @@
 #include "core/optimizer/graph_transformer_utils.h"
 
 #include <algorithm>
+#include <variant>
 
 #include "core/optimizer/conv_activation_fusion.h"
+#include "core/optimizer/nhwc_transformer.h"
+#include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -42,11 +45,9 @@
 #include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/nchwc_transformer.h"
-#include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/qdq_transformer/clip_quantizelinear.h"
-#include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
 #include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
 #include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
@@ -278,12 +279,14 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
-InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForRuntimeOptimizations(
+InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalBuild(
     TransformerLevel level,
     const SessionOptions& session_options,
     const SatApplyContextVariant& apply_context,
+    const IExecutionProvider& cpu_execution_provider,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable) {
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
+  bool saving = std::holds_alternative<SatRuntimeOptimizationSaveContext>(apply_context);
 
   switch (level) {
     case TransformerLevel::Level1:
@@ -300,16 +303,30 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForRuntimeO
         transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(apply_context));
       }
 
-      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_ep,
-                                                                       apply_context));
+      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_ep, apply_context));
 #else   // !defined(DISABLE_CONTRIB_OPS)
-      ORT_UNUSED_PARAMETER(session_options);
       ORT_UNUSED_PARAMETER(apply_context);
 #endif  // !defined(DISABLE_CONTRIB_OPS)
+
+      const bool enable_quant_qdq_cleanup =
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQCleanup, "0") == "1";
+      if (!saving && enable_quant_qdq_cleanup) {
+        transformers.emplace_back(std::make_unique<QDQFinalCleanupTransformer>());
+      }
+
       break;
     }
-    case TransformerLevel::Level3:
-      break;
+    case TransformerLevel::Level3: {
+      // currently the only level 3 optimizer is the NhwcTransformer which is fully supported at runtime
+      if (!saving) {
+#ifndef DISABLE_CONTRIB_OPS
+        auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
+        transformers.emplace_back(std::make_unique<NhwcTransformer>(std::move(cpu_allocator)));
+#else
+        ORT_UNUSED_PARAMETER(cpu_execution_provider);
+#endif
+      }
+    } break;
     default:
       ORT_THROW("Unsupported optimization level: ", static_cast<int>(level));
   }

@@ -87,7 +87,8 @@ static Status CreateReplacementNode(Graph& graph,
                                     &replacement_attributes,
                                     domain);
 
-  replacement.SetExecutionProviderType(target.GetExecutionProviderType());
+  const auto& target_provider = target.GetExecutionProviderType();
+  replacement.SetExecutionProviderType(target_provider.empty() ? kCpuExecutionProvider : target_provider);
 
   ORT_RETURN_IF_ERROR(MoveInputOutput(graph, selected_nodes, replacement, value_moves, only_update_dest_definitions));
 
