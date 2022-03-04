@@ -461,13 +461,6 @@ bool DnnlElementwiseCapability::IsDimensionSupported(const Node* node) const {
     } 
   }
 
-  // OneDNN will silently convert scaler values to a {1} tensor which causes issues for
-  // for Onnruntime when it expects an empty tensor i.e. {}
-  // TODO convert {1} outputs back to scaler {} once that is done DnnlElementwiseCapability
-  // can be removed and just us the DnnlDefaultNodeCapability.
-  if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() == 0) {
-    return false;
-  }
   return true;
 }
 
