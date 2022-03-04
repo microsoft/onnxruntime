@@ -14,7 +14,7 @@ from .onnx_model_utils import get_optimization_level
 
 
 class OptimizationStyle(enum.Enum):
-    Default = 0
+    Fixed = 0
     Runtime = 1
 
 
@@ -26,7 +26,7 @@ def _path_match_suffix_ignore_case(path: typing.Union[pathlib.Path, str], suffix
 
 def _onnx_model_path_to_ort_model_path(onnx_model_path: pathlib.Path,
                                        optimization_level_str: str,
-                                       optimization_style: OptimizationStyle):
+                                       optimization_style: typing.Optional[OptimizationStyle] = None):
     assert onnx_model_path.is_file() and _path_match_suffix_ignore_case(onnx_model_path, ".onnx")
     suffix = ".{}{}.ort".format(optimization_level_str,
                                 ".with_runtime_opt" if optimization_style == OptimizationStyle.Runtime else "")
@@ -35,7 +35,6 @@ def _onnx_model_path_to_ort_model_path(onnx_model_path: pathlib.Path,
 
 def _create_config_file_from_ort_models(onnx_model_path_or_dir: pathlib.Path,
                                         optimization_level_str: str,
-                                        optimization_style: OptimizationStyle,
                                         enable_type_reduction: bool):
     if onnx_model_path_or_dir.is_dir():
         # model directory
@@ -43,10 +42,9 @@ def _create_config_file_from_ort_models(onnx_model_path_or_dir: pathlib.Path,
         config_path = None  # default path in model directory
     else:
         # single model
-        model_path_or_dir = _onnx_model_path_to_ort_model_path(onnx_model_path_or_dir, optimization_level_str,
-                                                               optimization_style)
+        model_path_or_dir = _onnx_model_path_to_ort_model_path(onnx_model_path_or_dir, optimization_level_str)
         config_type = 'required_operators_and_types' if enable_type_reduction else 'required_operators'
-        suffix = f'.{config_type}.{optimization_level_str}.config'
+        suffix = f'.{config_type}.config'
         config_path = model_path_or_dir.with_suffix(suffix)
 
     create_config_from_models(model_path_or_dir=str(model_path_or_dir),
@@ -156,7 +154,7 @@ def parse_args():
         os.path.basename(__file__),
         description='''Convert the ONNX format model/s in the provided directory to ORT format models.
         All files with a `.onnx` extension will be processed. For each one, an ORT format model will be created in the
-        same directory. A configuration file will also be created called `required_operators.config`, and will contain
+        same directory. If supported by the optimization style, a configuration file will also be created containing
         the list of required operators for all converted models.
         This configuration file should be used as input to the minimal build via the `--include_ops_by_config`
         parameter.
@@ -164,10 +162,16 @@ def parse_args():
     )
 
     parser.add_argument('--optimization_style',
-                        default=OptimizationStyle.Default.name, choices=[e.name for e in OptimizationStyle],
+                        nargs='+',
+                        default=[OptimizationStyle.Fixed.name, OptimizationStyle.Runtime.name],
+                        choices=[e.name for e in OptimizationStyle],
                         help="Style of optimization to perform on the ORT format model. "
-                             f"'{OptimizationStyle.Default.name}': Run optimizations directly before saving the ORT "
-                             "format model. "
+                             "Multiple values may be provided. The conversion will run once for each value. "
+                             "The general guidance is to use models optimized with "
+                             f"'{OptimizationStyle.Runtime.name}' style when using NNAPI or CoreML and "
+                             f"'{OptimizationStyle.Fixed.name}' style otherwise. "
+                             f"'{OptimizationStyle.Fixed.name}': Run optimizations directly before saving the ORT "
+                             "format model. This bakes in any platform-specific optimizations. "
                              f"'{OptimizationStyle.Runtime.name}': Run basic optimizations directly and save certain "
                              "other optimizations to be applied at runtime if possible. This is useful when using a "
                              "compiling EP like NNAPI or CoreML that may run an unknown (at model conversion time) "
@@ -183,7 +187,7 @@ def parse_args():
 
     parser.add_argument('--save_optimized_onnx_model', action='store_true',
                         help='Save the optimized version of each ONNX model. '
-                             'This will have the same optimizations applied as the ORT format model.')
+                             'This will have the same level of optimizations applied as the ORT format model.')
 
     parser.add_argument('--allow_conversion_failures', action='store_true',
                         help='Whether to proceed after encountering model conversion failures.')
@@ -195,13 +199,14 @@ def parse_args():
 
     parser.add_argument('--target_platform', type=str, default=None, choices=['arm', 'amd64'],
                         help='Specify the target platform where the exported model will be used. '
-                             'This parameter can be used to choose between platform specific options, '
-                             'such as QDQIsInt8Allowed(arm), NCHWc (amd64) and NHWC (arm/amd64) format different '
-                             'optimizer level options,etc.')
+                             'This parameter can be used to choose between platform-specific options, '
+                             'such as QDQIsInt8Allowed(arm), NCHWc (amd64) and NHWC (arm/amd64) format, different '
+                             'optimizer level options, etc.')
 
     parser.add_argument('model_path_or_dir', type=pathlib.Path,
                         help='Provide path to ONNX model or directory containing ONNX model/s to convert. '
-                             'All files with a .onnx extension, including in subdirectories, will be processed.')
+                             'All files with a .onnx extension, including those in subdirectories, will be '
+                             'processed.')
 
     return parser.parse_args()
 
@@ -209,8 +214,8 @@ def parse_args():
 def convert_onnx_models_to_ort():
     args = parse_args()
 
-    optimization_style = OptimizationStyle[args.optimization_style]
-    optimization_level_str = 'all'  # hardcoded for now
+    optimization_styles = [OptimizationStyle[style_str] for style_str in args.optimization_style]
+    optimization_level_str = 'all'
     model_path_or_dir = args.model_path_or_dir.resolve()
     custom_op_library = args.custom_op_library.resolve() if args.custom_op_library else None
 
@@ -230,14 +235,23 @@ def convert_onnx_models_to_ort():
     else:
         session_options_config_entries["session.qdqisint8allowed"] = "0"
 
-    print(f"Converting models and creating configuration file for optimization level '{optimization_level_str}' "
-          f"and optimization style '{optimization_style.name}'")
-    _convert(model_path_or_dir, optimization_level_str, optimization_style, custom_op_library,
-             args.save_optimized_onnx_model, args.allow_conversion_failures, args.target_platform,
-             session_options_config_entries)
+    for optimization_style in optimization_styles:
+        print("Converting models for optimization level '{}' and style '{}'".format(
+            optimization_level_str, optimization_style.name))
 
-    _create_config_file_from_ort_models(model_path_or_dir, optimization_level_str, optimization_style,
-                                        args.enable_type_reduction)
+        _convert(model_path_or_dir, optimization_level_str, optimization_style, custom_op_library,
+                 args.save_optimized_onnx_model, args.allow_conversion_failures, args.target_platform,
+                 session_options_config_entries)
+
+        if optimization_style == OptimizationStyle.Runtime:
+            print("Config file generation is not supported for ORT format models with runtime optimizations. "
+                  "Please use one generated from ORT format models optimized to the same level without runtime "
+                  "optimizations.")
+        else:
+            print("Generating config file from ORT format models for optimization level '{}' and style '{}'".format(
+                optimization_level_str, optimization_style.name))
+
+            _create_config_file_from_ort_models(model_path_or_dir, optimization_level_str, args.enable_type_reduction)
 
 
 if __name__ == '__main__':
