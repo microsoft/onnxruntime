@@ -457,6 +457,11 @@ def test_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
         )
         return True
 
+    if args.temperature != 1.0:
+        # TODO: implement temperature in BeamSearch operator.
+        print("Skipping parity test as temperature is not implemented in BeamSearch operator")
+        return True
+
     if args.prefix_vocab_mask:
         print("Skipping parity test as prefix vocab mask is not implemented by Hugging Face")
         return True
@@ -612,7 +617,7 @@ def test_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
 def main(argv=None, sentences=None):
     args = parse_arguments(argv)
     if args.model_type == "t5":
-        assert args.encoder_decoder_init_onnx, "please export t5 to  onnx models before using this tool"
+        assert args.encoder_decoder_init_onnx, "please export t5 to onnx models before using this tool"
 
     if os.path.exists(args.output):
         print(f"skip conversion since path existed: {args.output}")
