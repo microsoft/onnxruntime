@@ -40,7 +40,7 @@ jobs:
               --enable_onnx_tests --use_cuda --cuda_version=11.4 --cuda_home=/usr/local/cuda-11.4 --cudnn_home=/usr/local/cuda-11.4 \
               --enable_cuda_profiling \
               --enable_pybind --build_java \
-              --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc  CMAKE_CUDA_ARCHITECTURES=52
+              --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc  CMAKE_CUDA_ARCHITECTURES=75
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -78,7 +78,7 @@ jobs:
   timeoutInMinutes: 60
   workspace:
     clean: all
-  pool: centos7gpu
+  pool: onnxruntime-linux-centos7-gpu-t4
   dependsOn:
   - Linux_Build
   steps:
