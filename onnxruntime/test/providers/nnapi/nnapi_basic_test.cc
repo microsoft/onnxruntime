@@ -273,7 +273,8 @@ TEST(NnapiExecutionProviderTest, TestNoShapeInputModel) {
 
 static void RunQDQModelTest(const GetQDQTestCaseFn& build_test_case,
                             const char* test_description,
-                            const EPVerificationParams& params = EPVerificationParams()) {
+                            const EPVerificationParams& params = EPVerificationParams(),
+                            bool nnapi_qdq_model_supported = true) {
   onnxruntime::Model model(test_description, false, DefaultLoggingManager().DefaultLogger());
   Graph& graph = model.MainGraph();
   ModelTestBuilder helper(graph);
@@ -297,8 +298,13 @@ static void RunQDQModelTest(const GetQDQTestCaseFn& build_test_case,
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
   ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
   ASSERT_STATUS_OK(session_object.Initialize());
-  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
-      << "Some nodes should have been taken by the NNAPI EP";
+  if (nnapi_qdq_model_supported) {
+    ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
+        << "Some nodes should have been taken by the NNAPI EP";
+  } else {
+    ASSERT_EQ(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
+        << "No node should have been taken by the NNAPI EP";
+  }
 #endif
 }
 
@@ -388,11 +394,27 @@ TEST(NnapiExecutionProviderTest, TestQDQReshape) {
 TEST(NnapiExecutionProviderTest, TestQDQSoftMax) {
   RunQDQModelTest(BuildQDQSoftMaxTestCase<uint8_t, uint8_t>(
                       {1, 32} /* input_shape */,
-                      static_cast<int64_t>(1) /* axis */),
+                      static_cast<int64_t>(1) /* axis */,
+                      1.f / 256 /* output_scales */,
+                      0 /* output_zp */),
                   "nnapi_qdq_test_graph_softmax",
                   {
                       true /* verify_entire_graph_use_ep */
                   });
+}
+
+TEST(NnapiExecutionProviderTest, TestQDQSoftMax_UnsupportedOutputScaleAndZp) {
+  RunQDQModelTest(BuildQDQSoftMaxTestCase<uint8_t, uint8_t>(
+                      {1, 32} /* input_shape */,
+                      static_cast<int64_t>(1) /* axis */,
+                      0.002f /* output_scales */,
+                      1 /* output_zp */),
+                  "nnapi_qdq_test_graph_softmax",
+                  {
+                      true /* verify_entire_graph_use_ep */
+                  },
+                  false /* nnapi_qdq_model_supported */
+  );
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQConcat) {
