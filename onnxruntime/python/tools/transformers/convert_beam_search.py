@@ -11,7 +11,7 @@ Example 1: convert gpt2 model with beam search:
    
 Example 2: convert T5 model with beam search:
    python ./models/t5/convert_to_onnx.py -m t5-small -s
-   python convert_beam_search.py -m t5-small --decoder_onnx ./onnx_models/t5_small_decoder.onnx --output ./onnx_models/t5_small_beam_search.onnx
+   python convert_beam_search.py -m t5-small --model_type t5 --decoder_onnx ./onnx_models/t5-small_decoder.onnx --encoder_decoder_init_onnx ./onnx_models/t5-small_encoder_decoder_init.onnx --output ./onnx_models/t5_small_beam_search.onnx
 """
 
 import os
@@ -24,6 +24,7 @@ from onnx import helper
 import numpy as np
 from typing import List, Union
 import torch
+from packaging import version
 from transformers import GPT2Config, T5Config
 from gpt2_helper import PRETRAINED_GPT2_MODELS
 from convert_to_onnx import main as convert_gpt2_to_onnx
@@ -204,6 +205,9 @@ def gpt2_to_onnx(args):
 
 
 def shape_inference(decoder_onnx_path):
+    if version.parse(onnx.__version__) >= version.parse('1.11.0'):
+        logger.warn("SymbolicShapeInference might fail using onnx version 1.11. Please install 1.10.0 for now.")
+
     # Run symbolic shape inference to walk around ORT shape inference issue for subgraph.
     from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
     out = SymbolicShapeInference.infer_shapes(onnx.load(decoder_onnx_path), auto_merge=True, guess_output_rank=False)
@@ -289,9 +293,13 @@ def convert_model(args):
         assert args.model_type == "gpt2", "please have onnx model ready for model type that is not gpt2"
         gpt2_to_onnx(args)
 
-    print(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")
-    shape_inference(args.decoder_onnx)
-
+    # TODO: fix shape inference for T5. Currently symbolic shape inference on T5 is broken.
+    enable_shape_inference = args.model_type == "gpt2"
+    
+    if enable_shape_inference:
+        print(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")
+        shape_inference(args.decoder_onnx)
+        
     global config
     if args.model_type == "gpt2":
         config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
@@ -342,8 +350,9 @@ def convert_model(args):
     ])
 
     if args.model_type == "t5":
-        print(f"Run symbolic shape inference on {args.encoder_decoder_init_onnx}. The file will be overwritten.")
-        shape_inference(args.encoder_decoder_init_onnx)
+        if enable_shape_inference:
+            print(f"Run symbolic shape inference on {args.encoder_decoder_init_onnx}. The file will be overwritten.")
+            shape_inference(args.encoder_decoder_init_onnx)
         init_model = onnx.load(args.encoder_decoder_init_onnx)
         init_model.graph.name = f"{args.model_type} encoder decoder init subgraph"
         verify_t5_encoder_decoder_init_subgraph(init_model.graph, args.precision)
