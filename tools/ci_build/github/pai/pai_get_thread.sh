@@ -18,6 +18,9 @@ rocm-smi --showpidgpus
 echo -e "\n ---- rocm-smi --showpids detail"
 rocm-smi --showpids | awk '$1 ~/[0-9]+/{if((NR>6)) {print $1}}' | xargs -I {} ps {}
 
+echo -e "\n ---- rocm-smi --showmeminfo"
+rocm-smi  --showmeminfo vram vis_vram gtt
+
 echo -e "\n ---- show all renders"
 lsof /dev/dri/renderD*
 
