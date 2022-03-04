@@ -15,9 +15,6 @@ use_package=true
 # only need once
 run_install=true
 
-# manually set up number of hidden layers
-use_custom_layer_num=false
-
 # Engines to test.
 # To run ort_trt, you need to build and install the onnxruntime-gpu-tensorrt package on your own
 run_ort=true
@@ -43,12 +40,6 @@ fi
 
 # Enable optimizer (use script instead of OnnxRuntime for graph optimization)
 use_optimizer=true
-
-# Set num_hidden_layers
-if [ "$use_custom_layer_num" = true ] ; then
-  unset NUM_HIDDEN_LAYERS
-  export NUM_HIDDEN_LAYERS=16
-fi
 
 # Batch Sizes and Sequence Lengths
 batch_sizes="1 4"
@@ -215,4 +206,3 @@ fi
 awk '!x[$0]++' ./result.csv > summary_result.csv
 awk '!x[$0]++' ./fusion.csv > summary_fusion.csv
 awk '!x[$0]++' ./detail.csv > summary_detail.csv
-
