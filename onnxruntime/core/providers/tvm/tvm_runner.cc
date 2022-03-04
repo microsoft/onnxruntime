@@ -31,7 +31,6 @@ TVMRunner::TVMRunner(TvmEPOptions options,
               options.input_shapes.count(node_name)) {
             ishape = options.input_shapes[node_name];
             inputs_info_[indx] = ishape;
-            update_output_shapes_ = true;
           } else {
             getTensorInfo(*node->Shape(), ishape, indx);
           }
@@ -47,7 +46,6 @@ TVMRunner::TVMRunner(TvmEPOptions options,
             options.input_shapes.count(node_name)) {
           ishape = options.input_shapes[node_name];
           inputs_info_[indx++] = ishape;
-          update_output_shapes_ = true;
         } else {
           getTensorInfo(*node->Shape(), ishape, indx++);
         }
@@ -64,21 +62,8 @@ TVMRunner::TVMRunner(TvmEPOptions options,
     const ORTGraphNodes& ort_outputs_info = graph.GetOutputs();
     size_t num_outputs = ort_outputs_info.size();
 
-    if (update_output_shapes_) {
-      if (!use_vm_) {
-        tvm::TVMGetOutputShapes(*mod_, num_outputs, output_shapes_);
-      }
-    } else {
-      for (auto i = 0u; i < num_outputs; i++) {
-        TensorShape ort_shape = utils::GetTensorShapeFromTensorShapeProto(*ort_outputs_info[i]->Shape());
-        int dims = ort_shape.NumDimensions();
-
-        TVMTensorShape oshape(dims);
-        for (int j = 0; j < dims; ++j) {
-          oshape[j] = int64_t(ort_shape[j]);
-        }
-        output_shapes_.emplace_back(oshape);
-      }
+    if (!use_vm_) {
+      tvm::TVMGetOutputShapes(*mod_, num_outputs, output_shapes_);
     }
 
     for (auto i = 0u; i < num_outputs; i++) {
@@ -87,12 +72,12 @@ TVMRunner::TVMRunner(TvmEPOptions options,
       t.strides = nullptr;
       t.byte_offset = 0;
       t.data = nullptr;
-      if (!(use_vm_ && update_output_shapes_)) {
-        t.ndim = output_shapes_[i].size();
-        t.shape = output_shapes_[i].data();
-      } else {
+      if (use_vm_) {
         t.ndim = 0;
         t.shape = nullptr;
+      } else {
+        t.ndim = output_shapes_[i].size();
+        t.shape = output_shapes_[i].data();
       }
 
       tensors_outputs_.push_back(t);
@@ -116,10 +101,6 @@ common::Status TVMRunner::operator()(FunctionState state, const OrtCustomOpApi* 
     const OrtDevice& device = tensor.Location().device;
     auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
     auto tensor_type = ort.GetTensorElementType(tensor_info);
-    if (!update_output_shapes_) {
-      std::vector<int64_t> ort_shape = ort.GetTensorShape(tensor_info);
-      ORT_ENFORCE(compare_shapes(shape, ort_shape));
-    }
     ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
 
     DLTensor t;

@@ -58,10 +58,6 @@ void RunnerImpl::convert_input_tensors2dl_tensors(Ort::CustomOpApi& ort,
     const OrtDevice& device = tensor.Location().device;
     auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
     auto tensor_type = ort.GetTensorElementType(tensor_info);
-    if (!update_output_shapes_) {
-      std::vector<int64_t> ort_shape = ort.GetTensorShape(tensor_info);
-      ORT_ENFORCE(compare_shapes(shape, ort_shape));
-    }
     ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
 
     DLTensor t;

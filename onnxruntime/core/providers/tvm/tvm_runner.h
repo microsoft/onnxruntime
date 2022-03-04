@@ -52,7 +52,6 @@ private:
     bool use_vm_ = true;
     bool probe_infer_ = false;
     InputsInfoMap inputs_info_{};
-    bool update_output_shapes_ = false;
     TVMTensorShapes output_shapes_;
     std::vector<DLTensor> tensors_outputs_;
 };

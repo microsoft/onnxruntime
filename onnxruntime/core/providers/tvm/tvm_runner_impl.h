@@ -45,7 +45,6 @@ private:
 
 protected:
     std::shared_ptr<TvmModule> mod_;
-    bool update_output_shapes_ = false;
     InputsInfoMap inputs_info_{};
     TVMTensorShapes output_shapes_;
     std::vector<DLTensor> tensors_outputs_;
