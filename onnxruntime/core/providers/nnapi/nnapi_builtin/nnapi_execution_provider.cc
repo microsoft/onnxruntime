@@ -179,11 +179,10 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
                                             gen_metadef_name, NNAPI, kNnapiExecutionProvider);
 
   const auto num_of_partitions = result.size();
-  const auto num_of_supported_nodes = std::transform_reduce(
-      result.begin(), result.end(),
-      size_t{0}, std::plus<>{},
-      [](const auto& partition) -> size_t {
-        return partition && partition->sub_graph ? partition->sub_graph->nodes.size() : 0;
+  const auto num_of_supported_nodes = std::accumulate(
+      result.begin(), result.end(), size_t{0},
+      [](const auto& acc, const auto& partition) -> size_t {
+        return acc + (partition && partition->sub_graph ? partition->sub_graph->nodes.size() : 0);
       });
 
   const auto summary_msg = MakeString(
