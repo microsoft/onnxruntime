@@ -312,7 +312,7 @@ endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
   # Enable LTO for release single-thread build
-  if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+  if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
     # NOTES:
     # (1) LTO does not work for WebAssembly multi-thread. (segment fault in worker)
     # (2) "-flto=thin" does not work correctly for wasm-ld.

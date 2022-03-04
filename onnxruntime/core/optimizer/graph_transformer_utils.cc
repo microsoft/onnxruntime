@@ -7,6 +7,7 @@
 
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
+#include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -159,12 +160,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   const bool disable_quant_qdq =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
-  const bool enable_quant_qdq_cleanup =
-      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQCleanup, "0") == "1";
-#ifndef DISABLE_CONTRIB_OPS
-  const bool enable_gelu_approximation =
-      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
-#endif
 
   switch (level) {
     case TransformerLevel::Level1: {
@@ -193,9 +188,16 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     } break;
 
     case TransformerLevel::Level2: {
-      const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
-
+      const bool enable_quant_qdq_cleanup =
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQCleanup, "0") == "1";
 #ifndef DISABLE_CONTRIB_OPS
+      const bool qdq_is_int8_allowed =
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQIsInt8Allowed,
+                                                            QDQIsInt8Allowed() ? "1" : "0") == "1";
+      const bool enable_gelu_approximation =
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
+
+      const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
       const InlinedHashSet<std::string_view> cuda_rocm_eps = {onnxruntime::kCudaExecutionProvider,
                                                               onnxruntime::kRocmExecutionProvider};
       const InlinedHashSet<std::string_view> cpu_cuda_rocm_eps = {onnxruntime::kCpuExecutionProvider,
@@ -208,10 +210,13 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                             onnxruntime::kArmNNExecutionProvider};
 
       if (!disable_quant_qdq) {
-        if (!QDQIsInt8Allowed()) {
+        // currently we don't support QDQS8ToU8Transformer in a minimal build and if supported, this needs to run in
+        // Level 1 during export and not Level 2 at runtime as it would result in overlapping optimizations which
+        // runtime optimization does not support, so add session config value here to force qdqisint8allowed to be true.
+        if (!qdq_is_int8_allowed) {
           transformers.emplace_back(std::make_unique<QDQS8ToU8Transformer>(cpu_ep));
         }
-        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>());
+        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(SatApplyContextVariant{}, qdq_is_int8_allowed));
       }
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
