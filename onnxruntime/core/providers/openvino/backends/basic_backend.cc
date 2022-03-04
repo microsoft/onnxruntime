@@ -373,10 +373,8 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContex
     OVTensorPtr graph_output_blob;
     auto output_names = output_info_iter->get_names();
     std::string output_name;
-    for(auto it = output_names.begin(); it != output_names.end(); it++)
-    {
-        output_name = *it;
-    }
+    auto it = output_names.begin();
+    output_name = *it;
     graph_output_blob = infer_request->GetTensor(output_name);
     size_t batch_size = 1;
     auto output_tensor = GetOutputTensor(ort, context, batch_size, infer_request, output_name, subgraph_context_.output_names);
