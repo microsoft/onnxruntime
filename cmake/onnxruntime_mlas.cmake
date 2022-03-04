@@ -308,8 +308,19 @@ else()
           ${MLAS_SRC_DIR}/power/SgemmKernelPower.cpp
           ${MLAS_SRC_DIR}/dgemm.cpp
           ${MLAS_SRC_DIR}/power/DgemmKernelPower.cpp
+          ${MLAS_SRC_DIR}/power/QuantizePower.cpp
         )
         set_source_files_properties(${MLAS_SRC_DIR}/power/SgemmKernelPower.cpp PROPERTIES COMPILE_FLAGS "-DSINGLE")
+
+        check_cxx_compiler_flag("-mcpu=power9" HAS_POWER9)
+        if (HAS_POWER9)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+            ${MLAS_SRC_DIR}/power/QuantizePowerVSX.cpp
+          )
+          set_source_files_properties(${MLAS_SRC_DIR}/power/QuantizePowerVSX.cpp PROPERTIES COMPILE_FLAGS "-mcpu=power9")
+        endif()
+
         check_cxx_compiler_flag("-mcpu=power10" HAS_POWER10)
         if(HAS_POWER10)
           set(CMAKE_REQUIRED_FLAGS "-mcpu=power10")
