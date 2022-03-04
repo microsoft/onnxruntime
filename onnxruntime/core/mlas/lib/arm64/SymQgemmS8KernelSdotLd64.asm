@@ -18,6 +18,9 @@ Abstract:
     constant. When the packed right hand side is cached, we achieves higher performance
     by avoid packing all together.
 
+    This version utilizes dot product instructions, and uses only 64b loads that performs
+    better on cores with narrow memory interface such as A55
+
 --*/
 
 #include "kxarm64.h"
