@@ -143,7 +143,7 @@ namespace onnxruntime {
     void OVInferRequest::SetTensor(std::string& name, OVTensorPtr& blob) {
         try {
           #if defined(OPENVINO_2022_1)
-          ovInfReq.set_tensor(name, blob);
+          ovInfReq.set_tensor(name, *(blob.get()));
           #else
           infReq.SetBlob(name, blob);
           #endif 
