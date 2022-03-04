@@ -669,15 +669,7 @@ if(WIN32)
 endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
-  if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-    # WebAssembly threading support in node is an experimental feature yet
-    # and that makes some intensive threadpool tests fail randomly.
-    # Will enable this test when node.js releases a stable version supporting multi-threads.
-    list(REMOVE_ITEM all_tests
-      "${TEST_SRC_DIR}/platform/threadpool_test.cc"
-      "${TEST_SRC_DIR}/providers/cpu/nn/string_normalizer_test.cc"
-    )
-  else()
+  if (NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     list(REMOVE_ITEM all_tests
       "${TEST_SRC_DIR}/framework/execution_frame_test.cc"
       "${TEST_SRC_DIR}/framework/inference_session_test.cc"
