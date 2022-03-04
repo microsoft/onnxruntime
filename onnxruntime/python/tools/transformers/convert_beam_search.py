@@ -9,9 +9,9 @@ import argparse
 from pathlib import Path
 from onnx import helper
 import numpy as np
-from typing import List
+from typing import List, Union
 import torch
-from transformers import GPT2Config
+from transformers import GPT2Config, T5Config
 from gpt2_helper import PRETRAINED_GPT2_MODELS
 from convert_to_onnx import main as convert_gpt2_to_onnx
 from benchmark_helper import Precision
@@ -20,10 +20,10 @@ from onnx import onnx_pb as onnx_proto
 This converts GPT2 model to onnx with beam search operator.
 
 Examples:
-   python convert_beam_search.py -m gpt2 --gpt2_onnx .\onnx_models\gpt2_past_fp32.onnx --output .\onnx_models\gpt2_beam_search.onnx --output_sequences_scores
+   python convert_beam_search.py -m gpt2 --decoder_onnx .\onnx_models\gpt2_past_fp32.onnx --output .\onnx_models\gpt2_beam_search.onnx --output_sequences_scores
 """
 
-config: GPT2Config = None
+config: Union[GPT2Config, T5Config] = None
 
 logger = logging.getLogger('')
 
@@ -37,16 +37,29 @@ def parse_arguments(argv=None):
                         type=str,
                         help='Model path, or pretrained model name in the list: ' + ', '.join(PRETRAINED_GPT2_MODELS))
 
+    parser.add_argument('--model_type',
+                        required=False,
+                        type=str,
+                        default="gpt2",
+                        choices=["gpt2", "t5"],
+                        help='Model type in the list: ' + ', '.join(["gpt2", "t5"]))
+
     parser.add_argument('--cache_dir',
                         required=False,
                         type=str,
                         default=os.path.join('.', 'cache_models'),
                         help='Directory to cache pre-trained models')
 
-    parser.add_argument('--gpt2_onnx',
+    parser.add_argument('--decoder_onnx',
                         required=True,
                         type=str,
-                        help='Output directory for GPT-2 onnx model, or model path ends with .onnx')
+                        help='Output directory for decoder onnx model, or model path ends with .onnx')
+
+    parser.add_argument('--encoder_decoder_init_onnx',
+                        required=False,
+                        type=str,
+                        default="",
+                        help='path of ONNX model for encoder and decoder initialization. Required for t5 model type.')
 
     parser.add_argument('--output',
                         required=False,
@@ -153,12 +166,12 @@ def parse_arguments(argv=None):
 def gpt2_to_onnx(args):
     model_name = args.model_name_or_path
 
-    print(f"use convert_to_onnx.py to convert model {model_name} to onnx {args.gpt2_onnx} ...")
+    print(f"use convert_to_onnx.py to convert model {model_name} to onnx {args.decoder_onnx} ...")
     arguments = [
         '--model_name_or_path',
         model_name,
         '--output',
-        args.gpt2_onnx,
+        args.decoder_onnx,
         '--optimize_onnx',
         '--precision',
         'fp32' if args.precision == Precision.FLOAT32 else 'fp16',
@@ -182,13 +195,13 @@ def gpt2_to_onnx(args):
     convert_gpt2_to_onnx(arguments)
 
 
-def shape_inference(gpt2_onnx_path):
+def shape_inference(decoder_onnx_path):
     # Run symbolic shape inference to walk around ORT shape inference issue for subgraph.
     from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
-    out = SymbolicShapeInference.infer_shapes(onnx.load(gpt2_onnx_path), auto_merge=True, guess_output_rank=False)
+    out = SymbolicShapeInference.infer_shapes(onnx.load(decoder_onnx_path), auto_merge=True, guess_output_rank=False)
     if out:
         # TODO: Use external format if input has extra data.
-        onnx.save(out, gpt2_onnx_path)
+        onnx.save(out, decoder_onnx_path)
     else:
         print("Failed to run symbolic shape inference on the model.")
 
@@ -224,7 +237,7 @@ def verify_gpt2_subgraph(graph, precision):
 
         expected_type = onnx_proto.TensorProto.INT32
         if i >= 3:
-            expected_type = onnx_proto.TensorProto.FLOAT16 if is_float16 else onnx_proto.TensorProto.FLOAT32
+            expected_type = onnx_proto.TensorProto.FLOAT16 if is_float16 else onnx_proto.TensorProto.FLOAT
 
         if graph.input[i].type.tensor_type.elem_type != expected_type:
             raise ValueError(
@@ -240,7 +253,7 @@ def verify_gpt2_subgraph(graph, precision):
         if graph.output[i].name != expected_output:
             raise ValueError(f"Output {i} is expected to be {expected_output}. Got {graph.output[i].name}")
 
-        expected_type = onnx_proto.TensorProto.FLOAT16 if is_float16 else onnx_proto.TensorProto.FLOAT32
+        expected_type = onnx_proto.TensorProto.FLOAT16 if is_float16 else onnx_proto.TensorProto.FLOAT
         if graph.output[i].type.tensor_type.elem_type != expected_type:
             raise ValueError(
                 f"Input {i} is expected to have onnx data type {expected_type}. Got {graph.output[i].type.tensor_type.elem_type}"
@@ -251,17 +264,31 @@ def verify_gpt2_subgraph(graph, precision):
     return
 
 
+def verify_t5_decoder_subgraph(graph, precision):
+    # TODO: implement it
+    pass
+
+
+def verify_t5_encoder_decoder_init_subgraph(graph, precision):
+    # TODO: implement it
+    pass
+
+
 def convert_model(args):
-    if os.path.exists(args.gpt2_onnx):
-        print(f"skip convert_to_onnx since path existed: {args.gpt2_onnx}")
+    if os.path.exists(args.decoder_onnx):
+        print(f"skip convert_to_onnx since path existed: {args.decoder_onnx}")
     else:
+        assert args.model_type == "gpt2", "please have onnx model ready for model type that is not gpt2"
         gpt2_to_onnx(args)
 
-    print(f"Run symbolic shape inference on {args.gpt2_onnx}. The file will be overwritten.")
-    shape_inference(args.gpt2_onnx)
+    print(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")
+    shape_inference(args.decoder_onnx)
 
     global config
-    config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
+    if args.model_type == "gpt2":
+        config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
+    else:
+        config = T5Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
     print(config)
 
     eos_token_id = config.eos_token_id
@@ -272,10 +299,14 @@ def convert_model(args):
     if args.vocab_size != -1:
         vocab_size = args.vocab_size
 
-    model = onnx.load(args.gpt2_onnx)
-    verify_gpt2_subgraph(model.graph, args.precision)
+    model = onnx.load(args.decoder_onnx)
+    model.graph.name = f"{args.model_type} decoder subgraph"
 
-    model.graph.name = "gpt2 subgraph"
+    if args.model_type == "gpt2":
+        verify_gpt2_subgraph(model.graph, args.precision)
+    else:
+        verify_t5_decoder_subgraph(model.graph, args.precision)
+
     inputs = [
         "input_ids", "max_length", "min_length", "num_beams", "num_return_sequences", "temperature", "length_penalty",
         "repetition_penalty", "vocab_mask"
@@ -291,15 +322,26 @@ def convert_model(args):
         assert args.output_sequences_scores, "--output_token_scores requires --output_sequences_scores"
         outputs.append("scores")
 
-    node = helper.make_node('BeamSearch', inputs=inputs, outputs=outputs, name='BeamSearch_GPT2')
+    node = helper.make_node('BeamSearch', inputs=inputs, outputs=outputs, name=f'BeamSearch_{args.model_type}')
     node.domain = "com.microsoft"
     node.attribute.extend([
         helper.make_attribute("eos_token_id", eos_token_id),
         helper.make_attribute("pad_token_id", pad_token_id),
         helper.make_attribute("no_repeat_ngram_size", args.no_repeat_ngram_size),
         helper.make_attribute("early_stopping", 1 if args.early_stopping else 0),
-        helper.make_attribute("body", model.graph),
+        helper.make_attribute("model_type", 0 if args.model_type == "gpt2" else 1),
+        helper.make_attribute("decoder", model.graph),
     ])
+
+    if args.model_type == "t5":
+        print(f"Run symbolic shape inference on {args.encoder_decoder_init_onnx}. The file will be overwritten.")
+        shape_inference(args.encoder_decoder_init_onnx)
+        init_model = onnx.load(args.encoder_decoder_init_onnx)
+        init_model.graph.name = f"{args.model_type} encoder decoder init subgraph"
+        verify_t5_encoder_decoder_init_subgraph(init_model.graph, args.precision)
+        node.attribute.extend([
+            helper.make_attribute("encoder_decoder_init", init_model.graph),
+        ])
 
     from onnx import TensorProto
 
@@ -344,7 +386,7 @@ def convert_model(args):
     if args.output_token_scores:
         graph_outputs.append(scores)
 
-    new_graph = helper.make_graph([node], 'gpt2-beam-search', graph_inputs, graph_outputs, initializers)
+    new_graph = helper.make_graph([node], f'{args.model_type}-beam-search', graph_inputs, graph_outputs, initializers)
 
     # Create the model
     new_model = helper.make_model(new_graph, producer_name='onnxruntime.transformers', opset_imports=model.opset_import)
@@ -392,10 +434,15 @@ def test_torch_performance(args, model, input_ids, attention_mask, eos_token_id,
 
 
 def test_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
+    if args.model_type != "gpt2":
+        print(
+            f"Skipping parity test since the support for model type {args.model_type} is not implemented in OnnxRuntime"
+        )
+        return True
 
     if args.prefix_vocab_mask:
         print("Skipping parity test as prefix vocab mask is not implemented by Hugging Face")
-        return
+        return True
 
     from transformers import GPT2Tokenizer, GPT2LMHeadModel
 
@@ -547,6 +594,8 @@ def test_model(args, use_vocab_mask: bool = False, sentences: List[str] = None):
 
 def main(argv=None, sentences=None):
     args = parse_arguments(argv)
+    if args.model_type == "t5":
+        assert args.encoder_decoder_init_onnx, "please export t5 to  onnx models before using this tool"
 
     if os.path.exists(args.output):
         print(f"skip conversion since path existed: {args.output}")
