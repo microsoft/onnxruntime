@@ -229,14 +229,9 @@ def convert_onnx_models_to_ort():
 
     for optimization_level in args.optimization_level:
         print(f"Converting models and creating configuration file for optimization level '{optimization_level}'")
-<<<<<<< HEAD
-        _convert(model_path_or_dir, optimization_level, args.save_runtime_optimizations, custom_op_library,
-                 args.save_optimized_onnx_model, args.allow_conversion_failures, session_options_config_entries)
-=======
         _convert(model_path_or_dir, optimization_level, args.save_runtime_optimizations, custom_op_library,
                  args.save_optimized_onnx_model, args.allow_conversion_failures, args.target_platform,
                  session_options_config_entries)
->>>>>>> origin/master
 
         _create_config_file_from_ort_models(model_path_or_dir, optimization_level, args.save_runtime_optimizations,
                                             args.enable_type_reduction)
