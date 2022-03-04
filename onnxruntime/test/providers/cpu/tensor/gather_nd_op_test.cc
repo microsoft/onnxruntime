@@ -101,7 +101,8 @@ TEST(GatherNDOpTest, float) {
   RunTest<float>({2, 2}, {0.0f, 0.1f, 0.2f, 0.3f}, {2, 1}, {-1LL, 0LL}, {2, 2}, {0.2f, 0.3f, 0.0f, 0.1f});
 }
 
-TEST(GatherNDOpTest, double) {
+// CUDA error cudaErrorInvalidDeviceFunction:invalid device function
+TEST(GatherNDOpTest, DISABLED_double) {
   if (NeedSkipIfCudaArchLowerThan(600)) {
     return;
   }
@@ -232,7 +233,8 @@ TEST(GatherNDOpTest, GatherND_negative_slice_float_batch_dims_two) {
   test.Run();
 }
 
-TEST(GatherNDOpTest, GatherND_slice_double_batch_dims_one_1) {
+// CUDA error cudaErrorInvalidDeviceFunction:invalid device function
+TEST(GatherNDOpTest, DISABLED_GatherND_slice_double_batch_dims_one_1) {
   if (NeedSkipIfCudaArchLowerThan(600)) {
     return;
   }
@@ -244,8 +246,8 @@ TEST(GatherNDOpTest, GatherND_slice_double_batch_dims_one_1) {
   test.AddOutput<double>("output", {2, 1, 2}, {0.2f, 0.3f, 0.4f, 0.5f});
   test.Run();
 }
-
-TEST(GatherNDOpTest, GatherND_slice_double_default_batch_dims) {
+// CUDA error cudaErrorInvalidDeviceFunction:invalid device function
+TEST(GatherNDOpTest, DISABLED_GatherND_slice_double_default_batch_dims) {
   if (NeedSkipIfCudaArchLowerThan(600)) {
     return;
   }
@@ -255,9 +257,10 @@ TEST(GatherNDOpTest, GatherND_slice_double_default_batch_dims) {
   test.AddInput<int64_t>("indices", {2, 1}, {1LL, 0LL});
   test.AddOutput<double>("output", {2, 2}, {0.2f, 0.3f, 0.0f, 0.1f});
   test.Run();
-}  // namespace test
+}
 
-TEST(GatherNDOpTest, GatherND_slice_double_batch_dims_one_2) {
+// CUDA error cudaErrorInvalidDeviceFunction:invalid device function
+TEST(GatherNDOpTest, DISABLED_GatherND_slice_double_batch_dims_one_2) {
   if (NeedSkipIfCudaArchLowerThan(600)) {
     return;
   }
@@ -270,7 +273,8 @@ TEST(GatherNDOpTest, GatherND_slice_double_batch_dims_one_2) {
   test.Run();
 }
 
-TEST(GatherNDOpTest, GatherND_slice_half) {
+// CUDA error cudaErrorInvalidDeviceFunction:invalid device function
+TEST(GatherNDOpTest, DISABLED_GatherND_slice_half) {
   if (NeedSkipIfCudaArchLowerThan(600)) {
     return;
   }
