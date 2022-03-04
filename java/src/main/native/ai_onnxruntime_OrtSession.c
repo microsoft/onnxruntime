@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2020 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2020, 2022 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -385,7 +385,7 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtSession_constructMetadata
   jclass metadataClazz = (*jniEnv)->FindClass(jniEnv, metadataClassName);
   //OnnxModelMetadata(String producerName, String graphName, String domain, String description, long version, String[] customMetadataArray)
   jmethodID metadataConstructor = (*jniEnv)->GetMethodID(jniEnv, metadataClazz, "<init>",
-                                                         "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J[Ljava/lang/String;)V");
+                                                         "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J[Ljava/lang/String;)V");
 
   // Get metadata
   OrtModelMetadata* metadata;
@@ -400,6 +400,11 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtSession_constructMetadata
   // Read out the graph name and convert it to a java.lang.String
   checkOrtStatus(jniEnv,api,api->ModelMetadataGetGraphName(metadata, allocator, &charBuffer));
   jstring graphStr = (*jniEnv)->NewStringUTF(jniEnv,charBuffer);
+  checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,charBuffer));
+
+  // Read out the graph description and convert it to a java.lang.String
+  checkOrtStatus(jniEnv,api,api->ModelMetadataGetGraphDescription(metadata, allocator, &charBuffer));
+  jstring graphDescStr = (*jniEnv)->NewStringUTF(jniEnv,charBuffer);
   checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,charBuffer));
 
   // Read out the domain and convert it to a java.lang.String
@@ -449,8 +454,8 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtSession_constructMetadata
   }
 
   // Invoke the metadata constructor
-  //OnnxModelMetadata(String producerName, String graphName, String domain, String description, long version, String[] customMetadataArray)
-  jobject metadataJava = (*jniEnv)->NewObject(jniEnv, metadataClazz, metadataConstructor, producerStr, graphStr, domainStr, descriptionStr, (jlong) version, customArray);
+  //OnnxModelMetadata(String producerName, String graphName, String graphDescription, String domain, String description, long version, String[] customMetadataArray)
+  jobject metadataJava = (*jniEnv)->NewObject(jniEnv, metadataClazz, metadataConstructor, producerStr, graphStr, graphDescStr, domainStr, descriptionStr, (jlong) version, customArray);
 
   // Release the metadata
   api->ReleaseModelMetadata(metadata);

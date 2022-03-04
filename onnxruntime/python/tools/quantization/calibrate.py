@@ -15,7 +15,7 @@ from onnx import onnx_pb as onnx_proto
 from six import string_types
 from enum import Enum
 
-from .quant_utils import QuantType, smooth_distribution
+from .quant_utils import QuantType, smooth_distribution, apply_plot
 from .registry import QLinearOpsRegistry
 
 import abc
@@ -39,11 +39,13 @@ class CalibrationDataReader(metaclass=abc.ABCMeta):
 
 
 class CalibraterBase:
-    def __init__(self, model, op_types_to_calibrate=[], augmented_model_path='augmented_model.onnx'):
+    def __init__(self, model, op_types_to_calibrate=[], augmented_model_path='augmented_model.onnx', symmetric=False, use_external_data_format=False):
         '''
         :param model: ONNX model to calibrate. It can be a ModelProto or a model path
         :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
         :param augmented_model_path: save augmented model to this path.
+        :param symmetric: make range of tensor symmetric (central point is 0).
+        :param use_external_data_format: use external data format to store model which size is >= 2Gb
         '''
         if isinstance(model, str):
             self.model = onnx.load(model)
@@ -54,6 +56,8 @@ class CalibraterBase:
 
         self.op_types_to_calibrate = op_types_to_calibrate
         self.augmented_model_path = augmented_model_path
+        self.symmetric = symmetric
+        self.use_external_data_format = use_external_data_format
 
         # augment graph
         self.augment_model = None
@@ -136,13 +140,15 @@ class CalibraterBase:
 
 
 class MinMaxCalibrater(CalibraterBase):
-    def __init__(self, model, op_types_to_calibrate=[], augmented_model_path='augmented_model.onnx'):
+    def __init__(self, model, op_types_to_calibrate=[], augmented_model_path='augmented_model.onnx', symmetric=False, use_external_data_format=False):
         '''
         :param model: ONNX model to calibrate. It can be a ModelProto or a model path
         :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
         :param augmented_model_path: save augmented model to this path.
+        :param symmetric: make range of tensor symmetric (central point is 0).
+        :param use_external_data_format: use external data format to store model which size is >= 2Gb
         '''
-        super(MinMaxCalibrater, self).__init__(model, op_types_to_calibrate, augmented_model_path)
+        super(MinMaxCalibrater, self).__init__(model, op_types_to_calibrate, augmented_model_path, symmetric, use_external_data_format)
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
         self.num_model_outputs = len(self.model.graph.output)
@@ -192,7 +198,7 @@ class MinMaxCalibrater(CalibraterBase):
 
         model.graph.node.extend(added_nodes)
         model.graph.output.extend(added_outputs)
-        onnx.save(model, self.augmented_model_path)
+        onnx.save(model, self.augmented_model_path, save_as_external_data=self.use_external_data_format)
         self.augment_model = model
 
     def clear_collected_data(self):
@@ -259,7 +265,11 @@ class MinMaxCalibrater(CalibraterBase):
             if type(max_value_array) == int or max_value_array.size > 0:
                 max_value = float(max_value_array)
 
-            pairs.append(tuple([min_value, max_value]))
+            if self.symmetric:
+                max_absolute_value = max(abs(min_value), abs(max_value))
+                pairs.append(tuple([-max_absolute_value, max_absolute_value]))
+            else:
+                pairs.append(tuple([min_value, max_value]))
 
         new_calibrate_tensors_range = dict(zip(calibrate_tensor_names, pairs))
         if self.calibrate_tensors_range:
@@ -274,7 +284,9 @@ class HistogramCalibrater(CalibraterBase):
                  model,
                  op_types_to_calibrate=[],
                  augmented_model_path='augmented_model.onnx',
+                 use_external_data_format=False,
                  method='percentile',
+                 symmetric=False,
                  num_bins=128,
                  num_quantized_bins=2048,
                  percentile=99.999):
@@ -282,17 +294,21 @@ class HistogramCalibrater(CalibraterBase):
         :param model: ONNX model to calibrate. It can be a ModelProto or a model path
         :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
         :param augmented_model_path: save augmented model to this path.
+        :param use_external_data_format: use external data format to store model which size is >= 2Gb
         :param method: A string. One of ['entropy', 'percentile'].
+        :param symmetric: make range of tensor symmetric (central point is 0).
+        :param num_bins: number of bins to create a new histogram for collecting tensor values.
         :param num_quantized_bins: number of quantized bins. Default 128.
         :param percentile: A float number between [0, 100]. Default 99.99.
         '''
-        super(HistogramCalibrater, self).__init__(model, op_types_to_calibrate, augmented_model_path)
+        super(HistogramCalibrater, self).__init__(model, op_types_to_calibrate, augmented_model_path, use_external_data_format)
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
         self.num_model_outputs = len(self.model.graph.output)
         self.model_original_outputs = set(output.name for output in self.model.graph.output)
         self.collector = None
         self.method = method
+        self.symmetric = symmetric
         self.num_bins = num_bins
         self.num_quantized_bins = num_quantized_bins
         self.percentile = percentile
@@ -315,7 +331,7 @@ class HistogramCalibrater(CalibraterBase):
 
         model.graph.node.extend(added_nodes)
         model.graph.output.extend(added_outputs)
-        onnx.save(model, self.augmented_model_path)
+        onnx.save(model, self.augmented_model_path, save_as_external_data=self.use_external_data_format)
         self.augment_model = model
 
     def clear_collected_data(self):
@@ -330,7 +346,6 @@ class HistogramCalibrater(CalibraterBase):
             if not inputs:
                 break
             self.intermediate_outputs.append(self.infer_session.run(None, inputs))
-
 
         if len(self.intermediate_outputs) == 0:
             raise ValueError("No data is collected.")
@@ -349,6 +364,7 @@ class HistogramCalibrater(CalibraterBase):
 
         if not self.collector:
             self.collector = HistogramCollector(method=self.method,
+                                                symmetric=self.symmetric,
                                                 num_bins=self.num_bins,
                                                 num_quantized_bins=self.num_quantized_bins,
                                                 percentile=self.percentile)
@@ -359,7 +375,7 @@ class HistogramCalibrater(CalibraterBase):
     def compute_range(self):
         ''' 
         Compute the min-max range of tensor
-        :return: dictionary mapping: {added node names: (ReduceMin, ReduceMax) pairs }
+        :return: dictionary mapping: {tensor name: (min value, max value)}
         '''
         if not self.collector:
             raise ValueError("No collector created and can't generate calibration data.")
@@ -371,39 +387,46 @@ class EntropyCalibrater(HistogramCalibrater):
                  model,
                  op_types_to_calibrate=[],
                  augmented_model_path='augmented_model.onnx',
+                 use_external_data_format=False,
                  method='entropy',
+                 symmetric=False,
                  num_bins=128,
                  num_quantized_bins=128):
         '''
         :param model: ONNX model to calibrate. It can be a ModelProto or a model path
         :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
         :param augmented_model_path: save augmented model to this path.
+        :param use_external_data_format: use external data format to store model which size is >= 2Gb
         :param method: A string. One of ['entropy', 'percentile'].
+        :param symmetric: make range of tensor symmetric (central point is 0).
         :param num_bins: number of bins to create a new histogram for collecting tensor values.
         :param num_quantized_bins: number of quantized bins. Default 128.
         '''
-        super(EntropyCalibrater, self).__init__(model, op_types_to_calibrate, augmented_model_path,
-                                                method=method, num_bins=num_bins, num_quantized_bins=num_quantized_bins)
+        super(EntropyCalibrater, self).__init__(model, op_types_to_calibrate, augmented_model_path, use_external_data_format,
+                                                method=method, symmetric=symmetric, num_bins=num_bins, num_quantized_bins=num_quantized_bins)
 
 class PercentileCalibrater(HistogramCalibrater):
     def __init__(self,
                  model,
                  op_types_to_calibrate=[],
                  augmented_model_path='augmented_model.onnx',
+                 use_external_data_format=False,
                  method='percentile',
+                 symmetric=False,
                  num_bins=2048,
                  percentile=99.999):
         '''
         :param model: ONNX model to calibrate. It can be a ModelProto or a model path
         :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
         :param augmented_model_path: save augmented model to this path.
+        :param use_external_data_format: use external data format to store model which size is >= 2Gb
         :param method: A string. One of ['entropy', 'percentile'].
+        :param symmetric: make range of tensor symmetric (central point is 0).
         :param num_quantized_bins: number of quantized bins. Default 128.
         :param percentile: A float number between [0, 100]. Default 99.99.
         '''
-        super(PercentileCalibrater, self).__init__(model, op_types_to_calibrate, augmented_model_path,
-                                                   method=method, num_bins=num_bins,
-                                                   percentile=percentile)
+        super(PercentileCalibrater, self).__init__(model, op_types_to_calibrate, augmented_model_path, use_external_data_format,
+                                                   method=method, symmetric=symmetric, num_bins=num_bins, percentile=percentile)
 
 class CalibrationDataCollector(metaclass=abc.ABCMeta):
     """
@@ -434,9 +457,10 @@ class HistogramCollector(CalibrationDataCollector):
     ref: https://docs.nvidia.com/deeplearning/tensorrt/pytorch-quantization-toolkit/docs/_modules/
                  pytorch_quantization/calib/histogram.html
     """
-    def __init__(self, method, num_bins, num_quantized_bins, percentile):
+    def __init__(self, method, symmetric, num_bins, num_quantized_bins, percentile):
         self.histogram_dict = {}
         self.method = method
+        self.symmetric = symmetric
         self.num_bins = num_bins
         self.num_quantized_bins= num_quantized_bins
         self.percentile = percentile
@@ -450,13 +474,19 @@ class HistogramCollector(CalibrationDataCollector):
         # TODO: Currently we have different collect() for entropy and percentile method respectively.
         #       Need unified collect in the future.
         if self.method == 'entropy':
-            return self.collect_for_entropy(name_to_arr)
+            return self.collect_value(name_to_arr)
         elif self.method == 'percentile':
-            return self.collect_for_percentile(name_to_arr)
+            if self.symmetric:
+                return self.collect_absolute_value(name_to_arr)
+            else:
+                return self.collect_value(name_to_arr)
         else:
             raise ValueError('Only \'entropy\' or \'percentile\' method are supported')
 
-    def collect_for_percentile(self, name_to_arr):
+    def collect_absolute_value(self, name_to_arr):
+        '''
+        Collect histogram on absolute value
+        '''
         for tensor, data_arr in name_to_arr.items():
             data_arr = np.asarray(data_arr)
             data_arr = data_arr.flatten()
@@ -481,7 +511,10 @@ class HistogramCollector(CalibrationDataCollector):
                 hist[:len(old_hist)] += old_hist
                 self.histogram_dict[tensor] = (hist, hist_edges)
 
-    def collect_for_entropy(self, name_to_arr):
+    def collect_value(self, name_to_arr):
+        '''
+        Collect histogram on real value
+        '''
         for tensor, data_arr in name_to_arr.items():
             data_arr = np.asarray(data_arr)
             data_arr = data_arr.flatten()
@@ -553,8 +586,17 @@ class HistogramCollector(CalibrationDataCollector):
             hist_edges = histogram[1]
             total = hist.sum()
             cdf = np.cumsum(hist/total)
-            idx = np.searchsorted(cdf, percentile/100)
-            thresholds_dict[tensor] = (float(hist_edges[idx]), float(hist_edges[idx]))
+            if self.symmetric:
+                idx_right = np.searchsorted(cdf, percentile/100)
+                thresholds_dict[tensor] = (-float(hist_edges[idx_right]), float(hist_edges[idx_right]))
+            else:
+                idx_right = np.searchsorted(cdf, percentile/200)
+                idx_left = np.searchsorted(cdf, (1.0 - percentile/200))
+                thresholds_dict[tensor] = (float(hist_edges[idx_left]), float(hist_edges[idx_right]))
+
+            # Plot histogram for debug only
+            if False:
+                apply_plot(hist, hist_edges)
 
         return thresholds_dict
 
@@ -572,6 +614,10 @@ class HistogramCollector(CalibrationDataCollector):
             optimal_threshold = self.get_entropy_threshold(histogram, num_quantized_bins)
             thresholds_dict[tensor] = optimal_threshold
 
+            # Plot histogram for debug only
+            if False:
+                apply_plot(histogram[0], histogram[1])
+
         return thresholds_dict
 
     def get_entropy_threshold(self, histogram, num_quantized_bins):
@@ -583,13 +629,28 @@ class HistogramCollector(CalibrationDataCollector):
         from scipy.stats import entropy
         import copy
 
-        hist, hist_edges, _, _, _ = histogram
+        hist = histogram[0]
+        hist_edges = histogram[1]
         num_bins = hist.size
         zero_bin_index = num_bins // 2
         num_half_quantized_bin = num_quantized_bins // 2
         
         kl_divergence = np.zeros(zero_bin_index - num_half_quantized_bin + 1)
         thresholds = [(0, 0) for i in range(kl_divergence.size)] 
+
+        # <------------ num bins ---------------->
+        #        <--- quantized bins ---->
+        # |======|===========|===========|=======|
+        #              zero bin index
+        #        ^                       ^
+        #        |                       |
+        #   start index               end index          (start of iteration)
+        #     ^                             ^
+        #     |                             |
+        #  start index                  end index               ...
+        # ^                                      ^
+        # |                                      |
+        # start index                    end index       (end of iteration)
 
         for i in range(num_half_quantized_bin, zero_bin_index + 1, 1):
             start_index = zero_bin_index - i 
@@ -649,18 +710,40 @@ def create_calibrator(model,
                       op_types_to_calibrate=[],
                       augmented_model_path='augmented_model.onnx',
                       calibrate_method=CalibrationMethod.MinMax,
+                      use_external_data_format=False,
                       extra_options={}):
+
     if calibrate_method == CalibrationMethod.MinMax:
-        return MinMaxCalibrater(model, op_types_to_calibrate, augmented_model_path)
+        # default settings for min-max algorithm
+        symmetric = False if 'symmetric' not in extra_options else extra_options['symmetric']
+        return MinMaxCalibrater(
+            model, op_types_to_calibrate, augmented_model_path,
+            use_external_data_format=use_external_data_format,
+            symmetric=symmetric
+        )
     elif calibrate_method == CalibrationMethod.Entropy:
         # default settings for entropy algorithm
         num_bins = 128 if 'num_bins' not in extra_options else extra_options['num_bins']
         num_quantized_bins = 128 if 'num_quantized_bins' not in extra_options else extra_options['num_quantized_bins']
-        return EntropyCalibrater(model, op_types_to_calibrate, augmented_model_path, num_bins=num_bins, num_quantized_bins=num_quantized_bins)
+        symmetric = False if 'symmetric' not in extra_options else extra_options['symmetric']
+        return EntropyCalibrater(
+            model, op_types_to_calibrate, augmented_model_path,
+            use_external_data_format=use_external_data_format,
+            symmetric=symmetric,
+            num_bins=num_bins,
+            num_quantized_bins=num_quantized_bins
+        )
     elif calibrate_method == CalibrationMethod.Percentile:
         # default settings for percentile algorithm
         num_bins = 2048 if 'num_bins' not in extra_options else extra_options['num_bins']
         percentile = 99.999 if 'percentile' not in extra_options else extra_options['percentile']
-        return PercentileCalibrater(model, op_types_to_calibrate, augmented_model_path, num_bins=num_bins, percentile=percentile)
+        symmetric = True if 'symmetric' not in extra_options else extra_options['symmetric']
+        return PercentileCalibrater(
+            model, op_types_to_calibrate, augmented_model_path,
+            use_external_data_format=use_external_data_format,
+            symmetric=symmetric,
+            num_bins=num_bins,
+            percentile=percentile
+        )
 
     raise ValueError('Unsupported calibration method {}'.format(calibrate_method))

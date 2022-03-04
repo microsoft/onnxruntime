@@ -829,9 +829,9 @@ void InitializeSession(InferenceSession* sess,
 
   ep_registration_fn(sess, provider_types, provider_options_map);
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   if (!disabled_optimizer_names.empty()) {
-    OrtPybindThrowIfError(sess->FilterEnabledOptimizers(disabled_optimizer_names));
+    OrtPybindThrowIfError(sess->FilterEnabledOptimizers({disabled_optimizer_names.cbegin(), disabled_optimizer_names.cend()}));
   }
 #else
   ORT_UNUSED_PARAMETER(disabled_optimizer_names);
@@ -887,6 +887,13 @@ void addGlobalMethods(py::module& m, Environment& env) {
         default_logging_manager->SetDefaultLoggerSeverity(static_cast<logging::Severity>(severity));
       },
       "Sets the default logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
+  m.def(
+      "set_default_logger_verbosity", [&env](int vlog_level) {
+        logging::LoggingManager* default_logging_manager = env.GetLoggingManager();
+        default_logging_manager->SetDefaultLoggerVerbosity(vlog_level);
+      },
+      "Sets the default logging verbosity level. To activate the verbose log, "
+      "you need to set the default logging severity to 0:Verbose level.");
   m.def(
       "get_all_providers", []() -> const std::vector<std::string>& { return GetAllExecutionProviderNames(); },
       "Return list of Execution Providers that this version of Onnxruntime can support. "

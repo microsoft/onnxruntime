@@ -148,21 +148,21 @@ jobs:
 
     - template: mac-packaging.yml
       parameters :
-        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --build_java --build_nodejs --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
+        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --build_java --build_nodejs --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
         MacosArch: arm64
         BuildJava: true
         BuildNodejs: true
 
     - template: mac-packaging.yml
       parameters :
-        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }}  --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
         MacosArch: universal2
         BuildJava: false
         BuildNodejs: false
 
     - template: mac-packaging.yml
       parameters :
-        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --build_java --build_nodejs
+        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --build_java --build_nodejs  --use_coreml
         MacosArch: x86_64
         BuildJava: true
         BuildNodejs: true
@@ -183,6 +183,7 @@ jobs:
     includedOpsConfig: '$(Build.SourcesDirectory)/tools/ci_build/github/android/mobile_package.required_operators.config'
     artifactName: 'onnxruntime-android-mobile-aar'
     job_name_suffix: 'Mobile'
+    packageName: 'onnxruntime-mobile'
 
 - template: android-java-api-aar.yml
   parameters:
@@ -228,7 +229,8 @@ jobs:
         python3 tools/ci_build/github/apple/test_ios_packages.py \
           --fail_if_cocoapods_missing \
           --framework_info_file "$(Build.BinariesDirectory)/ios_framework/framework_info.json" \
-          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out"
+          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
+          --variant Full
       displayName: "Test iOS framework"
 
     - task: PublishBuildArtifacts@1
@@ -529,7 +531,7 @@ jobs:
       PackageType: 'nuget'
       PackagePath: '$(Build.ArtifactStagingDirectory)'
       PackageName: 'Microsoft.ML.OnnxRuntime.*nupkg'
-      PlatformsSupported: 'win-x64,win-x86,linux-x64,linux-aarch64,osx.10.14-x64'
+      PlatformsSupported: 'win-x64,win-x86,linux-x64,linux-arm64,osx.10.14-x64'
       VerifyNugetSigning: false
 
   - task: PublishPipelineArtifact@0
@@ -1060,5 +1062,9 @@ jobs:
   parameters:
     artifactName: 'onnxruntime-android-mobile-aar'
     job_name_suffix: 'Mobile'
+    packageName: 'onnxruntime-mobile'
 
-
+- template: android-java-api-aar-test.yml
+  parameters:
+    artifactName: 'onnxruntime-android-full-aar'
+    job_name_suffix: 'Full'

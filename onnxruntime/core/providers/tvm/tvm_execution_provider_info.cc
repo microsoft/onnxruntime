@@ -13,6 +13,7 @@
 namespace onnxruntime {
 namespace tvm {
 namespace provider_option_names {
+constexpr const char* kExecutor = "executor";
 constexpr const char* kTarget = "target";
 constexpr const char* kTargetHost = "target_host";
 constexpr const char* kOptLevel = "opt_level";
@@ -24,6 +25,7 @@ constexpr const char* kInputNames = "input_names";
 constexpr const char* kInputShapes = "input_shapes";
 
 static const std::unordered_set<std::string> valid_keys {
+  std::string{kExecutor},
   std::string{kTarget},
   std::string{kTargetHost},
   std::string{kOptLevel},
@@ -55,6 +57,7 @@ TvmExecutionProviderInfo TvmExecutionProviderInfo::FromProviderOptions(const Pro
 
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
+          .AddAssignmentToReference(tvm::provider_option_names::kExecutor, info.executor)
           .AddAssignmentToReference(tvm::provider_option_names::kTarget, info.target)
           .AddAssignmentToReference(tvm::provider_option_names::kTargetHost, info.target_host)
           .AddAssignmentToReference(tvm::provider_option_names::kOptLevel, info.opt_level)
