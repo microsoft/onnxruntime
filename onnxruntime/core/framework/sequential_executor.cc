@@ -78,6 +78,52 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
   }
 }
 
+static std::pair<std::string, std::string> InputOutputTypeShapeToString(OpKernelContextInternal& op_kernel_context) {
+  std::stringstream input_ss;
+  std::stringstream output_ss;
+
+  std::function<void(const OrtValue*, std::stringstream&)> log_metadata = [&](const OrtValue* ort_value, std::stringstream& ss) {
+    if (!ort_value) return;
+    if (ort_value->IsTensor()) {
+      const onnxruntime::Tensor& tensor = ort_value->Get<Tensor>();
+      ss << DataTypeImpl::ToString(tensor.DataType()) << ":";
+      ss << tensor.Shape().ToString();
+    } else if (ort_value->IsTensorSequence()) {
+      const onnxruntime::TensorSeq& tensor_seq = ort_value->Get<TensorSeq>();
+      ss << DataTypeImpl::ToString(tensor_seq.DataType()) << ":";
+      ss << "{";
+      for (auto iter = tensor_seq.begin(); iter != tensor_seq.end(); ++iter) {
+        ss << iter->Shape().ToString() << ",";
+      }
+      ss << "}";
+    } else if (ort_value->IsSparseTensor()) {
+      const onnxruntime::SparseTensor& sparse_tensor = ort_value->Get<SparseTensor>();
+      ss << DataTypeImpl::ToString(sparse_tensor.DataType()) << ":";
+      ss << sparse_tensor.DenseShape().ToString();
+    }
+  };
+
+  input_ss << "{";
+  int input_count = op_kernel_context.InputCount();
+  for (auto i = 0; i < input_count - 1; i++) {
+    log_metadata(op_kernel_context.GetInputMLValue(i), input_ss);
+    input_ss << ",";
+  }
+  log_metadata(op_kernel_context.GetInputMLValue(input_count - 1), input_ss);
+  input_ss << "}";
+
+  output_ss << "{";
+  int output_count = op_kernel_context.OutputCount();
+  for (auto i = 0; i < output_count - 1; i++) {
+    log_metadata(op_kernel_context.GetOutputMLValue(i), output_ss);
+    output_ss << ",";
+  }
+  log_metadata(op_kernel_context.GetOutputMLValue(output_count - 1), output_ss);
+  output_ss << "}";
+
+  return {input_ss.str(), output_ss.str()};
+}
+
 static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_context,
                                      const onnxruntime::OpKernel* p_op_kernel,
                                      size_t& input_activation_sizes, size_t& input_parameter_sizes,
@@ -364,6 +410,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                 << "\n";
 #endif
 
+      auto input_output_type_shape = InputOutputTypeShapeToString(op_kernel_context);
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      node_name_for_profiling + "_kernel_time",
                                                      kernel_begin_time,
@@ -376,6 +423,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                          {"activation_size", std::to_string(input_activation_sizes)},
                                                          {"parameter_size", std::to_string(input_parameter_sizes)},
                                                          {"output_size", std::to_string(total_output_sizes)},
+                                                         {"input_type_shape:", input_output_type_shape.first},
+                                                         {"output_type_shape:", input_output_type_shape.second},
                                                          {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state.GetThreadPool())},
                                                      });
       sync_time_begin = session_state.Profiler().Start();
