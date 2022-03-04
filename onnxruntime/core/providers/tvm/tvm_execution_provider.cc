@@ -124,6 +124,7 @@ common::Status TvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
     compilers_[func_name] = std::make_shared<Compiler>(std::move(onnx_model_str),
                               fused_node->ModelPath().ToPathString(),
                               int(opset->version()));
+    runners_[func_name] = std::make_shared<Runner>(options_, compilers_[func_name], node_graph);
 
     if (dump_subgraphs_) {
         std::fstream dump("/tmp/" + fused_node->Name() + ".onnx",
@@ -131,20 +132,9 @@ common::Status TvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
         model_proto.SerializeToOstream(&dump);
     }
 
-    NodeComputeInfo compute_info;
-    compute_info.create_state_func = std::bind(&TvmExecutionProvider::CreateStateFunc,
-                                               this,
-                                               std::placeholders::_1,
-                                               std::placeholders::_2);
-
-    compute_info.release_state_func = [](FunctionState state) {
-      if (state)
-        delete static_cast<TVMFuncState*>(state);
-    };
     // TODO(vvchernov): implement ops checking and mechanism of gracefully passing the responsibility to other EPs
     // if the checking fails due to unsupported op(s)
-    runners_[func_name] = std::make_shared<Runner>(options_, compilers_[func_name], node_graph);
-    compute_info.compute_func = *runners_[func_name].get();
+    NodeComputeInfo compute_info = prepareComputeInfo(func_name);
 
     node_compute_funcs.push_back(compute_info);
   }
@@ -166,7 +156,28 @@ AllocatorPtr TvmExecutionProvider::GetAllocator(int id, OrtMemType mem_type) con
   return allocator_;
 }
 
-int TvmExecutionProvider::CreateStateFunc(ComputeContext* context, FunctionState* state) {
+void TvmExecutionProvider::printOptions() {
+  LOGS(*GetLogger(), INFO) << options_;
+}
+
+NodeComputeInfo TvmExecutionProvider::prepareComputeInfo(const std::string& func_name) {
+  NodeComputeInfo compute_info;
+  compute_info.create_state_func = std::bind(&TvmExecutionProvider::createStateFunc,
+                                              this,
+                                              std::placeholders::_1,
+                                              std::placeholders::_2);
+
+  compute_info.release_state_func = [](FunctionState state) {
+    if (state)
+      delete static_cast<TVMFuncState*>(state);
+  };
+
+  compute_info.compute_func = *runners_[func_name].get();
+
+  return compute_info;
+}
+
+int TvmExecutionProvider::createStateFunc(ComputeContext* context, FunctionState* state) {
   auto* state_ptr = new TVMFuncState();
   *state_ptr = {context->allocate_func,
                 context->release_func,
@@ -175,10 +186,6 @@ int TvmExecutionProvider::CreateStateFunc(ComputeContext* context, FunctionState
   // TODO(vvchernov): Who and when release state?
   *state = state_ptr;
   return 0;
-}
-
-void TvmExecutionProvider::printOptions() {
-  LOGS(*GetLogger(), INFO) << options_;
 }
 
 }  // namespace onnxruntime

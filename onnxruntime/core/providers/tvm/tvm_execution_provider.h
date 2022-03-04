@@ -45,8 +45,9 @@ class TvmExecutionProvider : public IExecutionProvider {
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
 
  private:
-  int CreateStateFunc(ComputeContext*, FunctionState*);
   void printOptions();
+  NodeComputeInfo prepareComputeInfo(const std::string& func_name);
+  int createStateFunc(ComputeContext*, FunctionState*);
  private:
   TvmEPOptions options_;
   Compilers compilers_;
