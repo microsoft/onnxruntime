@@ -91,7 +91,7 @@ TensorShape TensorShape::Slice(size_t dimstart, size_t dimend) const {
 std::string TensorShape::ToString() const {
   std::string result;
 
-  result.append("{");
+  result.append("[");
   bool first = true;
   for (auto dim : GetDims()) {
     if (!first) {
@@ -101,7 +101,7 @@ std::string TensorShape::ToString() const {
     result.append(std::to_string(dim));
     first = false;
   }
-  result.append("}");
+  result.append("]");
 
   return result;
 }

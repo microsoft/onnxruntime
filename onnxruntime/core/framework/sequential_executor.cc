@@ -56,11 +56,14 @@ LARGE_INTEGER perf_freq = OrtGetPerformanceFrequency();
 namespace onnxruntime {
 
 static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context,
-                                      size_t& total_output_sizes, const std::string& node_name) {
+                                      size_t& total_output_sizes, const std::string& node_name, std::string& output_type_shape) {
   // Calculate total output sizes for this operation.
+  std::stringstream ss;
+  ss << "[";
   total_output_sizes = 0;
   ORT_UNUSED_PARAMETER(node_name);
-  for (auto i = 0; i < op_kernel_context->OutputCount(); i++) {
+  int output_count = op_kernel_context->OutputCount();
+  for (auto i = 0; i < output_count; i++) {
     const OrtValue* p_output = op_kernel_context->GetOutputMLValue(i);
     if (p_output != nullptr && p_output->IsTensor()) {
       const auto& tensor = p_output->Get<Tensor>();
@@ -74,61 +77,21 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
                          << "\n";
 #endif
       total_output_sizes += tensor_size;
+      ss << "{\"" << DataTypeImpl::ToString(tensor.DataType()) << "\":"
+         << tensor.Shape().ToString() << (i == output_count - 1 ? "}" : "},");
     }
   }
-}
-
-static std::pair<std::string, std::string> InputOutputTypeShapeToString(OpKernelContextInternal& op_kernel_context) {
-  std::stringstream input_ss;
-  std::stringstream output_ss;
-
-  std::function<void(const OrtValue*, std::stringstream&)> log_metadata = [&](const OrtValue* ort_value, std::stringstream& ss) {
-    if (!ort_value) return;
-    if (ort_value->IsTensor()) {
-      const onnxruntime::Tensor& tensor = ort_value->Get<Tensor>();
-      ss << DataTypeImpl::ToString(tensor.DataType()) << ":";
-      ss << tensor.Shape().ToString();
-    } else if (ort_value->IsTensorSequence()) {
-      const onnxruntime::TensorSeq& tensor_seq = ort_value->Get<TensorSeq>();
-      ss << DataTypeImpl::ToString(tensor_seq.DataType()) << ":";
-      ss << "{";
-      for (auto iter = tensor_seq.begin(); iter != tensor_seq.end(); ++iter) {
-        ss << iter->Shape().ToString() << ",";
-      }
-      ss << "}";
-    } else if (ort_value->IsSparseTensor()) {
-      const onnxruntime::SparseTensor& sparse_tensor = ort_value->Get<SparseTensor>();
-      ss << DataTypeImpl::ToString(sparse_tensor.DataType()) << ":";
-      ss << sparse_tensor.DenseShape().ToString();
-    }
-  };
-
-  input_ss << "{";
-  int input_count = op_kernel_context.InputCount();
-  for (auto i = 0; i < input_count - 1; i++) {
-    log_metadata(op_kernel_context.GetInputMLValue(i), input_ss);
-    input_ss << ",";
-  }
-  log_metadata(op_kernel_context.GetInputMLValue(input_count - 1), input_ss);
-  input_ss << "}";
-
-  output_ss << "{";
-  int output_count = op_kernel_context.OutputCount();
-  for (auto i = 0; i < output_count - 1; i++) {
-    log_metadata(op_kernel_context.GetOutputMLValue(i), output_ss);
-    output_ss << ",";
-  }
-  log_metadata(op_kernel_context.GetOutputMLValue(output_count - 1), output_ss);
-  output_ss << "}";
-
-  return {input_ss.str(), output_ss.str()};
+  ss << "]";
+  output_type_shape = ss.str();
 }
 
 static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_context,
                                      const onnxruntime::OpKernel* p_op_kernel,
                                      size_t& input_activation_sizes, size_t& input_parameter_sizes,
-                                     const std::string& node_name) {
+                                     const std::string& node_name, std::string& input_type_shape) {
   // Calculate total input sizes for this operation.
+  std::stringstream ss;
+  ss << "[";
   input_activation_sizes = 0;
   input_parameter_sizes = 0;
   ORT_UNUSED_PARAMETER(node_name);
@@ -159,8 +122,12 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
       } else {
         input_activation_sizes += tensor_size;
       }
+      ss << "{\"" << DataTypeImpl::ToString(p_tensor->DataType()) << "\":"
+         << p_tensor->Shape().ToString() << (i == input_count - 1 ? "}" : "},");
     }
   }
+  ss << "]";
+  input_type_shape = ss.str();
 }
 
 static Status ReleaseNodeMLValues(ExecutionFrame& frame,
@@ -180,6 +147,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   size_t input_activation_sizes = 0;
   size_t input_parameter_sizes = 0;
   size_t total_output_sizes = 0;
+  std::string input_type_shape{};
+  std::string output_type_shape{};
 
   if (is_profiler_enabled) {
     tp = session_state.Profiler().Start();
@@ -346,7 +315,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
       // Calculate total input sizes for this operation.
       CalculateTotalInputSizes(&op_kernel_context, p_op_kernel,
-                               input_activation_sizes, input_parameter_sizes, node_name_for_profiling);
+                               input_activation_sizes, input_parameter_sizes,
+                               node_name_for_profiling, input_type_shape);
     }
 
     Status compute_status;
@@ -395,7 +365,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
     if (is_profiler_enabled) {
       // Calculate total output sizes for this operation.
-      CalculateTotalOutputSizes(&op_kernel_context, total_output_sizes, node_name_for_profiling);
+      CalculateTotalOutputSizes(&op_kernel_context, total_output_sizes, node_name_for_profiling, output_type_shape);
 
 #if defined(TRACE_EXECUTION)
       // Trace execution step.
@@ -410,7 +380,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                 << "\n";
 #endif
 
-      auto input_output_type_shape = InputOutputTypeShapeToString(op_kernel_context);
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      node_name_for_profiling + "_kernel_time",
                                                      kernel_begin_time,
@@ -423,8 +392,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                          {"activation_size", std::to_string(input_activation_sizes)},
                                                          {"parameter_size", std::to_string(input_parameter_sizes)},
                                                          {"output_size", std::to_string(total_output_sizes)},
-                                                         {"input_type_shape:", input_output_type_shape.first},
-                                                         {"output_type_shape:", input_output_type_shape.second},
+                                                         {"input_type_shape", input_type_shape},
+                                                         {"output_type_shape", output_type_shape},
                                                          {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state.GetThreadPool())},
                                                      });
       sync_time_begin = session_state.Profiler().Start();
