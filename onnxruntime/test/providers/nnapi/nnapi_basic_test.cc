@@ -5,6 +5,7 @@
 #include "core/common/logging/logging.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 #include "core/session/inference_session.h"
+#include "core/framework/tensorprotoutils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
@@ -271,15 +272,18 @@ TEST(NnapiExecutionProviderTest, TestNoShapeInputModel) {
       << "No node should be taken by the NNAPI EP";
 }
 
-static void RunQDQModelTest(const GetQDQTestCaseFn& build_test_case,
-                            const char* test_description,
-                            const EPVerificationParams& params = EPVerificationParams(),
-                            bool nnapi_qdq_model_supported = true) {
+static void RunQDQModelTest(
+    const GetQDQTestCaseFn& build_test_case,
+    const char* test_description,
+    const EPVerificationParams& params = EPVerificationParams(),
+    bool nnapi_qdq_model_supported = true,
+    std::function<void(Graph& graph)> check_graph = [](Graph& graph) {}) {
   onnxruntime::Model model(test_description, false, DefaultLoggingManager().DefaultLogger());
   Graph& graph = model.MainGraph();
   ModelTestBuilder helper(graph);
   build_test_case(helper);
   helper.SetGraphOutputs();
+  check_graph(model.MainGraph());
   ASSERT_STATUS_OK(model.MainGraph().Resolve());
 
   // Serialize the model to a string.
@@ -333,6 +337,14 @@ TEST(NnapiExecutionProviderTest, TestQDQResize) {
                                          "asymmetric" /* coordinate_transformation_mode */),
                   "nnapi_qdq_test_graph_resize",
                   {false /* verify_entire_graph_use_ep */});
+}
+
+TEST(NnapiExecutionProviderTest, TestQDQResize_UnsupportedDefaultSetting) {
+  RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
+                                         {1, 3, 32, 32} /* sizes_data */),
+                  "nnapi_qdq_test_graph_resize",
+                  {false /* verify_entire_graph_use_ep */},
+                  false /* nnapi_qdq_model_supported */);
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQAveragePool) {
@@ -403,6 +415,7 @@ TEST(NnapiExecutionProviderTest, TestQDQSoftMax) {
                   });
 }
 
+// See https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/op_support_checker.cc#L1236
 TEST(NnapiExecutionProviderTest, TestQDQSoftMax_UnsupportedOutputScaleAndZp) {
   RunQDQModelTest(BuildQDQSoftMaxTestCase<uint8_t, uint8_t>(
                       {1, 32} /* input_shape */,
@@ -413,11 +426,89 @@ TEST(NnapiExecutionProviderTest, TestQDQSoftMax_UnsupportedOutputScaleAndZp) {
                   {
                       true /* verify_entire_graph_use_ep */
                   },
-                  false /* nnapi_qdq_model_supported */
-  );
+                  false /* nnapi_qdq_model_supported */);
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQConcat) {
+  // This is to verify all the inputs have the same scale and zp as input 0
+  // See https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/op_support_checker.cc#L16176
+  auto check_graph = [](Graph& test_graph) {
+    const auto* q_input_node = test_graph.GetNode(0);
+    const auto& input_def = q_input_node->InputDefs();
+    ASSERT_TRUE(nullptr != q_input_node);
+    ASSERT_EQ("QuantizeLinear", q_input_node->OpType());
+    const auto& input_scales = *input_def[1];
+    const auto* input_zp = input_def[2];
+
+    const auto* q_input_node1 = test_graph.GetNode(2);
+    const auto& input_def1 = q_input_node1->InputDefs();
+    ASSERT_TRUE(nullptr != q_input_node1);
+    ASSERT_EQ("QuantizeLinear", q_input_node1->OpType());
+    const auto& input_scales1 = *input_def1[1];
+    const auto* input_zp1 = input_def1[2];
+
+    const auto* q_input_node2 = test_graph.GetNode(4);
+    const auto& input_def2 = q_input_node2->InputDefs();
+    ASSERT_TRUE(nullptr != q_input_node2);
+    ASSERT_EQ("QuantizeLinear", q_input_node2->OpType());
+    const auto& input_scales2 = *input_def2[1];
+    const auto* input_zp2 = input_def2[2];
+
+    const Path& model_path = q_input_node->ModelPath();
+    const auto unpack_tensor = [&model_path](const InitializedTensorSet& initializers,
+                                             const std::string& name, std::vector<uint8_t>& unpacked_tensor) {
+      const auto& tensor = *initializers.at(name);
+      ASSERT_STATUS_OK(onnxruntime::utils::UnpackInitializerData(tensor, model_path, unpacked_tensor));
+    };
+
+    float scale = 0.0f;
+    const auto& initializers = test_graph.GetAllInitializedTensors();
+    {  // get the scale
+      std::vector<uint8_t> unpacked_tensor;
+      unpack_tensor(initializers, input_scales.Name(), unpacked_tensor);
+      scale = reinterpret_cast<const float*>(unpacked_tensor.data())[0];
+    }
+
+    float scale1 = 0.0f;
+    {  // get the scale
+      std::vector<uint8_t> unpacked_tensor;
+      unpack_tensor(initializers, input_scales1.Name(), unpacked_tensor);
+      scale1 = reinterpret_cast<const float*>(unpacked_tensor.data())[0];
+    }
+
+    float scale2 = 0.0f;
+    {  // get the scale
+      std::vector<uint8_t> unpacked_tensor;
+      unpack_tensor(initializers, input_scales2.Name(), unpacked_tensor);
+      scale2 = reinterpret_cast<const float*>(unpacked_tensor.data())[0];
+    }
+
+    uint8_t zero_point = 0;
+    {  // get the zp
+      std::vector<uint8_t> unpacked_tensor;
+      unpack_tensor(initializers, input_zp->Name(), unpacked_tensor);
+      zero_point = static_cast<uint8_t>(unpacked_tensor[0]);
+    }
+
+    uint8_t zero_point1 = 0;
+    {  // get the zp
+      std::vector<uint8_t> unpacked_tensor;
+      unpack_tensor(initializers, input_zp1->Name(), unpacked_tensor);
+      zero_point1 = static_cast<uint8_t>(unpacked_tensor[0]);
+    }
+
+    uint8_t zero_point2 = 0;
+    {  // get the zp
+      std::vector<uint8_t> unpacked_tensor;
+      unpack_tensor(initializers, input_zp2->Name(), unpacked_tensor);
+      zero_point2 = static_cast<uint8_t>(unpacked_tensor[0]);
+    }
+
+    ASSERT_EQ(scale, scale1);
+    ASSERT_EQ(scale, scale2);
+    ASSERT_EQ(zero_point, zero_point1);
+    ASSERT_EQ(zero_point, zero_point2);
+  };
   RunQDQModelTest(BuildQDQConcatTestCase(
                       {
                           {1, 6, 36},
@@ -425,11 +516,23 @@ TEST(NnapiExecutionProviderTest, TestQDQConcat) {
                           {1, 6, 2},
                       } /* input_shapes */,
                       2 /* axis */),
-                  "nnapi_qdq_test_graph_concat", {
-                                                     true /* verify_entire_graph_use_ep */
-                                                 });
+                  "nnapi_qdq_test_graph_concat",
+                  {
+                      true /* verify_entire_graph_use_ep */
+                  },
+                  true, /* nnapi_qdq_model_supported */
+                  check_graph);
 }
 
+//TEST(NnapiExecutionProviderTest, TestQDQConcat_UnsupportedInputScalesAndZp) {
+  // This is to verify all the inputs have the same scale and zp as input 0
+// RunQDQModelTest(BuildQDQConcatTestCaseUnsupported(),
+//                  "nnapi_qdq_test_graph_concat",
+//                  {
+//                      true /* verify_entire_graph_use_ep */
+//                  },
+//                  false /* nnapi_qdq_model_supported */);
+//}
 #endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
