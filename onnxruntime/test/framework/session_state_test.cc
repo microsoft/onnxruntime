@@ -209,13 +209,8 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
 
     // Partition the graph
     GraphPartitioner partitioner(krm, execution_providers);
-<<<<<<< HEAD
     status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(),
-                                   layout_transformer::TransformLayout);
-=======
-    status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr(),
                                    layout_transformer::TransformLayoutForCompilingEP);
->>>>>>> master
     ASSERT_TRUE(status.IsOK()) << status;
 
     // Finalize the session state
@@ -264,13 +259,8 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
 
     // Partition the graph
     GraphPartitioner partitioner(krm, execution_providers);
-<<<<<<< HEAD
     status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(),
-                                   layout_transformer::TransformLayout);
-=======
-    status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr(),
                                    layout_transformer::TransformLayoutForCompilingEP);
->>>>>>> master
     ASSERT_TRUE(status.IsOK()) << status;
 
     // Finalize the session state
