@@ -276,7 +276,7 @@ else()
     if(ARM64 AND MLAS_SOURCE_IS_NOT_SET )
         enable_language(ASM)
         set(mlas_platform_srcs
-          ${MLAS_SRC_DIR}/aarch64/ConvSymS8KernelDot.S
+          ${MLAS_SRC_DIR}/aarch64/ConvSymS8KernelDotLd64.S
           ${MLAS_SRC_DIR}/aarch64/ConvSymU8KernelDot.S
           ${MLAS_SRC_DIR}/aarch64/ConvSymS8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/ConvSymU8KernelNeon.S

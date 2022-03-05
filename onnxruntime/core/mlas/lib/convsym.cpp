@@ -81,7 +81,7 @@ extern "C" {
 #elif defined(MLAS_TARGET_ARM64)
     MLAS_CONV_SYM_KERNEL MlasConvSymS8KernelNeon;
     MLAS_CONV_SYM_KERNEL MlasConvSymU8KernelNeon;
-    MLAS_CONV_SYM_KERNEL MlasConvSymS8KernelDot;
+    MLAS_CONV_SYM_KERNEL MlasConvSymS8KernelDotLd64;
     MLAS_CONV_SYM_KERNEL MlasConvSymU8KernelDot;
     MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseU8KernelNeon;
     MLAS_CONV_SYM_DEPTHWISE_KERNEL MlasConvSymDepthwiseS8KernelNeon;
@@ -277,7 +277,7 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchDot = {
 };
 
 const MLAS_CONV_SYM_DISPATCH MlasConvSymS8DispatchDot = {
-    MlasConvSymS8KernelDot,
+    MlasConvSymS8KernelDotLd64,
     MlasConvSymDepthwiseS8KernelNeon,
     MlasConvSymDepthwiseKernelSize9Arm64S8S8,
     MlasConvSymDepthwiseKernelSize25ArmS8S8,
