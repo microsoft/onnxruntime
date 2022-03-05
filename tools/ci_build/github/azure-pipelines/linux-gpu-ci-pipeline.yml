@@ -21,7 +21,7 @@ jobs:
       script: |
          set -e -x
          #nvidia-smi
-         dpkg -l |grep nvidia
+         rpm -qa|grep nvidia
          # We assume the machine doesn't have gcc and python development header files
          sudo rm -f /build /onnxruntime_src
          sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src
