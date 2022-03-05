@@ -334,7 +334,7 @@ jobs:
 - job: Windows_Packaging_combined_GPU
   workspace:
     clean: all
-  pool: 'Win-CPU-2021'
+  pool: 'onnxruntime-gpu-tensorrt8-winbuild'
   dependsOn:
   - Windows_Packaging_gpu
   - Windows_Packaging_tensorrt
@@ -387,6 +387,13 @@ jobs:
       PlatformsSupported: 'win-x64'
       VerifyNugetSigning: false
       workingDirectory: '$(Build.ArtifactStagingDirectory)'
+
+  - task: BatchScript@1
+    displayName: 'Test C API application for GPU package'
+    inputs:
+      filename: $(Build.SourcesDirectory)\tools\capi_test\run_capi_application.bat
+      arguments: $(Build.ArtifactStagingDirectory)\onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip $(Build.ArtifactStagingDirectory)
+      workingFolder: '$(Build.ArtifactStagingDirectory)' 
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline Combined GPU Package Artifact'
