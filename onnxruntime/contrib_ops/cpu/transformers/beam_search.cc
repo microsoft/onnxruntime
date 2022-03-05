@@ -256,35 +256,41 @@ class BeamSearchImpl {
 };
 
 void BeamSearch::Init(const OpKernelInfo& info) {
-  // Make sure the body attribute was present even though we don't need it here.
+  // Make sure the decoder attribute was present even though we don't need it here.
   ONNX_NAMESPACE::GraphProto proto;
-  ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("body", &proto).IsOK());
+  ORT_ENFORCE(info.GetAttr<ONNX_NAMESPACE::GraphProto>("decoder", &proto).IsOK());
   ORT_IGNORE_RETURN_VALUE(proto);
 
   parameters_.ParseFromAttributes(info);
-
-  cuda_stream_ = nullptr;
 }
 
 Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
                                               const std::string& attribute_name,
                                               const SessionState& subgraph_session_state) {
   ORT_ENFORCE(gpt_subgraph_ == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
-  const auto& node = Node();
-  gpt_subgraph_ = std::make_unique<GptSubgraph>(node, attribute_name, subgraph_session_state.GetGraphViewer());
-  ORT_RETURN_IF_ERROR(gpt_subgraph_->Setup(session_state, subgraph_session_state));
-  feeds_fetches_manager_ = gpt_subgraph_->GetFeedsFetchesManager();
-  parameters_.SetSubgraphParameters(gpt_subgraph_->vocab_size,
-                                    gpt_subgraph_->num_heads,
-                                    gpt_subgraph_->head_size,
-                                    gpt_subgraph_->num_layers);
+  // TODO: handle another subgraph with attribute name "encoder_decode_init"
+  if (attribute_name == "decoder") {
+    const auto& node = Node();
+    gpt_subgraph_ = std::make_unique<GptSubgraph>(node, attribute_name, subgraph_session_state.GetGraphViewer());
+    ORT_RETURN_IF_ERROR(gpt_subgraph_->Setup(session_state, subgraph_session_state));
+    feeds_fetches_manager_ = gpt_subgraph_->GetFeedsFetchesManager();
+    parameters_.SetSubgraphParameters(gpt_subgraph_->vocab_size,
+                                      gpt_subgraph_->num_heads,
+                                      gpt_subgraph_->head_size,
+                                      gpt_subgraph_->num_layers);
+  }
   return Status::OK();
 }
 
 Status BeamSearch::Compute(OpKernelContext* ctx) const {
+  if (parameters_.model_type != 0) {
+    // TODO: support encoder decoder model like T5
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Support of 'model_type' != 0 is not implemented");
+  }
+
   auto* ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
-  auto* session_state = ctx_internal->SubgraphSessionState("body");
-  ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
+  auto* session_state = ctx_internal->SubgraphSessionState("decoder");
+  ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'decoder' attribute.");
   ORT_ENFORCE(feeds_fetches_manager_, "CreateFeedsFetchesManager must be called prior to execution of graph.");
 
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
