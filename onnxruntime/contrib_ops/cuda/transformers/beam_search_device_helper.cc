@@ -458,7 +458,7 @@ Status UpdateFeeds(
       next_inputs[i + 2] = last_outputs[i];
     }
   } else {
-    CUDA_RETURN_IF_ERROR(PickPastState<T>(last_outputs, next_inputs, beam_indices, allocator, stream));
+    ORT_RETURN_IF_ERROR(PickPastState<T>(last_outputs, next_inputs, beam_indices, allocator, stream));
   }
 
   // Make sure data is ready before next subgraph execution.
