@@ -155,7 +155,7 @@ std::unique_ptr<Model> FunctionTestCase::CreateModel(bool inline_call) {
 
   if (inline_call) {
     EXPECT_STATUS_OK(graph.InlineFunction(call_node));
-#if 1
+#if 0
     std::cout << graph << std::endl;
 #endif
     EXPECT_STATUS_OK(graph.Resolve());

@@ -105,16 +105,13 @@ struct FunctionTestCase {
   void AddBoundedInput(std::string input_name, std::vector<int64_t> shape, T bound) {
     auto arg_type = TensorType(data_types_internal::ToTensorDataType<T>(), shape);
     input_args.emplace_back(input_name, &arg_type);
-
-    // if (GenData) {
-      std::vector<T> data = random<T>(shape);
-      for (size_t i = 0; i < data.size(); i++)
-        data[i] = data[i] % bound;
-      OrtValue ort_value;
-      CreateMLValue<T>(provider->GetAllocator(0, OrtMemTypeDefault), shape, data, &ort_value);
-      input_values.push_back(std::make_pair(input_name, ort_value));
-      input_value_map.insert(std::make_pair(input_name, ort_value));
-    // }
+    std::vector<T> data = random<T>(shape);
+    for (size_t i = 0; i < data.size(); i++)
+      data[i] = data[i] % bound;
+    OrtValue ort_value;
+    CreateMLValue<T>(provider->GetAllocator(0, OrtMemTypeDefault), shape, data, &ort_value);
+    input_values.push_back(std::make_pair(input_name, ort_value));
+    input_value_map.insert(std::make_pair(input_name, ort_value));
   }
 
   void AddOutput(std::string output_name);

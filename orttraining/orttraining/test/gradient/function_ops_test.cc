@@ -270,7 +270,6 @@ void TestSoftmaxCrossEntropyLossGrad(int reduction, int ignore_index = 0) {
     testCase.AddAttribute("ignore_index", ignore_index);
   testCase.AddOutput("dX");
   testCase.RunTest();
-  // testCase.CreateModel(true);
 }
 
 TEST_F(FunExpansionTest, SoftmaxCrossEntropyLossGrad) {
