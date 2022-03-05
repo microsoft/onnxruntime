@@ -189,11 +189,13 @@ struct CUDA_Provider : Provider {
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
 
-    // Time a trivial CUDA function to see if it takes more than 30 seconds, if so tell the user why
+    // Calling a function like ::cudaDeviceSynchronize will cause CUDA to ensure there is binary code for the current GPU architecture
+    // Ideally this will be already part of the binary, but if not, CUDA will JIT it during this call. This can take a very long time
+    // (minutes even), so we want to detect when this happens and let the user know why so they can report it properly or even fix it.
+    // See the linked issue in the warning message for more info
     {
       auto start_time = std::chrono::steady_clock::now();
-      int num_devices;
-      ::cudaGetDeviceCount(&num_devices);
+      ::cudaDeviceSynchronize();
       auto end_time = std::chrono::steady_clock::now();
       if (std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time) > std::chrono::seconds{30}) {
         LOGS_DEFAULT(WARNING) << "CUDA took more than 30 seconds to start, please see this issue for how to fix it: https://github.com/microsoft/onnxruntime/issues/10746";
