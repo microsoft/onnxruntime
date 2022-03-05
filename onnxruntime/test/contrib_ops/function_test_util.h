@@ -23,6 +23,19 @@ inline std::vector<T> random(std::vector<int64_t> shape) {
   return generator.Uniform<T>(shape, 0.0f, 1.0f);
 }
 
+
+template <>
+inline std::vector<int64_t> random<int64_t>(std::vector<int64_t> shape) {
+  int64_t size = 1;
+  for (auto dim : shape)
+    size *= dim;
+
+  std::vector<int64_t> data(size);
+  for (int64_t i = 0; i < size; i++)
+    data[i] = static_cast<int64_t>(rand());
+  return data;
+}
+
 template <>
 inline std::vector<bool> random<bool>(std::vector<int64_t> shape) {
   int64_t size = 1;
@@ -88,9 +101,26 @@ struct FunctionTestCase {
     }
   }
 
+  template <typename T>
+  void AddBoundedInput(std::string input_name, std::vector<int64_t> shape, T bound) {
+    auto arg_type = TensorType(data_types_internal::ToTensorDataType<T>(), shape);
+    input_args.emplace_back(input_name, &arg_type);
+
+    // if (GenData) {
+      std::vector<T> data = random<T>(shape);
+      for (size_t i = 0; i < data.size(); i++)
+        data[i] = data[i] % bound;
+      OrtValue ort_value;
+      CreateMLValue<T>(provider->GetAllocator(0, OrtMemTypeDefault), shape, data, &ort_value);
+      input_values.push_back(std::make_pair(input_name, ort_value));
+      input_value_map.insert(std::make_pair(input_name, ort_value));
+    // }
+  }
+
   void AddOutput(std::string output_name);
 
   void AddAttribute(const char* attr_name, int64_t attr_val);
+  void AddAttribute(const char* attr_name, const char* attr_val);
 
   onnxruntime::Node& AddCallNodeTo(onnxruntime::Graph& graph);
 

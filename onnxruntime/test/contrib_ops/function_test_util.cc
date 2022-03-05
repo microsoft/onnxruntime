@@ -117,6 +117,14 @@ void FunctionTestCase::AddAttribute(const char* attr_name, int64_t attr_val) {
   attributes[attr_name] = axis_attr;
 }
 
+void FunctionTestCase::AddAttribute(const char* attr_name, const char* attr_val) {
+  ONNX_NAMESPACE::AttributeProto axis_attr;
+  axis_attr.set_name(attr_name);
+  axis_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
+  axis_attr.set_s(attr_val);
+  attributes[attr_name] = axis_attr;
+}
+
 onnxruntime::Node& FunctionTestCase::AddCallNodeTo(onnxruntime::Graph& graph) {
   std::vector<NodeArg*> input_arg_ptrs;
 
@@ -147,7 +155,7 @@ std::unique_ptr<Model> FunctionTestCase::CreateModel(bool inline_call) {
 
   if (inline_call) {
     EXPECT_STATUS_OK(graph.InlineFunction(call_node));
-#if 0
+#if 1
     std::cout << graph << std::endl;
 #endif
     EXPECT_STATUS_OK(graph.Resolve());

@@ -239,5 +239,46 @@ TEST_F(FunExpansionTest, TanhGrad_float) {
   TestUnaryOpGrad<float, true>("TanhGrad");
 }
 
+void TestSoftmaxCrossEntropyLossGrad(int reduction, int ignore_index = 0) {
+  int64_t batchsize = 8, num_classes = 10, d1 = 4;
+  std::vector<int64_t> BCD{batchsize, num_classes, d1};
+  std::vector<int64_t> BD{batchsize, d1};
+  std::vector<int64_t> C{num_classes};
+  std::vector<int64_t> scalar; // empty vector
+
+  FunctionTestCase testCase("SoftmaxCrossEntropyLossGrad");
+  testCase.opsets[kOnnxDomain] = 15;
+  testCase.opsets[kMSDomain] = 1;
+  testCase.AddInput<float>("dY", (reduction == 0) ? BD : scalar);
+  testCase.AddInput<float>("log_prob", BCD);
+  testCase.AddBoundedInput<int64_t>("label", BD, num_classes);
+  testCase.AddInput<float>("weight", C);
+  switch (reduction) {
+    case 0:
+      testCase.AddAttribute("reduction", "none");
+      break;
+    case 1:
+      testCase.AddAttribute("reduction", "mean");
+      break;
+    case 2:
+      testCase.AddAttribute("reduction", "sum");
+      break;
+    default:
+      break;
+  }
+  if (ignore_index != 0)
+    testCase.AddAttribute("ignore_index", ignore_index);
+  testCase.AddOutput("dX");
+  testCase.RunTest();
+  // testCase.CreateModel(true);
+}
+
+TEST_F(FunExpansionTest, SoftmaxCrossEntropyLossGrad) {
+  for (int reduction = 0; reduction < 4; reduction++) {
+    TestSoftmaxCrossEntropyLossGrad(reduction);
+    TestSoftmaxCrossEntropyLossGrad(reduction, 100);
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime
