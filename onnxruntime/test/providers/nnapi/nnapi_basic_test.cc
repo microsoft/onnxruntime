@@ -41,6 +41,27 @@ namespace test {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+using UnpackTensorFn = std::function<void(const InitializedTensorSet& initializers,
+                                          const std::string& name, std::vector<uint8_t>& unpacked_tensor)>;
+
+/* NNAPI QDQ model build test related helper functions */
+
+void GetQDQModelQuantizationScales(const Path& model_path, float scale,
+                                   const std::string& name, const InitializedTensorSet& initializers,
+                                   const UnpackTensorFn& unpack_tensor) {
+  std::vector<uint8_t> unpacked_tensor;
+  unpack_tensor(initializers, name, unpacked_tensor);
+  scale = reinterpret_cast<const float*>(unpacked_tensor.data())[0];
+}
+
+void GetQDQModelQuantizationZeroPoint(const Path& model_path, uint8_t zero_point,
+                                      const std::string& name, const InitializedTensorSet& initializers,
+                                      const UnpackTensorFn& unpack_tensor) {
+  std::vector<uint8_t> unpacked_tensor;
+  unpack_tensor(initializers, name, unpacked_tensor);
+  zero_point = static_cast<uint8_t>(unpacked_tensor[0]);
+}
+
 // Since NNAPI EP handles Reshape and Flatten differently,
 // Please see ReshapeOpBuilder::CanSkipReshape in
 // <repo_root>/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/op_builder.cc
@@ -445,21 +466,21 @@ TEST(NnapiExecutionProviderTest, TestQDQConcat) {
     const auto& input_def = q_input_node->InputDefs();
     ASSERT_TRUE(nullptr != q_input_node);
     ASSERT_EQ("QuantizeLinear", q_input_node->OpType());
-    const auto& input_scales = *input_def[1];
+    const auto& input_scale = *input_def[1];
     const auto* input_zp = input_def[2];
 
     const auto* q_input_node1 = test_graph.GetNode(2);
     const auto& input_def1 = q_input_node1->InputDefs();
     ASSERT_TRUE(nullptr != q_input_node1);
     ASSERT_EQ("QuantizeLinear", q_input_node1->OpType());
-    const auto& input_scales1 = *input_def1[1];
+    const auto& input_scale1 = *input_def1[1];
     const auto* input_zp1 = input_def1[2];
 
     const auto* q_input_node2 = test_graph.GetNode(4);
     const auto& input_def2 = q_input_node2->InputDefs();
     ASSERT_TRUE(nullptr != q_input_node2);
     ASSERT_EQ("QuantizeLinear", q_input_node2->OpType());
-    const auto& input_scales2 = *input_def2[1];
+    const auto& input_scale2 = *input_def2[1];
     const auto* input_zp2 = input_def2[2];
 
     const Path& model_path = q_input_node->ModelPath();
@@ -469,48 +490,22 @@ TEST(NnapiExecutionProviderTest, TestQDQConcat) {
       ASSERT_STATUS_OK(onnxruntime::utils::UnpackInitializerData(tensor, model_path, unpacked_tensor));
     };
 
+    // get the scales
     float scale = 0.0f;
-    const auto& initializers = test_graph.GetAllInitializedTensors();
-    {  // get the scale
-      std::vector<uint8_t> unpacked_tensor;
-      unpack_tensor(initializers, input_scales.Name(), unpacked_tensor);
-      scale = reinterpret_cast<const float*>(unpacked_tensor.data())[0];
-    }
-
     float scale1 = 0.0f;
-    {  // get the scale
-      std::vector<uint8_t> unpacked_tensor;
-      unpack_tensor(initializers, input_scales1.Name(), unpacked_tensor);
-      scale1 = reinterpret_cast<const float*>(unpacked_tensor.data())[0];
-    }
-
     float scale2 = 0.0f;
-    {  // get the scale
-      std::vector<uint8_t> unpacked_tensor;
-      unpack_tensor(initializers, input_scales2.Name(), unpacked_tensor);
-      scale2 = reinterpret_cast<const float*>(unpacked_tensor.data())[0];
-    }
+    const auto& initializers = test_graph.GetAllInitializedTensors();
+    GetQDQModelQuantizationScales(model_path, scale, input_scale.Name(), initializers, unpack_tensor);
+    GetQDQModelQuantizationScales(model_path, scale1, input_scale1.Name(), initializers, unpack_tensor);
+    GetQDQModelQuantizationScales(model_path, scale2, input_scale2.Name(), initializers, unpack_tensor);
 
+    // get the zero points
     uint8_t zero_point = 0;
-    {  // get the zp
-      std::vector<uint8_t> unpacked_tensor;
-      unpack_tensor(initializers, input_zp->Name(), unpacked_tensor);
-      zero_point = static_cast<uint8_t>(unpacked_tensor[0]);
-    }
-
     uint8_t zero_point1 = 0;
-    {  // get the zp
-      std::vector<uint8_t> unpacked_tensor;
-      unpack_tensor(initializers, input_zp1->Name(), unpacked_tensor);
-      zero_point1 = static_cast<uint8_t>(unpacked_tensor[0]);
-    }
-
     uint8_t zero_point2 = 0;
-    {  // get the zp
-      std::vector<uint8_t> unpacked_tensor;
-      unpack_tensor(initializers, input_zp2->Name(), unpacked_tensor);
-      zero_point2 = static_cast<uint8_t>(unpacked_tensor[0]);
-    }
+    GetQDQModelQuantizationZeroPoint(model_path, zero_point, input_zp->Name(), initializers, unpack_tensor);
+    GetQDQModelQuantizationZeroPoint(model_path, zero_point, input_zp1->Name(), initializers, unpack_tensor);
+    GetQDQModelQuantizationZeroPoint(model_path, zero_point, input_zp2->Name(), initializers, unpack_tensor);
 
     ASSERT_EQ(scale, scale1);
     ASSERT_EQ(scale, scale2);
