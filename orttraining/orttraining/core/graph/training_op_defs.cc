@@ -1454,14 +1454,7 @@ Example 4:
             if ((reduction_attr != nullptr) && (reduction_attr->s() != "mean"))
               mean_reduction = false;
 
-            int64_t ignore_index = 0;
-            bool has_ignore_index = false;
-            auto* ignore_index_attr = ctx.getAttribute("ignore_index");
-            if (ignore_index_attr != nullptr) {
-              has_ignore_index = true;
-              ignore_index = ignore_index_attr->i();
-            }
-
+            bool has_ignore_index = ctx.getAttribute("ignore_index") != nullptr;
             bool has_weight = ctx.hasInput(2);
 
             FunctionBuilder builder(functionProto);
