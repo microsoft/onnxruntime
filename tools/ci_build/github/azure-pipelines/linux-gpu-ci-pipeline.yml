@@ -13,7 +13,7 @@ jobs:
       project: '2a773b67-e88b-4c7f-9fc0-87d31fea8ef2'
       definition: 12
       buildVersionToDownload: specific
-      pipelineId: 597728
+      pipelineId: 597842
       artifactName: 'drop-linux'
 
   - task: CmdLine@2
