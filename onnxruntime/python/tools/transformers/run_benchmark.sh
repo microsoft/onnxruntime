@@ -41,6 +41,10 @@ fi
 # Enable optimizer (use script instead of OnnxRuntime for graph optimization)
 use_optimizer=true
 
+# Manually set layer number as needed(e.g 16)
+force_layer_number=false
+layer_number=16
+
 # Batch Sizes and Sequence Lengths
 batch_sizes="1 4"
 sequence_lengths="8 16 32 64 128 256 512 1024"
@@ -114,6 +118,11 @@ if [ "$use_optimizer" = true ] ; then
 else
   onnx_export_options="$onnx_export_options -o by_ort"
   benchmark_options="$benchmark_options -o by_ort"
+fi
+
+if [ "$force_layer_number" = true ] ; then
+  onnx_export_options="$onnx_export_options --force_num_layers $layer_number"
+  benchmark_options="$benchmark_options --force_num_layers $layer_number"
 fi
 
 # -------------------------------------------
