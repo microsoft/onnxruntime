@@ -18,7 +18,10 @@
 #endif  // #if !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#include "core/graph/graph.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/node_arg.h"
+#include "core/optimizer/initializer.h"
 #endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 using namespace onnxruntime;
@@ -264,14 +267,6 @@ int32_t IndexOfNodeOutput(const Node& node, const NodeArg& node_arg) {
   return -1;
 }
 
-bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_output_edges) {
-  if (graph.NodeProducesGraphOutput(node)) {
-    return false;
-  }
-
-  return node.GetOutputEdgesCount() == expected_output_edges;
-}
-
 // Allow certain domains/ops. We don't know anything about unknown domains/ops (e.g. custom ops),
 // so we have to assume that they are not deterministic, to be on the safe side.
 // We could also allow other known domains (kMSDomain, kMSNchwcDomain, kMSFeaturizersDomain),
@@ -286,12 +281,16 @@ bool IsOperationDeterministic(const std::string& domain, const std::string& op) 
   return false;
 }
 
+#endif  // #if !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, float& max) {
   min = std::numeric_limits<float>::lowest();
   max = std::numeric_limits<float>::max();
 
   // Clip opset 1 and 6 has min and max as attributes. they're inputs from opset 11 on.
-  bool min_max_are_attributes = graph_utils::IsSupportedOptypeVersionAndDomain(node, "Clip", {1, 6});
+  bool min_max_are_attributes = node.SinceVersion() == 1 || node.SinceVersion() == 6;
   bool min_max_are_constant_values = true;
 
   if (min_max_are_attributes) {
@@ -301,39 +300,40 @@ bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, flo
     // update min/max if provided via a constant initializer
     // return true if value is default or coming from a constant initializer and update 'value'
     // return false if value is mutable
-    auto update_if_constant_value = [&graph](const Node& node, size_t input_idx, float& value) {
-      const auto& input_defs = node.InputDefs();
-      const NodeArg* input = (input_defs.size() > input_idx) ? input_defs[input_idx] : nullptr;
+    auto update_if_constant_value =
+        [&graph](const Node& node, size_t input_idx, float& value) {
+          const auto& input_defs = node.InputDefs();
+          const NodeArg* input = (input_defs.size() > input_idx) ? input_defs[input_idx] : nullptr;
 
-      if (input == nullptr || !input->Exists()) {
-        // optional input not specified so using default value
-        return true;
-      }
+          if (input == nullptr || !input->Exists()) {
+            // optional input not specified so using default value
+            return true;
+          }
 
-      bool is_constant = true;
-      const ONNX_NAMESPACE::TensorProto* initializer = graph_utils::GetConstantInitializer(graph, input->Name());
-      if (initializer) {
-        Initializer i(*initializer, graph.ModelPath());
-        switch (initializer->data_type()) {
-          case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-            value = *i.data<float>();
-            break;
-          // double isn't currently supported
-          //case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
-          //  value = static_cast<float>(*i.data<double>());
-          //  break;
-          case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-            value = math::halfToFloat(i.data<MLFloat16>()->val);
-            break;
-          default:
-            ORT_THROW("Unexpected data type for Clip input of ", initializer->data_type());
-        }
-      } else {
-        is_constant = false;
-      }
+          bool is_constant = true;
+          const ONNX_NAMESPACE::TensorProto* initializer = graph.GetConstantInitializer(input->Name(), true);
+          if (initializer) {
+            Initializer i(*initializer, graph.ModelPath());
+            switch (initializer->data_type()) {
+              case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+                value = *i.data<float>();
+                break;
+              // double isn't currently supported
+              // case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+              //  value = static_cast<float>(*i.data<double>());
+              //  break;
+              case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+                value = math::halfToFloat(i.data<MLFloat16>()->val);
+                break;
+              default:
+                ORT_THROW("Unexpected data type for Clip input of ", initializer->data_type());
+            }
+          } else {
+            is_constant = false;
+          }
 
-      return is_constant;
-    };
+          return is_constant;
+        };
 
     // 'min' is input 1, 'max' is input 2. both are optional.
     // if the input is constant, 'min' or 'max' is updated by the call to get_if_constant_value
@@ -344,9 +344,13 @@ bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, flo
   return min_max_are_constant_values;
 }
 
-#endif  // #if !defined(ORT_MINIMAL_BUILD)
+bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_output_edges) {
+  if (graph.NodeProducesGraphOutput(node)) {
+    return false;
+  }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  return node.GetOutputEdgesCount() == expected_output_edges;
+}
 
 bool IsScalar(const NodeArg& input_arg) {
   auto shape = input_arg.Shape();

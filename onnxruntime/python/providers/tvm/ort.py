@@ -5,45 +5,27 @@
 # --------------------------------------------------------------------------
 
 import os
-import timeit
-import numpy as np
 import collections
+import copy
+import logging
 
 import onnx
 import tvm
 from tvm import relay, auto_scheduler
+from tvm.relay import vm
 from tvm.contrib import graph_executor
 from tvm import autotvm
+
+log = logging.getLogger("tvm_ep")
 
 ANSOR_TYPE = "Ansor"
 AUTO_TVM_TYPE = "AutoTVM"
 
 
-@tvm.register_func("tvm_run_with_benchmark")
-def run_with_benchmark(mod):
-    run = mod.get_function('run')
-
-    def benchmark(name):
-        t = timeit.Timer(lambda: run()).repeat(repeat=5, number=5)
-        ts = np.array(t) * 1000
-        print("{} benchmark results: {:.2f}ms mean, {:.2f}ms median, {:.2f}ms std".format(
-            name, np.mean(ts), np.median(ts), np.std(ts)
-        ))
-    if os.getenv("AUTOTVM_TUNING_LOG"):
-        benchmark("Tuned")
-    else:
-        benchmark("Baseline")
-
-
-@tvm.register_func("tvm_run")
-def run_without_benchmark(mod):
-    run = mod.get_function('run')
-    run()
-
-
 @tvm.register_func("tvm_onnx_import_and_compile")
 def onnx_compile(model_string,
                  model_path,
+                 executor,
                  target,
                  target_host,
                  opt_level,
@@ -53,6 +35,23 @@ def onnx_compile(model_string,
                  nhwc=False,
                  tuning_logfile="",
                  tuning_type=AUTO_TVM_TYPE):
+    def get_tvm_executor(irmod, executor, target, params):
+        if executor == "vm":
+            log.info("Build TVM virtual machine")
+            lib = vm.compile(
+                copy.deepcopy(irmod),
+                target,
+                params=params,
+            )
+        elif executor == "graph":
+            log.info("Build TVM graph executor")
+            lib = relay.build(irmod, target=target, params=params)
+        else:
+            log.error("Executor type {} is unsupported. ".format(executor) +
+                      "Only \"vm\" and \"graph\" types are supported")
+            return None
+        return lib
+
     model = onnx.load_model_from_string(bytes(model_string))
     if model_path:
         base_dir = os.path.dirname(os.path.abspath(model_path))
@@ -73,49 +72,65 @@ def onnx_compile(model_string,
         feed_shape_dict[name] = shape_dict[name]
 
     irmod, params = relay.frontend.from_onnx(model, feed_shape_dict, opset=opset, freeze_params=freeze_params)
+    irmod = relay.transform.DynamicToStatic()(irmod)
 
-    # TODO(vvchernov): replace prints by logger, but investigate ORT logging system for python before
-    # Also see lines 91, 106
-    # print("Build TVM graph executor")
     # Tuning file can be set by client through ep options
     if tuning_logfile == "":
         tuning_logfile = os.getenv("AUTOTVM_TUNING_LOG")
-    if tuning_type == ANSOR_TYPE:
-        if tuning_logfile:
+    lib = None
+    tvm_target = tvm.target.Target(target, host=target_host)
+    if tuning_logfile:
+        if tuning_type == ANSOR_TYPE:
             desired_layouts = {
                 "nn.conv2d": ["NHWC", "default"],
                 "nn.conv2d_transpose": ["NHWC", "default"],
                 "nn.upsampling": ["NHWC", "default"],
                 "vision.roi_align": ["NHWC", "default"],
             }
-            # print("Use tuning file from ", ANSOR_TYPE, ": ", tuning_logfile)
+            log.info("Use tuning file from ", ANSOR_TYPE, ": ", tuning_logfile)
             with auto_scheduler.ApplyHistoryBest(tuning_logfile):
-                with tvm.transform.PassContext(opt_level=opt_level, config={"relay.backend.use_auto_scheduler": True}):
+                with tvm.transform.PassContext(
+                    opt_level=opt_level,
+                    config={
+                        "relay.backend.use_auto_scheduler": True,
+                        "relay.FuseOps.max_depth": 30,
+                        }
+                ):
                     if nhwc:
-                        irmod = relay.transform.InferType()(irmod)
-                        model_nhwc = relay.transform.ConvertLayout(desired_layouts)(irmod)
-                        model_nhwc = tvm.relay.transform.EliminateCommonSubexpr()(model_nhwc)
-                        irmod = tvm.relay.transform.FoldConstant()(model_nhwc)
-                    lib = relay.build(irmod, target=target, target_host=target_host)
-        else:
-            with tvm.transform.PassContext(opt_level=opt_level):
-                lib = relay.build(irmod, target=target, target_host=target_host, params=params)
-    elif tuning_type == AUTO_TVM_TYPE:
-        with relay.build_config(opt_level=opt_level):
-            if tuning_logfile:
-                # print("Use tuning file from ", AUTO_TVM_TYPE, ": ", tuning_logfile)
+                        seq = tvm.transform.Sequential(
+                            [
+                                relay.transform.InferType(),
+                                relay.transform.ConvertLayout(desired_layouts),
+                                relay.transform.EliminateCommonSubexpr(),
+                                relay.transform.FoldConstant(),
+                            ]
+                        )
+                        irmod = seq(irmod)
+                    lib = get_tvm_executor(irmod, executor, tvm_target, params)
+        elif tuning_type == AUTO_TVM_TYPE:
+            with relay.build_config(opt_level=opt_level):
+                log.info("Use tuning file from ", AUTO_TVM_TYPE, ": ", tuning_logfile)
                 with autotvm.apply_history_best(tuning_logfile):
-                    # XXX: do not pass parameters to relay.build otherwise they will be inline into the module
-                    lib = relay.build(irmod, target_host=target_host, target=target)
-            else:
-                lib = relay.build(irmod, target_host=target_host, target=target)
+                    lib = get_tvm_executor(irmod, executor, tvm_target, params)
+        else:
+            log.error("Tuning log type {} is unsupported. ".format(tuning_type) +
+                      "Only {} and {} types are supported".format(ANSOR_TYPE, AUTO_TVM_TYPE))
+            return None
     else:
-        # TODO(vvchernov): replace prints by logger, but investigate ORT logging system for python before
-        # print is not commented out while it declares error
-        print("ERROR: Tuning log type {} is unsupported. ".format(tuning_type),
-              "Only {} and {} types are supported".format(ANSOR_TYPE, AUTO_TVM_TYPE))
+        with tvm.transform.PassContext(opt_level=opt_level):
+            lib = get_tvm_executor(irmod, executor, tvm_target, params)
+
+    if lib is None:
         return None
 
     ctx = tvm.device(target, 0)
-    m = graph_executor.GraphModule(lib["default"](ctx))
+    if executor == "vm":
+        m = tvm.runtime.vm.VirtualMachine(lib, ctx)
+    elif executor == "graph":
+        m = graph_executor.GraphModule(lib["default"](ctx))
+    else:
+        print("ERROR: Executor type {} is unsupported. ".format(executor),
+              "Only \"vm\" and \"graph\" types are supported")
+        return None
+
     return m.module

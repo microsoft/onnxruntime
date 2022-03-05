@@ -52,15 +52,17 @@ namespace layout_transformer {
 const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps();
 
 /// <summary>
-/// Transforms data layout from NCHW to NHWC. Applies transforms to layout sensitive nodes
-/// assigned to execution_provider provided by the caller and any other non-layout sensitive 
-/// nodes in order to optimize the transposes as much as possible.
+/// Transforms data layout from NCHW to NHWC, using the kMSInternalNHWCDomain domain for updated nodes. The current
+/// usage is by a compiling EP such as NNAPI, where the synthetic domain is a signal that the node has been updated
+/// to the EP's required layout.
+///
+/// Transforms are applied to layout sensitive nodes assigned to execution_provider provided by the caller,
+/// and any other non-layout sensitive nodes in order to optimize the transposes as much as possible.
 /// </summary>
 /// <param name="graph">graph to transform</param>
 /// <param name="modified">indicates whether the graph is modified during transformation</param>
 /// <param name="execution_provider">execution provider for which the transformation needs to be performed</param>
-/// <returns></returns>
-Status TransformLayout(Graph& graph, bool& modified, IExecutionProvider& execution_provider);
+Status TransformLayoutForCompilingEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider);
 
 }  // namespace layout_transformer
 }  // namespace onnxruntime

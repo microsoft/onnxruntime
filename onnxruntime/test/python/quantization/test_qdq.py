@@ -231,7 +231,7 @@ class TestQDQFormatConv(TestQDQFormat):
 
         onnx.save(model, output_model_path)
 
-    def verify_quantize_conv(self, has_bias, per_channel, is_weight_int8 = False):
+    def verify_quantize_conv(self, has_bias, per_channel, is_quant_type_int8 = False):
         np.random.seed(1)
         model_fp32_path = 'conv_fp32.{}.{}.onnx'.format(has_bias, per_channel)
         model_int8_qdq_path = 'conv_quant_qdq.{}.{}.onnx'.format(has_bias, per_channel)
@@ -248,7 +248,8 @@ class TestQDQFormatConv(TestQDQFormat):
                         quant_format=QuantFormat.QDQ,
                         per_channel = per_channel,
                         reduce_range = per_channel,
-                        weight_type = QuantType.QInt8 if is_weight_int8 else QuantType.QUInt8
+                        activation_type = QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
+                        weight_type = QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8
                         )
         data_reader.rewind()
         qdq_nodes = {'Conv': 1, 'QuantizeLinear': 2, 'DequantizeLinear': 4 if has_bias else 3}
@@ -262,7 +263,8 @@ class TestQDQFormatConv(TestQDQFormat):
                         quant_format=QuantFormat.QOperator,
                         per_channel = per_channel,
                         reduce_range = per_channel,
-                        weight_type = QuantType.QInt8 if is_weight_int8 else QuantType.QUInt8
+                        activation_type = QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
+                        weight_type = QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8
                         )
         data_reader.rewind()
         qop_nodes = {'QLinearConv': 1, 'QuantizeLinear': 1, 'DequantizeLinear': 1}
@@ -271,13 +273,13 @@ class TestQDQFormatConv(TestQDQFormat):
 
     def test_quantize_conv_without_bias(self):
         # only test cases per_channel=True and reduce_range=True to avoid saturation on avx2 and avx512 for weight type int8
-        self.verify_quantize_conv(False, True, True) # has_bias:False, per_channel:True, is_weight_int8:True
-        self.verify_quantize_conv(True, True, True) # has_bias:True, per_channel:True, is_weight_int8:True
+        self.verify_quantize_conv(False, True, True) # has_bias:False, per_channel:True, is_quant_type_int8:True
+        self.verify_quantize_conv(True, True, True) # has_bias:True, per_channel:True, is_quant_type_int8:True
 
-        self.verify_quantize_conv(False, False, False) # has_bias:False, per_channel:False, is_weight_int8:False
-        self.verify_quantize_conv(True, False, False) # has_bias:True, per_channel:False, is_weight_int8:False
-        self.verify_quantize_conv(False, True, False) # has_bias:False, per_channel:True, is_weight_int8:False
-        self.verify_quantize_conv(True, True, False) # has_bias:True, per_channel:True, is_weight_int8:False
+        self.verify_quantize_conv(False, False, False) # has_bias:False, per_channel:False, is_quant_type_int8:False
+        self.verify_quantize_conv(True, False, False) # has_bias:True, per_channel:False, is_quant_type_int8:False
+        self.verify_quantize_conv(False, True, False) # has_bias:False, per_channel:True, is_quant_type_int8:False
+        self.verify_quantize_conv(True, True, False) # has_bias:True, per_channel:True, is_quant_type_int8:False
 
 class TestQDQFormatConvClip(TestQDQFormat):
     def construct_model_conv_clip(self, output_model_path, input_shape, weight_shape, output_shape):
@@ -330,7 +332,7 @@ class TestQDQFormatConvClip(TestQDQFormat):
 
         onnx.save(model, output_model_path)
 
-    def verify(self, per_channel, is_weight_int8):
+    def verify(self, per_channel, is_quant_type_int8):
         np.random.seed(1)
         model_fp32_path = 'conv_clip_fp32.{}.onnx'.format(per_channel)
         model_int8_qdq_path = 'conv_clip_quant_qdq.{}.onnx'.format(per_channel)
@@ -346,7 +348,8 @@ class TestQDQFormatConvClip(TestQDQFormat):
                         quant_format=QuantFormat.QDQ,
                         per_channel = per_channel,
                         reduce_range = per_channel,
-                        weight_type = QuantType.QInt8 if is_weight_int8 else QuantType.QUInt8
+                        activation_type = QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
+                        weight_type = QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8
                         )
         data_reader.rewind()
         #topo sort check
@@ -360,7 +363,8 @@ class TestQDQFormatConvClip(TestQDQFormat):
                         quant_format=QuantFormat.QOperator,
                         per_channel = per_channel,
                         reduce_range = per_channel,
-                        weight_type = QuantType.QInt8 if is_weight_int8 else QuantType.QUInt8
+                        activation_type = QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
+                        weight_type = QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8
                         )
         data_reader.rewind()
         qop_nodes = {'QLinearConv': 1, 'QuantizeLinear': 1, 'DequantizeLinear': 1}
@@ -369,10 +373,10 @@ class TestQDQFormatConvClip(TestQDQFormat):
 
     def test_quantize_conv_without_bias(self):
         # only test cases per_channel=True and reduce_range=True to avoid saturation on avx2 and avx512 for weight type int8
-        self.verify(True, True) # per_channel:False, is_weight_int8:True
+        self.verify(True, True) # per_channel:False, is_quant_type_int8:True
 
-        self.verify(False, False) # per_channel:False, is_weight_int8:False
-        self.verify(True, False) # per_channel:True, is_weight_int8:False
+        self.verify(False, False) # per_channel:False, is_quant_type_int8:False
+        self.verify(True, False) # per_channel:True, is_quant_type_int8:False
 
 
 class TestQDQFormatConvRelu(TestQDQFormat):
@@ -411,7 +415,7 @@ class TestQDQFormatConvRelu(TestQDQFormat):
 
         onnx.save(model, output_model_path)
 
-    def verify(self, per_channel, is_weight_int8):
+    def verify(self, per_channel, is_quant_type_int8):
         np.random.seed(1)
         model_fp32_path = 'conv_relu_fp32.{}.onnx'.format(per_channel)
         model_int8_qdq_path = 'conv_relu_quant_qdq.{}.onnx'.format(per_channel)
@@ -427,7 +431,8 @@ class TestQDQFormatConvRelu(TestQDQFormat):
                         quant_format=QuantFormat.QDQ,
                         per_channel = per_channel,
                         reduce_range = per_channel,
-                        weight_type = QuantType.QInt8 if is_weight_int8 else QuantType.QUInt8
+                        activation_type = QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
+                        weight_type = QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8
                         )
         data_reader.rewind()
         #topo sort check
@@ -441,7 +446,8 @@ class TestQDQFormatConvRelu(TestQDQFormat):
                         quant_format=QuantFormat.QOperator,
                         per_channel = per_channel,
                         reduce_range = per_channel,
-                        weight_type = QuantType.QInt8 if is_weight_int8 else QuantType.QUInt8
+                        activation_type = QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8,
+                        weight_type = QuantType.QInt8 if is_quant_type_int8 else QuantType.QUInt8
                         )
         data_reader.rewind()
         qop_nodes = {'QLinearConv': 1, 'QuantizeLinear': 1, 'DequantizeLinear': 1}
@@ -450,10 +456,10 @@ class TestQDQFormatConvRelu(TestQDQFormat):
 
     def test_quantize_conv_without_bias(self):
         # only test cases per_channel=True and reduce_range=True to avoid saturation on avx2 and avx512 for weight type int8
-        self.verify(True, True) # per_channel:False, is_weight_int8:True
+        self.verify(True, True) # per_channel:False, is_quant_type_int8:True
 
-        self.verify(False, False) # per_channel:False, is_weight_int8:False
-        self.verify(True, False) # per_channel:True, is_weight_int8:False
+        self.verify(False, False) # per_channel:False, is_quant_type_int8:False
+        self.verify(True, False) # per_channel:True, is_quant_type_int8:False
 
 if __name__ == '__main__':
     unittest.main()

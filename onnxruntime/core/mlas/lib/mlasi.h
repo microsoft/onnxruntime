@@ -536,6 +536,8 @@ extern "C" {
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelPOWER10;
     MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernel;
     MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelPOWER10;
+    MLAS_QUANTIZE_LINEAR_S8_KERNEL MlasQuantizeLinearS8KernelVSX;
+    MLAS_QUANTIZE_LINEAR_U8_KERNEL MlasQuantizeLinearU8KernelVSX;
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
@@ -704,6 +706,7 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchDefault;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemm8X8DispatchPOWER10;
 
 //
 // Symmetric quantized qgemm dispatch structure
@@ -849,6 +852,9 @@ struct MLAS_PLATFORM {
 
 #if defined(MLAS_TARGET_POWER)
     MLAS_GEMM_DOUBLE_KERNEL* GemmDoubleKernel;
+    const MLAS_GEMM_QUANT_DISPATCH* GemmU8X8Dispatch;
+    MLAS_QUANTIZE_LINEAR_S8_KERNEL* QuantizeLinearS8Kernel;
+    MLAS_QUANTIZE_LINEAR_U8_KERNEL* QuantizeLinearU8Kernel;
 #endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1Routine;
