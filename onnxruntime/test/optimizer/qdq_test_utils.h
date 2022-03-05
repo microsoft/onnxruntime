@@ -288,11 +288,10 @@ GetQDQTestCaseFn BuildQDQConcatTestCase(const std::vector<std::vector<int64_t>>&
                                         bool has_input_float = false,
                                         bool has_input_int8 = false,
                                         bool has_output_int8 = false);
-/*
+
 #ifdef USE_NNAPI
 GetQDQTestCaseFn BuildQDQConcatTestCaseUnsupported();
 #endif
-*/
 
 }  // namespace test
 }  // namespace onnxruntime

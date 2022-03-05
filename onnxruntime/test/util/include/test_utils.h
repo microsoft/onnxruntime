@@ -25,6 +25,8 @@ struct EPVerificationParams {
   // the default of 1e-5f, especially for scenarios such as [Q -> Quantized op -> DQ]
   // Set this only if this is necessary
   float fp32_abs_err = 1e-5f;
+
+  bool verify_expected_failure_graph{false};
 };
 
 // return number of nodes in the Graph and any subgraphs that are assigned to the specified execution provider

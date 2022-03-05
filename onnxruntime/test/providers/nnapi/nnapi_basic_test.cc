@@ -4,6 +4,7 @@
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 #include "core/common/logging/logging.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
+#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
 #include "core/session/inference_session.h"
 #include "core/framework/tensorprotoutils.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -339,15 +340,17 @@ TEST(NnapiExecutionProviderTest, TestQDQResize) {
                   {false /* verify_entire_graph_use_ep */});
 }
 
-#if !defined(__ANDROID__)
 TEST(NnapiExecutionProviderTest, TestQDQResize_UnsupportedDefaultSetting) {
   RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
                                          {1, 3, 32, 32} /* sizes_data */),
                   "nnapi_qdq_test_graph_resize",
-                  {false /* verify_entire_graph_use_ep */},
+                  {
+                      false /* verify_entire_graph_use_ep */,
+                      1e-5f,
+                      true /* verify_expected_failure_graph */,
+                  },
                   false /* nnapi_qdq_model_supported */);
 }
-#endif
 
 TEST(NnapiExecutionProviderTest, TestQDQAveragePool) {
   // NNAPI use different rounding, which may cause ~1% difference in the result
@@ -417,8 +420,8 @@ TEST(NnapiExecutionProviderTest, TestQDQSoftMax) {
                   });
 }
 
-#if !defined(__ANDROID__)
-// See https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/op_support_checker.cc#L1236
+// This is to verify when Nnapi required scale and zero point are not satisfied
+// the model can work as expected. (no nodes should be handled by Nnapi)
 TEST(NnapiExecutionProviderTest, TestQDQSoftMax_UnsupportedOutputScaleAndZp) {
   RunQDQModelTest(BuildQDQSoftMaxTestCase<uint8_t, uint8_t>(
                       {1, 32} /* input_shape */,
@@ -427,11 +430,12 @@ TEST(NnapiExecutionProviderTest, TestQDQSoftMax_UnsupportedOutputScaleAndZp) {
                       1 /* output_zp */),
                   "nnapi_qdq_test_graph_softmax",
                   {
-                      true /* verify_entire_graph_use_ep */
+                      false /* verify_entire_graph_use_ep */,
+                      1e-5,
+                      true /* verify_expected_failure_graph */,
                   },
                   false /* nnapi_qdq_model_supported */);
 }
-#endif
 
 TEST(NnapiExecutionProviderTest, TestQDQConcat) {
   // This is to verify all the inputs have the same scale and zp as input 0
@@ -528,15 +532,23 @@ TEST(NnapiExecutionProviderTest, TestQDQConcat) {
                   check_graph);
 }
 
-//TEST(NnapiExecutionProviderTest, TestQDQConcat_UnsupportedInputScalesAndZp) {
+#if defined(__ANDROID__)
+TEST(NnapiExecutionProviderTest, TestQDQConcat_UnsupportedInputScalesAndZp) {
   // This is to verify all the inputs have the same scale and zp as input 0
-// RunQDQModelTest(BuildQDQConcatTestCaseUnsupported(),
-//                  "nnapi_qdq_test_graph_concat",
-//                  {
-//                      true /* verify_entire_graph_use_ep */
-//                  },
-//                  false /* nnapi_qdq_model_supported */);
-//}
+  const auto* nnapi = NnApiImplementation();
+  if (nnapi->nnapi_runtime_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
+    RunQDQModelTest(BuildQDQConcatTestCaseUnsupported(),
+                    "nnapi_qdq_test_graph_concat",
+                    {
+                        false /* verify_entire_graph_use_ep */
+                        1e-5,
+                        true /* verify_expected_failure_graph */
+                    },
+                    false /* nnapi_qdq_model_supported */);
+  }
+}
+#endif
+
 #endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {

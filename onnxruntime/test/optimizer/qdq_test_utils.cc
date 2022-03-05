@@ -98,7 +98,6 @@ GetQDQTestCaseFn BuildQDQConcatTestCase(const std::vector<std::vector<int64_t>>&
   };
 }
 
-/*
 #ifdef USE_NNAPI
 GetQDQTestCaseFn BuildQDQConcatTestCaseUnsupported() {
   return [](ModelTestBuilder& builder) {
@@ -111,7 +110,7 @@ GetQDQTestCaseFn BuildQDQConcatTestCaseUnsupported() {
 
     std::vector<NodeArg*> input_args;
     std::vector<NodeArg*> q_input_args;
-    
+
     // set unmatched input scales/zp for test purpose
     input_args.push_back(builder.MakeInput<float>(input_shapes[0], -1.f, 1.f));
     q_input_args.push_back(AddQDQNodePair<uint8_t>(builder, input_args.back(), 0.05f, 128));
@@ -131,6 +130,6 @@ GetQDQTestCaseFn BuildQDQConcatTestCaseUnsupported() {
   };
 }
 #endif
-*/
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -126,6 +126,9 @@ void RunAndVerifyOutputsWithEP(const std::string& model_data, const char* log_id
   if (params.verify_entire_graph_use_ep) {
     // Verify the entire graph is assigned to the EP
     ASSERT_EQ(ep_nodes, graph2.NumberOfNodes()) << "Not all nodes were assigned to " << provider_type;
+  } else if (params.verify_expected_failure_graph) {
+    // Check if expected failure path is correctly handled by ep. (only used in NNAPI EP QDQ model test case for now)
+    ASSERT_EQ(ep_nodes, 0) << "No nodes are supposed to be assigned to " << provider_type;
   } else {
     ASSERT_GT(ep_nodes, 0) << "No nodes were assigned to " << provider_type;
   }
