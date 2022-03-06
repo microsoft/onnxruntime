@@ -6,7 +6,8 @@
 ARG IMAGE=onnxruntime
 FROM ${IMAGE}
 
+ADD requirements.txt /tmp/requirements.txt
 RUN apt-get install -y --no-install-recommends libprotobuf-dev protobuf-compiler pciutils &&\
     pip install --upgrade pip &&\
-    pip install pandas coloredlogs numpy flake8 onnx Cython onnxmltools sympy packaging psutil 
+    pip install -r /tmp/requirements.txt
 
