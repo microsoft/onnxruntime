@@ -1,72 +1,70 @@
 import argparse
+from dataclasses import dataclass
 import numpy as np
-from benchmark import benchmark, add_arguments
+from benchmark import BenchmarkOp, add_arguments
 
 
-def create_inputs_outputs(b1, b2, m, k, n, data_type):
-    np.random.seed(0)
-    a = np.random.rand(b1, b2, m, k).astype(data_type)
-    b = np.random.rand(b1, b2, k, n).astype(data_type)
-    c = np.random.rand(b1, b2, m, n).astype(data_type)
-
-    inputs = {"A": a, "B": b}
-    outputs = {"return_val": c}
- 
-    return inputs, outputs
+@dataclass
+class OpParam:
+    b1: int
+    b2: int
+    m: int
+    k: int
+    n: int
+    data_type: type
 
 
-def add_benchmark_case(benchmark_cases, batch_size, seq_len, hidden_size, intermediate_dimension, num_heads, data_type, model):
-    benchmark_cases += [
-        (1, batch_size, seq_len, hidden_size, hidden_size, data_type, model),
-        (1, batch_size, seq_len, intermediate_dimension, hidden_size, data_type, model),
-        (1, batch_size, seq_len, hidden_size, intermediate_dimension, data_type, model),
-        (batch_size, num_heads, seq_len, seq_len, int(hidden_size / num_heads), data_type, model),
-    ]
+@dataclass
+class ModelParam:
+    batch_size: int
+    seq_len: int
+    hidden_size: int
+    inter_dim: int
+    num_heads: int
+    data_type: type
 
 
-def create_benchmark_cases(precision):
-    benchmark_cases = []
-    if precision == "fp16":
-      model = "models/matmul_fp16.onnx"
-      data_type = np.float16
-    else:
-      model = "models/matmul_fp32.onnx"
-      data_type = np.float32
+class BenchmarkMatMul(BenchmarkOp):
+    def __init__(self, args):
+        BenchmarkOp.__init__(self, args)
 
-    # bert-large
-    hidden_size = 1024
-    seq_len = 384
-    num_heads = 16
-    batch_size = 1
-    intermediate_dimension = hidden_size * 4
-    add_benchmark_case(benchmark_cases, batch_size, seq_len, hidden_size, intermediate_dimension, num_heads, data_type, model)
+    def create_inputs_outputs(cls, op_param):
+        np.random.seed(0)
+        a = np.random.rand(op_param.b1, op_param.b2, op_param.m, op_param.k).astype(op_param.data_type)
+        b = np.random.rand(op_param.b1, op_param.b2, op_param.k, op_param.n).astype(op_param.data_type)
+        c = np.random.rand(op_param.b1, op_param.b2, op_param.m, op_param.n).astype(op_param.data_type)
+        inputs = {"A": a, "B": b}
+        outputs = {"return_val": c}
+        return inputs, outputs
 
-    # bert-base
-    hidden_size = 768
-    seq_len = 384
-    num_heads = 12
-    batch_size = 1
-    intermediate_dimension = hidden_size * 4
-    add_benchmark_case(benchmark_cases, batch_size, seq_len, hidden_size, intermediate_dimension, num_heads, data_type, model)
+    def add_model_cases(self, mp, model):
+        self.add_case(OpParam(1, mp.batch_size, mp.seq_len, mp.hidden_size, mp.hidden_size, mp.data_type), model)
+        self.add_case(OpParam(1, mp.batch_size, mp.seq_len, mp.inter_dim, mp.hidden_size, mp.data_type), model)
+        self.add_case(OpParam(1, mp.batch_size, mp.seq_len, mp.hidden_size, mp.inter_dim, mp.data_type), model)
+        self.add_case(OpParam(mp.batch_size, mp.num_heads, mp.seq_len, mp.seq_len, int(mp.hidden_size / mp.num_heads), mp.data_type), model)
 
-    return benchmark_cases
+    def create_cases(self):
+        model = "models/matmul_fp16.onnx" if self.args.precision == "fp16" else "models/matmul_fp32.onnx"
+        data_type = np.float16 if self.args.precision == "fp16" else np.float32
+        # bert-large
+        model_param = ModelParam(1, 384, 1024, 1024 * 4, 16, data_type)
+        self.add_model_cases(model_param, model)
+        # bert-base
+        model_param = ModelParam(1, 384, 768, 768 * 4, 12, data_type)
+        self.add_model_cases(model_param, model)
 
-
-def benchmark_matmul(b1, b2, m, k, n, data_type, onnx_file, args):
-    inputs, outputs = create_inputs_outputs(b1, b2, m, k, n, data_type)
-    time = benchmark(onnx_file, inputs, outputs, args)
-    return time
+    def case_profile(cls, op_param, time):
+        tflops = op_param.b1 * op_param.b2 * op_param.m * op_param.k * op_param.n * 2 / time / 1000000000
+        profile = f"(b1 b2 m k n) = ({op_param.b1} {op_param.b2} {op_param.m} {op_param.k} {op_param.n}), {time:7.4f} ms, {tflops:4.2f} tflops"
+        return profile
 
 
 def main():
     parser = argparse.ArgumentParser()
     add_arguments(parser)
     args = parser.parse_args()
-
-    for (b1, b2, m, k, n, data_type, onnx_file) in create_benchmark_cases(args.precision):
-        time = benchmark_matmul(b1, b2, m, k, n, data_type, onnx_file, args)
-        tflops = b1 * b2 * m * k * n * 2 / time / 1000000000
-        print(f"(b1 b2 m k n) = ({b1} {b2} {m} {k} {n}), {time:7.4f} ms, {tflops:4.2f} tflops")
+    bm = BenchmarkMatMul(args)
+    bm.benchmark()
 
 
 if __name__ == "__main__":
