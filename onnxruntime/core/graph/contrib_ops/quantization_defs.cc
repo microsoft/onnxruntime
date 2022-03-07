@@ -1140,11 +1140,12 @@ TODO: Support them if needed in the future.
       .Input(3, "scale_weight", "scale of the weight", "S")
       .Input(4, "bias", "1D input tensor with shape (3 * hidden_size)", "Q")
       .Input(5, "scale_bias", "scale of the bias", "S")
-      .Input(6, "mask_index",
+      .Input(6, "scale_gemm", "scale of the gemm", "S")
+      .Input(7, "mask_index",
              "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, past_sequence_length + sequence_length)"
              "or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).",
              "G", OpSchema::Optional)
-      .Input(7, "scale_output", "scale of the output", "S")
+      .Input(8, "scale_output", "scale of the output", "S")
       .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "Q")
       .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
       .TypeConstraint("S", {"tensor(float)"}, "Constrain scales to float32 tensors.")

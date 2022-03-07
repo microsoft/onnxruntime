@@ -32,8 +32,11 @@ QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info
   order_weight_ = GetCublasLtOrderAttr(info, "order_weight");
   order_bias_ = GetCublasLtOrderAttr(info, "order_bias");
   order_output_ = GetCublasLtOrderAttr(info, "order_output");
-  //TODO: any checks?
-  // bugbug
+  ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_input");
+  ORT_ENFORCE(order_weight_ == CUBLASLT_ORDER_COL4_4R2_8C || order_weight_ == CUBLASLT_ORDER_COL32_2R_4R4,
+              "Only CUBLASLT_ORDER_COL4_4R2_8C, CUBLASLT_ORDER_COL32_2R_4R4 are supported for order_weight_");
+  ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_input");
+  ORT_ENFORCE(order_input_ == CUBLASLT_ORDER_COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_input");
 }
 
 Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
@@ -41,7 +44,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(2);
   const Tensor* bias = context->Input<Tensor>(4);
-  const Tensor* mask_index = context->Input<Tensor>(6);
+  const Tensor* mask_index = context->Input<Tensor>(7);
 
   auto& device_prop = GetDeviceProp();
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), mask_index, nullptr, nullptr, device_prop.maxThreadsPerBlock));
@@ -49,15 +52,14 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   const Tensor* scale_input = context->Input<Tensor>(1);
   const Tensor* scale_weights = context->Input<Tensor>(3);
   const Tensor* scale_bias = context->Input<Tensor>(5);
-  const Tensor* scale_output = context->Input<Tensor>(7);
+  const Tensor* scale_gemm = context->Input<Tensor>(6);
+  const Tensor* scale_output = context->Input<Tensor>(8);
 
   const float* scale_input_data = scale_input->template Data<float>();
   const float* scale_weights_data = scale_weights->template Data<float>();
   const float* scale_bias_data = scale_bias->template Data<float>();
+  const float* scale_gemm_data = scale_gemm->template Data<float>();
   const float* scale_output_data = scale_output->template Data<float>();
-
-  // bugbug
-  ORT_UNUSED_PARAMETER(scale_output_data);
 
   // input shape (batch_size, sequence_length, input_hidden_size)
   const auto& shape = input->Shape();
@@ -115,10 +117,9 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
 
   // dequantize back to fp16
   auto gemm_buffer = GetScratchBuffer<int8_t>(batch_size * sequence_length * 3 * hidden_size * element_size); //row, fp16
-  const CudaT scale = (CudaT)1.0f; // bugbug
   ORT_RETURN_IF_ERROR(
     CudaDequantizeLinear(stream, (const int8_t*)gemm_buffer_quantized_row.get(), (CudaT*)gemm_buffer.get(),
-    (const CudaT*)&scale, (const int8_t*)nullptr, batch_size * sequence_length * 3 * hidden_size));
+    (const CudaT*)scale_gemm_data, (const int8_t*)nullptr, batch_size * sequence_length * 3 * hidden_size));
 
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, 0);
   auto temp_buffer = GetScratchBuffer<void>(workSpaceSize);
@@ -150,10 +151,9 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
 
   //quantize to int8
   auto output_buffer_quantized = GetScratchBuffer<int8_t>(batch_size * sequence_length * hidden_size * 1); //row, int8
-  const CudaT scale2 = (CudaT)1.0f; // bugbug
   ORT_RETURN_IF_ERROR(
     CudaQuantizeLinear(stream, (const CudaT*)output_buffer.get(), (int8_t*)output_buffer_quantized.get(),
-                      (const CudaT*)&scale2, (const int8_t*)nullptr, batch_size * sequence_length * hidden_size));
+                      (const CudaT*)scale_output_data, (const int8_t*)nullptr, batch_size * sequence_length * hidden_size));
 
   //reorder to col32
   ORT_RETURN_IF_ERROR(
