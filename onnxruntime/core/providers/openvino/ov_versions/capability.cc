@@ -8,7 +8,7 @@
 #include "utils.h"
 
 #if defined(_MSC_VER)
-#pragma warning(disable : 4244 4245 5208)
+#pragma warning(disable : 4244 4245 5208 4702)
 #elif __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
