@@ -27,6 +27,12 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/graph/function*"
   )
 
+  # remove graph proto serializer
+  list(APPEND onnxruntime_graph_src_exclude_patterns
+    "${ONNXRUNTIME_ROOT}/core/graph/graph_proto_serializer.cc"
+    "${ONNXRUNTIME_ROOT}/core/graph/graph_proto_serializer.h"
+  )
+
   # no optimizer support in base minimal build
   # some optimizer support in extended minimal build
   if (NOT onnxruntime_EXTENDED_MINIMAL_BUILD)

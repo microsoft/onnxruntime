@@ -149,7 +149,9 @@ class GraphViewer {
   /** Get the internal graph*/
   const Graph& GetGraph() const { return *graph_; }
 
+#if !defined(ORT_MINIMAL_BUILD)
   const std::unordered_set<std::string>& GetOuterScopeNodeArgNames() const noexcept;
+#endif
 
   /**
   returns true if 'name' is an initializer, and is constant and cannot be overridden at runtime.
