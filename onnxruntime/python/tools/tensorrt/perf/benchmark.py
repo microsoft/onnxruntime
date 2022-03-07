@@ -1376,11 +1376,9 @@ def output_session_creation(results, csv_filename):
         need_write_header = False 
 
     with open(csv_filename, mode="a", newline='') as csv_file:
-        column_names = [model_title]
-        for provider in ort_provider_list: 
-            column_names.append(provider + session_ending)
-            column_names.append(provider + second_session_ending)
-
+        session_1 = [p + session_ending for p in ort_provider_list]
+        session_2 = [p + second_session_ending for p in ort_provider_list]
+        column_names = [model_title] + session_1 + session_2 
         csv_writer = csv.writer(csv_file)
 
             
@@ -1400,7 +1398,6 @@ def output_session_creation(results, csv_filename):
         cuda_fp16_time_2 = ""
         trt_fp16_time_2 = ""
 
-        print(results)
         for model_name, ep_dict in results.items():
             for ep, time in ep_dict.items():
                 if ep == cpu: 
@@ -1428,14 +1425,14 @@ def output_session_creation(results, csv_filename):
                     
             row = [model_name,
                    cpu_time, 
-                   cpu_time_2,
                    cuda_fp32_time, 
-                   cuda_fp32_time_2, 
                    trt_fp32_time, 
-                   trt_fp32_time_2, 
                    cuda_fp16_time, 
-                   cuda_fp16_time_2, 
                    trt_fp16_time, 
+                   cpu_time_2, 
+                   cuda_fp32_time_2, 
+                   trt_fp32_time_2, 
+                   cuda_fp16_time_2, 
                    trt_fp16_time_2] 
             csv_writer.writerow(row)
 
