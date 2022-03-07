@@ -52,9 +52,9 @@ ONNX_CPU_OPERATOR_KERNEL(
     ScatterND);
 
 Status ScatterND::ValidateShapes(
-  const TensorShape& input_shape,
-  const TensorShape& indice_shape,
-  const TensorShape& update_shape) {
+    const TensorShape& input_shape,
+    const TensorShape& indice_shape,
+    const TensorShape& update_shape) {
   auto input_rank = input_shape.NumDimensions();
   auto indice_rank = indice_shape.NumDimensions();
   auto update_rank = update_shape.NumDimensions();
@@ -104,7 +104,7 @@ Status ScatterND::ValidateShapes(
   return Status::OK();
 }
 
-template <typename TData> 
+template <typename TData>
 struct Prepare {
   const TData* input_base;
   TData* output_base;
@@ -117,7 +117,7 @@ struct Prepare {
               element_offsets(0) {}
 };  // struct Prepare
 
-template <typename TData> 
+template <typename TData>
 Status PrepareForCompute(OpKernelContext* context, Prepare<TData>& p) {
   const auto* input_tensor = context->Input<Tensor>(0);
   const auto* indice_tensor = context->Input<Tensor>(1);
@@ -145,7 +145,7 @@ Status PrepareForCompute(OpKernelContext* context, Prepare<TData>& p) {
       auto* dst = output_tensor->template MutableData<std::string>();
       std::copy(str_begin, str_end, dst);
     } else {
-      memcpy((void*)dst_base, (const void*)src_base, input_tensor->SizeInBytes());
+      memcpy(dst_base, src_base, input_tensor->SizeInBytes());
     }
   }
 
@@ -198,7 +198,7 @@ struct Func_Copy_ND<std::string> {
   void operator()(std::string* a, const std::string* b, uint64_t element_to_copy) const {
     while (element_to_copy-- > 0)
       (*a++) = (*b++);
-    }
+  }
 };
 
 template <class T>
@@ -209,7 +209,7 @@ struct Func_Add_ND {
   }
 };
 
-template<>
+template <>
 struct Func_Add_ND<bool> {
   void operator()(bool* a, const bool* b, uint64_t element_to_copy) const {
     while (element_to_copy-- > 0)
@@ -217,18 +217,18 @@ struct Func_Add_ND<bool> {
   }
 };
 
-template<>
+template <>
 struct Func_Add_ND<MLFloat16> {
   void operator()(MLFloat16*, const MLFloat16*, uint64_t) const {
     ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with ScatterND opset 16 when reduction is 'add'.");
-    }
+  }
 };
 
-template<>
+template <>
 struct Func_Add_ND<BFloat16> {
   void operator()(BFloat16*, const BFloat16*, uint64_t) const {
     ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterND opset 16 when reduction is 'add'.");
-    }
+  }
 };
 
 template <class T>
@@ -239,7 +239,7 @@ struct Func_Mul_ND {
   }
 };
 
-template<>
+template <>
 struct Func_Mul_ND<bool> {
   void operator()(bool* a, const bool* b, uint64_t element_to_copy) const {
     while (element_to_copy-- > 0)
@@ -247,25 +247,25 @@ struct Func_Mul_ND<bool> {
   }
 };
 
-template<>
+template <>
 struct Func_Mul_ND<std::string> {
   void operator()(std::string*, const std::string*, uint64_t) const {
     ORT_NOT_IMPLEMENTED("CPU execution provider: string data type is not supported with ScatterND opset 16 when reduction is 'mul'.");
   }
 };
 
-template<>
+template <>
 struct Func_Mul_ND<MLFloat16> {
   void operator()(MLFloat16*, const MLFloat16*, uint64_t) const {
     ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with ScatterND opset 16 when reduction is 'mul'.");
-    }
+  }
 };
 
-template<>
+template <>
 struct Func_Mul_ND<BFloat16> {
   void operator()(BFloat16*, const BFloat16*, uint64_t) const {
     ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterND opset 16 when reduction is 'mul'.");
-    }
+  }
 };
 
 template <typename TData>
@@ -275,44 +275,38 @@ struct ScatterNDDispatchTarget {
     ORT_RETURN_IF_ERROR(PrepareForCompute(context, prepare));
 
     auto lambda = [&](int64_t i) {
-      switch(reduction) {
-        case ScatterND::Reduction::Add:
-        {
+      switch (reduction) {
+        case ScatterND::Reduction::Add: {
           auto func = Func_Add_ND<TData>();
           func(
-            prepare.output_base + prepare.element_offsets[i],
-            prepare.input_base + i * prepare.element_to_copy,
-            prepare.element_to_copy);
-        }
-        break;
-        case ScatterND::Reduction::Mul:
-        {
+              prepare.output_base + prepare.element_offsets[i],
+              prepare.input_base + i * prepare.element_to_copy,
+              prepare.element_to_copy);
+        } break;
+        case ScatterND::Reduction::Mul: {
           auto func = Func_Mul_ND<TData>();
           func(
-            prepare.output_base + prepare.element_offsets[i],
-            prepare.input_base + i * prepare.element_to_copy,
-            prepare.element_to_copy);
-        }
-        break;
+              prepare.output_base + prepare.element_offsets[i],
+              prepare.input_base + i * prepare.element_to_copy,
+              prepare.element_to_copy);
+        } break;
         default:
-        case ScatterND::Reduction::None:
-        {
+        case ScatterND::Reduction::None: {
           auto func = Func_Copy_ND<TData>();
           func(
-            prepare.output_base + prepare.element_offsets[i],
-            prepare.input_base + i * prepare.element_to_copy,
-            prepare.element_to_copy);
-        }
-        break;
+              prepare.output_base + prepare.element_offsets[i],
+              prepare.input_base + i * prepare.element_to_copy,
+              prepare.element_to_copy);
+        } break;
       }
     };
     concurrency::ThreadPool::TryParallelFor(
-      tp, prepare.element_offsets.size(), static_cast<double>(prepare.element_to_copy),
-      [&lambda](ptrdiff_t first, ptrdiff_t last) {
-        for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
-          lambda(i);
+        tp, prepare.element_offsets.size(), static_cast<double>(prepare.element_to_copy),
+        [&lambda](ptrdiff_t first, ptrdiff_t last) {
+          for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
+            lambda(i);
           }
-      });
+        });
     return Status::OK();
   }
 };

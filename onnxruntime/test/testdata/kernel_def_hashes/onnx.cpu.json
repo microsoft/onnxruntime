@@ -916,10 +916,6 @@
         15150264021585158264
     ],
     [
-        "GridSample com.microsoft CPUExecutionProvider",
-        11924582339825775592
-    ],
-    [
         "GRU ai.onnx CPUExecutionProvider",
         5656895183302764352
     ],

@@ -23,15 +23,15 @@ namespace onnxruntime {
 
 REGISTER_KERNEL_TYPED(float)
 
-// Restore normalized location to acutal image location
+// Restore normalized location to actual image location
 //   When align_corners is true:
 //     Normalized location (-1, -1) points to the top-left pixel.
-//     Normalized location (1, 1) points to the bottom-tight pixel.
+//     Normalized location (1, 1) points to the bottom-right pixel.
 //   When align_corners is false [default]:
 //     Normalized location (-1, -1) points to the top-left pixel minus half
-//     pixel in both directions, i.e, (-0.5, -0.5) in acutal image space.
-//     Normalized location (1, 1) points to the bottom-tight pixel plus half
-//     pixel in both directions, i.e. (H - 0.5, W - 0.5) in acutal image space.
+//     pixel in both directions, i.e, (-0.5, -0.5) in actual image space.
+//     Normalized location (1, 1) points to the bottom-right pixel plus half
+//     pixel in both directions, i.e. (H - 0.5, W - 0.5) in actual image space.
 template <typename T>
 T GsDenormalize(T n, int64_t length, bool align_corners) {
   T x = {};
