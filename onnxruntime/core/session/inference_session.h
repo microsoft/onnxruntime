@@ -735,6 +735,44 @@ class InferenceSession {
   // The life-cycle of the cache itself is maintained by the user and the user will ensure
   // the cache is valid until any session reliant on it is still in scope.
   PrepackedWeightsContainer* prepacked_weights_container_ = nullptr;
+
+  // Cache the EP instance if the user has configured the EP to capture a graph
+  // for the model and all the necessary criteria for graph capture has been met.
+  // At Run() time, if this member is not nullptr and the captured graph is ready
+  // to replay, simply invoke ReplayGraph().
+  struct CachedExecutionProviderForGraphReplay {
+    CachedExecutionProviderForGraphReplay() = default;
+
+    CachedExecutionProviderForGraphReplay(IExecutionProvider* execution_provider) : cached_execution_provider_for_graph_replay_(execution_provider) {}
+
+    void SetExecutionProvider(IExecutionProvider* execution_provider) {
+      cached_execution_provider_for_graph_replay_ = execution_provider;
+    }
+
+    bool IsGraphCaptureEnabled() const {
+      return cached_execution_provider_for_graph_replay_ != nullptr && cached_execution_provider_for_graph_replay_->IsGraphCaptureEnabled();
+    }
+
+    bool IsGraphCaptured() const {
+      return cached_execution_provider_for_graph_replay_ != nullptr && cached_execution_provider_for_graph_replay_->IsGraphCaptured();
+    }
+
+    Status ReplayGraph() {
+      ORT_ENFORCE(IsGraphCaptured());
+      if (cached_execution_provider_for_graph_replay_) {
+        return cached_execution_provider_for_graph_replay_->ReplayGraph();
+      }
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cached EP instance for graph replay is not set yet before calling ReplayGraph()");
+    }
+
+    const std::string& Type() const {
+      return cached_execution_provider_for_graph_replay_->Type();
+    }
+
+    IExecutionProvider* cached_execution_provider_for_graph_replay_ = nullptr;
+  };
+
+  CachedExecutionProviderForGraphReplay cached_execution_provider_for_graph_replay_;
 };
 
 struct SessionIOBinding {
