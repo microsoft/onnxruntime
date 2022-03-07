@@ -547,7 +547,6 @@ class WindowsEnv : public Env {
       static const DWORD bufferLength = 64 * 1024;
       std::wstring s(bufferLength, '\0');
       FormatMessageW(
-          FORMAT_MESSAGE_ALLOCATE_BUFFER |
               FORMAT_MESSAGE_FROM_SYSTEM |
               FORMAT_MESSAGE_IGNORE_INSERTS,
           NULL,
@@ -580,7 +579,6 @@ class WindowsEnv : public Env {
       static const DWORD bufferLength = 64 * 1024;
       std::wstring s(bufferLength, '\0');
       FormatMessageW(
-          FORMAT_MESSAGE_ALLOCATE_BUFFER |
               FORMAT_MESSAGE_FROM_SYSTEM |
               FORMAT_MESSAGE_IGNORE_INSERTS,
           NULL,
