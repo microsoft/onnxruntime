@@ -18,14 +18,14 @@ namespace test {
 // If set to All: verify the entire graph is taken by ep
 // If set to Some: verify that at least one node is assigned to ep
 // If set to None: verify that no nodes is assigned to ep (typically for an expected failure path test case)
-enum class ExpectedEPNodeAssignment { All,
+enum class ExpectedEPNodeAssignment { None,
                                       Some,
-                                      None, };
+                                      All, };
 
 // struct to hold some verification params for RunAndVerifyOutputsWithEP
 struct EPVerificationParams {
   
-  ExpectedEPNodeAssignment ep_node_assignment;
+  ExpectedEPNodeAssignment ep_node_assignment = ExpectedEPNodeAssignment::Some;
 
   // Some EP may use different rounding than ORT CPU EP, which may cause a bigger abs error than
   // the default of 1e-5f, especially for scenarios such as [Q -> Quantized op -> DQ]
