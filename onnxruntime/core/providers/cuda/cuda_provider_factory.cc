@@ -195,10 +195,16 @@ struct CUDA_Provider : Provider {
     // See the linked issue in the warning message for more info
     {
       auto start_time = std::chrono::steady_clock::now();
-      ::cudaDeviceSynchronize();
+      // Do a trivial cuda operation that will cause JIT to occur
+      {
+        void** cuda_memory {};
+        ::cudaMalloc(&cuda_memory, 1);
+        ::cudaFree(cuda_memory);
+      }
       auto end_time = std::chrono::steady_clock::now();
-      if (std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time) > std::chrono::seconds{30}) {
-        LOGS_DEFAULT(WARNING) << "CUDA took more than 30 seconds to start, please see this issue for how to fix it: https://github.com/microsoft/onnxruntime/issues/10746";
+      auto duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time);
+      if (duration > std::chrono::seconds{30}) {
+        LOGS_DEFAULT(WARNING) << "CUDA took " << duration.count() << " seconds to start, please see this issue for how to fix it: https://github.com/microsoft/onnxruntime/issues/10746";
       }
     }
 
