@@ -109,7 +109,7 @@ void addOrtValueMethods(pybind11::module& m) {
             py_values,
             values_type,
             *(ml_value->GetMutable<Tensor>()),
-            CpuToCudaMemCpy);
+            CpuToRocmMemCpy);
 #else
         throw std::runtime_error(
             "Unsupported GPU device: Cannot find the supported GPU device.");
