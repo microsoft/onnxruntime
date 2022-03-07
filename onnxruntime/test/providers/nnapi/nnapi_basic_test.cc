@@ -47,20 +47,23 @@ using UnpackTensorFn = std::function<void(const InitializedTensorSet& initialize
 
 /* NNAPI QDQ model build test related helper functions */
 
-void GetQDQModelQuantizationScales(const Path& model_path, float scale,
-                                   const std::string& name, const InitializedTensorSet& initializers,
-                                   const UnpackTensorFn& unpack_tensor) {
+float GetQDQModelQuantizationScales(const Path& model_path,
+                                    const std::string& name, const InitializedTensorSet& initializers,
+                                    const UnpackTensorFn& unpack_tensor) {
   std::vector<uint8_t> unpacked_tensor;
   unpack_tensor(initializers, name, unpacked_tensor);
-  scale = reinterpret_cast<const float*>(unpacked_tensor.data())[0];
+  float scale = 0.0f;
+  auto data = unpacked_tensor.data()[0];
+  std::memcpy(&scale, &data, sizeof(data));
+  return scale;
 }
 
-void GetQDQModelQuantizationZeroPoint(const Path& model_path, uint8_t zero_point,
-                                      const std::string& name, const InitializedTensorSet& initializers,
-                                      const UnpackTensorFn& unpack_tensor) {
+uint8_t GetQDQModelQuantizationZeroPoint(const Path& model_path,
+                                         const std::string& name, const InitializedTensorSet& initializers,
+                                         const UnpackTensorFn& unpack_tensor) {
   std::vector<uint8_t> unpacked_tensor;
   unpack_tensor(initializers, name, unpacked_tensor);
-  zero_point = static_cast<uint8_t>(unpacked_tensor[0]);
+  return static_cast<uint8_t>(unpacked_tensor[0]);
 }
 
 // Since NNAPI EP handles Reshape and Flatten differently,
@@ -492,21 +495,15 @@ TEST(NnapiExecutionProviderTest, TestQDQConcat) {
     };
 
     // get the scales
-    float scale = 0.0f;
-    float scale1 = 0.0f;
-    float scale2 = 0.0f;
     const auto& initializers = test_graph.GetAllInitializedTensors();
-    GetQDQModelQuantizationScales(model_path, scale, input_scale.Name(), initializers, unpack_tensor);
-    GetQDQModelQuantizationScales(model_path, scale1, input_scale1.Name(), initializers, unpack_tensor);
-    GetQDQModelQuantizationScales(model_path, scale2, input_scale2.Name(), initializers, unpack_tensor);
+    auto scale = GetQDQModelQuantizationScales(model_path, input_scale.Name(), initializers, unpack_tensor);
+    auto scale1 = GetQDQModelQuantizationScales(model_path, input_scale1.Name(), initializers, unpack_tensor);
+    auto scale2 = GetQDQModelQuantizationScales(model_path, input_scale2.Name(), initializers, unpack_tensor);
 
     // get the zero points
-    uint8_t zero_point = 0;
-    uint8_t zero_point1 = 0;
-    uint8_t zero_point2 = 0;
-    GetQDQModelQuantizationZeroPoint(model_path, zero_point, input_zp->Name(), initializers, unpack_tensor);
-    GetQDQModelQuantizationZeroPoint(model_path, zero_point, input_zp1->Name(), initializers, unpack_tensor);
-    GetQDQModelQuantizationZeroPoint(model_path, zero_point, input_zp2->Name(), initializers, unpack_tensor);
+    auto zero_point = GetQDQModelQuantizationZeroPoint(model_path, input_zp->Name(), initializers, unpack_tensor);
+    auto zero_point1 = GetQDQModelQuantizationZeroPoint(model_path, input_zp1->Name(), initializers, unpack_tensor);
+    auto zero_point2 = GetQDQModelQuantizationZeroPoint(model_path, input_zp2->Name(), initializers, unpack_tensor);
 
     ASSERT_EQ(scale, scale1);
     ASSERT_EQ(scale, scale2);
