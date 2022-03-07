@@ -10,12 +10,11 @@
 #endif
 #include "onnx/onnx_pb.h"
 #include "onnx/onnx-operators_pb.h"
-#include "core/graph/graph.h"
 
 #include "core/common/inlined_containers.h"
+#include "core/graph/graph.h"
 
 namespace onnxruntime {
-
 namespace graph_utils {
 
 /** Checks if the operator's type, version, and domain of the given node match the given values. */
@@ -23,6 +22,79 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        std::string_view op_type,
                                        std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
                                        std::string_view domain = kOnnxDomainAlias);
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+/** Returns the attribute of a Node with a given name. */
+const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name);
+
+/** Add a new initializer to 'graph'.
+Checks that new_initializer does not already exist in 'graph' before adding it.
+@returns The NodeArg for the new initializer.
+@remarks No matching graph input is created, so the initializer will be constant.
+*/
+NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
+
+/** Gets the index of an output arg with the specified output arg name. */
+int GetNodeOutputIndexFromOutputName(const Node& node, const std::string& output_name);
+
+/** Find node parents by op types.
+    @returns The matched parents are sorted by destination argument index of their corresponding edge.
+**/
+std::vector<const Node*> FindParentsByType(const Node& node, const std::string& parent_type);
+
+/** Find node children by op types.
+    @returns The matched children are sorted by source argument index of their corresponding edge.
+**/
+std::vector<const Node*> FindChildrenByType(const Node& node, const std::string& child_type);
+
+/** Gets the name of the incoming NodeArg with the specified index for the given node. */
+const std::string& GetNodeInputName(const Node& node, int index);
+
+/** Gets the name of the outgoing NodeArg with the specified index for the given node. */
+const std::string& GetNodeOutputName(const Node& node, int index);
+
+/** Removes all output edges from the given Node of the Graph.
+    This should probably be elevated to the Graph API eventually. */
+size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
+
+/** Removes output edges from the specific output_idx for the given Node of the Graph. */
+size_t RemoveNodeOutputEdges(Graph& graph, Node& node, int output_idx);
+
+/** returns the initializer's TensorProto if 'name' is an initializer, is constant and
+cannot be overridden at runtime. If the initializer is not found or is not constant, a nullptr is returned.
+@param check_outer_scope If true and the graph is a subgraph, check ancestor graph/s for 'name' if not found in 'graph'.
+*/
+const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& name,
+                                                          bool check_outer_scope = true);
+
+// A class helps handle graph edges
+struct GraphEdge {
+  NodeIndex src_node;
+  NodeIndex dst_node;
+  int src_arg_index;
+  int dst_arg_index;
+  std::string arg_name;
+
+  GraphEdge(NodeIndex src_node, NodeIndex dst_node, int src_arg_index, int dst_arg_index, const std::string& arg_name);
+
+  // Constructs a GraphEdge given a node, an edge_end, and a boolean for the edge direction.
+  static GraphEdge CreateGraphEdge(const Node& node, const Node::EdgeEnd& edge_end, bool is_input_edge);
+
+  /** Returns a vector of the input GraphEdges of a node. */
+  static std::vector<GraphEdge> GetNodeInputEdges(const Node& node);
+
+  /** Returns a vector of the output GraphEdges of a node. */
+  static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node);
+
+  /** Returns a vector of output GraphEdges of a node for the provided output index. */
+  static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node, size_t index);
+
+  /** Removes a set of GraphEdges from the graph. */
+  static void RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edges);
+};
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
 /** Checks if the node has the same operator since version as the given one. */
@@ -304,79 +376,6 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& node);
 NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
-/** Returns the attribute of a Node with a given name. */
-const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name);
-
-/** Add a new initializer to 'graph'.
-Checks that new_initializer does not already exist in 'graph' before adding it.
-@returns The NodeArg for the new initializer.
-@remarks No matching graph input is created, so the initializer will be constant.
-*/
-NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
-
-/** Gets the index of an output arg with the specified output arg name. */
-int GetNodeOutputIndexFromOutputName(const Node& node, const std::string& output_name);
-
-/** Find node parents by op types.
-    @returns The matched parents are sorted by destination argument index of their corresponding edge.
-**/
-std::vector<const Node*> FindParentsByType(const Node& node, const std::string& parent_type);
-
-/** Find node children by op types.
-    @returns The matched children are sorted by source argument index of their corresponding edge.
-**/
-std::vector<const Node*> FindChildrenByType(const Node& node, const std::string& child_type);
-
-/** Gets the name of the incoming NodeArg with the specified index for the given node. */
-const std::string& GetNodeInputName(const Node& node, int index);
-
-/** Gets the name of the outgoing NodeArg with the specified index for the given node. */
-const std::string& GetNodeOutputName(const Node& node, int index);
-
-/** Removes all output edges from the given Node of the Graph.
-    This should probably be elevated to the Graph API eventually. */
-size_t RemoveNodeOutputEdges(Graph& graph, Node& node);
-
-/** Removes output edges from the specific output_idx for the given Node of the Graph. */
-size_t RemoveNodeOutputEdges(Graph& graph, Node& node, int output_idx);
-
-/** returns the initializer's TensorProto if 'name' is an initializer, is constant and
-cannot be overridden at runtime. If the initializer is not found or is not constant, a nullptr is returned.
-@param check_outer_scope If true and the graph is a subgraph, check ancestor graph/s for 'name' if not found in 'graph'.
-*/
-const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const Graph& graph, const std::string& name,
-                                                          bool check_outer_scope = true);
-
-// A class helps handle graph edges
-struct GraphEdge {
-  NodeIndex src_node;
-  NodeIndex dst_node;
-  int src_arg_index;
-  int dst_arg_index;
-  std::string arg_name;
-
-  GraphEdge(NodeIndex src_node, NodeIndex dst_node, int src_arg_index, int dst_arg_index, const std::string& arg_name);
-
-  // Constructs a GraphEdge given a node, an edge_end, and a boolean for the edge direction.
-  static GraphEdge CreateGraphEdge(const Node& node, const Node::EdgeEnd& edge_end, bool is_input_edge);
-
-  /** Returns a vector of the input GraphEdges of a node. */
-  static std::vector<GraphEdge> GetNodeInputEdges(const Node& node);
-
-  /** Returns a vector of the output GraphEdges of a node. */
-  static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node);
-
-  /** Returns a vector of output GraphEdges of a node for the provided output index. */
-  static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node, size_t index);
-
-  /** Removes a set of GraphEdges from the graph. */
-  static void RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edges);
-};
-
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 }  // namespace graph_utils
 }  // namespace onnxruntime
