@@ -5,6 +5,7 @@
 #include "core/common/logging/logging.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
+#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "core/session/inference_session.h"
 #include "core/framework/tensorprotoutils.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -535,7 +536,7 @@ TEST(NnapiExecutionProviderTest, TestQDQConcat_UnsupportedInputScalesAndZp) {
     RunQDQModelTest(BuildQDQConcatTestCaseUnsupported(),
                     "nnapi_qdq_test_graph_concat",
                     {
-                        false /* verify_entire_graph_use_ep */
+                        false /* verify_entire_graph_use_ep */,
                         1e-5,
                         true /* verify_expected_failure_graph */
                     },
