@@ -47,6 +47,15 @@ static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.se
 // Its default value is "0"
 static const char* const kOrtSessionOptionsDisableQuantQDQ = "session.disable_quant_qdq";
 
+// If set to "1", enables the removal of QuantizeLinear/DequantizeLinear node pairs once all QDQ handling has been
+// completed. e.g. If after all QDQ handling has completed and we have -> FloatOp -> Q -> DQ -> FloatOp -> the
+// Q -> DQ could potentially be removed. This will provide a performance benefit by avoiding going from float to
+// 8-bit and back to float, but could impact accuracy. The impact on accuracy will be model specific and depend on
+// other factors like whether the model was created using Quantization Aware Training or Post Training Quantization.
+// As such, it's best to test to determine if enabling this works well for your scenario.
+// The default value is "0"
+static const char* const kOrtSessionOptionsEnableQuantQDQCleanup = "session.enable_quant_qdq_cleanup";
+
 // Enable or disable gelu approximation in graph optimization. "0": disable; "1": enable. The default is "0".
 // GeluApproximation has side effects which may change the inference results. It is disabled by default due to this.
 static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimization.enable_gelu_approximation";
@@ -68,6 +77,10 @@ static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session
 // Setting this option to "1" will disable copy the model bytes, and use the model bytes directly. The caller
 // has to guarantee that the model bytes are valid until the ORT session using the model bytes is destroyed.
 static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "session.use_ort_model_bytes_directly";
+
+// This should only be specified when exporting an ORT format model for use on a different platform.
+// If the ORT format model will be used on ARM platforms set to "1". For other platforms set to "0"
+static const char* const kOrtSessionOptionsQDQIsInt8Allowed = "session.qdqisint8allowed";
 
 // Save information for replaying graph optimizations later instead of applying them directly.
 //

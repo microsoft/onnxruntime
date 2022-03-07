@@ -465,6 +465,16 @@ struct KernelDefBuilder final {
     return *this;
   }
 
+  KernelDefBuilder& MayStridedInput(int input_index) {
+    g_host->KernelDefBuilder__MayStridedInput(this, input_index);
+    return *this;
+  }
+
+  KernelDefBuilder& MayStridedOutput(int input_index, int output_index) {
+    g_host->KernelDefBuilder__MayStridedOutput(this, input_index, output_index);
+    return *this;
+  }
+
   std::unique_ptr<KernelDef> Build() {
     return g_host->KernelDefBuilder__Build(this);
   }
@@ -652,10 +662,10 @@ struct Graph final {
 
   Status Resolve() { return g_host->Graph__Resolve(this); }
   void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor) { return g_host->Graph__AddInitializedTensor(this, tensor); }
-  Node& AddNode(const std::string& name, const std::string& op_type, const std::string& description, const std::vector<NodeArg*>& input_args, const std::vector<NodeArg*>& output_args, const NodeAttributes* attributes, const std::string& domain) { return g_host->Graph__AddNode(this, name, op_type, description, input_args, output_args, attributes, domain); }
+  Node& AddNode(const std::string& name, const std::string& op_type, const std::string& description, gsl::span<NodeArg* const> input_args, gsl::span<NodeArg* const> output_args, const NodeAttributes* attributes, const std::string& domain) { return g_host->Graph__AddNode(this, name, op_type, description, input_args, output_args, attributes, domain); }
 
   const std::vector<const NodeArg*>& GetOutputs() const noexcept { return g_host->Graph__GetOutputs(this); }
-  void SetOutputs(const std::vector<const NodeArg*>& outputs) { return g_host->Graph__SetOutputs(this, outputs); }
+  void SetOutputs(gsl::span<const NodeArg* const> outputs) { return g_host->Graph__SetOutputs(this, outputs); }
 
   const std::vector<const NodeArg*>& GetInputs() const noexcept { return g_host->Graph__GetInputs(this); }
 
@@ -899,6 +909,10 @@ struct Tensor final {
   int32_t GetElementType() const { return g_host->Tensor__GetElementType(this); }
   MLDataType DataType() const { return g_host->Tensor__DataType(this); }
   bool IsDataTypeString() const { return g_host->Tensor__IsDataTypeString(this); }
+
+  gsl::span<const int64_t> Strides() const noexcept { return g_host->Tensor__Strides(this); }
+  bool IsContiguous() const { return g_host->Tensor__IsContiguous(this); }
+  void SetStrides(const TensorShapeVector& new_strides) { return g_host->Tensor__SetStrides(this, new_strides); }
 
   template <class T>
   bool IsDataType() const;

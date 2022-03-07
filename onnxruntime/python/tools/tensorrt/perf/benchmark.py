@@ -1057,19 +1057,25 @@ def run_onnxruntime(args, models):
                     # resolve providers to create session
                     providers = ep_to_provider_list[ep] 
                     options = onnxruntime.SessionOptions()
-                    if args.optimize_graph:
+                    
+                    enablement = args.graph_enablement
+                    if enablement == enable_all:
                         options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+                    elif enablement == extended: 
+                        options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+                    elif enablement == basic: 
+                        options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
+                    else: # disable 
+                        options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
                     
                     # create onnxruntime inference session
                     try:
                         sess, second_creation_time = create_session(model_path, providers, options)
-                        logger.info("Second creation {}".format(second_creation_time))
 
                     except Exception as e:
                         logger.error(e)
                         update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
                         continue
-
 
                     if second_creation_time:                     
                         model_to_session[name] = copy.deepcopy({ep + second: second_creation_time})
@@ -1092,7 +1098,7 @@ def run_onnxruntime(args, models):
                         "device": ep,
                         "fp16": fp16,
                         "io_binding": args.io_binding,
-                        "graph_optimizations": args.optimize_graph,
+                        "graph_optimizations": args.graph_enablement,
                         "enable_cache": args.enable_cache,
                         "model_name": name,
                         "inputs": len(sess.get_inputs()),
@@ -1686,8 +1692,8 @@ def parse_arguments():
 
     parser.add_argument("-b", "--io_binding", required=False, default=False, help="Bind Inputs")
     
-    parser.add_argument("-g", "--optimize_graph", required=False, default=True, help="Enable Graph Optimization")
-    
+    parser.add_argument("-g", "--graph_enablement", required=False, default=enable_all, choices=[disable, basic, extended, enable_all], help="Choose graph optimization enablement.")
+
     parser.add_argument("-n", "--enable_cache", required=False, default=True, help="Enable ORT-TRT Caching")
 
     parser.add_argument("--ep", required=False, default=None, help="Specify ORT Execution Provider.") 

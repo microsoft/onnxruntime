@@ -1006,6 +1006,20 @@ extern "C" {
         const int32_t* ColumnSumVector
         );
 
+    size_t
+    MLASCALL
+    MlasSymQgemmS8KernelSdotLd64(
+        const int8_t* A,
+        const int8_t* B,
+        int32_t* C,
+        size_t PackedCountK,
+        size_t CountM,
+        size_t CountN,
+        size_t ldc,
+        size_t lda,
+        const int32_t* ColumnSumVector
+        );
+
 }
 
 template<>
@@ -1026,8 +1040,35 @@ size_t MlasSymmQGemmKernel<MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT>(
                                     ColumnSumVector);
 }
 
+/**
+ * @brief Type parameter for symmetric qgemm, little core
+ */
+struct MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT_LIT {
+    static constexpr size_t PackedK = MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT::PackedK;
+};
+constexpr size_t MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT_LIT::PackedK;
+
+
+template <>
+MLAS_FORCEINLINE
+size_t MlasSymmQGemmKernel<MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT_LIT>(
+    const int8_t* A,
+    const int8_t* B,
+    int32_t* C,
+    size_t PackedCountK,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    size_t lda,
+    const int32_t* ColumnSumVector
+)
+{
+    return MlasSymQgemmS8KernelSdotLd64(A, B, C, PackedCountK, CountM, CountN, ldc, lda,
+                                        ColumnSumVector);
+}
+
 const MLAS_SYMM_QGEMM_DISPATCH MlasSymmQgemmS8DispatchSdot = {
-    MlasSymmQGemmPackedOperation<MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT>,
+    MlasSymmQGemmPackedOperation<MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT_LIT>,
     MlasSymmQGemmPackedOperation<MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT>,
     MlasGemmQuantCopyPackB<MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT>,
     4,  // StrideM

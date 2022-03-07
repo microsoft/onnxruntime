@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 #include "cudnn_common.h"
+#include "core/common/inlined_containers.h"
 #include "gsl/gsl"
 #include "shared_inc/cuda_call.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/framework/inlined_containers.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -100,7 +100,7 @@ Status CudnnFilterDescriptor::Set(gsl::span<const int64_t> filter_dims, cudnnDat
     CUDNN_RETURN_IF_ERROR(cudnnCreateFilterDescriptor(&desc_));
 
   int rank = gsl::narrow_cast<int>(filter_dims.size());
-  InlinedShapeVector<int> w_dims(rank);
+  InlinedVector<int> w_dims(rank);
   for (int i = 0; i < rank; i++) {
     w_dims[i] = gsl::narrow_cast<int>(filter_dims[i]);
   }
@@ -137,15 +137,9 @@ cudnnDataType_t CudnnTensor::GetDataType<half>() {
 }
 
 template <>
-
 cudnnDataType_t CudnnTensor::GetDataType<BFloat16>() {
-#if CUDNN_VERSION >= 8100
-  return CUDNN_DATA_BFLOAT16;
-#else
-  ORT_THROW("cuDNN version is too low to support BFloat16.");
-  // Not reachable but GCC complains
+  ORT_THROW("cuDNN doesn't support BFloat16.");
   return CUDNN_DATA_FLOAT;
-#endif
 }
 
 template <>

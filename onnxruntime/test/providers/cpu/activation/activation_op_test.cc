@@ -132,11 +132,11 @@ TEST_F(ActivationOpTest, Sigmoid_fp16) {
 #endif
   OpTester test("Sigmoid", 14);
 
-  auto formula = [](float x) { 
-                   auto y = 1.f / (1.f + std::exp(-std::abs(x)));  // safe sigmoid
-                   y = x > 0 ? y : 1 - y;
-                   return y; 
-                 };
+  auto formula = [](float x) {
+    auto y = 1.f / (1.f + std::exp(-std::abs(x)));  // safe sigmoid
+    y = x > 0 ? y : 1 - y;
+    return y;
+  };
 
   std::vector<float> X = input_values.front();
   std::vector<float> Y;
@@ -151,7 +151,7 @@ TEST_F(ActivationOpTest, Sigmoid_fp16) {
 
   test.AddInput<MLFloat16>("X", dims, f_X);
   test.AddOutput<MLFloat16>("Y", dims, f_Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST_F(ActivationOpTest, Tanh_fp16) {
@@ -179,7 +179,7 @@ TEST_F(ActivationOpTest, Tanh_fp16) {
 
   test.AddInput<MLFloat16>("X", dims, f_X);
   test.AddOutput<MLFloat16>("Y", dims, f_Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST_F(ActivationOpTest, Relu_fp16) {
@@ -207,7 +207,7 @@ TEST_F(ActivationOpTest, Relu_fp16) {
 
   test.AddInput<MLFloat16>("X", dims, f_X);
   test.AddOutput<MLFloat16>("Y", dims, f_Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 #endif
 
@@ -222,11 +222,11 @@ TEST_F(ActivationOpTest, Sigmoid_bfloat16) {
 #endif
   OpTester test("Sigmoid", 14);
 
-  auto formula = [](float x) { 
-                   auto y = 1.f / (1.f + std::exp(-std::abs(x)));  // safe sigmoid
-                   y = x > 0 ? y : 1 - y;
-                   return y; 
-                 };
+  auto formula = [](float x) {
+    auto y = 1.f / (1.f + std::exp(-std::abs(x)));  // safe sigmoid
+    y = x > 0 ? y : 1 - y;
+    return y;
+  };
 
   std::vector<float> X = input_values.front();
   std::vector<float> Y;
@@ -244,7 +244,7 @@ TEST_F(ActivationOpTest, Sigmoid_bfloat16) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif 
+#endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
@@ -276,7 +276,7 @@ TEST_F(ActivationOpTest, Tanh_bfloat16) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif 
+#endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
@@ -308,7 +308,7 @@ TEST_F(ActivationOpTest, Relu_bfloat16) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif 
+#endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif
@@ -431,9 +431,9 @@ TEST_F(ActivationOpTest, Softplus) {
                           input_values,
                           [](float x) {
                             if (x > 0)
-                              return x + logf(expf(-x) + 1);
+                              return x + log1pf(expf(-x));
                             else
-                              return logf(expf(x) + 1);
+                              return log1pf(expf(x));
                           });
 }
 

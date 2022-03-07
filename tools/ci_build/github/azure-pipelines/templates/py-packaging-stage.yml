@@ -287,7 +287,7 @@ stages:
   - ${{ if eq(parameters.enable_linux_rocm_training, true) }}:
     - job: ROCm_build_environment
       displayName: 'Construct ROCm wheels environment'
-      timeoutInMinutes: 180
+      timeoutInMinutes: 300
       workspace:
         clean: all
       pool: AMD-GPU
@@ -318,6 +318,19 @@ stages:
             --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin:
             --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
           Repository: onnxruntimetrainingrocmbuild-torch1.10.0-rocm4.3.1
+      - template: get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_rocm5_0_1
+          Context: tools/ci_build/github/linux/docker
+          DockerBuildArgs: >-
+            --build-arg TORCH_VERSION=1.10.0
+            --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
+            --build-arg BUILD_UID=$(id -u)
+            --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
+            --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root
+            --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin:
+            --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
+          Repository: onnxruntimetrainingrocmbuild-torch1.10.0-rocm5.0.1
 
     - job: ROCM_training_wheels
       timeoutInMinutes: 180
@@ -353,6 +366,18 @@ stages:
             PythonVersion: '3.9'
             TorchVersion: '1.10.0'
             RocmVersion: '4.3.1'
+          Python37 Torch1100 Rocm501:
+            PythonVersion: '3.7'
+            TorchVersion: '1.10.0'
+            RocmVersion: '5.0.1'
+          Python38 Torch1100 Rocm501:
+            PythonVersion: '3.8'
+            TorchVersion: '1.10.0'
+            RocmVersion: '5.0.1'
+          Python39 Torch1100 Rocm501:
+            PythonVersion: '3.9'
+            TorchVersion: '1.10.0'
+            RocmVersion: '5.0.1'
       steps:
 
       - checkout: self

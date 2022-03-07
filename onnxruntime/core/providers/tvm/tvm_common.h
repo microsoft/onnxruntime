@@ -6,7 +6,7 @@
 
 #include <dlpack/dlpack.h>
 #include <tvm/runtime/module.h>
-#include <tvm/runtime/c_runtime_api.h>
+#include <tvm/runtime/vm/vm.h>
 
 using TvmModule = tvm::runtime::Module;
 
