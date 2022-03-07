@@ -1455,7 +1455,7 @@ Example 4:
               mean_reduction = false;
 
             bool has_ignore_index = ctx.getAttribute("ignore_index") != nullptr;
-            bool has_weight = ctx.hasInput(2);
+            bool has_weight = ctx.hasInput(3);
 
             FunctionBuilder builder(functionProto);
 
