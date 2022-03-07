@@ -40,7 +40,7 @@ struct OP_Relu : public CtxRelu {
 template <typename T>
 struct OP_Selu : public CtxSelu {
   __device__ __inline__ T operator()(const T& a) const {
-    return a > (T)0 ? (T)gamma * a : (T)gamma * (T)alpha * (_Exp(a) - 1.0f);
+    return a > (T)0 ? (T)gamma * a : (T)gamma * (T)alpha * (_Exp(a) - (T)1);
   }
 };
 
