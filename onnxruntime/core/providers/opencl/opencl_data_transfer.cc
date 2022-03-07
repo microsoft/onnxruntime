@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "opencl_utils.h"
-#include "opencl_kernel_holder.h"
+#include "opencl_program_manager.h"
 #include "opencl_data_transfer.h"
 
 #include "core/framework/ortdevice.h"

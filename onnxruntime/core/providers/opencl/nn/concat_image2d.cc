@@ -86,7 +86,6 @@ class Concat final : public OpenCLKernel, public ConcatBase {
   }
 };
 
-
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Concat,
     kOnnxDomain,
@@ -95,7 +94,6 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Concat)
-
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Concat,
