@@ -21,12 +21,12 @@ ORT_POD_VERSION=${3:?${USAGE_TEXT}}
 SHOULD_UPLOAD_ARCHIVES=${4:?${USAGE_TEXT}}
 
 STORAGE_ACCOUNT_NAME="onnxruntimepackages"
-STORAGE_ACCOUNT_CONTAINER_NAME="ortmobilestore"  # TODO look into moving to '$web'
-STORAGE_URL_PREFIX="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${STORAGE_ACCOUNT_CONTAINER_NAME}"
+STORAGE_ACCOUNT_CONTAINER_NAME='$web'
+STORAGE_URL_PREFIX=$(az storage account show --name ${STORAGE_ACCOUNT_NAME} --query "primaryEndpoints.web" --output tsv)
 
 assemble_and_upload_pod() {
   local POD_NAME=${1:?"Expected pod name as first argument."}
-  local POD_ARCHIVE_BASENAME="${POD_NAME}-${ORT_POD_VERSION}.zip"
+  local POD_ARCHIVE_BASENAME="pod-archive-${POD_NAME}-${ORT_POD_VERSION}.zip"
   local PODSPEC_BASENAME="${POD_NAME}.podspec"
 
   pushd ${BINARIES_STAGING_DIR}/${POD_NAME}
@@ -42,7 +42,7 @@ assemble_and_upload_pod() {
       --file ${ARTIFACTS_STAGING_DIR}/${POD_ARCHIVE_BASENAME} --name ${POD_ARCHIVE_BASENAME} \
       --if-none-match "*"
 
-    sed -i "" -e "s|file:///http_source_placeholder|${STORAGE_URL_PREFIX}/${POD_ARCHIVE_BASENAME}|" \
+    sed -i "" -e "s|file:///http_source_placeholder|${STORAGE_URL_PREFIX}${POD_ARCHIVE_BASENAME}|" \
       ${ARTIFACTS_STAGING_DIR}/${PODSPEC_BASENAME}
   fi
 
