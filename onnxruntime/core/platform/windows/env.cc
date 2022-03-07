@@ -545,7 +545,7 @@ class WindowsEnv : public Env {
     if (!*handle) {
       const auto error_code = GetLastError();
       static const DWORD bufferLength = 64 * 1024;
-      std::string s(bufferLength, '\0');
+      std::wstring s(bufferLength, '\0');
       FormatMessageW(
           FORMAT_MESSAGE_ALLOCATE_BUFFER |
               FORMAT_MESSAGE_FROM_SYSTEM |
@@ -556,7 +556,7 @@ class WindowsEnv : public Env {
           (LPWSTR)s.data(),
           0, NULL);
       std::wostringstream oss;
-      oss << L"LoadLibrary failed with error " << error_code << L" \"" << (LPWSTR)s.c_str() << L"\" when trying to load \"" << wlibrary_filename << L"\"";
+      oss << L"LoadLibrary failed with error " << error_code << L" \"" << s.c_str() << L"\" when trying to load \"" << wlibrary_filename << L"\"";
       std::wstring errmsg = oss.str();
       // TODO: trim the ending '\r' and/or '\n'
       common::Status status(common::ONNXRUNTIME, common::FAIL, ToUTF8String(errmsg));
@@ -578,7 +578,7 @@ class WindowsEnv : public Env {
     if (!*symbol) {
       const auto error_code = GetLastError();
       static const DWORD bufferLength = 64 * 1024;
-      std::string s(bufferLength, '\0');
+      std::wstring s(bufferLength, '\0');
       FormatMessageW(
           FORMAT_MESSAGE_ALLOCATE_BUFFER |
               FORMAT_MESSAGE_FROM_SYSTEM |
@@ -589,7 +589,7 @@ class WindowsEnv : public Env {
           (LPWSTR)s.data(),
           0, NULL);
       std::wostringstream oss;
-      oss << L"Failed to find symbol " << ToWideString(symbol_name) << L" in library, error code: " << error_code << L" \"" << (LPWSTR)s.c_str() << L"\"";
+      oss << L"Failed to find symbol " << ToWideString(symbol_name) << L" in library, error code: " << error_code << L" \"" << s.c_str() << L"\"";
       std::wstring errmsg = oss.str();
       // TODO: trim the ending '\r' and/or '\n'
       common::Status status(common::ONNXRUNTIME, common::FAIL, ToUTF8String(errmsg));
