@@ -109,7 +109,6 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Floor", V_2020_4, {"All"}},
     {"Gather", V_2020_4, {"All"}},
     {"GatherElements", V_2021_3, {"MYRIAD"}},
-    {"GatherElements", V_2022_1, {"CPU"}},
     {"GatherND", V_2021_2, {"MYRIAD"}},
     {"GatherND", V_2021_4, {"All"}},
     {"Gemm", V_2020_4, {"All"}},
@@ -762,9 +761,9 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"QLinearMatMul", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4, V_2022_1},
                              [this](const Node* node, const InitializedTensorSet&) {
-                               if (device_id_.find("MYRIAD") != std::string::npos) {
+                               if (device_id_.find("MYRIAD") != std::string::npos || device_id_.find("CPU") != std::string::npos) {
                                  const auto& input_arg = node->InputDefs()[1];
                                  auto shape = input_arg->Shape();
                                  //Reshape op with empty dim is Rejected for Myriad
@@ -822,7 +821,19 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"ScatterElements", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               //If the Input of Shrink op is UINT8, it is rejected (Due to output mismatch)
+                               for (size_t i = 0; i < node->InputDefs().size(); i++) {
+                                 if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8)
+                                   return true;
+                               }
+                               return false;
+                             }};
+    op_list_.insert({"Shrink", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4, V_2022_1},
                              [this](const Node* node, const InitializedTensorSet& initializers) {
                                //start, end, axes need to be a initializer
                                bool cond_for_slice = false;
@@ -872,14 +883,14 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Transpose", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2020_4, V_2021_2, V_2021_3, V_2021_4, V_2022_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                return (!this->dimension_unsupported(node));
                              }};
     op_list_.insert({"Unsqueeze", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3, V_2021_4, V_2022_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                //check for attributes
                                auto& upsample_attr = node->GetAttributes();

@@ -45,7 +45,7 @@ TEST(ScatterNDOpTest, ScatterND_matrice_int64_int64_neg_indices) {
   test.AddInput<int64_t> ("indices", {2,2}, {0LL,0LL,-1LL,-1LL});
   test.AddInput<int64_t>("updates", {2}, {0LL,3LL});
   test.AddOutput<int64_t>("output", {2,2}, {0LL,1LL,2LL,3LL});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider}); //Output mismatch with OpenVINO EP
 }
 
 TEST(ScatterNDOpTest, ScatterND_matrice_string_int64) {

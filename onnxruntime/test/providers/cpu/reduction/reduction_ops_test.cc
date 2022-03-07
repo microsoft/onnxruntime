@@ -287,7 +287,7 @@ TEST(ReductionOpTest, ReduceL2_int32) {
                           9, 10,
                           11, 12});
   test.AddOutput<int32_t>("reduced", {2}, {15, 20});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Int32 not allowed as input to this layer
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  //TensorRT: Int32 not allowed as input to this layer
 }
 
 #if !(defined USE_NUPHAR_TVM)
