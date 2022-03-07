@@ -15,18 +15,22 @@ class Graph;
 
 namespace test {
 
+// If set to All: verify the entire graph is taken by ep
+// If set to Some: verify that at least one node is assigned to ep
+// If set to None: verify that no nodes is assigned to ep (typically for an expected failure path test case)
+enum class ExpectedEPNodeAssignment { All,
+                                      Some,
+                                      None, };
+
 // struct to hold some verification params for RunAndVerifyOutputsWithEP
 struct EPVerificationParams {
-  // Verify the entire graph is taken by the EP
-  // if this is set to false, then will verify that at least one node is assigned to 'execution_provider'
-  bool verify_entire_graph_use_ep{false};
+  
+  ExpectedEPNodeAssignment ep_node_assignment;
 
   // Some EP may use different rounding than ORT CPU EP, which may cause a bigger abs error than
   // the default of 1e-5f, especially for scenarios such as [Q -> Quantized op -> DQ]
   // Set this only if this is necessary
   float fp32_abs_err = 1e-5f;
-
-  bool verify_expected_failure_graph{false};
 };
 
 // return number of nodes in the Graph and any subgraphs that are assigned to the specified execution provider

@@ -346,7 +346,7 @@ TEST(NnapiExecutionProviderTest, TestQDQConv) {
                       {1, 1, 5, 5} /* input_shape */,
                       {1, 1, 3, 3} /* weights_shape */),
                   "nnapi_qdq_test_graph_conv",
-                  {true /* verify_entire_graph_use_ep */});
+                  {ExpectedEPNodeAssignment::All});
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQResize) {
@@ -362,7 +362,7 @@ TEST(NnapiExecutionProviderTest, TestQDQResize) {
                                          "linear" /* mode */,
                                          "asymmetric" /* coordinate_transformation_mode */),
                   "nnapi_qdq_test_graph_resize",
-                  {false /* verify_entire_graph_use_ep */});
+                  {ExpectedEPNodeAssignment::Some});
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQResize_UnsupportedDefaultSetting) {
@@ -370,9 +370,8 @@ TEST(NnapiExecutionProviderTest, TestQDQResize_UnsupportedDefaultSetting) {
                                          {1, 3, 32, 32} /* sizes_data */),
                   "nnapi_qdq_test_graph_resize",
                   {
-                      false /* verify_entire_graph_use_ep */,
+                      ExpectedEPNodeAssignment::None,
                       1e-5f,
-                      true /* verify_expected_failure_graph */,
                   },
                   false /* nnapi_qdq_model_supported */);
 }
@@ -384,7 +383,7 @@ TEST(NnapiExecutionProviderTest, TestQDQAveragePool) {
                       {1, 3, 32, 32} /* input_shape */),
                   "nnapi_qdq_test_graph_averagepool",
                   {
-                      true /* verify_entire_graph_use_ep */,
+                      ExpectedEPNodeAssignment::All,
                       1e-2f /* fp32_abs_err */,
                   });
 }
@@ -396,7 +395,7 @@ TEST(NnapiExecutionProviderTest, TestQDQAdd) {
                       {1, 23, 13, 13} /* input_shape */,
                       "Add" /* op_type */),
                   "nnapi_qdq_test_graph_add",
-                  {true /* verify_entire_graph_use_ep */});
+                  {ExpectedEPNodeAssignment::All});
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQMul) {
@@ -408,8 +407,8 @@ TEST(NnapiExecutionProviderTest, TestQDQMul) {
                       "Mul" /* op_type */),
                   "nnapi_qdq_test_graph_mul",
                   {
-                      true /* verify_entire_graph_use_ep */,
-                      1e-2f /* fp32_abs_err */,
+                      ExpectedEPNodeAssignment::All,
+                      1e-2f /* fp32_abs_err */
                   });
 }
 
@@ -419,18 +418,14 @@ TEST(NnapiExecutionProviderTest, TestQDQTranspose) {
                       {1, 3, 32, 32} /* input_shape */,
                       {0, 3, 1, 2} /* perms */),
                   "nnapi_qdq_test_graph_transpose",
-                  {
-                      true /* verify_entire_graph_use_ep */
-                  });
+                  {ExpectedEPNodeAssignment::All});
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQReshape) {
   RunQDQModelTest(BuildQDQReshapeTestCase({1, 3, 64, 64} /* input_shape */,
                                           {1, 64, 64, 3} /* reshape_shape */),
                   "nnapi_qdq_test_graph_reshape",
-                  {
-                      true /* verify_entire_graph_use_ep */
-                  });
+                  {ExpectedEPNodeAssignment::All});
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQSoftMax) {
@@ -440,9 +435,7 @@ TEST(NnapiExecutionProviderTest, TestQDQSoftMax) {
                       1.f / 256 /* output_scales */,
                       0 /* output_zp */),
                   "nnapi_qdq_test_graph_softmax",
-                  {
-                      true /* verify_entire_graph_use_ep */
-                  });
+                  {ExpectedEPNodeAssignment::All});
 }
 
 // This is to verify when Nnapi required scale and zero point are not satisfied
@@ -454,11 +447,8 @@ TEST(NnapiExecutionProviderTest, TestQDQSoftMax_UnsupportedOutputScaleAndZp) {
                       0.002f /* output_scales */,
                       1 /* output_zp */),
                   "nnapi_qdq_test_graph_softmax",
-                  {
-                      false /* verify_entire_graph_use_ep */,
-                      1e-5,
-                      true /* verify_expected_failure_graph */,
-                  },
+                  {ExpectedEPNodeAssignment::None,
+                   1e-5},
                   false /* nnapi_qdq_model_supported */);
 }
 
@@ -518,9 +508,7 @@ TEST(NnapiExecutionProviderTest, TestQDQConcat) {
                       } /* input_shapes */,
                       2 /* axis */),
                   "nnapi_qdq_test_graph_concat",
-                  {
-                      true /* verify_entire_graph_use_ep */
-                  },
+                  {ExpectedEPNodeAssignment::All},
                   true, /* nnapi_qdq_model_supported */
                   check_graph);
 }
@@ -532,11 +520,8 @@ TEST(NnapiExecutionProviderTest, TestQDQConcat_UnsupportedInputScalesAndZp) {
   if (nnapi->nnapi_runtime_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
     RunQDQModelTest(BuildQDQConcatTestCaseUnsupported(),
                     "nnapi_qdq_test_graph_concat",
-                    {
-                        false /* verify_entire_graph_use_ep */,
-                        1e-5,
-                        true /* verify_expected_failure_graph */
-                    },
+                    {ExpectedEPNodeAssignment::None,
+                     1e-5},
                     false /* nnapi_qdq_model_supported */);
   }
 }
