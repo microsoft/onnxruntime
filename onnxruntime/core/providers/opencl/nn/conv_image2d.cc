@@ -8,8 +8,8 @@
 #include "core/providers/opencl/opencl_kernel.h"
 #include "core/providers/opencl/opencl_data_transfer.h"
 #include "core/providers/opencl/opencl_execution_provider.h"
+#include "core/providers/opencl/opencl_program_manager.h"
 #include "core/providers/opencl/nn/conv_winograd_helper.h"
-
 
 namespace {
 #define CONTENT_NAME generic_conv_kernel_src

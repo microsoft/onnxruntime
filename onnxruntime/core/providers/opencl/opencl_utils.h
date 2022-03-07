@@ -141,9 +141,6 @@ class NDRange {
 };
 
 const char* GetErrorString(cl_int error_code);
-cl_program LoadProgram(cl_context ctx, cl_device_id dev, const std::string& src, bool use_fp16);
-cl_program LoadProgram(cl_context ctx, cl_device_id dev, const char* src, size_t src_len, bool use_fp16);
-cl_kernel LoadKernel(cl_program program, const char* name);
 
 // NOTE: for OrtDevice ctor
 struct CLMemType {
@@ -243,7 +240,7 @@ class Image2DDesc : private std::pair<int64_t, int64_t> {
     int64_t K_w = 4;
     return {CeilDiv(C_i, 4) * K_h, 16*CeilDiv(C_o, 4)};
   }
-  
+
   static Image2DDesc PackFromDepthwiseConv2DWeight(const TensorShape& shape) {
     ORT_ENFORCE(shape.NumDimensions() == 4);
     int64_t C_o = shape[0];
@@ -276,7 +273,6 @@ class Image2DDesc : private std::pair<int64_t, int64_t> {
   bool operator==(const onnxruntime::opencl::Image2DDesc& other) const {
     return Width() == other.Width() && Height() == other.Height();
   }
-
 };
 
 class KernelLauncher {
@@ -395,7 +391,14 @@ class KernelLauncher {
   cl_uint err_index_;
 };
 
-std::unique_ptr<float, std::function<void(float*)>> mapImage2dToHost(const OpenCLExecutionProvider& exec, const Tensor& tensor, int width, int height, bool write=false);
+inline size_t HashCombine(size_t a, size_t b) {
+  // https://github.com/boostorg/functional/blob/c839796c8/include/boost/functional/hash/hash.hpp#L256
+  b ^= b + 0x9e3779b9 + (a << 6) + (a >> 2);
+  return b;
+}
+
+// FIXME: this is debug utiltity add by Jicheng Wen
+std::unique_ptr<float, std::function<void(float*)>> mapImage2dToHost(const OpenCLExecutionProvider& exec, const Tensor& tensor, int width, int height, bool write = false);
 std::unique_ptr<float, std::function<void(float*)>> mapImage2dToHost(const OpenCLExecutionProvider& exec, cl_mem image, int width, int height, bool write = false);
 }  // namespace opencl
 }  // namespace onnxruntime
@@ -404,9 +407,6 @@ template <>
 struct std::hash<onnxruntime::opencl::Image2DDesc> {
   size_t operator()(const onnxruntime::opencl::Image2DDesc& desc) const {
     std::hash<int64_t> h{};
-    auto v = h(desc.Width());
-    // https://github.com/boostorg/functional/blob/c839796c8/include/boost/functional/hash/hash.hpp#L256
-    v ^= h(desc.Height()) + 0x9e3779b9 + (v << 6) + (v >> 2);
-    return v;
+    return onnxruntime::opencl::HashCombine(h(desc.Width()), h(desc.Height()));
   }
 };

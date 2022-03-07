@@ -11,6 +11,28 @@
 #include "core/providers/providers.h"
 #include "core/graph/constants.h"
 
+/* Notes about OpenCL object lifetime
+
+OpenCL have reference counted (RC) object management, however, it is impossible
+to query the current counter. As a result, it makes it difficualt to *share*
+created object, especially of programs and kernels, which are slow to create
+and resulting loooong startup time on the first run of a session. So we are not
+relying on the internal RC mechanism.
+
+- cl_device_id, cl_context and cl_command_queue
+
+  lifetime are bounded to EP
+
+- cl_mem
+
+  is created and managed by OpenCLBufferAllocator and OpenCLImage2DAllocator
+
+- cl_program and cl_kernel
+
+  is created and managed by OpenCLKernelManager
+
+*/
+
 namespace onnxruntime {
 
 // Information needed to construct OpenCL execution providers.
@@ -45,6 +67,9 @@ class OpenCLExecutionProvider : public IExecutionProvider {
 
   Status AfterCLLaunch() const;
 
+  const opencl::OpenCLProgramManager* GetProgramManager() const;
+  opencl::OpenCLProgramManager* GetProgramManager();
+
  private:
   Status InitOpenCLContext();
   void DisableFp16() { use_fp16_ = false; }
@@ -57,6 +82,8 @@ class OpenCLExecutionProvider : public IExecutionProvider {
   bool flush_after_launch_;
 
  private:
+  std::unique_ptr<opencl::OpenCLProgramManager> program_manager_;
+
   // IDataTransfer is a lightweight interface with std::unique_ptr as its
   // return value. Bind kernels to it directly will cause the kernel being
   // created from time to time. So we move the kernels here.
