@@ -58,5 +58,45 @@ GetQDQTestCaseFn BuildQDQReshapeTestCase(const std::vector<int64_t>& input_shape
   };
 }
 
+GetQDQTestCaseFn BuildQDQConcatTestCase(const std::vector<std::vector<int64_t>>& input_shapes,
+                                        int64_t axis,
+                                        bool has_input_float,
+                                        bool has_input_int8,
+                                        bool has_output_int8) {
+  return [input_shapes, axis,
+          has_input_float, has_input_int8, has_output_int8](
+             ModelTestBuilder& builder) {
+    auto input_count = input_shapes.size();
+    std::vector<NodeArg*> input_args;
+    std::vector<NodeArg*> q_input_args;
+    for (size_t i = 0; i < input_count; i++) {
+      input_args.push_back(builder.MakeInput<float>(input_shapes[i], -1.f, 1.f));
+      if (i == 0 && has_input_float) {
+        q_input_args.push_back(input_args.back());
+      } else if (i == 0 && has_input_int8) {
+        q_input_args.push_back(AddQDQNodePair<int8_t>(builder, input_args.back(), 0.05f, 1));
+      } else {
+        q_input_args.push_back(AddQDQNodePair<uint8_t>(builder, input_args.back(), 0.05f, 128));
+      }
+    }
+    auto* concat_output = builder.MakeIntermediate();
+    Node& concat_node = builder.AddNode("Concat", q_input_args, {concat_output});
+    concat_node.AddAttribute("axis", axis);
+
+    auto* q_concat_output = builder.MakeIntermediate();
+    if (has_output_int8) {
+      builder.AddQuantizeLinearNode<int8_t>(concat_output, 0.05f, 1, q_concat_output);
+
+      auto* output_arg = builder.MakeOutput();
+      builder.AddDequantizeLinearNode<int8_t>(q_concat_output, 0.05f, 1, output_arg);
+    } else {
+      builder.AddQuantizeLinearNode<uint8_t>(concat_output, 0.05f, 128, q_concat_output);
+
+      auto* output_arg = builder.MakeOutput();
+      builder.AddDequantizeLinearNode<uint8_t>(q_concat_output, 0.05f, 128, output_arg);
+    }
+  };
+}
+
 }  // namespace test
 }  // namespace onnxruntime

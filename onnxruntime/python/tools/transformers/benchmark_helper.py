@@ -42,6 +42,27 @@ class OptimizerInfo(Enum):
         return self.value
 
 
+class ConfigModifier():
+    def __init__(self, num_layers):
+        self.num_layers = num_layers
+
+    def modify(self, config):
+        if self.num_layers is None:
+            return
+        if hasattr(config, 'num_hidden_layers'):
+            config.num_hidden_layers = self.num_layers
+            logger.info(f"Modifying pytorch model's number of hidden layers to: {self.num_layers}")
+        if hasattr(config, 'encoder_layers'):
+            config.encoder_layers = self.num_layers
+            logger.info(f"Modifying pytorch model's number of encoder layers to: {self.num_layers}")
+        if hasattr(config, 'decoder_layers '):
+            config.decoder_layers = self.num_layers
+            logger.info(f"Modifying pytorch model's number of decoder layers to: {self.num_layers}")
+
+    def get_layer_num(self):
+        return self.num_layers
+
+
 IO_BINDING_DATA_TYPE_MAP = {
     "float32": numpy.float32,
     # TODO: Add more.
@@ -157,8 +178,9 @@ def output_details(results, csv_filename):
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
             "engine", "version", "providers", "device", "precision", "optimizer", "io_binding", "model_name", "inputs",
-            "threads", "batch_size", "sequence_length", "datetime", "test_times", "QPS", "average_latency_ms",
-            "latency_variance", "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
+            "threads", "batch_size", "sequence_length", "custom_layer_num", "datetime", "test_times", "QPS",
+            "average_latency_ms", "latency_variance", "latency_90_percentile", "latency_95_percentile",
+            "latency_99_percentile"
         ]
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
@@ -172,8 +194,8 @@ def output_details(results, csv_filename):
 def output_summary(results, csv_filename, args):
     with open(csv_filename, mode="a", newline='') as csv_file:
         header_names = [
-            "model_name", "inputs", "engine", "version", "providers", "device", "precision", "optimizer", "io_binding",
-            "threads"
+            "model_name", "inputs", "custom_layer_num", "engine", "version", "providers", "device", "precision",
+            "optimizer", "io_binding", "threads"
         ]
         data_names = []
         for batch_size in args.batch_sizes:

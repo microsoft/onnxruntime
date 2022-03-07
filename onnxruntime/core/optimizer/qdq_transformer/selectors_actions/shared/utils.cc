@@ -27,19 +27,34 @@ void Selectors::RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops
 }
 
 /* static methods to return different operator's OpVersionMap */
-static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() { return {{"Gather", {}},
-                                                                                   {"Reshape", {}},
-                                                                                   {"Transpose", {}},
-                                                                                   {"MaxPool", {12}},
-                                                                                   {"Resize", {}}}; }
+static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() {
+  return {{"Gather", {}},
+          {"Reshape", {}},
+          {"Transpose", {}},
+          {"MaxPool", {12}},
+          {"Resize", {}},
+          {"Squeeze", {}},
+          {"Unsqueeze", {}}};
+}
 
-static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() { return {{"AveragePool", {}},
-                                                                                    {"LeakyRelu", {}}}; }
-static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() { return {{"Add", {}},
-                                                                                     {"Mul", {}}}; }
-static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() { return {{"Concat", {}}}; }
-static const OpVersionsAndSelector::OpVersionsMap GetConvOpVersionsMap() { return {{"Conv", {}}}; }
-static const OpVersionsAndSelector::OpVersionsMap GetMatMulOpVersionsMap() { return {{"MatMul", {}}}; }
+static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
+  return {{"AveragePool", {}},
+          {"Softmax", {}},
+          {"LeakyRelu", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
+  return {{"Add", {}},
+          {"Mul", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() {
+  return {{"Concat", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetConvOpVersionsMap() {
+  return {{"Conv", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetMatMulOpVersionsMap() {
+  return {{"MatMul", {}}};
+}
 
 /* Selector rules registration related */
 void RegisterMiscSelectors(Selectors& qdq_selectors) {

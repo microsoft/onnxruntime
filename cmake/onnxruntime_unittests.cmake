@@ -430,6 +430,10 @@ endif()
 
 set (onnxruntime_test_providers_dependencies ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
+if(onnxruntime_USE_CUDA)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda)
+endif()
+
 if(onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
@@ -665,15 +669,7 @@ if(WIN32)
 endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
-  if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-    # WebAssembly threading support in node is an experimental feature yet
-    # and that makes some intensive threadpool tests fail randomly.
-    # Will enable this test when node.js releases a stable version supporting multi-threads.
-    list(REMOVE_ITEM all_tests
-      "${TEST_SRC_DIR}/platform/threadpool_test.cc"
-      "${TEST_SRC_DIR}/providers/cpu/nn/string_normalizer_test.cc"
-    )
-  else()
+  if (NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     list(REMOVE_ITEM all_tests
       "${TEST_SRC_DIR}/framework/execution_frame_test.cc"
       "${TEST_SRC_DIR}/framework/inference_session_test.cc"
@@ -752,12 +748,11 @@ add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDEN
 #onnx_proto target should mark this definition as public, instead of private
 target_compile_definitions(onnx_test_data_proto PRIVATE "-DONNX_API=")
 if(WIN32)
-  target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456" "/wd4100" "/wd4267" "/wd6011" "/wd6387" "/wd28182")
+  target_compile_options(onnx_test_data_proto PRIVATE "/wd4100" "/wd4125" "/wd4127" "/wd4267" "/wd4456" "/wd4800" "/wd6011" "/wd6387" "/wd28182")
 else()
   #Once we upgrade protobuf to 3.17.3+, we can remove this
   target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-parameter")
 endif()
-add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto)
 target_include_directories(onnx_test_data_proto PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 set_target_properties(onnx_test_data_proto PROPERTIES FOLDER "ONNXRuntimeTest")
@@ -1269,8 +1264,8 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   )
 
   onnxruntime_add_shared_library_module(test_execution_provider ${test_execution_provider_srcs})
-  add_dependencies(test_execution_provider onnxruntime_providers_shared onnx)
-  target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared)
+  add_dependencies(test_execution_provider onnxruntime_providers_shared onnx absl::raw_hash_set)
+  target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared absl::raw_hash_set)
   target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
   target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
   target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${ORTTRAINING_ROOT})
@@ -1286,14 +1281,6 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   else()
     message(FATAL_ERROR "test_execution_provider unknown platform, need to specify shared library exports for it")
   endif()
-endif()
-
-if (onnxruntime_USE_TVM)
-  # find_library(TVM_LIBS NAMES libtvm.so PATHS ${tvm_SOURCE_DIR}/lib)
-  # link_directories(onnxruntime_test_all ${TVM_LIBS})
-  find_library(PYTHON_LIBS NAMES libpython PATHS /usr/local/lib)
-  #target_link_libraries(onnxruntime_test_all PRIVATE ${PYTHON_LIBRARIES} -lutil)
-  # set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-rpath,${TVM_LIBS}")
 endif()
 
 include(onnxruntime_fuzz_test.cmake)

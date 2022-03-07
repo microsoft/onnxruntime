@@ -281,6 +281,12 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_amp_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/amp/*.py"
   )
+  file(GLOB onnxruntime_python_experimental_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/experimental/*.py"
+  )
+  file(GLOB onnxruntime_python_gradient_graph_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/experimental/gradient_graph/*.py"
+  )
   file(GLOB onnxruntime_python_optim_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/optim/*.py"
   )
@@ -553,6 +559,8 @@ if (onnxruntime_ENABLE_TRAINING)
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/amp
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/experimental
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/experimental/gradient_graph
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/optim
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/experimental
@@ -573,6 +581,12 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_amp_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/amp/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_experimental_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/experimental/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_gradient_graph_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/experimental/gradient_graph/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_optim_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/optim/
@@ -702,25 +716,20 @@ if (onnxruntime_USE_TVM)
     COMMAND ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:onnxruntime_providers_tvm>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-    # TODO(vvchernov): why?
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${tvm_BINARY_DIR}/libtvm*
-        ${tvm_SOURCE_DIR}/python/tvm
   )
 
-  # TODO(vvchernov): repeat?
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
       WORKING_DIRECTORY ${tvm_SOURCE_DIR}/python
-      COMMAND ${Python_EXECUTABLE} setup.py build_ext --inplace
-      COMMAND ${CMAKE_COMMAND} -E rm
-        ${tvm_SOURCE_DIR}/python/tvm/*.so
-      COMMAND ${CMAKE_COMMAND} -E env TVM_LIBRARY_PATH=${tvm_BINARY_DIR}
-          ${Python_EXECUTABLE} setup.py bdist_wheel
-      COMMAND ${CMAKE_COMMAND} -E copy
-        ${tvm_BINARY_DIR}/libtvm*
-        ${tvm_SOURCE_DIR}/python/tvm
+      COMMAND ${Python_EXECUTABLE} setup.py bdist_wheel
     )
+
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${Python_EXECUTABLE}
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/tvm/extend_python_file.py
+          --target_file $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/_ld_preload.py
+  )
 
 endif()
 

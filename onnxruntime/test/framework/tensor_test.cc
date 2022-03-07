@@ -209,5 +209,27 @@ TEST(TensorTest, SizeOverflow) {
   Tensor t(type, shape1, nullptr, alloc->Info());
   EXPECT_THROW(t.SizeInBytes(), OnnxRuntimeException);
 }
+
+TEST(TensorTest, Strided) {
+  TensorShape shape({2, 3, 4});
+  auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  void* data = alloc->Alloc(shape.Size() * sizeof(float));
+  Tensor t(DataTypeImpl::GetType<float>(), shape, data, alloc->Info());
+  EXPECT_TRUE(t.IsContiguous());
+  TensorShapeVector strides{12, 4, 1};
+  ASSERT_THAT(t.Strides(), testing::ContainerEq(gsl::make_span(strides.cbegin(), strides.cend())));
+  TensorShapeVector new_strides{1, 12, 4};
+  t.SetStrides(new_strides);
+  EXPECT_FALSE(t.IsContiguous());
+  ASSERT_THAT(t.Strides(), testing::ContainerEq(gsl::make_span(new_strides.cbegin(), new_strides.cend())));
+  Tensor t2(DataTypeImpl::GetType<float>(), shape, data, alloc->Info(), 0L, gsl::make_span(new_strides));
+  EXPECT_FALSE(t2.IsContiguous());
+  ASSERT_THAT(t2.Strides(), testing::ContainerEq(gsl::make_span(new_strides.cbegin(), new_strides.cend())));
+  t2.SetStrides(strides);
+  EXPECT_TRUE(t2.IsContiguous());
+  ASSERT_THAT(t2.Strides(), testing::ContainerEq(gsl::make_span(strides.cbegin(), strides.cend())));
+  alloc->Free(data);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
