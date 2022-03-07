@@ -11,6 +11,7 @@
 #include "core/common/common.h"
 
 namespace onnxruntime {
+namespace tvm {
 
 inline DLDataType GetDataType(ONNXTensorElementDataType type) {
   if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
@@ -50,6 +51,7 @@ inline DLDevice GetDLDevice(const OrtDevice& device) {
   return context;
 }
 
-}  // namespace onnxruntime
+}   // namespace tvm
+}   // namespace onnxruntime
 
 #endif // TVM_UTILS_H

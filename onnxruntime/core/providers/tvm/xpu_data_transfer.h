@@ -7,7 +7,9 @@
 #include "core/framework/data_transfer.h"
 #include "tvm_common.h"
 
+
 namespace onnxruntime {
+namespace tvm {
 
 class XPUDataTransfer : public IDataTransfer {
  public:
@@ -31,5 +33,7 @@ class TvmCPUDataTransfer : public IDataTransfer {
   common::Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const override;
 };
 
-}  // namespace onnxruntime
+}   // namespace tvm
+}   // namespace onnxruntime
+
 #endif // XPU_DATA_TRANSFER

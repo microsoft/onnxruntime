@@ -13,6 +13,7 @@
 
 #include "tvm_common.h"
 
+
 namespace onnxruntime {
 namespace tvm {
 
@@ -23,10 +24,21 @@ public:
     using InputsInfoMap = std::map<size_t, TVMTensorShape>;
 
     RunnerImpl() = delete;
-    RunnerImpl(const std::shared_ptr<TvmModule>& mod);
+    RunnerImpl(const std::shared_ptr<TvmModule>& mod,
+               const InputsInfoMap& inputs_info,
+               const TVMTensorShapes output_shapes,
+               const std::vector<DLTensor> tensors_outputs);
     virtual ~RunnerImpl() = default;
 
-    virtual common::Status run(FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context);
+    virtual common::Status run(const OrtCustomOpApi* api, OrtKernelContext* context) {
+        Ort::CustomOpApi ort{*api};
+
+        set_input(ort, context);
+        connect_output_tensors2ort(ort, context);
+        run_and_get_output();
+
+        return Status::OK();
+    }
 
     virtual void set_input(Ort::CustomOpApi& ort, OrtKernelContext* context) = 0;
     virtual void connect_output_tensors2ort(Ort::CustomOpApi& ort, OrtKernelContext* context) = 0;
@@ -45,15 +57,19 @@ private:
 
 protected:
     std::shared_ptr<TvmModule> mod_;
-    InputsInfoMap inputs_info_{};
+    InputsInfoMap inputs_info_;
     TVMTensorShapes output_shapes_;
-    std::vector<DLTensor> tensors_outputs_;
+    std::vector<DLTensor> output_tensors_;
 };
+
 
 class GERunnerImpl : public RunnerImpl {
 public:
     GERunnerImpl() = delete;
-    GERunnerImpl(const std::shared_ptr<TvmModule>& mod);
+    GERunnerImpl(const std::shared_ptr<TvmModule>& mod,
+                 const InputsInfoMap& inputs_info,
+                 const TVMTensorShapes output_shapes,
+                 const std::vector<DLTensor> tensors_outputs);
     virtual ~GERunnerImpl() = default;
 
     virtual void set_input(Ort::CustomOpApi& ort, OrtKernelContext* context) override final;
@@ -61,10 +77,14 @@ public:
     virtual void run_and_get_output() override final;
 };
 
+
 class VMRunnerImpl : public RunnerImpl {
 public:
     VMRunnerImpl() = delete;
-    VMRunnerImpl(const std::shared_ptr<TvmModule>& mod);
+    VMRunnerImpl(const std::shared_ptr<TvmModule>& mod,
+                 const InputsInfoMap& inputs_info,
+                 const TVMTensorShapes output_shapes,
+                 const std::vector<DLTensor> tensors_outputs);
     virtual ~VMRunnerImpl() = default;
 
     virtual void set_input(Ort::CustomOpApi& ort, OrtKernelContext* context) override final;
@@ -78,7 +98,12 @@ private:
     bool probe_infer_ = false;
 };
 
-std::shared_ptr<RunnerImpl> getTVMRunnerImpl(const std::string& name, const std::shared_ptr<TvmModule>& mod);
+
+std::shared_ptr<RunnerImpl> getTVMRunnerImpl(const std::string& name,
+                                             const std::shared_ptr<TvmModule>& mod,
+                                             const InputsInfoMap& inputs_info,
+                                             const TVMTensorShapes output_shapes,
+                                             const std::vector<DLTensor> tensors_outputs);
 
 }   // namespace tvm
 }   // namespace onnxruntime

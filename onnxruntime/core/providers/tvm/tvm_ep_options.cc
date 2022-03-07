@@ -13,6 +13,7 @@
 
 namespace onnxruntime {
 namespace tvm {
+
 namespace provider_option_names {
 constexpr const char* kExecutor = "executor";
 constexpr const char* kTarget = "target";
@@ -39,7 +40,6 @@ static const std::unordered_set<std::string> valid_keys {
 };
 
 }  // namespace provider_option_names
-}  // namespace tvm
 
 size_t split(const std::string &src, std::vector<std::string> &dst, char ch) {
   dst.clear();
@@ -252,4 +252,5 @@ std::ostream& operator<<(std::ostream& out, const TvmEPOptions& options) {
   return out;
 }
 
+}  // namespace tvm
 }  // namespace onnxruntime

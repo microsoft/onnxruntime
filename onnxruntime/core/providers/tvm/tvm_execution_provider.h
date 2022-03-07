@@ -16,13 +16,14 @@
 #include "tvm_compiler.h"
 #include "tvm_runner.h"
 
-namespace onnxruntime {
 
+namespace onnxruntime {
+  class Graph;
 namespace tvm {
+
 namespace env_vars {
    static const std::string kDumpSubgraphs = "ORT_TVM_DUMP_SUBGRAPHS";
 }  // namespace env_vars
-}  // namespace tvm
 
 class TvmExecutionProvider : public IExecutionProvider {
   using Compiler = tvm::TVMCompiler;
@@ -46,6 +47,11 @@ class TvmExecutionProvider : public IExecutionProvider {
 
  private:
   void printOptions();
+  std::shared_ptr<tvm::TvmModule> compileModel(const std::string& func_name,
+                                               const Graph& graph,
+                                               InputsInfoMap& inputs_info,
+                                               std::vector<DLTensor>& output_tensors);
+  TVMTensorShape convertTensorShape(const ONNX_NAMESPACE::TensorShapeProto& shape_proto);
   NodeComputeInfo prepareComputeInfo(const std::string& func_name);
   int createStateFunc(ComputeContext*, FunctionState*);
  private:
@@ -57,6 +63,7 @@ class TvmExecutionProvider : public IExecutionProvider {
   AllocatorPtr allocator_;
 };
 
+}  // namespace tvm
 }  // namespace onnxruntime
 
 #endif  // TVM_EXECUTION_PROVIDER_H

@@ -14,20 +14,21 @@
 
 namespace onnxruntime {
 namespace tvm {
+
     TvmModule TVMCompile(const std::string& onnx_txt,
                          const std::string& model_path,
                          const TvmEPOptions& options,
                          int opset,
-                         const std::vector<std::vector<int64_t>>& input_shapes);
+                         const TVMTensorShapes& input_shapes);
     void TVMSetInputs(TvmModule& mod, std::vector<size_t>& inds, std::vector<DLTensor>& inputs);
     void TVM_VM_SetInputs(TvmModule& mod, std::vector<size_t>& inds, std::vector<DLTensor>& inputs);
     void TVMGetOutputs(TvmModule& mod, std::vector<DLTensor>& outputs);
     void TVM_VM_GetOutputs(TvmModule& mod, std::vector<DLTensor>& outputs);
     void TVMGetOutputShapes(TvmModule& mod,
-                            size_t num_outputs,
-                            std::vector<std::vector<int64_t>>& output_shapes);
+                            TVMTensorShapes& output_shapes);
     void TVMRun(TvmModule& mod);
     void TVM_VM_Run(TvmModule& mod);
+
 }  // namespace tvm
 }  // namespace onnxruntime
 

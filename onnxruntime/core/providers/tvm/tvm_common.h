@@ -4,10 +4,23 @@
 #ifndef TVM_COMMON_H
 #define TVM_COMMON_H
 
+#include <vector>
+#include <map>
+
 #include <dlpack/dlpack.h>
 #include <tvm/runtime/module.h>
 #include <tvm/runtime/vm/vm.h>
 
-using TvmModule = tvm::runtime::Module;
+
+namespace onnxruntime {
+namespace tvm {
+
+using TvmModule = ::tvm::runtime::Module;
+using TVMTensorShape = std::vector<int64_t>;
+using TVMTensorShapes = std::vector<TVMTensorShape>;
+using InputsInfoMap = std::map<size_t, TVMTensorShape>;
+
+}   // namespace tvm
+}   // namespace onnxruntime
 
 #endif // TVM_COMMON_H

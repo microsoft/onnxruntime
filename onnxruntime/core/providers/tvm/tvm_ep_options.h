@@ -13,6 +13,7 @@
 
 #include "tvm_defaults.h"
 
+
 namespace onnxruntime {
 
 namespace tvm {
@@ -23,9 +24,10 @@ const std::string LLVM_TARGET_AVX2 = "llvm -mcpu=core-avx2";
 const std::string LLVM_TARGET_SKYLAKE_AVX512 = "llvm -mcpu=skylake-avx512";
 const std::string LLVM_TARGET_AVX512 = "llvm -mcpu=skylake-avx512";
 }  // namespace cpu_targets
-}  // namespace tvm
 
-using TVMInputShapes = std::unordered_map<std::string, std::vector<int64_t>>;
+using TVMTensorShape = std::vector<int64_t>;
+using TVMInputShapes = std::unordered_map<std::string, TVMTensorShape>;
+using TVMTensorShapes = std::vector<TVMTensorShape>;
 
 // Information needed to construct an TVM execution provider.
 struct TvmEPOptions {
@@ -40,6 +42,7 @@ struct TvmEPOptions {
   std::string input_names_str{""};
   std::string input_shapes_str{""};
   TVMInputShapes input_shapes{};
+  TVMTensorShapes output_shapes{};
 
   static TvmEPOptions FromOptionsString(const char* options);
   static TvmEPOptions FromProviderOptions(const ProviderOptions& options);
@@ -59,6 +62,7 @@ private:
 
 std::ostream& operator<<(std::ostream& out, const TvmEPOptions& options);
 
+}  // namespace tvm
 }  // namespace onnxruntime
 
 #endif  // TVM_EXECUTION_PROVIDER_OPTIONS_H

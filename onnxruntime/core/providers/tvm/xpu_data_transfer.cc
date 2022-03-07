@@ -6,7 +6,10 @@
 #include "xpu_data_transfer.h"
 #include "tvm_utils.h"
 
+
 namespace onnxruntime {
+namespace tvm {
+
 XPUDataTransfer::XPUDataTransfer() {
 }
 
@@ -80,4 +83,5 @@ common::Status TvmCPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, in
   return Status::OK();
 }
 
-}  // namespace onnxruntime
+}   // namespace tvm
+}   // namespace onnxruntime

@@ -101,12 +101,11 @@ void TVM_VM_GetOutputs(TvmModule& mod,
 }
 
 void TVMGetOutputShapes(TvmModule& mod,
-                        size_t num_outputs,
-                        std::vector<std::vector<int64_t>>& output_shapes)
+                        TVMTensorShapes& output_shapes)
 {
-  output_shapes.clear();
+  size_t size = output_shapes.size();
   TvmPackedFunc get_output = mod.GetFunction("get_output", false);
-  for (size_t i = 0; i < num_outputs; ++i) {
+  for (size_t i = 0; i < size; ++i) {
     ::tvm::runtime::NDArray output_array = get_output(i);
     ::tvm::runtime::ShapeTuple shape_tuple = output_array.Shape();
     size_t dims_num = shape_tuple.size();
@@ -114,7 +113,7 @@ void TVMGetOutputShapes(TvmModule& mod,
     for (size_t j = 0; j < dims_num; ++j) {
       dims.push_back(int64_t(shape_tuple[j]));
     }
-    output_shapes.push_back(dims);
+    output_shapes[i] = dims;
   }
 }
 

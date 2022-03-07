@@ -8,6 +8,7 @@
 #include "tvm_common.h"
 
 namespace onnxruntime {
+namespace tvm {
 
 #define TVM_ALLOC_ALIGN 128
 
@@ -38,5 +39,7 @@ class TVMAllocator : public IAllocator {
   DLDevice ctx;
 };
 
-}  // namespace onnxruntime
+}   // namespace tvm
+}   // namespace onnxruntime
+
 #endif // TVM_ALLOCATOR

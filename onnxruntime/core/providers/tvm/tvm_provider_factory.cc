@@ -13,23 +13,23 @@
 namespace onnxruntime {
 
 struct TvmProviderFactory : IExecutionProviderFactory {
-  TvmProviderFactory(const TvmEPOptions& options) : options_{options} {}
+  TvmProviderFactory(const tvm::TvmEPOptions& options) : options_{options} {}
   ~TvmProviderFactory() = default;
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
-    return std::make_unique<TvmExecutionProvider>(options_);
+    return std::make_unique<tvm::TvmExecutionProvider>(options_);
   }
 
  private:
-    TvmEPOptions options_;
+    tvm::TvmEPOptions options_;
 };
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const char* opt_str) {
-    TvmEPOptions options = TvmEPOptions::FromOptionsString(opt_str);
+    tvm::TvmEPOptions options = tvm::TvmEPOptions::FromOptionsString(opt_str);
     return std::make_shared<TvmProviderFactory>(options);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const TvmEPOptions& options)
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const tvm::TvmEPOptions& options)
 {
     return std::make_shared<TvmProviderFactory>(options);
 }
@@ -38,7 +38,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(co
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tvm,
                     _In_ OrtSessionOptions* options,
                     _In_ const char* opt_str) {
-  onnxruntime::TvmEPOptions tvm_options = onnxruntime::TvmEPOptions::FromOptionsString(opt_str);
+  onnxruntime::tvm::TvmEPOptions tvm_options = onnxruntime::tvm::TvmEPOptions::FromOptionsString(opt_str);
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_Tvm(tvm_options));
   return nullptr;
 }

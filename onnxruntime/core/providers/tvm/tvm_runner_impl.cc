@@ -13,31 +13,29 @@ namespace tvm {
 
 /* ------------------------------------ RunnerImplFactory ----------------------------- */
 
-std::shared_ptr<RunnerImpl> getTVMRunnerImpl(const std::string& name, const std::shared_ptr<TvmModule>& mod) {
+std::shared_ptr<RunnerImpl> getTVMRunnerImpl(const std::string& name,
+                                             const std::shared_ptr<TvmModule>& mod,
+                                             const InputsInfoMap& inputs_info,
+                                             const TVMTensorShapes output_shapes,
+                                             const std::vector<DLTensor> output_tensors) {
     if (name == "graph") {
-        return std::make_shared<GERunnerImpl>(mod);
+        return std::make_shared<GERunnerImpl>(mod, inputs_info, output_shapes, output_tensors);
     } else if (name == "vm") {
-        return std::make_shared<VMRunnerImpl>(mod);
+        return std::make_shared<VMRunnerImpl>(mod, inputs_info, output_shapes, output_tensors);
     }
     return nullptr;
 }
 
 /* ------------------------------------ RunnerImpl ------------------------------------ */
 
-RunnerImpl::RunnerImpl(const std::shared_ptr<TvmModule>& mod) :
-  mod_(mod) {
-}
-
-common::Status RunnerImpl::run(FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
-  Ort::CustomOpApi ort{*api};
-
-  set_input(ort, context);
-
-  connect_output_tensors2ort(ort, context);
-
-  run_and_get_output();
-
-  return Status::OK();
+RunnerImpl::RunnerImpl(const std::shared_ptr<TvmModule>& mod,
+                       const InputsInfoMap& inputs_info,
+                       const TVMTensorShapes output_shapes,
+                       const std::vector<DLTensor> output_tensors) :
+  mod_(mod),
+  inputs_info_(inputs_info),
+  output_shapes_(output_shapes),
+  output_tensors_(output_tensors) {
 }
 
 void RunnerImpl::convert_input_tensors2dl_tensors(Ort::CustomOpApi& ort,
@@ -47,7 +45,6 @@ void RunnerImpl::convert_input_tensors2dl_tensors(Ort::CustomOpApi& ort,
   size_t num = inputs_info_.size();
   dst.reserve(num);
   dst_inds.reserve(num);
-  size_t counter = 0u;
   for (auto& info : inputs_info_) {
     // TODO(vvchernov): decomposition declaration only available with -std=c++1z or -std=gnu++1z
     auto& i = info.first;
@@ -68,14 +65,14 @@ void RunnerImpl::convert_input_tensors2dl_tensors(Ort::CustomOpApi& ort,
     t.data = const_cast<void*>(ort.GetTensorData<void>(input_tensor));
     t.ndim = shape.size();
     t.shape = shape.data();
-    dst[counter] = t;
-    dst_inds[counter++] = i;
+    dst.emplace_back(t);
+    dst_inds.push_back(i);
   }
 }
 
 void RunnerImpl::add_device_type_data2output_tensors(Ort::CustomOpApi& ort,
                                                      OrtKernelContext* context) {
-  size_t num_outputs = tensors_outputs_.size();
+  size_t num_outputs = output_tensors_.size();
   for (auto i = 0u; i < num_outputs; i++) {
     //setup output tensor property
     OrtValue* output_tensor = ort.KernelContext_GetOutput(context,
@@ -89,9 +86,9 @@ void RunnerImpl::add_device_type_data2output_tensors(Ort::CustomOpApi& ort,
     auto tensor_type = ort.GetTensorElementType(tensor_info);
     ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
 
-    tensors_outputs_[i].device = GetDLDevice(device);
-    tensors_outputs_[i].dtype = GetDataType(tensor_type);
-    tensors_outputs_[i].data = ort.GetTensorMutableData<void>(output_tensor);
+    output_tensors_[i].device = GetDLDevice(device);
+    output_tensors_[i].dtype = GetDataType(tensor_type);
+    output_tensors_[i].data = ort.GetTensorMutableData<void>(output_tensor);
   }
 }
 
@@ -112,8 +109,11 @@ bool RunnerImpl::compare_shapes(const TVMTensorShape& shape1, const TVMTensorSha
 
 /* ------------------------------------ GERunnerImpl ------------------------------------ */
 
-GERunnerImpl::GERunnerImpl(const std::shared_ptr<TvmModule>& mod) :
-  RunnerImpl(mod) {
+GERunnerImpl::GERunnerImpl(const std::shared_ptr<TvmModule>& mod,
+                           const InputsInfoMap& inputs_info,
+                           const TVMTensorShapes output_shapes,
+                           const std::vector<DLTensor> output_tensors) :
+  RunnerImpl(mod, inputs_info, output_shapes, output_tensors) {
 }
 
 void GERunnerImpl::set_input(Ort::CustomOpApi& ort, OrtKernelContext* context) {
@@ -130,13 +130,16 @@ void GERunnerImpl::connect_output_tensors2ort(Ort::CustomOpApi& ort, OrtKernelCo
 
 void GERunnerImpl::run_and_get_output() {
   tvm::TVMRun(*mod_);
-  tvm::TVMGetOutputs(*mod_, tensors_outputs_);
+  tvm::TVMGetOutputs(*mod_, output_tensors_);
 }
 
 /* ------------------------------------ VMRunnerImpl ------------------------------------ */
 
-VMRunnerImpl::VMRunnerImpl(const std::shared_ptr<TvmModule>& mod) :
-  RunnerImpl(mod) {
+VMRunnerImpl::VMRunnerImpl(const std::shared_ptr<TvmModule>& mod,
+                           const InputsInfoMap& inputs_info,
+                           const TVMTensorShapes output_shapes,
+                           const std::vector<DLTensor> output_tensors) :
+  RunnerImpl(mod, inputs_info, output_shapes, output_tensors) {
 }
 
 void VMRunnerImpl::set_input(Ort::CustomOpApi& ort, OrtKernelContext* context) {
@@ -157,16 +160,18 @@ void VMRunnerImpl::connect_output_tensors2ort(Ort::CustomOpApi& ort, OrtKernelCo
 
 void VMRunnerImpl::run_and_get_output() {
   tvm::TVM_VM_Run(*mod_);
-  tvm::TVM_VM_GetOutputs(*mod_, tensors_outputs_);
+  tvm::TVM_VM_GetOutputs(*mod_, output_tensors_);
 }
 
 void VMRunnerImpl::infer_once_to_get_output_shapes() {
   tvm::TVM_VM_Run(*mod_);
-  size_t num_outputs = tensors_outputs_.size();
-  tvm::TVMGetOutputShapes(*mod_, num_outputs, output_shapes_);
+  size_t num_outputs = output_tensors_.size();
+  // TODO(vvchernov): check it
+  output_shapes_.resize(num_outputs);
+  tvm::TVMGetOutputShapes(*mod_, output_shapes_);
   for (size_t i = 0; i < num_outputs; ++i) {
-    tensors_outputs_[i].ndim = output_shapes_[i].size();
-    tensors_outputs_[i].shape = output_shapes_[i].data();
+    output_tensors_[i].ndim = output_shapes_[i].size();
+    output_tensors_[i].shape = output_shapes_[i].data();
   }
   probe_infer_ = true;
 }
