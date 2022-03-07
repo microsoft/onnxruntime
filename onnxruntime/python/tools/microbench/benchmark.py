@@ -8,14 +8,15 @@ import torch
 
 def numpy_type(torch_type):
     type_map = {torch.float32: numpy.float32,
-                torch.float16: numpy.float16}
+                torch.float16: numpy.float16,
+                torch.int32: numpy.int32}
     return type_map[torch_type]
 
 
 def add_arguments(parser: ArgumentParser):
-    parser.add_argument("--provider", required=False, type=str, default="rocm", help="Execution provider to use")
-    parser.add_argument("--precision", required=False, type=str, default="fp16", help="Number format to use")
-    parser.add_argument('--profiling', type=bool, default=False, help='If enable profiling')
+    parser.add_argument("--provider", required=False, type=str, choices=["rocm", "cuda"], default="rocm", help="Execution provider to use")
+    parser.add_argument("--precision", required=False, type=str, choices=["fp16", "fp32"], default="fp16", help="Number format to use")
+    parser.add_argument('--profiling', required=False, type=bool, default=False, help='If enable profiling')
 
 
 class Benchmark:
