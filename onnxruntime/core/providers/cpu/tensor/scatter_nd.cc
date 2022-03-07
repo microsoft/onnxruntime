@@ -145,7 +145,7 @@ Status PrepareForCompute(OpKernelContext* context, Prepare<TData>& p) {
       auto* dst = output_tensor->template MutableData<std::string>();
       std::copy(str_begin, str_end, dst);
     } else {
-      memcpy(dst_base, src_base, input_tensor->SizeInBytes());
+      memcpy((void*)dst_base, (const void*)src_base, input_tensor->SizeInBytes());
     }
   }
 
