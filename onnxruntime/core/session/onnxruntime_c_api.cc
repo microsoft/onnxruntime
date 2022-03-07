@@ -2522,6 +2522,7 @@ static constexpr OrtApi ort_api_1_to_12 = {
     &OrtApis::GetCUDAProviderOptionsAsString,
     &OrtApis::ReleaseCUDAProviderOptions,
     &OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX,
+    // End of Version 11 - DO NOT MODIFY ABOVE (see above text for more information)
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
@@ -2536,11 +2537,12 @@ static_assert(offsetof(OrtApi, GetCurrentGpuDeviceId) / sizeof(void*) == 161, "S
 static_assert(offsetof(OrtApi, CreateSessionFromArrayWithPrepackedWeightsContainer) / sizeof(void*) == 169, "Size of version 8 API cannot change");
 static_assert(offsetof(OrtApi, GetSparseTensorIndices) / sizeof(void*) == 191, "Size of version 9 API cannot change");
 static_assert(offsetof(OrtApi, SynchronizeBoundOutputs) / sizeof(void*) == 203, "Size of version 10 API cannot change");
+static_assert(offsetof(OrtApi, SessionOptionsAppendExecutionProvider_MIGraphX) / sizeof(void*) == 209, "Size of version 11 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.11.0", "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
+static_assert(std::string_view(ORT_VERSION) == "1.12.0", "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
-// 2. If there were any APIs added to ort_api_1_to_12 above:
+// 2. If there were any APIs added to ort_api_1_to_11 above:
 //    a. Add the 'End of version #' markers (pattern above should be obvious)
 //    b. Add a static_assert in the directly above list of version sizes to ensure nobody adds any more functions to the just shipped API version
 
