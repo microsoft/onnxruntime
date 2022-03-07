@@ -18,7 +18,8 @@ Abstract:
     constant. When the packed right hand side is cached, we achieves higher performance
     by avoid packing all together.
 
-    This version utilizes dot product instructions, and uses 128b loads
+    This version utilizes dot product instructions, and uses only 64b loads that performs
+    better on cores with narrow memory interface such as A55
 
 --*/
 
@@ -26,9 +27,9 @@ Abstract:
 #include "AssembleDotProduct.h"
 
 //
-// Stack frame layout d8-d15, x19-x30 need to be preserved if used
+// Stack frame layout, d8-d15, x19-x30 need to be preserved if used
 //
-        .equ    .LGemmS8S8KernelFrame_SavedRegisters,   (4 * 8)
+        .equ    .LGemmS8S8KernelFrame_SavedRegisters,   (6 * 8)
         .equ    .LGemmS8S8KernelFrame_ColumnSumBuffer,  (0 + .LGemmS8S8KernelFrame_SavedRegisters)
 
         .text
@@ -74,20 +75,19 @@ Return Value:
 
 --*/
 
-        FUNCTION_ENTRY MlasSymQgemmS8KernelSdot
+        FUNCTION_ENTRY MlasSymQgemmS8KernelSdotLd64
 
         stp     d8,d9,[sp,#-.LGemmS8S8KernelFrame_SavedRegisters]!
         ldr     x8,[sp,#.LGemmS8S8KernelFrame_ColumnSumBuffer]
-        stp     d10,d11,[sp,#16]
-
-        // compute C pointers: x2, x16, x17, x6
         cmp     x4,#2                   // M < 2 ?
+        stp     d10,d11,[sp,#16]
         add     x16,x2,x6,lsl #2        // x16 -> C1
         add     x17,x2,x6,lsl #3        // x17 -> C2
+        stp     x20,x21,[sp,#32]
         csel    x16,x2,x16,lo           // if M < 2  x16/C1 -> C0
+        mov     x12,#4                  // set max M to 4
         csel    x17,x16,x17,ls          // if M <= 2  x17/C2 -> C1
         cmp     x4,#4                   // M < 4 ?
-        mov     x12,#4                  // set max M to 4
         add     x6,x16,x6,lsl #3        // x6 -> C3
         mov     x9,x0                   // save A0
         mov     x10,x3                  // save K
@@ -115,203 +115,265 @@ ProcessNextColumnLoop:
         ldr     q28,[x8],#16
         mov     x0,x9                   // reload A0
         cmp     x4,#2                   // M < 2 ?
+        ldr     q4,[x1],#16             // Load B
         add     x12,x9,x7               // x12 -> A1
         add     x13,x0,x7,lsl #1        // x13 -> A2
-        ldr     q4,[x1],#16             // Load B
         csel    x12,x0,x12,lo           // if M < 2  A1 -> A0
+        ldr     d0,[x0],#8              // Load A0  1st/2nd block of 4
         csel    x13,x12,x13,ls          // if M <= 2  A2 -> A1
         cmp     x4,4                    // M < 4 ?
+        ldr     d5,[x1],#8
         add     x14,x12,x7,lsl #1       // x14 -> A3
-        ldr     q5,[x1],#16
-        csel    x14,x13,x14,lo          // if M < 4  A3 -> A2
-        ldr     d0,[x0],#8              // Load A0  1st/2nd block of 4
-        mov     v17.16b,v16.16b
-        mov     v18.16b,v16.16b
         ldr     d1,[x12],#8             // Load A1
-        mov     v19.16b,v16.16b
-        mov     v21.16b,v20.16b
+        csel    x14,x13,x14,lo          // if M < 4  A3 -> A2
         ldr     d2,[x13],#8             // Load A2
+        mov     v17.16b,v16.16b
+        ldr     d3,[x14],#8             // Load A3
+        mov     v18.16b,v16.16b
+        ldr     x15,[x1],#8
+        mov     v19.16b,v16.16b
+        ldr     d6,[x1],#8
+        mov     v21.16b,v20.16b
+        ldr     x20,[x1],#8
         mov     v22.16b,v20.16b
         mov     v23.16b,v20.16b
-        ldr     d3,[x14],#8             // Load A3
         mov     v25.16b,v24.16b
         mov     v26.16b,v24.16b
-        ldr     q6,[x1],#16
         mov     v27.16b,v24.16b
         mov     v29.16b,v28.16b
-        ldr     q7,[x1],#16
         subs    x3,x10,#2               // one loop iteration and epilogue consume k = 32
         mov     v30.16b,v28.16b
         mov     v31.16b,v28.16b
         b.lo    BlockLoopEpilogue       // Need 32 k for main loop
 
 BlockLoop:
+        ldr     d7,[x1],#8
         SdotByElement    16, 4, 0,0
+        ldr     x21,[x1],#8
         SdotByElement    17, 4, 1,0
-        ldr     d8,[x0],#8              // Load A0  3rd/4th block of 4
+        ins     v5.d[1],x15
         SdotByElement    18, 4, 2,0
+        ldr     d8,[x0],#8              // Load A0  3rd/4th block of 4
         SdotByElement    19, 4, 3,0
-        ldr     q4,[x1],#16
+        ldr     d4,[x1],#8
         SdotByElement    20, 5, 0,0
+        ldr     x11,[x1],#8
         SdotByElement    21, 5, 1,0
-        ldr     d9,[x12],#8
+        ins     v6.d[1],x20
         SdotByElement    22, 5, 2,0
+        ldr     d9,[x12],#8
         SdotByElement    23, 5, 3,0
-        ldr     q5,[x1],#16
+        ldr     d5,[x1],#8
         SdotByElement    24, 6, 0,0
+        ldr     x15,[x1],#8
         SdotByElement    25, 6, 1,0
-        ldr     d10,[x13],#8
+        ins     v7.d[1],x21
         SdotByElement    26, 6, 2,0
+        ldr     d10,[x13],#8
         SdotByElement    27, 6, 3,0
-        ldr     q6,[x1],#16
+        ldr     d6,[x1],#8
         SdotByElement    28, 7, 0,0
+        ldr     x20,[x1],#8
         SdotByElement    29, 7, 1,0
-        ldr     d11,[x14],#8
+        ins     v4.d[1],x11
         SdotByElement    30, 7, 2,0
+        ldr     d11,[x14],#8
         SdotByElement    31, 7, 3,0
-        ldr     q7,[x1],#16
+        ldr     d7,[x1],#8
         SdotByElement    16, 4, 0,1
+        ldr     x21,[x1],#8
         SdotByElement    17, 4, 1,1
+        ins     v5.d[1],x15
         SdotByElement    18, 4, 2,1
         SdotByElement    19, 4, 3,1
-        ldr     q4,[x1],#16
+        ldr     d4,[x1],#8
         SdotByElement    20, 5, 0,1
+        ldr     x11,[x1],#8
         SdotByElement    21, 5, 1,1
+        ins     v6.d[1],x20
         SdotByElement    22, 5, 2,1
         SdotByElement    23, 5, 3,1
-        ldr     q5,[x1],#16
+        ldr     d5,[x1],#8
         SdotByElement    24, 6, 0,1
+        ldr     x15,[x1],#8
         SdotByElement    25, 6, 1,1
+        ins     v7.d[1],x21
         SdotByElement    26, 6, 2,1
         SdotByElement    27, 6, 3,1
-        ldr     q6,[x1],#16
+        ldr     d6,[x1],#8
         SdotByElement    28, 7, 0,1
+        ldr     x20,[x1],#8
         SdotByElement    29, 7, 1,1
+        ins     v4.d[1],x11
         SdotByElement    30, 7, 2,1
         SdotByElement    31, 7, 3,1
-        ldr     q7,[x1],#16
+        ldr     d7,[x1],#8
         SdotByElement    16, 4, 8,0
+        ldr     x21,[x1],#8
         SdotByElement    17, 4, 9,0
-        ldr     d0,[x0],#8
+        ins     v5.d[1],x15
         SdotByElement    18, 4,10,0
+        ldr     d0,[x0],#8
         SdotByElement    19, 4,11,0
-        ldr     q4,[x1],#16
+        ldr     d4,[x1],#8
         SdotByElement    20, 5, 8,0
+        ldr     x11,[x1],#8
         SdotByElement    21, 5, 9,0
-        ldr     d1,[x12],#8
+        ins     v6.d[1],x20
         SdotByElement    22, 5,10,0
+        ldr     d1,[x12],#8
         SdotByElement    23, 5,11,0
-        ldr     q5,[x1],#16
+        ldr     d5,[x1],#8
         SdotByElement    24, 6, 8,0
+        ldr     x15,[x1],#8
         SdotByElement    25, 6, 9,0
-        ldr     d2,[x13],#8
+        ins     v7.d[1],x21
         SdotByElement    26, 6,10,0
+        ldr     d2,[x13],#8
         SdotByElement    27, 6,11,0
-        ldr     q6,[x1],#16
+        ldr     d6,[x1],#8
         SdotByElement    28, 7, 8,0
+        ldr     x20,[x1],#8
         SdotByElement    29, 7, 9,0
-        ldr     d3,[x14],#8
+        ins     v4.d[1],x11
         SdotByElement    30, 7,10,0
+        ldr     d3,[x14],#8
         SdotByElement    31, 7,11,0
-        ldr     q7,[x1],#16
+        ldr     d7,[x1],#8
         SdotByElement    16, 4, 8,1
+        ldr     x21,[x1],#8
         SdotByElement    17, 4, 9,1
+        ins     v5.d[1],x15
         SdotByElement    18, 4,10,1
         SdotByElement    19, 4,11,1
-        ldr     q4,[x1],#16
+        ldr     d4,[x1],#8
         SdotByElement    20, 5, 8,1
+        ldr     x11,[x1],#8
         SdotByElement    21, 5, 9,1
+        ins     v6.d[1],x20
         SdotByElement    22, 5,10,1
         SdotByElement    23, 5,11,1
-        ldr     q5,[x1],#16
+        ldr     d5,[x1],#8
         SdotByElement    24, 6, 8,1
+        ldr     x15,[x1],#8
         SdotByElement    25, 6, 9,1
+        ins     v7.d[1],x21
         SdotByElement    26, 6,10,1
-        SdotByElement    27, 6,11,1
-        ldr     q6,[x1],#16
-        SdotByElement    28, 7, 8,1
-        SdotByElement    29, 7, 9,1
         subs    x3,x3,#1                // k -= 16
+        SdotByElement    27, 6,11,1
+        ldr     d6,[x1],#8
+        SdotByElement    28, 7, 8,1
+        ldr     x20,[x1],#8
+        SdotByElement    29, 7, 9,1
+        ins     v4.d[1],x11
         SdotByElement    30, 7,10,1
         SdotByElement    31, 7,11,1
-        ldr     q7,[x1],#16
         b.hs    BlockLoop
 
 BlockLoopEpilogue:
+        ldr     d7,[x1],#8
         SdotByElement    16, 4, 0,0
+        ldr     x21,[x1],#8
         SdotByElement    17, 4, 1,0
-        ldr     d8,[x0],#8
+        ins     v5.d[1],x15
         SdotByElement    18, 4, 2,0
+        ldr     d8,[x0],#8
         SdotByElement    19, 4, 3,0
-        ldr     q4,[x1],#16
+        ldr     d4,[x1],#8
         SdotByElement    20, 5, 0,0
+        ldr     x11,[x1],#8
         SdotByElement    21, 5, 1,0
-        ldr     d9,[x12],#8
+        ins     v6.d[1],x20
         SdotByElement    22, 5, 2,0
+        ldr     d9,[x12],#8
         SdotByElement    23, 5, 3,0
-        ldr     q5,[x1],#16
+        ldr     d5,[x1],#8
         SdotByElement    24, 6, 0,0
+        ldr     x15,[x1],#8
         SdotByElement    25, 6, 1,0
-        ldr     d10,[x13],#8
+        ins     v7.d[1],x21
         SdotByElement    26, 6, 2,0
+        ldr     d10,[x13],#8
         SdotByElement    27, 6, 3,0
-        ldr     q6,[x1],#16
+        ldr     d6,[x1],#8
         SdotByElement    28, 7, 0,0
+        ldr     x20,[x1],#8
         SdotByElement    29, 7, 1,0
-        ldr     d11,[x14],#8
+        ins     v4.d[1],x11
         SdotByElement    30, 7, 2,0
+        ldr     d11,[x14],#8
         SdotByElement    31, 7, 3,0
-        ldr     q7,[x1],#16
+        ldr     d7,[x1],#8
         SdotByElement    16, 4, 0,1
+        ldr     x21,[x1],#8
         SdotByElement    17, 4, 1,1
+        ins     v5.d[1],x15
         SdotByElement    18, 4, 2,1
         SdotByElement    19, 4, 3,1
-        ldr     q4,[x1],#16
+        ldr     d4,[x1],#8
         SdotByElement    20, 5, 0,1
+        ldr     x11,[x1],#8
         SdotByElement    21, 5, 1,1
+        ins     v6.d[1],x20
         SdotByElement    22, 5, 2,1
         SdotByElement    23, 5, 3,1
-        ldr     q5,[x1],#16
+        ldr     d5,[x1],#8
         SdotByElement    24, 6, 0,1
+        ldr     x15,[x1],#8
         SdotByElement    25, 6, 1,1
+        ins     v7.d[1],x21
         SdotByElement    26, 6, 2,1
         SdotByElement    27, 6, 3,1
-        ldr     q6,[x1],#16
+        ldr     d6,[x1],#8
         SdotByElement    28, 7, 0,1
+        ldr     x20,[x1],#8
         SdotByElement    29, 7, 1,1
+        ins     v4.d[1],x11
         SdotByElement    30, 7, 2,1
         SdotByElement    31, 7, 3,1
-        ldr     q7,[x1],#16
+        ldr     d7,[x1],#8
         SdotByElement    16, 4, 8,0
+        ldr     x21,[x1],#8
         SdotByElement    17, 4, 9,0
+        ins     v5.d[1],x15
         SdotByElement    18, 4,10,0
         SdotByElement    19, 4,11,0
-        ldr     q4,[x1],#16
+        ldr     d4,[x1],#8
         SdotByElement    20, 5, 8,0
+        ldr     x11,[x1],#8
         SdotByElement    21, 5, 9,0
+        ins     v6.d[1],x20
         SdotByElement    22, 5,10,0
         SdotByElement    23, 5,11,0
-        ldr     q5,[x1],#16
+        ldr     d5,[x1],#8
         SdotByElement    24, 6, 8,0
+        ldr     x15,[x1],#8
         SdotByElement    25, 6, 9,0
+        ins     v7.d[1],x21
         SdotByElement    26, 6,10,0
         SdotByElement    27, 6,11,0
-        ldr     q6,[x1],#16
+        ldr     d6,[x1],#8
         SdotByElement    28, 7, 8,0
+        ldr     x20,[x1],#8
         SdotByElement    29, 7, 9,0
+        ins     v4.d[1],x11
         SdotByElement    30, 7,10,0
         SdotByElement    31, 7,11,0
-        ldr     q7,[x1],#16
+        ldr     d7,[x1],#8
         SdotByElement    16, 4, 8,1
+        ldr     x21,[x1],#8
         SdotByElement    17, 4, 9,1
+        ins     v5.d[1],x15
         SdotByElement    18, 4,10,1
         SdotByElement    19, 4,11,1
         SdotByElement    20, 5, 8,1
         SdotByElement    21, 5, 9,1
+        ins     v6.d[1],x20
         SdotByElement    22, 5,10,1
         SdotByElement    23, 5,11,1
         SdotByElement    24, 6, 8,1
         SdotByElement    25, 6, 9,1
+        ins     v7.d[1],x21
         SdotByElement    26, 6,10,1
         SdotByElement    27, 6,11,1
         SdotByElement    28, 7, 8,1
@@ -332,6 +394,7 @@ BlockLoopEpilogue:
 
 ExitKernel:
         mov     x0,x4                   // return number of rows handled
+        ldp     x20,x21,[sp,#32]
         ldp     d10,d11,[sp,#16]
         ldp     d8,d9,[sp],#.LGemmS8S8KernelFrame_SavedRegisters
         ret
