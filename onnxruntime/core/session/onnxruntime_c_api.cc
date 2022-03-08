@@ -2500,7 +2500,6 @@ static constexpr OrtApi ort_api_1_to_11 = {
     &OrtApis::GetSparseTensorIndices,
     // End of Version 9 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Version 10 - In development, feel free to add/remove/rearrange here
     &OrtApis::HasValue,
     &OrtApis::KernelContext_GetGPUComputeStream,
     &OrtApis::GetTensorMemoryInfo,
@@ -2515,13 +2514,13 @@ static constexpr OrtApi ort_api_1_to_11 = {
     &OrtApis::SynchronizeBoundOutputs,
     // End of Version 10 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Version 11 - In development, feel free to add/remove/rearrange here
     &OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2,
     &OrtApis::CreateCUDAProviderOptions,
     &OrtApis::UpdateCUDAProviderOptions,
     &OrtApis::GetCUDAProviderOptionsAsString,
     &OrtApis::ReleaseCUDAProviderOptions,
     &OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX,
+    // End of Version 11 - DO NOT MODIFY ABOVE (see above text for more information)
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
