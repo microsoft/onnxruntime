@@ -1172,7 +1172,7 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   trt_options_converted.trt_force_sequential_engine_build = legacy_trt_options->trt_force_sequential_engine_build;
   // Add new provider option below
   // Use default value as this field is not available in OrtTensorRTProviderOptionsV
-
+  trt_options_converted.trt_cuda_graph_enable = 0;
   return trt_options_converted;
 }
 

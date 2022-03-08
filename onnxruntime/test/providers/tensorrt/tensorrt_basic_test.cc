@@ -156,6 +156,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
       nullptr,
       0,
       nullptr,
+      0,
       0};
 
   if (cache_type.compare("engine") == 0) {

@@ -37,7 +37,6 @@ std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
       nullptr,
       0,
       nullptr,
-      0,
       0};
   if (auto factory = CreateExecutionProviderFactory_Tensorrt(&params))
     return factory->CreateProvider();
