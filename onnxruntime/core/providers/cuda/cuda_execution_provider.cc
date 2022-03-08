@@ -2184,23 +2184,22 @@ static Status RegisterCudaKernels(KernelRegistry& kernel_registry) {
 
 }  // namespace cuda
 
-static std::shared_ptr<KernelRegistry>& CudaKernelRegistry() {
-  // static local variable ensures thread-safe initialization
-  static std::shared_ptr<KernelRegistry> cuda_kernel_registry = []() {
-    std::shared_ptr<KernelRegistry> registry = KernelRegistry::Create();
-    ORT_THROW_IF_ERROR(cuda::RegisterCudaKernels(*registry));
-    return registry;
-  }();
-
-  return cuda_kernel_registry;
-}
+static std::shared_ptr<onnxruntime::KernelRegistry> s_kernel_registry;
 
 void Shutdown_DeleteRegistry() {
-  CudaKernelRegistry().reset();
+  s_kernel_registry.reset();
 }
 
 std::shared_ptr<KernelRegistry> CUDAExecutionProvider::GetKernelRegistry() const {
-  return CudaKernelRegistry();
+  if (!s_kernel_registry) {
+    s_kernel_registry = KernelRegistry::Create();
+    auto status = cuda::RegisterCudaKernels(*s_kernel_registry);
+    if (!status.IsOK())
+      s_kernel_registry.reset();
+    ORT_THROW_IF_ERROR(status);
+  }
+
+  return s_kernel_registry;
 }
 
 static bool RNNNeedFallbackToCPU(const onnxruntime::Node& node,
