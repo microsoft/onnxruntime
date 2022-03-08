@@ -148,6 +148,140 @@ TensorProto ToDimensionOneTensor(int32_t value) {
   return t;
 }
 
+bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+  bool mean_reduction = true;
+  auto* reduction_attr = ctx.getAttribute("reduction");
+  if ((reduction_attr != nullptr) && (reduction_attr->s() != "mean"))
+    mean_reduction = false;
+
+  // ignore_index is an attribute for original op, and an input for newer _internal op.
+  bool has_ignore_index =
+      ignore_index_as_attr ? (ctx.getAttribute("ignore_index") != nullptr) : ctx.hasInput(4);
+  bool has_weight = ctx.hasInput(3);
+
+  FunctionBuilder builder(functionProto);
+
+  // Inputs:
+  // dY : scalar (if reduced) or [B, d1, d2, ...]
+  // log_prob : [B, C, d1, d2, ...]
+  // weight : [C]
+  // label : [B, d1, d2, ...]
+
+  // We decompose the forward propagation into two steps, for doing the backward prop.
+  // Step 1: loss = Neg(Logsoftmax(prediction-for-true-label))
+  // Step 2: y = Reduce (loss), adjusting for weights and ignore_index
+
+  // Backward-prop for Step 2: compute d_loss from dY
+  builder.Add(R"(
+                zero_int64 = Constant <value = int64 {0}> ()
+                zero_label = CastLike (zero_int64, label)
+                axes1 = Constant <value = int64[1] {1}> ()
+            )");
+
+  if (has_ignore_index) {
+    if (ignore_index_as_attr)
+      builder.Add("ignored_index_value = Constant <value_int : int = @ignore_index>()");
+    else
+      builder.Add("ignored_index_value = ignore_index");
+    builder.Add(R"(
+                  ignored_index = CastLike (ignored_index_value, label)
+                  ignored_BD = Equal (label, ignored_index)
+              )");
+    if (has_weight) {
+      // label values are in the range [0,C) U {ignored_index}, where ignored_index may be outside the range [0,C).
+      // adj_label_BD is used so we can safely index into tensor-dimensions of size [C]
+      builder.Add(R"(
+                    adj_label_BD = Where (ignored_BD, zero_label, label)
+                    weight_BD = Gather (weight, adj_label_BD)
+                    zero_weight = CastLike (zero_int64, weight)
+                    adj_weight_BD = Where (ignored_BD, zero_weight, weight_BD)
+                )");
+      if (mean_reduction) {
+        builder.Add(R"(
+                      sum_weights = ReduceSum <keepdims = 0> (adj_weight_BD)
+                      grad = Div (adj_weight_BD, sum_weights)
+                      d_loss = Mul (grad, dY)
+                  )");
+      } else {
+        builder.Add("d_loss = Mul (adj_weight_BD, dY)");
+      }
+    } else {
+      builder.Add(R"(
+                    not_ignored_BD = Not (ignored_BD)
+                    adj_weight_BD = CastLike (not_ignored_BD, dY)
+                )");
+      if (mean_reduction) {
+        builder.Add(R"(
+                      sum_weights = ReduceSum <keepdims = 0> (adj_weight_BD)
+                      grad = Div (adj_weight_BD, sum_weights)
+                      d_loss = Mul (grad, dY)
+                  )");
+      } else {
+        builder.Add("d_loss = Mul (adj_weight_BD, dY)");
+      }
+    }
+  } else {
+    if (has_weight) {
+      builder.Add("elt_weight = Gather (weight, label)");
+      if (mean_reduction) {
+        // backward-prop for y = ReduceSum (loss * elt_weight) / ReduceSum(elt_weight)
+        builder.Add(R"(
+                      sum_weights = ReduceSum <keepdims = 0> (elt_weight)
+                      grad = Div (elt_weight, sum_weights)
+                      d_loss = Mul(grad, dY)
+                  )");
+      } else {
+        // common backward-prop for y = ReduceSum(loss * elt_weight) and y = loss * elt_weight
+        builder.Add("d_loss = Mul(elt_weight, dY)");
+      }
+    } else {
+      if (mean_reduction) {
+        // backward-prop for y = ReduceSum (loss) / Size(label)
+        builder.Add(R"(
+                      count = Size(label)
+                      count_T = CastLike (count, dY)
+                      d_div = Div (dY, count_T)
+                      BD = Shape (label)
+                      d_loss = Expand (d_div, BD)
+                  )");
+      } else {
+        // common backward-prop for y = ReduceSum(loss) and y = loss
+        builder.Add(R"(
+                      BD = Shape (label)
+                      d_loss = Expand (dY, BD)
+                  )");
+      }
+    }
+  }
+
+  // Step 2: Compute d_logits from d_loss
+  // The gradient is essentially "probability - (1 if true-label else 0)", complicated
+  // by the reshaping for the general case.
+  builder.Add(R"(
+                d_loss_B1Dopt = Unsqueeze (d_loss, axes1)
+                reshape_arg = Constant < value = int64[3] {0, 0, -1} > ()
+                d_loss_B1D = Reshape (d_loss_B1Dopt, reshape_arg)
+                orig_shape = Shape (log_prob)
+                log_prob_BCD = Reshape (log_prob, reshape_arg)
+                prob_BCD = Exp (log_prob_BCD)
+
+                label_BD = Flatten (label) # convert from [B, d1, d2, ...] to [B, D = d1 * d2 * ...]
+
+                zero_one = Constant < value = int32[2] {0, 1}>()
+                zero_one_typed = CastLike (zero_one, prob_BCD)
+                C1d = Shape <start = 1, end = 2> (prob_BCD)
+                C = Squeeze(C1d)
+                one_hot_label_BCD = OneHot <axis=1> (label_BD, C, zero_one_typed)
+
+                adj_BCD = CastLike (one_hot_label_BCD, prob_BCD)
+                grad_BCD = Sub (prob_BCD, adj_BCD)
+                d_logits_BCD = Mul (d_loss_B1D, grad_BCD)
+                d_logits = Reshape (d_logits_BCD, orig_shape)
+            )");
+  schema.BuildFunction(functionProto);
+  return true;
+};
+
 bool BuildContextDependentFunctionBodyNllLossInternal(
     const FunctionBodyBuildContext& ctx,
     const OpSchema& schema,
@@ -1448,134 +1582,9 @@ Example 4:
         propagateShapeFromInputToOutput(ctx, 1, 0);
       })
       .SetContextDependentFunctionBodyBuilder(
-          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
-            bool mean_reduction = true;
-            auto* reduction_attr = ctx.getAttribute("reduction");
-            if ((reduction_attr != nullptr) && (reduction_attr->s() != "mean"))
-              mean_reduction = false;
-
-            bool has_ignore_index = ctx.getAttribute("ignore_index") != nullptr;
-            bool has_weight = ctx.hasInput(3);
-
-            FunctionBuilder builder(functionProto);
-
-            // Inputs:
-            // dY : scalar (if reduced) or [B, d1, d2, ...]
-            // log_prob : [B, C, d1, d2, ...]
-            // weight : [C]
-            // label : [B, d1, d2, ...]
-
-            // We decompose the forward propagation into two steps, for doing the backward prop.
-            // Step 1: loss = Neg(Logsoftmax(prediction-for-true-label))
-            // Step 2: y = Reduce (loss), adjusting for weights and ignore_index
-
-            // Backward-prop for Step 2: compute d_loss from dY
-            builder.Add(R"(
-                zero_int64 = Constant <value = int64 {0}> ()
-                zero_label = CastLike (zero_int64, label)
-                axes1 = Constant <value = int64[1] {1}> ()
-            )");
-
-            if (has_ignore_index) {
-              builder.Add(R"(
-                  ignored_index_value = Constant <value_int : int = @ignore_index>()
-                  ignored_index = CastLike (ignored_index_value, label)
-                  ignored_BD = Equal (label, ignored_index)
-              )");
-              if (has_weight) {
-                // label values are in the range [0,C) U {ignored_index}, where ignored_index may be outside the range [0,C).
-                // adj_label_BD is used so we can safely index into tensor-dimensions of size [C]
-                builder.Add(R"(
-                    adj_label_BD = Where (ignored_BD, zero_label, label)
-                    weight_BD = Gather (weight, adj_label_BD)
-                    zero_weight = CastLike (zero_int64, weight)
-                    adj_weight_BD = Where (ignored_BD, zero_weight, weight_BD)
-                )");
-                if (mean_reduction) {
-                  builder.Add(R"(
-                      sum_weights = ReduceSum <keepdims = 0> (adj_weight_BD)
-                      grad = Div (adj_weight_BD, sum_weights)
-                      d_loss = Mul (grad, dY)
-                  )");
-                } else {
-                  builder.Add("d_loss = Mul (adj_weight_BD, dY)");
-                }
-              } else {
-                builder.Add(R"(
-                    not_ignored_BD = Not (ignored_BD)
-                    adj_weight_BD = CastLike (not_ignored_BD, dY)
-                )");
-                if (mean_reduction) {
-                  builder.Add(R"(
-                      sum_weights = ReduceSum <keepdims = 0> (adj_weight_BD)
-                      grad = Div (adj_weight_BD, sum_weights)
-                      d_loss = Mul (grad, dY)
-                  )");
-                } else {
-                  builder.Add("d_loss = Mul (adj_weight_BD, dY)");
-                }
-              }
-            } else {
-              if (has_weight) {
-                builder.Add("elt_weight = Gather (weight, label)");
-                if (mean_reduction) {
-                  // backward-prop for y = ReduceSum (loss * elt_weight) / ReduceSum(elt_weight)
-                  builder.Add(R"(
-                      sum_weights = ReduceSum <keepdims = 0> (elt_weight)
-                      grad = Div (elt_weight, sum_weights)
-                      d_loss = Mul(grad, dY)
-                  )");
-                } else {
-                  // common backward-prop for y = ReduceSum(loss * elt_weight) and y = loss * elt_weight
-                  builder.Add("d_loss = Mul(elt_weight, dY)");
-                }
-              } else {
-                if (mean_reduction) {
-                  // backward-prop for y = ReduceSum (loss) / Size(label)
-                  builder.Add(R"(
-                      count = Size(label)
-                      count_T = CastLike (count, dY)
-                      d_div = Div (dY, count_T)
-                      BD = Shape (label)
-                      d_loss = Expand (d_div, BD)
-                  )");
-                } else {
-                  // common backward-prop for y = ReduceSum(loss) and y = loss
-                  builder.Add(R"(
-                      BD = Shape (label)
-                      d_loss = Expand (dY, BD)
-                  )");
-                }
-              }
-            }
-
-            // Step 2: Compute d_logits from d_loss
-            // The gradient is essentially "probability - (1 if true-label else 0)", complicated
-            // by the reshaping for the general case.
-            builder.Add(R"(
-                d_loss_B1Dopt = Unsqueeze (d_loss, axes1)
-                reshape_arg = Constant < value = int64[3] {0, 0, -1} > ()
-                d_loss_B1D = Reshape (d_loss_B1Dopt, reshape_arg)
-                orig_shape = Shape (log_prob)
-                log_prob_BCD = Reshape (log_prob, reshape_arg)
-                prob_BCD = Exp (log_prob_BCD)
-
-                label_BD = Flatten (label) # convert from [B, d1, d2, ...] to [B, D = d1 * d2 * ...]
-
-                zero_one = Constant < value = int32[2] {0, 1}>()
-                zero_one_typed = CastLike (zero_one, prob_BCD)
-                C1d = Shape <start = 1, end = 2> (prob_BCD)
-                C = Squeeze(C1d)
-                one_hot_label_BCD = OneHot <axis=1> (label_BD, C, zero_one_typed)
-
-                adj_BCD = CastLike (one_hot_label_BCD, prob_BCD)
-                grad_BCD = Sub (prob_BCD, adj_BCD)
-                d_logits_BCD = Mul (d_loss_B1D, grad_BCD)
-                d_logits = Reshape (d_logits_BCD, orig_shape)
-            )");
-            schema.BuildFunction(functionProto);
-            return true;
-          })
+        [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+          return SCELossGradFunBuilder (true, ctx, schema, functionProto);
+        })
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossGrad)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceSumTraining)
@@ -3541,6 +3550,10 @@ Return true if all elements are true and false otherwise.
         propagateElemTypeFromInputToOutput(ctx, 1, 0);
         propagateShapeFromInputToOutput(ctx, 1, 0);
       })
+      .SetContextDependentFunctionBodyBuilder(
+        [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+          return SCELossGradFunBuilder  (false, ctx, schema, functionProto);
+        })
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossInternalGrad)DOC");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(NegativeLogLikelihoodLossInternal)
