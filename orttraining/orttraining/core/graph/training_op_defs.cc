@@ -1553,9 +1553,10 @@ Example 4:
             // The gradient is essentially "probability - (1 if true-label else 0)", complicated
             // by the reshaping for the general case.
             builder.Add(R"(
-                d_loss_B1D = Unsqueeze (d_loss, axes1)
-                orig_shape = Shape (log_prob)
+                d_loss_B1Dopt = Unsqueeze (d_loss, axes1)
                 reshape_arg = Constant < value = int64[3] {0, 0, -1} > ()
+                d_loss_B1D = Reshape (d_loss_B1Dopt, reshape_arg)
+                orig_shape = Shape (log_prob)
                 log_prob_BCD = Reshape (log_prob, reshape_arg)
                 prob_BCD = Exp (log_prob_BCD)
 
