@@ -610,7 +610,7 @@ Status ExecutionFrame::AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_v
                                                                  MLDataType element_type,
                                                                  const OrtMemoryInfo& location,
                                                                  const TensorShape& shape) {
-  Tensor::InitOrtValue(element_type, shape, pBuffer, location, ort_value);
+  Tensor::InitOrtValue(element_type, shape, pBuffer, location, ort_value, 0L);
   return Status::OK();
 }
 

@@ -312,7 +312,7 @@ endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
   # Enable LTO for release single-thread build
-  if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+  if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
     # NOTES:
     # (1) LTO does not work for WebAssembly multi-thread. (segment fault in worker)
     # (2) "-flto=thin" does not work correctly for wasm-ld.
@@ -934,8 +934,9 @@ include(eigen)
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn,
 # dnnl/mklml, onnxruntime_codegen_tvm, tvm and pthread
 # pthread is always at the last
-set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto ${PROTOBUF_LIB} re2::re2)
-
+set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto ${PROTOBUF_LIB} re2::re2 absl::inlined_vector  absl::flat_hash_set 
+  absl::flat_hash_map absl::node_hash_set absl::node_hash_map absl::base absl::throw_delegate absl::raw_hash_set 
+  absl::hash absl::city absl::low_level_hash absl::raw_logging_internal)
 
 set(onnxruntime_LINK_DIRS )
 if (onnxruntime_USE_CUDA)
@@ -1203,7 +1204,7 @@ function(onnxruntime_configure_target target_name)
   #if(WIN32 AND onnxruntime_ENABLE_STATIC_ANALYSIS)
   #  set_target_properties(${target_name} PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
   #endif()
-  target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
+  target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${abseil_cpp_SOURCE_DIR})
   if (onnxruntime_ENABLE_LTO)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
@@ -1397,7 +1398,6 @@ if (onnxruntime_USE_NUPHAR_TVM)
     endif()
   endif()
 
-  include(onnxruntime_codegen.cmake)
 endif(onnxruntime_USE_NUPHAR_TVM)
 
 # TVM EP
@@ -1415,10 +1415,15 @@ if (onnxruntime_USE_TVM)
     set(USE_CUDA ON CACHE BOOL "Only defined for TVM" FORCE)
   endif()
 
+  # TODO(vvchernov): customized tvm logger is hidden due to the issue on TVM side (https://github.com/apache/tvm/issues/10139)
+  # add_compile_definitions(TVM_LOG_CUSTOMIZE=1)
+  # add_library(tvm_custom_logger STATIC ${ONNXRUNTIME_ROOT}/core/providers/tvm/custom_logging.cc)
+
   set(USE_OPENMP gnu CACHE STRING "Only defined for TVM")
   add_subdirectory(${tvm_SOURCE_DIR} ${tvm_BINARY_DIR} EXCLUDE_FROM_ALL)
 
   set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
+  # target_link_libraries(tvm PUBLIC tvm_custom_logger)
 
   set(TVM_INCLUDES ${tvm_SOURCE_DIR}/include
     ${tvm_SOURCE_DIR}/3rdparty/dmlc-core/include
@@ -1868,8 +1873,11 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
 endif()
 
-#names in this var must match the directory names under onnxruntime/core/providers
+
 set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
+if (onnxruntime_USE_NUPHAR_TVM)
+  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_codegen_tvm)  
+endif()
 if (onnxruntime_ENABLE_EAGER_MODE)
   if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
     message(

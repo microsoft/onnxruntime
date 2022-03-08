@@ -19,15 +19,14 @@ void copy(onnxruntime::ORTInvoker& invoker,
   ORT_THROW_IF_ERROR(ort_ep.GetDataTransfer()->CopyTensor(src_tensor, *dst_tensor));
 }
 
-template <template<class> class V>
-void createInplaceOutputValue(OrtValue& input, V<int64_t> shape, OrtValue* p_mlvalue){
+template <template <class> class V>
+void createInplaceOutputValue(OrtValue& input, V<int64_t> shape, OrtValue* p_mlvalue) {
   auto* input_ort_tensor = input.GetMutable<onnxruntime::Tensor>();
   onnxruntime::TensorShapeVector target_shape{shape.begin(), shape.begin() + shape.size()};
   onnxruntime::ReshapeHelper helper(input.Get<onnxruntime::Tensor>().Shape(), target_shape);
   onnxruntime::TensorShape new_shape(target_shape);
-  CreateMLValue(input_ort_tensor->MutableDataRaw(),
-                input_ort_tensor->DataType(), new_shape,
-                input_ort_tensor->Location(), p_mlvalue);
+  onnxruntime::Tensor::InitOrtValue(input_ort_tensor->DataType(), new_shape, input_ort_tensor->MutableDataRaw(),
+                                    input_ort_tensor->Location(), *p_mlvalue);
 }
 
 template void createInplaceOutputValue<c10::ArrayRef>(OrtValue& input, c10::ArrayRef<int64_t> shape, OrtValue* p_mlvalue);

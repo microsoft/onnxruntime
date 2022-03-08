@@ -10,10 +10,15 @@
 #include <gsl/gsl>
 #include "onnxruntime_config.h"
 
+// Need to include abseil inlined_vector.h header directly here
+// as hash tables cause CUDA 10.2 compilers to fail. inlined_vector.h is fine.
 #ifdef _MSC_VER
 #pragma warning(push)
 // C4127: conditional expression is constant
 #pragma warning(disable : 4127)
+// C4324: structure was padded due to alignment specifier
+// Usage of alignas causes some internal padding in places.
+#pragma warning(disable : 4324)
 #endif
 
 #include <absl/container/inlined_vector.h>
@@ -21,6 +26,7 @@
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
+
 
 namespace onnxruntime {
 #ifdef __GNUC__
@@ -34,11 +40,6 @@ constexpr size_t kTensorShapeSmallBufferElementsSize = 5;
 
 // Use this type to build a shape and then create TensorShape.
 using TensorShapeVector = absl::InlinedVector<int64_t, kTensorShapeSmallBufferElementsSize>;
-
-// Use this for inlined shape size where different types are needed.
-template <typename T>
-using InlinedShapeVector = absl::InlinedVector<T, kTensorShapeSmallBufferElementsSize>;
-
 
 inline TensorShapeVector ToShapeVector(const gsl::span<const int64_t>& span) {
   TensorShapeVector out;

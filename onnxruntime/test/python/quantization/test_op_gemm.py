@@ -128,7 +128,7 @@ class TestOpGEMM(unittest.TestCase):
         model_int8_path = 'gemm_fp32.quant_{}{}.onnx'.format(activation_type_str, weight_type_str)
 
         data_reader.rewind()
-        quantize_static(model_fp32_path, model_int8_path, data_reader,
+        quantize_static(model_fp32_path, model_int8_path, data_reader, quant_format=QuantFormat.QOperator,
                         activation_type=activation_type, weight_type=weight_type, extra_options=extra_options)
         quant_nodes = {'QGemm': 2, 'QuantizeLinear': 1, 'DequantizeLinear': 1}
         check_op_type_count(self, model_int8_path, **quant_nodes)
@@ -161,7 +161,7 @@ class TestOpGEMM(unittest.TestCase):
         model_int8_path = 'gemm_fp32.quant_dynamic_{}{}.onnx'.format(activation_type_str, weight_type_str)
 
         quantize_dynamic(model_fp32_path, model_int8_path,
-                         activation_type=activation_type, weight_type=weight_type, extra_options=extra_options)
+                         weight_type=weight_type, extra_options=extra_options)
         quant_nodes = {'MatMulInteger': 2}
         check_op_type_count(self, model_int8_path, **quant_nodes)
         qnode_io_qtypes = {'MatMulInteger': [['i', 2, activation_proto_qtype]]}
@@ -195,8 +195,10 @@ class TestOpGEMM(unittest.TestCase):
                                extra_options={'ActivationSymmetric': True})
         self.static_quant_test_qdq(model_fp32_path, data_reader, activation_type=QuantType.QInt8, weight_type=QuantType.QInt8,
                                    extra_options={'ActivationSymmetric': True})
-        self.dynamic_quant_test(model_fp32_path, data_reader, activation_type=QuantType.QInt8, weight_type=QuantType.QInt8,
-                                extra_options={'ActivationSymmetric': True})
+
+        # dynamic quantization doesn't support activation:int8
+        #self.dynamic_quant_test(model_fp32_path, data_reader, activation_type=QuantType.QInt8, weight_type=QuantType.QInt8,
+        #                        extra_options={'ActivationSymmetric': True})
 
     def test_quantize_attention(self):
         np.random.seed(1)

@@ -343,7 +343,7 @@ def reinitialize_graph_execution_manager(graph_execution_manager):
     # Re-define the torch allocator
     graph_execution_manager._get_torch_gpu_allocator_function_addresses()
 
-    # Load ATenOp executor extension.
+    # Load ATen op executor extension.
     load_aten_op_executor_cpp_extension()
 
 def reinitialize_training_manager(training_manager):
