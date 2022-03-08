@@ -398,7 +398,7 @@ jobs:
     displayName: 'Test C API application for GPU package'
     inputs:
       filename: $(Build.SourcesDirectory)\tools\capi_test\run_capi_application.bat
-      arguments: $(Build.ArtifactStagingDirectory)\onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion) $(Build.SourcesDirectory)\tools\capi_test 
+      arguments: $(Build.ArtifactStagingDirectory)\onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip $(Build.SourcesDirectory)\tools\capi_test 
       workingFolder: '$(Build.ArtifactStagingDirectory)' 
 
   - task: PublishPipelineArtifact@0
