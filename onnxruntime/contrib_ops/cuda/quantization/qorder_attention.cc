@@ -14,18 +14,16 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      QOrderedAttention,                                          \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCudaExecutionProvider,                                     \
-      (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      QOrderedAttention);
-
-REGISTER_KERNEL_TYPED(int8_t)
+ONNX_OPERATOR_KERNEL_EX(
+    QOrderedAttention,
+    kMSDomain,
+    1,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("Q", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("S", BuildKernelDefConstraints<float>())
+        .TypeConstraint("G", DataTypeImpl::GetTensorType<int32_t>()),
+    QOrderedAttention);
 
 QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info) {
   order_input_ = GetCublasLtOrderAttr(info, "order_input");

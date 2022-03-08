@@ -235,9 +235,9 @@ Status QOrdered_Gemm(cublasLtHandle_t cublasLt_handle, cudaStream_t stream,
   return Status::OK();
 }
 
-static Status Reorder(cublasLtHandle_t cublasLt, cudaStream_t stream,
-                      int32_t batchCount, int64_t rows, int64_t cols, cudaDataType_t data_type,
-                      const void* input, cublasLtOrder_t order_input, void* output, cublasLtOrder_t order_output) {
+Status Reorder(cublasLtHandle_t cublasLt, cudaStream_t stream,
+               int32_t batchCount, int64_t rows, int64_t cols, cudaDataType_t data_type,
+               const void* input, cublasLtOrder_t order_input, void* output, cublasLtOrder_t order_output) {
   cublasLtMatrixTransformDesc_t transform_desc = nullptr;
   auto clean_transform_desc = gsl::finally([&transform_desc]() {if (transform_desc) cublasLtMatrixTransformDescDestroy(transform_desc); });
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixTransformDescCreate(&transform_desc, CUDA_R_32I));
