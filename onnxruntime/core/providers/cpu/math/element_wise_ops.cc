@@ -352,15 +352,27 @@ REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 13, int64_t, Equal);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 13, float, Equal);
 REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(Equal, 13, double, Equal);
 
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 12, float, LessOrEqual);
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 12, double, LessOrEqual);
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 12, int32_t, LessOrEqual);
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 12, int64_t, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(LessOrEqual, 12, 15, float, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(LessOrEqual, 12, 15, double, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(LessOrEqual, 12, 15, int32_t, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(LessOrEqual, 12, 15, int64_t, LessOrEqual);
 
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 12, float, GreaterOrEqual);
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 12, double, GreaterOrEqual);
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 12, int32_t, GreaterOrEqual);
-REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 12, int64_t, GreaterOrEqual);
+// Opset-16 adds BFloat16 to allowed types for the LessOrEqual operator
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 16, float, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 16, double, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 16, int32_t, LessOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(LessOrEqual, 16, int64_t, LessOrEqual);
+
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(GreaterOrEqual, 12, 15, float, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(GreaterOrEqual, 12, 15, double, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(GreaterOrEqual, 12, 15, int32_t, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(GreaterOrEqual, 12, 15, int64_t, GreaterOrEqual);
+
+// Opset-16 adds BFloat16 to allowed types for the GreaterOrEqual operator
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 16, float, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 16, double, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 16, int32_t, GreaterOrEqual);
+REG_ELEMENTWISE_LOGICALOP_TYPED_KERNEL(GreaterOrEqual, 16, int64_t, GreaterOrEqual);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mean, 6, 7, float, Mean_6);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Mean, 8, 12, float, Mean_8);
@@ -1448,9 +1460,17 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     PRelu<float>);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     PRelu,
     9,
+    15,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    PRelu<float>);
+
+// Opset-16 adds BFloat16 to allowed types for the PRelu operator
+ONNX_CPU_OPERATOR_KERNEL(
+    PRelu,
+    16,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     PRelu<float>);
 
