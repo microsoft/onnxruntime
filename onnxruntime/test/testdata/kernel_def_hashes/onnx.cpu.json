@@ -2702,29 +2702,5 @@
     [
         "Xor ai.onnx CPUExecutionProvider",
         14631049987911195736
-    ],
-    [
-        "Where ai.onnx CPUExecutionProvider",
-        186521469797128048
-    ],
-    [
-        "Where ai.onnx CPUExecutionProvider",
-        1124762945029945944
-    ],
-    [
-        "Where ai.onnx CPUExecutionProvider",
-        8727601196279637232
-    ],
-    [
-        "Where ai.onnx CPUExecutionProvider",
-        10010972164133933208
-    ],
-    [
-        "Where ai.onnx CPUExecutionProvider",
-        12896498917540022856
-    ],
-    [
-        "Where ai.onnx CPUExecutionProvider",
-        17544214758602217832
     ]
 ]
