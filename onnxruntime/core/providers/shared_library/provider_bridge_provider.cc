@@ -62,7 +62,7 @@ void operator delete(void* p, size_t /*size*/) noexcept { return Provider_GetHos
 namespace onnxruntime {
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
-// "Global initializer calls a non-constexpr function." 
+// "Global initializer calls a non-constexpr function."
 #pragma warning(disable : 26426)
 #endif
 ProviderHost* g_host = Provider_GetHost();
@@ -346,10 +346,10 @@ std::string GetEnvironmentVar(const std::string& var_name) {
   return g_host->GetEnvironmentVar(var_name);
 }
 
-InlinedHashSet<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                               const std::string& provider_type,
-                                               gsl::span<const KernelRegistry* const> kernel_registries,
-                                               gsl::span<const NodeIndex> tentative_nodes) {
+std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
+                                                   const std::string& provider_type,
+                                                   gsl::span<const KernelRegistry* const> kernel_registries,
+                                                   gsl::span<const NodeIndex> tentative_nodes) {
   return g_host->GetCpuPreferredNodes(graph, provider_type, kernel_registries, tentative_nodes);
 }
 
