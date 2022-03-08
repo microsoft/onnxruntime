@@ -85,11 +85,15 @@ void Tensor::Init(MLDataType p_type, const TensorShape& shape, void* p_raw_data,
     utils::ConstructStrings(p_data_, shape_size);
   }
   byte_offset_ = offset;
+#ifdef ENABLE_TRAINING
   if (shape.NumDimensions() > 0 && !strides.empty()) {
     ORT_ENFORCE(shape.NumDimensions() == strides.size(), "Length of strides doesn't match with tensor dimension size.");
     strides_.assign(strides.begin(), strides.end());
     is_contiguous_ = CheckIsContiguous();
   }
+#else
+  ORT_UNUSED_PARAMETER(strides);
+#endif
 }
 
 Tensor::Tensor(Tensor&& other) noexcept
@@ -139,6 +143,7 @@ void Tensor::ReleaseBuffer() {
   }
 }
 
+#ifdef ENABLE_TRAINING
 bool Tensor::CheckIsContiguous() const {
   if (strides_.empty()) {
     return true;
@@ -178,11 +183,13 @@ gsl::span<const int64_t> Tensor::Strides() const {
   return gsl::make_span(strides_.cbegin(), strides_.cend());
 }
 
-void Tensor::SetStrides(const TensorShapeVector& new_strides) {
-  ORT_ENFORCE(shape_.NumDimensions() == new_strides.size(),
+void Tensor::SetShapeAndStrides(const TensorShape& new_shape, gsl::span<const int64_t> new_strides) {
+  ORT_ENFORCE(new_shape.NumDimensions() == new_strides.size(),
               "Length of strides doesn't match with tensor dimension size.");
-  strides_ = new_strides;
+  shape_ = new_shape;
+  strides_ = ToShapeVector(new_strides);
   is_contiguous_ = CheckIsContiguous();
 }
+#endif
 
 }  // namespace onnxruntime

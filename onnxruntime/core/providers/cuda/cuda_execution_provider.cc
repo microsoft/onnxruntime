@@ -136,6 +136,10 @@ CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId de
 
   // CUDA malloc/free is expensive so always use an arena
   allocator_ = CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
+  cuda_graph_.SetStream(stream_);
+#endif
 }
 
 CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
@@ -154,6 +158,35 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
     LOGS_DEFAULT(ERROR) << "cudnnDestroy threw:" << ex.what();
   }
 }
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
+bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptureAllowed() const {
+  return regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_;
+}
+
+void CUDAExecutionProvider::PerThreadContext::CaptureBegin()  {
+  cuda_graph_.Reset();
+  cuda_graph_.CaptureBegin();
+}
+
+void CUDAExecutionProvider::PerThreadContext::CaptureEnd() {
+  cuda_graph_.CaptureEnd();
+  is_graph_captured_ = true;
+}
+
+bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptured() const {
+  return is_graph_captured_;
+}
+
+Status CUDAExecutionProvider::PerThreadContext::ReplayGraph() {
+  ORT_ENFORCE(IsGraphCaptured());
+  return cuda_graph_.Replay();
+}
+
+void CUDAExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGraphCapture() {
+  ++regular_run_count_before_graph_capture_;
+}
+#endif
 
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kCudaExecutionProvider},
@@ -331,17 +364,38 @@ Status CUDAExecutionProvider::OnRunStart() {
   auto& current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
   CUDA_RETURN_IF_ERROR(cudaEventCreate(&current_deferred_release_event, cudaEventDisableTiming));
   deferred_release_cpu_ptr_.emplace(current_deferred_release_event, DeferredReleaseCPUPtrs());
+
+  if (IsGraphCaptureEnabled() && GetPerThreadContext().IsGraphCaptureAllowed() && !GetPerThreadContext().IsGraphCaptured()) {
+    LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
+    GetPerThreadContext().CaptureBegin();
+  }
   return Status::OK();
 }
 
 Status CUDAExecutionProvider::OnRunEnd(bool sync_stream) {
+  if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured()) {
+    if (GetPerThreadContext().IsGraphCaptureAllowed()) {
+      GetPerThreadContext().CaptureEnd();
+      // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
+      // so run the captured graph here to actually execute the work.
+      ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph());
+    } else {
+      GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture();
+    }
+  }
   // record deferred release event on default stream, and release per_thread_context
   auto current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
   CUDA_RETURN_IF_ERROR(cudaEventRecord(current_deferred_release_event, static_cast<cudaStream_t>(GetComputeStream())));
   if (sync_stream) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(GetComputeStream())));
   }
-  ReleasePerThreadContext();
+
+  // If cuda graph is enabled, the per thread context will not be released
+  // because the per thread cuda graph needs to be maintained and replayed for
+  // the next run.
+  if (!IsGraphCaptureEnabled()) {
+    ReleasePerThreadContext();
+  }
   std::lock_guard<OrtMutex> lock(deferred_release_cpu_ptr_mutex_);
   deferred_release_cpu_ptr_[current_deferred_release_event].recorded = true;
 
@@ -359,6 +413,20 @@ Status CUDAExecutionProvider::SetComputeStream(void* stream) {
   }
   return Status::OK();
 }
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
+bool CUDAExecutionProvider::IsGraphCaptureEnabled() const {
+  return info_.enable_cuda_graph;
+}
+
+bool CUDAExecutionProvider::IsGraphCaptured() const {
+  return GetPerThreadContext().IsGraphCaptured();
+}
+
+Status CUDAExecutionProvider::ReplayGraph() {
+  return GetPerThreadContext().ReplayGraph();
+}
+#endif
 
 namespace cuda {
 // opset 1 to 9

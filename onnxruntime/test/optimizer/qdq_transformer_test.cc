@@ -1816,11 +1816,9 @@ TEST(QDQTransformerTests, QDQPropagation_QBackward) {
                       TransformerLevel::Level1);
   };
 
-  // TODO re-enable tests after updating ONNX to get QuantizeLinear shape inference fix
-  // https://github.com/onnx/onnx/pull/3806
-  // test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, true);
-  // test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false);
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, true);
 }
 
@@ -1893,11 +1891,9 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward) {
                       TransformerLevel::Level1);
   };
 
-  // TODO re-enable tests after updating ONNX to get QuantizeLinear shape inference fix
-  // https://github.com/onnx/onnx/pull/3806
-  // test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, true);
-  // test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false);
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, true);
 }
 

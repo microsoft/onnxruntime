@@ -19,7 +19,8 @@ using namespace onnxruntime::controlflow;  // namespace of IControlFlowKernel
 
 class BeamSearch : public IControlFlowKernel {
  public:
-  BeamSearch(const OpKernelInfo& info) : IControlFlowKernel(info), cuda_stream_(nullptr), dumper_(nullptr) {
+  BeamSearch(const OpKernelInfo& info)
+      : IControlFlowKernel(info), feeds_fetches_manager_(nullptr), cuda_stream_(nullptr), dumper_(nullptr) {
     Init(info);
   }
 
@@ -87,7 +88,7 @@ class BeamSearch : public IControlFlowKernel {
   void* cuda_stream_;
 
   IConsoleDumper* dumper_;
-  
+
   BeamSearchParameters parameters_;
 };
 

@@ -199,8 +199,7 @@ class ExecutionFrame final : public IExecutionFrame {
                                                   bool create_fence);
 
   Status AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_value, void* pBuffer, MLDataType element_type,
-                                                   const OrtMemoryInfo& location, const TensorShape& shape,
-                                                   gsl::span<const int64_t> strides = {});
+                                                   const OrtMemoryInfo& location, const TensorShape& shape);
 
   void TraceAllocate(int ort_value_idx, size_t size);
   void TraceFree(int ort_value_idx);

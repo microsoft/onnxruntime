@@ -226,6 +226,11 @@ def quantize_static(model_input,
                                                             If specific op type supports per channel quantization but not explicitly specified with channel axis,
                                                             default channel axis will be used.
             CalibTensorRangeSymmetric = True/False : Default is False. If enabled, the final range of tensor during calibration will be explicitly set to symmetric to central point "0".
+            CalibMovingAverage = True/False : Default is False. If enabled, the moving average of the minimum and maximum values
+                                              will be computed when the calibration method selected is MinMax.
+            CalibMovingAverageConstant = float : Default is 0.01. Constant smoothing factor to use when computing the moving average of
+                                                 the minimum and maximum values. Effective only when the calibration method selected is
+                                                 MinMax and when CalibMovingAverage is set to True.
     '''
 
     mode = QuantizationMode.QLinearOps
@@ -235,7 +240,12 @@ def quantize_static(model_input,
 
     model = load_model(Path(model_input), optimize_model, False)
 
-    calib_extra_options = {} if 'CalibTensorRangeSymmetric' not in extra_options else {'symmetric': extra_options['CalibTensorRangeSymmetric']} 
+    calib_extra_options_keys = [
+        ('CalibTensorRangeSymmetric', 'symmetric'),
+        ('CalibMovingAverage', 'moving_average'),
+        ('CalibMovingAverageConstant', 'averaging_constant')
+    ]
+    calib_extra_options = {key: extra_options.get(name) for (name, key) in calib_extra_options_keys if name in extra_options}
     calibrator = create_calibrator(
         model,
         op_types_to_quantize,

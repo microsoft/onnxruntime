@@ -457,9 +457,8 @@ Status UpdateFeeds(
     for (size_t i = 1; i < last_outputs.size(); ++i) {
       next_inputs[i + 2] = last_outputs[i];
     }
-    return Status::OK();
   } else {
-    return PickPastState<T>(last_outputs, next_inputs, beam_indices, allocator, stream);
+    ORT_RETURN_IF_ERROR(PickPastState<T>(last_outputs, next_inputs, beam_indices, allocator, stream));
   }
 
   // Make sure data is ready before next subgraph execution.
