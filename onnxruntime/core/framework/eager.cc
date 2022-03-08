@@ -63,8 +63,8 @@ onnxruntime::Status InvokeEagerOperator(const OrtKernelContext* context,
                                         const OrtEagerOperator ort_op,
                                         const OrtValue* const* input_values,
                                         size_t input_count,
-                                        OrtValue** output_values,
-                                        size_t& output_count) {
+                                        OrtValue* const* output_values,
+                                        size_t output_count) {
   auto ctx = reinterpret_cast<const OpKernelContext*>(context);
   AllocatorPtr allocator{};
   auto ret = ctx->GetTempSpaceAllocator(&allocator);
@@ -73,14 +73,13 @@ onnxruntime::Status InvokeEagerOperator(const OrtKernelContext* context,
   }
   EagerKernelContext eager_ctx(input_values,
                                input_count,
+                               output_values,
+                               output_count,
                                allocator,
                                ctx->GetOperatorThreadPool(),
                                ctx->Logger());
   auto kernel = reinterpret_cast<const OpKernel*>(ort_op);
   ret = kernel->Compute(&eager_ctx);
-  if (ret.IsOK()) {
-    *output_values = eager_ctx.GetOutput(output_count);
-  }
   return ret;
 }
 
@@ -99,7 +98,16 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEagerOperator,
                     _In_ size_t onnx_attr_count,
                     _Out_ OrtEagerOperator* ort_op) {
   API_IMPL_BEGIN
-  auto status = onnxruntime::eager::CreateEagerOperator(info, op_name, domain, version, type_constraint_names, type_constraint_values, type_constraint_count, onnx_attr_values, onnx_attr_count, ort_op);
+  auto status = onnxruntime::eager::CreateEagerOperator(info,
+                                                        op_name,
+                                                        domain,
+                                                        version,
+                                                        type_constraint_names,
+                                                        type_constraint_values,
+                                                        type_constraint_count,
+                                                        onnx_attr_values,
+                                                        onnx_attr_count,
+                                                        ort_op);
   if (status.IsOK()) {
     return nullptr;
   } else {
@@ -113,16 +121,16 @@ ORT_API_STATUS_IMPL(OrtApis::InvokeEagerOperator,
                     _In_ const OrtEagerOperator ort_op,
                     _In_ const OrtValue* const* input_values,
                     _In_ size_t input_count,
-                    _Out_ OrtValue** output_values,
-                    _Out_ size_t& output_count) {
-API_IMPL_BEGIN
-auto status = onnxruntime::eager::InvokeEagerOperator(context, ort_op, input_values, input_count, output_values, output_count);
-if (status.IsOK()) {
-  return nullptr;
-} else {
-  return CreateStatus(static_cast<OrtErrorCode>(status.Code()), "Failed to invoke eager kernel.");
-}
-API_IMPL_END
+                    _Inout_ OrtValue* const* output_values,
+                    _In_ size_t output_count) {
+  API_IMPL_BEGIN
+  auto status = onnxruntime::eager::InvokeEagerOperator(context, ort_op, input_values, input_count, output_values, output_count);
+  if (status.IsOK()) {
+    return nullptr;
+  } else {
+    return CreateStatus(static_cast<OrtErrorCode>(status.Code()), "Failed to invoke eager kernel.");
+  }
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::ReleaseEagerOperator, _Inout_ OrtEagerOperator* op) {

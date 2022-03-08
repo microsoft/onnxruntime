@@ -220,15 +220,10 @@ void EagerCustomKernel::Compute(OrtKernelContext* context) {
   const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
   const OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
   OrtTensorDimensions dimensions(ort_, input_X);
-  // OrtValue* ctx_output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size());
-  const OrtValue* input_values[2] = {input_X, input_Y};
-  OrtValue* output_values = nullptr;
-  size_t output_count = 0;
-  ort_.InvokeOperator(context, op_add, input_values, 2, &output_values, output_count);
-  //if (output_values && output_count > 0) {
-  //  //*ctx_output = std::move(output_values[0]);
-  //  delete [] output_values;
-  //}
+  OrtValue* output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size());
+  const OrtValue* inputs[2] = {input_X, input_Y};
+  OrtValue* outputs[1] = {output};
+  ort_.InvokeOperator(context, op_add, inputs, 2, outputs, 1);
 }
 
 EagerCustomKernel::~EagerCustomKernel() {

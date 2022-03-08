@@ -211,10 +211,13 @@ Status OpKernelContext::SetOutputMLValue(int index, const OrtValue& ort_value) {
 
 // EagerKernelContext
 EagerKernelContext::EagerKernelContext(_In_ const OrtValue* const* input_values, _In_ size_t input_count,
+                                       _Inout_ OrtValue* const* output_values, _In_ size_t output_count,
                                        _In_ AllocatorPtr allocator, _In_ onnxruntime::concurrency::ThreadPool* threadpool,
-                                       _In_ const logging::Logger& logger): OpKernelContext(threadpool, logger),
+                                       _In_ const logging::Logger& logger) : OpKernelContext(threadpool, logger),
                                                                              input_values_(input_values),
                                                                              input_count_(input_count),
+                                                                             output_values_(output_values),
+                                                                             output_count_(output_count),
                                                                              allocator_(allocator) {}
 
 int EagerKernelContext::NumVariadicInputs(size_t arg_num) const {
@@ -239,10 +242,10 @@ MLDataType EagerKernelContext::InputType(int index) const {
 }
 
 MLDataType EagerKernelContext::OutputType(int index) const {
-  if (index >= output_values_.size()) {
+  if (index >= output_count_) {
     return nullptr;
   } else {
-    return output_values_[index].Type();
+    return output_values_[index]->Type();
   }
 }
 
@@ -255,46 +258,46 @@ const OrtValue* EagerKernelContext::GetInputMLValue(int index) const {
 }
 
 OrtValue* EagerKernelContext::OutputMLValue(int index, const TensorShape& shape) {
-  if (index >= output_values_.size()) {
-    output_values_.resize(index + 1);
+  if (index >= output_count_) {
+    return nullptr;
   }
-  auto ort_value = &output_values_[index];
-  if (!ort_value->IsAllocated()) {
-    if (ort_value->IsTensor()) {
-      Tensor::InitOrtValue(ort_value->Type(), shape, allocator_, *ort_value);
-    } else if (ort_value->IsTensorSequence()) {
-      auto ml_type = ort_value->Type();
+  OrtValue& ort_value = *output_values_[index];
+  if (!ort_value.IsAllocated()) {
+    if (ort_value.IsTensor()) {
+      Tensor::InitOrtValue(ort_value.Type(), shape, allocator_, ort_value);
+    } else if (ort_value.IsTensorSequence()) {
+      auto ml_type = ort_value.Type();
       auto element_type = ml_type->AsSequenceTensorType()->GetElementType();
       auto p_sequence = std::make_unique<TensorSeq>(element_type);
       auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
-      ort_value->Init(p_sequence.release(), ml_tensor_sequence, ml_tensor_sequence->GetDeleteFunc());
-    } else if (ort_value->IsSparseTensor()) {
+      ort_value.Init(p_sequence.release(), ml_tensor_sequence, ml_tensor_sequence->GetDeleteFunc());
+    } else if (ort_value.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
-      auto ml_type = ort_value->Type();
+      auto ml_type = ort_value.Type();
       auto element_type = ml_type->AsSparseTensorType()->GetElementType();
-      SparseTensor::InitOrtValue(element_type, shape, allocator_, *ort_value);
+      SparseTensor::InitOrtValue(element_type, shape, allocator_, ort_value);
 #else
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Sparse tensor is not supported in this build");
 #endif
     }
   }
-  return ort_value;
+  return &ort_value;
 }
 
 OrtValue* EagerKernelContext::GetOrCreateOutputMLValue(int index) {
-  if (index >= output_values_.size()) {
+  if (index >= output_count_) {
     return nullptr;
   } else {
-    return &output_values_[index];
+    return output_values_[index];
   }
 }
 
 bool EagerKernelContext::TryGetInferredInputShape(int /*index*/, TensorShape& /*shape*/) const {
-  return false; // no shape inference in eager mode
+  return false;  // no shape inference in eager mode
 }
 
 bool EagerKernelContext::TryGetInferredOutputShape(int /*index*/, TensorShape& /*shape*/) const {
-  return false; // no shape inference in eager mode
+  return false;  // no shape inference in eager mode
 }
 
 int EagerKernelContext::InputCount() const {
@@ -306,7 +309,7 @@ int EagerKernelContext::ImplicitInputCount() const {
 }
 
 int EagerKernelContext::OutputCount() const {
-  return static_cast<int>(output_values_.size());
+  return static_cast<int>(output_count_);
 }
 
 Status EagerKernelContext::GetTempSpaceAllocator(AllocatorPtr* output) const {
@@ -327,10 +330,10 @@ Fence_t EagerKernelContext::ImplicitInputFence(int /*index*/) const {
 }
 
 Fence_t EagerKernelContext::OutputFence(int index) const {
-  if (index >= output_values_.size()) {
+  if (index >= output_count_) {
     return nullptr;
   } else {
-    return output_values_[index].Fence();
+    return output_values_[index]->Fence();
   }
 }
 
@@ -340,19 +343,6 @@ int EagerKernelContext::GetDeviceId() const {
 
 void* EagerKernelContext::GetComputeStream() const {
   return nullptr;
-}
-
-OrtValue* EagerKernelContext::GetOutput(size_t& output_count) const {
-  output_count = output_values_.size();
-  if (!output_count) {
-    return nullptr;
-  }
-  OrtValue* ret = new OrtValue[output_count];
-  ORT_ENFORCE(ret, "Failed to allocate array of OrtValue.");
-  for (int i = 0; i < output_count; ++i) {
-    ret[i] = output_values_[i];
-  }
-  return ret;
 }
 
 }  // namespace onnxruntime

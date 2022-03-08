@@ -3322,8 +3322,8 @@ struct OrtApi {
                   _In_ const OrtEagerOperator ort_op,
                   _In_ const OrtValue* const* input_values,
                   _In_ size_t input_count,
-                  _Out_ OrtValue** output_values,
-                  _Out_ size_t& output_count);
+                  _Inout_ OrtValue* const* output_values,
+                  _In_ size_t output_count);
 
   ORT_API2_STATUS(ReleaseEagerOperator, _Inout_ OrtEagerOperator* op);
 };

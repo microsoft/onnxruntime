@@ -252,12 +252,8 @@ inline SparseTensor* OpKernelContext::Output<SparseTensor>(int index) {
 // For invoking kenrel without a graph
 class EagerKernelContext : public OpKernelContext {
  public:
-  //EagerKernelContext(_In_ const OrtValue* const* inputs, _In_ const int& input_len,
-  //                   _Inout_ OrtValue* const* outputs, _In_ const int& output_len,
-  //                   _In_ AllocatorPtr allocator, _In_ onnxruntime::concurrency::ThreadPool* threadpool,
-  //                   _In_ const logging::Logger& logger);
-
   EagerKernelContext(_In_ const OrtValue* const* input_values, _In_ size_t input_count,
+                     _Inout_ OrtValue* const* output_values, _In_ size_t output_count,
                      _In_ AllocatorPtr allocator, _In_ onnxruntime::concurrency::ThreadPool* threadpool,
                      _In_ const logging::Logger& logger);
 
@@ -275,7 +271,6 @@ class EagerKernelContext : public OpKernelContext {
   Fence_t OutputFence(int index) const override;
   int GetDeviceId() const override;
   void* GetComputeStream() const override;
-  OrtValue* GetOutput(size_t& output_count) const;
 
  protected:
   const OrtValue* GetInputMLValue(int index) const override;
@@ -284,7 +279,8 @@ class EagerKernelContext : public OpKernelContext {
 
   const OrtValue* const* input_values_;
   const size_t input_count_;
-  std::vector<OrtValue> output_values_;
+  OrtValue* const* output_values_;
+  const size_t output_count_;
   AllocatorPtr allocator_;
 };
 
