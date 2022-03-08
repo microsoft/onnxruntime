@@ -7,7 +7,9 @@
 
 namespace onnxruntime {
 namespace cuda {
+
 template <typename TSrc>
 void IsFinite(cudaStream_t stream, const TSrc* input, bool* output, size_t N);
+
 }
 }  // namespace onnxruntime
