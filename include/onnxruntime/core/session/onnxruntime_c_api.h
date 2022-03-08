@@ -317,6 +317,7 @@ struct OrtKernelContext;
 typedef struct OrtKernelContext OrtKernelContext;
 struct OrtCustomOp;
 typedef struct OrtCustomOp OrtCustomOp;
+typedef void* OrtEagerOperator;
 
 typedef enum OrtAllocatorType {
   OrtInvalidAllocator = -1,
@@ -3304,27 +3305,27 @@ struct OrtApi {
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_MIGraphX,
                   _In_ OrtSessionOptions* options, _In_ const OrtMIGraphXProviderOptions* migraphx_options);
 
-  ORT_API2_STATUS(CreateEagerKernel,
-                  _In_ const void* kernel_info,
+  ORT_API2_STATUS(CreateEagerOperator,
+                  _In_ const OrtKernelInfo* info,
                   _In_ const char* op_name,
                   _In_ const char* domain,
-                  _In_ const int& version,
+                  _In_ int version,
                   _In_ const char** type_constraint_names,
-                  _In_ const int* type_constraint_values,
-                  _In_ const int& num_type_constraint,
-                  _In_ const void* attrs,
-                  _In_ const int& num_attrs,
-                  _Outptr_ void** kernel);
+                  _In_ const ONNXTensorElementDataType* type_constraint_values,
+                  _In_ size_t type_constraint_count,
+                  _In_ const void* onnx_attr_values,
+                  _In_ size_t onnx_attr_count,
+                  _Out_ OrtEagerOperator* ort_op);
 
-  ORT_API2_STATUS(InvokeEagerKernel,
-                  _In_ const void* context,
-                  _In_ const void* kernel,
-                  _In_ const void* const* inputs,
-                  _In_ const int& input_len,
-                  _Inout_ void* const* outputs,
-                  _In_ const int& output_len);
+  ORT_API2_STATUS(InvokeEagerOperator,
+                  _In_ const OrtKernelContext* context,
+                  _In_ const OrtEagerOperator ort_op,
+                  _In_ const OrtValue* const* input_values,
+                  _In_ size_t input_count,
+                  _Out_ OrtValue** output_values,
+                  _Out_ size_t& output_count);
 
-  ORT_API2_STATUS(ReleaseEagerKernel, _In_ const void* kernel);
+  ORT_API2_STATUS(ReleaseEagerOperator, _Inout_ OrtEagerOperator* op);
 };
 
 /*

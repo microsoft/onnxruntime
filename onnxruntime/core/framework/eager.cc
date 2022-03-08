@@ -11,26 +11,26 @@
 namespace onnxruntime {
 namespace eager {
 
-onnxruntime::Status CreateEagerKernel(const void* info,
-                                      const char* op_name,
-                                      const char* domain,
-                                      const int& version,
-                                      const char** type_constraint_names,
-                                      const int* type_constraint_values,
-                                      const int& num_type_constraint,
-                                      const void* attrs,
-                                      const int& num_attrs,
-                                      void** kernel) {
-  if (!kernel) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid kernel pointer");
+onnxruntime::Status CreateEagerOperator(const OrtKernelInfo* info,
+                                        const char* op_name,
+                                        const char* domain,
+                                        int version,
+                                        const char** type_constraint_names,
+                                        const ONNXTensorElementDataType* type_constraint_values,
+                                        size_t type_constraint_count,
+                                        const void* attr_values,
+                                        size_t attr_count,
+                                        OrtEagerOperator* op) {
+  if (!op) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid op pointer");
   }
-  *kernel = nullptr;
+  *op = nullptr;
   auto kernel_info = reinterpret_cast<const OpKernelInfo*>(info);
   auto ep = reinterpret_cast<const IExecutionProvider*>(kernel_info->GetExecutionProvider());
   auto kernel_registry = ep->GetKernelRegistry();
   const KernelCreateInfo* kernel_create_info{};
   std::unordered_map<std::string, MLDataType> type_constraint_map;
-  for (int i = 0; i < num_type_constraint; ++i) {
+  for (int i = 0; i < type_constraint_count; ++i) {
     ONNX_NAMESPACE::TypeProto proto;
     proto.mutable_tensor_type()->set_elem_type(type_constraint_values[i]);
     type_constraint_map[type_constraint_names[i]] = DataTypeImpl::TypeFromProto(proto);
@@ -45,8 +45,8 @@ onnxruntime::Status CreateEagerKernel(const void* info,
     return status;
   }
   onnxruntime::Node node;
-  auto onnx_attrs = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attrs);
-  for (int i = 0; i < num_attrs; ++i) {
+  auto onnx_attrs = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attr_values);
+  for (int i = 0; i < attr_count; ++i) {
     node.AddAttribute(onnx_attrs[i].name(), onnx_attrs[i]);
   }
   OpKernelInfo eagar_kernel_info(node, KernelDef{}, *ep, {}, {}, {});
@@ -54,51 +54,52 @@ onnxruntime::Status CreateEagerKernel(const void* info,
   FuncManager func_mgr;
   status = kernel_create_info->kernel_create_func(func_mgr, eagar_kernel_info, op_kernel);
   if (status.IsOK()) {
-    *kernel = op_kernel.release();
+    *op = op_kernel.release();
   }
   return status;
 }
 
-onnxruntime::Status InvokeEagerKernel(const void* context,
-                                      const void* kernel,
-                                      const void* const* inputs,
-                                      const int& input_len,
-                                      void* const* outputs,
-                                      const int& output_len) {
+onnxruntime::Status InvokeEagerOperator(const OrtKernelContext* context,
+                                        const OrtEagerOperator ort_op,
+                                        const OrtValue* const* input_values,
+                                        size_t input_count,
+                                        OrtValue** output_values,
+                                        size_t& output_count) {
   auto ctx = reinterpret_cast<const OpKernelContext*>(context);
   AllocatorPtr allocator{};
   auto ret = ctx->GetTempSpaceAllocator(&allocator);
   if (!ret.IsOK()) {
     return ret;
   }
-  EagerKernelContext eager_ctx(reinterpret_cast<const OrtValue* const*>(inputs),
-                               input_len,
-                               reinterpret_cast<OrtValue* const*>(outputs),
-                               output_len,
+  EagerKernelContext eager_ctx(input_values,
+                               input_count,
                                allocator,
                                ctx->GetOperatorThreadPool(),
                                ctx->Logger());
-  auto eager_kernel = reinterpret_cast<const OpKernel*>(kernel);
-  ret = eager_kernel->Compute(&eager_ctx);
+  auto kernel = reinterpret_cast<const OpKernel*>(ort_op);
+  ret = kernel->Compute(&eager_ctx);
+  if (ret.IsOK()) {
+    *output_values = eager_ctx.GetOutput(output_count);
+  }
   return ret;
 }
 
-}  // namespace Eager
+}  // namespace eager
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtApis::CreateEagerKernel,
-                    _In_ const void* kernel_info,
+ORT_API_STATUS_IMPL(OrtApis::CreateEagerOperator,
+                    _In_ const OrtKernelInfo* info,
                     _In_ const char* op_name,
                     _In_ const char* domain,
-                    _In_ const int& version,
+                    _In_ int version,
                     _In_ const char** type_constraint_names,
-                    _In_ const int* type_constraint_values,
-                    _In_ const int& num_type_constraint,
-                    _In_ const void* attrs,
-                    _In_ const int& num_attrs,
-                    _Outptr_ void** kernel) {
+                    _In_ const ONNXTensorElementDataType* type_constraint_values,
+                    _In_ size_t type_constraint_count,
+                    _In_ const void* onnx_attr_values,
+                    _In_ size_t onnx_attr_count,
+                    _Out_ OrtEagerOperator* ort_op) {
   API_IMPL_BEGIN
-  auto status = onnxruntime::eager::CreateEagerKernel(kernel_info, op_name, domain, version, type_constraint_names, type_constraint_values, num_type_constraint, attrs, num_attrs, kernel);
+  auto status = onnxruntime::eager::CreateEagerOperator(info, op_name, domain, version, type_constraint_names, type_constraint_values, type_constraint_count, onnx_attr_values, onnx_attr_count, ort_op);
   if (status.IsOK()) {
     return nullptr;
   } else {
@@ -107,29 +108,28 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEagerKernel,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::InvokeEagerKernel,
-                    _In_ const void* context,
-                    _In_ const void* kernel,
-                    _In_ const void* const* inputs,
-                    _In_ const int& input_len,
-                    _Inout_ void* const* outputs,
-                    _In_ const int& output_len) {
-  API_IMPL_BEGIN
-  auto status = onnxruntime::eager::InvokeEagerKernel(context, kernel, inputs, input_len, outputs, output_len);
-  if (status.IsOK()) {
-    return nullptr;
-  } else {
-    return CreateStatus(static_cast<OrtErrorCode>(status.Code()), "Failed to invoke eager kernel.");
-  }
-  API_IMPL_END
+ORT_API_STATUS_IMPL(OrtApis::InvokeEagerOperator,
+                    _In_ const OrtKernelContext* context,
+                    _In_ const OrtEagerOperator ort_op,
+                    _In_ const OrtValue* const* input_values,
+                    _In_ size_t input_count,
+                    _Out_ OrtValue** output_values,
+                    _Out_ size_t& output_count) {
+API_IMPL_BEGIN
+auto status = onnxruntime::eager::InvokeEagerOperator(context, ort_op, input_values, input_count, output_values, output_count);
+if (status.IsOK()) {
+  return nullptr;
+} else {
+  return CreateStatus(static_cast<OrtErrorCode>(status.Code()), "Failed to invoke eager kernel.");
+}
+API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::ReleaseEagerKernel,
-                    _In_ const void* kernel) {
+ORT_API_STATUS_IMPL(OrtApis::ReleaseEagerOperator, _Inout_ OrtEagerOperator* op) {
   API_IMPL_BEGIN
-  if (kernel) {
-    auto eager_kernel = reinterpret_cast<const onnxruntime::OpKernel*>(kernel);
-    delete eager_kernel;
+  if (op && *op) {
+    delete reinterpret_cast<const onnxruntime::OpKernel*>(*op);
+    *op = nullptr;
   }
   return nullptr;
   API_IMPL_END

@@ -249,11 +249,15 @@ inline SparseTensor* OpKernelContext::Output<SparseTensor>(int index) {
 }
 #endif
 
-//EagerKernelContext for invoking kenrel in eager mode
+// For invoking kenrel without a graph
 class EagerKernelContext : public OpKernelContext {
  public:
-  EagerKernelContext(_In_ const OrtValue* const* inputs, _In_ const int& input_len,
-                     _Inout_ OrtValue* const* outputs, _In_ const int& output_len,
+  //EagerKernelContext(_In_ const OrtValue* const* inputs, _In_ const int& input_len,
+  //                   _Inout_ OrtValue* const* outputs, _In_ const int& output_len,
+  //                   _In_ AllocatorPtr allocator, _In_ onnxruntime::concurrency::ThreadPool* threadpool,
+  //                   _In_ const logging::Logger& logger);
+
+  EagerKernelContext(_In_ const OrtValue* const* input_values, _In_ size_t input_count,
                      _In_ AllocatorPtr allocator, _In_ onnxruntime::concurrency::ThreadPool* threadpool,
                      _In_ const logging::Logger& logger);
 
@@ -265,22 +269,22 @@ class EagerKernelContext : public OpKernelContext {
   int InputCount() const override;
   int ImplicitInputCount() const override;
   int OutputCount() const override;
-  Status GetTempSpaceAllocator(AllocatorPtr* output) const ORT_MUST_USE_RESULT override;
+  Status GetTempSpaceAllocator(AllocatorPtr* output) const override ORT_MUST_USE_RESULT;
   Fence_t InputFence(int index) const override;
   Fence_t ImplicitInputFence(int index) const override;
   Fence_t OutputFence(int index) const override;
   int GetDeviceId() const override;
   void* GetComputeStream() const override;
+  OrtValue* GetOutput(size_t& output_count) const;
 
  protected:
   const OrtValue* GetInputMLValue(int index) const override;
   OrtValue* OutputMLValue(int index, const TensorShape& shape) override;
   OrtValue* GetOrCreateOutputMLValue(int index) override;
 
-  const OrtValue* const* inputs_;
-  const int input_len_;
-  OrtValue* const* outputs_;
-  const int output_len_;
+  const OrtValue* const* input_values_;
+  const size_t input_count_;
+  std::vector<OrtValue> output_values_;
   AllocatorPtr allocator_;
 };
 

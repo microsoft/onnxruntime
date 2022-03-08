@@ -213,19 +213,24 @@ void SliceCustomOpKernel::Compute(OrtKernelContext* context) {
 }
 
 EagerCustomKernel::EagerCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* info, void* compute_stream) : ort_(ort), compute_stream_(compute_stream) {
-  ort.CreateOperator(info, "Add", "", 14, (const char**)type_names, (const int*)type_values, 1, nullptr, 0, &operator_add);
+  ort.CreateOperator(info, "Add", "", 14, (const char**)type_names, (const ONNXTensorElementDataType*)type_values, 1, nullptr, 0, &op_add);
 }
 
 void EagerCustomKernel::Compute(OrtKernelContext* context) {
   const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
   const OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
   OrtTensorDimensions dimensions(ort_, input_X);
-  OrtValue* output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size());
-  void* inputs[2] = {(void*)input_X, (void*)input_Y};
-  void* outputs[1] = {(void*)output};
-  ort_.InvokeOperator((const void*)context, operator_add, inputs, 2, outputs, 1);
+  // OrtValue* ctx_output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size());
+  const OrtValue* input_values[2] = {input_X, input_Y};
+  OrtValue* output_values = nullptr;
+  size_t output_count = 0;
+  ort_.InvokeOperator(context, op_add, input_values, 2, &output_values, output_count);
+  //if (output_values && output_count > 0) {
+  //  //*ctx_output = std::move(output_values[0]);
+  //  delete [] output_values;
+  //}
 }
 
 EagerCustomKernel::~EagerCustomKernel() {
-  ort_.ReleaseOperator(operator_add);
+  ort_.ReleaseOperator(&op_add);
 }
