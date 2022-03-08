@@ -405,6 +405,8 @@ void DnnlSubgraphPrimitive::SetMemory(DnnlTensor tensor, dnnl::memory mem, bool 
     outputs_are_always_copied_.insert(tensor.Name());
   }
   if (is_scalar) {
+    // output may be input for another subgraph node
+    input_is_scalar_.insert(tensor.Name());
     scalar_outputs_.insert(tensor.Name());
   }
   SetMemory(tensor.Name(), mem);

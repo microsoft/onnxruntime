@@ -62,6 +62,7 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/arm64/SgemvKernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/SymQgemmS8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/SymQgemmS8KernelSDot.asm
+        ${MLAS_SRC_DIR}/arm64/SymQgemmS8KernelSDotLd64.asm
       )
     else()
       target_sources(onnxruntime_mlas PRIVATE
@@ -290,6 +291,7 @@ else()
           ${MLAS_SRC_DIR}/aarch64/SgemvKernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelSdot.S
+          ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelSdotLd64.S
           ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
@@ -308,8 +310,19 @@ else()
           ${MLAS_SRC_DIR}/power/SgemmKernelPower.cpp
           ${MLAS_SRC_DIR}/dgemm.cpp
           ${MLAS_SRC_DIR}/power/DgemmKernelPower.cpp
+          ${MLAS_SRC_DIR}/power/QuantizePower.cpp
         )
         set_source_files_properties(${MLAS_SRC_DIR}/power/SgemmKernelPower.cpp PROPERTIES COMPILE_FLAGS "-DSINGLE")
+
+        check_cxx_compiler_flag("-mcpu=power9" HAS_POWER9)
+        if (HAS_POWER9)
+          set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+            ${MLAS_SRC_DIR}/power/QuantizePowerVSX.cpp
+          )
+          set_source_files_properties(${MLAS_SRC_DIR}/power/QuantizePowerVSX.cpp PROPERTIES COMPILE_FLAGS "-mcpu=power9")
+        endif()
+
         check_cxx_compiler_flag("-mcpu=power10" HAS_POWER10)
         if(HAS_POWER10)
           set(CMAKE_REQUIRED_FLAGS "-mcpu=power10")

@@ -350,12 +350,16 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>body</tt> : graph (required)</dt>
-<dd>The GPT-2 subgraph with input_ids, position_ids, attention_mask, past_0, past_1, ... as inputs, and logits, present_0, present_1, ... as output</dd>
+<dt><tt>decoder</tt> : graph (required)</dt>
+<dd>Decoder subgraph to execute in a loop.</dd>
 <dt><tt>early_stopping</tt> : int</dt>
 <dd>early stop or not</dd>
+<dt><tt>encoder_decoder_init</tt> : graph</dt>
+<dd>subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.</dd>
 <dt><tt>eos_token_id</tt> : int (required)</dt>
 <dd>The id of the end-of-sequence token</dd>
+<dt><tt>model_type</tt> : int</dt>
+<dd>model type: 0 for GPT-2; 1 for encoder decoder like T5</dd>
 <dt><tt>no_repeat_ngram_size</tt> : int</dt>
 <dd>no repeat ngrams size</dd>
 <dt><tt>pad_token_id</tt> : int (required)</dt>

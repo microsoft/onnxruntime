@@ -202,31 +202,7 @@ static int GetIndexFromName(const Node& node, const std::string& name, bool is_i
   return static_cast<int>(index);
 }
 
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
-
-//----------------------------
-//--- end of local helpers ---
-//----------------------------
-
-#if !defined(ORT_MINIMAL_BUILD)
-
-int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name) {
-  return GetIndexFromName(node, input_name, true);
-}
-
-bool IsSupportedOptypeVersionAndDomain(const Node& node,
-                                       std::string_view op_type,
-                                       std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
-                                       std::string_view domain) {
-  return (node.OpType() == op_type && !node.Op()->Deprecated() &&
-          MatchesOpSinceVersion(node, versions) && MatchesOpSetDomain(node, domain));
-}
-
 bool MatchesOpSinceVersion(const Node& node, std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions) {
-  return std::find(versions.begin(), versions.end(), node.SinceVersion()) != versions.end();
-}
-
-bool MatchesOpSinceVersion(const Node& node, gsl::span<const ONNX_NAMESPACE::OperatorSetVersion> versions) {
   return std::find(versions.begin(), versions.end(), node.SinceVersion()) != versions.end();
 }
 
@@ -236,6 +212,32 @@ bool MatchesOpSetDomain(const Node& node, std::string_view domain) {
   return node_domain == domain ||
          ((node_domain == kOnnxDomain || node_domain == kOnnxDomainAlias) &&
           (domain == kOnnxDomain || domain == kOnnxDomainAlias));
+}
+
+bool IsSupportedOptypeVersionAndDomain(const Node& node,
+                                       std::string_view op_type,
+                                       std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
+                                       std::string_view domain) {
+  return (node.OpType() == op_type && 
+      // we don't have op schemas in the minimal build so there's no way to check the deprecated flag
+#if !defined(ORT_MINIMAL_BUILD)
+      !node.Op()->Deprecated() &&
+#endif
+          MatchesOpSinceVersion(node, versions) && MatchesOpSetDomain(node, domain));
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+
+//----------------------------
+//--- end of local helpers ---
+//----------------------------
+
+#if !defined(ORT_MINIMAL_BUILD)
+bool MatchesOpSinceVersion(const Node& node, gsl::span<const ONNX_NAMESPACE::OperatorSetVersion> versions) {
+  return std::find(versions.begin(), versions.end(), node.SinceVersion()) != versions.end();
+}
+
+int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name) {
+  return GetIndexFromName(node, input_name, true);
 }
 
 bool IsSupportedProvider(const Node& node,

@@ -71,7 +71,7 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
   }
   // check whether the inputs are contiguous tensor
   const auto& may_strided_inputs = kernel_create_info->kernel_def->MayStridedInput();
-  for (auto i = 0; i < inputs.size(); ++i) {
+  for (i = 0; i < inputs.size(); ++i) {
     const Tensor& input_tensor = inputs[i].Get<Tensor>();
     if (!input_tensor.IsContiguous() && std::find(may_strided_inputs.begin(), may_strided_inputs.end(),
                                                   static_cast<int>(i)) == may_strided_inputs.end())

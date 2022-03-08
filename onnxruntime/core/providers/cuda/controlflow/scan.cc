@@ -88,9 +88,21 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
                                   Scan<9>);
 
 // Opset 11 starts to support Neg Axis.
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Scan,
+                                  kOnnxDomain,
+                                  11,
+                                  15,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      // 'I' is in the ONNX spec but is not used for any inputs or outputs
+                                      // .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                      .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                  Scan<9>);
+
+// Opset 16 starts to support BFloat16 type for the type constraint "V"
 ONNX_OPERATOR_KERNEL_EX(Scan,
                         kOnnxDomain,
-                        11,
+                        16,
                         kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
                             // 'I' is in the ONNX spec but is not used for any inputs or outputs
