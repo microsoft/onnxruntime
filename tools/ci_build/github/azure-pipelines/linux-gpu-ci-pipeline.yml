@@ -30,7 +30,7 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecuda11build \
-            /opt/python/cp36-cp36m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+            /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
               --config Release --update --build \
               --skip_submodule_sync \
@@ -40,7 +40,7 @@ jobs:
               --enable_onnx_tests --use_cuda --cuda_version=11.4 --cuda_home=/usr/local/cuda-11.4 --cudnn_home=/usr/local/cuda-11.4 \
               --enable_cuda_profiling \
               --enable_pybind --build_java \
-              --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc  CMAKE_CUDA_ARCHITECTURES=52
+              --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc  CMAKE_CUDA_ARCHITECTURES=70
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -78,7 +78,7 @@ jobs:
   timeoutInMinutes: 60
   workspace:
     clean: all
-  pool: centos7gpu
+  pool: Onnxruntime-Linux-GPU-NC6sv3
   dependsOn:
   - Linux_Build
   steps:
