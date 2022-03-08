@@ -53,6 +53,8 @@ setup() {
     download_files
 }
 
+pip install flatbuffers 
+pip install -i https://test.pypi.org/simple/ ort-nightly-gpu
 setup
 python3 benchmark_wrapper.py -r validate -m $MODEL_PATH -o result/$OPTION -w $WORKSPACE $RUN_EPS
 python3 benchmark_wrapper.py -r benchmark -t 1200 -m $MODEL_PATH -o result/$OPTION -w $WORKSPACE $RUN_EPS
