@@ -37,7 +37,7 @@ Status ScatterND::ComputeInternal(OpKernelContext* context) const {
   const auto& updates_shape = updates_tensor->Shape();
 
   // Validate input shapes
-  ORT_RETURN_IF_ERROR(ValidateShapes(input_shape, indices_shape, updates_shape));
+  ORT_RETURN_IF_ERROR(onnxruntime::ScatterND::ValidateShapes(input_shape, indices_shape, updates_shape));
 
   auto* output_tensor = context->Output(0, input_shape);
 

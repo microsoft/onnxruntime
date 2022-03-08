@@ -32,18 +32,29 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterNDDataTypes>()),
     ScatterND);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     ScatterND,
     13,
+    15,
     KernelDefBuilder()
         .TypeConstraint("T",
                         BuildKernelDefConstraintsFromTypeList<ScatterNDDataTypes>(),
                         BuildKernelDefConstraintsFromTypeList<EnabledScatterNDDataTypes>()),
     ScatterND);
 
-Status ScatterNDBase::ValidateShapes(const TensorShape& input_shape,
-                                     const TensorShape& indice_shape,
-                                     const TensorShape& update_shape) {
+ONNX_CPU_OPERATOR_KERNEL(
+    ScatterND,
+    16,
+    KernelDefBuilder()
+        .TypeConstraint("T",
+                        BuildKernelDefConstraintsFromTypeList<ScatterNDDataTypes>(),
+                        BuildKernelDefConstraintsFromTypeList<EnabledScatterNDDataTypes>()),
+    ScatterND);
+
+Status ScatterND::ValidateShapes(
+    const TensorShape& input_shape,
+    const TensorShape& indice_shape,
+    const TensorShape& update_shape) {
   auto input_rank = input_shape.NumDimensions();
   auto indice_rank = indice_shape.NumDimensions();
   auto update_rank = update_shape.NumDimensions();
@@ -93,7 +104,21 @@ Status ScatterNDBase::ValidateShapes(const TensorShape& input_shape,
   return Status::OK();
 }
 
-Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const {
+template <typename TData>
+struct Prepare {
+  const TData* input_base;
+  TData* output_base;
+  uint64_t element_to_copy;
+  std::vector<uint64_t> element_offsets;
+
+  Prepare() : input_base(nullptr),
+              output_base(nullptr),
+              element_to_copy(0),
+              element_offsets(0) {}
+};  // struct Prepare
+
+template <typename TData>
+Status PrepareForCompute(OpKernelContext* context, Prepare<TData>& p) {
   const auto* input_tensor = context->Input<Tensor>(0);
   const auto* indice_tensor = context->Input<Tensor>(1);
   const auto* update_tensor = context->Input<Tensor>(2);
@@ -102,12 +127,12 @@ Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) co
   const auto& indice_shape = indice_tensor->Shape();
   const auto& update_shape = update_tensor->Shape();
 
-  ORT_RETURN_IF_ERROR(ValidateShapes(input_shape, indice_shape, update_shape));
+  ORT_RETURN_IF_ERROR(ScatterND::ValidateShapes(input_shape, indice_shape, update_shape));
 
   auto output_tensor = context->Output(0, input_shape);
 
-  const auto* src_base = input_tensor->DataRaw();
-  auto* dst_base = output_tensor->MutableDataRaw();
+  const auto* src_base = input_tensor->template Data<TData>();
+  auto* dst_base = output_tensor->template MutableData<TData>();
   const bool is_string_type = input_tensor->IsDataTypeString();
 
   auto last_indice_dimension = indice_shape[indice_shape.NumDimensions() - 1];
@@ -120,7 +145,7 @@ Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) co
       auto* dst = output_tensor->template MutableData<std::string>();
       std::copy(str_begin, str_end, dst);
     } else {
-      memcpy(dst_base, src_base, input_tensor->SizeInBytes());
+      memcpy((void*)dst_base, (const void*)src_base, input_tensor->SizeInBytes());
     }
   }
 
@@ -131,20 +156,13 @@ Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) co
     element_counts[i] = input_strides[i];
   }
 
-  p.element_bytes = input_tensor->DataType()->Size();
   p.element_to_copy = input_shape.SizeFromDimension(last_indice_dimension);
-  p.bytes_to_copy = p.element_bytes * p.element_to_copy;
   const int64_t* indice_offset = indice_tensor->template Data<int64_t>();
   auto offset_count = indice_shape.Size() / last_indice_dimension;  // Times to copy
   p.element_offsets.assign(offset_count, 0LL);
 
-  if (input_tensor->IsDataTypeString()) {
-    p.input_str_base = static_cast<const std::string*>(update_tensor->DataRaw());
-    p.output_str_base = static_cast<std::string*>(output_tensor->MutableDataRaw());
-  } else {
-    p.input_base = static_cast<const uint8_t*>(update_tensor->DataRaw());
-    p.output_base = static_cast<uint8_t*>(output_tensor->MutableDataRaw());
-  }
+  p.input_base = update_tensor->template Data<TData>();
+  p.output_base = output_tensor->template MutableData<TData>();
 
   for (int64_t i = 0; i < offset_count; ++i) {
     for (int64_t j = 0; j < last_indice_dimension; ++j) {
@@ -168,54 +186,136 @@ Status ScatterNDBase::PrepareForCompute(OpKernelContext* context, Prepare& p) co
   return Status::OK();
 }
 
+template <class T>
+struct Func_Copy_ND {
+  void operator()(T* a, const T* b, uint64_t element_to_copy) const {
+    memcpy(a, b, element_to_copy * sizeof(T));
+  }
+};
+
+template <>
+struct Func_Copy_ND<std::string> {
+  void operator()(std::string* a, const std::string* b, uint64_t element_to_copy) const {
+    while (element_to_copy-- > 0)
+      (*a++) = (*b++);
+  }
+};
+
+template <class T>
+struct Func_Add_ND {
+  void operator()(T* a, const T* b, uint64_t element_to_copy) const {
+    while (element_to_copy-- > 0)
+      (*a++) += (*b++);
+  }
+};
+
+template <>
+struct Func_Add_ND<bool> {
+  void operator()(bool* a, const bool* b, uint64_t element_to_copy) const {
+    while (element_to_copy-- > 0)
+      (*a++) |= (*b++);
+  }
+};
+
+template <>
+struct Func_Add_ND<MLFloat16> {
+  void operator()(MLFloat16*, const MLFloat16*, uint64_t) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with ScatterND opset 16 when reduction is 'add'.");
+  }
+};
+
+template <>
+struct Func_Add_ND<BFloat16> {
+  void operator()(BFloat16*, const BFloat16*, uint64_t) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterND opset 16 when reduction is 'add'.");
+  }
+};
+
+template <class T>
+struct Func_Mul_ND {
+  void operator()(T* a, const T* b, uint64_t element_to_copy) const {
+    while (element_to_copy-- > 0)
+      (*a++) *= (*b++);
+  }
+};
+
+template <>
+struct Func_Mul_ND<bool> {
+  void operator()(bool* a, const bool* b, uint64_t element_to_copy) const {
+    while (element_to_copy-- > 0)
+      (*a++) &= (*b++);
+  }
+};
+
+template <>
+struct Func_Mul_ND<std::string> {
+  void operator()(std::string*, const std::string*, uint64_t) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: string data type is not supported with ScatterND opset 16 when reduction is 'mul'.");
+  }
+};
+
+template <>
+struct Func_Mul_ND<MLFloat16> {
+  void operator()(MLFloat16*, const MLFloat16*, uint64_t) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: MLFloat16 data type is not supported with ScatterND opset 16 when reduction is 'mul'.");
+  }
+};
+
+template <>
+struct Func_Mul_ND<BFloat16> {
+  void operator()(BFloat16*, const BFloat16*, uint64_t) const {
+    ORT_NOT_IMPLEMENTED("CPU execution provider: BFloat16 data type is not supported with ScatterND opset 16 when reduction is 'mul'.");
+  }
+};
+
+template <typename TData>
+struct ScatterNDDispatchTarget {
+  Status operator()(OpKernelContext* context, concurrency::ThreadPool* tp, ScatterND::Reduction reduction) const {
+    Prepare<TData> prepare;
+    ORT_RETURN_IF_ERROR(PrepareForCompute(context, prepare));
+
+    auto lambda = [&](int64_t i) {
+      switch (reduction) {
+        case ScatterND::Reduction::Add: {
+          auto func = Func_Add_ND<TData>();
+          func(
+              prepare.output_base + prepare.element_offsets[i],
+              prepare.input_base + i * prepare.element_to_copy,
+              prepare.element_to_copy);
+        } break;
+        case ScatterND::Reduction::Mul: {
+          auto func = Func_Mul_ND<TData>();
+          func(
+              prepare.output_base + prepare.element_offsets[i],
+              prepare.input_base + i * prepare.element_to_copy,
+              prepare.element_to_copy);
+        } break;
+        default:
+        case ScatterND::Reduction::None: {
+          auto func = Func_Copy_ND<TData>();
+          func(
+              prepare.output_base + prepare.element_offsets[i],
+              prepare.input_base + i * prepare.element_to_copy,
+              prepare.element_to_copy);
+        } break;
+      }
+    };
+    concurrency::ThreadPool::TryParallelFor(
+        tp, prepare.element_offsets.size(), static_cast<double>(prepare.element_to_copy),
+        [&lambda](ptrdiff_t first, ptrdiff_t last) {
+          for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
+            lambda(i);
+          }
+        });
+    return Status::OK();
+  }
+};
+
 Status ScatterND::Compute(OpKernelContext* context) const {
-  Prepare p;
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
-  ORT_RETURN_IF_ERROR(PrepareForCompute(context, p));
-  return nullptr == p.input_str_base ? ScatterNumber(p, tp) : ScatterString(p, tp);
+  const auto data_type = context->Input<Tensor>(0)->GetElementType();
+  utils::MLTypeCallDispatcherFromTypeList<EnabledScatterNDDataTypes> dispatcher{data_type};
+  Status status = dispatcher.template InvokeRet<Status, ScatterNDDispatchTarget>(context, tp, this->reduction_);
+  return status;
 }
-
-Status ScatterND::ScatterNumber(const Prepare& p, concurrency::ThreadPool* tp) const {
-  constexpr bool has_non_string_enabled_type =
-      !boost::mp11::mp_empty<
-          boost::mp11::mp_remove<
-              EnabledScatterNDDataTypes,
-              std::string>>::value;
-  if (!has_non_string_enabled_type) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Non-string data types are not supported in this build.");
-  }
-
-  auto lambda = [&](int64_t i) {
-    memcpy(p.output_base + p.element_offsets[i] * p.element_bytes,
-           p.input_base + i * p.bytes_to_copy,
-           p.bytes_to_copy);
-  };
-  concurrency::ThreadPool::TryParallelFor(tp, p.element_offsets.size(), static_cast<double>(p.bytes_to_copy),
-                                          [&lambda](ptrdiff_t first, ptrdiff_t last) {
-                                            for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
-                                              lambda(i);
-                                            }
-                                          });
-  return Status::OK();
-}
-
-Status ScatterND::ScatterString(const Prepare& p, concurrency::ThreadPool* tp) const {
-  if (!utils::HasType<EnabledScatterNDDataTypes, std::string>()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "String data type is not supported in this build.");
-  }
-
-  auto lambda = [&](int64_t i) {
-    for (int64_t j = 0; j < static_cast<int64_t>(p.element_to_copy); ++j) {
-      p.output_str_base[p.element_offsets[i] + j] = p.input_str_base[i * p.element_to_copy + j];
-    }
-  };
-  concurrency::ThreadPool::TryParallelFor(tp, p.element_offsets.size(), static_cast<double>(p.element_to_copy),
-                                          [&lambda](ptrdiff_t first, ptrdiff_t last) {
-                                            for (int i = static_cast<int>(first), end = static_cast<int>(last); i < end; ++i) {
-                                              lambda(i);
-                                            }
-                                          });
-  return Status::OK();
-}
-
 }  // namespace onnxruntime
