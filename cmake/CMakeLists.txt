@@ -510,6 +510,10 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS")
 endif()
 
 find_package(Threads)
+find_package(Patch)
+if(Patch_FOUND)
+  message("Patch found: ${Patch_EXECUTABLE}")
+endif()
 
 macro(check_nvcc_compiler_flag _FLAG _RESULT)
     execute_process(COMMAND ${onnxruntime_CUDA_HOME}/bin/nvcc "${_FLAG}" RESULT_VARIABLE NVCC_OUT ERROR_VARIABLE NVCC_ERROR)
