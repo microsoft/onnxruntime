@@ -191,9 +191,53 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream, [[
   return Status::OK();
 }
 
-static Status Reorder(cublasLtHandle_t cublasLt, cudaStream_t stream,
-                      int32_t batchCount, int64_t rows, int64_t cols, cudaDataType_t data_type,
-                      const void* input, cublasLtOrder_t order_input, void* output, cublasLtOrder_t order_output) {
+// Matmul descriptor must specify CUBLAS_OP_T on matrix B and CUBLAS_OP_N (default) on matrix A and C
+Status QOrdered_Gemm(cublasLtHandle_t cublasLt_handle, cudaStream_t stream,
+                     int32_t batchCount, int64_t m, int64_t n, int64_t k,
+                     const float* alpha, const int8_t* A, const int8_t* B,
+                     const float* beta, int8_t* C,
+                     cublasLtOrder_t order_A, cublasLtOrder_t order_B, cublasLtOrder_t order_C,
+                     const cudaDeviceProp& device_prop) {
+  cublasLtMatmulDesc_t matmul_desc = nullptr;
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescCreate(&matmul_desc, CUBLAS_COMPUTE_32I, CUDA_R_32F));
+  auto clean_matmul_desc = gsl::finally([&matmul_desc]() {if (matmul_desc) cublasLtMatmulDescDestroy(matmul_desc); });
+
+  const cublasOperation_t transpose_A = CUBLAS_OP_N;
+  const cublasOperation_t transpose_B = CUBLAS_OP_T;
+
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(matmul_desc, CUBLASLT_MATMUL_DESC_TRANSA, &transpose_A, sizeof(transpose_A)));
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(matmul_desc, CUBLASLT_MATMUL_DESC_TRANSB, &transpose_B, sizeof(transpose_B)));
+  cublasLtPointerMode_t const pointMode = CUBLASLT_POINTER_MODE_HOST;
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmulDescSetAttribute(matmul_desc, CUBLASLT_MATMUL_DESC_POINTER_MODE, &pointMode, sizeof(pointMode)));
+
+  cublasLtMatrixLayout_t desc_A = nullptr;
+  ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_A, batchCount, m, k, CUDA_R_8I, order_A, transpose_A));
+  auto clean_desc_A = gsl::finally([&desc_A]() {if (desc_A) cublasLtMatrixLayoutDestroy(desc_A); });
+
+  cublasLtMatrixLayout_t desc_B = nullptr;
+  ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_B, batchCount, k, n, CUDA_R_8I, order_B, transpose_B));
+  auto clean_desc_B = gsl::finally([&desc_B]() {if (desc_B) cublasLtMatrixLayoutDestroy(desc_B); });
+
+  cublasLtMatrixLayout_t desc_C = nullptr;
+  ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_C, batchCount, m, n, CUDA_R_8I, order_C, CUBLAS_OP_N));
+  auto clean_desc_D = gsl::finally([&desc_C]() {if (desc_C) cublasLtMatrixLayoutDestroy(desc_C); });
+
+  // get algo
+  cublasLtMatmulAlgo_t algo;
+  assert((int)order_A == (int)order_C);
+  CublasLtMMAlgoMap::instance().GetAlgo(cublasLt_handle, algo, device_prop, batchCount, m, n, k, order_B, order_A);
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatmul(cublasLt_handle, matmul_desc,
+                                        alpha, A, desc_A, B, desc_B,
+                                        beta, C, desc_C, C, desc_C,
+                                        &algo, nullptr, 0,  // algo, workspace, workspace_size
+                                        stream));
+
+  return Status::OK();
+}
+
+Status Reorder(cublasLtHandle_t cublasLt, cudaStream_t stream,
+               int32_t batchCount, int64_t rows, int64_t cols, cudaDataType_t data_type,
+               const void* input, cublasLtOrder_t order_input, void* output, cublasLtOrder_t order_output) {
   cublasLtMatrixTransformDesc_t transform_desc = nullptr;
   auto clean_transform_desc = gsl::finally([&transform_desc]() {if (transform_desc) cublasLtMatrixTransformDescDestroy(transform_desc); });
   CUBLAS_RETURN_IF_ERROR(cublasLtMatrixTransformDescCreate(&transform_desc, CUDA_R_32I));
@@ -351,6 +395,7 @@ Status QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
 
   return Status::OK();
 }
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
