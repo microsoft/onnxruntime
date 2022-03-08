@@ -239,7 +239,7 @@ TEST_F(FunExpansionTest, TanhGrad_float) {
   TestUnaryOpGrad<float, true>("TanhGrad");
 }
 
-void TestSoftmaxCrossEntropyLossGrad(int reduction, int ignore_index = 0) {
+void TestSoftmaxCrossEntropyLossGrad(int reduction, int ignore_index, int use_weight) {
   int64_t batchsize = 8, num_classes = 10, d1 = 4;
   std::vector<int64_t> BCD{batchsize, num_classes, d1};
   std::vector<int64_t> BD{batchsize, d1};
@@ -252,7 +252,8 @@ void TestSoftmaxCrossEntropyLossGrad(int reduction, int ignore_index = 0) {
   testCase.AddInput<float>("dY", (reduction == 0) ? BD : scalar);
   testCase.AddInput<float>("log_prob", BCD);
   testCase.AddBoundedInput<int64_t>("label", BD, num_classes);
-  testCase.AddInput<float>("weight", C);
+  if (use_weight)
+    testCase.AddInput<float>("weight", C);
   switch (reduction) {
     case 0:
       testCase.AddAttribute("reduction", "none");
@@ -273,10 +274,13 @@ void TestSoftmaxCrossEntropyLossGrad(int reduction, int ignore_index = 0) {
 }
 
 TEST_F(FunExpansionTest, SoftmaxCrossEntropyLossGrad) {
-  for (int reduction = 0; reduction < 4; reduction++) {
-    TestSoftmaxCrossEntropyLossGrad(reduction);
-    TestSoftmaxCrossEntropyLossGrad(reduction, 100);
-  }
+  std::vector<int> reductions{0, 1, 2, 3};
+  std::vector<int> ignore_indices{0, 100};
+  std::vector<int> use_weights{0, 1};
+  for (auto reduction : reductions)
+    for (auto ignore_index : ignore_indices)
+      for (auto use_weight: use_weights)
+        TestSoftmaxCrossEntropyLossGrad(reduction, ignore_index, use_weight);
 }
 
 }  // namespace test

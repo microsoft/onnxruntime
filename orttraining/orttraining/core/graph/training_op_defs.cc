@@ -1473,7 +1473,6 @@ Example 4:
             builder.Add(R"(
                 zero_int64 = Constant <value = int64 {0}> ()
                 zero_label = CastLike (zero_int64, label)
-                zero_weight = CastLike (zero_int64, weight)
                 axes1 = Constant <value = int64[1] {1}> ()
             )");
 
@@ -1489,6 +1488,7 @@ Example 4:
                 builder.Add(R"(
                     adj_label_BD = Where (ignored_BD, zero_label, label)
                     weight_BD = Gather (weight, adj_label_BD)
+                    zero_weight = CastLike (zero_int64, weight)
                     adj_weight_BD = Where (ignored_BD, zero_weight, weight_BD)
                 )");
                 if (mean_reduction) {
@@ -1534,7 +1534,8 @@ Example 4:
                   // backward-prop for y = ReduceSum (loss) / Size(label)
                   builder.Add(R"(
                       count = Size(label)
-                      d_div = Div (dY, count)
+                      count_T = CastLike (count, dY)
+                      d_div = Div (dY, count_T)
                       BD = Shape (label)
                       d_loss = Expand (d_div, BD)
                   )");
@@ -1562,7 +1563,8 @@ Example 4:
 
                 zero_one = Constant < value = int32[2] {0, 1}>()
                 zero_one_typed = CastLike (zero_one, prob_BCD)
-                C = Size(weight)
+                C1d = Shape <start = 1, end = 2> (prob_BCD)
+                C = Squeeze(C1d)
                 one_hot_label_BCD = OneHot <axis=1> (label_BD, C, zero_one_typed)
 
                 adj_BCD = CastLike (one_hot_label_BCD, prob_BCD)
