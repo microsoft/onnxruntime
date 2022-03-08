@@ -108,7 +108,7 @@ jobs:
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
     - ${{ if ne(parameters.BuildORT, true) }}:
-      - script: 'docker pull nvcr.io/nvidia/tensorrt:${{ parameters.TrtVersion }}-py3'
+      - script: 'docker pull nvcr.io/nvidia/tensorrt:$(trtContainer)-py3'
 
     - ${{ if eq(parameters.PublishWheel, true) }}:
       
