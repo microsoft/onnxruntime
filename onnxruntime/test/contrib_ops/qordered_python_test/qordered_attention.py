@@ -20,7 +20,7 @@ def create_qordered_attention_graph():
             order_bias=2,
             order_input=2,
             order_output=2,
-            order_weight=4,
+            order_weight=3,
             unidirectional=0,
         ),
     ]
@@ -28,20 +28,20 @@ def create_qordered_attention_graph():
     initializers = [
         numpy_helper.from_array(numpy.load(os.path.join(DATA_DIR, 'const64_764.npy')).astype('float16').reshape([768, 2304]), name='weight'),
         numpy_helper.from_array(numpy.load(os.path.join(DATA_DIR, 'const65_769.npy')).astype('float16').reshape([2304]), name='bias'),
-        numpy_helper.from_array(numpy.array(0.007874015718698502, dtype='float32'), name='scale_input'),
-        numpy_helper.from_array(numpy.array(0.007874015718698502, dtype='float32'), name='scale_weight'),
-        numpy_helper.from_array(numpy.array(0.007874015718698502, dtype='float32'), name='scale_bias'),
-        numpy_helper.from_array(numpy.array(0.007874015718698502, dtype='float32'), name='scale_gemm'),
-        numpy_helper.from_array(numpy.array(0.007874015718698502, dtype='float32'), name='scale_output'),
-        numpy_helper.from_array(numpy.array(0.007874015718698502, dtype='float16'), name='scale_weight_fp16'),
-        numpy_helper.from_array(numpy.array(0.007874015718698502, dtype='float16'), name='scale_bias_fp16'),
+        numpy_helper.from_array(numpy.array(1.0, dtype='float32'), name='scale_input'),
+        numpy_helper.from_array(numpy.array(1.0, dtype='float32'), name='scale_weight'),
+        numpy_helper.from_array(numpy.array(1.0, dtype='float32'), name='scale_bias'),
+        numpy_helper.from_array(numpy.array(1.0, dtype='float32'), name='scale_gemm'),
+        numpy_helper.from_array(numpy.array(1.0, dtype='float32'), name='scale_output'),
+        numpy_helper.from_array(numpy.array(1.0, dtype='float16'), name='scale_weight_fp16'),
+        numpy_helper.from_array(numpy.array(1.0, dtype='float16'), name='scale_bias_fp16'),
     ]
 
     graph = helper.make_graph(nodes, "QOrderedAttention_Graph", [
-        helper.make_tensor_value_info('input_s8_COL32', TensorProto.INT8, [1, 8, 768]),
-        helper.make_tensor_value_info('mask_index', TensorProto.INT32, [1, 8]),
+        helper.make_tensor_value_info('input_s8_COL32', TensorProto.INT8, [1, 32, 768]),
+        helper.make_tensor_value_info('mask_index', TensorProto.INT32, [1, 32]),
     ], [
-        helper.make_tensor_value_info('output_s8_COL32', TensorProto.INT8, [1, 8, 768]),
+        helper.make_tensor_value_info('output_s8_COL32', TensorProto.INT8, [1, 32, 768]),
     ], initializers)
 
     model = helper.make_model(graph=graph)
@@ -55,8 +55,8 @@ sess_options = SessionOptions()
 ort_session = InferenceSession(onnx_model_str, sess_options, providers=['CUDAExecutionProvider'])
 
 ort_inputs = {
-    'input_s8_COL32' : numpy.random.randint(-127, 128, [1, 8, 768], dtype=numpy.int8),
-    'mask_index' : numpy.random.randint(1, 2, [1, 8], dtype=numpy.int32)
+    'input_s8_COL32' : numpy.random.randint(-127, 128, [1, 32, 768], dtype=numpy.int8),
+    'mask_index' : numpy.random.randint(1, 2, [1, 32], dtype=numpy.int32)
 }
 
 ort_output = ort_session.run(None, ort_inputs)

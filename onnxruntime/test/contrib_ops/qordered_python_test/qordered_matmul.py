@@ -14,7 +14,7 @@ def create_qordered_matmul_graph():
             name='qordered_matmul_0',
             domain='com.microsoft',
             order_A=2,
-            order_B=4,
+            order_B=3,
             order_Y=2,
         ),
     ]
@@ -26,10 +26,10 @@ def create_qordered_matmul_graph():
     ]
 
     graph = helper.make_graph(nodes, "QOrderedMatMulGraph", [
-        helper.make_tensor_value_info('A', TensorProto.INT8, [16, 32]),
+        helper.make_tensor_value_info('A', TensorProto.INT8, [64, 32]),
         helper.make_tensor_value_info('B', TensorProto.INT8, [32, 32]),
     ], [
-        helper.make_tensor_value_info('Y', TensorProto.INT8, [16, 32]),
+        helper.make_tensor_value_info('Y', TensorProto.INT8, [64, 32]),
     ], initializers)
 
     model = helper.make_model(graph=graph)
@@ -43,7 +43,7 @@ sess_options = SessionOptions()
 ort_session = InferenceSession(onnx_model_str, sess_options, providers=['CUDAExecutionProvider'])
 
 ort_inputs = {
-    'A' : numpy.random.randint(-127, 128, [16, 32], dtype=numpy.int8),
+    'A' : numpy.random.randint(-127, 128, [64, 32], dtype=numpy.int8),
     'B' : numpy.random.randint(-127, 128, [32, 32], dtype=numpy.int8)
 }
 
