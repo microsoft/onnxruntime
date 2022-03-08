@@ -912,6 +912,10 @@
         17416867432093505280
     ],
     [
+        "GridSample ai.onnx CPUExecutionProvider",
+        15150264021585158264
+    ],
+    [
         "GRU ai.onnx CPUExecutionProvider",
         5656895183302764352
     ],
@@ -2152,6 +2156,14 @@
         17022700455473327752
     ],
     [
+        "RoiAlign ai.onnx CPUExecutionProvider",
+        12536918025219759808
+    ],
+    [
+        "RoiAlign ai.onnx CPUExecutionProvider",
+        17630436044120124376
+    ],
+    [
         "Round ai.onnx CPUExecutionProvider",
         6445503327475574168
     ],
@@ -2188,12 +2200,20 @@
         18432023504032212784
     ],
     [
+        "ScatterElements ai.onnx CPUExecutionProvider",
+        6811950547871129912
+    ],
+    [
         "ScatterND ai.onnx CPUExecutionProvider",
         3058556000123462920
     ],
     [
         "ScatterND ai.onnx CPUExecutionProvider",
         8479082925474841976
+    ],
+    [
+        "ScatterND ai.onnx CPUExecutionProvider",
+        8962669673590364688
     ],
     [
         "Selu ai.onnx CPUExecutionProvider",
@@ -2614,5 +2634,29 @@
     [
         "Xor ai.onnx CPUExecutionProvider",
         14631049987911195736
+    ],
+    [
+        "Where ai.onnx CPUExecutionProvider",
+        186521469797128048
+    ],
+    [
+        "Where ai.onnx CPUExecutionProvider",
+        1124762945029945944
+    ],
+    [
+        "Where ai.onnx CPUExecutionProvider",
+        8727601196279637232
+    ],
+    [
+        "Where ai.onnx CPUExecutionProvider",
+        10010972164133933208
+    ],
+    [
+        "Where ai.onnx CPUExecutionProvider",
+        12896498917540022856
+    ],
+    [
+        "Where ai.onnx CPUExecutionProvider",
+        17544214758602217832
     ]
 ]
