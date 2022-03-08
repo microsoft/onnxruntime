@@ -3,10 +3,10 @@
 
 #pragma once
 
+#include <cuda_runtime.h>
+
 namespace onnxruntime {
 namespace cuda {
-
-#include <cuda_runtime.h>
 
 template <typename T>
 void Impl_Scale(

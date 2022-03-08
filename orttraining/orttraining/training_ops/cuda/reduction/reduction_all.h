@@ -3,7 +3,6 @@
 
 #pragma once
 #include "core/providers/cuda/cuda_kernel.h"
-#include "core/providers/cuda/multi_tensor/common.cuh"
 
 namespace onnxruntime {
 namespace cuda {
