@@ -347,18 +347,18 @@ ORT_API_STATUS_IMPL(CreateEagerOperator,
                     _In_ int version,
                     _In_ const char** type_constraint_names,
                     _In_ const ONNXTensorElementDataType* type_constraint_values,
-                    _In_ size_t type_constraint_count,
+                    _In_ int type_constraint_count,
                     _In_ const void* onnx_attr_values,
-                    _In_ size_t onnx_attr_count,
+                    _In_ int onnx_attr_count,
                     _Out_ OrtEagerOperator* ort_op);
 
 ORT_API_STATUS_IMPL(InvokeEagerOperator,
                     _In_ const OrtKernelContext* context,
                     _In_ const OrtEagerOperator ort_op,
                     _In_ const OrtValue* const* input_values,
-                    _In_ size_t input_count,
+                    _In_ int input_count,
                     _Inout_ OrtValue* const* output_values,
-                    _In_ size_t output_count);
+                    _In_ int output_count);
 
 ORT_API_STATUS_IMPL(ReleaseEagerOperator, _Inout_ OrtEagerOperator* op);
 

@@ -17,13 +17,10 @@ onnxruntime::Status CreateEagerOperator(const OrtKernelInfo* info,
                                         int version,
                                         const char** type_constraint_names,
                                         const ONNXTensorElementDataType* type_constraint_values,
-                                        size_t type_constraint_count,
+                                        int type_constraint_count,
                                         const void* attr_values,
-                                        size_t attr_count,
+                                        int attr_count,
                                         OrtEagerOperator* op) {
-  if (!op) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "invalid op pointer");
-  }
   *op = nullptr;
   auto kernel_info = reinterpret_cast<const OpKernelInfo*>(info);
   auto ep = reinterpret_cast<const IExecutionProvider*>(kernel_info->GetExecutionProvider());
@@ -62,9 +59,9 @@ onnxruntime::Status CreateEagerOperator(const OrtKernelInfo* info,
 onnxruntime::Status InvokeEagerOperator(const OrtKernelContext* context,
                                         const OrtEagerOperator ort_op,
                                         const OrtValue* const* input_values,
-                                        size_t input_count,
+                                        int input_count,
                                         OrtValue* const* output_values,
-                                        size_t output_count) {
+                                        int output_count) {
   auto ctx = reinterpret_cast<const OpKernelContext*>(context);
   AllocatorPtr allocator{};
   auto ret = ctx->GetTempSpaceAllocator(&allocator);
@@ -93,11 +90,14 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEagerOperator,
                     _In_ int version,
                     _In_ const char** type_constraint_names,
                     _In_ const ONNXTensorElementDataType* type_constraint_values,
-                    _In_ size_t type_constraint_count,
+                    _In_ int type_constraint_count,
                     _In_ const void* onnx_attr_values,
-                    _In_ size_t onnx_attr_count,
+                    _In_ int onnx_attr_count,
                     _Out_ OrtEagerOperator* ort_op) {
   API_IMPL_BEGIN
+  if (!info || !op_name || !domain || !ort_op) {
+    return CreateStatus(ORT_INVALID_ARGUMENT, "Invalid argument.");
+  }
   auto status = onnxruntime::eager::CreateEagerOperator(info,
                                                         op_name,
                                                         domain,
@@ -120,10 +120,13 @@ ORT_API_STATUS_IMPL(OrtApis::InvokeEagerOperator,
                     _In_ const OrtKernelContext* context,
                     _In_ const OrtEagerOperator ort_op,
                     _In_ const OrtValue* const* input_values,
-                    _In_ size_t input_count,
+                    _In_ int input_count,
                     _Inout_ OrtValue* const* output_values,
-                    _In_ size_t output_count) {
+                    _In_ int output_count) {
   API_IMPL_BEGIN
+  if (!context || !ort_op || !input_values || !input_count || !output_values || !output_count) {
+    return CreateStatus(ORT_INVALID_ARGUMENT, "Invalid argument.");
+  }
   auto status = onnxruntime::eager::InvokeEagerOperator(context, ort_op, input_values, input_count, output_values, output_count);
   if (status.IsOK()) {
     return nullptr;

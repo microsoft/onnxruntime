@@ -1189,9 +1189,9 @@ inline void CustomOpApi::CreateOperator(_In_ const OrtKernelInfo* info,
                                         _In_ int version,
                                         _In_ const char** type_constraint_names,
                                         _In_ const ONNXTensorElementDataType* type_constraint_values,
-                                        _In_ size_t type_constraint_count,
+                                        _In_ int type_constraint_count,
                                         _In_ const void* onnx_attr_values,
-                                        _In_ size_t onnx_attr_count,
+                                        _In_ int onnx_attr_count,
                                         _Out_ OrtEagerOperator* ort_op) {
   ThrowOnError(api_.CreateEagerOperator(info, op_name, domain, version, type_constraint_names, type_constraint_values, type_constraint_count, onnx_attr_values, onnx_attr_count, ort_op));
 }
@@ -1199,9 +1199,9 @@ inline void CustomOpApi::CreateOperator(_In_ const OrtKernelInfo* info,
 inline void CustomOpApi::InvokeOperator(_In_ const OrtKernelContext* context,
                                         _In_ const OrtEagerOperator ort_op,
                                         _In_ const OrtValue* const* input_values,
-                                        _In_ size_t input_count,
+                                        _In_ int input_count,
                                         _Inout_ OrtValue* const* output_values,
-                                        _In_ size_t output_count) {
+                                        _In_ int output_count) {
   ThrowOnError(api_.InvokeEagerOperator(context, ort_op, input_values, input_count, output_values, output_count));
 }
 

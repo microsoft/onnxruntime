@@ -252,8 +252,8 @@ inline SparseTensor* OpKernelContext::Output<SparseTensor>(int index) {
 // For invoking kenrel without a graph
 class EagerKernelContext : public OpKernelContext {
  public:
-  EagerKernelContext(_In_ const OrtValue* const* input_values, _In_ size_t input_count,
-                     _Inout_ OrtValue* const* output_values, _In_ size_t output_count,
+  EagerKernelContext(_In_ const OrtValue* const* input_values, _In_ int input_count,
+                     _Inout_ OrtValue* const* output_values, _In_ int output_count,
                      _In_ AllocatorPtr allocator, _In_ onnxruntime::concurrency::ThreadPool* threadpool,
                      _In_ const logging::Logger& logger);
 
@@ -278,9 +278,9 @@ class EagerKernelContext : public OpKernelContext {
   OrtValue* GetOrCreateOutputMLValue(int index) override;
 
   const OrtValue* const* input_values_;
-  const size_t input_count_;
+  const int input_count_;
   OrtValue* const* output_values_;
-  const size_t output_count_;
+  const int output_count_;
   AllocatorPtr allocator_;
 };
 

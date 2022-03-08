@@ -210,8 +210,8 @@ Status OpKernelContext::SetOutputMLValue(int index, const OrtValue& ort_value) {
 #endif
 
 // EagerKernelContext
-EagerKernelContext::EagerKernelContext(_In_ const OrtValue* const* input_values, _In_ size_t input_count,
-                                       _Inout_ OrtValue* const* output_values, _In_ size_t output_count,
+EagerKernelContext::EagerKernelContext(_In_ const OrtValue* const* input_values, _In_ int input_count,
+                                       _Inout_ OrtValue* const* output_values, _In_ int output_count,
                                        _In_ AllocatorPtr allocator, _In_ onnxruntime::concurrency::ThreadPool* threadpool,
                                        _In_ const logging::Logger& logger) : OpKernelContext(threadpool, logger),
                                                                              input_values_(input_values),
@@ -301,7 +301,7 @@ bool EagerKernelContext::TryGetInferredOutputShape(int /*index*/, TensorShape& /
 }
 
 int EagerKernelContext::InputCount() const {
-  return static_cast<int>(input_count_);
+  return input_count_;
 }
 
 int EagerKernelContext::ImplicitInputCount() const {
