@@ -559,7 +559,7 @@ and produces one output data (Tensor<T>) where the function `f(x) = quantize(alp
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
   const char* QLinearSigmoidDoc_ver1 = R"DOC(
-QLinearSigmoid takes quantized input data (Tensor), and quantize parameter for output, and produces one output data 
+QLinearSigmoid takes quantized input data (Tensor), and quantize parameter for output, and produces one output data
 (Tensor<T>) where the function `f(x) = quantize(Sigmoid(dequantize(x)))`, is applied to the data tensor elementwise.
 Wwhere the function `Sigmoid(x) = 1 / (1 + exp(-x))` )DOC";
 
@@ -1198,6 +1198,49 @@ If mask is provided, mask index (that is position of first 0 in mask, or number 
       .Output(0, "Y", "Added results from A + B", "Q")
       .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
       .TypeConstraint("F", {"tensor(float)"}, "Constrain to float32")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
+  static const char* Attention_QOrdered_doc = R"DOC(
+Quantized version of simplified Multi-Head Self Attention(using int8 with specific matrix Layout).
+Multi-Head Self Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
+The mask_index input is optional. Besides raw attention mask with shape (batch_size, past_sequence_length + sequence_length)
+or (batch_size, sequence_length, past_sequence_length + sequence_length) with value 0 for masked and 1 otherwise,
+we also support other two formats: When input has right-side padding, mask_index is one dimension with shape (batch_size),
+where value of each element is the end position, or valid length of actual sequence excluding padding. When input has
+left-side padding, mask_index has shape (2 * batch_size), where the values are the exclusive end positions followed by
+the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. For GPT-2, both past
+and present state are optional. Present state could appear in output even when past state is not in input.
+Current version does not support past/present, extra_add and qkv_hidden_sizes.
+TODO: Support them if needed in the future.
+)DOC";
+
+  ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedAttention, 1, OpSchema()
+      .SetDoc(Attention_QOrdered_doc)
+      .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+      .Attr("unidirectional",
+            "Whether every token can only attend to previous tokens. Default value is 0.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .Attr("order_input", "cublasLt order of input matrix", AttributeProto::INT)
+      .Attr("order_weight", "cublasLt order of weight matrix", AttributeProto::INT)
+      .Attr("order_bias", "cublasLt order of bias", AttributeProto::INT)
+      .Attr("order_output", "cublasLt order of global bias", AttributeProto::INT)
+      .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, input_hidden_size)", "Q")
+      .Input(1, "scale_input", "scale of the input", "S")
+      .Input(2, "weight", "2D input tensor with shape (input_hidden_size, 3 * hidden_size), where hidden_size = num_heads * head_size", "Q")
+      .Input(3, "scale_weight", "scale of the weight", "S")
+      .Input(4, "bias", "1D input tensor with shape (3 * hidden_size)", "Q")
+      .Input(5, "scale_bias", "scale of the bias", "S")
+      .Input(6, "scale_gemm", "scale of the gemm", "S")
+      .Input(7, "mask_index",
+             "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, past_sequence_length + sequence_length)"
+             "or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).",
+             "G", OpSchema::Optional)
+      .Input(8, "scale_output", "scale of the output", "S")
+      .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "Q")
+      .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("S", {"tensor(float)"}, "Constrain scales to float32 tensors.")
+      .TypeConstraint("G", {"tensor(int32)"}, "Constrain to integer types")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
 }  // namespace contrib

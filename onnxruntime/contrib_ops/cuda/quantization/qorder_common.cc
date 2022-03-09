@@ -224,7 +224,9 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream, co
   auto clean_desc_B = gsl::finally([&desc_B]() {if (desc_B) cublasLtMatrixLayoutDestroy(desc_B); });
 
   cublasLtMatrixLayout_t desc_C = nullptr;
-  ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_C, 1, 1, n, CUDA_R_8I, CUBLASLT_ORDER_COL32, CUBLAS_OP_N));
+
+  ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_C, 1, m, n, CUDA_R_8I, CUBLASLT_ORDER_COL32, CUBLAS_OP_N));
+
   auto clean_desc_C = gsl::finally([&desc_C]() {if (desc_C) cublasLtMatrixLayoutDestroy(desc_C); });
 
   cublasLtMatrixLayout_t desc_D = nullptr;
