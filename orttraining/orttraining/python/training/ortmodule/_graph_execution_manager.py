@@ -311,6 +311,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         #       Model is not re-exported when the model parameters change. This can happen when the model is a stateful model,
         #       or the user explicitly changed model parameters after the onnx export.
 
+        random_states = _utils.get_random_states()
+
         schema = _io._extract_schema(
             {'args': copy.copy(inputs), 'kwargs': copy.copy(kwargs)})
         if self._onnx_models.exported_model and schema == self._input_info.schema and not self._original_model_has_changed:
@@ -328,6 +330,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         if self._run_symbolic_shape_infer:
             self._onnx_models.exported_model = SymbolicShapeInference.infer_shapes(self._onnx_models.exported_model,
                                                                                    auto_merge=True, guess_output_rank=True)
+
+        _utils.set_random_states(random_states)
 
         return True
 
