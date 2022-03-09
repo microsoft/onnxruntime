@@ -3303,6 +3303,11 @@ struct OrtApi {
   */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_MIGraphX,
                   _In_ OrtSessionOptions* options, _In_ const OrtMIGraphXProviderOptions* migraphx_options);
+
+  ORT_API2_STATUS(CreateSessionWithExternalDataFromArray, _In_ const OrtEnv* env, _In_ const void* model_data, size_t model_data_length,
+                  _In_reads_(external_data_len) const char* const* external_data_names,
+                  _In_reads_(external_data_len) const void* const* external_data_buffers,
+                  size_t external_data_len, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);
 };
 
 /*

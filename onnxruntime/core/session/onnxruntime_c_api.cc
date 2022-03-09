@@ -742,6 +742,31 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArray, _In_ const OrtEnv* env, _In
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::CreateSessionWithExternalDataFromArray, _In_ const OrtEnv* env, _In_ const void* model_data, size_t model_data_length,
+                    /* _In_reads_(external_data_len) */ const char* const* /*external_data_names*/,
+                    /*_In_reads_(external_data_len)*/ const void* const* /*external_data_buffers*/,
+                    size_t /*external_data_len*/, _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out) {
+  API_IMPL_BEGIN
+  std::unique_ptr<onnxruntime::InferenceSession> sess;
+  OrtStatus* status = nullptr;
+  *out = nullptr;
+
+  ORT_TRY {
+    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, nullptr, model_data, model_data_length, sess));
+    ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess));
+
+    *out = reinterpret_cast<OrtSession*>(sess.release());
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = OrtApis::CreateStatus(ORT_FAIL, e.what());
+    });
+  }
+
+  return status;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,
                     _In_reads_(input_len) const char* const* input_names,
                     _In_reads_(input_len) const OrtValue* const* input, size_t input_len,
@@ -2521,6 +2546,8 @@ static constexpr OrtApi ort_api_1_to_11 = {
     &OrtApis::ReleaseCUDAProviderOptions,
     &OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX,
     // End of Version 11 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::CreateSessionWithExternalDataFromArray,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)

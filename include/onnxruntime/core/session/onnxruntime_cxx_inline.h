@@ -561,6 +561,19 @@ inline Session::Session(Env& env, const void* model_data, size_t model_data_leng
   ThrowOnError(GetApi().CreateSessionFromArray(env, model_data, model_data_length, options, &p_));
 }
 
+inline Session::Session(Env& env, const void* model_data, size_t model_data_length,
+                        const std::vector<std::string>& external_data_names, const std::vector<void*>& external_data_buffers, size_t external_data_len,
+                        const Ort::SessionOptions& options) {
+  std::vector<const char*> external_data_names_;
+  std::transform(
+      external_data_names.cbegin(),
+      external_data_names.cend(),
+      std::back_inserter(external_data_names_),
+      [](const std::string& str) { return str.c_str(); }
+  );
+  ThrowOnError(GetApi().CreateSessionWithExternalDataFromArray(env, model_data, model_data_length, external_data_names_.data(), external_data_buffers.data(), external_data_len, options, &p_));
+}
+
 inline std::vector<Value> Session::Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
                                        const char* const* output_names, size_t output_names_count) {
   std::vector<Ort::Value> output_values;

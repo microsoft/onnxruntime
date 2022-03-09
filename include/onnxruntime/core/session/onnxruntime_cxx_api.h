@@ -22,6 +22,8 @@
 #include <vector>
 #include <utility>
 #include <type_traits>
+#include <algorithm>
+#include <iterator>
 
 #ifdef ORT_NO_EXCEPTIONS
 #include <iostream>
@@ -397,6 +399,9 @@ struct Session : Base<OrtSession> {
   Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);                                                             ///< Wraps OrtApi::CreateSession
   Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options, OrtPrepackedWeightsContainer* prepacked_weights_container);  ///< Wraps OrtApi::CreateSessionWithPrepackedWeightsContainer
   Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options);                                        ///< Wraps OrtApi::CreateSessionFromArray
+  Session(Env& env, const void* model_data, size_t model_data_length,                                                                        ///< Wraps OrtApi::CreateSessionWithExternalDataFromArray
+          const std::vector<std::string>& external_data_names, const std::vector<void*>& external_data_buffers, size_t external_data_len,
+          const Ort::SessionOptions& options);
 
   /** \brief Run the model returning results in an Ort allocated vector.
   * 
