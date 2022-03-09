@@ -54,6 +54,32 @@ Status Initializer::ReadExternalRawData(
 
   return Status::OK();
 }
+
+Status Initializer::CreateDummyRawData(
+    const ONNX_NAMESPACE::TensorProto& tensor_proto, std::vector<char>& raw_data) {
+  ORT_RETURN_IF_NOT(
+      tensor_proto.data_type() != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED &&
+          tensor_proto.data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING,
+      "External data type must not be UNDEFINED or STRING.");
+
+  std::unique_ptr<ExternalDataInfo> external_data{};
+  ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto.external_data(), external_data));
+
+  size_t actual_tensor_data_length;
+  ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(
+      tensor_proto, &actual_tensor_data_length));
+  const size_t external_data_length = external_data->GetLength();
+
+  ORT_RETURN_IF_NOT(
+      external_data_length == 0 ||
+          external_data_length == actual_tensor_data_length,
+      "TensorProto external data size mismatch. ",
+      "Computed size: ", actual_tensor_data_length,
+      ", external_data.length: ", external_data_length);
+
+  raw_data = std::vector<char>(actual_tensor_data_length);
+  return Status::OK();
+}
 }  // namespace onnxruntime
 
 #endif  // !(ORT_MINIMAL_BUILD)
