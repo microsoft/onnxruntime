@@ -131,11 +131,11 @@ class SelectorActionTransformer : public GraphTransformer {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // apply optimizations by replaying saved runtime optimizations
   Status ApplySavedRuntimeOptimizations(Graph& graph, bool& modified, int graph_level,
                                         const logging::Logger& logger) const;
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   SelectorActionRegistry selector_action_registry_;
 
