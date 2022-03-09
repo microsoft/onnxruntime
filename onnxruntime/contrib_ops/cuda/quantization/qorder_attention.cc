@@ -89,7 +89,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   int m = batch_size * sequence_length;
   int n = 3 * hidden_size;
   int k = input_hidden_size;
-  auto gemm_buffer_quantized_col32 = GetScratchBuffer<int8_t>(batch_size * sequence_length * 3 * hidden_size * 1); //col32
+  auto gemm_buffer_quantized = GetScratchBuffer<int8_t>(2 * m * n); //col32 + row
 
   cudaStream_t stream = Stream();
 
@@ -101,26 +101,25 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
                     &scale_alpha, reinterpret_cast<const int8_t*>(input->template Data<int8_t>()),
                     reinterpret_cast<const int8_t*>(weights->template Data<int8_t>()),
                     scale_bias_data, reinterpret_cast<const int8_t*>(bias->template Data<int8_t>()),
-                    gemm_buffer_quantized_col32.get(), (cublasLtOrder_t)order_weight_));
+                    gemm_buffer_quantized.get(), (cublasLtOrder_t)order_weight_));
 
   // reorder to row major
-  auto gemm_buffer_quantized_row = GetScratchBuffer<int8_t>(batch_size * sequence_length * 3 * hidden_size * 1);
   ORT_RETURN_IF_ERROR(
     Reorder(cublasLt, stream, gsl::narrow_cast<int>(1), m, n, CUDA_R_8I,
-            gemm_buffer_quantized_col32.get(), (cublasLtOrder_t)2, gemm_buffer_quantized_row.get(), (cublasLtOrder_t)1));
+            gemm_buffer_quantized.get(), (cublasLtOrder_t)2, gemm_buffer_quantized.get() + m*n, (cublasLtOrder_t)1));
 
   using CudaT = ToCudaType<MLFloat16>::MappedType;
   constexpr size_t element_size = sizeof(MLFloat16);
 
   // dequantize back to fp16
-  auto gemm_buffer = GetScratchBuffer<int8_t>(batch_size * sequence_length * 3 * hidden_size * element_size); //row, fp16
+  auto gemm_buffer = GetScratchBuffer<int8_t>(m * n * element_size); //row, fp16
   ORT_RETURN_IF_ERROR(
-    CudaDequantizeLinear(stream, (const int8_t*)gemm_buffer_quantized_row.get(), (CudaT*)gemm_buffer.get(),
+    CudaDequantizeLinear(stream, (const int8_t*)(gemm_buffer_quantized.get() + m*n), (CudaT*)gemm_buffer.get(),
     (const CudaT*)scale_gemm_data, (const int8_t*)nullptr, batch_size * sequence_length * 3 * hidden_size));
 
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, 0);
   auto temp_buffer = GetScratchBuffer<void>(workSpaceSize);
-  auto output_buffer = GetScratchBuffer<int8_t>(batch_size * sequence_length * hidden_size * element_size); //row, fp16
+  auto output_buffer = GetScratchBuffer<int8_t>(m * n * element_size); //row, fp16
   cublasHandle_t cublas = CublasHandle();
   if (!LaunchAttentionKernel(
           device_prop,
