@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/rocm/reduction/reduction_all.h"
+#include "orttraining/training_ops/rocm/reduction/reduction_all_impl.h"
 
 #include "core/providers/rocm/reduction/reduction_functions.h"
 #include "core/providers/rocm/shared_inc/accumulation_type.h"

@@ -184,7 +184,7 @@ class InferenceSession {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /**
    * Filter the enabled optimizers (either transformer or rewrite rule) using optimizers_to_disable.
    * For an optimizer to be enabled, it must be allowed at the current optimization level (as specified in
@@ -196,7 +196,7 @@ class InferenceSession {
    * @return OK if success.
    */
   common::Status FilterEnabledOptimizers(InlinedHashSet<std::string>&& optimizers_to_disable);
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   /**
