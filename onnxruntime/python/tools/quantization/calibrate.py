@@ -435,6 +435,7 @@ class PercentileCalibrater(HistogramCalibrater):
                  method='percentile',
                  symmetric=False,
                  num_bins=2048,
+                 num_quantized_bins=128,
                  percentile=99.999):
         '''
         :param model: ONNX model to calibrate. It can be a ModelProto or a model path
@@ -443,11 +444,12 @@ class PercentileCalibrater(HistogramCalibrater):
         :param use_external_data_format: use external data format to store model which size is >= 2Gb
         :param method: A string. One of ['entropy', 'percentile'].
         :param symmetric: make range of tensor symmetric (central point is 0).
+        :param num_bins: number of bins to create a new histogram for collecting tensor values.
         :param num_quantized_bins: number of quantized bins. Default 128.
         :param percentile: A float number between [0, 100]. Default 99.99.
         '''
         super(PercentileCalibrater, self).__init__(model, op_types_to_calibrate, augmented_model_path, use_external_data_format,
-                                                   method=method, symmetric=symmetric, num_bins=num_bins, percentile=percentile)
+                                                   method=method, symmetric=symmetric, num_bins=num_bins, num_quantized_bins=num_quantized_bins, percentile=percentile)
 
 class CalibrationDataCollector(metaclass=abc.ABCMeta):
     """
@@ -761,6 +763,7 @@ def create_calibrator(model,
     elif calibrate_method == CalibrationMethod.Percentile:
         # default settings for percentile algorithm
         num_bins = 2048 if 'num_bins' not in extra_options else extra_options['num_bins']
+        num_quantized_bins = 128 if 'num_quantized_bins' not in extra_options else extra_options['num_quantized_bins']
         percentile = 99.999 if 'percentile' not in extra_options else extra_options['percentile']
         symmetric = True if 'symmetric' not in extra_options else extra_options['symmetric']
         return PercentileCalibrater(
@@ -768,6 +771,7 @@ def create_calibrator(model,
             use_external_data_format=use_external_data_format,
             symmetric=symmetric,
             num_bins=num_bins,
+            num_quantized_bins=num_quantized_bins,
             percentile=percentile
         )
 
