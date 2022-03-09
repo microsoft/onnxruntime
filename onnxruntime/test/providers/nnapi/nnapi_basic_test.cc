@@ -42,30 +42,6 @@ namespace test {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
-using UnpackTensorFn = std::function<void(const InitializedTensorSet& initializers,
-                                          const std::string& name, std::vector<uint8_t>& unpacked_tensor)>;
-
-/* NNAPI QDQ model build test related helper functions */
-
-float GetQDQModelQuantizationScales(const Path& model_path,
-                                    const std::string& name, const InitializedTensorSet& initializers,
-                                    const UnpackTensorFn& unpack_tensor) {
-  std::vector<uint8_t> unpacked_tensor;
-  unpack_tensor(initializers, name, unpacked_tensor);
-  float scale = 0.0f;
-  auto data = unpacked_tensor.data()[0];
-  std::memcpy(&scale, &data, sizeof(data));
-  return scale;
-}
-
-uint8_t GetQDQModelQuantizationZeroPoint(const Path& model_path,
-                                         const std::string& name, const InitializedTensorSet& initializers,
-                                         const UnpackTensorFn& unpack_tensor) {
-  std::vector<uint8_t> unpacked_tensor;
-  unpack_tensor(initializers, name, unpacked_tensor);
-  return static_cast<uint8_t>(unpacked_tensor[0]);
-}
-
 // Since NNAPI EP handles Reshape and Flatten differently,
 // Please see ReshapeOpBuilder::CanSkipReshape in
 // <repo_root>/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/op_builder.cc
@@ -302,14 +278,12 @@ static void RunQDQModelTest(
     const GetQDQTestCaseFn& build_test_case,
     const char* test_description,
     const EPVerificationParams& params = EPVerificationParams(),
-    bool nnapi_qdq_model_supported = true,
-    std::function<void(Graph& graph)> check_graph = [](Graph& graph) {}) {
+    bool nnapi_qdq_model_supported = true) {
   onnxruntime::Model model(test_description, false, DefaultLoggingManager().DefaultLogger());
   Graph& graph = model.MainGraph();
   ModelTestBuilder helper(graph);
   build_test_case(helper);
   helper.SetGraphOutputs();
-  check_graph(model.MainGraph());
   ASSERT_STATUS_OK(model.MainGraph().Resolve());
 
   // Serialize the model to a string.
@@ -368,7 +342,7 @@ TEST(NnapiExecutionProviderTest, TestQDQResize) {
 TEST(NnapiExecutionProviderTest, TestQDQResize_UnsupportedDefaultSetting) {
   RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
                                          {1, 3, 32, 32} /* sizes_data */),
-                  "nnapi_qdq_test_graph_resize",
+                  "nnapi_qdq_test_graph_resize_unsupported",
                   {
                       ExpectedEPNodeAssignment::None,
                       1e-5f,
@@ -446,60 +420,13 @@ TEST(NnapiExecutionProviderTest, TestQDQSoftMax_UnsupportedOutputScaleAndZp) {
                       static_cast<int64_t>(1) /* axis */,
                       0.002f /* output_scales */,
                       1 /* output_zp */),
-                  "nnapi_qdq_test_graph_softmax",
+                  "nnapi_qdq_test_graph_softmax_unsupported",
                   {ExpectedEPNodeAssignment::None,
                    1e-5},
                   false /* nnapi_qdq_model_supported */);
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQConcat) {
-  // This is to verify all the inputs have the same scale and zp as input 0
-  // See https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/providers/nnapi/nnapi_builtin/builders/op_support_checker.cc#L16176
-  auto check_graph = [](Graph& test_graph) {
-    const auto* q_input_node = test_graph.GetNode(0);
-    const auto& input_def = q_input_node->InputDefs();
-    ASSERT_TRUE(nullptr != q_input_node);
-    ASSERT_EQ("QuantizeLinear", q_input_node->OpType());
-    const auto& input_scale = *input_def[1];
-    const auto* input_zp = input_def[2];
-
-    const auto* q_input_node1 = test_graph.GetNode(2);
-    const auto& input_def1 = q_input_node1->InputDefs();
-    ASSERT_TRUE(nullptr != q_input_node1);
-    ASSERT_EQ("QuantizeLinear", q_input_node1->OpType());
-    const auto& input_scale1 = *input_def1[1];
-    const auto* input_zp1 = input_def1[2];
-
-    const auto* q_input_node2 = test_graph.GetNode(4);
-    const auto& input_def2 = q_input_node2->InputDefs();
-    ASSERT_TRUE(nullptr != q_input_node2);
-    ASSERT_EQ("QuantizeLinear", q_input_node2->OpType());
-    const auto& input_scale2 = *input_def2[1];
-    const auto* input_zp2 = input_def2[2];
-
-    const Path& model_path = q_input_node->ModelPath();
-    const auto unpack_tensor = [&model_path](const InitializedTensorSet& initializers,
-                                             const std::string& name, std::vector<uint8_t>& unpacked_tensor) {
-      const auto& tensor = *initializers.at(name);
-      ASSERT_STATUS_OK(onnxruntime::utils::UnpackInitializerData(tensor, model_path, unpacked_tensor));
-    };
-
-    // get the scales
-    const auto& initializers = test_graph.GetAllInitializedTensors();
-    auto scale = GetQDQModelQuantizationScales(model_path, input_scale.Name(), initializers, unpack_tensor);
-    auto scale1 = GetQDQModelQuantizationScales(model_path, input_scale1.Name(), initializers, unpack_tensor);
-    auto scale2 = GetQDQModelQuantizationScales(model_path, input_scale2.Name(), initializers, unpack_tensor);
-
-    // get the zero points
-    auto zero_point = GetQDQModelQuantizationZeroPoint(model_path, input_zp->Name(), initializers, unpack_tensor);
-    auto zero_point1 = GetQDQModelQuantizationZeroPoint(model_path, input_zp1->Name(), initializers, unpack_tensor);
-    auto zero_point2 = GetQDQModelQuantizationZeroPoint(model_path, input_zp2->Name(), initializers, unpack_tensor);
-
-    ASSERT_EQ(scale, scale1);
-    ASSERT_EQ(scale, scale2);
-    ASSERT_EQ(zero_point, zero_point1);
-    ASSERT_EQ(zero_point, zero_point2);
-  };
   RunQDQModelTest(BuildQDQConcatTestCase(
                       {
                           {1, 6, 36},
@@ -508,18 +435,16 @@ TEST(NnapiExecutionProviderTest, TestQDQConcat) {
                       } /* input_shapes */,
                       2 /* axis */),
                   "nnapi_qdq_test_graph_concat",
-                  {ExpectedEPNodeAssignment::All},
-                  true, /* nnapi_qdq_model_supported */
-                  check_graph);
+                  {ExpectedEPNodeAssignment::All});
 }
 
 #if defined(__ANDROID__)
 TEST(NnapiExecutionProviderTest, TestQDQConcat_UnsupportedInputScalesAndZp) {
-  // This is to verify all the inputs have the same scale and zp as input 0
+  // This is to verify all the inputs have the same scale and zp as input 0 for API 28-
   const auto* nnapi = NnApiImplementation();
   if (nnapi->nnapi_runtime_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
-    RunQDQModelTest(BuildQDQConcatTestCaseUnsupported(),
-                    "nnapi_qdq_test_graph_concat",
+    RunQDQModelTest(BuildQDQConcatTestCaseUnsupportedInputScaleZp(),
+                    "nnapi_qdq_test_graph_concat_unsupported",
                     {ExpectedEPNodeAssignment::None,
                      1e-5},
                     false /* nnapi_qdq_model_supported */);

@@ -289,9 +289,7 @@ GetQDQTestCaseFn BuildQDQConcatTestCase(const std::vector<std::vector<int64_t>>&
                                         bool has_input_int8 = false,
                                         bool has_output_int8 = false);
 
-#ifdef USE_NNAPI
-GetQDQTestCaseFn BuildQDQConcatTestCaseUnsupported();
-#endif
+GetQDQTestCaseFn BuildQDQConcatTestCaseUnsupportedInputScaleZp();
 
 }  // namespace test
 }  // namespace onnxruntime
