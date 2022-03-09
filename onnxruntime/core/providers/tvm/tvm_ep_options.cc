@@ -57,7 +57,7 @@ size_t split(const std::string &src, std::vector<std::string> &dst, char ch) {
   return dst.size();
 }
 
-TvmEPOptions TvmEPOptions::FromOptionsString(const char* opt_str) {
+TvmEPOptions TvmEPOptionsHelper::FromOptionsString(const char* opt_str) {
   std::string settings{opt_str};
   ProviderOptions options;
   if (!settings.empty()) {
@@ -90,10 +90,10 @@ TvmEPOptions TvmEPOptions::FromOptionsString(const char* opt_str) {
     }
   }
 
-  return FromProviderOptions(options);
+  return TvmEPOptionsHelper::FromProviderOptions(options);
 }
 
-std::string TvmEPOptions::whitespace_trimming(const std::string& str) {
+std::string TvmEPOptionsHelper::whitespace_trimming(const std::string& str) {
   const std::string WHITESPACE = " \n\r\t\f\v";
   size_t start = str.find_first_not_of(WHITESPACE);
   if (start == std::string::npos) {
@@ -105,7 +105,7 @@ std::string TvmEPOptions::whitespace_trimming(const std::string& str) {
   }
 }
 
-TvmEPOptions TvmEPOptions::FromProviderOptions(const ProviderOptions& pr_options) {
+TvmEPOptions TvmEPOptionsHelper::FromProviderOptions(const ProviderOptions& pr_options) {
   TvmEPOptions options{};
 
   ORT_THROW_IF_ERROR(
@@ -122,19 +122,19 @@ TvmEPOptions TvmEPOptions::FromProviderOptions(const ProviderOptions& pr_options
           .AddAssignmentToReference(tvm::provider_option_names::kInputShapes, options.input_shapes_str)
           .Parse(pr_options));
 
-  options.optionsPostprocess();
+  optionsPostprocess(options);
 
   return options;
 }
 
-void TvmEPOptions::optionsPostprocess() {
-  setInputShapes();
-  targetPostprocess();
-  targetHostPostprocess();
-  optLevelPostprocess();
+void TvmEPOptionsHelper::optionsPostprocess(TvmEPOptions& options) {
+  setInputShapes(options);
+  targetPostprocess(options.target);
+  targetHostPostprocess(options.target, options.target_host);
+  optLevelPostprocess(options.opt_level);
 }
 
-bool TvmEPOptions::checkGPUTarget() const {
+bool TvmEPOptionsHelper::checkGPUTarget(const std::string& target) {
   bool check = (
     target.find("cuda") != std::string::npos ||
     target.find("opencl") != std::string::npos ||
@@ -144,18 +144,18 @@ bool TvmEPOptions::checkGPUTarget() const {
   return check;
 }
 
-void TvmEPOptions::setInputShapes() {
-  if (input_names_str.empty() && input_shapes_str.empty())
+void TvmEPOptionsHelper::setInputShapes(TvmEPOptions& options) {
+  if (options.input_names_str.empty() && options.input_shapes_str.empty())
     return;
-  ORT_ENFORCE(!input_names_str.empty() && !input_shapes_str.empty(),
+  ORT_ENFORCE(!options.input_names_str.empty() && !options.input_shapes_str.empty(),
     "Both provider options \"input_names\" and \"input_shapes\" should be empty or full");
 
   std::vector<std::string> name_set;
-  std::string trimmed_names = TvmEPOptions::whitespace_trimming(input_names_str);
+  std::string trimmed_names = whitespace_trimming(options.input_names_str);
   size_t inp_tensors_num = split(trimmed_names, name_set, ' ');
   ORT_ENFORCE(inp_tensors_num, "There is no any input tensor names!");
 
-  std::string trimmed_shapes = TvmEPOptions::whitespace_trimming(input_shapes_str);
+  std::string trimmed_shapes = whitespace_trimming(options.input_shapes_str);
   size_t end_pos = trimmed_shapes.find_last_of(']');
   ORT_ENFORCE(end_pos != std::string::npos, "Invalid string for input shapes. Symbol ] is not found");
   ORT_ENFORCE(end_pos == (trimmed_shapes.size() - 1),
@@ -179,14 +179,14 @@ void TvmEPOptions::setInputShapes() {
       dims.push_back(std::stoi(number));
     }
 
-    input_shapes[name_set[i]] = dims;
+    options.input_shapes[name_set[i]] = dims;
   }
 }
 
-void TvmEPOptions::targetPostprocess() {
+void TvmEPOptionsHelper::targetPostprocess(std::string& target) {
   if(target == tvm::cpu_target_str ||
      target == tvm::llvm_target_str) {
-    ProcessCPUTarget();
+    ProcessCPUTarget(target);
   } else if(target == tvm::gpu_target_str) {
     ProcessGPUTarget();
   } else if(target.empty()) {
@@ -197,7 +197,7 @@ void TvmEPOptions::targetPostprocess() {
   }
 }
 
-void TvmEPOptions::ProcessCPUTarget() {
+void TvmEPOptionsHelper::ProcessCPUTarget(std::string& target) {
   const auto& cpu_id_info = CPUIDInfo::GetCPUIDInfo();
   // auto detect from CPU ID
   if (cpu_id_info.HasAVX512Skylake()) {
@@ -214,11 +214,11 @@ void TvmEPOptions::ProcessCPUTarget() {
   }
 }
 
-void TvmEPOptions::ProcessGPUTarget() {
+void TvmEPOptionsHelper::ProcessGPUTarget() {
   ORT_NOT_IMPLEMENTED("GPU target auto-defenition is not implemented now!");
 }
 
-void TvmEPOptions::targetHostPostprocess() {
+void TvmEPOptionsHelper::targetHostPostprocess(const std::string& target, std::string& target_host) {
   if((target_host == tvm::cpu_target_str ||
       target_host == tvm::llvm_target_str) &&
       target_host != target) {
@@ -231,7 +231,7 @@ void TvmEPOptions::targetHostPostprocess() {
   }
 }
 
-void TvmEPOptions::optLevelPostprocess() {
+void TvmEPOptionsHelper::optLevelPostprocess(unsigned int& opt_level) {
   if(opt_level < 1) {
     opt_level = tvm::default_opt_level;
   }

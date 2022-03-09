@@ -44,24 +44,27 @@ struct TvmEPOptions {
   std::string input_shapes_str{""};
   TVMInputShapes input_shapes{};
   TVMTensorShapes output_shapes{};
+};
 
+std::ostream& operator<<(std::ostream& out, const TvmEPOptions& options);
+
+class TvmEPOptionsHelper {
+public:
   static TvmEPOptions FromOptionsString(const char* options);
   static TvmEPOptions FromProviderOptions(const ProviderOptions& options);
   static std::string whitespace_trimming(const std::string& str);
 
-  void optionsPostprocess();
+  static bool checkGPUTarget(const std::string& target);
 
-  bool checkGPUTarget() const;
 private:
-  void setInputShapes();
-  void targetPostprocess();
-  void ProcessCPUTarget();
-  void ProcessGPUTarget();
-  void targetHostPostprocess();
-  void optLevelPostprocess();
+  static void optionsPostprocess(TvmEPOptions& options);
+  static void setInputShapes(TvmEPOptions& options);
+  static void targetPostprocess(std::string& target);
+  static void ProcessCPUTarget(std::string& target);
+  static void ProcessGPUTarget();
+  static void targetHostPostprocess(const std::string& target, std::string& target_host);
+  static void optLevelPostprocess(unsigned int& opt_level);
 };
-
-std::ostream& operator<<(std::ostream& out, const TvmEPOptions& options);
 
 }  // namespace tvm
 }  // namespace onnxruntime

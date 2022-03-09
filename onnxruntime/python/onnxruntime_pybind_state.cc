@@ -652,7 +652,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     onnxruntime::tvm::TvmEPOptions info{};
     const auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
-      info = onnxruntime::tvm::TvmEPOptions::FromProviderOptions(it->second);
+      info = onnxruntime::tvm::TvmEPOptionsHelper::FromProviderOptions(it->second);
     }
 
     return onnxruntime::CreateExecutionProviderFactory_Tvm(info)->CreateProvider();

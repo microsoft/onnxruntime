@@ -150,7 +150,7 @@ common::Status TvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
 
 std::unique_ptr<IDataTransfer> TvmExecutionProvider::GetDataTransfer() const {
   //TODO(vvchernov): target or target host?
-  if (options_.checkGPUTarget()) {
+  if (TvmEPOptionsHelper::checkGPUTarget(options_.target)) {
     return std::make_unique<XPUDataTransfer>();
   } else if (options_.target.find("llvm") != std::string::npos) {
     return std::make_unique<TvmCPUDataTransfer>();
