@@ -10,5 +10,5 @@ jobs:
   - checkout: none
   - script: |
       set -x -e
-      docker image prune --all
+      docker image prune --all --force
       python3 -m pip uninstall -y onnxruntime-training
