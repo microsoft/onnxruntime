@@ -890,6 +890,17 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
+     * Adds OpenCL as an execution backend.
+     *
+     * @param use_fp16 Enable half precision.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addOpenCL(boolean use_fp16) throws OrtException {
+      checkClosed();
+      addOpenCL(OnnxRuntime.ortApiHandle, nativeHandle, use_fp16 ? 1 : 0);
+    }
+
+    /**
      * Adds TVM as an execution backend.
      *
      * @param settings See the documentation for valid settings strings.
@@ -1043,6 +1054,9 @@ public class OrtSession implements AutoCloseable {
 
     private native void addNuphar(
         long apiHandle, long nativeHandle, int allowUnalignedBuffers, String settings)
+        throws OrtException;
+
+    private native void addOpenCL(long apiHandle, long nativeHandle, int use_fp16)
         throws OrtException;
 
     private native void addTvm(long apiHandle, long nativeHandle, String settings)

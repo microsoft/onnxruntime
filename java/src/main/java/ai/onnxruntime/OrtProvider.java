@@ -17,6 +17,7 @@ public enum OrtProvider {
   VITIS_AI("VitisAIExecutionProvider"),
   TENSOR_RT("TensorrtExecutionProvider"),
   NNAPI("NnapiExecutionProvider"),
+  OPENCL("OpenCLExecutionProvider"),
   RK_NPU("RknpuExecutionProvider"),
   DIRECT_ML("DmlExecutionProvider"),
   MI_GRAPH_X("MIGraphXExecutionProvider"),

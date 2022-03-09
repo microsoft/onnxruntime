@@ -20,6 +20,7 @@
 #include "heap_buffer.h"
 #include "test_session.h"
 #include "OrtValueList.h"
+#include "Tracy.hpp"
 
 class ITestCase;
 class TestModelInfo;
@@ -91,6 +92,7 @@ class PerformanceRunner {
 
   inline Status RunFixDuration() {
     while (performance_result_.total_time_cost < performance_test_config_.run_config.duration_in_seconds) {
+      ZoneScopedN("PerformanceRunner::RunFixDuration");
       ORT_RETURN_IF_ERROR(RunOneIteration<false>());
     }
     return Status::OK();
@@ -98,6 +100,8 @@ class PerformanceRunner {
 
   inline Status RunRepeatedTimes() {
     for (size_t ite = 0; ite < performance_test_config_.run_config.repeated_times; ite++) {
+      FrameMark;
+      ZoneScopedN("PerformanceRunner::RunRepeatedTimes");
       ORT_RETURN_IF_ERROR(RunOneIteration<false>());
     }
     return Status::OK();

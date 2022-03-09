@@ -19,6 +19,7 @@
 #include "onnxruntime/core/providers/nnapi/nnapi_provider_factory.h"
 #include "onnxruntime/core/providers/nuphar/nuphar_provider_factory.h"
 #include "onnxruntime/core/providers/tvm/tvm_provider_factory.h"
+#include "onnxruntime/core/providers/opencl/opencl_provider_factory.h"
 #include "onnxruntime/core/providers/openvino/openvino_provider_factory.h"
 #include "onnxruntime/core/providers/tensorrt/tensorrt_provider_factory.h"
 #include "onnxruntime/core/providers/acl/acl_provider_factory.h"
@@ -500,6 +501,22 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addMIG
 
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    addOpenCL
+ * Signature: (JJI)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addOpenCL
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint use_fp16) {
+  (void)jobj;
+  #ifdef USE_OPENCL
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_OpenCL((OrtSessionOptions*) handle, use_fp16));
+  #else
+    (void)apiHandle;(void)handle;(void)use_fp16; // Parameters used when OPENCL is defined.
+    throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with OpenCL support.");
+  #endif
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
  * Method:    addDirectML
  * Signature: (JJI)V
  */
@@ -577,4 +594,3 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addROC
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with ROCM support.");
   #endif
 }
-

@@ -475,6 +475,10 @@ if(onnxruntime_USE_NUPHAR)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nuphar)
 endif()
 
+if(onnxruntime_USE_OPENCL)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_opencl)
+endif()
+
 if(onnxruntime_USE_ACL)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_acl)
 endif()
@@ -494,6 +498,7 @@ set(ONNXRUNTIME_TEST_LIBS
     # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_OPENCL}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}

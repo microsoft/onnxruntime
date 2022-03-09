@@ -72,3 +72,9 @@
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/onnx/onnx-tensorrt.git
+[submodule "cmake/external/tracy"]
+	path = cmake/external/tracy
+	url = https://github.com/wolfpld/tracy.git
+[submodule "cmake/external/cl3w/OpenCL-Headers"]
+	path = cmake/external/cl3w/OpenCL-Headers
+	url = https://github.com/KhronosGroup/OpenCL-Headers.git
