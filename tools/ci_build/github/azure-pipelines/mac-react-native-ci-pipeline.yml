@@ -30,6 +30,7 @@ jobs:
     artifactName: 'onnxruntime-android-mobile-aar'
     job_name_suffix: 'For_React_Native'
     pool_name: '${{variables.pool_name}}'
+    packageName: 'onnxruntime-mobile'
 
 - job: ReactNative_CI
   pool:
@@ -100,7 +101,7 @@ jobs:
       npm ci
     workingDirectory: '$(Build.SourcesDirectory)/js'
     displayName: npm ci js
-  
+
   - script: |
       npm ci
     workingDirectory: '$(Build.SourcesDirectory)/js/common'
@@ -277,14 +278,14 @@ jobs:
       contents: onnxruntime-common*.tgz
       targetFolder: $(Build.ArtifactStagingDirectory)
     displayName: 'Create Artifacts onnxruntime-common'
-  
+
   - task: CopyFiles@2
     inputs:
       sourceFolder: $(Build.SourcesDirectory)/js/react_native
       contents: onnxruntime-react-native*.tgz
       targetFolder: $(Build.ArtifactStagingDirectory)
     displayName: Create Artifacts onnxruntime-react-native
-  
+
   - task: PublishPipelineArtifact@0
     inputs:
       artifactName: 'NPM_packages'

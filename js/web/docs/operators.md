@@ -64,6 +64,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [GlobalMaxPool](https://github.com/onnx/onnx/blob/master/docs/Operators.md#GlobalMaxPool) | [1+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#GlobalMaxPool-1) |
 | [Greater](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Greater) | [7-8](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Greater-7), [9-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Greater-9), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Greater-13) |
 | [GreaterOrEqual](https://github.com/onnx/onnx/blob/master/docs/Operators.md#GreaterOrEqual) |  |
+| [GridSample](https://github.com/onnx/onnx/blob/master/docs/Operators.md#GridSample) |  |
 | [HardSigmoid](https://github.com/onnx/onnx/blob/master/docs/Operators.md#HardSigmoid) |  |
 | [HardSwish](https://github.com/onnx/onnx/blob/master/docs/Operators.md#HardSwish) |  |
 | [Hardmax](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Hardmax) |  |
@@ -74,7 +75,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [IsNaN](https://github.com/onnx/onnx/blob/master/docs/Operators.md#IsNaN) |  |
 | [LRN](https://github.com/onnx/onnx/blob/master/docs/Operators.md#LRN) |  |
 | [LSTM](https://github.com/onnx/onnx/blob/master/docs/Operators.md#LSTM) |  |
-| [LeakyRelu](https://github.com/onnx/onnx/blob/master/docs/Operators.md#LeakyRelu) | [6+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#LeakyRelu-6) |
+| [LeakyRelu](https://github.com/onnx/onnx/blob/master/docs/Operators.md#LeakyRelu) | [6-15](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#LeakyRelu-6), [16+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#LeakyRelu-16) |
 | [Less](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Less) | [7-8](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Less-7), [9-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Less-9), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Less-13) |
 | [LessOrEqual](https://github.com/onnx/onnx/blob/master/docs/Operators.md#LessOrEqual) |  |
 | [Log](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Log) | [6-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Log-6), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Log-13) |
@@ -104,7 +105,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [OptionalGetElement](https://github.com/onnx/onnx/blob/master/docs/Operators.md#OptionalGetElement) |  |
 | [OptionalHasElement](https://github.com/onnx/onnx/blob/master/docs/Operators.md#OptionalHasElement) |  |
 | [Or](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Or) | [7+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Or-7) |
-| [PRelu](https://github.com/onnx/onnx/blob/master/docs/Operators.md#PRelu) | [7-8](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#PRelu-7), [9+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#PRelu-9) |
+| [PRelu](https://github.com/onnx/onnx/blob/master/docs/Operators.md#PRelu) | [7-8](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#PRelu-7), [9-15](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#PRelu-9), [16+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#PRelu-16) |
 | [Pad](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Pad) | [2-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pad-2), [11-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pad-11), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pad-13) |
 | [Pow](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Pow) | [7-11](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pow-7), [12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pow-12), [13-14](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pow-13), [15+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pow-15) |
 | [QLinearConv](https://github.com/onnx/onnx/blob/master/docs/Operators.md#QLinearConv) |  |

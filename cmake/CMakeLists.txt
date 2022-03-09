@@ -121,9 +121,6 @@ option(onnxruntime_EXTENDED_MINIMAL_BUILD "onnxruntime_MINIMAL_BUILD with suppor
 option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support to a minimal build." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
 option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
-cmake_dependent_option(onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD
-                       "Enable runtime graph optimizations for ORT format models in an extended minimal build."
-                       OFF "onnxruntime_EXTENDED_MINIMAL_BUILD" OFF)
 
 #A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
 #The option has no effect on Windows.
@@ -312,7 +309,7 @@ endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
   # Enable LTO for release single-thread build
-  if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+  if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
     # NOTES:
     # (1) LTO does not work for WebAssembly multi-thread. (segment fault in worker)
     # (2) "-flto=thin" does not work correctly for wasm-ld.
@@ -347,11 +344,6 @@ if (onnxruntime_MINIMAL_BUILD)
   if (onnxruntime_EXTENDED_MINIMAL_BUILD)
     # enable EPs that compile kernels at runtime
     add_compile_definitions(ORT_EXTENDED_MINIMAL_BUILD)
-    # enable runtime optimizations. These are required for NNAPI.
-    # TODO remove onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD since these optimzations are now
-    # enabled for all extended minimal builds.
-    SET(onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD ON)
-    add_compile_definitions(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
   endif()
 
   if (onnxruntime_MINIMAL_BUILD_CUSTOM_OPS)
@@ -510,6 +502,10 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS")
 endif()
 
 find_package(Threads)
+find_package(Patch)
+if(Patch_FOUND)
+  message("Patch found: ${Patch_EXECUTABLE}")
+endif()
 
 macro(check_nvcc_compiler_flag _FLAG _RESULT)
     execute_process(COMMAND ${onnxruntime_CUDA_HOME}/bin/nvcc "${_FLAG}" RESULT_VARIABLE NVCC_OUT ERROR_VARIABLE NVCC_ERROR)
@@ -934,8 +930,9 @@ include(eigen)
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn,
 # dnnl/mklml, onnxruntime_codegen_tvm, tvm and pthread
 # pthread is always at the last
-set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto ${PROTOBUF_LIB} re2::re2)
-
+set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto ${PROTOBUF_LIB} re2::re2 absl::inlined_vector  absl::flat_hash_set 
+  absl::flat_hash_map absl::node_hash_set absl::node_hash_map absl::base absl::throw_delegate absl::raw_hash_set 
+  absl::hash absl::city absl::low_level_hash absl::raw_logging_internal)
 
 set(onnxruntime_LINK_DIRS )
 if (onnxruntime_USE_CUDA)
@@ -1203,7 +1200,7 @@ function(onnxruntime_configure_target target_name)
   #if(WIN32 AND onnxruntime_ENABLE_STATIC_ANALYSIS)
   #  set_target_properties(${target_name} PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
   #endif()
-  target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
+  target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${abseil_cpp_SOURCE_DIR})
   if (onnxruntime_ENABLE_LTO)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
@@ -1397,7 +1394,6 @@ if (onnxruntime_USE_NUPHAR_TVM)
     endif()
   endif()
 
-  include(onnxruntime_codegen.cmake)
 endif(onnxruntime_USE_NUPHAR_TVM)
 
 # TVM EP
@@ -1873,8 +1869,11 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
 endif()
 
-#names in this var must match the directory names under onnxruntime/core/providers
+
 set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
+if (onnxruntime_USE_NUPHAR_TVM)
+  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_codegen_tvm)  
+endif()
 if (onnxruntime_ENABLE_EAGER_MODE)
   if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
     message(

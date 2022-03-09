@@ -15,6 +15,12 @@ using namespace onnx_layout_transformation;
 namespace onnxruntime {
 
 Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+#if defined(ORT_MINIMAL_BUILD)
+  // update the producer/consumer info as previous optimizations may have invalidated it.
+  // in a full build this will happen as part of Graph::Resolve.
+  ORT_RETURN_IF_ERROR(graph.PopulateNodeArgToProducerConsumerLookupsFromNodes());
+#endif
+
   GraphViewer graph_viewer(graph);
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     auto& node = *graph.GetNode(index);

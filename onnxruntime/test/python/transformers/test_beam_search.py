@@ -18,12 +18,13 @@ else:
 
 
 class TestBeamSearch(unittest.TestCase):
+
     def setUp(self):
         #TODO: use a smaller model and enable tests in CI pipeline
         self.model_name = "gpt2"
         self.gpt2_onnx_path = os.path.join('.', 'onnx_models', 'gpt2_past_fp32_shape.onnx')
         self.beam_search_onnx_path = os.path.join('.', 'onnx_models', 'gpt2_beam_search.onnx')
-        self.cpu_params = f'-m {self.model_name} --gpt2_onnx {self.gpt2_onnx_path} --output {self.beam_search_onnx_path} --output_sequences_score --repetition_penalty 2.0'
+        self.cpu_params = f'-m {self.model_name} --decoder_onnx {self.gpt2_onnx_path} --output {self.beam_search_onnx_path} --output_sequences_score --repetition_penalty 2.0'
 
     def run_beam_search(self, arguments: str, sentences=None):
         return run(arguments.split(), sentences=sentences)

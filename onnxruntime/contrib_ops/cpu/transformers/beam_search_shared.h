@@ -73,6 +73,7 @@ class IBeamScorer {
 
 struct IBeamSearchParameters {
   // Parameters from node attributes
+  int model_type;
   int eos_token_id;
   int pad_token_id;
   int no_repeat_ngram_size;

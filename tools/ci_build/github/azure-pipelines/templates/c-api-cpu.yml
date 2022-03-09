@@ -183,6 +183,7 @@ jobs:
     includedOpsConfig: '$(Build.SourcesDirectory)/tools/ci_build/github/android/mobile_package.required_operators.config'
     artifactName: 'onnxruntime-android-mobile-aar'
     job_name_suffix: 'Mobile'
+    packageName: 'onnxruntime-mobile'
 
 - template: android-java-api-aar.yml
   parameters:
@@ -1061,5 +1062,9 @@ jobs:
   parameters:
     artifactName: 'onnxruntime-android-mobile-aar'
     job_name_suffix: 'Mobile'
+    packageName: 'onnxruntime-mobile'
 
-
+- template: android-java-api-aar-test.yml
+  parameters:
+    artifactName: 'onnxruntime-android-full-aar'
+    job_name_suffix: 'Full'

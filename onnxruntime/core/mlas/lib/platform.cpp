@@ -384,10 +384,21 @@ Return Value:
 #if defined(MLAS_TARGET_POWER)
     this->GemmFloatKernel = MlasSgemmKernel;
     this->GemmDoubleKernel = MlasDgemmKernel;
-#if defined(__linux__)  && defined(POWER10)
+    this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8Kernel;
+    this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernel;
+
+#if defined(__linux__)
+    unsigned long hwcap2 = getauxval(AT_HWCAP2);
+
+    bool HasP9Instructions = hwcap2 & PPC_FEATURE2_ARCH_3_00;
+    if (HasP9Instructions) {
+        this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelVSX;
+        this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelVSX;
+    }
+
+#if defined(POWER10)
 #if (defined(__GNUC__) && ((__GNUC__ > 10) || (__GNUC__== 10 && __GNUC_MINOR__ >= 2))) || \
     (defined(__clang__) && (__clang_major__ >= 12))
-    unsigned long hwcap2 = getauxval(AT_HWCAP2);
     bool HasP10Instructions = ((hwcap2 & PPC_FEATURE2_MMA) && (hwcap2 & PPC_FEATURE2_ARCH_3_1));
     if (HasP10Instructions) {
         this->GemmFloatKernel = MlasSgemmKernelPOWER10;
@@ -396,7 +407,9 @@ Return Value:
     }
 #endif
 #endif
-#endif
+
+#endif // __linux__
+#endif // MLAS_TARGET_POWER
 
     // Init the table describing the type (big or litte) of each core
 #if defined(MLAS_TARGET_ARM64) && defined(__linux__)

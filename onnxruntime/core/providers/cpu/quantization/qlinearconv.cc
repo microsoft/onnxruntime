@@ -15,7 +15,7 @@
 
 //
 // TODO!! Hack! need to move this to MLAS
-// 
+//
 // We use a different job partition with mobile devices
 // where the model tends to be smaller. When the entire
 // weight matrix fits in the cache, we process a thin
@@ -216,7 +216,7 @@ class QLinearConv : public OpKernel {
       packed_W_size_ = MlasSymmQgemmPackBSize(group_output_channels,
                                               kernel_dim,
                                               std::is_same<ActType, int8_t>::value);
-      
+
       if (packed_W_size_ != 0) {
         size_t packed_W_data_size = SafeInt<size_t>(group_count) * packed_W_size_;
         auto* packed_W = static_cast<uint8_t*>(alloc->Alloc(packed_W_data_size));
@@ -285,42 +285,12 @@ class QLinearConv : public OpKernel {
   std::vector<int32_t> column_sums_;
 };
 
-ONNX_CPU_OPERATOR_KERNEL(
+// uint8_t kernel supports weight being either uint8_t or int8_t
+ONNX_OPERATOR_TYPED_KERNEL_EX(
     QLinearConv,
+    kOnnxDomain,
     10,
-    KernelDefBuilder()
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
-        .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>())
-        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
-    QLinearConv<uint8_t>);
-
-#define REGISTER_QLINEARCONV_TYPED_KERNEL(domain, version, act_type, weight_type) \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                  \
-      QLinearConv,                                                                \
-      domain,                                                                     \
-      version,                                                                    \
-      act_type##_##weight_type,                                                   \
-      kCpuExecutionProvider,                                                      \
-      KernelDefBuilder()                                                          \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<act_type>())          \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<weight_type>())       \
-          .TypeConstraint("T3", DataTypeImpl::GetTensorType<act_type>())          \
-          .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),          \
-      QLinearConv<act_type>);
-
-REGISTER_QLINEARCONV_TYPED_KERNEL(kOnnxDomain, 10, int8_t, int8_t);
-
-#ifndef DISABLE_CONTRIB_OPS
-
-namespace contrib {
-
-// Register an alternate version of this kernel that supports the channels_last
-// attribute in order to consume and produce NHWC tensors.
-ONNX_OPERATOR_KERNEL_EX(
-    QLinearConv,
-    kMSDomain,
-    1,
+    uint8_t,
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
@@ -329,7 +299,43 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
     QLinearConv<uint8_t>);
 
-REGISTER_QLINEARCONV_TYPED_KERNEL(kMSDomain, 1, int8_t, int8_t);
+// int8_t kernel only supports weight being int8_t
+#define REGISTER_QLINEARCONV_INT8_KERNEL(domain, version)                \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
+      QLinearConv,                                                       \
+      domain,                                                            \
+      version,                                                           \
+      int8_t,                                                            \
+      kCpuExecutionProvider,                                             \
+      KernelDefBuilder()                                                 \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<int8_t>())   \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())   \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<int8_t>())   \
+          .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()), \
+      QLinearConv<int8_t>);
+
+REGISTER_QLINEARCONV_INT8_KERNEL(kOnnxDomain, 10);
+
+#ifndef DISABLE_CONTRIB_OPS
+
+namespace contrib {
+
+// Register an alternate version of this kernel that supports the channels_last
+// attribute in order to consume and produce NHWC tensors.
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    QLinearConv,
+    kMSDomain,
+    1,
+    uint8_t,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
+        .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),
+    QLinearConv<uint8_t>);
+
+REGISTER_QLINEARCONV_INT8_KERNEL(kMSDomain, 1);
 
 }  // namespace contrib
 

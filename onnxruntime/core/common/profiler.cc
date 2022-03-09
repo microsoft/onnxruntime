@@ -135,7 +135,7 @@ std::string Profiler::EndProfiling() {
     bool is_first_arg = true;
     for (std::pair<std::string, std::string> event_arg : rec.args) {
       if (!is_first_arg) profile_stream_ << ",";
-      if (!event_arg.second.empty() && event_arg.second[0] == '{') {
+      if (!event_arg.second.empty() && (event_arg.second[0] == '{' || event_arg.second[0] == '[')) {
         profile_stream_ << "\"" << event_arg.first << "\" : " << event_arg.second << "";
       } else {
         profile_stream_ << "\"" << event_arg.first << "\" : \"" << event_arg.second << "\"";
