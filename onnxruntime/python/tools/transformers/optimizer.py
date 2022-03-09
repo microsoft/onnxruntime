@@ -23,13 +23,12 @@ import os
 import argparse
 from typing import Dict, Optional
 from onnx import load_model, ModelProto
-from onnx_model_bart import BartOnnxModel
+from onnx_model_bart import BartOnnxModel, Wav2vec2OnnxModel
 from onnx_model_bert import BertOnnxModel
 from onnx_model_bert_tf import BertOnnxModelTF
 from onnx_model_bert_keras import BertOnnxModelKeras
 from onnx_model_gpt2 import Gpt2OnnxModel
 from onnx_model_tnlr import TnlrOnnxModel
-from onnx_model_wav2vec2 import Wav2vec2OnnxModel
 from fusion_options import FusionOptions
 
 logger = logging.getLogger(__name__)
