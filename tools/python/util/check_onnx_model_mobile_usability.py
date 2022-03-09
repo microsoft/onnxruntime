@@ -42,14 +42,15 @@ def check_usability():
     try_eps = usability_checker.analyze_model(args.model_path, skip_optimize=False, logger=logger)
     check_model_can_use_ort_mobile_pkg.run_check(args.model_path, args.config_path, logger)
 
-    logger.info("Run `python -m onnxruntime.tools.convert_onnx_models_to_ort ...` to convert the ONNX model to "
-                "ORT format. By default, the conversion tool will create an ORT format model optimized to "
-                "'basic' level (with a .basic.ort file extension) for use with NNAPI or CoreML, "
-                "and an ORT format model optimized to 'all' level (with a .all.ort file extension) for use with "
-                "the CPU EP.")
+    logger.info("Run `python -m onnxruntime.tools.convert_onnx_models_to_ort ...` to convert the ONNX model to ORT "
+                "format. "
+                "By default, the conversion tool will create an ORT format model optimized to 'all' level with saved "
+                "optimizations which can potentially be applied at runtime (with a .all.with_runtime_opt.ort file "
+                "extension) for use with NNAPI or CoreML, and an ORT format model optimized to 'all' level without "
+                "runtime optimizations (with a .all.ort file extension) for use with the CPU EP.")
     if try_eps:
         logger.info("As NNAPI or CoreML may provide benefits with this model it is recommended to compare the "
-                    "performance of the <model>.basic.ort model using the NNAPI EP on Android, and the "
+                    "performance of the <model>.all.with_runtime_opt.ort model using the NNAPI EP on Android, and the "
                     "CoreML EP on iOS, against the performance of the <model>.all.ort model using the CPU EP.")
     else:
         logger.info("For optimal performance the <model>.all.ort model should be used with the CPU EP. ")

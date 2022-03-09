@@ -26,7 +26,7 @@ def _path_match_suffix_ignore_case(path: typing.Union[pathlib.Path, str], suffix
 
 def _onnx_model_path_to_ort_model_path(onnx_model_path: pathlib.Path,
                                        optimization_level_str: str,
-                                       optimization_style: typing.Optional[OptimizationStyle] = None):
+                                       optimization_style: OptimizationStyle):
     assert onnx_model_path.is_file() and _path_match_suffix_ignore_case(onnx_model_path, ".onnx")
     suffix = ".{}{}.ort".format(optimization_level_str,
                                 ".with_runtime_opt" if optimization_style == OptimizationStyle.Runtime else "")
@@ -35,6 +35,7 @@ def _onnx_model_path_to_ort_model_path(onnx_model_path: pathlib.Path,
 
 def _create_config_file_from_ort_models(onnx_model_path_or_dir: pathlib.Path,
                                         optimization_level_str: str,
+                                        optimization_style: OptimizationStyle,
                                         enable_type_reduction: bool):
     if onnx_model_path_or_dir.is_dir():
         # model directory
@@ -42,7 +43,8 @@ def _create_config_file_from_ort_models(onnx_model_path_or_dir: pathlib.Path,
         config_path = None  # default path in model directory
     else:
         # single model
-        model_path_or_dir = _onnx_model_path_to_ort_model_path(onnx_model_path_or_dir, optimization_level_str)
+        model_path_or_dir = _onnx_model_path_to_ort_model_path(onnx_model_path_or_dir, optimization_level_str,
+                                                               optimization_style)
         config_type = 'required_operators_and_types' if enable_type_reduction else 'required_operators'
         suffix = f'.{config_type}.config'
         config_path = model_path_or_dir.with_suffix(suffix)
@@ -251,7 +253,8 @@ def convert_onnx_models_to_ort():
             print("Generating config file from ORT format models for optimization level '{}' and style '{}'".format(
                 optimization_level_str, optimization_style.name))
 
-            _create_config_file_from_ort_models(model_path_or_dir, optimization_level_str, args.enable_type_reduction)
+            _create_config_file_from_ort_models(model_path_or_dir, optimization_level_str, optimization_style,
+                                                args.enable_type_reduction)
 
 
 if __name__ == '__main__':
