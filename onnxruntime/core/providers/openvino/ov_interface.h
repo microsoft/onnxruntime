@@ -4,7 +4,6 @@
 #pragma once
 
 #include <inference_engine.hpp>
-
 #if defined (OPENVINO_2022_1)
 #include <openvino/core/core.hpp>
 #include <openvino/runtime/runtime.hpp>
@@ -72,11 +71,6 @@ class OVExeNetwork;
     #else 
         OVExeNetwork(InferenceEngine::ExecutableNetwork md) { obj = md; }
         OVExeNetwork() { obj = InferenceEngine::ExecutableNetwork(); }
-        #if (defined OPENVINO_2021_2) || (defined OPENVINO_2021_3)
-        void export_network(std::ofstream& model_stream) {
-          obj.Export(model_stream);
-        }
-        #endif 
         InferenceEngine::ExecutableNetwork& Get() { return obj ; }
     #endif
         OVInferRequest CreateInferRequest();
