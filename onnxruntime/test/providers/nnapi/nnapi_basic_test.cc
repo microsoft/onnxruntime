@@ -277,8 +277,7 @@ TEST(NnapiExecutionProviderTest, TestNoShapeInputModel) {
 static void RunQDQModelTest(
     const GetQDQTestCaseFn& build_test_case,
     const char* test_description,
-    const EPVerificationParams& params = EPVerificationParams(),
-    bool nnapi_qdq_model_supported = true) {
+    const EPVerificationParams& params = EPVerificationParams()) {
   onnxruntime::Model model(test_description, false, DefaultLoggingManager().DefaultLogger());
   Graph& graph = model.MainGraph();
   ModelTestBuilder helper(graph);
@@ -302,12 +301,12 @@ static void RunQDQModelTest(
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
   ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
   ASSERT_STATUS_OK(session_object.Initialize());
-  if (nnapi_qdq_model_supported) {
-    ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
-        << "Some nodes should have been taken by the NNAPI EP";
-  } else {
+  if (params.ep_node_assignment == ExpectedEPNodeAssignment::None) {
     ASSERT_EQ(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
         << "No node should have been taken by the NNAPI EP";
+  } else {
+    ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
+        << "Some nodes should have been taken by the NNAPI EP";
   }
 #endif
 }
@@ -346,8 +345,7 @@ TEST(NnapiExecutionProviderTest, TestQDQResize_UnsupportedDefaultSetting) {
                   {
                       ExpectedEPNodeAssignment::None,
                       1e-5f,
-                  },
-                  false /* nnapi_qdq_model_supported */);
+                  });
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQAveragePool) {
@@ -422,8 +420,7 @@ TEST(NnapiExecutionProviderTest, TestQDQSoftMax_UnsupportedOutputScaleAndZp) {
                       1 /* output_zp */),
                   "nnapi_qdq_test_graph_softmax_unsupported",
                   {ExpectedEPNodeAssignment::None,
-                   1e-5},
-                  false /* nnapi_qdq_model_supported */);
+                   1e-5});
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQConcat) {
@@ -441,13 +438,14 @@ TEST(NnapiExecutionProviderTest, TestQDQConcat) {
 #if defined(__ANDROID__)
 TEST(NnapiExecutionProviderTest, TestQDQConcat_UnsupportedInputScalesAndZp) {
   // This is to verify all the inputs have the same scale and zp as input 0 for API 28-
+  // Currently, this test can only be run locally with a android emulator with API < 29
+  // TODO: consider to configure this and enable it to run in Android CI.
   const auto* nnapi = NnApiImplementation();
   if (nnapi->nnapi_runtime_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
     RunQDQModelTest(BuildQDQConcatTestCaseUnsupportedInputScaleZp(),
                     "nnapi_qdq_test_graph_concat_unsupported",
                     {ExpectedEPNodeAssignment::None,
-                     1e-5},
-                    false /* nnapi_qdq_model_supported */);
+                     1e-5});
   }
 }
 #endif
