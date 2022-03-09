@@ -32,9 +32,23 @@ template <typename T>
 struct ScoreValue {
   T score;
   unsigned char has_score;
-  operator float() const { return has_score ? static_cast<float>(score) : 0; }
+  operator T() const { return has_score ? score : 0; }
+  T operator+(T val) { return has_score ? score + val : 0; }
+  T operator-(T val) { return has_score ? score - val : 0; }
+  T operator-() { return has_score ? -score : 0; }
+  T operator*(T val) { return has_score ? score * val : 0; }
+  ScoreValue<T>& operator=(ScoreValue<T> v) {
+    this->score = v.score;
+    this->has_score = v.has_score;
+    return *this;
+  }
   ScoreValue<T>& operator=(float v) {
-    this->score = v;
+    this->score = static_cast<T>(v);
+    this->has_score = 1;
+    return *this;
+  }
+  ScoreValue<T>& operator=(double v) {
+    this->score = static_cast<T>(v);
     this->has_score = 1;
     return *this;
   }
@@ -77,7 +91,7 @@ class TreeAggregator {
                  const int64_t& n_targets_or_classes,
                  POST_EVAL_TRANSFORM post_transform,
                  const std::vector<OTYPE>& base_values) : n_trees_(n_trees), n_targets_or_classes_(n_targets_or_classes), post_transform_(post_transform), base_values_(base_values) {
-    origin_ = base_values_.size() == 1 ? base_values_[0] : 0.f;
+    origin_ = base_values_.size() == 1 ? base_values_[0] : 0;
     use_base_values_ = base_values_.size() == static_cast<size_t>(n_targets_or_classes_);
   }
 
@@ -460,7 +474,7 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
 
       *Y = _set_score_binary(write_additional_scores, predictions);
     }
-    write_scores(predictions, this->post_transform_, Z, write_additional_scores);
+    write_scores<OTYPE, ScoreValue<OTYPE>>(predictions, this->post_transform_, Z, write_additional_scores);
     if (predictions.size() == 1)
       predictions.resize(2);
   }

@@ -11,6 +11,9 @@ namespace onnxruntime {
 namespace ml {
 namespace detail {
 
+// ITYPE: input type
+// OTYPE: tree type (types of the node values and targets)
+// TO: output type, usually float
 template <typename ITYPE, typename OTYPE>
 class TreeEnsembleCommon {
  public:
@@ -35,52 +38,60 @@ class TreeEnsembleCommon {
   TreeEnsembleCommon(int parallel_tree,
                      int parallel_N,
                      const std::string& aggregate_function,
-                     const std::vector<OTYPE>& base_values,
+                     const std::vector<float>& base_values,
+                     const std::vector<OTYPE>& base_values_as_tensor,
                      int64_t n_targets_or_classes,
                      const std::vector<int64_t>& nodes_falsenodeids,
                      const std::vector<int64_t>& nodes_featureids,
-                     const std::vector<OTYPE>& nodes_hitrates,
+                     const std::vector<float>& nodes_hitrates,
+                     const std::vector<OTYPE>& nodes_hitrates_as_tensor,
                      const std::vector<int64_t>& nodes_missing_value_tracks_true,
                      const std::vector<std::string>& nodes_modes,
                      const std::vector<int64_t>& nodes_nodeids,
                      const std::vector<int64_t>& nodes_treeids,
                      const std::vector<int64_t>& nodes_truenodeids,
-                     const std::vector<OTYPE>& nodes_values,
+                     const std::vector<float>& nodes_values,
+                     const std::vector<OTYPE>& nodes_values_as_tensor,
                      const std::string& post_transform,
                      const std::vector<int64_t>& target_class_ids,
                      const std::vector<int64_t>& target_class_nodeids,
                      const std::vector<int64_t>& target_class_treeids,
-                     const std::vector<OTYPE>& target_class_weights);
+                     const std::vector<float>& target_class_weights,
+                     const std::vector<OTYPE>& target_class_weights_as_tensor);
 
-  void compute(OpKernelContext* ctx, const Tensor* X, Tensor* Z, Tensor* label) const;
+  void compute(OpKernelContext* ctx, const Tensor* X, OTYPE* z_data, Tensor* label) const;
 
  protected:
   TreeNodeElement<OTYPE>* ProcessTreeNodeLeave(
       TreeNodeElement<OTYPE>* root, const ITYPE* x_data) const;
 
   template <typename AGG>
-  void ComputeAgg(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Z, Tensor* label, const AGG& agg) const;
+  void ComputeAgg(concurrency::ThreadPool* ttp, const Tensor* X, OTYPE* z_data, Tensor* label, const AGG& agg) const;
 };
 
 template <typename ITYPE, typename OTYPE>
 TreeEnsembleCommon<ITYPE, OTYPE>::TreeEnsembleCommon(int parallel_tree, int parallel_N,
                                                      const std::string& aggregate_function,
-                                                     const std::vector<OTYPE>& base_values,
+                                                     const std::vector<float>& base_values,
+                                                     const std::vector<OTYPE>& base_values_as_tensor,
                                                      int64_t n_targets_or_classes,
                                                      const std::vector<int64_t>& nodes_falsenodeids,
                                                      const std::vector<int64_t>& nodes_featureids,
-                                                     const std::vector<OTYPE>& nodes_hitrates,
+                                                     const std::vector<float>& nodes_hitrates,
+                                                     const std::vector<OTYPE>& nodes_hitrates_as_tensor,
                                                      const std::vector<int64_t>& nodes_missing_value_tracks_true,
                                                      const std::vector<std::string>& nodes_modes,
                                                      const std::vector<int64_t>& nodes_nodeids,
                                                      const std::vector<int64_t>& nodes_treeids,
                                                      const std::vector<int64_t>& nodes_truenodeids,
-                                                     const std::vector<OTYPE>& nodes_values,
+                                                     const std::vector<float>& nodes_values,
+                                                     const std::vector<OTYPE>& nodes_values_as_tensor,
                                                      const std::string& post_transform,
                                                      const std::vector<int64_t>& target_class_ids,
                                                      const std::vector<int64_t>& target_class_nodeids,
                                                      const std::vector<int64_t>& target_class_treeids,
-                                                     const std::vector<OTYPE>& target_class_weights) {
+                                                     const std::vector<float>& target_class_weights,
+                                                     const std::vector<OTYPE>& target_class_weights_as_tensor) {
   parallel_tree_ = parallel_tree;
   parallel_N_ = parallel_N;
 
@@ -90,14 +101,26 @@ TreeEnsembleCommon<ITYPE, OTYPE>::TreeEnsembleCommon(int parallel_tree, int para
   ORT_ENFORCE(nodes_falsenodeids.size() == nodes_nodeids.size());
   ORT_ENFORCE(nodes_falsenodeids.size() == nodes_treeids.size());
   ORT_ENFORCE(nodes_falsenodeids.size() == nodes_truenodeids.size());
-  ORT_ENFORCE(nodes_falsenodeids.size() == nodes_values.size());
+  ORT_ENFORCE(nodes_falsenodeids.size() == nodes_values.size() || nodes_falsenodeids.size() == nodes_values_as_tensor.size());
   ORT_ENFORCE(target_class_ids.size() == target_class_nodeids.size());
   ORT_ENFORCE(target_class_ids.size() == target_class_treeids.size());
   ORT_ENFORCE(target_class_ids.size() == target_class_treeids.size());
+  ORT_ENFORCE(base_values.size() == 0 || base_values_as_tensor.size() == 0);
+  ORT_ENFORCE(nodes_hitrates.size() == 0 || nodes_hitrates_as_tensor.size() == 0);
+  ORT_ENFORCE(nodes_values.size() == 0 || nodes_values_as_tensor.size() == 0);
+  ORT_ENFORCE(target_class_weights.size() == 0 || target_class_weights_as_tensor.size() == 0);
 
   aggregate_function_ = MakeAggregateFunction(aggregate_function);
   post_transform_ = MakeTransform(post_transform);
-  base_values_ = base_values;
+  if (base_values_as_tensor.size() > 0) {
+    ORT_ENFORCE(base_values.size() == 0);
+    base_values_ = base_values_as_tensor;
+  } else {
+    base_values_.resize(base_values.size());
+    for (size_t i = 0; i < base_values.size(); ++i) {
+      base_values_[i] = static_cast<OTYPE>(base_values[i]);
+    }
+  }
   n_targets_or_classes_ = n_targets_or_classes;
   max_tree_depth_ = 1000;
 
@@ -130,8 +153,16 @@ TreeEnsembleCommon<ITYPE, OTYPE>::TreeEnsembleCommon(int parallel_tree, int para
     node.id.tree_id = static_cast<int>(nodes_treeids[i]);
     node.id.node_id = static_cast<int>(nodes_nodeids[i]);
     node.feature_id = static_cast<int>(nodes_featureids[i]);
-    node.value = nodes_values[i];
-    node.hitrates = i < nodes_hitrates.size() ? nodes_hitrates[i] : -1;
+    if (nodes_values_as_tensor.size() > 0) {
+      node.value = nodes_values_as_tensor[i];
+    } else {
+      node.value = static_cast<OTYPE>(nodes_values[i]);
+    }
+    if (nodes_hitrates_as_tensor.size() > 0) {
+      node.hitrates = i < nodes_hitrates_as_tensor.size() ? nodes_hitrates_as_tensor[i] : -1;
+    } else {
+      node.hitrates = static_cast<OTYPE>(i < nodes_hitrates.size() ? nodes_hitrates[i] : -1);
+    }
     node.mode = cmodes[i];
     node.is_not_leaf = node.mode != NODE_MODE::LEAF;
     node.truenode = nullptr;   // nodes_truenodeids[i];
@@ -200,7 +231,11 @@ TreeEnsembleCommon<ITYPE, OTYPE>::TreeEnsembleCommon(int parallel_tree, int para
       ORT_THROW("Unable to find node ", coor.tree_id, "-", coor.node_id, " (weights).");
     }
     w.i = target_class_ids[i];
-    w.value = target_class_weights[i];
+    if (target_class_weights_as_tensor.size() > 0) {
+      w.value = target_class_weights_as_tensor[i];
+    } else {
+      w.value = static_cast<OTYPE>(target_class_weights[i]);
+    }
     idi[ind]->weights.push_back(w);
   }
 
@@ -216,33 +251,33 @@ TreeEnsembleCommon<ITYPE, OTYPE>::TreeEnsembleCommon(int parallel_tree, int para
 }
 
 template <typename ITYPE, typename OTYPE>
-void TreeEnsembleCommon<ITYPE, OTYPE>::compute(OpKernelContext* ctx, const Tensor* X, Tensor* Z,
+void TreeEnsembleCommon<ITYPE, OTYPE>::compute(OpKernelContext* ctx, const Tensor* X, OTYPE* z_data,
                                                Tensor* label) const {
   switch (aggregate_function_) {
     case AGGREGATE_FUNCTION::AVERAGE:
       ComputeAgg(
-          ctx->GetOperatorThreadPool(), X, Z, label,
+          ctx->GetOperatorThreadPool(), X, z_data, label,
           TreeAggregatorAverage<ITYPE, OTYPE>(
               roots_.size(), n_targets_or_classes_,
               post_transform_, base_values_));
       return;
     case AGGREGATE_FUNCTION::SUM:
       ComputeAgg(
-          ctx->GetOperatorThreadPool(), X, Z, label,
+          ctx->GetOperatorThreadPool(), X, z_data, label,
           TreeAggregatorSum<ITYPE, OTYPE>(
               roots_.size(), n_targets_or_classes_,
               post_transform_, base_values_));
       return;
     case AGGREGATE_FUNCTION::MIN:
       ComputeAgg(
-          ctx->GetOperatorThreadPool(), X, Z, label,
+          ctx->GetOperatorThreadPool(), X, z_data, label,
           TreeAggregatorMin<ITYPE, OTYPE>(
               roots_.size(), n_targets_or_classes_,
               post_transform_, base_values_));
       return;
     case AGGREGATE_FUNCTION::MAX:
       ComputeAgg(
-          ctx->GetOperatorThreadPool(), X, Z, label,
+          ctx->GetOperatorThreadPool(), X, z_data, label,
           TreeAggregatorMax<ITYPE, OTYPE>(
               roots_.size(), n_targets_or_classes_,
               post_transform_, base_values_));
@@ -254,13 +289,12 @@ void TreeEnsembleCommon<ITYPE, OTYPE>::compute(OpKernelContext* ctx, const Tenso
 
 template <typename ITYPE, typename OTYPE>
 template <typename AGG>
-void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Z,
+void TreeEnsembleCommon<ITYPE, OTYPE>::ComputeAgg(concurrency::ThreadPool* ttp, const Tensor* X, OTYPE* z_data,
                                                   Tensor* label, const AGG& agg) const {
   int64_t stride = X->Shape().NumDimensions() == 1 ? X->Shape()[0] : X->Shape()[1];
   int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
 
   const ITYPE* x_data = X->template Data<ITYPE>();
-  OTYPE* z_data = Z->template MutableData<OTYPE>();
   int64_t* label_data = label == nullptr ? nullptr : label->template MutableData<int64_t>();
   auto max_num_threads = concurrency::ThreadPool::DegreeOfParallelism(ttp);
 
@@ -559,27 +593,31 @@ class TreeEnsembleCommonClassifier : TreeEnsembleCommon<ITYPE, OTYPE> {
   TreeEnsembleCommonClassifier(int parallel_tree,
                                int parallel_N,
                                const std::string& aggregate_function,
-                               const std::vector<OTYPE>& base_values,
+                               const std::vector<float>& base_values,
+                               const std::vector<OTYPE>& base_values_as_tensor,
                                const std::vector<int64_t>& nodes_falsenodeids,
                                const std::vector<int64_t>& nodes_featureids,
-                               const std::vector<OTYPE>& nodes_hitrates,
+                               const std::vector<float>& nodes_hitrates,
+                               const std::vector<OTYPE>& nodes_hitrates_as_tensor,
                                const std::vector<int64_t>& nodes_missing_value_tracks_true,
                                const std::vector<std::string>& nodes_modes,
                                const std::vector<int64_t>& nodes_nodeids,
                                const std::vector<int64_t>& nodes_treeids,
                                const std::vector<int64_t>& nodes_truenodeids,
-                               const std::vector<OTYPE>& nodes_values,
+                               const std::vector<float>& nodes_values,
+                               const std::vector<OTYPE>& nodes_values_as_tensor,
                                const std::string& post_transform,
                                const std::vector<int64_t>& class_ids,
                                const std::vector<int64_t>& class_nodeids,
                                const std::vector<int64_t>& class_treeids,
-                               const std::vector<OTYPE>& class_weights,
+                               const std::vector<float>& class_weights,
+                               const std::vector<OTYPE>& class_weights_as_tensor,
                                const std::vector<std::string>& classlabels_strings,
                                const std::vector<int64_t>& classlabels_int64s);
 
   int64_t get_class_count() const { return this->n_targets_or_classes_; }
 
-  void compute(OpKernelContext* ctx, const Tensor* X, Tensor* Z, Tensor* label) const;
+  void compute(OpKernelContext* ctx, const Tensor* X, OTYPE* z_data, Tensor* label) const;
 };
 
 template <typename ITYPE, typename OTYPE>
@@ -587,43 +625,51 @@ TreeEnsembleCommonClassifier<ITYPE, OTYPE>::TreeEnsembleCommonClassifier(
     int parallel_tree,
     int parallel_N,
     const std::string& aggregate_function,
-    const std::vector<OTYPE>& base_values,
+    const std::vector<float>& base_values,
+    const std::vector<OTYPE>& base_values_as_tensor,
     const std::vector<int64_t>& nodes_falsenodeids,
     const std::vector<int64_t>& nodes_featureids,
-    const std::vector<OTYPE>& nodes_hitrates,
+    const std::vector<float>& nodes_hitrates,
+    const std::vector<OTYPE>& nodes_hitrates_as_tensor,
     const std::vector<int64_t>& nodes_missing_value_tracks_true,
     const std::vector<std::string>& nodes_modes,
     const std::vector<int64_t>& nodes_nodeids,
     const std::vector<int64_t>& nodes_treeids,
     const std::vector<int64_t>& nodes_truenodeids,
-    const std::vector<OTYPE>& nodes_values,
+    const std::vector<float>& nodes_values,
+    const std::vector<OTYPE>& nodes_values_as_tensor,
     const std::string& post_transform,
     const std::vector<int64_t>& class_ids,
     const std::vector<int64_t>& class_nodeids,
     const std::vector<int64_t>& class_treeids,
-    const std::vector<OTYPE>& class_weights,
+    const std::vector<float>& class_weights,
+    const std::vector<OTYPE>& class_weights_as_tensor,
     const std::vector<std::string>& classlabels_strings,
     const std::vector<int64_t>& classlabels_int64s)
     : TreeEnsembleCommon<ITYPE, OTYPE>(parallel_tree,
                                        parallel_N,
                                        aggregate_function,
                                        base_values,
+                                       base_values_as_tensor,
                                        classlabels_strings.size() == 0 ? classlabels_int64s.size()
                                                                        : classlabels_strings.size(),
                                        nodes_falsenodeids,
                                        nodes_featureids,
                                        nodes_hitrates,
+                                       nodes_hitrates_as_tensor,
                                        nodes_missing_value_tracks_true,
                                        nodes_modes,
                                        nodes_nodeids,
                                        nodes_treeids,
                                        nodes_truenodeids,
                                        nodes_values,
+                                       nodes_values_as_tensor,
                                        post_transform,
                                        class_ids,
                                        class_nodeids,
                                        class_treeids,
-                                       class_weights) {
+                                       class_weights,
+                                       class_weights_as_tensor) {
   classlabels_strings_ = classlabels_strings;
   classlabels_int64s_ = classlabels_int64s;
 
@@ -631,7 +677,7 @@ TreeEnsembleCommonClassifier<ITYPE, OTYPE>::TreeEnsembleCommonClassifier(
   weights_are_all_positive_ = true;
   for (size_t i = 0, end = class_ids.size(); i < end; ++i) {
     weights_classes.insert(class_ids[i]);
-    if (weights_are_all_positive_ && class_weights[i] < 0)
+    if (weights_are_all_positive_ && (class_weights.size() > 0 ? class_weights[i] : class_weights_as_tensor[i]) < 0)
       weights_are_all_positive_ = false;
   }
   binary_case_ = this->n_targets_or_classes_ == 2 && weights_classes.size() == 1;
@@ -643,11 +689,11 @@ TreeEnsembleCommonClassifier<ITYPE, OTYPE>::TreeEnsembleCommonClassifier(
 }
 
 template <typename ITYPE, typename OTYPE>
-void TreeEnsembleCommonClassifier<ITYPE, OTYPE>::compute(OpKernelContext* ctx, const Tensor* X, Tensor* Z,
+void TreeEnsembleCommonClassifier<ITYPE, OTYPE>::compute(OpKernelContext* ctx, const Tensor* X, OTYPE* z_data,
                                                          Tensor* label) const {
   if (classlabels_strings_.size() == 0) {
     this->ComputeAgg(
-        ctx->GetOperatorThreadPool(), X, Z, label,
+        ctx->GetOperatorThreadPool(), X, z_data, label,
         TreeAggregatorClassifier<ITYPE, OTYPE>(
             this->roots_.size(), this->n_targets_or_classes_,
             this->post_transform_, this->base_values_,
@@ -659,7 +705,7 @@ void TreeEnsembleCommonClassifier<ITYPE, OTYPE>::compute(OpKernelContext* ctx, c
     ORT_THROW_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
     Tensor label_int64(DataTypeImpl::GetType<int64_t>(), TensorShape({N}), alloc);
     this->ComputeAgg(
-        ctx->GetOperatorThreadPool(), X, Z, &label_int64,
+        ctx->GetOperatorThreadPool(), X, z_data, &label_int64,
         TreeAggregatorClassifier<ITYPE, OTYPE>(
             this->roots_.size(), this->n_targets_or_classes_,
             this->post_transform_, this->base_values_,

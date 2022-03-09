@@ -6,14 +6,14 @@
 
 namespace onnxruntime {
 namespace ml {
-template <typename T>
+template <typename T, typename TH=T, typename TO=float>
 class TreeEnsembleRegressor final : public OpKernel {
  public:
   explicit TreeEnsembleRegressor(const OpKernelInfo& info);
   common::Status Compute(OpKernelContext* context) const override;
 
  private:
-  detail::TreeEnsembleCommon<T, float> tree_ensemble_;
+  detail::TreeEnsembleCommon<T, TH> tree_ensemble_;
 };
 }  // namespace ml
 }  // namespace onnxruntime
