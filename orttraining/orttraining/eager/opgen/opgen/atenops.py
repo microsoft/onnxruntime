@@ -84,8 +84,6 @@ hand_implemented = {
   'aten::softshrink': Shrink('self', bias='lambd', lambd='lambd'), #yes, bias is set to 'lambd'
   'aten::hardshrink': Shrink('self', bias=0, lambd='lambd'),
   'aten::gelu' : Gelu('self'),
-  # 'aten::gelu_backward' : GeluGrad('grad', 'self'),
-  # 'aten::gelu_backward' : GeluGrad('grad_output', 'self'),
   'aten::max' : ReduceMax('self', keepdims=1),
   'aten::min' : ReduceMin('self', keepdims=1),
   'aten::_cat': Concat('tensors', 'dim'),
@@ -101,6 +99,8 @@ hand_implemented = {
   'aten::gt.Scalar_out' : MakeTorchFallback(),
 }
 
+# Signature of gelu_backward was changed in this commit id 983ba5e585485ed61a0c0012ef6944f5685e3d97 and PR 61439
+# This is done to make sure it is backward and future compatible
 if version.parse(torch.__version__) <= version.parse(TORCH_API_CHANGE_VERSION):
   hand_implemented['aten::gelu_backward'] = GeluGrad('grad', 'self')
 else:
