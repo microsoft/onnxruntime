@@ -11,7 +11,7 @@ using Exception = InferenceEngine::Exception;
 using WaitMode = InferenceEngine::InferRequest::WaitMode;
 #else
 using Exception = InferenceEngine::details::InferenceEngineException;
-using WaitMode = InferenceEngine::InferRequest::WaitMode;
+using WaitMode = InferenceEngine::IInferRequest::WaitMode;
 #endif
 
 namespace onnxruntime {

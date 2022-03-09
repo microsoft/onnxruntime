@@ -37,7 +37,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
 #if (defined OPENVINO_2021_2) || (defined OPENVINO_2021_3)
   //Flow for OpenVINO versions supported till OV 2021.3
   bool import_blob_status = false;
-  PopulateCompiledDirectory(hw_target, ov_compiled_blobs_dir, model_blob_name, vpu_status)
+  PopulateCompiledDirectory(hw_target, ov_compiled_blobs_dir, model_blob_name, vpu_status);
 
   if(!openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph) {
     ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
@@ -52,12 +52,12 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     const std::string compiled_blob_path = onnxruntime::GetEnvironmentVar("OV_BLOB_PATH");
     if(vpu_status == true) {
       LOGS_DEFAULT(INFO) << log_tag << "Importing the pre-compiled blob for this model which already exists in the directory 'ov_compiled_blobs'";
-      exe_network_ = global_context_.ie_core.LoadNetwork(model_blob_path, hw_target, subgraph_context_.subgraph_name);
+      exe_network_ = global_context_.ie_core.ImportModel(model_blob_path, hw_target, subgraph_context_.subgraph_name);
     } else {
       LOGS_DEFAULT(INFO) << log_tag << "Importing the pre-compiled blob from the path set by the user";
       if (compiled_blob_path.empty())
         throw std::runtime_error("The compiled blob path is not set");
-      exe_network_ = global_context_.ie_core.LoadNetwork(compiled_blob_path, hw_target, subgraph_context_.subgraph_name);
+      exe_network_ = global_context_.ie_core.ImportModel(compiled_blob_path, hw_target, subgraph_context_.subgraph_name);
     }
     import_blob_status = true;
     LOGS_DEFAULT(INFO) << log_tag << "Succesfully Created an executable network from a previously exported network";
@@ -74,13 +74,13 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       OVConfig config;
       PopulateConfigValue(config);
         
-      exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, config, subgraph_context_.name);
+      exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, config, subgraph_context_.subgraph_name);
       LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
       
       if(global_context_.use_compiled_network && hw_target == "MYRIAD") {
         LOGS_DEFAULT(INFO) << log_tag << "Dumping the compiled blob for this model into the directory 'ov_compiled_blobs'";
         std::ofstream compiled_blob_dump{ov_compiled_blobs_dir + "/" + model_blob_name};
-        exe_network_.export_network(compiled_blob_dump);
+        exe_network_.Get().Export(compiled_blob_dump);
       }
     }
   }
@@ -233,12 +233,14 @@ void BasicBackend::EnableCaching() {
   }
 }
 
+#if defined (OPENVINO_2022_1)
 void BasicBackend::EnableGPUThrottling(OVConfig& config) {
   if (global_context_.enable_opencl_throttling == true && global_context_.device_type.find("GPU") != std::string::npos) {
     LOGS_DEFAULT(INFO) << log_tag << "Enabled OpenCL queue throttling for GPU device";
     config[GPU_CONFIG_KEY(PLUGIN_THROTTLE)] = "1";
   }
 }
+#endif
 
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
 // an Infer Request indexed by infer_req_idx
