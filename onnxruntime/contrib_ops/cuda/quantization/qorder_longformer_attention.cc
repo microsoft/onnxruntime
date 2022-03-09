@@ -181,11 +181,11 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
 
   auto& device_prop = GetDeviceProp();
   ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
-                                      1, m, n, k,
+                                      batch_size, sequence_length, n, k,
                                       &alpha, input->Data<int8_t>(), weights->Data<int8_t>(),
                                       &beta, bias->Data<int8_t>(), gemm_buffer.get(),
                                       (cublasLtOrder_t)order_weight_));
-  ORT_RETURN_IF_ERROR(Reorder(cublasLt, stream, 1, m, n, CUDA_R_8I, gemm_buffer.get(), (cublasLtOrder_t)order_input_,
+  ORT_RETURN_IF_ERROR(Reorder(cublasLt, stream, batch_size, sequence_length, n, CUDA_R_8I, gemm_buffer.get(), (cublasLtOrder_t)order_input_,
                               gemm_buffer.get() + qkv_size, (cublasLtOrder_t)order_output_));
   CudaT half_scale = ToCudaType<MLFloat16>::FromFloat(*scale_kqvgemm);
   ORT_RETURN_IF_ERROR(CudaDequantizeLinear(stream, gemm_buffer.get() + qkv_size,
