@@ -182,7 +182,7 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
     if (ignore_index_as_attr)
       builder.Add("ignored_index_value = Constant <value_int : int = @ignore_index>()");
     else
-      builder.Add("ignored_index_value = ignore_index");
+      builder.Add("ignored_index_value = Identity (ignore_index)");
     builder.Add(R"(
                   ignored_index = CastLike (ignored_index_value, label)
                   ignored_BD = Equal (label, ignored_index)

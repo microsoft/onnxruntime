@@ -85,7 +85,19 @@ struct FunctionTestCase {
 
   FunctionTestCase(const char* _opname, const char* _domain = onnxruntime::kMSDomain) : domain(_domain), opname(_opname), provider(new CPUExecutionProvider(CPUExecutionProviderInfo())) {}
 
-  void AddInput(std::string input_name, std::vector<int64_t> shape, std::vector<float> data, std::vector<std::string> symshape = {});
+  // template <typename T>
+  // void AddInput(std::string input_name, std::vector<int64_t> shape, std::vector<T> data, std::vector<std::string> symshape = {});
+
+  template <typename T>
+  void AddInput(std::string input_name, std::vector<int64_t> shape, std::vector<T> data, std::vector<std::string> symshape = {}) {
+    auto arg_type = (symshape.size() > 0) ? TensorType(data_types_internal::ToTensorDataType<T>(), symshape) : TensorType(data_types_internal::ToTensorDataType<T>(), shape);
+    input_args.emplace_back(input_name, &arg_type);
+
+    OrtValue ort_value;
+    CreateMLValue<T>(provider->GetAllocator(0, OrtMemTypeDefault), shape, data, &ort_value);
+    input_values.push_back(std::make_pair(input_name, ort_value));
+    input_value_map.insert(std::make_pair(input_name, ort_value));
+  }
 
   template <typename T, bool GenData = true>
   void AddInput(std::string input_name, std::vector<int64_t> shape) {

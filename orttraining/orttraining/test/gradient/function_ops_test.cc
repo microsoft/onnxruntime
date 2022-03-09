@@ -121,7 +121,7 @@ void DropoutGradWithRatio() {
   std::vector<int64_t> shape{16, 4, 4};
   testCase.AddInput<T>("dY", shape);
   testCase.AddInput<bool>("mask", shape);
-  testCase.AddInput("ratio", {}, {0.5f});
+  testCase.AddInput<float>("ratio", {}, {0.5f});
   testCase.AddOutput("dX");
   testCase.RunTest();
 }
@@ -158,7 +158,7 @@ void CheckDropoutGradWithRatio(bool inline_call) {
   std::vector<int64_t> shape{16, 4, 4};
   testCase.AddInput<T, false>("dY", shape);
   testCase.AddInput<bool, false>("mask", shape);
-  testCase.AddInput("ratio", {}, {0.5f});
+  testCase.AddInput<float>("ratio", {}, {0.5f});
   testCase.AddOutput("dX");
   testCase.CreateModel(inline_call);
 }
@@ -239,7 +239,7 @@ TEST_F(FunExpansionTest, TanhGrad_float) {
   TestUnaryOpGrad<float, true>("TanhGrad");
 }
 
-void TestSoftmaxCrossEntropyLossGrad(int reduction, int ignore_index, int use_weight, int num_d_dims) {
+void TestSoftmaxCrossEntropyLossGrad(bool not_internal, int reduction, int ignore_index, int use_weight, int num_d_dims) {
   int64_t batchsize = 8, num_classes = 10, d1 = 4;
   std::vector<int64_t> BCD{batchsize, num_classes};
   std::vector<int64_t> BD{batchsize};
@@ -251,7 +251,7 @@ void TestSoftmaxCrossEntropyLossGrad(int reduction, int ignore_index, int use_we
   std::vector<int64_t> C{num_classes};
   std::vector<int64_t> scalar; // empty vector
 
-  FunctionTestCase testCase("SoftmaxCrossEntropyLossGrad");
+  FunctionTestCase testCase(not_internal ? "SoftmaxCrossEntropyLossGrad" : "SoftmaxCrossEntropyLossInternalGrad");
   testCase.opsets[kOnnxDomain] = 15;
   testCase.opsets[kMSDomain] = 1;
   testCase.AddInput<float>("dY", (reduction == 0) ? BD : scalar);
@@ -272,8 +272,15 @@ void TestSoftmaxCrossEntropyLossGrad(int reduction, int ignore_index, int use_we
     default:
       break;
   }
-  if (ignore_index != 0)
-    testCase.AddAttribute("ignore_index", ignore_index);
+  if (ignore_index != 0) {
+    if (not_internal)
+      testCase.AddAttribute("ignore_index", ignore_index);
+    else {
+      if (!use_weight)
+        testCase.AddInput<float, false>("", scalar); // Skip missing optional input
+      testCase.AddInput<int64_t>("ignore_index", scalar, std::vector<int64_t>{ignore_index});
+    }
+  }
   testCase.AddOutput("dX");
   testCase.RunTest();
 }
@@ -287,7 +294,19 @@ TEST_F(FunExpansionTest, SoftmaxCrossEntropyLossGrad) {
     for (auto ignore_index : ignore_indices)
       for (auto use_weight: use_weights)
         for (auto num_dim : num_d_dims)
-          TestSoftmaxCrossEntropyLossGrad(reduction, ignore_index, use_weight, num_dim);
+          TestSoftmaxCrossEntropyLossGrad(true, reduction, ignore_index, use_weight, num_dim);
+}
+
+TEST_F(FunExpansionTest, SoftmaxCrossEntropyLossInternalGrad) {
+  std::vector<int> reductions{0, 1, 2, 3};
+  std::vector<int> ignore_indices{0, 100};
+  std::vector<int> use_weights{0, 1};
+  std::vector<int> num_d_dims{0, 1, 2};
+  for (auto reduction : reductions)
+    for (auto ignore_index : ignore_indices)
+      for (auto use_weight: use_weights)
+        for (auto num_dim : num_d_dims)
+          TestSoftmaxCrossEntropyLossGrad(false, reduction, ignore_index, use_weight, num_dim);
 }
 
 }  // namespace test
