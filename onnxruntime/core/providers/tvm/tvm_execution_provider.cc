@@ -125,14 +125,16 @@ common::Status TvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
     compilers_[func_name] = std::make_shared<Compiler>(std::move(onnx_model_str),
                               fused_node->ModelPath().ToPathString(),
                               int(opset->version()));
-    InputsInfoMap inputs_info;
-    std::vector<DLTensor> output_tensors;
-    auto mod = compileModel(func_name, node_graph, inputs_info, output_tensors);
+    InputsInfoMap all_input_shapes;
+    auto mod = compileModel(func_name, node_graph, all_input_shapes);
 
-    runners_[func_name] = std::make_shared<Runner>(options_, mod, inputs_info, output_tensors);
+    std::vector<DLTensor> output_tensors;
+    prepareOutputTensors(mod, output_tensors, node_graph.GetOutputs().size());
+
+    runners_[func_name] = std::make_shared<Runner>(options_, mod, all_input_shapes, output_tensors);
 
     if (dump_subgraphs_) {
-        std::fstream dump("/tmp/" + fused_node->Name() + ".onnx",
+        std::fstream dump("/tmp/" + func_name + ".onnx",
                           std::ios::out | std::ios::trunc | std::ios::binary);
         model_proto.SerializeToOstream(&dump);
     }
@@ -167,54 +169,90 @@ void TvmExecutionProvider::printOptions() {
 
 std::shared_ptr<TvmModule> TvmExecutionProvider::compileModel(const std::string& func_name,
                                                               const Graph& graph,
-                                                              InputsInfoMap& inputs_info,
-                                                              std::vector<DLTensor>& output_tensors) {
-  inputs_info.clear();
-  options_.output_shapes.clear();
-  options_.output_shapes.resize(graph.GetOutputs().size());
-  output_tensors.clear();
+                                                              InputsInfoMap& all_input_shapes) {
+  all_input_shapes.clear();
 
-  const std::vector<const NodeArg*>& all_nodes = graph.GetInputsIncludingInitializers();
   TVMTensorShapes input_shapes;
-  size_t indx = 0;
   if (options_.freeze_weights) {
-    for (const auto* node : all_nodes) {
-      const auto& node_name = node->Name();
-      if(!graph.IsInitializedTensor(node_name)) {
-        std::vector<int64_t> shape;
-        if(!options_.input_shapes.empty() &&
-            options_.input_shapes.count(node_name)) {
-          shape = options_.input_shapes[node_name];
-        } else {
-          shape = convertTensorShape(*node->Shape());
-        }
-        inputs_info[indx++] = shape;
-        input_shapes.emplace_back(shape);
-      }
-    }
+    setInputShapesForFreezedNN(graph, input_shapes, all_input_shapes);
   } else {
-    for (const auto* node : all_nodes) {
-      const auto& node_name = node->Name();
-      std::vector<int64_t> shape;
-      if(!options_.input_shapes.empty() &&
-          options_.input_shapes.count(node_name)) {
-        shape = options_.input_shapes[node_name];
-      } else {
-        shape = convertTensorShape(*node->Shape());
-      }
-      inputs_info[indx++] = shape;
-      if(!graph.IsInitializedTensor(node_name)) {
-        input_shapes.emplace_back(shape);
-      }
-    }
+    setInputShapesForUnfreezedNN(graph, input_shapes, all_input_shapes);
   }
 
-  // Get module from tvm
-  std::shared_ptr<TvmModule> mod_ = compilers_[func_name]->operator()(options_, input_shapes);
+  std::shared_ptr<TvmModule> mod = compilers_[func_name]->operator()(options_, input_shapes);
 
-  // Prepare draft for output tvm tensors
+  return mod;
+}
+
+void TvmExecutionProvider::setInputShapesForFreezedNN(const Graph& graph,
+                                                      TVMTensorShapes& input_shapes,
+                                                      InputsInfoMap& all_input_shapes) {
+  const std::vector<const NodeArg*>& all_nodes = graph.GetInputsIncludingInitializers();
+
+  size_t indx = 0;
+  for (const auto* node : all_nodes) {
+    if(!graph.IsInitializedTensor(node->Name())) {
+      TVMTensorShape shape = getInputShape(node);
+      all_input_shapes[indx++] = shape;
+      input_shapes.emplace_back(shape);
+    }
+  }
+}
+
+void TvmExecutionProvider::setInputShapesForUnfreezedNN(const Graph& graph,
+                                                        TVMTensorShapes& input_shapes,
+                                                        InputsInfoMap& all_input_shapes) {
+  const std::vector<const NodeArg*>& all_nodes = graph.GetInputsIncludingInitializers();
+
+  size_t indx = 0;
+  for (const auto* node : all_nodes) {
+    TVMTensorShape shape = getInputShape(node);
+    all_input_shapes[indx++] = shape;
+    if(!graph.IsInitializedTensor(node->Name())) {
+      input_shapes.emplace_back(shape);
+    }
+  }
+}
+
+TVMTensorShape TvmExecutionProvider::getInputShape(const NodeArg* node) {
+    TVMTensorShape shape;
+    const auto& node_name = node->Name();
+    if(!options_.input_shapes.empty() &&
+        options_.input_shapes.count(node_name)) {
+      shape = options_.input_shapes[node_name];
+    } else {
+      shape = convertTensorShape(*node->Shape());
+    }
+
+    return shape;
+}
+
+TVMTensorShape TvmExecutionProvider::convertTensorShape(const TensorShapeProto& shape_proto) {
+  TensorShape ort_shape = utils::GetTensorShapeFromTensorShapeProto(shape_proto);
+  size_t dims = ort_shape.NumDimensions();
+
+  TVMTensorShape shape(dims);
+  for (size_t j = 0; j < dims; ++j) {
+    int64_t dim = int64_t(ort_shape[j]);
+    ORT_ENFORCE(dim > 0, "Input dimension is not positive value (dim = " + std::to_string(dim) + "). " +
+      "Please use provider options to setup input_names and input_shapes");
+    shape[j] = dim;
+  }
+
+  return shape;
+}
+
+void TvmExecutionProvider::prepareOutputTensors(const std::shared_ptr<tvm::TvmModule>& mod,
+                                                std::vector<DLTensor>& output_tensors,
+                                                size_t num) {
+  ORT_ENFORCE(mod != nullptr, "TVM module is not compiled");
+  output_tensors.clear();
+  options_.output_shapes.clear();
+  // TODO(vvchernov): get output shapes number from TVM::Module?
+  options_.output_shapes.resize(num);
+
   if (options_.executor != "vm") {
-    tvm::TVMGetOutputShapes(*mod_, options_.output_shapes);
+    tvm::TVMGetOutputShapes(*mod, options_.output_shapes);
   }
 
   for (auto& output_shape : options_.output_shapes) {
@@ -233,23 +271,6 @@ std::shared_ptr<TvmModule> TvmExecutionProvider::compileModel(const std::string&
 
     output_tensors.push_back(t);
   }
-
-  return mod_;
-}
-
-TVMTensorShape TvmExecutionProvider::convertTensorShape(const TensorShapeProto& shape_proto) {
-  TensorShape ort_shape = utils::GetTensorShapeFromTensorShapeProto(shape_proto);
-  size_t dims = ort_shape.NumDimensions();
-
-  TVMTensorShape shape(dims);
-  for (size_t j = 0; j < dims; ++j) {
-    int64_t dim = int64_t(ort_shape[j]);
-    ORT_ENFORCE(dim > 0, "Input dimension is not positive value (dim = " + std::to_string(dim) + "). " +
-      "Please use provider options to setup input_names and input_shapes");
-    shape[j] = dim;
-  }
-
-  return shape;
 }
 
 NodeComputeInfo TvmExecutionProvider::prepareComputeInfo(const std::string& func_name) {

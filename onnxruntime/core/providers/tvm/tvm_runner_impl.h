@@ -12,6 +12,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 
 #include "tvm_common.h"
+#include "tvm_ep_options.h"
 
 
 namespace onnxruntime {

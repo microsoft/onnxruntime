@@ -16,9 +16,6 @@ namespace onnxruntime {
 namespace tvm {
 
 using TvmModule = ::tvm::runtime::Module;
-using TVMTensorShape = std::vector<int64_t>;
-using TVMTensorShapes = std::vector<TVMTensorShape>;
-using InputsInfoMap = std::map<size_t, TVMTensorShape>;
 
 }   // namespace tvm
 }   // namespace onnxruntime

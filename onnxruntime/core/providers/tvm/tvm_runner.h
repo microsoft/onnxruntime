@@ -8,7 +8,6 @@
 #include <memory>
 
 #include "tvm_runner_impl.h"
-#include "tvm_ep_options.h"
 
 
 namespace onnxruntime {

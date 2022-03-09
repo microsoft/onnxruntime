@@ -19,6 +19,7 @@
 
 namespace onnxruntime {
   class Graph;
+  class NodeArg;
 namespace tvm {
 
 namespace env_vars {
@@ -49,9 +50,12 @@ class TvmExecutionProvider : public IExecutionProvider {
   void printOptions();
   std::shared_ptr<tvm::TvmModule> compileModel(const std::string& func_name,
                                                const Graph& graph,
-                                               InputsInfoMap& inputs_info,
-                                               std::vector<DLTensor>& output_tensors);
+                                               InputsInfoMap& inputs_info);
+  void setInputShapesForFreezedNN(const Graph& graph, TVMTensorShapes& input_shapes, InputsInfoMap& all_input_shapes);
+  void setInputShapesForUnfreezedNN(const Graph& graph, TVMTensorShapes& input_shapes, InputsInfoMap& all_input_shapes);
+  TVMTensorShape getInputShape(const NodeArg* node);
   TVMTensorShape convertTensorShape(const ONNX_NAMESPACE::TensorShapeProto& shape_proto);
+  void prepareOutputTensors(const std::shared_ptr<tvm::TvmModule>& mod, std::vector<DLTensor>& output_tensors, size_t num);
   NodeComputeInfo prepareComputeInfo(const std::string& func_name);
   int createStateFunc(ComputeContext*, FunctionState*);
  private:
