@@ -20,10 +20,6 @@ namespace tvm {
 
 class RunnerImpl {
 public:
-    using TVMTensorShape = std::vector<int64_t>;
-    using TVMTensorShapes = std::vector<TVMTensorShape>;
-    using InputsInfoMap = std::map<size_t, TVMTensorShape>;
-
     RunnerImpl() = delete;
     RunnerImpl(const std::shared_ptr<TvmModule>& mod,
                const InputsInfoMap& inputs_info,
@@ -100,11 +96,10 @@ private:
 };
 
 
-std::shared_ptr<RunnerImpl> getTVMRunnerImpl(const std::string& name,
-                                             const std::shared_ptr<TvmModule>& mod,
+std::shared_ptr<RunnerImpl> getTVMRunnerImpl(const std::shared_ptr<TvmModule>& mod,
+                                             const TvmEPOptions& options,
                                              const InputsInfoMap& inputs_info,
-                                             const TVMTensorShapes output_shapes,
-                                             const std::vector<DLTensor> tensors_outputs);
+                                             const std::vector<DLTensor> output_tensors);
 
 }   // namespace tvm
 }   // namespace onnxruntime

@@ -28,7 +28,7 @@ const std::string LLVM_TARGET_AVX512 = "llvm -mcpu=skylake-avx512";
 using TVMTensorShape = std::vector<int64_t>;
 using TVMTensorShapes = std::vector<TVMTensorShape>;
 using TVMInputShapes = std::unordered_map<std::string, TVMTensorShape>;
-using InputsInfoMap = std::map<size_t, TVMTensorShape>;
+using InputsInfoMap = std::unordered_map<size_t, TVMTensorShape>;
 
 // Information needed to construct an TVM execution provider.
 struct TvmEPOptions {

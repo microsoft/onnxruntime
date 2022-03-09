@@ -32,7 +32,6 @@ class TvmExecutionProvider : public IExecutionProvider {
   using Runner = tvm::TVMRunner;
   using Runners = std::unordered_map<std::string, std::shared_ptr<Runner>>;
 
-  friend Runner;
  public:
   explicit TvmExecutionProvider(const TvmEPOptions& options);
   virtual ~TvmExecutionProvider();

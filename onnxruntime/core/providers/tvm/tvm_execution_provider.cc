@@ -248,7 +248,6 @@ void TvmExecutionProvider::prepareOutputTensors(const std::shared_ptr<tvm::TvmMo
   ORT_ENFORCE(mod != nullptr, "TVM module is not compiled");
   output_tensors.clear();
   options_.output_shapes.clear();
-  // TODO(vvchernov): get output shapes number from TVM::Module?
   options_.output_shapes.resize(num);
 
   if (options_.executor != "vm") {

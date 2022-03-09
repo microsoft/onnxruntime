@@ -5,9 +5,6 @@
 #include "core/framework/tensorprotoutils.h"
 
 #include "tvm_runner.h"
-#include "tvm_utils.h"
-#include "tvm_compiler.h"
-#include "tvm_api.h"
 
 
 using namespace ONNX_NAMESPACE;
@@ -18,7 +15,7 @@ TVMRunner::TVMRunner(const TvmEPOptions& options,
                      const std::shared_ptr<TvmModule>& mod,
                      const InputsInfoMap& inputs_info,
                      const std::vector<DLTensor>& output_tensors) {
-    runner_ = getTVMRunnerImpl(options.executor, mod, inputs_info, options.output_shapes, output_tensors);
+    runner_ = getTVMRunnerImpl(mod, options, inputs_info, output_tensors);
 }
 
 common::Status TVMRunner::operator()(FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {

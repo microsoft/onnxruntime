@@ -13,15 +13,15 @@ namespace tvm {
 
 /* ------------------------------------ RunnerImplFactory ----------------------------- */
 
-std::shared_ptr<RunnerImpl> getTVMRunnerImpl(const std::string& name,
-                                             const std::shared_ptr<TvmModule>& mod,
+std::shared_ptr<RunnerImpl> getTVMRunnerImpl(const std::shared_ptr<TvmModule>& mod,
+                                             const TvmEPOptions& options,
                                              const InputsInfoMap& inputs_info,
-                                             const TVMTensorShapes output_shapes,
                                              const std::vector<DLTensor> output_tensors) {
+    const std::string& name = options.executor;
     if (name == "graph") {
-        return std::make_shared<GERunnerImpl>(mod, inputs_info, output_shapes, output_tensors);
+        return std::make_shared<GERunnerImpl>(mod, inputs_info, options.output_shapes, output_tensors);
     } else if (name == "vm") {
-        return std::make_shared<VMRunnerImpl>(mod, inputs_info, output_shapes, output_tensors);
+        return std::make_shared<VMRunnerImpl>(mod, inputs_info, options.output_shapes, output_tensors);
     }
     return nullptr;
 }
