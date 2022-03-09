@@ -209,7 +209,7 @@ SelectorActionRegistry CreateSelectorActionRegistry(bool is_int8_allowed) {
 }  // namespace
 
 QDQSelectorActionTransformer::QDQSelectorActionTransformer(
-    const SatApplyContextVariant& apply_context, bool is_int8_allowed)
+    bool is_int8_allowed, const SatApplyContextVariant& apply_context)
     : SelectorActionTransformer{
           "QDQSelectorActionTransformer",
           CreateSelectorActionRegistry(is_int8_allowed),
