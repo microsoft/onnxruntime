@@ -3,20 +3,17 @@
 
 #pragma once
 
-#include <stdint.h>
 #include <cuda_runtime.h>
 
 namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-void GatherNDGradImpl(
+void Impl_Scale(
     cudaStream_t stream,
-    const size_t num_slices,
-    const void* update_data,
-    void* output_data,
-    const size_t slice_size,
-    const int64_t* input_slice_offsets_data);
-
-}  // namespace cuda
+    const T* input_data,
+    const float scale_value,
+    T* output_data,
+    size_t count);
+ }
 }  // namespace onnxruntime
