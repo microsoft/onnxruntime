@@ -298,29 +298,57 @@ TEST(UpsampleOpTest, UpsampleOp4DBilinearTest) {
 TEST(UpsampleOpTest, UpsampleOp4DNhwcBilinearTest) {
   OpTester test("Upsample");
 
-  std::vector<float> scales{1.0f, 2.0f, 4.0f, 1.0f};
+  std::vector<float> scales{1.0f, 2.0f, 2.0f, 1.0f};
   test.AddAttribute("mode", "linear");
   test.AddAttribute("scales", scales);
 
-  constexpr int64_t N = 2, H = 2, W = 3, C = 1;
+  constexpr int64_t N = 2, H = 2, W = 2, C = 3;
   std::vector<float> X = {1.0f, 2.0f, 3.0f,
                           4.0f, 5.0f, 6.0f,
-
                           7.0f, 8.0f, 9.0f,
-                          10.0f, 11.0f, 12.0f};
+                          10.0f, 11.0f, 12.0f,
+
+                          13.0f, 14.0f, 15.0f,
+                          16.0f, 17.0f, 18.0f,
+                          19.0f, 20.0f, 21.0f,
+                          22.0f, 23.0f, 24.0f};
 
   test.AddInput<float>("X", {N, H, W, C}, X);
 
   std::vector<float> Y = {
-      1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.25f, 2.5f, 2.75f, 3.0f, 3.0f, 3.0f, 3.0f,
-      2.5f, 2.75f, 3.0f, 3.25f, 3.5f, 3.75f, 4.0f, 4.25f, 4.5f, 4.5f, 4.5f, 4.5f,
-      4.0f, 4.25f, 4.5f, 4.75f, 5.0f, 5.25f, 5.5f, 5.75f, 6.0f, 6.0f, 6.0f, 6.0f,
-      4.0f, 4.25f, 4.5f, 4.75f, 5.0f, 5.25f, 5.5f, 5.75f, 6.0f, 6.0f, 6.0f, 6.0f,
+      1.0f, 2.0f, 3.0f,
+      2.5f, 3.5f, 4.5f,
+      4.0f, 5.0f, 6.0f,
+      4.0f, 5.0f, 6.0f,
+      4.0f, 5.0f, 6.0f,
+      5.5f, 6.5f, 7.5f,
+      7.0f, 8.0f, 9.0f,
+      7.0f, 8.0f, 9.0f,
+      7.0f, 8.0f, 9.0f,
+      8.5f, 9.5f, 10.5f,
+      10.0f, 11.0f, 12.0f,
+      10.0f, 11.0f, 12.0f,
+      7.0f, 8.0f, 9.0f,
+      8.5f, 9.5f, 10.5f,
+      10.0f, 11.0f, 12.0f,
+      10.0f, 11.0f, 12.0f,
 
-      7.0f, 7.25f, 7.5f, 7.75f, 8.0f, 8.25f, 8.5f, 8.75f, 9.0f, 9.0f, 9.0f, 9.0f,
-      8.5f, 8.75f, 9.0f, 9.25f, 9.5f, 9.75f, 10.0f, 10.25f, 10.5f, 10.5f, 10.5f, 10.5f,
-      10.0f, 10.25f, 10.5f, 10.75f, 11.0f, 11.25f, 11.5f, 11.75f, 12.0f, 12.0f, 12.0f, 12.0f,
-      10.0f, 10.25f, 10.5f, 10.75f, 11.0f, 11.25f, 11.5f, 11.75f, 12.0f, 12.0f, 12.0f, 12.0f};
+      13.0f, 14.0f, 15.0f,
+      14.5f, 15.5f, 16.5f,
+      16.0f, 17.0f, 18.0f,
+      16.0f, 17.0f, 18.0f,
+      16.0f, 17.0f, 18.0f,
+      17.5f, 18.5f, 19.5f,
+      19.0f, 20.0f, 21.0f,
+      19.0f, 20.0f, 21.0f,
+      19.0f, 20.0f, 21.0f,
+      20.5f, 21.5f, 22.5f,
+      22.0f, 23.0f, 24.0f,
+      22.0f, 23.0f, 24.0f,
+      19.0f, 20.0f, 21.0f,
+      20.5f, 21.5f, 22.5f,
+      22.0f, 23.0f, 24.0f,
+      22.0f, 23.0f, 24.0f};
 
   test.AddOutput<float>("Y", {N, (int64_t)(H * scales[1]), (int64_t)(W * scales[2]), C}, Y);
   //CUDA: result mismatch due to not implementing NHWC support

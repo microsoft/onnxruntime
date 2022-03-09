@@ -418,7 +418,8 @@ struct BilinearParams {
 
 // The following method supports a 4-D input in 'Linear mode'
 // that amounts to 'Bilinear' Upsampling/Resizing in the sense that it assumes
-// the scale values for the outermost 2 dimensions are 1.
+// 1. the scale values for the outermost 2 dimensions are 1 or
+// 2. the scale values for the outermost and innermost dimensions are 1
 // This is the common use-case where the 4-D input (batched multi-channel images)
 // is usually of shapes:
 // - [N, C, H, W] and the scales are [1.0, 1.0, height_scale, width_scale]
@@ -570,6 +571,58 @@ void UpsampleBilinear(const int64_t batch_size,
                                                            p.dx1[x] * p.dy2[y] * X21 +
                                                            p.dx2[x] * p.dy1[y] * X12 +
                                                            p.dx1[x] * p.dy1[y] * X22);
+            }
+          }
+        });
+  }
+}
+
+template <typename T>
+void NhwcUpsampleBilinear(const int64_t batch_size,
+                          const int64_t num_channels,
+                          const int64_t input_height,
+                          const int64_t input_width,
+                          const int64_t output_height,
+                          const int64_t output_width,
+                          const float height_scale,
+                          const float width_scale,
+                          const std::vector<float>& roi,
+                          const bool use_extrapolation,
+                          const float extrapolation_value,
+                          const T* const XdataBase,
+                          T* const YdataBase,
+                          AllocatorPtr& alloc,
+                          const GetOriginalCoordinateFunc& get_original_coordinate,
+                          concurrency::ThreadPool* tp) {
+  BilinearParams p = SetupUpsampleBilinear(input_height, input_width, output_height, output_width,
+                                           height_scale, width_scale, roi,
+                                           alloc, get_original_coordinate);
+  for (int64_t n = 0; n < batch_size; ++n) {
+    concurrency::ThreadPool::TrySimpleParallelFor(
+        tp, num_channels,
+        [&](std::ptrdiff_t c) {
+          const T* Xdata = XdataBase + n * (input_height * input_width) * num_channels + c;
+          T* Ydata = YdataBase + n * (output_height * output_width) * num_channels + c;
+          for (int64_t y = 0; y < output_height; ++y) {
+            for (int64_t x = 0; x < output_width; ++x) {
+              // when use_extrapolation is set and original index of x or y is out of the dim range
+              // then use extrapolation_value as the output value.
+              if (use_extrapolation &&
+                  ((p.y_original[y] < 0 || p.y_original[y] > static_cast<float>(input_height - 1)) ||
+                   (p.x_original[x] < 0 || p.x_original[x] > static_cast<float>(input_width - 1)))) {
+                Ydata[(output_width * y + x) * num_channels] = static_cast<T>(extrapolation_value);
+                continue;
+              }
+
+              T X11 = Xdata[(p.input_width_mul_y1[y] + p.in_x1[x]) * num_channels];
+              T X21 = Xdata[(p.input_width_mul_y1[y] + p.in_x2[x]) * num_channels];
+              T X12 = Xdata[(p.input_width_mul_y2[y] + p.in_x1[x]) * num_channels];
+              T X22 = Xdata[(p.input_width_mul_y2[y] + p.in_x2[x]) * num_channels];
+
+              Ydata[(output_width * y + x) * num_channels] = static_cast<T>(p.dx2[x] * p.dy2[y] * X11 +
+                                                                            p.dx1[x] * p.dy2[y] * X21 +
+                                                                            p.dx2[x] * p.dy1[y] * X12 +
+                                                                            p.dx1[x] * p.dy1[y] * X22);
             }
           }
         });
@@ -1070,6 +1123,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
       // 4-D input with outermost and innermost scales as 1
       if (dims.size() == 2 || dims.size() == 4) {
         bool is_2D = dims.size() == 2;
+        bool is_nchw = true;
 
         int64_t batch_size;
         int64_t num_channels;
@@ -1107,6 +1161,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
             width_scale = scales[3];
           } else {
             ORT_ENFORCE(scales[3] == 1.0f, "4-D input with innermost scale (usually channel of NHWC) as 1.");
+            is_nchw = false;
 
             batch_size = dims[0];
             num_channels = dims[3];
@@ -1123,11 +1178,19 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 
         AllocatorPtr alloc;
         ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
-        UpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
-                         height_scale, width_scale, roi,
-                         use_extrapolation_, extrapolation_value_, X->Data<T>(),
-                         Y->MutableData<T>(), alloc, get_original_coordinate_,
-                         output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+        if (is_nchw) {
+          UpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                           height_scale, width_scale, roi,
+                           use_extrapolation_, extrapolation_value_, X->Data<T>(),
+                           Y->MutableData<T>(), alloc, get_original_coordinate_,
+                           output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+        } else {
+          NhwcUpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                               height_scale, width_scale, roi,
+                               use_extrapolation_, extrapolation_value_, X->Data<T>(),
+                               Y->MutableData<T>(), alloc, get_original_coordinate_,
+                               output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+        }
         return Status::OK();
       } else if (dims.size() == 3 || dims.size() == 5) {
         //'trilinear' == 3-D input or 5-D input with outermost 2 scales as 1
