@@ -308,8 +308,8 @@ class HistogramCalibrater(CalibraterBase):
                  use_external_data_format=False,
                  method='percentile',
                  symmetric=False,
-                 num_bins=128,
-                 num_quantized_bins=2048,
+                 num_bins=2048,
+                 num_quantized_bins=128,
                  percentile=99.999):
         '''
         :param model: ONNX model to calibrate. It can be a ModelProto or a model path
