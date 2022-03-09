@@ -131,7 +131,7 @@ class OpKernelContext {
   Status GetTempSpaceAllocator(AllocatorPtr* output) const ORT_MUST_USE_RESULT;
 
   /**
-   Return the allocator associated with the EP with memtype of OrtMemTypeDefault.
+   Return the allocator associated with the CPU EP with memtype of OrtMemTypeDefault.
    @remarks Use SafeInt when calculating the size of memory to allocate using AllocatorPtr->Alloc.
    */
   Status GetCPUAllocator(AllocatorPtr* output) const ORT_MUST_USE_RESULT;
