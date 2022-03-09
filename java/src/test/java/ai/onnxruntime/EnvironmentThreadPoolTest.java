@@ -14,10 +14,12 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 /** This test is in a separate class to ensure it is run in a clean JVM. */
 public class EnvironmentThreadPoolTest {
 
+  @EnabledIfSystemProperty(named = "JAVA_FULL_TEST", matches = "1")
   @Test
   public void environmentThreadPoolTest() throws OrtException {
     Path squeezeNet = getResourcePath("/squeezenet.onnx");

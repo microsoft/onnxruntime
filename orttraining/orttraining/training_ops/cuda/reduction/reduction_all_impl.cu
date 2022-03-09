@@ -1,10 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/cuda/reduction/reduction_all.h"
+#include "reduction_all_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/atomic/common.cuh"
+#include "core/providers/cuda/multi_tensor/common.cuh"
 #include "core/providers/cuda/reduction/reduction_utils.cuh"
 #include "core/providers/cuda/shared_inc/accumulation_type.h"
 

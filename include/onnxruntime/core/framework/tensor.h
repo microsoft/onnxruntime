@@ -250,6 +250,7 @@ class Tensor final {
   */
   size_t SizeInBytes() const;
 
+#ifdef ENABLE_TRAINING
   /**
    * Get the strides of the tensor.
    */
@@ -263,7 +264,8 @@ class Tensor final {
   /**
    * Set strides.
    */
-  void SetStrides(const TensorShapeVector& new_strides);
+  void SetShapeAndStrides(const TensorShape& new_shape, gsl::span<const int64_t> new_strides);
+#endif
 
   // More API methods.
  private:
@@ -276,7 +278,9 @@ class Tensor final {
 
   void ReleaseBuffer();
 
+#ifdef ENABLE_TRAINING
   bool CheckIsContiguous() const;
+#endif
 
   void* p_data_;
   /**
@@ -287,8 +291,10 @@ class Tensor final {
   AllocatorPtr buffer_deleter_;
 
   TensorShape shape_;
+#ifdef ENABLE_TRAINING
   mutable TensorShapeVector strides_;
   bool is_contiguous_ = true;
+#endif
 
   const PrimitiveDataTypeBase* dtype_;
   OrtMemoryInfo alloc_info_;

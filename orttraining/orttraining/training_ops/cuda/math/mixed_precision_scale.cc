@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "mixed_precision_scale.h"
+#include "mixed_precision_scale_impl.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;

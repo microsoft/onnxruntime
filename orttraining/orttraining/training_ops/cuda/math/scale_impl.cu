@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "orttraining/training_ops/cuda/math/scale_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "orttraining/training_ops/cuda/math/scale.h"
 
 namespace onnxruntime {
 namespace cuda {
