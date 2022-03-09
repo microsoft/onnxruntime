@@ -28,13 +28,13 @@ def create_qordered_attention_graph():
     initializers = [
         numpy_helper.from_array(numpy.load(os.path.join(DATA_DIR, 'const64_764.npy')).astype('float16').reshape([768, 2304]), name='weight'),
         numpy_helper.from_array(numpy.load(os.path.join(DATA_DIR, 'const65_769.npy')).astype('float16').reshape([2304]), name='bias'),
-        numpy_helper.from_array(numpy.array(1.0, dtype='float32'), name='scale_input'),
-        numpy_helper.from_array(numpy.array(1.0, dtype='float32'), name='scale_weight'),
-        numpy_helper.from_array(numpy.array(1.0, dtype='float32'), name='scale_bias'),
-        numpy_helper.from_array(numpy.array(1.0, dtype='float32'), name='scale_gemm'),
-        numpy_helper.from_array(numpy.array(1.0, dtype='float32'), name='scale_output'),
-        numpy_helper.from_array(numpy.array(1.0, dtype='float16'), name='scale_weight_fp16'),
-        numpy_helper.from_array(numpy.array(1.0, dtype='float16'), name='scale_bias_fp16'),
+        numpy_helper.from_array(numpy.array(0.007874015718698502, dtype='float32'), name='scale_input'),
+        numpy_helper.from_array(numpy.array(0.007874015718698502, dtype='float32'), name='scale_weight'),
+        numpy_helper.from_array(numpy.array(0.007874015718698502, dtype='float32'), name='scale_bias'),
+        numpy_helper.from_array(numpy.array(0.007874015718698502, dtype='float32'), name='scale_gemm'),
+        numpy_helper.from_array(numpy.array(0.007874015718698502, dtype='float32'), name='scale_output'),
+        numpy_helper.from_array(numpy.array(0.007874015718698502, dtype='float16'), name='scale_weight_fp16'),
+        numpy_helper.from_array(numpy.array(0.007874015718698502, dtype='float16'), name='scale_bias_fp16'),
     ]
 
     graph = helper.make_graph(nodes, "QOrderedAttention_Graph", [
@@ -60,4 +60,3 @@ ort_inputs = {
 }
 
 ort_output = ort_session.run(None, ort_inputs)
-print(ort_output)

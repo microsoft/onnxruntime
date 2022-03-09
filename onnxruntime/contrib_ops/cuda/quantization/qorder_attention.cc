@@ -51,6 +51,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   const Tensor* mask_index = context->Input<Tensor>(7);
 
   auto& device_prop = GetDeviceProp();
+
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), mask_index, nullptr, nullptr, device_prop.maxThreadsPerBlock));
 
   const Tensor* scale_input = context->Input<Tensor>(1);
@@ -92,15 +93,6 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
 
   cudaStream_t stream = Stream();
 
-  // Bias shape is (N), broadcast using scale_bias * B(M, N) = scale_bias * ones(M, 1) x bias(1, N) + 0 * B.
-  // ORT_RETURN_IF_ERROR(
-  //     QOrdered_MatMul(cublasLt, stream, device_prop,
-  //                     1, m, n, 1,
-  //                     scale_bias_data, GetConstOnes<int8_t>(m),
-  //                     reinterpret_cast<const int8_t*>(bias->template Data<int8_t>()),
-  //                     gemm_buffer_quantized_col32.get(), (cublasLtOrder_t)order_weight_));
-  ORT_UNUSED_PARAMETER(scale_bias_data);
-
   // Gemm result(M, N) = scale_input * input * scale_weights * weights + scale_bias x B.
   const float scale_alpha = *scale_input_data * (*scale_weights_data);
   ORT_RETURN_IF_ERROR(
@@ -108,17 +100,8 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
                     1, m, n, k,
                     &scale_alpha, reinterpret_cast<const int8_t*>(input->template Data<int8_t>()),
                     reinterpret_cast<const int8_t*>(weights->template Data<int8_t>()),
+                    scale_bias_data, reinterpret_cast<const int8_t*>(bias->template Data<int8_t>()),
                     gemm_buffer_quantized_col32.get(), (cublasLtOrder_t)order_weight_));
-
-  // // Gemm result(M, N) = scale_input * input * scale_weights * weights + scale_bias x B.
-  // const float scale_alpha = *scale_input_data * (*scale_weights_data);
-  // ORT_RETURN_IF_ERROR(
-  //   QOrdered_MatMul(cublasLt, stream, device_prop,
-  //                   1, m, n, k,
-  //                   &scale_alpha, reinterpret_cast<const int8_t*>(input->template Data<int8_t>()),
-  //                   reinterpret_cast<const int8_t*>(weights->template Data<int8_t>()),
-  //                   scale_bias_data, reinterpret_cast<const int8_t*>(bias->template Data<int8_t>()),
-  //                   gemm_buffer_quantized_col32.get(), (cublasLtOrder_t)order_weight_));
 
   // reorder to row major
   auto gemm_buffer_quantized_row = GetScratchBuffer<int8_t>(batch_size * sequence_length * 3 * hidden_size * 1);
