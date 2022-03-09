@@ -70,11 +70,12 @@ jobs:
          rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
          python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
 
-  - task: CmdLine@2
+  - task: PythonScript@0
     displayName: 'Run Release unit tests'
     inputs:
-      script: |
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
+       scriptPath: $(Build.SourcesDirectory)/tools/ci_build/build.py
+       workingDirectory: $(Build.BinariesDirectory)/Release
+       arguments: |
           --build_dir $(Build.BinariesDirectory) \
           --cmake_generator Ninja \
           --config Release \
@@ -92,15 +93,17 @@ jobs:
     displayName: 'Install Debug python package'
     inputs:
       script: |
+         set -e -x
          rm -rf $(Build.BinariesDirectory)/Debug/onnxruntime $(Build.BinariesDirectory)/Debug/pybind11
          python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
          python3 -m pip install $(Build.BinariesDirectory)/Debug/dist/*.whl
 
-  - task: CmdLine@2
+  - task: PythonScript@0
     displayName: 'Run Debug unit tests'
     inputs:
-      script: |
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
+      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/build.py
+      workingDirectory: $(Build.BinariesDirectory)/Debug
+      arguments: |
           --build_dir $(Build.BinariesDirectory) \
           --cmake_generator Ninja \
           --config Debug \
@@ -114,12 +117,11 @@ jobs:
           --build_nodejs \
           --ctest_path ""
 
-  - task: CmdLine@2
+  - task: PythonScript@0
     displayName: 'Symbolic shape infer'
     inputs:
-      script: |
-        cd $(Build.BinariesDirectory)/Release
-        python3 $(Build.BinariesDirectory)/Release/onnxruntime_test_python_symbolic_shape_infer.py
+      scriptPath: $(Build.BinariesDirectory)/Release/onnxruntime_test_python_symbolic_shape_infer.py
+      workingDirectory: $(Build.BinariesDirectory)/Release
 
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
