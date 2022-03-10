@@ -8,7 +8,8 @@
 #include "core/providers/opencl/opencl_kernel.h"
 #include "core/providers/opencl/opencl_data_transfer.h"
 #include "core/providers/opencl/opencl_execution_provider.h"
-#include "core/providers/opencl/nn/conv_winograd_generator.h"
+#include "core/providers/opencl/nn/conv_winograd_helper.h"
+
 
 namespace {
 #define CONTENT_NAME generic_conv_kernel_src
@@ -363,23 +364,18 @@ class Conv : public OpenCLKernel {
     int64_t output_channel = shape[0];
     int64_t input_channel = shape[1];
     const int kernel_size = shape[3];
-    const int unit = 2;
-    const int unit_output = unit;
-    WinogradGenerator generator(unit_output, kernel_size, 1.0);
-    auto transform_weight = generator.allocTransformWeight(output_channel, input_channel, kernel_size, kernel_size, 4, 4);
-    // we assume the weight data is float, not half.
-    generator.transformWeight(transform_weight, src.Data<float>(), output_channel, input_channel, kernel_size, kernel_size);
-    auto dims = std::get<1>(transform_weight);
-    int result = sizeof(float);
-    for (size_t index = 0; index < dims.size(); ++index) {
-      result *= dims[index];
-    }
+    const int unit_output = 2;//4x3
+    //
+    WinogradHelper helper(unit_output, kernel_size);
+    auto transform_weight1= helper.TransformWeight(src.Data<float>(), output_channel, input_channel);
+    float* weight_ptr = transform_weight1->buff.get();
+    int result = transform_weight1->size * sizeof(float);
 
     VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), GetPackedWeight());
 
     auto tmp = exec_->GetScratchBuffer(result);
     ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), tmp.get(), /*blocking_write=*/CL_FALSE, /*offset=*/0, result,
-                                                std::get<0>(transform_weight).get(), 0, nullptr, nullptr));
+                                                weight_ptr, 0, nullptr, nullptr));
     ORT_RETURN_IF_ERROR(KernelLauncher{GetKernel(kernel_name::CopyWinogradWeight)}
                             .setBuffer(tmp.get())
                             .setImage2D(static_cast<cl_mem>(GetPackedWeight()))
