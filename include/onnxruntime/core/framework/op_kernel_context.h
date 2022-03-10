@@ -134,7 +134,7 @@ class OpKernelContext {
    Return the allocator associated with the CPU EP with memtype of OrtMemTypeDefault.
    @remarks Use SafeInt when calculating the size of memory to allocate using AllocatorPtr->Alloc.
    */
-  Status GetCPUAllocator(AllocatorPtr* output) const ORT_MUST_USE_RESULT;
+  Status GetTempSpaceCPUAllocator(AllocatorPtr* output) const ORT_MUST_USE_RESULT;
 
   /**
   Return the fence of current node's input.

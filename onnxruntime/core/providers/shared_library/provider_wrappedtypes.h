@@ -738,7 +738,7 @@ struct OpKernelContext final {
 
   Status GetTempSpaceAllocator(AllocatorPtr* output) const { return g_host->OpKernelContext__GetTempSpaceAllocator(this, output); }
 
-  Status GetCPUAllocator(AllocatorPtr* output) const { return g_host->OpKernelContext__GetCPUAllocator(this, output); }
+  Status GetTempSpaceCPUAllocator(AllocatorPtr* output) const { return g_host->OpKernelContext__GetTempSpaceCPUAllocator(this, output); }
 
   bool GetUseDeterministicCompute() const { return g_host->OpKernelContext__GetUseDeterministicCompute(this); }
 

@@ -63,7 +63,7 @@ class Memcpy final : public OpKernel {
         // If we are copying contents to CPU (op type is "MemcpyToHost"),
         // the allocator to use to allocate the buffers of the new tensors
         // in the sequence will be the allocator from the CPU EP
-        auto status = ctx->GetCPUAllocator(&alloc);
+        auto status = ctx->GetTempSpaceCPUAllocator(&alloc);
         if (!status.IsOK()) {
           return Status(common::ONNXRUNTIME, common::FAIL,
                         "Memcpy cuda: unable to get the CPU allocator.");

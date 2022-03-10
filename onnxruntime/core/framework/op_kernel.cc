@@ -94,7 +94,7 @@ Status OpKernelContext::GetTempSpaceAllocator(AllocatorPtr* output) const {
   return Status::OK();
 }
 
-Status OpKernelContext::GetCPUAllocator(AllocatorPtr* output) const {
+Status OpKernelContext::GetTempSpaceCPUAllocator(AllocatorPtr* output) const {
   // While looking up the allocator from SessionState
   // (which is called via ExecutionFrame), the allocator lookup
   // logic doesn't key on OrtAllocatorType, so any OrtAllocatorType
