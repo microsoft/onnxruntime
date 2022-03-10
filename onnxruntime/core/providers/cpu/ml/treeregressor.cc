@@ -8,16 +8,16 @@
 namespace onnxruntime {
 namespace ml {
 
-ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_ML_KERNEL(
     TreeEnsembleRegressor,
-    1,
+    1, 2,
     float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).MayInplace(0, 0),
     TreeEnsembleRegressor<float, float, float>);
 
-ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_ML_KERNEL(
     TreeEnsembleRegressor,
-    1,
+    1, 2,
     double,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()).MayInplace(0, 0),
     TreeEnsembleRegressor<double, float, float>);
