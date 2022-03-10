@@ -209,7 +209,7 @@ struct SliceCustomOp : Ort::CustomOpBase<SliceCustomOp, SliceCustomOpKernel> {
 };
 
 struct EagerCustomKernel {
-  EagerCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* info, void* compute_stream);
+  EagerCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* info, void*);
 
   ~EagerCustomKernel();
   void Compute(OrtKernelContext* context);

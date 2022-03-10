@@ -13,7 +13,7 @@ template <typename T>
 void cuda_slice(const T*, int64_t, int64_t, T*, cudaStream_t compute_stream);
 #endif
 
-char* type_names[1] = {"T"};
+const char* type_names[1] = {"T"};
 int type_values[1] = {1};
 
 #include <iostream>
@@ -212,7 +212,7 @@ void SliceCustomOpKernel::Compute(OrtKernelContext* context) {
   }
 }
 
-EagerCustomKernel::EagerCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* info, void* compute_stream) : ort_(ort), compute_stream_(compute_stream) {
+EagerCustomKernel::EagerCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* info, void*) : ort_(ort) {
   ort.CreateOperator(info, "Add", "", 14, (const char**)type_names, (const ONNXTensorElementDataType*)type_values, 1, nullptr, 0, &op_add);
 }
 
