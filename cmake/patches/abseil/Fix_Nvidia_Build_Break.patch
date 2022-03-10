@@ -20,3 +20,18 @@ index 1d7d6cd..f6a7a78 100644
          {allocated_storage_view.data, allocated_storage_view.capacity});
    }
  
+diff --git a/absl/copts/copts.py b/absl/copts/copts.py
+index 0d6c1ec..75fd935 100644
+--- a/absl/copts/copts.py
++++ b/absl/copts/copts.py
+@@ -132,10 +132,6 @@ COPT_VARS = {
+             "/wd4068",  # unknown pragma
+             # qualifier applied to function type has no meaning; ignored
+             "/wd4180",
+-            # conversion from 'type1' to 'type2', possible loss of data
+-            "/wd4244",
+-            # conversion from 'size_t' to 'type', possible loss of data
+-            "/wd4267",
+             # The decorated name was longer than the compiler limit
+             "/wd4503",
+             # forcing value to bool 'true' or 'false' (performance warning)
