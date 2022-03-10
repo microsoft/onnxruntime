@@ -11,6 +11,7 @@ import typing
 import onnxruntime as ort
 from .ort_format_model import create_config_from_models
 from .onnx_model_utils import get_optimization_level
+from .file_utils import files_from_file_or_dir, path_match_suffix_ignore_case
 
 
 class OptimizationStyle(enum.Enum):
@@ -18,41 +19,29 @@ class OptimizationStyle(enum.Enum):
     Runtime = 1
 
 
-def _path_match_suffix_ignore_case(path: typing.Union[pathlib.Path, str], suffix: str):
-    if not isinstance(path, str):
-        path = str(path)
-    return path.casefold().endswith(suffix.casefold())
+def _optimization_suffix(optimization_level_str: str, optimization_style: OptimizationStyle, suffix: str):
+    return "{}{}{}".format(f".{optimization_level_str}",
+                           ".with_runtime_opt" if optimization_style == OptimizationStyle.Runtime else "",
+                           suffix)
 
 
 def _onnx_model_path_to_ort_model_path(onnx_model_path: pathlib.Path,
                                        optimization_level_str: str,
                                        optimization_style: OptimizationStyle):
-    assert onnx_model_path.is_file() and _path_match_suffix_ignore_case(onnx_model_path, ".onnx")
-    suffix = ".{}{}.ort".format(optimization_level_str,
-                                ".with_runtime_opt" if optimization_style == OptimizationStyle.Runtime else "")
+    assert onnx_model_path.is_file() and path_match_suffix_ignore_case(onnx_model_path, ".onnx")
+    suffix = _optimization_suffix(optimization_level_str, optimization_style, ".ort")
     return onnx_model_path.with_suffix(suffix)
 
 
-def _create_config_file_from_ort_models(onnx_model_path_or_dir: pathlib.Path,
-                                        optimization_level_str: str,
-                                        optimization_style: OptimizationStyle,
-                                        enable_type_reduction: bool):
-    if onnx_model_path_or_dir.is_dir():
-        # model directory
-        model_path_or_dir = onnx_model_path_or_dir
-        config_path = None  # default path in model directory
-    else:
-        # single model
-        model_path_or_dir = _onnx_model_path_to_ort_model_path(onnx_model_path_or_dir, optimization_level_str,
-                                                               optimization_style)
-        config_type = 'required_operators_and_types' if enable_type_reduction else 'required_operators'
-        suffix = f'.{config_type}.config'
-        config_path = model_path_or_dir.with_suffix(suffix)
-
-    create_config_from_models(model_path_or_dir=str(model_path_or_dir),
-                              output_file=str(config_path) if config_path is not None else None,
-                              enable_type_reduction=enable_type_reduction,
-                              optimization_level=optimization_level_str)
+def _create_config_file_path(model_path_or_dir: pathlib.Path,
+                             optimization_level_str: str,
+                             optimization_style: OptimizationStyle,
+                             enable_type_reduction: bool):
+    config_name = "{}{}".format('required_operators_and_types' if enable_type_reduction else 'required_operators',
+                                _optimization_suffix(optimization_level_str, optimization_style, ".config"))
+    if model_path_or_dir.is_dir():
+        return model_path_or_dir / config_name
+    return model_path_or_dir.with_suffix(config_name)
 
 
 def _create_session_options(optimization_level: ort.GraphOptimizationLevel,
@@ -74,21 +63,25 @@ def _create_session_options(optimization_level: ort.GraphOptimizationLevel,
 
 def _convert(model_path_or_dir: pathlib.Path, optimization_level_str: str, optimization_style: OptimizationStyle,
              custom_op_library: pathlib.Path, create_optimized_onnx_model: bool, allow_conversion_failures: bool,
-             target_platform: str, session_options_config_entries: typing.Dict[str, str]):
+             target_platform: str, session_options_config_entries: typing.Dict[str, str]) \
+        -> typing.List[pathlib.Path]:
 
     optimization_level = get_optimization_level(optimization_level_str)
 
-    models = []
-    if model_path_or_dir.is_file() and _path_match_suffix_ignore_case(model_path_or_dir, ".onnx"):
-        models.append(model_path_or_dir)
-    elif model_path_or_dir.is_dir():
-        for root, _, files in os.walk(model_path_or_dir):
-            for file in files:
-                if _path_match_suffix_ignore_case(file, ".onnx"):
-                    models.append(pathlib.Path(root, file))
+    def is_model_file_to_convert(file_path: pathlib.Path):
+        if not path_match_suffix_ignore_case(file_path, ".onnx"):
+            return False
+        # ignore any files with an extension of .optimized.onnx which are presumably from previous executions
+        # of this script
+        if path_match_suffix_ignore_case(file_path, ".optimized.onnx"):
+            print(f"Ignoring '{file_path}'")
+            return False
+        return True
+
+    models = files_from_file_or_dir(model_path_or_dir, is_model_file_to_convert)
 
     if len(models) == 0:
-        raise ValueError("No .onnx files were found in '{}'".format(model_path_or_dir))
+        raise ValueError("No model files were found in '{}'".format(model_path_or_dir))
 
     providers = ['CPUExecutionProvider']
 
@@ -100,16 +93,10 @@ def _convert(model_path_or_dir: pathlib.Path, optimization_level_str: str, optim
     if optimization_level == ort.GraphOptimizationLevel.ORT_ENABLE_ALL and target_platform != 'amd64':
         optimizer_filter = ['NchwcTransformer']
 
-    num_failures = 0
+    converted_models = []
 
     for model in models:
         try:
-
-            # ignore any files with an extension of .optimized.onnx which are presumably from previous executions
-            # of this script
-            if _path_match_suffix_ignore_case(model, ".optimized.onnx"):
-                print("Ignoring '{}'".format(model))
-                continue
 
             # create .ort file in same dir as original onnx model
             ort_target_path = _onnx_model_path_to_ort_model_path(model, optimization_level_str, optimization_style)
@@ -138,6 +125,8 @@ def _convert(model_path_or_dir: pathlib.Path, optimization_level_str: str, optim
             _ = ort.InferenceSession(str(model), sess_options=so, providers=providers,
                                      disabled_optimizers=optimizer_filter)
 
+            converted_models.append(ort_target_path)
+
             # orig_size = os.path.getsize(onnx_target_path)
             # new_size = os.path.getsize(ort_target_path)
             # print("Serialized {} to {}. Sizes: orig={} new={} diff={} new:old={:.4f}:1.0".format(
@@ -146,9 +135,10 @@ def _convert(model_path_or_dir: pathlib.Path, optimization_level_str: str, optim
             print("Error converting {}: {}".format(model, e))
             if not allow_conversion_failures:
                 raise
-            num_failures += 1
 
-    print("Converted {} models. {} failures.".format(len(models), num_failures))
+    print("Converted {}/{} models successfully.".format(len(converted_models), len(models)))
+
+    return converted_models
 
 
 def parse_args():
@@ -241,20 +231,21 @@ def convert_onnx_models_to_ort():
         print("Converting models for optimization level '{}' and style '{}'".format(
             optimization_level_str, optimization_style.name))
 
-        _convert(model_path_or_dir, optimization_level_str, optimization_style, custom_op_library,
-                 args.save_optimized_onnx_model, args.allow_conversion_failures, args.target_platform,
-                 session_options_config_entries)
+        converted_models = _convert(model_path_or_dir, optimization_level_str, optimization_style, custom_op_library,
+                                    args.save_optimized_onnx_model, args.allow_conversion_failures,
+                                    args.target_platform, session_options_config_entries)
 
         if optimization_style == OptimizationStyle.Runtime:
-            print("Config file generation is not supported for ORT format models with runtime optimizations. "
-                  "Please use one generated from ORT format models optimized to the same level without runtime "
-                  "optimizations.")
-        else:
-            print("Generating config file from ORT format models for optimization level '{}' and style '{}'".format(
-                optimization_level_str, optimization_style.name))
+            # TODO convert models again without runtime optimizations, use both sets of models to create config
+            pass
 
-            _create_config_file_from_ort_models(model_path_or_dir, optimization_level_str, optimization_style,
-                                                args.enable_type_reduction)
+        print("Generating config file from ORT format models for optimization level '{}' and style '{}'".format(
+            optimization_level_str, optimization_style.name))
+
+        config_file = _create_config_file_path(model_path_or_dir, optimization_level_str, optimization_style,
+                                               args.enable_type_reduction)
+
+        create_config_from_models(converted_models, config_file, args.enable_type_reduction)
 
 
 if __name__ == '__main__':
