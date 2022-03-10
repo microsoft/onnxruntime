@@ -5,6 +5,7 @@
 
 __constant sampler_t SAMPLER = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;
 
+#define SELECT_PREDICATE short // this is for select predicate cast
 #define FLOAT half
 #define FLOAT4 half4
 #define CONVERT_FLOAT convert_half

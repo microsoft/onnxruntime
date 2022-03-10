@@ -23,7 +23,7 @@ struct OpenCLKernelHolder {
     return kernels.insert({kernel_name, std::move(kernel)}).second;
   }
 
-  inline cl_kernel GetKernel(const char* kernel_name) const {
+  inline cl_kernel GetKernel(const std::string& kernel_name) const {
     auto it = kernels.find(kernel_name);
     if (it != kernels.end()) {
       return it->second;
