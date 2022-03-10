@@ -294,7 +294,6 @@ static void RunQDQModelTest(
                             std::make_unique<NnapiExecutionProvider>(0),
                             helper.feeds_, params);
 #else
-  ORT_UNUSED_PARAMETER(params);
   // test load only
   SessionOptions so;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
@@ -439,6 +438,8 @@ TEST(NnapiExecutionProviderTest, TestQDQConcat) {
 TEST(NnapiExecutionProviderTest, TestQDQConcat_UnsupportedInputScalesAndZp) {
   // This is to verify all the inputs have the same scale and zp as input 0 for API 28-
   // Currently, this test can only be run locally with a android emulator with API < 29
+  // See https://developer.android.com/studio/run/emulator-commandline for some info on
+  // starting a testing android emulator in command line. (Run an android build with emulator started)
   // TODO: consider to configure this and enable it to run in Android CI.
   const auto* nnapi = NnApiImplementation();
   if (nnapi->nnapi_runtime_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
