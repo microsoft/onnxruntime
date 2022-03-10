@@ -380,6 +380,7 @@ file(GLOB onnxruntime_python_datasets_data CONFIGURE_DEPENDS
 set(onnxruntime_mobile_util_srcs
     ${REPO_ROOT}/tools/python/util/check_onnx_model_mobile_usability.py
     ${REPO_ROOT}/tools/python/util/convert_onnx_models_to_ort.py
+    ${REPO_ROOT}/tools/python/util/file_utils.py
     ${REPO_ROOT}/tools/python/util/logger.py
     ${REPO_ROOT}/tools/python/util/make_dynamic_shape_fixed.py
     ${REPO_ROOT}/tools/python/util/onnx_model_utils.py
