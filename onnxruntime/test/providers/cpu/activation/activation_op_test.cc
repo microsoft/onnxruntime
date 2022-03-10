@@ -368,6 +368,15 @@ TEST_F(ActivationOpTest, Selu_Attributes) {
                           {{"alpha", alpha}, {"gamma", gamma}});
 }
 
+TEST_F(ActivationOpTest, Selu_GH10726) {
+  static constexpr float alpha = -2.0f;
+  static constexpr float gamma = -3.0f;
+
+  TestActivationOp<float>("Selu",
+                          {{1.f, -1.f}},
+                          [](float x) { return x <= 0 ? gamma * (alpha * exp(x) - alpha) : gamma * x; },
+                          {{"alpha", alpha}, {"gamma", gamma}});
+}
 TEST_F(ActivationOpTest, PRelu) {
   OpTester test("PRelu");
 

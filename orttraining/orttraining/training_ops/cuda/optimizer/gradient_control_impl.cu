@@ -2,10 +2,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "gradient_control_impl.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/atomic/common.cuh"
-#include "gradient_control.h"
 
 namespace onnxruntime {
 namespace cuda {

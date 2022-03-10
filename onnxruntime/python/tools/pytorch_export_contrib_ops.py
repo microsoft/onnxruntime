@@ -33,7 +33,7 @@ def register():
     Should be run before torch.onnx.export().
     """
 
-    def grid_sample(g, input, grid, mode, padding_mode, align_corners):
+    def grid_sampler(g, input, grid, mode, padding_mode, align_corners):
         # mode
         #   'bilinear'      : onnx::Constant[value={0}]
         #   'nearest'       : onnx::Constant[value={1}]
@@ -59,7 +59,7 @@ def register():
                     mode_s=mode_str,
                     padding_mode_s=padding_mode_str,
                     align_corners_i=align_corners)
-    _reg(grid_sample)
+    _reg(grid_sampler)
 
     def inverse(g, self):
         return g.op("com.microsoft::Inverse", self).setType(self.type())

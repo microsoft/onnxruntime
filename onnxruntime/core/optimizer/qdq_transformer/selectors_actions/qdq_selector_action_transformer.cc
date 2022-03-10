@@ -81,7 +81,8 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"AveragePool", {}},
                                                           {"LeakyRelu", {}},
-                                                          {"GlobalAveragePool", {}}},
+                                                          {"GlobalAveragePool", {}},
+                                                          {"Sigmoid", {}}},
                                                          std::move(selector),
                                                          std::move(action));
 #else
@@ -208,7 +209,7 @@ SelectorActionRegistry CreateSelectorActionRegistry(bool is_int8_allowed) {
 }  // namespace
 
 QDQSelectorActionTransformer::QDQSelectorActionTransformer(
-    const SatApplyContextVariant& apply_context, bool is_int8_allowed)
+    bool is_int8_allowed, const SatApplyContextVariant& apply_context)
     : SelectorActionTransformer{
           "QDQSelectorActionTransformer",
           CreateSelectorActionRegistry(is_int8_allowed),

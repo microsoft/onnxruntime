@@ -144,6 +144,10 @@
         4658746266161736328
     ],
     [
+        "GridSample com.microsoft CPUExecutionProvider",
+        11924582339825775592
+    ],
+    [
         "Inverse com.microsoft CPUExecutionProvider",
         1037755270231788608
     ],
@@ -290,9 +294,5 @@
     [
       "QGemm com.microsoft CPUExecutionProvider",
       13737193491843065240
-    ],
-    [
-      "GridSample com.microsoft CPUExecutionProvider",
-      11924582339825775592
     ]
 ]
