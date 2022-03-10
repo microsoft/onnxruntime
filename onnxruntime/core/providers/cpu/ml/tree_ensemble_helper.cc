@@ -25,22 +25,21 @@ std::vector<TH> GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::str
               "Unexpected type (", proto.data_type(), "(for attribute '", name, "'.");
   auto n_elements = proto.dims()[0];
   ORT_ENFORCE(n_elements > 0, "Attribute '", name, "' has one dimension but is empty.");
-  switch (proto_type) {
-    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE:
-      ORT_ENFORCE((std::is_same<double, TH>::value));
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT:
-      ORT_ENFORCE((std::is_same<float, TH>::value));
-      break;
+
+  if (proto_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE) {
+    ORT_ENFORCE((std::is_same<double, TH>::value));
+  } else if (proto_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
+    ORT_ENFORCE((std::is_same<float, TH>::value));
+  } else {
+    ORT_ENFORCE(false, "Not implemented for type ", proto_type);
   }
+
   std::vector<TH> data(n_elements);
   for (int i = 0; i < static_cast<int>(data.size()); ++i) {
     if (proto_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE) {
       data[i] = static_cast<TH>(proto.double_data(i));
     } else if (proto_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
       data[i] = static_cast<TH>(proto.float_data(i));
-    } else {
-      ORT_ENFORCE(false, "Not implemented for type ", proto_type);
     }
   }
   return data;
