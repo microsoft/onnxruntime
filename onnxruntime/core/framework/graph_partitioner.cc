@@ -596,7 +596,11 @@ Status GraphPartitioner::PartitionOrtFormatModel(
     TransformLayoutFunction transform_layout_function) const {
   // process full graph with each EP
   for (const auto& ep : providers_) {
-    if (ep->Type() == kCpuExecutionProvider) {
+    if (ep->Type() == kCpuExecutionProvider
+#ifdef USE_OPENCL
+        || ep->Type() == kOpenCLExecutionProvider
+#endif
+    ) {
       // hash for kernel is stored in session state for EPs that have pre-registered kernels
       // (vs. runtime fused kernels) so nothing to do here.
       continue;
