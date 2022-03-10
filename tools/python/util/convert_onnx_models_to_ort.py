@@ -230,8 +230,8 @@ def convert_onnx_models_to_ort():
         session_options_config_entries["session.qdqisint8allowed"] = "0"
 
     for optimization_style in optimization_styles:
-        print("Converting models for optimization level '{}' and style '{}'".format(
-            optimization_level_str, optimization_style.name))
+        print("Converting models with optimization style '{}' and level '{}'".format(
+            optimization_style.name, optimization_level_str))
 
         converted_models = _convert(
             model_path_or_dir=model_path_or_dir, output_dir=None,
@@ -252,7 +252,7 @@ def convert_onnx_models_to_ort():
                     tempfile.TemporaryDirectory(dir=model_dir, suffix=".without_runtime_opt"))
 
                 print("Converting models again without runtime optimizations to generate a complete config file. "
-                      "These temporary converted models will not be saved.")
+                      "These converted models are temporary and will be deleted.")
                 converted_models += _convert(
                     model_path_or_dir=model_path_or_dir, output_dir=temp_output_dir,
                     optimization_level_str=optimization_level_str, optimization_style=OptimizationStyle.Fixed,
@@ -262,8 +262,8 @@ def convert_onnx_models_to_ort():
                     target_platform=args.target_platform,
                     session_options_config_entries=session_options_config_entries)
 
-            print("Generating config file from ORT format models for optimization level '{}' and style '{}'".format(
-                optimization_level_str, optimization_style.name))
+            print("Generating config file from ORT format models with optimization style '{}' and level '{}'".format(
+                optimization_style.name, optimization_level_str))
 
             config_file = _create_config_file_path(model_path_or_dir, optimization_level_str, optimization_style,
                                                    args.enable_type_reduction)
