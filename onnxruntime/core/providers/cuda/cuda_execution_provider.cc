@@ -49,10 +49,25 @@ class Memcpy final : public OpKernel {
       auto X_dtype = X->DataType();
       Y->SetType(X_dtype);
       AllocatorPtr alloc;
-      auto status = ctx->GetTempSpaceAllocator(&alloc);
-      if (!status.IsOK()) {
-        return Status(common::ONNXRUNTIME, common::FAIL,
-                      "Memcpy cuda: unable to get an allocator.");
+
+      // If we are copying contents to CUDA, the allocator to use
+      // to allocate the buffers of the new tensors in the sequence
+      // can be temp space allocator associated with the CUDA EP
+      if (Node().OpType() == "MemcpyFromHost") {
+        auto status = ctx->GetTempSpaceAllocator(&alloc);
+        if (!status.IsOK()) {
+          return Status(common::ONNXRUNTIME, common::FAIL,
+                        "Memcpy cuda: unable to get an allocator.");
+        }
+      } else {
+        // If we are copying contents to CPU (op type is "MemcpyToHost"),
+        // the allocator to use to allocate the buffers of the new tensors
+        // in the sequence will be the allocator from the CPU EP
+        auto status = ctx->GetTempSpaceCPUAllocator(&alloc);
+        if (!status.IsOK()) {
+          return Status(common::ONNXRUNTIME, common::FAIL,
+                        "Memcpy cuda: unable to get the CPU allocator.");
+        }
       }
       auto X_size = X->Size();
       for (size_t i = 0; i < X_size; ++i) {
@@ -164,7 +179,7 @@ bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptureAllowed() const {
   return regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_;
 }
 
-void CUDAExecutionProvider::PerThreadContext::CaptureBegin()  {
+void CUDAExecutionProvider::PerThreadContext::CaptureBegin() {
   cuda_graph_.Reset();
   cuda_graph_.CaptureBegin();
 }
