@@ -128,7 +128,8 @@ Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_verbose,
     if (node.ContainsSubgraph()) {
       const auto subgraphs = node.GetSubgraphs();
       for (const auto& subgraph : subgraphs) {
-        ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(*subgraph, is_verbose, node_placements, node_placement_set));
+        ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(*subgraph, is_verbose, node_placements,
+                                                               node_placement_set));
       }
     }
   }
@@ -136,7 +137,8 @@ Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_verbose,
   return Status::OK();
 }
 
-Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger& logger, const ExecutionProviders& providers) {
+Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger& logger,
+                                      const ExecutionProviders& providers) {
   NodePlacementMap node_placements{};
   NodePlacementSet node_placement_set{};
 #if !defined(ORT_MINIMAL_BUILD)
@@ -169,7 +171,8 @@ Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger&
   if (!node_placement_set.empty() && providers.NumProviders() == 1) {
     if (node_placement_set.size() > 1 ||
         *node_placement_set.begin() != providers.GetIds().front()) {
-      LOGS(logger, WARNING) << "Not all nodes were placed on the preferred execution provider: " << providers.GetIds().front();
+      LOGS(logger, WARNING) << "Not all nodes were placed on the preferred execution provider: "
+                            << providers.GetIds().front();
     }
   }
 #endif  // !defined(ORT_MINIMAL_BUILD)
