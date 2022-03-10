@@ -738,6 +738,8 @@ struct OpKernelContext final {
 
   Status GetTempSpaceAllocator(AllocatorPtr* output) const { return g_host->OpKernelContext__GetTempSpaceAllocator(this, output); }
 
+  Status GetTempSpaceCPUAllocator(AllocatorPtr* output) const { return g_host->OpKernelContext__GetTempSpaceCPUAllocator(this, output); }
+
   bool GetUseDeterministicCompute() const { return g_host->OpKernelContext__GetUseDeterministicCompute(this); }
 
   bool TryGetInferredOutputShape(int index, TensorShape& shape) const { return g_host->OpKernelContext__TryGetInferredOutputShape(this, index, shape); }
@@ -809,7 +811,7 @@ struct OpKernelInfo final {
     return GetAttrs<T>(name, tmp).IsOK() ? tmp : default_value;
   }
 
-  template<typename T>
+  template <typename T>
   Status GetAttrsAsSpan(const std::string& name, gsl::span<const T>& out) const;
 
   Status GetAttrs(const std::string& name, TensorShapeVector& out) const;
@@ -862,8 +864,6 @@ inline TensorShapeVector OpKernelInfo::GetAttrsOrDefault(const std::string& name
   TensorShapeVector tmp;
   return GetAttrs(name, tmp).IsOK() ? tmp : default_value;
 }
-
-
 
 class SessionState {
  public:
