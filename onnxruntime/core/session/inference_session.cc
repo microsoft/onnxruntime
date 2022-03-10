@@ -164,10 +164,12 @@ Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger&
     }
   }
 
-  if (!node_placement_set.empty() && !providers.Empty()) {
-    if (*node_placement_set.begin() != providers.GetIds().front() ||
-        node_placement_set.size() > 1) {
-      LOGS(logger, WARNING) << "Nodes were not all placed on preferred execution provider: " << providers.GetIds().front();
+  // If one preferred provider was requested, and others were used instead,
+  // warn the user of the the fallback which is otherwise a silent perf concern.
+  if (!node_placement_set.empty() && providers.NumProviders() == 1) {
+    if (node_placement_set.size() > 1 ||
+        *node_placement_set.begin() != providers.GetIds().front()) {
+      LOGS(logger, WARNING) << "Not all nodes were placed on the preferred execution provider: " << providers.GetIds().front();
     }
   }
 #endif  // !defined(ORT_MINIMAL_BUILD)
