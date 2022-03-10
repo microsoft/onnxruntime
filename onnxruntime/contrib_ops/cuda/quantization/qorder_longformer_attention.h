@@ -23,8 +23,6 @@ class QOrderedLongformerAttention final : public CudaKernel, public LongformerAt
   int order_input_;
   int order_weight_;
   int order_bias_;
-  int order_global_weight_;
-  int order_global_bias_;
   int order_output_;
 };
 

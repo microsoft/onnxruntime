@@ -170,7 +170,7 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   const float* scale_weight = context->Input<Tensor>(3)->Data<float>();
   const float* scale_bias = context->Input<Tensor>(5)->Data<float>();
   const float* scale_kqvgemm = context->Input<Tensor>(6)->Data<float>();
-  const float* scale_output = context->Input<Tensor>(12)->Data<float>();
+  const float* scale_output = context->Input<Tensor>(13)->Data<float>();
   float alpha = (*scale_input * *scale_weight) / *scale_kqvgemm;
   float beta = *scale_bias / *scale_kqvgemm;
 
