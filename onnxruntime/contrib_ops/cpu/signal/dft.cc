@@ -167,7 +167,7 @@ static Status fft_radix2(OpKernelContext* /*ctx*/,
     Y_data = temp_output.data();
   } else {
     Y_data = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + Y_offset;
-    Y_data_stride = Y_stride
+    Y_data_stride = Y_stride;
   }
 
   auto angular_velocity = compute_angular_velocity<T>(number_of_samples, inverse);
@@ -217,18 +217,12 @@ static Status fft_radix2(OpKernelContext* /*ctx*/,
   }
 
   if (is_onesided) {
-    // TODO Handle copy...
-    const auto& Y_shape = Y->Shape();
-    size_t fft_output_size = static_cast<size_t>(Y_shape[1]);
-    auto destination = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + (batch_idx * fft_output_size);
-    memcpy(destination, Y_data, sizeof(std::complex<T>) * fft_output_size);
+    auto destination = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + Y_offset;
+    for (size_t i = 0; i < number_of_samples; i++) {
+      *(destination + Y_stride * i) = *(Y_data + i);
+    }
   }
 
-  return Status::OK();
-}
-
-static Status calculate_offset_stride(const Tensor* X, int64_t axis, size_t* offset, size_t* stride)
-{
   return Status::OK();
 }
 
@@ -279,11 +273,10 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
   // Get shape
   const auto& X_shape = X->Shape();
   const auto& Y_shape = Y->Shape();
-  size_t number_of_batches = static_cast<size_t>(X_shape[0]);
   size_t number_of_samples = static_cast<size_t>(X_shape[axis]);
   
   auto batch_and_signal_rank = X->Shape().NumDimensions();
-  auto total_dfts = X->Shape().Size() / X->Shape()[axis + 1];
+  auto total_dfts = static_cast<size_t>(X->Shape().Size() / X->Shape()[axis + 1]);
   if (X->Shape().NumDimensions() > 2)
   {
     total_dfts /= X->Shape()[X->Shape().NumDimensions() - 1];
@@ -294,11 +287,10 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
   for (size_t i = 0; i < total_dfts; i++)
   {
     size_t X_offset = 0;
-    size_t X_stride += X_shape.SizeFromDimension(axis + 1);
+    size_t X_stride = X_shape.SizeFromDimension(axis + 1);
     auto temp_x = i;
-    for (size_t r = 0; r < batch_and_signal_rank; r++)
-    {
-      if (r == axis + 1)
+    for (size_t r = 0; r < batch_and_signal_rank; r++) {
+      if (r == static_cast<size_t>(axis + 1))
       {
         continue;
       }
@@ -309,11 +301,10 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
     }
     
     size_t Y_offset = 0;
-    size_t Y_stride += X_shape.SizeFromDimension(axis + 1);
+    size_t Y_stride = X_shape.SizeFromDimension(axis + 1);
     auto temp_y = i;
-    for (size_t r = 0; r < batch_and_signal_rank; r++)
-    {
-      if (r == axis + 1)
+    for (size_t r = 0; r < batch_and_signal_rank; r++) {
+      if (r == static_cast<size_t>(axis + 1))
       {
         continue;
       }
@@ -325,9 +316,9 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
     }
 
     if (is_power_of_2(number_of_samples)) {
-      ORT_RETURN_IF_ERROR((fft_radix2<T, U>(ctx, i, X, Y, X_offset, X_stride, Y_offset, Y_stride, axis, window, is_onesided, inverse, V, temp_output)));
+      ORT_RETURN_IF_ERROR((fft_radix2<T, U>(ctx, X, Y, X_offset, X_stride, Y_offset, Y_stride, axis, window, is_onesided, inverse, V, temp_output)));
     } else {
-      ORT_RETURN_IF_ERROR((dft_naive<T, U>(i, X, Y, X_offset, X_stride, Y_offset, Y_stride, axis, window, inverse)));
+      ORT_RETURN_IF_ERROR((dft_naive<T, U>(X, Y, X_offset, X_stride, Y_offset, Y_stride, axis, window, inverse)));
     }
   } 
 

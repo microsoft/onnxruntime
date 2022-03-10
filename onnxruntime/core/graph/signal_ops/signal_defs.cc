@@ -100,14 +100,13 @@ void RegisterSignalSchemas() {
           }
   
           if (has_component_dimension) {
-            result_shape_proto.mutable_dim(dim_size - 1)->set_dim_value(2);
-          } else
+            result_shape_proto.mutable_dim(static_cast<int>(dim_size - 1))->set_dim_value(2);
+          } else {
             result_shape_proto.add_dim()->set_dim_value(2);  
           }
 
           updateOutputShape(ctx, 0, result_shape_proto);
       });
-  ;
 
   MS_SIGNAL_OPERATOR_SCHEMA(IDFT)
       .SetDomain(kMSExperimentalDomain)
@@ -153,13 +152,13 @@ void RegisterSignalSchemas() {
                 auto has_component_dimension = dim_size > 2; 
 
                 if (has_component_dimension) {
-                  result_shape_proto.mutable_dim(dim_size - 1)->set_dim_value(2);
-                } else
-                  result_shape_proto.add_dim()->set_dim_value(2);  
+                  result_shape.mutable_dim(static_cast<int>(dim_size - 1))->set_dim_value(2);
+                } else {
+                  result_shape.add_dim()->set_dim_value(2);  
                 }
 
                 updateOutputShape(ctx, 0, result_shape);
-      }));
+      });
 
   MS_SIGNAL_OPERATOR_SCHEMA(STFT)
       .SetDomain(kMSExperimentalDomain)
