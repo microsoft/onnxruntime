@@ -35,15 +35,12 @@ std::vector<TH> GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::str
   }
   std::vector<TH> data(n_elements);
   for (int i = 0; i < static_cast<int>(data.size()); ++i) {
-    switch (proto_type) {
-      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE:
-        data[i] = static_cast<TH>(proto.double_data(i));
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT:
-        data[i] = static_cast<TH>(proto.float_data(i));
-        break;
-      default:
-        ORT_ENFORCE(false, "Not implemented for type ", proto_type);
+    if (proto_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE) {
+      data[i] = static_cast<TH>(proto.double_data(i));
+    } else if (proto_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
+      data[i] = static_cast<TH>(proto.float_data(i));
+    } else {
+      ORT_ENFORCE(false, "Not implemented for type ", proto_type);
     }
   }
   return data;
