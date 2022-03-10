@@ -168,6 +168,9 @@ static constexpr PATH_TYPE MATMUL_MODEL_URI = TSTR("testdata/matmul_1.onnx");
 #ifndef ORT_NO_RTTI
 static constexpr PATH_TYPE SEQUENCE_MODEL_URI = TSTR("testdata/sequence_length.onnx");
 #endif
+#ifdef USE_CUDA
+static constexpr PATH_TYPE SEQUENCE_MODEL_URI_2 = TSTR("testdata/optional_sequence_tensor.onnx");
+#endif
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/custom_op_library/custom_op_test.onnx");
 static constexpr PATH_TYPE OVERRIDABLE_INITIALIZER_MODEL_URI = TSTR("testdata/overridable_initializer.onnx");
@@ -777,7 +780,7 @@ TEST(CApiTest, test_custom_op_library) {
 #elif defined(__APPLE__)
   lib_name = "libcustom_op_library.dylib";
 #else
-lib_name = "./libcustom_op_library.so";
+  lib_name = "./libcustom_op_library.so";
 #endif
 
   void* library_handle = nullptr;
@@ -1144,14 +1147,13 @@ TEST(CApiTest, cuda_graph) {
   std::vector<const char*> keys{"enable_cuda_graph"};
   std::vector<const char*> values{"1"};
   ASSERT_TRUE(api.UpdateCUDAProviderOptions(
-    rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
+                  rel_cuda_options.get(), keys.data(), values.data(), 1) == nullptr);
 
   Ort::SessionOptions session_options;
   ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_CUDA_V2(
-    static_cast<OrtSessionOptions*>(session_options),
-    rel_cuda_options.get()) == nullptr);
+                  static_cast<OrtSessionOptions*>(session_options),
+                  rel_cuda_options.get()) == nullptr);
 
-  
   // Create IoBinding for inputs and outputs.
   struct CudaMemoryDeleter {
     explicit CudaMemoryDeleter(const Ort::Allocator* alloc) {
@@ -2100,4 +2102,28 @@ TEST(CApiTest, GitHubIssue10179) {
     }
   }
 }
+
+TEST(CApiTest, TestCudaMemcpyToHostWithSequenceTensors) {
+  const auto* model_path = SEQUENCE_MODEL_URI_2;
+  Ort::SessionOptions session_options{};
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+  Ort::Session session{*ort_env, model_path, session_options};
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> input_names{"cond"};
+  bool input_data[] = {false};
+  std::vector<int64_t> input_dims{};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<bool>(info, input_data, 1U, input_dims.data(), 0));
+  const char* output_names[] = {"sequence"};
+
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(),
+                                                    ort_inputs.data(), ort_inputs.size(),
+                                                    output_names, countof(output_names));
+
+  // There is no need to check the contents of the output, we are just checking to see if the
+  // model runs without crashing
+}
+
 #endif
