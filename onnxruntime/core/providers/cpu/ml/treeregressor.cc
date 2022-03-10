@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/ml/treeregressor.h"
 #include "core/providers/cpu/ml/tree_ensemble_helper.h"
+#include "core/common/inlined_containers_fwd.h"
 
 namespace onnxruntime {
 namespace ml {
@@ -12,21 +13,21 @@ ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     1,
     float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).MayInplace(0, 0),
-    TreeEnsembleRegressor<float>);
+    TreeEnsembleRegressor<float, float, float>);
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     TreeEnsembleRegressor,
     1,
     double,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()).MayInplace(0, 0),
-    TreeEnsembleRegressor<double>);
+    TreeEnsembleRegressor<double, float, float>);
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     TreeEnsembleRegressor,
     3,
     float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()).MayInplace(0, 0),
-    TreeEnsembleRegressor<float>);
+    TreeEnsembleRegressor<float, float, float>);
 
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     TreeEnsembleRegressor,
@@ -74,11 +75,11 @@ common::Status TreeEnsembleRegressor<T, TH, TO>::Compute(OpKernelContext* contex
   }
   int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
   Tensor* Y = context->Output(0, {N, tree_ensemble_.n_targets_or_classes_});
-  if (std::is_same<TH, TO>::value) {
+  ORT_IF_CONSTEXPR(std::is_same<TH, TO>::value) {
     TH* y_data = Y->template MutableData<TH>();
     tree_ensemble_.compute(context, X, y_data, NULL);
   } else {
-    std::vector<TH> y_data_th(Y->Shape().Size());
+    InlinedVector<TH> y_data_th(Y->Shape().Size());
     tree_ensemble_.compute(context, X, y_data_th.data(), NULL);
     TO* y_data = Y->template MutableData<TO>();
     for (size_t i = 0; i < y_data_th.size(); ++i) {

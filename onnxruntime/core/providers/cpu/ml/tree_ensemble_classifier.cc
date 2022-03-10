@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/ml/tree_ensemble_classifier.h"
 #include "core/providers/cpu/ml/tree_ensemble_helper.h"
+#include "core/common/inlined_containers_fwd.h"
 
 using namespace ::onnxruntime::common;
 using namespace std;
@@ -15,7 +16,7 @@ namespace ml {
       1,                                                                                                                                                                                          \
       in_type,                                                                                                                                                                                    \
       KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<in_type>()).TypeConstraint("T2", {DataTypeImpl::GetTensorType<int64_t>(), DataTypeImpl::GetTensorType<std::string>()}), \
-      TreeEnsembleClassifier<in_type, float>);                                                                                                                                                           \
+      TreeEnsembleClassifier<in_type, float, float>);                                                                                                                                                           \
   ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(                                                                                                                                                              \
       TreeEnsembleClassifier,                                                                                                                                                                     \
       3,                                                                                                                                                                                          \
@@ -70,11 +71,11 @@ common::Status TreeEnsembleClassifier<T, TH, TO>::Compute(OpKernelContext* conte
   Tensor* Y = context->Output(0, {N});
   Tensor* Z = context->Output(1, {N, tree_ensemble_.get_class_count()});
 
-  if (std::is_same<TH, TO>::value) {
+  ORT_IF_CONSTEXPR(std::is_same<TH, TO>::value) {
     TH* z_data = Z->template MutableData<TH>();
     tree_ensemble_.compute(context, &X, z_data, Y);
   } else {
-    std::vector<TH> z_data_th(Z->Shape().Size());
+    InlinedVector<TH> z_data_th(Z->Shape().Size());
     tree_ensemble_.compute(context, &X, z_data_th.data(), Y);
     TO* z_data = Z->template MutableData<TO>();
     for (size_t i = 0; i < z_data_th.size(); ++i) {

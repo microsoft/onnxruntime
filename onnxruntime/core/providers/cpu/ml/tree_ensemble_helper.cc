@@ -34,7 +34,7 @@ std::vector<TH> GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::str
       break;
   }
   std::vector<TH> data(n_elements);
-  for (int i = 0; i < data.size(); ++i) {
+  for (int i = 0; i < static_cast<int>(data.size()); ++i) {
     switch (proto_type) {
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE:
         data[i] = static_cast<TH>(proto.double_data(i));
