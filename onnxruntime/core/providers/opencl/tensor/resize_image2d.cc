@@ -19,12 +19,13 @@ class Resize : public OpenCLKernel, UpsampleBase {
     VLOGS_DEFAULT(0) << "Init Resize (OpenCLKernel)";
     LoadProgram(resize_kernel_src, resize_kernel_src_len);
     LoadKernel("ResizeBilinear2D");
+    LoadKernel("ResizeNearest2D");
   };
 
   Status Compute(OpKernelContext* context) const override {
     ZoneScopedN("Resize::Compute");
     VLOG_CL_NODE();
-    ORT_RETURN_IF(mode_ != UpsampleMode::LINEAR, "only supports linear interpolation");
+    ORT_RETURN_IF(mode_ != UpsampleMode::LINEAR && mode_ != UpsampleMode::NN, "only supports linear interpolation and nearest interpolation");
 
     const auto* X = context->Input<Tensor>(0);
     const auto& X_shape = X->Shape();
@@ -66,9 +67,16 @@ class Resize : public OpenCLKernel, UpsampleBase {
     const auto& Y_shape = Y->Shape();
 
     auto desc = Image2DDesc::PackFromTensorNCHW(Y->Shape());
+    std::string kernel_name;
+    if (mode_ == UpsampleMode::LINEAR) {
+      kernel_name = "ResizeBilinear2D";
+    } else if (mode_ == UpsampleMode::NN) {
+      kernel_name = "ResizeNearest2D";
+    }
+
     ZoneNamedN(_tracy_Resize, "Resize (kernel launch)", true);
     ORT_RETURN_IF_ERROR(
-        KernelLauncher{GetKernel("ResizeBilinear2D")}
+        KernelLauncher{GetKernel(kernel_name)}
             .setInt2(desc.Width(), desc.Height())
             .setImage2Ds(*X, *Y)
             .setInt2(X_shape[3], X_shape[2])
