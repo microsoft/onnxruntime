@@ -75,7 +75,7 @@ void QDQTransformerConvTests() {
                       12 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>());
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
 
   test_case({1, 12, 37}, {32, 12, 5});
@@ -252,7 +252,7 @@ void QDQTransformerAveragePoolTests() {
                       12 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>());
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
 
   test_case({1, 12, 37});
@@ -301,7 +301,7 @@ void QDQTransformerGlobalAveragePoolTests() {
                       12 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>());
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
 
   test_case({1, 12, 37});
@@ -351,7 +351,7 @@ void QDQTransformerBinaryOpTests(const std::string& op_type) {
                       12 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>());
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
 
   test_case({1, 12, 37});
@@ -482,7 +482,7 @@ void QDQTransformerMatMulTests(bool has_output_q) {
                       12 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>());
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
 
   test_case({1, 2, 2}, {1, 2, 4});
@@ -637,7 +637,7 @@ void QDQTransformerGemmTests(bool has_output_q, bool has_bias, bool beta_not_one
                       12 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>());
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
 
   test_case({2, 2}, {2, 4});
@@ -1366,7 +1366,7 @@ void QDQTransformerLeakyReluTests() {
                       12 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>());
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
 
   test_case({1, 12, 37});
@@ -1435,7 +1435,7 @@ void QDQTransformerSigmoidTests() {
                       12 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>());
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
 
   test_case({1, 12, 37});
@@ -1804,7 +1804,7 @@ TEST(QDQTransformerTests, Concat) {
                       12 /*opset_version*/,
                       0.01f /*per_sample_tolerance*/,
                       0.01f /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>());
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
 
   test_case({{1, 6, 36}, {1, 3, 36}}, 1);
