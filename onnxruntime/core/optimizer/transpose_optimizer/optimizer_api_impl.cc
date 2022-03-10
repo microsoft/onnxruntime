@@ -876,9 +876,14 @@ Status TransformLayoutForCompilingEP(Graph& graph, bool& modified, const IExecut
   }
 
   if (modified) {
-    onnx_layout_transformation::Optimize(*api_graph, /*allow_extended_ops*/ true, execution_provider.Type(),
-                                         onnx_layout_transformation::OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM,
-                                         layout_sensitive_ops);
+    OptimizeResult result =
+        onnx_layout_transformation::Optimize(*api_graph, /*allow_extended_ops*/ true, execution_provider.Type(),
+                                             onnx_layout_transformation::OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM,
+                                             layout_sensitive_ops);
+    if (result.error_msg) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optimization after layout transformation failed: ",
+                             result.error_msg.value());
+    }
   }
 
   return Status::OK();
