@@ -103,9 +103,11 @@ inline std::basic_string<T> GetCurrentTimeString() {
 }
 
 using NodePlacementMap = std::unordered_map<std::string, std::vector<std::string>>;
+using NodePlacementSet = std::unordered_set<std::string>;
 
 Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_verbose,
-                                          NodePlacementMap& node_placements) {
+                                          NodePlacementMap& node_placements,
+                                          NodePlacementSet& node_placement_set) {
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
     if (node_provider.empty()) {
@@ -115,6 +117,7 @@ Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_verbose,
     }
 
 #if !defined(ORT_MINIMAL_BUILD)
+    node_placement_set.insert(node_provider);
     if (is_verbose) {  // TODO: should we disable this if the number of nodes is above a certain threshold?
       const std::string node_str = node.OpType() + " (" + node.Name() + ")";
       node_placements[node_provider].push_back(node_str);
@@ -125,7 +128,7 @@ Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_verbose,
     if (node.ContainsSubgraph()) {
       const auto subgraphs = node.GetSubgraphs();
       for (const auto& subgraph : subgraphs) {
-        ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(*subgraph, is_verbose, node_placements));
+        ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(*subgraph, is_verbose, node_placements, node_placement_set));
       }
     }
   }
@@ -133,8 +136,9 @@ Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_verbose,
   return Status::OK();
 }
 
-Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger& logger) {
+Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger& logger, const ExecutionProviders& providers) {
   NodePlacementMap node_placements{};
+  NodePlacementSet node_placement_set{};
 #if !defined(ORT_MINIMAL_BUILD)
   const bool is_verbose_mode = logger.GetSeverity() == logging::Severity::kVERBOSE;
 #else
@@ -142,7 +146,7 @@ Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger&
   const bool is_verbose_mode = false;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-  const auto status = VerifyEachNodeIsAssignedToAnEpImpl(graph, is_verbose_mode, node_placements);
+  const auto status = VerifyEachNodeIsAssignedToAnEpImpl(graph, is_verbose_mode, node_placements, node_placement_set);
 
 #if !defined(ORT_MINIMAL_BUILD)
   // print placement info
@@ -157,6 +161,13 @@ Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger&
         LOGS(logger, VERBOSE) << " Provider: [" << pr.first << "]"
                               << ": [" << all_nodes_str.str() << "]";
       }
+    }
+  }
+
+  if (!node_placement_set.empty() && !providers.Empty()) {
+    if (*node_placement_set.begin() != providers.GetIds().front() ||
+        node_placement_set.size() > 1) {
+      LOGS(logger, WARNING) << "Nodes were not all placed on preferred execution provider: " << providers.GetIds().front();
     }
   }
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -955,7 +966,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   // Insert cast node/s.
   ORT_RETURN_IF_ERROR_SESSIONID_(insert_cast_transformer.Apply(graph, modified, *session_logger_));
 
-  ORT_RETURN_IF_ERROR_SESSIONID_(VerifyEachNodeIsAssignedToAnEp(graph, *session_logger_));
+  ORT_RETURN_IF_ERROR_SESSIONID_(VerifyEachNodeIsAssignedToAnEp(graph, *session_logger_, providers));
 
   std::vector<std::string> provider_types;
   for (auto& provider_ptr : providers) {
@@ -1261,7 +1272,8 @@ Status AssignNodesToEpsFromHashes(Graph& graph, const fbs::SessionState& fbs_ses
                                   const KernelRegistryManager& kernel_registry_manager,
                                   const logging::Logger& logger) {
   ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashesImpl(graph, fbs_session_state, kernel_registry_manager));
-  ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph, logger));
+  ExecutionProviders providers{}; // It's okay if the list is empty because it's just used for validation earlier.
+  ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph, logger, providers));
   return Status::OK();
 }
 }  // namespace
