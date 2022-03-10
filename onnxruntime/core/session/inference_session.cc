@@ -145,6 +145,7 @@ Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger&
   const bool is_verbose_mode = logger.GetSeverity() == logging::Severity::kVERBOSE;
 #else
   ORT_UNUSED_PARAMETER(logger);
+  ORT_UNUSED_PARAMETER(providers);
   const bool is_verbose_mode = false;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
