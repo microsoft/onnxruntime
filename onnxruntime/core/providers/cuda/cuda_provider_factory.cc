@@ -7,6 +7,7 @@
 #include "core/providers/cuda/cuda_provider_options.h"
 
 #include <memory>
+#include <chrono>
 
 #include "gsl/gsl"
 
@@ -187,6 +188,26 @@ struct CUDA_Provider : Provider {
   void* GetInfo() override { return &g_info; }
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
+
+    // Calling a function like ::cudaDeviceSynchronize will cause CUDA to ensure there is binary code for the current GPU architecture
+    // Ideally this will be already part of the binary, but if not, CUDA will JIT it during this call. This can take a very long time
+    // (minutes even), so we want to detect when this happens and let the user know why so they can report it properly or even fix it.
+    // See the linked issue in the warning message for more info
+    {
+      auto start_time = std::chrono::steady_clock::now();
+      // Do a trivial cuda operation that will cause JIT to occur
+      {
+        void** cuda_memory {};
+        ::cudaMalloc(&cuda_memory, 1);
+        ::cudaFree(cuda_memory);
+      }
+      auto end_time = std::chrono::steady_clock::now();
+      auto duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time);
+      if (duration > std::chrono::seconds{30}) {
+        LOGS_DEFAULT(WARNING) << "CUDA took " << duration.count() << " seconds to start, please see this issue for how to fix it: https://github.com/microsoft/onnxruntime/issues/10746";
+      }
+    }
+
     auto params = reinterpret_cast<const OrtCUDAProviderOptionsV2*>(void_params);
 
     CUDAExecutionProviderInfo info{};
