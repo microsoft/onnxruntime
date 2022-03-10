@@ -28,8 +28,6 @@ namespace cuda {
 //     .Attr("order_input", "cublasLt order of input matrix", AttributeProto::INT)
 //     .Attr("order_weight", "cublasLt order of weight matrix", AttributeProto::INT)
 //     .Attr("order_bias", "cublasLt order of bias", AttributeProto::INT)
-//     .Attr("order_global_weight", "cublasLt order of global weight matrix", AttributeProto::INT)
-//     .Attr("order_global_bias", "cublasLt order of global bias", AttributeProto::INT)
 //     .Attr("order_output", "cublasLt order of global bias", AttributeProto::INT)
 //     .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "Q")
 //     .Input(1, "scale_input", "scale of the input", "S")
@@ -77,9 +75,6 @@ QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& inf
   order_weight_ = GetCublasLtOrderAttr(info, "order_weight", 2, weight_tiles, "Only COL4_4R2_8C and COL32_2R_4R4 are supported for order_weght");
   order_bias_ = GetCublasLtOrderAttr(info, "order_bias", 1, &COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_bias");
   order_output_ = GetCublasLtOrderAttr(info, "order_output", 1, &COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_output");
-
-  //   int order_global_weight_;
-  //   int order_global_bias_;
 }
 
 Status

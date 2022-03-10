@@ -1083,8 +1083,6 @@ If mask is provided, mask index (that is position of first 0 in mask, or number 
       .Attr("order_input", "cublasLt order of input matrix", AttributeProto::INT)
       .Attr("order_weight", "cublasLt order of weight matrix", AttributeProto::INT)
       .Attr("order_bias", "cublasLt order of bias", AttributeProto::INT)
-      .Attr("order_global_weight", "cublasLt order of global weight matrix", AttributeProto::INT)
-      .Attr("order_global_bias", "cublasLt order of global bias", AttributeProto::INT)
       .Attr("order_output", "cublasLt order of global bias", AttributeProto::INT)
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "Q")
       .Input(1, "scale_input", "scale of the input", "S")
