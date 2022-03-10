@@ -340,7 +340,17 @@ ORT_API_STATUS_IMPL(UpdateCUDAProviderOptions, _Inout_ OrtCUDAProviderOptionsV2*
 ORT_API_STATUS_IMPL(GetCUDAProviderOptionsAsString, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 ORT_API(void, ReleaseCUDAProviderOptions, _Frees_ptr_opt_ OrtCUDAProviderOptionsV2*);
 
-ORT_API_STATUS_IMPL(CreateEagerOperator,
+ORT_API_STATUS_IMPL(CreateAttribute,
+                    _In_ const char* name,
+                    _In_ const void* data,
+                    _In_ int len,
+                    _In_ ONNXTensorElementDataType type,
+                    _In_ bool is_array,
+                    _Out_ OrtOpAttr* op_attr);
+
+ORT_API_STATUS_IMPL(ReleaseAttribute, _Inout_ OrtOpAttr* op_attr);
+
+ORT_API_STATUS_IMPL(CreateOperator,
                     _In_ const OrtKernelInfo* info,
                     _In_ const char* op_name,
                     _In_ const char* domain,
@@ -348,18 +358,18 @@ ORT_API_STATUS_IMPL(CreateEagerOperator,
                     _In_ const char** type_constraint_names,
                     _In_ const ONNXTensorElementDataType* type_constraint_values,
                     _In_ int type_constraint_count,
-                    _In_ const void* onnx_attr_values,
-                    _In_ int onnx_attr_count,
-                    _Out_ OrtEagerOperator* ort_op);
+                    _In_ const OrtOpAttr* attr_values,
+                    _In_ int attr_count,
+                    _Out_ OrtOp* ort_op);
 
-ORT_API_STATUS_IMPL(InvokeEagerOperator,
+ORT_API_STATUS_IMPL(InvokeOperator,
                     _In_ const OrtKernelContext* context,
-                    _In_ const OrtEagerOperator ort_op,
+                    _In_ const OrtOp ort_op,
                     _In_ const OrtValue* const* input_values,
                     _In_ int input_count,
                     _Inout_ OrtValue* const* output_values,
                     _In_ int output_count);
 
-ORT_API_STATUS_IMPL(ReleaseEagerOperator, _Inout_ OrtEagerOperator* op);
+ORT_API_STATUS_IMPL(ReleaseOperator, _Inout_ OrtOp* op);
 
 }  // namespace OrtApis

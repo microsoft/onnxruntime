@@ -217,7 +217,7 @@ struct EagerCustomKernel {
  private:
   Ort::CustomOpApi ort_;
   void* compute_stream_{};
-  OrtEagerOperator op_add{};
+  OrtOp op_add{};
 };
 
 struct EagerCustomOp : Ort::CustomOpBase<EagerCustomOp, EagerCustomKernel> {

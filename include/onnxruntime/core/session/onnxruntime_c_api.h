@@ -317,7 +317,8 @@ struct OrtKernelContext;
 typedef struct OrtKernelContext OrtKernelContext;
 struct OrtCustomOp;
 typedef struct OrtCustomOp OrtCustomOp;
-typedef void* OrtEagerOperator;
+typedef void* OrtOp;
+typedef void* OrtOpAttr;
 
 typedef enum OrtAllocatorType {
   OrtInvalidAllocator = -1,
@@ -484,7 +485,7 @@ typedef struct OrtTensorRTProviderOptions {
   const char* trt_engine_decryption_lib_path;   // specify engine decryption library path
   int trt_force_sequential_engine_build;        // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
   // This is the legacy struct and don't add new fields here.
-  // For new field that can be represented by string, please add it in include/onnxruntime/core/providers/tensorrt/tensorrt_provider_options.h   
+  // For new field that can be represented by string, please add it in include/onnxruntime/core/providers/tensorrt/tensorrt_provider_options.h
   // For non-string field, need to create a new separate api to handle it.
 } OrtTensorRTProviderOptions;
 
@@ -493,9 +494,9 @@ typedef struct OrtTensorRTProviderOptions {
 * \see OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
 */
 typedef struct OrtMIGraphXProviderOptions {
-  int device_id;                                // hip device id.
-  int migraphx_fp16_enable;                     // enable MIGraphX FP16 precision. Default 0 = false, nonzero = true
-  int migraphx_int8_enable;                     // enable MIGraphX INT8 precision. Default 0 = false, nonzero = true
+  int device_id;             // hip device id.
+  int migraphx_fp16_enable;  // enable MIGraphX FP16 precision. Default 0 = false, nonzero = true
+  int migraphx_int8_enable;  // enable MIGraphX INT8 precision. Default 0 = false, nonzero = true
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options
@@ -3305,7 +3306,17 @@ struct OrtApi {
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_MIGraphX,
                   _In_ OrtSessionOptions* options, _In_ const OrtMIGraphXProviderOptions* migraphx_options);
 
-  ORT_API2_STATUS(CreateEagerOperator,
+  ORT_API2_STATUS(CreateAttribute,
+                  _In_ const char* name,
+                  _In_ const void* data,
+                  _In_ int len,
+                  _In_ ONNXTensorElementDataType type,
+                  _In_ bool is_array,
+                  _Out_ OrtOpAttr* op_attr);
+
+  ORT_API2_STATUS(ReleaseAttribute, _Inout_ OrtOpAttr* op_attr);
+
+  ORT_API2_STATUS(CreateOperator,
                   _In_ const OrtKernelInfo* info,
                   _In_ const char* op_name,
                   _In_ const char* domain,
@@ -3313,19 +3324,19 @@ struct OrtApi {
                   _In_ const char** type_constraint_names,
                   _In_ const ONNXTensorElementDataType* type_constraint_values,
                   _In_ int type_constraint_count,
-                  _In_ const void* onnx_attr_values,
-                  _In_ int onnx_attr_count,
-                  _Out_ OrtEagerOperator* ort_op);
+                  _In_ const OrtOpAttr* attr_values,
+                  _In_ int attr_count,
+                  _Out_ OrtOp* ort_op);
 
-  ORT_API2_STATUS(InvokeEagerOperator,
+  ORT_API2_STATUS(InvokeOperator,
                   _In_ const OrtKernelContext* context,
-                  _In_ const OrtEagerOperator ort_op,
+                  _In_ const OrtOp ort_op,
                   _In_ const OrtValue* const* input_values,
                   _In_ int input_count,
                   _Inout_ OrtValue* const* output_values,
                   _In_ int output_count);
 
-  ORT_API2_STATUS(ReleaseEagerOperator, _Inout_ OrtEagerOperator* op);
+  ORT_API2_STATUS(ReleaseOperator, _Inout_ OrtOp* op);
 };
 
 /*
@@ -3395,7 +3406,6 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOpt
  * \param device_id HIP device id, starts from zero.
 */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, int device_id);
-
 
 #ifdef __cplusplus
 }

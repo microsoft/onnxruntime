@@ -1183,6 +1183,19 @@ inline void* CustomOpApi::KernelContext_GetGPUComputeStream(const OrtKernelConte
   return out;
 }
 
+inline void CustomOpApi::CreateAttribute(_In_ const char* name,
+                                         _In_ const void* data,
+                                         _In_ int len,
+                                         _In_ ONNXTensorElementDataType type,
+                                         _In_ bool is_array,
+                                         _Out_ OrtOpAttr* op_attr) {
+  ThrowOnError(api_.CreateAttribute(name, data, len, type, is_array, op_attr));
+}
+
+inline void CustomOpApi::ReleaseAttribute(_Inout_ OrtOpAttr* op_attr) {
+  ThrowOnError(api_.ReleaseAttribute(op_attr));
+}
+
 inline void CustomOpApi::CreateOperator(_In_ const OrtKernelInfo* info,
                                         _In_ const char* op_name,
                                         _In_ const char* domain,
@@ -1190,23 +1203,23 @@ inline void CustomOpApi::CreateOperator(_In_ const OrtKernelInfo* info,
                                         _In_ const char** type_constraint_names,
                                         _In_ const ONNXTensorElementDataType* type_constraint_values,
                                         _In_ int type_constraint_count,
-                                        _In_ const void* onnx_attr_values,
-                                        _In_ int onnx_attr_count,
-                                        _Out_ OrtEagerOperator* ort_op) {
-  ThrowOnError(api_.CreateEagerOperator(info, op_name, domain, version, type_constraint_names, type_constraint_values, type_constraint_count, onnx_attr_values, onnx_attr_count, ort_op));
+                                        _In_ const OrtOpAttr* attr_values,
+                                        _In_ int attr_count,
+                                        _Out_ OrtOp* ort_op) {
+  ThrowOnError(api_.CreateOperator(info, op_name, domain, version, type_constraint_names, type_constraint_values, type_constraint_count, attr_values, attr_count, ort_op));
 }
 
 inline void CustomOpApi::InvokeOperator(_In_ const OrtKernelContext* context,
-                                        _In_ const OrtEagerOperator ort_op,
+                                        _In_ const OrtOp ort_op,
                                         _In_ const OrtValue* const* input_values,
                                         _In_ int input_count,
                                         _Inout_ OrtValue* const* output_values,
                                         _In_ int output_count) {
-  ThrowOnError(api_.InvokeEagerOperator(context, ort_op, input_values, input_count, output_values, output_count));
+  ThrowOnError(api_.InvokeOperator(context, ort_op, input_values, input_count, output_values, output_count));
 }
 
-inline void CustomOpApi::ReleaseOperator(_Inout_ OrtEagerOperator* ort_op) {
-  ThrowOnError(api_.ReleaseEagerOperator(ort_op));
+inline void CustomOpApi::ReleaseOperator(_Inout_ OrtOp* ort_op) {
+  ThrowOnError(api_.ReleaseOperator(ort_op));
 }
 
 inline SessionOptions& SessionOptions::DisablePerSessionThreads() {
