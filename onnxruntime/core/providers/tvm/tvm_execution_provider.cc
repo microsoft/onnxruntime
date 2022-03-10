@@ -192,7 +192,7 @@ void TvmExecutionProvider::setInputShapesForFreezedNN(const Graph& graph,
   size_t indx = 0;
   for (const auto* node : all_nodes) {
     if(!graph.IsInitializedTensor(node->Name())) {
-      TVMTensorShape shape = getInputShape(node);
+      TensorShapeVector shape = getInputShape(node);
       all_input_shapes[indx++] = shape;
       input_shapes.emplace_back(shape);
     }
@@ -206,7 +206,7 @@ void TvmExecutionProvider::setInputShapesForUnfreezedNN(const Graph& graph,
 
   size_t indx = 0;
   for (const auto* node : all_nodes) {
-    TVMTensorShape shape = getInputShape(node);
+    TensorShapeVector shape = getInputShape(node);
     all_input_shapes[indx++] = shape;
     if(!graph.IsInitializedTensor(node->Name())) {
       input_shapes.emplace_back(shape);
@@ -214,8 +214,8 @@ void TvmExecutionProvider::setInputShapesForUnfreezedNN(const Graph& graph,
   }
 }
 
-TVMTensorShape TvmExecutionProvider::getInputShape(const NodeArg* node) {
-    TVMTensorShape shape;
+TensorShapeVector TvmExecutionProvider::getInputShape(const NodeArg* node) {
+    TensorShapeVector shape;
     const auto& node_name = node->Name();
     if(!options_.input_shapes.empty() &&
         options_.input_shapes.count(node_name)) {
@@ -227,11 +227,11 @@ TVMTensorShape TvmExecutionProvider::getInputShape(const NodeArg* node) {
     return shape;
 }
 
-TVMTensorShape TvmExecutionProvider::convertTensorShape(const TensorShapeProto& shape_proto) {
+TensorShapeVector TvmExecutionProvider::convertTensorShape(const TensorShapeProto& shape_proto) {
   TensorShape ort_shape = utils::GetTensorShapeFromTensorShapeProto(shape_proto);
   size_t dims = ort_shape.NumDimensions();
 
-  TVMTensorShape shape(dims);
+  TensorShapeVector shape(dims);
   for (size_t j = 0; j < dims; ++j) {
     int64_t dim = int64_t(ort_shape[j]);
     ORT_ENFORCE(dim > 0, "Input dimension is not positive value (dim = " + std::to_string(dim) + "). " +

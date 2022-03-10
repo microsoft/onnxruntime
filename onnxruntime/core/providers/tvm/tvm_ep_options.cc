@@ -174,7 +174,7 @@ void TvmEPOptionsHelper::setInputShapes(TvmEPOptions& options) {
     std::vector<std::string> number_set;
     ORT_ENFORCE(split(numbers, number_set, ' '), "There is no any number between [ and ] symbols");
 
-    std::vector<int64_t> dims;
+    TensorShapeVector dims;
     for(const auto& number : number_set) {
       dims.push_back(std::stoi(number));
     }

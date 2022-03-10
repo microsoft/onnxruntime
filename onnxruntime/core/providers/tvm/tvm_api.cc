@@ -19,7 +19,7 @@ TvmModule TVMCompile(const std::string& onnx_txt,
                      const std::string& model_path,
                      const TvmEPOptions& options,
                      int opset,
-                     const std::vector<std::vector<int64_t>>& input_shapes)
+                     const TVMTensorShapes& input_shapes)
 {
   ::tvm::Array<TvmIntArray> shapes;
   for (size_t i = 0; i < input_shapes.size(); ++i)
@@ -109,7 +109,7 @@ void TVMGetOutputShapes(TvmModule& mod,
     ::tvm::runtime::NDArray output_array = get_output(i);
     ::tvm::runtime::ShapeTuple shape_tuple = output_array.Shape();
     size_t dims_num = shape_tuple.size();
-    std::vector<int64_t> dims;
+    TensorShapeVector dims;
     for (size_t j = 0; j < dims_num; ++j) {
       dims.push_back(int64_t(shape_tuple[j]));
     }

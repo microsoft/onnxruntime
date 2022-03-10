@@ -49,9 +49,6 @@ protected:
     void add_device_type_data2output_tensors(Ort::CustomOpApi& ort,
                                              OrtKernelContext* context);
 
-private:
-    bool compare_shapes(const TVMTensorShape& shape1, const TVMTensorShape& shape2) const;
-
 protected:
     std::shared_ptr<TvmModule> mod_;
     InputsInfoMap inputs_info_;

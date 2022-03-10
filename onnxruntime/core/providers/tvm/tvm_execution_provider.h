@@ -52,8 +52,8 @@ class TvmExecutionProvider : public IExecutionProvider {
                                                InputsInfoMap& inputs_info);
   void setInputShapesForFreezedNN(const Graph& graph, TVMTensorShapes& input_shapes, InputsInfoMap& all_input_shapes);
   void setInputShapesForUnfreezedNN(const Graph& graph, TVMTensorShapes& input_shapes, InputsInfoMap& all_input_shapes);
-  TVMTensorShape getInputShape(const NodeArg* node);
-  TVMTensorShape convertTensorShape(const ONNX_NAMESPACE::TensorShapeProto& shape_proto);
+  TensorShapeVector getInputShape(const NodeArg* node);
+  TensorShapeVector convertTensorShape(const ONNX_NAMESPACE::TensorShapeProto& shape_proto);
   void prepareOutputTensors(const std::shared_ptr<tvm::TvmModule>& mod, std::vector<DLTensor>& output_tensors, size_t num);
   NodeComputeInfo prepareComputeInfo(const std::string& func_name);
   int createStateFunc(ComputeContext*, FunctionState*);

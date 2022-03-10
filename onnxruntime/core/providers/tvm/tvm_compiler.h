@@ -25,7 +25,7 @@ public:
                 int opset);
 
     ModulePtr operator()(const TvmEPOptions& options,
-                         const std::vector<std::vector<int64_t>>& input_shapes);
+                         const TVMTensorShapes& input_shapes);
 
 private:
     ModulePtr mod_;

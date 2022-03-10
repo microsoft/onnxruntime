@@ -19,7 +19,7 @@ opset_(opset) {
 }
 
 auto TVMCompiler::operator()(const TvmEPOptions& options,
-                             const std::vector<std::vector<int64_t>>& input_shapes) -> ModulePtr {
+                             const TVMTensorShapes& input_shapes) -> ModulePtr {
     if (mod_) {
         return mod_;
     }

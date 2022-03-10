@@ -92,21 +92,6 @@ void RunnerImpl::add_device_type_data2output_tensors(Ort::CustomOpApi& ort,
   }
 }
 
-bool RunnerImpl::compare_shapes(const TVMTensorShape& shape1, const TVMTensorShape& shape2) const {
-  size_t size = shape1.size();
-  if (shape2.size() == size) {
-    for (size_t i = 0; i < size; ++i) {
-      if(shape1[i] != shape2[i]) {
-        return false;
-      }
-    }
-  } else {
-    return false;
-  }
-
-  return true;
-}
-
 /* ------------------------------------ GERunnerImpl ------------------------------------ */
 
 GERunnerImpl::GERunnerImpl(const std::shared_ptr<TvmModule>& mod,

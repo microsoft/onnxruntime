@@ -10,6 +10,7 @@
 #include <iostream>
 
 #include "core/framework/provider_options.h"
+#include "core/framework/tensor_shape.h"
 
 #include "tvm_defaults.h"
 
@@ -25,10 +26,9 @@ const std::string LLVM_TARGET_SKYLAKE_AVX512 = "llvm -mcpu=skylake-avx512";
 const std::string LLVM_TARGET_AVX512 = "llvm -mcpu=skylake-avx512";
 }  // namespace cpu_targets
 
-using TVMTensorShape = std::vector<int64_t>;
-using TVMTensorShapes = std::vector<TVMTensorShape>;
-using TVMInputShapes = std::unordered_map<std::string, TVMTensorShape>;
-using InputsInfoMap = std::unordered_map<size_t, TVMTensorShape>;
+using TVMTensorShapes = std::vector<TensorShapeVector>;
+using TVMInputShapes = std::unordered_map<std::string, TensorShapeVector>;
+using InputsInfoMap = std::unordered_map<size_t, TensorShapeVector>;
 
 // Information needed to construct an TVM execution provider.
 struct TvmEPOptions {
