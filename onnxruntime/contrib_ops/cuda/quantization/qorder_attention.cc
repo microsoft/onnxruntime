@@ -56,13 +56,13 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
 
   const Tensor* scale_input = context->Input<Tensor>(1);
   const Tensor* scale_weights = context->Input<Tensor>(3);
-  const Tensor* scale_bias = context->Input<Tensor>(5);
+  // const Tensor* scale_bias = context->Input<Tensor>(5);
   const Tensor* scale_gemm = context->Input<Tensor>(6);
   const Tensor* scale_output = context->Input<Tensor>(8);
 
   const float* scale_input_data = scale_input->template Data<float>();
   const float* scale_weights_data = scale_weights->template Data<float>();
-  const float* scale_bias_data = scale_bias->template Data<float>();
+  // const float* scale_bias_data = scale_bias->template Data<float>();
   const float* scale_gemm_data = scale_gemm->template Data<float>();
   const float* scale_output_data = scale_output->template Data<float>();
 
@@ -98,10 +98,9 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(
     QOrdered_MatMul(cublasLt, stream, device_prop,
                     1, m, n, k,
-                    &scale_alpha, reinterpret_cast<const int8_t*>(input->template Data<int8_t>()),
-                    reinterpret_cast<const int8_t*>(weights->template Data<int8_t>()),
-                    scale_bias_data, reinterpret_cast<const int8_t*>(bias->template Data<int8_t>()),
-                    gemm_buffer_quantized.get(), (cublasLtOrder_t)order_weight_));
+                    &scale_alpha, input->template Data<int8_t>(), weights->template Data<int8_t>(),
+                    bias->Data<float>(), gemm_buffer_quantized.get(),
+                    (cublasLtOrder_t)order_weight_));
 
   // reorder to row major
   ORT_RETURN_IF_ERROR(

@@ -168,17 +168,17 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
 
   const float* scale_input = context->Input<Tensor>(1)->Data<float>();
   const float* scale_weight = context->Input<Tensor>(3)->Data<float>();
-  const float* scale_bias = context->Input<Tensor>(5)->Data<float>();
+  // const float* scale_bias = context->Input<Tensor>(5)->Data<float>();
   const float* scale_kqvgemm = context->Input<Tensor>(6)->Data<float>();
   const float* scale_output = context->Input<Tensor>(13)->Data<float>();
   float alpha = (*scale_input * *scale_weight) / *scale_kqvgemm;
-  float beta = *scale_bias / *scale_kqvgemm;
 
   auto& device_prop = GetDeviceProp();
+  // TODO: bias need pre-processing, i.e., / *scale_kqvgemm
   ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
                                       batch_size, sequence_length, n, k,
                                       &alpha, input->Data<int8_t>(), weights->Data<int8_t>(),
-                                      &beta, bias->Data<int8_t>(), gemm_buffer.get(),
+                                      bias->Data<float>(), gemm_buffer.get(),
                                       (cublasLtOrder_t)order_weight_));
   ORT_RETURN_IF_ERROR(Reorder(cublasLt, stream, batch_size, sequence_length, n, CUDA_R_8I, gemm_buffer.get(), (cublasLtOrder_t)order_input_,
                               gemm_buffer.get() + qkv_size, (cublasLtOrder_t)order_output_));

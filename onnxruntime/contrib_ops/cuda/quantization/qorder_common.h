@@ -88,14 +88,8 @@ Status Reorder(cublasLtHandle_t cublasLt, cudaStream_t stream,
 Status QOrdered_MatMul(
     cublasLtHandle_t cublasLt_handle, cudaStream_t stream, const cudaDeviceProp& device_prop,
     int32_t batchCount, int64_t m, int64_t n, int64_t k,
-    const float* scale, const int8_t* A, const int8_t* B, int8_t* C,
-    cublasLtOrder_t order_weight);
-
-Status QOrdered_MatMul(
-    cublasLtHandle_t cublasLt_handle, cudaStream_t stream, const cudaDeviceProp& device_prop,
-    int32_t batchCount, int64_t m, int64_t n, int64_t k,
     const float* alpha, const int8_t* A, const int8_t* B,
-    const float* beta, const int8_t* C, int8_t* D,
+    const float* bias, int8_t* C,
     cublasLtOrder_t order_weight);
 
 // #endif
