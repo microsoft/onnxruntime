@@ -485,14 +485,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Gelu, 1,
                                   auto* tp = ctx.getInputType(0);
                                   if ((tp == nullptr) || (!tp->has_tensor_type()))
                                     return false;
-                                  auto elem_type = tp->tensor_type().elem_type();
+                                  auto elem_type = (TensorProto_DataType)(tp->tensor_type().elem_type());
 
                                   FunctionBuilder builder(functionProto);
                                   builder
                                       .AddOpset("", 13)
-                                      .Const("Half", 0.5, elem_type)
-                                      .Const("One", 1.0, elem_type)
-                                      .Const("C", std::sqrt(0.5), elem_type)
+                                      .Const("Half", ToTensor(0.5, elem_type))
+                                      .Const("One", ToTensor(1.0, elem_type))
+                                      .Const("C", ToTensor(std::sqrt(0.5), elem_type))
                                       .Add(R"(
                 CX = Mul (C, X)
                 ERFCX = Erf (CX)
@@ -919,10 +919,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                 .Attr("pad_token_id", "The id of the padding token", AttributeProto::INT)
                                 .Attr("no_repeat_ngram_size", "no repeat ngrams size", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Attr("early_stopping", "early stop or not", AttributeProto::INT, static_cast<int64_t>(0))
-                                .Attr(
-                                    "body",
-                                    "The GPT-2 subgraph with input_ids, position_ids, attention_mask, past_0, past_1, ... as inputs, and logits, present_0, present_1, ... as output",
-                                    AttributeProto::GRAPH)
+                                .Attr("model_type", "model type: 0 for GPT-2; 1 for encoder decoder like T5", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("encoder_decoder_init", "subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.", AttributeProto::GRAPH, OPTIONAL_VALUE)
+                                .Attr("decoder", "Decoder subgraph to execute in a loop.", AttributeProto::GRAPH)
                                 .Input(0, "input_ids", "The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)", "I")
                                 .Input(1, "max_length", "The maximum length of the sequence to be generated. Shape is (1)", "I")
                                 .Input(2, "min_length", "The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)", "I", OpSchema::Optional)
@@ -944,14 +943,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                         "Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam."
                                         "Shape is (max_length - sequence_length, batch_size, num_beams, vocab_size)",
                                         "T", OpSchema::Optional)
-                                .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+                                .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
                                 .TypeConstraint("I", {"tensor(int32)"}, "Constrain to integer types")
                                 .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
                                 .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
                                   BeamSearchShapeInference(ctx);
                                 }));
-
-
 
 ONNX_MS_OPERATOR_SET_SCHEMA(SampleOp, 1,
                             OpSchema()
@@ -2073,7 +2070,7 @@ void RegisterContribSchemas() {
             FunctionBuilder builder(functionProto);
             builder
                 .AddOpset("", 13)
-                .Const("Epsilon", epsilon, U)
+                .Const("Epsilon", ToTensor(epsilon, (TensorProto_DataType)U))
                 .Add("XShape = Shape (X)")                                                    // shape of input tensor: 1D tensor
                 .Add("Rank = Size (XShape)")                                                  // rank of input tensor: scalar
                 .Add("Zero1D = Constant()", "value", mktensor(0))                             // [0] : 1D tensor

@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #ifdef NDEBUG  // disable for debug builds because some of these tests are slow
@@ -606,18 +606,11 @@ TEST(GradientCheckerTest, GemmGrad) {
 
 TEST(GradientCheckerTest, ReduceMeanGrad) {
   // Attribute axes supports negative values from opset 11.
-  OpDef op_def{"ReduceMean", kOnnxDomain, 11};
+  OpDef op_def_opset11{"ReduceMean", kOnnxDomain, 11};
+  RunReductionTests(op_def_opset11);
 
-  RunReductionTests(op_def);
-}
-
-TEST(GradientCheckerTest, ReduceMaxGrad) {
-  // Attribute axes supports negative values from opset 11.
-  OpDef op_def_11{"ReduceMax", kOnnxDomain, 11};
-  RunReductionTests(op_def_11);
-
-  OpDef op_def_13{"ReduceMax", kOnnxDomain, 11};
-  RunReductionTests(op_def_13);
+  OpDef op_def_opset13{"ReduceMean", kOnnxDomain, 13};
+  RunReductionTests(op_def_opset13);
 }
 
 TEST(GradientCheckerTest, ReduceSumGrad) {

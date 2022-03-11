@@ -254,7 +254,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "be76ca7148396176784ba8733133b9fb1186ea0d",
+          "commitHash": "850a81b0b77786bf99ea90580242b084f86a6235",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -334,7 +334,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "2dc747c574b68a808ea4699d26942c8132fe2b09",
+          "commitHash": "0dab03ba7bc438d7ba3eac2b2c1eb39ed520f928",
           "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
         },
         "comments": "git submodule at cmake/external/protobuf"

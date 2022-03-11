@@ -290,6 +290,7 @@ static void RunQDQModelTest(const GetQDQTestCaseFn& build_test_case,
                             std::make_unique<NnapiExecutionProvider>(0),
                             helper.feeds_, params);
 #else
+  ORT_UNUSED_PARAMETER(params);
   // test load only
   SessionOptions so;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
@@ -306,8 +307,8 @@ TEST(NnapiExecutionProviderTest, TestQDQConv) {
                                        uint8_t /* WeightType */,
                                        int32_t /* BiasType */,
                                        uint8_t /* OutputType */>(
-                      {1, 1, 5, 5} /*input_shape*/,
-                      {1, 1, 3, 3} /*weights_shape*/),
+                      {1, 1, 5, 5} /* input_shape */,
+                      {1, 1, 3, 3} /* weights_shape */),
                   "nnapi_qdq_test_graph_conv",
                   {true /* verify_entire_graph_use_ep */});
 }
@@ -382,6 +383,29 @@ TEST(NnapiExecutionProviderTest, TestQDQReshape) {
                   {
                       true /* verify_entire_graph_use_ep */
                   });
+}
+
+TEST(NnapiExecutionProviderTest, TestQDQSoftMax) {
+  RunQDQModelTest(BuildQDQSoftMaxTestCase<uint8_t, uint8_t>(
+                      {1, 32} /* input_shape */,
+                      static_cast<int64_t>(1) /* axis */),
+                  "nnapi_qdq_test_graph_softmax",
+                  {
+                      true /* verify_entire_graph_use_ep */
+                  });
+}
+
+TEST(NnapiExecutionProviderTest, TestQDQConcat) {
+  RunQDQModelTest(BuildQDQConcatTestCase(
+                      {
+                          {1, 6, 36},
+                          {1, 6, 8},
+                          {1, 6, 2},
+                      } /* input_shapes */,
+                      2 /* axis */),
+                  "nnapi_qdq_test_graph_concat", {
+                                                     true /* verify_entire_graph_use_ep */
+                                                 });
 }
 
 #endif  // !(ORT_MINIMAL_BUILD)

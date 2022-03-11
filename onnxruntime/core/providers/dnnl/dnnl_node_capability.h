@@ -213,9 +213,6 @@ class DnnlBinaryNodeCapability : public DnnlDefaultNodeCapability {
   DnnlBinaryNodeCapability() : DnnlDefaultNodeCapability({type_int8, type_uint8, type_float32}) {}
 
   bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
-
- private:
-  bool IsDimensionSupported(const Node* node) const;
 };
 
 /**

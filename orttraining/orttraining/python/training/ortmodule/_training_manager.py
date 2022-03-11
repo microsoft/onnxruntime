@@ -16,7 +16,6 @@ from .debug_options import DebugOptions
 from ._fallback import (ORTModuleFallbackException,
                         _FallbackPolicy,
                         _FallbackManager)
-from .torch_cpp_extensions.cpu.torch_interop_utils import clear_all_grad_fns
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
@@ -39,10 +38,6 @@ class TrainingManager(GraphExecutionManager):
     @staticmethod
     def execution_session_run_forward(execution_session, onnx_model, device, gradient_accumulation_manager, *inputs):
         """Runs the forward graph on execution_session with given model inputs and device"""
-
-        # Clear all gradient functions, to avoid a deadlock issue.
-        # Check the called function for more detailed comments.
-        clear_all_grad_fns()
 
         # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
         #   especially the backward graph outputs.
@@ -316,19 +311,28 @@ class TrainingManager(GraphExecutionManager):
 
         session_options, providers, provider_options = self._get_session_config()
         fw_feed_names = [input.name for input in self._onnx_models.optimized_model.graph.input]
-        fw_outputs_device_info = [
-            C.OrtDevice(get_ort_device_type(self._device),
-                        C.OrtDevice.default_memory(),
-                        _utils.get_device_index(self._device)
-                        )] * (len(self._graph_info.user_output_names) +
-                              len(self._graph_info.frontier_node_arg_map))
+        device_type = self._device if type(self._device) is str else self._device.type.lower()
+        if device_type == 'ort':
+            fw_outputs_device_info = [C.get_ort_device(self._device.index)] * (len(self._graph_info.user_output_names) +
+                                len(self._graph_info.frontier_node_arg_map))
+        else:
+            fw_outputs_device_info = [
+                C.OrtDevice(get_ort_device_type(self._device),
+                            C.OrtDevice.default_memory(),
+                            _utils.get_device_index(self._device)
+                            )] * (len(self._graph_info.user_output_names) +
+                                len(self._graph_info.frontier_node_arg_map))
 
         bw_fetches_names = [output.name for output in self._onnx_models.optimized_model.graph.output]
-        bw_outputs_device_info = [
-            C.OrtDevice(get_ort_device_type(self._device),
-                        C.OrtDevice.default_memory(),
-                        _utils.get_device_index(self._device)
-                        )] * len(bw_fetches_names)
+        if device_type == 'ort':
+            bw_outputs_device_info = [
+                    C.get_ort_device(self._device.index)] * len(bw_fetches_names)
+        else:
+            bw_outputs_device_info = [
+                C.OrtDevice(get_ort_device_type(self._device),
+                            C.OrtDevice.default_memory(),
+                            _utils.get_device_index(self._device)
+                            )] * len(bw_fetches_names)
 
         self._execution_agent = TrainingAgent(self._onnx_models.optimized_model.SerializeToString(),
                                               fw_feed_names,

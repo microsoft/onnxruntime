@@ -10,13 +10,13 @@
 #include "core/common/safeint.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/allocator.h"
+#include "core/framework/kernel_def_hash_helpers.h"
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/session_state_flatbuffers_utils.h"
 #include "core/framework/session_state_utils.h"
 #include "core/framework/utils.h"
-#include "core/framework/static_kernel_def_hashes.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -847,16 +847,19 @@ const NodeIndexInfo& SessionState::GetNodeIndexInfo() const {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-void SessionState::UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs) {
-  std::vector<int> sorted_idxs = fetch_mlvalue_idxs;
+void SessionState::UpdateToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_idxs) {
+  InlinedVector<int> sorted_idxs;
+  sorted_idxs.reserve(fetch_mlvalue_idxs.size());
+  sorted_idxs.assign(fetch_mlvalue_idxs.begin(), fetch_mlvalue_idxs.end());
   std::sort(sorted_idxs.begin(), sorted_idxs.end());
   if (to_be_executed_nodes_.find(sorted_idxs) != to_be_executed_nodes_.end())
     return;
 
   // Get the nodes generating the fetches.
-  std::vector<const Node*> nodes;
+  InlinedVector<const Node*> nodes;
   nodes.reserve(fetch_mlvalue_idxs.size());
-  std::unordered_set<NodeIndex> reachable_nodes;
+  InlinedHashSet<NodeIndex> reachable_nodes;
+  reachable_nodes.reserve(graph_.NumberOfNodes());
 
   for (auto idx : fetch_mlvalue_idxs) {
     std::string node_arg_name;
@@ -869,12 +872,14 @@ void SessionState::UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue
   // Reversely traverse to get reachable nodes.
   graph_.ReverseDFSFrom(
       nodes, {}, [&reachable_nodes](const Node* n) { reachable_nodes.insert(n->Index()); });
-  to_be_executed_nodes_.insert(std::make_pair(sorted_idxs, reachable_nodes));
+  to_be_executed_nodes_.emplace(std::move(sorted_idxs), std::move(reachable_nodes));
 }
 
-const std::unordered_set<NodeIndex>* SessionState::GetToBeExecutedNodes(
-    const std::vector<int>& fetch_mlvalue_idxs) const {
-  std::vector<int> sorted_idxs = fetch_mlvalue_idxs;
+const InlinedHashSet<NodeIndex>* SessionState::GetToBeExecutedNodes(
+    gsl::span<int const> fetch_mlvalue_idxs) const {
+  InlinedVector<int> sorted_idxs;
+  sorted_idxs.reserve(fetch_mlvalue_idxs.size());
+  sorted_idxs.assign(fetch_mlvalue_idxs.begin(), fetch_mlvalue_idxs.end());
   std::sort(sorted_idxs.begin(), sorted_idxs.end());
   auto it = to_be_executed_nodes_.find(sorted_idxs);
   return (it != to_be_executed_nodes_.end()) ? &it->second : nullptr;
@@ -971,6 +976,8 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
   auto add_kernel_by_hash =
       [&kernel_registry_manager, this](const Node& node, HashValue hash) {
         const KernelCreateInfo* kci = nullptr;
+        utils::UpdateHashForBackwardsCompatibility(hash);
+
         ORT_RETURN_IF_NOT(kernel_registry_manager.SearchKernelRegistriesByHash(hash, &kci),
                           "Failed to find kernel def hash (", hash, ") in kernel registries for ",
                           node.OpType(), "(", node.SinceVersion(), ") node with name '", node.Name(), "'.");
@@ -983,9 +990,9 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
 
   const bool original_nodes_should_exist =
       compiled_kernel_hashes.empty()
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       && graph_.RuntimeOptimizationReplayCtx().num_replayed_optimizations == 0
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       ;
 
   // process the nodes that existed when the model was created
@@ -1004,25 +1011,32 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
     ORT_RETURN_IF_ERROR(add_kernel_by_hash(*node, node_kernel_info.kernel_def_hash));
   }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // process the nodes that were added by replaying any loaded runtime optimizations
   for (const auto& [node_index, kernel_def_hash] :
        graph_.RuntimeOptimizationReplayCtx().produced_node_index_to_kernel_def_hash) {
     const auto* node = graph_.GetNode(node_index);
-    ORT_RETURN_IF(node == nullptr,
-                  "Can't find runtime optimization produced node with index ", node_index);
 
-    ORT_RETURN_IF_ERROR(add_kernel_by_hash(*node, kernel_def_hash));
+    // NHWC optimizer may replace a node, so a missing node isn't necessarily an error
+    // ORT_RETURN_IF(node == nullptr, "Can't find runtime optimization produced node with index ", node_index);
+
+    if (node != nullptr) {
+      ORT_RETURN_IF_ERROR(add_kernel_by_hash(*node, kernel_def_hash));
+    }
   }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
   // lookup the hashes for any nodes we compiled or added during graph partitioning.
   // These node indexes for compiled nodes as well as newly added nodes are not in node_indices
   // as they were created at runtime.
   for (const auto& node : graph_.Nodes()) {
     if (kernel_create_info_map_.count(node.Index()) == 0) {
-      if (node.Domain() == kOnnxDomain || node.Domain() == kOnnxDomainAlias) {
-        auto kernel_hash = GetHashValueFromStaticKernelHashMap(node.OpType(), node.SinceVersion());
+      if (node.Domain() == kOnnxDomain || node.Domain() == kOnnxDomainAlias || node.Domain() == kMSDomain) {
+        // two possible places to get hash from
+        auto kernel_hash = utils::GetHashValueFromStaticKernelHashMap(node.OpType(), node.SinceVersion());
+        if (!kernel_hash.has_value()) {
+          kernel_hash = utils::GetInternalNhwcOpHash(node);
+        }
+
         if (kernel_hash.has_value()) {
           ORT_RETURN_IF_ERROR(add_kernel_by_hash(node, *kernel_hash));
         } else {
@@ -1036,6 +1050,7 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
       }
     }
   }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   if (!subgraph_session_states_.empty()) {
     for (const auto& [node_idx, session_states] : subgraph_session_states_) {
@@ -1247,11 +1262,11 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     CreateGraphInfo();
   }
 
-#if defined(ORT_MINIMAL_BUILD) && defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
-  // remove any unused initializers
-  // not needed in a full build because unused initializers should have been removed earlier by Graph::Resolve()
-  // not needed in a minimal build with runtime optimizations disabled because only runtime optimizations are expected
-  //   to possibly result in unused initializers
+#if defined(ORT_EXTENDED_MINIMAL_BUILD)
+  // Remove any unused initializers.
+  // Not needed in a full build because unused initializers should have been removed earlier by Graph::Resolve().
+  // Not needed in a basic minimal build because only runtime optimizations are expected to possibly result in unused
+  //   initializers and they are only enabled in an extended minimal build.
   {
     std::vector<std::string> unused_initializer_names;
     for (const auto& [name, tensor_proto] : graph_.GetAllInitializedTensors()) {
@@ -1266,7 +1281,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       graph_.RemoveInitializedTensor(name);
     }
   }
-#endif  // defined(ORT_MINIMAL_BUILD) && defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   // ignore any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
   std::vector<const NodeArg*> valid_outer_scope_node_args;

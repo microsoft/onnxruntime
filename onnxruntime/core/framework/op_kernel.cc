@@ -97,6 +97,18 @@ Status OpKernelContext::GetTempSpaceAllocator(AllocatorPtr* output) const {
   return Status::OK();
 }
 
+Status OpKernelContext::GetTempSpaceCPUAllocator(AllocatorPtr* output) const {
+  // While looking up the allocator from SessionState
+  // (which is called via ExecutionFrame), the allocator lookup
+  // logic doesn't key on OrtAllocatorType, so any OrtAllocatorType
+  // is good here.
+  *output = execution_frame_->GetAllocator(
+      OrtMemoryInfo(CPU, OrtAllocatorType::OrtArenaAllocator));
+  if (!*output)
+    return Status(common::ONNXRUNTIME, common::FAIL, "CPU allocator not found");
+  return Status::OK();
+}
+
 MLDataType OpKernelContext::InputType(int index) const {
   int input_arg_index = GetInputArgIndex(index);
   const OrtValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(input_arg_index);
@@ -209,8 +221,8 @@ Status OpKernelContext::SetOutputMLValue(int index, const OrtValue& ort_value) {
 }
 #endif
 
-// EagerKernelContext
-EagerKernelContext::EagerKernelContext(_In_ const OrtValue* const* input_values, _In_ int input_count,
+// InstantKernelContext
+InstantKernelContext::InstantKernelContext(_In_ const OrtValue* const* input_values, _In_ int input_count,
                                        _Inout_ OrtValue* const* output_values, _In_ int output_count,
                                        _In_ AllocatorPtr allocator, _In_ onnxruntime::concurrency::ThreadPool* threadpool,
                                        _In_ const logging::Logger& logger) : OpKernelContext(threadpool, logger),
@@ -220,7 +232,7 @@ EagerKernelContext::EagerKernelContext(_In_ const OrtValue* const* input_values,
                                                                              output_count_(output_count),
                                                                              allocator_(allocator) {}
 
-int EagerKernelContext::NumVariadicInputs(size_t arg_num) const {
+int InstantKernelContext::NumVariadicInputs(size_t arg_num) const {
   auto ort_value = input_values_[arg_num];
   if (ort_value->IsTensor()) {
     return static_cast<int>(ort_value->Get<Tensor>().Shape().Size());
@@ -233,7 +245,7 @@ int EagerKernelContext::NumVariadicInputs(size_t arg_num) const {
   }
 }
 
-MLDataType EagerKernelContext::InputType(int index) const {
+MLDataType InstantKernelContext::InputType(int index) const {
   if (index >= input_count_) {
     return nullptr;
   } else {
@@ -241,7 +253,7 @@ MLDataType EagerKernelContext::InputType(int index) const {
   }
 }
 
-MLDataType EagerKernelContext::OutputType(int index) const {
+MLDataType InstantKernelContext::OutputType(int index) const {
   if (index >= output_count_) {
     return nullptr;
   } else {
@@ -249,7 +261,7 @@ MLDataType EagerKernelContext::OutputType(int index) const {
   }
 }
 
-const OrtValue* EagerKernelContext::GetInputMLValue(int index) const {
+const OrtValue* InstantKernelContext::GetInputMLValue(int index) const {
   if (index >= input_count_) {
     return nullptr;
   } else {
@@ -257,7 +269,7 @@ const OrtValue* EagerKernelContext::GetInputMLValue(int index) const {
   }
 }
 
-OrtValue* EagerKernelContext::OutputMLValue(int index, const TensorShape& shape) {
+OrtValue* InstantKernelContext::OutputMLValue(int index, const TensorShape& shape) {
   if (index >= output_count_) {
     return nullptr;
   }
@@ -284,7 +296,7 @@ OrtValue* EagerKernelContext::OutputMLValue(int index, const TensorShape& shape)
   return &ort_value;
 }
 
-OrtValue* EagerKernelContext::GetOrCreateOutputMLValue(int index) {
+OrtValue* InstantKernelContext::GetOrCreateOutputMLValue(int index) {
   if (index >= output_count_) {
     return nullptr;
   } else {
@@ -292,32 +304,32 @@ OrtValue* EagerKernelContext::GetOrCreateOutputMLValue(int index) {
   }
 }
 
-bool EagerKernelContext::TryGetInferredInputShape(int /*index*/, TensorShape& /*shape*/) const {
+bool InstantKernelContext::TryGetInferredInputShape(int /*index*/, TensorShape& /*shape*/) const {
   return false;  // no shape inference in eager mode
 }
 
-bool EagerKernelContext::TryGetInferredOutputShape(int /*index*/, TensorShape& /*shape*/) const {
+bool InstantKernelContext::TryGetInferredOutputShape(int /*index*/, TensorShape& /*shape*/) const {
   return false;  // no shape inference in eager mode
 }
 
-int EagerKernelContext::InputCount() const {
+int InstantKernelContext::InputCount() const {
   return input_count_;
 }
 
-int EagerKernelContext::ImplicitInputCount() const {
+int InstantKernelContext::ImplicitInputCount() const {
   return 0;
 }
 
-int EagerKernelContext::OutputCount() const {
+int InstantKernelContext::OutputCount() const {
   return static_cast<int>(output_count_);
 }
 
-Status EagerKernelContext::GetTempSpaceAllocator(AllocatorPtr* output) const {
+Status InstantKernelContext::GetTempSpaceAllocator(AllocatorPtr* output) const {
   *output = allocator_;
   return Status::OK();
 }
 
-Fence_t EagerKernelContext::InputFence(int index) const {
+Fence_t InstantKernelContext::InputFence(int index) const {
   if (index >= input_count_) {
     return nullptr;
   } else {
@@ -325,11 +337,11 @@ Fence_t EagerKernelContext::InputFence(int index) const {
   }
 }
 
-Fence_t EagerKernelContext::ImplicitInputFence(int /*index*/) const {
+Fence_t InstantKernelContext::ImplicitInputFence(int /*index*/) const {
   return nullptr;
 }
 
-Fence_t EagerKernelContext::OutputFence(int index) const {
+Fence_t InstantKernelContext::OutputFence(int index) const {
   if (index >= output_count_) {
     return nullptr;
   } else {
@@ -337,11 +349,11 @@ Fence_t EagerKernelContext::OutputFence(int index) const {
   }
 }
 
-int EagerKernelContext::GetDeviceId() const {
+int InstantKernelContext::GetDeviceId() const {
   return 0;
 }
 
-void* EagerKernelContext::GetComputeStream() const {
+void* InstantKernelContext::GetComputeStream() const {
   return nullptr;
 }
 

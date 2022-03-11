@@ -6,7 +6,7 @@ parameters:
 jobs:
 - job: build_onnxruntime_web_windows
   pool:
-    vmImage: windows-latest
+    vmImage: windows-2019
   timeoutInMinutes: 30
   workspace:
     clean: all

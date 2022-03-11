@@ -5,10 +5,12 @@
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 #include "core/providers/partitioning_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
 
@@ -73,7 +75,7 @@ void QDQTransformerConvTests() {
                       12 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>());
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
 
   test_case({1, 12, 37}, {32, 12, 5});
@@ -250,7 +252,7 @@ void QDQTransformerAveragePoolTests() {
                       12 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>());
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
 
   test_case({1, 12, 37});
@@ -271,6 +273,55 @@ TEST(QDQTransformerTests, AveragePool_S8U8) {
 }
 
 TEST(QDQTransformerTests, AveragePool_U8S8) {
+  QDQTransformerAveragePoolTests<uint8_t, int8_t>();
+}
+
+template <typename InputType, typename OutputType>
+void QDQTransformerGlobalAveragePoolTests() {
+  auto test_case = [&](const std::vector<int64_t>& input_shape) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      if constexpr (std::is_same<InputType, OutputType>::value) {
+        EXPECT_EQ(op_to_count["com.microsoft.QLinearGlobalAveragePool"], 1);
+        EXPECT_EQ(op_to_count["GlobalAveragePool"], 0);
+        EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+        EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+      } else {
+        EXPECT_EQ(op_to_count["com.microsoft.QLinearGlobalAveragePool"], 0);
+        EXPECT_EQ(op_to_count["GlobalAveragePool"], 1);
+        EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
+        EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
+      }
+    };
+
+    TransformerTester(BuildQDQGlobalAveragePoolTestCase<InputType, OutputType>(input_shape),
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/,
+                      0.01 /*per_sample_tolerance*/,
+                      0.01 /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+  };
+
+  test_case({1, 12, 37});
+  test_case({1, 23, 13, 13});
+  test_case({1, 22, 11, 13, 15});
+}
+
+TEST(QDQTransformerTests, GlobalAveragePool_S8S8) {
+  QDQTransformerAveragePoolTests<int8_t, int8_t>();
+}
+
+TEST(QDQTransformerTests, GlobalAveragePool_U8U8) {
+  QDQTransformerAveragePoolTests<uint8_t, uint8_t>();
+}
+
+TEST(QDQTransformerTests, GlobalAveragePool_S8U8) {
+  QDQTransformerAveragePoolTests<int8_t, uint8_t>();
+}
+
+TEST(QDQTransformerTests, GlobalAveragePool_U8S8) {
   QDQTransformerAveragePoolTests<uint8_t, int8_t>();
 }
 
@@ -300,7 +351,7 @@ void QDQTransformerBinaryOpTests(const std::string& op_type) {
                       12 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>());
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
 
   test_case({1, 12, 37});
@@ -431,7 +482,7 @@ void QDQTransformerMatMulTests(bool has_output_q) {
                       12 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>());
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
 
   test_case({1, 2, 2}, {1, 2, 4});
@@ -586,7 +637,7 @@ void QDQTransformerGemmTests(bool has_output_q, bool has_bias, bool beta_not_one
                       12 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>());
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
 
   test_case({2, 2}, {2, 4});
@@ -796,7 +847,7 @@ TEST(QDQTransformerTests, Resize_No_Fusion) {
   test_case({1, 8, 64, 64}, {4}, {1, 4, 128, 128}, 1);
 }
 
-TEST(QDQTransformerTests, ResizeReshape) {
+TEST(QDQTransformerTests, ResizeReshapeSqueezeUnsqueeze) {
   auto test_case = [&](const std::vector<int64_t>& input_shape,
                        const std::vector<int64_t>& sizes_shape) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -806,7 +857,6 @@ TEST(QDQTransformerTests, ResizeReshape) {
       auto* roi = builder.MakeInitializer<float>({0}, {});
       auto* scales = builder.MakeInitializer<float>({0}, {});
       auto* sizes = builder.MakeInitializer<int64_t>(sizes_shape, {1, 2, 52, 82});
-      auto* output_arg = builder.MakeOutput();
 
       // add QDQ + Resize
       auto* qdq_input = AddQDQNodePair<uint8_t>(builder, input_arg, .003f, 1);
@@ -816,7 +866,23 @@ TEST(QDQTransformerTests, ResizeReshape) {
       // add QDQ + Reshape
       auto* qdq_resize_output = AddQDQNodePair<uint8_t>(builder, resize_output, .003f, 1);
       auto* reshape_shape = builder.Make1DInitializer<int64_t>({1, 2, 52, 82});
-      builder.AddNode("Reshape", {qdq_resize_output, reshape_shape}, {output_arg});
+      auto* reshape_output = builder.MakeIntermediate();
+      builder.AddNode("Reshape", {qdq_resize_output, reshape_shape}, {reshape_output});
+
+      // add QDQ + Squeeze
+      auto* qdq_squeeze_output = AddQDQNodePair<uint8_t>(builder, reshape_output, .003f, 1);
+      auto* squeeze_axes = builder.Make1DInitializer<int64_t>({0});
+      auto* squeeze_output = builder.MakeIntermediate();
+      builder.AddNode("Squeeze", {qdq_squeeze_output, squeeze_axes}, {squeeze_output});
+
+      // add QDQ + Unsqueeze
+      auto* qdq_unsqueeze_output = AddQDQNodePair<uint8_t>(builder, squeeze_output, .003f, 1);
+      auto* unsqueeze_axes = builder.Make1DInitializer<int64_t>({0});
+      auto* unsqueeze_output = builder.MakeIntermediate();
+      builder.AddNode("Unsqueeze", {qdq_unsqueeze_output, unsqueeze_axes}, {unsqueeze_output});
+
+      // add QDQ
+      AddQDQNodePairWithOutputAsGraphOutput<uint8_t>(builder, unsqueeze_output, .003f, 1);
     };
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
@@ -829,7 +895,8 @@ TEST(QDQTransformerTests, ResizeReshape) {
 
     TransformerTester(build_test_case, check_graph,
                       TransformerLevel::Level1,
-                      TransformerLevel::Level2);
+                      TransformerLevel::Level2,
+                      13 /*opset_version*/);
   };
 
   test_case({1, 2, 26, 42}, {4});
@@ -1299,7 +1366,7 @@ void QDQTransformerLeakyReluTests() {
                       12 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>());
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
 
   test_case({1, 12, 37});
@@ -1321,6 +1388,75 @@ TEST(QDQTransformerTests, LeakyRelu_S8U8) {
 
 TEST(QDQTransformerTests, LeakyRelu_U8S8) {
   QDQTransformerLeakyReluTests<uint8_t, int8_t>();
+}
+
+template <typename InputType, typename OutputType>
+void QDQTransformerSigmoidTests() {
+  auto test_case = [&](const std::vector<int64_t>& input_shape) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
+      auto* output_arg = builder.MakeOutput();
+      // add QDQ + Sigmoid
+      auto* dq_output = AddQDQNodePair<InputType>(builder, input_arg, .0035f, 7);
+      auto* sigmoid_output = builder.MakeIntermediate();
+      builder.AddNode("Sigmoid", {dq_output}, {sigmoid_output});
+
+      // add QDQ output
+      auto* q_output = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<OutputType>(sigmoid_output,
+                                                .0038f,
+                                                std::numeric_limits<OutputType>::max() / 2,
+                                                q_output);
+      builder.AddDequantizeLinearNode<OutputType>(q_output,
+                                                  .0039f,
+                                                  std::numeric_limits<OutputType>::max() / 2,
+                                                  output_arg);
+    };
+
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      if constexpr (std::is_same<InputType, OutputType>::value) {
+        EXPECT_EQ(op_to_count["com.microsoft.QLinearSigmoid"], 1);
+        EXPECT_EQ(op_to_count["Sigmoid"], 0);
+        EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+        EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+      } else {
+        EXPECT_EQ(op_to_count["com.microsoft.QLinearSigmoid"], 0);
+        EXPECT_EQ(op_to_count["Sigmoid"], 1);
+        EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
+        EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
+      }
+    };
+
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/,
+                      0.01 /*per_sample_tolerance*/,
+                      0.01 /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+  };
+
+  test_case({1, 12, 37});
+  test_case({1, 23, 13, 13});
+  test_case({1, 22, 11, 13, 15});
+}
+
+TEST(QDQTransformerTests, Sigmoid_S8S8) {
+  QDQTransformerSigmoidTests<int8_t, int8_t>();
+}
+
+TEST(QDQTransformerTests, Sigmoid_U8U8) {
+  QDQTransformerSigmoidTests<uint8_t, uint8_t>();
+}
+
+TEST(QDQTransformerTests, Sigmoid_S8U8) {
+  QDQTransformerSigmoidTests<int8_t, uint8_t>();
+}
+
+TEST(QDQTransformerTests, Sigmoid_U8S8) {
+  QDQTransformerSigmoidTests<uint8_t, int8_t>();
 }
 
 TEST(QDQTransformerTests, ConvTranspose_QBackward) {
@@ -1402,13 +1538,23 @@ TEST(QDQTransformerTests, QBackward_MutilpleSteps) {
       Node& transpose_node = builder.AddNode("Transpose", {reshape_output}, {transpose_output});
       transpose_node.AddAttribute("perm", std::vector<int64_t>({1, 0}));
 
+      // add Unsqueeze
+      auto* unsqueeze_axes = builder.Make1DInitializer<int64_t>({0});
+      auto* unsqueeze_output = builder.MakeIntermediate();
+      builder.AddNode("Unsqueeze", {transpose_output, unsqueeze_axes}, {unsqueeze_output});
+
+      // add Squeeze
+      auto* squeeze_axes = builder.Make1DInitializer<int64_t>({0});
+      auto* squeeze_output = builder.MakeIntermediate();
+      builder.AddNode("Squeeze", {unsqueeze_output, squeeze_axes}, {squeeze_output});
+
       // add Q + DQ
       auto* q_output = builder.MakeIntermediate();
       if constexpr (QDQIsInt8Allowed()) {
-        builder.AddQuantizeLinearNode<int8_t>(transpose_output, .0035f, 7, q_output);
+        builder.AddQuantizeLinearNode<int8_t>(squeeze_output, .0035f, 7, q_output);
         builder.AddDequantizeLinearNode<int8_t>(q_output, .0035f, 7, output_arg);
       } else {
-        builder.AddQuantizeLinearNode<uint8_t>(transpose_output, .0035f, 135, q_output);
+        builder.AddQuantizeLinearNode<uint8_t>(squeeze_output, .0035f, 135, q_output);
         builder.AddDequantizeLinearNode<uint8_t>(q_output, .0035f, 135, output_arg);
       }
     };
@@ -1426,7 +1572,8 @@ TEST(QDQTransformerTests, QBackward_MutilpleSteps) {
     TransformerTester(build_test_case,
                       check_graph,
                       TransformerLevel::Level1,
-                      TransformerLevel::Level2);
+                      TransformerLevel::Level2,
+                      13 /*opset_version*/);
   };
 
   test_case({1, 23, 13, 13}, {30, 23, 3, 3});
@@ -1502,11 +1649,21 @@ TEST(QDQTransformerTests, DQForward_MutilpleSteps) {
       std::vector<int64_t> kernel_shape(weights_shape.size() - 2, 3);
       pool_node.AddAttribute("kernel_shape", kernel_shape);
 
+      // add Unsqueeze
+      auto* unsqueeze_axes = builder.Make1DInitializer<int64_t>({0});
+      auto* unsqueeze_output = builder.MakeIntermediate();
+      builder.AddNode("Unsqueeze", {maxpool_output, unsqueeze_axes}, {unsqueeze_output});
+
+      // add Squeeze
+      auto* squeeze_axes = builder.Make1DInitializer<int64_t>({0});
+      auto* squeeze_output = builder.MakeIntermediate();
+      builder.AddNode("Squeeze", {unsqueeze_output, squeeze_axes}, {squeeze_output});
+
       // add Conv
       auto* dq_w_output = builder.MakeIntermediate();
       auto* conv_output = builder.MakeIntermediate();
       builder.AddDequantizeLinearNode<int8_t>(weight, .003f, -10, dq_w_output);
-      builder.AddConvNode(maxpool_output, dq_w_output, conv_output);
+      builder.AddConvNode(squeeze_output, dq_w_output, conv_output);
 
       // Reshape
       auto* reshape_shape = builder.Make1DInitializer<int64_t>({-1, 0});
@@ -1537,7 +1694,8 @@ TEST(QDQTransformerTests, DQForward_MutilpleSteps) {
     TransformerTester(build_test_case,
                       check_graph,
                       TransformerLevel::Level1,
-                      TransformerLevel::Level2);
+                      TransformerLevel::Level2,
+                      13 /*opset_version*/);
   };
 
   test_case({1, 13, 13, 23}, {30, 23, 3, 3}, {0, 3, 1, 2});
@@ -1624,38 +1782,6 @@ TEST(QDQTransformerTests, Concat) {
                        bool has_input_float = false,
                        bool has_input_int8 = false,
                        bool has_output_int8 = false) {
-    auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto input_count = input_shapes.size();
-      std::vector<NodeArg*> input_args;
-      std::vector<NodeArg*> q_input_args;
-      for (size_t i = 0; i < input_count; i++) {
-        input_args.push_back(builder.MakeInput<float>(input_shapes[i], -1.f, 1.f));
-        if (i == 0 && has_input_float) {
-          q_input_args.push_back(input_args.back());
-        } else if (i == 0 && has_input_int8) {
-          q_input_args.push_back(AddQDQNodePair<int8_t>(builder, input_args.back(), 0.05f, 1));
-        } else {
-          q_input_args.push_back(AddQDQNodePair<uint8_t>(builder, input_args.back(), 0.05f, 128));
-        }
-      }
-      auto* concat_output = builder.MakeIntermediate();
-      Node& concat_node = builder.AddNode("Concat", q_input_args, {concat_output});
-      concat_node.AddAttribute("axis", axis);
-
-      auto* q_concat_output = builder.MakeIntermediate();
-      if (has_output_int8) {
-        builder.AddQuantizeLinearNode<int8_t>(concat_output, 0.05f, 1, q_concat_output);
-
-        auto* output_arg = builder.MakeOutput();
-        builder.AddDequantizeLinearNode<int8_t>(q_concat_output, 0.05f, 1, output_arg);
-      } else {
-        builder.AddQuantizeLinearNode<uint8_t>(concat_output, 0.05f, 128, q_concat_output);
-
-        auto* output_arg = builder.MakeOutput();
-        builder.AddDequantizeLinearNode<uint8_t>(q_concat_output, 0.05f, 128, output_arg);
-      }
-    };
-
     auto check_graph = [&input_shapes, &has_input_float, &has_input_int8, &has_output_int8](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       if (has_input_float || has_input_int8 || has_output_int8) {
@@ -1667,14 +1793,18 @@ TEST(QDQTransformerTests, Concat) {
       }
     };
 
-    TransformerTester(build_test_case,
+    TransformerTester(BuildQDQConcatTestCase(input_shapes,
+                                             axis,
+                                             has_input_float,
+                                             has_input_int8,
+                                             has_output_int8),
                       check_graph,
                       TransformerLevel::Level1,
                       TransformerLevel::Level2,
                       12 /*opset_version*/,
                       0.01f /*per_sample_tolerance*/,
                       0.01f /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>());
+                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
   };
 
   test_case({{1, 6, 36}, {1, 3, 36}}, 1);
@@ -1755,11 +1885,9 @@ TEST(QDQTransformerTests, QDQPropagation_QBackward) {
                       TransformerLevel::Level1);
   };
 
-  // TODO re-enable tests after updating ONNX to get QuantizeLinear shape inference fix
-  // https://github.com/onnx/onnx/pull/3806
-  //test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, true);
-  //test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false);
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, true);
 }
 
@@ -1832,11 +1960,9 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward) {
                       TransformerLevel::Level1);
   };
 
-  // TODO re-enable tests after updating ONNX to get QuantizeLinear shape inference fix
-  // https://github.com/onnx/onnx/pull/3806
-  //test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, false);
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, false, true);
-  //test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false);
+  test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, false);
   test_case({1, 13, 13, 23}, 4, {0, 3, 1, 2}, true, true);
 }
 
@@ -2138,6 +2264,114 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
       ASSERT_TRUE(result.empty());
     }
   }
+}
+
+// test removal of Q->DQ pairs by QDQFinalCleanupTransformer
+TEST(QDQTransformerTests, QDQFinalCleanupTransformer_Basic) {
+  auto test_case = [&](const std::vector<std::vector<int64_t>>& input_shapes,
+                       bool block_removal_of_last_dq = false,
+                       bool block_removal_of_first_dq = false) {
+    // create model with float input to multiple -> Q -> DQ -> Concat -> Q -> DQ -> output
+    // If we enable cleanup and don't run the QDQ transformer we should drop all the Q->DQ pairs
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto input_count = input_shapes.size();
+      std::vector<NodeArg*> input_args;
+      std::vector<NodeArg*> q_input_args;
+      for (size_t i = 0; i < input_count; i++) {
+        input_args.push_back(builder.MakeInput<float>(input_shapes[i], -1.f, 1.f));
+        q_input_args.push_back(AddQDQNodePair<uint8_t>(builder, input_args.back(), 0.05f, 128));
+
+        if (i == 0 && block_removal_of_first_dq) {
+          // add another edge to the DQ node
+          auto* output = builder.MakeOutput();
+          builder.AddNode("Identity", {q_input_args.back()}, {output});
+        }
+      }
+      auto* concat_output = builder.MakeIntermediate();
+      Node& concat_node = builder.AddNode("Concat", q_input_args, {concat_output});
+      concat_node.AddAttribute("axis", int64_t(1));
+
+      auto* q_concat_output = builder.MakeIntermediate();
+      builder.AddQuantizeLinearNode<uint8_t>(concat_output, 0.05f, 128, q_concat_output);
+
+      auto* output_arg = builder.MakeOutput();
+      Node& dq_node = builder.AddDequantizeLinearNode<uint8_t>(q_concat_output, 0.05f, 128, output_arg);
+
+      if (block_removal_of_last_dq) {
+        // add another edge to the DQ node
+        auto* output = builder.MakeOutput();
+        builder.AddNode("Identity", {dq_node.MutableOutputDefs()[0]}, {output});
+      }
+    };
+
+    // if we block removal of the DQ node the Q node in the pair will not be removed either
+    int expected_qdq_count = 0 + (block_removal_of_first_dq ? 1 : 0) + (block_removal_of_last_dq ? 1 : 0);
+
+    auto check_graph = [expected_qdq_count](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["QuantizeLinear"], expected_qdq_count);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], expected_qdq_count);
+      EXPECT_EQ(op_to_count["Concat"], 1);
+    };
+
+    std::function<void(SessionOptions&)> func = [](SessionOptions& so) {
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQCleanup, "1"));
+    };
+
+    // we increase the tolerance as removing the QDQ nodes means there's no round-trip to 8-bit and back
+    // essentially rounding the input values.
+    TransformerTester(build_test_case,
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      12 /*opset_version*/,
+                      0.025f /*per_sample_tolerance*/,
+                      0.01f /*relative_per_sample_tolerance*/,
+                      std::make_unique<QDQFinalCleanupTransformer>(),
+                      &func);
+  };
+
+  test_case({{1, 2, 4}, {1, 3, 4}});
+  test_case({{1, 2, 4}, {1, 3, 4}}, true);         // block removal of first dq
+  test_case({{1, 2, 4}, {1, 3, 4}}, false, true);  // block removal of last dq
+  test_case({{1, 2, 4}, {1, 3, 4}}, true, true);   // block removal of first and last dq
+}
+
+// test removal when we have graph input -> Q -> DQ -> graph output
+TEST(QDQTransformerTests, QDQFinalCleanupTransformer_GraphInputToOutput) {
+  // create model with float input to -> Q -> DQ -> output
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    NodeArg* input = builder.MakeInput<float>({1, 2, 4}, -1.f, 1.f);
+    NodeArg* q_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(input, 0.05f, 128, q_output);
+    auto* output_arg = builder.MakeOutput();
+    builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, output_arg);
+  };
+
+  // with the Q->DQ being dropped we should have inserted an Identity node
+  // to connect the graph input to the graph output
+  auto check_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
+    EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+    EXPECT_EQ(op_to_count["Identity"], 1);
+  };
+
+  std::function<void(SessionOptions&)> func = [](SessionOptions& so) {
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsEnableQuantQDQCleanup, "1"));
+  };
+
+  // we increase the tolerance as removing the QDQ nodes means there's no round-trip to 8-bit and back
+  // essentially rounding the input values.
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    12 /*opset_version*/,
+                    0.025f /*per_sample_tolerance*/,
+                    0.01f /*relative_per_sample_tolerance*/,
+                    std::make_unique<QDQFinalCleanupTransformer>(),
+                    &func);
 }
 
 }  // namespace test

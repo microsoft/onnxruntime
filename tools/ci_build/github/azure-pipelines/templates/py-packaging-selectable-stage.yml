@@ -34,6 +34,11 @@ parameters:
   type: string
   default: ' '
 
+- name: ubuntu_version_linux_cpu
+  displayName: 'Ubuntu Version for Linux CPU package.'
+  type: string
+  default: '20.04'
+
 stages:
 - stage: Python_Packaging
 
@@ -49,6 +54,8 @@ stages:
           ${{ each PythonVersion in parameters.python_version }}:
             'Python${{ PythonVersion }}':
               PythonVersion: ${{ PythonVersion }}
+      variables:
+        UbuntuVersion: ${{ parameters.ubuntu_version_linux_cpu }}
       steps:
       - checkout: self
         clean: true
@@ -58,7 +65,7 @@ stages:
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.ubuntu_openvino
           Context: tools/ci_build/github/linux/docker
-          DockerBuildArgs: "--build-arg PYTHON_VERSION=$(PythonVersion)"
+          DockerBuildArgs: "--build-arg PYTHON_VERSION=$(PythonVersion) --build-arg UBUNTU_VERSION=$(UbuntuVersion)"
           Repository: onnxruntimecpubuild
 
       - task: CmdLine@2
@@ -334,7 +341,7 @@ stages:
             rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
             sudo rm -f /build /onnxruntime_src
             sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src
-            python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+            python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
             cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
             # Test ORT with the latest ONNX release.
             export ONNX_VERSION=$(cat $(Build.SourcesDirectory)/cmake/external/onnx/VERSION_NUMBER)

@@ -131,6 +131,12 @@ class OpKernelContext {
   virtual Status GetTempSpaceAllocator(AllocatorPtr* output) const ORT_MUST_USE_RESULT;
 
   /**
+   Return the allocator associated with the CPU EP with memtype of OrtMemTypeDefault.
+   @remarks Use SafeInt when calculating the size of memory to allocate using AllocatorPtr->Alloc.
+   */
+  Status GetTempSpaceCPUAllocator(AllocatorPtr* output) const ORT_MUST_USE_RESULT;
+
+  /**
   Return the fence of current node's input.
   @param index The index of the input.
   @returns Point to the Fence of the input OrtValue.
@@ -249,13 +255,13 @@ inline SparseTensor* OpKernelContext::Output<SparseTensor>(int index) {
 }
 #endif
 
-// For invoking kenrel without a graph
-class EagerKernelContext : public OpKernelContext {
+// For invoking kernels without a graph
+class InstantKernelContext : public OpKernelContext {
  public:
-  EagerKernelContext(_In_ const OrtValue* const* input_values, _In_ int input_count,
-                     _Inout_ OrtValue* const* output_values, _In_ int output_count,
-                     _In_ AllocatorPtr allocator, _In_ onnxruntime::concurrency::ThreadPool* threadpool,
-                     _In_ const logging::Logger& logger);
+  InstantKernelContext(_In_ const OrtValue* const* input_values, _In_ int input_count,
+                       _Inout_ OrtValue* const* output_values, _In_ int output_count,
+                       _In_ AllocatorPtr allocator, _In_ onnxruntime::concurrency::ThreadPool* threadpool,
+                       _In_ const logging::Logger& logger);
 
   int NumVariadicInputs(size_t arg_num) const override;
   MLDataType InputType(int index) const override;

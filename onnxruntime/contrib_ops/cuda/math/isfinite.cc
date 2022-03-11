@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/math/isfinite.h"
+#include "isfinite_impl.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;

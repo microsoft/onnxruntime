@@ -69,21 +69,18 @@ onnxruntime::Status CreateOperator(const OrtKernelInfo* info,
                                                type_constraint_map,
                                                ep->Type(),
                                                &kernel_create_info);
-  if (kernel_create_info == nullptr) {
-    return status;
-  }
+  ORT_RETURN_IF_ERROR(status);
   onnxruntime::Node node;
   for (int i = 0; i < attr_count; ++i) {
     auto attr_proto = reinterpret_cast<ONNX_NAMESPACE::AttributeProto*>(attr_values[i]);
     node.AddAttribute(attr_proto->name(), *attr_proto);
   }
-  OpKernelInfo eagar_kernel_info(node, KernelDef{}, *ep, {}, {}, {});
+  OpKernelInfo instant_kernel_info(node, KernelDef{}, *ep, {}, {}, {});
   std::unique_ptr<onnxruntime::OpKernel> op_kernel;
   FuncManager func_mgr;
-  status = kernel_create_info->kernel_create_func(func_mgr, eagar_kernel_info, op_kernel);
-  if (status.IsOK()) {
-    *op = op_kernel.release();
-  }
+  status = kernel_create_info->kernel_create_func(func_mgr, instant_kernel_info, op_kernel);
+  ORT_RETURN_IF_ERROR(status);
+  *op = op_kernel.release();
   return status;
 }
 
@@ -95,20 +92,16 @@ onnxruntime::Status InvokeOperator(const OrtKernelContext* context,
                                    int output_count) {
   auto ctx = reinterpret_cast<const OpKernelContext*>(context);
   AllocatorPtr allocator{};
-  auto ret = ctx->GetTempSpaceAllocator(&allocator);
-  if (!ret.IsOK()) {
-    return ret;
-  }
-  EagerKernelContext eager_ctx(input_values,
-                               input_count,
-                               output_values,
-                               output_count,
-                               allocator,
-                               ctx->GetOperatorThreadPool(),
-                               ctx->Logger());
+  ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
+  InstantKernelContext instant_ctx(input_values,
+                                   input_count,
+                                   output_values,
+                                   output_count,
+                                   allocator,
+                                   ctx->GetOperatorThreadPool(),
+                                   ctx->Logger());
   auto kernel = reinterpret_cast<const OpKernel*>(ort_op);
-  ret = kernel->Compute(&eager_ctx);
-  return ret;
+  return kernel->Compute(&instant_ctx);
 }
 
 }  // namespace instant
