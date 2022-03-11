@@ -19,6 +19,13 @@ parameters:
   type: boolean
   default: false
 
+resources:
+  repositories:
+  - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
+    type: github
+    endpoint: onnxruntime 
+    name: microsoft/onnxruntime-inference-examples 
+
 jobs:
 - template: templates/c-api-cpu.yml
   parameters:
@@ -263,12 +270,6 @@ jobs:
 - job: Linux_Packaging_combined_GPU
   workspace:
     clean: all
-  resources:
-    repositories:
-    - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
-      type: github
-      endpoint: onnxruntime 
-      name: microsoft/onnxruntime-inference-examples 
   pool: 'Onnxruntime-Linux-GPU'
   dependsOn:
   - Linux_C_API_Packaging_GPU_x64
@@ -342,12 +343,6 @@ jobs:
 - job: Windows_Packaging_combined_GPU
   workspace:
     clean: all
-  resources:
-    repositories:
-    - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
-      type: github
-      endpoint: onnxruntime 
-      name: microsoft/onnxruntime-inference-examples 
   pool: 'onnxruntime-gpu-tensorrt8-winbuild'
   dependsOn:
   - Windows_Packaging_gpu
