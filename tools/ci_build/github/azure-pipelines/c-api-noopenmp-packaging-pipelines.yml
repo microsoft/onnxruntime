@@ -281,6 +281,8 @@ jobs:
     submodules: false
   - script: dir $(Build.SourcesDirectory)
   - template: templates/set-version-number-variables-step.yml
+    parameters:
+      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime'
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
     inputs:
@@ -314,6 +316,7 @@ jobs:
       PackageType: 'tarball'
       PackagePath: '$(Build.ArtifactStagingDirectory)'
       PackageName: 'onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
+      ScriptPath: '$(Build.SourcesDirectory)/onnxruntime/tools/nuget/validate_package.py'
       PlatformsSupported: 'linux-x64'
       VerifyNugetSigning: false
       workingDirectory: '$(Build.ArtifactStagingDirectory)'
@@ -360,6 +363,8 @@ jobs:
         modifyEnvironment: true
         workingFolder: '$(Build.BinariesDirectory)'
   - template: templates/set-version-number-variables-step.yml
+    parameters:
+      workingDirectory: '$(Build.SourcesDirectory)\onnxruntime'
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
     inputs:
@@ -401,6 +406,7 @@ jobs:
       PackageType: 'zip'
       PackagePath: '$(Build.ArtifactStagingDirectory)'
       PackageName: 'onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip'
+      ScriptPath: '$(Build.SourcesDirectory)\onnxruntime\tools\nuget\validate_package.py'
       PlatformsSupported: 'win-x64'
       VerifyNugetSigning: false
       workingDirectory: '$(Build.ArtifactStagingDirectory)'
