@@ -83,6 +83,7 @@ common::Status TreeEnsembleClassifier<T, TH, TO>::Compute(OpKernelContext* conte
     for (int64_t i = 0; i < size; ++i) {
       z_data[i] = static_cast<TO>(tree_output[i]);
     }
+    z_data_th.release();
   }
 
   return Status::OK();

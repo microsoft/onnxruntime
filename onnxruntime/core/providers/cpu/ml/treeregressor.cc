@@ -87,6 +87,7 @@ common::Status TreeEnsembleRegressor<T, TH, TO>::Compute(OpKernelContext* contex
     for (int64_t i = 0; i < size; ++i) {
       y_data[i] = static_cast<TO>(tree_output[i]);
     }
+    y_data_th.release();
   }
 
   return Status::OK();
