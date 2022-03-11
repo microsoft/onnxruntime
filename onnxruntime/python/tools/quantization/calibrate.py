@@ -12,7 +12,6 @@ import onnx
 import onnxruntime
 from onnx import helper, TensorProto, ModelProto
 from onnx import onnx_pb as onnx_proto
-from six import string_types
 from enum import Enum
 
 from .quant_utils import QuantType, smooth_distribution, apply_plot
