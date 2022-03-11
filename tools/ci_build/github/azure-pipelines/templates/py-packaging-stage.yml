@@ -68,6 +68,8 @@ stages:
             PythonVersion: '3.8'
           Python39:
             PythonVersion: '3.9'
+          Python310:
+            PythonVersion: '3.10'
       steps:
       - checkout: self
         clean: true
@@ -197,6 +199,8 @@ stages:
             PythonVersion: '3.8'
           Python39:
             PythonVersion: '3.9'
+          Python310:
+            PythonVersion: '3.10'
       steps:
       - checkout: self
         clean: true
@@ -354,6 +358,10 @@ stages:
             PythonVersion: '3.9'
             TorchVersion: '1.10.0'
             RocmVersion: '4.2'
+          Python310 Torch1100 Rocm42:
+            PythonVersion: '3.10'
+            TorchVersion: '1.10.0'
+            RocmVersion: '4.2'
           Python37 Torch1100 Rocm431:
             PythonVersion: '3.7'
             TorchVersion: '1.10.0'
@@ -366,6 +374,10 @@ stages:
             PythonVersion: '3.9'
             TorchVersion: '1.10.0'
             RocmVersion: '4.3.1'
+          Python310 Torch1100 Rocm431:
+            PythonVersion: '3.10'
+            TorchVersion: '1.10.0'
+            RocmVersion: '4.3.1'
           Python37 Torch1100 Rocm501:
             PythonVersion: '3.7'
             TorchVersion: '1.10.0'
@@ -376,6 +388,10 @@ stages:
             RocmVersion: '5.0.1'
           Python39 Torch1100 Rocm501:
             PythonVersion: '3.9'
+            TorchVersion: '1.10.0'
+            RocmVersion: '5.0.1'
+          Python310 Torch1100 Rocm501:
+            PythonVersion: '3.10'
             TorchVersion: '1.10.0'
             RocmVersion: '5.0.1'
       steps:
@@ -627,6 +643,10 @@ stages:
             PythonVersion: '3.9'
             MsbuildPlatform: x64
             buildArch: x64
+          Python310_x64:
+            PythonVersion: '3.10'
+            MsbuildPlatform: x64
+            buildArch: x64
           Python37_x86:
             PythonVersion: '3.7'
             MsbuildPlatform: Win32
@@ -637,6 +657,10 @@ stages:
             buildArch: x86
           Python39_x86:
             PythonVersion: '3.9'
+            MsbuildPlatform: Win32
+            buildArch: x86
+          Python310_x86:
+            PythonVersion: '3.10'
             MsbuildPlatform: Win32
             buildArch: x86
       variables:
@@ -830,6 +854,11 @@ stages:
             EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.2.1.8.Windows10.x86_64.cuda-11.4.cudnn8.2" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
             EnvSetupScript: setup_env_gpu.bat
             EP_NAME: gpu
+          Python310_GPU:
+            PythonVersion: '3.10'
+            EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.2.1.8.Windows10.x86_64.cuda-11.4.cudnn8.2" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+            EnvSetupScript: setup_env_gpu.bat
+            EP_NAME: gpu
           Python37_dml:
             PythonVersion: '3.7'
             EpBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
@@ -842,6 +871,11 @@ stages:
             EnvSetupScript: setup_env.bat
           Python39_dml:
             PythonVersion: '3.9'
+            EpBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
+            EP_NAME: directml
+            EnvSetupScript: setup_env.bat
+          Python310_dml:
+            PythonVersion: '3.10'
             EpBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
             EP_NAME: directml
             EnvSetupScript: setup_env.bat
@@ -1016,6 +1050,8 @@ stages:
             PythonVersion: '3.8'
           Python39:
             PythonVersion: '3.9'
+          Python310:
+            PythonVersion: '3.10'
       steps:
       - checkout: self
         clean: true
@@ -1067,6 +1103,9 @@ stages:
       pool: 'Linux-CPU'
       strategy:
         matrix:
+          ARM64_Py310:
+            PYTHON_EXE: '/opt/python/cp310-cp310/bin/python3'
+            Image: 'manylinux2014_aarch64'
           ARM64_Py39:
             PYTHON_EXE: '/opt/python/cp39-cp39/bin/python3'
             Image: 'manylinux2014_aarch64'
@@ -1077,6 +1116,9 @@ stages:
             PYTHON_EXE: '/opt/python/cp37-cp37m/bin/python3'
             Image: 'manylinux2014_aarch64'
           # Uncomment the following lines to generate packages for PowerPC
+          # POWERPC_Py310:
+          #   PYTHON_EXE: '/opt/python/cp310-cp310/bin/python3'
+          #   Image: 'manylinux2014_ppc64le'
           # POWERPC_Py39:
           #   PYTHON_EXE: '/opt/python/cp39-cp39/bin/python3'
           #   Image: 'manylinux2014_ppc64le'
