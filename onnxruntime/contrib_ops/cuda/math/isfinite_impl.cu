@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cuda_fp16.h>
+#include "isfinite_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/math/isfinite.cuh"
 
