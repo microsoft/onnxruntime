@@ -23,7 +23,7 @@ resources:
   repositories:
   - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
     type: github
-    endpoint: onnxruntime 
+    endpoint: ort-examples 
     name: microsoft/onnxruntime-inference-examples 
 
 jobs:
