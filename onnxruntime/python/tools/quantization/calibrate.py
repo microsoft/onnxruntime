@@ -599,7 +599,7 @@ class HistogramCollector(CalibrationDataCollector):
 
         print("Number of tensors : {}".format(len(histogram_dict)))
         print("Number of histogram bins : {}".format(self.num_bins))
-        print("Percentile : {}".format(percentile))
+        print("Percentile : ({},{})".format(100.0 - percentile, percentile))
 
         for tensor, histogram in histogram_dict.items():
             hist = histogram[0]
@@ -610,7 +610,6 @@ class HistogramCollector(CalibrationDataCollector):
                 idx_right = np.searchsorted(cdf, np.percentile(cdf, percentile))
                 thresholds_dict[tensor] = (-float(hist_edges[idx_right]), float(hist_edges[idx_right]))
             else:
-                print(f"Search percentiles ({1 - percentile}, {percentile})")
                 idx_right = np.searchsorted(cdf, np.percentile(cdf, percentile))
                 idx_left = np.searchsorted(cdf, np.percentile(cdf, 100.0 - percentile))
                 thresholds_dict[tensor] = (float(hist_edges[idx_left]), float(hist_edges[idx_right]))
