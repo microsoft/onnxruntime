@@ -554,14 +554,18 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
     }
   }
 
-  auto func_nodes = FunctionBodyHelper::BuildNodes(body);
-  for (const auto& node : func_nodes) {
-    auto new_node = functionProto.add_node();
-    new_node->CopyFrom(node);
-  }
+  // auto func_nodes = FunctionBodyHelper::BuildNodes(body);
+  // for (const auto& node : func_nodes) {
+  //   auto new_node = functionProto.add_node();
+  //   new_node->CopyFrom(node);
+  // }
 
-  schema.BuildFunction(functionProto);
-  return true;
+  // schema.BuildFunction(functionProto);
+  // return true;
+  OperatorSetIdProto onnx_opset;
+  onnx_opset.set_domain("");
+  onnx_opset.set_version(15);
+  return FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset});
 }
 
 // TODO: This is copied from onnx schemas. When the change is in and we update this can be removed.
