@@ -105,10 +105,12 @@ class OrtOpTests(unittest.TestCase):
 
   def test_print_ort_tensor(self):
     device = self.get_device()
-    cpu_tensor = torch.Tensor([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
+    cpu_ones = torch.ones(1,2)
     ort_ones = cpu_ones.to(device)
     try:
-      print("Print ORT Tensor: ", ort_ones)
+      with OutputGrabber() as out:
+        print(ort_ones)
+      assert "tensor([[1., 1.]], device='ort:0')" in out.capturedtext
     except:
       print("ERROR: Print Ort Tensor Failed! It requires torch 1.11.0 or higher.")
       sys.exit(1)
