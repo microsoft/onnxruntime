@@ -607,11 +607,12 @@ class HistogramCollector(CalibrationDataCollector):
             total = hist.sum()
             cdf = np.cumsum(hist/total)
             if self.symmetric:
-                idx_right = np.searchsorted(cdf, np.percentile(cdf, percentile))
-                thresholds_dict[tensor] = (-float(hist_edges[idx_right]), float(hist_edges[idx_right]))
+                idx_right = np.searchsorted(cdf, percentile / 100.0)
+                thresholds_dict[tensor] = (-float(hist_edges[idx_ringht]), float(hist_edges[idx_right]))
             else:
-                idx_right = np.searchsorted(cdf, np.percentile(cdf, percentile))
-                idx_left = np.searchsorted(cdf, np.percentile(cdf, 100.0 - percentile))
+                percent_to_cut_one_side = (100.0 - percentile) / 200.0
+                idx_right = np.searchsorted(cdf, 1.0 - percent_to_cut_one_side)
+                idx_left = np.searchsorted(cdf, percent_to_cut_one_side)
                 thresholds_dict[tensor] = (float(hist_edges[idx_left]), float(hist_edges[idx_right]))
 
             # Plot histogram for debug only
