@@ -167,14 +167,14 @@ Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger&
     }
   }
 
-  // If one preferred provider was requested, and others were used instead,
-  // warn the user of the the fallback which is otherwise a silent perf concern.
-  if (!node_placement_set.empty() && providers.NumProviders() == 1) {
-    if (node_placement_set.size() > 1 ||
-        *node_placement_set.begin() != providers.GetIds().front()) {
-      LOGS(logger, WARNING) << "Not all nodes were placed on the preferred execution provider: "
-                            << providers.GetIds().front();
-    }
+  // Silent fallback can cause performance issues. So warn the user if the graph node
+  // placement fell back to a non-preferred provider or, even more so, if there was
+  // a heterogeneous mix of providers, where more than one which can cause frequent
+  // CPU<->GPU stalls.
+  if (node_placement_set.size() > 1 ||
+      (!node_placement_set.empty() && !providers.Empty() &&
+      *node_placement_set.begin() != providers.GetIds().front())) {
+    LOGS(logger, WARNING) << "Not all nodes were placed on the preferred execution provider: " << providers.GetIds().front();
   }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
