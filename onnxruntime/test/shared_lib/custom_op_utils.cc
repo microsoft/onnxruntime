@@ -13,9 +13,6 @@ template <typename T>
 void cuda_slice(const T*, int64_t, int64_t, T*, cudaStream_t compute_stream);
 #endif
 
-const char* type_names[1] = {"T"};
-int type_values[1] = {1};
-
 #include <iostream>
 
 void MyCustomKernel::Compute(OrtKernelContext* context) {
@@ -212,11 +209,38 @@ void SliceCustomOpKernel::Compute(OrtKernelContext* context) {
   }
 }
 
-EagerCustomKernel::EagerCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* info, void*) : ort_(ort) {
-  ort.CreateOperator(info, "Add", "", 14, (const char**)type_names, (const ONNXTensorElementDataType*)type_values, 1, nullptr, 0, &op_add);
+InstantCustomKernel::InstantCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* info, void*) : ort_(ort) {
+
+  const char* add_type_constrait_names[1] = {"T"};
+  int add_type_constrait_values[1] = {1};
+  ort.CreateOperator(info, "Add", "", 14,
+                     (const char**)add_type_constrait_names,
+                     (const ONNXTensorElementDataType*)add_type_constrait_values,
+                     1, nullptr, 0, &op_add);
+
+  const char* topk_type_constrait_names[2] = {"T", "I"};
+  int topk_type_constrait_values[2] = {1, 7};
+
+  int axis_value = -1;
+  OrtOpAttr axis{};
+  ort.CreateAttribute("axis", &axis_value, 1, ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, false, &axis);
+
+  int largest_value = 0; // return in ascending order
+  OrtOpAttr lagest{};
+  ort.CreateAttribute("largest", &largest_value, 1, ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, false, &lagest);
+
+  int sorted_value = 1;
+  OrtOpAttr sorted{};
+  ort.CreateAttribute("sorted", &sorted_value, 1, ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, false, &sorted);
+
+  OrtOpAttr top_attrs[3] = {axis, lagest, sorted};
+  ort.CreateOperator(info, "TopK", "", 14,
+                     (const char**)topk_type_constrait_names,
+                     (const ONNXTensorElementDataType*)topk_type_constrait_values,
+                     2, top_attrs, 3, &op_topk);
 }
 
-void EagerCustomKernel::Compute(OrtKernelContext* context) {
+void InstantCustomKernel::Compute(OrtKernelContext* context) {
   const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
   const OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
   OrtTensorDimensions dimensions(ort_, input_X);
@@ -224,8 +248,40 @@ void EagerCustomKernel::Compute(OrtKernelContext* context) {
   const OrtValue* inputs[2] = {input_X, input_Y};
   OrtValue* outputs[1] = {output};
   ort_.InvokeOperator(context, op_add, inputs, 2, outputs, 1);
+
+  if (op_topk) {
+    auto mem_info = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemType::OrtMemTypeCPU);
+
+    float raw_x[10] = {6., 3., 4., 8., 7., 1., 9., 0., 5., 2.};
+    int64_t raw_x_shape[1] = {10};
+    auto topk_x = Ort::Value::CreateTensor(mem_info, raw_x, 10, raw_x_shape, 1);
+
+    int64_t raw_k[1] = {2};
+    int64_t raw_k_shape[1] = {1};
+    auto topk_k = Ort::Value::CreateTensor(mem_info, raw_k, 1, raw_k_shape, 1);
+
+    float raw_values[2] = {};
+    int64_t raw_values_shape[1] = {2};
+    auto topk_values = Ort::Value::CreateTensor(mem_info, raw_values, 2, raw_values_shape, 1);
+
+    int64_t raw_indices[2] = {};
+    int64_t raw_indices_shape[1] = {2};
+    auto topk_indices = Ort::Value::CreateTensor(mem_info, raw_indices, 2, raw_indices_shape, 1);
+
+    const OrtValue* topk_inputs[2] = {(OrtValue*)topk_x, (OrtValue*)topk_k};
+    OrtValue* topk_outputs[2] = {(OrtValue*)topk_values, (OrtValue*)topk_indices};
+    ort_.InvokeOperator(context, op_topk, topk_inputs, 2, topk_outputs, 2);
+
+    if (std::abs(raw_values[0] - 0.) > 1e-5 || std::abs(raw_values[1] - 1.) > 1e-6) {
+      ORT_THROW("topk instant operator returns wrong values");
+    }
+    if (raw_indices[0] != 7 || raw_indices[1] != 5) {
+      ORT_THROW("topk instant operator returns wrong indices"); 
+    }
+  }
 }
 
-EagerCustomKernel::~EagerCustomKernel() {
+InstantCustomKernel::~InstantCustomKernel() {
   ort_.ReleaseOperator(&op_add);
+  ort_.ReleaseOperator(&op_topk);
 }

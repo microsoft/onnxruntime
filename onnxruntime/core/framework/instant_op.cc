@@ -13,28 +13,33 @@ namespace instant {
 
 onnxruntime::Status CreateAttribute(const char* name, const void* data, int len, ONNXTensorElementDataType type, bool is_array, OrtOpAttr* op_attr) {
   std::unique_ptr<ONNX_NAMESPACE::AttributeProto> attr{new ONNX_NAMESPACE::AttributeProto()};
-  attr->set_name(name);
+  attr->set_name(std::string{name});
   if (type == ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
     auto floats = reinterpret_cast<const float*>(data);
     if (is_array) {
       for (int j = 0; j < len; ++j) {
         attr->add_floats(floats[j]);
       }
+      attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOATS);
     } else {
       attr->set_f(floats[0]);
+      attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOATS);
     }
   } else if (type == ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
     auto ints = reinterpret_cast<const int*>(data);
     if (is_array) {
       for (int j = 0; j < len; ++j) {
         attr->add_ints(ints[j]);
+        attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
       }
     } else {
       attr->set_i(ints[0]);
+      attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
     }
   } else if (type == ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
     auto str = reinterpret_cast<const char*>(data);
     attr->set_s(std::string{str});
+    attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
   } else {
     return Status(common::ONNXRUNTIME, common::FAIL, "Invalid attribute data type.");
   }
@@ -116,13 +121,13 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAttribute,
                     _Out_ OrtOpAttr* op_attr) {
   API_IMPL_BEGIN
   if (!name || !data || !len || !op_attr) {
-    return CreateStatus(ORT_INVALID_ARGUMENT, "Invalid argument.");
+    return CreateStatus(ORT_INVALID_ARGUMENT, "Invalid argument for CreateAttribute.");
   }
   auto status = onnxruntime::instant::CreateAttribute(name, data, len, type, is_array, op_attr);
   if (status.IsOK()) {
     return nullptr;
   } else {
-    return CreateStatus(static_cast<OrtErrorCode>(status.Code()), "Failed to create eager kernel.");
+    return CreateStatus(static_cast<OrtErrorCode>(status.Code()), "Failed to create attribute.");
   }
   API_IMPL_END
 }
@@ -150,7 +155,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOperator,
                     _Out_ OrtOp* ort_op) {
   API_IMPL_BEGIN
   if (!info || !op_name || !domain || !ort_op) {
-    return CreateStatus(ORT_INVALID_ARGUMENT, "Invalid argument.");
+    return CreateStatus(ORT_INVALID_ARGUMENT, "Invalid argument for CreateOperator.");
   }
   auto status = onnxruntime::instant::CreateOperator(info,
                                                      op_name,
@@ -165,7 +170,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOperator,
   if (status.IsOK()) {
     return nullptr;
   } else {
-    return CreateStatus(static_cast<OrtErrorCode>(status.Code()), "Failed to create eager kernel.");
+    return CreateStatus(static_cast<OrtErrorCode>(status.Code()), "Failed to create operator.");
   }
   API_IMPL_END
 }

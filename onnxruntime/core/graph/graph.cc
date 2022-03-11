@@ -873,14 +873,18 @@ void Node::CreateSubgraph(const std::string& attr_name) {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 void Node::AddAttribute(std::string attr_name, const ONNX_NAMESPACE::AttributeProto& value) {
-  graph_->SetGraphResolveNeeded();
-  graph_->SetGraphProtoSyncNeeded();
+  if (graph_) {
+    graph_->SetGraphResolveNeeded();
+    graph_->SetGraphProtoSyncNeeded();
+  }
   attributes_[std::move(attr_name)] = value;
 }
 
 void Node::AddAttribute(std::string attr_name, ONNX_NAMESPACE::AttributeProto&& value) {
-  graph_->SetGraphResolveNeeded();
-  graph_->SetGraphProtoSyncNeeded();
+  if (graph_) {
+    graph_->SetGraphResolveNeeded();
+    graph_->SetGraphProtoSyncNeeded();
+  }
   attributes_[std::move(attr_name)] = std::move(value);
 }
 

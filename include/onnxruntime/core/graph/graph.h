@@ -630,7 +630,7 @@ class Node {
   NodeAttributes attributes_;
 
   // Graph that contains this Node
-  Graph* graph_;
+  Graph* graph_ = nullptr;
 
   // Map of attribute name to the Graph instance created from the GraphProto attribute
   std::unordered_map<std::string, gsl::not_null<Graph*>> attr_to_subgraph_map_;
