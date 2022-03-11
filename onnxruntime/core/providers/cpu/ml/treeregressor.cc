@@ -79,11 +79,13 @@ common::Status TreeEnsembleRegressor<T, TH, TO>::Compute(OpKernelContext* contex
     TH* y_data = Y->template MutableData<TH>();
     tree_ensemble_.compute(context, X, y_data, NULL);
   } else {
-    InlinedVector<TH> y_data_th(Y->Shape().Size());
-    tree_ensemble_.compute(context, X, y_data_th.data(), NULL);
+    int64_t size = Y->Shape().Size();
+    std::unique_ptr<TH> y_data_th(new TH[size]);
+    TH* tree_output = y_data_th.get();
+    tree_ensemble_.compute(context, X, tree_output, NULL);
     TO* y_data = Y->template MutableData<TO>();
-    for (size_t i = 0; i < y_data_th.size(); ++i) {
-      y_data[i] = static_cast<TO>(y_data_th[i]);
+    for (int64_t i = 0; i < size; ++i) {
+      y_data[i] = static_cast<TO>(tree_output[i]);
     }
   }
 

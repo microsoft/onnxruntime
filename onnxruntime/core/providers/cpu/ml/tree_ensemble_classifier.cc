@@ -75,11 +75,13 @@ common::Status TreeEnsembleClassifier<T, TH, TO>::Compute(OpKernelContext* conte
     TH* z_data = Z->template MutableData<TH>();
     tree_ensemble_.compute(context, &X, z_data, Y);
   } else {
-    InlinedVector<TH> z_data_th(Z->Shape().Size());
-    tree_ensemble_.compute(context, &X, z_data_th.data(), Y);
+    int64_t size = Z->Shape().Size();
+    std::unique_ptr<TH> z_data_th(new TH[size]);
+    TH* tree_output = z_data_th.get();
+    tree_ensemble_.compute(context, &X, tree_output, Y);
     TO* z_data = Z->template MutableData<TO>();
-    for (size_t i = 0; i < z_data_th.size(); ++i) {
-      z_data[i] = static_cast<TO>(z_data_th[i]);
+    for (int64_t i = 0; i < size; ++i) {
+      z_data[i] = static_cast<TO>(tree_output[i]);
     }
   }
 

@@ -298,7 +298,7 @@ static inline void ComputeSoftmaxZero(const gsl::span<T>& values) {
       *it = std::exp(static_cast<float>(*it) - v_max);
       this_sum += static_cast<float>(*it);
     } else {
-      *it = static_cast<float>(*it) * exp_neg_v_max;
+      *it = *it * exp_neg_v_max;
     }
   }
   for (auto it = values.begin(); it != values.end(); ++it)
