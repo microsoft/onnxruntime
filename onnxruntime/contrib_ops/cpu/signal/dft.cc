@@ -39,7 +39,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
+    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T1", BuildKernelDefConstraints<float, double>())
+                                       .TypeConstraint("T2", BuildKernelDefConstraints<int64_t>()),
     STFT);
 
 static bool is_real_valued_signal(const onnxruntime::TensorShape & shape) {
@@ -276,7 +277,7 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
   size_t number_of_samples = static_cast<size_t>(X_shape[axis]);
   
   auto batch_and_signal_rank = X->Shape().NumDimensions();
-  auto total_dfts = static_cast<size_t>(X->Shape().Size() / X->Shape()[axis + 1]);
+  auto total_dfts = static_cast<size_t>(X->Shape().Size() / X->Shape()[axis]);
   if (X->Shape().NumDimensions() > 2)
   {
     total_dfts /= X->Shape()[X->Shape().NumDimensions() - 1];
@@ -287,32 +288,33 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
   for (size_t i = 0; i < total_dfts; i++)
   {
     size_t X_offset = 0;
-    size_t X_stride = X_shape.SizeFromDimension(axis + 1);
-    auto temp_x = i;
+    size_t X_stride = X_shape.SizeFromDimension(axis+1);
+    size_t cumulative_packed_stride = total_dfts;
+    size_t temp = i;
     for (size_t r = 0; r < batch_and_signal_rank; r++) {
-      if (r == static_cast<size_t>(axis + 1))
+      if (r == static_cast<size_t>(axis))
       {
         continue;
       }
-      auto size_from_dimension = X_shape.SizeFromDimension(r);
-      auto index_in_dim_r = temp_x / size_from_dimension;
-      temp_x %= size_from_dimension;
-      X_offset += index_in_dim_r * size_from_dimension;
+      cumulative_packed_stride /= X_shape[r];
+      auto index = temp / cumulative_packed_stride;
+      temp -= (index * cumulative_packed_stride);
+      X_offset += index * X_shape.SizeFromDimension(r + 1);
     }
-    
+
     size_t Y_offset = 0;
-    size_t Y_stride = X_shape.SizeFromDimension(axis + 1);
-    auto temp_y = i;
+    size_t Y_stride = Y_shape.SizeFromDimension(axis + 1) / 2;
+    cumulative_packed_stride = total_dfts;
+    temp = i;
     for (size_t r = 0; r < batch_and_signal_rank; r++) {
-      if (r == static_cast<size_t>(axis + 1))
+      if (r == static_cast<size_t>(axis))
       {
         continue;
       }
-      auto size_from_dimension = Y_shape.SizeFromDimension(r);
-      auto index_in_dim_r = temp_y / size_from_dimension;
-      temp_y %= size_from_dimension;
-
-      Y_offset += index_in_dim_r * size_from_dimension;
+      cumulative_packed_stride /= X_shape[r];
+      auto index = temp / cumulative_packed_stride;
+      temp -= (index * cumulative_packed_stride);
+      Y_offset += index * Y_shape.SizeFromDimension(r + 1) / 2;
     }
 
     if (is_power_of_2(number_of_samples)) {
@@ -334,7 +336,7 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
 
   // Get the DFT output size. Onesided will return only the unique values!
   // note: x >> 1 === std::floor(x / 2.f)
-  int64_t number_of_samples = static_cast<int64_t>(X_shape[axis + 1]);
+  int64_t number_of_samples = static_cast<int64_t>(X_shape[axis]);
   auto dft_output_size = is_onesided ?
       ((number_of_samples >> 1) + 1) :
       number_of_samples;
@@ -348,6 +350,7 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
   {
     Y_shape[Y_shape.NumDimensions() - 1] = 2;
   }
+  Y_shape[axis] = dft_output_size;
   auto Y = ctx->Output(0, Y_shape);
 
   // Get data type
@@ -382,12 +385,12 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
 }
 
 Status DFT::Compute(OpKernelContext* ctx) const {
-  ORT_RETURN_IF_ERROR(discrete_fourier_transform(ctx, axis_, is_onesided_, false));
+  ORT_RETURN_IF_ERROR(discrete_fourier_transform(ctx, axis_ + 1, is_onesided_, false));
   return Status::OK();
 }
 
 Status IDFT::Compute(OpKernelContext* ctx) const {
-  ORT_RETURN_IF_ERROR(discrete_fourier_transform(ctx, axis_, false, true));
+  ORT_RETURN_IF_ERROR(discrete_fourier_transform(ctx, axis_ + 1, false, true));
   return Status::OK();
 }
 
@@ -422,9 +425,9 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
   
   // Get signal
   const auto* signal = ctx->Input<Tensor>(0);
-  const auto* window = ctx->Input<Tensor>(1);
-  const auto* frame_length_tensor = ctx->Input<Tensor>(2);
-  const auto frame_step = get_scalar_value_from_tensor<int64_t>(ctx->Input<Tensor>(3));
+  const auto frame_step = get_scalar_value_from_tensor<int64_t>(ctx->Input<Tensor>(1));
+  const auto* window = ctx->Input<Tensor>(2);
+  const auto* frame_length_tensor = ctx->Input<Tensor>(3);
 
   // Get input signal shape
   const auto& signal_shape = signal->Shape();
@@ -514,7 +517,7 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
               0);
 
       // Run individual dft
-      ORT_RETURN_IF_ERROR((discrete_fourier_transform<T, U>(ctx, &input, &output, 0, window, is_onesided, false, V, temp_output)));
+      ORT_RETURN_IF_ERROR((discrete_fourier_transform<T, U>(ctx, &input, &output, 1, window, is_onesided, false, V, temp_output)));
     }
   }
 

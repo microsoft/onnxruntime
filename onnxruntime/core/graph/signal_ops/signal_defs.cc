@@ -42,6 +42,24 @@ static T get_scalar_value_from_tensor(const ONNX_NAMESPACE::TensorProto* t) {
   }
 }
 
+inline const ONNX_NAMESPACE::TensorShapeProto* getOptionalInputShape(ONNX_NAMESPACE::InferenceContext& ctx, size_t n) {
+  const auto* input_type = ctx.getInputType(n);
+
+  if (input_type == nullptr) {
+    return nullptr;
+  }
+
+  const auto value_case = input_type->value_case();
+  if (value_case != ONNX_NAMESPACE::TypeProto::kTensorType && value_case != ONNX_NAMESPACE::TypeProto::kSparseTensorType) {
+    fail_type_inference("Attribute expected to have tensor or sparse tensor type");
+  }
+  if (value_case == ONNX_NAMESPACE::TypeProto::kTensorType) {
+    return &input_type->tensor_type().shape();
+  } else {
+    return &input_type->sparse_tensor_type().shape();
+  }
+}
+
 void RegisterSignalSchemas() {
   MS_SIGNAL_OPERATOR_SCHEMA(DFT)
       .SetDomain(kMSExperimentalDomain)
@@ -164,41 +182,131 @@ void RegisterSignalSchemas() {
       .SetDomain(kMSExperimentalDomain)
       .SinceVersion(1)
       .SetDoc(R"DOC(STFT)DOC")
-      .Attr("onesided",
-            "If True (default), only values for half of the fft size are returned because the real-to-complex Fourier transform satisfies the conjugate symmetry."
-            "The output tensor will return the first floor(n_fft/2) + 1 values from the DFT."
-            "Values can be 0 or 1.",
-            AttributeProto::AttributeType::AttributeProto_AttributeType_INT,
-            static_cast<int64_t>(1))
+      .Attr(
+          "onesided",
+          "If onesided is 1, only values for w in [0, 1, 2, ..., floor(n_fft/2) + 1] are returned because "
+          "the real-to-complex Fourier transform satisfies the conjugate symmetry, i.e., X[m, w] = X[m,w]=X[m,n_fft-w]*. "
+          "Note if the input or window tensors are complex, then onesided output is not possible. "
+          "Enabling onesided with real inputs performs a Real-valued fast Fourier transform (RFFT)."
+          "When invoked with real or complex valued input, the default value is 0. "
+          "Values can be 0 or 1.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
       .Input(0,
              "signal",
-             "A complex signal of dimension signal_ndim."
-             "The last dimension of the tensor should be 2,"
-             "representing the real and imaginary components of complex numbers,"
-             "and should have at least signal_ndim + 2 dimensions."
-             "The first dimension is the batch dimension.",
-             "T1")
-      .Input(1,
-             "window",
-             "A tensor representing the window that will be slid over the input signal.",
+             "Input tensor representing a real or complex valued signal. "
+             "For real input, the following shape is expected: [batch_size][signal_length]. "
+             "For complex input, the following shape is expected: [batch_size][signal_length][2], where "
+             "[batch_size][signal_length][0] represents the real component and [batch_size][signal_length][1] represents the imaginary component of the signal.",
              "T1",
-             OpSchema::FormalParameterOption::Optional)
-      .Input(2,
-             "frame_length",  // frame_length, fft_length, pad_mode
-             "Size of the fft.",
-             "T2",
-             OpSchema::FormalParameterOption::Optional)
-      .Input(3,
+             OpSchema::Single,
+             true,
+             1,
+             OpSchema::NonDifferentiable)
+      .Input(1,
              "frame_step",
              "The number of samples to step between successive DFTs.",
-             "T2")
+             "T2",
+             OpSchema::Single,
+             true,
+             1,
+             OpSchema::NonDifferentiable)
+      .Input(2,
+             "window",
+             "A tensor representing the window that will be slid over the signal."
+             "The window must have rank 1 with shape: [window_shape]. "
+             "It's an optional value. ",
+             "T1",
+             OpSchema::Optional,
+             true,
+             1,
+             OpSchema::NonDifferentiable)
+      .Input(3,
+             "frame_length",
+             "A scalar representing the size of the DFT. "
+             "It's an optional value.",
+             "T2",
+             OpSchema::Optional,
+             true,
+             1,
+             OpSchema::NonDifferentiable)
       .Output(0,
               "output",
               "The inverse fourier transform of the input vector,"
               "using the same format as the input.",
               "T1")
-      .TypeConstraint("T1", {"tensor(float16)", "tensor(float)", "tensor(double)"}, "")
-      .TypeConstraint("T2", {"tensor(int64)"}, "");
+      .TypeConstraint(
+          "T1",
+          {"tensor(float)",
+              "tensor(float16)",
+              "tensor(double)",
+              "tensor(bfloat16)"},
+          "Constrain signal and output to float tensors.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(int64)"},
+          "Constrain scalar length types to int64_t.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 0);
+            constexpr int64_t batch_ndim = 1;
+            constexpr int64_t component_ndim = 1;
+
+            // Get inputs
+            auto& input_shape = getInputShape(ctx, 0);
+            auto frame_step = get_scalar_value_from_tensor<int64_t>(ctx.getInputData(1));
+            const ONNX_NAMESPACE::TensorShapeProto* window_input = nullptr;
+            try {
+                window_input = getOptionalInputShape(ctx, 2);
+            } catch (...) {
+                window_input = nullptr;
+            }
+
+            const ONNX_NAMESPACE::TensorShapeProto* frame_length_input = nullptr;
+            try {
+                frame_length_input = getOptionalInputShape(ctx, 3);
+            } catch (...) {
+                frame_length_input = nullptr;
+            }
+
+            // Determine the size of the DFT based on the 2 optional inputs window and frame_length. One must be set.
+            int64_t dft_size = 0;
+            if (window_input == nullptr && frame_length_input == nullptr) {
+                fail_type_inference("STFT expects to have at least one of these inputs set: [window, frame_length].");
+            } else if (window_input != nullptr && window_input->dim_size() > 0 && frame_length_input != nullptr) {
+                if (window_input->dim_size() != 1) {
+                fail_type_inference("STFT's window input, must have rank = 1.");
+                }
+                auto window_length = window_input->dim(0).dim_value();
+                auto frame_length = get_scalar_value_from_tensor<int64_t>(ctx.getInputData(3));
+                if (window_length != frame_length) {
+                fail_type_inference("If STFT has both a window input and frame_length specified, the dimension of the window must match the frame_length specified!");
+                }
+                dft_size = window_length;
+            } else if (window_input != nullptr && window_input->dim_size() > 0) {
+                if (window_input->dim_size() != 1) {
+                fail_type_inference("STFT's window input, must have rank = 1.");
+                }
+                dft_size = window_input->dim(0).dim_value();
+            } else if (frame_length_input != nullptr) {
+                dft_size = get_scalar_value_from_tensor<int64_t>(ctx.getInputData(3));
+            }
+
+            bool is_onesided = static_cast<bool>(getAttribute(ctx, "onesided", 0));
+            if (is_onesided) {
+                dft_size = is_onesided ? ((dft_size >> 1) + 1) : dft_size;
+            }
+
+            auto signal_size = input_shape.dim(1).dim_value();
+            auto n_dfts = static_cast<int64_t>(std::floor((signal_size - dft_size) / static_cast<float>(frame_step)) + 1);
+
+            // The output has the following shape: [batch_size][frames][dft_unique_bins][2]
+            ONNX_NAMESPACE::TensorShapeProto result_shape_proto;
+            result_shape_proto.add_dim()->set_dim_value(input_shape.dim(0).dim_value());  // batch size
+            result_shape_proto.add_dim()->set_dim_value(n_dfts);
+            result_shape_proto.add_dim()->set_dim_value(dft_size);
+            result_shape_proto.add_dim()->set_dim_value(2);
+            updateOutputShape(ctx, 0, result_shape_proto);
+    });
 
   // Window Functions
   MS_SIGNAL_OPERATOR_SCHEMA(HannWindow)
