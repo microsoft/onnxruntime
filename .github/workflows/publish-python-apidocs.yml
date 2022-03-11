@@ -29,6 +29,9 @@ jobs:
         run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
       - name: Check outputs
         run: echo ${{ steps.vars.outputs.sha_short }}
+             ls build
+             ls build/docs
+             ls build/docs/inference
       - uses: actions/checkout@v2
         with:
           ref: gh-pages
