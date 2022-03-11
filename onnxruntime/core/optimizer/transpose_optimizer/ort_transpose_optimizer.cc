@@ -24,7 +24,9 @@ Status TransposeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_lev
     LOGS(logger, WARNING) << "Transpose optimizer failed: " << result.error_msg.value();
   }
 
-  modified = result.graph_modified;
+  if (result.graph_modified) {
+    modified = true;
+  }
 
   GraphViewer graph_viewer(graph);
   auto nodes = std::vector<std::unique_ptr<api::NodeRef>>();

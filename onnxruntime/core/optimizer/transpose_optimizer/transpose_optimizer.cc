@@ -1824,7 +1824,7 @@ std::optional<OptimizerCtx> MakeOptimizerContext(api::GraphRef& graph, bool allo
     if (opset.has_value()) {
       error_msg = "Unsupported ONNX opset";
     }
-	
+
     return std::nullopt;
   }
 
@@ -1845,7 +1845,7 @@ std::optional<OptimizerCtx> MakeOptimizerContext(api::GraphRef& graph, bool allo
 // Performs optimization. General algorithm: iterate over nodes in topological order. If a node has a transpose
 // as input, push it through if the transpose cost does not increase and is likely to decrease.
 OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
-  OptimizeResult result;
+  OptimizeResult result{};
   const std::vector<std::unique_ptr<api::NodeRef>> nodes = ctx.graph.Nodes();
 
   std::unordered_set<std::string> outputs_leading_to_transpose;
@@ -1971,17 +1971,18 @@ const std::unordered_set<std::string_view>& GetLayoutSensitiveOps() {
 OptimizeResult Optimize(api::GraphRef& graph, bool allow_extended_ops,
                         const std::string& provider_type, OptimizerMode mode,
                         const std::unordered_set<std::string_view>& layout_sensitive_ops) {
-  OptimizeResult result;
+  OptimizeResult result{};
 
   std::string error_msg;
   auto ctx = MakeOptimizerContext(graph, allow_extended_ops, provider_type, mode, layout_sensitive_ops, error_msg);
   if (ctx == std::nullopt) {
     if (!error_msg.empty()) {
-      result.error_msg = std::move(error_msg);
+      result.error_msg = error_msg;
     }
-	
+
     return result;
   }
+
   return OptimizeImpl(*ctx);
 }
 
