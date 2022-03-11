@@ -256,8 +256,8 @@ GetQDQTestCaseFn BuildQDQTransposeTestCase(
 }
 
 template <typename InputType, typename OutputType>
-GetQDQTestCaseFn BuildQDQSoftMaxTestCase(const std::vector<int64_t>& input_shape, const int64_t& axis = -1,
-                                         float output_scales = 0.0f, OutputType output_zero_point = 0) {
+GetQDQTestCaseFn BuildQDQSoftMaxTestCase(const std::vector<int64_t>& input_shape, const int64_t& axis,
+                                         float output_scales, OutputType output_zero_point) {
   return [input_shape, axis, output_scales, output_zero_point](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<InputType>(input_shape,
                                                    std::numeric_limits<InputType>::min(),

@@ -341,10 +341,7 @@ TEST(NnapiExecutionProviderTest, TestQDQResize_UnsupportedDefaultSetting) {
   RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
                                          {1, 3, 32, 32} /* sizes_data */),
                   "nnapi_qdq_test_graph_resize_unsupported",
-                  {
-                      ExpectedEPNodeAssignment::None,
-                      1e-5f,
-                  });
+                  {ExpectedEPNodeAssignment::None});
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQAveragePool) {

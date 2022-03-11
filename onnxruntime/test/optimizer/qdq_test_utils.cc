@@ -100,7 +100,7 @@ GetQDQTestCaseFn BuildQDQConcatTestCase(const std::vector<std::vector<int64_t>>&
 
 GetQDQTestCaseFn BuildQDQConcatTestCaseUnsupportedInputScaleZp() {
   return [](ModelTestBuilder& builder) {
-    const std::vector<std::vector<int64_t>>& input_shapes = {
+    const std::vector<std::vector<int64_t>> input_shapes = {
         {1, 6, 36},
         {1, 6, 8},
         {1, 6, 2},
