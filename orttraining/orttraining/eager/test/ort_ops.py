@@ -5,6 +5,7 @@ import unittest
 import torch
 import onnxruntime_pybind11_state as torch_ort
 import numpy as np
+import sys
 
 class OrtOpTests(unittest.TestCase):
   def get_device(self):
@@ -101,6 +102,17 @@ class OrtOpTests(unittest.TestCase):
     y = ort_tensor.min()
     x = cpu_tensor.min()
     assert torch.allclose(x, y.cpu())
+
+  def test_print_ort_tensor(self):
+    device = self.get_device()
+    cpu_tensor = torch.Tensor([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
+    ort_ones = cpu_ones.to(device)
+    try:
+      print("Print ORT Tensor: ", ort_ones)
+    except:
+      print("ERROR: Print Ort Tensor Failed!")
+      sys.exit(1)
+
 
 if __name__ == '__main__':
   unittest.main()
