@@ -110,7 +110,7 @@ class OrtOpTests(unittest.TestCase):
     try:
       print("Print ORT Tensor: ", ort_ones)
     except:
-      print("ERROR: Print Ort Tensor Failed!")
+      print("ERROR: Print Ort Tensor Failed! It requires torch 1.11.0 or higher.")
       sys.exit(1)
 
 
