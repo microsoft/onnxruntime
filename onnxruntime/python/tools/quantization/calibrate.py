@@ -612,7 +612,7 @@ class HistogramCollector(CalibrationDataCollector):
             else:
                 print(f"Search percentiles ({1 - percentile}, {percentile})")
                 idx_right = np.searchsorted(cdf, np.percentile(percentile))
-                idx_left = np.searchsorted(cdf, np.percentile(1 - percentile))
+                idx_left = np.searchsorted(cdf, np.percentile(1.0 - percentile))
                 thresholds_dict[tensor] = (float(hist_edges[idx_left]), float(hist_edges[idx_right]))
 
             # Plot histogram for debug only
