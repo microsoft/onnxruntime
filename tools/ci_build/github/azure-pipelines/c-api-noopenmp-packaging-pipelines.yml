@@ -261,14 +261,14 @@ jobs:
     condition: always()
 
 - job: Linux_Packaging_combined_GPU
+  workspace:
+    clean: all
   resources:
     repositories:
     - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
       type: github
       endpoint: onnxruntime 
       name: microsoft/onnxruntime-inference-examples 
-  workspace:
-    clean: all
   pool: 'Onnxruntime-Linux-GPU'
   dependsOn:
   - Linux_C_API_Packaging_GPU_x64
@@ -340,14 +340,14 @@ jobs:
       artifactName: 'onnxruntime-linux-x64-gpu'
 
 - job: Windows_Packaging_combined_GPU
+  workspace:
+    clean: all
   resources:
     repositories:
     - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
       type: github
       endpoint: onnxruntime 
       name: microsoft/onnxruntime-inference-examples 
-  workspace:
-    clean: all
   pool: 'onnxruntime-gpu-tensorrt8-winbuild'
   dependsOn:
   - Windows_Packaging_gpu
