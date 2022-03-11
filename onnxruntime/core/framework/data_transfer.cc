@@ -6,12 +6,14 @@
 #include "core/framework/tensor.h"
 #include "core/framework/sparse_tensor.h"
 #endif
-#include "core/framework/copy.h"
 #include "core/framework/ortdevice.h"
+#ifdef ENABLE_TRAINING
+#include "core/framework/copy.h"
 #include "core/session/environment.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/framework/element_type_lists.h"
+#endif
 
 namespace onnxruntime {
 
@@ -48,6 +50,7 @@ common::Status CPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /
     return Status::OK();
   }
 
+#ifdef ENABLE_TRAINING
   if (!src.IsContiguous() || !dst.IsContiguous()) {
     auto dst_stride_vec = dst.Strides();
     auto src_stride_vec = src.Strides();
@@ -56,11 +59,14 @@ common::Status CPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /
     return DispatchStridedCopy<element_type_lists::All>(nullptr, dst, dst.ByteOffset(), dst_stride, src.Shape(), src,
                                                         src_stride);
   } else {
+#endif
     // Copying only happens between two same size tensors.
     ORT_ENFORCE(src.SizeInBytes() == dst.SizeInBytes());
     memcpy(dst_data, src_data, src.SizeInBytes());
     return Status::OK();
+#ifdef ENABLE_TRAINING
   }
+#endif
 }
 
 };  // namespace onnxruntime

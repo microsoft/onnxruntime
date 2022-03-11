@@ -217,7 +217,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         if (!qdq_is_int8_allowed) {
           transformers.emplace_back(std::make_unique<QDQS8ToU8Transformer>(cpu_ep));
         }
-        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(SatApplyContextVariant{}, qdq_is_int8_allowed));
+        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed));
       }
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
@@ -277,7 +277,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalBuild(
     TransformerLevel level,
@@ -295,12 +295,15 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
 #if !defined(DISABLE_CONTRIB_OPS)
       const bool disable_quant_qdq =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
+      const bool qdq_is_int8_allowed =
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQIsInt8Allowed,
+                                                            QDQIsInt8Allowed() ? "1" : "0") == "1";
 
       // runtime optimizations only support CPU EP now
       const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
 
       if (!disable_quant_qdq) {
-        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(apply_context));
+        transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed, apply_context));
       }
 
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_ep, apply_context));
@@ -336,6 +339,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
   return transformers;
 }
 
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 }  // namespace onnxruntime::optimizer_utils

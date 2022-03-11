@@ -166,8 +166,10 @@ class PlannerTest : public ::testing::Test {
   std::unique_ptr<::onnxruntime::KernelDef> std_kernel_;               // a unary kernel with no-aliasing and no-in-place
   std::unique_ptr<::onnxruntime::KernelDef> in_place_kernel_;          // a unary kernel with in-place
   std::unique_ptr<::onnxruntime::KernelDef> external_outputs_kernel_;  // an unary kernel with external outputs
+#ifdef ENABLE_TRAINING
   std::unique_ptr<::onnxruntime::KernelDef> may_strided_input_kernel_;  // an uinary kernel with may_strided_input
   std::unique_ptr<::onnxruntime::KernelDef> may_strided_output_kernel_; // an unary kernel with may_strided_output
+#endif
 
   std::unordered_map<std::string, onnxruntime::NodeArg*> name_to_arg_;
   std::vector<std::unique_ptr<UnaryNode>> nodes_;
@@ -192,6 +194,7 @@ class PlannerTest : public ::testing::Test {
         KernelDefBuilder().SetName("Relu").Provider(kCpuExecutionProvider).SinceVersion(1, 10).MayInplace(0, 0).Build();
     external_outputs_kernel_ =
         KernelDefBuilder().SetName("Tanh").Provider(kCpuExecutionProvider).SinceVersion(1, 10).ExternalOutputs().Build();
+#ifdef ENABLE_TRAINING
     may_strided_input_kernel_ = KernelDefBuilder()
                                     .SetName("Abs")
                                     .Provider(kCpuExecutionProvider)
@@ -204,6 +207,7 @@ class PlannerTest : public ::testing::Test {
                                      .SinceVersion(1, 10)
                                      .MayStridedOutput(0, 0)
                                      .Build();
+#endif
     CPUExecutionProviderInfo epi;
     auto execution_provider = std::make_unique<CPUExecutionProvider>(epi);
     ORT_THROW_IF_ERROR(execution_providers_.Add("CPUExecutionProvider", std::move(execution_provider)));
@@ -239,6 +243,7 @@ class PlannerTest : public ::testing::Test {
     return AddNode(*external_outputs_kernel_, input, output);
   }
 
+#ifdef ENABLE_TRAINING
   onnxruntime::Node* AddMayStridedInputNode(std::string& input, std::string& output) {
     return AddNode(*may_strided_input_kernel_, input, output);
   }
@@ -246,6 +251,7 @@ class PlannerTest : public ::testing::Test {
   onnxruntime::Node* AddMayStridedOutputNode(std::string& input, std::string& output) {
     return AddNode(*may_strided_output_kernel_, input, output);
   }
+#endif
 
   void BindKernel(onnxruntime::Node* p_node, ::onnxruntime::KernelDef& kernel_def, KernelRegistry* reg,
                   std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map) {
@@ -470,6 +476,7 @@ TEST_F(PlannerTest, ExternalOutputsTest) {
   CheckFreed(2, {X3});
 }
 
+#ifdef ENABLE_TRAINING
 TEST_F(PlannerTest, MayStridedTest1) {
   // tensor variables:
   std::string X1("X1"), X2("X2"), X3("X3");
@@ -553,6 +560,7 @@ TEST_F(PlannerTest, MayStridedTest3) {
   CheckFreed(1, {});
   CheckFreed(2, {X2});
 }
+#endif
 
 // InPlaceSizeMismatchTest: Check that Inplace reuse is not allowed when sizes don't match.
 // Also tests reuse of disjoint lifetime tensors.
