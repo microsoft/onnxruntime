@@ -261,6 +261,12 @@ jobs:
     condition: always()
 
 - job: Linux_Packaging_combined_GPU
+  resources:
+    repositories:
+    - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
+      type: github
+      endpoint: onnxruntime 
+      name: microsoft/onnxruntime-inference-examples 
   workspace:
     clean: all
   pool: 'Onnxruntime-Linux-GPU'
@@ -270,7 +276,9 @@ jobs:
   condition: succeeded()
   steps:
   - checkout: self
+  - checkout: onnxruntime-inference-examples 
     submodules: false
+  - script: dir $(Build.SourcesDirectory)
   - template: templates/set-version-number-variables-step.yml
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
@@ -287,7 +295,7 @@ jobs:
   - task: ShellScript@2
     displayName: 'Shell Script'
     inputs:
-      scriptPath: 'tools/ci_build/github/linux/extract_and_bundle_gpu_package.sh'
+      scriptPath: 'onnxruntime/tools/ci_build/github/linux/extract_and_bundle_gpu_package.sh'
       args: '-a $(Build.BinariesDirectory)/tgz-artifacts'
       workingDirectory: '$(Build.BinariesDirectory)/tgz-artifacts'
 
@@ -321,9 +329,9 @@ jobs:
     displayName: 'Test C API application for GPU package'
     inputs:
       script: |
-        docker run --gpus all -e CC=/opt/rh/devtoolset-10/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-10/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/onnxruntime_src \
+        docker run --gpus all -e CC=/opt/rh/devtoolset-10/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-10/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/src_dir \
         --volume $(Build.ArtifactStagingDirectory):/artifact_src -e NIGHTLY_BUILD onnxruntimecuda114xtrt82build \
-        /onnxruntime_src/tools/capi_test/run_capi_application.sh -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /onnxruntime_src/tools/capi_test/
+        /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet/run_capi_application.sh -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet 
       workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
   - task: PublishPipelineArtifact@1
@@ -332,6 +340,12 @@ jobs:
       artifactName: 'onnxruntime-linux-x64-gpu'
 
 - job: Windows_Packaging_combined_GPU
+  resources:
+    repositories:
+    - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
+      type: github
+      endpoint: onnxruntime 
+      name: microsoft/onnxruntime-inference-examples 
   workspace:
     clean: all
   pool: 'onnxruntime-gpu-tensorrt8-winbuild'
@@ -341,11 +355,13 @@ jobs:
   condition: succeeded()
   steps:
   - checkout: self
+  - checkout: onnxruntime-inference-examples 
     submodules: false
+  - script: dir $(Build.SourcesDirectory)
   - task: BatchScript@1
     displayName: 'setup env'
     inputs:
-        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_gpu.bat'
+        filename: '$(Build.SourcesDirectory)\onnxruntime\tools\ci_build\github\windows\setup_env_gpu.bat'
         modifyEnvironment: true
         workingFolder: '$(Build.BinariesDirectory)'
   - template: templates/set-version-number-variables-step.yml
@@ -365,7 +381,7 @@ jobs:
     displayName: 'PowerShell Script'
     inputs:
       targetType: filePath
-      filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\extract_zip_files_gpu.ps1
+      filePath: $(Build.SourcesDirectory)\onnxruntime\tools\ci_build\github\windows\extract_zip_files_gpu.ps1
 
   - script: |
      dir
@@ -375,7 +391,7 @@ jobs:
   - task: BatchScript@1
     displayName: 'Bundle CUDA/TRT EP binaries'
     inputs:
-      filename: $(Build.SourcesDirectory)\tools\ci_build\github\windows\bundle_dlls_gpu.bat
+      filename: $(Build.SourcesDirectory)\onnxruntime\tools\ci_build\github\windows\bundle_dlls_gpu.bat
       workingFolder: $(Build.BinariesDirectory)\zip-artifacts
 
   - task: CopyFiles@2
@@ -397,9 +413,10 @@ jobs:
   - task: BatchScript@1
     displayName: 'Test C API application for GPU package'
     inputs:
-      filename: $(Build.SourcesDirectory)\tools\capi_test\run_capi_application.bat
-      arguments: $(Build.ArtifactStagingDirectory)\onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip $(Build.SourcesDirectory)\tools\capi_test 
+      filename: $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet\run_capi_application.bat
+      arguments: $(Build.ArtifactStagingDirectory)\onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet 
       workingFolder: '$(Build.ArtifactStagingDirectory)' 
+      failOnStandardError: true
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline Combined GPU Package Artifact'
