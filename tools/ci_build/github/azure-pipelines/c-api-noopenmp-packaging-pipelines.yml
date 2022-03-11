@@ -282,6 +282,7 @@ jobs:
   - script: dir $(Build.SourcesDirectory)
   - template: templates/set-version-number-variables-step.yml
     parameters:
+      versionFileDirectory: '$(Build.SourcesDirectory)/onnxruntime'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime'
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
@@ -364,6 +365,7 @@ jobs:
         workingFolder: '$(Build.BinariesDirectory)'
   - template: templates/set-version-number-variables-step.yml
     parameters:
+      versionFileDirectory: '$(Build.SourcesDirectory)\onnxruntime'
       workingDirectory: '$(Build.SourcesDirectory)\onnxruntime'
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Combined GPU'
