@@ -178,6 +178,10 @@ option(onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH "Path to external transformer s
 
 option(onnxruntime_ENABLE_CUDA_PROFILING "Enable CUDA kernel profiling" OFF)
 
+if (WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
+  set(onnxruntime_IS_WCOS_BUILD TRUE)
+endif()
+
 if (onnxruntime_USE_CUDA)
   set(onnxruntime_DISABLE_RTTI OFF)
 endif()
@@ -1215,7 +1219,10 @@ endfunction()
 
 function(onnxruntime_add_shared_library target_name)
   add_library(${target_name} SHARED ${ARGN})
-  onnxruntime_configure_target(${target_name})
+  onnxruntime_configure_target(${target_name})  
+  if(onnxruntime_IS_WCOS_BUILD)
+    target_link_options(${target_name} PRIVATE "/NODEFAULTLIB:kernel32.lib" "/NODEFAULTLIB:onecore.lib")
+  endif()
 endfunction()
 
 function(onnxruntime_add_static_library target_name)
@@ -1236,6 +1243,9 @@ function(onnxruntime_add_shared_library_module target_name)
   if (MSVC AND onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
     target_link_options(${target_name} PRIVATE /SAFESEH)
   endif()
+  if(onnxruntime_IS_WCOS_BUILD)
+    target_link_options(${target_name} PRIVATE "/NODEFAULTLIB:kernel32.lib" "/NODEFAULTLIB:onecore.lib")
+  endif()
 endfunction()
 
 function(onnxruntime_add_executable target_name)
@@ -1243,6 +1253,9 @@ function(onnxruntime_add_executable target_name)
   onnxruntime_configure_target(${target_name})
   if (MSVC AND onnxruntime_target_platform STREQUAL "x86" AND NOT onnxruntime_BUILD_WEBASSEMBLY)
     target_link_options(${target_name} PRIVATE /SAFESEH)
+  endif()
+  if(onnxruntime_IS_WCOS_BUILD)
+    target_link_options(${target_name} PRIVATE "/NODEFAULTLIB:kernel32.lib" "/NODEFAULTLIB:onecore.lib")
   endif()
 endfunction()
 
