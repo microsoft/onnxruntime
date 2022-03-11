@@ -544,7 +544,7 @@ class WindowsEnv : public Env {
 #endif
     if (!*handle) {
       const auto error_code = GetLastError();
-      static const DWORD bufferLength = 64 * 1024;
+      static constexpr DWORD bufferLength = 64 * 1024;
       std::wstring s(bufferLength, '\0');
       FormatMessageW(
               FORMAT_MESSAGE_FROM_SYSTEM |
@@ -576,7 +576,7 @@ class WindowsEnv : public Env {
     *symbol = ::GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol_name.c_str());
     if (!*symbol) {
       const auto error_code = GetLastError();
-      static const DWORD bufferLength = 64 * 1024;
+      static constexpr DWORD bufferLength = 64 * 1024;
       std::wstring s(bufferLength, '\0');
       FormatMessageW(
               FORMAT_MESSAGE_FROM_SYSTEM |
