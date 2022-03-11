@@ -142,10 +142,51 @@ TensorProto ToDimensionOneFloatTensor(float value) {
   return t;
 }
 
-TensorProto ToDimensionOneTensor(int32_t value) {
-  auto t = ToTensor(std::vector<int32_t>({value}));
+template <typename T>
+TensorProto ToDimensionOneTensor(T value) {
+  auto t = ToTensor(std::vector<T>({value}));
   t.add_dims(1);
   return t;
+}
+
+bool SCELossInternalFunBuilder(
+    const FunctionBodyBuildContext& ctx,
+    const OpSchema& schema,
+    FunctionProto& functionProto) {
+
+  bool hasWeight = ctx.hasInput(2);
+  bool hasIgnoreIndex = ctx.hasInput(3);
+
+  FunctionBuilder builder(functionProto);
+
+  builder //
+      .Const("Shape3D", std::vector<int64_t>({0, 0, -1})) //
+      .Add(R"(
+        X_NCD = Reshape (scores, Shape3D)
+        X_NDC = Transpose <perm = [0, 2, 1]> (X_NCD)
+        X_LogSM = LogSoftmax <axis = 2> (X_NDC)
+        X_LogSM_NCD = Transpose <perm = [0, 2, 1]> (X_LogSM)
+        X_shape = Shape (scores)
+        X_Log = Reshape (X_LogSM_NCD, X_shape)
+      )");
+
+  if (ctx.hasOutput(1)) {
+    builder.Add("log_prob = Identity (X_Log)");
+  }
+
+  if (hasWeight)
+    if (hasIgnoreIndex)
+      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal <reduction : string = @reduction> (X_Log, labels, weights, ignore_index)");
+    else
+      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal <reduction : string = @reduction> (X_Log, labels, weights)");
+  else
+    if (hasIgnoreIndex)
+      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal <reduction : string = @reduction> (X_Log, labels, , ignore_index)");
+    else
+      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal <reduction : string = @reduction> (X_Log, labels)");
+
+  schema.BuildFunction(functionProto);
+  return true;
 }
 
 bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
@@ -292,6 +333,8 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
   }
   auto input_type = ctx.getInputType(0)->tensor_type().elem_type();
   bool float_input = input_type == TensorProto_DataType_FLOAT;
+  auto reduction_attr = ctx.getAttribute("reduction");
+  std::string reduction = (reduction_attr == nullptr) ? std::string("mean") : reduction_attr->s();
   std::vector<FunctionBodyHelper::NodeDef> body;
   body.push_back(
       {{"const_zero"},
@@ -306,10 +349,23 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
        {MakeAttribute("value", ToDimensionOneTensor(1))}});
 
   body.push_back(
+      {{"const_one_64"},
+       "Constant",
+       {},
+       {MakeAttribute("value", ToDimensionOneTensor(int64_t(1)))}});
+
+  // For pre-opset 13:
+  // body.push_back(
+  //     {{"expanded_target"},
+  //      "Unsqueeze",
+  //      {"target"},
+  //      {MakeAttribute("axes", std::vector<int64_t>({1}))}});
+
+  // For opset 13 onwards:
+  body.push_back(
       {{"expanded_target"},
        "Unsqueeze",
-       {"target"},
-       {MakeAttribute("axes", std::vector<int64_t>({1}))}});
+       {"target", "const_one_64"}});
 
   if (!ctx.hasInput(3)) {
     body.push_back(
@@ -326,19 +382,17 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
          {"loss_NCdd", "const_zero", "const_one", "const_one"}});
 
     if (!ctx.hasInput(2)) {
-      if (ctx.getAttribute("reduction")->s() == "none") {
+      if (reduction == "none") {
         body.push_back(
             {{"loss"},
              "Squeeze",
-             {"loss_N1dd"},
-             {MakeAttribute("axes", std::vector<int64_t>({1}))}});
+             {"loss_N1dd", "const_one_64"}});
       } else {
         body.push_back(
             {{"loss_Ndd"},
              "Squeeze",
-             {"loss_N1dd"},
-             {MakeAttribute("axes", std::vector<int64_t>({1}))}});
-        if (ctx.getAttribute("reduction")->s() == "mean") {
+             {"loss_N1dd", "const_one_64"}});
+        if (reduction == "mean") {
           body.push_back(
               {{"loss"},
                "ReduceMean",
@@ -357,14 +411,13 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
       body.push_back(
           {{"loss_unweighted"},
            "Squeeze",
-           {"loss_N1dd"},
-           {MakeAttribute("axes", std::vector<int64_t>({1}))}});
-      if (ctx.getAttribute("reduction")->s() == "none") {
+           {"loss_N1dd", "const_one_64"}});
+      if (reduction == "none") {
         body.push_back({{"loss"}, "Mul", {"loss_unweighted", "weight_gather"}});
       } else {
         body.push_back(
             {{"loss_Ndd"}, "Mul", {"loss_unweighted", "weight_gather"}});
-        if (ctx.getAttribute("reduction")->s() == "mean") {
+        if (reduction == "mean") {
           body.push_back(
               {{"loss_sum"},
                "ReduceSum",
@@ -435,8 +488,7 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
       body.push_back(
           {{"squeeze_mask"},
            "Squeeze",
-           {"mask"},
-           {MakeAttribute("axes", std::vector<int64_t>({1}))}});
+           {"mask", "const_one_64"}});
 
       body.push_back(
           {{"const_one_float"},
@@ -468,21 +520,19 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
       body.push_back(
           {{"weight_gather"},
            "Squeeze",
-           {"weight_gather_temp_1"},
-           {MakeAttribute("axes", std::vector<int64_t>({1}))}});
+           {"weight_gather_temp_1", "const_one_64"}});
     }
 
     body.push_back(
         {{"loss_unweighted"},
          "Squeeze",
-         {"loss_N1dd"},
-         {MakeAttribute("axes", std::vector<int64_t>({1}))}});
-    if (ctx.getAttribute("reduction")->s() == "none") {
+         {"loss_N1dd", "const_one_64"}});
+    if (reduction == "none") {
       body.push_back({{"loss"}, "Mul", {"loss_unweighted", "weight_gather"}});
     } else {
       body.push_back(
           {{"loss_Ndd"}, "Mul", {"loss_unweighted", "weight_gather"}});
-      if (ctx.getAttribute("reduction")->s() == "mean") {
+      if (reduction == "mean") {
         body.push_back(
             {{"loss_sum"},
              "ReduceSum",
@@ -3524,7 +3574,9 @@ Return true if all elements are true and false otherwise.
           propagateShapeFromInputToOutput(ctx, 0, 1);
         }
       })
+      .SetContextDependentFunctionBodyBuilder(SCELossInternalFunBuilder)
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossInternal)DOC");
+
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyLossInternalGrad)
       .SetDomain(kMSDomain)
