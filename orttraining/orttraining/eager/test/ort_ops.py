@@ -103,20 +103,5 @@ class OrtOpTests(unittest.TestCase):
     x = cpu_tensor.min()
     assert torch.allclose(x, y.cpu())
 
-  '''
-  def test_print_ort_tensor(self):
-    device = self.get_device()
-    cpu_ones = torch.ones(1,2)
-    ort_ones = cpu_ones.to(device)
-    try:
-      with OutputGrabber() as out:
-        print(ort_ones)
-      assert "tensor([[1., 1.]], device='ort:0')" in out.capturedtext
-    except:
-      print("ERROR: Print Ort Tensor Failed! It requires torch 1.11.0 or higher.")
-      sys.exit(1)
-  '''
-
-
 if __name__ == '__main__':
   unittest.main()
