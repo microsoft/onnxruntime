@@ -30,7 +30,7 @@ and implemented as optimized operator kernels for different hardware targets.
 ONNX Runtime orchestrates the execution of operator kernels via `execution providers`.
 An execution provider contains the set of kernels for a specific execution target (CPU, GPU, IoT etc).
 Execution provides are configured using the `providers` parameter. Kernels from different execution
-providers are chosen in the priority order give in the list of providers. In th e example below
+providers are chosen in the priority order given in the list of providers. In th e example below
 if there is a kernel in the CUDA execution provider ONNX Runtime executes that on GPU. If not
 the kernel is executed on CPU.
 
@@ -41,7 +41,7 @@ the kernel is executed on CPU.
 
 The list of available execution providers can be found here: `Execution Providers <https://onnxruntime.ai/docs/execution-providers>`_.
 
-You can supply other session configuration via the `session options` parameter. For example, to enable
+You can supply other session configurations via the `session options` parameter. For example, to enable
 profiling on the session:
 
 .. code-block:: python
