@@ -21,35 +21,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-// ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedLongformerAttention, 1, OpSchema()
-//     .SetDoc(R"DOC(Quantized version of Longformer Self Attention (using int8 with specific matrix Layout).)DOC")
-//     .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
-//     .Attr("window", "One sided attention windows length W, or half of total window length", AttributeProto::INT)
-//     .Attr("order_input", "cublasLt order of input matrix", AttributeProto::INT)
-//     .Attr("order_weight", "cublasLt order of weight matrix", AttributeProto::INT)
-//     .Attr("order_bias", "cublasLt order of bias", AttributeProto::INT)
-//     .Attr("order_output", "cublasLt order of global bias", AttributeProto::INT)
-//     .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size), hidden_size = num_heads * head_size", "Q")
-//     .Input(1, "scale_input", "scale of the input", "S")
-//     .Input(2, "weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "Q")
-//     .Input(3, "scale_weight", "scale of the weight", "S")
-//     .Input(4, "bias", "1D input tensor with shape (3 * hidden_size)", "Q")
-//     .Input(5, "scale_bias", "scale of the bias", "S")
-//     .Input(6, "scale_qkv_gemm", "scale of the output for fused kqv gemm", "S")
-//     .Input(7, "mask", "Attention mask with shape (batch_size, sequence_length)", "F")
-//     .Input(8, "global_weight", "2D input tensor with shape (hidden_size, 3 * hidden_size)", "F")
-//     .Input(9, "scale_global_weight", "scale of the global_weight", "S")
-//     .Input(10, "global_bias", "1D input tensor with shape (3 * hidden_size)", "F")
-//     .Input(11, "scale_global_bias", "scale of the global_bias", "S")
-//     .Input(12, "global", "Global attention flags with shape (batch_size, sequence_length)", "G")
-//     .Input(13, "scale_output", "scale of the output", "S")
-//     .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "Q")
-//     .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
-//     .TypeConstraint("S", {"tensor(float)"}, "Constrain scales to float32 tensors.")
-//     .TypeConstraint("G", {"tensor(int32)"}, "Constrain to integer types")
-//     .TypeConstraint("F", {"tensor(float16)"}, "float16 types will be quantized later")
-//     .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
-
 ONNX_OPERATOR_KERNEL_EX(
     QOrderedLongformerAttention,
     kMSDomain,
@@ -64,6 +35,8 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, 3)    // scale_weight
         .InputMemoryType(OrtMemTypeCPUInput, 5)    // scale_bias
         .InputMemoryType(OrtMemTypeCPUInput, 6)    // scale_qkv_gemm
+        .InputMemoryType(OrtMemTypeCPUInput, 9)    // scale_global_weight
+        .InputMemoryType(OrtMemTypeCPUInput, 11)   // scale_global_qkvgemm
         .InputMemoryType(OrtMemTypeCPUInput, 13),  // scale_output
     QOrderedLongformerAttention);
 
@@ -73,7 +46,7 @@ QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& inf
   const cublasLtOrder_t weight_tiles[2] = {CUBLASLT_ORDER_COL4_4R2_8C, CUBLASLT_ORDER_COL32_2R_4R4};
   order_input_ = GetCublasLtOrderAttr(info, "order_input", 1, &COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_input");
   order_weight_ = GetCublasLtOrderAttr(info, "order_weight", 2, weight_tiles, "Only COL4_4R2_8C and COL32_2R_4R4 are supported for order_weght");
-  order_bias_ = GetCublasLtOrderAttr(info, "order_bias", 1, &COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_bias");
+  order_global_weight_ = GetCublasLtOrderAttr(info, "order_global_weight", 2, weight_tiles, "Only COL4_4R2_8C and COL32_2R_4R4 are supported for order_global_weight");
   order_output_ = GetCublasLtOrderAttr(info, "order_output", 1, &COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_output");
 }
 
@@ -146,19 +119,20 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
 
   size_t qkv_count = (size_t)m * (size_t)n;
   size_t qkv_size = qkv_count * element_size;
-  auto gemm_buffer = GetScratchBuffer<int8_t>(qkv_size + qkv_count * sizeof(int8_t));
+  size_t qkv_3 = qkv_size + qkv_count * sizeof(int8_t);
+  auto gemm_buffer = GetScratchBuffer<int8_t>(qkv_3 + 3*element_size); //extra half scale
 
   typedef typename ToCudaType<MLFloat16>::MappedType CudaT;
-  CudaT one = ToCudaType<MLFloat16>::FromFloat(1.0f);
-  CudaT zero = ToCudaType<MLFloat16>::FromFloat(0.0f);
+  // CudaT one = ToCudaType<MLFloat16>::FromFloat(1.0f);
+  // CudaT zero = ToCudaType<MLFloat16>::FromFloat(0.0f);
 
+  // Bias shape is (N), broadcast using B(N, M) = 1 * bias(N, 1) x ones(1, M) + 0 * B.
   //   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
   //       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
   //       reinterpret_cast<const CudaT*>(bias->template Data<MLFloat16>()), n,
   //       GetConstOnes<CudaT>(m), 1,
   //       &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
-  // Bias shape is (N), broadcast using B(N, M) = 1 * bias(N, 1) x ones(1, M) + 0 * B.
   //   // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x B.
   //   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
   //       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
@@ -168,23 +142,33 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
 
   const float* scale_input = context->Input<Tensor>(1)->Data<float>();
   const float* scale_weight = context->Input<Tensor>(3)->Data<float>();
-  // const float* scale_bias = context->Input<Tensor>(5)->Data<float>();
-  const float* scale_kqvgemm = context->Input<Tensor>(6)->Data<float>();
+  const float* scale_qkvgemm = context->Input<Tensor>(6)->Data<float>();
+  const float* scale_global_weight = context->Input<Tensor>(9)->Data<float>();
+  const float* scale_global_qkvgemm = context->Input<Tensor>(11)->Data<float>();
   const float* scale_output = context->Input<Tensor>(13)->Data<float>();
-  float alpha = (*scale_input * *scale_weight) / *scale_kqvgemm;
+  float alpha = (*scale_input * *scale_weight) / *scale_qkvgemm;
+
+  // TODO: make it during operator construct
+  CudaT device_scales[3] = { ToCudaType<MLFloat16>::FromFloat(*scale_qkvgemm), 
+                             ToCudaType<MLFloat16>::FromFloat(*scale_output),
+                             ToCudaType<MLFloat16>::FromFloat(*scale_global_qkvgemm)};
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gemm_buffer.get() + qkv_3, device_scales, 3 * element_size, cudaMemcpyHostToDevice, stream));
+
 
   auto& device_prop = GetDeviceProp();
-  // TODO: bias need pre-processing, i.e., / *scale_kqvgemm
+  // TODO: bias need pre-processing, i.e., / *scale_qkvgemm
   ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
                                       batch_size, sequence_length, n, k,
                                       &alpha, input->Data<int8_t>(), weights->Data<int8_t>(),
                                       bias->Data<float>(), gemm_buffer.get(),
                                       (cublasLtOrder_t)order_weight_));
-  ORT_RETURN_IF_ERROR(Reorder(cublasLt, stream, batch_size, sequence_length, n, CUDA_R_8I, gemm_buffer.get(), (cublasLtOrder_t)order_input_,
-                              gemm_buffer.get() + qkv_size, (cublasLtOrder_t)order_output_));
-  CudaT half_scale = ToCudaType<MLFloat16>::FromFloat(*scale_kqvgemm);
+  ORT_RETURN_IF_ERROR(Reorder(cublasLt, stream, batch_size, sequence_length, n, CUDA_R_8I,
+                              gemm_buffer.get(), (cublasLtOrder_t)order_input_,
+                              gemm_buffer.get() + qkv_size, CUBLASLT_ORDER_ROW));
+
+  const CudaT* half_scale = (const CudaT*)(gemm_buffer.get() + qkv_3);
   ORT_RETURN_IF_ERROR(CudaDequantizeLinear(stream, gemm_buffer.get() + qkv_size,
-                                           (CudaT*)gemm_buffer.get(), &half_scale, (const int8_t*)nullptr, qkv_count));
+                                           (CudaT*)gemm_buffer.get(), half_scale, (const int8_t*)nullptr, qkv_count));
 
   // Wait for async copy of batch_global_num
   CUDA_RETURN_IF_ERROR(cudaEventSynchronize(isCopyDone));
@@ -206,20 +190,37 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   // Fully connection for global projection.
   // Note that Q only need handle global query tokens if we split GEMM to global Q/K/V separately.
   // When there is no global token, need not run glboal GEMM.
-  auto global_gemm_buffer = GetScratchBuffer<MLFloat16>(max_num_global > 0 ? qkv_size : 0);
+  auto global_gemm_buffer = GetScratchBuffer<int8_t>(max_num_global > 0 ? qkv_3 : 0);
 
   if (max_num_global > 0) {
-    CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-        cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
-        reinterpret_cast<const CudaT*>(global_bias->template Data<MLFloat16>()), n,
-        GetConstOnes<CudaT>(m), 1,
-        &zero, reinterpret_cast<CudaT*>(global_gemm_buffer.get()), n, device_prop));
+    // CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+    //     cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, 1, &one,
+    //     reinterpret_cast<const CudaT*>(global_bias->template Data<MLFloat16>()), n,
+    //     GetConstOnes<CudaT>(m), 1,
+    //     &zero, reinterpret_cast<CudaT*>(global_gemm_buffer.get()), n, device_prop));
 
-    CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-        cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-        reinterpret_cast<const CudaT*>(global_weights->template Data<MLFloat16>()), n,
-        reinterpret_cast<const CudaT*>(input->template Data<MLFloat16>()), k,
-        &one, reinterpret_cast<CudaT*>(global_gemm_buffer.get()), n, device_prop));
+    // CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+    //     cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
+    //     reinterpret_cast<const CudaT*>(global_weights->template Data<MLFloat16>()), n,
+    //     reinterpret_cast<const CudaT*>(input->template Data<MLFloat16>()), k,
+    //     &one, reinterpret_cast<CudaT*>(global_gemm_buffer.get()), n, device_prop));
+
+    // TODO: bias need pre-processing, i.e., / *scale_qkvgemm
+    float global_alpha = (*scale_input * *scale_global_weight) / *scale_global_qkvgemm;
+
+    ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
+                                        batch_size, sequence_length, n, k,
+                                        &global_alpha, input->Data<int8_t>(), global_weights->Data<int8_t>(),
+                                        global_bias->Data<float>(), global_gemm_buffer.get(),
+                                        (cublasLtOrder_t)order_global_weight_));
+    ORT_RETURN_IF_ERROR(Reorder(cublasLt, stream, batch_size, sequence_length, n, CUDA_R_8I,
+                                global_gemm_buffer.get(), (cublasLtOrder_t)order_input_,
+                                global_gemm_buffer.get() + qkv_size, CUBLASLT_ORDER_ROW));
+
+    const CudaT* half_global_scale = (const CudaT*)(gemm_buffer.get() + qkv_3 + 2*element_size);
+    ORT_RETURN_IF_ERROR(CudaDequantizeLinear(stream, global_gemm_buffer.get() + qkv_size,
+                                            (CudaT*)global_gemm_buffer.get(), half_global_scale, (const int8_t*)nullptr, qkv_count));
+
   }
 
   size_t workSpaceSize = GetLongformerAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, max_num_global, window_, use_fast_kernel);
@@ -252,8 +253,8 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   }
 
   int8_t* out_tmp_s8 = ((int8_t*)out_fp16) + (output_elements * element_size);
-  CudaT out_scale = ToCudaType<MLFloat16>::FromFloat(*scale_output);
-  ORT_RETURN_IF_ERROR(CudaQuantizeLinear(stream, (CudaT*)out_fp16, out_tmp_s8, &out_scale, (const int8_t*)nullptr, output_elements));
+  const CudaT* out_scale = (const CudaT*)(gemm_buffer.get() + qkv_3 + element_size);
+  ORT_RETURN_IF_ERROR(CudaQuantizeLinear(stream, (CudaT*)out_fp16, out_tmp_s8, out_scale, (const int8_t*)nullptr, output_elements));
   ORT_RETURN_IF_ERROR(Reorder(cublasLt, stream, batch_size, sequence_length, hidden_size, CUDA_R_8I,
                               out_tmp_s8, CUBLASLT_ORDER_ROW, output->template MutableData<int8_t>(), (cublasLtOrder_t)order_output_));
 

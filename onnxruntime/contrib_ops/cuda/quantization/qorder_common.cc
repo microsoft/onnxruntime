@@ -187,11 +187,13 @@ Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream, [[
 
   cublasLtMatrixLayout_t desc_B = nullptr;
   ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_B, 1, k, n, CUDA_R_8I, order_weight, CUBLAS_OP_T));
+  // Just keep batch stride zero
+  CUBLAS_RETURN_IF_ERROR(cublasLtMatrixLayoutSetAttribute(desc_B, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batchCount, sizeof(batchCount)));
   auto clean_desc_B = gsl::finally([&desc_B]() {if (desc_B) cublasLtMatrixLayoutDestroy(desc_B); });
 
   cublasLtMatrixLayout_t desc_C = nullptr;
   ORT_RETURN_IF_ERROR(CreateLtMatrixLayout(desc_C, batchCount, m, n, CUDA_R_8I, CUBLASLT_ORDER_COL32, CUBLAS_OP_N));
-  auto clean_desc_D = gsl::finally([&desc_C]() {if (desc_C) cublasLtMatrixLayoutDestroy(desc_C); });
+  auto clean_desc_C = gsl::finally([&desc_C]() {if (desc_C) cublasLtMatrixLayoutDestroy(desc_C); });
 
   // get algo
   cublasLtMatmulAlgo_t algo;
