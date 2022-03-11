@@ -176,14 +176,14 @@ bool SCELossInternalFunBuilder(
 
   if (hasWeight)
     if (hasIgnoreIndex)
-      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal <reduction : string = @reduction> (X_Log, labels, weights, ignore_index)");
+      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, weights, ignore_index)");
     else
-      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal <reduction : string = @reduction> (X_Log, labels, weights)");
+      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, weights)");
   else
     if (hasIgnoreIndex)
-      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal <reduction : string = @reduction> (X_Log, labels, , ignore_index)");
+      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels, , ignore_index)");
     else
-      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal <reduction : string = @reduction> (X_Log, labels)");
+      builder.Add("output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels)");
 
   schema.BuildFunction(functionProto);
   return true;
@@ -323,7 +323,8 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
   return true;
 };
 
-bool BuildContextDependentFunctionBodyNllLossInternal(
+bool BuildNllLossInternalFunctionHelper(
+    int64_t opset_version,
     const FunctionBodyBuildContext& ctx,
     const OpSchema& schema,
     FunctionProto& functionProto) {
@@ -336,6 +337,14 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
   auto reduction_attr = ctx.getAttribute("reduction");
   std::string reduction = (reduction_attr == nullptr) ? std::string("mean") : reduction_attr->s();
   std::vector<FunctionBodyHelper::NodeDef> body;
+  // Helpers to specify axis value of 1 for Squeeze/Unsqueeze ops.
+  // It must be specified as an attribute for opsets <= 12, and as an input from opset-13 onwards.
+  std::vector<FunctionBodyHelper::AttributeProtoWrapper> axis_attr = {};
+  if (opset_version <= 12)
+    axis_attr.push_back(MakeAttribute("axes", std::vector<int64_t>({1})));
+  auto make_input = [opset_version](const char* arg) { 
+    return (opset_version <= 12) ? std::vector<std::string>{arg} : std::vector<std::string>{arg, "const_one_64"};
+  };
   body.push_back(
       {{"const_zero"},
        "Constant",
@@ -348,24 +357,18 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
        {},
        {MakeAttribute("value", ToDimensionOneTensor(1))}});
 
-  body.push_back(
+  if (opset_version > 12)
+    body.push_back(
       {{"const_one_64"},
        "Constant",
        {},
        {MakeAttribute("value", ToDimensionOneTensor(int64_t(1)))}});
 
-  // For pre-opset 13:
-  // body.push_back(
-  //     {{"expanded_target"},
-  //      "Unsqueeze",
-  //      {"target"},
-  //      {MakeAttribute("axes", std::vector<int64_t>({1}))}});
-
-  // For opset 13 onwards:
   body.push_back(
       {{"expanded_target"},
        "Unsqueeze",
-       {"target", "const_one_64"}});
+       make_input("target"),
+       axis_attr});
 
   if (!ctx.hasInput(3)) {
     body.push_back(
@@ -386,12 +389,14 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
         body.push_back(
             {{"loss"},
              "Squeeze",
-             {"loss_N1dd", "const_one_64"}});
+             make_input("loss_N1dd"),
+             axis_attr});
       } else {
         body.push_back(
             {{"loss_Ndd"},
              "Squeeze",
-             {"loss_N1dd", "const_one_64"}});
+             make_input("loss_N1dd"),
+             axis_attr});
         if (reduction == "mean") {
           body.push_back(
               {{"loss"},
@@ -411,7 +416,8 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
       body.push_back(
           {{"loss_unweighted"},
            "Squeeze",
-           {"loss_N1dd", "const_one_64"}});
+           make_input("loss_N1dd"),
+           axis_attr});
       if (reduction == "none") {
         body.push_back({{"loss"}, "Mul", {"loss_unweighted", "weight_gather"}});
       } else {
@@ -488,7 +494,8 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
       body.push_back(
           {{"squeeze_mask"},
            "Squeeze",
-           {"mask", "const_one_64"}});
+           make_input("mask"),
+           axis_attr});
 
       body.push_back(
           {{"const_one_float"},
@@ -520,13 +527,15 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
       body.push_back(
           {{"weight_gather"},
            "Squeeze",
-           {"weight_gather_temp_1", "const_one_64"}});
+           make_input("weight_gather_temp_1"),
+           axis_attr});
     }
 
     body.push_back(
         {{"loss_unweighted"},
          "Squeeze",
-         {"loss_N1dd", "const_one_64"}});
+         make_input("loss_N1dd"),
+         axis_attr});
     if (reduction == "none") {
       body.push_back({{"loss"}, "Mul", {"loss_unweighted", "weight_gather"}});
     } else {
@@ -554,18 +563,18 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
     }
   }
 
-  // auto func_nodes = FunctionBodyHelper::BuildNodes(body);
-  // for (const auto& node : func_nodes) {
-  //   auto new_node = functionProto.add_node();
-  //   new_node->CopyFrom(node);
-  // }
-
-  // schema.BuildFunction(functionProto);
-  // return true;
   OperatorSetIdProto onnx_opset;
   onnx_opset.set_domain("");
-  onnx_opset.set_version(15);
+  onnx_opset.set_version(opset_version);
   return FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset});
+}
+
+template <int64_t opset_version>
+bool BuildNllLossInternalFunction(
+    const FunctionBodyBuildContext& ctx,
+    const OpSchema& schema,
+    FunctionProto& functionProto) {
+  return BuildNllLossInternalFunctionHelper(opset_version, ctx, schema, functionProto);
 }
 
 // TODO: This is copied from onnx schemas. When the change is in and we update this can be removed.
@@ -3634,7 +3643,33 @@ Return true if all elements are true and false otherwise.
                       "Constrain input and output types to float tensors.")
       .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain target to integer types")
       .TypeConstraint("I", {"tensor(int64)"}, "Constrain ignore_index tensor to int64")
-      .SetContextDependentFunctionBodyBuilder(BuildContextDependentFunctionBodyNllLossInternal)
+      .SetContextDependentFunctionBodyBuilder(BuildNllLossInternalFunction<12>)
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) { propagateElemTypeFromInputToOutput(ctx, 0, 0); })
+      .SetDoc(R"DOC(NegativeLogLikelihoodLossInternal)DOC");
+
+    ONNX_CONTRIB_OPERATOR_SCHEMA(NegativeLogLikelihoodLossInternal2)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("reduction", reduction_doc, AttributeProto::STRING, std::string("mean"))
+      .Input(0, "input", "Input tensor of shape (N, C) or (N, C, d1, d2, ..., dk).", "T")
+      .Input(1, "target",
+             "Target tensor of shape (N) or (N, d1, d2, ..., dk). Target element value shall be in range of [0, C). "
+             "If ignore_index is specified, it may have a value outside [0, C) and the target values should either be "
+             "in the range [0, C) or have the value ignore_index.",
+             "Tind")
+      .Input(2, "weight",
+             "Optional rescaling weight tensor. "
+             "If given, it has to be a tensor of size C. Otherwise, it is treated as if having all ones.",
+             "T", OpSchema::Optional)
+      .Input(3, "ignore_index",
+             "Scalar tensor to specify a target value that is ignored and does not contribute to the input gradient.",
+             "I", OpSchema::Optional)
+      .Output(0, "loss", "The negative log likelihood loss", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain target to integer types")
+      .TypeConstraint("I", {"tensor(int64)"}, "Constrain ignore_index tensor to int64")
+      .SetContextDependentFunctionBodyBuilder(BuildNllLossInternalFunction<13>)
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) { propagateElemTypeFromInputToOutput(ctx, 0, 0); })
       .SetDoc(R"DOC(NegativeLogLikelihoodLossInternal)DOC");
 }
