@@ -223,21 +223,29 @@ InstantCustomKernel::InstantCustomKernel(Ort::CustomOpApi ort, const OrtKernelIn
 
   int axis_value = -1;
   OrtOpAttr axis{};
-  ort.CreateAttribute("axis", &axis_value, 1, ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, false, &axis);
+  ort.CreateAttribute("axis", &axis_value, 1, ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, 0, &axis);
 
   int largest_value = 0; // return in ascending order
-  OrtOpAttr lagest{};
-  ort.CreateAttribute("largest", &largest_value, 1, ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, false, &lagest);
+  OrtOpAttr largest{};
+  ort.CreateAttribute("largest", &largest_value, 1, ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, 0, &largest);
 
   int sorted_value = 1;
   OrtOpAttr sorted{};
-  ort.CreateAttribute("sorted", &sorted_value, 1, ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, false, &sorted);
+  ort.CreateAttribute("sorted", &sorted_value, 1, ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, 0, &sorted);
 
-  OrtOpAttr top_attrs[3] = {axis, lagest, sorted};
+  if (!axis || !largest || !sorted) {
+    ORT_THROW("Failed to create attributes for topk."); 
+  }
+
+  OrtOpAttr top_attrs[3] = {axis, largest, sorted};
   ort.CreateOperator(info, "TopK", "", 14,
                      (const char**)topk_type_constrait_names,
                      (const ONNXTensorElementDataType*)topk_type_constrait_values,
                      2, top_attrs, 3, &op_topk);
+
+  ort.ReleaseAttribute(&axis);
+  ort.ReleaseAttribute(&largest);
+  ort.ReleaseAttribute(&sorted);
 }
 
 void InstantCustomKernel::Compute(OrtKernelContext* context) {

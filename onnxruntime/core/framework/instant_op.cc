@@ -11,7 +11,7 @@
 namespace onnxruntime {
 namespace instant {
 
-onnxruntime::Status CreateAttribute(const char* name, const void* data, int len, ONNXTensorElementDataType type, bool is_array, OrtOpAttr* op_attr) {
+onnxruntime::Status CreateAttribute(const char* name, const void* data, int len, ONNXTensorElementDataType type, int is_array, OrtOpAttr* op_attr) {
   std::unique_ptr<ONNX_NAMESPACE::AttributeProto> attr{new ONNX_NAMESPACE::AttributeProto()};
   attr->set_name(std::string{name});
   if (type == ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
@@ -117,7 +117,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAttribute,
                     _In_ const void* data,
                     _In_ int len,
                     _In_ ONNXTensorElementDataType type,
-                    _In_ bool is_array,
+                    _In_ int is_array,
                     _Out_ OrtOpAttr* op_attr) {
   API_IMPL_BEGIN
   if (!name || !data || !len || !op_attr) {

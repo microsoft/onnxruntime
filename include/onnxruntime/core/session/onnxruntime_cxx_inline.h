@@ -1187,7 +1187,7 @@ inline void CustomOpApi::CreateAttribute(_In_ const char* name,
                                          _In_ const void* data,
                                          _In_ int len,
                                          _In_ ONNXTensorElementDataType type,
-                                         _In_ bool is_array,
+                                         _In_ int is_array,
                                          _Out_ OrtOpAttr* op_attr) {
   ThrowOnError(api_.CreateAttribute(name, data, len, type, is_array, op_attr));
 }

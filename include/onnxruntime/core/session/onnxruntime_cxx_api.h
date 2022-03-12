@@ -975,7 +975,7 @@ struct CustomOpApi {
                        _In_ const void* data,
                        _In_ int len,
                        _In_ ONNXTensorElementDataType type,
-                       _In_ bool is_array,
+                       _In_ int is_array,
                        _Out_ OrtOpAttr* op_attr);
 
   void ReleaseAttribute(_Inout_ OrtOpAttr* op_attr);
