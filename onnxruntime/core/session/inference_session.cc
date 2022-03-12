@@ -188,28 +188,34 @@ bool HasControlflowNodes(const Graph& graph) {
   return false;
 }
 
-InferenceSession::MinimalBuildOptimizationHandling GetMinimalBuildOptimizationHandling(
-    std::string_view config_value, bool saving_ort_format, const logging::Logger& logger) {
+Status GetMinimalBuildOptimizationHandling(
+    std::string_view config_value, bool saving_ort_format,
+    InferenceSession::MinimalBuildOptimizationHandling& minimal_build_optimization_handling) {
   if (config_value == "save") {
     if (saving_ort_format) {
-      return InferenceSession::MinimalBuildOptimizationHandling::SaveMinimalBuildRuntimeOptimizations;
+      minimal_build_optimization_handling =
+          InferenceSession::MinimalBuildOptimizationHandling::SaveMinimalBuildRuntimeOptimizations;
+      return Status::OK();
     }
-    LOGS(logger, WARNING) << kOrtSessionOptionsConfigMinimalBuildOptimizations
-                          << " value of 'save' only applies when saving an ORT format model. "
-                             "It will be ignored.";
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           kOrtSessionOptionsConfigMinimalBuildOptimizations,
+                           " value of 'save' is only valid when saving an ORT format model.");
   }
 
   if (config_value == "apply") {
-    return InferenceSession::MinimalBuildOptimizationHandling::OnlyApplyMinimalBuildOptimizations;
+    minimal_build_optimization_handling =
+        InferenceSession::MinimalBuildOptimizationHandling::OnlyApplyMinimalBuildOptimizations;
+    return Status::OK();
   }
 
-  if (!config_value.empty()) {
-    LOGS(logger, WARNING) << kOrtSessionOptionsConfigMinimalBuildOptimizations
-                          << " value is unknown and it will be ignored: "
-                          << config_value;
+  if (config_value.empty()) {
+    minimal_build_optimization_handling =
+        InferenceSession::MinimalBuildOptimizationHandling::ApplyFullBuildOptimizations;
+    return Status::OK();
   }
 
-  return InferenceSession::MinimalBuildOptimizationHandling::ApplyFullBuildOptimizations;
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                         "Invalid value for ", kOrtSessionOptionsConfigMinimalBuildOptimizations, ": ", config_value);
 };
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -1431,8 +1437,10 @@ common::Status InferenceSession::Initialize() {
     if (!loading_ort_format) {
       const auto minimal_build_opt_config_value = session_options_.config_options.GetConfigOrDefault(
           kOrtSessionOptionsConfigMinimalBuildOptimizations, "");
-      const auto minimal_build_optimization_handling = GetMinimalBuildOptimizationHandling(
-          minimal_build_opt_config_value, saving_ort_format, *session_logger_);
+      MinimalBuildOptimizationHandling minimal_build_optimization_handling{};
+      ORT_RETURN_IF_ERROR_SESSIONID_(GetMinimalBuildOptimizationHandling(minimal_build_opt_config_value,
+                                                                         saving_ort_format,
+                                                                         minimal_build_optimization_handling));
 
       // add predefined transformers
       ORT_RETURN_IF_ERROR_SESSIONID_(AddPredefinedTransformers(graph_transformation_mgr_,
