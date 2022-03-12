@@ -5,7 +5,6 @@ import unittest
 import torch
 import onnxruntime_pybind11_state as torch_ort
 import numpy as np
-import sys
 
 class OrtOpTests(unittest.TestCase):
   def get_device(self):
