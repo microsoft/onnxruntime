@@ -22,9 +22,9 @@ class OptimizationStyle(enum.Enum):
 
 
 def _optimization_suffix(optimization_level_str: str, optimization_style: OptimizationStyle, suffix: str):
-    return "{}{}{}".format(f".{optimization_level_str}",
-                           ".with_runtime_opt" if optimization_style == OptimizationStyle.Runtime else "",
-                           suffix)
+    del optimization_level_str  # unused
+    return "{}{}".format(".with_runtime_opt" if optimization_style == OptimizationStyle.Runtime else "",
+                         suffix)
 
 
 def _create_config_file_path(model_path_or_dir: pathlib.Path,
@@ -250,7 +250,7 @@ def convert_onnx_models_to_ort():
                 model_dir = model_path_or_dir if model_path_or_dir.is_dir() else model_path_or_dir.parent
                 temp_output_dir = context_stack.enter_context(
                     tempfile.TemporaryDirectory(dir=model_dir, suffix=".without_runtime_opt"))
-                session_options_config_entries_for_second_conversion=session_options_config_entries
+                session_options_config_entries_for_second_conversion = session_options_config_entries
                 # Limit the optimizations to those that can run in a model with runtime optimizations.
                 session_options_config_entries_for_second_conversion[
                     "optimization.minimal_build_optimizations"] = "apply"
