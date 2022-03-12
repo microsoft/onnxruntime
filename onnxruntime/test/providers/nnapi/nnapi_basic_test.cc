@@ -303,6 +303,9 @@ static void RunQDQModelTest(
   if (params.ep_node_assignment == ExpectedEPNodeAssignment::None) {
     ASSERT_EQ(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
         << "No node should have been taken by the NNAPI EP";
+  } else if (params.ep_node_assignment == ExpectedEPNodeAssignment::All) {
+    ASSERT_EQ(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), session_object.GetGraph().NumberOfNodes())
+        << "All nodes should have been taken by the NNAPI EP";
   } else {
     ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
         << "Some nodes should have been taken by the NNAPI EP";
@@ -415,8 +418,7 @@ TEST(NnapiExecutionProviderTest, TestQDQSoftMax_UnsupportedOutputScaleAndZp) {
                       0.002f /* output_scales */,
                       1 /* output_zp */),
                   "nnapi_qdq_test_graph_softmax_unsupported",
-                  {ExpectedEPNodeAssignment::None,
-                   1e-5});
+                  {ExpectedEPNodeAssignment::None});
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQConcat) {
@@ -442,8 +444,7 @@ TEST(NnapiExecutionProviderTest, TestQDQConcat_UnsupportedInputScalesAndZp) {
   if (nnapi->nnapi_runtime_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
     RunQDQModelTest(BuildQDQConcatTestCaseUnsupportedInputScaleZp(),
                     "nnapi_qdq_test_graph_concat_unsupported",
-                    {ExpectedEPNodeAssignment::None,
-                     1e-5});
+                    {ExpectedEPNodeAssignment::None});
   }
 }
 #endif
