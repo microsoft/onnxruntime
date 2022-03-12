@@ -599,30 +599,30 @@ void NhwcUpsampleBilinear(const int64_t batch_size,
                                            alloc, get_original_coordinate);
   for (int64_t n = 0; n < batch_size; ++n) {
     concurrency::ThreadPool::TrySimpleParallelFor(
-        tp, num_channels,
-        [&](std::ptrdiff_t c) {
-          const T* Xdata = XdataBase + n * (input_height * input_width) * num_channels + c;
-          T* Ydata = YdataBase + n * (output_height * output_width) * num_channels + c;
-          for (int64_t y = 0; y < output_height; ++y) {
-            for (int64_t x = 0; x < output_width; ++x) {
+        tp, output_height,
+        [&](std::ptrdiff_t y) {
+          const T* Xdata = XdataBase + n * (input_height * input_width) * num_channels;
+          T* Ydata = YdataBase + n * (output_height * output_width) * num_channels;
+          for (int64_t x = 0; x < output_width; ++x) {
+            for (int64_t c = 0; c < num_channels; ++c) {
               // when use_extrapolation is set and original index of x or y is out of the dim range
               // then use extrapolation_value as the output value.
               if (use_extrapolation &&
                   ((p.y_original[y] < 0 || p.y_original[y] > static_cast<float>(input_height - 1)) ||
                    (p.x_original[x] < 0 || p.x_original[x] > static_cast<float>(input_width - 1)))) {
-                Ydata[(output_width * y + x) * num_channels] = static_cast<T>(extrapolation_value);
+                Ydata[(output_width * y + x) * num_channels + c] = static_cast<T>(extrapolation_value);
                 continue;
               }
 
-              T X11 = Xdata[(p.input_width_mul_y1[y] + p.in_x1[x]) * num_channels];
-              T X21 = Xdata[(p.input_width_mul_y1[y] + p.in_x2[x]) * num_channels];
-              T X12 = Xdata[(p.input_width_mul_y2[y] + p.in_x1[x]) * num_channels];
-              T X22 = Xdata[(p.input_width_mul_y2[y] + p.in_x2[x]) * num_channels];
+              T X11 = Xdata[(p.input_width_mul_y1[y] + p.in_x1[x]) * num_channels + c];
+              T X21 = Xdata[(p.input_width_mul_y1[y] + p.in_x2[x]) * num_channels + c];
+              T X12 = Xdata[(p.input_width_mul_y2[y] + p.in_x1[x]) * num_channels + c];
+              T X22 = Xdata[(p.input_width_mul_y2[y] + p.in_x2[x]) * num_channels + c];
 
-              Ydata[(output_width * y + x) * num_channels] = static_cast<T>(p.dx2[x] * p.dy2[y] * X11 +
-                                                                            p.dx1[x] * p.dy2[y] * X21 +
-                                                                            p.dx2[x] * p.dy1[y] * X12 +
-                                                                            p.dx1[x] * p.dy1[y] * X22);
+              Ydata[(output_width * y + x) * num_channels + c] = static_cast<T>(p.dx2[x] * p.dy2[y] * X11 +
+                                                                                p.dx1[x] * p.dy2[y] * X21 +
+                                                                                p.dx2[x] * p.dy1[y] * X12 +
+                                                                                p.dx1[x] * p.dy1[y] * X22);
             }
           }
         });
