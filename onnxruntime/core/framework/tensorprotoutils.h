@@ -57,6 +57,10 @@ common::Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
                                    const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                    Tensor& tensor);
 
+common::Status TensorProtoToTensor(const Env& env, const std::unordered_map<std::string, const void*>& external_data_map,
+                                   const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                   Tensor& tensor);
+
 /** Creates a TensorProto from a Tensor.
     @param[in] tensor the Tensor whose data and shape will be used to create the TensorProto.
     @param[in] tensor_proto_name the name of the TensorProto.

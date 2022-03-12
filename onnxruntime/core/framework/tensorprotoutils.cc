@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <limits>
 #include <gsl/gsl>
+#include <codecvt>
 
 #include "core/common/logging/logging.h"
 #include "core/graph/onnx_protobuf.h"
@@ -26,6 +27,20 @@ using namespace ::onnxruntime::common;
 
 // Provide template specializations for onnxruntime-specific types.
 namespace ONNX_NAMESPACE {
+template <typename T>
+std::string ONNXStringToString(const T& onnx_string);
+
+template <>
+std::string ONNXStringToString(const std::string& onnx_string) {
+  return onnx_string;
+}
+
+template <>
+std::string ONNXStringToString(const std::wstring& onnx_string) {
+  std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+  return converter.to_bytes(onnx_string);
+}
+
 template <>
 TensorProto ToTensor<onnxruntime::MLFloat16>(const onnxruntime::MLFloat16& value) {
   TensorProto t;
@@ -582,6 +597,24 @@ static Status GetFileContent(
   return Status::OK();
 }
 
+static Status GetDataContentFromExternalBuffer(
+    const std::unordered_map<std::string, const void*>& external_data_map,
+    const std::string& external_data_key,
+    FileOffsetType file_offset,
+    size_t length,
+    void*& raw_buffer) {
+  auto it = external_data_map.find(external_data_key);
+  ORT_RETURN_IF(it == external_data_map.end());
+
+  // copy
+  auto buffer = std::make_unique<char[]>(length);
+  std::copy((const char*)it->second + file_offset,
+            (const char*)it->second + file_offset + length,
+            buffer.get());
+  raw_buffer = buffer.release();
+  return Status::OK();
+}
+
 #define CASE_PROTO(X, Y)                                                      \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:        \
     ORT_RETURN_IF_ERROR(                                                      \
@@ -633,6 +666,103 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
     ORT_RETURN_IF_ERROR(GetFileContent(
         env, external_data_file_path.c_str(), file_offset, raw_data_len,
         raw_data, deleter_for_file_data.d));
+  } else if (utils::HasRawData(tensor_proto)) {
+    raw_data = const_cast<char*>(tensor_proto.raw_data().data());
+    // TODO The line above has const-correctness issues. Below is a possible fix which copies the tensor_proto data
+    //      into a writeable buffer. However, it requires extra memory which may exceed the limit for certain tests.
+    //auto buffer = std::make_unique<char[]>(tensor_proto.raw_data().size());
+    //std::memcpy(buffer.get(), tensor_proto.raw_data().data(), tensor_proto.raw_data().size());
+    //deleter_for_file_data.d = OrtCallback{DeleteCharArray, buffer.get()};
+    //raw_data = buffer.release();
+    raw_data_len = tensor_proto.raw_data().size();
+  }
+
+  if (nullptr != raw_data && utils::IsPrimitiveDataType<std::string>(source_type)) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor can not have raw data");
+  }
+
+  // unpacking tensor_proto data to preallocated tensor
+  void* preallocated = tensor.MutableDataRaw();
+  int64_t tensor_size = 1;
+  {
+    for (auto i : tensor_proto.dims()) {
+      if (i < 0) {
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "tensor can't contain negative dims");
+      }
+      tensor_size *= i;
+    }
+  }
+  // tensor_size could be zero. see test_slice_start_out_of_bounds\test_data_set_0\output_0.pb
+  if (static_cast<uint64_t>(tensor_size) > SIZE_MAX) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "size overflow");
+  }
+  switch (tensor_proto.data_type()) {
+    CASE_PROTO(FLOAT, float);
+    CASE_PROTO(DOUBLE, double);
+    CASE_PROTO(BOOL, bool);
+    CASE_PROTO(INT8, int8_t);
+    CASE_PROTO(INT16, int16_t);
+    CASE_PROTO(INT32, int32_t);
+    CASE_PROTO(INT64, int64_t);
+    CASE_PROTO(UINT8, uint8_t);
+    CASE_PROTO(UINT16, uint16_t);
+    CASE_PROTO(UINT32, uint32_t);
+    CASE_PROTO(UINT64, uint64_t);
+    CASE_PROTO(FLOAT16, MLFloat16);
+    CASE_PROTO(BFLOAT16, BFloat16);
+    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_STRING:
+      ORT_RETURN_IF_ERROR(UnpackTensor<std::string>(tensor_proto, raw_data, raw_data_len,
+                                                    static_cast<std::string*>(preallocated),
+                                                    static_cast<size_t>(tensor_size)));
+      break;
+    default: {
+      std::ostringstream ostr;
+      ostr << "Initialized tensor with unexpected type: " << tensor_proto.data_type();
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostr.str());
+    }
+  }
+
+  return Status::OK();
+}
+
+Status TensorProtoToTensor(const Env& /*env*/, const std::unordered_map<std::string, const void*>& external_data_map,
+                           const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                           Tensor& tensor)
+{
+  // Validate tensor compatibility
+  std::vector<int64_t> tensor_shape_vec = GetTensorShapeFromTensorProto(tensor_proto);
+  if (gsl::make_span(tensor_shape_vec) != tensor.Shape().GetDims()) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "TensorProtoToTensor() tensor shape mismatch!");
+  }
+  const DataTypeImpl* const source_type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
+  if (source_type->Size() > tensor.DataType()->Size()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "TensorProto type ", DataTypeImpl::ToString(source_type),
+                           " can not be writen into Tensor type ", DataTypeImpl::ToString(tensor.DataType()));
+  }
+
+  // find raw data in proto buf
+  void* raw_data = nullptr;
+  SafeInt<size_t> raw_data_len = 0;
+
+  if (utils::HasExternalData(tensor_proto)) {
+    // Get the external data info
+    std::basic_string<ORTCHAR_T> external_data_name;
+    FileOffsetType file_offset;
+    ORT_RETURN_IF_ERROR(GetExternalDataInfo(
+        tensor_proto,
+        nullptr,
+        external_data_name, file_offset, raw_data_len));
+
+    std::string external_data_key = ONNXStringToString(external_data_name);
+
+    // load the file
+    if (external_data_map.count(external_data_key)) {
+      auto it = external_data_map.find(external_data_key);
+    }
+
+    // load the file
+    ORT_RETURN_IF_ERROR(GetDataContentFromExternalBuffer(
+        external_data_map, external_data_key, file_offset, raw_data_len, raw_data));
   } else if (utils::HasRawData(tensor_proto)) {
     raw_data = const_cast<char*>(tensor_proto.raw_data().data());
     // TODO The line above has const-correctness issues. Below is a possible fix which copies the tensor_proto data

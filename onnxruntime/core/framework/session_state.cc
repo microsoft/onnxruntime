@@ -1093,7 +1093,8 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
                                           const SessionOptions& session_options,
                                           const onnxruntime::fbs::SessionState* serialized_session_state,
                                           bool remove_initializers,
-                                          bool saving_ort_format) {
+                                          bool saving_ort_format,
+                                          const std::unordered_map<std::string, const void*>* external_data_map) {
   // recursively create the subgraph session state instances and populate the kernel create info in them.
   // it's simpler to handle the kernel create info recursively when deserializing,
   // so also do it recursively when calling PopulateKernelCreateInfo for consistency.
@@ -1118,7 +1119,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   std::unordered_map<std::string, size_t> constant_initializers_use_count;
   ComputeConstantInitializerUseCount(graph_, constant_initializers_use_count);
   return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, session_options,
-                                  remove_initializers, constant_initializers_use_count);
+                                  remove_initializers, constant_initializers_use_count, {}, false, external_data_map);
 }
 
 static Status Index(const OrtValueNameIdxMap& ort_value_name_idx_map,
@@ -1252,7 +1253,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                               bool remove_initializers,
                                               std::unordered_map<std::string, size_t>& constant_initializers_use_count,
                                               const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map,
-                                              bool graph_info_already_created) {
+                                              bool graph_info_already_created,
+                                              const std::unordered_map<std::string, const void*>* external_data_map) {
   if (!graph_info_already_created) {
     CreateGraphInfo();
   }
@@ -1343,7 +1345,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
           [this](int idx, const OrtValue& value, const OrtCallback& d, bool constant, bool sparse) -> Status {
             return AddInitializedTensor(idx, value, &d, constant, sparse);
           },
-          logger_, data_transfer_mgr_, *p_seq_exec_plan_.get(), session_options));
+          logger_, data_transfer_mgr_, *p_seq_exec_plan_.get(), session_options, external_data_map));
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Record Weight allocation info on device
   MemoryInfo::RecordInitializerAllocInfo(GetInitializedTensors());
@@ -1404,7 +1406,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                                subgraph_outer_scope_node_arg_to_location_map));
       ORT_RETURN_IF_ERROR(subgraph_session_state.FinalizeSessionStateImpl(
           graph_location, kernel_registry_manager, &node, subgraph_session_options, remove_initializers,
-          constant_initializers_use_count, subgraph_outer_scope_node_arg_to_location_map, true));
+          constant_initializers_use_count, subgraph_outer_scope_node_arg_to_location_map, true, external_data_map));
 
       // setup all the info for handling the feeds and fetches used in subgraph execution
       auto* p_op_kernel = GetMutableKernel(node.Index());

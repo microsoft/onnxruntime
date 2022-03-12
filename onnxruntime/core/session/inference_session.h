@@ -172,7 +172,8 @@ class InferenceSession {
   InferenceSession(const SessionOptions& session_options,
                    const Environment& session_env,
                    const void* model_data,
-                   int model_data_len);
+                   int model_data_len,
+                   const std::unordered_map<std::string, const void*>* external_data_map);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -250,18 +251,18 @@ class InferenceSession {
   common::Status Load(const std::wstring& model_uri) ORT_MUST_USE_RESULT;
 #endif
   /**
-   * Load an ONNX or ORT format model.
-   *
-   * Set SessionOptions session config value ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT to 'ORT' or 'ONNX' to
-   * explicitly choose model format.
-   *
-   * If format is not explicitly specified the model format will be inferred from the bytes, defaulting to ONNX.
-   *
-   * @param model_data Model data buffer
-   * @param model_data_len Model data buffer size
-   * @return OK if success.
-   */
-  common::Status Load(const void* model_data, int model_data_len) ORT_MUST_USE_RESULT;
+    * Load an ONNX or ORT format model.
+    *
+    * Set SessionOptions session config value ORT_SESSION_OPTIONS_CONFIG_LOAD_MODEL_FORMAT to 'ORT' or 'ONNX' to
+    * explicitly choose model format.
+    *
+    * If format is not explicitly specified the model format will be inferred from the bytes, defaulting to ONNX.
+    *
+    * @param model_data Model data buffer
+    * @param model_data_len Model data buffer size
+    * @return OK if success.
+    */
+  common::Status Load(const void* model_data, int model_data_len, const std::unordered_map<std::string, const void*>* external_data_map = nullptr) ORT_MUST_USE_RESULT;
 
 #if !defined(ORT_MINIMAL_BUILD)
   /**
@@ -792,6 +793,8 @@ class InferenceSession {
   };
 
   CachedExecutionProviderForGraphReplay cached_execution_provider_for_graph_replay_;
+
+  const std::unordered_map<std::string, const void*>* external_data_map_ = nullptr;
 };
 
 struct SessionIOBinding {

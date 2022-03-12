@@ -307,7 +307,8 @@ class SessionState {
                               const SessionOptions& session_options = {},
                               const onnxruntime::fbs::SessionState* serialized_session_state = nullptr,
                               bool remove_initializers = true,
-                              bool saving_ort_format = false);
+                              bool saving_ort_format = false,
+                              const std::unordered_map<std::string, const void*>* external_data_map = nullptr);
 
   SessionState* Parent() {
     return parent_;
@@ -379,7 +380,8 @@ class SessionState {
                                   bool remove_initializers,
                                   std::unordered_map<std::string, size_t>& constant_initializers_use_count,
                                   const std::unordered_map<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map = {},
-                                  bool graph_info_already_created = false);
+                                  bool graph_info_already_created = false,
+                                  const std::unordered_map<std::string, const void*>* external_data_map = nullptr);
 
 #ifdef ENABLE_TRAINING
   Status GeneratePatternGroupCache(

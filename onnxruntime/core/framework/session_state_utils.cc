@@ -58,7 +58,8 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer* m,
                                              const AllocatorPtr& alloc, const AllocatorPtr& default_cpu_alloc,
                                              OrtValue& ort_value, const DataTransferManager& data_transfer_mgr,
-                                             bool use_device_allocator_for_initializers = false) {
+                                             bool use_device_allocator_for_initializers = false,
+                                             const std::unordered_map<std::string, const void*>* external_data_map = nullptr) {
   if (bool(alloc) == (m != nullptr)) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "DeserializeTensorProto() takes either pre-allocated buffer or an allocator!");
@@ -89,7 +90,13 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 
   if (strcmp(p_tensor->Location().name, CPU) == 0) {
     // deserialize directly to CPU tensor
-    ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_tensor));
+    if (external_data_map && external_data_map->size() > 0)
+    {
+      ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, *external_data_map, tensor_proto, *p_tensor));
+    }
+    else {
+      ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_tensor));
+    }
   } else {  // non-cpu tensor
     if (tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "string tensor is not supported for copying between allocators");
@@ -108,7 +115,11 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       p_deserialize_tensor = std::make_unique<Tensor>(type, tensor_shape, default_cpu_alloc);
     }
 
-    ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_deserialize_tensor));
+    if (external_data_map && external_data_map->size() > 0) {
+      ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, *external_data_map, tensor_proto, *p_deserialize_tensor));
+    } else {
+      ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_deserialize_tensor));
+    }
     // TODO!! Need a temp buffer allocator for non-escape buffers that maybe too big for stack allocation.
 
     Status copy_status = data_transfer_mgr.CopyTensor(*p_deserialize_tensor, *p_tensor);
@@ -136,7 +147,8 @@ common::Status SaveInitializedTensors(
     const SaveTensorFunction& save_tensor_func,
     const logging::Logger& logger, const DataTransferManager& data_transfer_mgr,
     const ExecutionPlanBase& exec_plan,
-    const SessionOptions& session_options) {
+    const SessionOptions& session_options,
+    const std::unordered_map<std::string, const void*>* external_data_map) {
   LOGS(logger, INFO) << "Saving initialized tensors.";
   ORT_ENFORCE(ort_value_name_idx_map.MaxIdx() > -1, "OrtValue indexes should have been populated.");
 
@@ -242,7 +254,7 @@ common::Status SaveInitializedTensors(
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
 
       Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, m.get(), alloc, default_cpu_alloc, ort_value,
-                                         data_transfer_mgr, use_device_allocator_for_initializers);
+                                         data_transfer_mgr, use_device_allocator_for_initializers, external_data_map);
       if (!st.IsOK()) {
         std::ostringstream oss;
         oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();

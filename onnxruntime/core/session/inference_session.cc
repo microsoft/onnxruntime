@@ -473,11 +473,13 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 }
 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
-                                   const void* model_data, int model_data_len)
+                                   const void* model_data, int model_data_len,
+                                   const std::unordered_map<std::string, const void*>* external_data_map)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
       insert_cast_transformer_("CastFloat16Transformer"),
       logging_manager_(session_env.GetLoggingManager()),
-      environment_(session_env) {
+      environment_(session_env),
+      external_data_map_(external_data_map) {
   const bool result = model_proto_.ParseFromArray(model_data, model_data_len);
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
   is_model_proto_parsed_ = true;
@@ -793,7 +795,7 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
 }
 #endif
 
-common::Status InferenceSession::Load(const void* model_data, int model_data_len) {
+common::Status InferenceSession::Load(const void* model_data, int model_data_len, const std::unordered_map<std::string, const void*>* external_data_map) {
   std::string model_type = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigLoadModelFormat, "");
   bool has_explicit_type = !model_type.empty();
 
@@ -809,6 +811,8 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
   }
+
+  external_data_map_ = external_data_map;
 
   auto loader = [this, model_data, model_data_len](std::shared_ptr<onnxruntime::Model>& model) {
     ModelProto model_proto;
@@ -1524,12 +1528,14 @@ common::Status InferenceSession::Initialize() {
     }
 
     ORT_RETURN_IF_ERROR_SESSIONID_(
-        session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
+        session_state_->FinalizeSessionState(model_location_,
+                                             kernel_registry_manager_,
                                              session_options_,
                                              serialized_session_state,
                                              // need to keep the initializers if saving the optimized model
                                              !saving_model,
-                                             saving_ort_format));
+                                             saving_ort_format,
+                                             external_data_map_));
 
 #if !defined(ORT_MINIMAL_BUILD)
     if (saving_model) {
