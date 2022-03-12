@@ -276,8 +276,8 @@ jobs:
   - Linux_C_API_Packaging_GPU_TensorRT_x64
   condition: succeeded()
   steps:
-  - checkout: self
-  - checkout: onnxruntime-inference-examples 
+  - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
+  - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
     submodules: false
   - script: dir $(Build.SourcesDirectory)
   - template: templates/set-version-number-variables-step.yml
@@ -326,8 +326,9 @@ jobs:
   - template: templates/set-version-number-variables-step.yml
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_4_tensorrt8_2
-      Context: tools/ci_build/github/linux/docker
+      ScriptName: onnxruntime/tools/ci_build/get_docker_image.py 
+      Dockerfile: onnxruntime/tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_4_tensorrt8_2
+      Context: onnxruntime/tools/ci_build/github/linux/docker
       DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecuda114xtrt82build
   - task: CmdLine@2
@@ -336,7 +337,7 @@ jobs:
       script: |
         docker run --gpus all -e CC=/opt/rh/devtoolset-10/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-10/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume $(Build.SourcesDirectory):/src_dir \
         --volume $(Build.ArtifactStagingDirectory):/artifact_src -e NIGHTLY_BUILD onnxruntimecuda114xtrt82build \
-        /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet/run_capi_application.sh -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet 
+        /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet/run_capi_application.sh -o /src_dir/onnxruntime -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet 
       workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
   - task: PublishPipelineArtifact@1
@@ -353,8 +354,8 @@ jobs:
   - Windows_Packaging_tensorrt
   condition: succeeded()
   steps:
-  - checkout: self
-  - checkout: onnxruntime-inference-examples 
+  - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
+  - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
     submodules: false
   - script: dir $(Build.SourcesDirectory)
   - task: BatchScript@1
@@ -417,7 +418,7 @@ jobs:
     displayName: 'Test C API application for GPU package'
     inputs:
       filename: $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet\run_capi_application.bat
-      arguments: $(Build.ArtifactStagingDirectory)\onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet 
+      arguments: $(Build.SourcesDirectory)\onnxruntime $(Build.ArtifactStagingDirectory)\onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet 
       workingFolder: '$(Build.ArtifactStagingDirectory)' 
       failOnStandardError: true
 
