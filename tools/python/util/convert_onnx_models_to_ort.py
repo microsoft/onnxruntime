@@ -122,7 +122,7 @@ def _convert(model_path_or_dir: pathlib.Path, output_dir: typing.Optional[pathli
                                          session_options_config_entries)
             so.add_session_config_entry('session.save_model_format', 'ORT')
             if optimization_style == OptimizationStyle.Runtime:
-                so.add_session_config_entry('optimization.save_runtime_optimizations', '1')
+                so.add_session_config_entry('optimization.minimal_build_optimizations', 'save')
 
             print("Converting optimized ONNX model {} to ORT format model {}".format(model, ort_target_path))
             _ = ort.InferenceSession(str(model), sess_options=so, providers=providers,
@@ -250,6 +250,10 @@ def convert_onnx_models_to_ort():
                 model_dir = model_path_or_dir if model_path_or_dir.is_dir() else model_path_or_dir.parent
                 temp_output_dir = context_stack.enter_context(
                     tempfile.TemporaryDirectory(dir=model_dir, suffix=".without_runtime_opt"))
+                session_options_config_entries_for_second_conversion=session_options_config_entries
+                # Limit the optimizations to those that can run in a model with runtime optimizations.
+                session_options_config_entries_for_second_conversion[
+                    "optimization.minimal_build_optimizations"] = "apply"
 
                 print("Converting models again without runtime optimizations to generate a complete config file. "
                       "These converted models are temporary and will be deleted.")
@@ -260,7 +264,7 @@ def convert_onnx_models_to_ort():
                     create_optimized_onnx_model=False,  # not useful as they would be created in a temp directory
                     allow_conversion_failures=args.allow_conversion_failures,
                     target_platform=args.target_platform,
-                    session_options_config_entries=session_options_config_entries)
+                    session_options_config_entries=session_options_config_entries_for_second_conversion)
 
             print("Generating config file from ORT format models with optimization style '{}' and level '{}'".format(
                 optimization_style.name, optimization_level_str))
