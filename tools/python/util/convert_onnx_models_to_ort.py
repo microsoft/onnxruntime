@@ -108,10 +108,12 @@ def _convert(model_path_or_dir: pathlib.Path, output_dir: typing.Optional[pathli
                 # This allows the ONNX equivalent of the ORT format model to be easily viewed in Netron.
                 # If runtime optimizations are saved in the ORT format model, there may be some difference in the
                 # graphs at runtime between the ORT format model and this saved ONNX model.
-                optimized_target_path = (output_dir / relative_model_path).with_suffix(
-                    ".{}.optimized.onnx".format(optimization_level_str))
+                optimized_target_path = (output_dir / relative_model_path).with_suffix(".optimized.onnx")
                 so = _create_session_options(optimization_level, optimized_target_path, custom_op_library,
                                              session_options_config_entries)
+                if optimization_style == OptimizationStyle.Runtime:
+                    # Limit the optimizations to those that can run in a model with runtime optimizations.
+                    so.add_session_config_entry('optimization.minimal_build_optimizations', 'apply')
 
                 print("Saving optimized ONNX model {} to {}".format(model, optimized_target_path))
                 _ = ort.InferenceSession(str(model), sess_options=so, providers=providers,
