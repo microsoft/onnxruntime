@@ -52,6 +52,9 @@ QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& inf
 
 Status
 QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
+  // For Debugging...
+  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
+
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(2);
   const Tensor* bias = context->Input<Tensor>(4);
@@ -220,7 +223,6 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
     const CudaT* half_global_scale = (const CudaT*)(gemm_buffer.get() + qkv_3 + 2*element_size);
     ORT_RETURN_IF_ERROR(CudaDequantizeLinear(stream, global_gemm_buffer.get() + qkv_size,
                                             (CudaT*)global_gemm_buffer.get(), half_global_scale, (const int8_t*)nullptr, qkv_count));
-
   }
 
   size_t workSpaceSize = GetLongformerAttentionWorkspaceSize(element_size, batch_size, num_heads_, head_size, sequence_length, max_num_global, window_, use_fast_kernel);
@@ -260,6 +262,8 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
 
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
   this->AddDeferredReleaseCPUPtr(pinned_buffer.release());
+
+  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
   return Status::OK();
 }
 

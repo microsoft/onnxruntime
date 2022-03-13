@@ -1147,15 +1147,18 @@ If mask is provided, mask index (that is position of first 0 in mask, or number 
       .SetDoc(R"DOC(Quantize MatMul with order.)DOC")
       .Attr("order_A", "cublasLt order of matrix A", AttributeProto::INT)
       .Attr("order_B", "cublasLt order of matrix B", AttributeProto::INT)
-      .Attr("order_Y", "cublasLt order of matrix Y", AttributeProto::INT)
-      .Input(0, "A", "N-dimensional matrix A", "Q")
-      .Input(1, "scale_A", "scale of the input A", "F")
-      .Input(2, "B", "N-dimensional matrix B", "Q")
-      .Input(3, "scale_B", "scale of the input B", "F")
-      .Input(4, "scale_Y", "scale of the output Y", "F")
+      .Attr("order_Y", "cublasLt order of matrix Y and optional matrix C", AttributeProto::INT)
+      .Input(0, "A", "3-dimensional matrix A", "Q")
+      .Input(1, "scale_A", "scale of the input A", "S")
+      .Input(2, "B", "2-dimensional matrix B", "Q")
+      .Input(3, "scale_B", "scale of the input B", "S")
+      .Input(4, "scale_Y", "scale of the output Y", "S")
+      .Input(5, "bias", "1d bias", "S", OpSchema::Optional)
+      .Input(6, "C", "3d or 2d matrix C. if 2d expand to 3d first. Shape[0] should be 1 or same as A.shape[0] ", "Q", OpSchema::Optional)
+      .Input(7, "scale_C", "scale of the input A", "S", OpSchema::Optional)
       .Output(0, "Y", "Matrix multiply results from A * B", "Q")
       .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
-      .TypeConstraint("F", {"tensor(float)"}, "Constrain to float32")
+      .TypeConstraint("S", {"tensor(float)"}, "Constrain bias and scales to float32")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
         ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 2);
@@ -1275,6 +1278,18 @@ TODO: Support them if needed in the future.
         propagateShapeAndTypeFromFirstInput(ctx);
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
       }));
+
+  ONNX_MS_OPERATOR_SET_SCHEMA(QOrderedGelu, 1, OpSchema()
+      .SetDoc(R"DOC(Ordered Quantize Gelu.)DOC")
+      .Attr("order_X", "cublasLt order of input X", AttributeProto::INT)
+      .Attr("order_Y", "cublasLt order of output Y", AttributeProto::INT)
+      .Input(0, "X", "N-dimensional input A", "Q")
+      .Input(1, "scale_X", "scale of the input A", "S")
+      .Input(2, "scale_Y", "scale of the output Y", "S")
+      .Output(0, "Y", "Output of the Gelu", "Q")
+      .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("S", {"tensor(float)"}, "Constrain scales to float32")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
 }  // namespace contrib
 }  // namespace onnxruntime

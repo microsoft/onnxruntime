@@ -75,6 +75,8 @@ QOrderedLayerNormalization::QOrderedLayerNormalization(const OpKernelInfo& op_ke
 //       });
 
 Status QOrderedLayerNormalization::ComputeInternal(OpKernelContext* ctx) const {
+  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
+
   typedef typename ToCudaType<int8_t>::MappedType CudaQ;
   typedef typename ToCudaType<MLFloat16>::MappedType CudaF;
 
@@ -112,22 +114,27 @@ Status QOrderedLayerNormalization::ComputeInternal(OpKernelContext* ctx) const {
   const float* scale_y = ctx->Input<Tensor>(4)->Data<float>();
 
   // TODO: Write specific kernel for all these rather than QOrder/DQOrder
-  auto fp16_buffer = GetScratchBuffer<CudaF>(2 * element_count * sizeof(MLFloat16));
+  auto fp16_buffer = GetScratchBuffer<CudaF>(2 * element_count * sizeof(CudaF) + 2 * sizeof(CudaF));
+  // Could move to constructor, yet maybe not needed after rewrite
+  CudaF half_scales[2] = {ToCudaType<MLFloat16>::FromFloat(*scale_x), ToCudaType<MLFloat16>::FromFloat(*scale_y)};
+  CudaF* half_scale_x = fp16_buffer.get() + (2 * element_count);
+  CudaF* half_scale_y = half_scale_x + 1;
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(half_scale_x, half_scales, 2 * sizeof(CudaF), cudaMemcpyHostToDevice, stream));
+
   ORT_RETURN_IF_ERROR(Reorder(cublasLt, stream, batch, rows, cols, CUDA_R_8I, X_data, CUBLASLT_ORDER_COL32, fp16_buffer.get(), CUBLASLT_ORDER_ROW));
-  CudaF half_scale_x = ToCudaType<MLFloat16>::FromFloat(*scale_x);
   ORT_RETURN_IF_ERROR(CudaDequantizeLinear(stream, (const CudaQ*)(fp16_buffer.get()), fp16_buffer.get() + element_count,
-                                           &half_scale_x, (const int8_t*)nullptr, element_count));
+                                           half_scale_x, (const int8_t*)nullptr, element_count));
 
   typedef typename ToCudaType<float>::MappedType CudaU;
   HostApplyLayerNorm<CudaF, CudaU, false>(GetDeviceProp(), Stream(), fp16_buffer.get(), nullptr, nullptr,
                                           fp16_buffer.get() + element_count, n1, n2, epsilon_, scale_data, bias_data);
 
-  CudaF half_scale_y = ToCudaType<MLFloat16>::FromFloat(*scale_y);
   ORT_RETURN_IF_ERROR(CudaQuantizeLinear(stream, fp16_buffer.get(), (CudaQ*)(fp16_buffer.get() + element_count),
-                                         &half_scale_y, (const int8_t*)nullptr, element_count));
+                                         half_scale_y, (const int8_t*)nullptr, element_count));
   ORT_RETURN_IF_ERROR(Reorder(cublasLt, stream, batch, rows, cols, CUDA_R_8I,
                               fp16_buffer.get() + element_count, CUBLASLT_ORDER_ROW, Y_data, CUBLASLT_ORDER_COL32));
 
+  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
   return Status::OK();
 }
 
