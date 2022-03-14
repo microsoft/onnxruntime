@@ -30,9 +30,17 @@ export class WebGpuBackend implements Backend {
       Logger.setWithEnv(env);
 
       Logger.verbose('WebGpuBackend', 'Initialized successfully.');
+
+      this.device.onuncapturederror = ev => {
+        if (ev.error instanceof GPUValidationError) {
+          // eslint-disable-next-line no-console
+          console.error(`An uncaught WebGPU validation error was raised: ${ev.error.message}`);
+        }
+      };
+
       return true;
     } catch (e) {
-      Logger.warning('WebGpuBackend', `Unable to initialize WebGLBackend. ${e}`);
+      Logger.warning('WebGpuBackend', `Unable to initialize WebGpuBackend. ${e}`);
       return false;
     }
   }

@@ -348,7 +348,7 @@ export class Tensor {
   }
 }
 
-function sizeof(type: Tensor.DataType): number {
+export function sizeof(type: Tensor.DataType): number {
   switch (type) {
     case 'bool':
     case 'int8':
@@ -390,7 +390,7 @@ function sizeofProto(type: onnx.TensorProto.DataType|ortFbs.TensorDataType): num
   }
 }
 
-function createView(dataBuffer: ArrayBuffer, type: Tensor.DataType) {
+export function createView(dataBuffer: ArrayBuffer, type: Tensor.DataType) {
   return new (dataviewConstructor(type))(dataBuffer);
 }
 

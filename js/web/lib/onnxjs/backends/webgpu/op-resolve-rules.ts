@@ -3,7 +3,10 @@
 
 import {OpSet} from '../../opset';
 
+import * as unaryOps from './ops/unary-op';
+
 export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
+  ['Abs', '', '6+', unaryOps.abs]
   // ['Abs', '', '6+', unaryOps.abs],
   // ['Acos', '', '7+', unaryOps.acos],
   // ['Add', '', '7+', binaryOps.add],

@@ -140,7 +140,13 @@ export class ExecutionPlan {
         if (outputTensor === undefined) {
           throw new Error(`required output [${outputIndex}] does not have value`);
         }
-        if (outputIndex === 0) {
+
+        // TODO: use env to check
+        const IS_WEBGPU = true;
+
+        if (IS_WEBGPU) {
+          await outputTensor.getData();
+        } else if (outputIndex === 0) {
           await outputTensor.getData();
         } else {
           // eslint-disable-next-line no-unused-expressions

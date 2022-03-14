@@ -25,6 +25,8 @@ const WEBGL_THRESHOLD_ABSOLUTE_ERROR = 1.0e-3;
 const WEBGL_THRESHOLD_RELATIVE_ERROR = 1.00001;
 const WEBGL_HALF_FLOAT_THRESHOLD_ABSOLUTE_ERROR = 0.1;
 const WEBGL_HALF_FLOAT_THRESHOLD_RELATIVE_ERROR = 1.02;
+const WEBGPU_THRESHOLD_ABSOLUTE_ERROR = 1.0e-3;
+const WEBGPU_THRESHOLD_RELATIVE_ERROR = 1.00001;
 const WASM_THRESHOLD_ABSOLUTE_ERROR = 1.0e-4;
 const WASM_THRESHOLD_RELATIVE_ERROR = 1.000001;
 const ONNXRUNTIME_THRESHOLD_ABSOLUTE_ERROR = 1.0e-3;
@@ -271,6 +273,9 @@ export class TensorResultValidator {
         this.absoluteThreshold = WEBGL_THRESHOLD_ABSOLUTE_ERROR;
         this.relativeThreshold = WEBGL_THRESHOLD_RELATIVE_ERROR;
       }
+    } else if (backend === 'webgpu') {
+      this.absoluteThreshold = WEBGPU_THRESHOLD_ABSOLUTE_ERROR;
+      this.relativeThreshold = WEBGPU_THRESHOLD_RELATIVE_ERROR;
     } else if (backend === 'wasm') {
       this.absoluteThreshold = WASM_THRESHOLD_ABSOLUTE_ERROR;
       this.relativeThreshold = WASM_THRESHOLD_RELATIVE_ERROR;

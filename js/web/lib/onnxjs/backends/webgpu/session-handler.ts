@@ -8,15 +8,20 @@ import {OpSet, resolveOperator} from '../../opset';
 import {Session} from '../../session';
 import {Tensor} from '../../tensor';
 import {WebGpuBackend} from '../backend-webgpu';
-import {WebGpuInferenceHandler} from './inference-handler';
 
+import {createGpuDataManager, GpuDataManager} from './gpu-data-manager';
+import {WebGpuInferenceHandler} from './inference-handler';
 import {WEBGPU_OP_RESOLVE_RULES} from './op-resolve-rules';
+import {ProgramManager} from './program-manager';
 
 export class WebGpuSessionHandler implements SessionHandler {
   private initializers: Set<Tensor.Id>;
+  readonly dataManager: GpuDataManager;
+  programManager: ProgramManager;
 
   constructor(public readonly backend: WebGpuBackend, public readonly context: Session.Context) {
-    // TODO
+    this.dataManager = createGpuDataManager(this.backend.device);
+    this.programManager = new ProgramManager(this.backend.device, this.context.profiler);
   }
 
   createInferenceHandler() {
