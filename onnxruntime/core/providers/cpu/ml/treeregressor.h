@@ -9,17 +9,15 @@ namespace ml {
 template <typename T>
 class TreeEnsembleRegressor final : public OpKernel {
   typedef T TI;  // input type
-  // typedef T TH;  // threshold type, double if T==double, float otherwise
   typedef float TO;  // output type
  public:
   explicit TreeEnsembleRegressor(const OpKernelInfo& info);
-  ~TreeEnsembleRegressor();
   common::Status Compute(OpKernelContext* context) const override;
 
  private:
   // Following pointer holds a pointer on one instance of detail::TreeEnsembleCommon<T, TH>
   // where TH is defined after accessing the attributes.
-  detail::TreeEnsembleCommonAttributes* p_tree_ensemble_;
+  std::unique_ptr<detail::TreeEnsembleCommonAttributes> p_tree_ensemble_;
 };
 }  // namespace ml
 }  // namespace onnxruntime
