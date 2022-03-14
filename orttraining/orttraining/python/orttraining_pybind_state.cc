@@ -808,6 +808,11 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       })
       .def("save", [](PyGradientGraphBuilder* gradient_graph_builder, const std::string& path) {
         ORT_THROW_IF_ERROR(Model::Save(*(gradient_graph_builder->model), path));
+      })
+      .def("get_model", [](PyGradientGraphBuilder* gradient_graph_builder) {
+        std::string model_str;
+        gradient_graph_builder->model->ToProto().SerializeToString(&model_str);
+        return py::bytes(model_str);
       });
 
   py::class_<GradientNodeAttributeDefinition> gradient_node_attribute_definition(
