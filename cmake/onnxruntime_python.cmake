@@ -397,6 +397,9 @@ file(GLOB onnxruntime_mobile_helpers_srcs CONFIGURE_DEPENDS
     ${REPO_ROOT}/tools/ci_build/github/android/nnapi_supported_ops.md
     ${REPO_ROOT}/tools/ci_build/github/apple/coreml_supported_ops.md
 )
+file(GLOB onnxruntime_qdq_helper_srcs CONFIGURE_DEPENDS
+    ${REPO_ROOT}/tools/python/util/qdq_helpers/*.py
+)
 
 set(build_output_target onnxruntime_common)
 if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
@@ -408,6 +411,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/datasets
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/mobile_helpers
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/qdq_helpers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/ort_flatbuffers_py
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers
@@ -467,6 +471,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E cat
       ${REPO_ROOT}/tools/python/util/__init__append.py >>
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/__init__.py
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_qdq_helper_srcs}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/qdq_helpers/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_mobile_helpers_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/mobile_helpers/
