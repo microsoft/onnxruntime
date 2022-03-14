@@ -56,7 +56,7 @@ def get_sdk_tool_paths(sdk_root: str):
              os.path.join(sdk_root, "cmdline-tools", "tools", "bin")],
             filename("avdmanager", "bat")))
 
-def install_sdk(system_image_package_name: str):
+def install_sdk(sdk_tool_paths: SdkToolPaths, system_image_package_name: str):
     run(sdk_tool_paths.sdkmanager, "--install", system_image_package_name,
         input=b"y")
 

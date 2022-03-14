@@ -26,7 +26,8 @@ def parse_args():
 
     parser.add_argument(
         "--install-sdk", action="store_true",
-        help="Whether to create the Android virtual device.")
+        help="Whether to install android sdk.")
+
     parser.add_argument(
         "--start", action="store_true", help="Start the emulator.")
     parser.add_argument(
@@ -75,7 +76,7 @@ def main():
         android.create_virtual_device(sdk_tool_paths, args.system_image, args.avd_name)
 
     if args.install_sdk:
-        android.install_sdk(args.system_image)
+        android.install_sdk(sdk_tool_paths, args.system_image)
 
     if args.start and args.stop:
         with contextlib.ExitStack() as context_stack:
