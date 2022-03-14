@@ -1,7 +1,7 @@
 jobs:
 - job: Android_CI
   pool:
-    vmImage: 'Ubuntu 20.04'
+    vmImage: 'macOS-11'
   timeoutInMinutes: 180
   steps:
   # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
@@ -26,14 +26,6 @@ jobs:
         $(Build.SourcesDirectory)/protobuf_install
     displayName: Build Host Protoc
 
-  - script: |
-      python3 tools/python/run_android_emulator.py \
-        --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
-        --start --emulator-extra-args="-partition-size 4096" \
-        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-    displayName: Start Android emulator
-
   # Start switching to jdk 11 after the Android Emulator is started since Android SDK manager requires java 8
   - task: JavaToolInstaller@0
     displayName: Use jdk 11
@@ -54,5 +46,6 @@ jobs:
         --parallel \
         --cmake_generator=Ninja \
         --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
-        --build_java
-    displayName: CPU EP, Build and Test on Android Emulator
+        --build_jav \
+        --skip_tests
+    displayName: CPU EP, Build
