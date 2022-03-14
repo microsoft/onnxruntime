@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "core/common/path_string.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/providers/providers.h"
 #include "orttraining/core/framework/checkpoint_registry.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
@@ -202,8 +202,8 @@ class TrainingRunner {
     bool transformer_layer_recompute = false;
     // Number of layers to apply recompute
     int number_recompute_layers = 0;
-    // Use invertible layernorm grad
-    bool use_invertible_layernorm_grad = false;
+    // Use memory aware gradient builder.
+    bool use_memory_efficient_gradient = false;
   };
 
   TrainingRunner(Parameters params, const Environment& env);
@@ -233,17 +233,17 @@ class TrainingRunner {
                                   LearningRateScheduler* lr_scheduler,
                                   const size_t batch_index,
                                   std::vector<std::string>& feed_names,
-                                  std::vector<MLValue>& feeds);
+                                  std::vector<OrtValue>& feeds);
   Status PrepareFetchNamesAndFetches(const SessionMode mode,
                                      std::vector<std::string>& fetch_names,
-                                     std::vector<MLValue>& fetches);
+                                     std::vector<OrtValue>& fetches);
   void RunWithUpdate(VectorString& feed_names,
                      VectorString& fetch_names,
-                     std::vector<MLValue>& feeds,
-                     std::vector<MLValue>& fetches);
+                     std::vector<OrtValue>& feeds,
+                     std::vector<OrtValue>& fetches);
   void RunWithoutUpdate(VectorString& feed_names,
                         VectorString& fetch_names,
-                        std::vector<MLValue>& feeds,
+                        std::vector<OrtValue>& feeds,
                         size_t& gradient_accumulation_step_count);
   void CheckWorkerException(const std::exception_ptr& p);
   Status TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader,

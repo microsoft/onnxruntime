@@ -14,6 +14,7 @@ class QGlobalAveragePool(QuantOperatorBase):
         # If input to this node is not quantized then keep this node.
         if node.input[0] not in self.quantizer.quantized_value_map:
             return super().quantize()
+
         quantized_input_value = self.quantizer.quantized_value_map[node.input[0]]
 
         # Create an entry for output quantized value.

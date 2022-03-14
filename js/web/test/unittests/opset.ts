@@ -6,15 +6,15 @@ import {expect} from 'chai';
 import {Attribute} from '../../lib/onnxjs/attribute';
 import {WEBGL_OP_RESOLVE_RULES} from '../../lib/onnxjs/backends/webgl/op-resolve-rules';
 import {Graph} from '../../lib/onnxjs/graph';
-import {Operator} from '../../lib/onnxjs/operators';
 import {OpSet, resolveOperator} from '../../lib/onnxjs/opset';
+import {Tensor} from '../../lib/onnxjs/tensor';
 
 function createTestGraphNode(name: string, opType: string): Graph.Node {
   return {name, opType, inputs: [], outputs: [], attributes: new Attribute(null)};
 }
 
-function dummyOpConstructor(): Operator {
-  return {} as any as Operator;
+function dummyOpImpl(): Tensor[] {
+  return [];
 }
 
 function checkConsistency(rules: readonly OpSet.ResolveRule[]) {
@@ -55,46 +55,46 @@ describe('#UnitTest# - resolveOperator', () => {
   });
   it('ExpectFail - no matching rule', () => {
     expect(() => {
-      resolveOperator(nodeAbs, opset7, [['And', '', '7', dummyOpConstructor], ['Sub', '', '7', dummyOpConstructor]]);
+      resolveOperator(nodeAbs, opset7, [['And', '', '7', dummyOpImpl], ['Sub', '', '7', dummyOpImpl]]);
     }).to.throw(TypeError);
   });
   it('ExpectFail - version not match (exact match)', () => {
     expect(() => {
-      resolveOperator(nodeAbs, opset7, [['Abs', '', '6', dummyOpConstructor]]);
+      resolveOperator(nodeAbs, opset7, [['Abs', '', '6', dummyOpImpl]]);
     }).to.throw(TypeError);
   });
   it('ExpectFail - version not match (minimum version match)', () => {
     expect(() => {
-      resolveOperator(nodeAbs, opset7, [['Abs', '', '8+', dummyOpConstructor]]);
+      resolveOperator(nodeAbs, opset7, [['Abs', '', '8+', dummyOpImpl]]);
     }).to.throw(TypeError);
   });
   it('ExpectFail - version not match (range match 1)', () => {
     expect(() => {
-      resolveOperator(nodeAbs, opset7, [['Abs', '', '4-6', dummyOpConstructor]]);
+      resolveOperator(nodeAbs, opset7, [['Abs', '', '4-6', dummyOpImpl]]);
     }).to.throw(TypeError);
   });
   it('ExpectFail - version not match (range match 2)', () => {
     expect(() => {
-      resolveOperator(nodeAbs, opset7, [['Abs', '', '8-10', dummyOpConstructor]]);
+      resolveOperator(nodeAbs, opset7, [['Abs', '', '8-10', dummyOpImpl]]);
     }).to.throw(TypeError);
   });
   it('ExpectPass - version match (exact match)', () => {
-    resolveOperator(nodeAbs, opset7, [['Abs', '', '7', dummyOpConstructor]]);
+    resolveOperator(nodeAbs, opset7, [['Abs', '', '7', dummyOpImpl]]);
   });
   it('ExpectPass - version match (minimum version match)', () => {
-    resolveOperator(nodeAbs, opset7, [['Abs', '', '5+', dummyOpConstructor]]);
+    resolveOperator(nodeAbs, opset7, [['Abs', '', '5+', dummyOpImpl]]);
   });
   it('ExpectPass - version match (range match 1)', () => {
-    resolveOperator(nodeAbs, opset7, [['Abs', '', '5-7', dummyOpConstructor]]);
+    resolveOperator(nodeAbs, opset7, [['Abs', '', '5-7', dummyOpImpl]]);
   });
   it('ExpectPass - version match (range match 2)', () => {
-    resolveOperator(nodeAbs, opset7, [['Abs', '', '6-9', dummyOpConstructor]]);
+    resolveOperator(nodeAbs, opset7, [['Abs', '', '6-9', dummyOpImpl]]);
   });
 });
 
 describe('#UnitTest# - resolve rules', () => {
   const webglCheckOnlyRules =
-      WEBGL_OP_RESOLVE_RULES.map(rule => [rule[0], rule[1], rule[2], dummyOpConstructor] as OpSet.ResolveRule);
+      WEBGL_OP_RESOLVE_RULES.map(rule => [rule[0], rule[1], rule[2], dummyOpImpl] as OpSet.ResolveRule);
   it('Consistency check - onnx.ai - webgl', () => {
     checkConsistency(webglCheckOnlyRules);
   });

@@ -27,6 +27,7 @@
 #pragma GCC diagnostic ignored "-Wignored-attributes"
 #endif
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wunused-result"
 #if __GNUC__ >= 7
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wint-in-bool-context"
@@ -34,32 +35,38 @@
 #pragma GCC diagnostic ignored "-Wdeprecated-copy"
 #endif
 #endif
-#else
+// cmake/external/eigen/Eigen/src/Core/arch/NEON/PacketMath.h:1633:9:
+// error: ‘void* memcpy(void*, const void*, size_t)’ copying an object of non-trivial type ‘Eigen::internal::Packet4c’
+// {aka ‘struct Eigen::internal::eigen_packet_wrapper<int, 2>’} from an array of ‘const int8_t’
+// {aka ‘const signed char’} [-Werror=class-memaccess]
+#ifdef HAS_CLASS_MEMACCESS
+#pragma GCC diagnostic ignored "-Wclass-memaccess"
+#endif
+
+#ifdef HAS_DEPRECATED_DECLARATIONS
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
+#elif defined(_MSC_VER)
 // build\windows\debug\external\eigen3\unsupported\eigen\cxx11\src/Tensor/Tensor.h(76):
 // warning C4554: '&': check operator precedence for possible error; use parentheses to clarify precedence
-// build\windows\debug\external\eigen3\unsupported\eigen\cxx11\src/Tensor/TensorStorage.h(65):
-// warning C4324: structure was padded due to alignment specifier
+
 // unsupported\eigen\cxx11\src\Tensor\TensorUInt128.h(150,0): Warning C4245: 'initializing': conversion from '__int64'
 // to 'uint64_t', signed/unsigned mismatch
 #pragma warning(push)
 #pragma warning(disable : 4554)
-#pragma warning(disable : 4324)
 #pragma warning(disable : 4245)
 #pragma warning(disable : 4127)
-#pragma warning(disable : 6255)
-#pragma warning(disable : 6294)
 #endif
 #include "Eigen/Core"
 #include "Eigen/Dense"
+#include "Eigen/Sparse"
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #else
 #pragma warning(pop)
 #endif
 
-#ifndef SHARED_PROVIDER
-#include "core/framework/tensor.h"
-#endif
 namespace onnxruntime {
 
 // common Eigen types that we will often use
@@ -77,6 +84,9 @@ using EigenVectorArrayMap = Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1>>;
 
 template <typename T>
 using ConstEigenMatrixMap = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>;
+
+template <class T>
+using ConstSparseMatrixMap = Eigen::Map<const Eigen::SparseMatrix<T, Eigen::RowMajor, int64_t>>;
 
 template <typename T>
 using ConstEigenArrayMap = Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, Eigen::Dynamic>>;
@@ -100,15 +110,6 @@ using EigenMatrixMapRowMajorOuterStride =
 template <typename T>
 using ConstEigenMatrixMapRowMajorOuterStride =
     Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>, 0, Eigen::OuterStride<>>;
-
-template <typename T>
-auto EigenMap(Tensor& t) -> EigenVectorMap<T> {
-  return EigenVectorMap<T>(t.template MutableData<T>(), gsl::narrow<ptrdiff_t>(t.Shape().Size()));
-}
-template <typename T>
-auto EigenMap(const Tensor& t) -> ConstEigenVectorMap<T> {
-  return ConstEigenVectorMap<T>(t.template Data<T>(), gsl::narrow<ptrdiff_t>(t.Shape().Size()));
-}
 
 class CPUMathUtil {
  public:

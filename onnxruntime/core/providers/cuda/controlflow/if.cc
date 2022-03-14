@@ -34,9 +34,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(If,
                                       .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   If);
 
-// sequence tensors were also supported in addition to existing support for tensors in opset-13,
-// but we do not support sequence tensors in the cuda If kernel because there are no ops that handle
-// sequence tensors on CUDA and supporting it for If doesn't add value while that is the case
+// opset-13 supports sequence type for If's subgraph outputs
 ONNX_OPERATOR_KERNEL_EX(If,
                         kOnnxDomain,
                         13,
@@ -44,7 +42,7 @@ ONNX_OPERATOR_KERNEL_EX(If,
                         (*KernelDefBuilder::Create())
                             .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                            .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
+                            .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
                         If);
 
 Status If::Compute(OpKernelContext* ctx) const {

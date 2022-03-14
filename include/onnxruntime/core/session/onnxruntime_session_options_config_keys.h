@@ -47,6 +47,15 @@ static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.se
 // Its default value is "0"
 static const char* const kOrtSessionOptionsDisableQuantQDQ = "session.disable_quant_qdq";
 
+// If set to "1", enables the removal of QuantizeLinear/DequantizeLinear node pairs once all QDQ handling has been
+// completed. e.g. If after all QDQ handling has completed and we have -> FloatOp -> Q -> DQ -> FloatOp -> the
+// Q -> DQ could potentially be removed. This will provide a performance benefit by avoiding going from float to
+// 8-bit and back to float, but could impact accuracy. The impact on accuracy will be model specific and depend on
+// other factors like whether the model was created using Quantization Aware Training or Post Training Quantization.
+// As such, it's best to test to determine if enabling this works well for your scenario.
+// The default value is "0"
+static const char* const kOrtSessionOptionsEnableQuantQDQCleanup = "session.enable_quant_qdq_cleanup";
+
 // Enable or disable gelu approximation in graph optimization. "0": disable; "1": enable. The default is "0".
 // GeluApproximation has side effects which may change the inference results. It is disabled by default due to this.
 static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimization.enable_gelu_approximation";
@@ -60,3 +69,53 @@ static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "
 // "1": default, thread will spin a number of times before blocking
 static const char* const kOrtSessionOptionsConfigAllowInterOpSpinning = "session.inter_op.allow_spinning";
 static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session.intra_op.allow_spinning";
+
+// Key for using model bytes directly for ORT format
+// If a session is created using an input byte array contains the ORT format model data,
+// By default we will copy the model bytes at the time of session creation to ensure the model bytes
+// buffer is valid.
+// Setting this option to "1" will disable copy the model bytes, and use the model bytes directly. The caller
+// has to guarantee that the model bytes are valid until the ORT session using the model bytes is destroyed.
+static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "session.use_ort_model_bytes_directly";
+
+// This should only be specified when exporting an ORT format model for use on a different platform.
+// If the ORT format model will be used on ARM platforms set to "1". For other platforms set to "0"
+static const char* const kOrtSessionOptionsQDQIsInt8Allowed = "session.qdqisint8allowed";
+
+// Save information for replaying graph optimizations later instead of applying them directly.
+//
+// When an ONNX model is loaded, ORT can perform various optimizations on the graph.
+// However, when an ORT format model is loaded, the logic to perform these optimizations may not be available because
+// this scenario must be supported by minimal builds.
+// When loading an ONNX model, ORT can optionally save the effects of some optimizations for later replay in an ORT
+// format model. These are known as "runtime optimizations" - in an ORT format model, they happen at runtime.
+//
+// Note: This option is only applicable when loading an ONNX model and saving an ORT format model.
+//
+// Note: Runtime optimizations are only supported for certain optimizations at the extended level or higher.
+// Unsupported optimizations at those levels are not applied at all, while optimizations at other levels are applied
+// directly.
+//
+// "0": disabled, "1": enabled
+// The default is "0".
+static const char* const kOrtSessionOptionsConfigSaveRuntimeOptimizations = "optimization.save_runtime_optimizations";
+
+// Note: The options specific to an EP should be specified prior to appending that EP to the session options object in
+// order for them to take effect.
+
+// Specifies a list of stop op types. Nodes of a type in the stop op types and nodes downstream from them will not be
+// run by the NNAPI EP.
+// The value should be a ","-delimited list of op types. For example, "Add,Sub".
+// If not specified, the default set of stop ops is used. To specify an empty stop ops types list and disable stop op
+// exclusion, set the value to "".
+static const char* const kOrtSessionOptionsConfigNnapiEpPartitioningStopOps = "ep.nnapi.partitioning_stop_ops";
+
+// Enabling dynamic block-sizing for multithreading.
+// With a positive value, thread pool will split a task of N iterations to blocks of size starting from:
+// N / (num_of_threads * dynamic_block_base)
+// As execution progresses, the size will decrease according to the diminishing residual of N,
+// meaning the task will be distributed in smaller granularity for better parallelism.
+// For some models, it helps to reduce the variance of E2E inference latency and boost performance.
+// The feature will not function by default, specify any positive integer, e.g. "4", to enable it.
+// Available since version 1.11.
+static const char* const kOrtSessionOptionsConfigDynamicBlockBase = "session.dynamic_block_base";

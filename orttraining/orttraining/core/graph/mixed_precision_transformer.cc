@@ -84,29 +84,30 @@ static void GetConsumerNodeInputs(onnxruntime::Graph& graph,
                                   std::vector<std::pair<Node*, int>>& fp32_inputs) {
   std::vector<Node*> consumer_nodes = graph.GetMutableConsumerNodes(arg->Name());
   for (Node* node : consumer_nodes) {
-    int node_arg_slot = -1;
+    std::vector<int> node_arg_slots;
     for (int i = 0; i < static_cast<int>(node->InputDefs().size()); i++) {
       if (node->InputDefs()[i] == arg) {
-        node_arg_slot = i;
-        break;
+        node_arg_slots.push_back(i);
       }
     }
 
-    if (node_arg_slot == -1) {
+    if (node_arg_slots.empty()) {
       continue;
     }
 
     auto it = fp32_node_args_by_op_type.find(node->OpType());
-    if (it != fp32_node_args_by_op_type.cend() &&
-        std::find(it->second.cbegin(), it->second.cend(), node_arg_slot) != it->second.cend()) {
-      fp32_inputs.push_back({node, node_arg_slot});
-    } else {
-      auto it2 = fp32_node_args_by_node.find(node);
-      if (it2 != fp32_node_args_by_node.cend() &&
-          std::find(it2->second.cbegin(), it2->second.cend(), node_arg_slot) != it2->second.cend()) {
+    for (auto node_arg_slot : node_arg_slots) {
+      if (it != fp32_node_args_by_op_type.cend() &&
+          std::find(it->second.cbegin(), it->second.cend(), node_arg_slot) != it->second.cend()) {
         fp32_inputs.push_back({node, node_arg_slot});
       } else {
-        mixed_precision_inputs.push_back({node, node_arg_slot});
+        auto it2 = fp32_node_args_by_node.find(node);
+        if (it2 != fp32_node_args_by_node.cend() &&
+            std::find(it2->second.cbegin(), it2->second.cend(), node_arg_slot) != it2->second.cend()) {
+          fp32_inputs.push_back({node, node_arg_slot});
+        } else {
+          mixed_precision_inputs.push_back({node, node_arg_slot});
+        }
       }
     }
   }
@@ -462,11 +463,11 @@ static Status HandleFunctionBody(const Function& node_func, ONNX_NAMESPACE::Tens
         // Introduce cast to full-precision if required:
         // TODO: fix const_cast; Graph doesn't provide us a method "GetMutableInputs".
         NodeArg* mutable_input = const_cast<NodeArg*>(input);
-        CastNodeArg(graph,
+        ORT_RETURN_IF_ERROR(CastNodeArg(graph,
                     stage1_fp32_node_args,
                     std::unordered_map<Node*, std::vector<int>>(),
                     mutable_input,
-                    ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+                    ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
       }
     }
 
@@ -475,7 +476,7 @@ static Status HandleFunctionBody(const Function& node_func, ONNX_NAMESPACE::Tens
 
   ORT_RETURN_IF_ERROR(TransformConstants(graph, mixed_precision_type));
 
-  // End of stage 1. Update types of intermediate-values and return-values:
+  // End of stage 1. Update types of intermediate-values and return-values:[
   Graph::ResolveOptions options;
   options.override_types = true;
   ORT_RETURN_IF_ERROR(graph.Resolve(options));
@@ -662,7 +663,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
 
   ORT_RETURN_IF_ERROR(graph.Resolve(options));
 
-  TransformStage2(graph, mixed_precision_type, loss_subgraph.GetFP32NodeArgs());
+  ORT_RETURN_IF_ERROR(TransformStage2(graph, mixed_precision_type, loss_subgraph.GetFP32NodeArgs()));
 
   ORT_RETURN_IF_ERROR(graph.Resolve(options));
 

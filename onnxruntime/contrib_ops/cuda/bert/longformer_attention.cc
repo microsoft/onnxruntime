@@ -1,12 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/platform/env_var_utils.h"
 #include "longformer_attention.h"
 #include "longformer_global_impl.h"
 #include "longformer_attention_impl.h"
+#include "transformer_cuda_common.h"
+#include "transformer_common.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -29,25 +30,6 @@ namespace cuda {
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
-
-// A wrapper class of cudaEvent_t to destroy the event automatically for avoiding memory leak.
-class AutoDestoryCudaEvent {
- public:
-  AutoDestoryCudaEvent() : cuda_event_(nullptr) {
-  }
-
-  ~AutoDestoryCudaEvent() {
-    if (cuda_event_ != nullptr)
-      cudaEventDestroy(cuda_event_);
-  }
-
-  cudaEvent_t& Get() {
-    return cuda_event_;
-  }
-
- private:
-  cudaEvent_t cuda_event_;
-};
 
 template <typename T>
 LongformerAttention<T>::LongformerAttention(const OpKernelInfo& info) : CudaKernel(info), LongformerAttentionBase(info) {

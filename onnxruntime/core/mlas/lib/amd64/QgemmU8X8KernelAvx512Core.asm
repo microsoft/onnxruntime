@@ -233,7 +233,7 @@ ComputeBlockLoopU8S8 MACRO Isa, ColumnCount, RowCount
 
         mov     rsi,r9                      ; reload row length remaining
 
-IF ((RowCount AND 1) EQ 0)
+IF (RowCount EQ 1) OR ((RowCount AND 1) EQ 0)
         sub     rsi,4*4
         jb      ProcessRemainingBlocks
 

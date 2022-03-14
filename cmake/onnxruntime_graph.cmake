@@ -17,6 +17,7 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/graph/schema_registry.cc"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*defs.h"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*defs.cc"
+    "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_deprecated_operators.cc"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_function_util.h"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_function_util.cc"
   )
@@ -26,10 +27,13 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/graph/function*"
   )
 
-  # no optimizer support initially
-  list(APPEND onnxruntime_graph_src_exclude_patterns
-    "${ONNXRUNTIME_ROOT}/core/graph/graph_utils.*"
-  )
+  # no optimizer support in base minimal build
+  # some optimizer support in extended minimal build
+  if (NOT onnxruntime_EXTENDED_MINIMAL_BUILD)
+    list(APPEND onnxruntime_graph_src_exclude_patterns
+      "${ONNXRUNTIME_ROOT}/core/graph/graph_utils.*"
+    )
+  endif()
 endif()
 
 if (onnxruntime_DISABLE_CONTRIB_OPS)
@@ -37,13 +41,6 @@ if (onnxruntime_DISABLE_CONTRIB_OPS)
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*.h"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*.cc"
     )
-endif()
-
-if(NOT onnxruntime_USE_FEATURIZERS)
-  list(APPEND onnxruntime_graph_src_exclude_patterns
-    "${ONNXRUNTIME_ROOT}/core/graph/featurizers_ops/*.h"
-    "${ONNXRUNTIME_ROOT}/core/graph/featurizers_ops/*.cc"
-  )
 endif()
 
 if(NOT onnxruntime_USE_DML)
@@ -81,10 +78,13 @@ endif()
 onnxruntime_add_static_library(onnxruntime_graph ${onnxruntime_graph_lib_src})
 add_dependencies(onnxruntime_graph onnx_proto flatbuffers)
 onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
-
+if(NOT MSVC)
+  target_compile_options(onnxruntime_graph PRIVATE "-Wno-parentheses")
+endif()
 if (onnxruntime_ENABLE_TRAINING)
   #TODO: the graph library should focus on ONNX IR, it shouldn't depend on math libraries like MKLML/OpenBlas
   target_include_directories(onnxruntime_graph PRIVATE ${MKLML_INCLUDE_DIR})
+  target_link_libraries(onnxruntime_graph PRIVATE nlohmann_json::nlohmann_json)
 endif()
 
 target_include_directories(onnxruntime_graph PRIVATE ${ONNXRUNTIME_ROOT})
@@ -121,8 +121,5 @@ if (WIN32)
     target_compile_options(onnxruntime_graph PRIVATE
         /EHsc   # exception handling - C++ may throw, extern "C" will not
     )
-  endif()
-
-  # Add Code Analysis properties to enable C++ Core checks. Have to do it via a props file include.
-  set_target_properties(onnxruntime_graph PROPERTIES VS_USER_PROPS ${PROJECT_SOURCE_DIR}/EnableVisualStudioCodeAnalysis.props)
+  endif()  
 endif()

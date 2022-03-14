@@ -17,8 +17,8 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", ALL_IEEE_FLOAT_TENSOR_TYPES)
-        .TypeConstraint("T1", ALL_IEEE_FLOAT_TENSOR_TYPES)
+        .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
+        .TypeConstraint("T1", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
         .InputMemoryType(OrtMemTypeCPUInput, 3)
         .InputMemoryType(OrtMemTypeCPUInput, 4),
@@ -36,7 +36,8 @@ struct BiasDropoutComputeImpl {
                     const Tensor& bias,
                     const Tensor* residual,
                     Tensor& Y,
-                    bool* mask_data) const {
+                    bool* mask_data,
+                    bool has_same_shape_bias) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
 
     const CudaT* X_data = reinterpret_cast<const CudaT*>(X.template Data<T>());
@@ -52,7 +53,7 @@ struct BiasDropoutComputeImpl {
 
     CudaT* Y_data = reinterpret_cast<CudaT*>(Y.template MutableData<T>());
 
-    BiasDropoutKernelImpl<CudaT>(prop, stream, N, fdm_dim, ratio_data, generator, X_data, bias_data, residual_data, Y_data, mask_data);
+    BiasDropoutKernelImpl<CudaT>(prop, stream, N, fdm_dim, ratio_data, generator, X_data, bias_data, residual_data, Y_data, mask_data, has_same_shape_bias);
 
     return Status::OK();
   }
@@ -70,12 +71,16 @@ Status BiasDropout::ComputeInternal(OpKernelContext* context) const {
   const Tensor* bias = context->Input<Tensor>(1);
   if (bias == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "Bias input of BiasDropout is not available.");
   const TensorShape& bias_shape = bias->Shape();
-  if (bias_shape.NumDimensions() != 1) {
-    return Status(common::ONNXRUNTIME, common::FAIL, "Bias input is not a 1D tensor.");
-  }
-  const int64_t dim = bias_shape[0];
-  if (dim != x_shape.GetDims().back()) {
-    return Status(common::ONNXRUNTIME, common::FAIL, "Bias' dimension doesn't match input's last dimension.");
+  const int64_t dim = bias_shape.GetDims().back();
+  bool has_same_shape_bias = (bias_shape == x_shape);
+  if (!has_same_shape_bias) {
+    if (bias_shape.NumDimensions() != 1) {
+      return Status(common::ONNXRUNTIME, common::FAIL, "Bias input is not a 1D tensor.");
+    }
+
+    if (dim != x_shape.GetDims().back()) {
+      return Status(common::ONNXRUNTIME, common::FAIL, "Bias' dimension doesn't match input's last dimension.");
+    }
   }
 
   //Get residual_data
@@ -91,7 +96,7 @@ Status BiasDropout::ComputeInternal(OpKernelContext* context) const {
   float ratio_data = default_ratio_;
   auto ratio = context->Input<Tensor>(3);
   if (ratio) {
-    utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(ratio->GetElementType());
+    utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(ratio->GetElementType());
     t_disp.Invoke<GetRatioDataImpl>(ratio, ratio_data);
   }
 
@@ -112,9 +117,9 @@ Status BiasDropout::ComputeInternal(OpKernelContext* context) const {
   const fast_divmod fdm_dim(gsl::narrow_cast<int>(dim));
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
 
-  utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(X->GetElementType());
+  utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(X->GetElementType());
   return t_disp.InvokeRet<Status, BiasDropoutComputeImpl>(
-      GetDeviceProp(), Stream(), N, fdm_dim, ratio_data, generator, *X, *bias, residual, *Y, mask_data);
+      GetDeviceProp(), Stream(), N, fdm_dim, ratio_data, generator, *X, *bias, residual, *Y, mask_data, has_same_shape_bias);
 }
 
 }  // namespace cuda

@@ -3,7 +3,7 @@
 
 #import "ort_value.h"
 
-#include "onnxruntime_cxx_api.h"
+#import "src/cxx_api.h"
 
 NS_ASSUME_NONNULL_BEGIN
 

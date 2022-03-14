@@ -55,7 +55,7 @@ Arguments:
 
     ldc - Supplies the first dimension of matrix C.
 
-    alpha - Supplies the scaler multiplier (see SGEMM definition).
+    alpha - Supplies the scalar multiplier (see SGEMM definition).
 
 Return Value:
 
@@ -403,7 +403,7 @@ Arguments:
 
     ldc - Supplies the first dimension of matrix C.
 
-    alpha - Supplies the scaler multiplier (see SGEMM definition).
+    alpha - Supplies the scalar multiplier (see SGEMM definition).
 
 Return Value:
 
@@ -465,7 +465,7 @@ Arguments:
 
     ldc - Supplies the first dimension of matrix C.
 
-    alpha - Supplies the scaler multiplier (see SGEMM definition).
+    alpha - Supplies the scalar multiplier (see SGEMM definition).
 
 Return Value:
 
@@ -519,7 +519,7 @@ Arguments:
 
     ldc - Supplies the first dimension of matrix C.
 
-    alpha - Supplies the scaler multiplier (see SGEMM definition).
+    alpha - Supplies the scalar multiplier (see SGEMM definition).
 
 Return Value:
 

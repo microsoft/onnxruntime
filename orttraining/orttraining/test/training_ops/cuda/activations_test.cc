@@ -76,6 +76,20 @@ TEST(CudaKernelTest, ReluGrad_basic) {
   }
 }
 
+TEST(CudaKernelTest, SigmoidGrad_basic) {
+  std::vector<std::vector<int64_t>> test_dims{{4}, {16, 2}, {8, 2, 128, 128}};
+  for (const auto& test_dim : test_dims) {
+    TestActivations(test_dim, "SigmoidGrad", true /* grad_op */);
+  }
+}
+
+TEST(CudaKernelTest, TanhGrad_basic) {
+  std::vector<std::vector<int64_t>> test_dims{{4}, {16, 2}, {8, 2, 128, 128}};
+  for (const auto& test_dim : test_dims) {
+    TestActivations(test_dim, "TanhGrad", true /* grad_op */);
+  }
+}
+
 static void TestActivationsWithBroadcastBias(
     const std::vector<int64_t>& tensor_dim,
     const std::string& operator_name,

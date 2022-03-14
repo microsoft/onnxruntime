@@ -12,7 +12,7 @@
 #include "core/common/status.h"
 #include "core/framework/endian_utils.h"
 #include "core/framework/allocator.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/mem_buffer.h"
 #include "core/framework/tensor_external_data_info.h"
 #include "core/graph/onnx_protobuf.h"
@@ -47,11 +47,11 @@ common::Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_prot
                                     const ONNX_NAMESPACE::TensorProto& input, const MemBuffer& m, OrtValue& value);
 /**
  * @brief Deserialize a TensorProto into a preallocated empty Tensor
- * @param env 
- * @param model_path 
+ * @param env
+ * @param model_path
  * @param tensor_proto  source data
  * @param tensorp       destination empty tensor
- * @return 
+ * @return
 */
 common::Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
                                    const ONNX_NAMESPACE::TensorProto& tensor_proto,
@@ -81,10 +81,16 @@ common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& 
 // However if AttributeProto contains SparseTensorProto then it converts the data into dense tensor proto
 // (including loading external data when applicable).
 // model_path is used for contructing full path for external_data
+// tensor_name specifies the name for the new TensorProto TensorProto
+common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
+                                              const Path& model_path,
+                                              ONNX_NAMESPACE::TensorProto& tensor, const std::string& tensor_name);
+
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
                                               const Path& model_path,
                                               ONNX_NAMESPACE::TensorProto& tensor);
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 // Convert a SparseTensorProto to a dense TensorProto
 // If the SparseTensorProto contains external data then it loads the data and converts to dense tensor proto
 // The resulting TensorProto will contain the data as raw data.
@@ -102,6 +108,7 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
                                               const Path& model_path,
                                               ONNX_NAMESPACE::SparseTensorProto& sparse);
 #endif  // !ORT_MINIMAL_BUILD
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 #endif
 
 inline bool HasDimValue(const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim) {
@@ -116,9 +123,43 @@ inline bool HasTensorType(const ONNX_NAMESPACE::TypeProto& type_proto) {
   return type_proto.value_case() == ONNX_NAMESPACE::TypeProto::kTensorType;
 }
 
+#if !defined(DISABLE_OPTIONAL_TYPE)
+inline bool HasOptionalTensorType(const ONNX_NAMESPACE::TypeProto& type_proto) {
+  return type_proto.value_case() == ONNX_NAMESPACE::TypeProto::kOptionalType &&
+         type_proto.optional_type().elem_type().value_case() == ONNX_NAMESPACE::TypeProto::kTensorType;
+}
+
+inline bool HasOptionalTensorSequenceType(const ONNX_NAMESPACE::TypeProto& type_proto) {
+  if (type_proto.value_case() != ONNX_NAMESPACE::TypeProto::kOptionalType) {
+    return false;
+  }
+
+  const auto& tp = type_proto.optional_type().elem_type();
+
+  if (tp.value_case() != ONNX_NAMESPACE::TypeProto::kSequenceType) {
+    return false;
+  }
+
+  return tp.sequence_type().elem_type().value_case() == ONNX_NAMESPACE::TypeProto::kTensorType;
+}
+
+// Does not check if the TypeProto contains an optional - the caller must validate that
+inline const ONNX_NAMESPACE::TypeProto& GetOptionalTypeProto(const ONNX_NAMESPACE::TypeProto& type_proto) {
+  return type_proto.optional_type().elem_type();
+}
+
+// Does not check if the TypeProto contains an optional - the caller must validate that
+inline ONNX_NAMESPACE::TypeProto* GetMutableOptionalTypeProto(ONNX_NAMESPACE::TypeProto& type_proto) {
+  return type_proto.mutable_optional_type()->mutable_elem_type();
+}
+
+inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_Optional& opt_proto) {
+  return opt_proto.elem_type().value_case() != ONNX_NAMESPACE::TypeProto::VALUE_NOT_SET;
+}
+#endif
+
 inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_Tensor& ten_proto) {
   return ten_proto.elem_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;
-  ;
 }
 
 inline bool HasShape(const ONNX_NAMESPACE::TypeProto_Tensor& ten_proto) {
@@ -126,12 +167,114 @@ inline bool HasShape(const ONNX_NAMESPACE::TypeProto_Tensor& ten_proto) {
   return ten_proto.has_shape();
 }
 
-#ifndef SHARED_PROVIDER
+#if !defined(DISABLE_SPARSE_TENSORS)
+inline bool HasSparseTensorType(const ONNX_NAMESPACE::TypeProto& type_proto) {
+  return type_proto.value_case() == ONNX_NAMESPACE::TypeProto::kSparseTensorType;
+}
+
 inline bool HasShape(const ONNX_NAMESPACE::TypeProto_SparseTensor& ten_proto) {
   // XXX: Figure out how do in proto3
   return ten_proto.has_shape();
 }
+
+inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_SparseTensor& ten_proto) {
+  return ten_proto.elem_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;
+}
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
+
+inline bool HasElementType(const ONNX_NAMESPACE::TypeProto& type_proto) {
+  if (HasTensorType(type_proto) && HasElemType(type_proto.tensor_type())) {
+    return true;
+  }
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+  if (HasSparseTensorType(type_proto) && HasElemType(type_proto.sparse_tensor_type())) {
+    return true;
+  }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+  if (HasOptionalTensorType(type_proto) &&
+      HasElemType(GetOptionalTypeProto(type_proto).tensor_type())) {
+    return true;
+  }
 #endif
+
+  return false;
+}
+
+// Try to get the element data type.
+// The element data type value corresponds to TensorProto_DataType. It is applicable to types with shapes.
+inline bool TryGetElementDataType(const ONNX_NAMESPACE::TypeProto& type_proto, int32_t& element_data_type) {
+  if (HasTensorType(type_proto) && HasElemType(type_proto.tensor_type())) {
+    element_data_type = type_proto.tensor_type().elem_type();
+    return true;
+  }
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+  if (HasSparseTensorType(type_proto) && HasElemType(type_proto.sparse_tensor_type())) {
+    element_data_type = type_proto.sparse_tensor_type().elem_type();
+    return true;
+  }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+  if (HasOptionalTensorType(type_proto) &&
+      HasElemType(GetOptionalTypeProto(type_proto).tensor_type())) {
+    element_data_type = GetOptionalTypeProto(type_proto).tensor_type().elem_type();
+    return true;
+  }
+#endif
+
+  element_data_type = ONNX_NAMESPACE::TensorProto::UNDEFINED;
+  return false;
+}
+
+inline bool HasShape(const ONNX_NAMESPACE::TypeProto& type_proto) {
+  if (HasTensorType(type_proto) && HasShape(type_proto.tensor_type())) {
+    return true;
+  }
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+  if (HasSparseTensorType(type_proto) && HasShape(type_proto.sparse_tensor_type())) {
+    return true;
+  }
+#endif
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+  if (HasOptionalTensorType(type_proto) && HasShape(GetOptionalTypeProto(type_proto).tensor_type())) {
+    return true;
+  }
+#endif
+
+  return false;
+}
+
+inline const ONNX_NAMESPACE::TensorShapeProto* TryGetShape(const ONNX_NAMESPACE::TypeProto& type_proto) {
+  if (HasTensorType(type_proto) && HasShape(type_proto.tensor_type())) {
+    return &type_proto.tensor_type().shape();
+  }
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+  if (HasSparseTensorType(type_proto) && HasShape(type_proto.sparse_tensor_type())) {
+    return &type_proto.sparse_tensor_type().shape();
+  }
+#endif
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+  if (HasOptionalTensorType(type_proto) && HasShape(GetOptionalTypeProto(type_proto).tensor_type())) {
+    return &GetOptionalTypeProto(type_proto).tensor_type().shape();
+  }
+#endif
+
+  return nullptr;
+}
+
+inline const ONNX_NAMESPACE::TensorShapeProto& GetShape(const ONNX_NAMESPACE::TypeProto& type_proto) {
+  const auto* shape = TryGetShape(type_proto);
+  ORT_ENFORCE(shape != nullptr, "TypeProto must have shape for this to run");
+  return *shape;
+}
 
 inline bool HasRawData(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   // Can not be UNDEFINED and can not be STRING but test for STRING is usually performed separately
@@ -158,10 +301,6 @@ inline bool HasName(const ONNX_NAMESPACE::TensorProto& ten_proto) {
 
 inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_Sequence& seq_proto) {
   return seq_proto.elem_type().value_case() != ONNX_NAMESPACE::TypeProto::VALUE_NOT_SET;
-}
-
-inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_SparseTensor& ten_proto) {
-  return ten_proto.elem_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;
 }
 
 inline bool HasName(const ONNX_NAMESPACE::SparseTensorProto& ten_proto) {
@@ -193,6 +332,7 @@ inline bool HasDomain(const ONNX_NAMESPACE::TypeProto_Opaque& op_proto) {
 inline bool HasName(const ONNX_NAMESPACE::TypeProto_Opaque& op_proto) {
   return !op_proto.name().empty();
 }
+
 #endif
 
 inline bool HasType(const ONNX_NAMESPACE::AttributeProto& at_proto) {
@@ -279,14 +419,23 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model
  * Unpack the data from an initializer tensor
  * Please note, this function does not unpack string_data of an initializer tensor
  * @param initializer       given initializer tensor
- * @param initializer_dir   model_path to construct external data dir path. When this is empty, current dir is used.
- * @param unpacked_tensor   the data from the initializer in byte form
- * @param tensor_byte_size  the byte size of the unpacked_tensor
+ * @param model_path        model_path to construct external data dir path. When this is empty, current dir is used.
+ * @param unpacked_tensor   the vector holds data from the initializer in byte form
  * @returns                 Status::OK() if data is unpacked successfully
  */
 common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
                                      const Path& model_path,
-                                     std::unique_ptr<unsigned char[]>& unpacked_tensor,
-                                     size_t& tensor_byte_size) ORT_MUST_USE_RESULT;
+                                     std::vector<uint8_t>& unpacked_tensor);
+
+/**
+ * Unpack the data from an internal initializer tensor, will return error when the given initializer
+ * contains external data
+ * Please note, this function does not unpack string_data of an initializer tensor
+ * @param initializer       given initializer tensor
+ * @param unpacked_tensor   the vector holds data from the initializer in byte form
+ * @returns                 Status::OK() if data is unpacked successfully
+ */
+common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
+                                     std::vector<uint8_t>& unpacked_tensor);
 }  // namespace utils
 }  // namespace onnxruntime

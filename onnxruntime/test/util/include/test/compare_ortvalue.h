@@ -4,7 +4,7 @@
 #pragma once
 // TODO(): move compare_mlvalue.{h,cc} to test dir
 
-#include <core/framework/ml_value.h>
+#include <core/framework/ort_value.h>
 #include <string>
 
 namespace ONNX_NAMESPACE {

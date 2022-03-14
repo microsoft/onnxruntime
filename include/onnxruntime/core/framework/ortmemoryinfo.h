@@ -10,7 +10,7 @@ struct OrtMemoryInfo {
   const char* name = nullptr;
   int id = -1;
   OrtMemType mem_type = OrtMemTypeDefault;
-  OrtAllocatorType alloc_type = Invalid;
+  OrtAllocatorType alloc_type = OrtInvalidAllocator;
   OrtDevice device;
 
   constexpr OrtMemoryInfo(const char* name_, OrtAllocatorType type_, OrtDevice device_ = OrtDevice(), int id_ = 0,

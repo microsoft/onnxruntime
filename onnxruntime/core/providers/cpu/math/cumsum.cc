@@ -18,7 +18,7 @@ std::vector<int64_t> GetStarts(int64_t rank, int64_t axis, int64_t index) {
 }
 template <typename T>
 void ZeroOutSliceAtIndex(Tensor& output, int64_t rank, int64_t axis, int64_t index,
-                         const std::vector<int64_t>& slice_dims, const std::vector<int64_t>& steps, const int64_t slice_size) {
+                         gsl::span<const int64_t> slice_dims, const std::vector<int64_t>& steps, const int64_t slice_size) {
   T zero{};
   auto output_starts(GetStarts(rank, axis, index));
   WritableSliceIterator<T> output_iterator(output, output_starts, slice_dims, steps);
@@ -29,7 +29,7 @@ void ZeroOutSliceAtIndex(Tensor& output, int64_t rank, int64_t axis, int64_t ind
 template <typename T>
 void CopySlices(const Tensor& input, Tensor& output,
                 const std::vector<int64_t>& input_starts, const std::vector<int64_t>& output_starts,
-                const std::vector<int64_t>& slice_dims, const std::vector<int64_t>& steps, const int64_t slice_size) {
+                gsl::span<const int64_t> slice_dims, const std::vector<int64_t>& steps, const int64_t slice_size) {
   SliceIterator<T> input_iterator(input, input_starts, slice_dims, steps);
   WritableSliceIterator<T> output_iterator(output, output_starts, slice_dims, steps);
   for (int64_t k = 0; k < slice_size; ++k, ++output_iterator, ++input_iterator) {
@@ -39,7 +39,7 @@ void CopySlices(const Tensor& input, Tensor& output,
 template <typename T>
 void SumSlices(const Tensor& input, Tensor& output,
                const std::vector<int64_t>& input_starts, const std::vector<int64_t>& output_starts, const std::vector<int64_t>& previous_output_starts,
-               const std::vector<int64_t>& slice_dims, const std::vector<int64_t>& steps, const int64_t slice_size) {
+               gsl::span<const int64_t> slice_dims, const std::vector<int64_t>& steps, const int64_t slice_size) {
   SliceIterator<T> input_iterator(input, input_starts, slice_dims, steps);
   WritableSliceIterator<T> output_iterator(output, output_starts, slice_dims, steps);
   SliceIterator<T> previous_output_iterator(output, previous_output_starts, slice_dims, steps);

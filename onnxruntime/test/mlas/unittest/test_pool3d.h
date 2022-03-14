@@ -38,9 +38,9 @@ class MlasPool3DTest : public MlasTestBase {
             size_t StrideDepth,
             size_t StrideHeight,
             size_t StrideWidth) {
-    const size_t DilationDepth = 1;
-    const size_t DilationHeight = 1;
-    const size_t DilationWidth = 1;
+    constexpr size_t DilationDepth = 1;
+    constexpr size_t DilationHeight = 1;
+    constexpr size_t DilationWidth = 1;
 
     int64_t OutputDepth64 =
         ((int64_t(InputDepth) + int64_t(PaddingLeftDepth) + int64_t(PaddingRightDepth)) -
@@ -80,11 +80,11 @@ class MlasPool3DTest : public MlasTestBase {
     float* OutputReference = BufferOutputReference.GetBuffer(OutputBufferElements);
 
     MlasPool(PoolingKind, 3, InputShape, KernelShape, Padding, StrideShape, OutputShape, Input, Output, threadpool_);
-    if (PoolingKind == MlasMaximumPooling) {
+    if constexpr(PoolingKind == MlasMaximumPooling) {
       ReferenceMaximumPool3D(InputShape, KernelShape, Padding, StrideShape, Input, OutputReference);
-    } else if (PoolingKind == MlasAveragePoolingExcludePad) {
+    } else if constexpr (PoolingKind == MlasAveragePoolingExcludePad) {
       ReferenceAveragePool3D(InputShape, KernelShape, Padding, StrideShape, Input, OutputReference, false);
-    } else if (PoolingKind == MlasAveragePoolingIncludePad) {
+    } else if constexpr (PoolingKind == MlasAveragePoolingIncludePad) {
       ReferenceAveragePool3D(InputShape, KernelShape, Padding, StrideShape, Input, OutputReference, true);
     }
 

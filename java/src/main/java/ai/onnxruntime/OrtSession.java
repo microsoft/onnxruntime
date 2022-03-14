@@ -762,7 +762,37 @@ public class OrtSession implements AutoCloseable {
      */
     public void addCUDA(int deviceNum) throws OrtException {
       checkClosed();
-      addCUDA(OnnxRuntime.ortApiHandle, nativeHandle, deviceNum);
+      if (OnnxRuntime.extractCUDA()) {
+        addCUDA(OnnxRuntime.ortApiHandle, nativeHandle, deviceNum);
+      } else {
+        throw new OrtException(
+            OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find CUDA shared provider");
+      }
+    }
+
+    /**
+     * Add ROCM as an execution backend, using device 0.
+     *
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addROCM() throws OrtException {
+      addROCM(0);
+    }
+
+    /**
+     * Add ROCM as an execution backend, using the specified ROCM device id.
+     *
+     * @param deviceNum The ROCM device id.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addROCM(int deviceNum) throws OrtException {
+      checkClosed();
+      if (OnnxRuntime.extractROCM()) {
+        addROCM(OnnxRuntime.ortApiHandle, nativeHandle, deviceNum);
+      } else {
+        throw new OrtException(
+            OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find ROCM shared provider");
+      }
     }
 
     /**
@@ -787,7 +817,12 @@ public class OrtSession implements AutoCloseable {
      */
     public void addDnnl(boolean useArena) throws OrtException {
       checkClosed();
-      addDnnl(OnnxRuntime.ortApiHandle, nativeHandle, useArena ? 1 : 0);
+      if (OnnxRuntime.extractDNNL()) {
+        addDnnl(OnnxRuntime.ortApiHandle, nativeHandle, useArena ? 1 : 0);
+      } else {
+        throw new OrtException(
+            OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find DNNL shared provider");
+      }
     }
 
     /**
@@ -798,7 +833,12 @@ public class OrtSession implements AutoCloseable {
      */
     public void addOpenVINO(String deviceId) throws OrtException {
       checkClosed();
-      addOpenVINO(OnnxRuntime.ortApiHandle, nativeHandle, deviceId);
+      if (OnnxRuntime.extractOpenVINO()) {
+        addOpenVINO(OnnxRuntime.ortApiHandle, nativeHandle, deviceId);
+      } else {
+        throw new OrtException(
+            OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find OpenVINO shared provider");
+      }
     }
 
     /**
@@ -809,7 +849,12 @@ public class OrtSession implements AutoCloseable {
      */
     public void addTensorrt(int deviceNum) throws OrtException {
       checkClosed();
-      addTensorrt(OnnxRuntime.ortApiHandle, nativeHandle, deviceNum);
+      if (OnnxRuntime.extractTensorRT()) {
+        addTensorrt(OnnxRuntime.ortApiHandle, nativeHandle, deviceNum);
+      } else {
+        throw new OrtException(
+            OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find TensorRT shared provider");
+      }
     }
 
     /**
@@ -845,6 +890,17 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
+     * Adds TVM as an execution backend.
+     *
+     * @param settings See the documentation for valid settings strings.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addTvm(String settings) throws OrtException {
+      checkClosed();
+      addTvm(OnnxRuntime.ortApiHandle, nativeHandle, settings);
+    }
+
+    /**
      * Adds DirectML as an execution backend.
      *
      * @param deviceId The id of the DirectML device.
@@ -875,18 +931,6 @@ public class OrtSession implements AutoCloseable {
     public void addArmNN(boolean useArena) throws OrtException {
       checkClosed();
       addArmNN(OnnxRuntime.ortApiHandle, nativeHandle, useArena ? 1 : 0);
-    }
-
-    /**
-     * Adds ROCM as an execution backend.
-     *
-     * @param deviceID The ROCM device ID.
-     * @param memLimit The maximum amount of memory available.
-     * @throws OrtException If there was an error in native code.
-     */
-    public void addROCM(int deviceID, long memLimit) throws OrtException {
-      checkClosed();
-      addROCM(OnnxRuntime.ortApiHandle, nativeHandle, deviceID, memLimit);
     }
 
     /**
@@ -969,6 +1013,7 @@ public class OrtSession implements AutoCloseable {
      * functions to enable them in the session:
      *   OrtSessionOptionsAppendExecutionProvider_CPU
      *   OrtSessionOptionsAppendExecutionProvider_CUDA
+     *   OrtSessionOptionsAppendExecutionProvider_ROCM
      *   OrtSessionOptionsAppendExecutionProvider_<remaining providers...>
      * The order they care called indicates the preference order as well. In other words call this method
      * on your most preferred execution provider first followed by the less preferred ones.
@@ -979,6 +1024,9 @@ public class OrtSession implements AutoCloseable {
     private native void addCPU(long apiHandle, long nativeHandle, int useArena) throws OrtException;
 
     private native void addCUDA(long apiHandle, long nativeHandle, int deviceNum)
+        throws OrtException;
+
+    private native void addROCM(long apiHandle, long nativeHandle, int deviceNum)
         throws OrtException;
 
     private native void addDnnl(long apiHandle, long nativeHandle, int useArena)
@@ -997,15 +1045,15 @@ public class OrtSession implements AutoCloseable {
         long apiHandle, long nativeHandle, int allowUnalignedBuffers, String settings)
         throws OrtException;
 
+    private native void addTvm(long apiHandle, long nativeHandle, String settings)
+        throws OrtException;
+
     private native void addDirectML(long apiHandle, long nativeHandle, int deviceId)
         throws OrtException;
 
     private native void addACL(long apiHandle, long nativeHandle, int useArena) throws OrtException;
 
     private native void addArmNN(long apiHandle, long nativeHandle, int useArena)
-        throws OrtException;
-
-    private native void addROCM(long apiHandle, long nativeHandle, int deviceID, long memLimit)
         throws OrtException;
 
     private native void addCoreML(long apiHandle, long nativeHandle, int coreMLFlags)

@@ -7,7 +7,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#include "pch.h"
+#include "lib/Telemetry/pch.h"
 
 WinMLTelemetryHelper::WinMLTelemetryHelper()
     : provider_(winml_trace_logging_provider) {
@@ -177,5 +177,21 @@ void WinMLTelemetryHelper::SetNamedDimensionOverride(
       // named dimension override info
       TraceLoggingWideString(name.c_str(), "dimensionName"),
       TraceLoggingInt32(value, "overrideValue"),
+      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+}
+
+void WinMLTelemetryHelper::SetLearningModelDeviceKind(
+    int device_kind) {
+  if (!telemetry_enabled_)
+    return;
+  WinMLTraceLoggingWrite(
+      provider_,
+      "SetLearningModelDevice",
+      TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+      TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+      //Telemetry info
+      TraceLoggingUInt8(WINML_TLM_DEVICE_KIND_VERSION, "schemaVersion"),
+      // learning model device info 
+      TraceLoggingInt32(device_kind, "deviceKind"),
       TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
 }

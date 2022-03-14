@@ -12,14 +12,6 @@ using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
-#define CREATE_ELE_KERNEL(X)                  \
-  if (type == #X) {                           \
-    functors::X<T>* p = new functors::X<T>(); \
-    p->Init(attributes);                      \
-    out.reset(p);                             \
-    return Status::OK();                      \
-  }
-
 #define REGISTER_VERSIONED_UNARY_ELEMENTWISE_KERNEL(op, since_version, end_version) \
   ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                               \
       op, since_version, end_version,                                               \
@@ -42,7 +34,7 @@ namespace onnxruntime {
 
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Elu, 6);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(HardSigmoid, 6);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(LeakyRelu, 6);
+REGISTER_VERSIONED_UNARY_ELEMENTWISE_KERNEL(LeakyRelu, 6, 15);
 REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL(Relu, 6, 12, float);
 REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL(Relu, 6, 12, double);
 REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL(Relu, 13, 13, float);
@@ -65,10 +57,21 @@ REGISTER_UNARY_ELEMENTWISE_TYPED_KERNEL(Tanh, 13, float);
 REGISTER_UNARY_ELEMENTWISE_TYPED_KERNEL(Tanh, 13, double);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(ThresholdedRelu, 10);
 
+// Opset-16 adds BFloat16 to allowed types for the LeakyRelu operator
+REGISTER_UNARY_ELEMENTWISE_KERNEL(LeakyRelu, 16);
+
 namespace functors {
 template <typename T>
 Status ElementWiseRangedTransform<T>::Create(const std::string& type, const NodeAttributes& attributes,
                                              std::unique_ptr<ElementWiseRangedTransform<T>>& out) {
+#define CREATE_ELE_KERNEL(X)                     \
+  if (type == #X) {                              \
+    auto p = std::make_unique<functors::X<T>>(); \
+    ORT_RETURN_IF_ERROR(p->Init(attributes));    \
+    out = std::move(p);                          \
+    return Status::OK();                         \
+  }
+
   CREATE_ELE_KERNEL(Celu);
   CREATE_ELE_KERNEL(Elu);
   CREATE_ELE_KERNEL(HardSigmoid);
@@ -84,6 +87,9 @@ Status ElementWiseRangedTransform<T>::Create(const std::string& type, const Node
   CREATE_ELE_KERNEL(ParametricSoftplus);
   CREATE_ELE_KERNEL(ScaledTanh);
 #endif
+
+#undef CREATE_ELE_KERNEL
+
   return Status(ONNXRUNTIME, FAIL, "unknown kernel type");
 }
 

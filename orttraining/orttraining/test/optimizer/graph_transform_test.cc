@@ -68,9 +68,9 @@ TEST_F(GraphTransformationTests, BatchNormReplacement) {
   EXPECT_EQ(status, Status::OK());
 
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("BatchNormReplacement");
-  rule_transformer_L1->Register(std::make_unique<BatchNormReplacement>());
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<BatchNormReplacement>()));
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
   
   ASSERT_TRUE(graph.NumberOfNodes() == 1);
@@ -117,9 +117,9 @@ TEST_F(GraphTransformationTests, BatchNormReplacementWithOptionalOutputPresentOp
   EXPECT_EQ(status, Status::OK());
 
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("BatchNormReplacement");
-  rule_transformer_L1->Register(std::make_unique<BatchNormReplacement>());
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<BatchNormReplacement>()));
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
   
   ASSERT_TRUE(graph.NumberOfNodes() == 1);
@@ -167,9 +167,9 @@ TEST_F(GraphTransformationTests, BatchNormReplacementWithOptionalOutputPresentOp
   EXPECT_EQ(status, Status::OK());
 
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("BatchNormReplacement");
-  rule_transformer_L1->Register(std::make_unique<BatchNormReplacement>());
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<BatchNormReplacement>()));
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
   
   ASSERT_TRUE(graph.NumberOfNodes() == 1);
@@ -188,9 +188,9 @@ TEST_F(GraphTransformationTests, DropoutWithZeroRatioElimination) {
   ASSERT_TRUE(op_to_count["Dropout"] == 5);
 
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
-  rule_transformer_L1->Register(std::make_unique<EliminateDropout>());
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<EliminateDropout>()));
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   op_to_count = CountOpsInGraph(graph);
@@ -222,9 +222,9 @@ TEST_F(GraphTransformationTests, ConcatReplacement) {
   Graph& graph = p_model->MainGraph();
 
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("ConcatReplacement");
-  rule_transformer_L1->Register(std::make_unique<ConcatReplacement>());
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<ConcatReplacement>()));
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
@@ -245,11 +245,14 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
   std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
   training::TrainingSession::OptimizerState init_optim_state;
   IExecutionProvider* e = TestCPUExecutionProvider();
-  graph_transformation_mgr.Register(std::make_unique<MegatronTransformer>(0, 2, updated_weight_names, weights_to_train, weight_partition_info, init_optim_state, *e), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<MegatronTransformer>(0, 2, updated_weight_names, weights_to_train, weight_partition_info,
+                                            init_optim_state, *e),
+      TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   auto model_uri2 = "mlp_megatron_basic_test_partition_rank0.onnx";
-  Model::Save(*p_model, model_uri2);
+  ASSERT_STATUS_OK(Model::Save(*p_model, model_uri2));
 
   {
     std::vector<float> expected_value = {
@@ -262,7 +265,8 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
     std::vector<int64_t> expected_shape = {4, 8};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, a1_weight_arg, actual_val, actual_shape);
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, a1_weight_arg, actual_val,
+                                                                                    actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
 
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
@@ -275,7 +279,8 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
     std::vector<int64_t> expected_shape = {8};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, input_arg, actual_val, actual_shape);
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, input_arg, actual_val,
+                                                                                    actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
 
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
@@ -296,7 +301,8 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
     std::vector<int64_t> expected_shape = {8, 4};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, input_arg, actual_val, actual_shape);
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, input_arg, actual_val,
+                                                                                    actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
 
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
@@ -316,11 +322,15 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank1) {
   std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
   training::TrainingSession::OptimizerState init_optim_state;
   IExecutionProvider* e = TestCPUExecutionProvider();
-  graph_transformation_mgr.Register(std::make_unique<MegatronTransformer>(1, 2, updated_weight_names, weights_to_train, weight_partition_info, init_optim_state, *e), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<MegatronTransformer>(1, 2, updated_weight_names,
+                                                                                           weights_to_train,
+                                                                                           weight_partition_info,
+                                                                                           init_optim_state, *e),
+                                                     TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   auto model_uri2 = "mlp_megatron_basic_test_partition_rank1.onnx";
-  Model::Save(*p_model, model_uri2);
+  ASSERT_STATUS_OK(Model::Save(*p_model, model_uri2));
 
   {
     std::vector<float> expected_value = {
@@ -333,7 +343,8 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank1) {
     std::vector<int64_t> expected_shape = {4, 8};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, a1_weight_arg, actual_val, actual_shape);
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, a1_weight_arg, actual_val,
+                                                                                    actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
 
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
@@ -346,7 +357,8 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank1) {
     std::vector<int64_t> expected_shape = {8};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, a1_bias_arg, actual_val, actual_shape);
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, a1_bias_arg, actual_val,
+                                                                                    actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
 
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
@@ -367,7 +379,8 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank1) {
     std::vector<int64_t> expected_shape = {8, 4};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, input_arg, actual_val, actual_shape);
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, input_arg, actual_val,
+                                                                                    actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
 
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
@@ -386,11 +399,14 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank0) {
   std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
   training::TrainingSession::OptimizerState init_optim_state;
   IExecutionProvider* e = TestCPUExecutionProvider();
-  graph_transformation_mgr.Register(std::make_unique<MegatronTransformer>(0, 2, updated_weight_names, weights_to_train, weight_partition_info, init_optim_state, *e), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<MegatronTransformer>(0, 2, updated_weight_names, weights_to_train, weight_partition_info,
+                                            init_optim_state, *e),
+      TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   auto model_uri2 = "self_attention_megatron_basic_test_partition_rank0.onnx";
-  Model::Save(*p_model, model_uri2);
+  ASSERT_STATUS_OK(Model::Save(*p_model, model_uri2));
 
   {
     std::vector<float> expected_value = {
@@ -403,7 +419,8 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank0) {
     std::vector<int64_t> expected_shape = {4, 6};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, qkv_weight_arg, actual_val, actual_shape);
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, qkv_weight_arg, actual_val,
+                                                                                    actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, false);
@@ -415,7 +432,8 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank0) {
     std::vector<int64_t> expected_shape = {6};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, qkv_bias_arg, actual_val, actual_shape);
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, qkv_bias_arg, actual_val,
+                                                                                    actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, false);
@@ -429,7 +447,8 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank0) {
     std::vector<int64_t> expected_shape = {2, 4};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, dense_weight_arg, actual_val, actual_shape);
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, dense_weight_arg, actual_val,
+                                                                                    actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, false);
@@ -454,11 +473,15 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank1) {
   std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
   training::TrainingSession::OptimizerState init_optim_state;
   IExecutionProvider* e = TestCPUExecutionProvider();
-  graph_transformation_mgr.Register(std::make_unique<MegatronTransformer>(1, 2, updated_weight_names, weights_to_train, weight_partition_info, init_optim_state, *e), TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<MegatronTransformer>(1, 2, updated_weight_names,
+                                                                                           weights_to_train,
+                                                                                           weight_partition_info,
+                                                                                           init_optim_state, *e),
+                                                     TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   auto model_uri2 = "self_attention_megatron_basic_test_partition_rank1.onnx";
-  Model::Save(*p_model, model_uri2);
+  ASSERT_STATUS_OK(Model::Save(*p_model, model_uri2));
 
   {
     std::vector<float> expected_value = {
@@ -471,7 +494,8 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank1) {
     std::vector<int64_t> expected_shape = {4, 6};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, qkv_weight_arg, actual_val, actual_shape);
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, qkv_weight_arg, actual_val,
+                                                                                    actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, false);
@@ -483,7 +507,8 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank1) {
     std::vector<int64_t> expected_shape = {6};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, qkv_bias_arg, actual_val, actual_shape);
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, qkv_bias_arg, actual_val,
+                                                                                    actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, false);
@@ -497,7 +522,8 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank1) {
     std::vector<int64_t> expected_shape = {2, 4};
     std::vector<float> actual_val;
     std::vector<int64_t> actual_shape;
-    horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, dense_weight_arg, actual_val, actual_shape);
+    ASSERT_STATUS_OK(horizontal_parallel_test_utils::GetDataAndShapeFromTensorProto(graph, dense_weight_arg,
+                                                                                    actual_val, actual_shape));
     ASSERT_TRUE(std::equal(expected_shape.begin(), expected_shape.end(), actual_shape.begin()));
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, true);
     horizontal_parallel_test_utils::VerifyOutputs(expected_value, actual_val, false);
@@ -517,9 +543,9 @@ TEST_F(GraphTransformationTests, BiasGeluRecomputeTest) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(std::make_unique<GeluFusion>(), TransformerLevel::Level2);
-  graph_transformation_mgr.Register(std::make_unique<BiasGeluFusion>(), TransformerLevel::Level2);
-  graph_transformation_mgr.Register(std::make_unique<GeluRecompute>(), TransformerLevel::Level2);
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GeluFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<BiasGeluFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GeluRecompute>(), TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -562,8 +588,8 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithoutCas
   EXPECT_EQ(status, Status::OK());
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(),
-                                    TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(),
+                                                     TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -603,8 +629,8 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithCast) 
   EXPECT_EQ(status, Status::OK());
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(),
-                                    TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(),
+                                                     TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -635,12 +661,14 @@ static void RunPartitionCorrectnessTest(std::string model_path,
     std::unordered_map<std::string, training::TrainingSession::PartitionInfo> weight_partition_info;
     training::TrainingSession::OptimizerState init_optim_state;
     IExecutionProvider* e = TestCPUExecutionProvider();
-    graph_transformation_mgr.Register(std::make_unique<MegatronTransformer>(i, total_rank, updated_weight_names, weights_to_train, weight_partition_info, init_optim_state, *e), TransformerLevel::Level1);
-    ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, logger);
-    ORT_ENFORCE(ret.IsOK());
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+        std::make_unique<MegatronTransformer>(i, total_rank, updated_weight_names, weights_to_train,
+                                              weight_partition_info, init_optim_state, *e),
+        TransformerLevel::Level1));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, logger));
     graphs.push_back(&graph);
     auto model_uri2 = ToPathString(model_path) + ORT_TSTR("_partition_rank_") + ToPathString(std::to_string(i)) + ORT_TSTR(".onnx");
-    Model::Save(*p_models[i], model_uri2);
+    ASSERT_STATUS_OK(Model::Save(*p_models[i], model_uri2));
   }
 
   onnxruntime::Model combine_model("combine_graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}, {kMSDomain, 1}}, {}, logger);
@@ -648,7 +676,7 @@ static void RunPartitionCorrectnessTest(std::string model_path,
   auto ret = horizontal_parallel_test_utils::MergeGraphsOnAllWorkers(graphs, combine_graph);
   ORT_ENFORCE(ret.IsOK());
   auto model_uri2 = ToPathString(model_path) + ORT_TSTR("_partition_combine.onnx");
-  Model::Save(combine_model, model_uri2);
+  ASSERT_STATUS_OK(Model::Save(combine_model, model_uri2));
 
   float scale = 1.f;
   float mean = 0.f;

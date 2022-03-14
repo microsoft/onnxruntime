@@ -197,11 +197,11 @@ class ORTTrainerOptions(object):
                             'schema': {
                                 'propagate_cast_ops_strategy': {
                                     'type': 'onnxruntime.training.PropagateCastOpsStrategy',
-                                    'default': PropagateCastOpsStrategy.NONE
+                                    'default': PropagateCastOpsStrategy.FLOOD_FILL
                                 },
                                 'propagate_cast_ops_level': {
                                     'type': 'integer',
-                                    'default': -1
+                                    'default': 1
                                 },
                                 'propagate_cast_ops_allow': {
                                     'type': 'list',
@@ -229,7 +229,7 @@ class ORTTrainerOptions(object):
                             'type' : 'boolean',
                             'default' : True
                         },
-                        'invertible_layer_norm_gradient' : {
+                        'memory_efficient_gradient' : {
                             'type' : 'boolean',
                             'default' : False
                         },
@@ -374,7 +374,7 @@ class ORTTrainerOptions(object):
         graph_transformer.transformer_layer_recompute(bool, default False)
         graph_transformer.number_recompute_layers(bool, default False)
         graph_transformer.propagate_cast_ops_config (dict):
-            graph_transformer.propagate_cast_ops_config.strategy(PropagateCastOpsStrategy, default NONE)
+            graph_transformer.propagate_cast_ops_config.strategy(PropagateCastOpsStrategy, default FLOOD_FILL)
                 Specify the choice of the cast propagation optimization strategy, either, NONE, INSERT_AND_REDUCE or FLOOD_FILL.
                 NONE strategy does not perform any cast propagation transformation on the graph, although other optimizations
                 locally change cast operations, for example, in order to fuse Transpose and MatMul nodes, the TransposeMatMulFunsion optimization could
@@ -382,7 +382,7 @@ class ORTTrainerOptions(object):
                 INSERT_AND_REDUCE strategy inserts and reduces cast operations around the nodes with allowed opcodes.
                 FLOOD_FILL strategy expands float16 regions in the graph using the allowed opcodes, and unlike
                 INSERT_AND_REDUCE does not touch opcodes outside expanded float16 region.
-            graph_transformer.propagate_cast_ops_config.level(integer, default -1)
+            graph_transformer.propagate_cast_ops_config.level(integer, default 1)
                 Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
                 Use predetermined list of opcodes considered safe to move before/after cast operation
                 if propagate_cast_ops_level is positive and use propagate_cast_ops_allow otherwise.
@@ -406,8 +406,8 @@ class ORTTrainerOptions(object):
             list of model parameter names to skip training (weights don't change)
         utils.grad_norm_clip (bool, default is True):
             enables gradient norm clipping for 'AdamOptimizer' and 'LambOptimizer'
-        utils.invertible_layer_norm_gradient (bool, default is False):
-            enables use of invertible layer norm gradients
+        utils.memory_efficient_gradient (bool, default is False):
+            enables use of memory aware gradient builder.
         utils.run_symbolic_shape_infer (bool, default is False):
             runs symbolic shape inference on the model
         debug (dict):
@@ -436,7 +436,7 @@ class ORTTrainerOptions(object):
         _internal_use.extra_postprocess (callable, default is None)
             a functor to postprocess the ONNX model and return a new ONNX model.
             It does not override :py:attr:`._internal_use.enable_internal_postprocess`, but complement it
-        _internal_use.onnx_opset_version (int, default is 12):
+        _internal_use.onnx_opset_version (int, default is 14):
             ONNX opset version used during model exporting.
         _internal_use.enable_onnx_contrib_ops (bool, default is True)
             enable PyTorch to export nodes as contrib ops in ONNX.
@@ -726,12 +726,12 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                     'strategy': {
                         'type': 'propagate_cast_ops_strategy',
                         'nullable': True,
-                        'default': PropagateCastOpsStrategy.NONE
+                        'default': PropagateCastOpsStrategy.FLOOD_FILL
                     },
                     'level': {
                         'type': 'integer',
                         'min': -1,
-                        'default': -1
+                        'default': 1
                     },
                     'allow': {
                         'type': 'list',
@@ -755,7 +755,7 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'type': 'boolean',
                 'default': True
             },
-            'invertible_layer_norm_gradient': {
+            'memory_efficient_gradient': {
                 'type': 'boolean',
                 'default': False
             },
@@ -820,8 +820,8 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
             'onnx_opset_version': {
                 'type': 'integer',
                 'min': 12,
-                'max': 13,
-                'default': 12
+                'max': 14,
+                'default': 14
             },
             'enable_onnx_contrib_ops': {
                 'type': 'boolean',

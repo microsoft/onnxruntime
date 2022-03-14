@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "pch.h"
+#include "lib/Api/pch/pch.h"
 #include "LearningModelSessionOptions.h"
 
 namespace WINMLP {
@@ -48,8 +48,8 @@ bool LearningModelSessionOptions::GetIntraOpThreadSpinning() {
 }
 
 STDMETHODIMP LearningModelSessionOptions::SetIntraOpThreadSpinning(boolean allowSpinning) noexcept {
-  allow_thread_spinning_ = allowSpinning;
-  telemetry_helper.SetIntraOpThreadSpinning(allowSpinning);
+  allow_thread_spinning_ = (allowSpinning != 0);
+  telemetry_helper.SetIntraOpThreadSpinning(allowSpinning != 0);
   return S_OK;
 }
 }  // namespace WINMLP

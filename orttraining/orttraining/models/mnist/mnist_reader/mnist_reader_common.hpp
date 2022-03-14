@@ -38,13 +38,12 @@ inline std::unique_ptr<char[]> read_mnist_file(const std::string& path, uint32_t
   file.open(path, std::ios::in | std::ios::binary | std::ios::ate);
 
   if (!file) {
-    std::cout << "Error opening file " << path << std::endl;
-    std::cout << std::system_error(errno, std::system_category(), "failed to open " + path).what();
+    std::cout << "Error opening file " << path << " - system error " << errno << std::endl;
     return {};
   }
 
-  auto size = file.tellg();
-  std::unique_ptr<char[]> buffer(new char[size]);
+  std::streampos size = file.tellg();
+  std::unique_ptr<char[]> buffer = std::make_unique<char[]>(size);
 
   //Read the entire file at once
   file.seekg(0, std::ios::beg);
@@ -58,18 +57,18 @@ inline std::unique_ptr<char[]> read_mnist_file(const std::string& path, uint32_t
     return {};
   }
 
-  auto count = read_header(buffer, 1);
+  uint32_t count = read_header(buffer, 1);
 
   if (magic == 0x803) {
     auto rows = read_header(buffer, 2);
     auto columns = read_header(buffer, 3);
 
-    if (size < count * rows * columns + 16) {
+    if (size < static_cast<std::streampos>(count) * rows * columns + 16) {
       std::cout << "The file is not large enough to hold all the data, probably corrupted" << std::endl;
       return {};
     }
   } else if (magic == 0x801) {
-    if (size < count + 8) {
+    if (size < static_cast<std::streampos>(count) + static_cast<std::streampos>(8)) {
       std::cout << "The file is not large enough to hold all the data, probably corrupted" << std::endl;
       return {};
     }

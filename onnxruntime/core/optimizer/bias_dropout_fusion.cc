@@ -10,10 +10,22 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
+static bool IsSameShape(const TensorShapeProto& shape1, const TensorShapeProto& shape2) {
+  int rank1 = shape1.dim_size();
+  if (rank1 != shape2.dim_size()) {
+    return false;
+  }
+  bool same_shape = true;
+  for (int i = 0; i < rank1; ++i) {
+    same_shape &= ONNX_NAMESPACE::operator==(shape1.dim(i), shape2.dim(i));
+  }
+  return same_shape;
+}
+
 void FuseResidualAddIfAny(Graph& graph, const Node& dropout_node,
-                          std::vector<NodeArg*>& dropout_input,
-                          std::vector<NodeArg*>& dropout_output,
-                          std::vector<std::reference_wrapper<Node>>& nodes_to_fuse) {
+                          InlinedVector<NodeArg*>& dropout_input,
+                          InlinedVector<NodeArg*>& dropout_output,
+                          InlinedVector<std::reference_wrapper<Node>>& nodes_to_fuse) {
   bool has_residual_add = false;
 
   int dropout_consumers_count = 0;
@@ -25,7 +37,7 @@ void FuseResidualAddIfAny(Graph& graph, const Node& dropout_node,
   // To be able to fuse the residual Add,
   // the Dropout's output must not be a graph output and
   // there must be only one consumer of the Dropout's first output.
-  if (dropout_consumers_count < 2 && graph.GetNodeOutputsInGraphOutputs(dropout_node).empty()) {
+  if (dropout_consumers_count < 2 && !graph.NodeProducesGraphOutput(dropout_node)) {
     for (auto last_node_itr = dropout_node.OutputNodesBegin(); last_node_itr != dropout_node.OutputNodesEnd(); ++last_node_itr) {
       const Node& last_node = (*last_node_itr);
 
@@ -37,17 +49,12 @@ void FuseResidualAddIfAny(Graph& graph, const Node& dropout_node,
         if (input1_shape == nullptr ||
             input2_shape == nullptr ||
             input1_shape->dim_size() < 1 ||
-            input2_shape->dim_size() < 1 ||
-            input1_shape->dim_size() != input2_shape->dim_size()) {
+            input2_shape->dim_size() < 1) {
           continue;
         }
 
         // Inputs of Residual Add must match in shape
-        bool match = true;
-        for (int i = 0; i < input1_shape->dim_size(); ++i) {
-          match &= ONNX_NAMESPACE::operator==(input1_shape->dim(i), input2_shape->dim(i));
-        }
-        if (!match) {
+        if (!IsSameShape(*input1_shape, *input2_shape)) {
           continue;
         }
 
@@ -87,7 +94,6 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
 
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    std::vector<std::reference_wrapper<Node>> nodes_to_fuse;
 
     // matching for bias Add node
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7, 13, 14}) ||
@@ -96,7 +102,6 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       continue;
     }
 
-    std::vector<NodeArg*> dropout_input, dropout_output;
     const TensorShapeProto* input1_shape = node.MutableInputDefs()[0]->Shape();
     const TensorShapeProto* input2_shape = node.MutableInputDefs()[1]->Shape();
 
@@ -107,23 +112,35 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       continue;
     }
 
-    int last_dim_shape1 = input1_shape->dim_size() - 1;
-    int last_dim_shape2 = input2_shape->dim_size() - 1;
-    if (!utils::HasDimValue(input1_shape->dim(last_dim_shape1)) ||
-        !utils::HasDimValue(input2_shape->dim(last_dim_shape2)) ||
-        input1_shape->dim(last_dim_shape1).dim_value() != input2_shape->dim(last_dim_shape2).dim_value()) {
-      continue;
-    }
+    InlinedVector<NodeArg*> dropout_input;
 
-    if (input1_shape->dim_size() == 1) {
-      dropout_input.push_back(node.MutableInputDefs()[1]);  // dropout input
-      dropout_input.push_back(node.MutableInputDefs()[0]);  // bias
-    } else if (input2_shape->dim_size() == 1) {
+    if (IsSameShape(*input1_shape, *input2_shape)) {
       dropout_input.push_back(node.MutableInputDefs()[0]);  // dropout input
       dropout_input.push_back(node.MutableInputDefs()[1]);  // bias
     } else {
-      continue;
+      const int last_dim_shape1 = input1_shape->dim_size() - 1;
+      const int last_dim_shape2 = input2_shape->dim_size() - 1;
+      if (!(utils::HasDimValue(input1_shape->dim(last_dim_shape1)) &&
+            utils::HasDimValue(input2_shape->dim(last_dim_shape2)) &&
+            input1_shape->dim(last_dim_shape1).dim_value() == input2_shape->dim(last_dim_shape2).dim_value()) &&
+          !(utils::HasDimParam(input1_shape->dim(last_dim_shape1)) &&
+            utils::HasDimParam(input2_shape->dim(last_dim_shape2)) &&
+            input1_shape->dim(last_dim_shape1).dim_param() == input2_shape->dim(last_dim_shape2).dim_param())) {
+        continue;  // continue if no same DimValue && no same DimParam
+      }
+      if (input1_shape->dim_size() == 1) {
+        dropout_input.push_back(node.MutableInputDefs()[1]);  // dropout input
+        dropout_input.push_back(node.MutableInputDefs()[0]);  // bias
+      } else if (input2_shape->dim_size() == 1) {
+        dropout_input.push_back(node.MutableInputDefs()[0]);  // dropout input
+        dropout_input.push_back(node.MutableInputDefs()[1]);  // bias
+      } else {
+        continue;
+      }
     }
+
+    InlinedVector<std::reference_wrapper<Node>> nodes_to_fuse;
+
     Node& add_node = node;
     nodes_to_fuse.push_back(add_node);
 
@@ -139,13 +156,14 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       continue;
     }
 
-    if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
+    if (graph.NodeProducesGraphOutput(node)) {
       continue;
     }
 
     Node& dropout_node = *graph.GetNode(next_node.Index());
     nodes_to_fuse.push_back(dropout_node);
 
+    InlinedVector<NodeArg*> dropout_output;
     dropout_output.push_back(dropout_node.MutableOutputDefs()[0]);
     dropout_output.push_back(dropout_node.MutableOutputDefs()[1]);
 
@@ -163,7 +181,7 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     const std::string op_type = "BiasDropout";
     Node& dropout_add_fusion_node = graph.AddNode(graph.GenerateNodeName(op_type),
                                                   op_type,
-                                                  "fused Add and Dropout",
+                                                  "fused Add-Dropout-(Add) for " + dropout_node.Name(),
                                                   dropout_input,
                                                   dropout_output,
                                                   {},

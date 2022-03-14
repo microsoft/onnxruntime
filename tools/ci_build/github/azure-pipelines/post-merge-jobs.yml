@@ -13,8 +13,6 @@ jobs:
       inputs:
         script: |
           set -e
-          sudo apt-get install -y python3-pip
-          sudo python3 -m pip install mysql-connector-python
           ln -s /data/models .
           #Build onnxruntime and run the instrumented program(unitests)
           LLVM_PROFILE_FILE="%p.profraw" CFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CXXFLAGS="-g -fprofile-instr-generate -fcoverage-mapping" CC=clang CXX=clang++  python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir=$(Build.BinariesDirectory) --config Debug --parallel --skip_submodule_sync --build_shared_lib --enable_onnx_tests --cmake_extra_defines RUN_MODELTEST_IN_DEBUG_MODE=ON
@@ -29,7 +27,14 @@ jobs:
           llvm-cov show -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnxruntime_api_tests_without_env -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test -object onnxruntime_api_tests_without_env $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops --format=html -output-dir=$(Build.ArtifactStagingDirectory)
         workingDirectory: $(Build.BinariesDirectory)
 
-
+    - task: AzureCLI@2
+      displayName: 'Azure CLI'
+      inputs:
+        azureSubscription: AIInfraBuildOnnxRuntimeOSS
+        scriptType: bash
+        scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/linux/upload_code_coverage_data.sh
+        arguments: '"$(Build.BinariesDirectory)/report.json" "https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(Build.BuildId)" x64 linux default'
+        workingDirectory: '$(Build.BinariesDirectory)'
 
     - task: PublishPipelineArtifact@1
       displayName: 'Publish Pipeline Artifact'
@@ -37,24 +42,18 @@ jobs:
         targetPath: '$(Build.ArtifactStagingDirectory)'
         artifact: html
 
-    - task: PythonScript@0
-      displayName: 'Post code coverage data to the Dashboard'
-      inputs:
-        scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/windows/post_code_coverage_to_dashboard.py
-        arguments: --commit_hash=$(OnnxRuntimeGitCommitHash) --report_file="$(Build.BinariesDirectory)/report.json" --report_url="https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(Build.BuildId)" --branch $(Build.SourceBranchName) --arch $(Agent.OSArchitecture) --os $(Agent.OS) --build_config default
-        workingDirectory: $(Build.BinariesDirectory)
-        pythonInterpreter: '/usr/bin/python3'
-      env: 
-        DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
-
-
 - job: Upload
   workspace:
     clean: all
   pool: 'Win-CPU-2021'
+  variables:
+  - name: runCodesignValidationInjection
+    value: false
+  - name: skipComponentGovernanceDetection
+    value: true
   dependsOn:
   - CodeCoverage
-  condition: succeeded()
+  condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
   steps:
   - checkout: self
     submodules: false

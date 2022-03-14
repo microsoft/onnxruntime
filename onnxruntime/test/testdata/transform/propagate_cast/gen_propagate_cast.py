@@ -3,6 +3,7 @@ from onnx import helper
 from onnx import TensorProto
 from onnx import OperatorSetIdProto
 import itertools
+import numpy as np
 
 onnxdomain = OperatorSetIdProto()
 onnxdomain.version = 12
@@ -128,7 +129,7 @@ def gen_fuse_sibling_casts(model_path):
              type_to_string(type2), nodes, inputs, outputs, [])
 
 
-def flip_type(flip, type):
+def flip_type(type, flip=True):
     return (TensorProto.FLOAT16 if type == TensorProto.FLOAT else TensorProto.FLOAT) if flip else type
 
 
@@ -203,11 +204,11 @@ def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_produc
             input_0, input_1 = do_transpose_inputs(input_0, input_1, nodes)
         if cast_inputs:
             input_0, input_1 = do_cast_inputs(input_0, input_1, nodes, input_type)
-            input_type = flip_type(True, input_type)
+            input_type = flip_type(input_type)
     else:
         if cast_inputs:
             input_0, input_1 = do_cast_inputs(input_0, input_1, nodes, input_type)
-            input_type = flip_type(True, input_type)
+            input_type = flip_type(input_type)
         if transpose_inputs:
             input_0, input_1 = do_transpose_inputs(input_0, input_1, nodes)
     nodes.append(helper.make_node(
@@ -221,8 +222,8 @@ def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_produc
         product = do_transpose_product(product, nodes)
 
     if cast_product:
-        product = do_cast_product(product, nodes, flip_type(True, product_type))
-        product_type = flip_type(True, product_type)
+        product = do_cast_product(product, nodes, flip_type(product_type))
+        product_type = flip_type(product_type)
 
     inputs = [
         helper.make_tensor_value_info(
@@ -232,20 +233,19 @@ def gen_propagate_cast_test_model(model_path, transpose_inputs, transpose_produc
     ]
     if insert_add:
         input_2 = "input_2"
-        add_input_type = flip_type(cast_input2, product_type)
+        add_input_type = flip_type(product_type, cast_input2)
         inputs.append(helper.make_tensor_value_info(
             input_2, add_input_type, ['N', 'N']))
         output = "sum"
         output_type = product_type
         if cast_input2:
             input_2 = do_cast_input2(
-                input_2, nodes, flip_type(True, add_input_type))
+                input_2, nodes, flip_type(add_input_type))
         nodes.append(helper.make_node(
             "Add", [product, input_2], [output], "Add_0"))
         if cast_sum:
-            output = do_cast_sum(output, nodes, flip_type(
-                True, output_type))
-            output_type = flip_type(True, output_type)
+            output = do_cast_sum(output, nodes, flip_type(output_type))
+            output_type = flip_type(output_type)
     else:
         output = product
         output_type = product_type
@@ -273,7 +273,7 @@ def gen_matmul_two_products(model_path, transpose, transpose_before_cast, second
                          "transpose_1_"+output_1], "Transpose_1"))
             output_1 = "transpose_1_"+output_1
         return output_0, output_1
-    input_type = flip_type(cast_inputs, TensorProto.FLOAT)
+    input_type = flip_type(TensorProto.FLOAT, cast_inputs)
     input_0 = "input_0"
     input_1 = "input_1"
     output = "product"
@@ -289,7 +289,7 @@ def gen_matmul_two_products(model_path, transpose, transpose_before_cast, second
             "input_1", input_type, ['K', 'N'])
     ]
     if cast_inputs:
-        input_type = flip_type(True, input_type)
+        input_type = flip_type(input_type)
         input_0, input_1 = do_cast_inputs(input_0, input_1, nodes, input_type)
         cast_count +=2
     output0_type = input_type
@@ -317,7 +317,7 @@ def gen_matmul_two_products(model_path, transpose, transpose_before_cast, second
                 "sum",  input_type, ['M', 'N']))
     if transpose > 0 and transpose_before_cast:
         output_0, output_1 = do_transpose(output_0, output_1, transpose, nodes)
-    output0_type = flip_type(True, output0_type)
+    output0_type = flip_type(output0_type)
     nodes.append(helper.make_node(
         "Cast",
         [output_0],
@@ -334,7 +334,7 @@ def gen_matmul_two_products(model_path, transpose, transpose_before_cast, second
             "Cast_"+str(cast_count),
             to=TensorProto.FLOAT16))
         output_1 = "cast_"+str(cast_count)+"_"+output_1
-        output1_type = flip_type(True, output1_type)
+        output1_type = flip_type(output1_type)
     if transpose > 0 and not transpose_before_cast:
         output_0, output_1 = do_transpose(output_0, output_1, transpose, nodes)
 
@@ -350,6 +350,54 @@ def gen_matmul_two_products(model_path, transpose, transpose_before_cast, second
     model_path += "_second_matmul" if second_matmul else ""
     model_path += "_add_products" if add_products else ""
     save(model_path, nodes, inputs, outputs, [])
+
+
+def gen_bool_to_float16_cast(model_path):
+    X1 = helper.make_tensor_value_info('x1', TensorProto.INT64, [1, 1])
+    X2 = helper.make_tensor_value_info('x2', TensorProto.INT64, [1, 1])
+    X3 = helper.make_tensor_value_info('x3', TensorProto.FLOAT, [1, 1])
+    Y = helper.make_tensor_value_info('output', TensorProto.FLOAT16, [1, 1])
+
+    less1 = helper.make_node('Less', ['x1', 'x2'], ['less1'], name='less1')
+    cast1 = helper.make_node('Cast', ['less1'], ['cast1'], name='cast1', to=TensorProto.FLOAT16)
+    cast2 = helper.make_node('Cast', ['x3'], ['cast2'], name='cast2', to=TensorProto.FLOAT16)
+    add1 = helper.make_node('Add', ['cast1', 'cast2'], ['output'])
+
+    save(model_path, [less1, cast1, cast2, add1], [X1, X2, X3], [Y], [])
+
+
+def gen_bool_to_float_cast(model_path):
+    X1 = helper.make_tensor_value_info('x1', TensorProto.INT64, [1, 1])
+    X2 = helper.make_tensor_value_info('x2', TensorProto.INT64, [1, 1])
+    X3 = helper.make_tensor_value_info('x3', TensorProto.FLOAT16, [1, 1])
+    Y = helper.make_tensor_value_info('output', TensorProto.FLOAT16, [1, 1])
+
+    less1 = helper.make_node('Less', ['x1', 'x2'], ['less1'], name='less1')
+    cast1 = helper.make_node('Cast', ['less1'], ['cast1'], name='cast1', to=TensorProto.FLOAT)
+    cast2 = helper.make_node('Cast', ['x3'], ['cast2'], name='cast2', to=TensorProto.FLOAT)
+    add1 = helper.make_node('Add', ['cast1', 'cast2'], ['add1'])
+    cast3 = helper.make_node('Cast', ['add1'], ['output'], name='cast3', to=TensorProto.FLOAT16)
+
+    save(model_path, [less1, cast1, cast2, cast3, add1], [X1, X2, X3], [Y], [])
+
+
+def gen_one_input_one_output_test(op, model_path, axes_attribute=False):
+    X = helper.make_tensor_value_info('x', TensorProto.FLOAT16, [2, 2])
+    output_shape = [2, 2]
+    if (op=="Unsqueeze"):
+        output_shape.append(1)
+    Y = helper.make_tensor_value_info('y', TensorProto.FLOAT16, output_shape)
+    node_inputs=[]
+    graph_inputs=[X]
+    cast1 = helper.make_node('Cast', ['x'], ['cast1'], name='cast1', to=TensorProto.FLOAT)
+    node_inputs.insert(0, 'cast1')
+    if axes_attribute:
+        node = helper.make_node(op, node_inputs, ['op_output'], name=op+str(1), axes=np.array([2]).astype(np.int64))
+    else:
+        node = helper.make_node(op, node_inputs, ['op_output'], name=op+str(1))
+    cast2 = helper.make_node('Cast', ['op_output'], [
+                             'y'], name='cast2', to=TensorProto.FLOAT16)
+    save(model_path, [cast1, node, cast2], graph_inputs, [Y], [])
 
 
 for (transpose_inputs, transpose_product, cast_inputs, cast_product, insert_add, cast_sum, cast_input2) in list(itertools.product([False, True], repeat=7)):
@@ -369,3 +417,9 @@ for (transpose, transpose_before_cast, second_matmul, add_products, cast_inputs)
         continue
     gen_matmul_two_products("matmul_two_outputs", transpose,
                             transpose_before_cast, second_matmul, cast_inputs)
+            
+
+gen_bool_to_float16_cast("negative_test_case_bool_fp16_cast")
+gen_bool_to_float_cast("negative_test_case_bool_fp_cast")
+gen_one_input_one_output_test("Squeeze", "squeeze_cast_propagation_test")
+gen_one_input_one_output_test("Unsqueeze", "unsqueeze_cast_propagation_test", True)

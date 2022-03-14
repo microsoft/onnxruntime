@@ -8,7 +8,7 @@
 
 #include "core/common/status.h"
 #include "core/framework/framework_common.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 
 struct OrtValue;
 namespace onnxruntime {

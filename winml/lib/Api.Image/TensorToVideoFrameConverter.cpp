@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "pch.h"
+#include "lib/Api.Image/pch.h"
 
 #include <winmeta.h>  // winmeta needed for TraceLoggingKeyword
 #include <TraceLoggingProvider.h>
@@ -483,7 +483,8 @@ void TensorToVideoFrameConverter::ConvertGPUTensorToDX12Texture(
   PipelineStateCacheFormat formatFrom = PipelineStateCacheFormat::kBGR8;
   if (tensorDesc.channelType == kImageTensorChannelTypeRGB8) {
     formatFrom = PipelineStateCacheFormat::kRGB8;
-  } else if (inputDesc.Format == kImageTensorChannelTypeGRAY8) {
+  } else if (inputDesc.Format == DXGI_FORMAT_R8_UNORM ||
+             tensorDesc.channelType == kImageTensorChannelTypeGRAY8) {
     formatFrom = PipelineStateCacheFormat::kGRAY8;
   }
 

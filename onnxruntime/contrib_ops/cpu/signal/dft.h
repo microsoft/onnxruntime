@@ -10,7 +10,7 @@ class DFT final : public OpKernel {
   bool is_onesided_ = true;
  public:
   explicit DFT(const OpKernelInfo& info) : OpKernel(info) {
-    is_onesided_ = info.GetAttrOrDefault<int64_t>("onesided", 0);
+    is_onesided_ = static_cast<bool>(info.GetAttrOrDefault<int64_t>("onesided", 0));
   }
   Status Compute(OpKernelContext* ctx) const override;
 };
@@ -26,7 +26,7 @@ class STFT final : public OpKernel {
   bool is_onesided_ = true;
  public:
   explicit STFT(const OpKernelInfo& info) : OpKernel(info) {
-    is_onesided_ = info.GetAttrOrDefault<int64_t>("onesided", 1);
+    is_onesided_ = static_cast<bool>(info.GetAttrOrDefault<int64_t>("onesided", 1));
   }
   Status Compute(OpKernelContext* ctx) const override;
 };

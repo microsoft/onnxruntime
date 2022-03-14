@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2020 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2020, 2022 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -260,14 +260,18 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_run
     jobject* javaOutputStrings;
     checkOrtStatus(jniEnv, api, api->AllocatorAlloc(allocator,sizeof(jobject)*numOutputs,(void**)&javaOutputStrings));
 
-    // Extract the names of the input values.
+    // Extract a C array of longs which are pointers to the input tensors.
+    // Need to convert longs to OrtValue* in case we run on non-64bit systems
+    jlong* inputTensors = (*jniEnv)->GetLongArrayElements(jniEnv,tensorArr,NULL);
+    const OrtValue** inputValues;
+    checkOrtStatus(jniEnv, api, api->AllocatorAlloc(allocator,sizeof(OrtValue*)*numInputs,(void**)&inputValues));
+
+    // Extract the names and native pointers of the input values.
     for (int i = 0; i < numInputs; i++) {
         javaInputStrings[i] = (*jniEnv)->GetObjectArrayElement(jniEnv,inputNamesArr,i);
         inputNames[i] = (*jniEnv)->GetStringUTFChars(jniEnv,javaInputStrings[i],NULL);
+        inputValues[i] = (OrtValue*)inputTensors[i];
     }
-
-    // Extract a C array of longs which are pointers to the input tensors.
-    jlong* inputTensors = (*jniEnv)->GetLongArrayElements(jniEnv,tensorArr,NULL);
 
     // Extract the names of the output values, and allocate their output array.
     OrtValue** outputValues;
@@ -281,7 +285,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_run
     // Actually score the inputs.
     //printf("inputTensors = %p, first tensor = %p, numInputs = %ld, outputValues = %p, numOutputs = %ld\n",inputTensors,(OrtValue*)inputTensors[0],numInputs,outputValues,numOutputs);
     //ORT_API_STATUS(OrtRun, _Inout_ OrtSession* sess, _In_ OrtRunOptions* run_options, _In_ const char* const* input_names, _In_ const OrtValue* const* input, size_t input_len, _In_ const char* const* output_names, size_t output_names_len, _Out_ OrtValue** output);
-    checkOrtStatus(jniEnv,api,api->Run(session, runOptions, (const char* const*) inputNames, (const OrtValue* const*) inputTensors, numInputs, (const char* const*) outputNames, numOutputs, outputValues));
+    checkOrtStatus(jniEnv,api,api->Run(session, runOptions, (const char* const*) inputNames, (const OrtValue* const*) inputValues, numInputs, (const char* const*) outputNames, numOutputs, outputValues));
     // Release the C array of pointers to the tensors.
     (*jniEnv)->ReleaseLongArrayElements(jniEnv,tensorArr,inputTensors,JNI_ABORT);
 
@@ -307,6 +311,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_run
 
     // Release the buffers
     checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)inputNames));
+    checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)inputValues));
     checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)outputNames));
     checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, javaInputStrings));
     checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, javaOutputStrings));
@@ -380,7 +385,7 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtSession_constructMetadata
   jclass metadataClazz = (*jniEnv)->FindClass(jniEnv, metadataClassName);
   //OnnxModelMetadata(String producerName, String graphName, String domain, String description, long version, String[] customMetadataArray)
   jmethodID metadataConstructor = (*jniEnv)->GetMethodID(jniEnv, metadataClazz, "<init>",
-                                                         "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J[Ljava/lang/String;)V");
+                                                         "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J[Ljava/lang/String;)V");
 
   // Get metadata
   OrtModelMetadata* metadata;
@@ -395,6 +400,11 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtSession_constructMetadata
   // Read out the graph name and convert it to a java.lang.String
   checkOrtStatus(jniEnv,api,api->ModelMetadataGetGraphName(metadata, allocator, &charBuffer));
   jstring graphStr = (*jniEnv)->NewStringUTF(jniEnv,charBuffer);
+  checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,charBuffer));
+
+  // Read out the graph description and convert it to a java.lang.String
+  checkOrtStatus(jniEnv,api,api->ModelMetadataGetGraphDescription(metadata, allocator, &charBuffer));
+  jstring graphDescStr = (*jniEnv)->NewStringUTF(jniEnv,charBuffer);
   checkOrtStatus(jniEnv,api,api->AllocatorFree(allocator,charBuffer));
 
   // Read out the domain and convert it to a java.lang.String
@@ -444,8 +454,8 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtSession_constructMetadata
   }
 
   // Invoke the metadata constructor
-  //OnnxModelMetadata(String producerName, String graphName, String domain, String description, long version, String[] customMetadataArray)
-  jobject metadataJava = (*jniEnv)->NewObject(jniEnv, metadataClazz, metadataConstructor, producerStr, graphStr, domainStr, descriptionStr, (jlong) version, customArray);
+  //OnnxModelMetadata(String producerName, String graphName, String graphDescription, String domain, String description, long version, String[] customMetadataArray)
+  jobject metadataJava = (*jniEnv)->NewObject(jniEnv, metadataClazz, metadataConstructor, producerStr, graphStr, graphDescStr, domainStr, descriptionStr, (jlong) version, customArray);
 
   // Release the metadata
   api->ReleaseModelMetadata(metadata);

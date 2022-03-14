@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+﻿/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@ limitations under the License.
 
 #include "core/platform/env.h"
 
-#include <Shlwapi.h>
 #include <Windows.h>
 
 #include <fstream>
@@ -40,6 +39,12 @@ EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 namespace onnxruntime {
 
 namespace {
+
+std::wstring Basename(const std::wstring& path) {
+  auto basename_index = path.find_last_of(L"/\\") + 1;  // results in 0 if no separator is found
+  return path.substr(basename_index);
+}
+
 class WindowsThread : public EnvThread {
  private:
   struct Param {
@@ -48,22 +53,42 @@ class WindowsThread : public EnvThread {
     unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param);
     Eigen::ThreadPoolInterface* param;
     const ThreadOptions& thread_options;
+    Param(const ORTCHAR_T* name_prefix1,
+          int index1,
+          unsigned (*start_address1)(int id, Eigen::ThreadPoolInterface* param),
+          Eigen::ThreadPoolInterface* param1,
+          const ThreadOptions& thread_options1) : name_prefix(name_prefix1), index(index1), start_address(start_address1), param(param1), thread_options(thread_options1) {}
   };
 
  public:
   WindowsThread(const ORTCHAR_T* name_prefix, int index,
                 unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param), Eigen::ThreadPoolInterface* param,
-                const ThreadOptions& thread_options)
-      : hThread((HANDLE)_beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
-                                       new Param{name_prefix, index, start_address, param, thread_options}, 0,
-                                       &threadID)) {
+                const ThreadOptions& thread_options) {
+    custom_create_thread_fn = thread_options.custom_create_thread_fn;
+    custom_thread_creation_options = thread_options.custom_thread_creation_options;
+    custom_join_thread_fn = thread_options.custom_join_thread_fn;
+    std::unique_ptr<Param> local_param = std::make_unique<Param>(name_prefix, index, start_address, param, thread_options);
+    if (custom_create_thread_fn) {
+      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, (OrtThreadWorkerFn)CustomThreadMain, local_param.release());
+      if (!custom_thread_handle) {
+        ORT_THROW("custom_create_thread_fn returned invalid handle.");
+      }
+    } else {
+      hThread.reset(reinterpret_cast<HANDLE>(_beginthreadex(nullptr, thread_options.stack_size, ThreadMain,
+                                                            local_param.release(), 0,
+                                                            &threadID)));
+    }
   }
 
   ~WindowsThread() {
-    DWORD waitStatus = WaitForSingleObject(hThread.get(), INFINITE);
-    FAIL_FAST_LAST_ERROR_IF(waitStatus == WAIT_FAILED);
+    if (custom_thread_handle) {
+      custom_join_thread_fn(custom_thread_handle);
+      custom_thread_handle = nullptr;
+    } else {
+      DWORD waitStatus = WaitForSingleObject(hThread.get(), INFINITE);
+      FAIL_FAST_LAST_ERROR_IF(waitStatus == WAIT_FAILED);
+    }
   }
-
 
  private:
   typedef HRESULT(WINAPI* SetThreadDescriptionFunc)(HANDLE hThread, PCWSTR lpThreadDescription);
@@ -94,7 +119,6 @@ class WindowsThread : public EnvThread {
       // Ignore the error
       (void)pSetThrDesc(GetCurrentThread(), oss.str().c_str());
     }
-
     unsigned ret = 0;
     ORT_TRY {
       ret = p->start_address(p->index, p->param);
@@ -107,18 +131,33 @@ class WindowsThread : public EnvThread {
   }
 #pragma warning(pop)
 
+  static void __stdcall CustomThreadMain(void* param) {
+    std::unique_ptr<Param> p((Param*)param);
+    ORT_TRY {
+      p->start_address(p->index, p->param);
+    }
+    ORT_CATCH(const std::exception&) {
+      p->param->Cancel();
+    }
+  }
   unsigned threadID = 0;
   wil::unique_handle hThread;
 };
 
 class WindowsEnv : public Env {
  public:
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26409)
+#endif
   EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index,
                           unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
                           Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) {
     return new WindowsThread(name_prefix, index, start_address, param, thread_options);
   }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
   void SleepForMicroseconds(int64_t micros) const override {
     Sleep(static_cast<DWORD>(micros) / 1000);
   }
@@ -190,13 +229,13 @@ class WindowsEnv : public Env {
         CreateFileW(file_path, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
 #endif
     if (file_handle.get() == INVALID_HANDLE_VALUE) {
-      const int err = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(file_path), " fail, errcode = ", err);
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToUTF8String(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
     }
     LARGE_INTEGER filesize;
     if (!GetFileSizeEx(file_handle.get(), &filesize)) {
-      const int err = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileSizeEx ", ToMBString(file_path), " fail, errcode = ", err);
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileSizeEx ", ToUTF8String(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
     }
     if (static_cast<ULONGLONG>(filesize.QuadPart) > std::numeric_limits<size_t>::max()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileLength: File is too large");
@@ -242,8 +281,8 @@ class WindowsEnv : public Env {
         CreateFileW(file_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
 #endif
     if (file_handle.get() == INVALID_HANDLE_VALUE) {
-      const int err = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(file_path), " fail, errcode = ", err);
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToUTF8String(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
     }
 
     if (length == 0)
@@ -253,8 +292,8 @@ class WindowsEnv : public Env {
       LARGE_INTEGER current_position;
       current_position.QuadPart = offset;
       if (!SetFilePointerEx(file_handle.get(), current_position, &current_position, FILE_BEGIN)) {
-        const int err = GetLastError();
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SetFilePointerEx ", ToMBString(file_path), " fail, errcode = ", err);
+        const auto error_code = GetLastError();
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SetFilePointerEx ", ToUTF8String(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
       }
     }
 
@@ -266,12 +305,12 @@ class WindowsEnv : public Env {
       DWORD bytes_read;
 
       if (!ReadFile(file_handle.get(), buffer.data() + total_bytes_read, bytes_to_read, &bytes_read, nullptr)) {
-        const int err = GetLastError();
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(file_path), " fail, errcode = ", err);
+        const auto error_code = GetLastError();
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToUTF8String(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
       }
 
       if (bytes_read != bytes_to_read) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(file_path), " fail: unexpected end");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToUTF8String(Basename(file_path)), " fail: unexpected end");
       }
 
       total_bytes_read += bytes_read;
@@ -344,11 +383,11 @@ class WindowsEnv : public Env {
             }
           } else {  // not directory
             if (!DeleteFileW(child_path.c_str())) {
-              const auto err = GetLastError();
+              const auto error_code = GetLastError();
               final_status = ORT_MAKE_STATUS(
                   ONNXRUNTIME, FAIL,
-                  "DeleteFile() failed - path: ", ToMBString(child_path),
-                  ", error code: ", err);
+                  "DeleteFile() failed - path: ", ToUTF8String(Basename(child_path)),
+                  ", error code: ", error_code, " - ", std::system_category().message(error_code));
             }
           }
 
@@ -358,11 +397,11 @@ class WindowsEnv : public Env {
     ORT_RETURN_IF_ERROR(final_status);
 
     if (!RemoveDirectoryW(path.c_str())) {
-      const auto err = GetLastError();
+      const auto error_code = GetLastError();
       final_status = ORT_MAKE_STATUS(
           ONNXRUNTIME, FAIL,
-          "RemoveDirectory() failed - path: ", ToMBString(path),
-          ", error code: ", err);
+          "RemoveDirectory() failed - path: ", ToUTF8String(Basename(path)),
+          ", error code: ", error_code, " - ", std::system_category().message(error_code));
     }
 
     return final_status;
@@ -434,8 +473,8 @@ class WindowsEnv : public Env {
 #endif
 
     if (file_handle.get() == INVALID_HANDLE_VALUE) {
-      const int err = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(path), " fail, errcode = ", err);
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToUTF8String(Basename(path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
     }
 
     constexpr DWORD initial_buffer_size = MAX_PATH;
@@ -495,14 +534,31 @@ class WindowsEnv : public Env {
   }
 
   virtual Status LoadDynamicLibrary(const std::string& library_filename, bool /*global_symbols*/, void** handle) const override {
+    const std::wstring& wlibrary_filename = ToWideString(library_filename);
 #if WINAPI_FAMILY == WINAPI_FAMILY_PC_APP
-    *handle = ::LoadPackagedLibrary(ToWideString(library_filename).c_str(), 0);
+    *handle = ::LoadPackagedLibrary(wlibrary_filename.c_str(), 0);
 #else
-    *handle = ::LoadLibraryExA(library_filename.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+    // TODO: in most cases, the path name is a relative path and the behavior of the following line of code is undefined.
+    *handle = ::LoadLibraryExW(wlibrary_filename.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
 #endif
     if (!*handle) {
       const auto error_code = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load library, error code: ", error_code);
+      static constexpr DWORD bufferLength = 64 * 1024;
+      std::wstring s(bufferLength, '\0');
+      FormatMessageW(
+              FORMAT_MESSAGE_FROM_SYSTEM |
+              FORMAT_MESSAGE_IGNORE_INSERTS,
+          NULL,
+          error_code,
+          MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+          (LPWSTR)s.data(),
+          0, NULL);
+      std::wostringstream oss;
+      oss << L"LoadLibrary failed with error " << error_code << L" \"" << s.c_str() << L"\" when trying to load \"" << wlibrary_filename << L"\"";
+      std::wstring errmsg = oss.str();
+      // TODO: trim the ending '\r' and/or '\n'
+      common::Status status(common::ONNXRUNTIME, common::FAIL, ToUTF8String(errmsg));
+      return status;
     }
     return Status::OK();
   }
@@ -510,7 +566,7 @@ class WindowsEnv : public Env {
   virtual Status UnloadDynamicLibrary(void* handle) const override {
     if (::FreeLibrary(reinterpret_cast<HMODULE>(handle)) == 0) {
       const auto error_code = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to unload library, error code: ", error_code);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "FreeLibrary failed with error ", error_code, " - ", std::system_category().message(error_code));
     }
     return Status::OK();
   }
@@ -519,8 +575,22 @@ class WindowsEnv : public Env {
     *symbol = ::GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol_name.c_str());
     if (!*symbol) {
       const auto error_code = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to find symbol in library, error code: ",
-                             error_code);
+      static constexpr DWORD bufferLength = 64 * 1024;
+      std::wstring s(bufferLength, '\0');
+      FormatMessageW(
+              FORMAT_MESSAGE_FROM_SYSTEM |
+              FORMAT_MESSAGE_IGNORE_INSERTS,
+          NULL,
+          error_code,
+          MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+          (LPWSTR)s.data(),
+          0, NULL);
+      std::wostringstream oss;
+      oss << L"Failed to find symbol " << ToWideString(symbol_name) << L" in library, error code: " << error_code << L" \"" << s.c_str() << L"\"";
+      std::wstring errmsg = oss.str();
+      // TODO: trim the ending '\r' and/or '\n'
+      common::Status status(common::ONNXRUNTIME, common::FAIL, ToUTF8String(errmsg));
+      return status;
     }
     return Status::OK();
   }
@@ -546,15 +616,19 @@ class WindowsEnv : public Env {
     constexpr DWORD kBufferSize = 32767;
 
     // Create buffer to hold the result
-    char buffer[kBufferSize];
+    std::string buffer(kBufferSize, '\0');
 
-    auto char_count = GetEnvironmentVariableA(var_name.c_str(), buffer, kBufferSize);
+    // The last argument is the size of the buffer pointed to by the lpBuffer parameter, including the null-terminating character, in characters.
+    // If the function succeeds, the return value is the number of characters stored in the buffer pointed to by lpBuffer, not including the terminating null character.
+    // Therefore, If the function succeeds, kBufferSize should be larger than char_count.
+    auto char_count = GetEnvironmentVariableA(var_name.c_str(), buffer.data(), kBufferSize);
 
-    // Will be > 0 if the API call was successful
-    if (char_count) {
-      return std::string(buffer, buffer + char_count);
+    if (kBufferSize > char_count) {
+      buffer.resize(char_count);
+      return buffer;
     }
 
+    // Else either the call was failed, or the buffer wasn't large enough.
     // TODO: Understand the reason for failure by calling GetLastError().
     // If it is due to the specified environment variable being found in the environment block,
     // GetLastError() returns ERROR_ENVVAR_NOT_FOUND.
@@ -572,5 +646,4 @@ class WindowsEnv : public Env {
 Env& Env::Default() {
   return WindowsEnv::Instance();
 }
-
 }  // namespace onnxruntime

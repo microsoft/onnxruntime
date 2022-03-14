@@ -1,2 +1,2 @@
 # Quantization Tool
-This tool can be used to quantize select ONNX models. Support is based on operators in the model. Please refer to https://www.onnxruntime.ai/docs/how-to/quantization.html for usage details.
+This tool can be used to quantize select ONNX models. Support is based on operators in the model. Please refer to https://onnxruntime.ai/docs/performance/quantization.html for usage details and https://github.com/microsoft/onnxruntime-inference-examples/tree/main/quantization for examples.

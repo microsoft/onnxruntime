@@ -1,7 +1,8 @@
 from .quant_utils import QuantizationMode
+from .operators.argmax import QArgMax
 from .operators.base_operator import QuantOperatorBase
 from .operators.qdq_base_operator import QDQOperatorBase
-from .operators.matmul import MatMulInteger, QLinearMatMul
+from .operators.matmul import MatMulInteger, QLinearMatMul, QDQMatMul
 from .operators.attention import AttentionQuant
 from .operators.embed_layernorm import EmbedLayerNormalizationQuant
 from .operators.gather import GatherQuant
@@ -17,9 +18,11 @@ from .operators.direct_q8 import Direct8BitOp, QDQDirect8BitOp
 from .operators.resize import QResize, QDQResize
 from .operators.pooling import QLinearPool
 from .operators.concat import QLinearConcat, QDQConcat
+from .operators.gemm import QLinearGemm, QDQGemm
 
 CommonOpsRegistry = {
     "Gather": GatherQuant,
+    "Transpose" : Direct8BitOp,
     "EmbedLayerNormalization": EmbedLayerNormalizationQuant,
 }
 
@@ -32,7 +35,9 @@ IntegerOpsRegistry = {
 IntegerOpsRegistry.update(CommonOpsRegistry)
 
 QLinearOpsRegistry = {
+    "ArgMax": QArgMax,
     "Conv": QLinearConv,
+    "Gemm": QLinearGemm,
     "MatMul": QLinearMatMul,
     "Add": QLinearBinaryOp,
     "Mul": QLinearBinaryOp,
@@ -45,7 +50,6 @@ QLinearOpsRegistry = {
     "Split": QSplit,
     "Pad": QPad,
     "Reshape": Direct8BitOp,
-    "Transpose" : Direct8BitOp,
     "Squeeze" : Direct8BitOp,
     "Unsqueeze" : Direct8BitOp,
     "Resize": QResize,
@@ -56,6 +60,7 @@ QLinearOpsRegistry.update(CommonOpsRegistry)
 
 QDQRegistry = {
     "Conv": QDQConv,
+    "Gemm": QDQGemm,
     "Clip": QDQRemovableActivation,
     "Relu": QDQRemovableActivation,
     "Reshape": QDQDirect8BitOp,
@@ -66,6 +71,7 @@ QDQRegistry = {
     "MaxPool": QDQMaxPool,
     "AveragePool" : QDQDirect8BitOp,
     "Concat": QDQConcat,
+    "MatMul": QDQMatMul,
 }
 
 

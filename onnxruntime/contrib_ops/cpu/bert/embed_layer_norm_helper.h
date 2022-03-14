@@ -12,7 +12,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace embed_layer_norm {
 
-Status CheckInputs(const OpKernelContext* context);
+Status CheckInputs(const OpKernelContext* context, bool quantizedVersion = false);
 
 }  // namespace embed_layer_norm
 }  // namespace contrib

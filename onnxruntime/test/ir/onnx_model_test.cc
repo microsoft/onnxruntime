@@ -11,6 +11,8 @@
 #include "test/providers/provider_test_utils.h"  //For ASSERT_STATUS_OK
 #include "test/test_environment.h"
 #include "gtest/gtest.h"
+#include "onnx/defs/function.h"
+#include "onnx/defs/parser.h"
 
 using namespace onnxruntime;
 using namespace ONNX_NAMESPACE;
@@ -185,6 +187,240 @@ TEST_F(ONNXModelsTest, TestModelsWithAnOpContainingAFunctionBody) {
   ASSERT_STATUS_OK(Model::Load(ORT_TSTR("testdata/model_containing_op_with_function_body.onnx"), model, nullptr,
                                *logger_));
   ASSERT_STATUS_OK(model->MainGraph().Resolve());
+}
+
+// The following tests verify ORT can successfully load models which reference functions
+// present in the ModelProto aka model local functions. This feature was added to ONNX standard starting IRv8
+
+void BuildFunction(FunctionProto& function_proto, 
+    const std::string& name, const std::string& domain, 
+    const std::vector<NodeProto>& nodes, 
+    const std::vector<std::string>& inputs, 
+    const std::vector<std::string>& outputs, 
+    const std::unordered_map<std::string, int>& opset_imports) {
+  for (const auto& node : nodes) {
+    auto new_node = function_proto.add_node();
+    new_node->CopyFrom(node);
+  }
+
+  function_proto.set_name(name);
+  function_proto.set_domain(domain);
+  function_proto.set_doc_string("Test function proto");
+
+  for (auto& input : inputs)
+    function_proto.add_input(input);
+
+  for (auto& output : outputs)
+    function_proto.add_output(output);
+
+  for (auto& opset_import : opset_imports) {
+    auto* func_opset_import = function_proto.mutable_opset_import()->Add();
+    func_opset_import->set_domain(opset_import.first);
+    func_opset_import->set_version(opset_import.second);
+  }
+}
+
+void BuildFunctionFoo(FunctionProto& function_proto, const std::string& domain) {
+  auto func_body_nodes = FunctionBodyHelper::BuildNodes(
+      {// nodes: {outputs, op, inputs, attributes}
+       FunctionBodyHelper::Const<float>("Q_Min", 0.f),
+       FunctionBodyHelper::Const<float>("Q_Max", 255.f),
+       {{"X_Min"}, "ReduceMin", {"x"}, {MakeAttribute("keepdims", int64_t(0))}},
+       {{"X_Max"}, "ReduceMax", {"x"}, {MakeAttribute("keepdims", int64_t(0))}},
+       {{"X_Range"}, "Sub", {"X_Max", "X_Min"}},
+       {{"s"}, "Div", {"X_Range", "Q_Max"}},
+       {{"zp_fp"}, "Sub", {"Q_Min", "s"}},
+       {{"zp"}, "Cast", {"zp_fp"}, {MakeAttribute("to", int64_t(2))}},
+       {{"y"}, "QuantizeLinear", {"x", "s", "zp"}}});
+
+  BuildFunction(function_proto, "foo", domain, func_body_nodes, {"x"}, {"y"}, {{"", 13}});
+}
+
+void RunFunctionTests(ModelProto&& model_proto) {
+  std::shared_ptr<Model> model;
+  std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> registry = std::make_shared<OnnxRuntimeOpSchemaRegistry>();
+  std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> regs = {registry};
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, &regs,
+                               *(DefaultLoggingManager().CreateLogger("GraphTest"))));
+
+  // Test function inline
+  auto& graph = model->MainGraph();
+  bool function_inlined = false;
+  do {
+    function_inlined = false;
+    for (auto& node : graph.Nodes()) {
+      if (node.GetFunctionBody() != nullptr) {
+        ASSERT_STATUS_OK(graph.InlineFunction(node));
+        function_inlined = true;
+        break;
+      }
+    }
+  } while (function_inlined);
+
+  ASSERT_STATUS_OK(graph.Resolve());
+}
+
+// Tests:
+// 1. Function initialization and inlining.
+// 2. Input\output name handling when intermediate function body node input\outputs have same names as outer graph.
+// 3. Input\output name handling when function body input output names don't match node input output names
+TEST(FunctionVerification, TestModelLocalFunctions) {
+  const char* code = R"ONNX(
+<
+  ir_version: 8,
+  opset_import: [ "" : 13, "custom_domain" : 1],
+  producer_name: "FunctionProtoTest",
+  producer_version: "1.0",
+  model_version: 1,
+  doc_string: "A test model for model local functions."
+>
+agraph (float[N] x) => (uint8[N] s)
+{
+    t = custom_domain.foo(x)
+    s = Identity(t)
+}
+)ONNX";
+
+  ModelProto model_proto;
+  ONNX_NAMESPACE::OnnxParser parser(code);
+  auto status = parser.Parse(model_proto);
+  EXPECT_TRUE(status.IsOK());
+  EXPECT_TRUE(parser.EndOfInput());
+
+  auto* function_proto = model_proto.mutable_functions()->Add();
+  BuildFunctionFoo(*function_proto, "custom_domain");
+
+  RunFunctionTests(std::move(model_proto));
+}
+
+// Tests Input\Output name handling where function output is consumed by function body node as well.
+// This is treated as a special case because we need to test that the node arg name is
+// handled properly. Specially when this function output is also remapped to node output.
+TEST(FunctionVerification, TestModelLocalFunctionsWithMultipleOutputs) {
+  const char* code = R"ONNX(
+<
+  ir_version: 8,
+  opset_import: [ "" : 13, "custom_domain" : 1],
+  producer_name: "FunctionProtoTest",
+  producer_version: "1.0",
+  model_version: 1,
+  doc_string: "A test model for model local functions."
+>
+agraph (float[N] x) => (float[N] out)
+{
+    o1, o2 = custom_domain.bar(x)
+    out = Add(o1, o2)
+}
+)ONNX";
+
+  ModelProto model_proto;
+  ONNX_NAMESPACE::OnnxParser parser(code);
+  auto status = parser.Parse(model_proto);
+  EXPECT_TRUE(status.IsOK());
+  EXPECT_TRUE(parser.EndOfInput());
+
+  auto function_proto = model_proto.mutable_functions()->Add();
+  auto func_body_nodes = FunctionBodyHelper::BuildNodes(
+      {// nodes: {outputs, op, inputs, attributes, domain}
+       {{"o2"}, "Identity", {"x"}},
+       {{"o1"}, "Identity", {"o2"}}});
+  BuildFunction(*function_proto, "bar", "custom_domain",
+                func_body_nodes, {"x"}, {"o1", "o2"}, {{"", 13}});
+
+  RunFunctionTests(std::move(model_proto));
+}
+
+// Tests:
+// 1. Nested functions initialization and inlining.
+// 1. Input\output name handling when intermediate function body node input\outputs have same names as outer graph.
+// 2. Input\output name handling when function body input output names don't match node input output names
+TEST(FunctionVerification, TestNestedModelLocalFunctions) {
+  const char* code = R"ONNX(
+<
+  ir_version: 8,
+  opset_import: [ "" : 13, "custom_domain" : 1],
+  producer_name: "FunctionProtoTest",
+  producer_version: "1.0",
+  model_version: 1,
+  doc_string: "A test model for model local functions."
+>
+agraph (float[N] x) => (uint8[N] zp)
+{
+    c = custom_domain.foo(x)
+    zp = Identity(c)
+}
+)ONNX";
+
+  ModelProto model_proto;
+  ONNX_NAMESPACE::OnnxParser parser(code);
+  auto status = parser.Parse(model_proto);
+  EXPECT_TRUE(status.IsOK());
+  EXPECT_TRUE(parser.EndOfInput());
+
+  auto* function_proto = model_proto.mutable_functions()->Add();
+  BuildFunctionFoo(*function_proto, "custom_domainA");
+
+  // Build second function proto
+  // intentionally using same function name to test 
+  // that domainA:name and domainB:name are allowed.
+  function_proto = model_proto.mutable_functions()->Add();
+  auto func_body_nodes = FunctionBodyHelper::BuildNodes(
+      {// nodes: {outputs, op, inputs, attributes, domain}
+       {{"out"}, "foo", {"x"}, {}, "custom_domainA"},
+       {{"s"}, "Identity", {"out"}}});
+  BuildFunction(*function_proto, "foo", "custom_domain",
+                func_body_nodes, {"x"}, {"s"}, {{"", 13}, {"custom_domainA", 1}});
+
+  RunFunctionTests(std::move(model_proto));
+}
+
+// Tests:
+// 1. Function initialization and inlining when there are multiple references to the same function
+// from within a function body and directly from a graph
+// 2. Input\output and node names are handled correctly (.i.e unique names are generated where necessary) when inlining the 
+// same function multiple times in the graph.
+// 3. Unique names are generated for intermediate node input\outputs when they match the names of node input\outputs
+TEST(FunctionVerification, TestNestedModelLocalFunctionsWithMultipleReferences) {
+  const char* code = R"ONNX(
+<
+  ir_version: 8,
+  opset_import: [ "" : 13, "custom_domain" : 1, "custom_domainA" : 1],
+  producer_name: "FunctionProtoTest",
+  producer_version: "1.0",
+  model_version: 1,
+  doc_string: "A test model for model local functions."
+>
+agraph (float[N] x, float[N] y) => (float[N] zp)
+{
+    c = custom_domain.bar(x)
+    zp1 = Cast<to = 1>(c)
+    d = custom_domainA.foo(y)
+    zp2 = Cast<to = 1>(d)
+    zp = Sub(zp1, zp2)
+}
+)ONNX";
+
+  ModelProto model_proto;
+  ONNX_NAMESPACE::OnnxParser parser(code);
+  auto status = parser.Parse(model_proto);
+  EXPECT_TRUE(status.IsOK());
+  EXPECT_TRUE(parser.EndOfInput());
+
+  auto* function_proto = model_proto.mutable_functions()->Add();
+  BuildFunctionFoo(*function_proto, "custom_domainA");
+
+  // Build second function proto
+  // intentionally using same function name to test
+  // that domainA:name and domainB:name are allowed.
+  function_proto = model_proto.mutable_functions()->Add();
+  auto func_body_nodes = FunctionBodyHelper::BuildNodes(
+      {// nodes: {outputs, op, inputs, attributes, domain}
+       {{"s"}, "foo", {"x"}, {}, "custom_domainA"},
+       {{"out"}, "Identity", {"s"}}});
+  BuildFunction(*function_proto, "bar", "custom_domain", func_body_nodes,
+                {"x"}, {"out"}, {{"", 13}, {"custom_domainA", 1}});
+
+  RunFunctionTests(std::move(model_proto));
 }
 
 }  // namespace test

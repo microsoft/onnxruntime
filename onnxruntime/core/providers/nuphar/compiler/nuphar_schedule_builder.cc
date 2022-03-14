@@ -29,7 +29,7 @@ static void Traverse(const tvm::Tensor& tensor,
     }
   }
 
-  ctx_codegen.GetCodeGenHandle()->schedule_builder->Evaluate(tensor, node, ctx_codegen, ctx_schedule);
+  ORT_THROW_IF_ERROR(ctx_codegen.GetCodeGenHandle()->schedule_builder->Evaluate(tensor, node, ctx_codegen, ctx_schedule));
 
   // for real ouput
   bool is_real_output = nullptr != node &&

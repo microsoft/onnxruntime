@@ -298,11 +298,11 @@ segment_ids = np.random.randint(low=0, high=2, size=(batch, sq_length), dtype=np
 input_mask = np.ones((batch, sq_length), dtype=np.int64)
 
 # Do forward using the original model.
-sess = ort.InferenceSession(input_model_name)
+sess = ort.InferenceSession(input_model_name, providers=ort.get_available_providers())
 result = sess.run(None, {'input1': input_ids, 'input2': segment_ids, 'input3': input_mask})
 
 # Do forward using the new model.
-new_sess = ort.InferenceSession(output_model_name)
+new_sess = ort.InferenceSession(output_model_name, providers=ort.get_available_providers())
 new_result = new_sess.run(None, {'input1': input_ids, 'input2': segment_ids, 'input3': input_mask})
 
 # Compare the outcomes from the two models.

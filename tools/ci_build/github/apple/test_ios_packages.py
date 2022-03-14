@@ -3,13 +3,20 @@
 # Licensed under the MIT License.
 
 import argparse
+import contextlib
 import os
 import pathlib
 import shutil
 import subprocess
+import tempfile
 
-SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", "..", ".."))
+
+from c.assemble_c_pod_package import assemble_c_pod_package
+from package_assembly_utils import gen_file_from_template, get_ort_version, PackageVariant
+
+
+SCRIPT_PATH = pathlib.Path(__file__).resolve(strict=True)
+REPO_DIR = SCRIPT_PATH.parents[4]
 
 
 def _test_ios_packages(args):
@@ -27,51 +34,90 @@ def _test_ios_packages(args):
     if not c_framework_dir.is_dir():
         raise FileNotFoundError('c_framework_dir {} is not a folder.'.format(c_framework_dir))
 
-    framework_path = os.path.join(c_framework_dir, 'onnxruntime.framework')
-    if not pathlib.Path(framework_path).exists():
-        raise FileNotFoundError('{} does not have onnxruntime.framework'.format(c_framework_dir))
+    has_framework = (c_framework_dir / 'onnxruntime.framework').exists()
+    has_xcframework = (c_framework_dir / 'onnxruntime.xcframework').exists()
+
+    if not has_framework and not has_xcframework:
+        raise FileNotFoundError('{} does not have onnxruntime.framework/xcframework'.format(c_framework_dir))
+
+    if has_framework and has_xcframework:
+        raise ValueError('Cannot proceed when both onnxruntime.framework '
+                         'and onnxruntime.xcframework exist')
+
+    framework_name = 'onnxruntime.framework' if has_framework else 'onnxruntime.xcframework'
 
     # create a temp folder
-    import tempfile
-    with tempfile.TemporaryDirectory() as temp_dir:
-        # create a zip file contains the framework
-        # TODO, move this into a util function
-        local_pods_dir = os.path.join(temp_dir, 'local_pods')
-        os.makedirs(local_pods_dir, exist_ok=True)
-        # shutil.make_archive require target file as full path without extension
-        zip_base_filename = os.path.join(local_pods_dir, 'onnxruntime-mobile')
-        zip_file_path = zip_base_filename + '.zip'
-        shutil.make_archive(zip_base_filename, 'zip', root_dir=c_framework_dir, base_dir='onnxruntime.framework')
 
-        # copy the test project to the temp_dir
-        test_proj_path = os.path.join(REPO_DIR, 'onnxruntime', 'test', 'platform', 'ios', 'ios_package_test')
-        target_proj_path = os.path.join(temp_dir, 'ios_package_test')
+    with contextlib.ExitStack() as context_stack:
+        if args.test_project_stage_dir is None:
+            stage_dir = pathlib.Path(context_stack.enter_context(tempfile.TemporaryDirectory())).resolve()
+        else:
+            # If we specify the stage dir, then use it to create test project
+            stage_dir = args.test_project_stage_dir.resolve()
+            if os.path.exists(stage_dir):
+                shutil.rmtree(stage_dir)
+            os.makedirs(stage_dir)
+
+        # assemble the test project here
+        target_proj_path = stage_dir / 'ios_package_test'
+
+        # copy the test project source files to target_proj_path
+        test_proj_path = pathlib.Path(REPO_DIR, 'onnxruntime/test/platform/ios/ios_package_test')
         shutil.copytree(test_proj_path, target_proj_path)
 
+        # assemble local pod files here
+        local_pods_dir = stage_dir / 'local_pods'
+
+        # We will only publish xcframework, however, assembly of the xcframework is a post process
+        # and it cannot be done by CMake for now. See, https://gitlab.kitware.com/cmake/cmake/-/issues/21752
+        # For a single sysroot and arch built by build.py or cmake, we can only generate framework
+        # We still need a way to test it. framework_dir and public_headers_dir have different values when testing a
+        # framework and a xcframework.
+        framework_dir = args.c_framework_dir / framework_name
+        public_headers_dir = framework_dir / "Headers" if has_framework else args.c_framework_dir / "Headers"
+
+        pod_name, podspec = assemble_c_pod_package(staging_dir=local_pods_dir,
+                                                   pod_version=get_ort_version(),
+                                                   framework_info_file=args.framework_info_file,
+                                                   public_headers_dir=public_headers_dir,
+                                                   framework_dir=framework_dir,
+                                                   package_variant=PackageVariant[args.variant])
+
+        # move podspec out to target_proj_path first
+        podspec = shutil.move(podspec, target_proj_path / podspec.name)
+
+        # create a zip file contains the framework
+        zip_file_path = local_pods_dir / f'{pod_name}.zip'
+        # shutil.make_archive require target file as full path without extension
+        shutil.make_archive(zip_file_path.with_suffix(''), 'zip', root_dir=local_pods_dir)
+
         # update the podspec to point to the local framework zip file
-        local_podspec_path = os.path.join(target_proj_path, 'onnxruntime-mobile.podspec')
-        local_podspec_template = os.path.join(target_proj_path, 'onnxruntime-mobile.podspec.template')
-        with open(local_podspec_template, 'r') as file:
+        with open(podspec, 'r') as file:
             file_data = file.read()
 
-        # replace the target strings
-        file_data = file_data.replace('${ORT_BASE_FRAMEWORK_ARCHIVE}', 'file:' + zip_file_path)
-        with open(os.path.join(REPO_DIR, 'VERSION_NUMBER')) as version_file:
-            file_data = file_data.replace('${ORT_VERSION}', version_file.readline().strip())
+        file_data = file_data.replace('file:///http_source_placeholder', f'file:///{zip_file_path}')
 
-        # write the updated podspec
-        with open(local_podspec_path, 'w') as file:
+        with open(podspec, 'w') as file:
             file.write(file_data)
 
-        # install pods first
+        # generate Podfile to point to pod
+        gen_file_from_template(target_proj_path / "Podfile.template", target_proj_path / "Podfile",
+                               {"C_POD_NAME": pod_name,
+                                "C_POD_PODSPEC": f"./{podspec.name}"})
+
+        # clean the Cocoapods cache first, in case the same pod was cached in previous runs
+        subprocess.run(['pod', 'cache', 'clean', '--all'], shell=False, check=True, cwd=target_proj_path)
+
+        # install pods
         subprocess.run(['pod', 'install'], shell=False, check=True, cwd=target_proj_path)
 
         # run the tests
-        subprocess.run(['xcrun', 'xcodebuild', 'test',
-                        '-workspace', './ios_package_test.xcworkspace',
-                        '-scheme', 'ios_package_test',
-                        '-destination', 'platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)'],
-                       shell=False, check=True, cwd=target_proj_path)
+        if not args.prepare_test_project_only:
+            subprocess.run(['xcrun', 'xcodebuild', 'test',
+                            '-workspace', './ios_package_test.xcworkspace',
+                            '-scheme', 'ios_package_test',
+                            '-destination', 'platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)'],
+                           shell=False, check=True, cwd=target_proj_path)
 
 
 def parse_args():
@@ -84,8 +130,21 @@ def parse_args():
                         help='This script will fail if CocoaPods is not installed, '
                         'will not throw error unless fail_if_cocoapod_missing is set.')
 
+    parser.add_argument("--framework_info_file", type=pathlib.Path, required=True,
+                        help="Path to the framework_info.json file containing additional values for the podspec. "
+                             "This file should be generated by CMake in the build directory.")
+
     parser.add_argument('--c_framework_dir', type=pathlib.Path, required=True,
                         help='Provide the parent directory for C/C++ framework')
+
+    parser.add_argument("--variant", choices=PackageVariant.all_variant_names(), default=PackageVariant.Test.name,
+                        help="Pod package variant.")
+
+    parser.add_argument('--test_project_stage_dir', type=pathlib.Path,
+                        help='The stage dir for the test project, if not specified, will use a temporary path')
+
+    parser.add_argument('--prepare_test_project_only', action='store_true',
+                        help='Prepare the test project only, without running the tests')
 
     return parser.parse_args()
 

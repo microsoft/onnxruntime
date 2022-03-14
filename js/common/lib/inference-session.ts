@@ -24,7 +24,8 @@ export declare namespace InferenceSession {
    * - An array of string indicating the output names.
    * - An object that use output names as keys and OnnxValue or null as corresponding values.
    *
-   * REMARK: different from input argument, in output, OnnxValue is optional. If an OnnxValue is present it will be
+   * @remark
+   * different from input argument, in output, OnnxValue is optional. If an OnnxValue is present it will be
    * used as a pre-allocated value by the inference engine; if omitted, inference engine will allocate buffer
    * internally.
    */
@@ -134,8 +135,9 @@ export declare namespace InferenceSession {
      * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/
      * onnxruntime_session_options_config_keys.h
      *
-     * In example,
+     * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
      *
+     * @example
      * ```js
      * extra: {
      *   session: {
@@ -147,8 +149,6 @@ export declare namespace InferenceSession {
      *   }
      * }
      * ```
-     *
-     * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
      */
     extra?: Record<string, unknown>;
   }
@@ -156,7 +156,7 @@ export declare namespace InferenceSession {
   //#region execution providers
 
   // Currently, we have the following backends to support execution providers:
-  // Backend Node.js binding: supports "cpu" and "cuda".
+  // Backend Node.js binding: supports 'cpu' and 'cuda'.
   // Backend WebAssembly: supports 'wasm'.
   // Backend ONNX.js: supports 'webgl'.
   interface ExecutionProviderOptionMap {
@@ -233,7 +233,9 @@ export declare namespace InferenceSession {
      * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/
      * onnxruntime_run_options_config_keys.h
      *
-     * In example,
+     * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
+     *
+     * @example
      *
      * ```js
      * extra: {
@@ -242,8 +244,6 @@ export declare namespace InferenceSession {
      *   }
      * }
      * ```
-     *
-     * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
      */
     extra?: Record<string, unknown>;
   }

@@ -139,7 +139,7 @@ TEST(TensorTest, EmptyTensorTest) {
   EXPECT_EQ(location.id, 0);
 
   // arena is disabled for CPUExecutionProvider on x86 and JEMalloc
-#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) && !defined(USE_JEMALLOC)
+#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) && !defined(USE_JEMALLOC) && !defined(USE_MIMALLOC)
   EXPECT_EQ(location.alloc_type, OrtAllocatorType::OrtArenaAllocator);
 #else
   EXPECT_EQ(location.alloc_type, OrtAllocatorType::OrtDeviceAllocator);
@@ -159,8 +159,7 @@ TEST(TensorTest, StringTensorTest) {
     Tensor t(DataTypeImpl::GetType<std::string>(), shape, alloc);
 
     auto& tensor_shape = t.Shape();
-    //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-    EXPECT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&shape), *reinterpret_cast<const std::vector<int64_t>*>(&tensor_shape));
+    EXPECT_EQ(shape, tensor_shape);
     EXPECT_EQ(t.DataType(), DataTypeImpl::GetType<std::string>());
     auto& location = t.Location();
     ASSERT_STREQ(location.name, CPU);
@@ -210,5 +209,34 @@ TEST(TensorTest, SizeOverflow) {
   Tensor t(type, shape1, nullptr, alloc->Info());
   EXPECT_THROW(t.SizeInBytes(), OnnxRuntimeException);
 }
+
+#ifdef ENABLE_TRAINING
+TEST(TensorTest, Strided) {
+  TensorShape shape({2, 3, 4});
+  auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  void* data = alloc->Alloc(shape.Size() * sizeof(float));
+  Tensor t(DataTypeImpl::GetType<float>(), shape, data, alloc->Info());
+  EXPECT_TRUE(t.IsContiguous());
+  TensorShapeVector strides{12, 4, 1};
+  ASSERT_EQ(t.Shape(), shape);
+  ASSERT_THAT(t.Strides(), testing::ContainerEq(gsl::make_span(strides.cbegin(), strides.cend())));
+  TensorShape new_shape({4, 2, 3});
+  TensorShapeVector new_strides{1, 12, 4};
+  t.SetShapeAndStrides(new_shape, new_strides);
+  EXPECT_FALSE(t.IsContiguous());
+  ASSERT_EQ(t.Shape(), new_shape);
+  ASSERT_THAT(t.Strides(), testing::ContainerEq(gsl::make_span(new_strides.cbegin(), new_strides.cend())));
+  Tensor t2(DataTypeImpl::GetType<float>(), new_shape, data, alloc->Info(), 0L, gsl::make_span(new_strides));
+  EXPECT_FALSE(t2.IsContiguous());
+  ASSERT_EQ(t.Shape(), new_shape);
+  ASSERT_THAT(t2.Strides(), testing::ContainerEq(gsl::make_span(new_strides.cbegin(), new_strides.cend())));
+  t2.SetShapeAndStrides(shape, strides);
+  EXPECT_TRUE(t2.IsContiguous());
+  ASSERT_EQ(t.Shape(), new_shape);
+  ASSERT_THAT(t2.Strides(), testing::ContainerEq(gsl::make_span(strides.cbegin(), strides.cend())));
+  alloc->Free(data);
+}
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime

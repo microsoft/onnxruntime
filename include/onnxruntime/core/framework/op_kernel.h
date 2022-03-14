@@ -16,14 +16,20 @@
 #include "core/common/status.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_def_builder.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/op_kernel_info.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/framework/tensor.h"
 #include "core/framework/sparse_tensor.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
-#include "core/graph/onnx_protobuf.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "onnx/defs/schema.h"
+#else
+#include "onnx/defs/data_type_utils.h"
+#endif
+#include "onnx/onnx_pb.h"
+#include "onnx/onnx-operators_pb.h"
 #include "gsl/gsl"
 namespace onnxruntime {
 class OpKernelContext;
@@ -104,8 +110,8 @@ class OpKernel {
   // @param used_shared_buffers: Boolean flag set by the kernel implementation indicating
   // that the provided weight has been used by the kernel.
   virtual Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& /*prepacked_buffers*/,
-                                          int /*input_idx*/,
-                                          /*out*/ bool& used_shared_buffers) {
+                                           int /*input_idx*/,
+                                           /*out*/ bool& used_shared_buffers) {
     used_shared_buffers = false;
     return Status::OK();
   }
@@ -119,9 +125,9 @@ class OpKernel {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpKernel);
   std::unique_ptr<OpKernelInfo> op_kernel_info_;
 };
-
-using KernelCreateFn = std::function<OpKernel*(const OpKernelInfo& info)>;
-using KernelCreatePtrFn = std::add_pointer<OpKernel*(const OpKernelInfo& info)>::type;
+class FuncManager;
+using KernelCreateFn = std::function<Status(FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out)>;
+using KernelCreatePtrFn = std::add_pointer<Status(FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out)>::type;
 
 struct KernelCreateInfo {
   std::unique_ptr<KernelDef> kernel_def;  // Owned and stored in the global kernel registry.
@@ -153,11 +159,6 @@ namespace contrib {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace contrib
-
-namespace featurizers {
-template <typename T>
-KernelCreateInfo BuildKernelCreateInfo();
-}  // namespace featurizers
 
 namespace contrib {
 namespace cuda {
@@ -196,7 +197,7 @@ using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
             .SinceVersion(ver)                                                                                        \
             .Provider(provider)                                                                                       \
             .Build(),                                                                                                 \
-        static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); })); \
+        static_cast<KernelCreatePtrFn>([](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<__VA_ARGS__>(info); return Status::OK(); })); \
   }
 
 #define ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(provider, domain, startver, endver, name) \
@@ -219,7 +220,7 @@ using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
             .SinceVersion(startver, endver)                                                                           \
             .Provider(provider)                                                                                       \
             .Build(),                                                                                                 \
-        static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); })); \
+        static_cast<KernelCreatePtrFn>([](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<__VA_ARGS__>(info); return Status::OK(); })); \
   }
 
 #define ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type, name) \
@@ -245,7 +246,7 @@ using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
             .SinceVersion(ver)                                                                                        \
             .Provider(provider)                                                                                       \
             .Build(),                                                                                                 \
-        static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); })); \
+        static_cast<KernelCreatePtrFn>([](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<__VA_ARGS__>(info); return Status::OK(); })); \
   }
 
 #define ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, name) \
@@ -262,7 +263,7 @@ using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
             .SinceVersion(ver)                                                                                        \
             .Provider(provider)                                                                                       \
             .Build(),                                                                                                 \
-        static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); })); \
+        static_cast<KernelCreatePtrFn>([](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<__VA_ARGS__>(info); return Status::OK(); })); \
   }
 
 #define ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name) \
@@ -292,7 +293,7 @@ using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
             .SinceVersion(startver, endver)                                                                           \
             .Provider(provider)                                                                                       \
             .Build(),                                                                                                 \
-        static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); })); \
+        static_cast<KernelCreatePtrFn>([](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<__VA_ARGS__>(info); return Status::OK(); })); \
   }
 
 #define ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type1, type2, name) \
@@ -311,7 +312,7 @@ using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
             .SinceVersion(startver, endver)                                                                           \
             .Provider(provider)                                                                                       \
             .Build(),                                                                                                 \
-        static_cast<KernelCreatePtrFn>([](const OpKernelInfo& info) -> OpKernel* { return new __VA_ARGS__(info); })); \
+        static_cast<KernelCreatePtrFn>([](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<__VA_ARGS__>(info); return Status::OK(); })); \
   }
 
 template <typename... Types>
@@ -321,6 +322,15 @@ struct BuildKernelDefConstraintsImpl {
   }
 };
 
+#if !defined(DISABLE_SPARSE_TENSORS)
+template <typename... Types>
+struct BuildKernelDefSparseConstraintsImpl {
+  std::vector<MLDataType> operator()() const {
+    return {DataTypeImpl::GetSparseTensorType<Types>()...};
+  }
+};
+#endif
+
 // Use within macro definitions to create a custom vector of constraints.
 // Example: #define REG_KERNEL(OP, VERSION, KERNEL_CLASS, Type, ...)
 //  .TypeConstraint("T", BuildKernelDefConstraints<Type, __VA_ARGS_>())
@@ -329,11 +339,25 @@ inline std::vector<MLDataType> BuildKernelDefConstraints() {
   return BuildKernelDefConstraintsImpl<Types...>{}();
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
+template <typename... Types>
+inline std::vector<MLDataType> BuildKernelDefSparseConstraints() {
+  return BuildKernelDefSparseConstraintsImpl<Types...>{}();
+}
+#endif
+
 // version of BuildKernelDefConstraints() which takes a type list
 template <typename L>
-std::vector<MLDataType> BuildKernelDefConstraintsFromTypeList() {
+inline std::vector<MLDataType> BuildKernelDefConstraintsFromTypeList() {
   return boost::mp11::mp_apply<BuildKernelDefConstraintsImpl, L>{}();
 }
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+template <typename L>
+inline std::vector<MLDataType> BuildKernelDefSparseConstraintsFromTypeList() {
+  return boost::mp11::mp_apply<BuildKernelDefSparseConstraintsImpl, L>{}();
+}
+#endif
 
 }  // namespace onnxruntime
 

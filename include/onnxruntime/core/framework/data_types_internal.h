@@ -16,7 +16,13 @@
 #ifndef SHARED_PROVIDER
 #include "core/common/type_list.h"
 #include "core/framework/data_types.h"
-#include "core/graph/onnx_protobuf.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "onnx/defs/schema.h"
+#else
+#include "onnx/defs/data_type_utils.h"
+#endif
+#include "onnx/onnx_pb.h"
+#include "onnx/onnx-operators_pb.h"
 #endif
 
 namespace onnxruntime {
@@ -473,7 +479,8 @@ enum class ContainerType : uint16_t {
   kTensor = 1,
   kMap = 2,
   kSequence = 3,
-  kOpaque = 4
+  kOpaque = 4,
+  kOptional = 5
 };
 
 class TypeNode {
@@ -552,10 +559,11 @@ class ContainerChecker {
         ORT_ENFORCE(++index < c.size(), "Sequence is missing type entry for its element");
         constexpr int32_t prim_type = ToTensorProtoElementType<T>();
         // Check if this is a primitive type and it matches
-        if (prim_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
+        ORT_IF_CONSTEXPR(prim_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
           return c[index].IsType(data_types_internal::ContainerType::kTensor) &&
                  c[index].IsPrimType(prim_type);
-        } else {
+        }
+        else {
           // T is not primitive, check next entry for non-primitive proto
           return IsContainerOfType<T>::check(c, index);
         }
@@ -581,11 +589,11 @@ class ContainerChecker {
       }
       ORT_ENFORCE(++index < c.size(), "Map is missing type entry for its value");
       constexpr int32_t val_type = ToTensorProtoElementType<V>();
-      if (val_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
+      ORT_IF_CONSTEXPR(val_type != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
         return c[index].IsType(data_types_internal::ContainerType::kTensor) &&
                c[index].IsPrimType(val_type);
       }
-      return IsContainerOfType<V>::check(c, index);
+      else return IsContainerOfType<V>::check(c, index);
     }
   };
 

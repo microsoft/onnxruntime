@@ -8,36 +8,22 @@
 namespace onnxruntime {
 namespace contrib {
 
-class ATenOpBase : public OpKernel {
+class ATen : public OpKernel {
  public:
-  ATenOpBase(const OpKernelInfo& info, bool is_backward) : OpKernel(info) { Init(info, is_backward); }
-  void Init(const OpKernelInfo& info, bool is_backward);  // Separated into a regular member for shared provider access
+  ATen(const OpKernelInfo& info) : OpKernel(info) {
+    ORT_THROW_IF_ERROR(info.GetAttr("operator", &op_name_));
+    overload_name_ = info.GetAttrOrDefault<std::string>("overload_name", "");
+  }
+
   Status Compute(OpKernelContext* p_ctx) const override;
 
  private:
   std::string op_name_;
-
-  // The values in the array are the tensor-type argument indices of Aten Op.
-  std::vector<size_t> tensor_argument_indices_;
-
-  // The size_t value below are the argument indices of the ATen Op.
-  std::vector<std::pair<size_t, int64_t>> int_arguments_;
-  std::vector<std::pair<size_t, float>> float_arguments_;
-  std::vector<std::pair<size_t, bool>> bool_arguments_;
-  std::vector<std::pair<size_t, std::vector<int64_t>>> int_array_arguments_;
-  std::vector<std::pair<size_t, std::vector<float>>> float_array_arguments_;
-  std::vector<std::pair<size_t, std::vector<bool>>> bool_array_arguments_;
+  std::string overload_name_;
 };
 
-class ATenOpForward final : public ATenOpBase {
- public:
-  ATenOpForward(const OpKernelInfo& info) : ATenOpBase(info, false) {}
-};
-
-class ATenOpBackward final : public ATenOpBase {
- public:
-  ATenOpBackward(const OpKernelInfo& info) : ATenOpBase(info, true) {}
-};
+bool IsATenOperatorExecutorInitialized();
+Status ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims);
 
 }  // namespace contrib
 }  // namespace onnxruntime

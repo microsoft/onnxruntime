@@ -17,6 +17,7 @@
 #include "core/common/logging/logging.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_env.h"
+#include "core/providers/dml/dml_provider_factory.h"
 
 using namespace _winml;
 using namespace winrt::Windows::Foundation::Collections;
@@ -27,8 +28,8 @@ using namespace winrt::Windows::Storage::Streams;
 
 namespace {
 winrt::com_ptr<_winml::OnnxruntimeEngineFactory> engine_factory;
-const OrtApi *ort_api;
-const WinmlAdapterApi *winml_adapter_api;
+const OrtApi* ort_api;
+const WinmlAdapterApi* winml_adapter_api;
 OrtEnv* ort_env;
 
 void AdapterSessionTestSetup() {

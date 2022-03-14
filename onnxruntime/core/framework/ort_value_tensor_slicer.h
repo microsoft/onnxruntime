@@ -9,7 +9,7 @@
 
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
-#include "core/framework/ml_value.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
 #endif
 

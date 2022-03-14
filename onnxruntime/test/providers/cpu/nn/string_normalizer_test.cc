@@ -1,6 +1,8 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#if ((__cplusplus >= 201703L) || (defined(_MSVC_LANG) && (_MSVC_LANG >= 201703L)))
+//TODO: handle the u8string.
+#else
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -202,3 +204,4 @@ TEST(ContribOpTest, StringNormalizerTest) {
 
 }  // namespace test
 }  // namespace onnxruntime
+#endif

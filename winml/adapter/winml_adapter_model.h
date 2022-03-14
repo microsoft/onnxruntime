@@ -20,6 +20,8 @@ struct OrtModel {
   onnx::ModelProto* UseModelProto() const;
   std::unique_ptr<onnx::ModelProto> DetachModelProto();
 
+  void RefreshModelInfo();
+
  private:
   OrtModel(std::unique_ptr<onnx::ModelProto> model_proto);
   OrtModel(const OrtModel& other) = delete;

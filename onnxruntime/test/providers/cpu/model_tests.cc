@@ -8,9 +8,13 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_env.h"
+#include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "asserts.h"
 #include <core/platform/path_lib.h>
 #include "default_providers.h"
+#include <string>
+#include <codecvt>
+#include <locale>
 
 // test infrastructure
 #include "test/onnx/TestCase.h"
@@ -52,7 +56,7 @@ TEST_P(ModelTest, Run) {
   std::basic_string<ORTCHAR_T> param = GetParam();
   size_t pos = param.find(ORT_TSTR("_"));
   ASSERT_NE(pos, std::string::npos);
-  std::string provider_name = ToMBString(param.substr(0, pos));
+  std::string provider_name = ToUTF8String(param.substr(0, pos));
   std::basic_string<ORTCHAR_T> model_path = param.substr(pos + 1);
   double per_sample_tolerance = 1e-3;
   // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
@@ -63,9 +67,11 @@ TEST_P(ModelTest, Run) {
   }
 
   std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
-  if (model_info->GetONNXOpSetVersion() != 8 && provider_name == "tensorrt") {
+  if (model_info->GetONNXOpSetVersion() != 14 && model_info->GetONNXOpSetVersion() != 15 && provider_name == "tensorrt") {
     // TensorRT can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
+    // Besides saving CI build time, TRT isn’t able to support full ONNX ops spec and therefore some testcases will fail.
+    // That's one of reasons we skip those testcases and only test latest ONNX opsets.
     return;
   }
   if (model_info->GetONNXOpSetVersion() == 10 && provider_name == "dnnl") {
@@ -121,6 +127,34 @@ TEST_P(ModelTest, Run) {
       {"training_dropout_default", "result differs", {}},       // Temporary, subsequent PR will remove this.
       {"training_dropout_default_mask", "result differs", {}},  // Temporary, subsequent PR will remove this.
       {"training_dropout_mask", "result differs", {}},          // Temporary, subsequent PR will remove this.
+      {"batchnorm_epsilon_training_mode", "training only", {}},
+      {"batchnorm_example_training_mode", "training only", {}},
+      {"bernoulli", "type error", {}},
+      {"bernoulli_double", "type error", {}},
+      {"bernoulli_double_expanded", "type error", {}},
+      {"bernoulli_expanded", "type error", {}},
+      {"bernoulli_seed", "type error", {}},
+      {"bernoulli_seed_expanded", "type error", {}},
+      {"castlike_BFLOAT16_to_FLOAT", "type error", {}},
+      {"castlike_BFLOAT16_to_FLOAT_expanded", "type error", {}},
+      {"castlike_FLOAT_to_BFLOAT16", "type error", {}},
+      {"castlike_FLOAT_to_BFLOAT16_expanded", "type error", {}},
+      {"castlike_FLOAT_to_STRING", "type error", {}},
+      {"castlike_FLOAT_to_STRING_expanded", "type error", {}},
+      {"convtranspose_autopad_same", "type error", {}},
+      {"gru_batchwise", "type error", {}},
+      {"lstm_batchwise", "type error", {}},
+      {"optional_get_element", "type error", {}},
+      {"optional_get_element_sequence", "type error", {}},
+      {"optional_has_element", "type error", {}},
+      {"optional_has_element_empty", "type error", {}},
+      {"shape_end_1", "type error", {}},
+      {"shape_end_negative_1", "type error", {}},
+      {"shape_start_1", "type error", {}},
+      {"shape_start_1_end_2", "type error", {}},
+      {"shape_start_1_end_negative_1", "type error", {}},
+      {"shape_start_negative_1", "type error", {}},
+      {"simple_rnn_batchwise", "type error", {}},
 #ifdef ENABLE_TRAINING
       {"adagrad", "not a registered function/op", {}},                  // Op not registered.
       {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
@@ -167,6 +201,11 @@ TEST_P(ModelTest, Run) {
       {"softmax_cross_entropy_mean_no_weight_ignore_index_4d", "type error", {"onnx170"}},
 #endif
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}};
+
+  // Some EPs may fail to pass some specific testcases.
+  // For example TenosrRT EP may fail on FLOAT16 related testcases if GPU doesn't support float16.
+  // Instead of list all these testcases, we can use following keyword set to filter out testcases wchich contain specific keyword.
+  std::set<std::string> broken_tests_keyword_set = {};
 
   if (provider_name == "nuphar") {
     // https://msdata.visualstudio.com/Vienna/_workitems/edit/1000703
@@ -335,6 +374,31 @@ TEST_P(ModelTest, Run) {
     broken_tests.insert({"softmax_cross_entropy_sum_log_prob_expanded", "Shape mismatch"});
   }
 
+  if (provider_name == "tensorrt") {
+    broken_tests.insert({"convtranspose_with_kernel", "It causes segmentation fault"});
+    broken_tests.insert({"convtranspose_pad", "It causes segmentation fault"});
+    broken_tests.insert({"convtranspose_kernel_shape", "It causes segmentation fault"});
+    broken_tests.insert({"dynamicquantizelinear_expanded", "It causes segmentation fault"});
+    broken_tests.insert({"dynamicquantizelinear_min_adjusted_expanded", "It causes segmentation fault"});
+    broken_tests.insert({"dynamicquantizelinear_max_adjusted_expanded", "It causes segmentation fault"});
+
+    broken_tests.insert({"basic_conv_with_padding",
+                         "Cannot set more than one input unless network has Q/DQ layers. TensorRT EP could not build engine for fused node"});
+    broken_tests.insert({"basic_conv_without_padding",
+                         "Cannot set more than one input unless network has Q/DQ layers. TensorRT EP could not build engine for fused node"});
+    broken_tests.insert({"conv_with_strides_no_padding",
+                         "Cannot set more than one input unless network has Q/DQ layers. TensorRT EP could not build engine for fused node"});
+
+    broken_tests.insert({"conv_with_autopad_same", "Internal Error (node_of_y: Cannot set more than one input unless network has Q/DQ layers.)"});
+
+    // sce op is not supported
+    broken_tests_keyword_set.insert({"sce"});
+
+    // TensorRT EP CI uses Nvidia Tesla M60 which doesn't support fp16.
+    broken_tests_keyword_set.insert({"FLOAT16"});
+
+  }
+
   if (provider_name == "dml") {
     broken_tests.insert({"tinyyolov3", "The parameter is incorrect"});
     broken_tests.insert({"PixelShuffle", "Test requires 6D Reshape, which isn't supported by DirectML"});
@@ -477,7 +541,7 @@ TEST_P(ModelTest, Run) {
   if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0)
     test_case_name = test_case_name.substr(5);
   {
-    BrokenTest t = {ToMBString(test_case_name), ""};
+    BrokenTest t = {ToUTF8String(test_case_name), ""};
     auto iter = broken_tests.find(t);
     auto model_version = model_info->GetModelVersion();
     if (iter != broken_tests.end() &&
@@ -485,34 +549,37 @@ TEST_P(ModelTest, Run) {
          iter->broken_versions_.find(model_version) != iter->broken_versions_.end())) {
       return;
     }
+
+    for (auto iter2 = broken_tests_keyword_set.begin(); iter2 != broken_tests_keyword_set.end(); ++iter2) {
+        std::string keyword = *iter2;
+        if (ToUTF8String(test_case_name).find(keyword) != std::string::npos) {
+          return;
+        }
+    }
   }
   bool is_single_node = !model_info->GetNodeName().empty();
   std::vector<ExecutionMode> execution_modes = {ExecutionMode::ORT_SEQUENTIAL};
   if (provider_name == "cpu" && !is_single_node)
     execution_modes.push_back(ExecutionMode::ORT_PARALLEL);
 
-#ifndef _OPENMP
   std::vector<bool> use_single_thread{false};
   // Test the model with intra op threadpool disabled
   if (provider_name == "cpu" && is_single_node)
     use_single_thread.push_back(true);
-#endif
 
-  std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToMBString(test_case_name), std::move(model_info),
+
+  std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToUTF8String(test_case_name), std::move(model_info),
                                                     per_sample_tolerance, relative_per_sample_tolerance);
-#ifndef _OPENMP
+
   for (bool is_single_thread : use_single_thread) {
-#endif
     for (ExecutionMode execution_mode : execution_modes) {
       SessionOptions so;
-#ifndef _OPENMP
       if (!is_single_thread)
         so.use_per_session_threads = false;
       else
         so.intra_op_param.thread_pool_size = 1;  // Disable intra op thread pool
-#endif
       so.execution_mode = execution_mode;
-      so.session_logid = ToMBString(test_case_name);
+      so.session_logid = ToUTF8String(test_case_name);
       so.session_log_severity_level = (int)logging::Severity::kERROR;
       InferenceSession session_object(so, (**ort_env).GetEnvironment());
       if (provider_name == "cuda") {
@@ -524,7 +591,31 @@ TEST_P(ModelTest, Run) {
       } else if (provider_name == "nuphar") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultNupharExecutionProvider()));
       } else if (provider_name == "tensorrt") {
-        ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
+        if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
+          OrtTensorRTProviderOptionsV2 params{
+              0,
+              0,
+              nullptr,
+              1000,
+              1,
+              1 << 30,
+              1, // enable fp16
+              0,
+              nullptr,
+              0,
+              0,
+              0,
+              0,
+              0,
+              nullptr,
+              0,
+              nullptr,
+              0};
+          ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(TensorrtExecutionProviderWithOptions(&params)));
+        } else {
+          ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
+        }
+        ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
       } else if (provider_name == "migraphx") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultMIGraphXExecutionProvider()));
       } else if (provider_name == "openvino") {
@@ -617,9 +708,7 @@ TEST_P(ModelTest, Run) {
         }
       }
     }
-#ifndef _OPENMP
   }
-#endif
 }
 
 // TODO: all providers
@@ -774,7 +863,9 @@ TEST_P(ModelTest, Run) {
                                                    ORT_TSTR("mlperf_ssd_resnet34_1200"),
                                                    ORT_TSTR("convtranspose_1d"),
                                                    ORT_TSTR("convtranspose_3d"),
-                                                   ORT_TSTR("maxpool_2d_uint8")};
+                                                   ORT_TSTR("maxpool_2d_uint8"),
+                                                   ORT_TSTR("mul_uint8"),
+                                                   ORT_TSTR("div_uint8")};
   static const ORTCHAR_T* tensorrt_disabled_tests[] = {
       ORT_TSTR("udnie"), ORT_TSTR("rain_princess"),
       ORT_TSTR("pointilism"), ORT_TSTR("mosaic"),
@@ -853,7 +944,7 @@ TEST_P(ModelTest, Run) {
 #endif
 
 // TENSORRT/OpenVino has too many test failures in the single node tests
-#if !defined(_WIN32) && !defined(USE_TENSORRT) && !defined(USE_OPENVINO)
+#if !defined(_WIN32) && !defined(USE_OPENVINO)
     paths.push_back("/data/onnx");
 #endif
     while (!paths.empty()) {
@@ -903,7 +994,43 @@ TEST_P(ModelTest, Run) {
   return v;
 }
 
-INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::ValuesIn(GetParameterStrings()));
+auto ExpandModelName  = [](const ::testing::TestParamInfo<ModelTest::ParamType>& info) {
+  // use info.param here to generate the test suffix
+  std::basic_string<ORTCHAR_T> name = info.param;
+
+  // the original name here is the combination of provider name and model path name
+  // remove the trailing 'xxxxxxx/model.onnx' of name
+  if (name.size() > 11 && name.substr(name.size() - 11) == ORT_TSTR("/model.onnx")) {
+    name = name.substr(0, info.param.size() - 11);
+  }
+  // remove the trailing 'xxxxxx.onnx' of name
+  else if (name.size() > 5 && name.substr(name.size() - 5) == ORT_TSTR(".onnx")) {
+    name = name.substr(0, info.param.size() - 5);
+  }
+
+  // Note: test name only accepts '_' and alphanumeric
+  // replace '/' or '\' with '_'
+  std::replace(name.begin(), name.end(), '/', '_');
+  std::replace(name.begin(), name.end(), '\\', '_');
+
+  // Note: test name only accepts '_' and alphanumeric
+  // remove '.' and '-'
+  char chars[] = ".-";
+  for (unsigned int i = 0; i < strlen(chars); ++i) {
+    name.erase(std::remove(name.begin(), name.end(), chars[i]), name.end());
+  }
+#ifdef _WIN32
+  // Note: The return value of INSTANTIATE_TEST_SUITE_P accpets std::basic_string<char...>.
+  // Need conversion of wchar_t to char.
+  return std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(name);
+#else
+  return name;
+#endif
+};
+
+// The optional last argument is a function or functor that generates custom test name suffixes based on the test parameters.
+// Specify the last argument to make test name more meaningful and clear instead of just the sequential number.
+INSTANTIATE_TEST_SUITE_P(ModelTests, ModelTest, testing::ValuesIn(GetParameterStrings()), ExpandModelName);
 
 }  // namespace test
 }  // namespace onnxruntime

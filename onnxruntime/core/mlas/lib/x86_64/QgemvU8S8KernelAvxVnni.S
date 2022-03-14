@@ -130,7 +130,7 @@ C_UNDERSCORE(MlasGemvU8S8KernelAvxVnni):
         vperm2i128 ymm7,ymm7,ymm8,0x20
         vperm2i128 ymm8,ymm9,ymm10,0x20
         vperm2i128 ymm10,ymm9,ymm10,0x31
-        vmovaps ymm3,ymm4
+        vmovaps ymm9,ymm4
 
 .LStoreOutput4By32:
         vmovdqu YMMWORD PTR [rbx],ymm7

@@ -14,3 +14,4 @@ scikit-learn
 scipy
 sympy
 wheel
+setuptools>=41.4.0

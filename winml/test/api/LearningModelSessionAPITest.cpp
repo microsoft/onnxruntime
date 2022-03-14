@@ -763,25 +763,64 @@ static void ModelBuilding_StandardDeviationNormalization() {
   int64_t channels = 3;
   std::vector<int64_t> input_shape = {1, height, width, channels};  
   std::vector<int64_t> output_shape = {1, channels, height, width};  
-  LearningModelBuilder::Create(13)
-    .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The NHWC image", TensorKind::Float, input_shape))
-    .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Means", TensorKind::Float, {channels}))
-    .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"StdDevs", TensorKind::Float, {channels}))
-    .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, output_shape))
-    .Operators().Add(Operator(L"Sub")
-                       .SetInput(L"A", L"Input")
-                       .SetInput(L"B", L"Means")
-                       .SetOutput(L"C", L"SubOutput"))
-    .Operators().Add(Operator(L"Div")
-                       .SetInput(L"A", L"SubOutput")
-                       .SetInput(L"B", L"StdDevs")
-                       .SetOutput(L"C", L"DivOutput"))
-    .Operators().Add(Operator(L"Transpose")
-                       .SetInput(L"data", L"DivOutput")
-                       .SetAttribute(L"perm", TensorInt64Bit::CreateFromArray({4}, {0,3,1,2}))
-                       .SetOutput(L"transposed", L"Output"))
-    .Save(L"StandardDeviationNormalization.onnx");
-  //.CreateModel();
+  auto sub_model =
+      LearningModelBuilder::Create(13)
+        .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The NHWC image", TensorKind::Float, input_shape))
+        .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Means", TensorKind::Float, {channels}))
+        .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, input_shape))
+        .Operators().Add(Operator(L"Sub")
+                           .SetInput(L"A", L"Input")
+                           .SetInput(L"B", L"Means")
+                           .SetOutput(L"C", L"Output"))
+        .CreateModel();
+  auto div_model = 
+    LearningModelBuilder::Create(13)
+      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The NHWC image", TensorKind::Float, input_shape))
+      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"StdDevs", TensorKind::Float, {channels}))
+      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, input_shape))
+      .Operators().Add(Operator(L"Div")
+               .SetInput(L"A", L"Input")
+               .SetInput(L"B", L"StdDevs")
+               .SetOutput(L"C", L"Output"))
+      .CreateModel();
+  auto transpose_model =
+    LearningModelBuilder::Create(13)
+      .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input", L"The NHWC image", TensorKind::Float, input_shape))
+      .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output", L"The NCHW image normalized with mean and stddev.", TensorKind::Float, output_shape))
+      .Operators().Add(Operator(L"Transpose")
+               .SetInput(L"data", L"Input")
+               .SetAttribute(L"perm", TensorInt64Bit::CreateFromArray({4}, {0, 3, 1, 2}))
+               .SetOutput(L"transposed", L"Output"))
+      .CreateModel();
+
+  auto sub_experimental = winml_experimental::LearningModelExperimental(sub_model);
+  winml_experimental::LearningModelJoinOptions div_join_options;
+  div_join_options.Link(sub_model.OutputFeatures().GetAt(0).Name(), div_model.InputFeatures().GetAt(0).Name());
+  div_join_options.JoinedNodePrefix(L"DivModel.");
+  auto joined_model = sub_experimental.JoinModel(div_model, div_join_options);
+
+  auto joined_model_experimental = winml_experimental::LearningModelExperimental(joined_model);
+  winml_experimental::LearningModelJoinOptions transpose_join_options;
+  transpose_join_options.Link(joined_model.OutputFeatures().GetAt(0).Name(), transpose_model.InputFeatures().GetAt(0).Name());
+  transpose_join_options.JoinedNodePrefix(L"TransposeModel.");
+  auto final_model = joined_model_experimental.JoinModel(transpose_model, transpose_join_options);
+
+  auto final_model_experimental = winml_experimental::LearningModelExperimental(final_model);
+  final_model_experimental.Save(L"ModelBuilding_StandardDeviationNormalization.onnx");
+
+  auto session = LearningModelSession(final_model, LearningModelDevice(LearningModelDeviceKind::Cpu));
+  LearningModelBinding binding(session);
+
+  // Bind
+  auto input = std::vector<float>(SIZET(height * width * channels), 1);
+  binding.Bind(L"Input", TensorFloat::CreateFromArray(input_shape, input));
+  auto channels_shape = std::vector<int64_t>(SIZET(1), 3);
+  binding.Bind(L"Means", TensorFloat::CreateFromArray(channels_shape, {2, 2, 2}));
+  binding.Bind(L"DivModel.StdDevs", TensorFloat::CreateFromArray(channels_shape, {.1f, .1f, .1f}));
+
+  // Evaluate
+  auto result = session.Evaluate(binding, L"");
+
 #endif
 }
 
@@ -1050,6 +1089,32 @@ static void SetIntraOpThreadSpinning() {
     WINML_EXPECT_TRUE(allowSpinning);
  }
 
+ static void SetName() {
+ #ifndef BUILD_INBOX
+   // load the model with name 'squeezenet_old'
+   LearningModel model = nullptr;
+   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", model));
+   auto model_name = model.Name();
+   auto squeezenet_old = to_hstring("squeezenet_old");
+   WINML_EXPECT_EQUAL(model_name, squeezenet_old);
+
+   // ensure the model name can be changed to 'new name'
+   auto experimental_model = winml_experimental::LearningModelExperimental(model);
+   auto new_name = to_hstring("new name");
+   experimental_model.SetName(new_name);
+   model_name = model.Name();
+   WINML_EXPECT_EQUAL(model_name, new_name);
+
+   // ensure the model protobuf was actually modified
+   std::wstring path = FileHelpers::GetModulePath() + L"model_name_changed.onnx";
+   experimental_model.Save(path);
+   LearningModel model_name_changed = nullptr;
+   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model_name_changed.onnx", model_name_changed));
+   model_name = model_name_changed.Name();
+   WINML_EXPECT_EQUAL(model_name, new_name);
+ #endif
+ }
+
 
 const LearningModelSessionAPITestsApi& getapi() {
   static LearningModelSessionAPITestsApi api =
@@ -1084,6 +1149,7 @@ const LearningModelSessionAPITestsApi& getapi() {
     ModelBuilding_STFT,
     ModelBuilding_MelSpectrogramOnThreeToneSignal,
     ModelBuilding_MelWeightMatrix,
+    SetName
   };
 
   if (SkipGpuTests()) {

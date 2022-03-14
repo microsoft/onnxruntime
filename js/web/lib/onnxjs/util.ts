@@ -472,11 +472,14 @@ export class ProtoUtil {
 }
 
 export class LongUtil {
-  static longToNumber(n: Long|flatbuffers.Long|number) {
+  // This function is called to get a number from long type of data for attribute, dim, and ir version,
+  // which values are signed integers.
+  // To make it more generic, add an optional paramter to convert to a unsigned number.
+  static longToNumber(n: Long|flatbuffers.Long|number, unsigned?: boolean) {
     if (Long.isLong(n)) {
       return n.toNumber();
     } else if (n instanceof flatbuffers.Long) {
-      return Long.fromValue({low: n.low, high: n.high, unsigned: true}).toNumber();
+      return Long.fromValue({low: n.low, high: n.high, unsigned: unsigned ?? false}).toNumber();
     }
     return n;
   }
@@ -624,8 +627,7 @@ export class ShapeUtil {
    * https://github.com/onnx/onnx/blob/master/docs/Operators.md#Reshape
    */
 
-  static calculateReshapedDims(
-      originalDims: readonly number[], shapeHints: number[]|readonly number[]|Tensor.IntegerType): readonly number[] {
+  static calculateReshapedDims(originalDims: readonly number[], shapeHints: ArrayLike<number>): number[] {
     // reshape to a Scalar Tensor
     if (shapeHints.length === 0) {
       if (originalDims.length === 0 || ShapeUtil.size(originalDims) === 1) {
@@ -1050,11 +1052,12 @@ export class PoolConvUtil {
    * @param inputDims The input tensor dimension.
    * @param kernelShape The size of the kernel along each axis.
    * @param strides Stride along each axis.
+   * @param dilations Dilation along each axis.
    * @param pads Padding for the beginning and ending along each axis.
    */
   static adjustPoolAttributes(
       isGlobalOperator: boolean, inputDims: readonly number[], kernelShape: number[], strides: number[],
-      pads: number[]) {
+      dilations: number[], pads: number[]) {
     if (!isGlobalOperator && kernelShape.length !== inputDims.length - 2) {
       throw new Error('length of specified kernel shapes should be 2 less than length of input dimensions');
     }
@@ -1078,6 +1081,17 @@ export class PoolConvUtil {
         }
       } else {
         strides.push(1);
+      }
+    }
+
+    // adjust dilation value
+    for (let dim = 0; dim < kernelShape.length; dim++) {
+      if (dim < dilations.length) {
+        if (dilations[dim] < 0) {
+          throw new Error('dilations should be greater than or equal to 1');
+        }
+      } else {
+        dilations.push(1);
       }
     }
 
@@ -1106,8 +1120,8 @@ export class PoolConvUtil {
 
   // adjust pad values based on 'autoPad' attribute
   static adjustPadsBasedOnAutoPad(
-      inputDims: readonly number[], strides: number[], dilations: number[], kernelShape: number[], pads: number[],
-      autoPad?: string) {
+      inputDims: readonly number[], strides: readonly number[], dilations: readonly number[],
+      kernelShape: readonly number[], pads: number[], autoPad?: string) {
     if (!autoPad) {
       return;
     }
@@ -1136,23 +1150,21 @@ export class PoolConvUtil {
    * @param isGlobalOperator If true, perform global pooling.
    * @param inputDims The input tensor dimension. (inputs[0].dims)
    * @param strides Stride along each axis.
+   * @param dilations Dilation along each axis.
    * @param kernelShape The size of the kernel along each axis.
    * @param pads Padding for the beginning and ending along each axis.
    * @param autoPad DEPRECATED attribute supported for legacy models. Specifies how to implicitly calculate pads in each
    *     dimension. Can take values NOTSET, SAME_UPPER, SAME_LOWER, or VALID.
    */
   static computePoolOutputShape(
-      isGlobalOperator: boolean, inputDims: readonly number[], strides: number[], kernelShape: number[], pads: number[],
-      autoPad?: string): number[] {
+      isGlobalOperator: boolean, inputDims: readonly number[], strides: number[], dilations: number[],
+      kernelShape: number[], pads: number[], autoPad?: string): number[] {
     if (inputDims.length <= 0) {
       throw new Error('input shape must be of size greater than 0');
     }
 
     // Add batch size and number of channels of output
     const outputDims = [inputDims[0], inputDims[1]];
-
-    // TODO: support dilations for pool operators
-    const dilations = new Array<number>(kernelShape.length).fill(1);
 
     PoolConvUtil.computeShapeHelper(
         isGlobalOperator, inputDims, outputDims, strides, dilations, kernelShape, pads, autoPad);
@@ -1233,4 +1245,11 @@ export class PoolConvUtil {
       return Math.floor(((inSize + pads[padHeadIndex] + pads[padTailIndex] - dkernel) / stride) + 1);
     }
   }
+}
+
+export const MIN_CLIP = -3.4028234663852886e+38;
+export const MAX_CLIP = 3.4028234663852886e+38;
+
+export function decodeUtf8String(buffer: Uint8Array): string {
+  return new TextDecoder().decode(buffer);
 }

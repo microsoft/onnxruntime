@@ -17,7 +17,7 @@ import datetime
 
 
 import onnxruntime
-from onnxruntime.training.ortmodule import ORTModule
+from onnxruntime.training.ortmodule import ORTModule, DebugOptions
 
 def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
     # ========================================
@@ -323,6 +323,8 @@ def main():
                         help='input batch size for testing (default: 64)')
     parser.add_argument('--view-graphs', action='store_true', default=False,
                         help='views forward and backward graphs')
+    parser.add_argument('--export-onnx-graphs', action='store_true', default=False,
+                        help='export ONNX graphs to current directory')
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
     parser.add_argument('--epochs', type=int, default=4, metavar='N',
@@ -376,11 +378,10 @@ def main():
     )
 
     if not args.pytorch_only:
-        model = ORTModule(model)
+        # Just for future debugging
+        debug_options = DebugOptions(save_onnx=args.export_onnx_graphs, onnx_prefix='BertForSequenceClassification')
 
-    # Just for future debugging
-    model._execution_manager(model._is_training())._save_onnx = False
-    model._execution_manager(model._is_training())._save_onnx_prefix = 'BertForSequenceClassification'
+        model = ORTModule(model, debug_options)
 
     # Tell pytorch to run this model on the GPU.
     if torch.cuda.is_available() and not args.no_cuda:

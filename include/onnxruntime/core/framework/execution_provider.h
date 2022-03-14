@@ -4,29 +4,33 @@
 #pragma once
 
 #ifndef SHARED_PROVIDER
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
-#include <memory>
-#include "core/common/status.h"
+
 #include "core/common/logging/logging.h"
-#include "core/framework/tensor.h"
+#include "core/common/status.h"
 #include "core/framework/data_transfer.h"
+#include "core/framework/tensor.h"
 
 namespace onnxruntime {
-
+enum class DataLayout;
 class GraphViewer;
 class Node;
 struct ComputeCapability;
 class KernelRegistry;
 class KernelRegistryManager;
+
 }  // namespace onnxruntime
 #else
 #include <memory>
 #endif
 
-#include "core/framework/provider_options.h"
-#include "core/framework/func_api.h"
+#include "core/common/basic_types.h"
+#include "core/common/profiler_common.h"
 #include "core/framework/allocatormgr.h"
+#include "core/framework/func_api.h"
+#include "core/framework/provider_options.h"
 
 namespace onnxruntime {
 
@@ -158,7 +162,25 @@ class IExecutionProvider {
      may not be finished on device This function should be regarded as the point
      that all commands of current Run has been submmited by CPU
   */
-  virtual common::Status OnRunEnd() { return Status::OK(); }
+  virtual common::Status OnRunEnd(bool /*sync_stream*/) { return Status::OK(); }
+
+  /**
+     Indicate whether the graph capturing mode (e.g., cuda graph) is enabled for
+     the provider. Currently only CUDA execution provider supports it.
+   */
+  virtual bool IsGraphCaptureEnabled() const { return false; }
+
+  /**
+     Indicate whether the graph has been captured and instantiated. Currently
+     only CUDA execution provider supports it.
+   */
+  virtual bool IsGraphCaptured() const { return false; }
+
+  /**
+     Run the instantiated graph. Currently only CUDA execution provider supports
+     it.
+   */
+  virtual common::Status ReplayGraph() { return Status::OK(); }
 
   /**
      Called when session creation is complete
@@ -257,7 +279,7 @@ class IExecutionProvider {
             NOTE: Ideally this would be a protected method, but to work across the EP bridge it has to be public and 
                   virtual, and ModelMetadefIdGenerator but be defined in the header as well.
    */
-  virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const;
+  virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const;
 
   /**
      Register allocators used for EP
@@ -265,6 +287,16 @@ class IExecutionProvider {
      EPs will have a shared pointer to allocator_manager, allocator_managerall will be the only place for allocators
   */
   virtual void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager);
+
+  virtual std::unique_ptr<profiling::EpProfiler> GetProfiler() {
+    return {};
+  }
+
+  virtual DataLayout GetPreferredLayout() const {
+    // NCHW is the default ONNX standard data layout. So default to it.
+    // EPs which prefer a different layout should override to return their preferred layout.
+    return static_cast<DataLayout>(0);
+  }
 
  private:
   const std::string type_;
@@ -280,11 +312,11 @@ class IExecutionProvider {
   // multiple sessions.
   class ModelMetadefIdGenerator {
    public:
-    int GenerateId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash);
+    int GenerateId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash);
 
    private:
-    std::unordered_map<uint64_t, int64_t> main_graph_hash_;  // map graph instance hash to model contents hash
-    std::unordered_map<int64_t, int> model_metadef_id_;      // current unique id for model
+    std::unordered_map<HashValue, HashValue> main_graph_hash_;  // map graph instance hash to model contents hash
+    std::unordered_map<HashValue, int> model_metadef_id_;       // current unique id for model
   };
 
   std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;

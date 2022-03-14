@@ -161,10 +161,14 @@ static bool MatMulF32ExternCPU(
 
   const auto& B_name = node.InputDefs()[1]->Name();
   if (ctx_nuphar->IsInitializer(B_name) && B->shape.size() == 2) {
-    // matmul with initializer, using transpose weights
-    auto layout_key = tvm_codegen::WeightLayoutTranspose2D::GetKey(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    auto actual_B = ctx_nuphar->ApplyWeightLayout(layout_key, B_name, B, true);
-    return nuphar::GemmExternCpu(A, actual_B, Y, transA, true, B_name);
+    if (A->shape.size() == 1) {
+      return nuphar::GemmExternCpu(A, B, Y, transA, false, B_name);
+    } else {
+      // matmul with initializer, using transpose weights
+      auto layout_key = tvm_codegen::WeightLayoutTranspose2D::GetKey(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      auto actual_B = ctx_nuphar->ApplyWeightLayout(layout_key, B_name, B, true);
+      return nuphar::GemmExternCpu(A, actual_B, Y, transA, true, B_name);
+    }
   } else {
     return nuphar::MatMulExternCpu(A, B, Y, p_permute_A, p_permute_B, node.Name() + "_matmul_extern");
   }

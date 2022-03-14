@@ -52,13 +52,76 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 #endif
 }
 
+// Returns true if an allocator was found and replaced
+static bool FindAndReplaceAllocator(const OrtMemoryInfo& mem_info,
+                                    const MemoryInfoSet& mem_info_set,
+                                    AllocatorMap& allocators,
+                                    AllocatorPtr replacing_allocator) {
+  auto ite = mem_info_set.find(mem_info);
+
+  if (ite != mem_info_set.end()) {
+    const int key = MakeKey(mem_info.id, mem_info.mem_type);
+    allocators[key] = replacing_allocator;
+    return true;
+  }
+
+  return false;
+}
+
 // Update allocator in the provider if already present; ignore if not.
 void IExecutionProvider::ReplaceAllocator(AllocatorPtr allocator) {
   const auto& info = allocator->Info();
-  auto ite = mem_info_set_.find(info);
-  if (ite != mem_info_set_.end()) {
-    const int key = MakeKey(info.id, info.mem_type);
-    allocators_[key] = allocator;
+
+  if (FindAndReplaceAllocator(info, mem_info_set_, allocators_, allocator)) {
+    // We found an allocator corresponding to the provided
+    // allocator's OrtMemoryInfo and we replaced it with the
+    // provided allocator.
+    // We return back.
+    return;
+  }
+
+  else {
+    // If we can't find an allocator registered with the exact OrtMemoryInfo
+    // as that of the replacing allocator, we do a "loosened" check
+    // (i.e.) check if there is an allocator registered with OrtAllocatorType
+    // as OrtArenaAllocator because for external user provided allocator
+    // we only accept OrtAllocatorType as OrtDeviceAllocator.
+    // If we do find such a registered allocator, we can safely go ahead
+    // and replace that with the provided allocator. This may seem like
+    // we are replacing an arena allocator with a non-arena allocator
+    // but in reality any user provided allocator may still be an arena
+    // allocator. We don't allow users to use OrtAllocatorType as
+    // OrtArenaAllocator for their allocators because we reserve its usage
+    // for our internal BFCArena.
+    // TODO: Should we remove the OrtAllocatorType field from OrtMemoryInfo to
+    // avoid such problems and also remove the unintuitive phenomenon of binding
+    // the allocator type info to OrtMemoryInfo (which loosely is just device info) ?
+    const auto& original_info = allocator->Info();
+
+    // If the alloc_type was OrtArenaAllocator already, then it is a no-op
+    if (original_info.alloc_type == OrtAllocatorType::OrtArenaAllocator) {
+      return;
+    }
+
+    auto check_info = original_info;
+
+    // Mutate the alloc_type
+    check_info.alloc_type = OrtAllocatorType::OrtArenaAllocator;
+
+    if (FindAndReplaceAllocator(check_info, mem_info_set_,
+                                allocators_, allocator)) {
+      // We found an allocator corresponding to the mutated OrtMemoryInfo
+      // and we replaced it with the provided allocator.
+      // Before we return back, we need to do some house-keeping
+      // (i.e.) update the EP's OrtMemoryInfo set
+
+      // Delete the existing OrtMemoryInfo  corresponding to the allocator
+      // that was replaced
+      mem_info_set_.erase(check_info);
+
+      // Replace it with the provided allocator's OrtMemoryInfo
+      mem_info_set_.insert(allocator->Info());
+    }
   }
 }
 
@@ -84,7 +147,7 @@ void IExecutionProvider::TryInsertAllocator(AllocatorPtr allocator) {
   InsertAllocator(allocator);
 }
 
-void IExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> ) {
+void IExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager>) {
   return;
 }
 
@@ -111,7 +174,7 @@ common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
 #endif
 
 int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::GraphViewer& graph_viewer,
-                                                            uint64_t& model_hash) {
+                                                            HashValue& model_hash) {
   model_hash = 0;
 
   // find the top level graph
@@ -128,7 +191,7 @@ int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::G
   // the same memory (unit tests prove this can occur). the raw bytes of the Graph instance should be a unique
   // fingerprint for the instance that can use used as the key to the hash of the model path/contents.
   MurmurHash3::x86_128(&main_graph, gsl::narrow_cast<int32_t>(sizeof(Graph)), instance_hash[0], &instance_hash);
-  uint64_t graph_instance_hash = instance_hash[0] | (uint64_t(instance_hash[1]) << 32);
+  HashValue graph_instance_hash = instance_hash[0] | (uint64_t(instance_hash[1]) << 32);
 
   // if we've already hashed this main graph instance use the cached value
   auto entry = main_graph_hash_.find(graph_instance_hash);
@@ -171,7 +234,7 @@ int IExecutionProvider::ModelMetadefIdGenerator::GenerateId(const onnxruntime::G
   return model_metadef_id_[model_hash]++;
 }
 
-int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const {
+int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const {
   ORT_ENFORCE(metadef_id_generator_,
               "IExecutionProvider constructor must be called with true for use_metadef_id_creator");
 

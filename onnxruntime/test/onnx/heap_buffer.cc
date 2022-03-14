@@ -15,9 +15,6 @@ HeapBuffer::~HeapBuffer() {
   for (auto d : deleters_) {
     d.Run();
   }
-  for (void* p : buffers_) {
-    free(p);
-  }
 }
 }  // namespace test
 }  // namespace onnxruntime

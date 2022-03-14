@@ -26,6 +26,8 @@ class ModelInfo : public Microsoft::WRL::RuntimeClass<
   (const char** out, size_t* len);
   STDMETHOD(GetName)
   (const char** out, size_t* len);
+  STDMETHOD(SetName)
+  (const char* name);
   STDMETHOD(GetDomain)
   (const char** out, size_t* len);
   STDMETHOD(GetDescription)
@@ -68,6 +70,8 @@ class OnnruntimeModel : public Microsoft::WRL::RuntimeClass<
   STDMETHOD(SaveModel)
   (_In_ const wchar_t* const file_name,
    _In_ unsigned size);
+  STDMETHOD(SetName)
+  (const char* name);
   STDMETHOD(DetachOrtModel)
   (OrtModel** model);
 
@@ -82,6 +86,10 @@ class OnnruntimeModel : public Microsoft::WRL::RuntimeClass<
 
   STDMETHOD(AddModelOutput)
   (_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider);
+
+  STDMETHOD(JoinModel)
+  (_In_ IModel* other_model, _In_ const char* const* output_names, _In_ const char* const* input_names,
+   size_t num_linkages, bool promote_unlinked_outputs, _In_ const char* const join_node_prefix);
 
  private:
   UniqueOrtModel ort_model_;

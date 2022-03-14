@@ -10,10 +10,13 @@ namespace Dml
     static ComPtr<ID3D12Resource> CreateReadbackHeap(ID3D12Device* device, size_t size)
     {
         ComPtr<ID3D12Resource> readbackHeap;
-        THROW_IF_FAILED(device->CreateCommittedResource(
-            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK),
+        auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
+        auto buffer = CD3DX12_RESOURCE_DESC::Buffer(size);
+
+        ORT_THROW_IF_FAILED(device->CreateCommittedResource(
+            &heap,
             D3D12_HEAP_FLAG_NONE,
-            &CD3DX12_RESOURCE_DESC::Buffer(size),
+            &buffer,
             D3D12_RESOURCE_STATE_COPY_DEST,
             nullptr,
             IID_PPV_ARGS(&readbackHeap)));
@@ -36,7 +39,7 @@ namespace Dml
             if (newCapacity >= std::numeric_limits<size_t>::max() / 2)
             {
                 // Overflow; there's no way we can satisfy this allocation request
-                THROW_HR(E_OUTOFMEMORY);
+                ORT_THROW_HR(E_OUTOFMEMORY);
             }
 
             newCapacity *= 2; // geometric growth
@@ -93,7 +96,7 @@ namespace Dml
 
         // Map the readback heap and copy it into the destination
         void* readbackHeapData = nullptr;
-        THROW_IF_FAILED(m_readbackHeap->Map(0, nullptr, &readbackHeapData));
+        ORT_THROW_IF_FAILED(m_readbackHeap->Map(0, nullptr, &readbackHeapData));
         memcpy(dst.data(), readbackHeapData, dst.size());
         m_readbackHeap->Unmap(0, nullptr);
     }
@@ -143,7 +146,7 @@ namespace Dml
 
         // Map the readback heap and copy it into the destination
         void* readbackHeapData = nullptr;
-        THROW_IF_FAILED(m_readbackHeap->Map(0, nullptr, &readbackHeapData));
+        ORT_THROW_IF_FAILED(m_readbackHeap->Map(0, nullptr, &readbackHeapData));
 
         // Copy from the source resource into the readback heap
         offset = 0;

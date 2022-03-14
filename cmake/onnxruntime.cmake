@@ -3,7 +3,11 @@
 
 if(UNIX)
   set(SYMBOL_FILE ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime.lds)
-  set(OUTPUT_STYLE gcc)
+  if(APPLE)
+    set(OUTPUT_STYLE xcode)
+  else()
+    set(OUTPUT_STYLE gcc)
+  endif()
 else()
   set(SYMBOL_FILE ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_dll.def)
   set(OUTPUT_STYLE vc)
@@ -69,11 +73,15 @@ elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
   # create Info.plist for the framework and podspec for CocoaPods (optional)
   set(MACOSX_FRAMEWORK_NAME "onnxruntime")
   set(MACOSX_FRAMEWORK_IDENTIFIER "com.microsoft.onnxruntime")
-  configure_file(${REPO_ROOT}/cmake/Info.plist.in ${CMAKE_CURRENT_BINARY_DIR}/Info.plist)
+  # Need to include CoreML as a weaklink for CocoaPods package if the EP is enabled
+  if(onnxruntime_USE_COREML)
+    set(APPLE_WEAK_FRAMEWORK "\\\"CoreML\\\"")
+  endif()
+  set(INFO_PLIST_PATH "${CMAKE_CURRENT_BINARY_DIR}/Info.plist")
+  configure_file(${REPO_ROOT}/cmake/Info.plist.in ${INFO_PLIST_PATH})
   configure_file(
-    ${REPO_ROOT}/tools/ci_build/github/apple/onnxruntime-mobile-c.podspec.template
-    ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime-mobile-c.podspec
-  )
+    ${REPO_ROOT}/tools/ci_build/github/apple/framework_info.json.template
+    ${CMAKE_CURRENT_BINARY_DIR}/framework_info.json)
   set_target_properties(onnxruntime PROPERTIES
     FRAMEWORK TRUE
     FRAMEWORK_VERSION A
@@ -98,10 +106,6 @@ target_compile_definitions(onnxruntime PRIVATE VER_BUILD=${VERSION_BUILD_PART})
 target_compile_definitions(onnxruntime PRIVATE VER_PRIVATE=${VERSION_PRIVATE_PART})
 target_compile_definitions(onnxruntime PRIVATE VER_STRING=\"${VERSION_STRING}\")
 
-if (onnxruntime_USE_CUDA)
-  target_include_directories(onnxruntime PRIVATE ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-endif()
-
 if(UNIX)
   if (APPLE)
     set(ONNXRUNTIME_SO_LINK_FLAG " -Xlinker -dead_strip")
@@ -114,6 +118,7 @@ endif()
 
 if (NOT WIN32)
   if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "^iOS")
+    set(ONNXRUNTIME_SO_LINK_FLAG " -Wl,-exported_symbols_list,${SYMBOL_FILE}")
     if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
       set_target_properties(onnxruntime PROPERTIES
         SOVERSION ${ORT_VERSION}
@@ -121,7 +126,6 @@ if (NOT WIN32)
         INSTALL_RPATH_USE_LINK_PATH FALSE
         BUILD_WITH_INSTALL_NAME_DIR TRUE
         INSTALL_NAME_DIR @rpath)
-      set(ONNXRUNTIME_SO_LINK_FLAG " -Wl,-exported_symbols_list,${SYMBOL_FILE}")
     else()
         set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
     endif()
@@ -149,39 +153,51 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_BUILD_JAVA)
   # copy the header files one by one
   foreach(h_ ${ANDROID_AAR_HEADERS})
     get_filename_component(HEADER_NAME_ ${h_} NAME)
-    configure_file(${h_} ${ANDROID_HEADERS_DIR}/${HEADER_NAME_} COPYONLY)
+    add_custom_command(TARGET onnxruntime POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different ${h_} ${ANDROID_HEADERS_DIR}/${HEADER_NAME_})
   endforeach()
 endif()
 
-target_link_libraries(onnxruntime PRIVATE
-    onnxruntime_session
-    ${onnxruntime_libs}
-    ${PROVIDERS_ACL}
-    ${PROVIDERS_ARMNN}
-    ${PROVIDERS_COREML}
-    ${PROVIDERS_DML}
-    ${PROVIDERS_MIGRAPHX}
-    ${PROVIDERS_NNAPI}
-    ${PROVIDERS_NUPHAR}
-    ${PROVIDERS_RKNPU}
-    ${PROVIDERS_ROCM}
-    ${PROVIDERS_VITISAI}
-    ${PROVIDERS_INTERNAL_TESTING}
-    ${onnxruntime_winml}
-    onnxruntime_optimizer
-    onnxruntime_providers
-    onnxruntime_util
-    ${onnxruntime_tvm_libs}
-    onnxruntime_framework
-    onnxruntime_graph
-    onnxruntime_common
-    onnxruntime_mlas
-    onnxruntime_flatbuffers
-    ${onnxruntime_EXTERNAL_LIBRARIES})
+# This list is a reversed topological ordering of library dependencies.
+# Earlier entries may depend on later ones. Later ones should not depend on earlier ones.
+set(onnxruntime_INTERNAL_LIBRARIES
+  onnxruntime_session
+  ${onnxruntime_libs}
+  ${PROVIDERS_ACL}
+  ${PROVIDERS_ARMNN}
+  ${PROVIDERS_COREML}
+  ${PROVIDERS_DML}
+  ${PROVIDERS_NNAPI}
+  ${PROVIDERS_NUPHAR}
+  ${PROVIDERS_TVM}
+  ${PROVIDERS_RKNPU}
+  ${PROVIDERS_ROCM}
+  ${PROVIDERS_VITISAI}
+  ${PROVIDERS_INTERNAL_TESTING}
+  ${onnxruntime_winml}
+  onnxruntime_optimizer
+  onnxruntime_providers
+  ${onnxruntime_tvm_libs}
+  onnxruntime_framework
+  onnxruntime_graph
+  onnxruntime_util
+  ${ONNXRUNTIME_MLAS_LIBS}
+  onnxruntime_common
+  onnxruntime_flatbuffers
+)
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  target_link_libraries(onnxruntime PRIVATE onnxruntime_language_interop onnxruntime_pyop)
+  list(APPEND onnxruntime_INTERNAL_LIBRARIES
+    onnxruntime_language_interop
+    onnxruntime_pyop
+  )
 endif()
+
+# If you are linking a new library, please add it to the list onnxruntime_INTERNAL_LIBRARIES or onnxruntime_EXTERNAL_LIBRARIES,
+# Please do not add a library directly to the target_link_libraries command
+target_link_libraries(onnxruntime PRIVATE
+    ${onnxruntime_INTERNAL_LIBRARIES}
+    ${onnxruntime_EXTERNAL_LIBRARIES}
+)
 
 set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
 set_target_properties(onnxruntime PROPERTIES LINK_DEPENDS ${SYMBOL_FILE})
@@ -199,4 +215,82 @@ set_target_properties(onnxruntime PROPERTIES FOLDER "ONNXRuntime")
 
 if (WINDOWS_STORE)
   target_link_options(onnxruntime PRIVATE /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll)
+endif()
+if (WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
+  # Workaround STL bug https://github.com/microsoft/STL/issues/434#issuecomment-921321254
+  # Note that the workaround makes std::system_error crash before Windows 10
+
+  # The linker warns "LNK4199: /DELAYLOAD:api-ms-win-core-heapl2-1-0.dll ignored; no imports found from api-ms-win-core-heapl2-1-0.dll"
+  # when you're not using imports directly, even though the import exists in the STL and the DLL would have been linked without DELAYLOAD
+  target_link_options(onnxruntime PRIVATE /DELAYLOAD:api-ms-win-core-heapl2-1-0.dll /ignore:4199)
+endif()
+
+if (winml_is_inbox)
+  # Apply linking flags required by inbox static analysis tools
+  target_link_options(onnxruntime PRIVATE ${os_component_link_flags_list})
+  # Link *_x64/*_arm64 DLLs for the ARM64X forwarder
+  function(duplicate_shared_library target new_target)
+    get_target_property(sources ${target} SOURCES)
+    get_target_property(compile_definitions ${target} COMPILE_DEFINITIONS)
+    get_target_property(compile_options ${target} COMPILE_OPTIONS)
+    get_target_property(include_directories ${target} INCLUDE_DIRECTORIES)
+    get_target_property(link_libraries ${target} LINK_LIBRARIES)
+    get_target_property(link_flags ${target} LINK_FLAGS)
+    get_target_property(link_options ${target} LINK_OPTIONS)
+    add_library(${new_target} SHARED ${sources})
+    add_dependencies(${target} ${new_target})
+    target_compile_definitions(${new_target} PRIVATE ${compile_definitions})
+    target_compile_options(${new_target} PRIVATE ${compile_options})
+    target_include_directories(${new_target} PRIVATE ${include_directories})
+    target_link_libraries(${new_target} PRIVATE ${link_libraries})
+    set_property(TARGET ${new_target} PROPERTY LINK_FLAGS "${link_flags}")
+    target_link_options(${new_target} PRIVATE ${link_options})
+  endfunction()
+  if (WAI_ARCH STREQUAL x64 OR WAI_ARCH STREQUAL arm64)
+    duplicate_shared_library(onnxruntime onnxruntime_${WAI_ARCH})
+  endif()
+endif()
+
+# Assemble the Apple static framework (iOS and macOS)
+if(onnxruntime_BUILD_APPLE_FRAMEWORK)
+  set(STATIC_LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/static_libraries)
+  file(MAKE_DIRECTORY ${STATIC_LIB_DIR})
+
+  # Remove the existing files in the STATIC_LIB_DIR folder
+  file(GLOB _OLD_STATIC_LIBS ${STATIC_LIB_DIR}/*.a)
+  file(REMOVE "${_OLD_STATIC_LIBS}")
+
+  # Go through all the static libraries, and create symbolic links
+  foreach(_LIB ${onnxruntime_INTERNAL_LIBRARIES} ${onnxruntime_EXTERNAL_LIBRARIES})
+    GET_TARGET_PROPERTY(_LIB_TYPE ${_LIB} TYPE)
+    if(_LIB_TYPE STREQUAL "STATIC_LIBRARY")
+      add_custom_command(TARGET onnxruntime POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:${_LIB}> ${STATIC_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:${_LIB}>)
+    endif()
+  endforeach()
+
+  if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+    set(STATIC_FRAMEWORK_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}-${CMAKE_OSX_SYSROOT})
+  else() # macOS
+    set(STATIC_FRAMEWORK_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR})
+  endif()
+
+  # Assemble the static framework
+  set(STATIC_FRAMEWORK_DIR ${STATIC_FRAMEWORK_OUTPUT_DIR}/static_framework/onnxruntime.framework)
+  set(STATIC_FRAMEWORK_HEADER_DIR ${STATIC_FRAMEWORK_DIR}/Headers)
+  file(MAKE_DIRECTORY ${STATIC_FRAMEWORK_DIR})
+  # Remove all files under STATIC_FRAMEWORK_DIR (if any)
+  file(GLOB_RECURSE _OLD_STATIC_FRAMEWORK ${STATIC_FRAMEWORK_DIR}/*.*)
+  file(REMOVE "${_OLD_STATIC_FRAMEWORK}")
+
+  file(MAKE_DIRECTORY ${STATIC_FRAMEWORK_HEADER_DIR})
+
+  # copy the header files one by one, and the Info.plist
+  foreach(h_ ${APPLE_FRAMEWORK_HEADERS})
+    get_filename_component(HEADER_NAME_ ${h_} NAME)
+    add_custom_command(TARGET onnxruntime POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different ${h_} ${STATIC_FRAMEWORK_HEADER_DIR}/${HEADER_NAME_})
+  endforeach()
+  add_custom_command(TARGET onnxruntime POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different ${INFO_PLIST_PATH} ${STATIC_FRAMEWORK_DIR}/Info.plist)
+
+  # link the static library
+  add_custom_command(TARGET onnxruntime POST_BUILD COMMAND libtool -static -o ${STATIC_FRAMEWORK_DIR}/onnxruntime *.a WORKING_DIRECTORY ${STATIC_LIB_DIR})
 endif()

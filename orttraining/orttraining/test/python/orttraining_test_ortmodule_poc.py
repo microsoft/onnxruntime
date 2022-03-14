@@ -5,7 +5,7 @@ import time
 from torchvision import datasets, transforms
 
 import onnxruntime
-from onnxruntime.training.ortmodule import ORTModule
+from onnxruntime.training.ortmodule import ORTModule, DebugOptions
 
 
 class NeuralNet(torch.nn.Module):
@@ -131,6 +131,8 @@ def main():
                         help='how many batches to wait before logging training status (default: 300)')
     parser.add_argument('--view-graphs', action='store_true', default=False,
                         help='views forward and backward graphs')
+    parser.add_argument('--export-onnx-graphs', action='store_true', default=False,
+                        help='export ONNX graphs to current directory')
     parser.add_argument('--epochs', type=int, default=5, metavar='N',
                         help='number of epochs to train (default: 10)')
     parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], default='WARNING',
@@ -167,11 +169,11 @@ def main():
     model = NeuralNet(input_size=784, hidden_size=500, num_classes=10).to(device)
     if not args.pytorch_only:
         print('Training MNIST on ORTModule....')
-        model = ORTModule(model)
 
-        # TODO: change it to False to stop saving ONNX models
-        model._save_onnx = True
-        model._save_onnx_prefix = 'MNIST'
+        # Just for future debugging
+        debug_options = DebugOptions(save_onnx=args.export_onnx_graphs, onnx_prefix='MNIST')
+
+        model = ORTModule(model, debug_options)
 
         # Set log level
         numeric_level = getattr(logging, args.log_level.upper(), None)

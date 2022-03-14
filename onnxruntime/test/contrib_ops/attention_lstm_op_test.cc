@@ -103,35 +103,35 @@ static void RunAttnLstmTest(
     std::vector<int64_t> B_dims = {num_directions, 8 * hidden_size};
     test.AddInput<float>("B", B_dims, *B_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   if (sequence_lengths) {
     std::vector<int64_t> sequence_lens_dims{batch_size};
     test.AddInput<int>("sequence_lens", sequence_lens_dims, *sequence_lengths);
   } else {
-    test.AddMissingOptionalInput<int>();
+    test.AddOptionalInputEdge<int>();
   }
 
   if (initial_h_data && !initial_h_data->empty()) {
     std::vector<int64_t> initial_h_dims = {num_directions, batch_size, hidden_size};
     test.AddInput<float>("initial_h", initial_h_dims, *initial_h_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   if (initial_c_data && !initial_c_data->empty()) {
     std::vector<int64_t> initial_c_dims = {num_directions, batch_size, hidden_size};
     test.AddInput<float>("initial_c", initial_c_dims, *initial_c_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   if (P_data && !P_data->empty()) {
     std::vector<int64_t> P_dims = {num_directions, 3 * hidden_size};
     test.AddInput<float>("P", P_dims, *P_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   std::vector<int64_t> QW_dims{num_directions, hidden_size, am_attn_size};
@@ -150,14 +150,14 @@ static void RunAttnLstmTest(
     std::vector<int64_t> M_seq_dims{batch_size};
     test.AddInput<int>("memory_seq_lens", M_seq_dims, *memory_sequence_lengths);
   } else {
-    test.AddMissingOptionalInput<int>();
+    test.AddOptionalInputEdge<int>();
   }
 
   if (attn_layer_weights) {
     std::vector<int64_t> attn_layer_weight_dims{num_directions, memory_depth + hidden_size, aw_attn_size};
     test.AddInput<float>("AW", attn_layer_weight_dims, *attn_layer_weights);
   } else {
-    test.AddMissingOptionalInput<int>();
+    test.AddOptionalInputEdge<int>();
   }
 
   if (output_sequence != 0 && !Y_data.empty()) {
@@ -166,21 +166,21 @@ static void RunAttnLstmTest(
   } else {
     // add placeholder so node counts match as Y_h will always be the second Y_data,
     // so Y must exist as the first Y_data
-    test.AddMissingOptionalOutput<float>();
+    test.AddOptionalOutputEdge<float>();
   }
 
   if (!Y_h_data.empty()) {
     std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
     test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
   } else {
-    test.AddMissingOptionalOutput<float>();
+    test.AddOptionalOutputEdge<float>();
   }
 
   if (!Y_c_data.empty()) {
     std::vector<int64_t> Y_c_dims{num_directions, batch_size, hidden_size};
     test.AddOutput<float>("Y_c", Y_c_dims, Y_c_data);
   } else {
-    test.AddMissingOptionalOutput<float>();
+    test.AddOptionalOutputEdge<float>();
   }
 
   test.Run();
@@ -250,15 +250,15 @@ static std::vector<T> ConvertIcfoToIofc(const std::vector<T>& icfo, int cell_hid
 }
 
 //Settings for this group of test data
-static const int batch_size = 1;
-static const int memory_max_step = 3;
-static const int memory_depth = 3;
-static const int input_max_step = 3;
-static const int input_only_depth = 3;
-static const int am_attn_size = 2;
-static const int cell_hidden_size = 3;
-static const int aw_attn_size = 2;
-static const int input_size = input_only_depth + aw_attn_size;
+static constexpr int batch_size = 1;
+static constexpr int memory_max_step = 3;
+static constexpr int memory_depth = 3;
+static constexpr int input_max_step = 3;
+static constexpr int input_only_depth = 3;
+static constexpr int am_attn_size = 2;
+static constexpr int cell_hidden_size = 3;
+static constexpr int aw_attn_size = 2;
+static constexpr int input_size = input_only_depth + aw_attn_size;
 
 // [batch_size=1, memory_max_step=3, memory_depth=3]
 static std::vector<float> s_M_data{0.1f, -0.25f, 1.0f, 1.0f, -1.0f, -1.5f, 1.0f, 0.25f, -0.125f};
@@ -324,7 +324,7 @@ TEST(AttnLSTMTest, ForwardLstmWithBahdanauAMZeroAttention) {
 
   std::vector<float> WR_T_data = ConvertIcfoToIofc(s_WR_T_data_ICFO, cell_hidden_size);
 
-  const size_t W_data_size = 5 * 12;
+  constexpr size_t W_data_size = 5 * 12;
   std::vector<float> W_T_data(&(WR_T_data[0]), &(WR_T_data[0]) + W_data_size);
   // Fake zero for attention input weight now
   std::fill(W_T_data.begin() + 3 * 12, W_T_data.begin() + W_data_size, 0.0f);
@@ -364,7 +364,7 @@ TEST(AttnLSTMTest, ForwardLstmWithBahdanauAM) {
 
   std::vector<float> WR_T_data = ConvertIcfoToIofc(s_WR_T_data_ICFO, cell_hidden_size);
 
-  const size_t W_data_size = 5 * 12;
+  constexpr size_t W_data_size = 5 * 12;
   std::vector<float> W_T_data(&(WR_T_data[0]), &(WR_T_data[0]) + W_data_size);
   std::vector<float> R_T_data(&(WR_T_data[0]) + W_data_size, &(WR_T_data[0]) + WR_T_data.size());
 
@@ -401,7 +401,7 @@ TEST(AttnLSTMTest, ForwardLstmWithBahdanauAMShortenSeqLength) {
 
   std::vector<float> WR_T_data = ConvertIcfoToIofc(s_WR_T_data_ICFO, cell_hidden_size);
 
-  const size_t W_data_size = 5 * 12;
+  constexpr size_t W_data_size = 5 * 12;
   std::vector<float> W_T_data(&(WR_T_data[0]), &(WR_T_data[0]) + W_data_size);
   std::vector<float> R_T_data(&(WR_T_data[0]) + W_data_size, &(WR_T_data[0]) + WR_T_data.size());
 
@@ -440,7 +440,7 @@ TEST(AttnLSTMTest, ReverseLstmWithBahdanauAMShortenSeqLength) {
 
   std::vector<float> WR_T_data = ConvertIcfoToIofc(s_WR_T_data_ICFO, cell_hidden_size);
 
-  const size_t W_data_size = 5 * 12;
+  constexpr size_t W_data_size = 5 * 12;
   std::vector<float> W_T_data(&(WR_T_data[0]), &(WR_T_data[0]) + W_data_size);
   std::vector<float> R_T_data(&(WR_T_data[0]) + W_data_size, &(WR_T_data[0]) + WR_T_data.size());
 
@@ -479,7 +479,7 @@ TEST(AttnLSTMTest, BidirectionLstmWithBahdanauAMShortenSeqLength) {
 
   std::vector<float> WR_T_data = ConvertIcfoToIofc(s_WR_T_data_ICFO, cell_hidden_size);
 
-  const size_t W_data_size = 5 * 12;
+  constexpr size_t W_data_size = 5 * 12;
   std::vector<float> W_T_data(&(WR_T_data[0]), &(WR_T_data[0]) + W_data_size);
   std::vector<float> R_T_data(&(WR_T_data[0]) + W_data_size, &(WR_T_data[0]) + WR_T_data.size());
 
@@ -529,8 +529,8 @@ TEST(AttnLSTMTest, BidirectionLstmWithBahdanauAMShortenSeqLength) {
 }
 
 TEST(AttnLSTMTest, BidirectionLstmWithBahdanauAM2BatchShortenSeqLen) {
-  const int batch2Size = 2;
-  const int inputMaxStep4 = 4;
+  constexpr int batch2Size = 2;
+  constexpr int inputMaxStep4 = 4;
 
   static const std::vector<float> s_X_T_2batch{0.25f, -1.5f, 1.0f, 0.25f, -0.5f, -1.5f, 0.1f, 1.5f, 0.25f, 0.0f, 0.0f, 0.0f,
                                                0.1f, -0.125f, 0.25f, -0.5f, 0.25f, 0.1f, 1.0f, 0.5f, -1.5f, 0.0f, 0.0f, 0.0f};
@@ -540,7 +540,7 @@ TEST(AttnLSTMTest, BidirectionLstmWithBahdanauAM2BatchShortenSeqLen) {
 
   std::vector<float> WR_T_data = ConvertIcfoToIofc(s_WR_T_data_ICFO, cell_hidden_size);
 
-  const size_t W_data_size = 5 * 12;
+  constexpr size_t W_data_size = 5 * 12;
   std::vector<float> W_T_data(&(WR_T_data[0]), &(WR_T_data[0]) + W_data_size);
   std::vector<float> R_T_data(&(WR_T_data[0]) + W_data_size, &(WR_T_data[0]) + WR_T_data.size());
 

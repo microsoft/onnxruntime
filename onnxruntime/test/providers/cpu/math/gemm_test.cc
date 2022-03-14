@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -44,7 +45,7 @@ TEST(GemmOpTest, GemmNoTrans_double) {
   TestGemmNoTrans<double>();
 }
 
-// Only CUDA kernel has float 16 support
+// Only CUDA and ROCM kernel has float 16 support
 #if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(GemmOpTest, GemmNoTrans_f16) {
 #ifdef USE_CUDA
@@ -82,6 +83,34 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
   test.AddInput<MLFloat16>("C", {2, 3}, f_C);
   test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: fp16 is not supported
+}
+#endif
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST(GemmOpTest, GemmNoTrans_bfloat16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+  OpTester test("Gemm", 14);
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+  test.AddInput<BFloat16>("A", {2, 4}, MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f}));
+  test.AddInput<BFloat16>("B", {4, 3}, MakeBFloat16({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f}));
+  test.AddInput<BFloat16>("C", {2, 3}, MakeBFloat16({1.f, 1.f, 1.f, 1.f, 1.f, 1.f}));
+  test.AddOutput<BFloat16>("Y", {2, 3}, MakeBFloat16({11.0f, 11.0f, 11.0f, -9.0f, -9.0f, -9.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif
 
@@ -223,6 +252,67 @@ static void TestGemmTransB_1() {
 TEST(GemmOpTest, GemmTransB_1) {
   TestGemmTransB_1<float>();
   TestGemmTransB_1<double>();
+}
+
+template <typename T>
+void TestGemmAlpha() {
+  OpTester test("Gemm");
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 0.5f);
+  test.AddAttribute("beta", 1.0f);
+
+  test.AddInput<T>("A", {2, 4},
+                   {1.0f, 2.0f, 3.0f, 4.0f,
+                    -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
+  test.AddInput<T>("C", {3}, std::vector<T>(3, 1.0f));
+  test.AddOutput<T>("Y", {2, 3},
+                    {6.0f, 6.0f, 6.0f,
+                     -4.0f, -4.0f, -4.0f});
+  //test.AddOutput<T>("Y", {2, 3},
+  //                  {5.0f, 5.0f, 5.0f,
+  //                   -5.0f, -5.0f, -5.0f});
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+#else
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Seg fault in parser
+#endif
+}
+
+TEST(GemmOpTest, GemmAlpha) {
+  TestGemmAlpha<float>();
+  TestGemmAlpha<double>();
+}
+
+template <typename T>
+void TestGemmBeta() {
+  OpTester test("Gemm");
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 2.0f);
+
+  test.AddInput<T>("A", {2, 4},
+                   {1.0f, 2.0f, 3.0f, 4.0f,
+                    -1.0f, -2.0f, -3.0f, -4.0f});
+  test.AddInput<T>("B", {4, 3}, std::vector<T>(12, 1.0f));
+  test.AddInput<T>("C", {3}, std::vector<T>(3, 1.0f));
+  test.AddOutput<T>("Y", {2, 3},
+                    {12.0f, 12.0f, 12.0f,
+                     -8.0f, -8.0f, -8.0f});
+#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+#else
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: Seg fault in parser
+#endif
+}
+
+TEST(GemmOpTest, GemmBeta) {
+  TestGemmBeta<float>();
+  TestGemmBeta<double>();
 }
 
 template <typename T>
@@ -468,13 +558,9 @@ TEST(GemmOpTest, SharedPrepackedWeights) {
                         {11.0f, 11.0f, 11.0f,
                          -9.0f, -9.0f, -9.0f});
 
-  auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape({4, 3}),
-                                           b_init_values.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
-
   OrtValue b;
-
-  b.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-         DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({4, 3}),
+                       b_init_values.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), b);
 
   SessionOptions so;
 

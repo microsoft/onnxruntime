@@ -16,8 +16,8 @@ class ScopedFileDeleter {
  public:
   ScopedFileDeleter() = default;
   ScopedFileDeleter(const PathString& path) : path_{path} {}
-  ScopedFileDeleter(ScopedFileDeleter&& other) { *this = std::move(other); }
-  ScopedFileDeleter& operator=(ScopedFileDeleter&& other) {
+  ScopedFileDeleter(ScopedFileDeleter&& other) noexcept { *this = std::move(other); }
+  ScopedFileDeleter& operator=(ScopedFileDeleter&& other) noexcept {
     CleanUp();
     path_ = std::move(other.path_);
     other.path_.clear();
@@ -30,7 +30,7 @@ class ScopedFileDeleter {
 
   void CleanUp() {
     if (!path_.empty()) {
-      std::remove(ToMBString(path_).c_str());
+      std::remove(ToUTF8String(path_).c_str());
       path_.clear();
     }
   }

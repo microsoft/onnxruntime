@@ -7,7 +7,7 @@ interface BackendInfo {
   backend: Backend;
   priority: number;
 
-  initializing?: boolean;
+  initPromise?: Promise<void>;
   initialized?: boolean;
   aborted?: boolean;
 }
@@ -20,7 +20,10 @@ const backendsSortedByPriority: string[] = [];
  *
  * @param name - the name as a key to lookup as an execution provider.
  * @param backend - the backend object.
- * @param priority - an integer indicating the priority of the backend. Higher number means higher priority.
+ * @param priority - an integer indicating the priority of the backend. Higher number means higher priority. if priority
+ * < 0, it will be considered as a 'beta' version and will not be used as a fallback backend by default.
+ *
+ * @internal
  */
 export const registerBackend = (name: string, backend: Backend, priority: number): void => {
   if (backend && typeof backend.init === 'function' && typeof backend.createSessionHandler === 'function') {
@@ -33,13 +36,15 @@ export const registerBackend = (name: string, backend: Backend, priority: number
       throw new Error(`backend "${name}" is already registered`);
     }
 
-    for (let i = 0; i < backendsSortedByPriority.length; i++) {
-      if (backends[backendsSortedByPriority[i]].priority <= priority) {
-        backendsSortedByPriority.splice(i, 0, name);
-        return;
+    if (priority >= 0) {
+      for (let i = 0; i < backendsSortedByPriority.length; i++) {
+        if (backends[backendsSortedByPriority[i]].priority <= priority) {
+          backendsSortedByPriority.splice(i, 0, name);
+          return;
+        }
       }
+      backendsSortedByPriority.push(name);
     }
-    backendsSortedByPriority.push(name);
     return;
   }
 
@@ -51,6 +56,8 @@ export const registerBackend = (name: string, backend: Backend, priority: number
  *
  * @param backendHints - a list of execution provider names to lookup. If omitted use registered backends as list.
  * @returns a promise that resolves to the backend.
+ *
+ * @internal
  */
 export const resolveBackend = async(backendHints: readonly string[]): Promise<Backend> => {
   const backendNames = backendHints.length === 0 ? backendsSortedByPriority : backendHints;
@@ -60,22 +67,25 @@ export const resolveBackend = async(backendHints: readonly string[]): Promise<Ba
     if (backendInfo) {
       if (backendInfo.initialized) {
         return backendInfo.backend;
-      } else if (backendInfo.initializing) {
-        throw new Error(`backend "${backendName}" is being initialized; cannot initialize multiple times.`);
       } else if (backendInfo.aborted) {
         continue;  // current backend is unavailable; try next
       }
 
+      const isInitializing = !!backendInfo.initPromise;
       try {
-        backendInfo.initializing = true;
-        await backendInfo.backend.init();
+        if (!isInitializing) {
+          backendInfo.initPromise = backendInfo.backend.init();
+        }
+        await backendInfo.initPromise;
         backendInfo.initialized = true;
         return backendInfo.backend;
       } catch (e) {
-        errors.push({name: backendName, err: e});
+        if (!isInitializing) {
+          errors.push({name: backendName, err: e});
+        }
         backendInfo.aborted = true;
       } finally {
-        backendInfo.initializing = false;
+        delete backendInfo.initPromise;
       }
     }
   }

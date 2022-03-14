@@ -18,9 +18,6 @@
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 #include "bert_toy_fetches.h"
-#ifdef USE_ROCM
-#include "core/providers/rocm/rocm_execution_provider.h"
-#endif
 #endif
 
 using namespace onnxruntime::logging;
@@ -46,7 +43,7 @@ static Status BuildBackPropGraph(
   SessionOptions so{};
   TrainingSession training_session{so, *env};
 
-  std::cout << "Loading source model file = " << ToMBString(forward_model_file) << "\n";
+  std::cout << "Loading source model file = " << ToUTF8String(forward_model_file) << "\n";
 
   ORT_RETURN_IF_ERROR(training_session.Load(forward_model_file));
 
@@ -81,7 +78,7 @@ static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
 
   ORT_THROW_IF_ERROR(training_session->Initialize());
 
-  std::vector<MLValue> gradient_fetches;
+  std::vector<OrtValue> gradient_fetches;
   RunOptions run_options;
   run_options.run_log_verbosity_level = so.session_log_verbosity_level;
   run_options.run_tag = so.session_logid;
@@ -93,12 +90,12 @@ static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
   std::vector<float> image_value(784, 1);
   std::vector<float> label_value(10, 1);
 
-  MLValue imageMLValue;
+  OrtValue imageMLValue;
   TrainingUtil::CreateCpuMLValue(image_dims, image_value, &imageMLValue);
-  MLValue labelMLValue;
+  OrtValue labelMLValue;
   TrainingUtil::CreateCpuMLValue(label_dims, label_value, &labelMLValue);
 
-  auto fw_feeds = std::make_pair<std::vector<std::string>, std::vector<MLValue>>({"X", "labels"}, {imageMLValue, labelMLValue});
+  auto fw_feeds = std::make_pair<std::vector<std::string>, std::vector<OrtValue>>({"X", "labels"}, {imageMLValue, labelMLValue});
 
   auto output_names_include_gradients = GetModelOutputNames(*training_session);
   std::vector<std::string> training_output_names(output_names_include_gradients.begin(), output_names_include_gradients.end());
@@ -186,7 +183,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_Basic) {
 TEST(GradientGraphBuilderTest, GraphTransformation_WithGist) {
   // Setup training session configuration
   auto config = MakeBasicTrainingConfig();
-  const int op_type_max = 9;
+  constexpr int op_type_max = 9;
   const vector<std::string> compr_type_vec = {"GistBinarize", "GistPack8", "GistPack16", "GistPackMsfp15"};
 
   PathString backprop_model_file;
@@ -233,7 +230,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
   SessionOptions so{};
   TrainingSession training_session{so, *env};
 
-  std::cout << "Loading source model file = " << ToMBString(forward_model_file) << "\n";
+  std::cout << "Loading source model file = " << ToUTF8String(forward_model_file) << "\n";
 
   ORT_THROW_IF_ERROR(training_session.Load(forward_model_file));
 
@@ -266,7 +263,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
 
   ORT_THROW_IF_ERROR(training_session.Initialize());
 
-  std::vector<MLValue> gradient_fetches;
+  std::vector<OrtValue> gradient_fetches;
   RunOptions run_options;
   run_options.run_log_verbosity_level = so.session_log_verbosity_level;
   run_options.run_tag = so.session_logid;
@@ -278,12 +275,12 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
   std::vector<float> image_value(784, 1);
   std::vector<float> label_value(10, 1);
 
-  MLValue imageMLValue;
+  OrtValue imageMLValue;
   TrainingUtil::CreateCpuMLValue(image_dims, image_value, &imageMLValue);
-  MLValue labelMLValue;
+  OrtValue labelMLValue;
   TrainingUtil::CreateCpuMLValue(label_dims, label_value, &labelMLValue);
 
-  auto fw_feeds = std::make_pair<std::vector<std::string>, std::vector<MLValue>>({"X", "labels"}, {imageMLValue, labelMLValue});
+  auto fw_feeds = std::make_pair<std::vector<std::string>, std::vector<OrtValue>>({"X", "labels"}, {imageMLValue, labelMLValue});
 
   auto output_names_include_gradients = GetModelOutputNames(training_session);
   std::vector<std::string> training_output_names(output_names_include_gradients.begin(), output_names_include_gradients.end());
@@ -406,8 +403,7 @@ static void RunBertTrainingWithChecks(
 #ifdef USE_CUDA
   ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
-  ROCMExecutionProviderInfo xp_info;
-  ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(xp_info)));
+  ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
   ASSERT_STATUS_OK(training_session->Initialize());
 
@@ -1303,7 +1299,7 @@ void OverwritePipelineRank(const TrainingSession::TrainingConfiguration& config,
 TEST(GradientGraphBuilderTest, PipelineOnlinePartition_bert_tiny) {
   const auto model_path = ORT_TSTR("testdata/bert_toy_optimized.onnx");
 
-  const size_t total_partition_count = 3;
+  constexpr size_t total_partition_count = 3;
   TrainingSession::TrainingConfiguration::PipelineConfiguration pipe{};
   pipe.do_partition = true;
 
@@ -1752,10 +1748,10 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
 
   // pipeline inputs for each batch
   struct PipelineFeed {
-    MLValue x_value;
-    MLValue label_value;
-    std::vector<MLValue> record_data_values;
-    std::vector<std::pair<MLValue, MLValue>> wait_record_pipeline_values;
+    OrtValue x_value;
+    OrtValue label_value;
+    std::vector<OrtValue> record_data_values;
+    std::vector<std::pair<OrtValue, OrtValue>> wait_record_pipeline_values;
 
     void SetInputs(const std::vector<float>& x, const std::vector<float>& label) {
       // dummy data for model inputs
@@ -1785,10 +1781,10 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
 
   // pipeline data for each batch
   struct PipelineData : public PipelineFeed {
-    MLValue t3_value;
-    MLValue t3_grad_value;
-    MLValue t6_value;
-    MLValue t6_grad_value;
+    OrtValue t3_value;
+    OrtValue t3_grad_value;
+    OrtValue t6_value;
+    OrtValue t6_grad_value;
 
     PipelineData() {
       std::vector<int64_t> t3_dims = {1, 128};
@@ -1804,9 +1800,9 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
 
   auto worker = [&subs](size_t sub_id, PipelineData& data) {
     std::vector<std::string> input_names;
-    std::vector<MLValue> input_values;
+    std::vector<OrtValue> input_values;
     std::vector<std::string> output_names;
-    std::vector<MLValue> output_values;
+    std::vector<OrtValue> output_values;
     switch (sub_id) {
       case 0:
         input_names = {
@@ -1871,7 +1867,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
   const std::vector<int64_t> start_ids = {100, 200, 300};
   const std::vector<int64_t> expected_end_ids = {112, 212, 312};
   const size_t num_stages = start_ids.size();
-  const int num_batches = 6;
+  constexpr int num_batches = 6;
   std::vector<PipelineBatchInfo> plan(num_batches);
   PipelineBatchPlanner planner;
   planner.GenerateOneFWOneBWTimeline(num_stages, num_batches);

@@ -13,10 +13,14 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/providers/cpu/rnn/rnn_activation_functors.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26451)
+#endif
 namespace onnxruntime {
 namespace rnn {
 namespace detail {
@@ -100,18 +104,18 @@ Status ValidateCommonRnnInputs(const Tensor& X,
 }  // namespace detail
 
 // map of arg name and whether the alpha and/or beta arguments are required
-static std::unordered_map<std::string, std::pair<bool, bool>>
-    NameToArgUsageMap{{"affine", {1, 1}},
-                      {"relu", {0, 0}},
-                      {"leakyrelu", {1, 0}},
-                      {"thresholdedrelu", {1, 0}},
-                      {"tanh", {0, 0}},
-                      {"scaledtanh", {1, 1}},
-                      {"sigmoid", {0, 0}},
-                      {"hardsigmoid", {1, 1}},
-                      {"elu", {1, 0}},
-                      {"softsign", {0, 0}},
-                      {"softplus", {0, 0}}};
+static std::unordered_map<std::string, std::pair<bool, bool>> NameToArgUsageMap{
+    {"affine", {true, true}},
+    {"relu", {false, false}},
+    {"leakyrelu", {true, false}},
+    {"thresholdedrelu", {true, false}},
+    {"tanh", {false, false}},
+    {"scaledtanh", {true, true}},
+    {"sigmoid", {false, false}},
+    {"hardsigmoid", {true, true}},
+    {"elu", {true, false}},
+    {"softsign", {false, false}},
+    {"softplus", {false, false}}};
 
 // map of alpha/beta defaults
 static std::unordered_map<std::string, std::pair<float, float>>
@@ -287,13 +291,13 @@ void ComputeGemm(const int M,
       beta == 1.0f ? MLAS_QGEMM_OUTPUT_MODE::AccumulateMode : MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
       scale_multiplier.size() == 1 ? MLAS_QUANTIZATION_GRANULARITY::PerMatrix : MLAS_QUANTIZATION_GRANULARITY::PerColumn);
 
-  MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+  MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape;
   gemm_shape.M = static_cast<size_t>(M);
   gemm_shape.N = static_cast<size_t>(N);
   gemm_shape.K = static_cast<size_t>(K);
   gemm_shape.BIsSigned = b_is_signed;
-  
-  MLAS_GEMM_U8X8_DATA_PARAMS gemm_params;
+
+  MLAS_GEMM_QUANT_DATA_PARAMS gemm_params;
   gemm_params.A = quantized_A_buffer;
   gemm_params.lda = static_cast<size_t>(K);
   gemm_params.ZeroPointA = a_zero_point;
@@ -310,21 +314,29 @@ void ComputeGemm(const int M,
 
 namespace deepcpu {
 
-const float alpha_1 = 4.89352455891786e-03f;
-const float alpha_3 = 6.37261928875436e-04f;
-const float alpha_5 = 1.48572235717979e-05f;
-const float alpha_7 = 5.12229709037114e-08f;
-const float alpha_9 = -8.60467152213735e-11f;
-const float alpha_11 = 2.00018790482477e-13f;
-const float alpha_13 = -2.76076847742355e-16f;
+constexpr float alpha_1 = 4.89352455891786e-03f;
+constexpr float alpha_3 = 6.37261928875436e-04f;
+constexpr float alpha_5 = 1.48572235717979e-05f;
+constexpr float alpha_7 = 5.12229709037114e-08f;
+constexpr float alpha_9 = -8.60467152213735e-11f;
+constexpr float alpha_11 = 2.00018790482477e-13f;
+constexpr float alpha_13 = -2.76076847742355e-16f;
 
-const float beta_0 = 4.89352518554385e-03f;
-const float beta_2 = 2.26843463243900e-03f;
-const float beta_4 = 1.18534705686654e-04f;
-const float beta_6 = 1.19825839466702e-06f;
+constexpr float beta_0 = 4.89352518554385e-03f;
+constexpr float beta_2 = 2.26843463243900e-03f;
+constexpr float beta_4 = 1.18534705686654e-04f;
+constexpr float beta_6 = 1.19825839466702e-06f;
 
-const float sigmoid_bound = 20.0f;
-const float tanh_bound = 10.0f;
+constexpr float sigmoid_bound = 20.0f;
+constexpr float tanh_bound = 10.0f;
+
+#if defined(__GNUC__) && !defined(__wasm__)
+#define restrict __restrict__
+#elif defined(_MSC_VER)
+#define restrict __restrict
+#else
+#define restrict
+#endif
 
 inline void clip_for_sigmoid_in_place(float* ps, int c) {
   for (int i = 0; i < c; i++) {
@@ -402,67 +414,41 @@ void clip_ignore_bias(const float b, const float* pb, float* pd, int c) {
   }
 }
 
-void clip_add_bias(const float b, const float* pb, float* pd, int c) {
+void clip_add_bias(const float b, const float* restrict pb, float* restrict pd, int c) {
   for (int i = 0; i < c; i++) {
     float x = pd[i] + pb[i];
-    if (x > b)
-      pd[i] = b;
-    else if (x < -b)
-      pd[i] = -b;
-    else
-      pd[i] = x;
+    x = std::min(b, x);
+    x = std::max(-b, x);
+    pd[i] = x;
   }
 }
 
-void sigmoid_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c,
+void sigmoid_m(const float* restrict ps1, float* restrict ps1_c, const float* restrict ps2, float* restrict pd, int c,
                const float alpha, const float beta) {
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(ps1_c);
 
-  clip_for_sigmoid(ps1, ps1_c, c);
-
+  MlasComputeLogistic(ps1, pd, c);
   for (int i = 0; i < c; i++) {
-    float x = 0.5f * ps1_c[i];
-    float x2 = x * x;
-    float p = x2 * alpha_13 + alpha_11;
-    p = x2 * p + alpha_9;
-    p = x2 * p + alpha_7;
-    p = x2 * p + alpha_5;
-    p = x2 * p + alpha_3;
-    p = x2 * p + alpha_1;
-    p = x * p;
-    float q = x2 * beta_6 + beta_4;
-    q = x2 * q + beta_2;
-    q = x2 * q + beta_0;
-    pd[i] = ps2[i] * 0.5f * (1 + (p / q));
+    pd[i] *= ps2[i];
   }
 }
 
-void tanh_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c,
+void tanh_m(const float* restrict ps1, float* restrict ps1_c, const float* restrict ps2, float* restrict pd, int c,
             const float alpha, const float beta) {
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(ps1_c);
 
-  clip_for_tanh(ps1, ps1_c, c);
-
+  MlasComputeTanh(ps1, pd, c);
   for (int i = 0; i < c; i++) {
-    float x = ps1_c[i];
-    float x2 = x * x;
-    float p = x2 * alpha_13 + alpha_11;
-    p = x2 * p + alpha_9;
-    p = x2 * p + alpha_7;
-    p = x2 * p + alpha_5;
-    p = x2 * p + alpha_3;
-    p = x2 * p + alpha_1;
-    p = x * p;
-    float q = x2 * beta_6 + beta_4;
-    q = x2 * q + beta_2;
-    q = x2 * q + beta_0;
-    pd[i] = ps2[i] * p / q;
+    pd[i] *= ps2[i];
   }
 }
 
-void relu_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c, float alpha, float beta) {
+void relu_m(const float* restrict ps1, float* restrict ps1_c, const float* restrict ps2, float* restrict pd, int c,
+            const float alpha, const float beta) {
   ORT_UNUSED_PARAMETER(ps1_c);
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
@@ -507,56 +493,23 @@ void sigmoid(float* pd, int c, float alpha, float beta) {
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
 
-  clip_for_sigmoid_in_place(pd, c);
-
-  for (int i = 0; i < c; i++) {
-    float x = 0.5f * pd[i];
-    float x2 = x * x;
-    float p = x2 * alpha_13 + alpha_11;
-    p = x2 * p + alpha_9;
-    p = x2 * p + alpha_7;
-    p = x2 * p + alpha_5;
-    p = x2 * p + alpha_3;
-    p = x2 * p + alpha_1;
-    p = x * p;
-    float q = x2 * beta_6 + beta_4;
-    q = x2 * q + beta_2;
-    q = x2 * q + beta_0;
-    pd[i] = 0.5f * (1 + (p / q));
-  }
+  MlasComputeLogistic(pd, pd, c);
 }
 
 void tanh(float* pd, int c, float alpha, float beta) {
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
 
-  clip_for_tanh_in_place(pd, c);
-
-  for (int i = 0; i < c; i++) {
-    float x = pd[i];
-    float x2 = x * x;
-    float p = x2 * alpha_13 + alpha_11;
-    p = x2 * p + alpha_9;
-    p = x2 * p + alpha_7;
-    p = x2 * p + alpha_5;
-    p = x2 * p + alpha_3;
-    p = x2 * p + alpha_1;
-    p = x * p;
-    float q = x2 * beta_6 + beta_4;
-    q = x2 * q + beta_2;
-    q = x2 * q + beta_0;
-    pd[i] = p / q;
-  }
+  MlasComputeTanh(pd, pd, c);
 }
 
 void relu(float* pd, int c, float alpha, float beta) {
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
 
-  for (int i = 0; i < c; i++) {
-    if (pd[i] < 0)
-      pd[i] = 0.0f;
-  }
+  MLAS_ACTIVATION activation;
+  activation.ActivationKind = MlasReluActivation;
+  MlasActivation(&activation, pd, nullptr, 1, c, c);
 }
 
 void sigmoid_exact(float* pd, int c, float alpha, float beta) {
@@ -579,8 +532,23 @@ void tanh_exact(float* pd, int c, float alpha, float beta) {
   }
 }
 
-void merge_lstm_gates_to_memory(const float* pprev, const float* pi, const float* pf, const float* pg, float* pcurr,
-                                int c) {
+// Help compiler simply and correctly optimize for pcurr == pprev case.
+// Although without this in_place(), if restrict pprev and pcur, compiler could also work.
+// Yet this in_place() follow the restrict semantic better.
+static void merge_lstm_gates_to_memory_in_place(const float* restrict pi, const float* restrict pf,
+                                                const float* restrict pg, float* restrict pcurr, int c) {
+  for (int i = 0; i < c; i++) {
+    pcurr[i] = pcurr[i] * pf[i] + pi[i] * pg[i];
+  }
+}
+
+void merge_lstm_gates_to_memory(const float* pprev, const float* restrict pi, const float* restrict pf,
+                                const float* restrict pg, float* pcurr, int c) {
+  if (pprev == pcurr) {
+    merge_lstm_gates_to_memory_in_place(pi, pf, pg, pcurr, c);
+    return;
+  }
+
   for (int i = 0; i < c; i++) {
     pcurr[i] = pprev[i] * pf[i] + pi[i] * pg[i];
   }

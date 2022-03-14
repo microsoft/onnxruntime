@@ -23,12 +23,12 @@ DIVGRAD_REGISTER_KERNEL_TYPED(MLFloat16)
 DIVGRAD_REGISTER_KERNEL_TYPED(float)
 DIVGRAD_REGISTER_KERNEL_TYPED(double)
 
-std::vector<int64_t> prepended_dimension_1(const TensorShape& shape, size_t total_rank) {
+TensorShapeVector prepended_dimension_1(const TensorShape& shape, size_t total_rank) {
   size_t input_rank = shape.NumDimensions();
   if (input_rank == total_rank)
-    return shape.GetDims();
+    return shape.AsShapeVector();
 
-  std::vector<int64_t> dims(total_rank, 1);
+  TensorShapeVector dims(total_rank, 1);
 
   // https://github.com/onnx/onnx/blob/master/docs/Broadcasting.md
   // for property 3 of Multidirectional Broadcasting, we need to prepended with a dimension of length 1.
@@ -95,14 +95,14 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
           reinterpret_cast<CudaT*>(db_data));
 
       if (da_output_tensor) {
-        std::vector<int64_t> a_output_dims = prepended_dimension_1(a_shape, dy_shape.NumDimensions());
-        ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+        auto a_output_dims = prepended_dimension_1(a_shape, dy_shape.NumDimensions());
+        ORT_RETURN_IF_ERROR((ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
             temp_da_data,
             dy_shape,
             da_data,
             TensorShape({}),
             CUDNN_REDUCE_TENSOR_ADD,
-            a_output_dims);
+            a_output_dims)));
       }
       break;
     }
@@ -124,14 +124,14 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
           reinterpret_cast<CudaT*>(temp_db_data));
 
       if (db_output_tensor) {
-        std::vector<int64_t> b_output_dims = prepended_dimension_1(b_shape, dy_shape.NumDimensions());
-        ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+        auto b_output_dims = prepended_dimension_1(b_shape, dy_shape.NumDimensions());
+        ORT_RETURN_IF_ERROR((ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
             temp_db_data,
             dy_shape,
             db_data,
             TensorShape({}),
             CUDNN_REDUCE_TENSOR_ADD,
-            b_output_dims);
+            b_output_dims)));
       }
       break;
     }
@@ -169,14 +169,14 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
       }
 
       if (db_output_tensor) {
-        std::vector<int64_t> b_output_dims = prepended_dimension_1(b_shape, dy_shape.NumDimensions());
-        ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+        auto b_output_dims = prepended_dimension_1(b_shape, dy_shape.NumDimensions());
+        ORT_RETURN_IF_ERROR((ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
             temp_db_data,
             dy_shape,
             db_data,
             b_shape,
             CUDNN_REDUCE_TENSOR_ADD,
-            b_output_dims);
+            b_output_dims)));
       }
       break;
     }
@@ -185,55 +185,56 @@ Status DivGrad<T>::ComputeInternal(OpKernelContext* context) const {
       bool need_reduce_db = db_output_tensor && b_shape.Size() != dy_shape.Size();
       IAllocatorUniquePtr<T> temp_da_allocator, temp_db_allocator;
       T* da_data_ref = nullptr;
-      if (da_output_tensor)
+      if (da_output_tensor) {
         if (need_reduce_da) {
           temp_da_allocator = GetScratchBuffer<T>(dy_shape.Size());
           da_data_ref = temp_da_allocator.get();
         } else {
           da_data_ref = da_data;
         }
+      }
       T* db_data_ref = nullptr;
-      if (db_output_tensor)
+      if (db_output_tensor) {
         if (need_reduce_db) {
           temp_db_allocator = GetScratchBuffer<T>(dy_shape.Size());
           db_data_ref = temp_db_allocator.get();
         } else {
           db_data_ref = db_data;
         }
-
+      }
       ImplDivGrad<CudaT>(
           Stream(),
           prepare.output_rank_or_simple_broadcast,
-          &prepare.lhs_padded_strides,
+          prepare.lhs_padded_strides,
           prepare_a_data,
-          &prepare.rhs_padded_strides,
+          prepare.rhs_padded_strides,
           prepare_b_data,
           prepare_dy_data,
           dy_shape.Size(),
-          &prepare.fdm_output_strides,
+          prepare.fdm_output_strides,
           reinterpret_cast<CudaT*>(da_data_ref),
           reinterpret_cast<CudaT*>(db_data_ref));
 
       if (need_reduce_da) {
-        std::vector<int64_t> a_output_dims = prepended_dimension_1(a_shape, dy_shape.NumDimensions());
-        ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+        auto a_output_dims = prepended_dimension_1(a_shape, dy_shape.NumDimensions());
+        ORT_RETURN_IF_ERROR((ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
             da_data_ref,
             dy_shape,
             da_data,
             a_shape,
             CUDNN_REDUCE_TENSOR_ADD,
-            a_output_dims);
+            a_output_dims)));
       }
 
       if (need_reduce_db) {
-        std::vector<int64_t> b_output_dims = prepended_dimension_1(b_shape, dy_shape.NumDimensions());
-        ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+        auto b_output_dims = prepended_dimension_1(b_shape, dy_shape.NumDimensions());
+        ORT_RETURN_IF_ERROR((ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
             db_data_ref,
             dy_shape,
             db_data,
             b_shape,
             CUDNN_REDUCE_TENSOR_ADD,
-            b_output_dims);
+            b_output_dims)));
       }
     }
   }

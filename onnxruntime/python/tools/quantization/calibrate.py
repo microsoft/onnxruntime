@@ -12,10 +12,9 @@ import onnx
 import onnxruntime
 from onnx import helper, TensorProto, ModelProto
 from onnx import onnx_pb as onnx_proto
-from six import string_types
 from enum import Enum
 
-from .quant_utils import QuantType, smooth_distribution
+from .quant_utils import QuantType, smooth_distribution, apply_plot
 from .registry import QLinearOpsRegistry
 
 import abc
@@ -25,7 +24,7 @@ import itertools
 class CalibrationMethod(Enum):
     MinMax = 0
     Entropy = 1
-
+    Percentile = 2
 
 class CalibrationDataReader(metaclass=abc.ABCMeta):
     @classmethod
@@ -39,13 +38,15 @@ class CalibrationDataReader(metaclass=abc.ABCMeta):
 
 
 class CalibraterBase:
-    def __init__(self, model, op_types_to_calibrate=[], augmented_model_path='augmented_model.onnx'):
+    def __init__(self, model, op_types_to_calibrate=[], augmented_model_path='augmented_model.onnx', symmetric=False, use_external_data_format=False):
         '''
         :param model: ONNX model to calibrate. It can be a ModelProto or a model path
         :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
         :param augmented_model_path: save augmented model to this path.
+        :param symmetric: make range of tensor symmetric (central point is 0).
+        :param use_external_data_format: use external data format to store model which size is >= 2Gb
         '''
-        if isinstance(model, string_types):
+        if isinstance(model, str):
             self.model = onnx.load(model)
         elif isinstance(model, ModelProto):
             self.model = model
@@ -54,6 +55,8 @@ class CalibraterBase:
 
         self.op_types_to_calibrate = op_types_to_calibrate
         self.augmented_model_path = augmented_model_path
+        self.symmetric = symmetric
+        self.use_external_data_format = use_external_data_format
 
         # augment graph
         self.augment_model = None
@@ -136,17 +139,32 @@ class CalibraterBase:
 
 
 class MinMaxCalibrater(CalibraterBase):
-    def __init__(self, model, op_types_to_calibrate=[], augmented_model_path='augmented_model.onnx'):
+    def __init__(self, 
+                model,
+                op_types_to_calibrate=[],
+                augmented_model_path='augmented_model.onnx',
+                symmetric=False,
+                use_external_data_format=False,
+                moving_average=False,
+                averaging_constant=0.01):
         '''
         :param model: ONNX model to calibrate. It can be a ModelProto or a model path
         :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
         :param augmented_model_path: save augmented model to this path.
+        :param symmetric: make range of tensor symmetric (central point is 0).
+        :param use_external_data_format: use external data format to store model which size is >= 2Gb
+        :param moving_average: compute the moving average of the minimum and maximum values instead of the global minimum and maximum.
+        :param averaging_constant: constant smoothing factor to use when computing the moving average.
         '''
-        super(MinMaxCalibrater, self).__init__(model, op_types_to_calibrate, augmented_model_path)
+        super(MinMaxCalibrater, self).__init__(model, op_types_to_calibrate, augmented_model_path, symmetric, use_external_data_format)
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
         self.num_model_outputs = len(self.model.graph.output)
         self.model_original_outputs = set(output.name for output in self.model.graph.output)
+        self.moving_average = moving_average
+        if moving_average and (averaging_constant < 0 or averaging_constant > 1):
+            raise ValueError("Invalid averaging constant, which should not be < 0 or > 1.")
+        self.averaging_constant = averaging_constant
 
     def augment_graph(self):
         '''
@@ -164,23 +182,17 @@ class MinMaxCalibrater(CalibraterBase):
 
         for tensor in tensors:
 
-            # When doing ReduceMax/ReduceMin, keep dimension if tensor contains dim with value of 0,
-            # for example:
-            #     dim = [ dim_value: 0 ] 
-            #  
-            # otherwise, don't keep dimension. 
-            #
+            # When doing ReduceMax/ReduceMin, ORT can't reduce on dim with value of 0 if 'keepdims' is false.
+            # To make the code simple, we always let keepdims to be 1.
+            keepdims = 1
+
+            # dim could be:
+            #   [dim_param: "batch_size", dim_value: 256, dim_value: 36, dim_value: 64],
+            #   [dim_value: 0],
+            #   ...
+            # Please see the definition of TensorShapeProto https://github.com/onnx/onnx/blob/master/onnx/onnx.proto#L651
             dim = value_infos[tensor].type.tensor_type.shape.dim
-            keepdims = 0
-            shape = ()
-            for d in dim:
-                # A dimension can be either an integer value or a symbolic variable.
-                # Dimension with integer value and value of 0 is what we are looking for to keep dimension. 
-                # Please see the def of TensorShapeProto https://github.com/onnx/onnx/blob/master/onnx/onnx.proto#L630
-                if d.WhichOneof('value') == 'dim_value' and d.dim_value == 0:
-                    keepdims = 1
-                    shape = (1,) if len(dim) == 1 else list(1 for i in range(len(dim)))
-                    break
+            shape = (1,) if len(dim) == 1 else tuple(1 for i in range(len(dim)))
 
             # Adding ReduceMin nodes
             reduce_min_name = tensor + '_ReduceMin'
@@ -198,7 +210,7 @@ class MinMaxCalibrater(CalibraterBase):
 
         model.graph.node.extend(added_nodes)
         model.graph.output.extend(added_outputs)
-        onnx.save(model, self.augmented_model_path)
+        onnx.save(model, self.augmented_model_path, save_as_external_data=self.use_external_data_format)
         self.augment_model = model
 
     def clear_collected_data(self):
@@ -222,8 +234,12 @@ class MinMaxCalibrater(CalibraterBase):
             return new_range
 
         for key, value in old_range.items(): 
-            min_value = min(value[0], new_range[key][0])
-            max_value = max(value[1], new_range[key][1])
+            if self.moving_average:
+                min_value = value[0] + self.averaging_constant * (new_range[key][0] - value[0])
+                max_value = value[1] + self.averaging_constant * (new_range[key][1] - value[1])
+            else:
+                min_value = min(value[0], new_range[key][0])
+                max_value = max(value[1], new_range[key][1])
             new_range[key] = (min_value, max_value)
 
         return new_range
@@ -258,14 +274,22 @@ class MinMaxCalibrater(CalibraterBase):
         for i in range(0, len(added_output_names), 2):
             min_value = 0
             max_value = 0
-            min_value_array = min(merged_added_output_dict[added_output_names[i]])
-            max_value_array = max(merged_added_output_dict[added_output_names[i + 1]])
+            if self.moving_average:
+                min_value_array = np.mean(merged_added_output_dict[added_output_names[i]], axis = 0)
+                max_value_array = np.mean(merged_added_output_dict[added_output_names[i + 1]], axis = 0)
+            else:
+                min_value_array = min(merged_added_output_dict[added_output_names[i]])
+                max_value_array = max(merged_added_output_dict[added_output_names[i + 1]])
             if type(min_value_array) == int or min_value_array.size > 0:
                 min_value = float(min_value_array)
             if type(max_value_array) == int or max_value_array.size > 0:
                 max_value = float(max_value_array)
 
-            pairs.append(tuple([min_value, max_value]))
+            if self.symmetric:
+                max_absolute_value = max(abs(min_value), abs(max_value))
+                pairs.append(tuple([-max_absolute_value, max_absolute_value]))
+            else:
+                pairs.append(tuple([min_value, max_value]))
 
         new_calibrate_tensors_range = dict(zip(calibrate_tensor_names, pairs))
         if self.calibrate_tensors_range:
@@ -275,19 +299,39 @@ class MinMaxCalibrater(CalibraterBase):
 
         return self.calibrate_tensors_range
 
-class EntropyCalibrater(CalibraterBase):
-    def __init__(self, model, op_types_to_calibrate=[], augmented_model_path='augmented_model.onnx'):
+class HistogramCalibrater(CalibraterBase):
+    def __init__(self,
+                 model,
+                 op_types_to_calibrate=[],
+                 augmented_model_path='augmented_model.onnx',
+                 use_external_data_format=False,
+                 method='percentile',
+                 symmetric=False,
+                 num_bins=128,
+                 num_quantized_bins=2048,
+                 percentile=99.999):
         '''
         :param model: ONNX model to calibrate. It can be a ModelProto or a model path
         :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
         :param augmented_model_path: save augmented model to this path.
+        :param use_external_data_format: use external data format to store model which size is >= 2Gb
+        :param method: A string. One of ['entropy', 'percentile'].
+        :param symmetric: make range of tensor symmetric (central point is 0).
+        :param num_bins: number of bins to create a new histogram for collecting tensor values.
+        :param num_quantized_bins: number of quantized bins. Default 128.
+        :param percentile: A float number between [0, 100]. Default 99.99.
         '''
-        super(EntropyCalibrater, self).__init__(model, op_types_to_calibrate, augmented_model_path)
+        super(HistogramCalibrater, self).__init__(model, op_types_to_calibrate, augmented_model_path, use_external_data_format)
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
         self.num_model_outputs = len(self.model.graph.output)
         self.model_original_outputs = set(output.name for output in self.model.graph.output)
         self.collector = None
+        self.method = method
+        self.symmetric = symmetric
+        self.num_bins = num_bins
+        self.num_quantized_bins = num_quantized_bins
+        self.percentile = percentile
 
     def augment_graph(self):
         '''
@@ -307,7 +351,7 @@ class EntropyCalibrater(CalibraterBase):
 
         model.graph.node.extend(added_nodes)
         model.graph.output.extend(added_outputs)
-        onnx.save(model, self.augmented_model_path)
+        onnx.save(model, self.augmented_model_path, save_as_external_data=self.use_external_data_format)
         self.augment_model = model
 
     def clear_collected_data(self):
@@ -322,7 +366,6 @@ class EntropyCalibrater(CalibraterBase):
             if not inputs:
                 break
             self.intermediate_outputs.append(self.infer_session.run(None, inputs))
-
 
         if len(self.intermediate_outputs) == 0:
             raise ValueError("No data is collected.")
@@ -340,7 +383,11 @@ class EntropyCalibrater(CalibraterBase):
         clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i not in self.model_original_outputs)
 
         if not self.collector:
-            self.collector = HistogramCollector()
+            self.collector = HistogramCollector(method=self.method,
+                                                symmetric=self.symmetric,
+                                                num_bins=self.num_bins,
+                                                num_quantized_bins=self.num_quantized_bins,
+                                                percentile=self.percentile)
         self.collector.collect(clean_merged_dict)
 
         self.clear_collected_data()
@@ -348,13 +395,58 @@ class EntropyCalibrater(CalibraterBase):
     def compute_range(self):
         ''' 
         Compute the min-max range of tensor
-        :return: dictionary mapping: {added node names: (ReduceMin, ReduceMax) pairs }
+        :return: dictionary mapping: {tensor name: (min value, max value)}
         '''
         if not self.collector:
             raise ValueError("No collector created and can't generate calibration data.")
 
-        return self.collector.get_optimal_collection_result()
+        return self.collector.compute_collection_result()
 
+class EntropyCalibrater(HistogramCalibrater):
+    def __init__(self,
+                 model,
+                 op_types_to_calibrate=[],
+                 augmented_model_path='augmented_model.onnx',
+                 use_external_data_format=False,
+                 method='entropy',
+                 symmetric=False,
+                 num_bins=128,
+                 num_quantized_bins=128):
+        '''
+        :param model: ONNX model to calibrate. It can be a ModelProto or a model path
+        :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
+        :param augmented_model_path: save augmented model to this path.
+        :param use_external_data_format: use external data format to store model which size is >= 2Gb
+        :param method: A string. One of ['entropy', 'percentile'].
+        :param symmetric: make range of tensor symmetric (central point is 0).
+        :param num_bins: number of bins to create a new histogram for collecting tensor values.
+        :param num_quantized_bins: number of quantized bins. Default 128.
+        '''
+        super(EntropyCalibrater, self).__init__(model, op_types_to_calibrate, augmented_model_path, use_external_data_format,
+                                                method=method, symmetric=symmetric, num_bins=num_bins, num_quantized_bins=num_quantized_bins)
+
+class PercentileCalibrater(HistogramCalibrater):
+    def __init__(self,
+                 model,
+                 op_types_to_calibrate=[],
+                 augmented_model_path='augmented_model.onnx',
+                 use_external_data_format=False,
+                 method='percentile',
+                 symmetric=False,
+                 num_bins=2048,
+                 percentile=99.999):
+        '''
+        :param model: ONNX model to calibrate. It can be a ModelProto or a model path
+        :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
+        :param augmented_model_path: save augmented model to this path.
+        :param use_external_data_format: use external data format to store model which size is >= 2Gb
+        :param method: A string. One of ['entropy', 'percentile'].
+        :param symmetric: make range of tensor symmetric (central point is 0).
+        :param num_quantized_bins: number of quantized bins. Default 128.
+        :param percentile: A float number between [0, 100]. Default 99.99.
+        '''
+        super(PercentileCalibrater, self).__init__(model, op_types_to_calibrate, augmented_model_path, use_external_data_format,
+                                                   method=method, symmetric=symmetric, num_bins=num_bins, percentile=percentile)
 
 class CalibrationDataCollector(metaclass=abc.ABCMeta):
     """
@@ -371,7 +463,7 @@ class CalibrationDataCollector(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def get_optimal_collection_result(self):
+    def compute_collection_result(self):
         """
         Get the optimal result among collection data.  
         """
@@ -379,18 +471,70 @@ class CalibrationDataCollector(metaclass=abc.ABCMeta):
 
 class HistogramCollector(CalibrationDataCollector):
     """
-    Implementation of collecting histogram data as dict for each tensor targeting on entropy calibration.
+    Collecting histogram for each tensor. Percentile and Entropy method are supported.
 
     ref: https://github.com//apache/incubator-mxnet/blob/master/python/mxnet/contrib/quantization.py
+    ref: https://docs.nvidia.com/deeplearning/tensorrt/pytorch-quantization-toolkit/docs/_modules/
+                 pytorch_quantization/calib/histogram.html
     """
-    def __init__(self, num_quantized_bins=128):
+    def __init__(self, method, symmetric, num_bins, num_quantized_bins, percentile):
         self.histogram_dict = {}
+        self.method = method
+        self.symmetric = symmetric
+        self.num_bins = num_bins
         self.num_quantized_bins= num_quantized_bins
+        self.percentile = percentile
 
     def get_histogram_dict(self):
         return self.histogram_dict
 
     def collect(self, name_to_arr):
+        print("Collecting tensor data and making histogram ...")
+
+        # TODO: Currently we have different collect() for entropy and percentile method respectively.
+        #       Need unified collect in the future.
+        if self.method == 'entropy':
+            return self.collect_value(name_to_arr)
+        elif self.method == 'percentile':
+            if self.symmetric:
+                return self.collect_absolute_value(name_to_arr)
+            else:
+                return self.collect_value(name_to_arr)
+        else:
+            raise ValueError('Only \'entropy\' or \'percentile\' method are supported')
+
+    def collect_absolute_value(self, name_to_arr):
+        '''
+        Collect histogram on absolute value
+        '''
+        for tensor, data_arr in name_to_arr.items():
+            data_arr = np.asarray(data_arr)
+            data_arr = data_arr.flatten()
+            data_arr = np.absolute(data_arr) # only consider absolute value
+
+            if tensor not in self.histogram_dict:
+                # first time it uses num_bins to compute histogram.
+                hist, hist_edges = np.histogram(data_arr, bins=self.num_bins)
+                self.histogram_dict[tensor] = (hist, hist_edges)
+            else:
+                old_histogram = self.histogram_dict[tensor]
+                old_hist = old_histogram[0]
+                old_hist_edges = old_histogram[1]
+                temp_amax = np.max(data_arr)
+                if temp_amax > old_hist_edges[-1]:
+                    # increase the number of bins
+                    width = old_hist_edges[1] - old_hist_edges[0]
+                    # NOTE: np.arange may create an extra bin after the one containing temp_amax
+                    new_bin_edges = np.arange(old_hist_edges[-1] + width, temp_amax + width, width)
+                    old_hist_edges = np.hstack((old_hist_edges, new_bin_edges))
+                hist, hist_edges = np.histogram(data_arr, bins=old_hist_edges)
+                hist[:len(old_hist)] += old_hist
+                self.histogram_dict[tensor] = (hist, hist_edges)
+
+    def collect_value(self, name_to_arr):
+        '''
+        Collect histogram on real value
+        '''
         for tensor, data_arr in name_to_arr.items():
             data_arr = np.asarray(data_arr)
             data_arr = data_arr.flatten()
@@ -408,8 +552,7 @@ class HistogramCollector(CalibrationDataCollector):
                 old_histogram = self.histogram_dict[tensor]
                 self.histogram_dict[tensor] = self.merge_histogram(old_histogram, data_arr, min_value, max_value, threshold)
             else:
-                # hist, hist_edges = np.histogram(data_arr, self.num_quantized_bins, range=(min_value, max_value))
-                hist, hist_edges = np.histogram(data_arr, self.num_quantized_bins, range=(-threshold, threshold))
+                hist, hist_edges = np.histogram(data_arr, self.num_bins, range=(-threshold, threshold))
                 self.histogram_dict[tensor] = (hist, hist_edges, min_value, max_value, threshold)
 
     def merge_histogram(self, old_histogram, data_arr, new_min, new_max, new_threshold):
@@ -421,8 +564,8 @@ class HistogramCollector(CalibrationDataCollector):
             return (new_hist + old_hist, old_hist_edges, min(old_min, new_min), max(old_max, new_max), old_threshold)
         else:
             if old_threshold == 0:
-                hist, hist_edges = np.histogram(data_arr, new_num_bins, range=(-new_threshold, new_threshold))
-                hist[len(hist) // 2] += len(old_hist)
+                hist, hist_edges = np.histogram(data_arr, len(old_hist), range=(-new_threshold, new_threshold))
+                hist += old_hist
             else:
                 old_num_bins = len(old_hist)
                 old_stride = 2 * old_threshold / old_num_bins
@@ -433,29 +576,102 @@ class HistogramCollector(CalibrationDataCollector):
                 hist[half_increased_bins:new_num_bins-half_increased_bins] += old_hist
             return (hist, hist_edges, min(old_min, new_min), max(old_max, new_max), new_threshold)
 
-    def get_optimal_collection_result(self):
+    def compute_collection_result(self):
+        if not self.histogram_dict or len(self.histogram_dict) == 0:
+            raise ValueError("Histogram has not been collected. Please run collect() first.")
+        print("Finding optimal threshold for each tensor using {} algorithm ...".format(self.method))
+
+        if self.method == 'entropy':
+            return self.compute_entropy()
+        elif self.method == 'percentile':
+            return self.compute_percentile()
+        else:
+            raise ValueError('Only \'entropy\' or \'percentile\' method are supported')
+
+    def compute_percentile(self):
+        if self.percentile < 0 or self.percentile > 100:
+            raise ValueError("Invalid percentile. Must be in range 0 <= percentile <= 100.")
+
+        histogram_dict = self.histogram_dict
+        percentile = self.percentile
+
+        thresholds_dict = {} # per tensor thresholds
+
+        print("Number of tensors : {}".format(len(histogram_dict)))
+        print("Number of histogram bins : {}".format(self.num_bins))
+        print("Percentile : ({},{})".format(100.0 - percentile, percentile))
+
+        for tensor, histogram in histogram_dict.items():
+            hist = histogram[0]
+            hist_edges = histogram[1]
+            total = hist.sum()
+            cdf = np.cumsum(hist/total)
+            if self.symmetric:
+                idx_right = np.searchsorted(cdf, percentile / 100.0)
+                thresholds_dict[tensor] = (-float(hist_edges[idx_ringht]), float(hist_edges[idx_right]))
+            else:
+                percent_to_cut_one_side = (100.0 - percentile) / 200.0
+                idx_right = np.searchsorted(cdf, 1.0 - percent_to_cut_one_side)
+                idx_left = np.searchsorted(cdf, percent_to_cut_one_side)
+                thresholds_dict[tensor] = (float(hist_edges[idx_left]), float(hist_edges[idx_right]))
+
+            # Plot histogram for debug only
+            if False:
+                apply_plot(hist, hist_edges)
+
+        return thresholds_dict
+
+    def compute_entropy(self):
         histogram_dict = self.histogram_dict
         num_quantized_bins = self.num_quantized_bins
 
         thresholds_dict = {} # per tensor thresholds
 
+        print("Number of tensors : {}".format(len(histogram_dict)))
+        print("Number of histogram bins : {} (The number may increase depends on the data it collects)".format(self.num_bins))
+        print("Number of quantized bins : {}".format(self.num_quantized_bins))
+
         for tensor, histogram in histogram_dict.items():
-            optimal_threshold = self.get_optimal_threshold(histogram, num_quantized_bins)
+            optimal_threshold = self.get_entropy_threshold(histogram, num_quantized_bins)
             thresholds_dict[tensor] = optimal_threshold
+
+            # Plot histogram for debug only
+            if False:
+                apply_plot(histogram[0], histogram[1])
 
         return thresholds_dict
 
-    def get_optimal_threshold(self, histogram, num_quantized_bins):
+    def get_entropy_threshold(self, histogram, num_quantized_bins):
+        """Given a dataset, find the optimal threshold for quantizing it.
+        The reference distribution is `q`, and the candidate distribution is `p`.
+        `q` is a truncated version of the original distribution.
+        Ref: http://on-demand.gputechconf.com/gtc/2017/presentation/s7310-8-bit-inference-with-tensorrt.pdf
+        """
         from scipy.stats import entropy
         import copy
 
-        hist, hist_edges, _, _, _ = histogram
+        hist = histogram[0]
+        hist_edges = histogram[1]
         num_bins = hist.size
         zero_bin_index = num_bins // 2
         num_half_quantized_bin = num_quantized_bins // 2
         
         kl_divergence = np.zeros(zero_bin_index - num_half_quantized_bin + 1)
         thresholds = [(0, 0) for i in range(kl_divergence.size)] 
+
+        # <------------ num bins ---------------->
+        #        <--- quantized bins ---->
+        # |======|===========|===========|=======|
+        #              zero bin index
+        #        ^                       ^
+        #        |                       |
+        #   start index               end index          (start of iteration)
+        #     ^                             ^
+        #     |                             |
+        #  start index                  end index               ...
+        # ^                                      ^
+        # |                                      |
+        # start index                    end index       (end of iteration)
 
         for i in range(num_half_quantized_bin, zero_bin_index + 1, 1):
             start_index = zero_bin_index - i 
@@ -514,10 +730,45 @@ class HistogramCollector(CalibrationDataCollector):
 def create_calibrator(model,
                       op_types_to_calibrate=[],
                       augmented_model_path='augmented_model.onnx',
-                      calibrate_method=CalibrationMethod.MinMax):
+                      calibrate_method=CalibrationMethod.MinMax,
+                      use_external_data_format=False,
+                      extra_options={}):
+
     if calibrate_method == CalibrationMethod.MinMax:
-        return MinMaxCalibrater(model, op_types_to_calibrate, augmented_model_path)
+        # default settings for min-max algorithm
+        symmetric = False if 'symmetric' not in extra_options else extra_options['symmetric']
+        moving_average = False if 'moving_average' not in extra_options else extra_options['moving_average']
+        averaging_constant = 0.01 if 'averaging_constant' not in extra_options else extra_options['averaging_constant']
+        return MinMaxCalibrater(
+            model, op_types_to_calibrate, augmented_model_path,
+            use_external_data_format=use_external_data_format,
+            symmetric=symmetric,
+            moving_average=moving_average,
+            averaging_constant=averaging_constant
+        )
     elif calibrate_method == CalibrationMethod.Entropy:
-        return EntropyCalibrater(model, op_types_to_calibrate, augmented_model_path)
+        # default settings for entropy algorithm
+        num_bins = 128 if 'num_bins' not in extra_options else extra_options['num_bins']
+        num_quantized_bins = 128 if 'num_quantized_bins' not in extra_options else extra_options['num_quantized_bins']
+        symmetric = False if 'symmetric' not in extra_options else extra_options['symmetric']
+        return EntropyCalibrater(
+            model, op_types_to_calibrate, augmented_model_path,
+            use_external_data_format=use_external_data_format,
+            symmetric=symmetric,
+            num_bins=num_bins,
+            num_quantized_bins=num_quantized_bins
+        )
+    elif calibrate_method == CalibrationMethod.Percentile:
+        # default settings for percentile algorithm
+        num_bins = 2048 if 'num_bins' not in extra_options else extra_options['num_bins']
+        percentile = 99.999 if 'percentile' not in extra_options else extra_options['percentile']
+        symmetric = True if 'symmetric' not in extra_options else extra_options['symmetric']
+        return PercentileCalibrater(
+            model, op_types_to_calibrate, augmented_model_path,
+            use_external_data_format=use_external_data_format,
+            symmetric=symmetric,
+            num_bins=num_bins,
+            percentile=percentile
+        )
 
     raise ValueError('Unsupported calibration method {}'.format(calibrate_method))

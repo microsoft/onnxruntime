@@ -33,6 +33,14 @@ tar -xzf Python-${CPYTHON_VERSION}.tgz
 pushd Python-${CPYTHON_VERSION}
 PREFIX="/opt/_internal/cpython-${CPYTHON_VERSION}"
 mkdir -p ${PREFIX}/lib
+if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ]; then
+	# The _ctypes stdlib module build started to fail with 3.10.0rc1
+	# No clue what changed exactly yet
+	# This workaround fixes the build
+	LIBFFI_INCLUDEDIR=$(pkg-config --cflags-only-I libffi  | tr -d '[:space:]')
+	LIBFFI_INCLUDEDIR=${LIBFFI_INCLUDEDIR:2}
+	cp ${LIBFFI_INCLUDEDIR}/ffi.h ${LIBFFI_INCLUDEDIR}/ffitarget.h /usr/include/
+fi
 # configure with hardening options only for the interpreter & stdlib C extensions
 # do not change the default for user built extension (yet?)
 ./configure \
@@ -41,14 +49,14 @@ mkdir -p ${PREFIX}/lib
 	--prefix=${PREFIX} --disable-shared --with-ensurepip=no > /dev/null
 make -j$(nproc) > /dev/null
 make install > /dev/null
+if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ]; then
+	rm -f /usr/include/ffi.h /usr/include/ffitarget.h
+fi
 popd
 rm -rf Python-${CPYTHON_VERSION} Python-${CPYTHON_VERSION}.tgz Python-${CPYTHON_VERSION}.tgz.asc
 
 # we don't need libpython*.a, and they're many megabytes
 find ${PREFIX} -name '*.a' -print0 | xargs -0 rm -f
-
-# We do not need the Python test suites
-find ${PREFIX} -depth \( -type d -a -name test -o -name tests \) | xargs rm -rf
 
 # We do not need precompiled .pyc and .pyo files.
 clean_pyc ${PREFIX}

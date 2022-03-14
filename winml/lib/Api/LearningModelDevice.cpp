@@ -1,7 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "pch.h"
+#include "lib/Api/pch/pch.h"
 #include "LearningModelDevice.h"
 
 #include <D3d11_4.h>
@@ -25,6 +25,7 @@ WINML_CATCH_ALL
 
 LearningModelDevice::LearningModelDevice(winml::LearningModelDeviceKind const& deviceKind) try : m_deviceCache(std::make_unique<_winml::D3DDeviceCache>(deviceKind)) {
   m_deviceKind = deviceKind;
+  telemetry_helper.SetLearningModelDeviceKind(static_cast<int>(deviceKind));
   m_isCpuDevice = m_deviceKind == LearningModelDeviceKind::Cpu || m_deviceKind == LearningModelDeviceKind::Default;
   if (m_isCpuDevice) {
     assert(m_deviceCache->GetD3D12Device() == nullptr);
@@ -100,7 +101,7 @@ LearningModelDevice::GetDeviceQueue() {
 
 STDMETHODIMP
 LearningModelDevice::SetMetacommandsEnabled(boolean enabled) {
-  m_areMetacommandsEnabled = enabled;
+  m_areMetacommandsEnabled = (enabled != 0);
   return S_OK;
 }
 
@@ -123,8 +124,8 @@ HRESULT __stdcall LearningModelDevice::CreateFromD3D12CommandQueue(
     ID3D12CommandQueue* queue,
     IUnknown** device) noexcept {
   try {
-    WINML_THROW_HR_IF_NULL_MSG(E_INVALIDARG, queue, "Failed to create LearningModelDevice. Ivalid argument queue.");
-    WINML_THROW_HR_IF_NULL_MSG(E_INVALIDARG, device, "Failed to create LearningModelDevice. Ivalid argument device.");
+    WINML_THROW_HR_IF_NULL_MSG(E_INVALIDARG, queue, "Failed to create LearningModelDevice. Invalid argument queue.");
+    WINML_THROW_HR_IF_NULL_MSG(E_INVALIDARG, device, "Failed to create LearningModelDevice. Invalid argument device.");
 
     auto machineLearningDevice = make<implementation::LearningModelDevice>(queue);
     *device = machineLearningDevice.as<IUnknown>().detach();

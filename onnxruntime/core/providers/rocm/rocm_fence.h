@@ -3,9 +3,7 @@
 
 #pragma once
 
-#include "core/framework/tensor.h"
-#include "core/graph/basic_types.h"
-#include "core/providers/rocm/rocm_common.h"
+#include "core/framework/fence.h"
 
 namespace onnxruntime {
 class GPUDataTransfer;
@@ -14,11 +12,11 @@ class ROCMFence : public IFence {
  public:
   ROCMFence(const GPUDataTransfer* data_transfer);
   virtual ~ROCMFence();
-  void BeforeUsingAsInput(onnxruntime::ProviderType provider_type, int queue_id) override;
-  void BeforeUsingAsOutput(onnxruntime::ProviderType provider_type, int queue_id) override;
-  void AfterUsedAsInput(int queue_id) override;
-  void AfterUsedAsOutput(int queue_id) override;
-  bool CanRelease() override;
+  virtual void BeforeUsingAsInput(onnxruntime::ProviderType provider_type, int queue_id) override;
+  virtual void BeforeUsingAsOutput(onnxruntime::ProviderType provider_type, int queue_id) override;
+  virtual void AfterUsedAsInput(int queue_id) override;
+  virtual void AfterUsedAsOutput(int queue_id) override;
+  virtual bool CanRelease() override;
 
  private:
   hipEvent_t read_event_;

@@ -8,15 +8,23 @@
 
 import unittest
 import os
-import onnxruntime
 import logging
 import coloredlogs
 import pytest
 
+from parity_utilities import find_transformers_source
+if find_transformers_source():
+    from benchmark_gpt2 import parse_arguments, main
+else:
+    from onnxruntime.transformers.benchmark_gpt2 import parse_arguments, main
+
 
 class TestGpt2(unittest.TestCase):
+    def setUp(self):
+        from onnxruntime import get_available_providers
+        self.test_cuda = 'CUDAExecutionProvider' in get_available_providers()
+
     def run_benchmark_gpt2(self, arguments: str):
-        from onnxruntime.transformers.benchmark_gpt2 import parse_arguments, main
         args = parse_arguments(arguments.split())
         csv_filename = main(args)
         self.assertTrue(os.path.exists(csv_filename))
@@ -27,7 +35,7 @@ class TestGpt2(unittest.TestCase):
 
     @pytest.mark.slow
     def test_gpt2_fp16(self):
-        if 'CUDAExecutionProvider' in onnxruntime.get_available_providers():
+        if self.test_cuda:
             self.run_benchmark_gpt2('-m gpt2 --precision fp16 -o -b 1 -s 128 --use_gpu')
 
     @pytest.mark.slow
@@ -40,7 +48,7 @@ class TestGpt2(unittest.TestCase):
 
     @pytest.mark.slow
     def test_gpt2_beam_search_step_fp16(self):
-        if 'CUDAExecutionProvider' in onnxruntime.get_available_providers():
+        if self.test_cuda:
             self.run_benchmark_gpt2(
                 '-m gpt2 --model_class=GPT2LMHeadModel_BeamSearchStep --precision fp16 -o -b 1 -s 128 --use_gpu')
 
@@ -55,7 +63,7 @@ class TestGpt2(unittest.TestCase):
 
     @pytest.mark.slow
     def test_gpt2_configurable_one_step_search_fp16(self):
-        if 'CUDAExecutionProvider' in onnxruntime.get_available_providers():
+        if self.test_cuda:
             self.run_benchmark_gpt2(
                 '-m gpt2 --model_class=GPT2LMHeadModel_ConfigurableOneStepSearch --precision fp16 -o -b 1 -s 128 --use_gpu'
             )
@@ -67,9 +75,6 @@ class TestGpt2(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    import sys
-    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-
     coloredlogs.install(fmt='%(message)s')
     logging.getLogger("transformers").setLevel(logging.ERROR)
     unittest.main()

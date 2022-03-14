@@ -33,12 +33,27 @@ const getExecutionMode = (executionMode: 'sequential'|'parallel'): number => {
   }
 };
 
+const appendDefaultOptions = (options: InferenceSession.SessionOptions): void => {
+  if (!options.extra) {
+    options.extra = {};
+  }
+  if (!options.extra.session) {
+    options.extra.session = {};
+  }
+  const session = options.extra.session as Record<string, string>;
+  if (!session.use_ort_model_bytes_directly) {
+    // eslint-disable-next-line camelcase
+    session.use_ort_model_bytes_directly = '1';
+  }
+};
+
 export const setSessionOptions = (options?: InferenceSession.SessionOptions): [number, number[]] => {
   const wasm = getInstance();
   let sessionOptionsHandle = 0;
   const allocs: number[] = [];
 
   const sessionOptions: InferenceSession.SessionOptions = options || {};
+  appendDefaultOptions(sessionOptions);
 
   try {
     if (options?.graphOptimizationLevel === undefined) {
@@ -78,12 +93,13 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
       throw new Error(`log verbosity level is not valid: ${options.logVerbosityLevel}`);
     }
 
-    // TODO: Support profiling
-    sessionOptions.enableProfiling = false;
+    if (options?.enableProfiling === undefined) {
+      sessionOptions.enableProfiling = false;
+    }
 
     sessionOptionsHandle = wasm._OrtCreateSessionOptions(
         graphOptimizationLevel, !!sessionOptions.enableCpuMemArena!, !!sessionOptions.enableMemPattern!, executionMode,
-        sessionOptions.enableProfiling, 0, logIdDataOffset, sessionOptions.logSeverityLevel!,
+        !!sessionOptions.enableProfiling!, 0, logIdDataOffset, sessionOptions.logSeverityLevel!,
         sessionOptions.logVerbosityLevel!);
     if (sessionOptionsHandle === 0) {
       throw new Error('Can\'t create session options');

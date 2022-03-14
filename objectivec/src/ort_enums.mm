@@ -5,7 +5,7 @@
 
 #include <algorithm>
 
-#include "onnxruntime_cxx_api.h"
+#import "src/cxx_api.h"
 
 namespace {
 

@@ -83,7 +83,7 @@ void GradientOpTester::Run(
     }
 
     // Hookup the inputs and outputs
-    std::unordered_map<std::string, MLValue> feeds;
+    std::unordered_map<std::string, OrtValue> feeds;
     std::vector<std::string> output_names;
     FillFeedsAndOutputNames(feeds, output_names, output_index_to_use_as_loss, data_index_of_output);
 
@@ -192,6 +192,12 @@ void GradientOpTester::Run(
 
           //if node is not registered for the provider, skip
           node.SetExecutionProviderType(provider_type);
+
+          // provider types that don't use the KernelRegistry
+          if (provider_type == onnxruntime::kDnnlExecutionProvider) {
+            continue;
+          }
+
           auto reg = execution_provider->GetKernelRegistry();
           const KernelCreateInfo* kci;
           auto st = reg->TryFindKernel(node, execution_provider->Type(), &kci);
@@ -238,7 +244,7 @@ void GradientOpTester::Run(
   }
 }
 
-void GradientOpTester::FillFeedsAndOutputNames(std::unordered_map<std::string, MLValue>& feeds,
+void GradientOpTester::FillFeedsAndOutputNames(std::unordered_map<std::string, OrtValue>& feeds,
                                                std::vector<std::string>& output_names,
                                                int output_index_to_use_as_loss,
                                                int data_index_of_output) {
@@ -264,7 +270,7 @@ void GradientOpTester::FillFeedsAndOutputNames(std::unordered_map<std::string, M
     if (output_index_to_use_as_loss == static_cast<int>(i)) {
       values[data_index_of_output] = 1.0;  //set only one value to one to construct jacobian matrix
     }
-    AddData<float>(gradient_data, (output_data_[i].def_.Name() + "_grad").c_str(), shape.GetDims(), values.data(), values.size(), true);
+    AddData<float>(gradient_data, (output_data_[i].def_.Name() + "_grad").c_str(), shape.AsShapeVector(), values.data(), values.size(), true);
   }
 
   for (size_t i = 0; i < gradient_data.size(); ++i) {

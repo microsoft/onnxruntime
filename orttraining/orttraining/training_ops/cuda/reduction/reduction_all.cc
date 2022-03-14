@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/reduction/reduction_all.h"
+#include "orttraining/training_ops/cuda/reduction/reduction_all_impl.h"
 
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/shared_inc/accumulation_type.h"
@@ -103,11 +104,9 @@ REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, float, float)
 REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, MLFloat16, float)
 REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, float, MLFloat16)
 REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, MLFloat16, MLFloat16)
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, BFloat16, float)
 REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, float, BFloat16)
 REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, BFloat16, BFloat16)
-#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

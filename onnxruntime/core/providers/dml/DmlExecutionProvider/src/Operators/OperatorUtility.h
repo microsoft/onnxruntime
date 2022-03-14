@@ -70,6 +70,8 @@ namespace Dml
         uint32_t index;
     };
 
+    std::optional<uint32_t> TryMapStringToIndex(std::string_view mode, gsl::span<const NameAndIndex> nameAndIndexList);
+
     template<typename T>
     std::optional<T> TryMapStringToIndex(std::string_view mode, gsl::span<const NameAndIndex> nameAndIndexList)
     {
@@ -77,8 +79,6 @@ namespace Dml
         auto result = TryMapStringToIndex(mode, nameAndIndexList);
         return *reinterpret_cast<std::optional<T>*>(std::addressof(result));
     }
-
-    std::optional<uint32_t> TryMapStringToIndex(std::string_view mode, gsl::span<const NameAndIndex> nameAndIndexList);
 
     DML_INTERPOLATION_MODE MapStringToInteropolationMode(std::string_view mode);
 

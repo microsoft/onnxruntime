@@ -89,35 +89,35 @@ static void RunLstmTest(const std::vector<float>& X_data,
     std::vector<int64_t> B_dims = {num_directions, 8 * hidden_size};
     test.AddInput<float>("B", B_dims, *B_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   if (sequence_lengths) {
     std::vector<int64_t> sequence_lens_dims{batch_size};
     test.AddInput<int>("sequence_lens", sequence_lens_dims, *sequence_lengths);
   } else {
-    test.AddMissingOptionalInput<int>();
+    test.AddOptionalInputEdge<int>();
   }
 
   if (initial_h_data && !initial_h_data->empty()) {
     std::vector<int64_t> initial_h_dims = {num_directions, batch_size, hidden_size};
     test.AddInput<float>("initial_h", initial_h_dims, *initial_h_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   if (initial_c_data && !initial_c_data->empty()) {
     std::vector<int64_t> initial_c_dims = {num_directions, batch_size, hidden_size};
     test.AddInput<float>("initial_c", initial_c_dims, *initial_c_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   if (P_data && !P_data->empty()) {
     std::vector<int64_t> P_dims = {num_directions, 3 * hidden_size};
     test.AddInput<float>("P", P_dims, *P_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   if (output_sequence != 0 && !Y_data.empty()) {
@@ -126,21 +126,21 @@ static void RunLstmTest(const std::vector<float>& X_data,
   } else {
     // add placeholder so node counts match as Y_h will always be the second Y_data,
     // so Y must exist as the first Y_data
-    test.AddMissingOptionalOutput<float>();
+    test.AddOptionalOutputEdge<float>();
   }
 
   if (!Y_h_data.empty()) {
     std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
     test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
   } else {
-    test.AddMissingOptionalOutput<float>();
+    test.AddOptionalOutputEdge<float>();
   }
 
   if (!Y_c_data.empty()) {
     std::vector<int64_t> Y_c_dims{num_directions, batch_size, hidden_size};
     test.AddOutput<float>("Y_c", Y_c_dims, Y_c_data);
   } else {
-    test.AddMissingOptionalOutput<float>();
+    test.AddOptionalOutputEdge<float>();
   }
 
   // TensorRT failed on LSTM tests
@@ -662,7 +662,7 @@ class LstmOpContext2x1x2x2 {
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMForwardPeepHole) {
   ///////////////Attributes////////////////////////
-  const int seq_len = 2, batch_size = 1;
+  constexpr int seq_len = 2, batch_size = 1;
 
   std::vector<float> input = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
   std::vector<float> Y_data = {-0.0251062475f, 0.0561261699f, -0.03277518f, 0.05935364f};
@@ -675,7 +675,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardPeepHole) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMBidirectionalBasic) {
-  const int seq_len = 2, batch_size = 1;
+  constexpr int seq_len = 2, batch_size = 1;
 
   std::vector<float> X_data = {-0.455351f, -0.276391f,
                                -0.185934f, -0.269585f};
@@ -693,7 +693,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMBidirectionalBasic) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMForwardNoBiasUsePeepholes) {
-  const int seq_len = 2, batch_size = 1;
+  constexpr int seq_len = 2, batch_size = 1;
 
   bool use_bias = false;
   bool use_peepholes = true;
@@ -711,7 +711,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardNoBiasUsePeepholes) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMForwardInputForget) {
-  const int seq_len = 2, batch_size = 1;
+  constexpr int seq_len = 2, batch_size = 1;
 
   bool use_bias = true;
   bool use_peepholes = true;
@@ -732,7 +732,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardInputForget) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMForwardClip) {
-  const int seq_len = 2, batch_size = 1;
+  constexpr int seq_len = 2, batch_size = 1;
 
   bool use_bias = true;
   bool use_peepholes = true;
@@ -751,7 +751,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardClip) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMBackward) {
-  const int seq_len = 2, batch_size = 1;
+  constexpr int seq_len = 2, batch_size = 1;
 
   std::vector<float> X_data = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
 
@@ -765,7 +765,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMBackward) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMBackward_gpu) {
-  const int seq_len = 2, batch_size = 1;
+  constexpr int seq_len = 2, batch_size = 1;
 
   std::vector<float> X_data = {-0.455351f, -0.276391f, -0.185934f, -0.269585f};
 
@@ -780,7 +780,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMBackward_gpu) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMForwardHiddenState) {
-  const int seq_len = 2, batch_size = 1;
+  constexpr int seq_len = 2, batch_size = 1;
 
   bool use_bias = true;
   bool use_peepholes = false;
@@ -799,7 +799,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardHiddenState) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMForwardCellState) {
-  const int seq_len = 2, batch_size = 1;
+  constexpr int seq_len = 2, batch_size = 1;
 
   bool use_bias = true;
   bool use_peepholes = false;
@@ -819,7 +819,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMForwardCellState) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMActivation) {
-  const int seq_len = 2, batch_size = 1;
+  constexpr int seq_len = 2, batch_size = 1;
 
   std::vector<std::string> activations = {"tanh", "sigmoid", "tanh"};
 
@@ -844,10 +844,10 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMActivation) {
 // The reallocation doesn't apply any more so this mainly tests larger batches with non-default activations.
 TEST(LSTMTest, ONNXRuntime_TestLSTMBatchReallocation) {
   ///////////////Attributes////////////////////////
-  const int seq_len = 2;
+  constexpr int seq_len = 2;
   int batch_size = 1;
-  bool use_bias = true;
-  bool use_peepholes = false;
+  constexpr bool use_bias = true;
+  constexpr bool use_peepholes = false;
 
   std::vector<std::string> activations = {"tanh", "sigmoid", "tanh"};
 
@@ -903,7 +903,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMBatchReallocation) {
 // Most of these aren't relevant anymore as we don't re-use buffers given Compute is stateless.
 // It does test a batch > 1 with bidirectional output and custom activations though.
 TEST(LSTMTest, ONNXRuntime_TestLSTMOutputWrite) {
-  const int seq_len = 2;
+  constexpr int seq_len = 2;
   int batch_size = 1;
   std::vector<std::string> activations = {"tanh", "sigmoid", "tanh", "tanh", "sigmoid", "tanh"};
 
@@ -975,7 +975,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMOutputWrite) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthAllZeros) {
-  const int seq_len = 2;
+  constexpr int seq_len = 2;
   int batch_size = 2;
   std::vector<std::string> activations = {"tanh", "sigmoid", "tanh", "tanh", "sigmoid", "tanh"};
 
@@ -1019,7 +1019,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthAllZeros) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthPartialZeros) {
-  const int seq_len = 2;
+  constexpr int seq_len = 2;
   int batch_size = 2;
   std::vector<std::string> activations = {"tanh", "sigmoid", "tanh", "tanh", "sigmoid", "tanh"};
 
@@ -1065,8 +1065,8 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthPartialZeros) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLength) {
-  const int seq_len = 2;
-  const int batch_size = 1;
+  constexpr int seq_len = 2;
+  constexpr int batch_size = 1;
 
   std::vector<float> X_data = {-0.455351f, -0.276391f,
                                -0.185934f, -0.269585f};
@@ -1095,8 +1095,8 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLength)
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLengthNoP) {
-  const int seq_len = 2;
-  const int batch_size = 1;
+  constexpr int seq_len = 2;
+  constexpr int batch_size = 1;
 
   std::vector<float> X_data = {-0.455351f, -0.276391f,
                                -0.185934f, -0.269585f};
@@ -1126,7 +1126,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMSequenceLengthShorterThanInputSequenceLengthN
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMShorterSeqInMiddle) {
-  const int seq_len = 2;
+  constexpr int seq_len = 2;
   int batch_size = 3;
   std::vector<std::string> activations = {"sigmoid", "tanh", "tanh", "sigmoid", "tanh", "tanh"};
 
@@ -1166,7 +1166,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMShorterSeqInMiddle) {
 }
 
 TEST(LSTMTest, ONNXRuntime_TestLSTMZeroSeqInMiddle) {
-  const int seq_len = 2;
+  constexpr int seq_len = 2;
   int batch_size = 4;
   std::vector<std::string> activations = {"sigmoid", "tanh", "tanh", "sigmoid", "tanh", "tanh"};
 
@@ -1249,46 +1249,38 @@ TEST(LSTMTest, SharedPrepackedWeights) {
   test.AddInput<float>("R", R_dims, R_data, true);  // Trigger pre-packing
 
   // B data
-  test.AddMissingOptionalInput<float>();
+  test.AddOptionalInputEdge<float>();
 
   // sequence
-  test.AddMissingOptionalInput<int>();
+  test.AddOptionalInputEdge<int>();
 
   // initial_h
-  test.AddMissingOptionalInput<float>();
+  test.AddOptionalInputEdge<float>();
 
   // initial_c
-  test.AddMissingOptionalInput<float>();
+  test.AddOptionalInputEdge<float>();
 
   // P_data
-  test.AddMissingOptionalInput<float>();
+  test.AddOptionalInputEdge<float>();
 
   std::vector<int64_t> Y_dims = {seq_length, num_directions, batch_size, hidden_size};
   test.AddOutput<float>("Y", Y_dims, Y_data);
 
   // Y_h
-  test.AddMissingOptionalOutput<float>();
+  test.AddOptionalOutputEdge<float>();
 
   // Y_c
-  test.AddMissingOptionalOutput<float>();
+  test.AddOptionalOutputEdge<float>();
 
   // W
-  auto W_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape(W_dims),
-                                           W_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
-
   OrtValue W;
-
-  W.Init(W_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-         DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(W_dims),
+                       W_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), W);
 
   // R
-  auto R_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape(R_dims),
-                                           R_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
-
   OrtValue R;
-
-  R.Init(R_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-         DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(R_dims),
+                       R_data.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), R);
 
   SessionOptions so;
 

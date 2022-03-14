@@ -95,18 +95,8 @@ export class ExecutionPlan {
             `Runing op:${thisOp.node.name} (${
                 inputTensors.map((t, i) => `'${thisOp.node.inputs[i]}': ${t.type}[${t.dims.join(',')}]`).join(', ')})`);
 
-        const execNodeFn = async () => {
-          const op = thisOp.op;
-          if (!op.checkInputs(inputTensors)) {
-            throw new Error(`invalid inputs detected; op: ${thisOp.node.name}`);
-          }
-
-          const result = op.run(inferenceHandler, inputTensors);
-
-          return result;
-        };
-
-        const outputList = await this.profiler.event('node', thisOp.node.name, execNodeFn);
+        const outputList = await this.profiler.event(
+            'node', thisOp.node.name, async () => thisOp.op.impl(inferenceHandler, inputTensors, thisOp.op.context));
 
         // check output
         if (outputList.length !== thisOp.node.outputs.length) {
@@ -144,15 +134,20 @@ export class ExecutionPlan {
       }
 
       const output: Tensor[] = [];
-      this.graph.getOutputIndices().forEach((outputIndex) => {
-        const thisValue = this._values[outputIndex];
-        if (thisValue === undefined) {
+      for (let i = 0; i < this.graph.getOutputIndices().length; i++) {
+        const outputIndex = this.graph.getOutputIndices()[i];
+        const outputTensor = this._values[outputIndex];
+        if (outputTensor === undefined) {
           throw new Error(`required output [${outputIndex}] does not have value`);
         }
-        // eslint-disable-next-line no-unused-expressions
-        thisValue.data;
-        output.push(thisValue);
-      });
+        if (outputIndex === 0) {
+          await outputTensor.getData();
+        } else {
+          // eslint-disable-next-line no-unused-expressions
+          outputTensor.data;
+        }
+        output.push(outputTensor);
+      }
       Logger.verbose('ExecPlan', 'disposing of inferenceHandler');
       inferenceHandler.dispose();
       return output;

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "pch.h"
+#include "dll/pch.h"
 #include <windows.h>
 #include <Hstring.h>
 #include "LearningModelDevice.h"
@@ -13,6 +13,8 @@
 #include "LearningModelOperator.h"
 #include "LearningModelSessionOptionsExperimental.h"
 #include "LearningModelSessionExperimental.h"
+#include "LearningModelExperimental.h"
+#include "LearningModelJoinOptions.h"
 
 #define STRINGIFY(x) #x
 #define XSTRINGIFY(x) STRINGIFY(x)
@@ -116,6 +118,20 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
       return 0;
     }
 
+    std::wostringstream learning_model_experimental_class;
+    learning_model_experimental_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelExperimental";
+    if (requal(name, learning_model_experimental_class.str())) {
+      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelExperimental>());
+      return 0;
+    }
+
+    std::wostringstream learning_model_join_options_class;
+    learning_model_join_options_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelJoinOptions";
+    if (requal(name, learning_model_join_options_class.str())) {
+      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelJoinOptions>());
+      return 0;
+    }
+
     return winrt::hresult_class_not_available(name).to_abi();
   } catch (...) {
     return winrt::to_hresult();
@@ -133,4 +149,13 @@ STDAPI DllGetActivationFactory(HSTRING classId, void** factory) {
 #endif
 
   return ret;
+}
+
+// LoadLibraryW isn't support on Windows 8.1. This is a workaround so that CppWinRT calls this function for loading libraries
+void* __stdcall WINRT_IMPL_LoadLibraryW(wchar_t const* name) noexcept {
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+  return LoadLibraryExW(name, nullptr, 0);
+#else
+  return LoadPackagedLibrary(name, 0);
+#endif
 }

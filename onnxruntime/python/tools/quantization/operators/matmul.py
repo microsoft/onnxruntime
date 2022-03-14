@@ -1,5 +1,7 @@
 import onnx
+import itertools
 from .base_operator import QuantOperatorBase
+from .qdq_base_operator import QDQOperatorBase
 from ..quant_utils import find_by_name, get_mul_node, QuantizedValue, QuantizedValueType
 from onnx import onnx_pb as onnx_proto
 '''
@@ -67,13 +69,10 @@ class QLinearMatMul(QuantOperatorBase):
 
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
             self.quantizer.quantize_inputs(node, [0, 1], reduce_range=True, op_level_per_channel=True)
-
         data_found, output_scale_name, output_zp_name, _, _ = \
             self.quantizer._get_quantization_params(node.output[0])
-
-        if not data_found:
-            raise ValueError("Quantization parameters for output:\"{}\" of node:\"{}\" not specified".format(
-                node.output[0], node.name))
+        if not data_found or quantized_input_names is None:
+            return super().quantize()
 
         qlinear_matmul_output = node.output[0] + "_quantized"
         qlinear_matmul_name = node.name + "_quant" if node.name != "" else ""
@@ -101,3 +100,24 @@ class QLinearMatMul(QuantOperatorBase):
         self.quantizer.quantized_value_map[node.output[0]] = q_output
 
         self.quantizer.new_nodes += nodes
+
+class QDQMatMul(QDQOperatorBase):
+    def __init__(self, onnx_quantizer, onnx_node):
+        super().__init__(onnx_quantizer, onnx_node)
+
+    def quantize(self):
+        node = self.node
+        assert (node.op_type == "MatMul")
+
+        if self.disable_qdq_for_node_output:
+            nodes_to_iterate = node.input
+        else:
+            nodes_to_iterate = itertools.chain(node.input, node.output)
+
+        for tensor_name in nodes_to_iterate:
+            # only support per-channel quantization on weight
+            if self.quantizer.is_per_channel() and find_by_name(tensor_name, self.quantizer.model.initializer()) :
+                channel_axis = self.quantizer.qdq_op_type_per_channel_support_to_axis.get(node.op_type, 1)
+                self.quantizer.quantize_tensor_per_channel(tensor_name, channel_axis)
+            else:
+                self.quantizer.quantize_tensor(tensor_name)

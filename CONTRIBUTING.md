@@ -38,7 +38,7 @@ For making changes to the Windows Machine Learning WinRT API, please label your 
 * A feature can be implemented by you, the ONNX Runtime team, or other community members.  Code contributions are greatly appreciated: feel free to work on any reviewed feature you proposed, or choose one in the backlog and send us a PR. If you are new to the project and want to work on an existing issue, we recommend starting with issues that are tagged with “good first issue”. Please let us know in the issue comments if you are actively working on implementing a feature so we can ensure it's assigned to you.  
 * Unit tests: New code *must* be accompanied by unit tests.
 * Documentation and sample updates: If the PR affects any of the documentation or samples then include those updates in the same PR.
-* Build instructions are [here](https://www.onnxruntime.ai/docs/how-to/build.html).
+* Build instructions are [here](https://onnxruntime.ai/docs/how-to/build/).
 * Checkin Procedure:  Once a feature is complete and tested according to the contribution guidelines follow these steps:
    * Fork the repo
    * git clone your fork

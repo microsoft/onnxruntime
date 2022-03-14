@@ -435,7 +435,7 @@ $Mode.OutputRemaining1x$Rows.Block
 ;
 ;   ldc (x7) - Supplies the first dimension of matrix C.
 ;
-;   Alpha (s0) - Supplies the scaler multiplier (see SGEMM definition).
+;   Alpha (s0) - Supplies the scalar multiplier (see SGEMM definition).
 ;
 ; Return Value:
 ;

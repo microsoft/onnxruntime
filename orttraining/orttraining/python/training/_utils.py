@@ -189,10 +189,14 @@ def static_vars(**kwargs):
 def import_module_from_file(file_path, module_name=None):
     '''Import a Python module from a file into interpreter'''
 
-    assert isinstance(file_path, str) and os.path.exists(file_path),\
-        "'file_path' must be a full path string with the python file to load"
-    assert module_name is None or isinstance(module_name, str) and module_name,\
-        "'module_name' must be a string with the python module name to load"
+    if not isinstance(file_path, str) or not os.path.exists(file_path):
+        raise AssertionError(
+            "'file_path' must be a full path string with the python file to load. "
+            "file_path=%r." % (file_path, ))
+    if module_name is not None and (not isinstance(module_name, str) or not module_name):
+        raise AssertionError(
+            "'module_name' must be a string with the python module name to load. "
+            "module_name=%r." % (module_name, ))
 
     if not module_name:
         module_name = os.path.basename(file_path).split('.')[0]

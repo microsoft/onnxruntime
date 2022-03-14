@@ -27,6 +27,10 @@ class InferenceSessionWrapper : public InferenceSession {
   const SessionState& GetSessionState() const {
     return InferenceSession::GetSessionState();
   }
+
+  const Model& GetModel() const {
+    return *model_;
+  }
 };
 
 }  // namespace test

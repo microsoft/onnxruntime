@@ -77,9 +77,7 @@ def create_backend_test(testname=None):
 
         if c2.supports_device('MIGRAPHX'):
             current_failing_tests += [
-                '^test_constant_pad_cpu', '^test_softmax_axis_1_cpu', '^test_softmax_axis_0_cpu',
-                '^test_softmax_default_axis_cpu', '^test_round_cpu', '^test_lrn_default_cpu', '^test_lrn_cpu',
-                '^test_logsoftmax_axis_0_cpu', '^test_logsoftmax_axis_1_cpu', '^test_logsoftmax_default_axis_cpu',
+                '^test_constant_pad_cpu', '^test_round_cpu', '^test_lrn_default_cpu', '^test_lrn_cpu',
                 '^test_dynamicquantizelinear_expanded_cpu', '^test_dynamicquantizelinear_max_adjusted_cpu',
                 '^test_dynamicquantizelinear_max_adjusted_expanded_cpu', '^test_dynamicquantizelinear_min_adjusted_cpu',
                 '^test_dynamicquantizelinear_min_adjusted_expanded_cpu',
@@ -88,7 +86,20 @@ def create_backend_test(testname=None):
                 '^test_operator_symbolic_override_nested_cpu',
                 '^test_negative_log_likelihood_loss',
                 '^test_softmax_cross_entropy',
-                '^test_greater_equal', '^test_less_equal'
+                '^test_greater_equal', 
+                '^test_if_seq_cpu',
+                '^test_loop11_cpu',
+                '^test_loop13_seq_cpu',
+                '^test_sequence_insert_at_back_cpu',
+                '^test_sequence_insert_at_front_cpu',
+                '^test_nonmaxsuppression_two_classes_cpu',
+                '^test_nonmaxsuppression_two_batches_cpu',
+                '^test_nonmaxsuppression_suppress_by_IOU_cpu',
+                '^test_nonmaxsuppression_suppress_by_IOU_and_scores_cpu',
+                '^test_nonmaxsuppression_limit_output_size_cpu',
+                '^test_nonmaxsuppression_identical_boxes_cpu',
+                '^test_nonmaxsuppression_flipped_coordinates_cpu',
+                '^test_nonmaxsuppression_center_point_box_format_cpu'
             ]
 
         # Skip these tests for a "pure" DML onnxruntime python wheel. We keep these tests enabled for instances where both DML and CUDA
@@ -103,6 +114,7 @@ def create_backend_test(testname=None):
                 '^test_softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_log_prob_cpu',
                 '^test_softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_log_prob_expanded_cpu',
                 '^test_asin_example_cpu',
+                '^test_dynamicquantizelinear_cpu',
                 '^test_dynamicquantizelinear_expanded_cpu',
                 '^test_resize_downsample_scales_linear_cpu',
                 '^test_resize_downsample_sizes_linear_pytorch_half_pixel_cpu',
@@ -119,6 +131,9 @@ def create_backend_test(testname=None):
 
         backend_test.exclude('(' + '|'.join(filters) + ')')
         print('excluded tests:', filters)
+
+        # exclude TRT EP temporarily and only test CUDA EP to retain previous behavior 
+        os.environ["ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS"] = "TensorrtExecutionProvider"
 
     # import all test cases at global scope to make
     # them visible to python.unittest.

@@ -51,7 +51,7 @@ class ConvInteger(QuantOperatorBase):
         assert (node.op_type == "Conv")
 
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
-            self.quantizer.quantize_inputs(node, [0, 1])
+            self.quantizer.quantize_inputs(node, [0, 1], reduce_range=self.quantizer.reduce_range)
 
         conv_integer_output = node.output[0] + "_output_quantized"
         conv_integer_name = node.name + "_quant" if node.name != "" else ""
@@ -106,9 +106,12 @@ class QLinearConv(QuantOperatorBase):
         node = self.node
         assert (node.op_type == "Conv")
 
+        data_found, output_scale_name, output_zp_name, _, _ = \
+            self.quantizer._get_quantization_params(node.output[0])
+
         if self.quantizer.is_input_a_weight(node.input[1]) and self.quantizer.is_per_channel():
             (quantized_input_names, zero_point_names, scale_names, nodes) = \
-                self.quantizer.quantize_inputs(node, [0])
+                self.quantizer.quantize_inputs(node, [0], reduce_range=self.quantizer.reduce_range)
             quant_weight_tuple = self.quantizer.quantize_weight_per_channel(node.input[1], onnx_proto.TensorProto.INT8,
                                                                             0)
             quantized_input_names.append(quant_weight_tuple[0])
@@ -116,19 +119,16 @@ class QLinearConv(QuantOperatorBase):
             scale_names.append(quant_weight_tuple[2])
         else:
             (quantized_input_names, zero_point_names, scale_names, nodes) = \
-                self.quantizer.quantize_inputs(node, [0, 1])
+                self.quantizer.quantize_inputs(node, [0, 1], reduce_range=self.quantizer.reduce_range)
+
+        if not data_found or quantized_input_names is None:
+            return super().quantize()
 
         quantized_bias_name = ""
         bias_present = False
         if len(node.input) == 3:
             quantized_bias_name = self.quantizer.quantize_bias_static(node.input[2], node.input[0], node.input[1])
             bias_present = True
-        data_found, output_scale_name, output_zp_name, _, _ = \
-            self.quantizer._get_quantization_params(node.output[0])
-
-        if not data_found:
-            raise ValueError("Quantization parameters for output:\"{}\" of node:\"{}\" not specified".format(
-                node.output[0], node.name))
 
         qlinear_conv_output = node.output[0] + "_quantized"
         qlinear_conv_name = qlinear_conv_name = node.name + "_quant" if node.name != "" else ""
@@ -174,6 +174,9 @@ class QDQConv(QDQOperatorBase):
         assert (node.op_type == "Conv")
 
         self.quantizer.quantize_tensor(node.input[0])
+        if not self.disable_qdq_for_node_output:
+            self.quantizer.quantize_tensor(node.output[0])
+
         if self.quantizer.is_per_channel():
             self.quantizer.quantize_tensor_per_channel(node.input[1], 0)
         else:

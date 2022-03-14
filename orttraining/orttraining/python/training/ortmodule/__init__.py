@@ -4,59 +4,114 @@
 # --------------------------------------------------------------------------
 
 import os
+import sys
+import warnings
+import torch
 from packaging import version
+
+from onnxruntime import set_seed
+from onnxruntime.capi import build_and_package_info as ort_info
+from ._fallback import (_FallbackPolicy,
+                        ORTModuleFallbackException,
+                        ORTModuleInitException,
+                        wrap_exception)
+from .torch_cpp_extensions import is_installed as is_torch_cpp_extensions_installed
+
+
+def _defined_from_envvar(name, default_value, warn=True):
+    new_value = os.getenv(name, None)
+    if new_value is None:
+        return default_value
+    try:
+        new_value = type(default_value)(new_value)
+    except (TypeError, ValueError) as e:
+        if warn:
+            warnings.warn(
+                "Unable to overwrite constant %r due to %r." % (name, e))
+        return default_value
+    return new_value
+
 
 ################################################################################
 # All global constant goes here, before ORTModule is imported ##################
+# NOTE: To *change* values in runtime, import onnxruntime.training.ortmodule and
+# assign them new values. Importing them directly do not propagate changes.
 ################################################################################
-ONNX_OPSET_VERSION = 12
-MINIMUM_TORCH_VERSION_STR = '1.8.1'
+ONNX_OPSET_VERSION = 14
+MINIMUM_RUNTIME_PYTORCH_VERSION_STR = '1.8.1'
+ORTMODULE_TORCH_CPP_DIR = os.path.join(os.path.dirname(__file__), 'torch_cpp_extensions')
+_FALLBACK_INIT_EXCEPTION = None
+ORTMODULE_FALLBACK_POLICY = _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE |\
+                            _FallbackPolicy.FALLBACK_UNSUPPORTED_DATA |\
+                            _FallbackPolicy.FALLBACK_UNSUPPORTED_TORCH_MODEL |\
+                            _FallbackPolicy.FALLBACK_UNSUPPORTED_ONNX_MODEL
+ORTMODULE_FALLBACK_RETRY = False
+ORTMODULE_IS_DETERMINISTIC = torch.are_deterministic_algorithms_enabled()
 
-# Use one of the available directories as Torch CPP extension in the following order:
-#    1) Path at listed at TORCH_EXTENSIONS_DIR environment variable
-#    2) Default Python package dir
-#    3) <Home directory>/.cache
-home_dir = os.path.expanduser("~")
-python_package_dir = os.path.dirname(__file__)
-torch_extensions_dir = os.environ.get('TORCH_EXTENSIONS_DIR')
+ONNXRUNTIME_CUDA_VERSION = ort_info.cuda_version if hasattr(ort_info, 'cuda_version') else None
+ONNXRUNTIME_ROCM_VERSION = ort_info.rocm_version if hasattr(ort_info, 'rocm_version') else None
 
-TORCH_CPP_BUILD_DIR = os.path.join(python_package_dir,'torch_inline_extensions')
-TORCH_CPP_BUILD_DIR_BACKUP = os.path.join(home_dir, '.cache', 'torch_ort_extensions')
-
-if torch_extensions_dir is not None and os.access(torch_extensions_dir, os.X_OK | os.W_OK):
-    TORCH_CPP_BUILD_DIR = torch_extensions_dir
-elif not os.access(python_package_dir, os.X_OK | os.W_OK):
-    if os.access(home_dir, os.X_OK | os.W_OK):
-        TORCH_CPP_BUILD_DIR = TORCH_CPP_BUILD_DIR_BACKUP
-    else:
-        extra_message = ''
-        if torch_extensions_dir:
-            extra_message = 'or the path pointed by the TORCH_EXTENSIONS_DIR environment variable '
-        raise PermissionError('ORTModule could not find a writable directory to cache its internal files.',
-                              f'Make {python_package_dir} or {home_dir} {extra_message}writable and try again.')
-
-# Check whether Torch C++ extension compilation was aborted in previous runs
-if not os.path.exists(TORCH_CPP_BUILD_DIR):
-    os.makedirs(TORCH_CPP_BUILD_DIR, exist_ok = True)
-elif os.path.exists(os.path.join(TORCH_CPP_BUILD_DIR,'lock')):
-    print("WARNING: ORTModule detected PyTorch's CPP extension lock file during initialization, "
-          "which can cause the script to stop responding. "
-          f"Delete {os.path.join(TORCH_CPP_BUILD_DIR,'lock')} if a hang occurs.")
-
-# Verify proper PyTorch is installed before proceding to ONNX Runtime initialization
+# Verify minimum PyTorch version is installed before proceding to ONNX Runtime initialization
 try:
     import torch
-    torch_version = version.parse(torch.__version__.split('+')[0])
-    minimum_torch_version = version.parse(MINIMUM_TORCH_VERSION_STR)
-    if torch_version < minimum_torch_version:
-        raise RuntimeError(
-            f'ONNX Runtime ORTModule frontend requires PyTorch version greater or equal to {MINIMUM_TORCH_VERSION_STR}, '
-            f'but version {torch.__version__} was found instead.')
-except:
-    raise(f'PyTorch {MINIMUM_TORCH_VERSION_STR} must be installed in order to run ONNX Runtime ORTModule frontend!')
+    runtime_pytorch_version = version.parse(torch.__version__.split('+')[0])
+    minimum_runtime_pytorch_version = version.parse(MINIMUM_RUNTIME_PYTORCH_VERSION_STR)
+    if runtime_pytorch_version < minimum_runtime_pytorch_version:
+        raise wrap_exception(ORTModuleInitException,
+                             RuntimeError(
+                                 'ONNX Runtime ORTModule frontend requires PyTorch version greater'
+                                 f' or equal to {MINIMUM_RUNTIME_PYTORCH_VERSION_STR},'
+                                 f' but version {torch.__version__} was found instead.'))
+except ORTModuleFallbackException as e:
+    # Initialization fallback is handled at ORTModule.__init__
+    _FALLBACK_INIT_EXCEPTION = e
+except ImportError as e:
+    raise RuntimeError(f'PyTorch {MINIMUM_RUNTIME_PYTORCH_VERSION_STR} must be '
+                       'installed in order to run ONNX Runtime ORTModule frontend!') from e
 
-from ._custom_autograd_function import enable_custom_autograd_support
-enable_custom_autograd_support()
+# Verify whether PyTorch C++ extensions are already compiled
+# TODO: detect when installed extensions are outdated and need reinstallation. Hash? Version file?
+if not is_torch_cpp_extensions_installed(ORTMODULE_TORCH_CPP_DIR) and '-m' not in sys.argv:
+    _FALLBACK_INIT_EXCEPTION = wrap_exception(
+        ORTModuleInitException,
+        RuntimeError(
+            f"ORTModule's extensions were not detected at '{ORTMODULE_TORCH_CPP_DIR}' folder. "
+            "Run `python -m torch_ort.configure` before using `ORTModule` frontend."))
+
+# Initalized ORT's random seed with pytorch's initial seed
+# in case user has set pytorch seed before importing ORTModule
+set_seed((torch.initial_seed() % sys.maxsize))
+
+
+# Override torch.manual_seed and torch.cuda.manual_seed
+def override_torch_manual_seed(seed):
+    set_seed(int(seed % sys.maxsize))
+    return torch_manual_seed(seed)
+
+
+torch_manual_seed = torch.manual_seed
+torch.manual_seed = override_torch_manual_seed
+
+
+def override_torch_cuda_manual_seed(seed):
+    set_seed(int(seed % sys.maxsize))
+    return torch_cuda_manual_seed(seed)
+
+
+torch_cuda_manual_seed = torch.cuda.manual_seed
+torch.cuda.manual_seed = override_torch_cuda_manual_seed
+
+
+def _use_deterministic_algorithms(enabled):
+    global ORTMODULE_IS_DETERMINISTIC
+    ORTMODULE_IS_DETERMINISTIC = enabled
+
+
+def _are_deterministic_algorithms_enabled():
+    global ORTMODULE_IS_DETERMINISTIC
+    return ORTMODULE_IS_DETERMINISTIC
+
 
 # ORTModule must be loaded only after all validation passes
-from .ortmodule import ORTModule
+from .ortmodule import ORTModule  # noqa: E402
+from .debug_options import DebugOptions, LogLevel  # noqa: E402

@@ -73,7 +73,7 @@ struct AllocPlanPerValue {
   ProgramCounter program_counter;
 
  public:
-  AllocPlanPerValue() : location(CPU, Invalid) {}
+  AllocPlanPerValue() : location(CPU, OrtInvalidAllocator) {}
 };
 
 // SequentialExecutionPlan: This is the data that is produced by a static

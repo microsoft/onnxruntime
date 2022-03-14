@@ -77,7 +77,7 @@ enum class ApplicableMatrixReduction {
  */
 ApplicableMatrixReduction get_applicable_matrix_reduction(
     const cudnnReduceTensorOp_t cudnn_reduce_op,
-    const std::vector<int64_t>& dims, const std::vector<int64_t>& axes,
+    gsl::span<const int64_t> dims, gsl::span<const int64_t> axes,
     int& m, int& n);
 
 /**
@@ -102,6 +102,10 @@ Status reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* output, i
  */
 template <typename TIn, typename TOut>
 Status reduce_matrix_columns(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size);
+
+/** Apply unary elementwise division. */
+template <typename T>
+void UnaryDiv(cudaStream_t stream, const T* input, T* output, T denominator, size_t count);
 
 }  // namespace cuda
 }  // namespace onnxruntime

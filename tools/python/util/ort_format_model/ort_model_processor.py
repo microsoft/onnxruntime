@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import ort_flatbuffers_py.experimental.fbs as fbs
+import ort_flatbuffers_py.fbs as fbs
 from .operator_type_usage_processors import OperatorTypeUsageManager
 
 

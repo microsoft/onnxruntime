@@ -14,7 +14,8 @@ TEST(DequantizeLinearOpTest, Uint8) {
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddInput<uint8_t>("x_zero_point", {}, {128});
   test.AddOutput<float>("y", dims, {-256.0f, -250.0f, 0.0f, 254.0f});
-  test.Run();
+  //Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // scalar zero & scale with int8
@@ -25,7 +26,8 @@ TEST(DequantizeLinearOpTest, Int8) {
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddInput<int8_t>("x_zero_point", {}, {-10});
   test.AddOutput<float>("y", dims, {-40.0f, 14.0f, 220.0f, 274.0f});
-  test.Run();
+  //Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // scalar zero & scale with int8
@@ -62,7 +64,8 @@ TEST(DequantizeLinearOpTest, Scalar) {
   test.AddInput<float>("x_scale", {}, {2.0f});
   test.AddInput<int8_t>("x_zero_point", {}, {-10});
   test.AddOutput<float>("y", {}, {220.0f});
-  test.Run();
+  //Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 0.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // dequantize without zero point
@@ -116,7 +119,8 @@ TEST(DequantizeLinearOpTest, Per_Channel_Axis_Default) {
 
                          42, 42, -7, 7,
                          21, 21, -7, 28});
-  test.Run();
+  //Disable Tensorrt EP due to the non-zero zero_point.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // 1d zero & scale with uint8 broadcast axis 0
@@ -158,7 +162,8 @@ TEST(DequantizeLinearOpTest, Per_Channel_Axis_1_int8) {
                         {0, 22, 88, 264,
                          0, 24, 96, 288,
                          0, 40, 160, 480});
-  test.Run();
+  //Disable Tensorrt EP due to the non-zero zero_point.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // 1d zero & scale with int32 broadcast axis 1
@@ -176,7 +181,8 @@ TEST(DequantizeLinearOpTest, Per_Channel_Axis_1_int32) {
                         {0, 2, 8, 24,
                          0, 4, 16, 48,
                          0, 20, 80, 240});
-  test.Run();
+  //Disable Tensorrt EP due to error, only activation types allowed as input to this layer.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // 1d zero & scale with uint8 broadcast axis -2 (-2 resolves to axis 0)
@@ -222,7 +228,8 @@ TEST(QuantizeLinearOpTest, Int8) {
   test.AddInput<float>("y_scale", {}, {.039215686f});
   test.AddInput<int8_t>("y_zero_point", {}, {0});
   test.AddOutput<int8_t>("y", dims, {0, 51, 76, 127, -51, -127});
-  test.Run();
+  //Disable Tensorrt EP due to the error, out of bounds channel axis 1. Number of input dimensions is 1.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // quantize with scalar zero point and scale
@@ -233,7 +240,8 @@ TEST(QuantizeLinearOpTest, Int8_NegativeZeroPoint) {
   test.AddInput<float>("y_scale", {}, {.039215686f});
   test.AddInput<int8_t>("y_zero_point", {}, {-23});
   test.AddOutput<int8_t>("y", dims, {-23, 28, 53, 104, 127, -74, -128, -128});
-  test.Run();
+  //Disable Tensorrt EP due to the error, node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // quantize with scalar zero point and scale
@@ -244,7 +252,8 @@ TEST(QuantizeLinearOpTest, Int8_PositiveZeroPoint) {
   test.AddInput<float>("y_scale", {}, {.039215686f});
   test.AddInput<int8_t>("y_zero_point", {}, {23});
   test.AddOutput<int8_t>("y", dims, {23, 74, 99, 127, 127, -28, -104, -128});
-  test.Run();
+  //Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 // quantize with 2D data

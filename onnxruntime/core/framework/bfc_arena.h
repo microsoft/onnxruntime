@@ -28,8 +28,8 @@ limitations under the License.
 #include "core/common/safeint.h"
 
 #include "core/platform/ort_mutex.h"
-#include "core/framework/arena.h"
 #include "core/framework/arena_extend_strategy.h"
+#include "core/framework/allocator.h"
 
 #if defined(PLATFORM_WINDOWS)
 #include <intrin.h>
@@ -50,7 +50,7 @@ namespace onnxruntime {
 // coalescing.  One assumption we make is that the process using this
 // allocator owns pretty much all of the memory, and that nearly
 // all requests to allocate memory go through this interface.
-class BFCArena : public IArenaAllocator {
+class BFCArena : public IAllocator {
  public:
   static const ArenaExtendStrategy DEFAULT_ARENA_EXTEND_STRATEGY = ArenaExtendStrategy::kNextPowerOfTwo;
   static const int DEFAULT_INITIAL_CHUNK_SIZE_BYTES = 1 * 1024 * 1024;
@@ -81,24 +81,16 @@ class BFCArena : public IArenaAllocator {
   // `initial_growth_chunk_size_bytes_` but ultimately all
   // future allocation sizes are determined by the arena growth strategy
   // and the allocation request.
-  Status Shrink() override;
+  Status Shrink();
 
   void* Reserve(size_t size) override;
-
-  size_t Used() const override {
-    return static_cast<size_t>(stats_.bytes_in_use);
-  }
-
-  size_t Max() const override {
-    return memory_limit_;
-  }
 
   FencePtr CreateFence(const SessionState* session_state) override {
     // arena always rely on its device allocator to create fence
     return device_allocator_->CreateFence(session_state);
   }
 
-  void GetStats(AllocatorStats* stats);
+  void GetStats(AllocatorStats* stats) override;
 
   size_t RequestedSize(const void* ptr);
 
@@ -219,7 +211,7 @@ class BFCArena : public IArenaAllocator {
       ORT_ENFORCE(0 == memory_size % kMinAllocationSize);
       const size_t n_handles =
           (memory_size + kMinAllocationSize - 1) / kMinAllocationSize;
-      handles_ = new ChunkHandle[n_handles];
+      handles_ = std::make_unique<ChunkHandle[]>(n_handles);
       for (size_t i = 0; i < n_handles; i++) {
         handles_[i] = kInvalidChunkHandle;
       }
@@ -227,11 +219,11 @@ class BFCArena : public IArenaAllocator {
 
     AllocationRegion() = default;
 
-    ~AllocationRegion() { delete[] handles_; }
+    ~AllocationRegion() = default;
 
     AllocationRegion(AllocationRegion&& other) noexcept { Swap(other); }
 
-    AllocationRegion& operator=(AllocationRegion&& other) {
+    AllocationRegion& operator=(AllocationRegion&& other) noexcept {
       Swap(other);
       return *this;
     }
@@ -274,7 +266,7 @@ class BFCArena : public IArenaAllocator {
     // Array of size "memory_size / kMinAllocationSize".  It is
     // indexed by (p-base) / kMinAllocationSize, contains ChunkHandle
     // for the memory allocation represented by "p"
-    ChunkHandle* handles_ = nullptr;
+    std::unique_ptr<ChunkHandle[]> handles_;
 
     ORT_DISALLOW_ASSIGNMENT(AllocationRegion);
   };

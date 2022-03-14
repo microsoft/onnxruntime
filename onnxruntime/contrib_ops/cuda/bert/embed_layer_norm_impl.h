@@ -21,7 +21,9 @@ bool LaunchEmbedLayerNormKernel(cudaStream_t stream,
                                 const int hidden_size,            // hidden size (that is head_size * num_heads)
                                 int batch_size,                   // batch size
                                 int sequence_length,              // sequence length
-                                const size_t element_size);       // size of element in output tensor. 2 for half, 4 for float.
+                                const size_t element_size,        // size of element in output tensor. 2 for half, 4 for float.
+                                void* embedding_sum,              // Optional output of sum of embeddings
+                                const int* position_ids);         // Optional input of position ids
 
 }  // namespace cuda
 }  // namespace contrib

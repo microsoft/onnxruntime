@@ -8,13 +8,23 @@
 
 namespace onnxruntime {
 namespace contrib {
+
+class EmbedLayerNormBase : public OpKernel {
+ public:
+  explicit EmbedLayerNormBase(const OpKernelInfo& op_kernel_info);
+
+ protected:
+  float epsilon() const;
+
+ private:
+  float epsilon_;
+};
+
 template <typename T>
-class EmbedLayerNorm : public OpKernel {
+class EmbedLayerNorm : public EmbedLayerNormBase {
  public:
   explicit EmbedLayerNorm(const OpKernelInfo& op_kernel_info);
   Status Compute(OpKernelContext* context) const override;
- private:
-  float epsilon_;
 };
 }  // namespace contrib
 }  // namespace onnxruntime

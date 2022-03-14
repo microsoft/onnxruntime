@@ -103,7 +103,7 @@ class Model {
   // this output may need special handling
   bool IsScalarOutput(const std::string& output_name) const;
 
-  Status PrepareForExecution(std::unique_ptr<Execution>& execution) ORT_MUST_USE_RESULT;
+  common::Status PrepareForExecution(std::unique_ptr<Execution>& execution);
 
  private:
   const NnApi* nnapi_{nullptr};
@@ -143,7 +143,7 @@ class Model {
 
   void AddScalarOutput(const std::string& output_name);
 
-  void SetShaper(const Shaper shaper) { shaper_ = shaper; }
+  void SetShaper(const Shaper& shaper) { shaper_ = shaper; }
 
   int32_t GetNNAPIFeatureLevel() const;
 };
@@ -172,17 +172,16 @@ class Execution {
 
   // Set the input/output data buffers
   // These need to be called before calling Predict()
-  Status SetInputBuffers(const std::vector<InputBuffer>& inputs) ORT_MUST_USE_RESULT;
-  Status SetOutputBuffers(const std::vector<OutputBuffer>& outputs) ORT_MUST_USE_RESULT;
+  common::Status SetInputBuffers(const std::vector<InputBuffer>& inputs);
+  common::Status SetOutputBuffers(const std::vector<OutputBuffer>& outputs);
 
   // Execute the NNAPI model
   // if there is dynamic output shape, will output the actual output shapes
-  Status Predict(const std::vector<int32_t>& dynamic_outputs, std::vector<Shaper::Shape>& dynamic_output_shapes)
-      ORT_MUST_USE_RESULT;
+  common::Status Predict(const std::vector<int32_t>& dynamic_outputs, std::vector<Shaper::Shape>& dynamic_output_shapes);
 
  private:
-  Status SetInputBuffer(const int32_t index, const InputBuffer& input) ORT_MUST_USE_RESULT;
-  Status SetOutputBuffer(const int32_t index, const OutputBuffer& output) ORT_MUST_USE_RESULT;
+  common::Status SetInputBuffer(const int32_t index, const InputBuffer& input);
+  common::Status SetOutputBuffer(const int32_t index, const OutputBuffer& output);
 
   const NnApi* nnapi_{nullptr};
   ANeuralNetworksExecution* execution_;

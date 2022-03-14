@@ -49,10 +49,12 @@ Tensor* OpKernelContext::Output(int index, const std::initializer_list<int64_t>&
   return Output(index, TensorShape(shape));
 }
 
-SparseTensor* OpKernelContext::Output(int index, size_t nnz, const TensorShape& shape) {
-  auto p_ml_value = OutputMLValue(index, shape, nnz);
+#if !defined(DISABLE_SPARSE_TENSORS)
+SparseTensor* OpKernelContext::OutputSparse(int index, const TensorShape& shape) {
+  auto p_ml_value = OutputMLValue(index, shape);
   return p_ml_value ? p_ml_value->GetMutable<SparseTensor>() : nullptr;
 }
+#endif
 
 bool OpKernelContext::TryGetInferredInputShape(int index, TensorShape& shape) const {
   return execution_frame_->TryGetInferredShape(GetInputArgIndex(index), shape);
@@ -62,7 +64,7 @@ bool OpKernelContext::TryGetInferredOutputShape(int index, TensorShape& shape) c
   return execution_frame_->TryGetInferredShape(GetOutputArgIndex(index), shape);
 }
 
-OrtValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape, size_t nnz) {
+OrtValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape) {
   if (index < 0 || index >= OutputCount())
     return nullptr;
 
@@ -72,7 +74,7 @@ OrtValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape, si
   //I believe it's a false alarm.
 
   OrtValue* p_ml_value = nullptr;
-  Status status = execution_frame_->GetOrCreateNodeOutputMLValue(index, GetOutputArgIndex(index), &shape, p_ml_value, kernel_->Node(), nnz);
+  Status status = execution_frame_->GetOrCreateNodeOutputMLValue(index, GetOutputArgIndex(index), &shape, p_ml_value, kernel_->Node());
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   return p_ml_value;
 }
@@ -89,6 +91,18 @@ Status OpKernelContext::GetTempSpaceAllocator(AllocatorPtr* output) const {
   *output = execution_frame_->GetAllocator(kernel_->Allocator(0, OrtMemTypeDefault));
   if (!*output)
     return Status(common::ONNXRUNTIME, common::FAIL, "TempSpace allocator not found");
+  return Status::OK();
+}
+
+Status OpKernelContext::GetTempSpaceCPUAllocator(AllocatorPtr* output) const {
+  // While looking up the allocator from SessionState
+  // (which is called via ExecutionFrame), the allocator lookup
+  // logic doesn't key on OrtAllocatorType, so any OrtAllocatorType
+  // is good here.
+  *output = execution_frame_->GetAllocator(
+      OrtMemoryInfo(CPU, OrtAllocatorType::OrtArenaAllocator));
+  if (!*output)
+    return Status(common::ONNXRUNTIME, common::FAIL, "CPU allocator not found");
   return Status::OK();
 }
 

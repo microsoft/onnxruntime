@@ -166,6 +166,19 @@ public final class OrtUtil {
   }
 
   /**
+   * Creates a new String array of up to 8 dimensions, using the supplied shape.
+   *
+   * <p>
+   *
+   * @param shape The shape of array to create.
+   * @return A double array.
+   */
+  public static Object newStringArray(long[] shape) {
+    int[] intShape = transformShape(shape);
+    return Array.newInstance(String.class, intShape);
+  }
+
+  /**
    * Reshapes a boolean array into the desired n-dimensional array assuming the boolean array is
    * stored in n-dimensional row-major order. Throws {@link IllegalArgumentException} if the number
    * of elements doesn't match between the shape and the input or the shape is invalid.
@@ -271,6 +284,21 @@ public final class OrtUtil {
   }
 
   /**
+   * Reshapes a String array into the desired n-dimensional array assuming the String array is
+   * stored in n-dimensional row-major order. Throws {@link IllegalArgumentException} if the number
+   * of elements doesn't match between the shape and the input or the shape is invalid.
+   *
+   * @param input The double array.
+   * @param shape The desired shape.
+   * @return An n-dimensional String array.
+   */
+  public static Object reshape(String[] input, long[] shape) {
+    Object output = OrtUtil.newStringArray(shape);
+    reshape(input, output, 0);
+    return output;
+  }
+
+  /**
    * Copies elements from the flat input array to the appropriate primitive array of the output.
    * Recursively calls itself as it traverses the output array.
    *
@@ -285,7 +313,8 @@ public final class OrtUtil {
       for (Object outputElement : outputArray) {
         Class<?> outputElementClass = outputElement.getClass();
         if (outputElementClass.isArray()) {
-          if (outputElementClass.getComponentType().isPrimitive()) {
+          Class<?> componentType = outputElementClass.getComponentType();
+          if (componentType.isPrimitive() || componentType == String.class) {
             int length = Array.getLength(outputElement);
             System.arraycopy(input, position, outputElement, 0, length);
             position += length;
@@ -351,11 +380,15 @@ public final class OrtUtil {
    * @return A single dimensional String array.
    */
   public static String[] flattenString(Object o) {
-    ArrayList<String> output = new ArrayList<>();
+    if (o instanceof String[]) {
+      return (String[]) o;
+    } else {
+      ArrayList<String> output = new ArrayList<>();
 
-    flattenString((Object[]) o, output);
+      flattenString((Object[]) o, output);
 
-    return output.toArray(new String[0]);
+      return output.toArray(new String[0]);
+    }
   }
 
   /**
@@ -383,15 +416,49 @@ public final class OrtUtil {
   }
 
   /**
-   * Stores a boxed primitive in a single element array of the boxed type. Otherwise returns the
-   * input.
+   * Stores a boxed primitive in a single element array of the unboxed type.
    *
+   * <p>If it's not a boxed primitive then it returns null.
+   *
+   * @param javaType The type of the boxed primitive.
    * @param data The boxed primitive.
-   * @return The boxed primitive in an array.
+   * @return The primitive in an array.
    */
-  static Object convertBoxedPrimitiveToArray(Object data) {
-    Object array = Array.newInstance(data.getClass(), 1);
-    Array.set(array, 0, data);
-    return array;
+  static Object convertBoxedPrimitiveToArray(OnnxJavaType javaType, Object data) {
+    switch (javaType) {
+      case FLOAT:
+        float[] floatArr = new float[1];
+        floatArr[0] = (Float) data;
+        return floatArr;
+      case DOUBLE:
+        double[] doubleArr = new double[1];
+        doubleArr[0] = (Double) data;
+        return doubleArr;
+      case UINT8:
+      case INT8:
+        byte[] byteArr = new byte[1];
+        byteArr[0] = (Byte) data;
+        return byteArr;
+      case INT16:
+        short[] shortArr = new short[1];
+        shortArr[0] = (Short) data;
+        return shortArr;
+      case INT32:
+        int[] intArr = new int[1];
+        intArr[0] = (Integer) data;
+        return intArr;
+      case INT64:
+        long[] longArr = new long[1];
+        longArr[0] = (Long) data;
+        return longArr;
+      case BOOL:
+        boolean[] booleanArr = new boolean[1];
+        booleanArr[0] = (Boolean) data;
+        return booleanArr;
+      case STRING:
+      case UNKNOWN:
+      default:
+        return null;
+    }
   }
 }

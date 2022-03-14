@@ -1,0 +1,207 @@
+parameters:
+- name: BuildType
+  displayName: |-
+    Type of build.
+    "release": A release build to be published for an official ONNX Runtime release.
+    "prerelease": A pre-release build to be published for validation prior to release.
+    "normal": A normal build not for publication.
+  type: string
+  values:
+  - release
+  - prerelease
+  - normal
+  default: normal
+
+name: "$(Date:yyyyMMdd)$(Rev:rrr)"  # build number format
+
+jobs:
+- job: IosPackaging
+  displayName: "iOS Packaging"
+
+  pool:
+    vmImage: "macOS-11"
+
+  timeoutInMinutes: 240
+
+  steps:
+  - task: InstallAppleCertificate@2
+    inputs:
+      certSecureFile: '$(ios_signing_certificate_name)'
+      certPwd: '$(ios_signing_certificate_password)'
+      keychain: 'temp'
+      deleteCert: true
+    displayName: 'Install ORT Mobile Test Signing Certificate'
+
+  - task: InstallAppleProvisioningProfile@1
+    inputs:
+      provProfileSecureFile: '$(ios_provision_profile_name)'
+      removeProfile: true
+    displayName: 'Install ORT Mobile Test Provisioning Profile'
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: "3.9"
+      addToPath: true
+      architecture: "x64"
+
+  - script: |
+      pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
+    displayName: "Install Python requirements"
+
+  - bash: |
+      BUILD_TYPE="${{ parameters.BuildType }}"
+      BASE_VERSION="$(cat ./VERSION_NUMBER)"
+      SHORT_COMMIT_HASH="$(git rev-parse --short HEAD)"
+      DEV_VERSION="${BASE_VERSION}-dev+$(Build.BuildNumber).${SHORT_COMMIT_HASH}"
+
+      case "${BUILD_TYPE}" in
+        ("release")
+          VERSION="${BASE_VERSION}"; SHOULD_UPLOAD_ARCHIVES="true" ;;
+        ("prerelease")
+          VERSION="${DEV_VERSION}";  SHOULD_UPLOAD_ARCHIVES="true" ;;
+        ("normal")
+          VERSION="${DEV_VERSION}";  SHOULD_UPLOAD_ARCHIVES="false" ;;
+        (*)
+          echo "Invalid build type: ${BUILD_TYPE}"; exit 1 ;;
+      esac
+
+      set_var() {
+        local VAR_NAME=${1:?}
+        local VAR_VALUE=${2:?}
+        echo "##vso[task.setvariable variable=${VAR_NAME}]${VAR_VALUE}"
+        echo "${VAR_NAME}: ${VAR_VALUE}"
+      }
+
+      set_var "ORT_POD_VERSION" "${VERSION}"
+      set_var "ORT_SHOULD_UPLOAD_ARCHIVES" "${SHOULD_UPLOAD_ARCHIVES}"
+    displayName: "Set variables"
+
+  - script: |
+      /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
+        $(Build.SourcesDirectory) \
+        $(Build.BinariesDirectory)/protobuf \
+        $(Build.BinariesDirectory)/protobuf_install
+    displayName: "Build Host Protoc"
+
+  # create and test mobile pods
+  - script: |
+      python tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
+        --build-dir "$(Build.BinariesDirectory)/ios_framework_mobile" \
+        --staging-dir "$(Build.BinariesDirectory)/staging" \
+        --pod-version "${ORT_POD_VERSION}" \
+        --test \
+        --variant Mobile \
+        --build-settings-file tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json \
+        --include-ops-by-config tools/ci_build/github/android/mobile_package.required_operators.config \
+        -b="--path_to_protoc_exe" -b "$(Build.BinariesDirectory)/protobuf_install/bin/protoc"
+    displayName: "[Mobile] Build iOS framework and assemble pod package files"
+
+  - script: |
+      python tools/ci_build/github/apple/test_ios_packages.py \
+        --fail_if_cocoapods_missing \
+        --framework_info_file "$(Build.BinariesDirectory)/ios_framework_mobile/framework_info.json" \
+        --c_framework_dir "$(Build.BinariesDirectory)/ios_framework_mobile/framework_out" \
+        --variant Mobile \
+        --test_project_stage_dir "$(Build.BinariesDirectory)/app_center_test_mobile" \
+        --prepare_test_project_only
+    displayName: "[Mobile] Assemble test project for App Center"
+
+  - task: Xcode@5
+    inputs:
+      actions: 'build-for-testing'
+      configuration: 'Debug'
+      xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test_mobile/ios_package_test/ios_package_test.xcworkspace'
+      sdk: 'iphoneos'
+      scheme: 'ios_package_test'
+      signingOption: 'manual'
+      signingIdentity: '$(APPLE_CERTIFICATE_SIGNING_IDENTITY)'
+      provisioningProfileName: 'iOS Team Provisioning Profile'
+      args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test_mobile/ios_package_test/DerivedData'
+      workingDirectory: $(Build.BinariesDirectory)/app_center_test_mobile/ios_package_test/
+    displayName: '[Mobile] Build iphone arm64 tests'
+
+  - script: |
+      set -e -x
+      appcenter test run xcuitest \
+        --app "AI-Frameworks/ORT-Mobile-iOS" \
+        --devices $(app_center_test_devices) \
+        --test-series "master" \
+        --locale "en_US" \
+        --build-dir $(Build.BinariesDirectory)/app_center_test_mobile/ios_package_test/DerivedData/Build/Products/Debug-iphoneos \
+        --token $(app_center_api_token)
+    displayName: "[Mobile] Run E2E tests on App Center"
+
+  # create and test full pods
+  - script: |
+      python tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
+        --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
+        --staging-dir "$(Build.BinariesDirectory)/staging" \
+        --pod-version "${ORT_POD_VERSION}" \
+        --test \
+        --variant Full \
+        --build-settings-file tools/ci_build/github/apple/default_full_ios_framework_build_settings.json \
+        -b="--path_to_protoc_exe" -b "$(Build.BinariesDirectory)/protobuf_install/bin/protoc"
+    displayName: "[Full] Build iOS framework and assemble pod package files"
+
+  - script: |
+      python tools/ci_build/github/apple/test_ios_packages.py \
+        --fail_if_cocoapods_missing \
+        --framework_info_file "$(Build.BinariesDirectory)/ios_framework_full/framework_info.json" \
+        --c_framework_dir "$(Build.BinariesDirectory)/ios_framework_full/framework_out" \
+        --variant Full \
+        --test_project_stage_dir "$(Build.BinariesDirectory)/app_center_test_full" \
+        --prepare_test_project_only
+    displayName: "[Full] Assemble test project for App Center"
+
+  - task: Xcode@5
+    inputs:
+      actions: 'build-for-testing'
+      configuration: 'Debug'
+      xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test_full/ios_package_test/ios_package_test.xcworkspace'
+      sdk: 'iphoneos'
+      scheme: 'ios_package_test'
+      signingOption: 'manual'
+      signingIdentity: '$(APPLE_CERTIFICATE_SIGNING_IDENTITY)'
+      provisioningProfileName: 'iOS Team Provisioning Profile'
+      args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test_full/ios_package_test/DerivedData'
+      workingDirectory: $(Build.BinariesDirectory)/app_center_test_full/ios_package_test/
+    displayName: '[Full] Build iphone arm64 tests'
+
+  - script: |
+      set -e -x
+      appcenter test run xcuitest \
+        --app "AI-Frameworks/ORT-Mobile-iOS" \
+        --devices $(app_center_test_devices) \
+        --test-series "master" \
+        --locale "en_US" \
+        --build-dir $(Build.BinariesDirectory)/app_center_test_full/ios_package_test/DerivedData/Build/Products/Debug-iphoneos \
+        --token $(app_center_api_token)
+    displayName: "[Full] Run E2E tests on App Center"
+
+  - bash: |
+      set -e
+      gem install jazzy
+      jazzy --config objectivec/docs/jazzy_config.yaml \
+        --output "$(Build.BinariesDirectory)/staging/objc_api_docs"
+    displayName: "Generate Objective-C API docs"
+
+  - task: AzureCLI@2
+    inputs:
+      azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+      scriptType: 'bash'
+      scriptLocation: 'scriptPath'
+      scriptPath: 'tools/ci_build/github/apple/assemble_ios_packaging_artifacts.sh'
+      arguments: >-
+        "$(Build.BinariesDirectory)/staging"
+        "$(Build.ArtifactStagingDirectory)"
+        "$(ORT_POD_VERSION)"
+        "$(ORT_SHOULD_UPLOAD_ARCHIVES)"
+    displayName: "Assemble artifacts"
+
+  - publish: "$(Build.ArtifactStagingDirectory)"
+    artifact: ios_packaging_artifacts
+    displayName: "Publish artifacts"
+
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'

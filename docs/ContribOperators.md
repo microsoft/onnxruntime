@@ -5,14 +5,17 @@ Do not modify directly.*
 * com.microsoft
   * <a href="#com.microsoft.Attention">com.microsoft.Attention</a>
   * <a href="#com.microsoft.AttnLSTM">com.microsoft.AttnLSTM</a>
+  * <a href="#com.microsoft.BeamSearch">com.microsoft.BeamSearch</a>
   * <a href="#com.microsoft.BiasDropout">com.microsoft.BiasDropout</a>
   * <a href="#com.microsoft.BiasGelu">com.microsoft.BiasGelu</a>
   * <a href="#com.microsoft.BiasSoftmax">com.microsoft.BiasSoftmax</a>
+  * <a href="#com.microsoft.BifurcationDetector">com.microsoft.BifurcationDetector</a>
   * <a href="#com.microsoft.CDist">com.microsoft.CDist</a>
   * <a href="#com.microsoft.ComplexMul">com.microsoft.ComplexMul</a>
   * <a href="#com.microsoft.ComplexMulConj">com.microsoft.ComplexMulConj</a>
   * <a href="#com.microsoft.ConvTransposeWithDynamicPads">com.microsoft.ConvTransposeWithDynamicPads</a>
   * <a href="#com.microsoft.CropAndResize">com.microsoft.CropAndResize</a>
+  * <a href="#com.microsoft.DecoderAttention">com.microsoft.DecoderAttention</a>
   * <a href="#com.microsoft.DequantizeLinear">com.microsoft.DequantizeLinear</a>
   * <a href="#com.microsoft.DynamicQuantizeLSTM">com.microsoft.DynamicQuantizeLSTM</a>
   * <a href="#com.microsoft.DynamicQuantizeMatMul">com.microsoft.DynamicQuantizeMatMul</a>
@@ -24,6 +27,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.FusedMatMul">com.microsoft.FusedMatMul</a>
   * <a href="#com.microsoft.GatherND">com.microsoft.GatherND</a>
   * <a href="#com.microsoft.Gelu">com.microsoft.Gelu</a>
+  * <a href="#com.microsoft.GridSample">com.microsoft.GridSample</a>
   * <a href="#com.microsoft.Inverse">com.microsoft.Inverse</a>
   * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
@@ -32,9 +36,12 @@ Do not modify directly.*
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
+  * <a href="#com.microsoft.NGramRepeatBlock">com.microsoft.NGramRepeatBlock</a>
+  * <a href="#com.microsoft.NhwcConv">com.microsoft.NhwcConv</a>
   * <a href="#com.microsoft.NhwcMaxPool">com.microsoft.NhwcMaxPool</a>
   * <a href="#com.microsoft.Pad">com.microsoft.Pad</a>
   * <a href="#com.microsoft.QAttention">com.microsoft.QAttention</a>
+  * <a href="#com.microsoft.QGemm">com.microsoft.QGemm</a>
   * <a href="#com.microsoft.QLinearAdd">com.microsoft.QLinearAdd</a>
   * <a href="#com.microsoft.QLinearAveragePool">com.microsoft.QLinearAveragePool</a>
   * <a href="#com.microsoft.QLinearConcat">com.microsoft.QLinearConcat</a>
@@ -50,6 +57,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Rfft">com.microsoft.Rfft</a>
   * <a href="#com.microsoft.SampleOp">com.microsoft.SampleOp</a>
   * <a href="#com.microsoft.SkipLayerNormalization">com.microsoft.SkipLayerNormalization</a>
+  * <a href="#com.microsoft.SparseToDenseMatMul">com.microsoft.SparseToDenseMatMul</a>
   * <a href="#com.microsoft.Tokenizer">com.microsoft.Tokenizer</a>
   * <a href="#com.microsoft.TorchEmbedding">com.microsoft.TorchEmbedding</a>
   * <a href="#com.microsoft.TransposeMatMul">com.microsoft.TransposeMatMul</a>
@@ -57,6 +65,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Unique">com.microsoft.Unique</a>
   * <a href="#com.microsoft.WordConvEmbedding">com.microsoft.WordConvEmbedding</a>
   * <sub>experimental</sub> <a href="#com.microsoft.IsAllFinite">com.microsoft.IsAllFinite</a>
+  * <sub>experimental</sub> <a href="#com.microsoft.QEmbedLayerNormalization">com.microsoft.QEmbedLayerNormalization</a>
 
 ## com.microsoft
 ### <a name="com.microsoft.Attention"></a><a name="com.microsoft.attention">**com.microsoft.Attention**</a>
@@ -79,11 +88,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
+<dt><tt>qkv_hidden_sizes</tt> : list of ints</dt>
+<dd>Hidden layer sizes of Q, K, V paths in Attention</dd>
 <dt><tt>unidirectional</tt> : int</dt>
 <dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>
 
-#### Inputs (3 - 5)
+#### Inputs (3 - 6)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
@@ -96,13 +107,15 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, past_sequence_length + sequence_length)or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).</dd>
 <dt><tt>past</tt> (optional) : T</dt>
 <dd>past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).</dd>
+<dt><tt>extra_add</tt> (optional) : T</dt>
+<dd>additional add to QxK' with shape (batch_size, num_heads, sequence_length, sequence_length).</dd>
 </dl>
 
 #### Outputs (1 - 2)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>3D output tensor with shape (batch_size, append_length, hidden_size)</dd>
+<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>present</tt> (optional) : T</dt>
 <dd>present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)</dd>
 </dl>
@@ -326,6 +339,81 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.BeamSearch"></a><a name="com.microsoft.beamsearch">**com.microsoft.BeamSearch**</a>
+
+  Beam Search for text generation. Supports GPT-2 decoder.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>decoder</tt> : graph (required)</dt>
+<dd>Decoder subgraph to execute in a loop.</dd>
+<dt><tt>early_stopping</tt> : int</dt>
+<dd>early stop or not</dd>
+<dt><tt>encoder_decoder_init</tt> : graph</dt>
+<dd>subgraph for initialization of encoder and decoder. It will be called once before decoder subgraph.</dd>
+<dt><tt>eos_token_id</tt> : int (required)</dt>
+<dd>The id of the end-of-sequence token</dd>
+<dt><tt>model_type</tt> : int</dt>
+<dd>model type: 0 for GPT-2; 1 for encoder decoder like T5</dd>
+<dt><tt>no_repeat_ngram_size</tt> : int</dt>
+<dd>no repeat ngrams size</dd>
+<dt><tt>pad_token_id</tt> : int (required)</dt>
+<dd>The id of the padding token</dd>
+</dl>
+
+#### Inputs (6 - 10)
+
+<dl>
+<dt><tt>input_ids</tt> : I</dt>
+<dd>The sequence used as a prompt for the generation. Shape is (batch_size, sequence_length)</dd>
+<dt><tt>max_length</tt> : I</dt>
+<dd>The maximum length of the sequence to be generated. Shape is (1)</dd>
+<dt><tt>min_length</tt> (optional) : I</dt>
+<dd>The minimum length below which the score of eos_token_id is set to -Inf. Shape is (1)</dd>
+<dt><tt>num_beams</tt> : I</dt>
+<dd>Number of beams for beam search. 1 means no beam search. Shape is (1)</dd>
+<dt><tt>num_return_sequences</tt> : I</dt>
+<dd>The number of returned sequences in the batch. Shape is (1)</dd>
+<dt><tt>temperature</tt> : T</dt>
+<dd>The value used to module the next token probabilities. Accepts value > 0.0. Shape is (1)</dd>
+<dt><tt>length_penalty</tt> (optional) : T</dt>
+<dd>Exponential penalty to the length. Default value 1.0 means no penalty.Value > 1.0 encourages longer sequences, while values < 1.0 produces shorter sequences.Shape is (1,)</dd>
+<dt><tt>repetition_penalty</tt> (optional) : T</dt>
+<dd>The parameter for repetition penalty. Default value 1.0 means no penalty. Accepts value > 0.0. Shape is (1)</dd>
+<dt><tt>vocab_mask</tt> (optional) : M</dt>
+<dd>Mask of vocabulary. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (vacab_size)</dd>
+<dt><tt>prefix_vocab_mask</tt> (optional) : M</dt>
+<dd>Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)</dd>
+</dl>
+
+#### Outputs (1 - 3)
+
+<dl>
+<dt><tt>sequences</tt> : I</dt>
+<dd>Word IDs of generated sequences. Shape is (batch_size, num_return_sequences, max_sequence_length)</dd>
+<dt><tt>sequences_scores</tt> (optional) : T</dt>
+<dd>Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)</dd>
+<dt><tt>scores</tt> (optional) : T</dt>
+<dd>Processed beam scores for each vocabulary token at each generation step.Beam scores consisting of log softmax scores for each vocabulary token and sum of log softmax of previously generated tokens in this beam.Shape is (max_length - sequence_length, batch_size, num_beams, vocab_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>I</tt> : tensor(int32)</dt>
+<dd>Constrain to integer types</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain mask to integer types</dd>
+</dl>
+
+
 ### <a name="com.microsoft.BiasDropout"></a><a name="com.microsoft.biasdropout">**com.microsoft.BiasDropout**</a>
 
   output, dropout_mask = Dropout(data + bias, ratio) + residual, Intended to specialize the dropout pattern commonly found in transformer models.
@@ -347,7 +435,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>data</tt> : T</dt>
 <dd>The input data as Tensor.</dd>
 <dt><tt>bias</tt> : T</dt>
-<dd>The bias input, a vector with the same shape as last dim of data</dd>
+<dd>The bias input, a vector with the same shape as last dim of data OR same shape with data</dd>
 <dt><tt>residual</tt> (optional) : T</dt>
 <dd>The residual input, must have the same shape as data</dd>
 <dt><tt>ratio</tt> (optional) : T1</dt>
@@ -405,7 +493,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
+<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
 </dl>
 
@@ -448,6 +536,62 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.BifurcationDetector"></a><a name="com.microsoft.bifurcationdetector">**com.microsoft.BifurcationDetector**</a>
+
+  Component for aggressive decoding. Find the bifurcation index of predicted tokens, between source tokens,
+  starting from previous suffix match index, and predicted tokens.
+  Concat predicted tokens, starting from bifurcation index, to the back
+  of current tokens. This forms the output tokens.
+  Detect suffix match index in source tokens, between source tokens and output tokens.
+  Detection is based on finding the appearances of last n-gram in output tokens
+  in source tokens.
+  A match is considered found if source tokens contain a single matching n-gram.
+  Return the index of the start of the n-gram in source tokens.
+  No matching if found if src tokens contain multiple or zero matching n-grams. Return -1.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>max_ngram_size</tt> : int</dt>
+<dd>The maximum NGram size for suffix matching.</dd>
+<dt><tt>min_ngram_size</tt> : int</dt>
+<dd>The minimum NGram size for suffix matching.</dd>
+</dl>
+
+#### Inputs (3 - 4)
+
+<dl>
+<dt><tt>src_tokens</tt> : T</dt>
+<dd>Encoder input ids.</dd>
+<dt><tt>cur_tokens</tt> : T</dt>
+<dd>Decoder input ids.</dd>
+<dt><tt>prev_suffix_match_idx</tt> : T</dt>
+<dd>Previous suffix match index</dd>
+<dt><tt>pred_tokens</tt> (optional) : T</dt>
+<dd>Predicted token ids from aggressive decoding</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>tokens</tt> : T</dt>
+<dd>Decoder input ids after merging predicted tokens</dd>
+<dt><tt>suffix_match_idx</tt> : T</dt>
+<dd>new suffix match index</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(int64)</dt>
+<dd>Constrain to integer types.</dd>
 </dl>
 
 
@@ -651,6 +795,72 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.DecoderAttention"></a><a name="com.microsoft.decoderattention">**com.microsoft.DecoderAttention**</a>
+
+  This DecoderAttention supports self attention and cross attention, key and value cache, and key_padding_mask. The attention mask is not support at the moment.
+  Some boolean parameters are passed by runtime input for generic purpose
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>3D input tensor with shape (sequence_length, batch_size, hidden_size), hidden_size = num_heads * head_size</dd>
+<dt><tt>key</tt> : T</dt>
+<dd>3D input tensor with shape (total_sequence_length, batch_size, hidden_size)</dd>
+<dt><tt>q_weight</tt> : T</dt>
+<dd>2D input tensor with shape (hidden_size, hidden_size)</dd>
+<dt><tt>kv_weight</tt> : T</dt>
+<dd>2D input tensor with shape (hidden_size, 2 * hidden_size)</dd>
+<dt><tt>bias</tt> : T</dt>
+<dd>1D input tensor with shape (3 * hidden_size)</dd>
+<dt><tt>key_padding_mask</tt> (optional) : B</dt>
+<dd>2D input tensor with shape (batch_size, total_sequence_length)</dd>
+<dt><tt>key_cache</tt> (optional) : T</dt>
+<dd>input tensor with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)</dd>
+<dt><tt>value_cache</tt> (optional) : T</dt>
+<dd>input tensor with shape (batch_size, num_heads, sequence_length or total_sequence_length, head_size)</dd>
+<dt><tt>static_kv</tt> : B</dt>
+<dd>If static_kv = true, cross-attention; else self-attention</dd>
+<dt><tt>use_past</tt> : B</dt>
+<dd>If use_past = true, use cache; else no cache</dd>
+<dt><tt>has_layer_state</tt> : B</dt>
+<dd>If has_layer_state = true, layer_state = {} or [a,b]; else layer_state = None</dd>
+<dt><tt>has_key_padding_mask</tt> : B</dt>
+<dd>has_key_padding_mask or not</dd>
+</dl>
+
+#### Outputs (1 - 3)
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>3D output tensor with shape (sequence_length, batch_size, hidden_size)</dd>
+<dt><tt>new_key_cache</tt> (optional) : T</dt>
+<dd>output tensor with shape (batch_size, num_heads, new sequence_length, head_size)</dd>
+<dt><tt>new_value_cache</tt> (optional) : T</dt>
+<dd>output tensor with shape (batch_size, num_heads, new sequence_length, head_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float and float16 tensors.</dd>
+<dt><tt>B</tt> : tensor(bool)</dt>
+<dd>Constrain key_padding_mask to bool tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.DequantizeLinear"></a><a name="com.microsoft.dequantizelinear">**com.microsoft.DequantizeLinear**</a>
 
   The linear dequantization operator. It consumes a quantized data, a scale, a zero point and computes the full precision data.
@@ -830,7 +1040,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The epsilon value to use to avoid division by zero.</dd>
 </dl>
 
-#### Inputs (7 - 8)
+#### Inputs (7 - 9)
 
 <dl>
 <dt><tt>input_ids</tt> : T1</dt>
@@ -849,15 +1059,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>1D beta tensor for layer normalization  with shape (hidden_size)</dd>
 <dt><tt>mask</tt> (optional) : T1</dt>
 <dd>2D attention mask with shape (batch_size, sequence_length)</dd>
+<dt><tt>position_ids</tt> (optional) : T1</dt>
+<dd>2D position ids with shape (batch_size, sequence_length)</dd>
 </dl>
 
-#### Outputs
+#### Outputs (2 - 3)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>mask_index</tt> : T1</dt>
 <dd>1D mask_index tensor with shape (batch_size)</dd>
+<dt><tt>embedding_sum</tt> (optional) : T</dt>
+<dd>sum of word_embedding and position_embedding without layer normalization</dd>
 </dl>
 
 #### Type Constraints
@@ -1065,6 +1279,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Whether A should be transposed on the last two dimensions before doing multiplication</dd>
 <dt><tt>transB</tt> : int</dt>
 <dd>Whether B should be transposed on the last two dimensions before doing multiplication</dd>
+<dt><tt>transBatchA</tt> : int</dt>
+<dd>Whether A should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before doing multiplication</dd>
+<dt><tt>transBatchB</tt> : int</dt>
+<dd>Whether B should be transposed on the 1st dimension and batch dimensions (dim-1 to dim-rank-2) before doing multiplication</dd>
 </dl>
 
 #### Inputs
@@ -1173,6 +1391,58 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.GridSample"></a><a name="com.microsoft.gridsample">**com.microsoft.GridSample**</a>
+
+  Given an `input` and a flow-field `grid`, computes the `output` using `input` values and pixel locations from `grid`.
+        Currently, only spatial (4-D) inputs are supported. For `input` with shape (N, C, H, W) and `grid` with shape (N, H_out, W_out, 2),
+        the `output` will have shape (N, C, H_out, W_out).
+        For each output location `output[n, :, h, w]`, the size-2 vector `grid[n, h, w]` specifies `input` pixel locations `x` and `y`,
+        which are used to interpolate the output value `output[n, :, h, w]`.
+        The GridSample operator is often used in doing grid generator and sampler in the [Spatial Transformer Networks](https://arxiv.org/abs/1506.02025).
+        See also in [torch.nn.functional.grid_sample](https://pytorch.org/docs/master/generated/torch.nn.functional.grid_sample.html#torch-nn-functional-grid-sample).
+        
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>align_corners</tt> : int</dt>
+<dd>If align_corners=1, the extrema (-1 and 1) are considered as referring to the center points of the input's corner pixels. If align_corners=0, they are instead considered as referring to the corner points of the input's corner pixels, making the sampling more resolution agnostic.</dd>
+<dt><tt>mode</tt> : string</dt>
+<dd>Three interpolation modes: bilinear (default), nearest and bicubic.</dd>
+<dt><tt>padding_mode</tt> : string</dt>
+<dd>Support padding modes for outside grid values: `zeros`(default), `border`, `reflection`. zeros: use 0 for out-of-bound grid locations, border: use border values for out-of-bound grid locations, reflection: use values at locations reflected by the border for out-of-bound grid locations.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T1</dt>
+<dd>4-D tensor of shape (N, C, H, W), where N is the batch size, C is the numbers of channels, H and W are the height and width of the input data.</dd>
+<dt><tt>Grid</tt> : T1</dt>
+<dd>Input offset, 4-D tensor of shape (N, H_out, W_out, 2), where H_out and W_out are the height and width of grid and output, Grid specifies the sampling pixel locations normalized by the input spatial dimensions. Therefore, it should have most values in the range of [-1, 1]. If grid has values outside the range of [-1, 1], the corresponding outputs will be handled as defined by padding_mode.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T2</dt>
+<dd>4-D tensor of shape (N, C, H_out, W_out).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(uint8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(int8), tensor(int16), tensor(int32), tensor(int64), tensor(float16), tensor(float), tensor(double), tensor(string), tensor(bool), tensor(complex64), tensor(complex128)</dt>
+<dd>Constrain input types to all tensor types.</dd>
+<dt><tt>T2</tt> : tensor(float16), tensor(float), tensor(double)</dt>
+<dd>Constrain output types to float tensors.</dd>
 </dl>
 
 
@@ -1517,6 +1787,96 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.NGramRepeatBlock"></a><a name="com.microsoft.ngramrepeatblock">**com.microsoft.NGramRepeatBlock**</a>
+
+  Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form a repeated n-gram if added to the back of the input_ids.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>ngram_size</tt> : int (required)</dt>
+<dd>The NGram size.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>input_ids</tt> : Tid</dt>
+<dd>2D input tensor with shape (batch_size, sequence_length)</dd>
+<dt><tt>scores</tt> : T</dt>
+<dd>2D input tensor with shape (batch_size, vocab_size)</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>scores_out</tt> : T</dt>
+<dd>2D output tensor with shape (batch_size, vocab_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>Tid</tt> : tensor(int64)</dt>
+<dd>Constrain indices to integer types</dd>
+<dt><tt>T</tt> : tensor(float)</dt>
+<dd>Constrain scores input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.NhwcConv"></a><a name="com.microsoft.nhwcconv">**com.microsoft.NhwcConv**</a>
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>auto_pad</tt> : string</dt>
+<dd></dd>
+<dt><tt>dilations</tt> : list of ints</dt>
+<dd>dilation value along each spatial axis of the filter. If not present, the dilation defaults is 1 along each spatial axis.</dd>
+<dt><tt>group</tt> : int</dt>
+<dd>number of groups input channels and output channels are divided into.</dd>
+<dt><tt>kernel_shape</tt> : list of ints</dt>
+<dd>The shape of the convolution kernel. If not present, should be inferred from input W.</dd>
+<dt><tt>pads</tt> : list of ints</dt>
+<dd></dd>
+<dt><tt>strides</tt> : list of ints</dt>
+<dd>Stride along each spatial axis. If not present, the stride defaults is 1 along each spatial axis.</dd>
+</dl>
+
+#### Inputs (2 - 3)
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Input data tensor from previous layer; has size (N x C x H x W), where N is the batch size, C is the number of channels, and H and W are the height and width. Note that this is for the 2D image. Otherwise the size is (N x C x D1 x D2 ... x Dn). Optionally, if dimension denotation is in effect, the operation expects input data tensor to arrive with the dimension denotation of [DATA_BATCH, DATA_CHANNEL, DATA_FEATURE, DATA_FEATURE ...].</dd>
+<dt><tt>W</tt> : T</dt>
+<dd>The weight tensor that will be used in the convolutions; has size (M x C/group x kH x kW), where C is the number of channels, and kH and kW are the height and width of the kernel, and M is the number of feature maps. For more than 2 dimensions, the kernel shape will be (M x C/group x k1 x k2 x ... x kn), where (k1 x k2 x ... kn) is the dimension of the kernel. Optionally, if dimension denotation is in effect, the operation expects the weight tensor to arrive with the dimension denotation of [FILTER_OUT_CHANNEL, FILTER_IN_CHANNEL, FILTER_SPATIAL, FILTER_SPATIAL ...]. Assuming zero based indices for the shape array, X.shape[1] == (W.shape[1] * group) == C and W.shape[0] mod G == 0. Or in other words FILTER_IN_CHANNEL multiplied by the number of groups should be equal to DATA_CHANNEL and the number of feature maps M should be a multiple of the number of groups G.</dd>
+<dt><tt>B</tt> (optional) : T</dt>
+<dd>Optional 1D bias to be added to the convolution, has size of M.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output data tensor that contains the result of the convolution. The output dimensions are functions of the kernel size, stride size, and pad lengths.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.NhwcMaxPool"></a><a name="com.microsoft.nhwcmaxpool">**com.microsoft.NhwcMaxPool**</a>
 
 #### Version
@@ -1679,6 +2039,73 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T4</tt> : tensor(int32)</dt>
 <dd>Constrain mask index to integer types</dd>
+</dl>
+
+
+### <a name="com.microsoft.QGemm"></a><a name="com.microsoft.qgemm">**com.microsoft.QGemm**</a>
+
+  Quantized Gemm
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>alpha</tt> : float</dt>
+<dd>Scalar multiplier for the product of input tensors A * B.</dd>
+<dt><tt>transA</tt> : int</dt>
+<dd>Whether A should be transposed</dd>
+<dt><tt>transB</tt> : int</dt>
+<dd>Whether B should be transposed</dd>
+</dl>
+
+#### Inputs (6 - 9)
+
+<dl>
+<dt><tt>A</tt> : TA</dt>
+<dd>Input tensor A. The shape of A should be (M, K) if transA is 0, or (K, M) if transA is non-zero.</dd>
+<dt><tt>a_scale</tt> : T</dt>
+<dd>Scale of quantized input 'A'. It is a scalar,which means a per-tensor quantization.</dd>
+<dt><tt>a_zero_point</tt> : TA</dt>
+<dd>Zero point tensor for input 'A'. It is a scalar.</dd>
+<dt><tt>B</tt> : TB</dt>
+<dd>Input tensor B. The shape of B should be (K, N) if transB is 0, or (N, K) if transB is non-zero.</dd>
+<dt><tt>b_scale</tt> : T</dt>
+<dd>Scale of quantized input 'B'. It could be a scalar or a 1-D tensor, which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number of elements should be equal to the number of columns of input 'B'.</dd>
+<dt><tt>b_zero_point</tt> : TB</dt>
+<dd>Zero point tensor for input 'B'. It's optional and default value is 0.  It could be a scalar or a 1-D tensor, which means a per-tensor or per-column quantization. If it's a 1-D tensor, its number of elements should be equal to the number of columns of input 'B'.</dd>
+<dt><tt>C</tt> (optional) : TC</dt>
+<dd>Optional input tensor C. If not specified, the computation is done as if C is a scalar 0. The shape of C should be unidirectional broadcastable to (M, N). Its type is int32_t and must be quantized with zero_point = 0 and scale = alpha / beta * a_scale * b_scale.</dd>
+<dt><tt>y_scale</tt> (optional) : T</dt>
+<dd>Scale of output 'Y'. It is a scalar, which means a per-tensor quantization. It is optional. The output is full precision(float32) if it is not provided. Or the output is quantized.</dd>
+<dt><tt>y_zero_point</tt> (optional) : TYZ</dt>
+<dd>Zero point tensor for output 'Y'. It is a scalar, which means a per-tensor quantization. It is optional. The output is full precision(float32) if it is not provided. Or the output is quantized.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : TY</dt>
+<dd>Output tensor of shape (M, N).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float)</dt>
+<dd>Constrain scale types to float tensors.</dd>
+<dt><tt>TA</tt> : tensor(uint8), tensor(int8)</dt>
+<dd>Constrain input A and its zero point types to 8 bit tensors.</dd>
+<dt><tt>TB</tt> : tensor(uint8), tensor(int8)</dt>
+<dd>Constrain input B and its zero point types to 8 bit tensors.</dd>
+<dt><tt>TC</tt> : tensor(int32)</dt>
+<dd>Constrain input C to 32 bit integer tensors.</dd>
+<dt><tt>TYZ</tt> : tensor(uint8), tensor(int8)</dt>
+<dd>Constrain output zero point types to 8 bit tensors.</dd>
+<dt><tt>TY</tt> : tensor(float), tensor(uint8), tensor(int8)</dt>
+<dd>Constrain output type to float32 or 8 bit tensors.</dd>
 </dl>
 
 
@@ -2412,6 +2839,49 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.SparseToDenseMatMul"></a><a name="com.microsoft.sparsetodensematmul">**com.microsoft.SparseToDenseMatMul**</a>
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>alpha</tt> : float</dt>
+<dd>Scalar multiplier for the product of the input tensors.</dd>
+<dt><tt>transA</tt> : int</dt>
+<dd>Whether A should be transposed on the last two dimensions before doing multiplication</dd>
+<dt><tt>transB</tt> : int</dt>
+<dd>Whether B should be transposed on the last two dimensions before doing multiplication</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>A</tt> : T</dt>
+<dd>2-dimensional sparse matrix A. Either COO or CSR format</dd>
+<dt><tt>B</tt> : T1</dt>
+<dd>N-dimensional dense matrix B</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T1</dt>
+<dd>Matrix multiply results</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : sparse_tensor(float), sparse_tensor(double), sparse_tensor(int64), sparse_tensor(int32), sparse_tensor(uint64), sparse_tensor(uint32)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>T1</tt> : tensor(float), tensor(double), tensor(int64), tensor(int32), tensor(uint64), tensor(uint32)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.Tokenizer"></a><a name="com.microsoft.tokenizer">**com.microsoft.Tokenizer**</a>
 
   Tokenizer divides each string in X into a vector of strings along the last axis. Allowed input shapes are [C] and [N, C].
@@ -2749,6 +3219,86 @@ No versioning maintained for experimental ops.
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T</tt> : tensor(bool)</dt>
 <dd>Constrain the output to a boolean tensor.</dd>
+</dl>
+
+
+### <sub>experimental</sub> <a name="com.microsoft.QEmbedLayerNormalization"></a><a name="com.microsoft.qembedlayernormalization">**com.microsoft.QEmbedLayerNormalization**</a>
+
+  QEmbedLayerNormalization is the quantized fusion of embedding layer in BERT model, with optional mask processing.
+  The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
+  and segment_emedding; the embeddings are added then applied layer normalization using gamma and beta tensors. The input_ids
+  and segment_ids remain int32. All embeddings, gamma, and beta tensors are converted to int8/uint8. The last input mask is optional.
+  If mask is provided, mask index (that is position of first 0 in mask, or number of words will be calculated.
+
+#### Version
+
+No versioning maintained for experimental ops.
+#### Attributes
+
+<dl>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>The epsilon value to use to avoid division by zero.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>input_ids</tt> : T1</dt>
+<dd>2D words IDs with shape (batch_size, sequence_length)</dd>
+<dt><tt>segment_ids</tt> (optional) : T1</dt>
+<dd>2D segment IDs with shape (batch_size, sequence_length)</dd>
+<dt><tt>word_embedding_quant</tt> : T2</dt>
+<dd>2D with shape (,hidden_size)</dd>
+<dt><tt>position_embedding_quant</tt> : T2</dt>
+<dd>2D with shape (, hidden_size)</dd>
+<dt><tt>segment_embedding</tt> (optional) : T2</dt>
+<dd>2D with shape (, hidden_size)</dd>
+<dt><tt>gamma_quant</tt> : T2</dt>
+<dd>1D gamma tensor for layer normalization with shape (hidden_size)</dd>
+<dt><tt>beta_quant</tt> : T2</dt>
+<dd>1D beta tensor for layer normalization  with shape (hidden_size)</dd>
+<dt><tt>mask</tt> (optional) : T1</dt>
+<dd>Mask</dd>
+<dt><tt>word_embedding_scale</tt> : T</dt>
+<dd>Scale for word embeddings</dd>
+<dt><tt>position_embedding_scale</tt> : T</dt>
+<dd>Scale for position embeddings</dd>
+<dt><tt>segment_embedding_scale</tt> (optional) : T</dt>
+<dd>Scale for segment embeddings</dd>
+<dt><tt>gamma_scale</tt> : T</dt>
+<dd>Scale for 1D gamma tensor</dd>
+<dt><tt>beta_scale</tt> : T</dt>
+<dd>Scale for 1D beta tensor</dd>
+<dt><tt>word_embedding_zero_point</tt> : T2</dt>
+<dd>Zero point for word embeddings</dd>
+<dt><tt>position_embedding_zero_point</tt> : T2</dt>
+<dd>Zero point for position embeddings</dd>
+<dt><tt>segment_embedding_zero_point</tt> (optional) : T2</dt>
+<dd>Zero Point for segment embeddings</dd>
+<dt><tt>gamma_zero_point</tt> : T2</dt>
+<dd>Zero Point for 1D gamma tensor</dd>
+<dt><tt>beta_zero_point</tt> : T2</dt>
+<dd>Zero Point for 1D beta tensor</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>layernorm_out</tt> : T</dt>
+<dd>LayerNorm Output</dd>
+<dt><tt>mask_index_out</tt> : T1</dt>
+<dd>Mask Index Output</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(int32)</dt>
+<dd>Constrain mask index to integer types</dd>
+<dt><tt>T2</tt> : tensor(int8), tensor(uint8)</dt>
+<dd>Constrain input and output types to int8 tensors.</dd>
+<dt><tt>T</tt> : tensor(float)</dt>
+<dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
 
 

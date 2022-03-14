@@ -43,6 +43,8 @@ export interface OrtWasmModule extends EmscriptenModule {
   _OrtCreateRunOptions(logSeverityLevel: number, logVerbosityLevel: number, terminate: boolean, tag: number): number;
   _OrtAddRunConfigEntry(runOptionsHandle: number, configKey: number, configValue: number): number;
   _OrtReleaseRunOptions(runOptionsHandle: number): void;
+
+  _OrtEndProfiling(sessionHandle: number): number;
   //#endregion
 
   //#region config

@@ -4,6 +4,10 @@
         7811918192248490408
     ],
     [
+        "BeamSearch com.microsoft CPUExecutionProvider",
+        6968087233460196528
+    ],
+    [
         "Crop ai.onnx CPUExecutionProvider",
         6914973556202621376
     ],
@@ -28,6 +32,10 @@
         13114085849278607104
     ],
     [
+        "NhwcMaxPool com.microsoft CPUExecutionProvider",
+        11773579655431087496
+    ],
+    [
         "ParametricSoftplus ai.onnx CPUExecutionProvider",
         17971715260566574960
     ],
@@ -44,8 +52,12 @@
         16349480652468900704
     ],
     [
-        "SimplifiedLayerNormalization ai.onnx CPUExecutionProvider",
-        418129161279605176
+      "SimplifiedLayerNormalization ai.onnx CPUExecutionProvider",
+      418129161279605176
+    ],
+    [
+        "SparseToDenseMatMul com.microsoft CPUExecutionProvider",
+        1738555621134130312
     ],
     [
         "ThresholdedRelu ai.onnx CPUExecutionProvider",
@@ -64,6 +76,10 @@
         12457646955212583504
     ],
     [
+        "BifurcationDetector com.microsoft CPUExecutionProvider",
+        12148442056374193608
+    ],
+    [
         "CDist com.microsoft CPUExecutionProvider",
         889036143745127232
     ],
@@ -77,7 +93,7 @@
     ],
     [
         "CropAndResize com.microsoft CPUExecutionProvider",
-        7642430665819070720
+        8620498355864235632
     ],
     [
         "DequantizeLinear com.microsoft CPUExecutionProvider",
@@ -128,12 +144,20 @@
         4658746266161736328
     ],
     [
+        "GridSample com.microsoft CPUExecutionProvider",
+        11924582339825775592
+    ],
+    [
         "Inverse com.microsoft CPUExecutionProvider",
         1037755270231788608
     ],
     [
         "MatMulInteger16 com.microsoft CPUExecutionProvider",
         5265636774129358144
+    ],
+    [
+        "MatMulIntegerToFloat com.microsoft CPUExecutionProvider",
+        1363870470731747600
     ],
     [
         "MatMulIntegerToFloat com.microsoft CPUExecutionProvider",
@@ -150,6 +174,10 @@
     [
         "NhwcMaxPool com.microsoft CPUExecutionProvider",
         8512357837341844248
+    ],
+    [
+        "NGramRepeatBlock com.microsoft CPUExecutionProvider",
+        17162613206685017176
     ],
     [
         "Pad com.microsoft CPUExecutionProvider",
@@ -170,6 +198,10 @@
     [
         "QLinearAveragePool com.microsoft CPUExecutionProvider",
         9152647959212466896
+    ],
+    [
+        "QLinearConv com.microsoft CPUExecutionProvider",
+        10904143578341560456
     ],
     [
         "QLinearConv com.microsoft CPUExecutionProvider",
@@ -250,5 +282,17 @@
     [
         "QLinearConcat com.microsoft CPUExecutionProvider",
         1734858160766311432
+    ],
+    [
+      "QEmbedLayerNormalization com.microsoft CPUExecutionProvider",
+      9235385557940152248
+    ],
+    [
+      "QGemm com.microsoft CPUExecutionProvider",
+      13009794669709617232
+    ],
+    [
+      "QGemm com.microsoft CPUExecutionProvider",
+      13737193491843065240
     ]
 ]

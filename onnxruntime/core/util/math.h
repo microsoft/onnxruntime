@@ -16,9 +16,10 @@
 
 #pragma once
 
+#include <cassert>
+
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
-#include "core/framework/tensor.h"
 #endif
 
 #ifndef CBLAS_ENUM_DEFINED_H
@@ -89,8 +90,7 @@ void RowwiseSum(int N, int D, const T* x, T* y,
 
 // Sum of vector x, and writes the result to a single value y.
 template <typename T, class Provider>
-void Sum(int N, const T* x, T* y, Provider* provider,
-         Tensor* scratch_ptr = nullptr);
+void Sum(int N, const T* x, T* y, Provider* provider);
 
 template <typename T, class Provider>
 void Scale(int N, float alpha, const T* x, T* y, Provider* provider);
@@ -308,12 +308,16 @@ void CopyMatrix(
     int ldb,
     TypedCopy copy) {
   {
+    assert(M >= 0);
+    assert(N >= 0);
+    assert(lda >= 0);
+    assert(ldb >= 0);
     if (lda == N && ldb == N) {
-      copy(A, B, static_cast<size_t>(N * M));
+      copy(A, B, static_cast<size_t>(N) * static_cast<size_t>(M));
       return;
     }
 
-    for (int i = 0; i < M; ++i) {
+    for (size_t i = 0; i < static_cast<size_t>(M); ++i) {
       copy(A + lda * i, B + ldb * i, static_cast<size_t>(N));
     }
   }
@@ -330,7 +334,7 @@ void CopyVector(int N, const T* A, T* B, Provider* provider);
 // negative value of a parameter converts it to value higher than
 // 0x800...
 // The casting allows to use one condition instead of two.
-inline bool is_a_ge_zero_and_a_lt_b(int64_t a, int64_t b) {
+constexpr inline bool is_a_ge_zero_and_a_lt_b(int64_t a, int64_t b) {
   return static_cast<uint64_t>(a) < static_cast<uint64_t>(b);
 }
 
@@ -349,43 +353,13 @@ constexpr T roundUp(T a, T b) {
   return divUp<T>(a, b) * b;
 }
 
-// Returns true if the given integer type is a power-of-2 (positive only)
-// Note(jiayq): windows reported an error per
-//     https://github.com/caffe2/caffe2/issues/997
-// and as a result will make it a macro.
-#ifdef _MSC_VER
-#define integerIsPowerOf2(v) ((v) && !((v) & ((v)-1)))
-#else   // _MSC_VER
-template <typename T>
-constexpr bool integerIsPowerOf2(T v) {
-  return (v && !(v & (v - 1)));
-}
-#endif  // _MSC_VER
-
-// Returns log2(n) for a positive integer type
-template <typename T>
-constexpr int integerLog2(T n, int p = 0) {
-  return (n <= 1) ? p : integerLog2(n / 2, p + 1);
-}
-
-// Returns the next highest power-of-2 for an integer type
-template <typename T>
-constexpr T integerNextHighestPowerOf2(T v) {
-  return (integerIsPowerOf2(v) ? (T)2 * v : ((T)1 << (integerLog2(v) + 1)));
-}
-
-// Rounds a up to the next highest multiple of b, which is power-of-2. User must be careful
-// to ensure that there is no overflow or underflow in the calculation
-// of divUp.
-template <typename T, T b>
-constexpr T roundUpPow2(T a) {
-  return (a + (b - 1)) & (~(b - 1));
-}
-
+// Converts a float32 to a float16 value.
 uint16_t floatToHalf(float f);
 
+// Converts a double (float64) to a float16 value.
 uint16_t doubleToHalf(double f);
 
+// Converts a float16 to a float32 value.
 float halfToFloat(uint16_t h);
 
 }  // namespace math

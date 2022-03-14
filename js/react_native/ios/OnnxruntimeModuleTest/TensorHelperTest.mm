@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #import "TensorHelper.h"
-#import "onnxruntime_cxx_api.h"
+
 #import <XCTest/XCTest.h>
+#import <onnxruntime/onnxruntime_cxx_api.h>
 
 @interface TensorHelperTest : XCTestCase
 
@@ -205,104 +206,38 @@ static void testCreateOutputTensorT(const std::array<T, 5> &outValues, std::func
   std::array<float_t, 5> outValues{std::numeric_limits<float_t>::min(), 1.0f, 2.0f, 3.0f,
                                    std::numeric_limits<float_t>::max()};
   std::function<NSNumber *(float_t value)> convert = [](float_t value) { return [NSNumber numberWithFloat:value]; };
-  testCreateOutputTensorT<float_t>(outValues, convert, JsTensorTypeFloat, @"test_types_FLOAT", @"pb");
+  testCreateOutputTensorT<float_t>(outValues, convert, JsTensorTypeFloat, @"test_types_float", @"ort");
 }
 
 - (void)testCreateOutputTensorDouble {
   std::array<double_t, 5> outValues{std::numeric_limits<double_t>::min(), 1.0f, 2.0f, 3.0f,
                                     std::numeric_limits<double_t>::max()};
   std::function<NSNumber *(double_t value)> convert = [](double_t value) { return [NSNumber numberWithDouble:value]; };
-  testCreateOutputTensorT<double_t>(outValues, convert, JsTensorTypeDouble, @"test_types_DOUBLE", @"pb");
+  testCreateOutputTensorT<double_t>(outValues, convert, JsTensorTypeDouble, @"test_types_double", @"ort");
 }
 
 - (void)testCreateOutputTensorBool {
   std::array<bool, 5> outValues{false, true, true, false, true};
   std::function<NSNumber *(bool value)> convert = [](bool value) { return [NSNumber numberWithBool:value]; };
-  testCreateOutputTensorT<bool>(outValues, convert, JsTensorTypeBool, @"test_types_BOOL", @"pb");
+  testCreateOutputTensorT<bool>(outValues, convert, JsTensorTypeBool, @"test_types_bool", @"ort");
 }
 
 - (void)testCreateOutputTensorInt8 {
   std::array<int8_t, 5> outValues{std::numeric_limits<int8_t>::min(), 1, -2, 3, std::numeric_limits<int8_t>::max()};
   std::function<NSNumber *(int8_t value)> convert = [](int8_t value) { return [NSNumber numberWithChar:value]; };
-  testCreateOutputTensorT<int8_t>(outValues, convert, JsTensorTypeByte, @"test_types_INT8", @"pb");
-}
-
-- (void)testCreateOutputTensorInt16 {
-  std::array<int16_t, 5> outValues{std::numeric_limits<int16_t>::min(), 1, -2, 3, std::numeric_limits<int16_t>::max()};
-  std::function<NSNumber *(int16_t value)> convert = [](int16_t value) { return [NSNumber numberWithShort:value]; };
-  testCreateOutputTensorT<int16_t>(outValues, convert, JsTensorTypeShort, @"test_types_INT16", @"pb");
+  testCreateOutputTensorT<int8_t>(outValues, convert, JsTensorTypeByte, @"test_types_int8", @"ort");
 }
 
 - (void)testCreateOutputTensorInt32 {
   std::array<int32_t, 5> outValues{std::numeric_limits<int32_t>::min(), 1, -2, 3, std::numeric_limits<int32_t>::max()};
   std::function<NSNumber *(int32_t value)> convert = [](int32_t value) { return [NSNumber numberWithInt:value]; };
-  testCreateOutputTensorT<int32_t>(outValues, convert, JsTensorTypeInt, @"test_types_INT32", @"pb");
+  testCreateOutputTensorT<int32_t>(outValues, convert, JsTensorTypeInt, @"test_types_int32", @"ort");
 }
 
 - (void)testCreateOutputTensorInt64 {
   std::array<int64_t, 5> outValues{std::numeric_limits<int64_t>::min(), 1, -2, 3, std::numeric_limits<int64_t>::max()};
   std::function<NSNumber *(int64_t value)> convert = [](int64_t value) { return [NSNumber numberWithLongLong:value]; };
-  testCreateOutputTensorT<int64_t>(outValues, convert, JsTensorTypeLong, @"test_types_INT64", @"pb");
-}
-
-- (void)testCreateOutputTensorString {
-  std::array<std::string, 5> outValues{"a", "b", "c", "d", "e"};
-
-  NSBundle *bundle = [NSBundle bundleForClass:[TensorHelperTest class]];
-  NSString *dataPath = [bundle pathForResource:@"test_types_STRING" ofType:@"pb"];
-
-  std::unique_ptr<Ort::Env> ortEnv{new Ort::Env(ORT_LOGGING_LEVEL_INFO, "Default")};
-  Ort::SessionOptions sessionOptions;
-  std::unique_ptr<Ort::Session> session{new Ort::Session(*ortEnv, [dataPath UTF8String], sessionOptions)};
-
-  Ort::AllocatorWithDefaultOptions ortAllocator;
-  std::vector<Ort::MemoryAllocation> allocations;
-
-  std::vector<const char *> inputNames;
-  inputNames.reserve(session->GetInputCount());
-  for (size_t i = 0; i < session->GetInputCount(); ++i) {
-    auto inputName = session->GetInputName(i, ortAllocator);
-    allocations.emplace_back(ortAllocator, inputName, strlen(inputName) + 1);
-    inputNames.emplace_back(inputName);
-  }
-
-  std::vector<const char *> outputNames;
-  outputNames.reserve(session->GetOutputCount());
-  for (size_t i = 0; i < session->GetOutputCount(); ++i) {
-    auto outputName = session->GetOutputName(i, ortAllocator);
-    allocations.emplace_back(ortAllocator, outputName, strlen(outputName) + 1);
-    outputNames.emplace_back(outputName);
-  }
-
-  NSMutableDictionary *inputTensorMap = [NSMutableDictionary dictionary];
-
-  // dims
-  NSArray *dims = @[ [NSNumber numberWithLong:1], [NSNumber numberWithLong:outValues.size()] ];
-  inputTensorMap[@"dims"] = dims;
-
-  // type
-  inputTensorMap[@"type"] = JsTensorTypeString;
-
-  // data
-  NSMutableArray *data = [NSMutableArray array];
-  for (auto value : outValues) {
-    [data addObject:[NSString stringWithUTF8String:value.c_str()]];
-  }
-  inputTensorMap[@"data"] = data;
-
-  Ort::Value inputTensor = [TensorHelper createInputTensor:inputTensorMap
-                                              ortAllocator:ortAllocator
-                                               allocations:allocations];
-
-  std::vector<Ort::Value> feeds;
-  feeds.emplace_back(std::move(inputTensor));
-
-  Ort::RunOptions runOptions;
-  auto output = session->Run(runOptions, inputNames.data(), feeds.data(), inputNames.size(), outputNames.data(),
-                             outputNames.size());
-
-  NSDictionary *resultMap = [TensorHelper createOutputTensor:outputNames values:output];
-  XCTAssertTrue([[resultMap objectForKey:@"output"] isEqualToDictionary:inputTensorMap]);
+  testCreateOutputTensorT<int64_t>(outValues, convert, JsTensorTypeLong, @"test_types_int64", @"ort");
 }
 
 @end

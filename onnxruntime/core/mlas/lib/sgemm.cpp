@@ -475,7 +475,7 @@ Return Value:
 #if defined(MLAS_TARGET_AMD64)
 
         MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* SgemmTransposePackB16x4Routine =
-            MlasPlatform.TransposePackB16x4Routine;
+            GetMlasPlatform().TransposePackB16x4Routine;
 
         while (x >= 4) {
 
@@ -1061,10 +1061,8 @@ Return Value:
 
         size_t RowsHandled;
 
-#if defined(MLAS_TARGET_AMD64_IX86)
-        RowsHandled = MlasPlatform.GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
-#elif defined(MLAS_TARGET_POWER)
-        RowsHandled = MlasSgemmKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
+        RowsHandled = GetMlasPlatform().GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
 #else
         if (ZeroMode) {
             RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
@@ -1165,9 +1163,9 @@ Return Value:
         MLAS_SGEMM_KERNEL_M1_ROUTINE* SgemmKernelM1Routine;
 
         if (TransB == CblasNoTrans) {
-            SgemmKernelM1Routine = MlasPlatform.KernelM1Routine;
+            SgemmKernelM1Routine = GetMlasPlatform().KernelM1Routine;
         } else {
-            SgemmKernelM1Routine = MlasPlatform.KernelM1TransposeBRoutine;
+            SgemmKernelM1Routine = GetMlasPlatform().KernelM1TransposeBRoutine;
         }
 
         if (SgemmKernelM1Routine != nullptr) {
@@ -1175,7 +1173,7 @@ Return Value:
             return;
         }
 
-#elif (defined(MLAS_TARGET_ARM64) && !defined(_WIN32)) || defined(MLAS_TARGET_WASM)
+#elif defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_WASM)
 
         if (TransB == CblasNoTrans) {
             MlasGemvFloatKernel(A, B, C, K, N, ldb, (beta == 0.0f));
@@ -1200,9 +1198,9 @@ Return Value:
         MLAS_SGEMM_KERNEL_M1_ROUTINE* SgemmKernelM1Routine;
 
         if (TransA == CblasNoTrans) {
-            SgemmKernelM1Routine = MlasPlatform.KernelM1TransposeBRoutine;
+            SgemmKernelM1Routine = GetMlasPlatform().KernelM1TransposeBRoutine;
         } else {
-            SgemmKernelM1Routine = MlasPlatform.KernelM1Routine;
+            SgemmKernelM1Routine = GetMlasPlatform().KernelM1Routine;
         }
 
         if (SgemmKernelM1Routine != nullptr) {
@@ -1554,7 +1552,11 @@ Return Value:
             DataParams->alpha, A, lda, B, ldb, DataParams->beta, C, ldc);
     }
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
 void
 MLASCALL
 MlasGemmBatch(
@@ -1578,10 +1580,10 @@ MlasGemmBatch(
 
     ptrdiff_t TargetThreadCount;
 
-    if (Complexity < double(MLAS_SGEMM_THREAD_COMPLEXITY * MlasPlatform.MaximumThreadCount)) {
+    if (Complexity < double(MLAS_SGEMM_THREAD_COMPLEXITY * GetMlasPlatform().MaximumThreadCount)) {
         TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_SGEMM_THREAD_COMPLEXITY)) + 1;
     } else {
-        TargetThreadCount = MlasPlatform.MaximumThreadCount;
+        TargetThreadCount = GetMlasPlatform().MaximumThreadCount;
     }
 
     ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
@@ -1623,8 +1625,8 @@ MlasGemmBatch(
         ThreadCountN = 1;
     }
 
-    MlasTrySimpleParallel(ThreadPool, 
-        ThreadsPerGemm * static_cast<ptrdiff_t>(BatchSize), 
+    MlasTrySimpleParallel(ThreadPool,
+        ThreadsPerGemm * static_cast<ptrdiff_t>(BatchSize),
         [=](ptrdiff_t tid)
     {
         ptrdiff_t GemmIdx = tid / ThreadsPerGemm;
@@ -1633,6 +1635,9 @@ MlasGemmBatch(
             TransA, TransB, M, N, K, &(Data[GemmIdx]), ThreadIdx);
     });
 }
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 
 size_t
 MLASCALL

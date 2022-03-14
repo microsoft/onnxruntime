@@ -22,7 +22,7 @@ IsAllFinite --> Not
 Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  std::vector<std::reference_wrapper<Node>> nodes_to_remove;
+  InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
   for (auto node_index : node_topology_list) {
     nodes_to_remove.clear();
     auto* node_ptr = graph.GetNode(node_index);
@@ -35,11 +35,11 @@ Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(isinf_node, "IsInf", {10}) ||
         isinf_node.GetOutputEdgesCount() != 1 ||
-        !graph.GetNodeOutputsInGraphOutputs(isinf_node).empty()) {
+        graph.NodeProducesGraphOutput(isinf_node)) {
       continue;
     }
 
-    std::vector<NodeArg*> input_defs = isinf_node.MutableInputDefs();
+    auto input_defs = isinf_node.MutableInputDefs();
     // see if there is a Cast before IsInf
     // This will happen if input type is FP16 but IsInf doesnt support fp16, so it will be cast to float/double
     // This Cast can be skipped as we are replacing the subgraph with IsAllFinite, which supports FP16
@@ -67,7 +67,7 @@ Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     Node& cast2_node = *graph.GetNode(cast2_node_itr->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(cast2_node, "Cast", {9, 13}) ||
         cast2_node.GetOutputEdgesCount() != 1 ||
-        !graph.GetNodeOutputsInGraphOutputs(cast2_node).empty()) {
+        graph.NodeProducesGraphOutput(cast2_node)) {
       continue;
     }
     nodes_to_remove.push_back(cast2_node);
@@ -80,7 +80,7 @@ Status IsInfReduceSumFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     Node& reduce_sum_node = *graph.GetNode(reduce_sum_node_itr->Index());
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_sum_node, "ReduceSum", {1, 11, 13}) ||
         reduce_sum_node.GetOutputEdgesCount() != 1 ||
-        !graph.GetNodeOutputsInGraphOutputs(reduce_sum_node).empty()) {
+        graph.NodeProducesGraphOutput(reduce_sum_node)) {
       continue;
     }
     nodes_to_remove.push_back(reduce_sum_node);

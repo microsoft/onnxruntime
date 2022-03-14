@@ -8,7 +8,6 @@
 #include "core/providers/rocm/math/binary_elementwise_ops_impl.h"
 #include "core/providers/rocm/math/binary_elementwise_ops.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/framework/op_kernel_context_internal.h"
 
 using namespace onnxruntime::common;
 namespace onnxruntime {
@@ -21,7 +20,7 @@ namespace rocm {
       1,                                                          \
       T,                                                          \
       kRocmExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
@@ -95,8 +94,8 @@ Status ReduceKernel<true>::ComputeImplEx<int32_t, MIOPEN_REDUCE_TENSOR_NO_INDICE
 
   int64_t input_count = prepare_reduce_metadata.input_count;
   int64_t output_count = prepare_reduce_metadata.output_count;
-  std::vector<int64_t>& input_dims_miopen = prepare_reduce_metadata.input_dims_miopen;
-  std::vector<int64_t>& output_dims_miopen = prepare_reduce_metadata.output_dims_miopen;
+  auto& input_dims_miopen = prepare_reduce_metadata.input_dims_miopen;
+  auto& output_dims_miopen = prepare_reduce_metadata.output_dims_miopen;
 
   // special case when there is a dim value of 0 in the shape.
   if (input_count == 0) {

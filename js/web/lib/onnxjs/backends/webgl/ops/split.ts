@@ -1,63 +1,88 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Split} from '../../../ops/split';
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attribute-with-cache-key';
+import {Graph} from '../../../graph';
+import {OperatorImplementation, OperatorInitialization} from '../../../operators';
 import {Tensor} from '../../../tensor';
 import {ShapeUtil, SplitUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {Artifact, ProgramInfo, RunData} from '../types';
+import {ProgramInfo, TextureType} from '../types';
 
-export class WebGLSplit extends Split {
-  run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
-    if (!this.artifacts) {
-      this.artifacts = [];
-      const axis = ShapeUtil.normalizeAxis(this.axis, inputs[0].dims.length);
-      const count = this.getProgramCount(inferenceHandler, inputs, axis);
+export interface SplitAttributes extends AttributeWithCacheKey {
+  readonly axis: number;
+  readonly split: number[];
+  readonly numOutputs: number;
+}
+
+const splitProgramMetadata = {
+  name: 'Split',
+  inputNames: ['A'],
+  inputTypes: [TextureType.unpacked],
+};
+
+export const split: OperatorImplementation<SplitAttributes> =
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: SplitAttributes): Tensor[] => {
+      validateInputs(inputs);
+
+      const axis = ShapeUtil.normalizeAxis(attributes.axis, inputs[0].dims.length);
+      const count = getProgramCount(inferenceHandler, inputs, axis, attributes);
+      const output: Tensor[] = [];
       for (let i = 0; i < count; ++i) {
-        const programInfo = this.createProgramInfo(inferenceHandler, inputs[0], axis, i);
-        const artifact = inferenceHandler.session.programManager.build(programInfo);
-        this.artifacts.push(artifact);
+        output.push(inferenceHandler.run(
+            {
+              ...splitProgramMetadata,
+              cacheHint: `${attributes.cacheKey};${i}`,
+              get: () => createSplitProgramInfo(inferenceHandler, inputs[0], attributes, axis, i)
+            },
+            inputs));
       }
-    }
-    const results: Tensor[] = [];
 
-    this.artifacts.forEach(artifact => {
-      const rundata = this.createRunData(inferenceHandler, artifact.programInfo, inputs);
-      inferenceHandler.session.programManager.run(artifact, rundata);
-      results.push(rundata.outputTextureData.tensor);
-    });
-    return results;
-  }
-  getProgramCount(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], axis: number): number {
-    const [, offsets] = SplitUtil.splitShape(inputs[0].dims, axis, this.split, this.numOutputs);
-    return offsets.length;
-  }
-  createProgramInfo(inferenceHandler: WebGLInferenceHandler, input: Tensor, axis: number, index: number): ProgramInfo {
-    const [shapes, offsets] = SplitUtil.splitShape(input.dims, axis, this.split, this.numOutputs);
-    const offset = offsets[index];
-    const outputShape = shapes[index];
-    const rank = outputShape.length;
-    const shaderSource = `
+      return output;
+    };
+
+export const parseSplitAttributes: OperatorInitialization<SplitAttributes> = (node: Graph.Node): SplitAttributes => {
+  const axis = node.attributes.getInt('axis', 0);
+  const split = node.attributes.getInts('split', []);
+  const numOutputs = node.outputs.length;
+  return createAttributeWithCacheKey({axis, split, numOutputs});
+};
+
+const getProgramCount =
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], axis: number, attributes: SplitAttributes): number => {
+      const [, offsets] = SplitUtil.splitShape(inputs[0].dims, axis, attributes.split, attributes.numOutputs);
+      return offsets.length;
+    };
+
+const createSplitProgramInfo =
+    (inferenceHandler: WebGLInferenceHandler, input: Tensor, attributes: SplitAttributes, axis: number, index: number):
+        ProgramInfo => {
+          const [shapes, offsets] = SplitUtil.splitShape(input.dims, axis, attributes.split, attributes.numOutputs);
+          const offset = offsets[index];
+          const outputShape = shapes[index];
+          const rank = outputShape.length;
+          const shaderSource = `
       float process(int indices[${rank}]) {
         indices[${axis}] += ${offset};
         return _A(indices);
-      }`;
-    return {
-      name: 'WebGLSplit',
-      inputLayouts: [inferenceHandler.getOrCreateTextureLayout(input)],
-      outputLayout: inferenceHandler.createTextureLayoutFromShape(outputShape),
-      samplers: ['A'],
-      shaderSource,
-    };
+      }
+    `;
+          return {
+            ...splitProgramMetadata,
+            cacheHint: `${attributes.cacheKey}:${index}`,
+            output: {dims: outputShape, type: input.type, textureType: TextureType.unpacked},
+            shaderSource
+          };
+        };
+
+const validateInputs = (inputs: Tensor[]): void => {
+  if (!inputs || inputs.length !== 1) {
+    throw new Error('Split requires one input.');
   }
-  createRunData(inferenceHandler: WebGLInferenceHandler, programInfo: ProgramInfo, inputs: Tensor[]): RunData {
-    const inputTDs = [inferenceHandler.getOrCreateTextureData(inputs[0], programInfo.inputLayouts[0])];
-    return {
-      inputTextureDatas: inputTDs,
-      outputTextureData:
-          inferenceHandler.createTextureDataFromLayout(programInfo.outputLayout, inputTDs[0].tensor.type),
-      uniformData: {}
-    };
+
+  if (inputs[0].type !== 'int8' && inputs[0].type !== 'uint8' && inputs[0].type !== 'int16' &&
+      inputs[0].type !== 'uint16' && inputs[0].type !== 'int32' && inputs[0].type !== 'uint32' &&
+      inputs[0].type !== 'float32' && inputs[0].type !== 'float64' && inputs[0].type !== 'bool') {
+    throw new Error('Invalid input type.');
   }
-  protected artifacts: Artifact[];
-}
+};

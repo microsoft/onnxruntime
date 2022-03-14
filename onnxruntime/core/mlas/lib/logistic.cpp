@@ -121,7 +121,13 @@ Return Value:
 
         float Value = *Input++;
 
-        Value = std::min(MlasLogisticConstants.UpperRange, std::max(MlasLogisticConstants.LowerRange, Value));
+        // This odd two-step process exists to ensure an input value of NaN carries through
+        // without modification because "std::min" and "std::max" return unreliable results
+        // when NaNs are involved, and it's clear from the test's reference outputs that
+        // they want a NaN on output whenever the input is a NaN.
+        float v_tmp;
+        v_tmp = (Value < MlasLogisticConstants.LowerRange) ? MlasLogisticConstants.LowerRange : Value;
+        Value = (v_tmp > MlasLogisticConstants.UpperRange) ? MlasLogisticConstants.UpperRange : v_tmp;
 
         float ValueSquared = Value * Value;
 
@@ -173,7 +179,7 @@ Return Value:
 --*/
 {
 #if defined(MLAS_TARGET_AMD64)
-    MlasPlatform.LogisticKernelRoutine(Input, Output, N);
+    GetMlasPlatform().LogisticKernelRoutine(Input, Output, N);
 #else
     MlasLogisticKernel(Input, Output, N);
 #endif

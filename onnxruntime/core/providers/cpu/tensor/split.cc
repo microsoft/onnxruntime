@@ -5,9 +5,9 @@
 
 #include "gsl/gsl"
 
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/common.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 
@@ -16,7 +16,7 @@ namespace onnxruntime {
 namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Split, Input, 0,
-    float, int32_t, int64_t, uint8_t, std::string);
+    float, int8_t, int32_t, int64_t, uint8_t, std::string);
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Split, Input, 0,
     int32_t, int64_t);
@@ -27,13 +27,18 @@ using SplitDataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
 using EnabledSplitDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Split, Input, 0);
 
+using OldSplitDataTypes = onnxruntime::TypeList<float, int32_t, int64_t, uint8_t, std::string>;
+
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Split,
     2,
     10,
     KernelDefBuilder().TypeConstraint("T",
                                       BuildKernelDefConstraintsFromTypeList<SplitDataTypes>(),
-                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
+                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>())
+        .FixedTypeConstraintForHash(
+            "T",
+            BuildKernelDefConstraintsFromTypeList<OldSplitDataTypes>()),
     Split);
 
 // Opset 11 starts to support Neg Axis.
@@ -43,7 +48,10 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     12,
     KernelDefBuilder().TypeConstraint("T",
                                       BuildKernelDefConstraintsFromTypeList<SplitDataTypes>(),
-                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
+                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>())
+        .FixedTypeConstraintForHash(
+            "T",
+            BuildKernelDefConstraintsFromTypeList<OldSplitDataTypes>()),
     Split);
 
 // Opset 13 starts to supports 'split' as optional input.
@@ -52,13 +60,16 @@ ONNX_CPU_OPERATOR_KERNEL(
     13,
     KernelDefBuilder().TypeConstraint("T",
                                       BuildKernelDefConstraintsFromTypeList<SplitDataTypes>(),
-                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>()),
+                                      BuildKernelDefConstraintsFromTypeList<EnabledSplitDataTypes>())
+        .FixedTypeConstraintForHash(
+            "T",
+            BuildKernelDefConstraintsFromTypeList<OldSplitDataTypes>()),
     Split);
 
 Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
                                     int& after_dims_including_split_axis, int& after_dims_excluding_split,
                                     std::vector<int64_t>& split_sizes) const {
-  auto& input_dims = input_shape.GetDims();
+  auto input_dims = input_shape.GetDims();
   const auto num_dimensions = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
   axis = HandleNegativeAxis(axis_, num_dimensions);  // handle negative and enforce axis is valid
   const int64_t split_dim_size = input_dims[axis];
@@ -108,6 +119,8 @@ Status Split::Compute(OpKernelContext* context) const {
     status = ComputeImpl<int64_t>(*context, input);
   else if (input.IsDataType<uint8_t>())
     status = ComputeImpl<uint8_t>(*context, input);
+  else if (input.IsDataType<int8_t>())
+    status = ComputeImpl<int8_t>(*context, input);
   else if (input.IsDataTypeString())
     status = ComputeImpl<std::string>(*context, input);
   else
@@ -160,8 +173,7 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
                                         split_sizes));
 
   // copy dimensions so we can update the selected axis in place
-  auto& input_dims = input_shape.GetDims();
-  std::vector<int64_t> output_dimensions{input_dims};
+  auto output_dimensions = input_shape.AsShapeVector();
 
   int64_t input_offset = 0;
   const T* input_data = input.template Data<T>();
@@ -185,7 +197,7 @@ Status Split::ComputeImpl(OpKernelContext& context, const Tensor& input) const {
           copy_data<T>(src, dst, count);
         });
 
-    input_offset += split_size * after_dims_excluding_split;  // offset by the N data we used in this iteration
+    input_offset += static_cast<int64_t>(split_size) * after_dims_excluding_split;  // offset by the N data we used in this iteration
   }
 
   return Status::OK();

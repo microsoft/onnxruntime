@@ -36,9 +36,11 @@ class TestSetting:
     test_cases: int
     test_times: int
     use_gpu: bool
+    provider: str
     intra_op_num_threads: int
     seed: int
     verbose: bool
+
 
 @dataclass
 class ModelSetting:
@@ -49,7 +51,7 @@ class ModelSetting:
     opt_level: int
 
 
-def create_session(model_path, use_gpu, intra_op_num_threads, graph_optimization_level=None):
+def create_session(model_path, use_gpu, provider, intra_op_num_threads, graph_optimization_level=None):
     import onnxruntime
 
     if use_gpu and ('CUDAExecutionProvider' not in onnxruntime.get_available_providers()):
@@ -60,7 +62,21 @@ def create_session(model_path, use_gpu, intra_op_num_threads, graph_optimization
     if intra_op_num_threads is None and graph_optimization_level is None:
         session = onnxruntime.InferenceSession(model_path)
     else:
-        execution_providers = ['CPUExecutionProvider'] if not use_gpu else ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        if use_gpu:
+            if provider == 'dml':
+                execution_providers = ['DmlExecutionProvider', 'CPUExecutionProvider']
+            elif provider == 'rocm':
+                execution_providers = ['ROCMExecutionProvider', 'CPUExecutionProvider']
+            elif provider == 'migraphx':
+                execution_providers = ['MIGraphXExecutionProvider', 'ROCMExecutionProvider', 'CPUExecutionProvider']
+            elif provider == 'cuda':
+                execution_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+            elif provider == 'tensorrt':
+                execution_providers = ['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
+            else:
+                execution_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        else:
+            execution_providers = ['CPUExecutionProvider']
 
         sess_options = onnxruntime.SessionOptions()
         sess_options.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
@@ -84,7 +100,23 @@ def create_session(model_path, use_gpu, intra_op_num_threads, graph_optimization
         session = onnxruntime.InferenceSession(model_path, sess_options, providers=execution_providers)
 
     if use_gpu:
-        assert 'CUDAExecutionProvider' in session.get_providers()
+        if provider == 'dml':
+            assert 'DmlExecutionProvider' in session.get_providers()
+        elif provider == 'rocm':
+            assert 'ROCMExecutionProvider' in session.get_providers()
+        elif provider == 'migraphx':
+            assert 'MIGraphXExecutionProvider' in session.get_providers()
+            assert 'ROCMExecutionProvider' in session.get_providers()
+        elif provider == 'cuda':
+            assert 'CUDAExecutionProvider' in session.get_providers()
+        elif provider == 'tensorrt':
+            assert 'TensorrtExecutionProvider' in session.get_providers()
+            assert 'CUDAExecutionProvider' in session.get_providers()
+        else:
+            assert 'CUDAExecutionProvider' in session.get_providers()
+    else:
+        assert 'CPUExecutionProvider' in session.get_providers()
+
     return session
 
 
@@ -103,6 +135,7 @@ def onnxruntime_inference(session, all_inputs, output_names):
         latency_list.append(latency)
     return results, latency_list
 
+
 def to_string(model_path, session, test_setting):
     sess_options = session.get_session_options()
     option = "model={},".format(os.path.basename(model_path))
@@ -112,8 +145,9 @@ def to_string(model_path, session, test_setting):
     option += f"batch_size={test_setting.batch_size},sequence_length={test_setting.sequence_length},test_cases={test_setting.test_cases},test_times={test_setting.test_times},use_gpu={test_setting.use_gpu}"
     return option
 
+
 def run_one_test(model_setting, test_setting, perf_results, all_inputs, intra_op_num_threads):
-    session = create_session(model_setting.model_path, test_setting.use_gpu, intra_op_num_threads,
+    session = create_session(model_setting.model_path, test_setting.use_gpu, test_setting.provider, intra_op_num_threads,
                              model_setting.opt_level)
     output_names = [output.name for output in session.get_outputs()]
 
@@ -148,7 +182,8 @@ def run_one_test(model_setting, test_setting, perf_results, all_inputs, intra_op
 
 def launch_test(model_setting, test_setting, perf_results, all_inputs, intra_op_num_threads):
     process = multiprocessing.Process(target=run_one_test,
-                                      args=(model_setting, test_setting, perf_results, all_inputs, intra_op_num_threads))
+                                      args=(model_setting, test_setting, perf_results, all_inputs,
+                                            intra_op_num_threads))
     process.start()
     process.join()
 
@@ -169,7 +204,8 @@ def run_perf_tests(model_setting, test_setting, perf_results, all_inputs):
 
     for intra_op_num_threads in candidate_threads:
         launch_test(model_setting, test_setting, perf_results, all_inputs, intra_op_num_threads)
-        
+
+
 def run_performance(model_setting, test_setting, perf_results):
     input_ids, segment_ids, input_mask = get_bert_inputs(model_setting.model_path, model_setting.input_ids_name,
                                                          model_setting.segment_ids_name, model_setting.input_mask_name)
@@ -195,7 +231,8 @@ def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', required=True, type=str, help="bert onnx model path")
 
-    parser.add_argument('-b', '--batch_size',
+    parser.add_argument('-b',
+                        '--batch_size',
                         required=True,
                         type=int,
                         nargs="+",
@@ -205,7 +242,8 @@ def parse_arguments():
 
     parser.add_argument('--samples', required=False, type=int, default=10, help="number of samples to be generated")
 
-    parser.add_argument('-t', '--test_times',
+    parser.add_argument('-t',
+                        '--test_times',
                         required=False,
                         type=int,
                         default=0,
@@ -231,7 +269,14 @@ def parse_arguments():
     parser.add_argument('--use_gpu', required=False, action='store_true', help="use GPU")
     parser.set_defaults(use_gpu=False)
 
-    parser.add_argument('-n', '--intra_op_num_threads',
+    parser.add_argument("--provider",
+                        required=False,
+                        type=str,
+                        default=None,
+                        help="Execution provider to use")
+
+    parser.add_argument('-n',
+                        '--intra_op_num_threads',
                         required=False,
                         type=int,
                         default=None,
@@ -266,15 +311,8 @@ def main():
                                  args.opt_level)
 
     for batch_size in batch_size_set:
-        test_setting = TestSetting(
-            batch_size,
-            args.sequence_length,
-            args.samples,
-            args.test_times,
-            args.use_gpu,
-            args.intra_op_num_threads,
-            args.seed,
-            args.verbose)
+        test_setting = TestSetting(batch_size, args.sequence_length, args.samples, args.test_times, args.use_gpu,
+                                   args.provider, args.intra_op_num_threads, args.seed, args.verbose)
 
         print("test setting", test_setting)
         run_performance(model_setting, test_setting, perf_results)

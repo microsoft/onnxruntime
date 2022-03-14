@@ -5,12 +5,20 @@
 
 #import "ort_session.h"
 
-NS_ASSUME_NONNULL_BEGIN
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /**
  * Gets whether the CoreML execution provider is available.
  */
 BOOL ORTIsCoreMLExecutionProviderAvailable(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+NS_ASSUME_NONNULL_BEGIN
 
 /**
  * Options for configuring the CoreML execution provider.

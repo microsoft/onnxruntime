@@ -27,6 +27,7 @@
 #include "gtest/gtest.h"
 #include <gsl/gsl>
 #include "core/util/math_cpuonly.h"
+#include <variant>
 
 namespace onnxruntime {
 class InferenceSession;
@@ -123,9 +124,8 @@ constexpr ONNX_NAMESPACE::TensorProto_DataType TypeToDataType<BFloat16>() {
 
 template <typename T>
 struct TTypeProto {
-  TTypeProto(const std::vector<int64_t>* shape = nullptr) {
+  explicit TTypeProto(const std::vector<int64_t>* shape = nullptr) {
     proto.mutable_tensor_type()->set_elem_type(TypeToDataType<T>());
-
     if (shape) {
       auto mutable_shape = proto.mutable_tensor_type()->mutable_shape();
       for (auto i : *shape) {
@@ -148,6 +148,25 @@ struct TTensorType {
 
 template <typename T>
 const TTypeProto<T> TTensorType<T>::s_type_proto;
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+struct TSparseTensorProto {
+  explicit TSparseTensorProto(int32_t dtype, const std::vector<int64_t>* shape = nullptr) {
+    proto.mutable_sparse_tensor_type()->set_elem_type(dtype);
+    if (shape) {
+      auto m_shape = proto.mutable_sparse_tensor_type()->mutable_shape();
+      for (int64_t v : *shape) {
+        auto* m_dim = m_shape->add_dim();
+        if (v != -1)
+          m_dim->set_dim_value(v);
+        else
+          m_dim->set_dim_param("symbolic");
+      }
+    }
+  }
+  ONNX_NAMESPACE::TypeProto proto;
+};
+#endif
 
 // TypeProto for map<TKey, TVal>
 template <typename TKey, typename TVal>
@@ -194,8 +213,6 @@ struct SequenceTensorTypeProto {
     MLDataType dt = DataTypeImpl::GetTensorType<ElemType>();
     const auto* elem_proto = dt->GetTypeProto();
     proto.mutable_sequence_type()->mutable_elem_type()->CopyFrom(*elem_proto);
-    auto* tensor_type = proto.mutable_sequence_type()->mutable_elem_type()->mutable_tensor_type();
-    tensor_type->set_elem_type(TypeToDataType<ElemType>());
   }
   ONNX_NAMESPACE::TypeProto proto;
 };
@@ -207,6 +224,23 @@ struct SequenceTensorType {
 
 template <typename ElemType>
 const SequenceTensorTypeProto<ElemType> SequenceTensorType<ElemType>::s_sequence_tensor_type_proto;
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+
+struct OptionalTypeProto {
+  OptionalTypeProto(const ONNX_NAMESPACE::TypeProto& type_proto) {
+    proto.mutable_optional_type()->mutable_elem_type()->CopyFrom(type_proto);
+  }
+  ONNX_NAMESPACE::TypeProto proto;
+};
+
+#endif
+
+struct CheckParams {
+  bool sort_output_ = false;
+  optional<float> absolute_error_;
+  optional<float> relative_error_;
+};
 
 // To use OpTester:
 //  1. Create one with the op name
@@ -255,22 +289,162 @@ class OpTester {
 
   // We have an initializer_list and vector version of the Add functions because std::vector is specialized for
   // bool and we can't get the raw data out. So those cases must use an initializer_list
+
+  // Dims variant is needed to reduce the number of overloads
+  // MS compiler refuses to create a gsl::span from initializer_list especially
+  // if it contains a single element
+  using DimsVariant = std::variant<std::vector<int64_t>, TensorShapeVector>;
+
   template <typename T>
-  void AddInput(const char* name, const std::vector<int64_t>& dims, const std::initializer_list<T>& values,
+  void AddInput(const char* name, std::initializer_list<int64_t> dims, std::initializer_list<T> values,
+                bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr) {
+    const DimsVariant dims_var = std::vector<int64_t>(dims);
+    AddData(input_data_, name, dims_var, values.begin(), values.size(), is_initializer, false, dim_params);
+  }
+
+  template <typename T>
+  void AddInput(const char* name, std::initializer_list<int64_t> dims, const std::vector<T>& values,
+                bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr) {
+    const DimsVariant dims_var = std::vector<int64_t>(dims);
+    AddData(input_data_, name, dims_var, values.data(), values.size(), is_initializer, false, dim_params);
+  }
+
+  template <typename T>
+  void AddInput(const char* name, std::initializer_list<int64_t> dims, const T* p_values,
+                const size_t size, bool is_initializer = false,
+                const std::vector<std::string>* dim_params = nullptr) {
+    const DimsVariant dims_var = std::vector<int64_t>(dims);
+    AddData(input_data_, name, dims_var, p_values, size, is_initializer, false, dim_params);
+  }
+
+
+  template <typename T>
+  void AddInput(const char* name, std::initializer_list<int64_t> dims, const TensorShapeVector& values,
+                bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr) {
+    const DimsVariant dims_var = std::vector<int64_t>(dims);
+    AddData(input_data_, name, dims_var, values.data(), values.size(), is_initializer, false, dim_params);
+  }
+
+  template <typename T>
+  void AddInput(const char* name, const DimsVariant& dims, std::initializer_list<T> values,
                 bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr) {
     AddData(input_data_, name, dims, values.begin(), values.size(), is_initializer, false, dim_params);
   }
 
   template <typename T>
-  void AddInput(const char* name, const std::vector<int64_t>& dims, const std::vector<T>& values,
+  void AddInput(const char* name, const DimsVariant& dims, const std::vector<T>& values,
                 bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr) {
     AddData(input_data_, name, dims, values.data(), values.size(), is_initializer, false, dim_params);
   }
 
   template <typename T>
-  void AddInput(const char* name, const std::vector<int64_t>& dims, const T* p_values, const size_t size, bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr) {
+  void AddInput(const char* name, const DimsVariant& dims, const T* p_values,
+                const size_t size, bool is_initializer = false,
+                const std::vector<std::string>* dim_params = nullptr) {
     AddData(input_data_, name, dims, p_values, size, is_initializer, false, dim_params);
   }
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+  // Useful to add boolean data
+  template <typename T>
+  void AddSparseCooInput(const char* name, const std::vector<int64_t>& dims,
+                         const std::initializer_list<T>& values, const std::vector<int64_t>& indices,
+                         const std::vector<std::string>* dim_params = nullptr) {
+    auto ml_type = DataTypeImpl::GetType<T>();
+    AddSparseCooTensorData(input_data_, ml_type, name, dims,
+                           gsl::make_span(values).as_bytes(),
+                           gsl::make_span(indices),
+                           CheckParams(), dim_params);
+  }
+
+  template <typename T>
+  void AddSparseCooInput(const char* name, const std::vector<int64_t>& dims,
+                         const std::vector<T>& values, const std::vector<int64_t>& indices,
+                         const std::vector<std::string>* dim_params = nullptr) {
+    auto ml_type = DataTypeImpl::GetType<T>();
+    AddSparseCooTensorData(input_data_, ml_type, name, dims,
+                           gsl::make_span(values).as_bytes(),
+                           gsl::make_span(indices),
+                           CheckParams(), dim_params);
+  }
+
+  template <typename T>
+  void AddSparseCooInput(const char* name, const std::vector<int64_t>& dims,
+                         gsl::span<const T> values_span,
+                         const std::vector<int64_t>& indices,
+                         const std::vector<std::string>* dim_params = nullptr) {
+    auto ml_type = DataTypeImpl::GetType<T>();
+    AddSparseCooTensorData(input_data_, ml_type, name, dims,
+                           values_span.as_bytes(),
+                           gsl::make_span(indices),
+                           CheckParams(), dim_params);
+  }
+
+  void AddSparseCooInput(const char* name, const std::vector<int64_t>& dims,
+                         const std::vector<std::string>& values,
+                         const std::vector<int64_t>& indices,
+                         const std::vector<std::string>* dim_params = nullptr) {
+    AddSparseCooTensorStrings(input_data_, name, dims,
+                              gsl::make_span(values),
+                              gsl::make_span(indices),
+                              dim_params);
+  }
+
+  // Useful to add boolean data
+  template <typename T>
+  void AddSparseCsrInput(const char* name, const std::vector<int64_t>& dims,
+                         const std::initializer_list<T>& values,
+                         const std::vector<int64_t>& inner_indices,
+                         const std::vector<int64_t>& outer_indices,
+                         const std::vector<std::string>* dim_params = nullptr) {
+    auto ml_type = DataTypeImpl::GetType<T>();
+    AddSparseCsrTensorData(input_data_, ml_type, name, dims,
+                           gsl::make_span(values).as_bytes(),
+                           gsl::make_span(inner_indices),
+                           gsl::make_span(outer_indices),
+                           CheckParams(), dim_params);
+  }
+
+  template <typename T>
+  void AddSparseCsrInput(const char* name, const std::vector<int64_t>& dims,
+                         const std::vector<T>& values,
+                         const std::vector<int64_t>& inner_indices,
+                         const std::vector<int64_t>& outer_indices,
+                         const std::vector<std::string>* dim_params = nullptr) {
+    auto ml_type = DataTypeImpl::GetType<T>();
+    AddSparseCsrTensorData(input_data_, ml_type, name, dims,
+                           gsl::make_span(values).as_bytes(),
+                           gsl::make_span(inner_indices),
+                           gsl::make_span(outer_indices),
+                           CheckParams(), dim_params);
+  }
+
+  template <typename T>
+  void AddSparseCsrInput(const char* name, const std::vector<int64_t>& dims,
+                         gsl::span<const T> values_span,
+                         const std::vector<int64_t>& inner_indices,
+                         const std::vector<int64_t>& outer_indices,
+                         const std::vector<std::string>* dim_params = nullptr) {
+    auto ml_type = DataTypeImpl::GetType<T>();
+    AddSparseCsrTensorData(input_data_, ml_type, name, dims,
+                           values_span.as_bytes(),
+                           gsl::make_span(inner_indices),
+                           gsl::make_span(outer_indices),
+                           CheckParams(), dim_params);
+  }
+
+  void AddSparseCsrInput(const char* name, const std::vector<int64_t>& dims,
+                         const std::vector<std::string>& values,
+                         const std::vector<int64_t>& inner_indices,
+                         const std::vector<int64_t>& outer_indices,
+                         const std::vector<std::string>* dim_params = nullptr) {
+    AddSparseCsrTensorStrings(input_data_, name, dims,
+                              gsl::make_span(values),
+                              gsl::make_span(inner_indices),
+                              gsl::make_span(outer_indices),
+                              dim_params);
+  }
+#endif
 
   // Add other registered types, possibly experimental
   template <typename T>
@@ -299,13 +473,67 @@ class OpTester {
 
   template <typename T>
   void AddSeqInput(const char* name, const SeqTensors<T>& seq_tensors) {
-    AddSeqData<T>(input_data_, name, seq_tensors);
+    AddSeqData<T>(input_data_, name, &seq_tensors);
   }
 
   template <typename T>
   void AddSeqOutput(const char* name, const SeqTensors<T>& seq_tensors) {
-    AddSeqData<T>(output_data_, name, seq_tensors);
+    AddSeqData<T>(output_data_, name, &seq_tensors);
   }
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+
+  template <typename T>
+  void AddOptionalTypeTensorInput(const char* name, const DimsVariant& dims,
+                                  const std::initializer_list<T>* values = nullptr,
+                                  bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr) {
+    AddData(input_data_, name, dims, values ? values->begin() : nullptr,
+            values ? values->size() : 0, is_initializer, false, dim_params, 0.0f, 0.0f, true);
+  }
+
+  template <typename T>
+  void AddOptionalTypeTensorInput(const char* name, std::initializer_list<int64_t> dims,
+                                  const std::initializer_list<T>* values = nullptr,
+                                  bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr) {
+    DimsVariant dims_var = std::vector<int64_t>(dims);
+    AddData(input_data_, name, dims_var, values ? values->begin() : nullptr,
+            values ? values->size() : 0, is_initializer, false, dim_params, 0.0f, 0.0f, true);
+  }
+
+
+  template <typename T>
+  void AddOptionalTypeTensorOutput(const char* name, const DimsVariant& dims,
+                                   const std::initializer_list<T>* expected_values = nullptr,
+                                   bool sort_output = false, float rel_error = 0.0f, float abs_error = 0.0f) {
+    AddData(output_data_, name, dims, expected_values ? expected_values->begin() : nullptr,
+            expected_values ? expected_values->size() : 0, false,
+            sort_output, nullptr /* dim_params */, rel_error, abs_error, true);
+  }
+
+  template <typename T>
+  void AddOptionalTypeTensorOutput(const char* name, std::initializer_list<int64_t> dims,
+                                   const std::initializer_list<T>* expected_values = nullptr,
+                                   bool sort_output = false, float rel_error = 0.0f, float abs_error = 0.0f) {
+    DimsVariant dims_var = std::vector<int64_t>(dims);
+    AddData(output_data_, name, dims_var, expected_values ? expected_values->begin() : nullptr,
+            expected_values ? expected_values->size() : 0, false,
+            sort_output, nullptr /* dim_params */, rel_error, abs_error, true);
+  }
+
+
+  template <typename T>
+  void AddOptionalTypeSeqInput(const char* name,
+                               const SeqTensors<T>* seq_tensors) {
+    AddSeqData<T>(input_data_, name, seq_tensors, true);
+  }
+
+  template <typename T>
+  void AddOptionalTypeSeqOutput(const char* name,
+                                const SeqTensors<T>* seq_tensors) {
+    AddSeqData<T>(output_data_, name, seq_tensors, true);
+  }
+
+#endif
 
   template <typename TKey, typename TVal>
   void AddInput(const char* name, const std::map<TKey, TVal>& val) {
@@ -317,15 +545,47 @@ class OpTester {
                                optional<float>(), optional<float>()));
   }
 
+  /*
+  * Use this API to add an input *edge* to the node/op being tested that won't 
+  * have any data passed into.
+  * Such an edge will have the qualifier OpSchema::Optional in the schema.
+  * This is exposed to ensure the op kernel implementations can be tested to handle 
+  * presence/absence of such optional input edges.
+  */
   template <typename T>
-  void AddMissingOptionalInput() {
+  void AddOptionalInputEdge() {
     std::string name;  // empty == input doesn't exist
     input_data_.push_back(Data(NodeArg(name, &TTensorType<T>::s_type_proto.proto), OrtValue(), optional<float>(),
                                optional<float>()));
   }
 
   template <typename T>
-  void AddOutput(const char* name, const std::vector<int64_t>& dims, const std::initializer_list<T>& expected_values,
+  void AddOutput(const char* name, std::initializer_list<int64_t> dims, std::initializer_list<T> expected_values,
+                 bool sort_output = false, float rel_error = 0.0f, float abs_error = 0.0f) {
+    const DimsVariant dims_var = std::vector<int64_t>(dims);
+    AddData(output_data_, name, dims_var, expected_values.begin(), expected_values.size(), false,
+            sort_output, nullptr /* dim_params */, rel_error, abs_error);
+  }
+
+  template <typename T>
+  void AddOutput(const char* name, std::initializer_list<int64_t> dims, const std::vector<T>& expected_values,
+                 bool sort_output = false, float rel_error = 0.0f, float abs_error = 0.0f) {
+    const DimsVariant dims_var = std::vector<int64_t>(dims);
+    AddData(output_data_, name, dims_var, expected_values.data(), expected_values.size(), false,
+            sort_output, nullptr /* dim_params */, rel_error, abs_error);
+  }
+
+    template <typename T>
+  void AddOutput(const char* name, std::initializer_list<int64_t> dims, const T* p_values, const size_t size,
+                 bool sort_output = false, float rel_error = 0.0f, float abs_error = 0.0f) {
+    const DimsVariant dims_var = std::vector<int64_t>(dims);
+    AddData(output_data_, name, dims, p_values, size, false,
+            sort_output, nullptr /* dim_params */, rel_error, abs_error);
+  }
+
+
+  template <typename T>
+  void AddOutput(const char* name, const DimsVariant& dims, std::initializer_list<T> expected_values,
                  bool sort_output = false, float rel_error = 0.0f, float abs_error = 0.0f) {
     AddData(output_data_, name, dims, expected_values.begin(), expected_values.size(), false,
             sort_output, nullptr /* dim_params */, rel_error, abs_error);
@@ -333,22 +593,134 @@ class OpTester {
 
   // This function doesn't work for vector<bool> because const vector<bool> cannot invoke its data().
   template <typename T>
-  void AddOutput(const char* name, const std::vector<int64_t>& dims, const std::vector<T>& expected_values,
+  void AddOutput(const char* name, const DimsVariant& dims, const std::vector<T>& expected_values,
                  bool sort_output = false, float rel_error = 0.0f, float abs_error = 0.0f) {
     AddData(output_data_, name, dims, expected_values.data(), expected_values.size(), false,
             sort_output, nullptr /* dim_params */, rel_error, abs_error);
   }
 
   template <typename T>
-  void AddOutput(const char* name, const std::vector<int64_t>& dims, const T* p_values, const size_t size,
+  void AddOutput(const char* name, const DimsVariant& dims, const TensorShapeVector& expected_values,
+                 bool sort_output = false, float rel_error = 0.0f, float abs_error = 0.0f) {
+    AddData(output_data_, name, dims, expected_values.data(), expected_values.size(), false,
+            sort_output, nullptr /* dim_params */, rel_error, abs_error);
+  }
+
+  template <typename T>
+  void AddOutput(const char* name, const DimsVariant& dims, const T* p_values, const size_t size,
                  bool sort_output = false, float rel_error = 0.0f, float abs_error = 0.0f) {
     AddData(output_data_, name, dims, p_values, size, false,
             sort_output, nullptr /* dim_params */, rel_error, abs_error);
   }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
   template <typename T>
-  void AddMissingOptionalOutput() {
-    std::string name;  // empty == input doesn't exist
+  void AddSparseCooOutput(const char* name, const std::vector<int64_t>& dims,
+                          const std::initializer_list<T>& expected_values,
+                          const std::vector<int64_t>& expected_indices,
+                          const CheckParams& check_params = CheckParams()) {
+    auto ml_type = DataTypeImpl::GetType<T>();
+    AddSparseCooTensorData(output_data_, ml_type, name, dims,
+                           gsl::make_span(expected_values).as_bytes(),
+                           gsl::make_span(expected_indices),
+                           check_params, nullptr /*dim_params*/);
+  }
+
+  template <typename T>
+  void AddSparseCooOutput(const char* name, const std::vector<int64_t>& dims,
+                          const std::vector<T>& expected_values,
+                          const std::vector<int64_t>& expected_indices,
+                          const CheckParams& check_params = CheckParams()) {
+    auto ml_type = DataTypeImpl::GetType<T>();
+    AddSparseCooTensorData(output_data_, ml_type, name, dims,
+                           gsl::make_span(expected_values).as_bytes(),
+                           gsl::make_span(expected_indices),
+                           check_params, nullptr /*dim_params*/);
+  }
+
+  template <typename T>
+  void AddSparseCooOutput(const char* name, const std::vector<int64_t>& dims,
+                          gsl::span<const T> expected_values_span,
+                          const std::vector<int64_t>& expected_indices,
+                          const CheckParams& check_params = CheckParams()) {
+    auto ml_type = DataTypeImpl::GetType<T>();
+    AddSparseCooTensorData(output_data_, ml_type, name, dims,
+                           expected_values_span.as_bytes(),
+                           gsl::make_span(expected_indices),
+                           check_params, nullptr /*dim_params*/);
+  }
+
+  void AddSparseCooOutput(const char* name, const std::vector<int64_t>& dims,
+                          const std::vector<std::string>& expected_values,
+                          const std::vector<int64_t>& expected_indices) {
+    AddSparseCooTensorStrings(output_data_, name, dims,
+                              gsl::make_span(expected_values),
+                              gsl::make_span(expected_indices));
+  }
+
+  template <typename T>
+  void AddSparseCsrOutput(const char* name, const std::vector<int64_t>& dims,
+                          const std::initializer_list<T>& values,
+                          const std::vector<int64_t>& inner_indices,
+                          const std::vector<int64_t>& outer_indices,
+                          const CheckParams& check_params = CheckParams()) {
+    auto ml_type = DataTypeImpl::GetType<T>();
+    AddSparseCsrTensorData(output_data_, ml_type, name, dims,
+                           gsl::make_span(values).as_bytes(),
+                           gsl::make_span(inner_indices),
+                           gsl::make_span(outer_indices),
+                           check_params, nullptr /*dim_params*/);
+  }
+
+  template <typename T>
+  void AddSparseCsrOutput(const char* name, const std::vector<int64_t>& dims,
+                          const std::vector<T>& values,
+                          const std::vector<int64_t>& inner_indices,
+                          const std::vector<int64_t>& outer_indices,
+                          const CheckParams& check_params = CheckParams()) {
+    auto ml_type = DataTypeImpl::GetType<T>();
+    AddSparseCsrTensorData(output_data_, ml_type, name, dims,
+                           gsl::make_span(values).as_bytes(),
+                           gsl::make_span(inner_indices),
+                           gsl::make_span(outer_indices),
+                           check_params, nullptr /*dim_params*/);
+  }
+
+  template <typename T>
+  void AddSparseCsrOutput(const char* name, const std::vector<int64_t>& dims,
+                          gsl::span<const T> expected_values_span,
+                          const std::vector<int64_t>& expected_inner_indices,
+                          const std::vector<int64_t>& expected_outer_indices,
+                          const CheckParams& check_params = CheckParams()) {
+    auto ml_type = DataTypeImpl::GetType<T>();
+    AddSparseCsrTensorData(output_data_, ml_type, name, dims,
+                           expected_values_span.as_bytes(),
+                           gsl::make_span(expected_inner_indices),
+                           gsl::make_span(expected_outer_indices),
+                           check_params, nullptr /*dim_params*/);
+  }
+
+  void AddSparseCsrOutput(const char* name, const std::vector<int64_t>& dims,
+                          const std::vector<std::string>& expected_values,
+                          const std::vector<int64_t>& expected_inner_indices,
+                          const std::vector<int64_t>& expected_outer_indices) {
+    AddSparseCsrTensorStrings(output_data_, name, dims,
+                              gsl::make_span(expected_values),
+                              gsl::make_span(expected_inner_indices),
+                              gsl::make_span(expected_outer_indices));
+  }
+#endif
+
+  /*
+  * Use this API to add an output *edge* to the node/op being tested that shouldn't have any 
+  * data produced into.
+  * Such an edge will have the qualifier OpSchema::Optional in the schema.
+  * This is exposed to ensure the op kernel implementations can be tested to handle 
+  * presence/absence of such optional output edges.
+  */
+  template <typename T>
+  void AddOptionalOutputEdge() {
+    std::string name;  // empty == output doesn't exist
     output_data_.push_back(Data(NodeArg(name, &TTensorType<T>::s_type_proto.proto), OrtValue(), optional<float>(),
                                 optional<float>()));
   }
@@ -442,10 +814,11 @@ class OpTester {
            /*out*/ size_t* number_of_pre_packed_weights_counter = nullptr,
            /*out*/ size_t* number_of_shared_pre_packed_weights_counter = nullptr);
 
-  std::vector<MLValue>
+  std::vector<OrtValue>
   GetFetches() { return fetches_; }
 
-  std::unique_ptr<onnxruntime::Model> BuildGraph(const std::unordered_map<std::string, int>& extra_domain_to_version = {});
+  std::unique_ptr<onnxruntime::Model> BuildGraph(const std::unordered_map<std::string, int>& extra_domain_to_version = {},
+                                                 bool allow_released_onnx_opset_only = true);
 
   // storing p_model as cache
   void SetModelCache(std::shared_ptr<onnxruntime::Model> model) {
@@ -500,7 +873,15 @@ class OpTester {
     return prepacked_weights_container_.GetNumberOfElements();
   }
 
+  bool test_allow_released_onnx_opset_only_ = true;
+
  protected:
+  // Set test_allow_released_onnx_opset_only_ to false or override this method and return false
+  // if inheriting from OpTester to allow testing of a non-released ONNX opset operator
+  virtual bool IsAllowReleasedONNXOpsetsOnlySetForThisTest() const {
+    return test_allow_released_onnx_opset_only_;
+  }
+
   virtual void AddNodes(onnxruntime::Graph& graph, std::vector<onnxruntime::NodeArg*>& graph_input_defs,
                         std::vector<onnxruntime::NodeArg*>& graph_output_defs,
                         std::vector<std::function<void(onnxruntime::Node& node)>>& add_attribute_funcs);
@@ -513,14 +894,15 @@ class OpTester {
   void FillFeeds(std::unordered_map<std::string, OrtValue>& feeds);
 
   template <class SessionType>
-  std::vector<MLValue> ExecuteModel(Model& model,
-                                    SessionType& session_object,
-                                    ExpectResult expect_result,
-                                    const std::string& expected_failure_string,
-                                    const RunOptions* run_options,
-                                    const std::unordered_map<std::string, OrtValue>& feeds,
-                                    const std::vector<std::string>& output_names,
-                                    const std::string& provider_type);
+  std::vector<OrtValue> ExecuteModel(Model& model,
+                                     SessionType& session_object,
+                                     ExpectResult expect_result,
+                                     const std::string& expected_failure_string,
+                                     const RunOptions* run_options,
+                                     const std::unordered_map<std::string, OrtValue>& feeds,
+                                     const std::vector<std::string>& output_names,
+                                     const std::string& provider_type,
+                                     bool allow_released_onnx_opset_only = true);
 
   const char* op_;
   std::vector<Data> input_data_;
@@ -535,54 +917,77 @@ class OpTester {
 #endif
 
  protected:
+  gsl::span<const int64_t> ToDimsSpan(const DimsVariant& dims_var) {
+    gsl::span<const int64_t> result;
+    switch (dims_var.index()) {
+      case 0:
+        result = std::get<0>(dims_var);
+        break;
+      case 1:
+        result = std::get<1>(dims_var);
+        break;
+      default:
+        ORT_THROW("Unhandled dims variant");
+    }
+    return result;
+  }
+
   template <typename T>
-  void AddData(std::vector<Data>& data, const char* name, const std::vector<int64_t>& dims, const T* values,
+  void AddData(std::vector<Data>& data, const char* name, const DimsVariant& dims_var, const T* values,
                int64_t values_count, bool is_initializer = false, bool sort_output = false,
                const std::vector<std::string>* dim_params = nullptr,
-               float rel_error = 0.0f, float abs_error = 0.0f) {
+               float rel_error = 0.0f, float abs_error = 0.0f, bool is_optional_type_tensor = false) {
+    auto dims = ToDimsSpan(dims_var);
+#if defined(DISABLE_OPTIONAL_TYPE)
+    if (is_optional_type_tensor) {
+      ORT_THROW("Optional type is not supported in this build");
+    }
+#endif
+
     ORT_TRY {
       TensorShape shape{dims};
-      ORT_ENFORCE(shape.Size() == values_count, values_count, " input values doesn't match tensor size of ",
-                  shape.Size());
 
-      auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-      auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), shape, allocator);
-
-      auto* data_ptr = p_tensor->template MutableData<T>();
-      for (int64_t i = 0; i < values_count; i++) {
-        data_ptr[i] = values[i];
-      }
-
-      std::vector<int64_t> dims_for_proto{dims};
-      if (add_symbolic_dim_to_tensor_data_ >= 0 &&
-          dims.size() > static_cast<size_t>(add_symbolic_dim_to_tensor_data_)) {
-        dims_for_proto[add_symbolic_dim_to_tensor_data_] = -1;
-      }
-
-      TTypeProto<T> type_proto(add_shape_to_tensor_data_ ? &dims_for_proto : nullptr);
       OrtValue value;
-      value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
-                 DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-      auto node_arg = NodeArg(name, &type_proto.proto);
-      if (dim_params && !(dim_params->empty()) && add_shape_to_tensor_data_) {
-        // If dim_params presents, configure node_arg's dim value based on dim_params, which supports symbolic dim and dim broadcast.
-        auto& dim_params_data = *dim_params;
-        onnx::TensorShapeProto new_shape;
 
-        // currently hard-code the reserved symbolic names.
-        // TODO: when the list grows longer, consider move it to a better place.
-        const static std::unordered_set<std::string> reserved_symbolic{"batch", "seq"};
+      if (!is_optional_type_tensor || (is_optional_type_tensor && values != nullptr)) {
+        // In case values is nullptr for optional type tensor, it means we are creating
+        // an optional type tensor which is None and we hence skip values count validation
+        ORT_ENFORCE(shape.Size() == values_count,
+                    values_count, " input values doesn't match tensor size of ",
+                    shape.Size());
 
-        for (size_t i = 0; i < dim_params_data.size(); ++i) {
-          if (reserved_symbolic.find(dim_params_data[i]) != reserved_symbolic.end()) {
-            new_shape.add_dim()->set_dim_param(dim_params_data[i]);
-          } else {
-            ASSERT_TRUE(std::stoi(dim_params_data[i]) == dims[i]);
-            new_shape.add_dim()->set_dim_value(dims[i]);
+        // If it is an optional tensor type with no values (i.e.) None,
+        // we won't even pass it in to Run() as part of the feeds,
+        // so we don't even have to create a Tensor.
+        // Conversely, if it is an optional tensor type with values,
+        // we pass it in as a regular tensor.
+        auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+        Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), shape, std::move(allocator), value);
+
+        // values *could* be nullptr for a non-optional tensor if it is empty.
+        // Update the data buffer of the input only if values if non-nullptr.
+        if (values != nullptr) {
+          auto* data_ptr = value.GetMutable<Tensor>()->template MutableData<T>();
+          for (int64_t i = 0; i < values_count; i++) {
+            data_ptr[i] = values[i];
           }
         }
-        node_arg.SetShape(new_shape);
+      } else {  // "None" Tensor OrtValue. Initialize appropriately.
+        auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+        value.Init(nullptr, ml_tensor, ml_tensor->GetDeleteFunc());
       }
+
+      std::vector<int64_t> dims_for_proto = GetDimsForProto(dims);
+      TTypeProto<T> tensor_type_proto(add_shape_to_tensor_data_ ? &dims_for_proto : nullptr);
+
+#if !defined(DISABLE_OPTIONAL_TYPE)
+      OptionalTypeProto optional_type_proto(tensor_type_proto.proto);
+      auto node_arg = NodeArg(name, !is_optional_type_tensor ? &tensor_type_proto.proto : &optional_type_proto.proto);
+#else
+      auto node_arg = NodeArg(name, &tensor_type_proto.proto);
+#endif
+
+      AddShapeToTensorData(node_arg, dims, dim_params);
 
       optional<float> rel;
       optional<float> abs;
@@ -596,7 +1001,11 @@ class OpTester {
       }
 
       data.push_back(Data(std::move(node_arg), std::move(value), std::move(rel), std::move(abs), sort_output));
-      if (is_initializer) initializer_index_.push_back(data.size() - 1);
+
+      // Optional values cannot be initializers
+      if (is_initializer && !is_optional_type_tensor) {
+        initializer_index_.push_back(data.size() - 1);
+      }
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {
@@ -608,39 +1017,113 @@ class OpTester {
 
  private:
   template <typename T>
-  void AddSeqData(std::vector<Data>& data, const char* name, const SeqTensors<T>& seq_tensors) {
-    auto num_tensors = seq_tensors.tensors.size();
-    std::vector<Tensor> tensors;
-    tensors.resize(num_tensors);
-    auto elem_type = DataTypeImpl::GetType<T>();
-    for (size_t i = 0; i < num_tensors; ++i) {
-      TensorShape shape{seq_tensors.tensors[i].shape};
-      auto values_count = static_cast<int64_t>(seq_tensors.tensors[i].data.size());
-      ORT_ENFORCE(shape.Size() == values_count, values_count,
-                  " input values doesn't match tensor size of ", shape.Size());
+  void AddSeqData(std::vector<Data>& data, const char* name,
+                  const SeqTensors<T>* seq_tensors,
+                  bool is_optional_sequence_tensor_type = false) {
+#if defined(DISABLE_OPTIONAL_TYPE)
+    if (is_optional_sequence_tensor_type) {
+      ORT_THROW("Optional type is not supported in this build");
+    }
+#endif
 
-      auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-      auto& tensor = tensors[i];
+    std::unique_ptr<TensorSeq> ptr;
 
-      tensor = Tensor(elem_type,
-                      shape,
-                      allocator);
+    if (seq_tensors) {
+      auto num_tensors = seq_tensors->tensors.size();
+      std::vector<Tensor> tensors;
+      tensors.resize(num_tensors);
+      auto elem_type = DataTypeImpl::GetType<T>();
+      for (size_t i = 0; i < num_tensors; ++i) {
+        TensorShape shape{seq_tensors->tensors[i].shape};
+        auto values_count = static_cast<int64_t>(seq_tensors->tensors[i].data.size());
+        ORT_ENFORCE(shape.Size() == values_count, values_count,
+                    " input values doesn't match tensor size of ", shape.Size());
 
-      auto* data_ptr = tensor.template MutableData<T>();
-      for (int64_t x = 0; x < values_count; ++x) {
-        data_ptr[x] = seq_tensors.tensors[i].data[x];
+        auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+        auto& tensor = tensors[i];
+
+        tensor = Tensor(elem_type,
+                        shape,
+                        allocator);
+
+        auto* data_ptr = tensor.template MutableData<T>();
+        for (int64_t x = 0; x < values_count; ++x) {
+          data_ptr[x] = seq_tensors->tensors[i].data[x];
+        }
       }
+
+      ptr = std::make_unique<TensorSeq>(elem_type);
+      ptr->SetElements(std::move(tensors));
     }
 
     OrtValue value;
     auto mltype = DataTypeImpl::GetType<TensorSeq>();
-    auto ptr = std::make_unique<TensorSeq>(elem_type);
-    ptr->SetElements(std::move(tensors));
-    value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
-    ptr.release();
-    data.push_back(Data(NodeArg(name, &SequenceTensorType<T>::s_sequence_tensor_type_proto.proto), std::move(value),
-                        optional<float>(), optional<float>()));
+
+    // nullptr means None OrtValue which we will skip inserting into the feeds
+    value.Init(ptr ? ptr.release() : nullptr, mltype, mltype->GetDeleteFunc());
+
+    SequenceTensorTypeProto<T> sequence_tensor_proto;
+#if !defined(DISABLE_OPTIONAL_TYPE)
+    OptionalTypeProto optional_type_proto(sequence_tensor_proto.proto);
+    auto node_arg = NodeArg(name, !is_optional_sequence_tensor_type
+                                      ? &sequence_tensor_proto.proto
+                                      : &optional_type_proto.proto);
+#else
+    auto node_arg = NodeArg(name, &sequence_tensor_proto.proto);
+#endif
+
+    data.push_back(Data(std::move(node_arg), std::move(value), optional<float>(), optional<float>()));
   }
+
+  std::vector<int64_t> GetDimsForProto(gsl::span<const int64_t> dims);
+
+  void AddShapeToTensorData(NodeArg& node_arg, gsl::span<const int64_t> dims, const std::vector<std::string>* dim_params);
+
+  void CopyDataToTensor(gsl::span<const gsl::byte> data, Tensor& dst);
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+  NodeArg MakeSparseNodeArg(int32_t dtype, const char* name,
+                            const gsl::span<const int64_t>& dims,
+                            const std::vector<std::string>* dim_params);
+
+  void AddSparseCooTensorData(std::vector<Data>& data,
+                              MLDataType data_type,
+                              const char* name,
+                              gsl::span<const int64_t> dims,
+                              gsl::span<const gsl::byte> values,
+                              gsl::span<const int64_t> indices,
+                              const CheckParams& check_params,
+                              const std::vector<std::string>* dim_params = nullptr);
+
+  void AddSparseCooTensorStrings(std::vector<Data>& data,
+                                 const char* name,
+                                 gsl::span<const int64_t> dims,
+                                 gsl::span<const std::string> values,
+                                 gsl::span<const int64_t> indices,
+                                 const std::vector<std::string>* dim_params = nullptr);
+
+  void AddSparseCsrTensorData(std::vector<Data>& data,
+                              MLDataType data_type,
+                              const char* name,
+                              gsl::span<const int64_t> dims,
+                              gsl::span<const gsl::byte> values,
+                              gsl::span<const int64_t> inner_indices,
+                              gsl::span<const int64_t> outer_indices,
+                              const CheckParams& check_params,
+                              const std::vector<std::string>* dim_params = nullptr);
+
+  void AddSparseCsrTensorStrings(std::vector<Data>& data,
+                                 const char* name,
+                                 gsl::span<const int64_t> dims,
+                                 gsl::span<const std::string> values,
+                                 gsl::span<const int64_t> inner_indices,
+                                 gsl::span<const int64_t> outer_indices,
+                                 const std::vector<std::string>* dim_params = nullptr);
+
+  void AddSparseTensorData(std::vector<Data>& data, NodeArg node_arg,
+                           std::unique_ptr<SparseTensor> p_tensor,
+                           const CheckParams& check_params);
+#endif
 
   const char* domain_;
   int opset_version_;
@@ -707,6 +1190,30 @@ inline std::vector<MLFloat16> FloatsToMLFloat16s(const std::vector<float>& f) {
   std::vector<MLFloat16> m(f.size());
   ConvertFloatToMLFloat16(f.data(), m.data(), static_cast<int>(f.size()));
   return m;
+}
+
+inline std::vector<BFloat16> MakeBFloat16(const std::initializer_list<float>& input) {
+  std::vector<BFloat16> output;
+  std::transform(input.begin(), input.end(), std::back_inserter(output), [](float f) { return BFloat16(f); });
+  return output;
+}
+
+inline std::vector<BFloat16> FloatsToBFloat16s(const std::vector<float>& input) {
+  std::vector<BFloat16> output;
+  std::transform(input.begin(), input.end(), std::back_inserter(output), [](float f) { return BFloat16(f); });
+  return output;
+}
+
+inline CheckParams MakeCheckParams(const OpTester::Data& d) {
+  return CheckParams{d.sort_output_, d.absolute_error_, d.relative_error_};
+}
+
+inline std::vector<int64_t> GetShapeVector(const TensorShape& shape) {
+  std::vector<int64_t> result;
+  const auto dims = shape.GetDims();
+  result.resize(dims.size());
+  result.assign(dims.cbegin(), dims.cend());
+  return result;
 }
 
 }  // namespace test

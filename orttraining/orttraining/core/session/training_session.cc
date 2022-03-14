@@ -36,7 +36,7 @@
 #ifdef ENABLE_NVTX_PROFILE
 #include <set>
 #include <thread>
-#include "core/profile/context.h"
+#include "core/providers/cuda/nvtx_profile_context.h"
 #endif
 
 namespace onnxruntime {
@@ -126,7 +126,7 @@ Status SetupOptimizerParams(
   // check if shared initial optimizer states have been provided
   const auto optim_state_it = init_optimizer_states.find(onnxruntime::training::SHARED_OPTIMIZER_STATES_KEY);
   if (optim_state_it != init_optimizer_states.end()) {
-    opt_graph_config.shared_optimizer_states = std::move(optim_state_it->second);
+    opt_graph_config.shared_optimizer_states = optim_state_it->second;
   }
 
   opt_node_configs_result = std::move(opt_node_configs);
@@ -317,7 +317,7 @@ static Status AddFakeLossScaling(
     Graph& graph, std::string& loss_scale_name) {
   GraphAugmenter::GraphDefs defs{};
   loss_scale_name = graph.GenerateNodeArgName("loss_scale");
-  const auto* loss_scale_type = defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  const auto* loss_scale_type = defs.CreateTypeProto(std::array<const int64_t, 1>{1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   graph.GetOrCreateNodeArg(loss_scale_name, loss_scale_type);
   defs.AddGraphInputs({loss_scale_name});
   ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(graph, defs));
@@ -597,7 +597,7 @@ static Status AddLossScaling(
   GraphAugmenter::GraphDefs defs{};
   *loss_scale_input_name = graph.GenerateNodeArgName("loss_scale");
   const auto* loss_scale_input_type =
-      defs.CreateTypeProto({1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      defs.CreateTypeProto(std::array<const int64_t, 1>{1}, ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   scaled_loss_name = graph.GenerateNodeArgName("scaled_loss");
   defs.AddNodeDef(NodeDef{
       "Mul",
@@ -747,18 +747,21 @@ void TrainingSession::AddPreTrainingTransformers(const IExecutionProvider& execu
       auto transformers_to_register = transformer_utils::GeneratePreTrainingTransformers(
           level, weights_to_train, config, execution_provider);
       for (auto& entry : transformers_to_register) {
-        transformer_manager.Register(std::move(entry), level);
+        ORT_THROW_IF_ERROR(transformer_manager.Register(std::move(entry), level));
       }
     }
   }
 }
 
 // Registers all the predefined transformers with transformer manager
-void TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                                TransformerLevel graph_optimization_level) {
-  ORT_ENFORCE(graph_optimization_level <= TransformerLevel::MaxLevel,
-              "Exceeded max transformer level. Current level is set to " +
-                  std::to_string(static_cast<uint32_t>(graph_optimization_level)));
+Status TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
+                                                  TransformerLevel graph_optimization_level,
+                                                  bool saving_runtime_optimizations) const {
+  ORT_RETURN_IF(saving_runtime_optimizations, "Saving runtime optimizations is not supported by TrainingSession.");
+
+  ORT_RETURN_IF_NOT(graph_optimization_level <= TransformerLevel::MaxLevel,
+                    "Exceeded max transformer level. Current level is set to " +
+                        std::to_string(static_cast<uint32_t>(graph_optimization_level)));
 
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
@@ -767,10 +770,12 @@ void TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transfo
       auto transformers_to_register = transformer_utils::GenerateTransformers(
           level, weights_to_train_, GetSessionOptions().free_dimension_overrides, {});
       for (auto& entry : transformers_to_register) {
-        transformer_manager.Register(std::move(entry), level);
+        ORT_RETURN_IF_ERROR(transformer_manager.Register(std::move(entry), level));
       }
     }
   }
+
+  return Status::OK();
 }
 
 Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
@@ -786,7 +791,7 @@ Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unorde
   // CPU allocator for partitioning the optimizer state by column.
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
-  std::unordered_set<std::string> compatible_eps = {};
+  InlinedHashSet<std::string_view> compatible_eps = {};
   LOGS_DEFAULT(WARNING) << horizontal_parallel_size << "-way horizontal model parallel is enabled";
   transformers_to_register.emplace_back(std::make_unique<MegatronTransformer>(
       training::DistributedRunContext::RankInGroup(training::WorkerGroupType::HorizontalParallel),
@@ -795,7 +800,7 @@ Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unorde
 
   // Generate and register transformers for level
   for (auto& entry : transformers_to_register) {
-    graph_transformation_mgr.Register(std::move(entry), TransformerLevel::Level1);
+    ORT_RETURN_IF_ERROR(graph_transformation_mgr.Register(std::move(entry), TransformerLevel::Level1));
   }
 
   Graph& graph = model_->MainGraph();
@@ -809,9 +814,9 @@ Status TrainingSession::AddGistEncoding(int op_type, std::string compr_type) {
     Graph& graph = model_->MainGraph();
 
     auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleGistTransformer1");
-    rule_transformer_L1->Register(std::make_unique<GistEncodeDecode>(op_type, compr_type));
+    ORT_RETURN_IF_ERROR(rule_transformer_L1->Register(std::make_unique<GistEncodeDecode>(op_type, compr_type)));
     onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-    graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
+    ORT_RETURN_IF_ERROR(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
 
     ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
   } catch (const OnnxRuntimeException& exp) {
@@ -921,7 +926,7 @@ Status TrainingSession::BuildOptimizer(
     OptimizerOutputKeyMap<std::string>& opt_graph_outputs) {
   ORT_RETURN_IF_NOT(
       opt_configs.size() == weights_to_train_.size(),
-      "Number of optimizer configurations does not match number of weights to train.")
+      "Number of optimizer configurations does not match number of weights to train.");
 
   for (const auto& weight_name : weights_to_train_) {
     ORT_RETURN_IF_NOT(
@@ -990,7 +995,7 @@ Status TrainingSession::SaveWithExternalInitializers(const PathString& model_uri
                                                      const std::string& external_file_name,
                                                      size_t initializer_size_threshold) {
   // Delete the old files before saving.
-  std::remove(ToMBString(model_uri).c_str());
+  std::remove(ToUTF8String(model_uri).c_str());
   std::remove(external_file_name.c_str());
 
   return Model::SaveWithExternalInitializers(*model_, model_uri, external_file_name, initializer_size_threshold);
@@ -998,7 +1003,7 @@ Status TrainingSession::SaveWithExternalInitializers(const PathString& model_uri
 
 Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveOption opt) {
   // Delete the old file before saving.
-  std::remove(ToMBString(model_uri).c_str());  // TODO would be good to have something like RemoveFile(PathString)
+  std::remove(ToUTF8String(model_uri).c_str());  // TODO would be good to have something like RemoveFile(PathString)
 
   if (opt == TrainingSession::SaveOption::NO_RELOAD) {
     return Model::Save(*model_, model_uri);
@@ -1050,7 +1055,7 @@ Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveO
 
   if (!status.IsOK()) {
     LOGS(*session_logger_, WARNING)
-        << "Error when saving model " << ToMBString(model_uri) << " : " << status.ErrorMessage();
+        << "Error when saving model " << ToUTF8String(model_uri) << " : " << status.ErrorMessage();
   }
 
   return status;
@@ -1071,7 +1076,7 @@ common::Status TrainingSession::GetOptimizerState(std::unordered_map<std::string
     }
     NameMLValMap curr_opt_tensors;
     const auto& weight_name = weight_map.first;
-    GetSessionState().GetInitializedTensors(opt_names, allow_missing, curr_opt_tensors);
+    ORT_RETURN_IF_ERROR(GetSessionState().GetInitializedTensors(opt_names, allow_missing, curr_opt_tensors));
     opt_state_tensors[weight_name] = {};
     // Keep only prefix in returned value
     for (const auto& opt_pair : weight_map.second) {
@@ -1107,7 +1112,7 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
   }
 
   NameMLValMap fp_weights;
-  GetSessionState().GetInitializedTensors(fp_tensor_names, allow_missing, fp_weights);
+  ORT_RETURN_IF_ERROR(GetSessionState().GetInitializedTensors(fp_tensor_names, allow_missing, fp_weights));
   // Change key from sharded_name to weight_name using partition_info
   for (const auto& weight : weight_partition_info_) {
     if (weight.second.weight_partitioned) {
@@ -1131,7 +1136,7 @@ common::Status TrainingSession::GetModelState(std::unordered_map<std::string, Na
     mp_tensor_names.insert(
         mixed_precision_weight_initializer_names.begin(), mixed_precision_weight_initializer_names.end());
     NameMLValMap mp_weights;
-    GetSessionState().GetInitializedTensors(mp_tensor_names, allow_missing, mp_weights);
+    ORT_RETURN_IF_ERROR(GetSessionState().GetInitializedTensors(mp_tensor_names, allow_missing, mp_weights));
     // Change key from fp16_name to weight_name
     for (const auto& weight_fp16_pair : weight_to_mixed_precision_map_) {
       const auto& it = mp_weights.find(weight_fp16_pair.second);
@@ -1289,7 +1294,7 @@ Status TrainingSession::SetStateTensors(const NameMLValMap& state_tensors, bool 
     if (is_valid_state_tensor && is_tensor_present) {
       ORT_RETURN_IF_NOT(
           initializer_it->second.IsTensor() && state.second.IsTensor(),
-          "Non-tensor type as initializer is not expected.")
+          "Non-tensor type as initializer is not expected.");
 
       auto* initializer_tensor = initializer_it->second.GetMutable<Tensor>();
       auto& ckpt_tensor = state.second.Get<Tensor>();
@@ -1410,7 +1415,7 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
   };
 
   // perform reverse dfs from output node to discover trainable parameters
-  graph.ReverseDFSFrom({graph.GetProducerNode(loss_name)}, add_trainable_initializers, {}, {}, stop_at_untrainable);
+  graph.ReverseDFSFrom(std::array{graph.GetProducerNode(loss_name)}, add_trainable_initializers, {}, {}, stop_at_untrainable);
   return trainable_initializers;
 }
 
@@ -1741,9 +1746,9 @@ void PipelineTrainingSession::CreateMicroBatchVariables(
       const size_t slice_axis = static_cast<size_t>(pipeline_context_.sliced_axes[name]);
       if (has_element(pipeline_context_.sliced_tensor_names, name)) {
         OrtValue sliced_value = SliceTensor(values[i], slice_id, slice_axis, num_slices, *this);
-        (sub_io_binding.*bind)(name, sliced_value);
+        ORT_THROW_IF_ERROR((sub_io_binding.*bind)(name, sliced_value));
       } else {
-        (sub_io_binding.*bind)(name, values[i]);
+        ORT_THROW_IF_ERROR((sub_io_binding.*bind)(name, values[i]));
       }
     }
   };
@@ -1792,7 +1797,7 @@ void PipelineTrainingSession::CreatePipelineEvents(
     auto event = onnxruntime::MakeScalarMLValue<int64_t>(bfc_arena, event_value, false);
 
     // Add the created event to the list.
-    io_binding.BindInput(event_name, event);
+    ORT_THROW_IF_ERROR(io_binding.BindInput(event_name, event));
   };
 
   int id = -1;
@@ -1841,7 +1846,7 @@ void PipelineTrainingSession::CreatePipelineEvents(
 common::Status PipelineTrainingSession::RunWithPipeline(const RunOptions& run_options, IOBinding& io_binding) {
   const size_t num_steps = pipeline_context_.num_pipeline_micro_batches;
   const size_t stage_id = pipeline_context_.pipeline_stage_id;
-  const bool training_mode = true;
+  constexpr bool training_mode = true;
 
   std::vector<std::unique_ptr<IOBinding>> sub_io_bindings(num_steps);
 

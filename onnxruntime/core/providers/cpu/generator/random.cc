@@ -29,8 +29,8 @@ limitations under the License.
 
 #include "core/common/eigen_common_wrapper.h"
 #include "core/common/safeint.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 #include "core/util/math_cpuonly.h"
 
 using namespace ONNX_NAMESPACE;
@@ -292,7 +292,7 @@ Status Multinomial::Compute(OpKernelContext* ctx) const {
   const auto* tensor_pointer = ctx->Input<Tensor>(0);
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& X = *tensor_pointer;
-  auto& X_dims = X.Shape().GetDims();
+  auto X_dims = X.Shape().GetDims();
 
   if (X_dims.empty()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Empty dimensions for input tensor");

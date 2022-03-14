@@ -19,6 +19,14 @@
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wunused-result"
+// cmake/external/eigen/unsupported/Eigen/CXX11/../../../Eigen/src/Core/arch/NEON/PacketMath.h:1633:9:
+// error: ‘void* memcpy(void*, const void*, size_t)’ copying an object of non-trivial type ‘Eigen::internal::Packet4c’
+// {aka ‘struct Eigen::internal::eigen_packet_wrapper<int, 2>’} from an array of ‘const int8_t’
+// {aka ‘const signed char’} [-Werror=class-memaccess]
+#ifdef HAS_CLASS_MEMACCESS
+#pragma GCC diagnostic ignored "-Wclass-memaccess"
+#endif
 #elif defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4127)
@@ -331,11 +339,11 @@ class ThreadPoolParallelSection {
   // Number of tasks revoked (i.e., removed from the queues prior to
   // execution).  We count this at various points, and omit waiting
   // for them at the end of a loop.
-  unsigned tasks_revoked;
+  unsigned tasks_revoked{0};
 
   // Current degree of parallelism, including work in the main thread
   // and in the dispatcher.
-  unsigned current_dop;
+  unsigned current_dop{0};
 
   // State shared between the main thread and worker threads
   // -------------------------------------------------------
@@ -785,7 +793,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 // unique_ptr.  The explicit deleter avoids the Eigen-specific
 // definition of ThreadPoolParallelSection needing to be avilable in
 // threadpool.h where the user-facing parallel section API is defined.
-
+GSL_SUPPRESS(r.11)
 std::unique_ptr<ThreadPoolParallelSection, void(*)(ThreadPoolParallelSection*)> AllocateParallelSection() override {
   return std::unique_ptr<ThreadPoolParallelSection, void(*)(ThreadPoolParallelSection*)>
     (new ThreadPoolParallelSection,
@@ -1192,6 +1200,7 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
                           std::function<void(unsigned idx)> fn,
                           unsigned n,
                           std::ptrdiff_t block_size) override {
+  ORT_ENFORCE(n <= num_threads_+1, "More work items than threads");
   profiler_.LogStartAndCoreAndBlock(block_size);
   PerThread* pt = GetPerThread();
   assert(pt->leading_par_section && "RunInParallel, but not in parallel section");
@@ -1208,7 +1217,7 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
   // loops to execute from the current parallel section.
   std::function<void(unsigned)> worker_fn = [&ps](unsigned par_idx) {
     while (ps.active) {
-      if (!ps.current_loop) {
+      if (ps.current_loop.load() == nullptr) {
         onnxruntime::concurrency::SpinPause();
       } else {
         ps.workers_in_loop++;
@@ -1249,6 +1258,7 @@ void RunInParallelSection(ThreadPoolParallelSection &ps,
 // For all other threads:
 //  1. run fn(...);
 void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdiff_t block_size) override {
+  ORT_ENFORCE(n <= num_threads_+1, "More work items than threads");
   profiler_.LogStartAndCoreAndBlock(block_size);
   PerThread* pt = GetPerThread();
   ThreadPoolParallelSection ps;
@@ -1261,12 +1271,11 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdif
   profiler_.LogEnd(ThreadPoolProfiler::WAIT);
 }
 
-
-int NumThreads() const EIGEN_FINAL {
+int NumThreads() const final {
   return num_threads_;
 }
 
-int CurrentThreadId() const EIGEN_FINAL {
+int CurrentThreadId() const final {
   const PerThread* pt = const_cast<ThreadPoolTempl*>(this)->GetPerThread();
   if (pt->pool == this) {
     return pt->thread_id;
@@ -1445,7 +1454,7 @@ int CurrentThreadId() const EIGEN_FINAL {
 
     assert(td.GetStatus() == WorkerData::ThreadStatus::Spinning);
 
-    const int log2_spin = 20;
+    constexpr int log2_spin = 20;
     const int spin_count = allow_spinning_ ? (1ull<<log2_spin) : 0;
     const int steal_count = spin_count/100;
 

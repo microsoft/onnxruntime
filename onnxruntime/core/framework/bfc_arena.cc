@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/allocator.h"
 #include "core/framework/bfc_arena.h"
 #include <type_traits>
 
@@ -11,11 +12,11 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
                    int initial_chunk_size_bytes,
                    int max_dead_bytes_per_chunk,
                    int initial_growth_chunk_size_bytes)
-    : IArenaAllocator(OrtMemoryInfo(resource_allocator->Info().name,
-                                    OrtAllocatorType::OrtArenaAllocator,
-                                    resource_allocator->Info().device,
-                                    resource_allocator->Info().id,
-                                    resource_allocator->Info().mem_type)),
+    : IAllocator(OrtMemoryInfo(resource_allocator->Info().name,
+                               OrtAllocatorType::OrtArenaAllocator,
+                               resource_allocator->Info().device,
+                               resource_allocator->Info().id,
+                               resource_allocator->Info().mem_type)),
       device_allocator_(std::move(resource_allocator)),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1),
@@ -163,8 +164,19 @@ Status BFCArena::Extend(size_t rounded_bytes) {
   static constexpr float kBackpedalFactor = 0.9f;
   // Try allocating less memory.
   while (mem_addr == nullptr) {
+  // kBackpedalFactor is float, bytes is size_t. The result of bytes * kBackpedalFactor is float. When we cast it to
+  // size_t, which is a smaller type, it could loss data. This is what C4244 complains. The "static_cast<size_t>" here 
+  // is to suppress the warning. C26451 suggest we may change kBackpedalFactor to double to get better accuary. But if
+  // we do that, AMD GPU CI build pipeline will have an "out-of-memory" error. So I choose to keep this piece of code
+  // untouched and disable the warning first.
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26451)
+#endif
     bytes = RoundedBytes(static_cast<size_t>(bytes * kBackpedalFactor));
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
     // give up if we can't satisfy the requested size, or we're attempting an allocation of less than 8K.
     //
     // the latter protects against an infinite loop that occurs when bytes is less than 2560. at that point the 10%

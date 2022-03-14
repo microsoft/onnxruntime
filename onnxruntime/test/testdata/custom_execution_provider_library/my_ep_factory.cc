@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "core/common/gsl_suppress.h"
 #include "my_ep_factory.h"
 #include "my_execution_provider.h"
 #include "core/providers/shared/common.h"
@@ -34,23 +35,25 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MyEP(c
 }
 
 struct MyEP_Provider : Provider {
+  GSL_SUPPRESS(c.35)
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* provider_options) override {
     ProviderOptions* options = (ProviderOptions*)(provider_options);
     MyProviderInfo info;
-    ProviderOptionsParser{}
-        .AddValueParser(
-            "device_id",
-            [&info](const std::string& value_str) -> Status {
-              ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.device_id));
-              return Status::OK();
-            })
-        .AddValueParser(
-            "some_config",
-            [&info](const std::string& value_str) -> Status {
-              ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.some_config));
-              return Status::OK();
-            })
-        .Parse(*options);
+    ORT_THROW_IF_ERROR(
+        ProviderOptionsParser{}
+            .AddValueParser(
+                "device_id",
+                [&info](const std::string& value_str) -> Status {
+                  ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.device_id));
+                  return Status::OK();
+                })
+            .AddValueParser(
+                "some_config",
+                [&info](const std::string& value_str) -> Status {
+                  ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.some_config));
+                  return Status::OK();
+                })
+            .Parse(*options));
     return std::make_shared<MyProviderFactory>(info);
   }
 
@@ -66,6 +69,27 @@ extern "C" {
 
 ORT_API(onnxruntime::Provider*, GetProvider) {
   return &onnxruntime::g_provider;
+}
+
+ORT_API(size_t, ProviderHashFunc, const void* provider_options){
+  ProviderOptions* options = (ProviderOptions*)(provider_options);
+  MyProviderInfo info;
+  ORT_IGNORE_RETURN_VALUE(ProviderOptionsParser{}
+      .AddValueParser(
+          "device_id",
+          [&info](const std::string& value_str) -> Status {
+            ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.device_id));
+            return Status::OK();
+          })
+      .AddValueParser(
+          "some_config",
+          [&info](const std::string& value_str) -> Status {
+            ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.some_config));
+            return Status::OK();
+          })
+      .Parse(*options));
+  // use device id as hash key
+  return info.device_id;
 }
 
 }

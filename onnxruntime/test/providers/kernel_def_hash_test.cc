@@ -48,7 +48,11 @@
  *
  * In the unlikely event that we need to make a change to the kernel def
  * hashing that breaks backward compatibility, the expected values may need to
- * be updated.
+ * be updated. You will also need to update UpdateHashForBackwardsCompatibility
+ * in onnxruntime/core/framework/kernel_def_hash_helpers.cc, add a
+ * test model for the operator in question to onnxruntime/test/testdata/ort_backwards_compat
+ * and update OrtModelOnlyTests.TestBackwardsCompat in onnxruntime/test/framework/ort_model_only_test.cc
+ * to load the new model and validate the hash replacement works correctly.
  */
 
 #include <algorithm>
@@ -57,14 +61,20 @@
 #include <iostream>
 
 #include "gtest/gtest.h"
+#include "onnxruntime_config.h"
 
 #ifdef _WIN32
 #pragma warning(push)
 #pragma warning(disable : 28020)
+#elif __aarch64__ && defined(HAS_FORMAT_TRUNCATION)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
 #endif
 #include "nlohmann/json.hpp"
 #ifdef _WIN32
 #pragma warning(pop)
+#elif __aarch64__ && defined(HAS_FORMAT_TRUNCATION)
+#pragma GCC diagnostic pop
 #endif
 
 #include "asserts.h"
@@ -74,6 +84,7 @@
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "gtest/gtest.h"
 
 using json = nlohmann::json;
 
@@ -101,7 +112,7 @@ KernelDefHashes ParseKernelDefHashes(std::istream& in) {
 
 void AppendKernelDefHashesFromFile(const PathString& path, KernelDefHashes& kernel_def_hashes) {
   std::ifstream in{path};
-  ORT_ENFORCE(in, "Failed to open file: ", ToMBString(path));
+  ORT_ENFORCE(in, "Failed to open file: ", ToUTF8String(path));
   const auto file_kernel_def_hashes = ParseKernelDefHashes(in);
   kernel_def_hashes.insert(
       kernel_def_hashes.end(), file_kernel_def_hashes.begin(), file_kernel_def_hashes.end());
@@ -168,7 +179,10 @@ TEST(KernelDefHashTest, ExpectedCpuKernelDefHashes) {
 #if defined(ENABLE_TRAINING_OPS)
     AppendKernelDefHashesFromFile(ORT_TSTR("testdata/kernel_def_hashes/training_ops.cpu.json"), result);
 #endif  // ENABLE_TRAINING_OPS
-    // TODO also handle kernels enabled by these symbols: ML_FEATURIZERS, BUILD_MS_EXPERIMENTAL_OPS
+#if !defined(DISABLE_OPTIONAL_TYPE)
+    AppendKernelDefHashesFromFile(ORT_TSTR("testdata/kernel_def_hashes/onnx.optional_type_ops.cpu.json"), result);
+#endif  // !DISABLE_OPTIONAL_TYPE
+    // TODO also handle kernels enabled by these symbols: BUILD_MS_EXPERIMENTAL_OPS
     std::sort(result.begin(), result.end());
     return result;
   }();
@@ -180,5 +194,33 @@ TEST(KernelDefHashTest, ExpectedCpuKernelDefHashes) {
   CheckKernelDefHashes(cpu_kernel_def_hashes, expected_cpu_kernel_def_hashes, is_strict);
 }
 
+// This test is to ensure the latest opset version for ops which can be added
+// during layout transformation step are added. IF this test fails then it means
+// there is a new version available for one of the ops in the map.
+// Adding this test here because resolution for this test failure requires fetching the hash
+// for one of the ops in the list below and this file has information around that.
+// Please update the following 3 places:
+// 1. optimizer/transpose_optimizer/optimizer_api_impl.cc "onnx_ops_available_versions" map,
+//    include the latest version in the map
+// 2. framework/kernel_def_hash_helpers.cc:GetHashValueFromStaticKernelHashMap "static_kernel_hashes" map,
+//    add an entry for latest version and its associated hash
+// 3. KernelDefHashTest.TestNewOpsVersionSupportDuringLayoutTransform "onnx_ops_available_versions" map,
+//    include the latest version in the map
+TEST(KernelDefHashTest, TestNewOpsVersionSupportDuringLayoutTransform) {
+  static const std::unordered_map<std::string, std::vector<int>> onnx_ops_available_versions = {
+      {"Squeeze", {1, 11, 13}},
+      {"Unsqueeze", {1, 11, 13}},
+      {"Gather", {1, 11, 13}},
+      {"Transpose", {1, 13}},
+      {"Identity", {1, 13, 14, 16}},
+  };
+
+  auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
+  for (const auto& [op_type, version_list] : onnx_ops_available_versions) {
+    auto schema = schema_registry->GetSchema(op_type, INT_MAX, kOnnxDomain);
+    EXPECT_EQ(schema->SinceVersion(), version_list[version_list.size() - 1]) << "A new version for op: " << op_type
+                                                                             << "is available. Please update the files mentioned in the comments of this test.";
+  }
+}
 }  // namespace test
 }  // namespace onnxruntime

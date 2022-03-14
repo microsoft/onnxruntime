@@ -5,7 +5,7 @@ about: Use this template for reporting a bug or a performance issue.
 ---
 
 **Describe the bug**
-A clear and concise description of what the bug is.
+A clear and concise description of what the bug is. To avoid repetition please make sure this is not one of the known issues mentioned on the respective release page.
 
 **Urgency**
 If there are particular important use cases blocked by this or strict project-related timelines, please share more information and dates. If there are no hard deadlines, please specify none.

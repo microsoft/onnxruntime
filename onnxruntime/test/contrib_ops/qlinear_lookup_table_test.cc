@@ -18,7 +18,7 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearLeakyRelu_Int8) {
   std::vector<int64_t> dims = {16};
   test.AddInput<int8_t>("X", dims, {0, 16, 17, 18, 19, 90, 91, 127, -128, -110, -108, -100, -16, -17, -18, -1});
   test.AddInput<float>("X_scale", {}, {X_scale});
-  test.AddMissingOptionalInput<int8_t>();  // optional "X_zero_point" using default value here
+  test.AddOptionalInputEdge<int8_t>();  // optional "X_zero_point" using default value here
   test.AddInput<float>("Y_scale", {}, {Y_scale});
   test.AddInput<int8_t>("Y_zero_point", {}, {Y_zero_point});
   test.AddOutput<int8_t>("Y", dims, {-100, -60, -58, -55, -52, 125, 127, 127, -128, -128, -127, -125, -104, -104, -104, -100});
@@ -59,7 +59,7 @@ TEST(QLinearLookupTableBasedOperatorTests, QLinearSigmoid_Int8) {
   std::vector<int64_t> dims = {16};
   test.AddInput<int8_t>("X", dims, {0, 16, 17, 18, 19, 90, 91, 127, -128, -110, -108, -100, -16, -17, -18, -1});
   test.AddInput<float>("X_scale", {}, {X_scale});
-  test.AddMissingOptionalInput<int8_t>();  // optional "X_zero_point" using default value here
+  test.AddOptionalInputEdge<int8_t>();  // optional "X_zero_point" using default value here
   test.AddInput<float>("Y_scale", {}, {Y_scale});
   test.AddInput<int8_t>("Y_zero_point", {}, {Y_zero_point});
   test.AddOutput<int8_t>("Y", dims, {8, 33, 35, 36, 38, 112, 112, 126, -110, -105, -104, -101, -17, -19, -20, 6});

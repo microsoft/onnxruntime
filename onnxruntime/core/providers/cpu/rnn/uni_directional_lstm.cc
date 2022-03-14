@@ -4,7 +4,11 @@
 #include "uni_directional_lstm.h"
 
 #include "core/platform/threadpool.h"
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
 namespace onnxruntime {
 namespace lstm {
 
@@ -82,7 +86,7 @@ UniDirectionalLstm<T>::UniDirectionalLstm(
 template <typename T>
 void UniDirectionalLstm<T>::AllocateBuffers() {
   // allocate and fill with zeroes
-  const bool fill = true;
+  constexpr bool fill = true;
   hidden0_ = Allocate(allocator_, hidden_size_, hidden0_ptr_, fill);
   internal_memory_prev_ = Allocate(allocator_, hidden_size_, internal_memory_prev_ptr_, fill);
   batched_hidden0_ = Allocate(allocator_, batch_size_ * hidden_size_, batched_hidden0_ptr_);
@@ -202,7 +206,7 @@ template <typename T>
 template <typename WeightT>
 void UniDirectionalLstm<T>::AllocateQuantizeBuffers(int max_sequence_length) {
   // Can not specialize on WeightT without specify T explicitly, so use sizeof
-  if (sizeof(WeightT) == 1) {
+  if constexpr(sizeof(WeightT) == 1) {
     const int hidden_size_x4 = 4 * hidden_size_;
     const int total_rows = max_sequence_length * batch_size_;
 
@@ -536,8 +540,10 @@ void UniDirectionalLstm<T>::GateComputations(
     // DumpMatrix("H" + row_str, pH, 1, hidden_size_);
   }
 
+#if defined(DUMP_MATRIXES)
   auto num_rows = local_fused_hidden_rows - row;
   std::string rows_str = " rows[" + std::to_string(row) + ".." + std::to_string(num_rows) + "]";
+#endif
 
   DumpMatrix("i" + rows_str, &*out, num_rows, hidden_size_, 0, hidden_size_x4);
   DumpMatrix("o" + rows_str, &*out, num_rows, hidden_size_, 1 * hidden_size_, hidden_size_x4);

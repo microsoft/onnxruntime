@@ -32,7 +32,7 @@ template <class T>
 void GenerateOptimizerInitialState(const std::string& optimizer_op_name, const T init_moment_value, TrainingSession::OptimizerState& optimizer_state) {
   TrainingSession::OptimizerState result;
   std::vector<int64_t> uc_value = {4};
-  MLValue mlValue;
+  OrtValue mlValue;
   NameMLValMap shared_states;
   for (auto& weight_name : WEIGHT_NAMES) {
     NameMLValMap optim_state;
@@ -115,8 +115,8 @@ void VerifyState(const DataTransferManager& data_transfer_mgr, const NameMLValMa
       // compare "Update_Count" or "Step"
       ASSERT_EQ(actual_tensor.GetElementType(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
       ASSERT_EQ(expected_tensor.Shape(), actual_tensor.Shape());
-      std::vector<int64_t> dims = {1};
-      ASSERT_EQ(expected_tensor.Shape().GetDims(), dims);
+      std::array<int64_t, 1> dims = {1};
+      ASSERT_EQ(expected_tensor.Shape().GetDims(), gsl::make_span(dims));
       auto size = expected_tensor.Shape().Size();
       const std::vector<int64_t> expected(expected_tensor.template Data<int64_t>(), expected_tensor.template Data<int64_t>() + size);
       const std::vector<int64_t> actual(actual_tensor.template Data<int64_t>(), actual_tensor.template Data<int64_t>() + size);
@@ -167,7 +167,7 @@ std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
 
   std::unique_ptr<TrainingSession> training_session = std::make_unique<TrainingSession>(so, *env);
 
-  std::cout << "Loading source model file = " << ToMBString(forward_model_file) << "\n";
+  std::cout << "Loading source model file = " << ToUTF8String(forward_model_file) << "\n";
 
   ORT_THROW_IF_ERROR(training_session->Load(forward_model_file));
 
@@ -183,12 +183,11 @@ std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
 #ifdef USE_CUDA
   ORT_THROW_IF_ERROR(training_session->RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
-  ROCMExecutionProviderInfo xp_info;
-  ORT_THROW_IF_ERROR(training_session->RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(xp_info)));
+  ORT_THROW_IF_ERROR(training_session->RegisterExecutionProvider(DefaultRocmExecutionProvider()));
 #endif
   ORT_THROW_IF_ERROR(training_session->Initialize());
 
-  std::vector<MLValue> gradient_fetches;
+  std::vector<OrtValue> gradient_fetches;
   RunOptions run_options;
   run_options.run_log_verbosity_level = so.session_log_verbosity_level;
   run_options.run_tag = so.session_logid;
@@ -200,20 +199,20 @@ std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
   std::vector<float> image_value(784, 1);
   std::vector<float> label_value(10, 1);
 
-  MLValue imageMLValue;
+  OrtValue imageMLValue;
   TrainingUtil::CreateCpuMLValue(image_dims, image_value, &imageMLValue);
-  MLValue labelMLValue;
+  OrtValue labelMLValue;
   TrainingUtil::CreateCpuMLValue(label_dims, label_value, &labelMLValue);
 
-  auto fw_feeds = std::make_pair<std::vector<std::string>, std::vector<MLValue>>({"X", "labels"}, {imageMLValue, labelMLValue});
+  auto fw_feeds = std::make_pair<std::vector<std::string>, std::vector<OrtValue>>({"X", "labels"}, {imageMLValue, labelMLValue});
 
   if (config.optimizer_config.has_value()) {
     auto optim_config = config.optimizer_config.value();
     auto lr_feed_name = optim_config.learning_rate_input_name;
 
     float lr = 0.001f;
-    MLValue lrMLValue;
-    TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{lr}, &lrMLValue);
+    OrtValue lrMLValue;
+    TrainingUtil::CreateCpuMLValue(std::array<int64_t, 1>{1}, std::vector<float>{lr}, &lrMLValue);
     fw_feeds.first.push_back(lr_feed_name);
     fw_feeds.second.push_back(lrMLValue);
   }
@@ -222,8 +221,8 @@ std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
     const std::string& loss_scale_input_name =
         config_result.mixed_precision_config_result.value().loss_scale_input_name;
     float loss_scale = 2048.0f;
-    MLValue loss_scaleMLValue;
-    TrainingUtil::CreateCpuMLValue({1}, std::vector<float>{loss_scale}, &loss_scaleMLValue);
+    OrtValue loss_scaleMLValue;
+    TrainingUtil::CreateCpuMLValue(std::array<int64_t, 1>{1}, std::vector<float>{loss_scale}, &loss_scaleMLValue);
     fw_feeds.first.push_back(loss_scale_input_name);
     fw_feeds.second.push_back(loss_scaleMLValue);
   }

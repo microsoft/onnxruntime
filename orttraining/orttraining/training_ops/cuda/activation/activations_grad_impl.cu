@@ -27,7 +27,21 @@ struct OP_FastGeluGrad : public CtxGeluGrad {
 template <typename T>
 struct OP_ReluGrad : public CtxReluGrad {
   __device__ __inline__ T operator()(const T& dy, const T& x) const {
-    return x > T {0} ? dy : T {0};
+    return x > T{0} ? dy : T{0};
+  }
+};
+
+template <typename T>
+struct OP_SigmoidGrad : public CtxSigmoidGrad {
+  __device__ __inline__ T operator()(const T& dy, const T& y) const {
+    return dy * y * ((T)1 - y);
+  }
+};
+
+template <typename T>
+struct OP_TanhGrad : public CtxTanhGrad {
+  __device__ __inline__ T operator()(const T& dy, const T& y) const {
+    return dy * ((T)1 - y * y);
   }
 };
 

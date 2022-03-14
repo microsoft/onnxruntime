@@ -336,6 +336,17 @@ struct TensorBase : TBase {
     return S_OK;
   }
 
+  bool GetDisableTensorCpuSyncFromMetadata(const wfc::IPropertySet& properties) {
+    if (properties != nullptr && properties.HasKey(L"DisableTensorCpuSync")) {
+      if (auto disableTensorCpuSyncInspectable = properties.Lookup(L"DisableTensorCpuSync")) {
+        auto disableTensorCpuSyncValue = disableTensorCpuSyncInspectable.as<wf::IPropertyValue>();
+        return disableTensorCpuSyncValue.GetBoolean();
+      }
+    }
+
+    return false;
+  }
+
   // ILotusValueProviderPrivate::UpdateSourceResourceData
   STDMETHOD(UpdateSourceResourceData)
   (BindingContext& context, IValue* value) {
@@ -350,13 +361,17 @@ struct TensorBase : TBase {
     // get the shape
     RETURN_IF_FAILED_MSG(value->GetTensorShape(shape_), "Failed to get the tensor shape from resource!");
 
+    bool is_cpu;
+    bool isCpuOutput = SUCCEEDED(value->IsCpu(&is_cpu)) && is_cpu;
+    bool disableTensorCpuSyncProperty = GetDisableTensorCpuSyncFromMetadata(context.properties);
+    bool disableCpuSync = !isCpuOutput && disableTensorCpuSyncProperty;
+
     // make sure we always have a CPU resource
-    if (CpuTensor() == nullptr) {
+    if (!disableCpuSync && CpuTensor() == nullptr) {
       CpuTensor() = std::make_shared<_winml::Tensor<T>>(shape_);
     }
 
-    bool is_cpu;
-    if (SUCCEEDED(value->IsCpu(&is_cpu)) && is_cpu) {
+    if (isCpuOutput) {
       // Get the data pointer and size
       auto buffer = CpuTensor()->buffer(false);
 
@@ -371,7 +386,7 @@ struct TensorBase : TBase {
         // In that case the underlying buffers will not match the engine output, and they need to be flushed.
         CpuTensor()->flush();
       }
-    } else {
+    } else if (!disableCpuSync) {
       // If we got a gpu resource, we should move the data to the cpu so accessors can retrieve the data.
       // We don't need to copy the engine provided dx resource into a local copy since we always preallocate gpu
       // resources for tensors. Therefore we are certain that the returned dxresource is the same as the one we passed in

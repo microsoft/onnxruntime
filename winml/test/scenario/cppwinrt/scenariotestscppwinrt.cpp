@@ -260,6 +260,14 @@ static void Scenario6BindWithProperties() {
     // insert it in the property set
     propertySet.Insert(L"BitmapPixelFormat", bitmapPixelFormatProperty);
 
+    // make a LearningModelPixelRange
+    LearningModelPixelRange pixelRange = LearningModelPixelRange::ZeroTo255;
+    // translate it to an int so it can be used as a PropertyValue;
+    int intFromLearningModelPixelRange = static_cast<int>(pixelRange);
+    auto pixelRangeProperty = wf::PropertyValue::CreateInt32(intFromLearningModelPixelRange);
+    // insert it in the property set
+    propertySet.Insert(L"PixelRange", pixelRangeProperty);
+
     // bind with properties
     WINML_EXPECT_NO_THROW(binding.Bind(input.Name(), imageValue, propertySet));
   }
@@ -729,7 +737,9 @@ static void Scenario21RunModel2ChainZ() {
   std::vector<int64_t> shape = {1, 3, 720, 720};
   auto outputValue = TensorFloat::Create(shape);  //   FeatureValueFromFeatureValueDescriptor(input, nullptr);
                                                   // now bind the(empty) output so we have a marker to chain with
-  binding1.Bind(output.Name(), outputValue);
+  PropertySet outputBindProperties;
+  outputBindProperties.Insert(L"DisableTensorCpuSync", wf::PropertyValue::CreateBoolean(true));
+  binding1.Bind(output.Name(), outputValue, outputBindProperties);
   // and leave the output unbound on the second model, we will fetch it later
   // run both models async
   WINML_EXPECT_NO_THROW(session1.EvaluateAsync(binding1, L""));

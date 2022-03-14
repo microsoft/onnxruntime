@@ -2,14 +2,19 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <mutex>
+#include <deque>
+#include <map>
+#include <sstream>
+
+#include "onnx/onnx_pb.h"
+#include "onnx/onnx-operators_pb.h"
+#include "onnx/defs/schema.h"
+
 #include "core/graph/constants.h"
 #include "core/common/common.h"
 #include "core/common/status.h"
-#include "core/graph/onnx_protobuf.h"
 #include "core/platform/ort_mutex.h"
-#include <mutex>
-#include <deque>
-#include "sstream"
 
 namespace onnxruntime {
 using OpName_Domain_Version_Schema_Map = std::unordered_map<

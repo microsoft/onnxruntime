@@ -45,55 +45,43 @@ const cudnnConvolutionFwdAlgo_t Conv<T>::kAllAlgos[] = {
     CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED,
 };
 
-cudnnStatus_t getWorkspaceSize(const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& s,
-                               cudnnConvolutionFwdAlgo_t algo, size_t* sz) {
-  return cudnnGetConvolutionForwardWorkspaceSize(
-      s.handle,
-      s.x_tensor,
-      s.w_desc,
-      s.conv_desc,
-      s.y_tensor,
-      algo,
-      sz);
+cudnnStatus_t GetWorkspaceSize(const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& s, cudnnConvolutionFwdAlgo_t algo,
+                               size_t* sz) {
+  return cudnnGetConvolutionForwardWorkspaceSize(s.handle, s.x_tensor, s.w_desc, s.conv_desc, s.y_tensor, algo, sz);
 }
 
-template <typename algo_t>
-size_t getMaxWorkspaceSize(const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& s,
-                           const algo_t* algo, int n_algo) {
-  size_t max_ws_size = 0;
-
+size_t GetMaxWorkspaceSize(const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& s,
+                           const cudnnConvolutionFwdAlgo_t* algo, int n_algo) {
   // TODO: get maximum available size from memory areana
-
   size_t free, total;
   CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
   // Assuming 10% of fragmentation
   free = static_cast<size_t>(static_cast<double>(free) * 0.9);
-
+  size_t max_ws_size = 0;
   for (int i = 0; i < n_algo; i++) {
     cudnnStatus_t err;
     size_t sz;
-    err = getWorkspaceSize(s, algo[i], &sz);
-    if (CUDNN_STATUS_SUCCESS != err || sz == 0 || sz < max_ws_size || sz > free)
-      continue;
+    err = GetWorkspaceSize(s, algo[i], &sz);
+    if (CUDNN_STATUS_SUCCESS != err || sz == 0 || sz < max_ws_size || sz > free) continue;
     max_ws_size = sz;
   }
   return max_ws_size;
 }
 
 Status SliceOutUnwantedOutputSection(cudaStream_t stream,
-                                     const void* input_data, const std::vector<int64_t>& input_dims,
+                                     const void* input_data, gsl::span<const int64_t> input_dims,
                                      void* output_data,
-                                     const std::vector<int64_t>& output_dims,
-                                     std::vector<int64_t> starts,
-                                     const std::vector<int64_t>& ends,
-                                     const std::vector<int64_t>& axes,
+                                     const gsl::span<const int64_t>& output_dims,
+                                     const gsl::span<const int64_t>& starts,
+                                     const gsl::span<const int64_t>& ends,
+                                     const gsl::span<const int64_t>& axes,
                                      size_t element_size) {
   SliceOp::PrepareForComputeMetadata compute_metadata(input_dims);
 
-  SliceBase::PrepareForCompute(starts, ends, axes, compute_metadata);
+  ORT_THROW_IF_ERROR(SliceBase::PrepareForCompute(starts, ends, axes, compute_metadata));
 
   // As a sanity check, ensure that the slice operator's output shape matches with the expected output shape
-  ORT_ENFORCE(compute_metadata.output_dims_ == output_dims);
+  ORT_ENFORCE(gsl::make_span(compute_metadata.output_dims_) == output_dims);
 
   return SliceCuda::Impl(stream, input_data, input_dims, output_data, compute_metadata, element_size);
 }
@@ -103,13 +91,13 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   //set X
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
-  const auto& x_dims = x_shape.GetDims();
+  const auto x_dims = x_shape.AsShapeVector();
   s_.x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   s_.element_size = X->DataType()->Size();
   //set W
   const Tensor* W = context->Input<Tensor>(1);
   const TensorShape& w_shape = W->Shape();
-  std::vector<int64_t> w_dims = w_shape.GetDims();
+  auto w_dims = w_shape.AsShapeVector();
   s_.w_data = reinterpret_cast<const CudaT*>(W->template Data<T>());
   //set B
   if (context->InputCount() >= 3) {
@@ -127,13 +115,13 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     s_.z_data = nullptr;
   }
   bool input_dims_changed = (s_.last_x_dims != x_dims);
-  bool w_dims_changed = (s_.last_w_dims != w_dims);
+  bool w_dims_changed = (s_.last_w_dims.AsShapeVector() != w_dims);
   if (input_dims_changed || w_dims_changed) {
     if (input_dims_changed)
-      s_.last_x_dims = x_dims;
+      s_.last_x_dims = gsl::make_span(x_dims);
 
     if (w_dims_changed) {
-      s_.last_w_dims = w_dims;
+      s_.last_w_dims = gsl::make_span(w_dims);
       s_.cached_benchmark_results.clear();
     }
 
@@ -142,45 +130,45 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
 
     ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
 
-    std::vector<int64_t> kernel_shape;
+    TensorShapeVector kernel_shape;
     ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
     auto rank = kernel_shape.size();
-    std::vector<int64_t> pads(conv_attrs_.pads);
+    ConvPadVector pads(conv_attrs_.pads);
     if (pads.empty()) {
       pads.resize(rank * 2, 0);
     }
-    std::vector<int64_t> dilations(conv_attrs_.dilations);
+    TensorShapeVector dilations(conv_attrs_.dilations);
     if (dilations.empty()) {
       dilations.resize(rank, 1);
     }
-    std::vector<int64_t> strides(conv_attrs_.strides);
+    TensorShapeVector strides(conv_attrs_.strides);
     if (strides.empty()) {
       strides.resize(rank, 1);
     }
 
-    std::vector<int64_t> y_dims;
+    TensorShapeVector y_dims;
     y_dims.reserve(2 + rank);  // rank indicates number of feature dimensions - so add 2 to account for 'N' and 'C'
     y_dims.insert(y_dims.begin(), {N, M});
 
-    std::vector<int64_t> y_dims_with_adjusted_pads;
+    TensorShapeVector y_dims_with_adjusted_pads;
     y_dims_with_adjusted_pads.reserve(2 + rank);  // rank indicates number of feature dimensions - so add 2 to account for 'N' and 'C'
     y_dims_with_adjusted_pads.insert(y_dims_with_adjusted_pads.begin(), {N, M});
 
     bool post_slicing_required = false;
-    std::vector<int64_t> slice_starts;
+    TensorShapeVector slice_starts;
     slice_starts.reserve(rank);
 
-    std::vector<int64_t> slice_ends;
+    TensorShapeVector slice_ends;
     slice_ends.reserve(rank);
 
-    std::vector<int64_t> slice_axes;
+    TensorShapeVector slice_axes;
     slice_axes.reserve(rank);
 
     ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShapeWithAdjustedPads(x_shape.Slice(2), kernel_shape,
                                                                      strides, dilations, pads, y_dims, y_dims_with_adjusted_pads,
                                                                      post_slicing_required, slice_starts, slice_ends, slice_axes));
     ORT_ENFORCE(y_dims.size() == y_dims_with_adjusted_pads.size());
-    s_.y_dims = y_dims;
+    s_.y_dims = gsl::make_span(y_dims);
     s_.y_dims_with_adjusted_pads = y_dims_with_adjusted_pads;
     s_.post_slicing_required = post_slicing_required;
     s_.slice_starts = slice_starts;
@@ -188,9 +176,6 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     s_.slice_axes = slice_axes;
 
     s_.Y = context->Output(0, TensorShape(s_.y_dims));
-    if (s_.Y->Shape().Size() == 0) {
-      return Status::OK();
-    }
     if (post_slicing_required) {
       // Post slicing needed. Create and fill in the Conv results in an intermediate buffer.
       s_.memory_for_cudnn_conv_results = GetScratchBuffer<void>(TensorShape(y_dims_with_adjusted_pads).Size() * s_.element_size);
@@ -200,8 +185,8 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       s_.y_data = reinterpret_cast<CudaT*>(s_.Y->template MutableData<T>());
     }
 
-    std::vector<int64_t> x_dims_cudnn = x_dims;
-    std::vector<int64_t> y_dims_cudnn = !post_slicing_required ? y_dims : y_dims_with_adjusted_pads;
+    TensorShapeVector x_dims_cudnn{x_dims.begin(), x_dims.end()};
+    TensorShapeVector y_dims_cudnn = !post_slicing_required ? y_dims : y_dims_with_adjusted_pads;
     if (rank < 2) {
       // TODO: Explore padding the provided input shape [N, C, D] to [N, C, 1, D]
       // especially for EXHAUSTIVE algo search which may result in a better algo selection.
@@ -218,9 +203,14 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       dilations.push_back(1);
     }
 
-    if (w_dims_changed) {
+    if (w_dims_changed)
       ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
+
+    // We must delay returning early until here so that the weight dims have been cached properly
+    if (s_.Y->Shape().Size() == 0) {
+      return Status::OK();
     }
+
     ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
     ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
     ORT_RETURN_IF_ERROR(s_.conv_desc.Set(kernel_shape.size(), pads, strides, dilations,
@@ -231,12 +221,12 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       const Tensor* B = context->Input<Tensor>(2);
       const auto& b_shape = B->Shape();
       ORT_RETURN_IF_NOT(b_shape.NumDimensions() == 1, "bias should be 1D");
-      std::vector<int64_t> b_dims(2 + kernel_shape.size(), 1);
+      TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
       b_dims[1] = b_shape[0];
       ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
       //s_.b_data = reinterpret_cast<const CudaT*>(B->template Data<T>());
     } else if (bias_expected) {
-      std::vector<int64_t> b_dims(2 + kernel_shape.size(), 1);
+      TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
       b_dims[1] = w_dims[0];
       auto malloc_size = b_dims[1] * sizeof(CudaT);
       ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
@@ -250,7 +240,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
 
     if (!s_.cached_benchmark_results.contains(x_dims_cudnn)) {
       // set math type to tensor core before algorithm search
-      if (std::is_same<T, MLFloat16>::value)
+      ORT_IF_CONSTEXPR(std::is_same<T, MLFloat16>::value)
         CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
 
       cudnnConvolutionFwdAlgoPerf_t perf;
@@ -261,9 +251,11 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       switch (cudnn_conv_algo) {
         case 0: {
           static constexpr int num_algos = CUDNN_CONVOLUTION_FWD_ALGO_COUNT;
-          size_t max_ws_size = getMaxWorkspaceSize(s_, kAllAlgos, num_algos);
-          IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(max_ws_size);
-
+          size_t max_ws_size = cuda_ep->GetCudnnConvUseMaxWorkspace() ? GetMaxWorkspaceSize(s_, kAllAlgos, num_algos)
+                                                                      : AlgoSearchWorkspaceSize;
+          // Use GetTransientScratchBuffer() so the workspace can be freed instead of cached.
+          // Because the benchmarking uses a huge amount of memory, e.g. a few GBs.
+          IAllocatorUniquePtr<void> algo_search_workspace = GetTransientScratchBuffer<void>(max_ws_size);
           CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionForwardAlgorithmEx(
               s_.handle,
               s_.x_tensor,
@@ -294,7 +286,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
 
         default:
           perf.algo = kDefaultConvAlgo;
-          CUDNN_RETURN_IF_ERROR(getWorkspaceSize(s_, perf.algo, &perf.memory));
+          CUDNN_RETURN_IF_ERROR(GetWorkspaceSize(s_, perf.algo, &perf.memory));
           if (std::is_same<T, MLFloat16>::value) {
             perf.mathType = CUDNN_TENSOR_OP_MATH;
           } else {
@@ -309,7 +301,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     s_.workspace_bytes = perf.memory;
   } else {
     //set Y
-    s_.Y = context->Output(0, TensorShape(s_.y_dims));
+    s_.Y = context->Output(0, s_.y_dims);
     if (s_.Y->Shape().Size() == 0) {
       return Status::OK();
     }
@@ -353,8 +345,9 @@ Status Conv<T>::ComputeInternal(OpKernelContext* context) const {
   // To deal with asymmetric padding, we may have over-padded on one or both sides of the spatial dimensions
   // This may have lead to extra results that are unnecessary and hence we slice that off here
   if (s_.post_slicing_required) {
-    SliceOutUnwantedOutputSection(Stream(), s_.y_data, s_.y_dims_with_adjusted_pads, s_.Y->MutableDataRaw(),
-                                  s_.y_dims, s_.slice_starts, s_.slice_ends, s_.slice_axes, s_.element_size);
+    ORT_RETURN_IF_ERROR(SliceOutUnwantedOutputSection(Stream(), s_.y_data, gsl::make_span(s_.y_dims_with_adjusted_pads),
+                                                      s_.Y->MutableDataRaw(), s_.y_dims.GetDims(), s_.slice_starts,
+                                                      s_.slice_ends, s_.slice_axes, s_.element_size));
   }
   return Status::OK();
 }  // namespace cuda
@@ -371,18 +364,18 @@ CudnnConvolutionDescriptor::~CudnnConvolutionDescriptor() {
 
 Status CudnnConvolutionDescriptor::Set(
     size_t rank,
-    const std::vector<int64_t>& pads,
-    const std::vector<int64_t>& strides,
-    const std::vector<int64_t>& dilations,
+    const gsl::span<const int64_t>& pads,
+    const gsl::span<const int64_t>& strides,
+    const gsl::span<const int64_t>& dilations,
     int groups,
     cudnnConvolutionMode_t mode,
     cudnnDataType_t data_type) {
   if (!desc_)
     CUDNN_RETURN_IF_ERROR(cudnnCreateConvolutionDescriptor(&desc_));
 
-  std::vector<int> pad_dims(rank);
-  std::vector<int> stride_dims(rank);
-  std::vector<int> dilation_dims(rank);
+  InlinedVector<int, kTensorShapeSmallBufferElementsSize> pad_dims(rank);
+  InlinedVector<int, kTensorShapeSmallBufferElementsSize> stride_dims(rank);
+  InlinedVector<int, kTensorShapeSmallBufferElementsSize> dilation_dims(rank);
   for (size_t i = 0; i < rank; i++) {
     pad_dims[i] = gsl::narrow_cast<int>(pads[i]);
     stride_dims[i] = gsl::narrow_cast<int>(strides[i]);

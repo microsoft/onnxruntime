@@ -48,7 +48,7 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
   test.AddAttribute("axis", axis);
   test.AddAttribute("keep_dims", keep_dims);
   if (epsilon.has_value()) {
-    test.AddAttribute("epsilon", epsilon.value());
+    test.AddAttribute("epsilon", *epsilon);
   }
 
   // create rand inputs
@@ -78,6 +78,11 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
 #elif USE_ROCM
   test.CompareWithCPU(kRocmExecutionProvider);
 #endif
+}
+
+TEST(CudaKernelTest, LayerNorm_NullInput) {
+  const std::vector<int64_t> X_dims{0, 20, 128};
+  TestLayerNorm(X_dims, LAYER_NORM_OP, k_epsilon_default);
 }
 
 TEST(CudaKernelTest, LayerNorm_SmallSizeTensor) {

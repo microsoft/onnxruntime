@@ -29,9 +29,9 @@ namespace GraphKernelHelper
                                             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
 
         Microsoft::WRL::ComPtr<ID3D12Device> d3dDevice;
-        THROW_IF_FAILED(provider->GetD3DDevice(d3dDevice.GetAddressOf()));
+        ORT_THROW_IF_FAILED(provider->GetD3DDevice(d3dDevice.GetAddressOf()));
 
-        THROW_IF_FAILED(d3dDevice->CreateCommittedResource(
+        ORT_THROW_IF_FAILED(d3dDevice->CreateCommittedResource(
             &heapProperties,
             D3D12_HEAP_FLAG_NONE,
             &resourceDesc,
@@ -39,7 +39,7 @@ namespace GraphKernelHelper
             nullptr,
             IID_PPV_ARGS(buffer.GetAddressOf())));
 
-        THROW_IF_FAILED(provider->UploadToResource(buffer.Get(), tensorPtr, tensorByteSize));
+        ORT_THROW_IF_FAILED(provider->UploadToResource(buffer.Get(), tensorPtr, tensorByteSize));
 
         return buffer;
     }
@@ -67,9 +67,9 @@ namespace GraphKernelHelper
                                             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS};
 
         Microsoft::WRL::ComPtr<ID3D12Device> d3dDevice;
-        THROW_IF_FAILED(provider->GetD3DDevice(d3dDevice.GetAddressOf()));
+        ORT_THROW_IF_FAILED(provider->GetD3DDevice(d3dDevice.GetAddressOf()));
 
-        THROW_IF_FAILED(d3dDevice->CreateCommittedResource(
+        ORT_THROW_IF_FAILED(d3dDevice->CreateCommittedResource(
             &heapProperties,
             D3D12_HEAP_FLAG_NONE,
             &resourceDesc,
@@ -80,7 +80,7 @@ namespace GraphKernelHelper
         // Map the buffer and copy the data
         void* bufferData = nullptr;
         D3D12_RANGE range = {0, tensorByteSize};
-        THROW_IF_FAILED(buffer->Map(0, &range, &bufferData));
+        ORT_THROW_IF_FAILED(buffer->Map(0, &range, &bufferData));
         memcpy(bufferData, tensorPtr, tensorByteSize);
         buffer->Unmap(0, &range);
 
@@ -99,7 +99,7 @@ namespace GraphKernelHelper
 
         *allocId = winmlProvider->TryGetPooledAllocationId(allocationUnk, 0);
 
-        THROW_IF_FAILED(resourceUnk->QueryInterface(resource));
+        ORT_THROW_IF_FAILED(resourceUnk->QueryInterface(resource));
     }
 
     bool GetGraphInputConstness(
@@ -141,11 +141,11 @@ namespace GraphKernelHelper
         const Dml::GraphDescBuilder::GraphDesc& graphDesc,
         const onnxruntime::ConstPointerContainer<std::vector<onnxruntime::NodeArg*>>& fusedNodeInputDefs,
         _Out_ std::vector<bool>& inputsUsed,
-        _Out_ std::vector<DML_BUFFER_BINDING>& initInputBindings,
-        _Out_ std::vector<ComPtr<ID3D12Resource>>& initInputResources,
-        _Out_ std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
-        _Out_ std::vector<ComPtr<ID3D12Resource>>& initializeResourceRefs,
-        _Out_opt_ std::vector<std::vector<std::byte>>* inputRawData,
+        _Inout_ std::vector<DML_BUFFER_BINDING>& initInputBindings,
+        _Inout_ std::vector<ComPtr<ID3D12Resource>>& initInputResources,
+        _Inout_ std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
+        _Inout_ std::vector<ComPtr<ID3D12Resource>>& initializeResourceRefs,
+        _Inout_opt_ std::vector<std::vector<std::byte>>* inputRawData,
         _Inout_ std::unordered_map<std::string, onnx::TensorProto>& transferredInitializerMap)
     {
         const uint32_t graphInputCount = kernelInfo.GetInputCount();
@@ -248,7 +248,7 @@ namespace GraphKernelHelper
             else if (inputsConstant[i])
             {                
                 const onnxruntime::Tensor* inputTensor = nullptr;
-                THROW_HR_IF(E_UNEXPECTED, !kernelInfo.TryGetConstantInput(i, &inputTensor));
+                ORT_THROW_HR_IF(E_UNEXPECTED, !kernelInfo.TryGetConstantInput(i, &inputTensor));
 
                 const std::byte* tensorData = reinterpret_cast<const std::byte*>(inputTensor->DataRaw());
 
@@ -279,11 +279,11 @@ namespace GraphKernelHelper
         const Dml::GraphDescBuilder::GraphDesc& graphDesc,
         _Out_ DML_GRAPH_DESC& dmlGraphDesc,
         const onnxruntime::OpKernelInfo& kernelInfo,
-        _Out_ std::vector<DML_OPERATOR_GRAPH_NODE_DESC>& dmlOperatorGraphNodes,
-        _Out_ std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
-        _Out_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
-        _Out_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
-        _Out_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges)
+        _Inout_ std::vector<DML_OPERATOR_GRAPH_NODE_DESC>& dmlOperatorGraphNodes,
+        _Inout_ std::vector<DML_GRAPH_NODE_DESC>& dmlGraphNodes,
+        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
+        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
+        _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges)
     {
         const uint32_t graphInputCount = kernelInfo.GetInputCount();
 

@@ -10,6 +10,7 @@ import io
 import sys
 import warnings
 
+
 class LogLevel(IntEnum):
     VERBOSE = 0
     INFO = 1

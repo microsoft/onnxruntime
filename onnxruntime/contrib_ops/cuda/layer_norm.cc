@@ -35,9 +35,7 @@ namespace cuda {
 REGISTER_KERNEL_TYPED(float, float)
 REGISTER_KERNEL_TYPED(double, double)
 REGISTER_KERNEL_TYPED(MLFloat16, float)
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 REGISTER_KERNEL_TYPED(BFloat16, float)
-#endif
 
 template <typename T, typename U, bool simplified>
 LayerNorm<T, U, simplified>::LayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
@@ -95,6 +93,10 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
   CudaU* inv_var_data = nullptr;
   if (var != nullptr) {
     inv_var_data = reinterpret_cast<CudaU*>(var->template MutableData<U>());
+  }
+
+  if (x_shape.Size() == 0) {
+    return Status::OK();
   }
 
   HostApplyLayerNorm<CudaT, CudaU, simplified>(GetDeviceProp(), Stream(), Y_data, mean_data, inv_var_data, X_data, n1, n2, epsilon_, scale_data, bias_data);

@@ -41,6 +41,32 @@ namespace cuda {
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Pad<T>);
 
+using PadsVector = PadBase::PadsVector;
+
+static bool IsNCHWInputWithPaddingAlongHAndW(size_t input_rank,
+                                             const TArray<int64_t>& lower_pads,
+                                             const TArray<int64_t>& upper_pads) {
+  if (input_rank == 2) {  // N = 1 and C = 1
+    return true;
+  }
+
+  // Is CHW input AND no padding along C dim
+  if (input_rank == 3 &&
+      lower_pads[0] == 0 &&  // start padding along C
+      upper_pads[0] == 0) {  // end padding along C
+    return true;
+  }
+
+  // Is NCHW input AND no padding along N and C dims
+  if (input_rank == 4 &&
+      lower_pads[0] == 0 && lower_pads[1] == 0 &&  // start padding along N and C
+      upper_pads[0] == 0 && upper_pads[1] == 0) {  // end padding along N and C
+    return true;
+  }
+
+  return false;
+}
+
 template <typename T>
 typename ToCudaType<T>::MappedType ToCudaValue(const T& value) {
   return value;
@@ -58,16 +84,16 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto const& input_shape = input_tensor.Shape();
   int32_t dimension_count = static_cast<int32_t>(input_shape.NumDimensions());
 
-  const std::vector<int64_t>* p_pads = &pads_;
-  const std::vector<int64_t>* p_slices = &slices_;
+  const PadsVector* p_pads = &pads_;
+  const PadsVector* p_slices = &slices_;
   CudaT value = ToCudaType<T>::FromFloat(value_);
 
   // kOnnxDomain Pad opset >= 11 (Or) kMsDomain opset == 1
-  std::vector<int64_t> pads;
-  std::vector<int64_t> slices;
+  PadsVector pads;
+  PadsVector slices;
   if (is_dynamic_) {
     const Tensor& pads_tensor = *ctx->Input<Tensor>(1);
-    const std::vector<int64_t>& pads_tensor_dims = pads_tensor.Shape().GetDims();
+    const auto pads_tensor_dims = pads_tensor.Shape().GetDims();
     ORT_ENFORCE(utils::IsPrimitiveDataType<int64_t>(pads_tensor.DataType()),
                 "Pads tensor should be an INT64 tensor");
     ORT_ENFORCE(pads_tensor_dims.size() == 1 || (pads_tensor_dims.size() == 2 && pads_tensor_dims[0] == 1),
@@ -108,7 +134,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   TArray<int64_t> input_dims(input_shape.GetDims());
   TArray<int64_t> input_strides(input_pitches);
 
-  std::vector<int64_t> output_dims(input_shape.GetDims());
+  auto output_dims(input_shape.AsShapeVector());
   ORT_ENFORCE(dimension_count * 2 == p_pads->size(), "'pads' attribute has wrong number of values");
 
   // Calculate output dimensions, and handle any negative padding
@@ -119,6 +145,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     upper_pads[i] = (*p_pads)[i + dimension_count] + (*p_slices)[i + dimension_count];
     output_dims[i] += lower_pads[i] + upper_pads[i];
   }
+
   TensorShape output_shape(output_dims);
 
   // special case when there is a dim value of 0 in the shape. behavior depends on mode
@@ -127,6 +154,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   auto& output_tensor = *ctx->Output(0, output_shape);
+
   if (std::all_of(p_pads->begin(), p_pads->end(), [](const int64_t v) { return v == 0; }) &&
       std::all_of(p_slices->begin(), p_slices->end(), [](const int64_t v) { return v == 0; }) &&
       output_shape.Size() > 0) {
@@ -134,6 +162,40 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
         output_tensor.template MutableData<T>(), input_tensor.template Data<T>(),
         sizeof(typename ToCudaType<T>::MappedType) * output_shape.Size(),
         cudaMemcpyDeviceToDevice, Stream()));
+    return Status::OK();
+  }
+
+  if (IsNCHWInputWithPaddingAlongHAndW(static_cast<size_t>(dimension_count), lower_pads, upper_pads)) {
+    // If we have entered here, it means the input can only be 4-D (NCHW), 3-D (CHW), or 2-D (HW)
+
+    // NCHW input
+    int height_dim = 2;
+    int width_dim = 3;
+
+    if (dimension_count == 3) {  // CHW input
+      height_dim = 1;
+      width_dim = 2;
+    } else if (dimension_count == 2) {  // HW input
+      height_dim = 0;
+      width_dim = 1;
+    }
+
+    PadNCHWInputWithPaddingAlongHAndWImpl(
+        Stream(),
+        dimension_count == 4 ? input_dims[0] : 1,
+        dimension_count == 4 ? input_dims[1] : (dimension_count == 3 ? input_dims[0] : 1),
+        input_dims[height_dim],
+        output_dims[height_dim],
+        input_dims[width_dim],
+        output_dims[width_dim],
+        lower_pads[height_dim],
+        lower_pads[width_dim],
+        value,
+        static_cast<int>(mode_),
+        reinterpret_cast<const typename ToCudaType<T>::MappedType*>(input_tensor.template Data<T>()),
+        reinterpret_cast<typename ToCudaType<T>::MappedType*>(output_tensor.template MutableData<T>()),
+        output_tensor.Shape().Size());
+
     return Status::OK();
   }
 
@@ -149,7 +211,6 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
       input_dims,
       input_strides,
       lower_pads,
-      upper_pads,
       value,
       static_cast<int>(mode_),
       reinterpret_cast<const typename ToCudaType<T>::MappedType*>(input_tensor.template Data<T>()),
@@ -167,6 +228,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
 SPECIALIZED_COMPUTE(float)
 SPECIALIZED_COMPUTE(double)
 SPECIALIZED_COMPUTE(MLFloat16)
+SPECIALIZED_COMPUTE(bool)
 
 }  // namespace cuda
 };  // namespace onnxruntime
