@@ -12,9 +12,9 @@
 namespace onnxruntime {
 
 /**
-  * Configuration options that can be used by any struct by inheriting this class.
-  * Provides infrastructure to add/get config entries
-  */
+ * Configuration options that can be used by any struct by inheriting this class.
+ * Provides infrastructure to add/get config entries
+ */
 struct ConfigOptions {
   std::unordered_map<std::string, std::string> configurations;
 
@@ -29,7 +29,7 @@ struct ConfigOptions {
 
   // Get the config string in this instance of ConfigOptions using the given config_key
   // If there is no such config, the given default string will be returned
-  const std::string GetConfigOrDefault(const std::string& config_key, const std::string& default_value) const noexcept;
+  std::string GetConfigOrDefault(const std::string& config_key, const std::string& default_value) const noexcept;
 
   // Add a config pair (config_key, config_value) to this instance of ConfigOptions
   Status AddConfigEntry(const char* config_key, const char* config_value) noexcept;
