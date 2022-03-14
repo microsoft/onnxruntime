@@ -222,7 +222,6 @@ struct InstantCustomKernel {
   void InvokeGru(OrtKernelContext* context);
 
   Ort::CustomOpApi ort_;
-  void* compute_stream_{};
   OrtOp op_add{};
   OrtOp op_topk{};
   OrtOp op_gru{};
