@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "global_average_pool.h"
 #include "core/providers/opencl/opencl_kernel.h"
 

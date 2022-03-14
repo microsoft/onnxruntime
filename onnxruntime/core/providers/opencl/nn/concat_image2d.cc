@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "concat.h"
 
 #include "core/providers/cpu/tensor/concatbase.h"
