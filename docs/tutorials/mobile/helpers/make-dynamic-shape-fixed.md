@@ -48,7 +48,7 @@ To determine the update required by the model, it's generally helpful to view th
 
 ## Making a symbolic dimension fixed
 
-Here is an example model with a symbolic dimension called 'batch' for the batch size in 'input:0'. 
+Here is an example model, viewed using Netron, with a symbolic dimension called 'batch' for the batch size in 'input:0'. 
 We will update that to use the fixed value of 1.
 
 
