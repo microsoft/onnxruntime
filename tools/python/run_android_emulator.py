@@ -75,7 +75,7 @@ def main():
         android.create_virtual_device(sdk_tool_paths, args.system_image, args.avd_name)
 
     if args.install_sdk:
-        androd.install_sdk(args.system_image)
+        android.install_sdk(args.system_image)
 
     if args.start and args.stop:
         with contextlib.ExitStack() as context_stack:
