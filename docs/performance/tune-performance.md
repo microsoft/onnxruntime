@@ -331,6 +331,52 @@ cudaProviderOptions.UpdateOptions(providerOptionsDict);
 SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
 ```
 
+### Using CUDA Graphs in the CUDA EP
+While using the CUDA EP, ORT supports the usage of [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) to remove CPU overhead associated with launching each kernel sequentially. To enable CUDA Graphs, use the provider option as shown in the samples below.
+Currently, there are some constraints with regards to using the CUDA Graphs feature which is listed below:
+
+1) Usage of CUDA Graphs is limited to models with no control-flow ops in them (i.e.) models with `If`, `Loop`, and `Scan` ops in them cannot use this feature
+2) Usage of CUDA Graphs is limited to models where-in all the model ops (graph nodes) can be partitioned to the CUDA EP
+3) Multi-threaded usage is not supported currently (i.e.) `Run()` MAY NOT be invoked on the same `InferenceSession` object from multiple threads
+
+NOTE: The very first `Run()` performs a variety of tasks under the hood like making CUDA memory allocations, capturing the CUDA graph for the model, and then performing a graph replay to ensure that the graph runs. Due to the variety of tasks that are executed in the first `Run()`, the latency associated with is bound to be high. The subsequent `Run()`s only perform graph replays. 
+
+* Python
+```
+providers = [("CUDAExecutionProvider", {"enable_cuda_graph": '1'})]
+sess_options = ort.SessionOptions()
+sess = ort.InferenceSession("my_model.onnx",  sess_options = sess_options, providers=providers)
+```
+
+* C/C++
+```
+OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+CreateCUDAProviderOptions(&cuda_options);
+
+std::vector<const char*> keys{"enable_cuda_graph"};
+std::vector<const char*> values{"1"};
+
+UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 1);
+
+OrtSessionOptions* session_options = /* ... */;
+SessionOptionsAppendExecutionProvider_CUDA_V2(session_options, cuda_options);
+
+// Finally, don't forget to release the provider options
+ReleaseCUDAProviderOptions(cuda_options);
+```
+
+* C#
+```
+var cudaProviderOptions = new OrtCUDAProviderOptions(); // Dispose this finally
+
+var providerOptionsDict = new Dictionary<string, string>();
+providerOptionsDict["enable_cuda_graph"] = "1";
+
+cudaProviderOptions.UpdateOptions(providerOptionsDict);
+
+SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
+```
+
 ## Troubleshooting performance issues
 
 The answers below are troubleshooting suggestions based on common previous user-filed issues and questions. This list is by no means exhaustive and there is a lot of case-by-case fluctuation depending on the model and specific usage scenario. Please use this information to guide your troubleshooting, search through previously filed issues for related topics, and/or file a new issue if your problem is still not resolved.
