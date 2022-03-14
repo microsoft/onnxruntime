@@ -2,4 +2,4 @@
 import importlib
 have_torch = importlib.util.find_spec("torch")
 if have_torch:
-    from .pytorch_export_helpers import infer_input_info
+    from .pytorch_export_helpers import infer_input_info  # noqa
