@@ -28,7 +28,7 @@ jobs:
   - script: |
       python3 tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --create-avd
+        --install-sdk
     displayName: Install Android SDK
 
   # Start switching to jdk 11 after the Android Emulator is started since Android SDK manager requires java 8
