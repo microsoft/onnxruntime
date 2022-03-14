@@ -105,42 +105,43 @@ namespace onnxruntime {
 namespace opencl {
 
 class NDRange {
-  uint8_t size;
-  size_t values[3];
-
  public:
-  NDRange() : size(0), values{0, 0, 0} {}
+  NDRange() : size_(0), values_{0, 0, 0} {}
 
   template <typename T>
-  explicit NDRange(T x) : size(1), values{static_cast<size_t>(x), 0, 0} {}
+  explicit NDRange(T x) : size_(1), values_{static_cast<size_t>(x), 0, 0} {}
 
   template <typename T1, typename T2>
-  NDRange(T1 x, T2 y) : size(2), values{static_cast<size_t>(x), static_cast<size_t>(y), 0} {}
+  NDRange(T1 x, T2 y) : size_(2), values_{static_cast<size_t>(x), static_cast<size_t>(y), 0} {}
 
   template <typename T1, typename T2, typename T3>
-  NDRange(T1 x, T2 y, T3 z) : size(3), values{static_cast<size_t>(x), static_cast<size_t>(y), static_cast<size_t>(z)} {}
+  NDRange(T1 x, T2 y, T3 z) : size_(3), values_{static_cast<size_t>(x), static_cast<size_t>(y), static_cast<size_t>(z)} {}
 
-  uint8_t Size() const { return size; }
+  uint8_t Size() const { return size_; }
 
   const size_t* Data() const {
-    if (size != 0) {
-      return values;
+    if (size_ != 0) {
+      return values_;
     }
     return nullptr;
   }
 
   inline std::string ToString() const {
-    if (size == 0) {
+    if (size_ == 0) {
       return "[<unspecified>]";
     }
-    if (size == 1) {
-      return onnxruntime::MakeString("[", values[0], "]");
+    if (size_ == 1) {
+      return onnxruntime::MakeString("[", values_[0], "]");
     }
-    if (size == 2) {
-      return onnxruntime::MakeString("[", values[0], ",", values[1], "]");
+    if (size_ == 2) {
+      return onnxruntime::MakeString("[", values_[0], ",", values_[1], "]");
     }
-    return onnxruntime::MakeString("[", values[0], ",", values[1], ",", values[2], "]");
+    return onnxruntime::MakeString("[", values_[0], ",", values_[1], ",", values_[2], "]");
   }
+
+private:
+  uint8_t size_;
+  size_t values_[3];
 };
 
 const char* GetErrorString(cl_int error_code);
