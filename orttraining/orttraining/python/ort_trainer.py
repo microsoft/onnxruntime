@@ -364,7 +364,6 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
                        output_names=output_names,
                        opset_version=opset_version,
                        dynamic_axes=dynamic_axes,
-                       example_outputs=tuple(sample_outputs),
                        do_constant_folding=False,
                        **other_export_options)
 
