@@ -2831,6 +2831,10 @@ const Path& Graph::ModelPath() const {
   return owning_model_.ModelPath();
 }
 
+const std::unordered_map<std::string, const void*>* Graph::ExternalDataMap() const {
+  return owning_model_.ExternalDataMap();
+}
+
 template <typename T, typename TIter>
 static void RemoveRepeatedFieldEntry(T& repeated_field, const TIter& entry_to_remove) {
   auto num_entries = repeated_field.size();

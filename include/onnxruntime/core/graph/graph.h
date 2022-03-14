@@ -653,6 +653,9 @@ class Graph {
   /** Gets the path of the owning model, if any. */
   const Path& ModelPath() const;
 
+  /** Gets the external data mapping table, if any. */
+  const std::unordered_map<std::string, const void*>* ExternalDataMap() const;
+
   /** Returns true if this is a subgraph or false if it is a high-level graph. */
   bool IsSubgraph() const { return parent_graph_ != nullptr; }
 

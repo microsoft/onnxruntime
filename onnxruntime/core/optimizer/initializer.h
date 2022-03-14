@@ -14,6 +14,12 @@
 
 namespace onnxruntime {
 
+struct InitializerOption {
+ public:
+  Path model_path = Path();
+  const std::unordered_map<std::string, const void*>* external_data_map = nullptr;
+};
+
 class Initializer final {
  public:
   // Construct an initializer with the provided name and data type, with all values initialized to 0
@@ -64,7 +70,8 @@ class Initializer final {
     }
   }
 
-  Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const Path& model_path) {
+  Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+              const Path& model_path) {
     data_type_ = tensor_proto.data_type();
     if (utils::HasName(tensor_proto)) {
       name_ = tensor_proto.name();

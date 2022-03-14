@@ -814,7 +814,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 
   external_data_map_ = external_data_map;
 
-  auto loader = [this, model_data, model_data_len](std::shared_ptr<onnxruntime::Model>& model) {
+  auto loader = [this, model_data, model_data_len, external_data_map](std::shared_ptr<onnxruntime::Model>& model) {
     ModelProto model_proto;
 
     const bool result = model_proto.ParseFromArray(model_data, model_data_len);
@@ -829,8 +829,12 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
     }
 #endif
 
-    return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
-                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
+    return onnxruntime::Model::Load(std::move(model_proto),
+                                    external_data_map,
+                                    model,
+                                    HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+                                    *session_logger_,
+                                    true);
   };
 
   return Load(loader, "model_loading_array");
