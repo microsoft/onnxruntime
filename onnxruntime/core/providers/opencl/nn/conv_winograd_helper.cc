@@ -6,54 +6,41 @@
 namespace onnxruntime {
 
 /*
-get cmatrix stride
-*/
-FBshape GetStridesY(DirectBufferPtr matrix) {
-  auto dims = matrix->shape;
-  FBshape strides;
-  int count = 1;
-  for (auto iter : dims) {
-    count *= iter;
-  }
-  for (auto iter : dims) {
-    count /= iter;
-    strides.push_back(count);
-  }
-  return strides;
-}
-
-/*
 1D: AT*((G*g)(BT*d))
 2D: AT*((G*g*GT)(BT*d*B))*A
 https://github.com/andravin/wincnn
 */
-WinogradHelper::WinogradHelper(int computeUnit, int kernelSize) {
-  ORT_ENFORCE(computeUnit > 0 && kernelSize > 0);
-  unit_ = computeUnit;
-  kernel_size_ = kernelSize;
+WinogradHelper::WinogradHelper(AllocatorPtr& cpu_alloc, int compute_unit, int kernel_size) : cpu_alloc_{cpu_alloc} {
+  ORT_ENFORCE(compute_unit > 0 && kernel_size > 0);
 
-  wino_size_ = computeUnit + kernelSize - 1;
+  constexpr std::array<float, 12> wino_init_data{1, 0, 0, 1, 1, 1, 1, -1, 1, 0, 0, 1};
+
+  unit_ = compute_unit;
+  kernel_size_ = kernel_size;
+
+  wino_size_ = compute_unit + kernel_size - 1;
   // G_ is used to transform conv_weight
-  G_ = DirectBufferPtr(new DirectBuffer);
-  G_->Create(kernelSize, wino_size_);
-  // TODO only for F(2,3)
-  G_->Fill({1, 0, 0, 1, 1, 1, 1, -1, 1, 0, 0, 1.0});
+  G_ = Tensor::Create(DataTypeImpl::GetType<float>(), {kernel_size, wino_size_}, cpu_alloc_);
+  std::copy_n(wino_init_data.data(), wino_init_data.size(), G_->MutableData<float>());
 }
 
 /*
 transform weight size: unit*unit*ROUND_UP(oc, 4)*ROUND_UP(ic, 4)
 */
-DirectBufferPtr WinogradHelper::AllocWeightTensor(int ochannel, int ichannel, int unitCi, int unitCo) {
-  int ciC4 = opencl::CeilDiv(ichannel, unitCi);
-  int coC4 = opencl::CeilDiv(ochannel, unitCo);
-  DirectBufferPtr p = DirectBufferPtr(new DirectBuffer);
-  p->Create({16, coC4, ciC4, unitCi, unitCo});
-  return p;
+std::unique_ptr<Tensor> WinogradHelper::AllocWeightTensor(int ochannel, int ichannel, int unit_ci, int unit_co) {
+  int ciC4 = opencl::CeilDiv(ichannel, unit_ci);
+  int coC4 = opencl::CeilDiv(ochannel, unit_co);
+  return Tensor::Create(DataTypeImpl::GetType<float>(), {16LL, coC4, ciC4, unit_ci, unit_co}, cpu_alloc_);
 }
 
 // Winograd 4x4 For Conv 3x3
-static inline void WeightTransform4x4_3x3(const float* src, float* dst, DirectBufferPtr G, const FBshape& weight_dest_strides,
-                                          int in_channel, int out_channel, int oz_index, int alpha_index) {
+inline void WeightTransform4x4_3x3(
+    const Tensor* src,
+    Tensor* dst,
+    const Tensor* G,
+    const TensorShapeVector& dst_strides,
+    int in_channel, int out_channel,
+    int oz_index, int alpha_index) {
   int ic_stride = 9;
   int oc_stride = in_channel * ic_stride;
   int unit_co = 4;
@@ -61,18 +48,18 @@ static inline void WeightTransform4x4_3x3(const float* src, float* dst, DirectBu
 
   float GgGt[16];
   float Gg[12];
-  const float* g = G->buff.get();
+  const float* g = G->Data<float>();
   for (int oz = 0; oz < out_channel; ++oz) {
-    auto srcOz = src + oz * oc_stride;
+    auto srcOz = src->Data<float>() + oz * oc_stride;
 
     int ozC4 = oz / unit_co;
     int mx = oz % unit_co;
 
-    auto dstOz = dst + weight_dest_strides[oz_index] * ozC4 + mx;
+    auto dstOz = dst->MutableData<float>() + dst_strides[oz_index] * ozC4 + mx;
     for (int sz = 0; sz < in_channel; ++sz) {
       int szC4 = sz / unit_ci;
       int my = sz % unit_ci;
-      auto srcSz = srcOz + ic_stride * sz;
+      const auto* srcSz = srcOz + ic_stride * sz;
       const float* k0 = srcSz;
       const float* k1 = k0 + 3;
       const float* k2 = k1 + 3;
@@ -112,45 +99,51 @@ static inline void WeightTransform4x4_3x3(const float* src, float* dst, DirectBu
       GgGt[14] = Gg[9] * gt0[3 * 2] + Gg[10] * gt1[3 * 2] + Gg[11] * gt2[3 * 2];
       GgGt[15] = Gg[9] * gt0[3 * 3] + Gg[10] * gt1[3 * 3] + Gg[11] * gt2[3 * 3];
 
-      auto dstSz = dstOz + szC4 * weight_dest_strides[2] + unit_co * my;
+      auto dstSz = dstOz + szC4 * dst_strides[2] + unit_co * my;
       // [alpha][alpha][oc4][ic4][16]
       for (int i = 0; i < 16; ++i) {
         *dstSz = GgGt[i];
-        dstSz += weight_dest_strides[alpha_index];
+        dstSz += dst_strides[alpha_index];
       }
     }
   }
 }
 
+// TODO: improve!
+TensorShapeVector GetStrides(const Tensor* matrix) {
+  auto dims = matrix->Shape();
+  TensorShapeVector strides;
+  int count = 1;
+  for (auto iter : dims.AsShapeVector()) {
+    count *= iter;
+  }
+  for (auto iter : dims.AsShapeVector()) {
+    count /= iter;
+    strides.push_back(count);
+  }
+  return strides;
+}
+
 /*
 transform weight from [oc][ic][kh][kw] to [unit][unit][co4][ci4][16]
 */
-DirectBufferPtr WinogradHelper::TransformWeight(const float* source, int output_channel, int input_channel) {
-  DirectBufferPtr weightDest_ptr = AllocWeightTensor(output_channel, input_channel, 4, 4);
-  auto weight_dest_data = weightDest_ptr->buff.get();
-  auto& weight_dest_dims = weightDest_ptr->shape;
-
-  auto weight_dest_strides = GetStridesY(weightDest_ptr);
+std::unique_ptr<Tensor> WinogradHelper::TransformWeight(const Tensor* source, int output_channel, int input_channel) {
+  auto dst = AllocWeightTensor(output_channel, input_channel, 4, 4);
+  const auto& dst_shape = dst->Shape();
+  auto dst_strides = GetStrides(dst.get());
 
   int ci = input_channel;
   int co = output_channel;
-  int unitCi = weight_dest_dims[3];
-  int unitCo = weight_dest_dims[4];
-  if (ci % unitCi != 0 || co % unitCo != 0) {
-    int result = 1;
-    for (int index = 0; index < weight_dest_dims.size(); ++index) {
-      result *= weight_dest_dims[index];
-    }
-    ::memset(weight_dest_data, 0, result * sizeof(float));
-  }
+  int unitCi = dst_shape[3];
+  int unitCo = dst_shape[4];
+  std::fill_n(dst->MutableData<float>(), dst_shape.Size(), 0.0);
 
   if (unitCi == 4 && unitCo == 4 && kernel_size_ == 3) {
-    WeightTransform4x4_3x3(source, weight_dest_data, G_,
-                           weight_dest_strides, ci, co, 1, 0);
+    WeightTransform4x4_3x3(source, dst.get(), G_.get(), dst_strides, ci, co, 1, 0);
   } else {
-    ORT_THROW("only surpport F(2,3) yet");
+    ORT_THROW("only surpport F(2,3)");
   }
-  return weightDest_ptr;
+  return dst;
 }
 
 }  // namespace onnxruntime

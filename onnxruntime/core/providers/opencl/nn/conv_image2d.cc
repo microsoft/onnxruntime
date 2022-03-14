@@ -364,18 +364,17 @@ class Conv : public OpenCLKernel {
     int64_t output_channel = shape[0];
     int64_t input_channel = shape[1];
     const int kernel_size = shape[3];
-    const int unit_output = 2;//4x3
-    //
-    WinogradHelper helper(unit_output, kernel_size);
-    auto transform_weight1= helper.TransformWeight(src.Data<float>(), output_channel, input_channel);
-    float* weight_ptr = transform_weight1->buff.get();
-    int result = transform_weight1->size * sizeof(float);
+    const int unit_output = 2;  // 4x3
+
+    auto cpu_alloc = exec_->GetAllocator(0, OrtMemTypeCPU);
+    WinogradHelper helper(cpu_alloc, unit_output, kernel_size);
+    auto transformd_weight = helper.TransformWeight(&src, output_channel, input_channel);
 
     VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), GetPackedWeight());
 
-    auto tmp = exec_->GetScratchBuffer(result);
-    ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), tmp.get(), /*blocking_write=*/CL_FALSE, /*offset=*/0, result,
-                                                weight_ptr, 0, nullptr, nullptr));
+    auto tmp = exec_->GetScratchBuffer(transformd_weight->SizeInBytes());
+    ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), tmp.get(), /*blocking_write=*/CL_FALSE, /*offset=*/0,
+                                                transformd_weight->SizeInBytes(), transformd_weight->DataRaw(), 0, nullptr, nullptr));
     ORT_RETURN_IF_ERROR(KernelLauncher{GetKernel(kernel_name::CopyWinogradWeight)}
                             .setBuffer(tmp.get())
                             .setImage2D(static_cast<cl_mem>(GetPackedWeight()))
