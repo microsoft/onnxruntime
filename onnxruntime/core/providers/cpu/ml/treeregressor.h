@@ -6,14 +6,20 @@
 
 namespace onnxruntime {
 namespace ml {
-template <typename T, typename TH=T, typename TO=float>
+template <typename T>
 class TreeEnsembleRegressor final : public OpKernel {
+  typedef T TI;  // input type
+  // typedef T TH;  // threshold type, double if T==double, float otherwise
+  typedef float TO;  // output type
  public:
   explicit TreeEnsembleRegressor(const OpKernelInfo& info);
+  ~TreeEnsembleRegressor();
   common::Status Compute(OpKernelContext* context) const override;
 
  private:
-  detail::TreeEnsembleCommon<T, TH> tree_ensemble_;
+  // Following pointer holds a pointer on one instance of detail::TreeEnsembleCommon<T, TH>
+  // where TH is defined after accessing the attributes.
+  detail::TreeEnsembleCommonAttributes* p_tree_ensemble_;
 };
 }  // namespace ml
 }  // namespace onnxruntime

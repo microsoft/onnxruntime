@@ -11,28 +11,32 @@ namespace onnxruntime {
 namespace ml {
 namespace detail {
 
-// ITYPE: input type
-// OTYPE: tree type (types of the node values and targets)
-// TO: output type, usually float
-template <typename ITYPE, typename OTYPE>
-class TreeEnsembleCommon {
+class TreeEnsembleCommonAttributes {
  public:
-  int64_t n_targets_or_classes_;
+  int64_t get_target_or_class_count() const { return this->n_targets_or_classes_; }
 
  protected:
-  std::vector<OTYPE> base_values_;
+  int64_t n_targets_or_classes_;
   POST_EVAL_TRANSFORM post_transform_;
   AGGREGATE_FUNCTION aggregate_function_;
   int64_t n_nodes_;
-  std::vector<TreeNodeElement<OTYPE>> nodes_;
-  std::vector<TreeNodeElement<OTYPE>*> roots_;
-
   int64_t max_tree_depth_;
   int64_t n_trees_;
   bool same_mode_;
   bool has_missing_tracks_;
   int parallel_tree_;  // starts parallelizing the computing if n_tree >= parallel_tree_ and n_rows == 1
   int parallel_N_;     // starts parallelizing the computing if n_rows >= parallel_N_
+};
+
+// ITYPE: input type
+// OTYPE: tree type (types of the node values and targets)
+// TO: output type, usually float
+template <typename ITYPE, typename OTYPE>
+class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
+ protected:
+  std::vector<OTYPE> base_values_;
+  std::vector<TreeNodeElement<OTYPE>> nodes_;
+  std::vector<TreeNodeElement<OTYPE>*> roots_;
 
  public:
   TreeEnsembleCommon(int parallel_tree,
@@ -581,7 +585,7 @@ TreeEnsembleCommon<ITYPE, OTYPE>::ProcessTreeNodeLeave(
 }
 
 template <typename ITYPE, typename OTYPE>
-class TreeEnsembleCommonClassifier : TreeEnsembleCommon<ITYPE, OTYPE> {
+class TreeEnsembleCommonClassifier : public TreeEnsembleCommon<ITYPE, OTYPE> {
  private:
   bool weights_are_all_positive_;
   bool binary_case_;
@@ -614,8 +618,6 @@ class TreeEnsembleCommonClassifier : TreeEnsembleCommon<ITYPE, OTYPE> {
                                const std::vector<OTYPE>& class_weights_as_tensor,
                                const std::vector<std::string>& classlabels_strings,
                                const std::vector<int64_t>& classlabels_int64s);
-
-  int64_t get_class_count() const { return this->n_targets_or_classes_; }
 
   void compute(OpKernelContext* ctx, const Tensor* X, OTYPE* z_data, Tensor* label) const;
 };

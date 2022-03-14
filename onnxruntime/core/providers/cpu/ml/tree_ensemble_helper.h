@@ -8,8 +8,8 @@
 namespace onnxruntime {
 namespace ml {
 
-std::vector<double> GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name, const std::vector<double>& default_value);
-std::vector<float> GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name, const std::vector<float>& default_value);
+Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name, std::vector<double>& data);
+Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name, std::vector<float>& data);
 
 }  // namespace ml
 }  // namespace onnxruntime
