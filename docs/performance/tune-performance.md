@@ -332,14 +332,14 @@ SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaPr
 ```
 
 ### Using CUDA Graphs in the CUDA EP
-While using the CUDA EP, ORT supports the usage of [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) to remove CPU overhead associated with launching each kernel sequentially. To enable CUDA Graphs, use the provider option as shown in the samples below.
-Currently, there are some constraints with regards to using the CUDA Graphs feature which is listed below:
+While using the CUDA EP, ORT supports the usage of [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) to remove CPU overhead associated with launching CUDA kernels sequentially. To enable the usage of CUDA Graphs, use the provider option as shown in the samples below.
+Currently, there are some constraints with regards to using the CUDA Graphs feature which are listed below:
 
 1) Usage of CUDA Graphs is limited to models with no control-flow ops in them (i.e.) models with `If`, `Loop`, and `Scan` ops in them cannot use this feature
 2) Usage of CUDA Graphs is limited to models where-in all the model ops (graph nodes) can be partitioned to the CUDA EP
 3) Multi-threaded usage is not supported currently (i.e.) `Run()` MAY NOT be invoked on the same `InferenceSession` object from multiple threads
 
-NOTE: The very first `Run()` performs a variety of tasks under the hood like making CUDA memory allocations, capturing the CUDA graph for the model, and then performing a graph replay to ensure that the graph runs. Due to the variety of tasks that are executed in the first `Run()`, the latency associated with is bound to be high. The subsequent `Run()`s only perform graph replays. 
+NOTE: The very first `Run()` performs a variety of tasks under the hood like making CUDA memory allocations, capturing the CUDA graph for the model, and then performing a graph replay to ensure that the graph runs. Due to this, the latency associated with the first `Run()` is bound to be high. The subsequent `Run()`s only perform graph replays of the graph captured and cached in the first `Run()`. 
 
 * Python
 ```
