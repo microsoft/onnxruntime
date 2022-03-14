@@ -251,9 +251,15 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* 
     input_info_iter != graph_input_info.end(); ++input_info_iter) {
     auto input_names = input_info_iter->get_names(); 
     std::string input_name;
-    for(auto it = input_names.begin(); it != input_names.end(); it++)
-    {
-         input_name = *it;
+    for(auto it = input_names.begin(); it != input_names.end(); it++) {
+      // Assign the input_name for the model
+      std::string inp_name = *it;
+      //Added hack with OV_2022.1 to ignore extra dummy name when there are multiple inputs
+      if (inp_name.find("graph_input_cast_") != std::string::npos) {
+        continue;
+      } else {
+        input_name = *it;
+      }
     }
     OVTensorPtr graph_input_blob; 
     graph_input_blob = infer_request->GetTensor(input_name);
@@ -287,9 +293,15 @@ void BasicBackend::StartRemoteAsyncInference(Ort::CustomOpApi& ort, OrtKernelCon
     input_info_iter != graph_input_info.end(); ++input_info_iter) {
     auto input_names = input_info_iter->get_names(); 
     std::string input_name;
-    for(auto it = input_names.begin(); it != input_names.end(); it++)
-    {
-         input_name = *it;
+    for(auto it = input_names.begin(); it != input_names.end(); it++) {
+      // Assign the input_name for the model
+      std::string inp_name = *it;
+      //Added hack with OV_2022.1 to ignore extra dummy name when there are multiple inputs
+      if (inp_name.find("graph_input_cast_") != std::string::npos) {
+        continue;
+      } else {
+        input_name = *it;
+      }
     }
   #else 
   auto graph_input_info = exe_network_.get().GetInputsInfo();
@@ -330,9 +342,15 @@ void BasicBackend::StartRemoteAsyncInference(Ort::CustomOpApi& ort, OrtKernelCon
        output_info_iter != graph_output_info.end(); ++output_info_iter) {
     auto output_names = output_info_iter->get_names();
     std::string output_name;
-    for(auto it = output_names.begin(); it != output_names.end(); it++)
-    {
+    for(auto it = output_names.begin(); it != output_names.end(); it++) {
+      // Assign the output_name for the model
+      std::string out_name = *it;
+      //Added hack with OV_2022.1 to ignore extra dummy name when there are multiple outputs
+      if (out_name.find("graph_output_cast_") != std::string::npos) {
+        continue;
+      } else {
         output_name = *it;
+      }
     }
   #else
   auto graph_output_info = exe_network_.GetOutputsInfo();
@@ -375,8 +393,16 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContex
     OVTensorPtr graph_output_blob;
     auto output_names = output_info_iter->get_names();
     std::string output_name;
-    auto it = output_names.begin();
-    output_name = *it;
+    for(auto it = output_names.begin(); it != output_names.end(); it++) {
+      // Assign the output_name for the model
+      std::string out_name = *it;
+      //Added hack with OV_2022.1 to ignore extra dummy name when there are multiple outputs
+      if (out_name.find("graph_output_cast_") != std::string::npos) {
+        continue;
+      } else {
+        output_name = *it;
+      }
+    }
     graph_output_blob = infer_request->GetTensor(output_name);
     size_t batch_size = 1;
     auto output_tensor = GetOutputTensor(ort, context, batch_size, infer_request, output_name, subgraph_context_.output_names);
