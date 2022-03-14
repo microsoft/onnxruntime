@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "opencl_utils.h"
 #include "opencl_data_transfer.h"
 

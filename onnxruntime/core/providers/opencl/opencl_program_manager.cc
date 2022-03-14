@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "opencl_program_manager.h"
 
 #include "core/framework/murmurhash3.h"

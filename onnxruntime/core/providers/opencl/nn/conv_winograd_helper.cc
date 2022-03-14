@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "conv_winograd_helper.h"
 #include <core/providers/opencl/opencl_utils.h>
 #include <cmath>
