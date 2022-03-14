@@ -49,7 +49,7 @@ def parse_args():
 
     if not args.start and not args.stop:
         # unspecified means start and stop
-        args.start = args.stop = True
+        args.start = args.stop = False
 
     if args.start != args.stop and args.emulator_pid_file is None:
         raise ValueError("PID file must be specified if only starting or stopping.")
