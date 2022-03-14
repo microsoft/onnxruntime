@@ -342,21 +342,21 @@ static void write_scores(std::vector<IT>& scores, POST_EVAL_TRANSFORM post_trans
     }
   } else if (scores.size() == 1) {  //binary case
     if (post_transform == POST_EVAL_TRANSFORM::PROBIT) {
-      scores[0] = static_cast<T>(ComputeProbit(static_cast<float>(scores[0])));
-      *Z = scores[0];
+      scores[0] = ComputeProbit(static_cast<float>(scores[0]));
+      *Z = static_cast<T>(scores[0]);
     } else {
       switch (add_second_class) {
         case 0:  //0=all positive weights, winning class is positive
           scores.push_back(scores[0]);
-          scores[0] = 1.f - scores[0];  //put opposite score in positive slot
-          *Z = scores[0];
-          *(Z + 1) = scores[1];
+          scores[0] = 1 - scores[0];  //put opposite score in positive slot
+          *Z = static_cast<T>(scores[0]);
+          *(Z + 1) = static_cast<T>(scores[1]);
           break;
         case 1:  //1 = all positive weights, winning class is negative
           scores.push_back(scores[0]);
-          scores[0] = 1.f - scores[0];  //put opposite score in positive slot
-          *Z = scores[0];
-          *(Z + 1) = scores[1];
+          scores[0] = 1 - scores[0];  //put opposite score in positive slot
+          *Z = static_cast<T>(scores[0]);
+          *(Z + 1) = static_cast<T>(scores[1]);
           break;
         case 2:
         case 3:  //2 = mixed weights, winning class is positive
@@ -368,11 +368,11 @@ static void write_scores(std::vector<IT>& scores, POST_EVAL_TRANSFORM post_trans
             scores.push_back(scores[0]);
             scores[0] = -scores[0];
           }
-          *Z = scores[0];
-          *(Z + 1) = scores[1];
+          *Z = static_cast<T>(scores[0]);
+          *(Z + 1) = static_cast<T>(scores[1]);
           break;
         default:
-          *Z = scores[0];
+          *Z = static_cast<T>(scores[0]);
           break;
       }
     }

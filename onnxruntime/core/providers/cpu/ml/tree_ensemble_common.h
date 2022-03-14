@@ -75,10 +75,9 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
 
  protected:
   TreeNodeElement<TH>* ProcessTreeNodeLeave(TreeNodeElement<TH>* root, const TI* x_data) const;
-  void compute(OpKernelContext* ctx, const Tensor* X, TH* z_data, Tensor* label) const;
 
   template <typename AGG>
-  void ComputeAgg(concurrency::ThreadPool* ttp, const Tensor* X, TH* z_data, Tensor* label, const AGG& agg) const;
+  void ComputeAgg(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Y, Tensor* label, const AGG& agg) const;
 };
 
 template <typename TI, typename TH, typename TO>
@@ -298,65 +297,48 @@ Status TreeEnsembleCommon<TI, TH, TO>::Init(int parallel_tree, int parallel_N,
 }
 
 template <typename TI, typename TH, typename TO>
-void TreeEnsembleCommon<TI, TH, TO>::compute(OpKernelContext* ctx, const Tensor* X, TH* z_data, Tensor* label) const {
+Status TreeEnsembleCommon<TI, TH, TO>::compute(OpKernelContext* ctx, const Tensor* X, Tensor* Y, Tensor* label) const {
   switch (aggregate_function_) {
     case AGGREGATE_FUNCTION::AVERAGE:
       ComputeAgg(
-          ctx->GetOperatorThreadPool(), X, z_data, label,
-          TreeAggregatorAverage<TI, TH>(
+          ctx->GetOperatorThreadPool(), X, Y, label,
+          TreeAggregatorAverage<TI, TH, TO>(
               roots_.size(), n_targets_or_classes_,
               post_transform_, base_values_));
-      return;
+      return Status::OK();
     case AGGREGATE_FUNCTION::SUM:
       ComputeAgg(
-          ctx->GetOperatorThreadPool(), X, z_data, label,
-          TreeAggregatorSum<TI, TH>(
+          ctx->GetOperatorThreadPool(), X, Y, label,
+          TreeAggregatorSum<TI, TH, TO>(
               roots_.size(), n_targets_or_classes_,
               post_transform_, base_values_));
-      return;
+      return Status::OK();
     case AGGREGATE_FUNCTION::MIN:
       ComputeAgg(
-          ctx->GetOperatorThreadPool(), X, z_data, label,
-          TreeAggregatorMin<TI, TH>(
+          ctx->GetOperatorThreadPool(), X, Y, label,
+          TreeAggregatorMin<TI, TH, TO>(
               roots_.size(), n_targets_or_classes_,
               post_transform_, base_values_));
-      return;
+      return Status::OK();
     case AGGREGATE_FUNCTION::MAX:
       ComputeAgg(
-          ctx->GetOperatorThreadPool(), X, z_data, label,
-          TreeAggregatorMax<TI, TH>(
+          ctx->GetOperatorThreadPool(), X, Y, label,
+          TreeAggregatorMax<TI, TH, TO>(
               roots_.size(), n_targets_or_classes_,
               post_transform_, base_values_));
-      return;
+      return Status::OK();
     default:
       ORT_THROW("Unknown aggregation function in TreeEnsemble.");
   }
 }
 
 template <typename TI, typename TH, typename TO>
-Status TreeEnsembleCommon<TI, TH, TO>::compute(OpKernelContext* ctx, const Tensor* X, Tensor* Y, Tensor*) const {
-  TO* y_data = Y->template MutableData<TO>();
-  ORT_IF_CONSTEXPR(std::is_same<TI, double>::value) {
-    int64_t size = Y->Shape().Size();
-    std::unique_ptr<double[]> y_data_th = std::make_unique<double[]>(size);
-    double* tree_output = y_data_th.get();
-    compute(ctx, X, tree_output, NULL);
-    for (int64_t i = 0; i < size; ++i) {
-      y_data[i] = static_cast<TO>(tree_output[i]);
-    }
-  }
-  else {
-    compute(ctx, X, y_data, NULL);
-  }
-  return Status::OK();
-}
-
-template <typename TI, typename TH, typename TO>
 template <typename AGG>
-void TreeEnsembleCommon<TI, TH, TO>::ComputeAgg(concurrency::ThreadPool* ttp, const Tensor* X, TH* z_data,
+void TreeEnsembleCommon<TI, TH, TO>::ComputeAgg(concurrency::ThreadPool* ttp, const Tensor* X, Tensor* Z,
                                                 Tensor* label, const AGG& agg) const {
   int64_t stride = X->Shape().NumDimensions() == 1 ? X->Shape()[0] : X->Shape()[1];
   int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
+  TO* z_data = Z->template MutableData<TO>();
 
   const TI* x_data = X->template Data<TI>();
   int64_t* label_data = label == nullptr ? nullptr : label->template MutableData<int64_t>();
@@ -685,9 +667,6 @@ class TreeEnsembleCommonClassifier : public TreeEnsembleCommon<TI, TH, TO> {
               const std::vector<TH>& class_weights_as_tensor,
               const std::vector<std::string>& classlabels_strings,
               const std::vector<int64_t>& classlabels_int64s);
-
- protected:
-  void compute(OpKernelContext* ctx, const Tensor* X, TH* z_data, Tensor* label) const;
 };
 
 
@@ -800,12 +779,11 @@ Status TreeEnsembleCommonClassifier<TI, TH, TO>::Init(int parallel_tree,
 }
 
 template <typename TI, typename TH, typename TO>
-void TreeEnsembleCommonClassifier<TI, TH, TO>::compute(OpKernelContext* ctx, const Tensor* X, TH* z_data,
-                                                       Tensor* label) const {
+Status TreeEnsembleCommonClassifier<TI, TH, TO>::compute(OpKernelContext* ctx, const Tensor* X, Tensor* Z, Tensor* label) const {
   if (classlabels_strings_.empty()) {
     this->ComputeAgg(
-        ctx->GetOperatorThreadPool(), X, z_data, label,
-        TreeAggregatorClassifier<TI, TH>(
+        ctx->GetOperatorThreadPool(), X, Z, label,
+        TreeAggregatorClassifier<TI, TH, TO>(
             this->roots_.size(), this->n_targets_or_classes_,
             this->post_transform_, this->base_values_,
             classlabels_int64s_, binary_case_,
@@ -816,8 +794,8 @@ void TreeEnsembleCommonClassifier<TI, TH, TO>::compute(OpKernelContext* ctx, con
     ORT_THROW_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
     Tensor label_int64(DataTypeImpl::GetType<int64_t>(), TensorShape({N}), alloc);
     this->ComputeAgg(
-        ctx->GetOperatorThreadPool(), X, z_data, &label_int64,
-        TreeAggregatorClassifier<TI, TH>(
+        ctx->GetOperatorThreadPool(), X, Z, &label_int64,
+        TreeAggregatorClassifier<TI, TH, TO>(
             this->roots_.size(), this->n_targets_or_classes_,
             this->post_transform_, this->base_values_,
             class_labels_, binary_case_,
@@ -827,26 +805,6 @@ void TreeEnsembleCommonClassifier<TI, TH, TO>::compute(OpKernelContext* ctx, con
     for (size_t i = 0; i < (size_t)N; ++i)
       labels[i] = classlabels_strings_[plabel[i]];
   }
-}
-
-template <typename TI, typename TH, typename TO>
-Status TreeEnsembleCommonClassifier<TI, TH, TO>::compute(OpKernelContext* ctx, const Tensor* X, Tensor* Z,
-                                                         Tensor* label) const {
-  ORT_IF_CONSTEXPR(std::is_same<TI, double>::value) {
-    int64_t size = Z->Shape().Size();
-    std::unique_ptr<double[]> z_data_th = std::make_unique<double[]>(size);
-    double* tree_output = z_data_th.get();
-    compute(ctx, X, tree_output, label);
-    TO* z_data = Z->template MutableData<TO>();
-    for (int64_t i = 0; i < size; ++i) {
-      z_data[i] = static_cast<TO>(tree_output[i]);
-    }
-  }
-  else {
-    float* z_data = Z->template MutableData<float>();
-    compute(ctx, X, z_data, label);
-  }
-
   return Status::OK();
 }
 
