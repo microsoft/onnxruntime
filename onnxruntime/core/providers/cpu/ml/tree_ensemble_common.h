@@ -6,6 +6,7 @@
 #include "tree_ensemble_aggregator.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
+#include "core/common/inlined_containers.h"
 
 namespace onnxruntime {
 namespace ml {
@@ -109,15 +110,15 @@ TreeEnsembleCommon<ITYPE, OTYPE>::TreeEnsembleCommon(int parallel_tree, int para
   ORT_ENFORCE(target_class_ids.size() == target_class_nodeids.size());
   ORT_ENFORCE(target_class_ids.size() == target_class_treeids.size());
   ORT_ENFORCE(target_class_ids.size() == target_class_treeids.size());
-  ORT_ENFORCE(base_values.size() == 0 || base_values_as_tensor.size() == 0);
-  ORT_ENFORCE(nodes_hitrates.size() == 0 || nodes_hitrates_as_tensor.size() == 0);
-  ORT_ENFORCE(nodes_values.size() == 0 || nodes_values_as_tensor.size() == 0);
-  ORT_ENFORCE(target_class_weights.size() == 0 || target_class_weights_as_tensor.size() == 0);
+  ORT_ENFORCE(base_values.empty() || base_values_as_tensor.empty());
+  ORT_ENFORCE(nodes_hitrates.empty() || nodes_hitrates_as_tensor.empty());
+  ORT_ENFORCE(nodes_values.empty() || nodes_values_as_tensor.empty());
+  ORT_ENFORCE(target_class_weights.empty() || target_class_weights_as_tensor.empty());
 
   aggregate_function_ = MakeAggregateFunction(aggregate_function);
   post_transform_ = MakeTransform(post_transform);
-  if (base_values_as_tensor.size() > 0) {
-    ORT_ENFORCE(base_values.size() == 0);
+  if (!base_values_as_tensor.empty()) {
+    ORT_ENFORCE(base_values.empty());
     base_values_ = base_values_as_tensor;
   } else {
     base_values_.resize(base_values.size());
@@ -157,15 +158,15 @@ TreeEnsembleCommon<ITYPE, OTYPE>::TreeEnsembleCommon(int parallel_tree, int para
     node.id.tree_id = static_cast<int>(nodes_treeids[i]);
     node.id.node_id = static_cast<int>(nodes_nodeids[i]);
     node.feature_id = static_cast<int>(nodes_featureids[i]);
-    if (nodes_values_as_tensor.size() > 0) {
-      node.value = nodes_values_as_tensor[i];
-    } else {
+    if (nodes_values_as_tensor.empty()) {
       node.value = static_cast<OTYPE>(nodes_values[i]);
-    }
-    if (nodes_hitrates_as_tensor.size() > 0) {
-      node.hitrates = i < nodes_hitrates_as_tensor.size() ? nodes_hitrates_as_tensor[i] : -1;
     } else {
+      node.value = nodes_values_as_tensor[i];
+    }
+    if (nodes_hitrates_as_tensor.empty()) {
       node.hitrates = static_cast<OTYPE>(i < nodes_hitrates.size() ? nodes_hitrates[i] : -1);
+    } else {
+      node.hitrates = i < nodes_hitrates_as_tensor.size() ? nodes_hitrates_as_tensor[i] : -1;
     }
     node.mode = cmodes[i];
     node.is_not_leaf = node.mode != NODE_MODE::LEAF;
@@ -235,10 +236,10 @@ TreeEnsembleCommon<ITYPE, OTYPE>::TreeEnsembleCommon(int parallel_tree, int para
       ORT_THROW("Unable to find node ", coor.tree_id, "-", coor.node_id, " (weights).");
     }
     w.i = target_class_ids[i];
-    if (target_class_weights_as_tensor.size() > 0) {
-      w.value = target_class_weights_as_tensor[i];
-    } else {
+    if (target_class_weights_as_tensor.empty()) {
       w.value = static_cast<OTYPE>(target_class_weights[i]);
+    } else {
+      w.value = target_class_weights_as_tensor[i];
     }
     idi[ind]->weights.push_back(w);
   }
@@ -653,8 +654,8 @@ TreeEnsembleCommonClassifier<ITYPE, OTYPE>::TreeEnsembleCommonClassifier(
                                        aggregate_function,
                                        base_values,
                                        base_values_as_tensor,
-                                       classlabels_strings.size() == 0 ? classlabels_int64s.size()
-                                                                       : classlabels_strings.size(),
+                                       classlabels_strings.empty() ? classlabels_int64s.size()
+                                                                   : classlabels_strings.size(),
                                        nodes_falsenodeids,
                                        nodes_featureids,
                                        nodes_hitrates,
@@ -675,15 +676,16 @@ TreeEnsembleCommonClassifier<ITYPE, OTYPE>::TreeEnsembleCommonClassifier(
   classlabels_strings_ = classlabels_strings;
   classlabels_int64s_ = classlabels_int64s;
 
-  std::set<int64_t> weights_classes;
+  InlinedHashSet<int64_t> weights_classes;
+  weights_classes.reserve(class_ids.size());
   weights_are_all_positive_ = true;
   for (size_t i = 0, end = class_ids.size(); i < end; ++i) {
     weights_classes.insert(class_ids[i]);
-    if (weights_are_all_positive_ && (class_weights.size() > 0 ? class_weights[i] : class_weights_as_tensor[i]) < 0)
+    if (weights_are_all_positive_ && (!class_weights.empty() ? class_weights[i] : class_weights_as_tensor[i]) < 0)
       weights_are_all_positive_ = false;
   }
   binary_case_ = this->n_targets_or_classes_ == 2 && weights_classes.size() == 1;
-  if (classlabels_strings_.size() > 0) {
+  if (!classlabels_strings_.empty()) {
     class_labels_.resize(classlabels_strings_.size());
     for (size_t i = 0; i < classlabels_strings_.size(); ++i)
       class_labels_[i] = i;
@@ -693,7 +695,7 @@ TreeEnsembleCommonClassifier<ITYPE, OTYPE>::TreeEnsembleCommonClassifier(
 template <typename ITYPE, typename OTYPE>
 void TreeEnsembleCommonClassifier<ITYPE, OTYPE>::compute(OpKernelContext* ctx, const Tensor* X, OTYPE* z_data,
                                                          Tensor* label) const {
-  if (classlabels_strings_.size() == 0) {
+  if (classlabels_strings_.empty()) {
     this->ComputeAgg(
         ctx->GetOperatorThreadPool(), X, z_data, label,
         TreeAggregatorClassifier<ITYPE, OTYPE>(

@@ -411,7 +411,7 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
       scores[0] = prediction.score;
       scores.pop_back();
       *Y = _set_score_binary(write_additional_scores, scores[0], has_scores[0], 0, 0);
-    } else if (this->base_values_.size() == 0) {
+    } else if (this->base_values_.empty()) {
       scores[0] = prediction.score;
       scores.pop_back();
       *Y = _set_score_binary(write_additional_scores, scores[0], has_scores[0], 0, 0);
@@ -465,7 +465,7 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
         predictions[0].score += this->base_values_[0];
         if (!predictions[1].has_score)
           predictions.pop_back();
-      } else if (this->base_values_.size() == 0) {
+      } else if (this->base_values_.empty()) {
         write_additional_scores = 3;
         if (!predictions[1].has_score)
           predictions.pop_back();
