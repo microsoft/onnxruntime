@@ -254,6 +254,7 @@ void BasicBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* 
     for(auto it = input_names.begin(); it != input_names.end(); it++) {
       // Assign the input_name for the model
       std::string inp_name = *it;
+      //Added hack with OV_2022.1 to ignore extra dummy name when there are multiple inputs
       if (inp_name.find("graph_input_cast_") != std::string::npos) {
         continue;
       } else {
@@ -295,6 +296,7 @@ void BasicBackend::StartRemoteAsyncInference(Ort::CustomOpApi& ort, OrtKernelCon
     for(auto it = input_names.begin(); it != input_names.end(); it++) {
       // Assign the input_name for the model
       std::string inp_name = *it;
+      //Added hack with OV_2022.1 to ignore extra dummy name when there are multiple inputs
       if (inp_name.find("graph_input_cast_") != std::string::npos) {
         continue;
       } else {
@@ -343,6 +345,7 @@ void BasicBackend::StartRemoteAsyncInference(Ort::CustomOpApi& ort, OrtKernelCon
     for(auto it = output_names.begin(); it != output_names.end(); it++) {
       // Assign the output_name for the model
       std::string out_name = *it;
+      //Added hack with OV_2022.1 to ignore extra dummy name when there are multiple outputs
       if (out_name.find("graph_output_cast_") != std::string::npos) {
         continue;
       } else {
@@ -393,6 +396,7 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContex
     for(auto it = output_names.begin(); it != output_names.end(); it++) {
       // Assign the output_name for the model
       std::string out_name = *it;
+      //Added hack with OV_2022.1 to ignore extra dummy name when there are multiple outputs
       if (out_name.find("graph_output_cast_") != std::string::npos) {
         continue;
       } else {
