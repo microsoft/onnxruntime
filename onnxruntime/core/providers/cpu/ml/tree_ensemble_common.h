@@ -16,10 +16,8 @@ namespace detail {
 class TreeEnsembleCommonAttributes {
  public:
   int64_t get_target_or_class_count() const { return this->n_targets_or_classes_; }
-  virtual Status Init(const OpKernelInfo&) { ORT_THROW("Method 'Init' must be overwritten."); }
-  virtual Status TreeEnsembleCommonAttributes::compute(OpKernelContext*, const Tensor*, Tensor*, Tensor*) const {
-    ORT_THROW("Method 'compute' must be overwritten.");
-  }
+  virtual Status Init(const OpKernelInfo&) = 0;
+  virtual Status compute(OpKernelContext*, const Tensor*, Tensor*, Tensor*) const = 0;
   virtual ~TreeEnsembleCommonAttributes() {}
 
  protected:
@@ -52,28 +50,28 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
   virtual Status compute(OpKernelContext* ctx, const Tensor* X, Tensor* Y, Tensor* label) const;
 
   Status Init(int parallel_tree,
-                      int parallel_N,
-                      const std::string& aggregate_function,
-                      const std::vector<float>& base_values,
-                      const std::vector<TH>& base_values_as_tensor,
-                      int64_t n_targets_or_classes,
-                      const std::vector<int64_t>& nodes_falsenodeids,
-                      const std::vector<int64_t>& nodes_featureids,
-                      const std::vector<float>& nodes_hitrates,
-                      const std::vector<TH>& nodes_hitrates_as_tensor,
-                      const std::vector<int64_t>& nodes_missing_value_tracks_true,
-                      const std::vector<std::string>& nodes_modes,
-                      const std::vector<int64_t>& nodes_nodeids,
-                      const std::vector<int64_t>& nodes_treeids,
-                      const std::vector<int64_t>& nodes_truenodeids,
-                      const std::vector<float>& nodes_values,
-                      const std::vector<TH>& nodes_values_as_tensor,
-                      const std::string& post_transform,
-                      const std::vector<int64_t>& target_class_ids,
-                      const std::vector<int64_t>& target_class_nodeids,
-                      const std::vector<int64_t>& target_class_treeids,
-                      const std::vector<float>& target_class_weights,
-                      const std::vector<TH>& target_class_weights_as_tensor);
+              int parallel_N,
+              const std::string& aggregate_function,
+              const std::vector<float>& base_values,
+              const std::vector<TH>& base_values_as_tensor,
+              int64_t n_targets_or_classes,
+              const std::vector<int64_t>& nodes_falsenodeids,
+              const std::vector<int64_t>& nodes_featureids,
+              const std::vector<float>& nodes_hitrates,
+              const std::vector<TH>& nodes_hitrates_as_tensor,
+              const std::vector<int64_t>& nodes_missing_value_tracks_true,
+              const std::vector<std::string>& nodes_modes,
+              const std::vector<int64_t>& nodes_nodeids,
+              const std::vector<int64_t>& nodes_treeids,
+              const std::vector<int64_t>& nodes_truenodeids,
+              const std::vector<float>& nodes_values,
+              const std::vector<TH>& nodes_values_as_tensor,
+              const std::string& post_transform,
+              const std::vector<int64_t>& target_class_ids,
+              const std::vector<int64_t>& target_class_nodeids,
+              const std::vector<int64_t>& target_class_treeids,
+              const std::vector<float>& target_class_weights,
+              const std::vector<TH>& target_class_weights_as_tensor);
 
  protected:
   TreeNodeElement<TH>* ProcessTreeNodeLeave(TreeNodeElement<TH>* root, const TI* x_data) const;
@@ -117,31 +115,29 @@ Status TreeEnsembleCommon<TI, TH, TO>::Init(const OpKernelInfo& info) {
       target_weights_as_tensor);
 }
 
-
-
 template <typename TI, typename TH, typename TO>
 Status TreeEnsembleCommon<TI, TH, TO>::Init(int parallel_tree, int parallel_N,
-                                                    const std::string& aggregate_function,
-                                                    const std::vector<float>& base_values,
-                                                    const std::vector<TH>& base_values_as_tensor,
-                                                    int64_t n_targets_or_classes,
-                                                    const std::vector<int64_t>& nodes_falsenodeids,
-                                                   const std::vector<int64_t>& nodes_featureids,
-                                                   const std::vector<float>& nodes_hitrates,
-                                                   const std::vector<TH>& nodes_hitrates_as_tensor,
-                                                   const std::vector<int64_t>& nodes_missing_value_tracks_true,
-                                                   const std::vector<std::string>& nodes_modes,
-                                                   const std::vector<int64_t>& nodes_nodeids,
-                                                   const std::vector<int64_t>& nodes_treeids,
-                                                   const std::vector<int64_t>& nodes_truenodeids,
-                                                   const std::vector<float>& nodes_values,
-                                                   const std::vector<TH>& nodes_values_as_tensor,
-                                                   const std::string& post_transform,
-                                                   const std::vector<int64_t>& target_class_ids,
-                                                   const std::vector<int64_t>& target_class_nodeids,
-                                                   const std::vector<int64_t>& target_class_treeids,
-                                                   const std::vector<float>& target_class_weights,
-                                                   const std::vector<TH>& target_class_weights_as_tensor) {
+                                            const std::string& aggregate_function,
+                                            const std::vector<float>& base_values,
+                                            const std::vector<TH>& base_values_as_tensor,
+                                            int64_t n_targets_or_classes,
+                                            const std::vector<int64_t>& nodes_falsenodeids,
+                                            const std::vector<int64_t>& nodes_featureids,
+                                            const std::vector<float>& nodes_hitrates,
+                                            const std::vector<TH>& nodes_hitrates_as_tensor,
+                                            const std::vector<int64_t>& nodes_missing_value_tracks_true,
+                                            const std::vector<std::string>& nodes_modes,
+                                            const std::vector<int64_t>& nodes_nodeids,
+                                            const std::vector<int64_t>& nodes_treeids,
+                                            const std::vector<int64_t>& nodes_truenodeids,
+                                            const std::vector<float>& nodes_values,
+                                            const std::vector<TH>& nodes_values_as_tensor,
+                                            const std::string& post_transform,
+                                            const std::vector<int64_t>& target_class_ids,
+                                            const std::vector<int64_t>& target_class_nodeids,
+                                            const std::vector<int64_t>& target_class_treeids,
+                                            const std::vector<float>& target_class_weights,
+                                            const std::vector<TH>& target_class_weights_as_tensor) {
   parallel_tree_ = parallel_tree;
   parallel_N_ = parallel_N;
 
@@ -358,7 +354,7 @@ Status TreeEnsembleCommon<TI, TH, TO>::compute(OpKernelContext* ctx, const Tenso
 template <typename TI, typename TH, typename TO>
 template <typename AGG>
 void TreeEnsembleCommon<TI, TH, TO>::ComputeAgg(concurrency::ThreadPool* ttp, const Tensor* X, TH* z_data,
-                                                  Tensor* label, const AGG& agg) const {
+                                                Tensor* label, const AGG& agg) const {
   int64_t stride = X->Shape().NumDimensions() == 1 ? X->Shape()[0] : X->Shape()[1];
   int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
 
@@ -666,29 +662,29 @@ class TreeEnsembleCommonClassifier : public TreeEnsembleCommon<TI, TH, TO> {
   virtual Status compute(OpKernelContext* ctx, const Tensor* X, Tensor* Z, Tensor* label) const;
 
   Status Init(int parallel_tree,
-                      int parallel_N,
-                      const std::string& aggregate_function,
-                      const std::vector<float>& base_values,
-                      const std::vector<TH>& base_values_as_tensor,
-                      const std::vector<int64_t>& nodes_falsenodeids,
-                      const std::vector<int64_t>& nodes_featureids,
-                      const std::vector<float>& nodes_hitrates,
-                      const std::vector<TH>& nodes_hitrates_as_tensor,
-                      const std::vector<int64_t>& nodes_missing_value_tracks_true,
-                      const std::vector<std::string>& nodes_modes,
-                      const std::vector<int64_t>& nodes_nodeids,
-                      const std::vector<int64_t>& nodes_treeids,
-                      const std::vector<int64_t>& nodes_truenodeids,
-                      const std::vector<float>& nodes_values,
-                      const std::vector<TH>& nodes_values_as_tensor,
-                      const std::string& post_transform,
-                      const std::vector<int64_t>& class_ids,
-                      const std::vector<int64_t>& class_nodeids,
-                      const std::vector<int64_t>& class_treeids,
-                      const std::vector<float>& class_weights,
-                      const std::vector<TH>& class_weights_as_tensor,
-                      const std::vector<std::string>& classlabels_strings,
-                      const std::vector<int64_t>& classlabels_int64s);
+              int parallel_N,
+              const std::string& aggregate_function,
+              const std::vector<float>& base_values,
+              const std::vector<TH>& base_values_as_tensor,
+              const std::vector<int64_t>& nodes_falsenodeids,
+              const std::vector<int64_t>& nodes_featureids,
+              const std::vector<float>& nodes_hitrates,
+              const std::vector<TH>& nodes_hitrates_as_tensor,
+              const std::vector<int64_t>& nodes_missing_value_tracks_true,
+              const std::vector<std::string>& nodes_modes,
+              const std::vector<int64_t>& nodes_nodeids,
+              const std::vector<int64_t>& nodes_treeids,
+              const std::vector<int64_t>& nodes_truenodeids,
+              const std::vector<float>& nodes_values,
+              const std::vector<TH>& nodes_values_as_tensor,
+              const std::string& post_transform,
+              const std::vector<int64_t>& class_ids,
+              const std::vector<int64_t>& class_nodeids,
+              const std::vector<int64_t>& class_treeids,
+              const std::vector<float>& class_weights,
+              const std::vector<TH>& class_weights_as_tensor,
+              const std::vector<std::string>& classlabels_strings,
+              const std::vector<int64_t>& classlabels_int64s);
 
  protected:
   void compute(OpKernelContext* ctx, const Tensor* X, TH* z_data, Tensor* label) const;
@@ -731,56 +727,54 @@ Status TreeEnsembleCommonClassifier<TI, TH, TO>::Init(const OpKernelInfo& info) 
 }
 
 template <typename TI, typename TH, typename TO>
-Status TreeEnsembleCommonClassifier<TI, TH, TO>::Init(
-    int parallel_tree,
-    int parallel_N,
-    const std::string& aggregate_function,
-    const std::vector<float>& base_values,
-    const std::vector<TH>& base_values_as_tensor,
-    const std::vector<int64_t>& nodes_falsenodeids,
-    const std::vector<int64_t>& nodes_featureids,
-    const std::vector<float>& nodes_hitrates,
-    const std::vector<TH>& nodes_hitrates_as_tensor,
-    const std::vector<int64_t>& nodes_missing_value_tracks_true,
-    const std::vector<std::string>& nodes_modes,
-    const std::vector<int64_t>& nodes_nodeids,
-    const std::vector<int64_t>& nodes_treeids,
-    const std::vector<int64_t>& nodes_truenodeids,
-    const std::vector<float>& nodes_values,
-    const std::vector<TH>& nodes_values_as_tensor,
-    const std::string& post_transform,
-    const std::vector<int64_t>& class_ids,
-    const std::vector<int64_t>& class_nodeids,
-    const std::vector<int64_t>& class_treeids,
-    const std::vector<float>& class_weights,
-    const std::vector<TH>& class_weights_as_tensor,
-    const std::vector<std::string>& classlabels_strings,
-    const std::vector<int64_t>& classlabels_int64s){
-  auto status = TreeEnsembleCommon<TI, TH, TO>::Init(
-      parallel_tree,
-      parallel_N,
-      aggregate_function,
-      base_values,
-      base_values_as_tensor,
-      classlabels_strings.empty() ? classlabels_int64s.size()
-                                  : classlabels_strings.size(),
-      nodes_falsenodeids,
-      nodes_featureids,
-      nodes_hitrates,
-      nodes_hitrates_as_tensor,
-      nodes_missing_value_tracks_true,
-      nodes_modes,
-      nodes_nodeids,
-      nodes_treeids,
-      nodes_truenodeids,
-      nodes_values,
-      nodes_values_as_tensor,
-      post_transform,
-      class_ids,
-      class_nodeids,
-      class_treeids,
-      class_weights,
-      class_weights_as_tensor);
+Status TreeEnsembleCommonClassifier<TI, TH, TO>::Init(int parallel_tree,
+                                                      int parallel_N,
+                                                      const std::string& aggregate_function,
+                                                      const std::vector<float>& base_values,
+                                                      const std::vector<TH>& base_values_as_tensor,
+                                                      const std::vector<int64_t>& nodes_falsenodeids,
+                                                      const std::vector<int64_t>& nodes_featureids,
+                                                      const std::vector<float>& nodes_hitrates,
+                                                      const std::vector<TH>& nodes_hitrates_as_tensor,
+                                                      const std::vector<int64_t>& nodes_missing_value_tracks_true,
+                                                      const std::vector<std::string>& nodes_modes,
+                                                      const std::vector<int64_t>& nodes_nodeids,
+                                                      const std::vector<int64_t>& nodes_treeids,
+                                                      const std::vector<int64_t>& nodes_truenodeids,
+                                                      const std::vector<float>& nodes_values,
+                                                      const std::vector<TH>& nodes_values_as_tensor,
+                                                      const std::string& post_transform,
+                                                      const std::vector<int64_t>& class_ids,
+                                                      const std::vector<int64_t>& class_nodeids,
+                                                      const std::vector<int64_t>& class_treeids,
+                                                      const std::vector<float>& class_weights,
+                                                      const std::vector<TH>& class_weights_as_tensor,
+                                                      const std::vector<std::string>& classlabels_strings,
+                                                      const std::vector<int64_t>& classlabels_int64s) {
+  auto status = TreeEnsembleCommon<TI, TH, TO>::Init(parallel_tree,
+                                                     parallel_N,
+                                                     aggregate_function,
+                                                     base_values,
+                                                     base_values_as_tensor,
+                                                     classlabels_strings.empty() ? classlabels_int64s.size()
+                                                                                 : classlabels_strings.size(),
+                                                     nodes_falsenodeids,
+                                                     nodes_featureids,
+                                                     nodes_hitrates,
+                                                     nodes_hitrates_as_tensor,
+                                                     nodes_missing_value_tracks_true,
+                                                     nodes_modes,
+                                                     nodes_nodeids,
+                                                     nodes_treeids,
+                                                     nodes_truenodeids,
+                                                     nodes_values,
+                                                     nodes_values_as_tensor,
+                                                     post_transform,
+                                                     class_ids,
+                                                     class_nodeids,
+                                                     class_treeids,
+                                                     class_weights,
+                                                     class_weights_as_tensor);
   if (!status.IsOK()) {
     return status;
   }
@@ -806,7 +800,8 @@ Status TreeEnsembleCommonClassifier<TI, TH, TO>::Init(
 }
 
 template <typename TI, typename TH, typename TO>
-void TreeEnsembleCommonClassifier<TI, TH, TO>::compute(OpKernelContext* ctx, const Tensor* X, TH* z_data, Tensor* label) const {
+void TreeEnsembleCommonClassifier<TI, TH, TO>::compute(OpKernelContext* ctx, const Tensor* X, TH* z_data,
+                                                       Tensor* label) const {
   if (classlabels_strings_.empty()) {
     this->ComputeAgg(
         ctx->GetOperatorThreadPool(), X, z_data, label,
@@ -835,7 +830,8 @@ void TreeEnsembleCommonClassifier<TI, TH, TO>::compute(OpKernelContext* ctx, con
 }
 
 template <typename TI, typename TH, typename TO>
-Status TreeEnsembleCommonClassifier<TI, TH, TO>::compute(OpKernelContext* ctx, const Tensor* X, Tensor* Z, Tensor* label) const {
+Status TreeEnsembleCommonClassifier<TI, TH, TO>::compute(OpKernelContext* ctx, const Tensor* X, Tensor* Z,
+                                                         Tensor* label) const {
   ORT_IF_CONSTEXPR(std::is_same<TI, double>::value) {
     int64_t size = Z->Shape().Size();
     std::unique_ptr<double[]> z_data_th = std::make_unique<double[]>(size);
