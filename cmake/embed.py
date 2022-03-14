@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 """This file implement `xxd -i` funcationality with additional features."""
 
 import io
