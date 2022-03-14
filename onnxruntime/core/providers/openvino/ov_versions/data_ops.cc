@@ -271,6 +271,7 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Less", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Greater", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Clip", V_2021_2, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"Clip", V_2022_1, {"All"}});
   no_dimension_supported_.push_back({"Resize", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Equal", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Reshape", V_2021_3, {"MYRIAD"}});
@@ -282,6 +283,7 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"ReduceMin", V_2021_3, {"MYRIAD"}});
   no_dimension_supported_.push_back({"ReduceMin", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"ReduceMax", V_2021_4, {"All"}});
+  no_dimension_supported_.push_back({"ReduceProd", V_2022_1, {"CPU","GPU"}});
   no_dimension_supported_.push_back({"QuantizeLinear", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"DequantizeLinear", V_2021_4, {"All"}});
   no_dimension_supported_.push_back({"Shape", V_2022_1, {"GPU"}});
@@ -887,6 +889,20 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"ReduceMax", obj});
   }
   {
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               if (device_id_.find("GPU") != std::string::npos) {
+                                 //INT32 dataype is not supported as input
+                                 for (size_t i = 0; i < node->InputDefs().size(); i++) {
+                                 if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32)
+                                   return true;
+                                 }
+                               }
+                               return false;
+                             }};
+    op_list_.insert({"ReduceLogSumExp", obj});
+  }
+  {
     UnsupportedOpMode obj = {{V_2021_2, V_2021_3, V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                const auto& attributes = node->GetAttributes();
@@ -913,6 +929,21 @@ void DataOps::populate_op_mode_supported() {
                              }};
     op_list_.insert({"Scatter", obj});
     op_list_.insert({"ScatterElements", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               if (device_id_.find("GPU") != std::string::npos) {
+                                auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+                                //If the output of ScatterND op is BOOL, it is rejected for GPU.
+                                if (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL)
+                                  return true;
+                               }
+                               return false;
+                             }};
+    op_list_.insert({"ScatterND", obj});
+    op_list_.insert({"ScatterElements", obj});
+    op_list_.insert({"Scatter", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2022_1},
@@ -977,9 +1008,22 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Transpose", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_2, V_2021_3, V_2021_4, V_2022_1},
+    UnsupportedOpMode obj = {{V_2020_4, V_2021_2, V_2021_3, V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                return (!this->dimension_unsupported(node));
+                             }};
+    op_list_.insert({"Unsqueeze", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                                //If the operator is unsqueeze
+                                //If axes is an input, then we cannot produce a static graph. Conversion fails in convert_function_to_cnn_network.
+                                for (size_t i = 0; i < node->InputDefs().size(); i++) {
+                                  if(node->InputDefs()[i]->Name() == "axes")
+                                    return true;
+                                }
+                                return (!this->dimension_unsupported(node));
                              }};
     op_list_.insert({"Unsqueeze", obj});
   }

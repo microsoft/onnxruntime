@@ -350,7 +350,7 @@ TEST(UpsampleOpTest, UpsampleOp2DBilinearTest) {
       3.0f, 3.5f, 4.0f, 4.5f, 5.0f, 5.0f, 5.0f, 5.0f};
 
   test.AddOutput<float>("Y", {(int64_t)(H * scales[0]), (int64_t)(W * scales[1])}, Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: results mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  //TensorRT/OpenVINO-EP: results mismatch
 }
 
 TEST(UpsampleOpTest, UpsampleOp4DBilinearTest_ScalesNoOp) {

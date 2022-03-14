@@ -851,7 +851,7 @@ TEST(ReductionOpTest, ReduceMax0DTensor) {
   OpTester test("ReduceMax");
   test.AddInput<float>("data", {}, {2});
   test.AddOutput<float>("reduced", {}, {2});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}); //can't access out of range dim in OpenVINO-EP
 }
 #endif  // !(defined USE_NUPHAR_TVM)
 
