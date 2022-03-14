@@ -1,9 +1,11 @@
 ---
 title: ORT Mobile Model Export Helpers
-descriptions: 
-parent: Mobile
-nav_order: 1
+descriptions: Helpers to assist with export and usage of models with ORT Mobile
+parent: Deploy on mobile
+grand_parent: Tutorials
+nav_order: 3
 ---
+
 # ORT Mobile Model Export Helpers
 {: .no_toc }
 
@@ -16,17 +18,21 @@ There are a range of tools available to aid with exporting and analyzing a model
 * TOC placeholder
 {:toc}
 
-### ORT Mobile model usability checker
+
+## ORT Mobile model usability checker
 
 The model usability checker provides information on how well a model is likely to run with ORT mobile, including the suitability for using NNAPI on Android and CoreML on iOS. It can also recommend running specific tools to update the model so that it works better with ORT Mobile.
 
 See [here](./) for details
 
-### ONNX model opset updater
+
+## ONNX model opset updater
 
 The ORT Mobile pre-built package only supports the most recent ONNX opsets in order to minimize binary size. Most ONNX models can be updated to a newer opset. Use this tool to do so. It is recommended to use the latest opset the pre-built package supports, which is currently opset 15.
 
 The opsets supported by the pre-built package are documented [here](../../../reference/operators/mobile_package_op_type_support_1.10.md).
+
+Usage:
 
 ```
 python -m onnxruntime.tools.update_onnx_opset -h
@@ -44,20 +50,28 @@ optional arguments:
 ```
 
 Example usage:
-```
-python -m onnxruntime.tools.update_onnx_opset --opset 15 model.onnx model.opset15.onnx
+
 ```
 
-### ONNX model dynamic shape fixer
+python -m onnxruntime.tools.update_onnx_opset --opset 15 model.onnx model.opset15.onnx
+
+```
+
+
+## ONNX model dynamic shape fixer
 
 If the model can potentially be used with NNAPI or CoreML it may require the input shapes to be made 'fixed'. 
 
 See documentation on [onnxruntime.tools.make_dynamic_shape_fixed](./make-dynamic-shape-fixed.md) for information on how to do this.
 
 
-### PyTorch export helpers
+## PyTorch export helpers
 
 When exporting a model from [PyTorch](https://pytorch.org/) using [torch.onnx.export](https://pytorch.org/docs/stable/onnx.html) the names of the graph inputs can be specified, and the inputs needs to be assembled into a tuple. The infer_input_info helper can be used to automatically discover the input names, and to format the inputs correctly for usage with torch.onnx.export.
+
+In the below example we provide the necessary input to run the torchvision mobilenet_v2 model. 
+The input_names and inputs_as_tuple returned can be directly used in the torch.onnx.export call. 
+This provides the most benefit when there are multiple inputs to the model, and/or if those inputs involve more complex data types like dictionaries.
 
 ```python
 import torch
