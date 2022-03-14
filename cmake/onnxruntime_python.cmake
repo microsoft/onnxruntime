@@ -460,7 +460,11 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_mobile_util_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
-      COMMAND ${CMAKE_COMMAND} -E copy
+  # append the /tools/python/utils imports to the __init__.py that came from /onnxruntime/tools
+  COMMAND ${CMAKE_COMMAND} -E cat
+      ${REPO_ROOT}/tools/python/util/__init__append.py >>
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/__init__.py
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_mobile_helpers_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/mobile_helpers/
   COMMAND ${CMAKE_COMMAND} -E copy
