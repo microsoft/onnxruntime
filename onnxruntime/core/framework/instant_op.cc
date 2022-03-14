@@ -30,16 +30,25 @@ onnxruntime::Status CreateAttribute(const char* name, const void* data, int len,
     if (is_array) {
       for (int j = 0; j < len; ++j) {
         attr->add_ints(ints[j]);
-        attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
       }
+      attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS);
     } else {
       attr->set_i(ints[0]);
       attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
     }
   } else if (type == ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
-    auto str = reinterpret_cast<const char*>(data);
-    attr->set_s(std::string{str});
-    attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
+    if (is_array) {
+      using const_chars = const char*;
+      auto ss = reinterpret_cast<const const_chars*>(data);
+      for (int j = 0; j < len; ++j) {
+        attr->add_strings(std::string{ss[j]});
+      }
+      attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS);
+    } else {
+      auto str = reinterpret_cast<const char*>(data);
+      attr->set_s(std::string{str});
+      attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
+    }
   } else {
     return Status(common::ONNXRUNTIME, common::FAIL, "Invalid attribute data type.");
   }
@@ -190,7 +199,7 @@ ORT_API_STATUS_IMPL(OrtApis::InvokeOperator,
   if (status.IsOK()) {
     return nullptr;
   } else {
-    return CreateStatus(static_cast<OrtErrorCode>(status.Code()), "Failed to invoke eager kernel.");
+    return CreateStatus(static_cast<OrtErrorCode>(status.Code()), "Failed to invoke operator.");
   }
   API_IMPL_END
 }

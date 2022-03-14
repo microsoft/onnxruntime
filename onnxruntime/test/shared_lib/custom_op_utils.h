@@ -215,10 +215,17 @@ struct InstantCustomKernel {
   void Compute(OrtKernelContext* context);
 
  private:
+  void InitTopK(Ort::CustomOpApi ort, const OrtKernelInfo* info);
+  void InvokeTopK(OrtKernelContext* context);
+
+  void InitGru(Ort::CustomOpApi ort, const OrtKernelInfo* info);
+  void InvokeGru(OrtKernelContext* context);
+
   Ort::CustomOpApi ort_;
   void* compute_stream_{};
   OrtOp op_add{};
   OrtOp op_topk{};
+  OrtOp op_gru{};
 };
 
 struct InstantCustomOp : Ort::CustomOpBase<InstantCustomOp, InstantCustomKernel> {
