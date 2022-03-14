@@ -1,7 +1,7 @@
 jobs:
 - job: Android_CI
   pool:
-    vmImage: 'Ubuntu 20.04'
+    vmImage: 'macOS-11'
   timeoutInMinutes: 180
   steps:
   # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
@@ -54,5 +54,6 @@ jobs:
         --parallel \
         --cmake_generator=Ninja \
         --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
-        --build_java
-    displayName: CPU EP, Build and Test on Android Emulator
+        --build_jav \
+        --skip_tests
+    displayName: CPU EP, Build
