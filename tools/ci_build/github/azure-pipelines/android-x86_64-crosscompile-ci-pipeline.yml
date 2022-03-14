@@ -11,7 +11,7 @@ jobs:
     inputs:
       versionSpec: $(pythonVersion)
 
-  - script: apt-get update -y && apt-get install -y coreutils ninja
+  - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja
     displayName: Install coreutils and ninja
 
   - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
