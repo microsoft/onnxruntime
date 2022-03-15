@@ -94,7 +94,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Cos", V_2022_1, {"GPU"}},
     {"Cosh", V_2020_4, {"CPU"}},
     {"Cosh", V_2022_1, {"GPU"}},
-    {"CumSum", V_2022_1, {"CPU"}},
+    {"CumSum", V_2022_1, {"CPU", "GPU"}},
     {"DepthToSpace", V_2020_4, {"All"}},
     {"DequantizeLinear", V_2021_4, {"CPU", "GPU"}},
     {"Div", V_2020_4, {"All"}},
@@ -104,7 +104,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Erf", V_2020_4, {"All"}},
     {"Exp", V_2020_4, {"All"}},
     {"Expand", V_2021_1, {"MYRIAD"}},
-    {"Expand", V_2022_1, {"GPU"}},
+    {"Expand", V_2022_1, {"CPU", "GPU"}},
     {"EyeLike", V_2022_1, {"CPU"}},
     {"Flatten", V_2020_4, {"All"}},
     {"Floor", V_2020_4, {"All"}},
@@ -553,6 +553,18 @@ void DataOps::populate_op_mode_supported() {
                                return false;
                              }};
     op_list_.insert({"ConvInteger", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               //Input and output datatype as float is not supported
+                               const bool input_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
+                               const bool output_is_float = node->OutputDefs()[0]->Type()->find("float") != std::string::npos;
+                               if(input_is_float && output_is_float)
+                                return true;
+                               return false;
+                             }};
+    op_list_.insert({"Expand", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3},
