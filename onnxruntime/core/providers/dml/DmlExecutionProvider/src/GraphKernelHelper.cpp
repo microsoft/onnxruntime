@@ -289,7 +289,7 @@ namespace GraphKernelHelper
 
         for (size_t i = 0; i < graphDesc.nodes.size(); ++i)
         {
-            dmlOperatorGraphNodes[i] = DML_OPERATOR_GRAPH_NODE_DESC{graphDesc.nodes[i].op.Get()};
+            dmlOperatorGraphNodes[i] = DML_OPERATOR_GRAPH_NODE_DESC{graphDesc.nodes[i].op.Get(), graphDesc.nodes[i].name.c_str()};
             dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{DML_GRAPH_NODE_TYPE_OPERATOR, &dmlOperatorGraphNodes[i]};
         }
 
