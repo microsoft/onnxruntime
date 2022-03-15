@@ -1649,6 +1649,7 @@ struct CustomOpBase : OrtCustomOp {
 
     OrtCustomOp::GetInputTypeCount = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetInputTypeCount(); };
     OrtCustomOp::GetInputType = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetInputType(index); };
+    OrtCustomOp::GetInputMemoryType= [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetInputMemoryType(index); };
 
     OrtCustomOp::GetOutputTypeCount = [](const OrtCustomOp* this_) { return static_cast<const TOp*>(this_)->GetOutputTypeCount(); };
     OrtCustomOp::GetOutputType = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetOutputType(index); };
@@ -1677,6 +1678,11 @@ struct CustomOpBase : OrtCustomOp {
 
   OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t /*index*/) const {
     return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
+  }
+
+  // Default implemention of GetInputMemoryType() that returns OrtMemTypeDefault
+  OrtMemType GetInputMemoryType(size_t /*index*/) const {
+    return OrtMemTypeDefault;
   }
 };
 
