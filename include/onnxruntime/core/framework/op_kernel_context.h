@@ -204,7 +204,7 @@ class OpKernelContext {
 
  protected:
 
-  OpKernelContext(_In_opt_ concurrency::ThreadPool* threadpool, const logging::Logger& logger);
+  OpKernelContext(concurrency::ThreadPool* threadpool, const logging::Logger& logger);
 
   onnxruntime::NodeIndex GetNodeIndex() const;
 

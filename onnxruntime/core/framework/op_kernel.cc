@@ -36,8 +36,8 @@ OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKe
   node_output_start_index_ = node_implicit_input_start_index_ + ImplicitInputCount();
 }
 
-OpKernelContext::OpKernelContext(_In_opt_ concurrency::ThreadPool* threadpool,
-                                 _In_ const logging::Logger& logger) : threadpool_(threadpool), logger_(&logger) {}
+OpKernelContext::OpKernelContext(concurrency::ThreadPool* threadpool,
+                                 const logging::Logger& logger) : threadpool_(threadpool), logger_(&logger) {}
 
 Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
   auto p_ml_value = OutputMLValue(index, shape);
@@ -292,7 +292,7 @@ OrtValue* InstantKernelContext::OutputMLValue(int index, const TensorShape& shap
       auto element_type = ml_type->AsSparseTensorType()->GetElementType();
       SparseTensor::InitOrtValue(element_type, shape, allocator_, ort_value);
 #else
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Sparse tensor is not supported in this build");
+      ORT_THROW("sparse tensor is not supported in this build.");
 #endif
     }
   }
