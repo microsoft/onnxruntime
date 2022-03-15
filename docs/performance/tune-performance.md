@@ -292,7 +292,7 @@ When working with non-CPU execution providers it's most efficient to have inputs
 
 * Python
 
-Refer to the [Python API docs](/docs/api/python)
+Refer to the [Python API docs](https://onnxruntime.ai/docs/api/python)
 
 * C#
 
