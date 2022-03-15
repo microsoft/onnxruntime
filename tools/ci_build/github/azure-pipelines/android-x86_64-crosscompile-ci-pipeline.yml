@@ -57,13 +57,14 @@ jobs:
         --skip_tests
        ls -ld $(find build)
     displayName: CPU EP, Build
-  - task: CopyFiles@2
+  - task: ArchiveFiles@2
     inputs:
-      contents: 'build/**'
-      targetFolder: $(Build.ArtifactStagingDirectory)
+      rootFolderOrFile: build
+      includeRootFolder: true
+      archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
   - task: PublishBuildArtifacts@1
     inputs:
-      pathToPublish: $(Build.ArtifactStagingDirectory)
+      pathToPublish: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
       artifactName: MyBuildOutputs
 
 - job: Test_CPU_EP
@@ -74,11 +75,18 @@ jobs:
   steps:
     - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
       displayName: Setup gradle wrapper to use gradle 6.8.3
+      
+    - script: echo '$(System.ArtifactsDirectory)'
+      displayName: check root directory
 
     - download: current
       artifact: MyBuildOutputs
 
-    - script: ls && ls build
+    - task: ExtractFiles@1
+      inputs:
+        destinationFolder: '$(System.ArtifactsDirectory)'
+        
+    - script: pwd && ls && ls build
       displayName: check root directory
 
     - script: |
