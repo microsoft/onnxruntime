@@ -57,7 +57,8 @@ jobs:
         --skip_tests
     displayName: CPU EP, Build
 - job: Test_CPU_EP
-  vmImage: 'macOS-11'
+  pool:
+    vmImage: 'macOS-11'
   dependsOn: Build_CPU_EP
   steps:
     - script: echo "Hi"
