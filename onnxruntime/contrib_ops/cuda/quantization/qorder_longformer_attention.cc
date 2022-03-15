@@ -53,7 +53,7 @@ QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& inf
 Status
 QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   // For Debugging...
-  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
+  DUBUG_PERF_CUDA_SYNC();
 
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(2);
@@ -263,7 +263,7 @@ QOrderedLongformerAttention::ComputeInternal(OpKernelContext* context) const {
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
   this->AddDeferredReleaseCPUPtr(pinned_buffer.release());
 
-  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
+  DUBUG_PERF_CUDA_SYNC();
   return Status::OK();
 }
 

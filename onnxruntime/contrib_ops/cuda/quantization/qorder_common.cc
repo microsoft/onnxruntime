@@ -296,7 +296,7 @@ QOrderedMatMul::QOrderedMatMul(const OpKernelInfo& info) : CudaKernel(info) {
 }
 
 Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
-  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
+  DUBUG_PERF_CUDA_SYNC();
 
   int64_t rows = 0, cols = 0, batch = 0, n = 0;
 
@@ -321,12 +321,12 @@ Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
                                 q8_buffer.get(), (cublasLtOrder_t)order_input_, output_tensor->MutableDataRaw(), (cublasLtOrder_t)order_output_));
   }
 
-  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
+  DUBUG_PERF_CUDA_SYNC();
   return Status::OK();
 }
 
 Status DequantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
-  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
+  DUBUG_PERF_CUDA_SYNC();
 
   int64_t rows = 0, cols = 0, batch = 0, n = 0;
 
@@ -352,12 +352,12 @@ Status DequantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
     ORT_RETURN_IF_ERROR(CudaDequantizeLinear(stream, src, (half*)output_tensor->MutableData<MLFloat16>(), (const half*)scale, (const int8_t*)nullptr, n));
   }
 
-  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
+  DUBUG_PERF_CUDA_SYNC();
   return Status::OK();
 }
 
 Status QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
-  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
+  DUBUG_PERF_CUDA_SYNC();
 
   int64_t rowsA = 0, colsA = 0, batchA = 1, elementsA = 0;
   int64_t rowsB = 0, colsB = 0, batchB = 1, elementsB = 0;
@@ -413,7 +413,7 @@ Status QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
                                       bias, &beta, C, batchC == 1,
                                       tensor_Y->MutableData<int8_t>(), (cublasLtOrder_t)order_B_));
 
-  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
+  DUBUG_PERF_CUDA_SYNC();
   return Status::OK();
 }
 

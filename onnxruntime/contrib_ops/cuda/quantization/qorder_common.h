@@ -105,6 +105,9 @@ inline Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t str
                          C, order_weight);
 }
 
+// #define DUBUG_PERF_CUDA_SYNC() CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize())
+#define DUBUG_PERF_CUDA_SYNC() 
+
 // #endif
 
 }  // namespace cuda

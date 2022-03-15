@@ -75,7 +75,7 @@ QOrderedLayerNormalization::QOrderedLayerNormalization(const OpKernelInfo& op_ke
 //       });
 
 Status QOrderedLayerNormalization::ComputeInternal(OpKernelContext* ctx) const {
-  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
+  DUBUG_PERF_CUDA_SYNC();
 
   typedef typename ToCudaType<int8_t>::MappedType CudaQ;
   typedef typename ToCudaType<MLFloat16>::MappedType CudaF;
@@ -134,7 +134,7 @@ Status QOrderedLayerNormalization::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(Reorder(cublasLt, stream, batch, rows, cols, CUDA_R_8I,
                               fp16_buffer.get() + element_count, CUBLASLT_ORDER_ROW, Y_data, CUBLASLT_ORDER_COL32));
 
-  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
+  DUBUG_PERF_CUDA_SYNC();
   return Status::OK();
 }
 
