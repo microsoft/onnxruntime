@@ -53,9 +53,11 @@ stages:
     steps:
     - task: DownloadPipelineArtifact@2
       inputs:
-        buildType: 'current'
-        preferTriggeringPipeline: true
-        artifact: 'NPM_packages'
-        patterns: 'onnxruntime-node*.tgz'
-        path: '$(Build.ArtifactStagingDirectory)'
+        buildType: 'specific'
+        project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
+        definition: '940'
+        specificBuildWithTriggering: true
+        buildVersionToDownload: 'latest'
+        artifactName: 'NPM_packages'
+        targetPath: '$(Pipeline.Workspace)'
       displayName: 'Download Pipeline Artifact - onnxruntime-node'
