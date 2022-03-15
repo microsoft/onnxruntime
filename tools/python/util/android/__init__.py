@@ -2,6 +2,6 @@
 # Licensed under the MIT License.
 
 from .android import (
-    SdkToolPaths, install_sdk, get_sdk_tool_paths,
+    SdkToolPaths, get_sdk_tool_paths,
     create_virtual_device,
     start_emulator, stop_emulator)
