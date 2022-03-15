@@ -59,7 +59,10 @@ struct FusedConvAct {
   float param0;
   float param1;
 
-  FusedConvAct() : kind{ActivationKind_None}, param0{std::numeric_limits<float>::quiet_NaN()}, param1{std::numeric_limits<float>::quiet_NaN()} {}
+  FusedConvAct()
+      : kind{ActivationKind_None},
+        param0{std::numeric_limits<float>::quiet_NaN()},
+        param1{std::numeric_limits<float>::quiet_NaN()} {}
 
   Status LoadInfo(const OpKernelInfo& info) {
     std::string activation_type;
@@ -98,7 +101,8 @@ std::vector<uint32_t> Conv2dCommonLocalWS2D(std::vector<uint32_t>& gws,
   return lws;
 }
 
-Status CalWGSizeForWino(const Tensor* X, const Tensor* Y, const ConvAttributes::ConvPadVector& P, std::vector<KernelUnitParam>& winokernel) {
+Status CalWGSizeForWino(const Tensor* X, const Tensor* Y, const ConvAttributes::ConvPadVector& P,
+                        std::vector<KernelUnitParam>& winokernel) {
   const auto& input_dims = X->Shape();
   const auto& output_dims = Y->Shape();
 
@@ -141,12 +145,14 @@ class Conv : public OpenCLKernel {
  public:
   explicit Conv(const OpKernelInfo& info) : OpenCLKernel(info), attrs_{info} {
     ORT_THROW_IF_ERROR(act_info_.LoadInfo(info));
-    VLOGS_DEFAULT(0) << "[CL] Init Conv (OpenCLKernel), auto_pad:" << static_cast<int>(attrs_.auto_pad) << ", dilations: " << attrs_.dilations << ", group: " << attrs_.group;
+    VLOGS_DEFAULT(0) << "[CL] Init Conv (OpenCLKernel), auto_pad:" << static_cast<int>(attrs_.auto_pad)
+                     << ", dilations: " << attrs_.dilations << ", group: " << attrs_.group;
 
     auto status = InitConvKind();
     if (!status.IsOK()) {
       conv_kind_ = ConvKind::Generic;
-      LOGS_DEFAULT(WARNING) << "InitConvKind Error: " << status.ErrorMessage() << ", using ConvKind::Generic, this might harm inference performance.";
+      LOGS_DEFAULT(WARNING) << "InitConvKind Error: " << status.ErrorMessage()
+                            << ", using ConvKind::Generic, this might harm inference performance.";
     }
 
     // TODO: maybe use transformer pass to seperate them into individual OpKernels
@@ -315,7 +321,9 @@ class Conv : public OpenCLKernel {
 
     auto tmp = exec_->GetScratchBuffer(src.SizeInBytes());
     // TODO: refactor out clEnqueueWriteBuffer, backend api exposed
-    ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), tmp.get(), /*blocking_write=*/CL_FALSE, /*offset=*/0, src.SizeInBytes(), src.DataRaw(), 0, nullptr, nullptr));
+    ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), tmp.get(),
+                                                /*blocking_write=*/CL_FALSE, /*offset=*/0,
+                                                src.SizeInBytes(), src.DataRaw(), 0, nullptr, nullptr));
     ORT_RETURN_IF_ERROR(KernelLauncher{GetKernel(kernel_name::CopyGenericWeight)}
                             .SetArg<cl_int>(desc.Width())
                             .SetArg<cl_int>(desc.Height())
@@ -325,7 +333,8 @@ class Conv : public OpenCLKernel {
                             .SetImage2D(static_cast<cl_mem>(GetPackedWeight()))
                             .Launch(*exec_, desc.AsNDRange()));
     // TODO: refactor out clFinish, backend api exposed
-    ORT_RETURN_IF_CL_ERROR(clFinish(exec_->GetCommandQueue()));  // do sync copy, since we cannot extend the lifetime of src or tmp
+    // Do sync copy, since we cannot extend the lifetime of src or tmp
+    ORT_RETURN_IF_CL_ERROR(clFinish(exec_->GetCommandQueue()));
     return Status::OK();
   }
 
@@ -340,7 +349,9 @@ class Conv : public OpenCLKernel {
     ORT_RETURN_IF(shape[1] != 1, "input channel per group must be 1 for depthwise conv2d");
     auto tmp = exec_->GetScratchBuffer(src.SizeInBytes());
     // TODO: refactor out clEnqueueWriteBuffer, backend api exposed
-    ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), tmp.get(), /*blocking_write=*/CL_FALSE, /*offset=*/0, src.SizeInBytes(), src.DataRaw(), 0, nullptr, nullptr));
+    ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), tmp.get(),
+                                                /*blocking_write=*/CL_FALSE, /*offset=*/0,
+                                                src.SizeInBytes(), src.DataRaw(), 0, nullptr, nullptr));
     ORT_RETURN_IF_ERROR(KernelLauncher{GetKernel(kernel_name::CopyDepthwiseWeight)}
                             .SetArg<cl_int>(desc.Width())
                             .SetArg<cl_int>(desc.Height())
@@ -350,7 +361,8 @@ class Conv : public OpenCLKernel {
                             .SetImage2D(static_cast<cl_mem>(GetPackedWeight()))
                             .Launch(*exec_, desc.AsNDRange()));
     // TODO: refactor out clFinish, backend api exposed
-    ORT_RETURN_IF_CL_ERROR(clFinish(exec_->GetCommandQueue()));  // do sync copy, since we cannot extend the lifetime of src or tmp
+    // Do sync copy, since we cannot extend the lifetime of src or tmp
+    ORT_RETURN_IF_CL_ERROR(clFinish(exec_->GetCommandQueue()));
     return Status::OK();
   }
 
@@ -375,8 +387,10 @@ class Conv : public OpenCLKernel {
     VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), GetPackedWeight());
 
     auto tmp = exec_->GetScratchBuffer(transformd_weight->SizeInBytes());
-    ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), tmp.get(), /*blocking_write=*/CL_FALSE, /*offset=*/0,
-                                                transformd_weight->SizeInBytes(), transformd_weight->DataRaw(), 0, nullptr, nullptr));
+    ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), tmp.get(),
+                                                /*blocking_write=*/CL_FALSE, /*offset=*/0,
+                                                transformd_weight->SizeInBytes(), transformd_weight->DataRaw(),
+                                                0, nullptr, nullptr));
     ORT_RETURN_IF_ERROR(KernelLauncher{GetKernel(kernel_name::CopyWinogradWeight)}
                             .SetBuffer(tmp.get())
                             .SetImage2D(static_cast<cl_mem>(GetPackedWeight()))
@@ -460,7 +474,8 @@ class Conv : public OpenCLKernel {
     ZoneScopedN("WinogradConv2D");
     VLOGS_DEFAULT(0) << "[CL] WinogradConv2D, X:" << X->Shape() << " W:" << W_shape_
                      << " B:" << (B ? B->Shape() : TensorShape{}) << " Y:" << Y->Shape()
-                     << " K:" << TensorShape{3, 3} << " S:" << TensorShape{1, 1} << " P:" << TensorShape{P} << " D:" << TensorShape{1, 1} << " group:" << 1;
+                     << " K:" << TensorShape{3, 3} << " S:" << TensorShape{1, 1}
+                     << " P:" << TensorShape{P} << " D:" << TensorShape{1, 1} << " group:" << 1;
 
     const auto& xshape = X->Shape();
     const auto& yshape = Y->Shape();
