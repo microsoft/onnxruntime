@@ -244,6 +244,12 @@ namespace Dml::GraphDescBuilder
 
                     NodeInfo nodeInfo = {};
                     nodeInfo.op = std::move(op);
+
+                    // Use the node name if it exists, or the unique identifier which is based on the node's first output that exists.
+                    // This is not tecnically guaranteed to be unique because nodes and values have different namespaces in ONNX, 
+                    // but the DML API does not require it to be unique.  It is purely for debugging purposes.
+                    nodeInfo.name = node.Name().empty() ? ("producer_of_" + GetUniqueNodeName(node)) : node.Name();
+
                     graphNodes.push_back(std::move(nodeInfo));
                 }
             }
