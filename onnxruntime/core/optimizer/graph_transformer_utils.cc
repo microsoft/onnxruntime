@@ -211,6 +211,13 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                             onnxruntime::kRocmExecutionProvider,
                                                                             onnxruntime::kAclExecutionProvider,
                                                                             onnxruntime::kArmNNExecutionProvider};
+      const InlinedHashSet<std::string_view> cpu_cuda_rocm_acl_armnn_opencl_eps = {onnxruntime::kCpuExecutionProvider,
+                                                                                   onnxruntime::kCudaExecutionProvider,
+                                                                                   onnxruntime::kRocmExecutionProvider,
+                                                                                   onnxruntime::kAclExecutionProvider,
+                                                                                   onnxruntime::kArmNNExecutionProvider,
+                                                                                   onnxruntime::kOpenCLExecutionProvider};
+      const InlinedHashSet<std::string_view> opencl_ep = {onnxruntime::kOpenCLExecutionProvider};
 
       if (!disable_quant_qdq) {
         // currently we don't support QDQS8ToU8Transformer in a minimal build and if supported, this needs to run in
@@ -226,13 +233,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<DynamicQuantizeMatMulFusion>(cpu_ep));
 
-#if defined(USE_OPENCL)
-      const InlinedHashSet<std::string_view> opencl_ep{onnxruntime::kOpenCLExecutionProvider};
-      transformers.emplace_back(std::make_unique<ConvActivationFusion>(opencl_ep));
+      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_opencl_eps));
       transformers.emplace_back(std::make_unique<AddReluFusion>(opencl_ep));
-#else
-      transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_eps));
-#endif
 
       transformers.emplace_back(std::make_unique<GeluFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_cuda_rocm_eps));
