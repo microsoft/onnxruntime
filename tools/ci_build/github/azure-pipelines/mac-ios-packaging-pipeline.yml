@@ -86,7 +86,7 @@ jobs:
   # create and test mobile pods
   - script: |
       python tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
-        --build-dir "$(Build.BinariesDirectory)/ios_framework" \
+        --build-dir "$(Build.BinariesDirectory)/ios_framework_mobile" \
         --staging-dir "$(Build.BinariesDirectory)/staging" \
         --pod-version "${ORT_POD_VERSION}" \
         --test \
@@ -99,8 +99,8 @@ jobs:
   - script: |
       python tools/ci_build/github/apple/test_ios_packages.py \
         --fail_if_cocoapods_missing \
-        --framework_info_file "$(Build.BinariesDirectory)/ios_framework/framework_info.json" \
-        --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
+        --framework_info_file "$(Build.BinariesDirectory)/ios_framework_mobile/framework_info.json" \
+        --c_framework_dir "$(Build.BinariesDirectory)/ios_framework_mobile/framework_out" \
         --variant Mobile \
         --test_project_stage_dir "$(Build.BinariesDirectory)/app_center_test_mobile" \
         --prepare_test_project_only
@@ -134,7 +134,7 @@ jobs:
   # create and test full pods
   - script: |
       python tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
-        --build-dir "$(Build.BinariesDirectory)/ios_framework" \
+        --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
         --staging-dir "$(Build.BinariesDirectory)/staging" \
         --pod-version "${ORT_POD_VERSION}" \
         --test \
@@ -146,8 +146,8 @@ jobs:
   - script: |
       python tools/ci_build/github/apple/test_ios_packages.py \
         --fail_if_cocoapods_missing \
-        --framework_info_file "$(Build.BinariesDirectory)/ios_framework/framework_info.json" \
-        --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
+        --framework_info_file "$(Build.BinariesDirectory)/ios_framework_full/framework_info.json" \
+        --c_framework_dir "$(Build.BinariesDirectory)/ios_framework_full/framework_out" \
         --variant Full \
         --test_project_stage_dir "$(Build.BinariesDirectory)/app_center_test_full" \
         --prepare_test_project_only

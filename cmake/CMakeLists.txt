@@ -1892,7 +1892,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android")
 endif()
 
 if (WIN32)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SYS_PATH_LIB} Shlwapi)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SYS_PATH_LIB})
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES debug Dbghelp)
 else()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES nsync_cpp)
@@ -1915,9 +1915,17 @@ if (WIN32)
   else()
     add_compile_definitions(WINAPI_FAMILY=100) # Desktop app
     if (onnxruntime_USE_WINML)
-      add_compile_definitions(WINVER=0x0602 _WIN32_WINNT=0x0602 NTDDI_VERSION=0x06020000)  # Support Windows 7 and newer
+      add_compile_definitions(WINVER=0x0602 _WIN32_WINNT=0x0602 NTDDI_VERSION=0x06020000)  # Support Windows 8 and newer
     else()
       add_compile_definitions(WINVER=0x0601 _WIN32_WINNT=0x0601 NTDDI_VERSION=0x06010000)  # Support Windows 7 and newer
+    endif()
+    if (NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
+      # On onecore, link to the onecore build of the MSVC runtime
+      get_filename_component(msvc_path "${CMAKE_C_COMPILER}/../../../.." ABSOLUTE)
+      link_directories(BEFORE "${msvc_path}/lib/onecore/${onnxruntime_target_platform}")
+      # The .lib files in the MSVC runtime have a DEFAULITLIB entry for onecore.lib, which in turn links to reverse forwarders.
+      # We ignore that entry and use onecore_apiset.lib instead, since system components must not rely on reverse forwarders.
+      add_link_options("/NODEFAULTLIB:onecore.lib")
     endif()
   endif()
 endif()

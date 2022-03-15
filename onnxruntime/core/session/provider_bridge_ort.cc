@@ -207,10 +207,10 @@ struct ProviderHostImpl : ProviderHost {
 
   std::string GetEnvironmentVar(const std::string& var_name) override { return Env::Default().GetEnvironmentVar(var_name); }
 
-  InlinedHashSet<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                 const std::string& provider_type,
-                                                 gsl::span<const KernelRegistry* const> kernel_registries,
-                                                 gsl::span<const NodeIndex> tentative_nodes) override {
+  std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
+                                                     const std::string& provider_type,
+                                                     gsl::span<const KernelRegistry* const> kernel_registries,
+                                                     gsl::span<const NodeIndex> tentative_nodes) override {
     return onnxruntime::GetCpuPreferredNodes(graph, provider_type, kernel_registries, tentative_nodes);
   }
 

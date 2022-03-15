@@ -485,9 +485,10 @@ class TrainingSession : public InferenceSession {
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel);
 
   /** override the parent method in inference session for training specific transformers */
-  common::Status AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                           TransformerLevel graph_optimization_level,
-                                           bool saving_runtime_optimizations) const override;
+  common::Status AddPredefinedTransformers(
+      GraphTransformerManager& transformer_manager,
+      TransformerLevel graph_optimization_level,
+      MinimalBuildOptimizationHandling minimal_build_optimization_handling) const override;
 
   /** Perform auto-diff to add backward graph into the model.
   @param weights_to_train a set of weights to be training.

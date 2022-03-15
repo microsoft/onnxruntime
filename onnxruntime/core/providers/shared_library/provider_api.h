@@ -251,10 +251,10 @@ std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const c
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream);
 
-InlinedHashSet<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                               const std::string& provider_type,
-                                               gsl::span<const KernelRegistry* const> kernel_registries,
-                                               gsl::span<const NodeIndex> tentative_nodes);
+std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
+                                                   const std::string& provider_type,
+                                                   gsl::span<const KernelRegistry* const> kernel_registries,
+                                                   gsl::span<const NodeIndex> tentative_nodes);
 
 std::string GetEnvironmentVar(const std::string& var_name);
 
