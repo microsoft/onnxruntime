@@ -34,19 +34,18 @@ TvmModule TVMCompile(const std::string& onnx_txt,
 
   const TvmPackedFunc* compile = ::tvm::runtime::Registry::Get("tvm_onnx_import_and_compile");
   ORT_ENFORCE(compile != nullptr, "Unable to retrieve 'tvm_onnx_import_and_compile'.");
-  TvmModule mod = (*compile)(
-          TVMByteArray{onnx_txt.data(), onnx_txt.size()},
-          model_path,
-          options.executor,
-          options.target,
-          options.target_host,
-          options.opt_level,
-          opset,
-          options.freeze_weights,
-          shapes,
-          options.to_nhwc,
-          options.tuning_file_path,
-          options.tuning_type);
+  TvmModule mod = (*compile)(TVMByteArray{onnx_txt.data(), onnx_txt.size()},
+                             model_path,
+                             options.executor,
+                             options.target,
+                             options.target_host,
+                             options.opt_level,
+                             opset,
+                             options.freeze_weights,
+                             shapes,
+                             options.to_nhwc,
+                             options.tuning_file_path,
+                             options.tuning_type);
   ORT_ENFORCE(mod.get() != nullptr, "Compiled TVM Module is nullptr!");
   return mod;
 }

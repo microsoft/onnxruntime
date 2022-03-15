@@ -20,17 +20,17 @@ struct TvmProviderFactory : IExecutionProviderFactory {
     return std::make_unique<tvm::TvmExecutionProvider>(options_);
   }
 
- private:
-    tvm::TvmEPOptions options_;
+private:
+  tvm::TvmEPOptions options_;
 };
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const char* opt_str) {
-    tvm::TvmEPOptions options = tvm::TvmEPOptionsHelper::FromOptionsString(opt_str);
-    return std::make_shared<TvmProviderFactory>(options);
+  tvm::TvmEPOptions options = tvm::TvmEPOptionsHelper::FromOptionsString(opt_str);
+  return std::make_shared<TvmProviderFactory>(options);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const tvm::TvmEPOptions& options) {
-    return std::make_shared<TvmProviderFactory>(options);
+  return std::make_shared<TvmProviderFactory>(options);
 }
 }  // namespace onnxruntime
 

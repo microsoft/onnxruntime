@@ -20,70 +20,70 @@ namespace tvm {
 
 class RunnerImpl {
 public:
-    RunnerImpl() = delete;
-    RunnerImpl(const std::shared_ptr<TvmModule>& mod,
-               const InputsInfoMap& inputs_info,
-               const TVMTensorShapes output_shapes,
-               const std::vector<DLTensor> tensors_outputs);
-    virtual ~RunnerImpl() = default;
+  RunnerImpl() = delete;
+  RunnerImpl(const std::shared_ptr<TvmModule>& mod,
+             const InputsInfoMap& inputs_info,
+             const TVMTensorShapes output_shapes,
+             const std::vector<DLTensor> tensors_outputs);
+  virtual ~RunnerImpl() = default;
 
-    virtual common::Status run(const OrtCustomOpApi* api, OrtKernelContext* context) {
-        Ort::CustomOpApi ort{*api};
+  virtual common::Status run(const OrtCustomOpApi* api, OrtKernelContext* context) {
+    Ort::CustomOpApi ort{*api};
 
-        set_input(ort, context);
-        connect_output_tensors2ort(ort, context);
-        run_and_get_output();
+    set_input(ort, context);
+    connect_output_tensors2ort(ort, context);
+    run_and_get_output();
 
-        return Status::OK();
-    }
+    return Status::OK();
+  }
 
-    virtual void set_input(Ort::CustomOpApi& ort, OrtKernelContext* context) = 0;
-    virtual void connect_output_tensors2ort(Ort::CustomOpApi& ort, OrtKernelContext* context) = 0;
-    virtual void run_and_get_output() = 0;
-
-protected:
-    void convert_input_tensors2dl_tensors(Ort::CustomOpApi& ort,
-                                          OrtKernelContext* context,
-                                          std::vector<DLTensor>& dst,
-                                          std::vector<size_t>& dst_inds);
-    void add_device_type_data2output_tensors(Ort::CustomOpApi& ort,
-                                             OrtKernelContext* context);
+  virtual void set_input(Ort::CustomOpApi& ort, OrtKernelContext* context) = 0;
+  virtual void connect_output_tensors2ort(Ort::CustomOpApi& ort, OrtKernelContext* context) = 0;
+  virtual void run_and_get_output() = 0;
 
 protected:
-    std::shared_ptr<TvmModule> mod_;
-    InputsInfoMap inputs_info_;
-    TVMTensorShapes output_shapes_;
-    std::vector<DLTensor> output_tensors_;
+  void convert_input_tensors2dl_tensors(Ort::CustomOpApi& ort,
+                                        OrtKernelContext* context,
+                                        std::vector<DLTensor>& dst,
+                                        std::vector<size_t>& dst_inds);
+  void add_device_type_data2output_tensors(Ort::CustomOpApi& ort,
+                                           OrtKernelContext* context);
+
+protected:
+  std::shared_ptr<TvmModule> mod_;
+  InputsInfoMap inputs_info_;
+  TVMTensorShapes output_shapes_;
+  std::vector<DLTensor> output_tensors_;
 };
 
 
 class GERunnerImpl : public RunnerImpl {
 public:
-    GERunnerImpl() = delete;
-    GERunnerImpl(const std::shared_ptr<TvmModule>& mod,
-                 const InputsInfoMap& inputs_info,
-                 const TVMTensorShapes output_shapes,
-                 const std::vector<DLTensor> tensors_outputs);
-    virtual ~GERunnerImpl() = default;
+  GERunnerImpl() = delete;
+  GERunnerImpl(const std::shared_ptr<TvmModule>& mod,
+               const InputsInfoMap& inputs_info,
+               const TVMTensorShapes output_shapes,
+               const std::vector<DLTensor> tensors_outputs);
+  virtual ~GERunnerImpl() = default;
 
-    virtual void set_input(Ort::CustomOpApi& ort, OrtKernelContext* context) override final;
-    virtual void connect_output_tensors2ort(Ort::CustomOpApi& ort, OrtKernelContext* context) override final;
-    virtual void run_and_get_output() override final;
+  virtual void set_input(Ort::CustomOpApi& ort, OrtKernelContext* context) override final;
+  virtual void connect_output_tensors2ort(Ort::CustomOpApi& ort, OrtKernelContext* context) override final;
+  virtual void run_and_get_output() override final;
 };
 
 
 class VMRunnerImpl : public RunnerImpl {
 public:
-    VMRunnerImpl() = delete;
-    VMRunnerImpl(const std::shared_ptr<TvmModule>& mod,
-                 const InputsInfoMap& inputs_info,
-                 const TVMTensorShapes output_shapes,
-                 const std::vector<DLTensor> tensors_outputs);
-    virtual ~VMRunnerImpl() = default;
+  VMRunnerImpl() = delete;
+  VMRunnerImpl(const std::shared_ptr<TvmModule>& mod,
+               const InputsInfoMap& inputs_info,
+               const TVMTensorShapes output_shapes,
+               const std::vector<DLTensor> tensors_outputs);
+  virtual ~VMRunnerImpl() = default;
 
-    virtual void set_input(Ort::CustomOpApi& ort, OrtKernelContext* context) override final;
-    virtual void connect_output_tensors2ort(Ort::CustomOpApi& ort, OrtKernelContext* context) override final;
-    virtual void run_and_get_output() override final;
+  virtual void set_input(Ort::CustomOpApi& ort, OrtKernelContext* context) override final;
+  virtual void connect_output_tensors2ort(Ort::CustomOpApi& ort, OrtKernelContext* context) override final;
+  virtual void run_and_get_output() override final;
 
 private:
     void infer_once_to_get_output_shapes();

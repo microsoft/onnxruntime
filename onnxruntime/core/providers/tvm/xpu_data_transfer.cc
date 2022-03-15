@@ -17,8 +17,8 @@ XPUDataTransfer::~XPUDataTransfer() {
 }
 
 bool XPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
-    return (src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::CPU) ||
-    (src_device.Type() == OrtDevice::GPU || dst_device.Type() == OrtDevice::GPU);
+  return (src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::CPU) ||
+  (src_device.Type() == OrtDevice::GPU || dst_device.Type() == OrtDevice::GPU);
 }
 
 common::Status XPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int _exec_queue_id) const {
@@ -30,11 +30,11 @@ common::Status XPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int _
   const OrtDevice& dst_device = dst.Location().device;
 
   if ((src_device.Type() == OrtDevice::CPU) && (dst_device.Type() == OrtDevice::CPU)) {
-      if (src_data == dst_data) {
-        // no need copying as both pointers are referring to same piece of memory.
-        return Status::OK();
-      }
-      memcpy(dst_data, src_data, bytes);
+    if (src_data == dst_data) {
+      // no need copying as both pointers are referring to same piece of memory.
+      return Status::OK();
+    }
+    memcpy(dst_data, src_data, bytes);
   } else {
     DLTensor tvm_src, tvm_dst;
     DLDataType dl_type{kDLInt, 8, 1};

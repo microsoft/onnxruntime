@@ -20,18 +20,18 @@ opset_(opset) {
 
 auto TVMCompiler::operator()(const TvmEPOptions& options,
                              const TVMTensorShapes& input_shapes) -> ModulePtr {
-    if (mod_) {
-        return mod_;
-    }
-
-    mod_ = std::make_shared<TvmModule>();
-    *mod_ = tvm::TVMCompile(onnx_model_str_,
-                            model_path_,
-                            options,
-                            opset_,
-                            input_shapes);
-    onnx_model_str_.clear();
+  if (mod_) {
     return mod_;
+  }
+
+  mod_ = std::make_shared<TvmModule>();
+  *mod_ = tvm::TVMCompile(onnx_model_str_,
+                          model_path_,
+                          options,
+                          opset_,
+                          input_shapes);
+  onnx_model_str_.clear();
+  return mod_;
 }
 
 }   // namespace tvm

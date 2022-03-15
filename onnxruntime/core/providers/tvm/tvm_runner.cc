@@ -15,7 +15,7 @@ TVMRunner::TVMRunner(const TvmEPOptions& options,
                      const std::shared_ptr<TvmModule>& mod,
                      const InputsInfoMap& inputs_info,
                      const std::vector<DLTensor>& output_tensors) {
-    runner_ = getTVMRunnerImpl(mod, options, inputs_info, output_tensors);
+  runner_ = getTVMRunnerImpl(mod, options, inputs_info, output_tensors);
 }
 
 common::Status TVMRunner::operator()(FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {

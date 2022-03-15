@@ -47,10 +47,10 @@ size_t split(const std::string &src, std::vector<std::string> &dst, char ch) {
   size_t pos = src.find( ch );
   size_t initialPos = 0;
   while( pos != std::string::npos ) {
-      dst.push_back( src.substr( initialPos, pos - initialPos ) );
-      initialPos = pos + 1;
+    dst.push_back( src.substr( initialPos, pos - initialPos ) );
+    initialPos = pos + 1;
 
-      pos = src.find( ch, initialPos );
+    pos = src.find( ch, initialPos );
   }
   dst.push_back( src.substr( initialPos, std::min( pos, src.size() ) - initialPos + 1 ) );
 
@@ -109,18 +109,18 @@ TvmEPOptions TvmEPOptionsHelper::FromProviderOptions(const ProviderOptions& pr_o
   TvmEPOptions options{};
 
   ORT_THROW_IF_ERROR(
-      ProviderOptionsParser{}
-          .AddAssignmentToReference(tvm::provider_option_names::kExecutor, options.executor)
-          .AddAssignmentToReference(tvm::provider_option_names::kTarget, options.target)
-          .AddAssignmentToReference(tvm::provider_option_names::kTargetHost, options.target_host)
-          .AddAssignmentToReference(tvm::provider_option_names::kOptLevel, options.opt_level)
-          .AddAssignmentToReference(tvm::provider_option_names::kFreezeWeights, options.freeze_weights)
-          .AddAssignmentToReference(tvm::provider_option_names::kToNHWC, options.to_nhwc)
-          .AddAssignmentToReference(tvm::provider_option_names::kTuningFilePath, options.tuning_file_path)
-          .AddAssignmentToReference(tvm::provider_option_names::kTuningType, options.tuning_type)
-          .AddAssignmentToReference(tvm::provider_option_names::kInputNames, options.input_names_str)
-          .AddAssignmentToReference(tvm::provider_option_names::kInputShapes, options.input_shapes_str)
-          .Parse(pr_options));
+    ProviderOptionsParser{}
+      .AddAssignmentToReference(tvm::provider_option_names::kExecutor, options.executor)
+      .AddAssignmentToReference(tvm::provider_option_names::kTarget, options.target)
+      .AddAssignmentToReference(tvm::provider_option_names::kTargetHost, options.target_host)
+      .AddAssignmentToReference(tvm::provider_option_names::kOptLevel, options.opt_level)
+      .AddAssignmentToReference(tvm::provider_option_names::kFreezeWeights, options.freeze_weights)
+      .AddAssignmentToReference(tvm::provider_option_names::kToNHWC, options.to_nhwc)
+      .AddAssignmentToReference(tvm::provider_option_names::kTuningFilePath, options.tuning_file_path)
+      .AddAssignmentToReference(tvm::provider_option_names::kTuningType, options.tuning_type)
+      .AddAssignmentToReference(tvm::provider_option_names::kInputNames, options.input_names_str)
+      .AddAssignmentToReference(tvm::provider_option_names::kInputShapes, options.input_shapes_str)
+      .Parse(pr_options));
 
   optionsPostprocess(options);
 

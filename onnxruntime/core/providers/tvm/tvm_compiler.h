@@ -15,23 +15,23 @@ namespace onnxruntime {
 namespace tvm {
 
 class TVMCompiler {
-    using ModulePtr = std::shared_ptr<TvmModule>;
+  using ModulePtr = std::shared_ptr<TvmModule>;
 public:
-    TVMCompiler() = delete;
-    ~TVMCompiler() = default;
+  TVMCompiler() = delete;
+  ~TVMCompiler() = default;
 
-    TVMCompiler(std::string&& onnx_model_str,
-                const std::string& model_path,
-                int opset);
+  TVMCompiler(std::string&& onnx_model_str,
+              const std::string& model_path,
+              int opset);
 
-    ModulePtr operator()(const TvmEPOptions& options,
-                         const TVMTensorShapes& input_shapes);
+  ModulePtr operator()(const TvmEPOptions& options,
+                       const TVMTensorShapes& input_shapes);
 
 private:
-    ModulePtr mod_;
-    std::string onnx_model_str_;
-    std::string model_path_;
-    int opset_;
+  ModulePtr mod_;
+  std::string onnx_model_str_;
+  std::string model_path_;
+  int opset_;
 };
 
 }   // namespace tvm

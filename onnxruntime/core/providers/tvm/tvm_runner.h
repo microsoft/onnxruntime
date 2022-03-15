@@ -15,18 +15,18 @@ namespace tvm {
 
 class TVMRunner {
 public:
-    TVMRunner() = delete;
-    virtual ~TVMRunner() = default;
+  TVMRunner() = delete;
+  virtual ~TVMRunner() = default;
 
-    TVMRunner(const TvmEPOptions& options,
-              const std::shared_ptr<TvmModule>& mod,
-              const InputsInfoMap& inputs_info,
-              const std::vector<DLTensor>& output_tensor);
+  TVMRunner(const TvmEPOptions& options,
+            const std::shared_ptr<TvmModule>& mod,
+            const InputsInfoMap& inputs_info,
+            const std::vector<DLTensor>& output_tensor);
 
-    common::Status operator()(FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context);
+  common::Status operator()(FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context);
 
 private:
-    std::shared_ptr<RunnerImpl> runner_;
+  std::shared_ptr<RunnerImpl> runner_;
 };
 
 }   // namespace tvm

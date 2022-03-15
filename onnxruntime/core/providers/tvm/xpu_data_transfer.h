@@ -12,7 +12,7 @@ namespace onnxruntime {
 namespace tvm {
 
 class XPUDataTransfer : public IDataTransfer {
- public:
+public:
   XPUDataTransfer();
   ~XPUDataTransfer();
 
@@ -25,7 +25,7 @@ class XPUDataTransfer : public IDataTransfer {
 };
 
 class TvmCPUDataTransfer : public IDataTransfer {
- public:
+public:
   TvmCPUDataTransfer() = default;
   // Dampen MSVC warning about not fully overriding CopyTensor
   using IDataTransfer::CopyTensor;
