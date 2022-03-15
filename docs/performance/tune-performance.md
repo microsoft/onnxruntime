@@ -335,9 +335,13 @@ SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaPr
 While using the CUDA EP, ORT supports the usage of [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) to remove CPU overhead associated with launching CUDA kernels sequentially. To enable the usage of CUDA Graphs, use the provider option as shown in the samples below.
 Currently, there are some constraints with regards to using the CUDA Graphs feature which are listed below:
 
-1) Usage of CUDA Graphs is limited to models with no control-flow ops in them (i.e.) models with `If`, `Loop`, and `Scan` ops in them cannot use this feature
+1) Models with control-flow ops (i.e.) models with `If`, `Loop`, and `Scan` ops are not supported
 2) Usage of CUDA Graphs is limited to models where-in all the model ops (graph nodes) can be partitioned to the CUDA EP
-3) Multi-threaded usage is not supported currently (i.e.) `Run()` MAY NOT be invoked on the same `InferenceSession` object from multiple threads while using CUDA Graphs
+3) The input/output types of models need to be tensors 
+4) Shapes of inputs/outputs cannot change across inference calls. Dynamic shape models are supported - the only constraint is that the input/output shapes should be the same across all inference calls
+5) Multi-threaded usage is not supported currently (i.e.) `Run()` MAY NOT be invoked on the same `InferenceSession` object from multiple threads while using CUDA Graphs
+6) By design, [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) is designed to read from/write from the same virtual memory addresses during the graph replaying step as it did during the graph capturing step. Due to this requirement, usage of this feature requires using IOBinding (please see samples below)
+7) 
 
 NOTE: The very first `Run()` performs a variety of tasks under the hood like making CUDA memory allocations, capturing the CUDA graph for the model, and then performing a graph replay to ensure that the graph runs. Due to this, the latency associated with the first `Run()` is bound to be high. The subsequent `Run()`s only perform graph replays of the graph captured and cached in the first `Run()`. 
 
@@ -346,6 +350,33 @@ NOTE: The very first `Run()` performs a variety of tasks under the hood like mak
 providers = [("CUDAExecutionProvider", {"enable_cuda_graph": '1'})]
 sess_options = ort.SessionOptions()
 sess = ort.InferenceSession("my_model.onnx",  sess_options = sess_options, providers=providers)
+
+providers = [("CUDAExecutionProvider", {'enable_cuda_graph': True})]
+INPUT_SIZE = 1280
+x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]*INPUT_SIZE, dtype=np.float32)
+y = np.array([[0.0], [0.0], [0.0]]*INPUT_SIZE, dtype=np.float32)
+x_ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(x, 'cuda', 0)
+y_ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(y, 'cuda', 0)
+
+session = onnxrt.InferenceSession("matmul_2.onnx", providers=providers)
+io_binding = session.io_binding()
+
+'''Bind the input and output'''
+io_binding.bind_ortvalue_input('X', x_ortvalue)
+io_binding.bind_ortvalue_output('Y', y_ortvalue)
+
+'''One regular run for the necessary memory allocation and cuda graph capturing'''
+session.run_with_iobinding(io_binding)
+expected_y = np.array([[5.0], [11.0], [17.0]]*INPUT_SIZE, dtype=np.float32)
+np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
+
+'''After capturing, CUDA graph replay happens from this Run onwards'''
+session.run_with_iobinding(io_binding)
+np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
+
+'''Update input and then replay CUDA graph'''
+x_ortvalue.update_inplace(np.array([[10.0, 20.0], [30.0, 40.0], [50.0, 60.0]]*INPUT_SIZE, dtype=np.float32))
+session.run_with_iobinding(io_binding)
 ```
 
 * C/C++
@@ -366,16 +397,8 @@ ReleaseCUDAProviderOptions(cuda_options);
 ```
 
 * C#
-```
-var cudaProviderOptions = new OrtCUDAProviderOptions(); // Dispose this finally
+Will be supported in future releases
 
-var providerOptionsDict = new Dictionary<string, string>();
-providerOptionsDict["enable_cuda_graph"] = "1";
-
-cudaProviderOptions.UpdateOptions(providerOptionsDict);
-
-SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
-```
 
 ## Troubleshooting performance issues
 
