@@ -114,7 +114,7 @@ struct FunctionTestCase {
   }
 
   template <typename T>
-  void AddBoundedInput(std::string input_name, std::vector<int64_t> shape, T bound) {
+  void AddBoundedInput(const char* input_name, const std::vector<int64_t>& shape, T bound) {
     auto arg_type = TensorType(data_types_internal::ToTensorDataType<T>(), shape);
     input_args.emplace_back(input_name, &arg_type);
     std::vector<T> data = random<T>(shape);
