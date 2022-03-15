@@ -161,19 +161,20 @@ Status TreeEnsembleCommon<TI, TH, TO>::Init(int parallel_tree, int parallel_N,
     ORT_ENFORCE(base_values.empty());
     base_values_ = base_values_as_tensor;
   } else {
-    base_values_.resize(base_values.size());
-    for (size_t i = 0; i < base_values.size(); ++i) {
-      base_values_[i] = static_cast<TH>(base_values[i]);
+    base_values_.reserve(base_values.size());
+    for (size_t i = 0, limit = base_values.size(); i < limit; ++i) {
+      base_values_.push_back(static_cast<TH>(base_values[i]));
     }
   }
   n_targets_or_classes_ = n_targets_or_classes;
   max_tree_depth_ = 1000;
 
   // additional members
+  size_t i, limit;
   std::vector<NODE_MODE> cmodes(nodes_modes.size());
   same_mode_ = true;
   int fpos = -1;
-  for (size_t i = 0; i < nodes_modes.size(); ++i) {
+  for (i = 0, limit = nodes_modes.size(); i < limit; ++i) {
     cmodes[i] = MakeTreeNodeMode(nodes_modes[i]);
     if (cmodes[i] == NODE_MODE::LEAF)
       continue;
@@ -191,9 +192,8 @@ Status TreeEnsembleCommon<TI, TH, TO>::Init(int parallel_tree, int parallel_N,
   nodes_.resize(n_nodes_);
   roots_.clear();
   std::map<TreeNodeElementId, TreeNodeElement<TH>*> idi;
-  size_t i;
 
-  for (i = 0; i < nodes_treeids.size(); ++i) {
+  for (i = 0, limit = nodes_treeids.size(); i < limit; ++i) {
     TreeNodeElement<TH>& node = nodes_[i];
     node.id.tree_id = static_cast<int>(nodes_treeids[i]);
     node.id.node_id = static_cast<int>(nodes_nodeids[i]);
@@ -269,7 +269,7 @@ Status TreeEnsembleCommon<TI, TH, TO>::Init(int parallel_tree, int parallel_N,
 
   TreeNodeElementId ind;
   SparseValue<TH> w;
-  for (i = 0; i < target_class_nodeids.size(); i++) {
+  for (i = 0, limit = target_class_nodeids.size(); i < limit; i++) {
     ind.tree_id = static_cast<int>(target_class_treeids[i]);
     ind.node_id = static_cast<int>(target_class_nodeids[i]);
     if (idi.find(ind) == idi.end()) {
@@ -446,18 +446,18 @@ void TreeEnsembleCommon<TI, TH, TO>::ComputeAgg(concurrency::ThreadPool* ttp, co
                 agg.ProcessTreeNodePrediction(scores[batch_num], *ProcessTreeNodeLeave(roots_[j], x_data));
               }
             });
-        for (size_t i = 1; i < scores.size(); ++i) {
+        for (size_t i = 1, limit = scores.size(); i < limit; ++i) {
           agg.MergePrediction(scores[0], scores[i]);
         }
         agg.FinalizeScores(scores[0], z_data, -1, label_data);
       }
     } else if (N <= parallel_N_) { /* section C2: 2+ outputs, 2+ rows, not enough rows to parallelize */
       std::vector<ScoreValue<TH>> scores(n_targets_or_classes_);
-      size_t j;
+      size_t j, limit;
 
       for (int64_t i = 0; i < N; ++i) {
         std::fill(scores.begin(), scores.end(), ScoreValue<TH>({0, 0}));
-        for (j = 0; j < roots_.size(); ++j) {
+        for (j = 0, limit = roots_.size(); j < limit; ++j) {
           agg.ProcessTreeNodePrediction(scores, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
         }
 
@@ -501,13 +501,13 @@ void TreeEnsembleCommon<TI, TH, TO>::ComputeAgg(concurrency::ThreadPool* ttp, co
           ttp,
           num_threads,
           [this, &agg, num_threads, x_data, z_data, label_data, N, stride](ptrdiff_t batch_num) {
-            size_t j;
+            size_t j, limit;
             std::vector<ScoreValue<TH>> scores(n_targets_or_classes_);
             auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_threads, N);
 
             for (auto i = work.start; i < work.end; ++i) {
               std::fill(scores.begin(), scores.end(), ScoreValue<TH>({0, 0}));
-              for (j = 0; j < roots_.size(); ++j) {
+              for (j = 0, limit = roots_.size(); j < limit; ++j) {
                 agg.ProcessTreeNodePrediction(scores, *ProcessTreeNodeLeave(roots_[j], x_data + i * stride));
               }
 
@@ -771,9 +771,9 @@ Status TreeEnsembleCommonClassifier<TI, TH, TO>::Init(int parallel_tree,
   }
   binary_case_ = this->n_targets_or_classes_ == 2 && weights_classes.size() == 1;
   if (!classlabels_strings_.empty()) {
-    class_labels_.resize(classlabels_strings_.size());
-    for (size_t i = 0; i < classlabels_strings_.size(); ++i)
-      class_labels_[i] = i;
+    class_labels_.reserve(classlabels_strings_.size());
+    for (size_t i = 0, end = classlabels_strings_.size(); i < end; ++i)
+      class_labels_.push_back(i);
   }
   return Status::OK();
 }
@@ -792,7 +792,7 @@ Status TreeEnsembleCommonClassifier<TI, TH, TO>::compute(OpKernelContext* ctx, c
     int64_t N = X->Shape().NumDimensions() == 1 ? 1 : X->Shape()[0];
     AllocatorPtr alloc;
     ORT_THROW_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
-    Tensor label_int64(DataTypeImpl::GetType<int64_t>(), TensorShape({N}), alloc);
+    Tensor label_int64(DataTypeImpl::GetType<int64_t>(), TensorShape({N}), std::move(alloc));
     this->ComputeAgg(
         ctx->GetOperatorThreadPool(), X, Z, &label_int64,
         TreeAggregatorClassifier<TI, TH, TO>(
