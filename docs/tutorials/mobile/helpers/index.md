@@ -70,8 +70,6 @@ See the documentation on [onnxruntime.tools.make_dynamic_shape_fixed](./make-dyn
 Depending on the source of a QDQ format model, it may be necessary to optimize aspects of it to ensure optimal performance with ORT. 
 The onnxruntime.tools.qdq_helpers.optimize_qdq_model helper can be used to do this.
 
-Note that if there are no optimizations the output_model will be the same as the input_model and can be discarded.
-
 Usage:
 
 ```
@@ -88,14 +86,16 @@ optional arguments:
   -h, --help    show this help message and exit
 ```
 
+Note that if there are no optimizations the output_model will be the same as the input_model and can be discarded.
+
 
 ## PyTorch export helpers
 
-When exporting a model from [PyTorch](https://pytorch.org/) using [torch.onnx.export](https://pytorch.org/docs/stable/onnx.html) the names of the graph inputs can be specified, and the inputs needs to be assembled into a tuple. The infer_input_info helper can be used to automatically discover the input names, and to format the inputs correctly for usage with torch.onnx.export.
+When exporting a model from [PyTorch](https://pytorch.org/) using [torch.onnx.export](https://pytorch.org/docs/stable/onnx.html) the names of the model inputs can be specified, and the model inputs need to be correctly assembled into a tuple. The infer_input_info helper can be used to automatically discover the input names used in the PyTorch model, and to format the inputs correctly for usage with torch.onnx.export.
 
 In the below example we provide the necessary input to run the torchvision mobilenet_v2 model. 
 The input_names and inputs_as_tuple returned can be directly used in the torch.onnx.export call. 
-This provides the most benefit when there are multiple inputs to the model, and/or if those inputs involve more complex data types like dictionaries.
+This provides the most benefit when there are multiple inputs to the model, and/or if those inputs involve more complex data types such as dictionaries.
 
 
 ```python

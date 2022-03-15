@@ -36,10 +36,9 @@ optional arguments:
                         Logging level (default: info)
 ```
 
-
 ## Use with NNAPI and CoreML
 
-The script will check if the operators in the model are supported by the NNAPI EP and CoreML EP. Depending on how many operators are supported, and where they are in the model, it will estimate if using NNAPI or CoreML is likely to be beneficial. It is always recommended to performance test to validate.
+The script will check if the operators in the model are supported by ORT's NNAPI Execution Provider (EP) and CoreML EP. Depending on how many operators are supported, and where they are in the model, it will estimate if using NNAPI or CoreML is likely to be beneficial. It is always recommended to performance test to validate.
 
 Example output from this check looks like:
 ```
@@ -51,7 +50,9 @@ INFO:  Model should perform well with CoreML as is: NO
 INFO:  Re-run with log level of DEBUG for more details on the NNAPI/CoreML issues.
 ```
 
-If the model has dynamic input shapes an additional check is made to estimate whether making the shapes of fixed size would help. See [onnxruntime.tools.make_dynamic_shape_fixed](./make-dynamic-shape-fixed.md) for more information. Example output from this check:
+If the model has dynamic input shapes an additional check is made to estimate whether making the shapes of fixed size would help. See [onnxruntime.tools.make_dynamic_shape_fixed](./make-dynamic-shape-fixed.md) for more information. 
+
+Example output from this check:
 
 ```
 INFO:  Checking abs_free_dimensions.onnx for usability with ORT Mobile.
@@ -65,13 +66,13 @@ INFO:  Shapes can be altered using python -m onnxruntime.tools.make_dynamic_shap
 Setting the log level to `debug` will result in significant amounts of diagnostic output that provides in-depth information on why the recommendations were made.
 
 This includes
-- information on individual operators that are supported or unsupported by NNAPI and CoreML
+- information on individual operators that are supported or unsupported by the NNAPI and CoreML EPs
 - information on how many groups (a.k.a. partitions) the supported operators are broken into
-  - the more groups the worse performance will be as we have to switch between the NPU and CPU each time we switch between a supported and unsupported group of nodes
+  - the more groups the worse performance will be as we have to switch between the NPU (Neural Processing Unit) and CPU each time we switch between a supported and unsupported group of nodes
 
 ## Use with ORT Mobile Pre-Built package
 
-The opset and operators used in the model are checked to determine if they are supported by the ORT Mobile pre-built package.
+The ONNX opset and operators used in the model are checked to determine if they are supported by the ORT Mobile pre-built package.
 
 Example output if the model can be used as-is:
 ```
@@ -81,7 +82,7 @@ INFO:  Model should work with the pre-built package.
 ```
 
 If the model uses an old ONNX opset, information will be provided on how to update it. 
-See [the documentation here](./index.md#onnx-model-opset-updater) for more information on updating the ONNX opset.
+See [onnxruntime.tools.update_onnx_opset](./index.md#onnx-model-opset-updater) for more information.
 
 Example output:
 ```
