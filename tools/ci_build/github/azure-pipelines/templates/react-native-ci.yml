@@ -3,10 +3,6 @@ parameters:
   displayName: 'NPM packages publish configuration'
   type: string
   default: 'dev'
-- name: IsReleasePipeline
-  displayName: 'Npm packaging pipeline'
-  type: boolean
-  default: false
 - name: BuildConfig
   displayName: 'Build config'
   type: string
@@ -19,6 +15,10 @@ parameters:
 - name: PoolName
   displayName: 'Pool name'
   type: string
+- name: PackageName
+  displayName: 'Package name'
+  type: string
+  default: 'NPM_packages'
 
 jobs:
 - template: android-java-api-aar.yml
@@ -271,13 +271,12 @@ jobs:
       errorActionPreference: stop
     displayName: Pack NPM packages
 
-  - ${{ if ne(parameters.IsReleasePipeline, 'true') }}:
-    - task: CopyFiles@2
-      inputs:
-        sourceFolder: $(Build.SourcesDirectory)/js/common
-        contents: onnxruntime-common*.tgz
-        targetFolder: $(Build.ArtifactStagingDirectory)
-      displayName: 'Create Artifacts onnxruntime-common'
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Build.SourcesDirectory)/js/common
+      contents: onnxruntime-common*.tgz
+      targetFolder: $(Build.ArtifactStagingDirectory)
+    displayName: 'Create Artifacts onnxruntime-common'
 
   - task: CopyFiles@2
     inputs:
@@ -288,7 +287,7 @@ jobs:
 
   - task: PublishPipelineArtifact@0
     inputs:
-      artifactName: 'NPM_packages'
+      artifactName: '${{parameters.PackageName}}'
       targetPath: '$(Build.ArtifactStagingDirectory)'
     displayName: Publish Pipeline Artifact
 

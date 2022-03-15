@@ -23,6 +23,5 @@ jobs:
 - template: templates/react-native-ci.yml
   parameters:
     NpmPackagingMode: ${{ variables.npm_packaging_mode }}
-    IsReleasePipeline: false
     BuildConfig: 'Release'
     PoolName: 'Linux-CPU-2019'

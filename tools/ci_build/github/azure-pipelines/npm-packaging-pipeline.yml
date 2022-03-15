@@ -30,6 +30,7 @@ stages:
     NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     IsReleasePipeline: true
     PoolName: 'Win-CPU-2021'
+    PackageName: 'onnxruntime-web'
 
 - stage: Build_React_Native
   dependsOn: Extract_commit
@@ -37,9 +38,9 @@ stages:
   - template: templates/react-native-ci.yml
     parameters:
       NpmPackagingMode: ${{ variables.npm_packaging_mode }}
-      IsReleasePipeline: true
       BuildConfig: 'Release'
       PoolName: 'Linux-CPU'
+      PackageName: 'onnxruntime-react-native'
 
 - stage: Download_Node_Package
   dependsOn:
@@ -67,13 +68,13 @@ stages:
     - task: CopyFiles@2
       inputs:
         sourceFolder: $(Pipeline.Workspace)
-        contents: onnxruntime-node-*.tgz
+        contents: onnxruntime-*.tgz
         targetFolder: $(Build.ArtifactStagingDirectory)
       displayName: 'Copy onnxruntime-node Artifacts'
     
     - task: PublishPipelineArtifact@0
       inputs:
-        artifactName: 'NPM_packages'
+        artifactName: 'onnxruntime-node'
         targetPath: '$(Build.ArtifactStagingDirectory)'
       displayName: 'Publish onnxruntime-node Pipeline Artifact'
       
