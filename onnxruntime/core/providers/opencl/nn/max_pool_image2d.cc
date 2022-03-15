@@ -55,13 +55,13 @@ class MaxPool : public OpenCLKernel {
     ZoneNamedN(_tracy_MaxPool, "MaxPool (kernel launch)", true);
     ORT_RETURN_IF_ERROR(
         KernelLauncher{GetKernel("MaxPool")}
-            .setInt3(channel_blocks, W_out, N * H_out)
-            .setImage2Ds(*X, *Y)
-            .setInt2(W_in, H_in)
-            .setArg<cl_int>(H_out)
-            .setInt2(attrs_.kernel_shape[0], attrs_.kernel_shape[1])
-            .setInt2(attrs_.strides[0], attrs_.strides[1])
-            .setInt2(pads[0], pads[1])
+            .SetInt3(channel_blocks, W_out, N * H_out)
+            .SetImage2Ds(*X, *Y)
+            .SetInt2(W_in, H_in)
+            .SetArg<cl_int>(H_out)
+            .SetInt2(attrs_.kernel_shape[0], attrs_.kernel_shape[1])
+            .SetInt2(attrs_.strides[0], attrs_.strides[1])
+            .SetInt2(pads[0], pads[1])
             .Launch(*exec_, {channel_blocks, W_out, N * H_out}));
 
     return Status::OK();

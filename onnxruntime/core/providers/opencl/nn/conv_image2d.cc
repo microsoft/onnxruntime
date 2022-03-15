@@ -317,12 +317,12 @@ class Conv : public OpenCLKernel {
     // TODO: refactor out clEnqueueWriteBuffer, backend api exposed
     ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), tmp.get(), /*blocking_write=*/CL_FALSE, /*offset=*/0, src.SizeInBytes(), src.DataRaw(), 0, nullptr, nullptr));
     ORT_RETURN_IF_ERROR(KernelLauncher{GetKernel(kernel_name::CopyGenericWeight)}
-                            .setArg<cl_int>(desc.Width())
-                            .setArg<cl_int>(desc.Height())
-                            .setBuffer(tmp.get())
-                            .setInt4(shape[0], shape[1], shape[2], shape[3])
-                            .setArg<cl_int>(shape[2] * shape[3])
-                            .setImage2D(static_cast<cl_mem>(GetPackedWeight()))
+                            .SetArg<cl_int>(desc.Width())
+                            .SetArg<cl_int>(desc.Height())
+                            .SetBuffer(tmp.get())
+                            .SetInt4(shape[0], shape[1], shape[2], shape[3])
+                            .SetArg<cl_int>(shape[2] * shape[3])
+                            .SetImage2D(static_cast<cl_mem>(GetPackedWeight()))
                             .Launch(*exec_, desc.AsNDRange()));
     // TODO: refactor out clFinish, backend api exposed
     ORT_RETURN_IF_CL_ERROR(clFinish(exec_->GetCommandQueue()));  // do sync copy, since we cannot extend the lifetime of src or tmp
@@ -342,12 +342,12 @@ class Conv : public OpenCLKernel {
     // TODO: refactor out clEnqueueWriteBuffer, backend api exposed
     ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), tmp.get(), /*blocking_write=*/CL_FALSE, /*offset=*/0, src.SizeInBytes(), src.DataRaw(), 0, nullptr, nullptr));
     ORT_RETURN_IF_ERROR(KernelLauncher{GetKernel(kernel_name::CopyDepthwiseWeight)}
-                            .setArg<cl_int>(desc.Width())
-                            .setArg<cl_int>(desc.Height())
-                            .setBuffer(tmp.get())
-                            .setInt4(shape[0], shape[1], shape[2], shape[3])
-                            .setArg<cl_int>(/*shape[1] * */ shape[2] * shape[3])  // C_i * K_h * K_w, C_i == 1
-                            .setImage2D(static_cast<cl_mem>(GetPackedWeight()))
+                            .SetArg<cl_int>(desc.Width())
+                            .SetArg<cl_int>(desc.Height())
+                            .SetBuffer(tmp.get())
+                            .SetInt4(shape[0], shape[1], shape[2], shape[3])
+                            .SetArg<cl_int>(/*shape[1] * */ shape[2] * shape[3])  // C_i * K_h * K_w, C_i == 1
+                            .SetImage2D(static_cast<cl_mem>(GetPackedWeight()))
                             .Launch(*exec_, desc.AsNDRange()));
     // TODO: refactor out clFinish, backend api exposed
     ORT_RETURN_IF_CL_ERROR(clFinish(exec_->GetCommandQueue()));  // do sync copy, since we cannot extend the lifetime of src or tmp
@@ -379,10 +379,10 @@ class Conv : public OpenCLKernel {
     ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), tmp.get(), /*blocking_write=*/CL_FALSE, /*offset=*/0,
                                                 transformd_weight->SizeInBytes(), transformd_weight->DataRaw(), 0, nullptr, nullptr));
     ORT_RETURN_IF_ERROR(KernelLauncher{GetKernel(kernel_name::CopyWinogradWeight)}
-                            .setBuffer(tmp.get())
-                            .setImage2D(static_cast<cl_mem>(GetPackedWeight()))
-                            .setArg<cl_int>(desc.Width())
-                            .setArg<cl_int>(desc.Height())
+                            .SetBuffer(tmp.get())
+                            .SetImage2D(static_cast<cl_mem>(GetPackedWeight()))
+                            .SetArg<cl_int>(desc.Width())
+                            .SetArg<cl_int>(desc.Height())
                             .Launch(*exec_, desc.AsNDRange()));
     ORT_RETURN_IF_CL_ERROR(clFinish(exec_->GetCommandQueue()));
     return Status::OK();
@@ -419,35 +419,35 @@ class Conv : public OpenCLKernel {
       ZoneScopedN("DepthwiseConv2DS1 (kernel launch)");
       ORT_RETURN_IF_ERROR(
           KernelLauncher{GetKernel(kernel_name::DepthwiseConv2DS1)}
-              .setArg<cl_int>(gsx)
-              .setArg<cl_int>(gsy)
-              .setImage2Ds(*X, static_cast<cl_mem>(packed_weight_.get()), (B ? *B : *X), *Y)
-              .setInt2(W_in, H_in)
-              .setInt2(W_out, H_out)
-              .setInt2(K[0], K[1])
-              .setInt2(P[0], P[1])
-              .setArg<cl_int>(B != nullptr)
-              .setArg<cl_int>(act_info_.kind)
-              .setArg<cl_float>(act_info_.param0)
-              .setArg<cl_float>(act_info_.param1)
+              .SetArg<cl_int>(gsx)
+              .SetArg<cl_int>(gsy)
+              .SetImage2Ds(*X, static_cast<cl_mem>(packed_weight_.get()), (B ? *B : *X), *Y)
+              .SetInt2(W_in, H_in)
+              .SetInt2(W_out, H_out)
+              .SetInt2(K[0], K[1])
+              .SetInt2(P[0], P[1])
+              .SetArg<cl_int>(B != nullptr)
+              .SetArg<cl_int>(act_info_.kind)
+              .SetArg<cl_float>(act_info_.param0)
+              .SetArg<cl_float>(act_info_.param1)
               .Launch(*exec_, {gsx, gsy}));
     } else {
       ZoneScopedN("DepthwiseConv2D (kernel launch)");
       ORT_RETURN_IF_ERROR(
           KernelLauncher{GetKernel(kernel_name::DepthwiseConv2D)}
-              .setArg<cl_int>(gsx)
-              .setArg<cl_int>(gsy)
-              .setImage2Ds(*X, static_cast<cl_mem>(packed_weight_.get()), (B ? *B : *X), *Y)
-              .setInt2(W_in, H_in)
-              .setInt2(W_out, H_out)
-              .setInt2(K[0], K[1])
-              .setInt2(S[0], S[1])
-              .setInt2(P[0], P[1])
-              .setInt2(D[0], D[1])
-              .setArg<cl_int>(B != nullptr)
-              .setArg<cl_int>(act_info_.kind)
-              .setArg<cl_float>(act_info_.param0)
-              .setArg<cl_float>(act_info_.param1)
+              .SetArg<cl_int>(gsx)
+              .SetArg<cl_int>(gsy)
+              .SetImage2Ds(*X, static_cast<cl_mem>(packed_weight_.get()), (B ? *B : *X), *Y)
+              .SetInt2(W_in, H_in)
+              .SetInt2(W_out, H_out)
+              .SetInt2(K[0], K[1])
+              .SetInt2(S[0], S[1])
+              .SetInt2(P[0], P[1])
+              .SetInt2(D[0], D[1])
+              .SetArg<cl_int>(B != nullptr)
+              .SetArg<cl_int>(act_info_.kind)
+              .SetArg<cl_float>(act_info_.param0)
+              .SetArg<cl_float>(act_info_.param1)
               .Launch(*exec_, {gsx, gsy}));
     }
 
@@ -488,35 +488,35 @@ class Conv : public OpenCLKernel {
     std::vector<KernelUnitParam> winokernel(3);
     ORT_RETURN_IF_ERROR(CalWGSizeForWino(X, Y, P, winokernel));
     ORT_RETURN_IF_ERROR(KernelLauncher{GetKernel(kernel_name::TransformToMatrixV)}
-                            .setArg<cl_int>(winokernel[0].global_work_size[0])
-                            .setArg<cl_int>(winokernel[0].global_work_size[1])
-                            .setImage2Ds(*X, ocl_v_.get())
-                            .setInt2(input_height, input_width)
-                            .setArg<cl_int>(input_channel)
-                            .setArg<cl_int>(round_up_output_height)
-                            .setArg<cl_int>(round_up_ouptut_width)
-                            .setInt2<cl_int>(P[0], P[1])
+                            .SetArg<cl_int>(winokernel[0].global_work_size[0])
+                            .SetArg<cl_int>(winokernel[0].global_work_size[1])
+                            .SetImage2Ds(*X, ocl_v_.get())
+                            .SetInt2(input_height, input_width)
+                            .SetArg<cl_int>(input_channel)
+                            .SetArg<cl_int>(round_up_output_height)
+                            .SetArg<cl_int>(round_up_ouptut_width)
+                            .SetInt2<cl_int>(P[0], P[1])
                             .Launch(*exec_, {winokernel[0].global_work_size[0], winokernel[0].global_work_size[1]}));
     ORT_RETURN_IF_ERROR(KernelLauncher{GetKernel(kernel_name::MatrixInnerProduct)}
-                            .setArg<cl_int>(winokernel[1].global_work_size[0])
-                            .setArg<cl_int>(winokernel[1].global_work_size[1])
-                            .setImage2Ds(ocl_v_.get(), static_cast<cl_mem>(packed_weight_.get()), ocl_m_.get())
-                            .setArg(round_up_ouptut_width)
-                            .setArg(round_up_4x4_ouptut_width)
-                            .setArg<cl_int>(batch_round_h)
-                            .setArg<cl_int>(output_channel_blocks)
-                            .setArg<cl_int>(input_channel_blocks)
+                            .SetArg<cl_int>(winokernel[1].global_work_size[0])
+                            .SetArg<cl_int>(winokernel[1].global_work_size[1])
+                            .SetImage2Ds(ocl_v_.get(), static_cast<cl_mem>(packed_weight_.get()), ocl_m_.get())
+                            .SetArg(round_up_ouptut_width)
+                            .SetArg(round_up_4x4_ouptut_width)
+                            .SetArg<cl_int>(batch_round_h)
+                            .SetArg<cl_int>(output_channel_blocks)
+                            .SetArg<cl_int>(input_channel_blocks)
                             .Launch(*exec_, {winokernel[1].global_work_size[0], winokernel[1].global_work_size[1]}));
     ORT_RETURN_IF_ERROR(KernelLauncher{GetKernel(kernel_name::TransformFromMatrixM)}
-                            .setArg<cl_int>(winokernel[2].global_work_size[0])
-                            .setArg<cl_int>(winokernel[2].global_work_size[1])
-                            .setImage2Ds(ocl_m_.get(), (B ? *B : *X), *Y)
-                            .setArg(round_up_ouptut_width)
-                            .setArg(round_up_output_height)
-                            .setArg<cl_int>(output_width)
-                            .setArg<cl_int>(output_height)
-                            .setArg<cl_int>(act_info_.kind)
-                            .setArg<cl_int>(B != nullptr)
+                            .SetArg<cl_int>(winokernel[2].global_work_size[0])
+                            .SetArg<cl_int>(winokernel[2].global_work_size[1])
+                            .SetImage2Ds(ocl_m_.get(), (B ? *B : *X), *Y)
+                            .SetArg(round_up_ouptut_width)
+                            .SetArg(round_up_output_height)
+                            .SetArg<cl_int>(output_width)
+                            .SetArg<cl_int>(output_height)
+                            .SetArg<cl_int>(act_info_.kind)
+                            .SetArg<cl_int>(B != nullptr)
                             .Launch(*exec_, {winokernel[2].global_work_size[0], winokernel[2].global_work_size[1]}));
     return Status::OK();
   }
@@ -553,53 +553,53 @@ class Conv : public OpenCLKernel {
       ZoneScopedN("Conv2DK1S1 (kernel launch)");
       ORT_RETURN_IF_ERROR(
           KernelLauncher{GetKernel(kernel_name::Conv2DK1S1)}
-              .setArg<cl_int>(gsx)
-              .setArg<cl_int>(gsy)
-              .setImage2Ds(*X, static_cast<cl_mem>(packed_weight_.get()), (B ? *B : *X), *Y)
-              .setInt2(W_in, H_in)
-              .setArg<cl_int>(CeilDiv(C_in, 4))
-              .setArg<cl_int>(CeilDiv(W_out, 4))
-              .setArg<cl_int>(B != nullptr)
-              .setArg<cl_int>(act_info_.kind)
-              .setArg<cl_float>(act_info_.param0)
-              .setArg<cl_float>(act_info_.param1)
+              .SetArg<cl_int>(gsx)
+              .SetArg<cl_int>(gsy)
+              .SetImage2Ds(*X, static_cast<cl_mem>(packed_weight_.get()), (B ? *B : *X), *Y)
+              .SetInt2(W_in, H_in)
+              .SetArg<cl_int>(CeilDiv(C_in, 4))
+              .SetArg<cl_int>(CeilDiv(W_out, 4))
+              .SetArg<cl_int>(B != nullptr)
+              .SetArg<cl_int>(act_info_.kind)
+              .SetArg<cl_float>(act_info_.param0)
+              .SetArg<cl_float>(act_info_.param1)
               .Launch(*exec_, {gsx, gsy}));
     } else if (K1) {
       ZoneScopedN("Conv2DK1 (kernel launch)");
       ORT_RETURN_IF_ERROR(
           KernelLauncher{GetKernel(kernel_name::Conv2DK1)}
-              .setArg<cl_int>(gsx)
-              .setArg<cl_int>(gsy)
-              .setImage2Ds(*X, static_cast<cl_mem>(packed_weight_.get()), (B ? *B : *X), *Y)
-              .setInt2(W_in, H_in)
-              .setArg<cl_int>(CeilDiv(C_in, 4))
-              .setInt2(W_out, H_out)
-              .setInt2(S[0], S[1])
-              .setArg<cl_int>(CeilDiv(W_out, 4))
-              .setArg<cl_int>(B != nullptr)
-              .setArg<cl_int>(act_info_.kind)
-              .setArg<cl_float>(act_info_.param0)
-              .setArg<cl_float>(act_info_.param1)
+              .SetArg<cl_int>(gsx)
+              .SetArg<cl_int>(gsy)
+              .SetImage2Ds(*X, static_cast<cl_mem>(packed_weight_.get()), (B ? *B : *X), *Y)
+              .SetInt2(W_in, H_in)
+              .SetArg<cl_int>(CeilDiv(C_in, 4))
+              .SetInt2(W_out, H_out)
+              .SetInt2(S[0], S[1])
+              .SetArg<cl_int>(CeilDiv(W_out, 4))
+              .SetArg<cl_int>(B != nullptr)
+              .SetArg<cl_int>(act_info_.kind)
+              .SetArg<cl_float>(act_info_.param0)
+              .SetArg<cl_float>(act_info_.param1)
               .Launch(*exec_, {gsx, gsy}));
     } else {
       ZoneScopedN("Conv2D (kernel launch)");
       ORT_RETURN_IF_ERROR(
           KernelLauncher{GetKernel(kernel_name::Conv2D)}
-              .setArg<cl_int>(gsx)
-              .setArg<cl_int>(gsy)
-              .setImage2Ds(*X, static_cast<cl_mem>(packed_weight_.get()), (B ? *B : *X), *Y)
-              .setInt2(W_in, H_in)
-              .setArg<cl_int>(CeilDiv(C_in, 4))
-              .setInt2(W_out, H_out)
-              .setInt2(K[0], K[1])
-              .setInt2(S[0], S[1])
-              .setInt2(P[0], P[1])
-              .setInt2(D[0], D[1])
-              .setArg<cl_int>(CeilDiv(W_out, 4))
-              .setArg<cl_int>(B != nullptr)
-              .setArg<cl_int>(act_info_.kind)
-              .setArg<cl_float>(act_info_.param0)
-              .setArg<cl_float>(act_info_.param1)
+              .SetArg<cl_int>(gsx)
+              .SetArg<cl_int>(gsy)
+              .SetImage2Ds(*X, static_cast<cl_mem>(packed_weight_.get()), (B ? *B : *X), *Y)
+              .SetInt2(W_in, H_in)
+              .SetArg<cl_int>(CeilDiv(C_in, 4))
+              .SetInt2(W_out, H_out)
+              .SetInt2(K[0], K[1])
+              .SetInt2(S[0], S[1])
+              .SetInt2(P[0], P[1])
+              .SetInt2(D[0], D[1])
+              .SetArg<cl_int>(CeilDiv(W_out, 4))
+              .SetArg<cl_int>(B != nullptr)
+              .SetArg<cl_int>(act_info_.kind)
+              .SetArg<cl_float>(act_info_.param0)
+              .SetArg<cl_float>(act_info_.param1)
               .Launch(*exec_, {gsx, gsy}));
     }
     return Status::OK();

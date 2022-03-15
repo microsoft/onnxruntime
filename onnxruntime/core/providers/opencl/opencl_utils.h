@@ -296,14 +296,14 @@ class KernelLauncher {
    * This function can be called multiple times.
    */
   template <typename T, typename E = std::is_convertible<T, size_t>>
-  KernelLauncher& setShmem(T num_bytes) {
+  KernelLauncher& SetShmem(T num_bytes) {
     SKIP_IF_ERRORED(clSetKernelArg(kernel_, index_, num_bytes, nullptr));
     index_ += 1;
     return *this;
   }
 
   template <typename T, typename E = std::is_convertible<T, cl_int>>
-  KernelLauncher& setInt2(T v1, T v2) {
+  KernelLauncher& SetInt2(T v1, T v2) {
     cl_int tmp[2] = {static_cast<cl_int>(v1), static_cast<cl_int>(v2)};
     SKIP_IF_ERRORED(clSetKernelArg(kernel_, index_, sizeof(tmp), tmp));
     index_ += 1;
@@ -311,7 +311,7 @@ class KernelLauncher {
   }
 
   template <typename T, typename E = std::is_convertible<T, cl_int>>
-  KernelLauncher& setInt3(T v1, T v2, T v3) {
+  KernelLauncher& SetInt3(T v1, T v2, T v3) {
     cl_int3 tmp{{static_cast<cl_int>(v1), static_cast<cl_int>(v2), static_cast<cl_int>(v3)}};
     SKIP_IF_ERRORED(clSetKernelArg(kernel_, index_, sizeof(tmp), &tmp));
     index_ += 1;
@@ -319,7 +319,7 @@ class KernelLauncher {
   }
 
   template <typename T, typename E = std::is_convertible<T, cl_int>>
-  KernelLauncher& setInt4(T v1, T v2, T v3, T v4) {
+  KernelLauncher& SetInt4(T v1, T v2, T v3, T v4) {
     cl_int tmp[4] = {static_cast<cl_int>(v1), static_cast<cl_int>(v2), static_cast<cl_int>(v3), static_cast<cl_int>(v4)};
     SKIP_IF_ERRORED(clSetKernelArg(kernel_, index_, sizeof(tmp), tmp));
     index_ += 1;
@@ -327,54 +327,54 @@ class KernelLauncher {
   }
 
   template <typename T>
-  KernelLauncher& setArg(const T& arg) {
+  KernelLauncher& SetArg(const T& arg) {
     SKIP_IF_ERRORED(clSetKernelArg(kernel_, index_, sizeof(T), &arg));
     index_ += 1;
     return *this;
   }
 
-  KernelLauncher& setBuffer(cl_mem arg) {
+  KernelLauncher& SetBuffer(cl_mem arg) {
     SKIP_IF_ERRORED(clSetKernelArg(kernel_, index_, sizeof(cl_mem), &arg));
     index_ += 1;
     return *this;
   }
 
-  KernelLauncher& setBuffer(const Tensor& arg) {
-    return setBuffer(CL_BUFFER_FROM_TENSOR(arg));
+  KernelLauncher& SetBuffer(const Tensor& arg) {
+    return SetBuffer(CL_BUFFER_FROM_TENSOR(arg));
   }
 
   template <typename T1, typename T2>
-  KernelLauncher& setBuffers(T1&& arg, T2&& other) {
-    setBuffer(std::forward<T1>(arg));
-    return setBuffer(std::forward<T2>(other));
+  KernelLauncher& SetBuffers(T1&& arg, T2&& other) {
+    SetBuffer(std::forward<T1>(arg));
+    return SetBuffer(std::forward<T2>(other));
   }
 
   template <typename T, typename... Ts>
-  KernelLauncher& setBuffers(T&& arg, Ts&&... args) {
-    setBuffer(std::forward<T>(arg));
-    return setBuffers(std::forward<Ts>(args)...);
+  KernelLauncher& SetBuffers(T&& arg, Ts&&... args) {
+    SetBuffer(std::forward<T>(arg));
+    return SetBuffers(std::forward<Ts>(args)...);
   }
 
-  KernelLauncher& setImage2D(cl_mem arg) {
+  KernelLauncher& SetImage2D(cl_mem arg) {
     SKIP_IF_ERRORED(clSetKernelArg(kernel_, index_, sizeof(cl_mem), &arg));
     index_ += 1;
     return *this;
   }
 
-  KernelLauncher& setImage2D(const Tensor& arg) {
-    return setImage2D(CL_IMAGE2D_FROM_TENSOR(arg));
+  KernelLauncher& SetImage2D(const Tensor& arg) {
+    return SetImage2D(CL_IMAGE2D_FROM_TENSOR(arg));
   }
 
   template <typename T1, typename T2>
-  KernelLauncher& setImage2Ds(T1&& arg, T2&& other) {
-    setImage2D(std::forward<T1>(arg));
-    return setImage2D(std::forward<T2>(other));
+  KernelLauncher& SetImage2Ds(T1&& arg, T2&& other) {
+    SetImage2D(std::forward<T1>(arg));
+    return SetImage2D(std::forward<T2>(other));
   }
 
   template <typename T, typename... Ts>
-  KernelLauncher& setImage2Ds(T&& arg, Ts&&... args) {
-    setImage2D(std::forward<T>(arg));
-    return setImage2Ds(std::forward<Ts>(args)...);
+  KernelLauncher& SetImage2Ds(T&& arg, Ts&&... args) {
+    SetImage2D(std::forward<T>(arg));
+    return SetImage2Ds(std::forward<Ts>(args)...);
   }
 
   Status Launch(const OpenCLExecutionProvider& exec, const NDRange& global, const NDRange& local = {});

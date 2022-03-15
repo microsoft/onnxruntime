@@ -80,13 +80,13 @@ class Resize : public OpenCLKernel, UpsampleBase {
     ZoneNamedN(_tracy_Resize, "Resize (kernel launch)", true);
     ORT_RETURN_IF_ERROR(
         KernelLauncher{GetKernel(kernel_name)}
-            .setInt2(desc.Width(), desc.Height())
-            .setImage2Ds(*X, *Y)
-            .setInt2(X_shape[3], X_shape[2])
-            .setInt2(Y_shape[3], Y_shape[2])
-            .setArg<cl_float>(1.0 / scale_x)
-            .setArg<cl_float>(1.0 / scale_y)
-            .setArg<cl_int>(coordinate_transform_mode_)
+            .SetInt2(desc.Width(), desc.Height())
+            .SetImage2Ds(*X, *Y)
+            .SetInt2(X_shape[3], X_shape[2])
+            .SetInt2(Y_shape[3], Y_shape[2])
+            .SetArg<cl_float>(1.0 / scale_x)
+            .SetArg<cl_float>(1.0 / scale_y)
+            .SetArg<cl_int>(coordinate_transform_mode_)
             .Launch(*exec_, desc.AsNDRange()));
 
     return Status::OK();

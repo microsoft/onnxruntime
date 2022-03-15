@@ -73,16 +73,16 @@ class Concat final : public OpenCLKernel, public ConcatBase {
     if (input_tensors[0]->Shape()[1] % 4) {
       ORT_RETURN_IF_ERROR(
           KernelLauncher{GetKernel("ConcatChannel")}
-              .setInt3(cout_blocks, W_out, N * H_out)
-              .setImage2Ds(*input_tensors[0], *input_tensors[1], *Y)
-              .setInt2(C_in, C_out)
+              .SetInt3(cout_blocks, W_out, N * H_out)
+              .SetImage2Ds(*input_tensors[0], *input_tensors[1], *Y)
+              .SetInt2(C_in, C_out)
               .Launch(*exec_, {cout_blocks, W_out, N * H_out}));
     } else {
       ORT_RETURN_IF_ERROR(
           KernelLauncher{GetKernel("ConcatChannel4X")}
-              .setInt3(cout_blocks, W_out, N * H_out)
-              .setImage2Ds(*input_tensors[0], *input_tensors[1], *Y)
-              .setInt2(C_in, C_out)
+              .SetInt3(cout_blocks, W_out, N * H_out)
+              .SetImage2Ds(*input_tensors[0], *input_tensors[1], *Y)
+              .SetInt2(C_in, C_out)
               .Launch(*exec_, {cout_blocks, W_out, N * H_out}));
     }
     return Status::OK();
