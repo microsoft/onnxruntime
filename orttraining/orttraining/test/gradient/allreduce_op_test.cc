@@ -340,7 +340,7 @@ void build_allreduce_graph(Graph& graph, AllreduceGraphConfigVector& config,
   auto& allreduce_node = graph.AddNode("node_allreduce", allreduce_op_name, "node allreduce.", inputs, allreduce_outputs,
                                        nullptr /*attributes*/, kMSDomain);
   if (adasum_reduce_type != training::AdasumReductionType::None) {
-    allreduce_node.AddAttribute("reduce_algo", int64_t{adasum_reduce_type});
+    allreduce_node.AddAttribute("reduce_algo", static_cast<int64_t>(adasum_reduce_type));
   } else {
     allreduce_node.AddAttribute("group_type", int64_t{0} /*data parallel*/);
   }
