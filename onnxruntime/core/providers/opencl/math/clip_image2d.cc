@@ -14,7 +14,13 @@ namespace {
 #include "opencl_generated/math/kernels/clip_image2d.cl.inc"
 }  // namespace
 
-Status ClipComputeImpl(const OpenCLExecutionProvider* exec, cl_kernel clip_kernel, const Tensor* X, const Tensor* Y, cl_float lower_bound, cl_float upper_bound) {
+Status ClipComputeImpl(
+    const OpenCLExecutionProvider* exec,
+    cl_kernel clip_kernel,
+    const Tensor* X,
+    const Tensor* Y,
+    cl_float lower_bound,
+    cl_float upper_bound) {
   ZoneScopedN("ClipComputeImpl");
   VLOG_CL_IMAGE2D("Input[0]", X);
   VLOG_CL_IMAGE2D("Output[0]", Y);
