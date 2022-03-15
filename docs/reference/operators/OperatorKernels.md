@@ -10,6 +10,7 @@ The operator kernels supported by the CPU Execution Provider and CUDA Execution 
 | Release | Documentation |
 |---------|---------------|
 | Current master | [https://github.com/microsoft/onnxruntime/blob/master/docs/OperatorKernels.md](https://github.com/microsoft/onnxruntime/blob/master/docs/OperatorKernels.md) |
+| 1.10.0 | [https://github.com/microsoft/onnxruntime/blob/rel-1.10.0/docs/OperatorKernels.md](https://github.com/microsoft/onnxruntime/blob/rel-1.10.0/docs/OperatorKernels.md)|
 | 1.9.0 | [https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/docs/OperatorKernels.md](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/docs/OperatorKernels.md)|
 | 1.8| [https://github.com/microsoft/onnxruntime/blob/rel-1.8.0/docs/OperatorKernels.md](https://github.com/microsoft/onnxruntime/blob/rel-1.8.0/docs/OperatorKernels.md)
 | 1.7 | [https://github.com/microsoft/onnxruntime/blob/rel-1.7.0/docs/OperatorKernels.md](https://github.com/microsoft/onnxruntime/blob/rel-1.7.0/docs/OperatorKernels.md)|

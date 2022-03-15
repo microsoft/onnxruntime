@@ -2,6 +2,7 @@
 title: Make dynamic input shape fixed
 descriptions: 
 parent: Helpers
+grand_parent: Mobile
 nav_order: 2
 ---
 
