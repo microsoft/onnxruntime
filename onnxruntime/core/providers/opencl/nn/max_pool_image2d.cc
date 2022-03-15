@@ -19,7 +19,6 @@ class MaxPool : public OpenCLKernel {
  public:
   explicit MaxPool(const OpKernelInfo& info)
       : OpenCLKernel(info), attrs_(info, info.GetKernelDef().OpName(), info.node().SinceVersion()) {
-    if (attrs_.global_pooling) ORT_THROW("[CL] MaxPool does not support global max pooling");
     VLOGS_DEFAULT(0) << "Init MaxPool (OpenCLKernel)";
     LoadProgram(max_pool_kernel_src, max_pool_kernel_src_len);
     LoadKernel("MaxPool");
