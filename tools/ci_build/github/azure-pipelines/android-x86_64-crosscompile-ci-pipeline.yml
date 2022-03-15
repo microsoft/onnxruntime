@@ -62,6 +62,9 @@ jobs:
       rootFolderOrFile: build
       includeRootFolder: true
       archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+      archiveType: 'tar'
+      tarCompression: 'none'
+      verbose: true
   - task: PublishBuildArtifacts@1
     inputs:
       pathToPublish: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
@@ -75,7 +78,7 @@ jobs:
   steps:
     - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
       displayName: Setup gradle wrapper to use gradle 6.8.3
-      
+
     - script: echo '$(System.ArtifactsDirectory)'
       displayName: check root directory
 
@@ -84,8 +87,9 @@ jobs:
 
     - task: ExtractFiles@1
       inputs:
-        destinationFolder: '$(System.ArtifactsDirectory)'
-        
+        archiveFilePatterns: '$(Agent.BuildDirectory)/MyBuildOutputs/*.zip'
+        destinationFolder: '$(Build.SourcesDirectory)'
+
     - script: pwd && ls && ls build
       displayName: check root directory
 
