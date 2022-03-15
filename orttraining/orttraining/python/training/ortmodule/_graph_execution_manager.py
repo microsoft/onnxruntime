@@ -277,10 +277,12 @@ class GraphExecutionManager(GraphExecutionInterface):
         elif self._device.type == 'cpu':
             if self._provider_configs.provider == "openvino":
                 backend = self._provider_configs.backend
+                precision = self._provider_configs.precision
                 providers = ["OpenVINOExecutionProvider"]
                 provider_option_map = {}
-                if backend:
-                    provider_option_map["device_type"] = backend
+                if backend and precision:
+                    device_type = backend + "_" + precision
+                    provider_option_map["device_type"] = device_type
                 provider_options = [provider_option_map]
             else:
                 providers = ["CPUExecutionProvider"]
