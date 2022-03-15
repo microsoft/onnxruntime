@@ -21,7 +21,7 @@ parameters:
   type: string
 
 jobs:
-- template: templates/android-java-api-aar.yml
+- template: android-java-api-aar.yml
   parameters:
     buildConfig: '${{parameters.BuildConfig}}'
     buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_mobile_aar_build_settings.json'
@@ -292,7 +292,7 @@ jobs:
       targetPath: '$(Build.ArtifactStagingDirectory)'
     displayName: Publish Pipeline Artifact
 
-  - template: templates/component-governance-component-detection-steps.yml
+  - template: component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
 
