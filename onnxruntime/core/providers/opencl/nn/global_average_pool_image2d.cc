@@ -43,11 +43,11 @@ class GlobalAveragePool : public OpenCLKernel {
     ZoneNamedN(_tracy_GlobalAveragePool, "GlobalAveragePool (kernel launch)", true);
     ORT_RETURN_IF_ERROR(
         KernelLauncher{GetKernel("GlobalAveragePool")}
-            .setArg<cl_int>(CeilDiv(C, 4))
-            .setArg<cl_int>(N)
-            .setImage2Ds(*X, *Y)
-            .setInt2(W, H)
-            .setArg<cl_float>(invHW)
+            .SetArg<cl_int>(CeilDiv(C, 4))
+            .SetArg<cl_int>(N)
+            .SetImage2Ds(*X, *Y)
+            .SetInt2(W, H)
+            .SetArg<cl_float>(invHW)
             .Launch(*exec_, {static_cast<uint32_t>(C), static_cast<uint32_t>(N)}));
 
     return Status::OK();

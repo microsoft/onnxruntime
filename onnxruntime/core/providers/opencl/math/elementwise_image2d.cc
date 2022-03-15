@@ -48,10 +48,8 @@ namespace opencl {
                                                                             \
       ORT_RETURN_IF_ERROR(                                                  \
           KernelLauncher{GetKernel(#CLASS_NAME)}                            \
-              .setImage2D(*a)                                               \
-              .setImage2D(*b)                                               \
-              .setImage2D(*c)                                               \
-              .Launch(*exec_, {desc.UWidth(), desc.UHeight()}));            \
+              .SetImage2Ds(*a, *b, *c)                                      \
+              .Launch(*exec_, desc.AsNDRange()));                           \
                                                                             \
       return Status::OK();                                                  \
     }                                                                       \

@@ -213,11 +213,11 @@ Status OpenCLDataTransfer::CopyBuffer1DToImage2D(
   VLOGF_DEFAULT(0, "[CL] copy  Buffer(%p) --> Image2D(%p)", src, dst);
   ORT_RETURN_IF_ERROR(
       KernelLauncher{kernels_->GetKernel("CopyBuffer1DToImage2D")}
-          .setArg<cl_int>(desc.Width())
-          .setArg<cl_int>(desc.Height())
-          .setBuffer(src)
-          .setArg<cl_int>(shape.Size())  // nelem
-          .setImage2D(dst)
+          .SetArg<cl_int>(desc.Width())
+          .SetArg<cl_int>(desc.Height())
+          .SetBuffer(src)
+          .SetArg<cl_int>(shape.Size())  // nelem
+          .SetImage2D(dst)
           .Launch(*exec_, desc.AsNDRange()));
   return Status::OK();
 }
@@ -241,13 +241,13 @@ Status OpenCLDataTransfer::CopyBufferNCHWToImage2D(
   VLOGF_DEFAULT(0, "[CL] copy  Buffer(%p) --> Image2D(%p)", src, dst);
   ORT_RETURN_IF_ERROR(
       KernelLauncher{kernels_->GetKernel("CopyBufferNCHWToImage2D")}
-          .setArg<cl_int>(desc.Width())
-          .setArg<cl_int>(desc.Height())
-          .setBuffer(src)
-          .setArg<cl_int>(shape[1])  // C
-          .setArg<cl_int>(shape[2])  // H
-          .setArg<cl_int>(shape[3])  // W
-          .setImage2D(dst)
+          .SetArg<cl_int>(desc.Width())
+          .SetArg<cl_int>(desc.Height())
+          .SetBuffer(src)
+          .SetArg<cl_int>(shape[1])  // C
+          .SetArg<cl_int>(shape[2])  // H
+          .SetArg<cl_int>(shape[3])  // W
+          .SetImage2D(dst)
           .Launch(*exec_, desc.AsNDRange()));
   return Status::OK();
 }
@@ -271,11 +271,11 @@ Status OpenCLDataTransfer::CopyImage2DToBuffer1D(
   VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) ---> Buffer(%p)", src, dst);
   ORT_RETURN_IF_ERROR(
       KernelLauncher{kernels_->GetKernel("CopyImage2DToBuffer1D")}
-          .setArg<cl_int>(desc.Width())
-          .setArg<cl_int>(desc.Height())
-          .setImage2D(src)
-          .setBuffer(dst)
-          .setArg<cl_int>(shape.Size())  // nelem
+          .SetArg<cl_int>(desc.Width())
+          .SetArg<cl_int>(desc.Height())
+          .SetImage2D(src)
+          .SetBuffer(dst)
+          .SetArg<cl_int>(shape.Size())  // nelem
           .Launch(*exec_, desc.AsNDRange()));
   return Status::OK();
 }
@@ -299,13 +299,13 @@ Status OpenCLDataTransfer::CopyImage2DToBufferNCHW(
   VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) ---> Buffer(%p)", src, dst);
   ORT_RETURN_IF_ERROR(
       KernelLauncher{kernels_->GetKernel("CopyImage2DToBufferNCHW")}
-          .setArg<cl_int>(desc.Width())
-          .setArg<cl_int>(desc.Height())
-          .setImage2D(src)
-          .setBuffer(dst)
-          .setArg<cl_int>(shape[1])  // C
-          .setArg<cl_int>(shape[2])  // H
-          .setArg<cl_int>(shape[3])  // W
+          .SetArg<cl_int>(desc.Width())
+          .SetArg<cl_int>(desc.Height())
+          .SetImage2D(src)
+          .SetBuffer(dst)
+          .SetArg<cl_int>(shape[1])  // C
+          .SetArg<cl_int>(shape[2])  // H
+          .SetArg<cl_int>(shape[3])  // W
           .Launch(*exec_, desc.AsNDRange()));
   return Status::OK();
 }

@@ -24,12 +24,12 @@ Status ClipComputeImpl(const OpenCLExecutionProvider* exec, cl_kernel clip_kerne
   ZoneNamedN(_tracy_ClipNCHW, "Clip (kernel launch)", true);
   ORT_RETURN_IF_ERROR(
       KernelLauncher{clip_kernel}
-          .setArg<cl_int>(desc.Width())
-          .setArg<cl_int>(desc.Height())
-          .setImage2D(*X)
-          .setImage2D(*Y)
-          .setArg(lower_bound)
-          .setArg(upper_bound)
+          .SetArg<cl_int>(desc.Width())
+          .SetArg<cl_int>(desc.Height())
+          .SetImage2D(*X)
+          .SetImage2D(*Y)
+          .SetArg(lower_bound)
+          .SetArg(upper_bound)
           .Launch(*exec, desc.AsNDRange()));
 
   return Status::OK();

@@ -36,11 +36,11 @@ class ReLU : public OpenCLKernel {
     ZoneNamedN(_tracy_ReLUNCHW, "ReLU (kernel launch)", true);
     ORT_RETURN_IF_ERROR(
         KernelLauncher{GetKernel("ReLU")}
-            .setArg<cl_int>(desc.Width())
-            .setArg<cl_int>(desc.Height())
-            .setImage2D(*X)
-            .setImage2D(*Y)
-            .setArg<cl_float>(0.0)
+            .SetArg<cl_int>(desc.Width())
+            .SetArg<cl_int>(desc.Height())
+            .SetImage2D(*X)
+            .SetImage2D(*Y)
+            .SetArg<cl_float>(0.0)
             .Launch(*exec_, desc.AsNDRange()));
 
     return Status::OK();
