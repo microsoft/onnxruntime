@@ -34,15 +34,18 @@ DECLARE_MAKE_ATTRIBUTE_FNS(ONNX_NAMESPACE::GraphProto);
 
 #undef DECLARE_MAKE_ATTRIBUTE_FNS
 
-// preferred overload for string literals
+// The below overload is made so the compiler does not attempt to resolve
+// string literals with the gsl::span overload
 inline ONNX_NAMESPACE::AttributeProto MakeAttribute(std::string attr_name, const char* value) {
   return MakeAttribute(std::move(attr_name), std::string{value});
 }
 
 /**
  * Sets an attribute in `node_attributes` with key `attribute.name()` and value `attribute`.
- * @return True if a new attribute was added, false if an existing attribute was overwritten.
+ * If an attribute with the same name exists, it will be overwritten.
+ * @return Pair of (iterator to attribute, whether attribute was added (true) or updated (false)).
  */
-bool SetNodeAttribute(ONNX_NAMESPACE::AttributeProto attribute, NodeAttributes& node_attributes);
+std::pair<NodeAttributes::iterator, bool> SetNodeAttribute(ONNX_NAMESPACE::AttributeProto attribute,
+                                                           NodeAttributes& node_attributes);
 
 }  // namespace onnxruntime::utils

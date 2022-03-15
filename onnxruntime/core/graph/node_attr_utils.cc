@@ -71,10 +71,11 @@ MAKE_LIST_ATTR_IMPL(GraphProto, AttributeProto_AttributeType::AttributeProto_Att
 #undef MAKE_ATTR_IMPL
 #undef MAKE_LIST_ATTR_IMPL
 
-bool SetNodeAttribute(AttributeProto attribute, NodeAttributes& node_attributes) {
+std::pair<NodeAttributes::iterator, bool> SetNodeAttribute(AttributeProto attribute,
+                                                           NodeAttributes& node_attributes) {
   ORT_ENFORCE(utils::HasName(attribute), "AttributeProto must have a name.");
   std::string name = attribute.name();
-  return node_attributes.insert_or_assign(std::move(name), std::move(attribute)).second;
+  return node_attributes.insert_or_assign(std::move(name), std::move(attribute));
 }
 
 }  // namespace onnxruntime::utils

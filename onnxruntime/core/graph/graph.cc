@@ -873,25 +873,23 @@ void Node::CreateSubgraph(const std::string& attr_name) {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-bool Node::AddAttributeProto(AttributeProto value) {
-  const bool inserted = utils::SetNodeAttribute(std::move(value), attributes_);
+void Node::AddAttributeProto(AttributeProto value) {
+  utils::SetNodeAttribute(std::move(value), attributes_);
 
   graph_->SetGraphResolveNeeded();
   graph_->SetGraphProtoSyncNeeded();
-
-  return inserted;
 }
 
 #define ADD_ATTR_SINGLE_IMPL(Type)                                                   \
-  bool Node::AddAttribute(std::string attr_name, Type value) {                       \
+  void Node::AddAttribute(std::string attr_name, Type value) {                       \
     AttributeProto a = utils::MakeAttribute(std::move(attr_name), std::move(value)); \
-    return AddAttributeProto(std::move(a));                                          \
+    AddAttributeProto(std::move(a));                                                 \
   }
 
 #define ADD_ATTR_LIST_IMPL(Type)                                                 \
-  bool Node::AddAttribute(std::string attr_name, gsl::span<const Type> values) { \
+  void Node::AddAttribute(std::string attr_name, gsl::span<const Type> values) { \
     AttributeProto a = utils::MakeAttribute(std::move(attr_name), values);       \
-    return AddAttributeProto(std::move(a));                                      \
+    AddAttributeProto(std::move(a));                                             \
   }
 
 #define ADD_ATTR_IMPLS(Type) \
@@ -911,17 +909,15 @@ ADD_ATTR_IMPLS(TypeProto)
 #undef ADD_ATTR_LIST_IMPL
 #undef ADD_ATTR_IMPLS
 
-bool Node::AddAttribute(std::string attr_name, GraphProto value) {
+void Node::AddAttribute(std::string attr_name, GraphProto value) {
   // Do not move attr_name as it is needed below
   AttributeProto a = utils::MakeAttribute(attr_name, std::move(value));
-  const bool inserted = AddAttributeProto(std::move(a));
+  AddAttributeProto(std::move(a));
 
 #if !defined(ORT_MINIMAL_BUILD)
   // subgraph is created via deserialization and not here in a minimal build
   CreateSubgraph(attr_name);
 #endif
-
-  return inserted;
 };
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

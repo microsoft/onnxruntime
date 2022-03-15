@@ -342,20 +342,19 @@ class Node {
   /** Gets the number of output edges from this Node */
   size_t GetOutputEdgesCount() const noexcept { return relationships_.output_edges.size(); }
 
-  /** Adds an AttributeProto to this Node. The attribute name is used as the key in the attribute map.
-  @return True if a new attribute was added, false if an existing attribute was overwritten. */
-  bool AddAttributeProto(ONNX_NAMESPACE::AttributeProto value);
+  /** Adds an AttributeProto to this Node.
+  @remarks The attribute name is used as the key in the attribute map. */
+  void AddAttributeProto(ONNX_NAMESPACE::AttributeProto value);
 
-  /** Add an attribute to this Node with specified attribute name and value.
-  @return True if a new attribute was added, false if an existing attribute was overwritten. */
-  bool AddAttribute(std::string attr_name, int64_t value);
-  bool AddAttribute(std::string attr_name, gsl::span<const int64_t> value);
+  /** Adds an attribute to this Node with the specified attribute name and value(s). */
+  void AddAttribute(std::string attr_name, int64_t value);
+  void AddAttribute(std::string attr_name, gsl::span<const int64_t> values);
 
 #define ADD_ATTR_SINGLE_INTERFACE(Type) \
-  bool AddAttribute(std::string attr_name, Type value)
+  void AddAttribute(std::string attr_name, Type value)
 
 #define ADD_ATTR_LIST_INTERFACE(Type) \
-  bool AddAttribute(std::string attr_name, gsl::span<const Type> values)
+  void AddAttribute(std::string attr_name, gsl::span<const Type> values)
 
 #define ADD_ATTR_INTERFACES(Type)  \
   ADD_ATTR_SINGLE_INTERFACE(Type); \
@@ -376,10 +375,10 @@ class Node {
 #undef ADD_ATTR_INTERFACES
 
   // The below overload is made so the compiler does not attempt to resolve
-  // C-strings with the gsl::span overload
+  // string literals with the gsl::span overload
   template <size_t N>
-  bool AddAttribute(std::string attr_name, const char (&value)[N]) {
-    return this->AddAttribute(std::move(attr_name), std::string(value, N - 1));
+  void AddAttribute(std::string attr_name, const char (&value)[N]) {
+    this->AddAttribute(std::move(attr_name), std::string(value, N - 1));
   }
 
   /** Gets the Node's attributes. */
