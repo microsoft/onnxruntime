@@ -57,18 +57,15 @@ jobs:
         --skip_tests
        ls -ld $(find build)
     displayName: CPU EP, Build
-  - task: ArchiveFiles@2
+
+  - task: CopyFiles@2
     inputs:
-      rootFolderOrFile: build
-      includeRootFolder: true
-      archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).tar'
-      archiveType: 'tar'
-      tarCompression: 'none'
-      verbose: true
+      contents: 'build/**'
+      targetFolder: $(Build.ArtifactStagingDirectory)
   - task: PublishBuildArtifacts@1
     inputs:
-      pathToPublish: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).tar'
-      artifactName: MyBuildOutputs
+      pathToPublish: $(Build.ArtifactStagingDirectory)
+      artifactName: MyBuildOutput
 
 - job: Test_CPU_EP
   pool:
@@ -82,13 +79,11 @@ jobs:
     - script: echo '$(System.ArtifactsDirectory)'
       displayName: check root directory
 
-    - download: current
-      artifact: MyBuildOutputs
-
-    - task: ExtractFiles@1
+    - task: DownloadPipelineArtifact@2
       inputs:
-        archiveFilePatterns: '$(Agent.BuildDirectory)/MyBuildOutputs/*.tar'
-        destinationFolder: '$(Build.SourcesDirectory)'
+        source: 'current'
+        artifact: 'MyBuildOutput'
+        path: $(Build.SourcesDirectory)
 
     - script: pwd && ls && ls build
       displayName: check root directory
