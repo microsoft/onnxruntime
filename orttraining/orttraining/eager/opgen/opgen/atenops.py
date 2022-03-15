@@ -8,6 +8,11 @@ from opgen.generator import \
 
 from opgen.onnxops import *
 
+import torch
+from packaging import version
+
+TORCH_API_CHANGE_VERSION = "1.11.1"
+
 kMSDomain = 'onnxruntime::kMSDomain'
 
 class ReluGrad(ONNXOp):
@@ -26,6 +31,7 @@ class GeluGrad(ONNXOp):
     self.domain = kMSDomain
 
 ops = {}
+type_promotion_ops = []
 
 for binary_op, onnx_op in {
   'add': Add('self', Mul('alpha', 'other')),
@@ -37,6 +43,7 @@ for binary_op, onnx_op in {
       name = f'aten::{binary_op}{variant}.{dtype}'
       if name not in ops:
         ops[f'aten::{binary_op}{variant}.{dtype}'] = deepcopy(onnx_op)
+        type_promotion_ops.append(f'aten::{binary_op}{variant}.{dtype}')
 
 for unary_op in [
   'abs','acos','acosh', 'asinh', 'atanh', 'asin', 'atan', 'ceil', 'cos',
@@ -58,6 +65,10 @@ hand_implemented = {
   'aten::_reshape_alias': SignatureOnly(),
   'aten::view': SignatureOnly(),
   'aten::_copy_from_and_resize' : SignatureOnly(),
+  'aten::as_strided' : SignatureOnly(),
+  # manually implement Slice using stride and offset.
+  'aten::slice.Tensor' : SignatureOnly(),
+
   'aten::addmm': Gemm('mat1', 'mat2', 'self', alpha='alpha', beta='beta'),
   'aten::add_.Tensor': SignatureOnly(),
   'aten::t': Transpose('self'),
@@ -73,10 +84,8 @@ hand_implemented = {
   'aten::softshrink': Shrink('self', bias='lambd', lambd='lambd'), #yes, bias is set to 'lambd'
   'aten::hardshrink': Shrink('self', bias=0, lambd='lambd'),
   'aten::gelu' : Gelu('self'),
-  'aten::gelu_backward' : GeluGrad('grad', 'self'),
   'aten::max' : ReduceMax('self', keepdims=1),
   'aten::min' : ReduceMin('self', keepdims=1),
-  'aten::slice.Tensor' : Slice('self', 'start', 'end', 'dim', 'step'),
   'aten::_cat': Concat('tensors', 'dim'),
 
   'aten::ne.Scalar':MakeTorchFallback(),
@@ -86,9 +95,20 @@ hand_implemented = {
   'aten::eq.Tensor_out':MakeTorchFallback(),
   'aten::bitwise_and.Tensor_out' : MakeTorchFallback(),
   'aten::masked_select' : MakeTorchFallback(),
-  'aten::as_strided' : MakeTorchFallback(),
   'aten::_local_scalar_dense' : MakeTorchFallback(),
   'aten::gt.Scalar_out' : MakeTorchFallback(),
 }
 
+# Signature of gelu_backward was changed in this commit id 983ba5e585485ed61a0c0012ef6944f5685e3d97 and PR 61439
+# This is done to make sure it is backward and future compatible
+if version.parse(torch.__version__) < version.parse(TORCH_API_CHANGE_VERSION):
+  hand_implemented['aten::gelu_backward'] = GeluGrad('grad', 'self')
+else:
+  hand_implemented['aten::gelu_backward'] = GeluGrad('grad_output', 'self')
+
 ops = {**ops, **hand_implemented} 
+# TODO: this is a temporary allowlist for ops need type promotion
+# Need to enhance the support for onnx type constrains to automatically
+# resolve whether the op need type promotion.
+# Will remove this list in the future.
+type_promotion_ops = (*type_promotion_ops, 'aten::gelu_backward')

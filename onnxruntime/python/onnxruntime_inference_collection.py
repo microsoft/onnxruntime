@@ -206,7 +206,7 @@ class Session:
         Compute the predictions.
 
         :param output_names: name of the outputs
-        :param input_feed: dictionary ``{ input_name: input_ort_value }``
+        :param input_dict_ort_values: dictionary ``{ input_name: input_ort_value }``
             See ``OrtValue`` class how to create `OrtValue`
             from numpy array or `SparseTensor`
         :param run_options: See :class:`onnxruntime.RunOptions`.
@@ -349,6 +349,8 @@ class InferenceSession(Session):
         # Tensorrt can fall back to CUDA. All others fall back to CPU.
         if 'TensorrtExecutionProvider' in available_providers:
             self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        elif 'MIGraphXExecutionProvider' in available_providers:
+            self._fallback_providers = ['ROCMExecutionProvider', 'CPUExecutionProvider']
         else:
             self._fallback_providers = ['CPUExecutionProvider']
 
@@ -634,6 +636,16 @@ class OrtValue:
         Use accessors to gain a reference to non-Tensor objects such as SparseTensor
         '''
         return self._ortvalue.numpy()
+
+    def update_inplace(self, np_arr):
+        '''
+        Update the OrtValue in place with a new Numpy array. The numpy contents
+        are copied over to the device memory backing the OrtValue. It can be used
+        to update the input valuess for an InferenceSession with CUDA graph
+        enabled or other scenarios where the OrtValue needs to be updated while
+        the memory address can not be changed.
+        '''
+        self._ortvalue.update_inplace(np_arr)
 
 
 class OrtDevice:

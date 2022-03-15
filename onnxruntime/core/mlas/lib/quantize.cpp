@@ -248,7 +248,7 @@ MlasQuantizeLinear<int8_t>(
     )
 {
 #if defined(MLAS_TARGET_AMD64)
-    MlasPlatform.QuantizeLinearS8Kernel(
+    GetMlasPlatform().QuantizeLinearS8Kernel(
 #else
     MlasQuantizeLinearS8Kernel(
 #endif
@@ -267,7 +267,7 @@ MlasQuantizeLinear<uint8_t>(
     )
 {
 #if defined(MLAS_TARGET_AMD64)
-    MlasPlatform.QuantizeLinearU8Kernel(
+    GetMlasPlatform().QuantizeLinearU8Kernel(
 #else
     MlasQuantizeLinearU8Kernel(
 #endif
@@ -275,6 +275,38 @@ MlasQuantizeLinear<uint8_t>(
 }
 
 #else
+
+#if defined(MLAS_TARGET_POWER)
+
+template<>
+void
+MLASCALL
+MlasQuantizeLinear<int8_t>(
+    const float* Input,
+    int8_t* Output,
+    size_t N,
+    float Scale,
+    int8_t ZeroPoint
+    )
+{
+    GetMlasPlatform().QuantizeLinearS8Kernel(Input, Output, N, Scale, ZeroPoint);
+}
+
+template<>
+void
+MLASCALL
+MlasQuantizeLinear<uint8_t>(
+    const float* Input,
+    uint8_t* Output,
+    size_t N,
+    float Scale,
+    uint8_t ZeroPoint
+    )
+{
+    GetMlasPlatform().QuantizeLinearU8Kernel(Input, Output, N, Scale, ZeroPoint);
+}
+
+#endif
 
 //
 // QuantizeLinear implementation using the C++ runtime.
@@ -327,6 +359,7 @@ Return Value:
     }
 }
 
+#if !defined(MLAS_TARGET_POWER)
 template
 void
 MLASCALL
@@ -348,6 +381,8 @@ MlasQuantizeLinear<uint8_t>(
     float Scale,
     uint8_t ZeroPoint
     );
+#endif
+
 #endif
 
 #if defined(MLAS_SSE2_INTRINSICS)
@@ -989,7 +1024,7 @@ Return Value:
 --*/
 {
 #if defined(MLAS_TARGET_AMD64)
-    MlasPlatform.ReduceMinimumMaximumF32Kernel(Input, Min, Max, N);
+    GetMlasPlatform().ReduceMinimumMaximumF32Kernel(Input, Min, Max, N);
 #else
     MlasReduceMinimumMaximumF32Kernel(Input, Min, Max, N);
 #endif

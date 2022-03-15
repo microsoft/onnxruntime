@@ -30,7 +30,7 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecuda11build \
-            /opt/python/cp36-cp36m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+            /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
               --config Release --update --build \
               --skip_submodule_sync \
@@ -40,7 +40,7 @@ jobs:
               --enable_onnx_tests --use_cuda --cuda_version=11.4 --cuda_home=/usr/local/cuda-11.4 --cudnn_home=/usr/local/cuda-11.4 \
               --enable_cuda_profiling \
               --enable_pybind --build_java \
-              --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc  CMAKE_CUDA_ARCHITECTURES=52
+              --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-10/root/usr/bin/cc  CMAKE_CUDA_ARCHITECTURES=70
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -48,6 +48,7 @@ jobs:
       script: |
         rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
         rm -f $(Build.BinariesDirectory)/Release/models
+        rm -rf $(Build.BinariesDirectory)/Release/_deps
         cd $(Build.BinariesDirectory)/Release
         find -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
 
@@ -77,7 +78,7 @@ jobs:
   timeoutInMinutes: 60
   workspace:
     clean: all
-  pool: centos7gpu
+  pool: Onnxruntime-Linux-GPU-NC6sv3
   dependsOn:
   - Linux_Build
   steps:
@@ -95,7 +96,7 @@ jobs:
          # We assume the machine doesn't have gcc and python development header files
          sudo rm -f /build /onnxruntime_src
          sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src
-         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
          cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
          # Test ORT with the latest ONNX release.
          export ONNX_VERSION=$(cat $(Build.SourcesDirectory)/cmake/external/onnx/VERSION_NUMBER)

@@ -12,13 +12,22 @@ This file is adapted from fused adam in NVIDIA/apex, commit a109f85
 
 import torch
 from ._multi_tensor_apply import MultiTensorApply
+from enum import IntEnum
+
+
+class AdamWMode(IntEnum):
+    ADAM_L2_REGULARIZATION = 0 # Adam with L2 regularization
+    ADAMW_TRANSFORMERS = 1 # Adam with weight decay implemented to be equivalent to Transformers/AdamW
+    ADAMW_TORCH = 2 # Adam with weight decay implemented to be equivalent to torch/AdamW
 
 
 class FusedAdam(torch.optim.Optimizer):
     """Implements Adam algorithm.
 
-    The algorithmic implementation is mathematically equivalent to Transformers/AdamW
-    as defined here: https://github.com/huggingface/transformers/blob/61f64262692ac7dc90e2e0bdeb7e79d9cd607a66/src/transformers/optimization.py#L349-L370
+    The algorithmic implementation is mathematically equivalent to
+    `Transformers/AdamW <https://github.com/huggingface/transformers/blob/61f64262692ac7dc90e2e0bdeb7e79d9cd607a66/src/transformers/optimization.py#L349-L370>`_
+    when adam_w_mode = 1 and `torch/Adam <https://github.com/pytorch/pytorch/blob/a217a62e73fd30b658743af8a69966f90327f018/torch/optim/adamw.py#L6>`_
+    when adam_w_mode = 2
 
     Currently GPU-only.
 
@@ -27,7 +36,7 @@ class FusedAdam(torch.optim.Optimizer):
       * Fusion of the Adam update's elementwise operations
       * A multi-tensor apply launch that batches the elementwise updates applied to all the model's parameters into one or a few kernel launches.
 
-    Adam was been proposed in `Adam: A Method for Stochastic Optimization`_.
+    Adam was proposed in `Adam: A Method for Stochastic Optimization`_.
 
     Arguments:
         params (iterable): iterable of parameters to optimize or dicts defining
@@ -38,11 +47,11 @@ class FusedAdam(torch.optim.Optimizer):
         eps (float, optional): term added to the denominator to improve
             numerical stability. (default: 1e-8)
         weight_decay (float, optional): weight decay (L2 penalty) (default: 0)
-        amsgrad (boolean, optional): whether to use the AMSGrad variant of this
-            algorithm from the paper `On the Convergence of Adam and Beyond`_
-            (default: False) NOT SUPPORTED in FusedAdam!
-        adam_w_mode (boolean, optional): Apply L2 regularization or weight decay
-            True for decoupled weight decay(also known as AdamW) (default: True)
+        adam_w_mode (AdamWMode, optional): Apply L2 regularization or weight decay
+            (AdamWMode.ADAM_L2_REGULARIZATION), decoupled weight decay with
+            transformers/AdamW mathematical implementation (AdamWMode.ADAMW_TRANSFORMERS)
+            or decoupled weight decay with transformers/AdamW implementation
+            (AdamWMode.ADAMW_TORCH) (default: AdamWMode.ADAMW_TRANSFORMERS)
         set_grad_none (bool, optional): whether set grad to None when zero_grad()
             method is called. (default: True)
 
@@ -58,23 +67,20 @@ class FusedAdam(torch.optim.Optimizer):
                  betas=(0.9,
                         0.999),
                  eps=1e-6,
-                 adam_w_mode=True,
+                 adam_w_mode=AdamWMode.ADAMW_TRANSFORMERS,
                  weight_decay=0.,
-                 amsgrad=False,
-                 set_grad_none=False):
+                 set_grad_none=True):
 
         # The FusedAdam implementation is mathematically equivalent to
         # transformers AdamW. The input arguments also have the same defaults.
 
-        if amsgrad:
-            raise RuntimeError('FusedAdam does not support the AMSGrad variant.')
         defaults = dict(lr=lr,
                         bias_correction=bias_correction,
                         betas=betas,
                         eps=eps,
                         weight_decay=weight_decay)
         super(FusedAdam, self).__init__(params, defaults)
-        self._adam_w_mode = 1 if adam_w_mode else 0
+        self._adam_w_mode = adam_w_mode
         self._set_grad_none = set_grad_none
 
         # Skip buffer

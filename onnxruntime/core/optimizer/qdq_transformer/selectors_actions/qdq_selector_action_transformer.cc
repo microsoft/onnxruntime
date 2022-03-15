@@ -37,7 +37,9 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
                                                           {"Reshape", {}},
                                                           {"Transpose", {}},
                                                           {"MaxPool", {12}},
-                                                          {"Resize", {}}},
+                                                          {"Resize", {}},
+                                                          {"Squeeze", {}},
+                                                          {"Unsqueeze", {}}},
                                                          std::move(selector),
                                                          std::move(action));
 #else
@@ -78,7 +80,9 @@ void UnaryOpQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::UnarySelector>();
   qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
                                                          {{"AveragePool", {}},
-                                                          {"LeakyRelu", {}}},
+                                                          {"LeakyRelu", {}},
+                                                          {"GlobalAveragePool", {}},
+                                                          {"Sigmoid", {}}},
                                                          std::move(selector),
                                                          std::move(action));
 #else
@@ -167,6 +171,26 @@ void MatMulQDQRules(SelectorActionRegistry& qdq_selector_action_registry, bool i
 #endif
 }
 
+void GemmQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
+  // 3 to 5 nodes. 0=DQ A, 1=DQ B, 2=DQ C(optional), 3=Gemm, 4=Q Y(optional)
+  // Replace with QGemm
+  // Delete all original nodes.
+  const std::string action_name{"Gemm"};
+
+  std::unique_ptr<Action> action = std::make_unique<QDQ::GemmReplaceWithQuant>();
+
+#if !defined(ORT_MINIMAL_BUILD)
+  std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::GemmSelector>();
+  qdq_selector_action_registry.RegisterSelectorAndAction(action_name,
+                                                         {{"Gemm", {}}},
+                                                         std::move(selector),
+                                                         std::move(action));
+
+#else
+  qdq_selector_action_registry.RegisterAction(action_name, std::move(action));
+#endif
+}
+
 SelectorActionRegistry CreateSelectorActionRegistry(bool is_int8_allowed) {
   SelectorActionRegistry qdq_selector_action_registry;
 
@@ -177,17 +201,21 @@ SelectorActionRegistry CreateSelectorActionRegistry(bool is_int8_allowed) {
   VariadicOpQDQRules(qdq_selector_action_registry);
   ConvQDQRules(qdq_selector_action_registry, is_int8_allowed);
   MatMulQDQRules(qdq_selector_action_registry, is_int8_allowed);
+  GemmQDQRules(qdq_selector_action_registry);
 
   return qdq_selector_action_registry;
 }
 
 }  // namespace
 
-QDQSelectorActionTransformer::QDQSelectorActionTransformer(const SatApplyContextVariant& apply_context)
+QDQSelectorActionTransformer::QDQSelectorActionTransformer(
+    bool is_int8_allowed, const SatApplyContextVariant& apply_context)
     : SelectorActionTransformer{
           "QDQSelectorActionTransformer",
-          CreateSelectorActionRegistry(QDQIsInt8Allowed()),
-          apply_context} {
+          CreateSelectorActionRegistry(is_int8_allowed),
+          apply_context,
+          // this transformer is only compatible with the CPU EP
+          {kCpuExecutionProvider}} {
 }
 
 }  // namespace onnxruntime

@@ -3,7 +3,7 @@
 
 #pragma once
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #include "core/optimizer/selectors_actions/selector_action_transformer.h"
 
@@ -34,7 +34,8 @@ class NodeGroupSelector {
   bool CheckQDQNodes(const GraphViewer& graph_viewer, const Node& node,
                      const std::vector<const Node*>& dq_nodes,
                      const std::vector<const Node*>& q_nodes,
-                     int num_dq_inputs = -1) const;
+                     int num_dq_inputs = -1,
+                     bool is_empty_q_nodes_allowed = false) const;
 
  private:
   // derived classes should implement this check
@@ -120,6 +121,15 @@ class MatMulNodeGroupSelector : public NodeGroupSelector {
   bool matmulintegertofloat_allowed_;
 };
 
+// Input: DQ nodes for A, B and optional C
+// Output: optional Q node for Y
+class GemmNodeGroupSelector : public NodeGroupSelector {
+ private:
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+};
+
 /*
  * NodeSelector instances for use in the QDQ::SelectorActionTransformer.
  */
@@ -190,7 +200,17 @@ class MatMulSelector : public BaseSelector {
       : BaseSelector(std::make_unique<MatMulNodeGroupSelector>(int8_allowed, /*matmulintegertofloat_allowed*/ true)) {}
 };
 
+// Input: DQ nodes for A, B and optional C
+// Output: optional Q node for Y
+class GemmSelector : public BaseSelector {
+ public:
+  GemmSelector()
+      : BaseSelector(std::make_unique<GemmNodeGroupSelector>()) {}
+
+  void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
+};
+
 }  // namespace QDQ
 }  // namespace onnxruntime
 
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

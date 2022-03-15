@@ -44,6 +44,7 @@ SPECIALIZED_SOFTMAX_HELPER_IMPL(float)
 // MIOpen double data type not supported
 // SPECIALIZED_SOFTMAX_HELPER_IMPL(double)
 SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
+SPECIALIZED_SOFTMAX_HELPER_IMPL(BFloat16)
 
 #define REGISTER_KERNEL_TYPED(T)                                                           \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
@@ -203,6 +204,7 @@ SPECIALIZED_COMPUTE(float)
 // MIOpen double data type not supported
 // SPECIALIZED_COMPUTE(double)
 SPECIALIZED_COMPUTE(MLFloat16)
+SPECIALIZED_COMPUTE(BFloat16)
 
 }  // namespace rocm
 }  // namespace onnxruntime

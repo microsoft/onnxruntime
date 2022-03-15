@@ -376,7 +376,7 @@ def parse_arguments():
     parser.add_argument(
         "--wasm_malloc", default="dlmalloc", help="Specify memory allocator for WebAssembly")
     parser.add_argument(
-        "--emsdk_version", default="2.0.26", help="Specify version of emsdk")
+        "--emsdk_version", default="3.1.3", help="Specify version of emsdk")
 
     # Enable onnxruntime-extensions
     parser.add_argument(
@@ -438,9 +438,10 @@ def parse_arguments():
     parser.add_argument(
         "--use_nuphar", action='store_true', help="Build with nuphar")
     parser.add_argument(
-        "--use_stvm", action='store_true', help="Build with standalone TVM")
+        "--use_tvm", action='store_true', help="Build with TVM")
     parser.add_argument(
-        "--stvm_home", help="Path to TVM installation for the standalone TVM execution provider.")
+        "--tvm_cuda_runtime", action='store_true', default=False,
+        help="Build TVM with CUDA support")
     parser.add_argument(
         "--use_tensorrt", action='store_true', help="Build with TensorRT")
     parser.add_argument(
@@ -763,16 +764,16 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 args.android or (args.ios and is_macOS())
                 or args.use_rknpu)
             else "OFF"),
-        "-Donnxruntime_USE_TVM=" + ("ON" if args.use_nuphar else "OFF"),
-        "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_nuphar else "OFF"),
+        "-Donnxruntime_USE_NUPHAR_TVM=" + ("ON" if args.use_nuphar else "OFF"),
+        "-Donnxruntime_USE_LLVM=" + ("ON" if args.use_nuphar or args.use_tvm else "OFF"),
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_NUPHAR=" + ("ON" if args.use_nuphar else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_TENSORRT_HOME=" + (tensorrt_home if args.use_tensorrt else ""),
-        # set vars for standalone TVM
-        "-Donnxruntime_USE_STVM=" + ("ON" if args.use_stvm else "OFF"),
-        "-Donnxruntime_STVM_HOME=" + (os.path.join(source_dir, "cmake", "external", "tvm_update")),
+        # set vars for TVM
+        "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
+        "-Donnxruntime_TVM_CUDA_RUNTIME=" + ("ON" if args.use_tvm and args.tvm_cuda_runtime else "OFF"),
         # set vars for migraphx
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
         "-Donnxruntime_MIGRAPHX_HOME=" + (migraphx_home if args.use_migraphx else ""),
@@ -932,7 +933,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-DProtobuf_USE_STATIC_LIBS=ON"
         ]
 
-    if args.use_nuphar and args.llvm_path is not None:
+    if (args.use_nuphar or args.use_tvm) and args.llvm_path is not None:
         cmake_args += ["-DLLVM_DIR=%s" % args.llvm_path]
 
     if args.use_cuda and not is_windows():
@@ -1080,6 +1081,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     if args.build_eager_mode:
         import torch
         cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
+        cmake_args += ['-D_GLIBCXX_USE_CXX11_ABI=' + str(int(torch._C._GLIBCXX_USE_CXX11_ABI))]
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
@@ -1127,15 +1129,16 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     for config in configs:
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
-        if args.use_nuphar:
-            os.environ["PATH"] = os.path.join(
-                config_build_dir, "external", "tvm",
-                config) + os.pathsep + os.path.dirname(sys.executable) + os.pathsep + os.environ["PATH"]
+        if args.use_nuphar or args.use_tvm:
+            os.environ["PATH"] = (
+                os.path.join(config_build_dir, "_deps", "tvm-build") + os.pathsep +
+                os.path.join(config_build_dir, "_deps", "tvm-src") + os.pathsep +
+                os.path.dirname(sys.executable) + os.pathsep + os.environ["PATH"])
 
         run_subprocess(
             cmake_args + [
                 "-Donnxruntime_ENABLE_MEMLEAK_CHECKER=" +
-                ("ON" if config.lower() == 'debug' and not args.use_nuphar and not
+                ("ON" if config.lower() == 'debug' and not (args.use_nuphar or args.use_tvm) and not
                  args.use_openvino and not
                  args.enable_msvc_static_runtime and not
                  args.disable_memleak_checker
@@ -1534,8 +1537,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             continue
         dll_path_list = []
         if args.use_nuphar:
-            dll_path_list.append(os.path.join(
-                build_dir, config, "external", "tvm", config))
+            dll_path_list.append(os.path.join(build_dir, "_deps", "tvm-build"))
         if args.use_tensorrt:
             dll_path_list.append(os.path.join(args.tensorrt_home, 'lib'))
         # Adding the torch lib path for loading DLLs for onnxruntime in eager mode
@@ -1591,6 +1593,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if args.use_tensorrt:
                 return
 
+            python_path = None
+            if args.use_tvm:
+                python_path = os.path.join(build_dir, config, "_deps", "tvm-src", "python")
+
             # Disable python tests in a reduced build as we don't know which ops have been included and which
             # models can run.
             if is_reduced_ops_build(args) or args.minimal_build is not None:
@@ -1599,7 +1605,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if is_windows():
                 cwd = os.path.join(cwd, config)
 
-            run_subprocess([sys.executable, 'onnxruntime_test_python.py'], cwd=cwd, dll_path=dll_path)
+            run_subprocess([sys.executable, 'onnxruntime_test_python.py'],
+                           cwd=cwd, dll_path=dll_path, python_path=python_path)
 
             if not args.disable_contrib_ops:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_sparse_matmul.py'],
@@ -1615,6 +1622,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 # which currently uses Torch's allocator to allocate GPU memory for testing
                 log.info("Testing IOBinding feature")
                 run_subprocess([sys.executable, 'onnxruntime_test_python_iobinding.py'], cwd=cwd, dll_path=dll_path)
+
+                log.info("Testing CUDA Graph feature")
+                run_subprocess([sys.executable, 'onnxruntime_test_python_cudagraph.py'], cwd=cwd, dll_path=dll_path)
 
             if not args.disable_ml_ops:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_mlops.py'], cwd=cwd, dll_path=dll_path)
@@ -1647,7 +1657,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 onnx_test = False
 
             if onnx_test:
-                run_subprocess([sys.executable, 'onnxruntime_test_python_backend.py'], cwd=cwd, dll_path=dll_path)
+                run_subprocess([sys.executable, 'onnxruntime_test_python_backend.py'], cwd=cwd, dll_path=dll_path,
+                               python_path=python_path)
                 if not args.disable_contrib_ops:
                     run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'quantization'],
                                    cwd=cwd, dll_path=dll_path)
@@ -1699,9 +1710,22 @@ def nuphar_run_python_tests(build_dir, configs):
         cwd = get_config_build_dir(build_dir, config)
         if is_windows():
             cwd = os.path.join(cwd, config)
-        dll_path = os.path.join(build_dir, config, "external", "tvm", config)
+        dll_path = os.path.join(build_dir, config, "_deps", "tvm-build", config)
         run_subprocess(
             [sys.executable, 'onnxruntime_test_python_nuphar.py'],
+            cwd=cwd, dll_path=dll_path)
+
+
+def tvm_run_python_tests(build_dir, configs):
+    for config in configs:
+        if config == 'Debug':
+            continue
+        cwd = get_config_build_dir(build_dir, config)
+        if is_windows():
+            cwd = os.path.join(cwd, config)
+        dll_path = os.path.join(build_dir, config, "_deps", "tvm-build", config)
+        run_subprocess(
+            [sys.executable, 'onnxruntime_test_python_tvm.py'],
             cwd=cwd, dll_path=dll_path)
 
 
@@ -1714,7 +1738,7 @@ def run_nodejs_tests(nodejs_binding_dir):
 
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, cuda_version, use_rocm, rocm_version, use_dnnl,
-        use_tensorrt, use_openvino, use_nuphar, use_stvm, use_vitisai, use_acl, use_armnn, use_dml,
+        use_tensorrt, use_openvino, use_nuphar, use_tvm, use_vitisai, use_acl, use_armnn, use_dml,
         wheel_name_suffix, enable_training, nightly_build=False, default_training_package_device=False,
         use_ninja=False, build_eager_mode=False):
     for config in configs:
@@ -1753,8 +1777,8 @@ def build_python_wheel(
             args.append('--use_dnnl')
         elif use_nuphar:
             args.append('--use_nuphar')
-        elif use_stvm:
-            args.append('--use_stvm')
+        elif use_tvm:
+            args.append('--use_tvm')
         elif use_vitisai:
             args.append('--use_vitisai')
         elif use_acl:
@@ -1775,7 +1799,7 @@ def derive_linux_build_property():
 
 
 def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, use_tensorrt, use_dnnl, use_nuphar,
-                        use_stvm, use_winml):
+                        use_tvm, use_winml):
     if not (is_windows() or is_linux()):
         raise BuildError(
             'Currently csharp builds and nuget package creation is only supportted '
@@ -1809,8 +1833,8 @@ def build_nuget_package(source_dir, build_dir, configs, use_cuda, use_openvino, 
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Gpu\""
     elif use_nuphar:
         package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Nuphar\""
-    elif use_stvm:
-        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Stvm\""
+    elif use_tvm:
+        package_name = "/p:OrtPackageId=\"Microsoft.ML.OnnxRuntime.Tvm\""
     else:
         # use the solution file that includes Xamarin mobile targets
         sln = "OnnxRuntime.CSharp.sln"
@@ -2037,7 +2061,10 @@ def main():
     if args.use_tensorrt:
         args.use_cuda = True
 
-    if args.build_wheel or args.gen_doc:
+    if args.use_migraphx:
+        args.use_rocm = True
+
+    if args.build_wheel or args.gen_doc or args.use_tvm:
         args.enable_pybind = True
 
     if args.build_csharp or args.build_nuget or args.build_java or args.build_nodejs:
@@ -2320,6 +2347,9 @@ def main():
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
             nuphar_run_python_tests(build_dir, configs)
 
+        if args.enable_pybind and not args.skip_onnx_tests and args.use_tvm:
+            tvm_run_python_tests(build_dir, configs)
+
         # run node.js binding tests
         if args.build_nodejs and not args.skip_nodejs_tests:
             nodejs_binding_dir = os.path.normpath(os.path.join(source_dir, "js", "node"))
@@ -2345,7 +2375,7 @@ def main():
                 args.use_tensorrt,
                 args.use_openvino,
                 args.use_nuphar,
-                args.use_stvm,
+                args.use_tvm,
                 args.use_vitisai,
                 args.use_acl,
                 args.use_armnn,
@@ -2367,7 +2397,7 @@ def main():
                 args.use_tensorrt,
                 args.use_dnnl,
                 args.use_nuphar,
-                args.use_stvm,
+                args.use_tvm,
                 args.use_winml,
             )
 

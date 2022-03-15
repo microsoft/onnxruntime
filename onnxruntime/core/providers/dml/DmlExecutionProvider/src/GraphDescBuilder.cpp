@@ -124,8 +124,12 @@ namespace Dml::GraphDescBuilder
                 // Check whether this specific node requested support for constant CPU inputs
                 if (std::find(requiredConstantCpuInputs.begin(), requiredConstantCpuInputs.end(), inputIndex) != requiredConstantCpuInputs.end())
                 {
-                    const onnxruntime::NodeArg* arg = node.InputDefs()[inputIndex];
-                    tensor = constantCpuGraphInputGetter(arg->Name());
+                    auto inputDefs = node.InputDefs();
+                    if (inputIndex < inputDefs.size())
+                    {
+                        const onnxruntime::NodeArg* arg = inputDefs[inputIndex];
+                        tensor = constantCpuGraphInputGetter(arg->Name());
+                    }
                 }
 
                 return tensor;

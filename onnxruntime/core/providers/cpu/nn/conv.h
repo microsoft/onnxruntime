@@ -24,7 +24,7 @@ class Conv : public OpKernel {
 template <>
 class Conv<float> : public OpKernel {
  public:
-  Conv<float>(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
+  Conv(const OpKernelInfo& info) : OpKernel(info), conv_attrs_(info) {
     activation_.ActivationKind = MlasIdentityActivation;
   }
 

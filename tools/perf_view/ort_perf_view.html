@@ -42,19 +42,20 @@
     <input id="file-selector" type="file" accept=".json" style="display:none"/>
     </div>
     <script>
+      'use strict';
       var raw_data_in_json = null;
-      
+
       const fileButton = document.getElementById('file-button');
       fileButton.addEventListener('click', (event) => {
         document.getElementById('file-selector').click();
       });
-      
+
       const fileSelector = document.getElementById('file-selector');
       fileSelector.addEventListener('change', (event) => {
         document.getElementById('file-label').style.display = 'none';
         document.getElementById('file-button').style.display = 'none';
         document.getElementById('file-selector').style.display = 'none';
-        preloader = anychart.ui.preloader();
+        var preloader = anychart.ui.preloader();
         preloader.render();
         preloader.visible(true);
 
@@ -63,8 +64,8 @@
         const reader = new FileReader();
         reader.addEventListener('load', (event) => {
           raw_data_in_json = JSON.parse(event.target.result);
-          summarized_cpu = JSON.parse("{}");
-          summarized_gpu = JSON.parse("{}");
+          var summarized_cpu = JSON.parse("{}");
+          var summarized_gpu = JSON.parse("{}");
           for (var i = 0; i < raw_data_in_json.length; i++) {
             var node = raw_data_in_json[i];
             if (node.cat == null ||node.name == null || node.args == null || node.args.op_name == null) continue;
@@ -74,7 +75,13 @@
                   summarized_cpu[node.args.op_name] = {all:0,children:[]};
                 }
                 summarized_cpu[node.args.op_name].all += node.dur;
-                summarized_cpu[node.args.op_name].children.push({name: node.name, value:node.dur})
+                var metadata = JSON.parse('{}');
+                metadata.name = node.name
+                metadata.input = node.args.input_type_shape
+                metadata.output = node.args.output_type_shape
+                metadata.duration_in_microseconds = node.dur
+                var metadata_str = JSON.stringify(metadata).replaceAll('","','",\n"').replaceAll('},{','},\n{').replaceAll('],"','],\n"')
+                summarized_cpu[node.args.op_name].children.push({name: metadata_str, value: node.dur})
             } else if (category == "Kernel") {
                 var op_name = node.args.op_name == "" ? "Session" : node.args.op_name;
                 if (summarized_gpu[op_name] == null) {
@@ -130,7 +137,7 @@
           } else {
             document.getElementById("gpu").className = "no_view";
           }
-          
+
           preloader.visible(false);
         });
         reader.readAsText(fileList[0]);

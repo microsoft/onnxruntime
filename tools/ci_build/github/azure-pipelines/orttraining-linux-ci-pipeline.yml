@@ -13,6 +13,11 @@ jobs:
     inputs:
       versionSpec: '12.16.3'
 
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.8'
+      addToPath: true
+
   - template: templates/get-docker-image-steps.yml
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
@@ -50,11 +55,13 @@ jobs:
     inputs:
       script: |
          set -e -x
-         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
          cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
          # Test ORT with the latest ONNX release.
          export ONNX_VERSION=$(cat $(Build.SourcesDirectory)/cmake/external/onnx/VERSION_NUMBER)
          sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx==$ONNX_VERSION/" $(Build.BinariesDirectory)/requirements.txt
+         #Do not explicitly specify numpy version as this is not a packaging pipeline, any version should be ok
+         sed -i "/^numpy/d" $(Build.BinariesDirectory)/requirements.txt
          python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
          cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu.txt $(Build.BinariesDirectory)/requirements_torch_cpu.txt
          python3 -m pip install -r $(Build.BinariesDirectory)/requirements_torch_cpu.txt
@@ -69,34 +76,35 @@ jobs:
          rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
          python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
 
-  - task: CmdLine@2
+
+  - task: PythonScript@0
     displayName: 'Run Release unit tests'
     inputs:
-      script: |
-        cd /tmp
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja --config Release --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_training --enable_onnx_tests --build_nodejs --ctest_path ""
+       scriptPath: $(Build.SourcesDirectory)/tools/ci_build/build.py
+       workingDirectory: $(Build.BinariesDirectory)/Release
+       arguments: --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja --config Release --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_training --enable_onnx_tests --build_nodejs --ctest_path ""
 
   - task: CmdLine@2
     displayName: 'Install Debug python package'
     inputs:
       script: |
+         set -e -x
          rm -rf $(Build.BinariesDirectory)/Debug/onnxruntime $(Build.BinariesDirectory)/Debug/pybind11
-         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
          python3 -m pip install $(Build.BinariesDirectory)/Debug/dist/*.whl
 
-  - task: CmdLine@2
+  - task: PythonScript@0
     displayName: 'Run Debug unit tests'
     inputs:
       scriptPath: $(Build.SourcesDirectory)/tools/ci_build/build.py
       arguments: --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja --config Debug --test --skip_submodule_sync --build_shared_lib --parallel --build_wheel --enable_training --enable_onnx_tests --build_nodejs --ctest_path ""
-      workingDirectory: /tmp
+      workingDirectory: $(Build.BinariesDirectory)/Debug
 
-  - task: CmdLine@2
+  - task: PythonScript@0
     displayName: 'Symbolic shape infer'
     inputs:
-      script: |
-        cd $(Build.BinariesDirectory)/Release
-        python3 $(Build.BinariesDirectory)/Release/onnxruntime_test_python_symbolic_shape_infer.py
+      scriptPath: $(Build.BinariesDirectory)/Release/onnxruntime_test_python_symbolic_shape_infer.py
+      workingDirectory: $(Build.BinariesDirectory)/Release
 
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'

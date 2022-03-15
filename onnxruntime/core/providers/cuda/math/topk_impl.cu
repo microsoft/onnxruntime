@@ -197,13 +197,11 @@ __device__ __inline__ bool Equal(const T& t0, const T& t1) {
 }
 
 __device__ __inline__ bool Equal(const float& t0, const float& t1) {
-  auto t2 = t0 > t1 ? t0 - t1 : t1 - t0;
-  return t2 < std::numeric_limits<float>::epsilon();
+  return !(t0 > t1 || t1 > t0);
 }
 
 __device__ __inline__ bool Equal(const double& t0, const double& t1) {
-  auto t2 = t0 > t1 ? t0 - t1 : t1 - t0;
-  return t2 < std::numeric_limits<double>::epsilon();
+  return !(t0 > t1 || t1 > t0);
 }
 
 template<typename T>
@@ -305,7 +303,7 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const TArray<int64_t> el
       } 
     } else {
       if (KK > negative) {
-        KK = dimension - KK + 1;     
+        KK = dimension - KK + 1;
       } else {
         sign = (T)-1;
       } 
@@ -437,9 +435,8 @@ __global__ void ExcludeOutput(int64_t* output_i, int64_t K, int64_t dimension) {
 }
 
 template <typename T>
-Status TopKImpl(const CudaKernel* kernel, const T* input_x, T* output_v, int64_t* output_i, const TArray<int64_t>& elem_nums, size_t size, int32_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension) {
+Status TopKImpl(const CudaKernel* kernel, cudaStream_t stream, const T* input_x, T* output_v, int64_t* output_i, const TArray<int64_t>& elem_nums, size_t size, int32_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension) {
   typedef typename ToCudaType<T>::MappedType CudaT;
-  cudaStream_t stream = kernel->Stream();
   const CudaT* input_x_ptr = reinterpret_cast<const CudaT*>(input_x);
   CudaT* output_v_ptr = reinterpret_cast<CudaT*>(output_v);
 
@@ -490,6 +487,7 @@ Status TopKImpl(const CudaKernel* kernel, const T* input_x, T* output_v, int64_t
 }
 
 #define TOPKIMPLE(T) template Status TopKImpl<T>(const CudaKernel* kernel, \
+                                                 cudaStream_t stream,      \
                                                  const T* input_x,         \
                                                  T* output_v,              \
                                                  int64_t* output_i,        \

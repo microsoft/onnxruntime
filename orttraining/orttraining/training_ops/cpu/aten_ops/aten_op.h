@@ -8,10 +8,10 @@
 namespace onnxruntime {
 namespace contrib {
 
-class ATenOp : public OpKernel {
+class ATen : public OpKernel {
  public:
-  ATenOp(const OpKernelInfo& info) : OpKernel(info) {
-    ORT_THROW_IF_ERROR(info.GetAttr("name", &op_name_));
+  ATen(const OpKernelInfo& info) : OpKernel(info) {
+    ORT_THROW_IF_ERROR(info.GetAttr("operator", &op_name_));
     overload_name_ = info.GetAttrOrDefault<std::string>("overload_name", "");
   }
 
@@ -23,7 +23,7 @@ class ATenOp : public OpKernel {
 };
 
 bool IsATenOperatorExecutorInitialized();
-Status ExecuteReduceSumATenOp(OpKernelContext* p_ctx, const std::vector<int64_t>& axes, bool keepdims);
+Status ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims);
 
 }  // namespace contrib
 }  // namespace onnxruntime

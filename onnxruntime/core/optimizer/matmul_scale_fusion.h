@@ -26,8 +26,8 @@ class MatMulScaleFusion : public GraphTransformer {
    *        of the named initializers.
    */
   MatMulScaleFusion(
-      const std::unordered_set<std::string>& compatible_execution_providers = {},
-      const std::unordered_set<std::string>& excluded_initializer_names = {})
+      const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
+      const InlinedHashSet<std::string>& excluded_initializer_names = {})
       : GraphTransformer{"MatMulScaleFusion", compatible_execution_providers},
         excluded_initializer_names_{excluded_initializer_names} {
   }
@@ -37,7 +37,7 @@ class MatMulScaleFusion : public GraphTransformer {
       Graph& graph, bool& modified,
       int graph_level, const logging::Logger& logger) const override;
 
-  const std::unordered_set<std::string> excluded_initializer_names_;
+  const InlinedHashSet<std::string> excluded_initializer_names_;
 };
 
 }  // namespace onnxruntime

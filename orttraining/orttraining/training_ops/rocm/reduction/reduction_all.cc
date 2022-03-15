@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/rocm/reduction/reduction_all.h"
+#include "orttraining/training_ops/rocm/reduction/reduction_all_impl.h"
 
 #include "core/providers/rocm/reduction/reduction_functions.h"
 #include "core/providers/rocm/shared_inc/accumulation_type.h"
@@ -104,6 +105,9 @@ REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, float, float)
 REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, MLFloat16, float)
 REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, float, MLFloat16)
 REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, MLFloat16, MLFloat16)
+REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, BFloat16, float)
+REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, float, BFloat16)
+REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, BFloat16, BFloat16)
 
 }  // namespace rocm
 }  // namespace onnxruntime

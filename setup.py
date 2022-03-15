@@ -65,8 +65,8 @@ elif parse_arg_remove_boolean(sys.argv, '--use_dnnl'):
     package_name = 'onnxruntime-dnnl'
 elif parse_arg_remove_boolean(sys.argv, '--use_nuphar'):
     package_name = 'onnxruntime-nuphar'
-elif parse_arg_remove_boolean(sys.argv, '--use_stvm'):
-    package_name = 'onnxruntime-stvm'
+elif parse_arg_remove_boolean(sys.argv, '--use_tvm'):
+    package_name = 'onnxruntime-tvm'
 elif parse_arg_remove_boolean(sys.argv, '--use_vitisai'):
     package_name = 'onnxruntime-vitisai'
 elif parse_arg_remove_boolean(sys.argv, '--use_acl'):
@@ -188,7 +188,7 @@ try:
                     if len(args) > 3:
                         subprocess.run(args, check=True, stdout=subprocess.PIPE)
 
-                dest = 'onnxruntime/capi/libonnxruntime_providers_tensorrt.so'
+                dest = 'onnxruntime/capi/libonnxruntime_providers_' + ('migraphx.so' if is_rocm else 'tensorrt.so')
                 if path.isfile(dest):
                     result = subprocess.run(['patchelf', '--print-needed', dest],
                                             check=True, stdout=subprocess.PIPE, universal_newlines=True)
@@ -223,21 +223,21 @@ except ImportError as error:
     print(error)
     bdist_wheel = None
 
-providers_cuda_or_rocm = 'libonnxruntime_providers_rocm.so' if is_rocm else 'libonnxruntime_providers_cuda.so'
-
+providers_cuda_or_rocm = 'libonnxruntime_providers_' + ('rocm.so' if is_rocm else 'cuda.so')
+providers_tensorrt_or_migraphx = 'libonnxruntime_providers_' + ('migraphx.so' if is_rocm else 'tensorrt.so')
 # Additional binaries
 if platform.system() == 'Linux':
     libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.2', 'libmklml_intel.so', 'libmklml_gnu.so', 'libiomp5.so',
             'mimalloc.so']
     dl_libs = ['libonnxruntime_providers_shared.so']
     dl_libs.append(providers_cuda_or_rocm)
-    dl_libs.append('libonnxruntime_providers_tensorrt.so')
+    dl_libs.append(providers_tensorrt_or_migraphx)
     # DNNL, TensorRT & OpenVINO EPs are built as shared libs
     libs.extend(['libonnxruntime_providers_shared.so'])
     libs.extend(['libonnxruntime_providers_dnnl.so'])
-    libs.extend(['libonnxruntime_providers_tensorrt.so'])
     libs.extend(['libonnxruntime_providers_openvino.so'])
     libs.append(providers_cuda_or_rocm)
+    libs.append(providers_tensorrt_or_migraphx)
     # Nuphar Libs
     libs.extend(['libtvm.so.0.5.1'])
     if nightly_build:
@@ -358,6 +358,8 @@ if not enable_training:
 if enable_training:
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
+                     'onnxruntime.training.experimental',
+                     'onnxruntime.training.experimental.gradient_graph',
                      'onnxruntime.training.optim',
                      'onnxruntime.training.ortmodule',
                      'onnxruntime.training.ortmodule.experimental',
@@ -367,7 +369,8 @@ if enable_training:
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator',
-                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops'])
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops',
+                     'onnxruntime.training.utils.data'])
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor'] = ['*.cc']
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils'] = ['*.cc']
     package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator'] = ['*.cc']
@@ -399,8 +402,8 @@ if package_name == 'onnxruntime-nuphar':
     packages += ["onnxruntime.nuphar"]
     extra += [path.join('nuphar', 'NUPHAR_CACHE_VERSION')]
 
-if package_name == 'onnxruntime-stvm':
-    packages += ['onnxruntime.providers.stvm']
+if package_name == 'onnxruntime-tvm':
+    packages += ['onnxruntime.providers.tvm']
 
 package_data["onnxruntime"] = data + examples + extra
 

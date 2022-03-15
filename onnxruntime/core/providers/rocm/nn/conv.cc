@@ -67,12 +67,13 @@ size_t GetMaxWorkspaceSize(const MiopenConvState<miopenConvAlgoPerf_t>& s,
 }
 
 Status SliceOutUnwantedOutputSection(hipStream_t stream,
-                                     const void* input_data, gsl::span<const int64_t> input_dims,
+                                     const void* input_data,
+                                     const gsl::span<const int64_t>& input_dims,
                                      void* output_data,
-                                     gsl::span<const int64_t> output_dims,
-                                     std::vector<int64_t> starts,
-                                     const std::vector<int64_t>& ends,
-                                     const std::vector<int64_t>& axes,
+                                     const gsl::span<const int64_t>& output_dims,
+                                     const gsl::span<const int64_t>& starts,
+                                     const gsl::span<const int64_t>& ends,
+                                     const gsl::span<const int64_t>& axes,
                                      size_t element_size) {
   SliceOp::PrepareForComputeMetadata compute_metadata(input_dims);
 
@@ -95,7 +96,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   //set W
   const Tensor* W = context->Input<Tensor>(1);
   const TensorShape& w_shape = W->Shape();
-  auto w_dims = w_shape.GetDimsAsVector();
+  auto w_dims = w_shape.AsShapeVector();
   s_.w_data = reinterpret_cast<const HipT*>(W->template Data<T>());
   //set B
   if (context->InputCount() >= 3) {
@@ -112,14 +113,14 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
   } else {
     s_.z_data = nullptr;
   }
-  bool input_dims_changed = (s_.last_x_dims != x_dims);
-  bool w_dims_changed = (s_.last_w_dims != w_dims);
+  bool input_dims_changed = (s_.last_x_dims.GetDims() != x_dims);
+  bool w_dims_changed = (s_.last_w_dims.GetDims() != gsl::make_span(w_dims));
   if (input_dims_changed || w_dims_changed) {
     if (input_dims_changed)
       s_.last_x_dims = x_dims;
 
     if (w_dims_changed) {
-      s_.last_w_dims = w_dims;
+      s_.last_w_dims = gsl::make_span(w_dims);
       s_.cached_benchmark_fwd_results.clear();
     }
 
@@ -128,45 +129,45 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
 
     ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
 
-    std::vector<int64_t> kernel_shape;
+    TensorShapeVector kernel_shape;
     ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
     auto rank = kernel_shape.size();
-    std::vector<int64_t> pads(conv_attrs_.pads);
+    ConvAttributes::ConvPadVector pads(conv_attrs_.pads);
     if (pads.empty()) {
       pads.resize(rank * 2, 0);
     }
-    std::vector<int64_t> dilations(conv_attrs_.dilations);
+    TensorShapeVector dilations(conv_attrs_.dilations);
     if (dilations.empty()) {
       dilations.resize(rank, 1);
     }
-    std::vector<int64_t> strides(conv_attrs_.strides);
+    TensorShapeVector strides(conv_attrs_.strides);
     if (strides.empty()) {
       strides.resize(rank, 1);
     }
 
-    std::vector<int64_t> y_dims;
+    TensorShapeVector y_dims;
     y_dims.reserve(2 + rank);  // rank indicates number of feature dimensions - so add 2 to account for 'N' and 'C'
     y_dims.insert(y_dims.begin(), {N, M});
 
-    std::vector<int64_t> y_dims_with_adjusted_pads;
+    TensorShapeVector y_dims_with_adjusted_pads;
     y_dims_with_adjusted_pads.reserve(2 + rank);  // rank indicates number of feature dimensions - so add 2 to account for 'N' and 'C'
     y_dims_with_adjusted_pads.insert(y_dims_with_adjusted_pads.begin(), {N, M});
 
     bool post_slicing_required = false;
-    std::vector<int64_t> slice_starts;
+    TensorShapeVector slice_starts;
     slice_starts.reserve(rank);
 
-    std::vector<int64_t> slice_ends;
+    TensorShapeVector slice_ends;
     slice_ends.reserve(rank);
 
-    std::vector<int64_t> slice_axes;
+    TensorShapeVector slice_axes;
     slice_axes.reserve(rank);
 
     ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShapeWithAdjustedPads(x_shape.Slice(2), kernel_shape,
                                                                      strides, dilations, pads, y_dims, y_dims_with_adjusted_pads,
                                                                      post_slicing_required, slice_starts, slice_ends, slice_axes));
     ORT_ENFORCE(y_dims.size() == y_dims_with_adjusted_pads.size());
-    s_.y_dims = y_dims;
+    s_.y_dims = gsl::make_span(y_dims);
     s_.y_dims_with_adjusted_pads = y_dims_with_adjusted_pads;
     s_.post_slicing_required = post_slicing_required;
     s_.slice_starts = slice_starts;
@@ -186,8 +187,8 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       s_.y_data = reinterpret_cast<HipT*>(s_.Y->template MutableData<T>());
     }
 
-    std::vector<int64_t> x_dims_miopen{x_dims.begin(), x_dims.end()};
-    std::vector<int64_t> y_dims_miopen = !post_slicing_required ? y_dims : y_dims_with_adjusted_pads;
+    TensorShapeVector x_dims_miopen{x_dims.begin(), x_dims.end()};
+    TensorShapeVector y_dims_miopen = !post_slicing_required ? y_dims : y_dims_with_adjusted_pads;
     if (rank < 2) {
       // TODO: Remove asym padding correction.
       x_dims_miopen.push_back(1);
@@ -213,11 +214,11 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       const Tensor* B = context->Input<Tensor>(2);
       const auto& b_shape = B->Shape();
       ORT_RETURN_IF_NOT(b_shape.NumDimensions() == 1, "bias should be 1D");
-      std::vector<int64_t> b_dims(2 + kernel_shape.size(), 1);
+      TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
       b_dims[1] = b_shape[0];
       ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, MiopenTensor::GetDataType<HipT>()));
     } else if (bias_expected) {
-      std::vector<int64_t> b_dims(2 + kernel_shape.size(), 1);
+      TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
       b_dims[1] = w_dims[0];
       auto malloc_size = b_dims[1] * sizeof(HipT);
       ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, MiopenTensor::GetDataType<HipT>()));
@@ -323,18 +324,18 @@ MiopenConvolutionDescriptor::~MiopenConvolutionDescriptor() {
 
 Status MiopenConvolutionDescriptor::Set(
     size_t rank,
-    const std::vector<int64_t>& pads,
-    const std::vector<int64_t>& strides,
-    const std::vector<int64_t>& dilations,
+    gsl::span<const int64_t> pads,
+    gsl::span<const int64_t> strides,
+    gsl::span<const int64_t> dilations,
     int groups,
     miopenConvolutionMode_t mode,
     miopenDataType_t data_type) {
   if (!desc_)
     MIOPEN_RETURN_IF_ERROR(miopenCreateConvolutionDescriptor(&desc_));
 
-  std::vector<int> pad_dims(rank);
-  std::vector<int> stride_dims(rank);
-  std::vector<int> dilation_dims(rank);
+  InlinedVector<int> pad_dims(rank);
+  InlinedVector<int> stride_dims(rank);
+  InlinedVector<int> dilation_dims(rank);
   for (size_t i = 0; i < rank; i++) {
     pad_dims[i] = gsl::narrow_cast<int>(pads[i]);
     stride_dims[i] = gsl::narrow_cast<int>(strides[i]);

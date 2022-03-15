@@ -359,7 +359,7 @@ class UpsampleBase {
 
   void ComputeOutputShape(const std::vector<float>& scales,
                           gsl::span<const int64_t> input_dims,
-                          std::vector<int64_t>& output_dims) const {
+                          TensorShapeVector& output_dims) const {
     for (std::size_t i = 0; i < input_dims.size(); i++) {
       output_dims[i] = static_cast<int64_t>(scales[i] * input_dims[i]);
     }
@@ -375,7 +375,7 @@ class Upsample : public UpsampleBase, public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
   Status BaseCompute(OpKernelContext* context, const std::vector<float>& roi, const std::vector<float>& scales,
-                     const std::vector<int64_t>& output_dims) const;
+                     const gsl::span<const int64_t>& output_dims) const;
 };
 
 }  // namespace onnxruntime
