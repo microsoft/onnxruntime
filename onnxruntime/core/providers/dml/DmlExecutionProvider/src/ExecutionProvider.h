@@ -124,6 +124,7 @@ namespace Dml
 
         STDMETHOD_(D3D12_COMMAND_LIST_TYPE, GetCommandListTypeForQueue)() const override;
         STDMETHOD_(void, Flush)() const override;
+        STDMETHOD_(void, FlushAndSync)() const override;
 
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
 

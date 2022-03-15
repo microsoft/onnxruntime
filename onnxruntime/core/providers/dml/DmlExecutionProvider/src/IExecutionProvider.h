@@ -63,6 +63,7 @@ namespace Dml
 
         STDMETHOD_(D3D12_COMMAND_LIST_TYPE, GetCommandListTypeForQueue)() const noexcept = 0;
         STDMETHOD_(void, Flush)() const noexcept = 0;
+        STDMETHOD_(void, FlushAndSync)() const noexcept = 0;
 
         STDMETHOD_(ID3D12Resource*, DecodeResource)(void* allocation) const noexcept = 0;
         STDMETHOD(AllocatePooledResource(size_t size, AllocatorRoundingMode roundingMode, ID3D12Resource **d3dResource, IUnknown* *pooledResource)) const noexcept = 0;
