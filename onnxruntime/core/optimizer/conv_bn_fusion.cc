@@ -61,11 +61,12 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
     return Status::OK();
   }
 
-  Initializer bn_scale{*bn_scale_tensor_proto, graph.ModelPath()};
-  Initializer bn_B{*bn_B_tensor_proto, graph.ModelPath()};
-  Initializer bn_mean{*bn_mean_tensor_proto, graph.ModelPath()};
-  Initializer bn_var{*bn_var_tensor_proto, graph.ModelPath()};
-  Initializer conv_W{*conv_W_tensor_proto, graph.ModelPath()};
+  InitializerOption opt{graph.ModelPath(), graph.ExternalDataMap()};
+  Initializer bn_scale{*bn_scale_tensor_proto, opt};
+  Initializer bn_B{*bn_B_tensor_proto, opt};
+  Initializer bn_mean{*bn_mean_tensor_proto, opt};
+  Initializer bn_var{*bn_var_tensor_proto, opt};
+  Initializer conv_W{*conv_W_tensor_proto, opt};
 
   std::unique_ptr<Initializer> conv_B = nullptr;
   const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
@@ -79,7 +80,7 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
         conv_B_tensor_proto->data_type() != bn_B_tensor_proto->data_type()) {
       return Status::OK();
     }
-    conv_B = std::make_unique<Initializer>(*conv_B_tensor_proto, graph.ModelPath());
+    conv_B = std::make_unique<Initializer>(*conv_B_tensor_proto, opt);
   }
 
   // Calculate new value of initializers of conv node

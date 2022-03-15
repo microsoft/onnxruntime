@@ -62,8 +62,9 @@ Status ConvAddFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modifie
       return Status::OK();
     }
 
-    Initializer conv_B{*conv_B_tensor_proto, graph.ModelPath()};
-    Initializer add_B{*add_B_tensor_proto, graph.ModelPath()};
+    InitializerOption opt{graph.ModelPath(), graph.ExternalDataMap()};
+    Initializer conv_B{*conv_B_tensor_proto, opt};
+    Initializer add_B{*add_B_tensor_proto, opt};
 
     if (conv_B.size() != add_B.size()) {
       return Status::OK();

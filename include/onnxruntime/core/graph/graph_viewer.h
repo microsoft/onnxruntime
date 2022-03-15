@@ -51,6 +51,11 @@ class GraphViewer {
   /** Gets the path of the owning model if any **/
   const Path& ModelPath() const noexcept { return graph_->ModelPath(); }
 
+  /** Gets the external data mapping table, if any. */
+  const std::unordered_map<std::string, const void*>* ExternalDataMap() const noexcept {
+    return graph_->ExternalDataMap();
+  }
+
   /**
   Gets a tensor created from an initializer.
   @param tensor_name The tensor name

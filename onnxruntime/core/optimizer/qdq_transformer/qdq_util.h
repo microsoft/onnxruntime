@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <unordered_map>
 #include <functional>
 #include <string>
 
@@ -36,7 +37,8 @@ using GetConstantInitializerFn = std::function<const ONNX_NAMESPACE::TensorProto
 bool IsQDQPairSupported(
     const Node& q_node, const Node& dq_node,
     const GetConstantInitializerFn& get_const_initializer,
-    const Path& model_path);
+    const Path& model_path,
+    const std::unordered_map<std::string, const void*>* external_data_map);
 
 // Check if DQ is supported in extended level QDQ transformers. It requires:
 // 1. DQ doesn't have optional input.

@@ -16,7 +16,8 @@ namespace onnxruntime::QDQ {
 bool IsQDQPairSupported(
     const Node& q_node, const Node& dq_node,
     const GetConstantInitializerFn& get_const_initializer,
-    const Path& model_path) {
+    const Path& model_path,
+    const std::unordered_map<std::string, const void*>* external_data_map) {
   ConstPointerContainer<std::vector<NodeArg*>> dq_input_defs = dq_node.InputDefs();
   ConstPointerContainer<std::vector<NodeArg*>> q_input_defs = q_node.InputDefs();
 
@@ -48,10 +49,11 @@ bool IsQDQPairSupported(
   }
 
   // check Q/DQ have same scale and zero point
-  Initializer q_zp(*q_zp_tensor_proto, model_path);
-  Initializer q_scale(*q_scale_tensor_proto, model_path);
-  Initializer dq_zp(*dq_zp_tensor_proto, model_path);
-  Initializer dq_scale(*dq_scale_tensor_proto, model_path);
+  InitializerOption opt{model_path, external_data_map};
+  Initializer q_zp(*q_zp_tensor_proto, opt);
+  Initializer q_scale(*q_scale_tensor_proto, opt);
+  Initializer dq_zp(*dq_zp_tensor_proto, opt);
+  Initializer dq_scale(*dq_scale_tensor_proto, opt);
 
   return q_zp.data_type() == dq_zp.data_type() &&
          *q_zp.data<int8_t>() == *dq_zp.data<int8_t>() &&

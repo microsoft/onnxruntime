@@ -108,7 +108,7 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
     return graph_viewer.GetConstantInitializer(initializer_name, true);
   };
 
-  return IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
+  return IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath(), graph_viewer.ExternalDataMap());
 }
 
 bool DropDQNodeGroupSelector::CheckDQNodes(const Node& node, const std::vector<const Node*>& dq_nodes) const {

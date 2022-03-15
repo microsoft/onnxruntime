@@ -2072,20 +2072,21 @@ TEST_F(GraphTransformationTests, ReluClip11Fusion) {
 
         auto type = min_input->data_type();
 
+        InitializerOption opt{graph.ModelPath(), graph.ExternalDataMap()};
         if (&node == &clip1) {
           // fusion with float16 data and min set to 0
           EXPECT_EQ(type, ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_FLOAT16);
-          MLFloat16 value = *Initializer(*min_input, graph.ModelPath()).data<MLFloat16>();
+          MLFloat16 value = *Initializer(*min_input, opt).data<MLFloat16>();
           EXPECT_EQ(math::halfToFloat(value.val), 0.f) << "Min was not 0.f. Got:" << math::halfToFloat(value.val);
         } else if (&node == &clip2) {
           // fusion with float data and min untouched
           EXPECT_EQ(type, ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_FLOAT);
-          float value = *Initializer(*min_input, graph.ModelPath()).data<float>();
+          float value = *Initializer(*min_input, opt).data<float>();
           EXPECT_EQ(value, 1.0) << "Min should have remained unchanged but is now " << value;
         } else if (&node == &clip3) {
           // fusion with no min so type comes from input
           EXPECT_EQ(type, ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_FLOAT);
-          float value = *Initializer(*min_input, graph.ModelPath()).data<float>();
+          float value = *Initializer(*min_input, opt).data<float>();
           EXPECT_EQ(value, 0.f) << "Min was not 0.f. Got:" << value;
 
         } else {
@@ -2143,7 +2144,8 @@ TEST_F(GraphTransformationTests, ReshapeFusionTest) {
       const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
       ASSERT_TRUE(tensor_proto != nullptr);
 
-      auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+      InitializerOption opt{graph.ModelPath(), graph.ExternalDataMap()};
+      auto initializer = std::make_unique<Initializer>(*tensor_proto, opt);
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
       EXPECT_EQ(initializer->size(), 4);
 
@@ -2179,7 +2181,8 @@ TEST_F(GraphTransformationTests, ReshapeFusionOneConstTest) {
       const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
       ASSERT_TRUE(tensor_proto != nullptr);
 
-      auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+      InitializerOption opt{graph.ModelPath(), graph.ExternalDataMap()};
+      auto initializer = std::make_unique<Initializer>(*tensor_proto, opt);
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
       EXPECT_EQ(initializer->size(), 3);
 
@@ -2214,7 +2217,8 @@ TEST_F(GraphTransformationTests, ReshapeFusionInternalNodeIsOutput) {
       const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
       ASSERT_TRUE(tensor_proto != nullptr);
 
-      auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+      InitializerOption opt{graph.ModelPath(), graph.ExternalDataMap()};
+      auto initializer = std::make_unique<Initializer>(*tensor_proto, opt);
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
       EXPECT_EQ(initializer->size(), 3);
 
@@ -2250,7 +2254,8 @@ TEST_F(GraphTransformationTests, ReshapeFusionInternalReuseTest) {
       const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
       ASSERT_TRUE(tensor_proto != nullptr);
 
-      auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+      InitializerOption opt{graph.ModelPath(), graph.ExternalDataMap()};
+      auto initializer = std::make_unique<Initializer>(*tensor_proto, opt);
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
       EXPECT_EQ(initializer->size(), 5);
 
@@ -2309,7 +2314,8 @@ TEST_F(GraphTransformationTests, ReshapeFusionMultipleValuesInInitializerSubgrap
       const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
       ASSERT_TRUE(tensor_proto != nullptr);
 
-      auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+      InitializerOption opt{graph.ModelPath(), graph.ExternalDataMap()};
+      auto initializer = std::make_unique<Initializer>(*tensor_proto, opt);
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
       EXPECT_EQ(initializer->size(), 3);
 
@@ -2342,7 +2348,8 @@ TEST_F(GraphTransformationTests, ReshapeFusionMultipleValuesInInitializerApplies
       const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
       ASSERT_TRUE(tensor_proto != nullptr);
 
-      auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+      InitializerOption opt{graph.ModelPath(), graph.ExternalDataMap()};
+      auto initializer = std::make_unique<Initializer>(*tensor_proto, opt);
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
       EXPECT_EQ(initializer->size(), 3);
 
@@ -2412,7 +2419,8 @@ TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraphMultipleOutputs) {
       const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
       ASSERT_TRUE(tensor_proto != nullptr);
 
-      auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+      InitializerOption opt{graph.ModelPath(), graph.ExternalDataMap()};
+      auto initializer = std::make_unique<Initializer>(*tensor_proto, opt);
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
       EXPECT_EQ(initializer->size(), 3);
 
@@ -2446,7 +2454,8 @@ TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraph) {
       const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
       ASSERT_TRUE(tensor_proto != nullptr);
 
-      auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+      InitializerOption opt{graph.ModelPath(), graph.ExternalDataMap()};
+      auto initializer = std::make_unique<Initializer>(*tensor_proto, opt);
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
       EXPECT_EQ(initializer->size(), 3);
 
@@ -2480,7 +2489,8 @@ TEST_F(GraphTransformationTests, ReshapeFusionWithSlice1) {
       const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
       ASSERT_TRUE(tensor_proto != nullptr);
 
-      auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+      InitializerOption opt{graph.ModelPath(), graph.ExternalDataMap()};
+      auto initializer = std::make_unique<Initializer>(*tensor_proto, opt);
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
       EXPECT_EQ(initializer->size(), 3);
 
@@ -2550,7 +2560,8 @@ TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraphWithDiv) {
       const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
       ASSERT_TRUE(tensor_proto != nullptr);
 
-      auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+      InitializerOption opt{graph.ModelPath(), graph.ExternalDataMap()};
+      auto initializer = std::make_unique<Initializer>(*tensor_proto, opt);
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
       EXPECT_EQ(initializer->size(), 3);
 
@@ -2586,7 +2597,8 @@ TEST_F(GraphTransformationTests, ReshapeFusionConcatSubgraphWithMul) {
       const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
       ASSERT_TRUE(tensor_proto != nullptr);
 
-      auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+      InitializerOption opt{graph.ModelPath(), graph.ExternalDataMap()};
+      auto initializer = std::make_unique<Initializer>(*tensor_proto, opt);
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
       EXPECT_EQ(initializer->size(), 3);
 
@@ -2620,7 +2632,8 @@ TEST_F(GraphTransformationTests, ReshapeFusionDistilBertTest) {
       const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[1]->Name());
       ASSERT_TRUE(tensor_proto != nullptr);
 
-      auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+      InitializerOption opt{graph.ModelPath(), graph.ExternalDataMap()};
+      auto initializer = std::make_unique<Initializer>(*tensor_proto, opt);
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_INT64);
       EXPECT_EQ(initializer->size(), 4);
 
@@ -2698,7 +2711,8 @@ static void ValidateAttention(Graph& graph) {
       ASSERT_TRUE(tensor_proto != nullptr);
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
-      auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+      InitializerOption opt{graph.ModelPath(), graph.ExternalDataMap()};
+      auto initializer = std::make_unique<Initializer>(*tensor_proto, opt);
       EXPECT_EQ(initializer->size(), 192);
 
       // Validate two rows (2x24 items) for sanity check.
@@ -2762,7 +2776,7 @@ static void ValidateAttention(Graph& graph) {
       ASSERT_TRUE(tensor_proto != nullptr);
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
-      auto initializer2 = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+      auto initializer2 = std::make_unique<Initializer>(*tensor_proto, opt);
       EXPECT_EQ(initializer2->size(), 24);
 
       std::vector<double> expected_value2 = {
@@ -4009,7 +4023,8 @@ static void EmbedLayerNormFusionFormat5(const std::basic_string<ORTCHAR_T>& file
       ASSERT_TRUE(tensor_proto != nullptr);
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
-      auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+      InitializerOption opt{graph.ModelPath(), graph.ExternalDataMap()};
+      auto initializer = std::make_unique<Initializer>(*tensor_proto, opt);
       EXPECT_EQ(initializer->size(), 12);
 
       std::vector<double> expected_value = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 8.0, 7.0, 6.0};

@@ -752,17 +752,9 @@ Status TensorProtoToTensor(const Env& /*env*/, const std::unordered_map<std::str
         tensor_proto,
         nullptr,
         external_data_name, file_offset, raw_data_len));
-
-    std::string external_data_key = ONNXStringToString(external_data_name);
-
-    // load the file
-    if (external_data_map.count(external_data_key)) {
-      auto it = external_data_map.find(external_data_key);
-    }
-
     // load the file
     ORT_RETURN_IF_ERROR(GetDataContentFromExternalBuffer(
-        external_data_map, external_data_key, file_offset, raw_data_len, raw_data));
+        external_data_map, ONNXStringToString(external_data_name), file_offset, raw_data_len, raw_data));
   } else if (utils::HasRawData(tensor_proto)) {
     raw_data = const_cast<char*>(tensor_proto.raw_data().data());
     // TODO The line above has const-correctness issues. Below is a possible fix which copies the tensor_proto data

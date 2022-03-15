@@ -51,7 +51,7 @@ bool NoopElimination::SatisfyCondition(const Graph& graph, const Node& node, con
   }
 
   int32_t data_type = initializer->data_type();
-  Initializer add_init(*initializer, graph.ModelPath());
+  Initializer add_init(*initializer, {graph.ModelPath(), graph.ExternalDataMap()});
   if (add_init.size() > 1) {
     return false;
   }

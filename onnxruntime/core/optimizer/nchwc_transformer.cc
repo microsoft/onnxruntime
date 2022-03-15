@@ -408,7 +408,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     // Reuse the existing NodeArg.
     nchwc_conv_W_arg = filters_it->second;
   } else {
-    Initializer conv_W{*conv_W_tensor_proto, graph_.ModelPath()};
+    Initializer conv_W{*conv_W_tensor_proto, {graph_.ModelPath(), graph_.ExternalDataMap()}};
     const auto& conv_W_dims = conv_W.dims();
 
     int64_t reordered_filter_size = nchwc_output_channels * filter_input_channels;
@@ -448,7 +448,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
       // Reuse the existing NodeArg.
       nchwc_conv_B_arg = biases_it->second;
     } else {
-      Initializer conv_B{*conv_B_tensor_proto, graph_.ModelPath()};
+      Initializer conv_B{*conv_B_tensor_proto, {graph_.ModelPath(), graph_.ExternalDataMap()}};
 
       InlinedVector<float> aligned_bias(gsl::narrow<size_t>(nchwc_output_channels));
       ORT_ENFORCE(output_channels <= nchwc_output_channels, "Buffer overflow");
@@ -860,11 +860,11 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
   if (bn_var_tensor_proto == nullptr) {
     return;
   }
-
-  Initializer bn_scale{*bn_scale_tensor_proto, graph_.ModelPath()};
-  Initializer bn_B{*bn_B_tensor_proto, graph_.ModelPath()};
-  Initializer bn_mean{*bn_mean_tensor_proto, graph_.ModelPath()};
-  Initializer bn_var{*bn_var_tensor_proto, graph_.ModelPath()};
+  InitializerOption opt{graph_.ModelPath(), graph_.ExternalDataMap()};
+  Initializer bn_scale{*bn_scale_tensor_proto, opt};
+  Initializer bn_B{*bn_B_tensor_proto, opt};
+  Initializer bn_mean{*bn_mean_tensor_proto, opt};
+  Initializer bn_var{*bn_var_tensor_proto, opt};
 
   // Calculate the scale and bias for the replacement convolution.
   bn_var.add(epsilon);
@@ -1041,7 +1041,7 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
       return;
     }
 
-    Initializer sizes{*sizes_tensor_proto, graph_.ModelPath()};
+    Initializer sizes{*sizes_tensor_proto, {graph_.ModelPath(), graph_.ExternalDataMap()}};
     auto* sizes_data = sizes.template data<int64_t>();
 
     // The sizes data can only be used if the input shape is static and the
@@ -1071,7 +1071,7 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
       return;
     }
 
-    Initializer scales{*scales_tensor_proto, graph_.ModelPath()};
+    Initializer scales{*scales_tensor_proto, {graph_.ModelPath(), graph_.ExternalDataMap()}};
     auto* scales_data = scales.template data<float>();
 
     // Cast the scales to integers and verify that the scales are positive and

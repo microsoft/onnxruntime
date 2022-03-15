@@ -4,6 +4,8 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/optimizer/initializer.h"
 
+#include <codecvt>
+
 #include "gsl/gsl"
 
 #include "core/common/path.h"
@@ -12,6 +14,20 @@
 #include "core/platform/env.h"
 
 namespace onnxruntime {
+template <typename T>
+std::string ONNXStringToString(const T& onnx_string);
+
+template <>
+std::string ONNXStringToString(const std::string& onnx_string) {
+  return onnx_string;
+}
+
+template <>
+std::string ONNXStringToString(const std::wstring& onnx_string) {
+  std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+  return converter.to_bytes(onnx_string);
+}
+
 Status Initializer::ReadExternalRawData(
     const ONNX_NAMESPACE::TensorProto& tensor_proto, const Path& model_path, std::vector<char>& raw_data) {
   ORT_RETURN_IF_NOT(
@@ -55,8 +71,8 @@ Status Initializer::ReadExternalRawData(
   return Status::OK();
 }
 
-Status Initializer::CreateDummyRawData(
-    const ONNX_NAMESPACE::TensorProto& tensor_proto, std::vector<char>& raw_data) {
+Status Initializer::ReadExternalRawData(
+    const ONNX_NAMESPACE::TensorProto& tensor_proto, const std::unordered_map<std::string, const void*>& external_data_map, std::vector<char>& raw_data) {
   ORT_RETURN_IF_NOT(
       tensor_proto.data_type() != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED &&
           tensor_proto.data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING,
@@ -77,7 +93,19 @@ Status Initializer::CreateDummyRawData(
       "Computed size: ", actual_tensor_data_length,
       ", external_data.length: ", external_data_length);
 
-  raw_data = std::vector<char>(actual_tensor_data_length);
+  auto buffer_offset = external_data->GetOffset();
+
+  auto external_data_name = external_data->GetRelPath();
+  auto external_data_key = ONNXStringToString(external_data_name);
+  auto it = external_data_map.find(external_data_key);
+  ORT_RETURN_IF(it == external_data_map.end());
+
+  std::vector<char> buffer(actual_tensor_data_length);
+  std::copy((const char*)it->second + buffer_offset,
+            (const char*)it->second + buffer_offset + actual_tensor_data_length,
+            buffer.data());
+
+  raw_data = std::move(buffer);
   return Status::OK();
 }
 }  // namespace onnxruntime

@@ -71,7 +71,7 @@ class Initializer final {
   }
 
   Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-              const Path& model_path) {
+              const InitializerOption& opt) {
     data_type_ = tensor_proto.data_type();
     if (utils::HasName(tensor_proto)) {
       name_ = tensor_proto.name();
@@ -152,18 +152,18 @@ class Initializer final {
       }
     } else {  // tensor_proto.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL
 #if !defined(ORT_MINIMAL_BUILD)
-      if (model_path.IsEmpty())
+      if (opt.external_data_map != nullptr)
       {
         // Ort::Session buffer constructor will go here.
         // This workaround can that us use the user initializer afterward.
-        const auto status = CreateDummyRawData(tensor_proto, raw_data_);
+        const auto status = ReadExternalRawData(tensor_proto, *opt.external_data_map, raw_data_);
         ORT_ENFORCE(status.IsOK(), "ReadExternalRawData() failed: ", status.ErrorMessage());
       } else {
-        const auto status = ReadExternalRawData(tensor_proto, model_path, raw_data_);
+        const auto status = ReadExternalRawData(tensor_proto, opt.model_path, raw_data_);
         ORT_ENFORCE(status.IsOK(), "ReadExternalRawData() failed: ", status.ErrorMessage());
       }
 #else
-      ORT_UNUSED_PARAMETER(model_path);
+      ORT_UNUSED_PARAMETER(opt);
       ORT_THROW("External data is not supported in an ORT formal model.");
 #endif
     }
@@ -818,8 +818,8 @@ class Initializer final {
       const ONNX_NAMESPACE::TensorProto& tensor_proto, const Path& model_path, std::vector<char>& raw_data);
 #endif
 
-  static Status CreateDummyRawData(
-      const ONNX_NAMESPACE::TensorProto& tensor_proto, std::vector<char>& raw_data);
+  static Status ReadExternalRawData(
+      const ONNX_NAMESPACE::TensorProto& tensor_proto, const std::unordered_map<std::string, const void*>& external_data_map, std::vector<char>& raw_data);
 
   int data_type_;
   std::string name_;

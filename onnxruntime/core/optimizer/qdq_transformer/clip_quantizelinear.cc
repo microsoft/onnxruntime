@@ -26,7 +26,8 @@ static bool GetQConstantLowerUpper(const Graph& graph, const Node& node, float& 
     return false;
   }
 
-  Initializer s_initializer(*s_tensor_proto, graph.ModelPath());
+  InitializerOption opt{graph.ModelPath(), graph.ExternalDataMap()};
+  Initializer s_initializer(*s_tensor_proto, opt);
   if (s_initializer.dims().size() != 0 ||
       s_initializer.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     return false;
@@ -41,7 +42,7 @@ static bool GetQConstantLowerUpper(const Graph& graph, const Node& node, float& 
     return false;
   }
 
-  Initializer zp_initializer(*zp_tensor_proto, graph.ModelPath());
+  Initializer zp_initializer(*zp_tensor_proto, opt);
   if (zp_initializer.dims().size() != 0) {
     return false;
   }

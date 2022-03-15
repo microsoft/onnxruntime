@@ -99,9 +99,10 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
   assert(nullptr != q_tensor);
   assert(nullptr != k_tensor);
   assert(nullptr != v_tensor);
-  Initializer q_initializer(*q_tensor, graph.ModelPath());
-  Initializer k_initializer(*k_tensor, graph.ModelPath());
-  Initializer v_initializer(*v_tensor, graph.ModelPath());
+  InitializerOption opt{graph.ModelPath(), graph.ExternalDataMap()};
+  Initializer q_initializer(*q_tensor, opt);
+  Initializer k_initializer(*k_tensor, opt);
+  Initializer v_initializer(*v_tensor, opt);
   auto data_type = q_tensor->data_type();
 
   ONNX_NAMESPACE::TensorProto initializer;

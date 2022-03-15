@@ -57,8 +57,9 @@ Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
     using ONNX_TENSOR_ELEM_TYPE = ONNX_NAMESPACE::TensorProto::DataType;
-    Initializer q_zero_point(*q_zp_tensor_proto, graph.ModelPath());
-    Initializer dq_zero_point(*dq_zp_tensor_proto, graph.ModelPath());
+    InitializerOption opt{graph.ModelPath(), graph.ExternalDataMap()};
+    Initializer q_zero_point(*q_zp_tensor_proto, opt);
+    Initializer dq_zero_point(*dq_zp_tensor_proto, opt);
     if (q_zero_point.size() != 1 ||
         dq_zero_point.size() != 1 ||
         q_zero_point.data_type() != ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_INT8 ||
