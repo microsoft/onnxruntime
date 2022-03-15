@@ -76,17 +76,21 @@ class Clip : public OpenCLKernel {
   Status Compute(OpKernelContext* context) const override {
     VLOG_CL_NODE();
     const auto* X = context->Input<Tensor>(0);
+    const auto* min = context->Input<Tensor>(1);
+    const auto* max = context->Input<Tensor>(2);
     const auto* Y = context->Output(0, X->Shape());
-    float lower_bound = std::numeric_limits<float>::lowest();
-    float upper_bound = std::numeric_limits<float>::max();
-    if (context->InputCount() > 1) {
-      lower_bound = *(context->Input<Tensor>(1)->Data<float>());
+    float min_val = std::numeric_limits<float>::lowest();
+    float max_val = std::numeric_limits<float>::max();
+    if (min) {
+      ORT_ENFORCE(min->Shape().IsScalar(), "min should be a scalar.");
+      min_val = *(min->Data<float>());
     }
-    if (context->InputCount() > 2) {
-      upper_bound = *(context->Input<Tensor>(2)->Data<float>());
+    if (max) {
+      ORT_ENFORCE(max->Shape().IsScalar(), "max should be a scalar.");
+      max_val = *(max->Data<float>());
     }
 
-    return ClipComputeImpl(exec_, GetKernel("Clip"), X, Y, lower_bound, upper_bound);
+    return ClipComputeImpl(exec_, GetKernel("Clip"), X, Y, min_val, max_val);
   }
 };
 
