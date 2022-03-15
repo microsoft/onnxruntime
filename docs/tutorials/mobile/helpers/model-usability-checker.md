@@ -36,13 +36,6 @@ optional arguments:
                         Logging level (default: info)
 ```
 
-Example output for a QDQ format model
-
-```
-
-INFO:  Run `python -m onnxruntime.tools.convert_onnx_models_to_ort ...` to convert the ONNX model to ORT format. By default, the conversion tool will create an ORT format model with saved optimizations which can potentially be applied at runtime (with a .with_runtime_opt.ort file extension) for use with NNAPI or CoreML, and a fully optimized ORT format model (with a .ort file extension) for use with the CPU EP.
-INFO:  As NNAPI or CoreML may provide benefits with this model it is recommended to compare the performance of the <model>.with_runtime_opt.ort model using the NNAPI EP on Android, and the CoreML EP on iOS, against the performance of the <model>.ort model using the CPU EP.
-```
 
 ## Use with NNAPI and CoreML
 
@@ -82,10 +75,9 @@ The opset and operators used in the model are checked to determine if they are s
 
 Example output if the model can be used as-is:
 ```
-INFO:  ---------------
-INFO:  Checking if pre-built ORT Mobile package can be used with mobilenet_v1_1.0_224_quant.onnx once model is converted from ONNX to ORT format using onnxruntime.tools.convert_onnx_models_to_ort...
+INFO:  Checking if pre-built ORT Mobile package can be used with mobilenet_v1_1.0_224_quant.onnx once model is
+       converted from ONNX to ORT format using onnxruntime.tools.convert_onnx_models_to_ort...
 INFO:  Model should work with the pre-built package.
-INFO:  ---------------
 ```
 
 If the model uses an old ONNX opset, information will be provided on how to update it. 
@@ -93,10 +85,12 @@ See [the documentation here](./index.md#onnx-model-opset-updater) for more infor
 
 Example output:
 ```
-INFO:  Checking if pre-built ORT Mobile package can be used with abs_free_dimensions.onnx once model is converted from ONNX to ORT format using onnxruntime.tools.convert_onnx_models_to_ort...
+INFO:  Checking if pre-built ORT Mobile package can be used with abs_free_dimensions.onnx once model is converted 
+       from ONNX to ORT format using onnxruntime.tools.convert_onnx_models_to_ort...
 INFO:  Model uses ONNX opset 9.
 INFO:  The pre-built package only supports ONNX opsets [12, 13, 14, 15].
-INFO:  Please try updating the ONNX model opset to a supported version using python -m onnxruntime.tools.onnx_model_utils.update_onnx_opset ...
+INFO:  Please try updating the ONNX model opset to a supported version using
+       python -m onnxruntime.tools.onnx_model_utils.update_onnx_opset ...
 ```
 
 ## Recommendation
@@ -104,7 +98,12 @@ INFO:  Please try updating the ONNX model opset to a supported version using pyt
 Finally the script will provide information on how to [convert the model to the ORT format](../../../../docs/reference/ort-model-format.md) required by ORT Mobile, and recommend which of the two ORT format models to use.
 
 ```
-INFO:  Run `python -m onnxruntime.tools.convert_onnx_models_to_ort ...` to convert the ONNX model to ORT format. By default, the conversion tool will create an ORT format model with saved optimizations which can potentially be applied at runtime (with a .with_runtime_opt.ort file extension) for use with NNAPI or CoreML, and a fully optimized ORT format model (with a .ort file extension) for use with the CPU EP.
-INFO:  As NNAPI or CoreML may provide benefits with this model it is recommended to compare the performance of the <model>.with_runtime_opt.ort model using the NNAPI EP on Android, and the CoreML EP on iOS, against the performance of the <model>.ort model using the CPU EP.
+INFO:  Run `python -m onnxruntime.tools.convert_onnx_models_to_ort ...` to convert the ONNX model to ORT format. 
+       By default, the conversion tool will create an ORT format model with saved optimizations which can potentially be 
+       applied at runtime (with a .with_runtime_opt.ort file extension) for use with NNAPI or CoreML, and a fully
+       optimized ORT format model (with a .ort file extension) for use with the CPU EP.
+INFO:  As NNAPI or CoreML may provide benefits with this model it is recommended to compare the performance of 
+       the <model>.with_runtime_opt.ort model using the NNAPI EP on Android, and the CoreML EP on iOS, against the 
+       performance of the <model>.ort model using the CPU EP.
 ```
 
