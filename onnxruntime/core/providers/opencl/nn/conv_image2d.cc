@@ -23,17 +23,17 @@ namespace {
 #include "opencl_generated/nn/kernels/conv_image2d_winograd.cl.inc"
 
 namespace kernel_name {
-auto Conv2D = "Conv2D";
-auto Conv2DK1 = "Conv2DK1";
-auto Conv2DK1S1 = "Conv2DK1S1";
-auto DepthwiseConv2D = "DepthwiseConv2D";
-auto DepthwiseConv2DS1 = "DepthwiseConv2DS1";
-auto TransformToMatrixV = "TransformToMatrixV";
-auto MatrixInnerProduct = "MatrixInnerProduct";
-auto TransformFromMatrixM = "TransformFromMatrixM";
-auto CopyGenericWeight = "CopyGenericConv2DWeightBufferToImage";
-auto CopyDepthwiseWeight = "CopyDepthwiseConv2DWeightBufferToImage";
-auto CopyWinogradWeight = "CopyBuffer2DToImage2D";
+constexpr const char* Conv2D = "Conv2D";
+constexpr const char* Conv2DK1 = "Conv2DK1";
+constexpr const char* Conv2DK1S1 = "Conv2DK1S1";
+constexpr const char* DepthwiseConv2D = "DepthwiseConv2D";
+constexpr const char* DepthwiseConv2DS1 = "DepthwiseConv2DS1";
+constexpr const char* TransformToMatrixV = "TransformToMatrixV";
+constexpr const char* MatrixInnerProduct = "MatrixInnerProduct";
+constexpr const char* TransformFromMatrixM = "TransformFromMatrixM";
+constexpr const char* CopyGenericWeight = "CopyGenericConv2DWeightBufferToImage";
+constexpr const char* CopyDepthwiseWeight = "CopyDepthwiseConv2DWeightBufferToImage";
+constexpr const char* CopyWinogradWeight = "CopyBuffer2DToImage2D";
 }  // namespace kernel_name
 
 }  // namespace
