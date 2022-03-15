@@ -60,4 +60,18 @@ stages:
         buildVersionToDownload: 'latest'
         artifactName: 'NPM_packages'
         targetPath: '$(Pipeline.Workspace)'
-      displayName: 'Download Pipeline Artifact - onnxruntime-node'
+      displayName: 'Download onnxruntime-node Pipeline Artifact'
+    
+    - task: CopyFiles@2
+      inputs:
+        sourceFolder: $(Pipeline.Workspace)
+        contents: onnxruntime-node-*.tgz
+        targetFolder: $(Build.ArtifactStagingDirectory)
+      displayName: 'Copy onnxruntime-node Artifacts'
+    
+    - task: PublishPipelineArtifact@0
+      inputs:
+        artifactName: 'NPM_packages'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+      displayName: 'Publish onnxruntime-node Pipeline Artifact'
+      
