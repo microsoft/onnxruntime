@@ -11,17 +11,17 @@ parameters:
 
 variables:
   ${{ if eq(parameters.NpmPublish, 'nightly (@dev)') }}:
-    npm_packaging_mode: 'dev'
+    NpmPackagingMode: 'dev'
   ${{ if eq(parameters.NpmPublish, 'release candidate (@rc)') }}:
-    npm_packaging_mode: 'rc'
+    NpmPackagingMode: 'rc'
   ${{ if eq(parameters.NpmPublish, 'production (@latest)') }}:
-    npm_packaging_mode: 'release'
+    NpmPackagingMode: 'release'
   ${{ if eq(parameters.NpmPublish, 'custom') }}:
-    npm_packaging_mode: '$(VersionSuffix)'
+    NpmPackagingMode: '$(VersionSuffix)'
 
 jobs:
 - template: templates/react-native-ci.yml
   parameters:
-    NpmPackagingMode: ${{ variables.npm_packaging_mode }}
+    NpmPackagingMode: ${{ variables.NpmPackagingMode }}
     BuildConfig: 'Release'
     PoolName: 'Linux-CPU-2019'

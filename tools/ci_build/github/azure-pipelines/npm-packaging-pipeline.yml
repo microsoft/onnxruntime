@@ -37,7 +37,7 @@ stages:
   jobs:
   - template: templates/react-native-ci.yml
     parameters:
-      NpmPackagingMode: ${{ variables.npm_packaging_mode }}
+      NpmPackagingMode: ${{ variables.NpmPackagingMode }}
       BuildConfig: 'Release'
       PoolName: 'Linux-CPU'
       PackageName: 'onnxruntime-react-native'
