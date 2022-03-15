@@ -18,13 +18,13 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAttribute,
                     _In_ int,
                     _Out_ OrtOpAttr*) {
   API_IMPL_BEGIN
-  return CreateStatus(NOT_IMPLEMENTED, "CreateAttribute is unimplemented for minimal build.");
+  return CreateStatus(ORT_NOT_IMPLEMENTED, "CreateAttribute is unimplemented for minimal build.");
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::ReleaseAttribute, _Inout_ OrtOpAttr*) {
   API_IMPL_BEGIN
-  return CreateStatus(NOT_IMPLEMENTED, "ReleaseAttribute is unimplemented for minimal build.");
+  return CreateStatus(ORT_NOT_IMPLEMENTED, "ReleaseAttribute is unimplemented for minimal build.");
   API_IMPL_END
 }
 
@@ -40,7 +40,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOperator,
                     _In_ int,
                     _Out_ OrtOp*) {
   API_IMPL_BEGIN
-  return CreateStatus(NOT_IMPLEMENTED, "CreateOperator is unimplemented for minimal build.");
+  return CreateStatus(ORT_NOT_IMPLEMENTED, "CreateOperator is unimplemented for minimal build.");
   API_IMPL_END
 }
 
@@ -52,13 +52,13 @@ ORT_API_STATUS_IMPL(OrtApis::InvokeOperator,
                     _Inout_ OrtValue* const*,
                     _In_ int) {
   API_IMPL_BEGIN
-  return CreateStatus(NOT_IMPLEMENTED, "InvokeOperator is unimplemented for minimal build.");
+  return CreateStatus(ORT_NOT_IMPLEMENTED, "InvokeOperator is unimplemented for minimal build.");
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::ReleaseOperator, _Inout_ OrtOp*) {
   API_IMPL_BEGIN
-  return CreateStatus(NOT_IMPLEMENTED, "ReleaseOperator is unimplemented for minimal build.");
+  return CreateStatus(ORT_NOT_IMPLEMENTED, "ReleaseOperator is unimplemented for minimal build.");
   API_IMPL_END
 }
 
