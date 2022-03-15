@@ -5,13 +5,11 @@ parent: Execution Providers
 nav_order: 8
 ---
 
-# TVM (TVM) Execution Provider
+# TVM Execution Provider
 {: .no_toc }
 
 TVM is an execution provider for ONNX Runtime that is built on top of Apache TVM. It enables ONNX Runtime users to leverage Apache TVM model optimizations.
-The TVM EP is currently in "Preview". It's been tested to work on a limited set of ONNX models on Linux. Future enhancements will include support on Windows and MacOS.
-
-__NOTE__: This TVM execution provider was developed as a _standalone_ TVM execution provider. The code repo has references to _stvm_ as the name for this EP.  
+TVM EP is currently in "Preview". It's been tested to work on a handful of models on Linux, but not on Windows or MacOS.
 
 ## Contents
 {: .no_toc }
@@ -19,13 +17,7 @@ __NOTE__: This TVM execution provider was developed as a _standalone_ TVM execut
 * TOC placeholder
 {:toc}
 
-## Build
-
-To use the TVM EP in ONNX Runtime (ORT), users first need to build Apache TVM and ONNX Runtime.
-
-Note: some python packages may need to be upgraded/downgraded because both TVM and ORT with the TVM EP use the Python API. Alternatively, use modify PYTHONPATH to solve these conflicts. 
-
-### Build and configure TVM
+## Build ONNX Runtime with the TVM Execution Provider
 
 Install the minimal pre-requisites on Ubuntu/Debian like linux operating systems:
 ```bash
@@ -33,30 +25,11 @@ apt-get install -y python3 python3-dev python3-pip python3-setuptools gcc libtin
 pip3 install numpy decorator attrs
 ```
 
-Clone this [repo](https://github.com/microsoft/onnxruntime) using the `--recursive` flag to pull all associated dependencies
+Also, the current implementation has `NVidia GPU` support for TVM EP. For now, you can use only `NVidia GPU` with CUDA Toolkit support.
+To do this, make sure you have installed the NVidia driver and CUDA Toolkit.
+More detailed instructions can be found on the [official page](https://developer.nvidia.com/cuda-toolkit).
 
-
-Build TVM from the tvm_update folder:
-
-```bash
-cd onnxruntime/cmake/external/tvm_update/
-mkdir build
-cd ./build
-cmake -DCMAKE_BUILD_TYPE=Release -DUSE_LLVM=ON -DUSE_OPENMP=gnu -DUSE_MICRO=ON (If your machine is CUDA enabled -DUSE_CUDA=ON) ..
-make -j <number of threads in build machine>
-```
-
-Set the environment variable PYTHONPATH to tell python where to find the TVM library:
-
-```bash
-export TVM_HOME=<path_to_onnx_runtime>/cmake/external/tvm_update
-export PYTHONPATH=$TVM_HOME/python:${PYTHONPATH}
-```
-
-For more details on installing Apache TVM click [here](https://tvm.apache.org/docs/install/from_source.html)
-
-### Build ONNX Runtime with the TVM Execution Provider
-
+Clone this repo.
 In order to build ONNXRT you will need to have CMake 3.18 or higher. In Ubuntu 20.04 you can use the following commands to install the latest version of CMake:
 
 ```bash
@@ -74,22 +47,39 @@ sudo apt-get install kitware-archive-keyring
 sudo apt-get install cmake
 ```
 
-Build ONNX Runtime:
+Build ONNX Runtime (TVM x86):
 ```bash
-./build.sh --config Release --enable_pybind --build_wheel --skip_tests --parallel --use_stvm --skip_onnx_tests
+./build.sh --config Release --enable_pybind --build_wheel --parallel --skip_tests --skip_onnx_tests --use_tvm
 ```
 
-Build the python API for ONNX Runtime instead of using the standard package:
+Build ONNX Runtime (TVM with CUDA support):
+```bash
+./build.sh --config Release --enable_pybind --build_wheel --parallel --skip_tests --skip_onnx_tests --use_tvm --tvm_cuda_runtime
+```
+
+This command builds both `TVM` and `onnxruntime-tvm`. It creates two wheel, one for each project.
+Build the python API for ONNX Runtime instead of using the standard package. Instructions for this are given below.
+
+Package for TVM:
 ```bash
 cd <path_to_onnx_runtime>
-pip3 uninstall onnxruntime onnxruntime-stvm -y
-whl_path=$(find ./build/Linux/Release/dist -name "*.whl")
+python3 -m pip uninstall tvm -y
+whl_path=$(find ./build/<OS_NAME>/Release/_deps/tvm-src/python/dist -name "*.whl")
 python3 -m pip install $whl_path
 ```
-Alternatively, you can set PYTHONPATH to tell python where to find the ONNXRT library:
+
+Package for TVM EP:
 ```bash
-export ORT_PYTHON_HOME=<path_to_onnx_runtime>/build/Linux/Release
-export PYTHONPATH=$ORT_PYTHON_HOME:${PYTHONPATH}
+cd <path_to_onnx_runtime>
+python3 -m pip uninstall onnxruntime onnxruntime-tvm -y
+whl_path=$(find ./build/<OS_NAME>/Release/dist -name "*.whl")
+python3 -m pip install $whl_path
+```
+
+Alternatively, you can set `PYTHONPATH` to tell python where to find the ONNXRT library and the TVM library.
+```bash
+export PYTHONPATH=<path_to_onnx_runtime>/build/<OS_NAME>/Release:${PYTHONPATH}
+export PYTHONPATH=<path_to_onnx_runtime>/build/<OS_NAME>/Release/_deps/tvm-src/python:${PYTHONPATH}
 ```
 
 ## Configuration options
@@ -102,7 +92,7 @@ po = [dict(target=client_target,
            tuning_file_path=client_tuning_logfile,
            input_names = input_names_str,
            input_shapes = input_shapes_str)]
-tvm_session = onnxruntime.InferenceSession(model_path, providers=["StvmExecutionProvider"], provider_options=po)
+tvm_session = onnxruntime.InferenceSession(model_path, providers=["TvmExecutionProvider"], provider_options=po)
 ```
 <br>
 
@@ -134,11 +124,11 @@ Using the TVM EP with TVM tuning logs also requires users to turn off ONNX Runti
 so = onnxruntime.SessionOptions()
 so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
 
-tvm_session = onnxruntime.InferenceSession(model_path, sess_options=so, providers=["StvmExecutionProvider"], provider_options=po)
+tvm_session = onnxruntime.InferenceSession(model_path, sess_options=so, providers=["TvmExecutionProvider"], provider_options=po)
 ```
 
 ## Samples
-- [Sample notebook for ResNet50 inference with TVM EP](https://github.com/octoml/onnxruntime/blob/STVM_EP_PR/docs/python/inference/notebooks/onnxruntime-stvm-tutorial.ipynb)
+- [Sample notebook for ResNet50 inference with TVM EP](https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/notebooks/onnxruntime-tvm-tutorial.ipynb)
 
 ## Known issues
 - At this moment, the TVM EP has only been verified on UNIX/Linux systems.
