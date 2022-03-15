@@ -25,25 +25,25 @@ variables:
     NpmPackagingMode: '$(VersionSuffix)'
 
 stages:
-- template: templates/web-ci.yml
-  parameters:
-    NpmPackagingMode: ${{ variables.NpmPackagingMode }}
-    IsReleasePipeline: true
-    PoolName: 'Win-CPU-2021'
+#- template: templates/web-ci.yml
+#  parameters:
+#    NpmPackagingMode: ${{ variables.NpmPackagingMode }}
+#    IsReleasePipeline: true
+#    PoolName: 'Win-CPU-2021'
 
-- stage: Build_React_Native
-  dependsOn: Build_wasm_Debug
-  jobs:
-  - template: mac-react-native-ci-pipeline.yml
-    parameters:
-      NpmPackagingMode: ${{ variables.NpmPackagingMode }}
-      IsReleasePipeline: true
+#- stage: Build_React_Native
+#  dependsOn: Build_wasm_Debug
+#  jobs:
+#  - template: mac-react-native-ci-pipeline.yml
+#    parameters:
+#      NpmPackagingMode: ${{ variables.NpmPackagingMode }}
+#      IsReleasePipeline: true
 
 - stage: Npm_packaging
-  dependsOn:
-  - Build_React_Native
-  - Build_web_Release
-  - Build_web_Debug
+#  dependsOn:
+#  - Build_React_Native
+#  - Build_web_Release
+#  - Build_web_Debug
   jobs:
   - job: Npm_packaging
     pool: 'Win-CPU-2021'
@@ -52,10 +52,10 @@ stages:
     timeoutInMinutes: 10
     steps:
     - task: DownloadPipelineArtifact@2
-    displayName: 'Download Pipeline Artifact - onnxruntime-node'
-    inputs:
-      buildType: 'current'
-      preferTriggeringPipeline: true
-      artifact: 'NPM_packages'
-      patterns: 'onnxruntime-node*.tgz'
-      path: '$(Build.ArtifactStagingDirectory)'
+      inputs:
+        buildType: 'current'
+        preferTriggeringPipeline: true
+        artifact: 'NPM_packages'
+        patterns: 'onnxruntime-node*.tgz'
+        path: '$(Build.ArtifactStagingDirectory)'
+      displayName: 'Download Pipeline Artifact - onnxruntime-node'
