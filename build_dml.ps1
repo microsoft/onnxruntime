@@ -1,0 +1,1 @@
+python $PSScriptRoot\tools\ci_build\build.py --build_dir $PSScriptRoot\build\Windows --config Debug --build_shared_lib --parallel --use_dml --skip_tests --skip_submodule_sync --cmake_extra_defines CMAKE_INSTALL_PREFIX=$PSScriptRoot/build/install --target install
