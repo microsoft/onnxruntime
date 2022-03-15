@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include "core/common/inlined_containers.h"
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "ml_common.h"
@@ -112,11 +113,11 @@ class TreeAggregator {
 
   // N outputs
 
-  void ProcessTreeNodePrediction(std::vector<ScoreValue<TH>>& /*predictions*/, const TreeNodeElement<TH>& /*root*/) const {}
+  void ProcessTreeNodePrediction(InlinedVector<ScoreValue<TH>>& /*predictions*/, const TreeNodeElement<TH>& /*root*/) const {}
 
-  void MergePrediction(std::vector<ScoreValue<TH>>& /*predictions*/, const std::vector<ScoreValue<TH>>& /*predictions2*/) const {}
+  void MergePrediction(InlinedVector<ScoreValue<TH>>& /*predictions*/, const InlinedVector<ScoreValue<TH>>& /*predictions2*/) const {}
 
-  void FinalizeScores(std::vector<ScoreValue<TH>>& predictions, TO* Z, int add_second_class, int64_t*) const {
+  void FinalizeScores(InlinedVector<ScoreValue<TH>>& predictions, TO* Z, int add_second_class, int64_t*) const {
     ORT_ENFORCE(predictions.size() == (size_t)n_targets_or_classes_);
     TH val;
     auto it = predictions.begin();
@@ -160,7 +161,7 @@ class TreeAggregatorSum : public TreeAggregator<TI, TH, TO> {
 
   // N outputs
 
-  void ProcessTreeNodePrediction(std::vector<ScoreValue<TH>>& predictions, const TreeNodeElement<TH>& root) const {
+  void ProcessTreeNodePrediction(InlinedVector<ScoreValue<TH>>& predictions, const TreeNodeElement<TH>& root) const {
     for (auto it = root.weights.cbegin(); it != root.weights.cend(); ++it) {
       ORT_ENFORCE(it->i < (int64_t)predictions.size());
       predictions[it->i].score += it->value;
@@ -168,7 +169,7 @@ class TreeAggregatorSum : public TreeAggregator<TI, TH, TO> {
     }
   }
 
-  void MergePrediction(std::vector<ScoreValue<TH>>& predictions, const std::vector<ScoreValue<TH>>& predictions2) const {
+  void MergePrediction(InlinedVector<ScoreValue<TH>>& predictions, const InlinedVector<ScoreValue<TH>>& predictions2) const {
     ORT_ENFORCE(predictions.size() == predictions2.size());
     for (size_t i = 0; i < predictions.size(); ++i) {
       if (predictions2[i].has_score) {
@@ -178,7 +179,7 @@ class TreeAggregatorSum : public TreeAggregator<TI, TH, TO> {
     }
   }
 
-  void FinalizeScores(std::vector<ScoreValue<TH>>& predictions, TO* Z, int add_second_class, int64_t*) const {
+  void FinalizeScores(InlinedVector<ScoreValue<TH>>& predictions, TO* Z, int add_second_class, int64_t*) const {
     auto it = predictions.begin();
     if (this->use_base_values_) {
       auto it2 = this->base_values_.cbegin();
@@ -205,7 +206,7 @@ class TreeAggregatorAverage : public TreeAggregatorSum<TI, TH, TO> {
                                                               : static_cast<TO>(prediction.score);
   }
 
-  void FinalizeScores(std::vector<ScoreValue<TH>>& predictions, TO* Z, int add_second_class, int64_t*) const {
+  void FinalizeScores(InlinedVector<ScoreValue<TH>>& predictions, TO* Z, int add_second_class, int64_t*) const {
     if (this->use_base_values_) {
       ORT_ENFORCE(this->base_values_.size() == predictions.size());
       auto it = predictions.begin();
@@ -250,7 +251,7 @@ class TreeAggregatorMin : public TreeAggregator<TI, TH, TO> {
 
   // N outputs
 
-  void ProcessTreeNodePrediction(std::vector<ScoreValue<TH>>& predictions, const TreeNodeElement<TH>& root) const {
+  void ProcessTreeNodePrediction(InlinedVector<ScoreValue<TH>>& predictions, const TreeNodeElement<TH>& root) const {
     for (auto it = root.weights.begin(); it != root.weights.end(); ++it) {
       predictions[it->i].score = (!predictions[it->i].has_score || it->value < predictions[it->i].score)
                                      ? it->value
@@ -259,7 +260,7 @@ class TreeAggregatorMin : public TreeAggregator<TI, TH, TO> {
     }
   }
 
-  void MergePrediction(std::vector<ScoreValue<TH>>& predictions, const std::vector<ScoreValue<TH>>& predictions2) const {
+  void MergePrediction(InlinedVector<ScoreValue<TH>>& predictions, const InlinedVector<ScoreValue<TH>>& predictions2) const {
     ORT_ENFORCE(predictions.size() == predictions2.size());
     for (size_t i = 0; i < predictions.size(); ++i) {
       if (predictions2[i].has_score) {
@@ -301,7 +302,7 @@ class TreeAggregatorMax : public TreeAggregator<TI, TH, TO> {
 
   // N outputs
 
-  void ProcessTreeNodePrediction(std::vector<ScoreValue<TH>>& predictions, const TreeNodeElement<TH>& root) const {
+  void ProcessTreeNodePrediction(InlinedVector<ScoreValue<TH>>& predictions, const TreeNodeElement<TH>& root) const {
     for (auto it = root.weights.begin(); it != root.weights.end(); ++it) {
       predictions[it->i].score = (!predictions[it->i].has_score || it->value > predictions[it->i].score)
                                      ? it->value
@@ -310,7 +311,7 @@ class TreeAggregatorMax : public TreeAggregator<TI, TH, TO> {
     }
   }
 
-  void MergePrediction(std::vector<ScoreValue<TH>>& predictions, const std::vector<ScoreValue<TH>>& predictions2) const {
+  void MergePrediction(InlinedVector<ScoreValue<TH>>& predictions, const InlinedVector<ScoreValue<TH>>& predictions2) const {
     ORT_ENFORCE(predictions.size() == predictions2.size());
     for (size_t i = 0; i < predictions.size(); ++i) {
       if (predictions2[i].has_score) {
@@ -353,7 +354,7 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<TI, TH, TO> {
       positive_label_(positive_label),
       negative_label_(negative_label) {}
 
-  void get_max_weight(const std::vector<ScoreValue<TH>>& classes, int64_t& maxclass, TH& maxweight) const {
+  void get_max_weight(const InlinedVector<ScoreValue<TH>>& classes, int64_t& maxclass, TH& maxweight) const {
     maxclass = -1;
     maxweight = 0;
     for (auto it = classes.cbegin(); it != classes.cend(); ++it) {
@@ -364,7 +365,7 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<TI, TH, TO> {
     }
   }
 
-  int64_t _set_score_binary(int& write_additional_scores, const std::vector<ScoreValue<TH>>& classes) const {
+  int64_t _set_score_binary(int& write_additional_scores, const InlinedVector<ScoreValue<TH>>& classes) const {
     ORT_ENFORCE(classes.size() == 2 || classes.size() == 1);
     return (classes.size() == 2 && classes[1].has_score)
                ? _set_score_binary(write_additional_scores, classes[0].score, classes[0].has_score, classes[1].score, classes[1].has_score)
@@ -400,7 +401,7 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<TI, TH, TO> {
   // 1 output
 
   void FinalizeScores1(TO* Z, ScoreValue<TH>& prediction, int64_t* Y) const {
-    std::vector<TH> scores(2);
+    InlinedVector<TH> scores(2);
     unsigned char has_scores[2] = {1, 0};
 
     int write_additional_scores = -1;
@@ -433,7 +434,7 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<TI, TH, TO> {
 
   // N outputs
 
-  void FinalizeScores(std::vector<ScoreValue<TH>>& predictions, TO* Z, int /*add_second_class*/, int64_t* Y = 0) const {
+  void FinalizeScores(InlinedVector<ScoreValue<TH>>& predictions, TO* Z, int /*add_second_class*/, int64_t* Y = 0) const {
     TH maxweight = 0;
     int64_t maxclass = -1;
 

@@ -6,7 +6,6 @@
 #include "tree_ensemble_aggregator.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
-#include "core/common/inlined_containers.h"
 #include "tree_ensemble_helper.h"
 
 namespace onnxruntime {
@@ -428,14 +427,14 @@ void TreeEnsembleCommon<TI, TH, TO>::ComputeAgg(concurrency::ThreadPool* ttp, co
   } else {
     if (N == 1) {                       /* section A2: 2+ outputs, 1 row, not enough trees to parallelize */
       if (n_trees_ <= parallel_tree_) { /* section A2 */
-        std::vector<ScoreValue<TH>> scores(n_targets_or_classes_, {0, 0});
+        InlinedVector<ScoreValue<TH>> scores(n_targets_or_classes_, {0, 0});
         for (int64_t j = 0; j < n_trees_; ++j) {
           agg.ProcessTreeNodePrediction(scores, *ProcessTreeNodeLeave(roots_[j], x_data));
         }
         agg.FinalizeScores(scores, z_data, -1, label_data);
       } else { /* section B2: 2+ outputs, 1 row, enough trees to parallelize */
         auto num_threads = std::min<int32_t>(max_num_threads, SafeInt<int32_t>(n_trees_));
-        std::vector<std::vector<ScoreValue<TH>>> scores(num_threads);
+        std::vector<InlinedVector<ScoreValue<TH>>> scores(num_threads);
         concurrency::ThreadPool::TrySimpleParallelFor(
             ttp,
             num_threads,
@@ -452,7 +451,7 @@ void TreeEnsembleCommon<TI, TH, TO>::ComputeAgg(concurrency::ThreadPool* ttp, co
         agg.FinalizeScores(scores[0], z_data, -1, label_data);
       }
     } else if (N <= parallel_N_) { /* section C2: 2+ outputs, 2+ rows, not enough rows to parallelize */
-      std::vector<ScoreValue<TH>> scores(n_targets_or_classes_);
+      InlinedVector<ScoreValue<TH>> scores(n_targets_or_classes_);
       size_t j, limit;
 
       for (int64_t i = 0; i < N; ++i) {
@@ -466,7 +465,7 @@ void TreeEnsembleCommon<TI, TH, TO>::ComputeAgg(concurrency::ThreadPool* ttp, co
       }
     } else if (n_trees_ >= max_num_threads) { /* section: D2: 2+ outputs, 2+ rows, enough trees to parallelize*/
       auto num_threads = std::min<int32_t>(max_num_threads, SafeInt<int32_t>(n_trees_));
-      std::vector<std::vector<ScoreValue<TH>>> scores(num_threads * N);
+      std::vector<InlinedVector<ScoreValue<TH>>> scores(num_threads * N);
       concurrency::ThreadPool::TrySimpleParallelFor(
           ttp,
           num_threads,
@@ -502,7 +501,7 @@ void TreeEnsembleCommon<TI, TH, TO>::ComputeAgg(concurrency::ThreadPool* ttp, co
           num_threads,
           [this, &agg, num_threads, x_data, z_data, label_data, N, stride](ptrdiff_t batch_num) {
             size_t j, limit;
-            std::vector<ScoreValue<TH>> scores(n_targets_or_classes_);
+            InlinedVector<ScoreValue<TH>> scores(n_targets_or_classes_);
             auto work = concurrency::ThreadPool::PartitionWork(batch_num, num_threads, N);
 
             for (auto i = work.start; i < work.end; ++i) {

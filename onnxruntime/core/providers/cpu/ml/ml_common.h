@@ -9,6 +9,7 @@
 #include "core/util/math_cpuonly.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
+#include "core/common/inlined_containers.h"
 
 namespace onnxruntime {
 namespace ml {  // name space for onnx.ml operators
@@ -312,7 +313,7 @@ static inline void ComputeSoftmaxZero(std::vector<T>& values) {
 }
 
 template <typename T, typename IT>
-static void write_scores(std::vector<IT>& scores, POST_EVAL_TRANSFORM post_transform,
+static void write_scores(InlinedVector<IT>& scores, POST_EVAL_TRANSFORM post_transform,
                          T* Z, int add_second_class) {
   if (scores.size() >= 2) {
     switch (post_transform) {
@@ -324,16 +325,20 @@ static void write_scores(std::vector<IT>& scores, POST_EVAL_TRANSFORM post_trans
         for (auto it = scores.cbegin(); it != scores.cend(); ++it, ++Z)
           *Z = static_cast<T>(ComputeLogistic(static_cast<float>(*it)));
         break;
-      case POST_EVAL_TRANSFORM::SOFTMAX:
-        ComputeSoftmax(scores);
+      case POST_EVAL_TRANSFORM::SOFTMAX: {
+        auto span = gsl::make_span(scores);
+        ComputeSoftmax(span);
         for (auto it = scores.begin(); it != scores.end(); ++it, ++Z)
           *Z = static_cast<T>(*it);
         break;
-      case POST_EVAL_TRANSFORM::SOFTMAX_ZERO:
-        ComputeSoftmaxZero(scores);
+      }
+      case POST_EVAL_TRANSFORM::SOFTMAX_ZERO: {
+        auto span = gsl::make_span(scores);
+        ComputeSoftmaxZero(span);
         for (auto it = scores.begin(); it != scores.end(); ++it, ++Z)
           *Z = static_cast<T>(*it);
         break;
+      }
       default:
       case POST_EVAL_TRANSFORM::NONE:
         for (auto it = scores.begin(); it != scores.end(); ++it, ++Z)
@@ -380,7 +385,7 @@ static void write_scores(std::vector<IT>& scores, POST_EVAL_TRANSFORM post_trans
 }
 
 template <typename T>
-static void write_scores(std::vector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z,
+static void write_scores(InlinedVector<T>& scores, POST_EVAL_TRANSFORM post_transform, int64_t write_index, Tensor* Z,
                          int add_second_class) {
   T* out_p = Z->template MutableData<T>() + write_index;
   size_t len;
