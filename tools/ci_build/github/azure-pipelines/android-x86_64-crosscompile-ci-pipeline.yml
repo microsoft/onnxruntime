@@ -1,7 +1,7 @@
 jobs:
 - job: Build_CPU_EP
   pool: Linux-CPU-2019
-  timeoutInMinutes: 30
+  timeoutInMinutes: 120
   steps:
   # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
   # pythonVersion can be updated in Azure pipeline settings
