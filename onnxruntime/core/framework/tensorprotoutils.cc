@@ -604,7 +604,7 @@ static Status GetDataContentFromExternalBuffer(
     size_t length,
     void*& raw_buffer) {
   auto it = external_data_map.find(external_data_key);
-  ORT_RETURN_IF(it == external_data_map.end());
+  ORT_RETURN_IF(it == external_data_map.end(), "Cannot find the key (" + external_data_key + ") in the external_data_map");
 
   // copy
   auto buffer = std::make_unique<char[]>(length);

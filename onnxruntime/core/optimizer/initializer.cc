@@ -98,7 +98,7 @@ Status Initializer::ReadExternalRawData(
   auto external_data_name = external_data->GetRelPath();
   auto external_data_key = ONNXStringToString(external_data_name);
   auto it = external_data_map.find(external_data_key);
-  ORT_RETURN_IF(it == external_data_map.end());
+  ORT_RETURN_IF(it == external_data_map.end(), "Cannot find the key (" + external_data_key + ") in the external_data_map");
 
   std::vector<char> buffer(actual_tensor_data_length);
   std::copy((const char*)it->second + buffer_offset,
