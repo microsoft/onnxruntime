@@ -1538,6 +1538,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
 
         // Build engine
         {
+          auto lock = GetApiLock();
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
               trt_builder->buildEngineWithConfig(*trt_state->network->get(), *trt_config));
         }
