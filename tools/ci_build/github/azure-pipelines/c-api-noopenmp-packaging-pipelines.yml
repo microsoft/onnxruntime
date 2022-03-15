@@ -322,8 +322,6 @@ jobs:
       VerifyNugetSigning: false
       workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
-
-  - template: templates/set-version-number-variables-step.yml
   - template: templates/get-docker-image-steps.yml
     parameters:
       ScriptName: onnxruntime/tools/ci_build/get_docker_image.py 
