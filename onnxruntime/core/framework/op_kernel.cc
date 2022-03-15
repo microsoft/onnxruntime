@@ -222,15 +222,18 @@ Status OpKernelContext::SetOutputMLValue(int index, const OrtValue& ort_value) {
 #endif
 
 // InstantKernelContext
-InstantKernelContext::InstantKernelContext(_In_ const OrtValue* const* input_values, _In_ int input_count,
-                                       _Inout_ OrtValue* const* output_values, _In_ int output_count,
-                                       _In_ AllocatorPtr allocator, _In_ onnxruntime::concurrency::ThreadPool* threadpool,
-                                       _In_ const logging::Logger& logger) : OpKernelContext(threadpool, logger),
-                                                                             input_values_(input_values),
-                                                                             input_count_(input_count),
-                                                                             output_values_(output_values),
-                                                                             output_count_(output_count),
-                                                                             allocator_(allocator) {}
+InstantKernelContext::InstantKernelContext(const OrtValue* const* input_values,
+                                           int input_count,
+                                           OrtValue* const* output_values,
+                                           int output_count,
+                                           AllocatorPtr allocator,
+                                           onnxruntime::concurrency::ThreadPool* threadpool,
+                                           const logging::Logger& logger) : OpKernelContext(threadpool, logger),
+                                                                            input_values_(input_values),
+                                                                            input_count_(input_count),
+                                                                            output_values_(output_values),
+                                                                            output_count_(output_count),
+                                                                            allocator_(allocator) {}
 
 int InstantKernelContext::NumVariadicInputs(size_t arg_num) const {
   auto ort_value = input_values_[arg_num];

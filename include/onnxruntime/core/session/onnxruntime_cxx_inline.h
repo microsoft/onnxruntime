@@ -1187,8 +1187,8 @@ inline void CustomOpApi::CreateAttribute(_In_ const char* name,
                                          _In_ const void* data,
                                          _In_ int len,
                                          _In_ ONNXTensorElementDataType type,
-                                         _In_ int is_array,
-                                         _Out_ OrtOpAttr* op_attr) {
+                                         _In_opt_ int is_array,
+                                         _Outptr_ OrtOpAttr* op_attr) {
   ThrowOnError(api_.CreateAttribute(name, data, len, type, is_array, op_attr));
 }
 
@@ -1200,12 +1200,12 @@ inline void CustomOpApi::CreateOperator(_In_ const OrtKernelInfo* info,
                                         _In_ const char* op_name,
                                         _In_ const char* domain,
                                         _In_ int version,
-                                        _In_ const char** type_constraint_names,
-                                        _In_ const ONNXTensorElementDataType* type_constraint_values,
-                                        _In_ int type_constraint_count,
-                                        _In_ const OrtOpAttr* attr_values,
-                                        _In_ int attr_count,
-                                        _Out_ OrtOp* ort_op) {
+                                        _In_opt_ const char** type_constraint_names,
+                                        _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
+                                        _In_opt_ int type_constraint_count,
+                                        _In_opt_ const OrtOpAttr* attr_values,
+                                        _In_opt_ int attr_count,
+                                        _Outptr_ OrtOp* ort_op) {
   ThrowOnError(api_.CreateOperator(info, op_name, domain, version, type_constraint_names, type_constraint_values, type_constraint_count, attr_values, attr_count, ort_op));
 }
 

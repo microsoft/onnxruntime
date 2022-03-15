@@ -405,6 +405,7 @@ TEST(CApiTest, custom_op_handler) {
 #endif
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 TEST(CApiTest, instant_op_handler) {
   std::vector<Input> inputs(1);
   Input& input = inputs[0];
@@ -422,6 +423,7 @@ TEST(CApiTest, instant_op_handler) {
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
                        custom_op_domain, nullptr);
 }
+#endif
 
 #ifdef ENABLE_EXTENSION_CUSTOM_OPS
 // test enabled ort-customops negpos

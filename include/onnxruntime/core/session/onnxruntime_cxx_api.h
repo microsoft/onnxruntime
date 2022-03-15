@@ -975,8 +975,8 @@ struct CustomOpApi {
                        _In_ const void* data,
                        _In_ int len,
                        _In_ ONNXTensorElementDataType type,
-                       _In_ int is_array,
-                       _Out_ OrtOpAttr* op_attr);
+                       _In_opt_ int is_array,
+                       _Outptr_ OrtOpAttr* op_attr);
 
   void ReleaseAttribute(_Inout_ OrtOpAttr* op_attr);
 
@@ -984,12 +984,12 @@ struct CustomOpApi {
                       _In_ const char* op_name,
                       _In_ const char* domain,
                       _In_ int version,
-                      _In_ const char** type_constraint_names,
-                      _In_ const ONNXTensorElementDataType* type_constraint_values,
-                      _In_ int type_constraint_count,
-                      _In_ const OrtOpAttr* attr_values,
-                      _In_ int attr_count,
-                      _Out_ OrtOp* ort_op);
+                      _In_opt_ const char** type_constraint_names,
+                      _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
+                      _In_opt_ int type_constraint_count,
+                      _In_opt_ const OrtOpAttr* attr_values,
+                      _In_opt_ int attr_count,
+                      _Outptr_ OrtOp* ort_op);
 
   void InvokeOperator(_In_ const OrtKernelContext* context,
                       _In_ const OrtOp ort_op,

@@ -8,11 +8,67 @@
 #include "core/session/ort_apis.h"
 #include <unordered_map>
 
+#ifdef ORT_MINIMAL_BUILD
+
+ORT_API_STATUS_IMPL(OrtApis::CreateAttribute,
+                    _In_ const char*,
+                    _In_ const void*,
+                    _In_ int,
+                    _In_ ONNXTensorElementDataType,
+                    _In_ int,
+                    _Out_ OrtOpAttr*) {
+  API_IMPL_BEGIN
+  return CreateStatus(NOT_IMPLEMENTED, "CreateAttribute is unimplemented for minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ReleaseAttribute, _Inout_ OrtOpAttr*) {
+  API_IMPL_BEGIN
+  return CreateStatus(NOT_IMPLEMENTED, "ReleaseAttribute is unimplemented for minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateOperator,
+                    _In_ const OrtKernelInfo*,
+                    _In_ const char*,
+                    _In_ const char*,
+                    _In_ int,
+                    _In_ const char**,
+                    _In_ const ONNXTensorElementDataType*,
+                    _In_ int,
+                    _In_ const OrtOpAttr*,
+                    _In_ int,
+                    _Out_ OrtOp*) {
+  API_IMPL_BEGIN
+  return CreateStatus(NOT_IMPLEMENTED, "CreateOperator is unimplemented for minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::InvokeOperator,
+                    _In_ const OrtKernelContext*,
+                    _In_ const OrtOp,
+                    _In_ const OrtValue* const*,
+                    _In_ int,
+                    _Inout_ OrtValue* const*,
+                    _In_ int) {
+  API_IMPL_BEGIN
+  return CreateStatus(NOT_IMPLEMENTED, "InvokeOperator is unimplemented for minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ReleaseOperator, _Inout_ OrtOp*) {
+  API_IMPL_BEGIN
+  return CreateStatus(NOT_IMPLEMENTED, "ReleaseOperator is unimplemented for minimal build.");
+  API_IMPL_END
+}
+
+#else
+
 namespace onnxruntime {
 namespace instant {
 
 onnxruntime::Status CreateAttribute(const char* name, const void* data, int len, ONNXTensorElementDataType type, int is_array, OrtOpAttr* op_attr) {
-  std::unique_ptr<ONNX_NAMESPACE::AttributeProto> attr{new ONNX_NAMESPACE::AttributeProto()};
+  auto attr = std::make_unique<ONNX_NAMESPACE::AttributeProto>();
   attr->set_name(std::string{name});
   if (type == ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
     auto floats = reinterpret_cast<const float*>(data);
@@ -23,7 +79,7 @@ onnxruntime::Status CreateAttribute(const char* name, const void* data, int len,
       attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOATS);
     } else {
       attr->set_f(floats[0]);
-      attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOATS);
+      attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT);
     }
   } else if (type == ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
     auto ints = reinterpret_cast<const int*>(data);
@@ -98,12 +154,12 @@ onnxruntime::Status CreateOperator(const OrtKernelInfo* info,
   return status;
 }
 
-onnxruntime::Status InvokeOperator(const OrtKernelContext* context,
-                                   const OrtOp ort_op,
-                                   const OrtValue* const* input_values,
-                                   int input_count,
-                                   OrtValue* const* output_values,
-                                   int output_count) {
+onnxruntime::Status InvokeOperator(_In_ const OrtKernelContext* context,
+                                   _In_ const OrtOp ort_op,
+                                   _In_ const OrtValue* const* input_values,
+                                   _In_ int input_count,
+                                   _Inout_ OrtValue* const* output_values,
+                                   _In_ int output_count) {
   auto ctx = reinterpret_cast<const OpKernelContext*>(context);
   AllocatorPtr allocator{};
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
@@ -126,8 +182,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAttribute,
                     _In_ const void* data,
                     _In_ int len,
                     _In_ ONNXTensorElementDataType type,
-                    _In_ int is_array,
-                    _Out_ OrtOpAttr* op_attr) {
+                    _In_opt_ int is_array,
+                    _Outptr_ OrtOpAttr* op_attr) {
   API_IMPL_BEGIN
   if (!name || !data || !len || !op_attr) {
     return CreateStatus(ORT_INVALID_ARGUMENT, "Invalid argument for CreateAttribute.");
@@ -156,12 +212,12 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOperator,
                     _In_ const char* op_name,
                     _In_ const char* domain,
                     _In_ int version,
-                    _In_ const char** type_constraint_names,
-                    _In_ const ONNXTensorElementDataType* type_constraint_values,
-                    _In_ int type_constraint_count,
-                    _In_ const OrtOpAttr* attr_values,
-                    _In_ int attr_count,
-                    _Out_ OrtOp* ort_op) {
+                    _In_opt_ const char** type_constraint_names,
+                    _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
+                    _In_opt_ int type_constraint_count,
+                    _In_opt_ const OrtOpAttr* attr_values,
+                    _In_opt_ int attr_count,
+                    _Outptr_ OrtOp* ort_op) {
   API_IMPL_BEGIN
   if (!info || !op_name || !domain || !ort_op) {
     return CreateStatus(ORT_INVALID_ARGUMENT, "Invalid argument for CreateOperator.");
@@ -213,3 +269,5 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseOperator, _Inout_ OrtOp* op) {
   return nullptr;
   API_IMPL_END
 }
+
+#endif

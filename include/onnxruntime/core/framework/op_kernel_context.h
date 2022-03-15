@@ -258,10 +258,13 @@ inline SparseTensor* OpKernelContext::Output<SparseTensor>(int index) {
 // For invoking kernels without a graph
 class InstantKernelContext : public OpKernelContext {
  public:
-  InstantKernelContext(_In_ const OrtValue* const* input_values, _In_ int input_count,
-                       _Inout_ OrtValue* const* output_values, _In_ int output_count,
-                       _In_ AllocatorPtr allocator, _In_ onnxruntime::concurrency::ThreadPool* threadpool,
-                       _In_ const logging::Logger& logger);
+  InstantKernelContext(const OrtValue* const* input_values,
+                       int input_count,
+                       OrtValue* const* output_values,
+                       int output_count,
+                       AllocatorPtr allocator,
+                       onnxruntime::concurrency::ThreadPool* threadpool,
+                       const logging::Logger& logger);
 
   int NumVariadicInputs(size_t arg_num) const override;
   MLDataType InputType(int index) const override;
