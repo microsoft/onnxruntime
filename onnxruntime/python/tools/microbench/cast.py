@@ -1,6 +1,5 @@
 import argparse
 from dataclasses import dataclass
-from pydoc import ispackage
 import numpy as np
 from benchmark import BenchmarkOp, add_arguments
 
@@ -13,7 +12,12 @@ class OpParam:
     n : int
     input_data_type : type
     output_data_type : type
-    
+
+
+@dataclass
+class ModelParam:
+    token_type_ids_dim0 : int
+    input_ids_dim1 : int
 
 
 class BenchmarkCast(BenchmarkOp):
@@ -28,38 +32,31 @@ class BenchmarkCast(BenchmarkOp):
         outputs = {"Y": output_data}
         return inputs, outputs
 
+    def add_model_cases(self, mp, model, input_data_type, output_data_type):
+        self.add_case(OpParam(1, mp.token_type_ids_dim0, mp.input_ids_dim1, 1024, input_data_type, output_data_type), model)
+        self.add_case(OpParam(1, mp.token_type_ids_dim0, mp.input_ids_dim1, 1, input_data_type, output_data_type), model)
+        self.add_case(OpParam(16, mp.token_type_ids_dim0, mp.input_ids_dim1, mp.input_ids_dim1, input_data_type, output_data_type), model)
+
     def create_cases(self):
-        test_data = self.create_test_input_shape()
-        for (x, y, m, n, is_fp16) in test_data:
-            model = "models/cast_fp16tofp32.onnx" if is_fp16 else "models/cast_fp32tofp16.onnx"
-            input_data_type = np.float16 if is_fp16 else np.float32
-            output_data_type = np.float32 if is_fp16 else np.float16
-            # bert-base
-            op_param = OpParam(x, y, m, n, input_data_type, output_data_type)
-            self.add_case(op_param, model)
+        model = "models/cast_fp16tofp32.onnx" if self.args.precision == "fp16" else "models/cast_fp32tofp16.onnx"
+        input_data_type = np.float16 if self.args.precision == "fp16" else np.float32
+        output_data_type = np.float32 if self.args.precision == "fp16" else np.float16
+        # huggingface bert-large
+        self.add_case(OpParam(1, 1, 1, 1024, input_data_type, output_data_type), model)
+        self.add_case(OpParam(1, 1, 1024, 1024, input_data_type, output_data_type), model)
+        self.add_case(OpParam(1, 1, 1024, 4096, input_data_type, output_data_type), model)
+        self.add_case(OpParam(1, 1, 1024, 30522, input_data_type, output_data_type), model)
+        # huggingface bert-large with default dims
+        model_param = ModelParam(8, 512)
+        self.add_model_cases(model_param, model, input_data_type, output_data_type)
+        # huggingface bert-large with large input dims
+        model_param = ModelParam(32, 1024)
+        self.add_model_cases(model_param, model, input_data_type, output_data_type)
 
     def case_profile(cls, op_param, time):
         profile = f"(x y m n input_data_type) = ({op_param.x} {op_param.y} {op_param.m} {op_param.n} {op_param.input_data_type}), {time:7.4f} ms"
         return profile
     
-    def create_test_input_shape(self):
-        test_input_shape = [
-            (1, 384, 768, 768, 0),
-            (1, 384, 768, 768, 1),
-            (1, 1, 4, 512, 0),
-            (1, 1, 4, 512, 1),
-            (1, 4, 512, 32128, 0),
-            (1, 4, 512, 32128, 1),
-            (1, 4, 512, 512, 0),
-            (1, 4, 512, 512, 1),
-            (1, 4, 512, 2048, 0),
-            (1, 4, 512, 2048, 1),
-            (16, 1920, 5120, 1, 0),
-            (16, 5120, 640, 1, 0),
-            (16, 2560, 5120, 1, 0)
-        ]
-        return test_input_shape
-
 
 def main():
     parser = argparse.ArgumentParser()
