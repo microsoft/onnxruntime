@@ -8,6 +8,10 @@ parameters:
   - 'production (@latest)'
   - 'custom'
   default: 'nightly (@dev)'
+- name: IsReleasePipeline
+  displayName: 'Npm packaging pipeline'
+  type: boolean
+  default: false
 
 variables:
   build_config: Release
@@ -272,12 +276,13 @@ jobs:
       errorActionPreference: stop
     displayName: Pack NPM packages
 
-  - task: CopyFiles@2
-    inputs:
-      sourceFolder: $(Build.SourcesDirectory)/js/common
-      contents: onnxruntime-common*.tgz
-      targetFolder: $(Build.ArtifactStagingDirectory)
-    displayName: 'Create Artifacts onnxruntime-common'
+  - ${{ if ne(parameters.IsReleasePipeline, 'true') }}:
+    - task: CopyFiles@2
+      inputs:
+        sourceFolder: $(Build.SourcesDirectory)/js/common
+        contents: onnxruntime-common*.tgz
+        targetFolder: $(Build.ArtifactStagingDirectory)
+      displayName: 'Create Artifacts onnxruntime-common'
 
   - task: CopyFiles@2
     inputs:
