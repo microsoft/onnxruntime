@@ -337,7 +337,7 @@ class Conv : public OpenCLKernel {
     CL_CHECK_MEM_OBJECT_IS_IMAGE_2D(GetPackedWeight());
     VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), GetPackedWeight());
 
-    ORT_ENFORCE(shape[1] == 1, "input channel per group must be 1");
+    ORT_RETURN_IF(shape[1] != 1, "input channel per group must be 1 for depthwise conv2d");
     auto tmp = exec_->GetScratchBuffer(src.SizeInBytes());
     // TODO: refactor out clEnqueueWriteBuffer, backend api exposed
     ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), tmp.get(), /*blocking_write=*/CL_FALSE, /*offset=*/0, src.SizeInBytes(), src.DataRaw(), 0, nullptr, nullptr));
@@ -362,8 +362,7 @@ class Conv : public OpenCLKernel {
     CL_CHECK_MEM_OBJECT_IS_IMAGE_2D(GetPackedWeight());
 
     // wino initialize
-    ORT_ENFORCE(shape[2] == 3);
-    ORT_ENFORCE(shape[3] == 3);
+    ORT_RETURN_IF(shape[2] != 3 || shape[3] != 3, "Winograd only support 3x3 kernel");
     int64_t output_channel = shape[0];
     int64_t input_channel = shape[1];
     const int kernel_size = shape[3];
@@ -409,7 +408,7 @@ class Conv : public OpenCLKernel {
     auto C_out = shape[1];
     auto H_out = shape[2];
     auto W_out = shape[3];
-    ORT_ENFORCE(C_in == C_out, "depthwise conv2d enforcement failure");
+    ORT_RETURN_IF(C_in != C_out, "depthwise conv2d requires the same number of in channel and out channel");
     uint32_t gsx = CeilDiv(C_out, 4) * CeilDiv(W_out, 4);
     uint32_t gsy = N * H_out;
 
@@ -532,7 +531,7 @@ class Conv : public OpenCLKernel {
     VLOGS_DEFAULT(0) << "[CL] Conv2D, X:" << X->Shape() << " W:" << W_shape_
                      << " B:" << (B ? B->Shape() : TensorShape{}) << " Y:" << Y->Shape()
                      << " K:" << K << " S:" << S << " P:" << TensorShape{P} << " D:" << D << " group:" << group;
-    ORT_ENFORCE(group == 1, "group != 1 is not supported currently in Conv2D");
+    ORT_RETURN_IF(group != 1, "group != 1 is not supported currently in Conv2D");
 
     const auto& xshape = X->Shape();
     const auto& yshape = Y->Shape();
