@@ -35,7 +35,7 @@ The opsets supported by the pre-built package are documented [here](../../../ref
 Usage:
 
 ```
-python -m onnxruntime.tools.update_onnx_opset -h
+python -m onnxruntime.tools.update_onnx_opset --help
 usage: update_onnx_opset.py:update_onnx_opset_helper [-h] [--opset OPSET] input_model output_model
 
 Update the ONNX opset of the model. New opset must be later than the existing one. If not specified will update to opset 15.
@@ -60,9 +60,33 @@ python -m onnxruntime.tools.update_onnx_opset --opset 15 model.onnx model.opset1
 
 ## ONNX model dynamic shape fixer
 
-If the model can potentially be used with NNAPI or CoreML it may require the input shapes to be made 'fixed'. 
+If the model can potentially be used with NNAPI or CoreML it may require the input shapes to be made 'fixed' by setting any dynamic dimension sizes to specific values. 
 
-See documentation on [onnxruntime.tools.make_dynamic_shape_fixed](./make-dynamic-shape-fixed.md) for information on how to do this.
+See the documentation on [onnxruntime.tools.make_dynamic_shape_fixed](./make-dynamic-shape-fixed.md) for information on how to do this.
+
+
+## QDQ format model helpers
+
+Depending on the source of a QDQ format model, it may be necessary to optimize aspects of it to ensure optimal performance with ORT. 
+The onnxruntime.tools.qdq_helpers.optimize_qdq_model helper can be used to do this.
+
+Note that if there are no optimizations the output_model will be the same as the input_model and can be discarded.
+
+Usage:
+
+```
+python -m onnxruntime.tools.qdq_helpers.optimize_qdq_model --help
+usage: optimize_qdq_model.py [-h] input_model output_model
+
+Update a QDQ format ONNX model to ensure optimal performance when executed using ONNX Runtime.
+
+positional arguments:
+  input_model   Provide path to ONNX model to update.
+  output_model  Provide path to write updated ONNX model to.
+
+optional arguments:
+  -h, --help    show this help message and exit
+```
 
 
 ## PyTorch export helpers
@@ -72,6 +96,7 @@ When exporting a model from [PyTorch](https://pytorch.org/) using [torch.onnx.ex
 In the below example we provide the necessary input to run the torchvision mobilenet_v2 model. 
 The input_names and inputs_as_tuple returned can be directly used in the torch.onnx.export call. 
 This provides the most benefit when there are multiple inputs to the model, and/or if those inputs involve more complex data types like dictionaries.
+
 
 ```python
 import torch
