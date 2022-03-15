@@ -95,7 +95,7 @@ TEST_F(ShapeInferenceTest, BasicTest) {
   cast_to.set_i(ONNX_NAMESPACE::TensorProto_DataType_INT32);
   //cast_to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
   //cast_to.set_s("INT16");
-  node.AddAttribute("to", cast_to);
+  node.AddAttributeProto(std::move(cast_to));
 
   DoShapeInference();
   // check inferred shapes
