@@ -161,7 +161,6 @@ class T5EncoderDecoderInitHelper:
                           export_params=True,
                           input_names=input_names,
                           output_names=output_names,
-                          example_outputs=outputs,
                           dynamic_axes=dynamic_axes,
                           opset_version=12,
                           do_constant_folding=True,
