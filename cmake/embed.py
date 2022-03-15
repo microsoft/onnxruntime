@@ -2,7 +2,17 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-"""This file implement `xxd -i` funcationality with additional features."""
+"""This file generate a C++ header file which holds the blob of another file.
+
+There is a long story about embeding another file in C++ source code. See
+http://open-std.org/JTC1/SC22/WG21/docs/papers/2020/p1040r6.html for more
+information. But non of the mentioned tools or methods are cross-platform or
+standardized.
+
+The xxd command on Unix is a simple tool that can process a file into a header
+file. This script implement `xxd -i` funcationality with additional features,
+for example, #include directive expansion for C-like language. This tool is
+added to help embeding OpenCL kernal source into C++ source via include"""
 
 import io
 import os
@@ -62,7 +72,7 @@ def batch_iter(iter, batch_size=12):
 
 
 def compute_path(path):
-    """compute path relative to onnxruntime project root. Assume the this file
+    """compute path relative to onnxruntime project root. Assume that this file
     is in <project_root>/cmake/"""
     # this file <project_root>/cmake/embed.py
     project_root = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -70,7 +80,7 @@ def compute_path(path):
 
 
 class OpenCLPreprocessor(Preprocessor):
-    """"A preprocessor that expand #include"""
+    """"A preprocessor that expand #include directive."""
     def __init__(self, includes):
         super().__init__()
         for i in includes:
@@ -177,7 +187,6 @@ if __name__ == "__main__":
         file_content = file_content.encode("utf8")
 
     # encode file_content as an C source textual representation of an array
-    # so that we be do the embedding
     file_content = [c for c in file_content]
     file_content_len = len(file_content)
     if not args.no_null_terminated:
@@ -187,7 +196,7 @@ if __name__ == "__main__":
         ", ".join(line_content) for line_content in batch_iter(file_content)
     ]
 
-    # the array the body
+    # the array body
     content = io.StringIO()
     if not args.no_header:
         filename_relative_to_ort = compute_path(args.file)
