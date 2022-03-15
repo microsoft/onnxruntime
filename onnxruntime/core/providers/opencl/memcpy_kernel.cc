@@ -31,7 +31,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOpenCLExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
 
 ONNX_OPERATOR_KERNEL_EX(
