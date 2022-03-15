@@ -32,6 +32,7 @@ stages:
     PoolName: 'Win-CPU-2021'
 
 - stage: Build_React_Native
+  dependsOn: Extract_commit
   jobs:
   - template: templates/react-native-ci.yml
     parameters:
