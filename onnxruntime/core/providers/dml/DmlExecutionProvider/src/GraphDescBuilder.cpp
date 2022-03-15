@@ -89,11 +89,12 @@ namespace Dml::GraphDescBuilder
         // enough GPU work to be worth flushing immediately.
         const uint32_t minNodeCountToReuseCommandList = 5;
         bool reuseCommandList = false;
-        
-        if (orderedNodeIndices.size() >= minNodeCountToReuseCommandList)
-        {
-            reuseCommandList = true;
-        }
+
+        // Temporarily disable command list re-use for prototyping
+        //if (orderedNodeIndices.size() >= minNodeCountToReuseCommandList)
+        //{
+        //    reuseCommandList = true;
+        //}
 
         auto constantCpuGraphInputGetter = [&transferredInitializerMap](const std::string& argName)
         {
