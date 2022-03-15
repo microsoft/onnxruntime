@@ -61,13 +61,13 @@ jobs:
     inputs:
       rootFolderOrFile: build
       includeRootFolder: true
-      archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+      archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).tar'
       archiveType: 'tar'
       tarCompression: 'none'
       verbose: true
   - task: PublishBuildArtifacts@1
     inputs:
-      pathToPublish: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+      pathToPublish: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).tar'
       artifactName: MyBuildOutputs
 
 - job: Test_CPU_EP
@@ -87,7 +87,7 @@ jobs:
 
     - task: ExtractFiles@1
       inputs:
-        archiveFilePatterns: '$(Agent.BuildDirectory)/MyBuildOutputs/*.zip'
+        archiveFilePatterns: '$(Agent.BuildDirectory)/MyBuildOutputs/*.tar'
         destinationFolder: '$(Build.SourcesDirectory)'
 
     - script: pwd && ls && ls build
