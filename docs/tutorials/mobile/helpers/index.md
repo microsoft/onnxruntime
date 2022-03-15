@@ -23,14 +23,14 @@ There are a range of tools available to aid with exporting and analyzing a model
 
 The model usability checker provides information on how well a model is likely to run with ORT mobile, including the suitability for using NNAPI on Android and CoreML on iOS. It can also recommend running specific tools to update the model so that it works better with ORT Mobile.
 
-See [here](./) for details
+See [here](./model-usability-checker.md) for more details.
 
 
 ## ONNX model opset updater
 
-The ORT Mobile pre-built package only supports the most recent ONNX opsets in order to minimize binary size. Most ONNX models can be updated to a newer opset. Use this tool to do so. It is recommended to use the latest opset the pre-built package supports, which is currently opset 15.
+The ORT Mobile pre-built package only supports the most recent ONNX opsets in order to minimize binary size. Most ONNX models can be updated to a newer ONNX opset using this tool. It is recommended to use the latest opset the pre-built package supports, which is currently opset 15.
 
-The opsets supported by the pre-built package are documented [here](../../../reference/operators/mobile_package_op_type_support_1.10.md).
+The ONNX opsets supported by the pre-built package are documented [here](../../../reference/operators/mobile_package_op_type_support_1.10.md).
 
 Usage:
 
@@ -108,5 +108,7 @@ model.eval()
 
 input0 = torch.zeros((1, 3, 224, 224), dtype=torch.float32)
 input_names, inputs_as_tuple = tools.pytorch_export_helpers.infer_input_info(model, input0)
+
+# input_names and inputs_as_tuple can be directly passed to torch.onnx.export
 torch.onnx.export(model, inputs_as_tuple, "model.onnx", input_names=input_names, ...)
 ```
