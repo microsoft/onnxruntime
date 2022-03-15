@@ -717,6 +717,7 @@ if (onnxruntime_USE_OPENCL)
     "${opencl_cl_path_prefix}**/kernels/*.h"
   )
 
+  set(embed_tool ${PROJECT_SOURCE_DIR}/../onnxruntime/core/providers/opencl/embed.py)
   set(opencl_target_dir ${CMAKE_CURRENT_BINARY_DIR}/opencl_generated)
   set(opencl_generated_cl_includes)
   foreach(f ${opencl_cl_srcs})
@@ -732,11 +733,11 @@ if (onnxruntime_USE_OPENCL)
       # checksum for each header file. If the new content match the existing
       # ${output}.deps, this file will not be updated.
       OUTPUT ${output}.deps ${output}.deps-nonexisting
-      COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/embed.py -x cl
+      COMMAND ${Python3_EXECUTABLE} ${embed_tool} -x cl
               -I "${ONNXRUNTIME_ROOT}/core/providers/opencl"
               -I "${dir_of_f}"
               -M ${f} -o ${output}.deps
-      DEPENDS ${PROJECT_SOURCE_DIR}/embed.py ${f}
+      DEPENDS ${embed_tool} ${f}
       COMMENT "Scanning ${f} for transitive dependencies"
     )
     add_custom_command(
@@ -747,11 +748,11 @@ if (onnxruntime_USE_OPENCL)
       # thus, new ${output} is created and compiling and linking will be
       # triggered.
       OUTPUT ${output}
-      COMMAND Python3::Interpreter ${PROJECT_SOURCE_DIR}/embed.py -x cl
+      COMMAND Python3::Interpreter ${embed_tool} -x cl
       -I "${ONNXRUNTIME_ROOT}/core/providers/opencl"
       -I "${dir_of_f}"
       ${f} -o ${output}
-      DEPENDS ${PROJECT_SOURCE_DIR}/embed.py ${f} ${output}.deps
+      DEPENDS ${embed_tool} ${f} ${output}.deps
       COMMENT "Generating ${output}"
     )
     list(APPEND opencl_generated_cl_includes "${output}")
