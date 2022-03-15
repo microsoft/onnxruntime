@@ -32,12 +32,13 @@ stages:
     PoolName: 'Win-CPU-2021'
 
 - stage: Build_React_Native
-  dependsOn: Build_wasm_Debug
   jobs:
-  - template: mac-react-native-ci-pipeline.yml
+  - template: templates/react-native-ci.yml
     parameters:
-      NpmPackagingMode: ${{ variables.NpmPackagingMode }}
+      NpmPackagingMode: ${{ variables.npm_packaging_mode }}
       IsReleasePipeline: true
+      BuildConfig: 'Release'
+      PoolName: 'Linux-CPU'
 
 - stage: Npm_packaging
   dependsOn:
