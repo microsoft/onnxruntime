@@ -779,6 +779,9 @@ struct MLAS_CONV_SYM_POST_PROCESS_PARAMS {
     float MinimumValue;
     float MaximumValue;
     int32_t OutputZeroPoint;
+    const int32_t* Multiplier;
+    const int32_t* PreShift;
+    const int32_t* PostShift;
 };
 
 //

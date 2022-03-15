@@ -10,6 +10,7 @@
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/quantization/quantization.h"
 
 #if defined(_M_ARM64) || defined(__aarch64__)
 
@@ -510,7 +511,11 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
   ActType Y_zero_point_value;
   uint8_t W_zero_point_value;
   ComputeOffset(context, M, X_zero_point_value, Y_zero_point_value, W_zero_point_value);
+  std::vector<int32_t> multipliers;
+  std::vector<int32_t> pre_shifts;
+  std::vector<int32_t> post_shifts;
   std::vector<float> output_scales = ComputeOutputScale(context, M);
+  ComputeMultiplierShiftVector(multipliers, pre_shifts, post_shifts);
 
   const Tensor* B = context->Input<Tensor>(InputTensors::IN_BIAS);
 
@@ -743,6 +748,9 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
         conv_params.KernelSize = static_cast<size_t>(kernel_size);
         conv_params.Bias = column_sums_.data();
         conv_params.Scale = output_scales.data();
+        conv_params.Multiplier = multipliers.data();
+        conv_params.PreShift = pre_shifts.data();
+        conv_params.PostShift = post_shifts.data();
         conv_params.PerChannelScale = output_scales.size() > 1;
         conv_params.OutputZeroPoint = Y_zero_point_value;
         conv_params.InputIsSigned = std::is_signed<ActType>::value;

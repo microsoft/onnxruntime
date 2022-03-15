@@ -844,6 +844,9 @@ struct MLAS_CONV_SYM_PARAMS {
     bool PerChannelScale;
     int32_t OutputZeroPoint;
     bool InputIsSigned;
+    const int32_t* Multiplier;
+    const int32_t* PreShift;
+    const int32_t* PostShift;
 };
 
 void

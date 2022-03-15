@@ -198,5 +198,49 @@ inline uint8_t* TransPoseInputData(const uint8_t* input,
   return output;
 }
 
+
+inline uint32_t BitsOfFp32(float FloatValue) {
+  union {
+    uint32_t IntegerValue;
+    float FloatValue;
+  } u;
+  u.FloatValue = FloatValue;
+  return u.IntegerValue;
+}
+
+inline void ComputeMultiplierShift(float scale, int32_t& multiplier, int32_t& pre_shift, int32_t& post_shift) {
+  // Compute requantization parameters.
+  const uint32_t scale_bits = BitsOfFp32(scale);
+
+  // Multiplier is in [0x40000000, 0x7FFFFF80] range.
+  multiplier = (int32_t)(((scale_bits & UINT32_C(0x007FFFFF)) | UINT32_C(0x00800000)) << 7);
+
+  // Shift is in [-8, 31] range.
+  const int32_t shift = 127 + 31 - 32 - (scale_bits >> 23);
+  assert(shift >= -8);
+  assert(shift < 32);
+
+  // Split shift into pre_shift + post_shift, post_shift in [1, 31] range.
+  post_shift = math_max_s32(shift, 1);
+  pre_shift = shift - post_shift;
+
+  pre_shift = -pre_shift;
+  post_shift = -post_shift;
+}
+
+inline void ComputeMultiplierShiftVector(
+    const std::vector<float>& scales,
+    std::vector<int32_t>& multipliers,
+    std::vector<int32_t>& pre_shifts,
+    std::vector<int32_t>& post_shifts) {
+  multipliers.resize(scales.size());
+  pre_shifts.resize(scales.size());
+  post_shifts.resize(scales.size());
+
+  for (size_t i = 0; i < scales.size(); i++) {
+    ComputeMultiplierShift(scales[i], multipliers[i], pre_shifts[i], post_shifts[i]);
+  }
+}
+
 }  // namespace quantization
 }  // namespace onnxruntime
