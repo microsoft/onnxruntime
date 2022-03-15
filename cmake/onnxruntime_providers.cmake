@@ -712,10 +712,6 @@ if (onnxruntime_USE_OPENCL)
   file(GLOB_RECURSE opencl_cl_srcs CONFIGURE_DEPENDS
     "${opencl_cl_path_prefix}*.cl"
   )
-  file(GLOB_RECURSE opencl_cl_hdrs CONFIGURE_DEPENDS
-    "${opencl_cl_path_prefix}kernels/*.h"
-    "${opencl_cl_path_prefix}**/kernels/*.h"
-  )
 
   set(embed_tool ${PROJECT_SOURCE_DIR}/../onnxruntime/core/providers/opencl/embed.py)
   set(opencl_target_dir ${CMAKE_CURRENT_BINARY_DIR}/opencl_generated)
