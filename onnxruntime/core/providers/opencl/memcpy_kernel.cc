@@ -17,10 +17,8 @@ class Memcpy final : public OpKernel {
     const auto* X_type = ctx->InputType(0);
     if (X_type->IsTensorType()) {
       const auto* X = ctx->Input<Tensor>(0);
-      ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
-      Tensor* Y = ctx->Output(0, X->Shape());
-      ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
-      return Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
+      Tensor& Y = ctx->RequiredOutput(0, X->Shape());
+      return Info().GetDataTransferManager().CopyTensor(*X, Y, Info().GetKernelDef().ExecQueueId());
     }
     return Status(common::ONNXRUNTIME, common::FAIL, "Memcpy: Unsupported input type.");
   }
