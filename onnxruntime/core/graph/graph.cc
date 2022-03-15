@@ -882,12 +882,6 @@ bool Node::AddAttributeProto(AttributeProto value) {
   return inserted;
 }
 
-bool Node::AddAttribute(std::string_view attr_name, AttributeProto value) {
-  ORT_ENFORCE(attr_name == value.name(),
-              "AttributeProto name mismatch. attr_name: ", attr_name, ", value.name(): ", value.name());
-  return AddAttributeProto(std::move(value));
-}
-
 #define ADD_ATTR_SINGLE_IMPL(Type)                                                   \
   bool Node::AddAttribute(std::string attr_name, Type value) {                       \
     AttributeProto a = utils::MakeAttribute(std::move(attr_name), std::move(value)); \

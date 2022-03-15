@@ -346,10 +346,6 @@ class Node {
   @return True if a new attribute was added, false if an existing attribute was overwritten. */
   bool AddAttributeProto(ONNX_NAMESPACE::AttributeProto value);
 
-  // TODO can this function be removed?
-  /** Add an attribute to this Node with specified attribute name and value. */
-  bool AddAttribute(std::string_view attr_name, ONNX_NAMESPACE::AttributeProto value);
-
   /** Add an attribute to this Node with specified attribute name and value.
   @return True if a new attribute was added, false if an existing attribute was overwritten. */
   bool AddAttribute(std::string attr_name, int64_t value);
