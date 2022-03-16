@@ -84,18 +84,7 @@ TEST_F(ShapeInferenceTest, BasicTest) {
   Input("X1", type1);
 
   auto& node = Node("Cast", "X1", "Y1");
-  //AttributeProto squeezed_axes;
-  //squeezed_axes.set_name("axes");
-  //squeezed_axes.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
-  //squeezed_axes.add_ints(0);
-  //p_node->AddAttribute("axes", squeezed_axes);
-  AttributeProto cast_to;
-  cast_to.set_name("to");
-  cast_to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
-  cast_to.set_i(ONNX_NAMESPACE::TensorProto_DataType_INT32);
-  //cast_to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
-  //cast_to.set_s("INT16");
-  node.AddAttribute("to", cast_to);
+  node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_INT32});
 
   DoShapeInference();
   // check inferred shapes

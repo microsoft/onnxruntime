@@ -7,7 +7,9 @@
 #include "core/framework/allocator.h"
 #include "tvm_common.h"
 
+
 namespace onnxruntime {
+namespace tvm {
 
 #define TVM_ALLOC_ALIGN 128
 
@@ -22,14 +24,14 @@ class TVMAllocator : public IAllocator {
     : IAllocator(info) {
       switch (info.device.Type()) {
       case OrtDevice::CPU:
-          ctx = {kDLCPU, info.device.Id()};
-          break;
+        ctx = {kDLCPU, info.device.Id()};
+        break;
       case OrtDevice::GPU:
-          ctx = {kDLVulkan, info.device.Id()};
-          break;
+        ctx = {kDLVulkan, info.device.Id()};
+        break;
       default:
-          ORT_NOT_IMPLEMENTED("Unsupported device");
-          break;
+        ORT_NOT_IMPLEMENTED("Unsupported device");
+        break;
       }
     }
 
@@ -38,5 +40,7 @@ class TVMAllocator : public IAllocator {
   DLDevice ctx;
 };
 
-}  // namespace onnxruntime
+}   // namespace tvm
+}   // namespace onnxruntime
+
 #endif // TVM_ALLOCATOR
