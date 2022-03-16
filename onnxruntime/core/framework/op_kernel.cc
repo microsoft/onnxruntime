@@ -242,7 +242,11 @@ int InstantKernelContext::NumVariadicInputs(size_t arg_num) const {
   } else if (ort_value->IsTensorSequence()) {
     return static_cast<int>(ort_value->Get<TensorSeq>().Size());
   } else if (ort_value->IsSparseTensor()) {
+#ifdef DISABLE_SPARSE_TENSORS
+    ORT_THROW("sparse tensor is not supported in this build.");
+#else
     return static_cast<int>(ort_value->Get<SparseTensor>().Values().Shape().Size());
+#endif
   } else {
     return 0;
   }
@@ -287,12 +291,12 @@ OrtValue* InstantKernelContext::OutputMLValue(int index, const TensorShape& shap
       auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
       ort_value.Init(p_sequence.release(), ml_tensor_sequence, ml_tensor_sequence->GetDeleteFunc());
     } else if (ort_value.IsSparseTensor()) {
-#if !defined(DISABLE_SPARSE_TENSORS)
+#ifdef DISABLE_SPARSE_TENSORS
+      ORT_THROW("sparse tensor is not supported in this build.");
+#else
       auto ml_type = ort_value.Type();
       auto element_type = ml_type->AsSparseTensorType()->GetElementType();
       SparseTensor::InitOrtValue(element_type, shape, allocator_, ort_value);
-#else
-      ORT_THROW("sparse tensor is not supported in this build.");
 #endif
     }
   }
