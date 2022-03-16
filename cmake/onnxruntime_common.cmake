@@ -108,7 +108,7 @@ if (onnxruntime_USE_MIMALLOC)
     endif()
 endif()
 
-include(external/abseil-cpp.cmake)
+add_subdirectory(external/abseil-cpp)
 
 onnxruntime_add_include_to_target(onnxruntime_common date_interface wil)
 target_include_directories(onnxruntime_common
