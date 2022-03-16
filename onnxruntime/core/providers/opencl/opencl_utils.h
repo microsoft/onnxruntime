@@ -400,10 +400,6 @@ inline size_t HashCombine(size_t a, size_t b) {
   b ^= b + 0x9e3779b9 + (a << 6) + (a >> 2);
   return b;
 }
-
-// FIXME: this is debug utiltity add by Jicheng Wen
-std::unique_ptr<float, std::function<void(float*)>> mapImage2dToHost(const OpenCLExecutionProvider& exec, const Tensor& tensor, int width, int height, bool write = false);
-std::unique_ptr<float, std::function<void(float*)>> mapImage2dToHost(const OpenCLExecutionProvider& exec, cl_mem image, int width, int height, bool write = false);
 }  // namespace opencl
 }  // namespace onnxruntime
 
