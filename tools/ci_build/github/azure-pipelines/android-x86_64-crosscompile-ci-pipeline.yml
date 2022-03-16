@@ -87,7 +87,7 @@ jobs:
 
     - script: pwd && ls && ls build
       displayName: check root directory
-
+  
     - script: |
         python3 tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
@@ -104,8 +104,7 @@ jobs:
         --android_ndk_path $ANDROID_NDK_HOME \
         --android_abi=x86_64 \
         --android_api=30 \
-        --skip_submodule_sync \
-        --parallel \
+        --test
       displayName: CPU EP, Test on Android Emulator
 
 - job: Build_NNAPI_EP
