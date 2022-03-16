@@ -27,7 +27,6 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(abseil_cpp)
 FetchContent_GetProperties(abseil_cpp SOURCE_DIR)
-
-
+set(abseil_cpp_SOURCE_DIR ${abseil_cpp_SOURCE_DIR} PARENT_SCOPE)
 
 
