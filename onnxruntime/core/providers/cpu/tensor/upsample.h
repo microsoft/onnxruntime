@@ -378,6 +378,24 @@ class Upsample : public UpsampleBase, public OpKernel {
                      const gsl::span<const int64_t>& output_dims) const;
 };
 
+template <typename T>
+extern void NhwcUpsampleBilinear(const int64_t batch_size,
+                                 const int64_t num_channels,
+                                 const int64_t input_height,
+                                 const int64_t input_width,
+                                 const int64_t output_height,
+                                 const int64_t output_width,
+                                 const float height_scale,
+                                 const float width_scale,
+                                 const std::vector<float>& roi,
+                                 const bool use_extrapolation,
+                                 const float extrapolation_value,
+                                 const T* const XdataBase,
+                                 T* const YdataBase,
+                                 AllocatorPtr& alloc,
+                                 const GetOriginalCoordinateFunc& get_original_coordinate,
+                                 concurrency::ThreadPool* tp);
+
 }  // namespace onnxruntime
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
