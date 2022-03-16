@@ -3,7 +3,7 @@ parameters:
 - name: BuildORT
   displayName: Build ORT
   type: boolean
-  default: true
+  default: false
 
 - name: PostToDashboard
   displayName: Post to Dashboard
@@ -112,24 +112,9 @@ jobs:
 
     - ${{ if eq(parameters.PublishWheel, true) }}:
       
-      - script: 'docker build --build-arg IMAGE=ort-master -t $(anubis_image) -f $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.python38 .'
-        displayName: 'Build Python 3.8 Images'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
-
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/anubis/copy_wheel.sh -t $(trtContainer) -i $(anubis_image)'
-        displayName: 'Copy Wheel from Docker'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/anubis'
-    
-      # - script: 'OUTPUT=$(ls dist) && az storage blob upload --account-name anubiscustomerstorage  --account-key $(account-key) --container-name upload --file $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/dist/*.whl --name ort-trt-ep/$(Build.BuildNumber)/$OUTPUT'
-      #   displayName: 'Upload Wheel File'
-      #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-
-      # - task: PowerShell@2
-      #   inputs:
-      #     filePath: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/anubis/start_job.ps1'
-      #     arguments: '-file_folder $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/dist -account_key $(account-key) -trt_container $(trtContainer) -csc $(csc)'
-      #   displayName: 'Start Anubis Job'
-
+      - script: 'mkdir wheel && wget --directory-prefix wheel https://test-files.pythonhosted.org/packages/77/4d/75ccfde752447b6c91ffd387aca598b3992d9637e9960ebe380959ead39f/ort_nightly_gpu-1.11.0.dev20220315004-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl'
+        displayName: 'Get Nightly Wheel'
+     
     - ${{ each option in parameters.ModelGroups }}:
       - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $(${{option}})'
         displayName: '${{option}} perf'
@@ -159,7 +144,7 @@ jobs:
         condition: always()
 
     - ${{ if eq(parameters.PublishWheel, true) }}:
-      - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/dist $(Build.SourcesDirectory)/Artifact/anubis_wheel'
+      - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/wheel $(Build.SourcesDirectory)/Artifact/anubis_wheel'
         displayName: 'Copy Artifacts'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         condition: always()
