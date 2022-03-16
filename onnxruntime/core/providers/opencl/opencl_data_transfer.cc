@@ -20,7 +20,7 @@ bool OpenCLDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& d
   ZoneScopedN("CanCopy");
   return (src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::GPU) ||
          (src_device.Type() == OrtDevice::GPU && dst_device.Type() == OrtDevice::CPU) ||
-         (src_device.Type() == OrtDevice::GPU && dst_device.Type() == OrtDevice::GPU && src_device.MemType() != src_device.MemType());
+         (src_device.Type() == OrtDevice::GPU && dst_device.Type() == OrtDevice::GPU && src_device.MemType() != dst_device.MemType());
 }
 
 Status OpenCLDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const {
