@@ -147,7 +147,7 @@ TensorRT and CUDA are separate execution providers for ONNX Runtime. On the same
 
 DirectML is the hardware-accelerated DirectX 12 library for machine learning on Windows and supports all DirectX 12 capable devices (Nvidia, Intel, AMD). This means that if you are targeting Windows GPUs, using the DirectML Execution Provider is likely your best bet. This can be used with both the ONNX Runtime as well as [WinML APIs](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference).
 
-## Tuning performance
+## Tips for tuning performance
 
 Below are some suggestions for things to try for various EPs for tuning performance. 
 
