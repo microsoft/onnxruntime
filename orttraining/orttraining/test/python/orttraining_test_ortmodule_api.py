@@ -4822,8 +4822,9 @@ def test_check_opset_is_default_opset_after_training():
 
 def test_random_states_unchanged_for_ortmodule():
     import numpy
-    os.environ['ORTMODULE_FALLBACK_POLICY'] = 'FALLBACK_DISABLE'
+
     os.environ['ORTMODULE_FALLBACK_RETRY'] = 'False'
+
     class NeuralNetSlice(torch.nn.Module):
         def __init__(self):
             super(NeuralNetSlice, self).__init__()
@@ -4856,4 +4857,4 @@ def test_random_states_unchanged_for_ortmodule():
 
     assert random_state_equal(ori_random_states, new_random_states)
 
-    del os.environ['ORTMODULE_FALLBACK_POLICY'], os.environ['ORTMODULE_FALLBACK_RETRY']
+    del os.environ['ORTMODULE_FALLBACK_RETRY']
