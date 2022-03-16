@@ -9,11 +9,15 @@ parameters:
   - 'custom'
   default: 'nightly (@dev)'
 
+- name: NodePipelineId
+  displayName: 'Node npm package build Id'
+  type: string
+  default: ''
+
 variables:
   # pipeline should define the following varaibles
   #   ExtraBuildArgs
   #   VersionSuffix
-  #   PoolName
 
   ${{ if eq(parameters.NpmPublish, 'nightly (@dev)') }}:
     NpmPackagingMode: 'dev'
@@ -54,16 +58,30 @@ stages:
       runCodesignValidationInjection: false
     timeoutInMinutes: 10
     steps:
-    - task: DownloadPipelineArtifact@2
-      inputs:
-        buildType: 'specific'
-        project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
-        definition: '940'
-        specificBuildWithTriggering: true
-        buildVersionToDownload: 'latest'
-        artifactName: 'NPM_packages'
-        targetPath: '$(Pipeline.Workspace)'
-      displayName: 'Download onnxruntime-node Pipeline Artifact'
+
+    - ${{ if eq(parameters.NodePipelineId, '') }}:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          buildType: 'specific'
+          project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
+          definition: '940'
+          specificBuildWithTriggering: true
+          buildVersionToDownload: 'latest'
+          artifactName: 'NPM_packages'
+          targetPath: '$(Pipeline.Workspace)'
+        displayName: 'Download onnxruntime-node Pipeline Artifact'
+      
+    - ${{ if ne(parameters.NodePipelineId, '') }}:
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          buildType: 'specific'
+          project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
+          definition: '940'
+          buildVersionToDownload: 'specific'
+          pipelineId: '${{ parameters.NodePipelineId }}'
+          artifactName: 'NPM_packages'
+          targetPath: '$(Pipeline.Workspace)'
+        displayName: 'Download onnxruntime-node Pipeline Artifact'
     
     - task: CopyFiles@2
       inputs:
