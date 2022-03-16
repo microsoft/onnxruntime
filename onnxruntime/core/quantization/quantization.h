@@ -221,7 +221,7 @@ inline void ComputeMultiplierShift(float scale, int32_t& multiplier, int32_t& pr
   assert(shift < 32);
 
   // Split shift into pre_shift + post_shift, post_shift in [1, 31] range.
-  post_shift = math_max_s32(shift, 1);
+  post_shift = shift > 1 ? shift : 1;
   pre_shift = shift - post_shift;
 
   pre_shift = -pre_shift;

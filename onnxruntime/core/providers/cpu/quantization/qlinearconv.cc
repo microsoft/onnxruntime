@@ -515,7 +515,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
   std::vector<int32_t> pre_shifts;
   std::vector<int32_t> post_shifts;
   std::vector<float> output_scales = ComputeOutputScale(context, M);
-  ComputeMultiplierShiftVector(multipliers, pre_shifts, post_shifts);
+  quantization::ComputeMultiplierShiftVector(output_scales, multipliers, pre_shifts, post_shifts);
 
   const Tensor* B = context->Input<Tensor>(InputTensors::IN_BIAS);
 
