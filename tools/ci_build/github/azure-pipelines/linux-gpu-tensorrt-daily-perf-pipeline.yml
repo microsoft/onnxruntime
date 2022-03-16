@@ -114,7 +114,8 @@ jobs:
       
       - script: 'mkdir wheel && wget --directory-prefix wheel https://test-files.pythonhosted.org/packages/77/4d/75ccfde752447b6c91ffd387aca598b3992d9637e9960ebe380959ead39f/ort_nightly_gpu-1.11.0.dev20220315004-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl'
         displayName: 'Get Nightly Wheel'
-     
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+        
     - ${{ each option in parameters.ModelGroups }}:
       - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $(${{option}})'
         displayName: '${{option}} perf'
