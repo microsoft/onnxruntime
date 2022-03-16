@@ -49,7 +49,6 @@ jobs:
         --android_ndk_path $ANDROID_NDK_HOME \
         --android_abi=x86_64 \
         --android_api=30 \
-        --config Release \
         --skip_submodule_sync \
         --parallel \
         --cmake_generator=Ninja \
@@ -61,7 +60,7 @@ jobs:
 
   - task: CopyFiles@2
     inputs:
-      contents: 'build/**'
+      contents: 'build/**/*.apk'
       targetFolder: $(Build.ArtifactStagingDirectory)
       overWrite: true
   - task: PublishBuildArtifacts@1
