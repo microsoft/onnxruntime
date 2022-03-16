@@ -152,6 +152,8 @@ Status OpenCLDataTransfer::CopyTensor1DToImage2D(const Tensor& src, const Image2
 Status OpenCLDataTransfer::CopyTensor2DToImage2D(const Tensor& src, const Image2D& dst, const Image2DDesc& /*desc*/) const {
   ZoneScopedN("CopyTensor2DToImage2D");
   VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), dst);
+  ORT_UNUSED_PARAMETER(src);
+  ORT_UNUSED_PARAMETER(dst);
   ORT_NOT_IMPLEMENTED("CopyTensor2DToImage2D");
 }
 
@@ -168,6 +170,8 @@ Status OpenCLDataTransfer::CopyTensorNCHWToImage2D(const Tensor& src, const Imag
 Status OpenCLDataTransfer::CopyTensorNCHWcToImage2D(const Tensor& src, const Image2D& dst, const Image2DDesc& /*desc*/) const {
   ZoneScopedN("CopyTensorNCHWcToImage2D");
   VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), dst);
+  ORT_UNUSED_PARAMETER(src);
+  ORT_UNUSED_PARAMETER(dst);
   ORT_NOT_IMPLEMENTED("CopyTensorNCHWcToImage2D");
 }
 
@@ -185,6 +189,8 @@ Status OpenCLDataTransfer::CopyImage2DToTensor1D(const Image2D& src, const Image
 Status OpenCLDataTransfer::CopyImage2DToTensor2D(const Image2D& src, const Image2DDesc& /*desc*/, Tensor& dst) const {
   ZoneScopedN("CopyImage2DToTensor2D");
   VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) -----> host(%p)", src, dst.DataRaw());
+  ORT_UNUSED_PARAMETER(src);
+  ORT_UNUSED_PARAMETER(dst);
   ORT_NOT_IMPLEMENTED("CopyImage2DToTensor2D");
 }
 
@@ -201,6 +207,8 @@ Status OpenCLDataTransfer::CopyImage2DToTensorNCHW(const Image2D& src, const Ima
 Status OpenCLDataTransfer::CopyImage2DToTensorNCHWc(const Image2D& src, const Image2DDesc& /*desc*/, Tensor& dst) const {
   ZoneScopedN("CopyImage2DToTensorNCHWc");
   VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) -----> host(%p)", src, dst.DataRaw());
+  ORT_UNUSED_PARAMETER(src);
+  ORT_UNUSED_PARAMETER(dst);
   ORT_NOT_IMPLEMENTED("CopyImage2DToTensorNCHWc");
 }
 
@@ -229,6 +237,8 @@ Status OpenCLDataTransfer::CopyBuffer2DToImage2D(
     const Image2DDesc& /*desc*/) const {
   ZoneScopedN("CopyBuffer2DToImage2D (kernel launch)");
   VLOGF_DEFAULT(0, "[CL] copy  Buffer(%p) --> Image2D(%p)", src, dst);
+  ORT_UNUSED_PARAMETER(src);
+  ORT_UNUSED_PARAMETER(dst);
   ORT_NOT_IMPLEMENTED("CopyBuffer2DToImage2D");
 }
 
@@ -259,6 +269,8 @@ Status OpenCLDataTransfer::CopyBufferNCHWcToImage2D(
     const Image2DDesc& /*desc*/) const {
   ZoneScopedN("CopyBufferNCHWcToImage2D (kernel launch)");
   VLOGF_DEFAULT(0, "[CL] copy  Buffer(%p) --> Image2D(%p)", src, dst);
+  ORT_UNUSED_PARAMETER(src);
+  ORT_UNUSED_PARAMETER(dst);
   ORT_NOT_IMPLEMENTED("CopyBufferNCHWcToImage2D");
 }
 
@@ -287,6 +299,8 @@ Status OpenCLDataTransfer::CopyImage2DToBuffer2D(
     const TensorShape /*shape*/) const {
   ZoneScopedN("CopyImage2DToBuffer2D (kernel launch)");
   VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) ---> Buffer(%p)", src, dst);
+  ORT_UNUSED_PARAMETER(src);
+  ORT_UNUSED_PARAMETER(dst);
   ORT_NOT_IMPLEMENTED("CopyImage2DToBuffer2D");
 }
 
@@ -317,6 +331,8 @@ Status OpenCLDataTransfer::CopyImage2DToBufferNCHWc(
     const TensorShape /*shape*/) const {
   ZoneScopedN("CopyImage2DToBufferNCHWc (kernel launch)");
   VLOGF_DEFAULT(0, "[CL] copy Image2D(%p) ---> Buffer(%p)", src, dst);
+  ORT_UNUSED_PARAMETER(src);
+  ORT_UNUSED_PARAMETER(dst);
   ORT_NOT_IMPLEMENTED("CopyImage2DToBufferNCHWc");
 }
 
