@@ -944,40 +944,80 @@ static void ModelBuilding_DiscreteFourierTransform() {
 #endif
 }
 
-static void ModelBuilding_DiscreteFourierTransformInverseIdentity() {
 #if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
-  std::vector<int64_t> shape = {1, 5};
-  std::vector<int64_t> output_shape = {1, shape[1], 2};
+static void DiscreteFourierTransformInverse(size_t axis) {
+  std::vector<int64_t> shape = {2, 5, 8, 1};
+  std::vector<int64_t> output_shape = {2, 5, 8, 2};
 
   auto model =
       LearningModelBuilder::Create(13)
           .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.TimeSignal", TensorKind::Float, shape))
           .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Spectra", TensorKind::Float, output_shape))
+          .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Inverse", TensorKind::Float, output_shape))
           .Operators().Add(Operator(L"DFT", MS_EXPERIMENTAL_DOMAIN)
                              .SetInput(L"input", L"Input.TimeSignal")
-                             .SetOutput(L"output", L"DFTOutput"))
-          .Operators().Add(Operator(L"IDFT", MS_EXPERIMENTAL_DOMAIN)
-                             .SetInput(L"input", L"DFTOutput")
+                             .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(axis)}))
                              .SetOutput(L"output", L"Output.Spectra"))
+          .Operators().Add(Operator(L"IDFT", MS_EXPERIMENTAL_DOMAIN)
+                             .SetInput(L"input", L"Output.Spectra")
+                             .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(axis)}))
+                             .SetOutput(L"output", L"Output.Inverse"))
           .CreateModel();
 
   LearningModelSession session(model);
   LearningModelBinding binding(session);
 
+  auto input_vector =
+      std::vector<float>{
+           1, 2, 3, 4, 5, 6, 7, 8,
+           1, 2, 3, 4, 5, 6, 7, 8,
+           1, 2, 3, 4, 5, 6, 7, 8,
+           1, 2, 3, 4, 5, 6, 7, 8,
+           1, 2, 3, 4, 5, 6, 7, 8, 
+
+           2, 4, 6, 8, 10, 12, 14, 16,
+           2, 4, 6, 8, 10, 12, 14, 16,
+           2, 4, 6, 8, 10, 12, 14, 16,
+           2, 4, 6, 8, 10, 12, 14, 16,
+           2, 4, 6, 8, 10, 12, 14, 16,
+          };
   // Populate binding
-  binding.Bind(L"Input.TimeSignal", TensorFloat::CreateFromArray(shape, {1, 2, 3, 4, 5}));
+  binding.Bind(
+      L"Input.TimeSignal",
+      TensorFloat::CreateFromArray(
+          shape,
+          input_vector));
 
   // Evaluate
   auto result = session.Evaluate(binding, L"");
-
+  
   // Check results
-  printf("Output.Spectra\n");
-  auto y_tensor = result.Outputs().Lookup(L"Output.Spectra").as<TensorFloat>();
+  auto y_tensor = result.Outputs().Lookup(L"Output.Inverse").as<TensorFloat>();
   auto y_ivv = y_tensor.GetAsVectorView();
-  for (int i = 0; i < output_shape[0] * output_shape[1] * 2; i += 2) {
-    printf("(%f + %fi), ", y_ivv.GetAt(i), y_ivv.GetAt(i + 1));
+  for (uint32_t i = 0; i < y_ivv.Size(); i += 2) {
+    WINML_EXPECT_TRUE(abs(y_ivv.GetAt(i) - input_vector[i / 2]) < .001);
+    WINML_EXPECT_TRUE(abs(y_ivv.GetAt(i + 1) - 0) < .001);
   }
-  printf("\n");
+  
+  //printf("Output.Spectra\n");
+  //auto y_tensor = result.Outputs().Lookup(L"Output.Spectra").as<TensorFloat>();
+  //auto y_ivv = y_tensor.GetAsVectorView();
+  //for (uint32_t i = 0; i < y_ivv.Size(); i+=2) {
+  //  auto format_size = 16;
+  //  if (i % format_size == 0 && i != 0) {
+  //    printf("\n");
+  //  }
+  //  printf("(%.2f + %.2fi), ", y_ivv.GetAt(i), y_ivv.GetAt(i + 1));
+  //}
+  //printf("\n");
+  
+}
+#endif
+
+static void ModelBuilding_DiscreteFourierTransformInverseIdentity() {
+#if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
+  DiscreteFourierTransformInverse(0);
+  DiscreteFourierTransformInverse(1);
 #endif
 }
 

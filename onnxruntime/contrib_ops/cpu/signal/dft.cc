@@ -278,17 +278,22 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
   
   auto batch_and_signal_rank = X->Shape().NumDimensions();
   auto total_dfts = static_cast<size_t>(X->Shape().Size() / X->Shape()[axis]);
+
+  auto is_input_real = X->Shape().NumDimensions() == 2 || X->Shape()[X->Shape().NumDimensions() - 1] == 1;
+  auto compex_input_factor = is_input_real ? 1 : 2;
   if (X->Shape().NumDimensions() > 2)
   {
     total_dfts /= X->Shape()[X->Shape().NumDimensions() - 1];
     batch_and_signal_rank -= 1;
   }
 
+
+
   // Calculate x/y offsets/strides
   for (size_t i = 0; i < total_dfts; i++)
   {
     size_t X_offset = 0;
-    size_t X_stride = X_shape.SizeFromDimension(axis+1);
+    size_t X_stride = X_shape.SizeFromDimension(axis+1) / compex_input_factor;
     size_t cumulative_packed_stride = total_dfts;
     size_t temp = i;
     for (size_t r = 0; r < batch_and_signal_rank; r++) {
@@ -299,7 +304,7 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
       cumulative_packed_stride /= X_shape[r];
       auto index = temp / cumulative_packed_stride;
       temp -= (index * cumulative_packed_stride);
-      X_offset += index * X_shape.SizeFromDimension(r + 1);
+      X_offset += index * X_shape.SizeFromDimension(r + 1) / compex_input_factor;
     }
 
     size_t Y_offset = 0;
