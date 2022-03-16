@@ -1130,7 +1130,6 @@ stages:
             docker run --rm \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              --user $( id -u ) \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
               -w /tmp/a \
