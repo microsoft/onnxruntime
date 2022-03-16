@@ -476,10 +476,13 @@ static void WindowFunction(const wchar_t* window_operator_name, TensorKind kind)
 #endif
 
 #if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
-static void DiscreteFourierTransform(bool is_onesided = false) {
-  std::vector<int64_t> shape = {1, 5};
-  std::vector<int64_t> output_shape = {1, 5, 2};
-  output_shape[1] = is_onesided ? (1 + (shape[1] >> 1)) : shape[1];
+static void DiscreteFourierTransform(size_t axis, bool is_onesided = false) {
+  auto axis_dim = axis + 1;
+  printf("\nDiscrete Fourier Transform [axis=%d, is_onesided=%s]\n", static_cast<int>(axis_dim), is_onesided ? "true" : "false");
+
+  std::vector<int64_t> shape = {2, 5, 8, 1};
+  std::vector<int64_t> output_shape = {2, 5, 8, 2};
+  output_shape[axis_dim] = is_onesided ? (1 + (shape[axis_dim] >> 1)) : shape[axis_dim];
    
   auto model =
       LearningModelBuilder::Create(13)
@@ -487,6 +490,7 @@ static void DiscreteFourierTransform(bool is_onesided = false) {
         .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Spectra", TensorKind::Float, output_shape))
         .Operators().Add(Operator(L"DFT", MS_EXPERIMENTAL_DOMAIN)
           .SetInput(L"input", L"Input.Signal")
+          .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(axis)}))
           .SetAttribute(L"onesided", TensorInt64Bit::CreateFromArray({}, {is_onesided}))
           .SetOutput(L"output", L"Output.Spectra"))
         .CreateModel();
@@ -495,19 +499,38 @@ static void DiscreteFourierTransform(bool is_onesided = false) {
   LearningModelBinding binding(session);
 
   // Populate binding
-  binding.Bind(L"Input.Signal", TensorFloat::CreateFromArray(shape, {1, 2, 3, 4, 5}));
+  binding.Bind(
+      L"Input.Signal",
+      TensorFloat::CreateFromArray(
+          shape,
+          {1, 2, 3, 4, 5, 6, 7, 8,
+           1, 2, 3, 4, 5, 6, 7, 8,
+           1, 2, 3, 4, 5, 6, 7, 8,
+           1, 2, 3, 4, 5, 6, 7, 8,
+           1, 2, 3, 4, 5, 6, 7, 8, 
+
+           2, 4, 6, 8, 10, 12, 14, 16,
+           2, 4, 6, 8, 10, 12, 14, 16,
+           2, 4, 6, 8, 10, 12, 14, 16,
+           2, 4, 6, 8, 10, 12, 14, 16,
+           2, 4, 6, 8, 10, 12, 14, 16,
+          }));
 
   // Evaluate
   auto result = session.Evaluate(binding, L"");
 
-  // Check results
-  printf("Output.Spectra\n");
-  auto y_tensor = result.Outputs().Lookup(L"Output.Spectra").as<TensorFloat>();
-  auto y_ivv = y_tensor.GetAsVectorView();
-  for (int i = 0; i < output_shape[0] * output_shape[1] * 2; i += 2) {
-    printf("(%f + %fi), ", y_ivv.GetAt(i), y_ivv.GetAt(i + 1));
-  }
-  printf("\n");
+  // // Check results
+  // printf("Output.Spectra\n");
+  // auto y_tensor = result.Outputs().Lookup(L"Output.Spectra").as<TensorFloat>();
+  // auto y_ivv = y_tensor.GetAsVectorView();
+  // for (uint32_t i = 0; i < y_ivv.Size(); i+=2) {
+  //   auto format_size = 16 * (!is_onesided || axis == 0) + 10 * (is_onesided && axis == 1);
+  //   if (i % format_size == 0 && i != 0) {
+  //     printf("\n");
+  //   }
+  //   printf("(%.2f + %.2fi), ", y_ivv.GetAt(i), y_ivv.GetAt(i + 1));
+  // }
+  // printf("\n");
 }
 #endif
 
@@ -612,20 +635,20 @@ static void STFT(size_t batch_size, size_t signal_size, size_t dft_size,
     printf("%f, ", window_ivv.GetAt(i));
   }
   printf("\n");
-  printf("Output.STFT\n");
-  // Check results
-  auto y_tensor = result.Outputs().Lookup(L"Output.STFT").as<TensorFloat>();
-  auto y_ivv = y_tensor.GetAsVectorView();
-  auto size = y_ivv.Size();
-  WINML_EXPECT_EQUAL(size, n_dfts * output_shape[2] * 2);
-  for (size_t dft_idx = 0; dft_idx < n_dfts; dft_idx++) {
-    for (size_t i = 0; INT64(i) < output_shape[2]; i++) {
-      auto real_idx = static_cast<uint32_t>((i * 2) + (2 * dft_idx * output_shape[2]));
-      printf("(%d, %f , %fi), ", static_cast<uint32_t>(i), y_ivv.GetAt(real_idx), y_ivv.GetAt(real_idx + 1));
-    }
-  }
-  
-  printf("\n");
+  //printf("Output.STFT\n");
+  //// Check results
+  //auto y_tensor = result.Outputs().Lookup(L"Output.STFT").as<TensorFloat>();
+  //auto y_ivv = y_tensor.GetAsVectorView();
+  //auto size = y_ivv.Size();
+  //WINML_EXPECT_EQUAL(size, n_dfts * output_shape[2] * 2);
+  //for (size_t dft_idx = 0; dft_idx < n_dfts; dft_idx++) {
+  //  for (size_t i = 0; INT64(i) < output_shape[2]; i++) {
+  //    auto real_idx = static_cast<uint32_t>((i * 2) + (2 * dft_idx * output_shape[2]));
+  //    printf("(%d, %f , %fi), ", static_cast<uint32_t>(i), y_ivv.GetAt(real_idx), y_ivv.GetAt(real_idx + 1));
+  //  }
+  //}
+  //
+  //printf("\n");
 }
 #endif
 
@@ -913,8 +936,11 @@ static void ModelBuilding_ConstantMatmul() {
 
 static void ModelBuilding_DiscreteFourierTransform() {
 #if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
-  DiscreteFourierTransform(false /*onesided*/);
-  DiscreteFourierTransform(true /*onesided*/);
+  DiscreteFourierTransform(0, false /*onesided*/);
+  DiscreteFourierTransform(0, true /*onesided*/);
+  DiscreteFourierTransform(1, false /*onesided*/);
+  DiscreteFourierTransform(1, true /*onesided*/);
+
 #endif
 }
 

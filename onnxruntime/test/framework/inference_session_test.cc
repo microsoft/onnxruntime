@@ -1412,11 +1412,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
         std::vector<onnxruntime::NodeArg*> inputs = {&node_1};
         std::vector<onnxruntime::NodeArg*> outputs = {&node_2};
         auto& cast_node = graph.AddNode("cast_1", "Cast", "node 2", inputs, outputs);
-        ONNX_NAMESPACE::AttributeProto to;
-        to.set_name("to");
-        to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-        to.set_i(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-        cast_node.AddAttribute("to", to);
+        cast_node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_FLOAT});
       }
       {
         std::vector<onnxruntime::NodeArg*> inputs = {&node_2, &data_0};
@@ -1462,11 +1458,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
     std::vector<onnxruntime::NodeArg*> inputs = {&if_cond_input};
     std::vector<onnxruntime::NodeArg*> outputs = {&graph_if_input};
     auto& cast_node = graph.AddNode("cast_9", "Cast", "node 2", inputs, outputs);
-    ONNX_NAMESPACE::AttributeProto to;
-    to.set_name("to");
-    to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-    to.set_i(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-    cast_node.AddAttribute("to", to);
+    cast_node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_FLOAT});
   }
 
   std::vector<onnxruntime::NodeArg*> inputs = {&if_cond_input};
@@ -1600,11 +1592,7 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
     std::vector<onnxruntime::NodeArg*> inputs = {&graph_0__value_1};
     std::vector<onnxruntime::NodeArg*> outputs = {&graph_0__value_2};
     auto& cast_node = graph.AddNode("graph_0__cast_0", "Cast", "cast node in main graph", inputs, outputs);
-    ONNX_NAMESPACE::AttributeProto to;
-    to.set_name("to");
-    to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-    to.set_i(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
-    cast_node.AddAttribute("to", to);
+    cast_node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_FLOAT});
   }
   {
     std::vector<onnxruntime::NodeArg*> inputs = {&graph_0__value_2, &input_0};

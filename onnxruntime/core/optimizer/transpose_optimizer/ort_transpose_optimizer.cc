@@ -17,7 +17,14 @@ namespace onnxruntime {
 
 Status TransposeOptimizer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   auto api_graph = MakeApiGraph(graph, cpu_allocator_, /*new_node_ep*/ nullptr);
-  if (onnx_layout_transformation::Optimize(*api_graph, /*allow_extended_ops*/ false)) {
+  OptimizeResult result = onnx_layout_transformation::Optimize(*api_graph, /*allow_extended_ops*/ false);
+  if (result.error_msg) {
+    // currently onnx_layout_transformation::Optimize only fails if we hit an unsupported opset.
+    // we don't want to fail loading the model just because we can't optimize Transpose ops, so just log a warning
+    LOGS(logger, WARNING) << "Transpose optimizer failed: " << result.error_msg.value();
+  }
+
+  if (result.graph_modified) {
     modified = true;
   }
 

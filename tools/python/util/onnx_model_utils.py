@@ -124,6 +124,34 @@ def _replace_symbolic_dim_value(graph: onnx.GraphProto, **kwargs):
     update_dim_values(graph.value_info)
 
 
+def _remove_invalid_dim_values_impl(graph: onnx.GraphProto):
+    def clear_invalid_values(value):
+        if value.type.HasField("tensor_type"):
+            shape = value.type.tensor_type.shape
+            if shape:
+                for dim in shape.dim:
+                    if dim.HasField('dim_value') and dim.dim_value < 1:
+                        dim.Clear()
+
+    for i in graph.input:
+        clear_invalid_values(i)
+
+    for o in graph.output:
+        clear_invalid_values(o)
+
+    for vi in graph.value_info:
+        clear_invalid_values(vi)
+
+
+def remove_invalid_dim_values(graph: onnx.GraphProto):
+    '''
+    Iterate the graph and subgraphs, unsetting any dim_value entries that have a value of less than 1.
+    These are typically erroneously inserted by a converter to represent a dynamic dimension.
+    :param graph: GraphProto to update
+    '''
+    iterate_graph_per_graph_func(graph, _remove_invalid_dim_values_impl)
+
+
 def make_dim_param_fixed(graph: onnx.GraphProto, param_name: str, value: int):
     '''
     Iterate all values in the graph, replacing dim_param in a tensor shape with the provided value.
@@ -143,6 +171,9 @@ def make_input_shape_fixed(graph: onnx.GraphProto, input_name: str, fixed_shape:
     :param input_name: Name of graph input to update.
     :param fixed_shape: Shape to use.
     '''
+
+    # remove any invalid dim values first. typically this is a dim_value of -1.
+    remove_invalid_dim_values(graph)
 
     for i in graph.input:
         if i.name == input_name:

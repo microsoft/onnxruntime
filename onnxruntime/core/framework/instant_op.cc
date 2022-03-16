@@ -143,7 +143,7 @@ onnxruntime::Status CreateOperator(const OrtKernelInfo* info,
   onnxruntime::Node node;
   for (int i = 0; i < attr_count; ++i) {
     auto attr_proto = reinterpret_cast<ONNX_NAMESPACE::AttributeProto*>(attr_values[i]);
-    node.AddAttribute(attr_proto->name(), *attr_proto);
+    node.AddAttributeProto(*attr_proto);
   }
   OpKernelInfo instant_kernel_info(node, KernelDef{}, *ep, {}, {}, {});
   std::unique_ptr<onnxruntime::OpKernel> op_kernel;

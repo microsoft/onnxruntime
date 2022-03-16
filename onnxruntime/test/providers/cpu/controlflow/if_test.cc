@@ -84,7 +84,7 @@ class IfOpTester : public OpTester {
         *split_attribute->Add() = 1;  // split "unevenly" to create different shapes across the "then" and "else" branches
         *split_attribute->Add() = 2;
 
-        split_node.AddAttribute("split", attr_proto);
+        split_node.AddAttributeProto(std::move(attr_proto));
       }
     }
 
@@ -382,7 +382,7 @@ class IfOpTesterOnlyConstantNodesInConditionalBranches : public OpTester {
         then_constant_attr_tensor_proto->add_dims(1);
         then_constant_attr_tensor_proto->add_float_data(value);  // Constant value of 10.f
 
-        then_constant_node.AddAttribute("value", then_constant_attr_proto);
+        then_constant_node.AddAttributeProto(std::move(then_constant_attr_proto));
 
         auto status_then = graph_then.Resolve();
         EXPECT_EQ(status_then, Status::OK());
