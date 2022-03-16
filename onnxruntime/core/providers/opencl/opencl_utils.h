@@ -15,6 +15,7 @@
 #include <iomanip>
 #include <sstream>
 #include <utility>
+#include <absl/container/inlined_vector.h>
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
 #include "opencl_forward_decl.h"
@@ -106,42 +107,46 @@ namespace opencl {
 
 class NDRange {
  public:
-  NDRange() : size_(0), values_{0, 0, 0} {}
+  // NOLINTNEXTLINE(readability-redundant-member-init), otherwise, segfault
+  NDRange() : values_{} {}
 
   template <typename T>
-  explicit NDRange(T x) : size_(1), values_{static_cast<size_t>(x), 0, 0} {}
+  explicit NDRange(T x) : values_{static_cast<size_t>(x)} {}
 
   template <typename T1, typename T2>
-  NDRange(T1 x, T2 y) : size_(2), values_{static_cast<size_t>(x), static_cast<size_t>(y), 0} {}
+  NDRange(T1 x, T2 y) : values_{static_cast<size_t>(x), static_cast<size_t>(y)} {}
 
   template <typename T1, typename T2, typename T3>
-  NDRange(T1 x, T2 y, T3 z) : size_(3), values_{static_cast<size_t>(x), static_cast<size_t>(y), static_cast<size_t>(z)} {}
+  NDRange(T1 x, T2 y, T3 z) : values_{static_cast<size_t>(x), static_cast<size_t>(y), static_cast<size_t>(z)} {}
 
-  uint8_t Size() const { return size_; }
+  uint8_t Size() const { return values_.size(); }
 
   const size_t* Data() const {
-    if (size_ != 0) {
-      return values_;
+    if (values_.empty()) {
+      return nullptr;
     }
-    return nullptr;
+    return values_.data();
   }
 
   inline std::string ToString() const {
-    if (size_ == 0) {
+    if (values_.empty()) {
       return "[<unspecified>]";
     }
-    if (size_ == 1) {
-      return onnxruntime::MakeString("[", values_[0], "]");
+    std::string result;
+    result.reserve(16);
+    result.append("[");
+    result.append(std::to_string(values_[0]));
+    for (int i = 1; i < values_.size(); ++i) {
+      result.append(",");
+      result.append(std::to_string(values_[i]));
     }
-    if (size_ == 2) {
-      return onnxruntime::MakeString("[", values_[0], ",", values_[1], "]");
-    }
-    return onnxruntime::MakeString("[", values_[0], ",", values_[1], ",", values_[2], "]");
+    result.append("]");
+    return result;
   }
 
-private:
-  uint8_t size_;
-  size_t values_[3];
+ private:
+  constexpr static size_t kMaxWorkItemDim = 3;
+  absl::InlinedVector<size_t, kMaxWorkItemDim> values_;
 };
 
 const char* GetErrorString(cl_int error_code);
@@ -239,10 +244,10 @@ class Image2DDesc : private std::pair<int64_t, int64_t> {
     ORT_ENFORCE(shape.NumDimensions() == 4);
     int64_t C_o = shape[0];
     int64_t C_i = shape[1];
-    //FIXME: asumme we only surpport window-size=4
+    // FIXME: asumme we only surpport window-size=4
     int64_t K_h = 4;
     int64_t K_w = 4;
-    return {CeilDiv(C_i, 4) * K_h, 16*CeilDiv(C_o, 4)};
+    return {CeilDiv(C_i, 4) * K_h, 16 * CeilDiv(C_o, 4)};
   }
 
   static Image2DDesc PackFromDepthwiseConv2DWeight(const TensorShape& shape) {
