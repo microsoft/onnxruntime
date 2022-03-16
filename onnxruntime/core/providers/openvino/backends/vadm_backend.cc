@@ -36,7 +36,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   // sets number of maximum parallel inferences
   num_inf_reqs_ = 8;
 
-  #if defined(OPENVINO_2022_1)
+  #if defined(OV_API_20)
     ie_cnn_network_ = CreateOVModel(model_proto, global_context_, subgraph_context_, const_outputs_map_);
   #else
     ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
@@ -96,7 +96,7 @@ void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* c
                                       size_t batch_slice_idx, size_t infer_req_idx) {
   auto infer_request = infer_requests_[infer_req_idx];
   
-  #if defined (OPENVINO_2022_1)
+  #if defined (OV_API_20)
   auto graph_input_info = ie_cnn_network_->inputs();
     for (auto input_info_iter = graph_input_info.begin();
       input_info_iter != graph_input_info.end(); ++input_info_iter) {
@@ -130,9 +130,9 @@ void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext
   auto infer_request = infer_requests_[infer_req_idx];
 
   // Wait for Async inference completion
-  infer_request->Wait();
+  infer_request->WaitRequest();
   
-  #if defined (OPENVINO_2022_1)
+  #if defined (OV_API_20)
   auto graph_output_info = ie_cnn_network_->outputs();
   for (auto output_info_iter = graph_output_info.begin();
        output_info_iter != graph_output_info.end(); ++output_info_iter) {
@@ -193,7 +193,7 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   if (subgraph_context_.enable_batching) {
     // Calculate the batch_size from the input tensor shape.
     const OrtValue* tensor = ort.KernelContext_GetInput(context, subgraph_context_.input_indexes[0]);
-    #if defined (OPENVINO_2022_1)
+    #if defined (OV_API_20)
     batch_size = DeduceBatchSize(ort, tensor, ie_cnn_network_->get_result()->get_shape());
     #else
     batch_size = DeduceBatchSize(ort, tensor, ie_cnn_network_->getInputsInfo().begin()->second->getTensorDesc().getDims());

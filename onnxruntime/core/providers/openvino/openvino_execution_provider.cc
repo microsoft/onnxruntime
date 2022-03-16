@@ -136,7 +136,7 @@ common::Status OpenVINOExecutionProvider::Compile(
   for (const auto& fused_node : fused_nodes) {
     NodeComputeInfo compute_info;
     
-    #if defined (OPENVINO_2022_1)
+    #if defined (OV_API_20)
     openvino_ep::BackendManager::GetGlobalContext().use_api_2 = true;
     # else
     openvino_ep::BackendManager::GetGlobalContext().use_api_2 = false;
