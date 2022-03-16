@@ -241,7 +241,7 @@ jobs:
 
     - script: |
         python3 -m pip install gcovr && \
-        python3 ${ORT_ROOT}/tools/ci_build/coverage.py \
+        python3 tools/ci_build/coverage.py \
           --build_dir build_nnapi \
           --android_sdk_path $ANDROID_HOME
       displayName: Retrieve runtime code coverage files from the emulator and analyze
