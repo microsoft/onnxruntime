@@ -13,10 +13,10 @@
 
 namespace onnxruntime::utils {
 
-/**
- * Creates an AttributeProto with the specified name and value(s).
- */
+// keep these signatures in sync with DECLARE_MAKE_ATTRIBUTE_FNS below
+/** Creates an AttributeProto with the specified name and value. */
 ONNX_NAMESPACE::AttributeProto MakeAttribute(std::string attr_name, int64_t value);
+/** Creates an AttributeProto with the specified name and values. */
 ONNX_NAMESPACE::AttributeProto MakeAttribute(std::string attr_name, gsl::span<const int64_t> values);
 
 #define DECLARE_MAKE_ATTRIBUTE_FNS(type)                                           \

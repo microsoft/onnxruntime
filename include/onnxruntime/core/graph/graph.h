@@ -346,8 +346,12 @@ class Node {
   @remarks The attribute name is used as the key in the attribute map. */
   void AddAttributeProto(ONNX_NAMESPACE::AttributeProto value);
 
-  /** Adds an attribute to this Node with the specified attribute name and value(s). */
+  // keep this signature in sync with ADD_ATTR_SINGLE_INTERFACE below
+  /** Adds an attribute to this Node with the specified attribute name and value. */
   void AddAttribute(std::string attr_name, int64_t value);
+
+  // keep this signature in sync with ADD_ATTR_LIST_INTERFACE below
+  /** Adds an attribute to this Node with the specified attribute name and values. */
   void AddAttribute(std::string attr_name, gsl::span<const int64_t> values);
 
 #define ADD_ATTR_SINGLE_INTERFACE(Type) \
