@@ -4,10 +4,10 @@ import os
 import pandas as pd
 import time
 from azure.kusto.data import KustoConnectionStringBuilder
+from azure.kusto.data.data_format import DataFormat
 from azure.kusto.data.helpers import dataframe_from_result_table 
 from azure.kusto.ingest import (
     IngestionProperties,
-    DataFormat,
     ReportLevel,
     QueuedIngestClient,
 )
