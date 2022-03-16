@@ -46,8 +46,7 @@ using IAllocatorUniquePtrToClMem = IAllocatorUniquePtr<std::remove_pointer_t<cl_
 class OpenCLExecutionProvider : public IExecutionProvider {
  public:
   explicit OpenCLExecutionProvider(const OpenCLExecutionProviderInfo& info);
-  OpenCLExecutionProvider(OpenCLExecutionProvider&&) noexcept;
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpenCLExecutionProvider);
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpenCLExecutionProvider);
   virtual ~OpenCLExecutionProvider();
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
