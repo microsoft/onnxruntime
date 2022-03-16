@@ -63,6 +63,13 @@ jobs:
       contents: 'build/**/*.apk'
       targetFolder: $(Build.ArtifactStagingDirectory)
       overWrite: true
+
+  - task: CopyFiles@2
+    inputs:
+      contents: 'build/**/testdata/**'
+      targetFolder: $(Build.ArtifactStagingDirectory)
+      overWrite: true
+
   - task: PublishBuildArtifacts@1
     inputs:
       pathToPublish: $(Build.ArtifactStagingDirectory)
@@ -77,17 +84,14 @@ jobs:
     - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
       displayName: Setup gradle wrapper to use gradle 6.8.3
 
-    - script: echo '$(System.ArtifactsDirectory)'
-      displayName: check root directory
-
     - task: DownloadPipelineArtifact@2
       inputs:
         source: 'current'
         artifact: 'MyBuildOutput'
         path: $(Build.SourcesDirectory)
 
-    - script: pwd && ls && ls build
-      displayName: check root directory
+    - script: find . -name "*.apk"
+      displayName: check apk
   
     - script: |
         python3 tools/python/run_android_emulator.py \
