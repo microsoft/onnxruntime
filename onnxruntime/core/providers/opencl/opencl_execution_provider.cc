@@ -132,7 +132,8 @@ std::shared_ptr<KernelRegistry> OpenCLExecutionProvider::GetKernelRegistry() con
 Status OpenCLExecutionProvider::InitOpenCLContext() {
   cl_uint num_platforms;
   ORT_RETURN_IF_CL_ERROR(clGetPlatformIDs(0, nullptr, &num_platforms));
-  VLOGS_DEFAULT(1) << "[CL] num platforms: " << num_platforms;
+  // NOTE: the EP is in construction, the logger_ is not registered
+  LOGS_DEFAULT(VERBOSE) << "[CL] num platforms: " << num_platforms;
   ORT_RETURN_IF_NOT(num_platforms > 0, "Cannot find OpenCL platform.");
 
   std::vector<cl_platform_id> platforms(num_platforms);
@@ -144,17 +145,15 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
     ORT_RETURN_IF_CL_ERROR(clGetPlatformInfo(platforms[i], CL_PLATFORM_VENDOR, 0, nullptr, &ret_size));
     std::string vendor(ret_size, '\0');
     ORT_RETURN_IF_CL_ERROR(clGetPlatformInfo(platforms[i], CL_PLATFORM_VENDOR, vendor.size(), vendor.data(), nullptr));
-    std::cout << "[CL] platform vendor: " << vendor << "\n";
+    LOGS_DEFAULT(VERBOSE) << "[CL] platform vendor: " << vendor;
     if (vendor == "Oclgrind") {
-      std::cout << "[CL] platform " << vendor << " selected"
-                << "\n";
+      LOGS_DEFAULT(INFO) << "[CL] platform " << vendor << " selected";
       selected_platform_idx = 1;
       break;
     }
   }
   if (selected_platform_idx == -1) {
-    std::cout << "[CL] default platform selected"
-              << "\n";
+    LOGS_DEFAULT(INFO) << "[CL] default platform selected";
     selected_platform_idx = 0;
   }
   auto* selected_platform = platforms[selected_platform_idx];
@@ -168,7 +167,7 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   ORT_RETURN_IF_CL_ERROR(clGetContextInfo(ctx_, CL_CONTEXT_DEVICES, 0, nullptr, &ret_size));
   std::vector<cl_device_id> devices(ret_size);
   ORT_RETURN_IF_CL_ERROR(clGetContextInfo(ctx_, CL_CONTEXT_DEVICES, devices.size(), devices.data(), nullptr));
-  VLOGS_DEFAULT(1) << "[CL] num devices: " << devices.size();
+  LOGS_DEFAULT(VERBOSE) << "[CL] num devices: " << devices.size();
   ORT_RETURN_IF(devices.empty(), "Cannot find OpenCL device.");
   dev_ = devices[0];
 
@@ -183,19 +182,19 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   // NOTE: use stdout for mobile
   // FIXME: use logger latter
   auto device_name = GetDeviceInfo(CL_DEVICE_NAME);
-  std::cout << "[CL] device name: " << device_name << "\n";
-  std::cout << "[CL] device vendor: " << GetDeviceInfo(CL_DEVICE_VENDOR) << "\n";
-  std::cout << "[CL] device version: " << GetDeviceInfo(CL_DEVICE_VERSION) << "\n";
+  LOGS_DEFAULT(INFO) << "[CL] device name: " << device_name << "\n";
+  LOGS_DEFAULT(VERBOSE) << "[CL] device vendor: " << GetDeviceInfo(CL_DEVICE_VENDOR) << "\n";
+  LOGS_DEFAULT(VERBOSE) << "[CL] device version: " << GetDeviceInfo(CL_DEVICE_VERSION) << "\n";
   auto exts = GetDeviceInfo(CL_DEVICE_EXTENSIONS);
-  std::cout << "[CL] device extensions: " << exts << std::endl;
+  LOGS_DEFAULT(VERBOSE) << "[CL] device extensions: " << exts << std::endl;
   bool has_fp16 = exts.find("cl_khr_fp16") != std::string::npos;
   if (!has_fp16 && UseFp16()) {
-    std::cout << "[CL] FP16 is requested, but is not supported by the device!";
+    LOGS_DEFAULT(WARNING) << "[CL] FP16 is requested, but is not supported by the device!";
     DisableFp16();
   }
   flush_after_launch_ = ShouldFlushAfterLaunch(device_name);
-  std::cout << "[CL] FP16: " << UseFp16() << "\n";
-  std::cout << "[CL] clFlush after launch: " << flush_after_launch_ << "\n";
+  LOGS_DEFAULT(INFO) << "[CL] FP16: " << UseFp16() << "\n";
+  LOGS_DEFAULT(INFO) << "[CL] clFlush after launch: " << flush_after_launch_ << "\n";
 
 #ifdef TRACY_ENABLE
   cmd_queue_ = clCreateCommandQueue(ctx_, dev_, CL_QUEUE_PROFILING_ENABLE, &err);
