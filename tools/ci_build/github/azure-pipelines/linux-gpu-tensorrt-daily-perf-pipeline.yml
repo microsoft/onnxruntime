@@ -86,7 +86,7 @@ jobs:
     - name: environment
       ${{ if eq(parameters.RunDocker, true) }}:
         value: docker.sh -d nvcr.io/nvidia/tensorrt:21.12-py3 -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf -v $(modelVolume)
-        # value: docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf -v $(modelVolume)
+
       ${{ if ne(parameters.RunDocker, true) }}:
         value: machine.sh
         
@@ -112,7 +112,7 @@ jobs:
 
     - ${{ if eq(parameters.PublishWheel, true) }}:
       
-      - script: 'mkdir wheel && wget --directory-prefix wheel https://test-files.pythonhosted.org/packages/77/4d/75ccfde752447b6c91ffd387aca598b3992d9637e9960ebe380959ead39f/ort_nightly_gpu-1.11.0.dev20220315004-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl'
+      - script: 'mkdir wheel && python -m pip download --only-binary :all: --dest wheel --python-version 38 --no-cache --no-deps -i https://test.pypi.org/simple/ ort-nightly-gpu'
         displayName: 'Get Nightly Wheel'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         
