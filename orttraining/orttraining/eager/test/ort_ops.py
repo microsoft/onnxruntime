@@ -102,5 +102,13 @@ class OrtOpTests(unittest.TestCase):
     x = cpu_tensor.min()
     assert torch.allclose(x, y.cpu())
 
+  def test_torch_ones(self):
+    device = self.get_device()
+    cpu_ones = torch.ones((10,10))
+    ort_ones = cpu_ones.to(device)
+    ort_ones_device = torch.ones((10, 10), device = device)
+    assert torch.allclose(cpu_ones, ort_ones.cpu())
+    assert torch.allclose(cpu_ones, ort_ones_device.cpu())
+
 if __name__ == '__main__':
   unittest.main()
