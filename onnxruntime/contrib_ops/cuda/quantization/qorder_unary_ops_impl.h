@@ -10,10 +10,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define LIST_OF_QORDER_UNARY_OPS()          \
-  QORDER_UNARY_OP_NAME_EXPR(Gelu, _Gelu(a)) \
-  QORDER_UNARY_OP_NAME_EXPR(Erf, _Erf(a))
-
 #define QORDER_UNARY_OP_DECLARATION(name) \
   void QOrderUnary_##name(                \
       cudaStream_t stream,                \
@@ -23,9 +19,7 @@ namespace cuda {
       const float* output_scale,          \
       size_t count)
 
-#define QORDER_UNARY_OP_NAME_EXPR(name, expr) QORDER_UNARY_OP_DECLARATION(name);
-LIST_OF_QORDER_UNARY_OPS()
-#undef QORDER_UNARY_OP_NAME_EXPR
+QORDER_UNARY_OP_DECLARATION(Gelu);
 
 }  // namespace cuda
 }  // namespace conrtib
