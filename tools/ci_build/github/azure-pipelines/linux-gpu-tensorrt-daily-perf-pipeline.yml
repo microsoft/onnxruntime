@@ -112,7 +112,7 @@ jobs:
 
     - ${{ if eq(parameters.PublishWheel, true) }}:
       
-      - script: 'mkdir wheel && python -m pip download --only-binary :all: --dest wheel --python-version 38 --no-cache --no-deps -i https://test.pypi.org/simple/ ort-nightly-gpu'
+      - script: 'mkdir wheel && python3 -m pip download --only-binary :all: --dest wheel --python-version 38 --no-cache --no-deps -i https://test.pypi.org/simple/ ort-nightly-gpu'
         displayName: 'Get Nightly Wheel'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         
