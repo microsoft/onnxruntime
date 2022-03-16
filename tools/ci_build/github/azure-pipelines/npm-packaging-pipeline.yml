@@ -71,7 +71,7 @@ stages:
           targetPath: '$(Pipeline.Workspace)'
         displayName: 'Download onnxruntime-node Pipeline Artifact'
       
-    - ${{ if ne(parameters.NodePipelineId, '') }}:
+    - ${{ if ne(parameters.NodePipelineId, 'latest') }}:
       - task: DownloadPipelineArtifact@2
         inputs:
           buildType: 'specific'
