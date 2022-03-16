@@ -70,6 +70,12 @@ jobs:
       targetFolder: $(Build.ArtifactStagingDirectory)
       overWrite: true
 
+  - task: CopyFiles@2
+    inputs:
+      contents: 'build/Debug/*'
+      targetFolder: $(Build.ArtifactStagingDirectory)
+      overWrite: true
+      
   - task: PublishBuildArtifacts@1
     inputs:
       pathToPublish: $(Build.ArtifactStagingDirectory)
