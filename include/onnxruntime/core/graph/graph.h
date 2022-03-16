@@ -342,50 +342,47 @@ class Node {
   /** Gets the number of output edges from this Node */
   size_t GetOutputEdgesCount() const noexcept { return relationships_.output_edges.size(); }
 
-  /** Add an attribute to this Node with specified attribute name and value. */
-  void AddAttribute(std::string attr_name, const ONNX_NAMESPACE::AttributeProto& value);
-  void AddAttribute(std::string attr_name, ONNX_NAMESPACE::AttributeProto&& value);
+  /** Adds an AttributeProto to this Node.
+  @remarks The attribute name is used as the key in the attribute map. */
+  void AddAttributeProto(ONNX_NAMESPACE::AttributeProto value);
 
-#define ADD_ATTR_INTERFACES(TypeName)                              \
-  void AddAttribute(std::string attr_name, const TypeName& value); \
-  void AddAttribute(std::string attr_name,                         \
-                    gsl::span<TypeName const> values);
+  // keep this signature in sync with ADD_ATTR_SINGLE_INTERFACE below
+  /** Adds an attribute to this Node with the specified attribute name and value. */
+  void AddAttribute(std::string attr_name, int64_t value);
 
-#define ADD_ATTR_MOVE_INTERFACE(TypeName) \
-  void AddAttribute(std::string attr_name, TypeName&& value);
+  // keep this signature in sync with ADD_ATTR_LIST_INTERFACE below
+  /** Adds an attribute to this Node with the specified attribute name and values. */
+  void AddAttribute(std::string attr_name, gsl::span<const int64_t> values);
 
-  void AddAttribute(std::string attr_name, std::string value);
-  void AddAttribute(std::string attr_name, gsl::span<std::string const> values);
+#define ADD_ATTR_SINGLE_INTERFACE(Type) \
+  void AddAttribute(std::string attr_name, Type value)
 
-  ADD_ATTR_INTERFACES(int64_t)
-  ADD_ATTR_INTERFACES(float)
-  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TensorProto)
-  ADD_ATTR_MOVE_INTERFACE(ONNX_NAMESPACE::TensorProto)
+#define ADD_ATTR_LIST_INTERFACE(Type) \
+  void AddAttribute(std::string attr_name, gsl::span<const Type> values)
+
+#define ADD_ATTR_INTERFACES(Type)  \
+  ADD_ATTR_SINGLE_INTERFACE(Type); \
+  ADD_ATTR_LIST_INTERFACE(Type)
+
+  ADD_ATTR_INTERFACES(float);
+  ADD_ATTR_INTERFACES(std::string);
+  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TensorProto);
 #if !defined(DISABLE_SPARSE_TENSORS)
-  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::SparseTensorProto)
-  ADD_ATTR_MOVE_INTERFACE(ONNX_NAMESPACE::SparseTensorProto)
+  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::SparseTensorProto);
 #endif
-  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TypeProto)
-  ADD_ATTR_MOVE_INTERFACE(ONNX_NAMESPACE::TypeProto)
+  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TypeProto);
 
-  void AddAttribute(std::string attr_name, const ONNX_NAMESPACE::GraphProto& value);
-  void AddAttribute(std::string attr_name, ONNX_NAMESPACE::GraphProto&& value);
+  ADD_ATTR_SINGLE_INTERFACE(ONNX_NAMESPACE::GraphProto);
 
-  // The below overloads are made so the compiler does not attempt to resolve
-  // C-strings with a gsl::span overloads
+#undef ADD_ATTR_SINGLE_INTERFACE
+#undef ADD_ATTR_LIST_INTERFACE
+#undef ADD_ATTR_INTERFACES
+
+  // The below overload is made so the compiler does not attempt to resolve
+  // string literals with the gsl::span overload
   template <size_t N>
   void AddAttribute(std::string attr_name, const char (&value)[N]) {
     this->AddAttribute(std::move(attr_name), std::string(value, N - 1));
-  }
-
-  template <size_t M, size_t N>
-  void AddAttribute(const char (&attr_name)[M], const char (&value)[N]) {
-    this->AddAttribute(std::string(attr_name, M - 1), std::string(value, N - 1));
-  }
-
-  template <size_t M, typename T>
-  void AddAttribute(const char (&attr_name)[M], T&& value) {
-    this->AddAttribute(std::string(attr_name, M - 1), std::forward<T>(value));
   }
 
   /** Gets the Node's attributes. */
