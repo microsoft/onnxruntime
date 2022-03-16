@@ -103,7 +103,9 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   EnableCaching();
   
   //Setting OpenCL queue throttling for GPU
+  #if defined (OV_API_20)
   EnableGPUThrottling(config);
+  #endif
 
   #if defined(IO_BUFFER_ENABLED)
     if ((global_context.device_type.find("GPU") != std::string::npos)  && 
@@ -232,7 +234,7 @@ void BasicBackend::EnableCaching() {
   }
 }
 
-#if defined (OPENVINO_2022_1)
+#if defined (OV_API_20)
 void BasicBackend::EnableGPUThrottling(OVConfig& config) {
   if (global_context_.enable_opencl_throttling == true && global_context_.device_type.find("GPU") != std::string::npos) {
     LOGS_DEFAULT(INFO) << log_tag << "Enabled OpenCL queue throttling for GPU device";
