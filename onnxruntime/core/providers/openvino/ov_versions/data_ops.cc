@@ -996,7 +996,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Slice", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4, V_2022_1},
                              [this](const Node* node, const InitializedTensorSet&) {
                                //Shape can't have empty axes attribute
                                const auto& attributes = node->GetAttributes();
