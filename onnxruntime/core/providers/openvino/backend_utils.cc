@@ -143,7 +143,7 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalCont
     ngraph::pass::ConstantFolding().run_on_function(ng_function);
     auto& results = const_cast<::ngraph::ResultVector&>(ng_function->get_results());
     size_t index = results.size() - 1;
-    #if defined (OPENVINO_2022_1)
+    #if defined (OV_API_20)
       for (auto it = results.rbegin(); it != results.rend(); ++it) {
       if (auto const_node = std::dynamic_pointer_cast<ngraph::op::Constant>((*it)->input_value(0).get_node_shared_ptr())) {
         const_outputs_map[(*it)->get_friendly_name()] = const_node;
@@ -165,7 +165,7 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalCont
   return std::make_shared<InferenceEngine::CNNNetwork>(ng_function);
 };
 
-#if defined (OPENVINO_2022_1)
+#if defined (OV_API_20)
 std::shared_ptr<OVNetwork>
 CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
  
@@ -277,7 +277,7 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_s
   OrtValue* output_tensor;
   auto graph_output_blob = infer_request->GetTensor(output_name);
   
-  #if defined (OPENVINO_2022_1)
+  #if defined (OV_API_20)
   auto graph_output_dims = graph_output_blob->get_shape();
   #else 
   auto graph_output_dims = graph_output_blob->getTensorDesc().getDims();
@@ -308,7 +308,7 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context,
                 std::shared_ptr<ngraph::Node> node) {
   OrtValue* output_tensor;
 
-  #if (defined OPENVINO_2022_1)
+  #if (defined OV_API_20)
     // Find position of '/' in the output_name
     int pos = output_name.find("/");
     // Copy the substring from start to pos
@@ -464,7 +464,7 @@ perfCountersSorted(std::map<std::string, InferenceEngine::InferenceEngineProfile
   return sorted;
 }
 
-#if defined (OPENVINO_2022_1)
+#if defined (OV_API_20)
 void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
                    std::string input_name, Ort::CustomOpApi& ort, OrtKernelContext* context,
                    const SubGraphContext& subgraph_context) {
@@ -579,7 +579,7 @@ void printPerformanceCounts(const std::map<std::string, InferenceEngine::Inferen
 }
 
 void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std::string deviceName) {
-  #if defined (OPENVINO_2022_1)
+  #if defined (OV_API_20)
     auto performanceMap = request->GetNewObj().get_profiling_info();
     printPerformanceCounts(performanceMap, stream, deviceName);
   #else
