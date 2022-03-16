@@ -44,8 +44,6 @@ using IAllocatorUniquePtrToClMem = IAllocatorUniquePtr<std::remove_pointer_t<cl_
 
 // Logical device representation.
 class OpenCLExecutionProvider : public IExecutionProvider {
-  friend class opencl::OpenCLDataTransfer;
-
  public:
   explicit OpenCLExecutionProvider(const OpenCLExecutionProviderInfo& info);
   OpenCLExecutionProvider(OpenCLExecutionProvider&&) noexcept;
