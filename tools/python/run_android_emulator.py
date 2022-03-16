@@ -71,7 +71,6 @@ def main():
     if args.create_avd:
         android.create_virtual_device(sdk_tool_paths, args.system_image, args.avd_name)
 
-
     if args.start and args.stop:
         with contextlib.ExitStack() as context_stack:
             emulator_proc = android.start_emulator(**start_emulator_args)
