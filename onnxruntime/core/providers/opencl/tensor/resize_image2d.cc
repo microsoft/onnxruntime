@@ -21,8 +21,12 @@ class Resize : public OpenCLKernel, UpsampleBase {
       : OpenCLKernel(info), UpsampleBase(info) {
     VLOGS_DEFAULT(0) << "Init Resize (OpenCLKernel)";
     LoadProgram(resize_kernel_src, resize_kernel_src_len);
-    LoadKernel("ResizeBilinear2D");
-    LoadKernel("ResizeNearest2D");
+    if (mode_ == UpsampleMode::LINEAR) {
+      LoadKernel("ResizeBilinear2D");
+    }
+    if (mode_ == UpsampleMode::NN) {
+      LoadKernel("ResizeNearest2D");
+    }
   };
 
   Status Compute(OpKernelContext* context) const override {
