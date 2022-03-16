@@ -69,7 +69,7 @@ GetOutputTensor(Ort::CustomOpApi& ort, OrtKernelContext* context, size_t batch_s
                 std::string output_name,
                 std::unordered_map<std::string, int> output_names);
 
-#if defined (OPENVINO_2022_1)
+#if defined (OV_API_20)
 void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
                    std::string input_name, Ort::CustomOpApi& ort, OrtKernelContext* context,
                    const SubGraphContext& subgraph_context);
