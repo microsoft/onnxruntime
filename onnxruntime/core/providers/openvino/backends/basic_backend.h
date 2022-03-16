@@ -34,7 +34,9 @@ class BasicBackend : public IBackend {
   bool ValidateSubgraph(std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
   void PopulateConfigValue(OVConfig& config);
   void EnableCaching();
+  #if defined(OPENVINO_2022_1)
   void EnableGPUThrottling(OVConfig& config);
+  #endif 
   void StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<OVInferRequest> infer_request);
 
 #ifdef IO_BUFFER_ENABLED
