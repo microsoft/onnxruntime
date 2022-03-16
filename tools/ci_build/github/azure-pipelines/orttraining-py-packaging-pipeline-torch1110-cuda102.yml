@@ -12,4 +12,3 @@ stages:
     docker_file: Dockerfile.manylinux2014_training_cuda10_2
     agent_pool: Onnxruntime-Linux-GPU
     upload_wheel: 'yes'
-diff --git a/tools/ci_build/github/azure-pipelines/orttraining-py-packaging-pipeline-torch1110-cuda113.yml b/tools/ci_build/github/azure-pipelines/orttraining-py-packaging-pipeline-torch1110-cuda113.yml

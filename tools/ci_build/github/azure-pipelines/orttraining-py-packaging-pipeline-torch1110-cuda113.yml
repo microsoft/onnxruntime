@@ -12,4 +12,3 @@ stages:
     docker_file: Dockerfile.manylinux2014_training_cuda11_3
     agent_pool: Onnxruntime-Linux-GPU
     upload_wheel: 'yes'
-diff --git a/tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_training_cuda11_3 b/tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_training_cuda11_3
