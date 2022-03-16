@@ -121,6 +121,14 @@ jobs:
         --test
       displayName: CPU EP, Test on Android Emulator
 
+    - script: |
+        python3 tools/python/run_android_emulator.py \
+          --android-sdk-root ${ANDROID_SDK_ROOT} \
+          --stop \
+          --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+      displayName: Stop Android emulator
+      condition: always()
+
 - job: Build_NNAPI_EP
   pool: Linux-CPU-2019
   timeoutInMinutes: 30
@@ -227,16 +235,16 @@ jobs:
         --android_ndk_path $ANDROID_NDK_HOME \
         --android_abi=x86_64 \
         --android_api=30 \
-        --test
-      displayName: NNAPI EP, Test on Android Emulator
+        --test \
+        --code_coverage
+      displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
 
     - script: |
-        python3 tools/python/run_android_emulator.py \
-          --android-sdk-root ${ANDROID_SDK_ROOT} \
-          --stop \
-          --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
-      displayName: Stop Android emulator
-      condition: always()
+        python3 -m pip install gcovr && \
+        python3 ${ORT_ROOT}/tools/ci_build/coverage.py \
+          --build_dir build_nnapi \
+          --android_sdk_path $ANDROID_HOME
+      displayName: Retrieve runtime code coverage files from the emulator and analyze
 
     - task: PublishPipelineArtifact@0
       displayName: 'Publish code coverage report'
