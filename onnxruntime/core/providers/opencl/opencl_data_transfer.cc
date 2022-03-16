@@ -25,14 +25,14 @@ bool OpenCLDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& d
 
 Status OpenCLDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const {
   ZoneScopedN("CopyTensor");
-  ORT_ENFORCE(exec_queue_id == 0);
+  ORT_RETURN_IF_NOT(exec_queue_id == 0, "");
   // *.Location().mem_type == *.Location().device.MemType() for OpenCL EP
   const auto& src_device = src.Location().device;
   const auto& dst_device = dst.Location().device;
 
   // HOST ==> DEV
   if (src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::GPU) {
-    ORT_ENFORCE(src.ByteOffset() == 0);
+    ORT_RETURN_IF_NOT(src.ByteOffset() == 0, "Copy with byte offset is not supported");
     if (dst_device.MemType() == CLMemType::OPENCL_BUFFER) {
       VLOGF_DEFAULT(0, "[CL] copy    host(%p) ---> Buffer(%p)", src.DataRaw(), CL_BUFFER_FROM_TENSOR(dst));
       ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), CL_BUFFER_FROM_TENSOR(dst), /*blocking_write=*/CL_TRUE, /*offset=*/0, src.SizeInBytes(), src.DataRaw(), 0, nullptr, nullptr));
@@ -58,7 +58,7 @@ Status OpenCLDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int exec_q
 
   // DEV ==> HOST
   if (src_device.Type() == OrtDevice::GPU && dst_device.Type() == OrtDevice::CPU) {
-    ORT_ENFORCE(dst.ByteOffset() == 0);
+    ORT_RETURN_IF_NOT(dst.ByteOffset() == 0, "Copy with byte offset is not supported");
     if (src_device.MemType() == CLMemType::OPENCL_BUFFER) {
       VLOGF_DEFAULT(0, "[CL] copy  Buffer(%p) -----> host(%p)", CL_BUFFER_FROM_TENSOR(src), dst.DataRaw());
       ORT_RETURN_IF_CL_ERROR(clEnqueueReadBuffer(exec_->GetCommandQueue(), CL_BUFFER_FROM_TENSOR(src), /*blocking_read=*/CL_TRUE, /*offset=*/0, dst.SizeInBytes(), dst.MutableDataRaw(), 0, nullptr, nullptr));

@@ -49,17 +49,18 @@ class Resize : public OpenCLKernel, UpsampleBase {
     // Get scales data
     std::vector<float> scales_array(X->Shape().GetDims().size());
     if (scales_data != nullptr && scales_data->Shape().Size() != 0) {
-      ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
+      ORT_RETURN_IF(sizes != nullptr, "Only one of scales or sizes must be provided as input.");
       ParseScalesData(scales_data, scales_array);
       ComputeOutputShape(scales_array, X_shape.GetDims(), Y_shape);
     } else {
-      ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0, "Either scales or sizes MUST be provided as input.");
+      ORT_RETURN_IF(sizes == nullptr && sizes->Shape().Size() != 0,
+                    "Either scales or sizes MUST be provided as input.");
 
       // When sizes input is available directly populate it into the output_dims array.
       memcpy(Y_shape.data(), sizes->Data<int64_t>(), sizes->Shape().Size() * sizeof(int64_t));
 
-      ORT_ENFORCE(X->Shape().GetDims().size() == Y_shape.size(),
-                  "Resize: input tensor's rank does not match the output tensor's rank.");
+      ORT_RETURN_IF(X->Shape().GetDims().size() != Y_shape.size(),
+                    "Resize: input tensor's rank does not match the output tensor's rank.");
       ParseScalesDataFromOutputSize(Y_shape, X->Shape().GetDims(), scales_array);
     }
     const auto* Y = context->Output(0, Y_shape);

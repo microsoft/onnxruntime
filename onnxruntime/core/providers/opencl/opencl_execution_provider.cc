@@ -133,7 +133,7 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   cl_uint num_platforms;
   ORT_RETURN_IF_CL_ERROR(clGetPlatformIDs(0, nullptr, &num_platforms));
   VLOGS_DEFAULT(1) << "[CL] num platforms: " << num_platforms;
-  ORT_ENFORCE(num_platforms > 0);
+  ORT_RETURN_IF_NOT(num_platforms > 0, "Cannot find OpenCL platform.");
 
   std::vector<cl_platform_id> platforms(num_platforms);
   ORT_RETURN_IF_CL_ERROR(clGetPlatformIDs(platforms.size(), platforms.data(), nullptr));
@@ -169,7 +169,7 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   std::vector<cl_device_id> devices(ret_size);
   ORT_RETURN_IF_CL_ERROR(clGetContextInfo(ctx_, CL_CONTEXT_DEVICES, devices.size(), devices.data(), nullptr));
   VLOGS_DEFAULT(1) << "[CL] num devices: " << devices.size();
-  ORT_ENFORCE(!devices.empty());
+  ORT_RETURN_IF(devices.empty(), "Cannot find OpenCL device.");
   dev_ = devices[0];
 
   auto GetDeviceInfo = [=](cl_device_info info_name) -> std::string {

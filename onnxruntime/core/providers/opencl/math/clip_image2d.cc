@@ -82,11 +82,11 @@ class Clip : public OpenCLKernel {
     float min_val = std::numeric_limits<float>::lowest();
     float max_val = std::numeric_limits<float>::max();
     if (min) {
-      ORT_ENFORCE(min->Shape().IsScalar(), "min should be a scalar.");
+      ORT_RETURN_IF_NOT(min->Shape().IsScalar(), "min should be a scalar.");
       min_val = *(min->Data<float>());
     }
     if (max) {
-      ORT_ENFORCE(max->Shape().IsScalar(), "max should be a scalar.");
+      ORT_RETURN_IF_NOT(max->Shape().IsScalar(), "max should be a scalar.");
       max_val = *(max->Data<float>());
     }
 
