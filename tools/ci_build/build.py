@@ -719,9 +719,6 @@ def use_dev_mode(args):
         return 'OFF'
     if args.use_armnn:
         return 'OFF'
-    if args.use_opencl:
-        #FIXME: hgy, remove later, so that there will be no -Werror in compiling ort
-        return 'OFF'
     if args.ios and is_macOS():
         return 'OFF'
     SYSTEM_COLLECTIONURI = os.getenv('SYSTEM_COLLECTIONURI')

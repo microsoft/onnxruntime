@@ -19,7 +19,8 @@ OpenCLBufferAllocator::OpenCLBufferAllocator(cl_context ctx)
 }
 
 OpenCLBufferAllocator::~OpenCLBufferAllocator() {
-  for (auto& [ptr, md] : meta_) {
+  for (auto& [ptr, _] : meta_) {
+    ORT_UNUSED_PARAMETER(_);
     clReleaseMemObject(reinterpret_cast<cl_mem>(ptr));
   }
 }
@@ -60,7 +61,8 @@ OpenCLImage2DAllocator::OpenCLImage2DAllocator(cl_context ctx, bool use_fp16)
 }
 
 OpenCLImage2DAllocator::~OpenCLImage2DAllocator() {
-  for (auto& [ptr, md] : meta_) {
+  for (auto& [ptr, _] : meta_) {
+    ORT_UNUSED_PARAMETER(_);
     clReleaseMemObject(reinterpret_cast<cl_mem>(ptr));
   }
 }

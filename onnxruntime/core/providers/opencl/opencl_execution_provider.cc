@@ -140,11 +140,11 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   ORT_RETURN_IF_CL_ERROR(clGetPlatformIDs(platforms.size(), platforms.data(), nullptr));
   int selected_platform_idx = -1;
   // FIXME: add platform selection logic
-  for (int i = 0; i < platforms.size(); i++) {
+  for (auto & platform : platforms) {
     size_t ret_size;
-    ORT_RETURN_IF_CL_ERROR(clGetPlatformInfo(platforms[i], CL_PLATFORM_VENDOR, 0, nullptr, &ret_size));
+    ORT_RETURN_IF_CL_ERROR(clGetPlatformInfo(platform, CL_PLATFORM_VENDOR, 0, nullptr, &ret_size));
     std::string vendor(ret_size, '\0');
-    ORT_RETURN_IF_CL_ERROR(clGetPlatformInfo(platforms[i], CL_PLATFORM_VENDOR, vendor.size(), vendor.data(), nullptr));
+    ORT_RETURN_IF_CL_ERROR(clGetPlatformInfo(platform, CL_PLATFORM_VENDOR, vendor.size(), vendor.data(), nullptr));
     LOGS_DEFAULT(VERBOSE) << "[CL] platform vendor: " << vendor;
     if (vendor == "Oclgrind") {
       LOGS_DEFAULT(INFO) << "[CL] platform " << vendor << " selected";
@@ -206,7 +206,7 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   return Status::OK();
 }
 
-void OpenCLExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
+void OpenCLExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> /*allocator_manager*/) {
   // FIXME: Is it possible to use arena on OpenCL? cl_mem is opaque pointer in
   // OpenCL 1.2 and Shared Virtual Memory (SVM) is only available in OpenCL
   // 2.0, which still have limited support on a wide range of devices. Without

@@ -67,7 +67,7 @@ class Concat final : public OpenCLKernel, public ConcatBase {
 
     auto C_in = X_shape[1];
 
-    int64_t cin_blocks = CeilDiv(C_in, 4);
+    // int64_t cin_blocks = CeilDiv(C_in, 4);
     int64_t cout_blocks = CeilDiv(C_out, 4);
     ZoneNamedN(_tracy_Concat, "Concat (kernel launch)", true);
     if (input_tensors[0]->Shape()[1] % 4) {

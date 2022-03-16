@@ -10,6 +10,7 @@ namespace opencl {
 
 OpenCLKernelHolder::~OpenCLKernelHolder() {
   for (const auto& [_, kernel] : kernels_) {
+    ORT_UNUSED_PARAMETER(_);
     mgr_->ReleaseKernel(kernel);
   }
   mgr_->ReleaseProgram(program_);

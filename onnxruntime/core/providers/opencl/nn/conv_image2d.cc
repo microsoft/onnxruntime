@@ -96,13 +96,14 @@ struct FusedConvAct {
 std::vector<uint32_t> Conv2dCommonLocalWS2D(std::vector<uint32_t>& gws,
                                             const uint32_t max_workgroup_size,
                                             const uint32_t subgroup_size) {
-  std::vector<uint32_t> lws;
-  lws.clear();
-  return lws;
+  // TODO: impl
+  ORT_UNUSED_PARAMETER(gws);
+  ORT_UNUSED_PARAMETER(max_workgroup_size);
+  ORT_UNUSED_PARAMETER(subgroup_size);
+  return {};
 }
 
-Status CalWGSizeForWino(const Tensor* X, const Tensor* Y, const ConvAttributes::ConvPadVector& P,
-                        std::vector<KernelUnitParam>& winokernel) {
+Status CalWGSizeForWino(const Tensor* X, const Tensor* Y, std::vector<KernelUnitParam>& winokernel) {
   const auto& input_dims = X->Shape();
   const auto& output_dims = Y->Shape();
 
@@ -315,7 +316,7 @@ class Conv : public OpenCLKernel {
     ZoneScopedN("PackGenericWeight");
     auto shape = src.Shape();
     auto desc = Image2DDesc::PackFromConv2DWeight(shape);
-    packed_weight_ = std::move(exec_->GetScratchImage2D(desc));
+    packed_weight_ = exec_->GetScratchImage2D(desc);
     CL_CHECK_MEM_OBJECT_IS_IMAGE_2D(GetPackedWeight());
     VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), GetPackedWeight());
 
@@ -342,7 +343,7 @@ class Conv : public OpenCLKernel {
     ZoneScopedN("PackDepthwiseWeight");
     auto shape = src.Shape();
     auto desc = Image2DDesc::PackFromDepthwiseConv2DWeight(shape);
-    packed_weight_ = std::move(exec_->GetScratchImage2D(desc));
+    packed_weight_ = exec_->GetScratchImage2D(desc);
     CL_CHECK_MEM_OBJECT_IS_IMAGE_2D(GetPackedWeight());
     VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), GetPackedWeight());
 
@@ -370,7 +371,7 @@ class Conv : public OpenCLKernel {
     ZoneScopedN("PackWinogradWeight");
     auto shape = src.Shape();
     auto desc = Image2DDesc::PackFromWinogradTransform(shape);
-    packed_weight_ = std::move(exec_->GetScratchImage2D(desc));
+    packed_weight_ = exec_->GetScratchImage2D(desc);
     CL_CHECK_MEM_OBJECT_IS_IMAGE_2D(GetPackedWeight());
 
     // wino initialize
@@ -500,7 +501,7 @@ class Conv : public OpenCLKernel {
     desc = {output_channel_blocks * round_up_ouptut_width, 16 * batch * round_up_output_height};
     auto ocl_m_ = exec_->GetScratchImage2D(desc);
     std::vector<KernelUnitParam> winokernel(3);
-    ORT_RETURN_IF_ERROR(CalWGSizeForWino(X, Y, P, winokernel));
+    ORT_RETURN_IF_ERROR(CalWGSizeForWino(X, Y, winokernel));
     ORT_RETURN_IF_ERROR(KernelLauncher{GetKernel(kernel_name::TransformToMatrixV)}
                             .SetArg<cl_int>(winokernel[0].global_work_size[0])
                             .SetArg<cl_int>(winokernel[0].global_work_size[1])

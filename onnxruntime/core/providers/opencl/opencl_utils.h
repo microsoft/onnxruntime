@@ -3,6 +3,9 @@
 
 #pragma once
 
+// NOTE: We are targeting OpenCL 1.2. Some API is marked as deprecated
+// but is still in use!
+#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #include <CL/opencl.h>
 #ifdef CL3W_ENABLE
 #include <cl3w.h>
@@ -136,7 +139,7 @@ class NDRange {
     result.reserve(16);
     result.append("[");
     result.append(std::to_string(values_[0]));
-    for (int i = 1; i < values_.size(); ++i) {
+    for (size_t i = 1; i < values_.size(); ++i) {
       result.append(",");
       result.append(std::to_string(values_[i]));
     }
@@ -244,9 +247,9 @@ class Image2DDesc : private std::pair<int64_t, int64_t> {
     ORT_ENFORCE(shape.NumDimensions() == 4);
     int64_t C_o = shape[0];
     int64_t C_i = shape[1];
-    // FIXME: asumme we only surpport window-size=4
+    // NOTE: asumme we only surpport window-size=4
     int64_t K_h = 4;
-    int64_t K_w = 4;
+    // int64_t K_w = 4;
     return {CeilDiv(C_i, 4) * K_h, 16 * CeilDiv(C_o, 4)};
   }
 
@@ -307,7 +310,7 @@ class KernelLauncher {
     return *this;
   }
 
-  template <typename T, typename E = std::is_convertible<T, cl_int>>
+  template <typename T, typename E = std::is_convertible<T, int32_t>>
   KernelLauncher& SetInt2(T v1, T v2) {
     cl_int tmp[2] = {static_cast<cl_int>(v1), static_cast<cl_int>(v2)};
     SKIP_IF_ERRORED(clSetKernelArg(kernel_, index_, sizeof(tmp), tmp));
@@ -315,7 +318,7 @@ class KernelLauncher {
     return *this;
   }
 
-  template <typename T, typename E = std::is_convertible<T, cl_int>>
+  template <typename T, typename E = std::is_convertible<T, int32_t>>
   KernelLauncher& SetInt3(T v1, T v2, T v3) {
     cl_int3 tmp{{static_cast<cl_int>(v1), static_cast<cl_int>(v2), static_cast<cl_int>(v3)}};
     SKIP_IF_ERRORED(clSetKernelArg(kernel_, index_, sizeof(tmp), &tmp));
@@ -323,7 +326,7 @@ class KernelLauncher {
     return *this;
   }
 
-  template <typename T, typename E = std::is_convertible<T, cl_int>>
+  template <typename T, typename E = std::is_convertible<T, int32_t>>
   KernelLauncher& SetInt4(T v1, T v2, T v3, T v4) {
     cl_int tmp[4] = {static_cast<cl_int>(v1), static_cast<cl_int>(v2), static_cast<cl_int>(v3), static_cast<cl_int>(v4)};
     SKIP_IF_ERRORED(clSetKernelArg(kernel_, index_, sizeof(tmp), tmp));
