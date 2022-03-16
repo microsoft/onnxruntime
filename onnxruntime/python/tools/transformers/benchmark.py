@@ -51,6 +51,7 @@ from enum import Enum
 from benchmark_helper import (OptimizerInfo, create_onnxruntime_session, Precision, setup_logger, get_latency_result,
                               output_details, output_summary, output_fusion_statistics, inference_ort,
                               inference_ort_with_io_binding, allocateOutputBuffers, ConfigModifier)
+from fusion_options import FusionOptions
 from quantize_helper import QuantizeHelper
 from onnx_exporter import create_onnxruntime_input, load_pretrained_model, export_onnx_model_from_pt, export_onnx_model_from_tf
 
@@ -71,7 +72,7 @@ from transformers import (AutoConfig, AutoTokenizer, AutoModel, GPT2Model, Lxmer
 def run_onnxruntime(use_gpu, provider, model_names, model_class, config_modifier, precision, num_threads, batch_sizes,
                     sequence_lengths, repeat_times, input_counts, optimizer_info, validate_onnx, cache_dir, onnx_dir,
                     verbose, overwrite, disable_ort_io_binding, use_raw_attention_mask, model_fusion_statistics,
-                    model_source):
+                    model_source, args):
     import onnxruntime
 
     results = []
@@ -99,13 +100,15 @@ def run_onnxruntime(use_gpu, provider, model_names, model_class, config_modifier
                 break
 
             input_names = all_input_names[:num_inputs]
+            args.model_type = MODELS[model_name][3]
+            fusion_options = FusionOptions.parse(args)
 
             if 'pt' in model_source:
                 with torch.no_grad():
                     onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model_from_pt(
                         model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3], model_class,
                         config_modifier, cache_dir, onnx_dir, input_names, use_gpu, precision, optimizer_info,
-                        validate_onnx, use_raw_attention_mask, overwrite, model_fusion_statistics)
+                        validate_onnx, use_raw_attention_mask, overwrite, model_fusion_statistics, fusion_options)
             if 'tf' in model_source:
                 onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model_from_tf(
                     model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3], model_class,
@@ -517,6 +520,8 @@ def parse_arguments():
                         default=None,
                         help="Manually set the model's layer number")
 
+    FusionOptions.add_arguments(parser)
+
     args = parser.parse_args()
     return args
 
@@ -584,7 +589,7 @@ def main():
                                            args.test_times, args.input_counts, args.optimizer_info, args.validate_onnx,
                                            args.cache_dir, args.onnx_dir, args.verbose, args.overwrite,
                                            args.disable_ort_io_binding, use_raw_attention_mask, model_fusion_statistics,
-                                           args.model_source)
+                                           args.model_source, args)
             except:
                 logger.error(f"Exception", exc_info=True)
 
