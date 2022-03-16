@@ -46,7 +46,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "d721d320bd2f66d342d24b71600fe1f5e222e952",
+               "commitHash": "ffd5f70370642c909222f9a4cae8400023dacbdc",
                "repositoryUrl": "https://github.com/apache/tvm.git"
             },
             "comments": "needed for TVM EP"

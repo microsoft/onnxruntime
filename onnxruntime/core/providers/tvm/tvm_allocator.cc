@@ -8,6 +8,7 @@
 
 
 namespace onnxruntime {
+namespace tvm {
 
 void* TVMAllocator::Alloc(size_t size) {
   void* p = nullptr;
@@ -24,4 +25,5 @@ void TVMAllocator::Free(void* p) {
     TVMDeviceFreeDataSpace(ctx, p);
 }
 
-}  // namespace onnxruntime
+}   // namespace tvm
+}   // namespace onnxruntime
