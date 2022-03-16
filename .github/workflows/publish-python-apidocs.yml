@@ -27,14 +27,13 @@ jobs:
       - name: Set vars
         id: vars
         run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
-      - name: Check outputs
-        run: echo ${{ steps.vars.outputs.sha_short }}
       - uses: actions/checkout@v2
         with:
           ref: gh-pages
           clean: false    
       - name: Move API docs into target area
         run: |
+          ls docs/api
           rm -rf docs/api/python
           mv build/docs/inference/html docs/api/python   
       - name: Create Pull Request

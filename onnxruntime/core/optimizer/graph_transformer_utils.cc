@@ -286,7 +286,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
     const IExecutionProvider& cpu_execution_provider,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable) {
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
-  bool saving = std::holds_alternative<SatRuntimeOptimizationSaveContext>(apply_context);
+  const bool saving = std::holds_alternative<SatRuntimeOptimizationSaveContext>(apply_context);
 
   switch (level) {
     case TransformerLevel::Level1:
