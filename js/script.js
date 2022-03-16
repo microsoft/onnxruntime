@@ -851,7 +851,7 @@ var validCombos = {
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
 
     "windows,Python,X86,DirectML":
-    "Follow build instructions from [here](https://aka.ms/build-ort-directml)",
+    "Follow build instructions from <a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
     
     "windows,C-API,X64,DirectML":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
@@ -875,7 +875,7 @@ var validCombos = {
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
     
     "windows,Python,ARM64,DirectML":
-        "Follow build instructions from [here](https://aka.ms/build-ort-directml)",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
     
     "linux,Java,X64,DefaultCPU":
         "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
@@ -969,7 +969,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
     "android,Java,ARM64,NNAPI":
-        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
     
     "android,C-API,X86,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
@@ -978,7 +978,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
     "android,Java,X64,NNAPI":
-        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
     
     "android,C-API,X64,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
@@ -987,7 +987,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
     "android,Java,X86,NNAPI":
-        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
     
     "android,C-API,ARM32,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
@@ -996,7 +996,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
     "android,Java,ARM32,NNAPI":
-        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
     
     "android,C-API,ARM64,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
@@ -1005,7 +1005,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,Java,ARM64,DefaultCPU":
-        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
 
     "android,C-API,ARM32,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
@@ -1014,7 +1014,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,Java,ARM32,DefaultCPU":
-        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
 
     "android,C-API,X86,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
@@ -1023,7 +1023,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,Java,X86,DefaultCPU":
-        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
     
     "android,C-API,X64,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
@@ -1032,7 +1032,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,Java,X64,DefaultCPU":
-        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
     
     "android,C#,ARM64,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>. <br/>Refer to sample <a href='https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile/examples/Xamarin' target='blank'>here</a>.",
