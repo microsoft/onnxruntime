@@ -59,9 +59,9 @@ Status RegisterOpenCLKernels(KernelRegistry& kernel_registry) {
 
   for (auto& function_table_entry : function_table) {
     KernelCreateInfo info = function_table_entry();
-    VLOGS_DEFAULT(1) << "[CL] RegisterOpenCLKernels...";
     if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
-      VLOGS_DEFAULT(0) << "[CL]  register kernel name: " << info.kernel_def->OpName() << ", domain: " << info.kernel_def->Domain();
+      VLOGS_DEFAULT(V_GENERIC) << "Register kernel name: " << info.kernel_def->OpName()
+                               << ", domain: " << info.kernel_def->Domain();
       ORT_RETURN_IF_ERROR(kernel_registry.Register(std::move(info)));
     }
   }
@@ -123,7 +123,7 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   ORT_RETURN_IF_CL_ERROR(clGetPlatformIDs(platforms.size(), platforms.data(), nullptr));
   int selected_platform_idx = -1;
   // FIXME: add platform selection logic
-  for (auto & platform : platforms) {
+  for (auto& platform : platforms) {
     size_t ret_size;
     ORT_RETURN_IF_CL_ERROR(clGetPlatformInfo(platform, CL_PLATFORM_VENDOR, 0, nullptr, &ret_size));
     std::string vendor(ret_size, '\0');
@@ -165,9 +165,9 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   // NOTE: use stdout for mobile
   // FIXME: use logger latter
   auto device_name = GetDeviceInfo(CL_DEVICE_NAME);
-  LOGS_DEFAULT(INFO) << "[CL] device name: " << device_name << "\n";
-  LOGS_DEFAULT(VERBOSE) << "[CL] device vendor: " << GetDeviceInfo(CL_DEVICE_VENDOR) << "\n";
-  LOGS_DEFAULT(VERBOSE) << "[CL] device version: " << GetDeviceInfo(CL_DEVICE_VERSION) << "\n";
+  LOGS_DEFAULT(INFO) << "[CL] device name: " << device_name;
+  LOGS_DEFAULT(VERBOSE) << "[CL] device vendor: " << GetDeviceInfo(CL_DEVICE_VENDOR);
+  LOGS_DEFAULT(VERBOSE) << "[CL] device version: " << GetDeviceInfo(CL_DEVICE_VERSION);
   auto exts = GetDeviceInfo(CL_DEVICE_EXTENSIONS);
   LOGS_DEFAULT(VERBOSE) << "[CL] device extensions: " << exts << std::endl;
   bool has_fp16 = exts.find("cl_khr_fp16") != std::string::npos;
@@ -176,8 +176,8 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
     DisableFp16();
   }
   flush_after_launch_ = ShouldFlushAfterLaunch(device_name);
-  LOGS_DEFAULT(INFO) << "[CL] FP16: " << UseFp16() << "\n";
-  LOGS_DEFAULT(INFO) << "[CL] clFlush after launch: " << flush_after_launch_ << "\n";
+  LOGS_DEFAULT(INFO) << "[CL] FP16: " << UseFp16();
+  LOGS_DEFAULT(INFO) << "[CL] clFlush after launch: " << flush_after_launch_;
 
 #ifdef TRACY_ENABLE
   cmd_queue_ = clCreateCommandQueue(ctx_, dev_, CL_QUEUE_PROFILING_ENABLE, &err);

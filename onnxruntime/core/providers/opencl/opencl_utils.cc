@@ -143,9 +143,9 @@ const char* GetErrorString(cl_int error_code) {
 
 Status KernelLauncher::Launch(const OpenCLExecutionProvider& exec, const NDRange& global, const NDRange& local) {
     ORT_RETURN_IF_CL_ERROR(err_, " on setting argument ", static_cast<int>(err_index_));
-    VLOGS_DEFAULT(1) << "[CL] Launching " << GetKernelFunctionName()
-                     << " with global work size: " << global.ToString()
-                     << " local work size: " << local.ToString();
+    VLOGS_DEFAULT(V_KERNEL) << "Launching " << GetKernelFunctionName()
+                            << " with global work size: " << global.ToString()
+                            << " local work size: " << local.ToString();
 
 #ifdef TRACY_ENABLE
     cl_event kernel_launch_event;

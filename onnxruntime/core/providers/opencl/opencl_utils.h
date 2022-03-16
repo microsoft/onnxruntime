@@ -24,6 +24,14 @@
 #include "opencl_forward_decl.h"
 #include "opencl_execution_provider.h"
 
+// predefined verbosity log level
+#define V_GENERIC 5
+#define V_ATTR 4  // Node attributes
+#define V_TENSOR 3
+#define V_ALLOC 2
+#define V_COPY 2
+#define V_KERNEL 1  // OpenCL kernel launch
+
 #ifdef NDEBUG
 #define USE_CL_CHECKED_CAST 0
 #else
@@ -92,18 +100,22 @@
 #define CL_IMAGE2D_FROM_TENSOR(TENSOR) const_cast<cl_mem>(static_cast<const std::remove_pointer_t<cl_mem>*>((TENSOR).DataRaw()))
 #endif
 
-#define VLOG_CL_NODE()                                          \
-  VLOGS_DEFAULT(0) << "[CL] Node: " << context->GetNodeName()   \
-                   << ", num inputs: " << context->InputCount() \
-                   << ", num outputs: " << context->OutputCount()
-#define VLOG_CL_BUFFER(desc, tensor_ptr)                                      \
-  VLOGS_DEFAULT(0) << "[CL]  " << std::setfill(' ') << std::setw(9) << (desc) \
-                   << " shape " << (tensor_ptr)->Shape()                      \
-                   << "Buffer(" << CL_BUFFER_FROM_TENSOR(*(tensor_ptr)) << ")"
-#define VLOG_CL_IMAGE2D(desc, tensor_ptr)                                     \
-  VLOGS_DEFAULT(0) << "[CL]  " << std::setfill(' ') << std::setw(9) << (desc) \
-                   << " shape " << (tensor_ptr)->Shape()                      \
-                   << "Image2D(" << CL_IMAGE2D_FROM_TENSOR(*(tensor_ptr)) << ")"
+#define VLOG_CL_NODE()                                               \
+  VLOGS_DEFAULT(V_ATTR) << "Node: " << context->GetNodeName()        \
+                        << ", num inputs: " << context->InputCount() \
+                        << ", num outputs: " << context->OutputCount()
+#define VLOG_CL_BUFFER(desc, tensor_ptr)                                 \
+  VLOGS_DEFAULT(V_TENSOR) << std::setfill(' ') << std::setw(9) << (desc) \
+                          << " shape " << (tensor_ptr)->Shape()          \
+                          << " Buffer(" << CL_BUFFER_FROM_TENSOR(*(tensor_ptr)) << ")"
+#define VLOG_CL_IMAGE2D(desc, tensor_ptr)                                \
+  VLOGS_DEFAULT(V_TENSOR) << std::setfill(' ') << std::setw(9) << (desc) \
+                          << " shape " << (tensor_ptr)->Shape()          \
+                          << " Image2D(" << CL_IMAGE2D_FROM_TENSOR(*(tensor_ptr)) << ")"
+#define VLOG_CL_PREPACK(desc, ptr, shape)                                \
+  VLOGS_DEFAULT(V_TENSOR) << std::setfill(' ') << std::setw(9) << (desc) \
+                          << " shape " << (shape)                        \
+                          << " PrePack(" << ptr << ")";
 
 namespace onnxruntime {
 namespace opencl {

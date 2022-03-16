@@ -19,7 +19,6 @@ class Concat final : public OpenCLKernel, public ConcatBase {
  public:
   explicit Concat(const OpKernelInfo& info)
       : OpenCLKernel(info), ConcatBase(info) {
-    VLOGS_DEFAULT(0) << "Init Concat (OpenCLKernel)";
     LoadProgram(conncat_kernel_src, conncat_kernel_src_len);
     LoadKernel("ConcatChannel4X");
     LoadKernel("ConcatChannel");
@@ -56,9 +55,9 @@ class Concat final : public OpenCLKernel, public ConcatBase {
 
     auto Y_shape = p.output_tensor->Shape();
     const auto* Y = p.output_tensor;
-    VLOG_CL_IMAGE2D("Input", input_tensors[0]);
+    VLOG_CL_IMAGE2D("Input[1]", input_tensors[0]);
+    VLOG_CL_IMAGE2D("Input[0]", input_tensors[1]);
     VLOG_CL_IMAGE2D("Output", Y);
-    VLOGS_DEFAULT(0) << "[CL] Concat, X:" << input_tensors[0]->Shape() << " + " << input_tensors[1]->Shape() << " Y:" << Y->Shape();
 
     const auto& N = Y_shape[0];
     const auto& C_out = Y_shape[1];

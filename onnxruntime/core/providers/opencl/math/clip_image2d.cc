@@ -22,8 +22,6 @@ Status ClipComputeImpl(
     cl_float lower_bound,
     cl_float upper_bound) {
   ZoneScopedN("ClipComputeImpl");
-  VLOG_CL_IMAGE2D("Input[0]", X);
-  VLOG_CL_IMAGE2D("Output[0]", Y);
 
   const auto& X_shape = X->Shape();
   auto desc = Image2DDesc::PackFromTensorNCHW(X_shape);
@@ -45,7 +43,6 @@ class Clip6 : public OpenCLKernel {
  public:
   explicit Clip6(const OpKernelInfo& info)
       : OpenCLKernel(info) {
-    VLOGS_DEFAULT(0) << "Init Clip (OpenCLKernel)";
     LoadProgram(clip_kernel_src, clip_kernel_src_len);
     LoadKernel("Clip");
     info.GetAttrOrDefault("min", &lower_bound_, std::numeric_limits<float>::lowest());
@@ -57,6 +54,8 @@ class Clip6 : public OpenCLKernel {
 
     const auto* X = context->Input<Tensor>(0);
     const auto* Y = context->Output(0, X->Shape());
+    VLOG_CL_IMAGE2D("Input[0]", X);
+    VLOG_CL_IMAGE2D("Output[0]", Y);
     return ClipComputeImpl(exec_, GetKernel("Clip"), X, Y, lower_bound_, upper_bound_);
   }
 
@@ -69,7 +68,6 @@ class Clip : public OpenCLKernel {
  public:
   explicit Clip(const OpKernelInfo& info)
       : OpenCLKernel(info) {
-    VLOGS_DEFAULT(0) << "Init Clip (OpenCLKernel)";
     LoadProgram(clip_kernel_src, clip_kernel_src_len);
     LoadKernel("Clip");
   }

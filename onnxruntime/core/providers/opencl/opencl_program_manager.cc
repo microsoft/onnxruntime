@@ -115,7 +115,7 @@ cl_program OpenCLProgramManager::GetProgram(std::string_view src_body) {
   const auto& it = program_registry_.find(key);
   if (it != program_registry_.cend()) {
     cl_program program = it->second;
-    VLOGS_DEFAULT(1) << "[CL] Program " << program << " reused";
+    VLOGS_DEFAULT(V_GENERIC) << "Program " << program << " reused";
     RefProgram(program);
     return program;
   }
@@ -124,7 +124,7 @@ cl_program OpenCLProgramManager::GetProgram(std::string_view src_body) {
   // be faster.
   cl_program program;
   ORT_THROW_IF_ERROR(CreateProgramWithSource(exec_->GetOpenCLContext(), exec_->GetOpenCLDevice(), full_src, &program));
-  VLOGS_DEFAULT(1) << "[CL] Program " << program << " created from source";
+  VLOGS_DEFAULT(V_GENERIC) << "Program " << program << " created from source";
   TakeinProgram(key, program);
   return program;
 }
@@ -143,13 +143,13 @@ cl_kernel OpenCLProgramManager::GetKernel(cl_program program, std::string_view k
   KernelKey key{program, kernel_name};
   const auto& it = kernel_registry_.find(key);
   if (it != kernel_registry_.cend()) {
-    VLOGS_DEFAULT(1) << "[CL] Reusing kernel " << kernel_name << " of program " << program;
+    VLOGS_DEFAULT(V_GENERIC) << "Reusing kernel " << kernel_name << " of program " << program;
     cl_kernel kernel = it->second;
     RefKernel(kernel);
     return kernel;
   }
 
-  VLOGS_DEFAULT(1) << "[CL] Loading kernel " << kernel_name << " from program " << program;
+  VLOGS_DEFAULT(V_GENERIC) << "Loading kernel " << kernel_name << " from program " << program;
   cl_kernel kernel;
   ORT_THROW_IF_ERROR(LoadKernelFromProgram(program, kernel_name, &kernel));
   TakeinKernel(key, kernel);

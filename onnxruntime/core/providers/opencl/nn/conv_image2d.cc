@@ -146,9 +146,6 @@ class Conv : public OpenCLKernel {
  public:
   explicit Conv(const OpKernelInfo& info) : OpenCLKernel(info), attrs_{info} {
     ORT_THROW_IF_ERROR(act_info_.LoadInfo(info));
-    VLOGS_DEFAULT(0) << "[CL] Init Conv (OpenCLKernel), auto_pad:" << static_cast<int>(attrs_.auto_pad)
-                     << ", dilations: " << attrs_.dilations << ", group: " << attrs_.group;
-
     auto status = InitConvKind();
     if (!status.IsOK()) {
       conv_kind_ = ConvKind::Generic;
@@ -206,7 +203,6 @@ class Conv : public OpenCLKernel {
 
   Status Compute(OpKernelContext* context) const override {
     ZoneScopedN("Conv::Compute");
-
     VLOG_CL_NODE();
     const Tensor* X = context->Input<Tensor>(0);
     const Tensor* B = context->InputCount() >= 2 ? context->Input<Tensor>(2) : nullptr;
@@ -241,10 +237,7 @@ class Conv : public OpenCLKernel {
     Tensor* Y = context->Output(0, Y_shape);
 
     VLOG_CL_IMAGE2D("Input X", X);
-    VLOGS_DEFAULT(0) << "[CL]  " << std::setfill(' ') << std::setw(9)
-                     << "Input W"
-                     << " shape " << W_shape_
-                     << "PrePack(" << GetPackedWeight() << ")";
+    VLOG_CL_PREPACK("Input W", GetPackedWeight(), W_shape_);
     if (B != nullptr) {
       VLOG_CL_IMAGE2D("Input B", B);
     }
@@ -318,7 +311,7 @@ class Conv : public OpenCLKernel {
     auto desc = Image2DDesc::PackFromConv2DWeight(shape);
     packed_weight_ = exec_->GetScratchImage2D(desc);
     CL_CHECK_MEM_OBJECT_IS_IMAGE_2D(GetPackedWeight());
-    VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), GetPackedWeight());
+    VLOGF_DEFAULT(V_COPY, "Copy    host(%p) --> Image2D(%p)", src.DataRaw(), GetPackedWeight());
 
     auto tmp = exec_->GetScratchBuffer(src.SizeInBytes());
     // TODO: refactor out clEnqueueWriteBuffer, backend api exposed
@@ -345,7 +338,7 @@ class Conv : public OpenCLKernel {
     auto desc = Image2DDesc::PackFromDepthwiseConv2DWeight(shape);
     packed_weight_ = exec_->GetScratchImage2D(desc);
     CL_CHECK_MEM_OBJECT_IS_IMAGE_2D(GetPackedWeight());
-    VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), GetPackedWeight());
+    VLOGF_DEFAULT(V_COPY, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), GetPackedWeight());
 
     ORT_RETURN_IF(shape[1] != 1, "input channel per group must be 1 for depthwise conv2d");
     auto tmp = exec_->GetScratchBuffer(src.SizeInBytes());
@@ -385,7 +378,7 @@ class Conv : public OpenCLKernel {
     WinogradHelper helper(cpu_alloc, unit_output, kernel_size);
     auto transformd_weight = helper.TransformWeight(&src, output_channel, input_channel);
 
-    VLOGF_DEFAULT(0, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), GetPackedWeight());
+    VLOGF_DEFAULT(V_COPY, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), GetPackedWeight());
 
     auto tmp = exec_->GetScratchBuffer(transformd_weight->SizeInBytes());
     ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), tmp.get(),
@@ -411,9 +404,8 @@ class Conv : public OpenCLKernel {
                          const TensorShapeVector& D,
                          const int group) const {
     ZoneScopedN("DepthwiseConv2D");
-    VLOGS_DEFAULT(0) << "[CL] DepthwiseConv2D, X:" << X->Shape() << " W:" << W_shape_
-                     << " B:" << (B ? B->Shape() : TensorShape{}) << " Y:" << Y->Shape()
-                     << " K:" << K << " S:" << S << " P:" << TensorShape{P} << " D:" << D << " group:" << group;
+    VLOGS_DEFAULT(V_ATTR) << "DepthwiseConv2D, K:" << K << " S:" << S << " P:" << TensorShape{P}
+                          << " D:" << D << " group:" << group;
 
     auto C_in = X->Shape()[1];
     auto H_in = X->Shape()[2];
@@ -473,10 +465,8 @@ class Conv : public OpenCLKernel {
                         Tensor* Y,
                         const ConvAttributes::ConvPadVector& P) const {
     ZoneScopedN("WinogradConv2D");
-    VLOGS_DEFAULT(0) << "[CL] WinogradConv2D, X:" << X->Shape() << " W:" << W_shape_
-                     << " B:" << (B ? B->Shape() : TensorShape{}) << " Y:" << Y->Shape()
-                     << " K:" << TensorShape{3, 3} << " S:" << TensorShape{1, 1}
-                     << " P:" << TensorShape{P} << " D:" << TensorShape{1, 1} << " group:" << 1;
+    VLOGS_DEFAULT(V_ATTR) << "WinogradConv2D, K:" << TensorShape{3, 3} << " S:" << TensorShape{1, 1}
+                          << " P:" << TensorShape{P} << " D:" << TensorShape{1, 1} << " group:" << 1;
 
     const auto& xshape = X->Shape();
     const auto& yshape = Y->Shape();
@@ -544,9 +534,8 @@ class Conv : public OpenCLKernel {
                 const TensorShapeVector& D,
                 const int group) const {
     ZoneScopedN("Conv2D");
-    VLOGS_DEFAULT(0) << "[CL] Conv2D, X:" << X->Shape() << " W:" << W_shape_
-                     << " B:" << (B ? B->Shape() : TensorShape{}) << " Y:" << Y->Shape()
-                     << " K:" << K << " S:" << S << " P:" << TensorShape{P} << " D:" << D << " group:" << group;
+    VLOGS_DEFAULT(V_ATTR) << "Conv2D, K:" << K << " S:" << S << " P:" << TensorShape{P}
+                          << " D:" << D << " group:" << group;
     ORT_RETURN_IF(group != 1, "group != 1 is not supported currently in Conv2D");
 
     const auto& xshape = X->Shape();

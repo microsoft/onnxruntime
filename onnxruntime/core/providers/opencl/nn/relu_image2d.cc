@@ -18,7 +18,6 @@ class ReLU : public OpenCLKernel {
  public:
   explicit ReLU(const OpKernelInfo& info)
       : OpenCLKernel(info) {
-    VLOGS_DEFAULT(0) << "Init ReLU (OpenCLKernel)";
     LoadProgram(relu_kernel_src, relu_kernel_src_len);
     LoadKernel("ReLU");
   };
@@ -69,9 +68,6 @@ ONNX_OPENCL_OPERATOR_KERNEL(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     ReLU)
-
-
-
 
 }  // namespace opencl
 }  // namespace onnxruntime

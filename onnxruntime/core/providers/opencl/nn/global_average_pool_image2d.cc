@@ -15,7 +15,6 @@ namespace {
 class GlobalAveragePool : public OpenCLKernel {
  public:
   explicit GlobalAveragePool(const OpKernelInfo& info) : OpenCLKernel(info) {
-    VLOGS_DEFAULT(0) << "[CL] Init GlobalAveragePool (OpenCLKernel)";
     LoadProgram(global_avgpool_src, global_avgpool_src_len);
     LoadKernel("GlobalAveragePool");
   };

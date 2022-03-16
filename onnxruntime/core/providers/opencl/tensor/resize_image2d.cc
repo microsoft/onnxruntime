@@ -19,7 +19,6 @@ class Resize : public OpenCLKernel, UpsampleBase {
  public:
   explicit Resize(const OpKernelInfo& info)
       : OpenCLKernel(info), UpsampleBase(info) {
-    VLOGS_DEFAULT(0) << "Init Resize (OpenCLKernel)";
     LoadProgram(resize_kernel_src, resize_kernel_src_len);
     if (mode_ == UpsampleMode::LINEAR) {
       LoadKernel("ResizeBilinear2D");

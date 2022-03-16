@@ -19,14 +19,12 @@ class MaxPool : public OpenCLKernel {
  public:
   explicit MaxPool(const OpKernelInfo& info)
       : OpenCLKernel(info), attrs_(info, info.GetKernelDef().OpName(), info.node().SinceVersion()) {
-    VLOGS_DEFAULT(0) << "Init MaxPool (OpenCLKernel)";
     LoadProgram(max_pool_kernel_src, max_pool_kernel_src_len);
     LoadKernel("MaxPool");
   };
 
   Status Compute(OpKernelContext* context) const override {
     ZoneScopedN("MaxPool::Compute");
-    VLOG_CL_NODE();
 
     const auto* X = context->Input<Tensor>(0);
     const auto& X_shape = X->Shape();
@@ -35,10 +33,9 @@ class MaxPool : public OpenCLKernel {
     TensorShapeVector pads = attrs_.pads;
     TensorShapeVector Y_shape = attrs_.SetOutputSize(X_shape, X_shape[1], &pads);
     const auto* Y = context->Output(0, Y_shape);
+    VLOG_CL_NODE() << " K:" << attrs_.kernel_shape << " S:" << attrs_.strides << " P:" << pads;
     VLOG_CL_IMAGE2D("Input", X);
     VLOG_CL_IMAGE2D("Output", Y);
-    VLOGS_DEFAULT(0) << "[CL] MaxPool, X:" << X->Shape() << " Y:" << Y->Shape()
-                     << " K:" << attrs_.kernel_shape << " S:" << attrs_.strides << " P:" << pads;
 
     // auto input_desc = Image2DDesc::PackFromTensorNCHW(X_shape);
     const auto& N = Y_shape[0];

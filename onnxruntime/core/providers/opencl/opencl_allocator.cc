@@ -13,7 +13,7 @@ namespace opencl {
 OpenCLBufferAllocator::OpenCLBufferAllocator(cl_context ctx)
     : IAllocator(OrtMemoryInfo(BufferAllocatorName, OrtAllocatorType::OrtDeviceAllocator,
                                OrtDevice(OrtDevice::GPU, CLMemType::OPENCL_BUFFER, /*device_id_=*/0),
-                                /*id_*/ 0,
+                               /*id_*/ 0,
                                /*mem_type_=*/(OrtMemType)CLMemType::OPENCL_BUFFER)),
       ctx_(ctx) {
 }
@@ -26,20 +26,20 @@ OpenCLBufferAllocator::~OpenCLBufferAllocator() {
 }
 
 void* OpenCLBufferAllocator::Alloc(size_t size) {
-  ZoneScopedN("OpenCLBufferAllocator::Alloc")
+  ZoneScopedN("OpenCLBufferAllocator::Alloc");
   auto it = cache_.find(size);
 
   if (it == cache_.end() || it->second.empty()) {
     cl_int err{};
     auto* ptr = clCreateBuffer(ctx_, CL_MEM_READ_WRITE, size, nullptr, &err);
     ORT_THROW_IF_CL_ERROR(err);
-    VLOGF_DEFAULT(0, "[CL] allocated Buffer(%p){size=%zu}", ptr, size);
+    VLOGF_DEFAULT(V_ALLOC, "Allocated Buffer(%p){size=%zu}", ptr, size);
     meta_[ptr] = {size, MemoryKind::Buffer};
     return ptr;
   }
 
   auto* ptr = it->second.front();
-  VLOGF_DEFAULT(0, "[CL] reused %p", ptr);
+  VLOGF_DEFAULT(V_ALLOC, "Reused %p", ptr);
   it->second.pop_front();
   return ptr;
 }
@@ -77,7 +77,7 @@ void* OpenCLImage2DAllocator::Alloc(const TensorShape& shape) {
 }
 
 void* OpenCLImage2DAllocator::Alloc(const Image2DDesc& desc) {
-  ZoneScopedN("OpenCLImage2DAllocator::Alloc")
+  ZoneScopedN("OpenCLImage2DAllocator::Alloc");
   auto it = cache_.find(desc);
   if (it == cache_.end() || it->second.empty()) {
     cl_int err{};
@@ -102,19 +102,18 @@ void* OpenCLImage2DAllocator::Alloc(const Image2DDesc& desc) {
     }
     auto* ptr = clCreateImage(ctx_, CL_MEM_READ_WRITE, &image_format, &image_desc, nullptr, &err);
     ORT_THROW_IF_CL_ERROR(err);
-    VLOGF_DEFAULT(0, "[CL] allocated Image2D(%p){w=%ld, h=%ld})", ptr, desc.Width(), desc.Height());
+    VLOGF_DEFAULT(V_ALLOC, "Allocated Image2D(%p){w=%ld, h=%ld})", ptr, desc.Width(), desc.Height());
     meta_[ptr] = {desc, MemoryKind::Image2D};
     return ptr;
   }
 
   auto* ptr = it->second.front();
-  VLOGF_DEFAULT(0, "[CL] reused %p", ptr);
+  VLOGF_DEFAULT(V_ALLOC, "Reused %p", ptr);
   it->second.pop_front();
   return ptr;
 }
 
 void OpenCLImage2DAllocator::Free(void* p) {
-  // VLOGF_DEFAULT(FATAL, )
   auto meta = meta_[p];
   auto it = cache_.find(meta.desc);
   if (it == cache_.end()) {
