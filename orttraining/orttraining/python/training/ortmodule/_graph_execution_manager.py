@@ -311,7 +311,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         #       Model is not re-exported when the model parameters change. This can happen when the model is a stateful model,
         #       or the user explicitly changed model parameters after the onnx export.
 
-        # record random states here and restore later in case any of them gets changed during the export,
+        # Record random states here and restore later in case any of them gets changed during the export,
         # e.g., some sympy functions in symbolic_shape_infer will change Python's random state.
         random_states = _utils.get_random_states()
 
@@ -333,7 +333,7 @@ class GraphExecutionManager(GraphExecutionInterface):
             self._onnx_models.exported_model = SymbolicShapeInference.infer_shapes(self._onnx_models.exported_model,
                                                                                    auto_merge=True, guess_output_rank=True)
 
-        # restore the recorded random states
+        # Restore the recorded random states
         _utils.set_random_states(random_states)
 
         return True

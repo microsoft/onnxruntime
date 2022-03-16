@@ -4828,7 +4828,7 @@ def test_random_states_unchanged_for_ortmodule():
             self.dim = 32
 
         def forward(self, x):
-            # This slice operation will call sympy.Min() when exporting
+            # This slice operation will call sympy.Min() when exporting, which will change Python's random state
             return x[:self.dim, :]
 
     def random_state_equal(a, b):
