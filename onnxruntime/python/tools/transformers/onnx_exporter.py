@@ -318,8 +318,8 @@ def validate_and_optimize_onnx(model_name,
                                onnx_model_path,
                                example_inputs,
                                example_outputs_flatten,
-                               output_names=None,
-                               fusion_options=None):
+                               output_names,
+                               fusion_options):
     is_valid_onnx_model = True
     if validate_onnx:
         is_valid_onnx_model = validate_onnx_model(onnx_model_path, example_inputs, example_outputs_flatten, use_gpu,
@@ -410,7 +410,7 @@ def export_onnx_model_from_pt(model_name, opset_version, use_external_data_forma
 
 def export_onnx_model_from_tf(model_name, opset_version, use_external_data_format, model_type, model_class,
                               config_modifier, cache_dir, onnx_dir, input_names, use_gpu, precision, optimizer_info,
-                              validate_onnx, use_raw_attention_mask, overwrite, model_fusion_statistics):
+                              validate_onnx, use_raw_attention_mask, overwrite, model_fusion_statistics, fusion_options):
     # Use CPU to export
     import tensorflow as tf
     tf.config.set_visible_devices([], 'GPU')
@@ -497,6 +497,6 @@ def export_onnx_model_from_tf(model_name, opset_version, use_external_data_forma
     opt_onnx_model_file, onnx_model_file, is_valid_onnx_model, vocab_size = validate_and_optimize_onnx(
         model_name, use_external_data_format, model_type, onnx_dir, input_names, use_gpu, precision, optimizer_info,
         validate_onnx, use_raw_attention_mask, overwrite, config, model_fusion_statistics, onnx_model_path,
-        example_inputs, example_outputs_flatten, output_names)
+        example_inputs, example_outputs_flatten, output_names, fusion_options)
 
     return opt_onnx_model_file, onnx_model_file, is_valid_onnx_model, vocab_size, max_input_size

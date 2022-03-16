@@ -113,7 +113,7 @@ def run_onnxruntime(use_gpu, provider, model_names, model_class, config_modifier
                 onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length = export_onnx_model_from_tf(
                     model_name, MODELS[model_name][1], MODELS[model_name][2], MODELS[model_name][3], model_class,
                     config_modifier, cache_dir, onnx_dir, input_names, use_gpu, precision, optimizer_info,
-                    validate_onnx, use_raw_attention_mask, overwrite, model_fusion_statistics)
+                    validate_onnx, use_raw_attention_mask, overwrite, model_fusion_statistics, fusion_options)
 
             if not is_valid_onnx_model:
                 continue
