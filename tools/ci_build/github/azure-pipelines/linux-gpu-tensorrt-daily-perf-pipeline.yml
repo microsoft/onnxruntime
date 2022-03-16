@@ -120,15 +120,15 @@ jobs:
         displayName: 'Copy Wheel from Docker'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/anubis'
     
-      - script: 'OUTPUT=$(ls dist) && az storage blob upload --account-name anubiscustomerstorage  --account-key $(account-key) --container-name upload --file $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/dist/*.whl --name ort-trt-ep/$(Build.BuildNumber)/$OUTPUT'
-        displayName: 'Upload Wheel File'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+      # - script: 'OUTPUT=$(ls dist) && az storage blob upload --account-name anubiscustomerstorage  --account-key $(account-key) --container-name upload --file $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/dist/*.whl --name ort-trt-ep/$(Build.BuildNumber)/$OUTPUT'
+      #   displayName: 'Upload Wheel File'
+      #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-      - task: PowerShell@2
-        inputs:
-          filePath: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/anubis/start_job.ps1'
-          arguments: '-file_folder $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/dist -account_key $(account-key) -trt_container $(trtContainer) -csc $(csc)'
-        displayName: 'Start Anubis Job'
+      # - task: PowerShell@2
+      #   inputs:
+      #     filePath: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/anubis/start_job.ps1'
+      #     arguments: '-file_folder $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/dist -account_key $(account-key) -trt_container $(trtContainer) -csc $(csc)'
+      #   displayName: 'Start Anubis Job'
 
     - ${{ each option in parameters.ModelGroups }}:
       - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $(${{option}})'
@@ -154,6 +154,12 @@ jobs:
 
     - ${{ if eq(parameters.MemTest, true) }}:
       - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/build/result $(Build.SourcesDirectory)/Artifact/result_mem_test'
+        displayName: 'Copy Artifacts'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+        condition: always()
+
+    - ${{ if eq(parameters.PublishWheel, true) }}:
+      - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/dist $(Build.SourcesDirectory)/Artifact/anubis_wheel'
         displayName: 'Copy Artifacts'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         condition: always()
