@@ -54,6 +54,7 @@ public:
   static TvmEPOptions FromProviderOptions(const ProviderOptions& options);
   static std::string whitespace_trimming(const std::string& str);
 
+  static bool checkCPUTarget(const std::string& target);
   static bool checkGPUTarget(const std::string& target);
 
 private:
