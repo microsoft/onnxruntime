@@ -458,16 +458,21 @@ def einsum(g, equation, tensor_list):
     # Need to Reshape the result for the example, the new shape is [size(s), size(m)].
     if len(lhs_matmul_output_axes) != 1 or len(rhs_matmul_output_axes) != 1:
         shape_tensors = [g.op("Constant", value_t=torch.tensor([0], dtype=torch.int64))] * len(batched_axes)
+        all_zeros = True
         if lhs_matmul_output_axes:
             if len(lhs_matmul_output_axes) == 1:
                 shape_tensors.append(g.op("Constant", value_t=torch.tensor([0], dtype=torch.int64)))
             else:
                 shape_tensors.append(lhs_matmul_output_shape_tensor)
+                all_zeros = False
         if rhs_matmul_output_axes:
             if len(rhs_matmul_output_axes) == 1:
                 shape_tensors.append(g.op("Constant", value_t=torch.tensor([-1], dtype=torch.int64)))
             else:
                 shape_tensors.append(rhs_matmul_output_shape_tensor)
+            all_zeros = False
+        if all_zeros:
+            shape_tensors[-1] = g.op("Constant", value_t=torch.tensor([-1], dtype=torch.int64))
         result = reshape_tensor(g, result, shape_tensors)
 
     # Now output axes is ordered by [batched_axes, lhs_matmul_output_axes, rhs_matmut_output_axes],
