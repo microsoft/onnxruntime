@@ -19,9 +19,10 @@ constexpr NameAndIndex coordinateTransformationModes[] =
 constexpr NameAndIndex nearestNeighborRoundingModes[] =
 {
     {"", 0},
-    {"round_prefer_floor", 0},
-    {"round_prefer_ceil", 1},
-    {"floor", 2},
+    {"round_prefer_floor", 0},  // round halves down
+    {"round_prefer_ceil", 1},   // round halves up
+    {"floor", 2},               // round always down
+    // {"ceil", 3},             // round always up (requires a DirectML API addition)
 };
 
 void ComputePixelOffsetsAndScales(
@@ -338,9 +339,9 @@ void CALLBACK QueryResize(IMLOperatorSupportQueryContextPrivate* context, bool* 
 
 DML_OP_DEFINE_CREATION_FUNCTION(Resize10, VersionedKernel<DmlOperatorResize, 10>);
 DML_OP_DEFINE_CREATION_FUNCTION(Resize11, VersionedKernel<DmlOperatorResize, 11>);
+DML_OP_DEFINE_CREATION_FUNCTION(Resize13, VersionedKernel<DmlOperatorResize, 13>);
 DML_OP_DEFINE_CREATION_FUNCTION(Upsample7, VersionedKernel<DmlOperatorResize, 7>);
 DML_OP_DEFINE_CREATION_FUNCTION(Upsample9, VersionedKernel<DmlOperatorResize, 9>);
 DML_OP_DEFINE_CREATION_FUNCTION(Upsample10, VersionedKernel<DmlOperatorResize, 10>);
-DML_OP_DEFINE_CREATION_FUNCTION(Upsample13, VersionedKernel<DmlOperatorResize, 13>);
 
 } // namespace Dml

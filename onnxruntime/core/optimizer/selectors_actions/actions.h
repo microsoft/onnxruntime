@@ -99,12 +99,9 @@ struct MergeIntoTarget : public Action {
   RemoveNodes node_remover_{true};  // preserve target node when removing selected_nodes
 };
 
-// replace the selected_nodes with a new node. the inputs and outputs values for the replaced nodes should be
-// moved to the new node using value_moves. all nodes in selected_nodes will be removed.
+// replace the selected_nodes with a new node. all nodes in selected_nodes will be removed.
 struct ReplaceWithNew : public Action {
-  ReplaceWithNew(const std::string& domain,
-                 const std::string& op_name,
-                 std::vector<NodeAndMoveInfo>&& value_moves);
+  ReplaceWithNew() = default;
 
   Status Run(Graph& graph, const NodesToOptimize& selected_nodes) const override;
 
@@ -114,14 +111,56 @@ struct ReplaceWithNew : public Action {
                     SavedState& saved_state, bool& graph_modified) const override;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
- private:
-  // support usage where operator name is determined at runtime from the selected nodes
-  virtual std::string OpType(const NodesToOptimize&) const { return op_; }
+ protected:
+  // contains runtime state that may be used when overriding virtual methods below
+  struct RuntimeState {
+    const Graph& graph;
+    const NodesToOptimize& selected_nodes;
+  };
 
-  const std::string domain_;
-  const std::string op_;
-  std::vector<NodeAndMoveInfo> value_moves_;
+ private:
+  // replacement node Op type
+  virtual std::string OpType(const RuntimeState&) const = 0;
+
+  // replacement node domain
+  virtual std::string Domain(const RuntimeState&) const = 0;
+
+  // extra attributes to add to the replacement node in addition to the target node's attributes
+  // existing target node attributes with the same name are overwritten
+  // Note: this should be updated if we need to do anything other than adding to the target's existing attributes
+  virtual NodeAttributes ExtraAttributes(const RuntimeState&) const = 0;
+
+  // specifies how the inputs and outputs for the replaced nodes are moved to the new node
+  virtual std::vector<NodeAndMoveInfo> ValueMoves(const RuntimeState&) const = 0;
+
   RemoveNodes node_remover_;
+};
+
+// replace with a new node that is specified at construction time
+// this class can be overridden to further specify particular aspects at runtime
+struct ReplaceWithNewFixed : public ReplaceWithNew {
+  ReplaceWithNewFixed(std::string domain, std::string op_type, std::vector<NodeAndMoveInfo> value_moves,
+                      NodeAttributes extra_attrs = {})
+      : domain_{std::move(domain)},
+        op_type_{std::move(op_type)},
+        extra_attrs_{std::move(extra_attrs)},
+        value_moves_{std::move(value_moves)} {
+  }
+
+ protected:
+  std::string OpType(const RuntimeState&) const override { return op_type_; }
+
+  std::string Domain(const RuntimeState&) const override { return domain_; }
+
+  NodeAttributes ExtraAttributes(const RuntimeState&) const override { return extra_attrs_; }
+
+  std::vector<NodeAndMoveInfo> ValueMoves(const RuntimeState&) const override { return value_moves_; }
+
+ private:
+  const std::string domain_;
+  const std::string op_type_;
+  const NodeAttributes extra_attrs_;
+  const std::vector<NodeAndMoveInfo> value_moves_;
 };
 
 }  // namespace onnxruntime

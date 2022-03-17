@@ -10,7 +10,7 @@ import unittest
 import onnx
 import numpy as np
 from onnx import helper, TensorProto
-from onnxruntime.quantization import quantize_static, quantize_dynamic, QuantType
+from onnxruntime.quantization import quantize_static, quantize_dynamic, QuantType, QuantFormat
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
 
@@ -88,7 +88,7 @@ class TestOpGlobalAveragePool(unittest.TestCase):
         model_q8_path = 'gavg_pool_{}{}.onnx'.format(activation_type_str, weight_type_str)
 
         data_reader.rewind()
-        quantize_static(model_fp32_path, model_q8_path, data_reader,
+        quantize_static(model_fp32_path, model_q8_path, data_reader, quant_format=QuantFormat.QOperator,
                         activation_type=activation_type, weight_type=weight_type, extra_options=extra_options)
 
         quant_nodes = {'QLinearConv': 1, 'GlobalAveragePool': 1, 'QLinearGlobalAveragePool': 1,

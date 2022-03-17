@@ -172,11 +172,9 @@ class ModelTestBuilder {
     return AddNode("DequantizeLinear", input_args, {output_arg});
   }
 
-  template <typename T>
-  typename std::enable_if<IsTypeDequantLinearCompatible<T>::value, Node&>::type
-  AddDequantizeLinearNode(NodeArg* input_arg,
-                          float input_scale,
-                          NodeArg* output_arg) {
+  Node& AddDequantizeLinearNode(NodeArg* input_arg,
+                                float input_scale,
+                                NodeArg* output_arg) {
     std::vector<NodeArg*> input_args;
     input_args.push_back(input_arg);
     input_args.push_back(MakeScalarInitializer<float>(input_scale));
@@ -283,7 +281,8 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        int opset_version = 12,
                        double per_sample_tolerance = 0.0,
                        double relative_per_sample_tolerance = 0.0,
-                       std::unique_ptr<GraphTransformer> transformer = nullptr);
+                       std::unique_ptr<GraphTransformer> transformer = nullptr,
+                       const std::function<void(SessionOptions&)>* add_session_options = nullptr);
 
 }  // namespace test
 }  // namespace onnxruntime

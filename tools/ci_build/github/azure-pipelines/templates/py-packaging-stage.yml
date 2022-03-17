@@ -62,8 +62,6 @@ stages:
       pool: Linux-CPU
       strategy:
         matrix:
-          Python36:
-            PythonVersion: '3.6'
           Python37:
             PythonVersion: '3.7'
           Python38:
@@ -118,7 +116,7 @@ stages:
             rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
             sudo rm -f /build /onnxruntime_src
             sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src
-            python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+            python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
             cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
             # Test ORT with the latest ONNX release.
             export ONNX_VERSION=$(cat $(Build.SourcesDirectory)/cmake/external/onnx/VERSION_NUMBER)
@@ -193,8 +191,6 @@ stages:
       pool: Onnxruntime-Linux-GPU
       strategy:
         matrix:
-          Python36:
-            PythonVersion: '3.6'
           Python37:
             PythonVersion: '3.7'
           Python38:
@@ -249,7 +245,7 @@ stages:
             rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
             sudo rm -f /build /onnxruntime_src
             sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src
-            python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+            python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
             cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
             # Test ORT with the latest ONNX release.
             export ONNX_VERSION=$(cat $(Build.SourcesDirectory)/cmake/external/onnx/VERSION_NUMBER)
@@ -291,7 +287,7 @@ stages:
   - ${{ if eq(parameters.enable_linux_rocm_training, true) }}:
     - job: ROCm_build_environment
       displayName: 'Construct ROCm wheels environment'
-      timeoutInMinutes: 180
+      timeoutInMinutes: 300
       workspace:
         clean: all
       pool: AMD-GPU
@@ -322,6 +318,19 @@ stages:
             --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin:
             --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
           Repository: onnxruntimetrainingrocmbuild-torch1.10.0-rocm4.3.1
+      - template: get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_rocm5_0_1
+          Context: tools/ci_build/github/linux/docker
+          DockerBuildArgs: >-
+            --build-arg TORCH_VERSION=1.10.0
+            --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
+            --build-arg BUILD_UID=$(id -u)
+            --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
+            --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-10/root
+            --build-arg PREPEND_PATH=/opt/rh/devtoolset-10/root/usr/bin:
+            --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
+          Repository: onnxruntimetrainingrocmbuild-torch1.10.0-rocm5.0.1
 
     - job: ROCM_training_wheels
       timeoutInMinutes: 180
@@ -333,10 +342,6 @@ stages:
       - ROCm_build_environment
       strategy:
         matrix:
-          Python36 Torch1100 Rocm42:
-            PythonVersion: '3.6'
-            TorchVersion: '1.10.0'
-            RocmVersion: '4.2'
           Python37 Torch1100 Rocm42:
             PythonVersion: '3.7'
             TorchVersion: '1.10.0'
@@ -349,10 +354,6 @@ stages:
             PythonVersion: '3.9'
             TorchVersion: '1.10.0'
             RocmVersion: '4.2'
-          Python36 Torch1100 Rocm431:
-            PythonVersion: '3.6'
-            TorchVersion: '1.10.0'
-            RocmVersion: '4.3.1'
           Python37 Torch1100 Rocm431:
             PythonVersion: '3.7'
             TorchVersion: '1.10.0'
@@ -365,6 +366,18 @@ stages:
             PythonVersion: '3.9'
             TorchVersion: '1.10.0'
             RocmVersion: '4.3.1'
+          Python37 Torch1100 Rocm501:
+            PythonVersion: '3.7'
+            TorchVersion: '1.10.0'
+            RocmVersion: '5.0.1'
+          Python38 Torch1100 Rocm501:
+            PythonVersion: '3.8'
+            TorchVersion: '1.10.0'
+            RocmVersion: '5.0.1'
+          Python39 Torch1100 Rocm501:
+            PythonVersion: '3.9'
+            TorchVersion: '1.10.0'
+            RocmVersion: '5.0.1'
       steps:
 
       - checkout: self
@@ -602,10 +615,6 @@ stages:
       pool: 'Win-CPU-2021'
       strategy:
         matrix:
-          Python36_x64:
-            PythonVersion: '3.6'
-            MsbuildPlatform: x64
-            buildArch: x64
           Python37_x64:
             PythonVersion: '3.7'
             MsbuildPlatform: x64
@@ -618,10 +627,6 @@ stages:
             PythonVersion: '3.9'
             MsbuildPlatform: x64
             buildArch: x64
-          Python36_x86:
-            PythonVersion: '3.6'
-            MsbuildPlatform: Win32
-            buildArch: x86
           Python37_x86:
             PythonVersion: '3.7'
             MsbuildPlatform: Win32
@@ -810,11 +815,6 @@ stages:
         buildArch: x64
       strategy:
         matrix:
-          Python36_GPU:
-            PythonVersion: '3.6'
-            EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.2.1.8.Windows10.x86_64.cuda-11.4.cudnn8.2" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
-            EnvSetupScript: setup_env_gpu.bat
-            EP_NAME: gpu
           Python37_GPU:
             PythonVersion: '3.7'
             EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.2.1.8.Windows10.x86_64.cuda-11.4.cudnn8.2" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
@@ -830,11 +830,6 @@ stages:
             EpBuildFlags: --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.2.1.8.Windows10.x86_64.cuda-11.4.cudnn8.2" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
             EnvSetupScript: setup_env_gpu.bat
             EP_NAME: gpu
-          Python36_dml:
-            PythonVersion: '3.6'
-            EpBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-            EP_NAME: directml
-            EnvSetupScript: setup_env.bat
           Python37_dml:
             PythonVersion: '3.7'
             EpBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
@@ -1081,9 +1076,6 @@ stages:
           ARM64_Py37:
             PYTHON_EXE: '/opt/python/cp37-cp37m/bin/python3'
             Image: 'manylinux2014_aarch64'
-          ARM64_Py36:
-            PYTHON_EXE: '/opt/python/cp36-cp36m/bin/python3'
-            Image: 'manylinux2014_aarch64'
           # Uncomment the following lines to generate packages for PowerPC
           # POWERPC_Py39:
           #   PYTHON_EXE: '/opt/python/cp39-cp39/bin/python3'
@@ -1093,9 +1085,6 @@ stages:
           #   Image: 'manylinux2014_ppc64le'
           # POWERPC_Py37:
           #   PYTHON_EXE: '/opt/python/cp37-cp37m/bin/python3'
-          #   Image: 'manylinux2014_ppc64le'
-          # POWERPC_Py36:
-          #   PYTHON_EXE: '/opt/python/cp36-cp36m/bin/python3'
           #   Image: 'manylinux2014_ppc64le'
       steps:
       - checkout: self

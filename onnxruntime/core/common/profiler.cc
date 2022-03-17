@@ -59,7 +59,7 @@ void Profiler::StartProfiling(const std::basic_string<T>& file_name) {
 #if !defined(__wasm__)
   profile_stream_.open(file_name, std::ios::out | std::ios::trunc);
 #endif
-  profile_stream_file_ = ToMBString(file_name);
+  profile_stream_file_ = ToUTF8String(file_name);
   profiling_start_time_ = std::chrono::high_resolution_clock::now();
   for (const auto& ep_profiler : ep_profilers_) {
     ep_profiler->StartProfiling();
@@ -135,7 +135,7 @@ std::string Profiler::EndProfiling() {
     bool is_first_arg = true;
     for (std::pair<std::string, std::string> event_arg : rec.args) {
       if (!is_first_arg) profile_stream_ << ",";
-      if (!event_arg.second.empty() && event_arg.second[0] == '{') {
+      if (!event_arg.second.empty() && (event_arg.second[0] == '{' || event_arg.second[0] == '[')) {
         profile_stream_ << "\"" << event_arg.first << "\" : " << event_arg.second << "";
       } else {
         profile_stream_ << "\"" << event_arg.first << "\" : \"" << event_arg.second << "\"";

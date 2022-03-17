@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 #include "utils.h"
 
 #include <iostream>
@@ -10,7 +12,6 @@
 #include <core/graph/graph_viewer.h>
 #include <core/providers/common.h>
 
-#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 
 namespace onnxruntime {
@@ -26,19 +27,34 @@ void Selectors::RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops
 }
 
 /* static methods to return different operator's OpVersionMap */
-static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() { return {{"Gather", {}},
-                                                                                   {"Reshape", {}},
-                                                                                   {"Transpose", {}},
-                                                                                   {"MaxPool", {12}},
-                                                                                   {"Resize", {}}}; }
+static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() {
+  return {{"Gather", {}},
+          {"Reshape", {}},
+          {"Transpose", {}},
+          {"MaxPool", {12}},
+          {"Resize", {}},
+          {"Squeeze", {}},
+          {"Unsqueeze", {}}};
+}
 
-static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() { return {{"AveragePool", {}},
-                                                                                    {"LeakyRelu", {}}}; }
-static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() { return {{"Add", {}},
-                                                                                     {"Mul", {}}}; }
-static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() { return {{"Concat", {}}}; }
-static const OpVersionsAndSelector::OpVersionsMap GetConvOpVersionsMap() { return {{"Conv", {}}}; }
-static const OpVersionsAndSelector::OpVersionsMap GetMatMulOpVersionsMap() { return {{"MatMul", {}}}; }
+static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
+  return {{"AveragePool", {}},
+          {"Softmax", {}},
+          {"LeakyRelu", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
+  return {{"Add", {}},
+          {"Mul", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() {
+  return {{"Concat", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetConvOpVersionsMap() {
+  return {{"Conv", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetMatMulOpVersionsMap() {
+  return {{"MatMul", {}}};
+}
 
 /* Selector rules registration related */
 void RegisterMiscSelectors(Selectors& qdq_selectors) {
@@ -101,7 +117,7 @@ void SelectorManager::InitializeSelectorsMap() {
   }
 }
 
-void SelectorManager::Initialize() {
+SelectorManager::SelectorManager() {
   CreateSelectors();
   InitializeSelectorsMap();
 }
@@ -110,7 +126,9 @@ std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& grap
   std::vector<NodeGroup> qdq_selections;
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     const auto* node = graph_viewer.GetNode(index);
-    if (node->Domain() != kOnnxDomain) {
+    // post layout transformation all the layout sensitive nodes are converted to domain
+    // kMSInternalNHWCDomain. Therefore need to allow this domain as well.
+    if (node->Domain() != kOnnxDomain && node->Domain() != kMSInternalNHWCDomain) {
       continue;
     }
 
@@ -142,3 +160,5 @@ std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& grap
 
 }  // namespace QDQ
 }  // namespace onnxruntime
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

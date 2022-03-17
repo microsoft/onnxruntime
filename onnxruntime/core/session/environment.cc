@@ -10,6 +10,8 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets_ml.h"
+#include "core/graph/contrib_ops/ms_opset.h"
+#include "core/graph/contrib_ops/onnx_deprecated_opset.h"
 #if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
 #include "onnx/defs/operator_sets_training.h"
 #endif
@@ -23,6 +25,7 @@
 
 #include "core/platform/env.h"
 #include "core/util/thread_utils.h"
+
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
 #include "core/platform/tracing.h"
@@ -219,12 +222,18 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       }
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
+      domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSInternalNHWCDomain, 1, 1);
+      domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kPytorchAtenDomain, 1, 1);
 #ifdef USE_DML
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDmlDomain, 1, 1);
 #endif
 // Register contributed schemas.
 // The corresponding kernels are registered inside the appropriate execution provider.
 #ifndef DISABLE_CONTRIB_OPS
+#ifndef ORT_MINIMAL_BUILD
+      RegisterOpSetSchema<contrib::OpSet_Microsoft_ver1>();
+      RegisterOpSetSchema<contrib::OpSet_ONNX_Deprecated>();
+#endif
       contrib::RegisterContribSchemas();
 #endif
 #ifdef USE_DML
@@ -264,7 +273,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       all_types.insert(all_types.end(), all_tensor_types.begin(), all_tensor_types.end());
       all_types.insert(all_types.end(), all_sequence_types.begin(), all_sequence_types.end());
       all_types.emplace_back("seq(tensor(bfloat16))");
-      all_types.erase(std::remove_if(all_types.begin(), all_types.end(), 
+      all_types.erase(std::remove_if(all_types.begin(), all_types.end(),
                       [](const std::string& s) { return s.find("string") != std::string::npos; }), all_types.end());
       return all_types; }();
 

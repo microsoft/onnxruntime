@@ -12,45 +12,34 @@ namespace onnxruntime {
 namespace concurrency {
 class ThreadPool;
 }
-class ScatterNDBase {
- protected:
-  struct Prepare {
-    const uint8_t* input_base;
-    const std::string* input_str_base;
-    uint8_t* output_base;
-    std::string* output_str_base;
-    uint64_t bytes_to_copy;
-    uint64_t element_bytes;
-    uint64_t element_to_copy;
-    std::vector<uint64_t> element_offsets;
 
-    Prepare() : input_base(nullptr),
-                input_str_base(nullptr),
-                output_base(nullptr),
-                output_str_base(nullptr),
-                bytes_to_copy(0),
-                element_bytes(0),
-                element_to_copy(0),
-                element_offsets(0) {}
-  };  // struct Prepare
-
-  Status PrepareForCompute(OpKernelContext* context, Prepare& p) const;
-
+class ScatterND final : public OpKernel {
  public:
-  // Shared between the CPU and CUDA implementation
+  enum class Reduction : int {
+    None = 0,
+    Add,
+    Mul
+  };
+
+  explicit ScatterND(const OpKernelInfo& info) : OpKernel(info) {
+    // 'reduction' attribute was added in opset 16.
+    // its default value is 'none' in which case the op behaves the same as before opset 16.
+    std::string reduction;
+    if (info.GetAttr<std::string>("reduction", &reduction).IsOK()) {
+      if (reduction == "add")
+        reduction_ = Reduction::Add;
+      else if (reduction == "mul")
+        reduction_ = Reduction::Mul;
+    }
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+
   static Status ValidateShapes(const TensorShape& input_shape,
                                const TensorShape& indice_shape,
                                const TensorShape& update_shape);
-};  // class ScatterNDBase
-
-class ScatterND final : public OpKernel, protected ScatterNDBase {
- public:
-  explicit ScatterND(const OpKernelInfo& info) : OpKernel(info) {}
-  Status Compute(OpKernelContext* context) const override;
-
  private:
-  Status ScatterNumber(const Prepare& p, concurrency::ThreadPool* tp) const;
-  Status ScatterString(const Prepare& p, concurrency::ThreadPool* tp) const;
+  Reduction reduction_{Reduction::None};
 };
 
 }  // namespace onnxruntime

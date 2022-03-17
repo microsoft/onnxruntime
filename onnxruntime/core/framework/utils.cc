@@ -96,7 +96,7 @@ bool ProviderIsCpuBased(const std::string& provider_type) {
   return provider_type == onnxruntime::kCpuExecutionProvider ||
          provider_type == onnxruntime::kDnnlExecutionProvider ||
          provider_type == onnxruntime::kNupharExecutionProvider ||
-         provider_type == onnxruntime::kStvmExecutionProvider ||
+         provider_type == onnxruntime::kTvmExecutionProvider ||
          provider_type == onnxruntime::kVitisAIExecutionProvider ||
          provider_type == onnxruntime::kOpenVINOExecutionProvider ||
          provider_type == onnxruntime::kNnapiExecutionProvider ||
@@ -786,10 +786,10 @@ bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index)
   }
 
 #ifdef ENABLE_TRAINING
-  if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATenOp" && node.Domain() == kMSDomain) {
+  if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATen" && node.Domain() == kPytorchAtenDomain) {
     const auto& attrs = node.GetAttributes();
-    ORT_ENFORCE(utils::HasString(attrs.at("name")));
-    std::string op_name = attrs.at("name").s();
+    ORT_ENFORCE(utils::HasString(attrs.at("operator")));
+    std::string op_name = attrs.at("operator").s();
     std::string overload_name = "";
     if (attrs.find("overload_name") != attrs.end() && utils::HasString(attrs.at("overload_name"))) {
       overload_name = attrs.at("overload_name").s();

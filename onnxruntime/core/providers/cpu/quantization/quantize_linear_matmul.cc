@@ -12,10 +12,12 @@
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
-ONNX_OPERATOR_KERNEL_EX(
+// uint8_t kernel supports weight being either uint8_t or int8_t
+ONNX_OPERATOR_TYPED_KERNEL_EX(
     QLinearMatMul,
     kOnnxDomain,
     10,
+    uint8_t,
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
@@ -23,20 +25,21 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<uint8_t>()),
     QLinearMatMul);
 
-#define REGISTER_QLINEARMATMUL_TYPED_KERNEL(act_type, weight_type)          \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                            \
-      QLinearMatMul,                                                        \
-      kOnnxDomain,                                                          \
-      10,                                                                   \
-      act_type##_##weight_type,                                             \
-      kCpuExecutionProvider,                                                \
-      KernelDefBuilder()                                                    \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<act_type>())    \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<weight_type>()) \
-          .TypeConstraint("T3", DataTypeImpl::GetTensorType<act_type>()),   \
+// int8_t kernel only supports weight being int8_t
+#define REGISTER_QLINEARMATMUL_INT8_KERNEL()                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
+      QLinearMatMul,                                                    \
+      kOnnxDomain,                                                      \
+      10,                                                               \
+      int8_t,                                                           \
+      kCpuExecutionProvider,                                            \
+      KernelDefBuilder()                                                \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<int8_t>())  \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())  \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<int8_t>()), \
       QLinearMatMul);
 
-REGISTER_QLINEARMATMUL_TYPED_KERNEL(int8_t, int8_t);
+REGISTER_QLINEARMATMUL_INT8_KERNEL();
 
 Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   const auto* a = ctx->Input<Tensor>(IN_A);

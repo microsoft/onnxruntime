@@ -11,13 +11,15 @@
 # 4. Build minimal ORT with type reduction from a globally allowed types list.
 #    This step uses a hard-coded list of types which may not include the types needed by the models
 #    in <repo root>/onnxruntime/test/testdata/, so the tests for those models are skipped.
-# 5. Build extended minimal ORT with runtime optimization replay enabled.
+# 5. Build extended minimal ORT and run tests.
 # 6. Build with all optional features disabled and no kernels.
 #    6a: regular build with python enabled checks that the exclusions don't break code paths in a full build.
 #    6b: minimal build with exceptions and python disabled checks that the exclusions don't break code paths in a
 #        minimal build.
 #    6c: extended minimal build with exceptions and python disabled checks that the exclusions don't break code paths
 #        in an extended minimal build.
+# 7. Build extended minimal ORT with NNAPI, with exceptions/RTTI/ml_ops disabled, for Android(arm64-v8a),
+#    this safe-guards the extended minimal build with NNAPI EP.
 
 jobs:
 - job: Linux_CPU_Minimal_Build_E2E
@@ -152,7 +154,7 @@ jobs:
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
-    displayName: 5. Build extended minimal onnxruntime with runtime optimization replay enabled
+    displayName: 5. Build extended minimal onnxruntime and run tests
     inputs:
       script: |
         docker run --rm \
@@ -168,8 +170,7 @@ jobs:
               --skip_submodule_sync \
               --build_shared_lib \
               --parallel \
-              --minimal_build extended \
-              --cmake_extra_defines onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD=ON
+              --minimal_build extended
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -249,7 +250,7 @@ jobs:
               --skip_submodule_sync \
               --build_shared_lib \
               --parallel \
-              --minimal_build extended\
+              --minimal_build extended \
               --disable_exceptions \
               --disable_ml_ops \
               --skip_tests \
@@ -257,8 +258,39 @@ jobs:
               --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config \
               --cmake_extra_defines onnxruntime_DISABLE_SPARSE_TENSORS=ON \
                                     onnxruntime_DISABLE_OPTIONAL_TYPE=ON \
-                                    onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_REPLAY_IN_MINIMAL_BUILD=OFF \
                                     onnxruntime_BUILD_UNIT_TESTS=OFF
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - task: CmdLine@2
+    displayName: 7. Extended minimal build with NNAPI EP for Android(arm64-v8a) and skip tests.
+    inputs:
+      script: |
+        NDK_HOME=$(realpath $ANDROID_NDK_HOME)
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $ANDROID_HOME:/android_home \
+          --volume $NDK_HOME:/ndk_home \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          onnxruntimecpubuild \
+            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build/7 \
+              --cmake_generator Ninja \
+              --config MinSizeRel \
+              --skip_submodule_sync \
+              --parallel \
+              --android \
+              --android_sdk_path /android_home \
+              --android_ndk_path /ndk_home \
+              --android_abi=arm64-v8a \
+              --android_api=29 \
+              --use_nnapi \
+              --minimal_build extended \
+              --build_shared_lib \
+              --disable_ml_ops \
+              --disable_exceptions \
+              --skip_tests
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: PublishTestResults@2

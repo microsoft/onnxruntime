@@ -351,16 +351,6 @@ __device__ __inline__ BFloat16 _Log(BFloat16 a) { return logf(static_cast<float>
 template <>
 __device__ __inline__ BFloat16 _Tanh(BFloat16 a) { return tanhf(static_cast<float>(a)); }
 
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-template <>
-__device__ __inline__ nv_bfloat162 _Tanh(nv_bfloat162 a) {
-  float2 tmp = (__bfloat1622float2(a));
-  tmp.x = tanhf(tmp.x);
-  tmp.y = tanhf(tmp.y);
-  return __float22bfloat162_rn(tmp);
-}
-#endif
-
 template <>
 __device__ __inline__ BFloat16 _Normcdf(BFloat16 a) { return normcdff(static_cast<float>(a)); }
 

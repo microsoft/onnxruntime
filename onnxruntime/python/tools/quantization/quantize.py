@@ -27,7 +27,7 @@ from .qdq_quantizer import QDQQuantizer
 from .calibrate import CalibrationDataReader, create_calibrator, CalibrationMethod 
 
 
-def optimize_model(model_path: Path):
+def optimize_model(model_path : Path):
     '''
         Generate model that applies graph optimization (constant folding,etc.)
         parameter model_path: path to the original onnx model
@@ -42,15 +42,30 @@ def optimize_model(model_path: Path):
     return optimized_model
 
 
-def load_model(model_path: Path, optimize=True):
-    if optimize:
-        #optimize the original model
-        onnx_model = ONNXModel(optimize_model(Path(model_path)))
-        # to support GEMM
+def load_model(model_path : Path, optimize=True, handle_gemm_with_matmul=True):
+
+    model = optimize_model(Path(model_path)) if optimize else onnx.load(Path(model_path))
+
+    if handle_gemm_with_matmul:
+        onnx_model = ONNXModel(model)
         onnx_model.replace_gemm_with_matmul()
         return onnx_model.model
 
-    return onnx.load(Path(model_path))
+    return model
+
+
+def check_static_quant_arguments(quant_format : QuantFormat,
+                                 activation_type : QuantType,
+                                 weight_type : QuantType):
+    if activation_type == QuantType.QInt8 and weight_type == QuantType.QUInt8:
+        raise ValueError("ONNXRuntime quantization doesn't support data format:"
+                         "activation_type=QuantType.QInt8, weight_type = QuantType.QUInt8")
+
+    if activation_type == QuantType.QInt8 and \
+       weight_type == QuantType.QInt8 and \
+       quant_format != QuantFormat.QDQ: \
+        logging.warning("Please use QuantFormat.QDQ for activation type QInt8 and weight type QInt8. "
+                        "Or it will lead to bad performance on x64.")
 
 
 def quantize(model,
@@ -136,11 +151,11 @@ def quantize(model,
 def quantize_static(model_input,
                     model_output,
                     calibration_data_reader: CalibrationDataReader,
-                    quant_format=QuantFormat.QOperator,
+                    quant_format=QuantFormat.QDQ,
                     op_types_to_quantize=[],
                     per_channel=False,
                     reduce_range=False,
-                    activation_type=QuantType.QUInt8,
+                    activation_type=QuantType.QInt8,
                     weight_type=QuantType.QInt8,
                     nodes_to_quantize=[],
                     nodes_to_exclude=[],
@@ -151,6 +166,12 @@ def quantize_static(model_input,
 
     '''
         Given an onnx model and calibration data reader, create a quantized onnx model and save it into a file
+
+    It is recommended to use QuantFormat.QDQ format from 1.11 with activation_type = QuantType.QInt8 and
+                                                                    weight_type = QuantType.QInt8.
+    If model is targeted to GPU/TRT, symmetric activation and weight are required.
+    If model is targeted to CPU, asymmetric activation and symmetric weight are recommended for balance of performance and accuracy.
+
     :param model_input: file path of model to quantize
     :param model_output: file path of quantized model
     :param calibration_data_reader: a calibration data reader. It enumerates calibration data and generates inputs for the original model.
@@ -192,7 +213,7 @@ def quantize_static(model_input,
                                                      if their input is not quantized already. Setting to True to force such operator
                                                      always quantize input and so generate quantized output. Also the True behavior
                                                      could be disabled per node using the nodes_to_exclude.
-            MatMulConstBOnly = True/False: Default is False. If enabled, only MatMul with const B will be quantized.
+            MatMulConstBOnly = True/False: Default is False for static mode. If enabled, only MatMul with const B will be quantized.
             AddQDQPairToWeight = True/False : Default is False which quantizes floating-point weight and feeds it to 
                                               soley inserted DeQuantizeLinear node. If True, it remains floating-point weight and 
                                               inserts both QuantizeLinear/DeQuantizeLinear nodes to weight.
@@ -204,6 +225,12 @@ def quantize_static(model_input,
                                                             and it's effective only when per channel quantization is supported and per_channel is True.
                                                             If specific op type supports per channel quantization but not explicitly specified with channel axis,
                                                             default channel axis will be used.
+            CalibTensorRangeSymmetric = True/False : Default is False. If enabled, the final range of tensor during calibration will be explicitly set to symmetric to central point "0".
+            CalibMovingAverage = True/False : Default is False. If enabled, the moving average of the minimum and maximum values
+                                              will be computed when the calibration method selected is MinMax.
+            CalibMovingAverageConstant = float : Default is 0.01. Constant smoothing factor to use when computing the moving average of
+                                                 the minimum and maximum values. Effective only when the calibration method selected is
+                                                 MinMax and when CalibMovingAverage is set to True.
     '''
 
     mode = QuantizationMode.QLinearOps
@@ -211,11 +238,25 @@ def quantize_static(model_input,
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(QLinearOpsRegistry.keys())
 
-    model = load_model(Path(model_input), optimize_model)
+    model = load_model(Path(model_input), optimize_model, False)
 
-    calibrator = create_calibrator(model, op_types_to_quantize, calibrate_method=calibrate_method)
+    calib_extra_options_keys = [
+        ('CalibTensorRangeSymmetric', 'symmetric'),
+        ('CalibMovingAverage', 'moving_average'),
+        ('CalibMovingAverageConstant', 'averaging_constant')
+    ]
+    calib_extra_options = {key: extra_options.get(name) for (name, key) in calib_extra_options_keys if name in extra_options}
+    calibrator = create_calibrator(
+        model,
+        op_types_to_quantize,
+        calibrate_method=calibrate_method,
+        use_external_data_format=use_external_data_format,
+        extra_options=calib_extra_options
+    )
     calibrator.collect_data(calibration_data_reader)
     tensors_range = calibrator.compute_range()
+
+    check_static_quant_arguments(quant_format, activation_type, weight_type)
 
     if quant_format is QuantFormat.QOperator:
         quantizer = ONNXQuantizer(
@@ -255,7 +296,6 @@ def quantize_dynamic(model_input: Path,
                      op_types_to_quantize=[],
                      per_channel=False,
                      reduce_range=False,
-                     activation_type=QuantType.QUInt8,
                      weight_type=QuantType.QInt8,
                      nodes_to_quantize=[],
                      nodes_to_exclude=[],
@@ -297,7 +337,7 @@ def quantize_dynamic(model_input: Path,
                                                      if their input is not quantized already. Setting to True to force such operator
                                                      always quantize input and so generate quantized output. Also the True behavior
                                                      could be disabled per node using the nodes_to_exclude.
-            MatMulConstBOnly = True/False: Default is False. If enabled, only MatMul with const B will be quantized.
+            MatMulConstBOnly = True/False: Default is True for dynamic mode. If enabled, only MatMul with const B will be quantized.
     '''
 
     mode = QuantizationMode.IntegerOps
@@ -306,6 +346,10 @@ def quantize_dynamic(model_input: Path,
         op_types_to_quantize = list(IntegerOpsRegistry.keys())
 
     model = load_model(Path(model_input), optimize_model)
+
+    if 'MatMulConstBOnly' not in extra_options:
+        extra_options['MatMulConstBOnly'] = True
+
     quantizer = ONNXQuantizer(
         model,
         per_channel,
@@ -313,69 +357,12 @@ def quantize_dynamic(model_input: Path,
         mode,
         False,  #static
         weight_type,
-        activation_type,
+        QuantType.QUInt8, #dynamic activation only supports uint8
         None,
         nodes_to_quantize,
         nodes_to_exclude,
         op_types_to_quantize,
         extra_options)
-
-    quantizer.quantize_model()
-    quantizer.model.save_model_to_file(model_output, use_external_data_format)
-
-
-def quantize_qat(model_input: Path,
-                 model_output: Path,
-                 op_types_to_quantize=[],
-                 per_channel=False,
-                 reduce_range=False,
-                 activation_type=QuantType.QUInt8,
-                 weight_type=QuantType.QUInt8,
-                 nodes_to_quantize=[],
-                 nodes_to_exclude=[],
-                 use_external_data_format=False):
-    '''
-        Given a quantize-aware traning onnx model, create a quantized onnx model and save it into a file
-    :param model_input: file path of model to quantize
-    :param model_output: file path of quantized model
-    :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default
-    :param per_channel: quantize weights per channel
-    :param reduce_range: quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode
-    :param activation_type: quantization data type of activation
-    :param nodes_to_quantize:
-        List of nodes names to quantize. When this list is not None only the nodes in this list
-        are quantized.
-        example:
-        [
-            'Conv__224',
-            'Conv__252'
-        ]
-    :param nodes_to_exclude:
-        List of nodes names to exclude. The nodes in this list will be excluded from quantization
-        when it is not None.
-    :parma use_external_data_format: option used for large size (>2GB) model. Set to False by default. 
-    '''
-
-    mode = QuantizationMode.IntegerOps
-
-    #optimize the original model
-    optimized_model = optimize_model(Path(model_input))
-
-    if not op_types_to_quantize or len(op_types_to_quantize) == 0:
-        op_types_to_quantize = list(IntegerOpsRegistry.keys())
-
-    quantizer = ONNXQuantizer(
-        optimized_model,
-        per_channel,
-        reduce_range,
-        mode,
-        False,  #static
-        weight_type,
-        activation_type,
-        None,
-        nodes_to_quantize,
-        nodes_to_exclude,
-        op_types_to_quantize)
 
     quantizer.quantize_model()
     quantizer.model.save_model_to_file(model_output, use_external_data_format)

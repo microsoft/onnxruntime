@@ -31,6 +31,7 @@
 #include "contrib_ops/cpu/bert/bias_gelu_helper.h"
 #include "contrib_ops/cpu/bert/embed_layer_norm_helper.h"
 #include "contrib_ops/cpu/bert/longformer_attention_base.h"
+#include "contrib_ops/cpu/transformers/beam_search.h"
 #endif
 
 #ifdef ENABLE_TRAINING
@@ -46,7 +47,11 @@
 #include "cpu_provider_shared.h"
 
 namespace onnxruntime {
-
+//The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26436)
+#endif
 struct ProviderHostCPUImpl : ProviderHostCPU {
   // From cpu/tensor/gatherbase.h (direct)
   Status GatherBase__PrepareForCompute(const GatherBase* p, OpKernelContext* context, GatherBase__Prepare& prepare) override { return p->GatherBase::PrepareForCompute(context, reinterpret_cast<GatherBase::Prepare&>(prepare)); }
@@ -63,7 +68,7 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   // From cpu/tensor/scatter_nd.h (direct)
   Status ScatterNDBase__ValidateShapes(const TensorShape& input_shape,
                                        const TensorShape& indice_shape,
-                                       const TensorShape& update_shape) override { return ScatterNDBase::ValidateShapes(input_shape, indice_shape, update_shape); }
+                                       const TensorShape& update_shape) override { return ScatterND::ValidateShapes(input_shape, indice_shape, update_shape); }
   // From cpu/tensor/padbase.h (direct)
   Status PadBase__HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) override { return PadBase::HandleDimValueZero(mode, input_shape, output_shape); }
   // From cpu/tensor/split.h (direct)
@@ -72,7 +77,8 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                       std::vector<int64_t>& split_sizes) override { return p->SplitBase::PrepareForCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
 
   // From cpu/tensor/concatbase.h (direct)
-  Status ConcatBase__PrepareForCompute(const ConcatBase* p, OpKernelContext* ctx, const std::vector<const Tensor*>& input_tensors, Prepare& prepare) override { return p->ConcatBase::PrepareForCompute(ctx, input_tensors, prepare); }
+  Status ConcatBase__PrepareForCompute(const ConcatBase* p, OpKernelContext* ctx, const ConcatBase_InlinedTensorsVector& input_tensors, Prepare& prepare) override {
+    return p->ConcatBase::PrepareForCompute(ctx, reinterpret_cast<const ConcatBase::InlinedTensorsVector&>(input_tensors), prepare); }
 
   // GatherElements (direct)
   Status GatherElements__ValidateInputShapes(const TensorShape& input_data_shape, const TensorShape& indices_shape, int64_t axis) override { return GatherElements::ValidateInputShapes(input_data_shape, indices_shape, axis); }
@@ -88,28 +94,28 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
 
   // From onehot.h (direct)
   Status ValidateInputs(const Tensor* depth, const Tensor* values) override { return onnxruntime::ValidateInputs(depth, values); }
-  Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, std::vector<int64_t>& output_shape) override { return onnxruntime::PrepareOutputShape(indices, depth_val, axis, prefix_dim_size, suffix_dim_size, output_shape); }
+  Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, TensorShapeVector& output_shape) override { return onnxruntime::PrepareOutputShape(indices, depth_val, axis, prefix_dim_size, suffix_dim_size, output_shape); }
 
   // From cpu/tensor/slice.h (direct)
-  Status SliceBase__PrepareForCompute(const std::vector<int64_t>& raw_starts,
-                                      const std::vector<int64_t>& raw_ends,
-                                      const std::vector<int64_t>& raw_axes,
+  Status SliceBase__PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
+                                      const gsl::span<const int64_t>& raw_ends,
+                                      const gsl::span<const int64_t>& raw_axes,
                                       SliceOp__PrepareForComputeMetadata& compute_metadata) override { return SliceBase::PrepareForCompute(raw_starts, raw_ends, raw_axes, reinterpret_cast<SliceOp::PrepareForComputeMetadata&>(compute_metadata)); }
 
-  Status SliceBase__PrepareForCompute(const std::vector<int64_t>& raw_starts,
-                                      const std::vector<int64_t>& raw_ends,
-                                      const std::vector<int64_t>& raw_axes,
-                                      const std::vector<int64_t>& raw_steps,
+  Status SliceBase__PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
+                                      const gsl::span<const int64_t>& raw_ends,
+                                      const gsl::span<const int64_t>& raw_axes,
+                                      const gsl::span<const int64_t>& raw_steps,
                                       SliceOp__PrepareForComputeMetadata& compute_metadata) override { return SliceBase::PrepareForCompute(raw_starts, raw_ends, raw_axes, raw_steps, reinterpret_cast<SliceOp::PrepareForComputeMetadata&>(compute_metadata)); }
 
   Status SliceBase__FillVectorsFromInput(const Tensor& start_tensor,
                                          const Tensor& ends_tensor,
                                          const Tensor* axes_tensor,
                                          const Tensor* steps_tensor,
-                                         std::vector<int64_t>& input_starts,
-                                         std::vector<int64_t>& input_ends,
-                                         std::vector<int64_t>& input_axes,
-                                         std::vector<int64_t>& input_steps) override { return SliceBase::FillVectorsFromInput(start_tensor, ends_tensor, axes_tensor, steps_tensor, input_starts, input_ends, input_axes, input_steps); }
+                                         TensorShapeVector& input_starts,
+                                         TensorShapeVector& input_ends,
+                                         TensorShapeVector& input_axes,
+                                         TensorShapeVector& input_steps) override { return SliceBase::FillVectorsFromInput(start_tensor, ends_tensor, axes_tensor, steps_tensor, input_starts, input_ends, input_axes, input_steps); }
 
   // If (direct)
   void If__Init(If* p, const OpKernelInfo& info) override { p->If::Init(info); }
@@ -163,27 +169,35 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   }
   Status AttentionBase__CheckInputs(const contrib::AttentionBase* p, const TensorShape& input_shape, const TensorShape& weights_shape, const TensorShape& bias_shape, const Tensor*& mask_index, const Tensor* past, const Tensor* extra_add_qk, const int max_threads_per_block) override { return p->contrib::AttentionBase::CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past, extra_add_qk, max_threads_per_block); }
   Tensor* AttentionBase__GetPresent(const contrib::AttentionBase* p, OpKernelContext* context, const Tensor* past, int batch_size, int head_size, int sequence_length, int& past_sequence_length) override { return p->contrib::AttentionBase::GetPresent(context, past, batch_size, head_size, sequence_length, past_sequence_length); }
+
+  void BeamSearch__Init(contrib::transformers::BeamSearch* p, const OpKernelInfo& info) override { p->contrib::transformers::BeamSearch::Init(info); }
+  virtual Status BeamSearch__Compute(const contrib::transformers::BeamSearch* p, OpKernelContext* ctx) { return p->contrib::transformers::BeamSearch::Compute(ctx); }
+  virtual Status BeamSearch__SetupSubgraphExecutionInfo(contrib::transformers::BeamSearch* p, const SessionState& session_state, const std::string& attribute_name, const SessionState& subgraph_session_state) override { return p->contrib::transformers::BeamSearch::SetupSubgraphExecutionInfo(session_state, attribute_name, subgraph_session_state); }
 #endif
 
 #ifdef ENABLE_TRAINING
-  Status ATenOp__Compute(const contrib::ATenOp* p, OpKernelContext* p_ctx) override { return p->ATenOp::Compute(p_ctx); }
+  Status ATen__Compute(const contrib::ATen* p, OpKernelContext* p_ctx) override { return p->ATen::Compute(p_ctx); }
   void contrib__record_event_in_tensor(const Tensor& event_id_tensor) override { return contrib::record_event_in_tensor(event_id_tensor); }
   void contrib__wait_event_in_tensor(const Tensor& event_id_tensor) override { return contrib::wait_event_in_tensor(event_id_tensor); }
   Status contrib__Group__Compute(const contrib::Group* p, OpKernelContext* context) override { return p->Group::Compute(context); }
   Status contrib__PassThrough__Compute(const contrib::PassThrough* p, OpKernelContext* context) override { return p->PassThrough::Compute(context); }
   void contrib__VerifyLogitWeightAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, const TensorShape* weight_shape) override { contrib::VerifyLogitWeightAndLabelShape(logit_shape, label_shape, weight_shape); }
   void contrib__GetNDCFromLogitAndLabelShape(const TensorShape& logit_shape, const TensorShape& label_shape, int64_t& N_D, int64_t& C) override { contrib::GetNDCFromLogitAndLabelShape(logit_shape, label_shape, N_D, C); }
-  void contrib__GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, std::vector<int64_t>& new_shape, std::vector<size_t>& permutations) override { contrib::GetPermutationAndShape(ncd_to_ndc, tensor_shape, new_shape, permutations); }
+  void contrib__GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, TensorShapeVector& new_shape, std::vector<size_t>& permutations) override { contrib::GetPermutationAndShape(ncd_to_ndc, tensor_shape, new_shape, permutations); }
   Status contrib__PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) override { return contrib::PrepareForTrainingCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
   Status contrib__YieldOp__Compute(const contrib::YieldOp* p, OpKernelContext* context) override { return p->YieldOp::Compute(context); }
 
   // From aten_op.h (direct)
   bool contrib__IsATenOperatorExecutorInitialized() override { return contrib::IsATenOperatorExecutorInitialized(); }
-  Status contrib__ExecuteReduceSumATenOp(OpKernelContext* p_ctx, const std::vector<int64_t>& axes, bool keepdims) override { return contrib::ExecuteReduceSumATenOp(p_ctx, axes, keepdims); }
+  Status contrib__ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) override { return contrib::ExecuteReduceSumATen(p_ctx, axes, keepdims); }
 #endif
 #endif
 };
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 
+//We don't new this type on heap, so it's ok to not have a virtual destructor.
 ProviderHostCPUImpl provider_host_cpu_;
 ProviderHostCPU& GetProviderHostCPU() { return provider_host_cpu_; }
 

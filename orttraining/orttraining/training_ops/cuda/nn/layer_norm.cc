@@ -79,7 +79,12 @@ Status LayerNormGrad<T, U, V, simplified>::ComputeInternal(OpKernelContext* p_op
     bias_grad_data = reinterpret_cast<CudaV*>(bias_grad->template MutableData<V>());
   }
 
+  #ifndef USE_ROCM
   const int part_size = 16;
+  #else
+  // Optimization for ROCm MI100
+  const int part_size = 64;
+  #endif
   auto part_grad_gamma = GetScratchBuffer<CudaU>(part_size * n2);
   auto part_grad_beta = GetScratchBuffer<CudaU>(part_size * n2);
 
@@ -129,7 +134,12 @@ Status InvertibleLayerNormGrad<T, U, V>::ComputeInternal(OpKernelContext* p_op_k
   auto scale_grad_data = reinterpret_cast<CudaV*>(scale_grad->template MutableData<V>());
   auto bias_grad_data = reinterpret_cast<CudaV*>(bias_grad->template MutableData<V>());
 
+  #ifndef USE_ROCM
   const int part_size = 16;
+  #else
+  // Optimization for ROCm MI100
+  const int part_size = 64;
+  #endif
   auto part_grad_gamma = GetScratchBuffer<CudaU>(part_size * n2);
   auto part_grad_beta = GetScratchBuffer<CudaU>(part_size * n2);
 

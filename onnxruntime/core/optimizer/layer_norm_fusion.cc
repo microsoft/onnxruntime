@@ -12,7 +12,7 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 // LayerNorm supports limited data types.
-static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(double)"};
+static constexpr std::array<std::string_view, 3> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(double)"};
 // Default epsilon
 static constexpr float DEFAULT_LAYERNORM_EPSILON = 1e-5f;
 
@@ -79,7 +79,7 @@ remove this Cast.
 Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  std::vector<std::reference_wrapper<Node>> nodes_to_remove;
+  InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
   for (auto node_index : node_topology_list) {
     nodes_to_remove.clear();
     auto* p_reduce_mean = graph.GetNode(node_index);
@@ -363,10 +363,10 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     if (!same_dim)
       continue;
 
-    const std::vector<NodeArg*> layer_norm_input_defs{
-        has_leading_cast ? graph.GetNode(p_reduce_mean_input_node->Index())->MutableInputDefs()[0]
-                         : reduce_mean_node.MutableInputDefs()[0],
-        scale, bias};
+    const std::array layer_norm_input_defs{has_leading_cast
+                                               ? graph.GetNode(p_reduce_mean_input_node->Index())->MutableInputDefs()[0]
+                                               : reduce_mean_node.MutableInputDefs()[0],
+                                           scale, bias};
     Node& layer_norm_node = graph.AddNode(graph.GenerateNodeName("LayerNormalization"),
                                           "LayerNormalization",
                                           "fused LayerNorm subgraphs ",
@@ -428,7 +428,7 @@ Scale --------|
 Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  std::vector<std::reference_wrapper<Node>> nodes_to_remove;
+  InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
   for (auto node_index : node_topology_list) {
     nodes_to_remove.clear();
     auto* p_pow = graph.GetNode(node_index);
@@ -573,10 +573,10 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       continue;
     }
 
-    std::vector<NodeArg*> layer_norm_input_defs{has_leading_cast
-                                                    ? graph.GetNode(p_pow_input_node->Index())->MutableInputDefs()[0]
-                                                    : pow_node.MutableInputDefs()[0],
-                                                scale};
+    InlinedVector<NodeArg*> layer_norm_input_defs{has_leading_cast
+                                                      ? graph.GetNode(p_pow_input_node->Index())->MutableInputDefs()[0]
+                                                      : pow_node.MutableInputDefs()[0],
+                                                  scale};
     Node& layer_norm_node = graph.AddNode(graph.GenerateNodeName("SimplifiedLayerNormalization"),
                                           "SimplifiedLayerNormalization",
                                           "fused LayerNorm subgraphs ",

@@ -38,13 +38,12 @@ inline std::unique_ptr<char[]> read_mnist_file(const std::string& path, uint32_t
   file.open(path, std::ios::in | std::ios::binary | std::ios::ate);
 
   if (!file) {
-    std::cout << "Error opening file " << path << std::endl;
-    std::cout << std::system_error(errno, std::system_category(), "failed to open " + path).what();
+    std::cout << "Error opening file " << path << " - system error " << errno << std::endl;
     return {};
   }
 
   std::streampos size = file.tellg();
-  std::unique_ptr<char[]> buffer(new char[size]);
+  std::unique_ptr<char[]> buffer = std::make_unique<char[]>(size);
 
   //Read the entire file at once
   file.seekg(0, std::ios::beg);

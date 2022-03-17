@@ -29,7 +29,7 @@ fi
 FAIL_MODEL_FILE=".fail_model_map"
 LATENCY_FILE=".latency_map"
 METRICS_FILE=".metrics_map"
-PROFILE="*onnxruntime_profile*"
+SESSION_FILE=".session_map"
 
 # files to download info
 FLOAT_16="float16.py"
@@ -39,9 +39,9 @@ cleanup_files() {
     rm -f $FAIL_MODEL_FILE
     rm -f $LATENCY_FILE
     rm -f $METRICS_FILE
+    rm -f $SESSION_FILE
     rm -f $FLOAT_16
     rm -rf result/$OPTION
-    find -name $PROFILE -delete
 }
 
 download_files() {
