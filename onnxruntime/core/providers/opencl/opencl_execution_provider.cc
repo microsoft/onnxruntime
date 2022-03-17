@@ -154,21 +154,19 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   ORT_RETURN_IF(devices.empty(), "Cannot find OpenCL device.");
   dev_ = devices[0];
 
-  auto GetDeviceInfo = [=](cl_device_info info_name) -> std::string {
+  auto GetDeviceInfo = [](cl_device_id dev, cl_device_info info_name) -> std::string {
     size_t ret_size;
-    ORT_THROW_IF_CL_ERROR(clGetDeviceInfo(dev_, info_name, 0, nullptr, &ret_size));
+    ORT_THROW_IF_CL_ERROR(clGetDeviceInfo(dev, info_name, 0, nullptr, &ret_size));
     std::string ret(ret_size, '\0');
-    ORT_THROW_IF_CL_ERROR(clGetDeviceInfo(dev_, info_name, ret.size(), ret.data(), nullptr));
+    ORT_THROW_IF_CL_ERROR(clGetDeviceInfo(dev, info_name, ret.size(), ret.data(), nullptr));
     return ret;
   };
 
-  // NOTE: use stdout for mobile
-  // FIXME: use logger latter
-  auto device_name = GetDeviceInfo(CL_DEVICE_NAME);
+  auto device_name = GetDeviceInfo(dev_, CL_DEVICE_NAME);
   LOGS_DEFAULT(INFO) << "[CL] device name: " << device_name;
-  LOGS_DEFAULT(VERBOSE) << "[CL] device vendor: " << GetDeviceInfo(CL_DEVICE_VENDOR);
-  LOGS_DEFAULT(VERBOSE) << "[CL] device version: " << GetDeviceInfo(CL_DEVICE_VERSION);
-  auto exts = GetDeviceInfo(CL_DEVICE_EXTENSIONS);
+  LOGS_DEFAULT(VERBOSE) << "[CL] device vendor: " << GetDeviceInfo(dev_, CL_DEVICE_VENDOR);
+  LOGS_DEFAULT(VERBOSE) << "[CL] device version: " << GetDeviceInfo(dev_, CL_DEVICE_VERSION);
+  auto exts = GetDeviceInfo(dev_, CL_DEVICE_EXTENSIONS);
   LOGS_DEFAULT(VERBOSE) << "[CL] device extensions: " << exts << std::endl;
   bool has_fp16 = exts.find("cl_khr_fp16") != std::string::npos;
   if (!has_fp16 && UseFp16()) {
