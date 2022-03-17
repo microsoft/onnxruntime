@@ -152,7 +152,7 @@ std::unique_ptr<IDataTransfer> TvmExecutionProvider::GetDataTransfer() const {
   //TODO(vvchernov): target or target host?
   if (TvmEPOptionsHelper::checkGPUTarget(options_.target)) {
     return std::make_unique<XPUDataTransfer>();
-  } else if (options_.target.find("llvm") != std::string::npos) {
+  } else if (TvmEPOptionsHelper::checkCPUTarget(options_.target)) {
     return std::make_unique<TvmCPUDataTransfer>();
   } else {
     ORT_NOT_IMPLEMENTED("TVM GetDataTransfer is not implemented for target ", options_.target);
