@@ -56,6 +56,11 @@ std::set<std::string> ops_supported_only_in_model = {
     "TopK",
     "QuantizeLinear"};
 
+//Ops which are supported as functions (as composite ops)
+std::set<std::string> ops_supported_as_function = {
+    "LessOrEqual",
+};
+
 std::vector<SupportedOp> supported_op_mode = {
     {"Abs", V_2020_4, {"CPU", "GPU"}},
     {"Acos", V_2020_4, {"CPU"}},
@@ -553,18 +558,6 @@ void DataOps::populate_op_mode_supported() {
                                return false;
                              }};
     op_list_.insert({"ConvInteger", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2022_1},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               //Input and output datatype as float is not supported
-                               const bool input_is_float = node->InputDefs()[0]->Type()->find("float") != std::string::npos;
-                               const bool output_is_float = node->OutputDefs()[0]->Type()->find("float") != std::string::npos;
-                               if(input_is_float && output_is_float)
-                                return true;
-                               return false;
-                             }};
-    op_list_.insert({"Expand", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3},
@@ -1369,15 +1362,16 @@ bool DataOps::node_is_supported(const std::map<std::string, std::set<std::string
 
   //Check 3b
   const auto opset = op_map.find(domain);
-  if (opset == op_map.end() || opset->second.find(optype) == opset->second.end()) {
+  const auto op_fun = ops_supported_as_function.find(node->OpType());
+  if ((opset != op_map.end() || opset->second.find(optype) != opset->second.end()) || op_fun != ops_supported_as_function.end()) {
+    return true;
+  } else {
 #ifndef NDEBUG
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
       std::cout << "Failed in Unsupported onnx model domain or the operator is not available in OpenVINO ngraph operators list" << std::endl;
     }
 #endif
     return false;
-  } else {
-    return true;
   }
 }
 
