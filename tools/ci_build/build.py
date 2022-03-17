@@ -377,6 +377,10 @@ def parse_arguments():
         "--wasm_malloc", default="dlmalloc", help="Specify memory allocator for WebAssembly")
     parser.add_argument(
         "--emsdk_version", default="3.1.3", help="Specify version of emsdk")
+    parser.add_argument(
+        "--wasm_total_stack", default="5242880", help="Specify total stack size of WebAssembly, default 5MB")
+    parser.add_argument(
+        "--wasm_initial_memory", default="16777216", help="Specify initial amount of memory to use for WebAssembly, default 16MB")
 
     # Enable onnxruntime-extensions
     parser.add_argument(
@@ -839,6 +843,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                                                               else "OFF"),
         "-Donnxruntime_NVCC_THREADS=" + str(args.parallel),
         "-Donnxruntime_ENABLE_CUDA_PROFILING=" + ("ON" if args.enable_cuda_profiling else "OFF"),
+        "-Donnxruntime_WEBASSEMBLY_TOTAL_STACK=" + args.wasm_total_stack,
+        "-Donnxruntime_WEBASSEMBLY_INITIAL_MEMORY=" + args.wasm_initial_memory,
     ]
     if args.external_graph_transformer_path:
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)

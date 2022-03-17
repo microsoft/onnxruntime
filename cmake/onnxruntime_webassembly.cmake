@@ -180,6 +180,8 @@ else()
                         -s VERBOSE=0                                                \
                         -s NO_FILESYSTEM=1                                          \
                         -s MALLOC=${onnxruntime_WEBASSEMBLY_MALLOC}                 \
+                        -s TOTAL_STACK=${onnxruntime_WEBASSEMBLY_TOTAL_STACK}       \
+                        -s INITIAL_MEMORY=${onnxruntime_WEBASSEMBLY_INITIAL_MEMORY} \
                         --closure 1                                                 \
                         --no-entry")
 
