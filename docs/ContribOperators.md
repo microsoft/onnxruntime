@@ -65,6 +65,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Unique">com.microsoft.Unique</a>
   * <a href="#com.microsoft.WordConvEmbedding">com.microsoft.WordConvEmbedding</a>
   * <sub>experimental</sub> <a href="#com.microsoft.IsAllFinite">com.microsoft.IsAllFinite</a>
+  * <sub>experimental</sub> <a href="#com.microsoft.LayerNormalization">com.microsoft.LayerNormalization</a>
   * <sub>experimental</sub> <a href="#com.microsoft.QEmbedLayerNormalization">com.microsoft.QEmbedLayerNormalization</a>
 
 ## com.microsoft
@@ -3219,6 +3220,56 @@ No versioning maintained for experimental ops.
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T</tt> : tensor(bool)</dt>
 <dd>Constrain the output to a boolean tensor.</dd>
+</dl>
+
+
+### <sub>experimental</sub> <a name="com.microsoft.LayerNormalization"></a><a name="com.microsoft.layernormalization">**com.microsoft.LayerNormalization**</a>
+
+  LayerNormalization
+
+#### Version
+
+No versioning maintained for experimental ops.
+#### Attributes
+
+<dl>
+<dt><tt>axis</tt> : int</dt>
+<dd>The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>The epsilon value to use to avoid division by zero.</dd>
+<dt><tt>stash_type</tt> : int</dt>
+<dd>type used for stash mean/inv_std_var</dd>
+</dl>
+
+#### Inputs (2 - 3)
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Input data tensor from the previous layer.</dd>
+<dt><tt>Scale</tt> : T</dt>
+<dd>Scale tensor.</dd>
+<dt><tt>B</tt> (optional) : T</dt>
+<dd>Bias tensor.</dd>
+</dl>
+
+#### Outputs (1 - 3)
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>Output data tensor.</dd>
+<dt><tt>Mean</tt> (optional) : U</dt>
+<dd>Saved mean used during training to speed up gradient computation</dd>
+<dt><tt>InvStdDev</tt> (optional) : U</dt>
+<dd>Saved inverse standard deviation used during training to speed up gradient computation.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double), tensor(bfloat16)</dt>
+<dd>Constrain input types and output Y type to float tensors.</dd>
+<dt><tt>U</tt> : tensor(float), tensor(bfloat16)</dt>
+<dd>Type of Mean and InvStdDev tensors.</dd>
 </dl>
 
 
