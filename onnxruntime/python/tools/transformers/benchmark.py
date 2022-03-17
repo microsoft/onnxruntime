@@ -34,6 +34,8 @@
             python benchmark.py -e torchscript -g -p "fp16"
         Run ONNXRuntime and TorchScript on CPU for all models with quantization:
             python benchmark.py -e torchscript onnxruntime -p "int8" -o
+        Run OnnxRuntime with the ROCM provider and graph optimization script:
+            python benchmark.py -g -m bert-base-cased --provider rocm --optimizer_info by_script --disable_embed_layer_norm
 
     It is recommended to use run_benchmark.sh to launch benchmark.
 """
@@ -92,6 +94,9 @@ def run_onnxruntime(use_gpu, provider, model_names, model_class, config_modifier
                 "Please install onnxruntime-gpu-tensorrt package, and use a machine with GPU for testing gpu performance."
             )
             return results
+
+    if optimizer_info == OptimizerInfo.NOOPT:
+        logger.warning(f"OptimizerInfo is set to {optimizer_info}, graph optimizations specified in FusionOptions are not applied.")
 
     for model_name in model_names:
         all_input_names = MODELS[model_name][0]
