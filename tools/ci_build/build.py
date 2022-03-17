@@ -185,8 +185,6 @@ def parse_arguments():
     parser.add_argument(
         "--use_mpi", nargs='?', default=True, const=True, type=_str_to_bool)
 
-    parser.add_argument("--enable_tracy", action="store_true", help="Enable Tracy for manually performance instrument")
-
     # enable ONNX tests
     parser.add_argument(
         "--enable_onnx_tests", action='store_true',
@@ -830,7 +828,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_USE_MPI=" + ("ON" if args.use_mpi else "OFF"),
         "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + ("ON" if args.enable_memory_profile else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=" + ("ON" if args.enable_cuda_line_info else "OFF"),
-        "-Donnxruntime_ENABLE_TRACY=" + ("ON" if args.enable_tracy else "OFF"),
         "-Donnxruntime_BUILD_WEBASSEMBLY=" + ("ON" if args.build_wasm else "OFF"),
         "-Donnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB=" + ("ON" if args.build_wasm_static_lib else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"),
