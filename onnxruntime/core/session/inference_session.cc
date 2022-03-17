@@ -1280,6 +1280,9 @@ Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs
   for (const auto& node : graph.Nodes()) {
     if (node.GetExecutionProviderType().empty()) {
       auto kernel_hash = utils::GetHashValueFromStaticKernelHashMap(node.OpType(), node.SinceVersion());
+      if (!kernel_hash.has_value()) {
+        kernel_hash = utils::GetInternalNhwcOpHash(node);
+      }
       if (kernel_hash.has_value()) {
         ORT_RETURN_IF_ERROR(set_node_ep(node.Index(), kernel_hash.value()));
       }
