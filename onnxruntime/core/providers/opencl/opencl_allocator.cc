@@ -11,10 +11,17 @@ namespace onnxruntime {
 namespace opencl {
 
 OpenCLBufferAllocator::OpenCLBufferAllocator(cl_context ctx)
-    : IAllocator(OrtMemoryInfo(BufferAllocatorName, OrtAllocatorType::OrtDeviceAllocator,
-                               OrtDevice(OrtDevice::GPU, CLMemType::OPENCL_BUFFER, /*device_id_=*/0),
-                               /*id_*/ 0,
-                               /*mem_type_=*/(OrtMemType)CLMemType::OPENCL_BUFFER)),
+    : IAllocator(
+          OrtMemoryInfo(
+              BufferAllocatorName,
+              OrtAllocatorType::OrtDeviceAllocator,
+              OrtDevice(OrtDevice::GPU, CLMemType::OPENCL_BUFFER, /*device_id_=*/0),
+              /*id_*/ 0,
+              /* We blindly cast an integer CLMemType::OPENCL_BUFFER to a C style enum OrtMemType here. Because we
+                 don't want to extend the OrtMemType enum at the moment, as it is in public interface header.
+                 We manage allocator fully by at EP level so it does not go through AllocatorManager, thus we don't
+                 need to worry about the magic value collide with existing value. */
+              /*mem_type_=*/static_cast<OrtMemType>(CLMemType::OPENCL_BUFFER))),
       ctx_(ctx) {
 }
 
@@ -34,7 +41,7 @@ void* OpenCLBufferAllocator::Alloc(size_t size) {
     auto* ptr = clCreateBuffer(ctx_, CL_MEM_READ_WRITE, size, nullptr, &err);
     ORT_THROW_IF_CL_ERROR(err);
     VLOGF_DEFAULT(V_ALLOC, "Allocated Buffer(%p){size=%zu}", ptr, size);
-    meta_[ptr] = {size, MemoryKind::Buffer};
+    meta_[ptr] = {size};
     return ptr;
   }
 
@@ -92,18 +99,18 @@ void* OpenCLImage2DAllocator::Alloc(const Image2DDesc& desc) {
       image_desc.image_type = CL_MEM_OBJECT_IMAGE2D;
       image_desc.image_width = desc.UWidth();
       image_desc.image_height = desc.UHeight();
-      image_desc.image_depth = 0;       // unused
-      image_desc.image_array_size = 0;  // unused
-      image_desc.image_row_pitch = 0;   // must be 0 if host_ptr is nullptr
-      image_desc.image_slice_pitch = 0; // must be 0 if host_ptr is nullptr
-      image_desc.num_mip_levels = 0;    // must be 0
-      image_desc.num_samples = 0;       // must be 0
+      image_desc.image_depth = 0;        // unused
+      image_desc.image_array_size = 0;   // unused
+      image_desc.image_row_pitch = 0;    // must be 0 if host_ptr is nullptr
+      image_desc.image_slice_pitch = 0;  // must be 0 if host_ptr is nullptr
+      image_desc.num_mip_levels = 0;     // must be 0
+      image_desc.num_samples = 0;        // must be 0
       image_desc.buffer = nullptr;
     }
     auto* ptr = clCreateImage(ctx_, CL_MEM_READ_WRITE, &image_format, &image_desc, nullptr, &err);
     ORT_THROW_IF_CL_ERROR(err);
     VLOGF_DEFAULT(V_ALLOC, "Allocated Image2D(%p){w=%ld, h=%ld})", ptr, desc.Width(), desc.Height());
-    meta_[ptr] = {desc, MemoryKind::Image2D};
+    meta_[ptr] = {desc};
     return ptr;
   }
 

@@ -166,16 +166,9 @@ class NDRange {
 
 const char* GetErrorString(cl_int error_code);
 
-// NOTE: for OrtDevice ctor
 struct CLMemType {
   static constexpr OrtDevice::MemoryType OPENCL_IMAGE_2D = OrtDevice::MemType::DEFAULT;
-  static constexpr OrtDevice::MemoryType OPENCL_BUFFER = 5;
-};
-
-// NOTE: for opencl internal definition.
-enum MemoryKind : uint8_t {
-  Buffer = CLMemType::OPENCL_BUFFER,
-  Image2D = CLMemType::OPENCL_IMAGE_2D,
+  static constexpr OrtDevice::MemoryType OPENCL_BUFFER = 39;
 };
 
 template <typename T, typename E = std::enable_if_t<std::is_integral_v<T>>>

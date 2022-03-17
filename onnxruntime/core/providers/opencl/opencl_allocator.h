@@ -20,12 +20,11 @@ constexpr auto CPUAllocatorName = "OpenCL_CPU";
 constexpr auto CPUInputAllocatorName = "OpenCL_CPU_Input";
 
 class OpenCLBufferAllocator : public IAllocator {
- public:
   struct Metadata {
     size_t size;
-    MemoryKind kind;
   };
 
+ public:
   explicit OpenCLBufferAllocator(cl_context ctx);
   ~OpenCLBufferAllocator() override;
 
@@ -40,12 +39,11 @@ class OpenCLBufferAllocator : public IAllocator {
 };
 
 class OpenCLImage2DAllocator : public IAllocator {
- public:
   struct Metadata {
     Image2DDesc desc;
-    MemoryKind kind;
   };
 
+ public:
   explicit OpenCLImage2DAllocator(cl_context ctx, bool use_fp16);
   ~OpenCLImage2DAllocator() override;
 
