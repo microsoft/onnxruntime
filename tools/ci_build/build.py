@@ -380,7 +380,8 @@ def parse_arguments():
     parser.add_argument(
         "--wasm_total_stack", default="5242880", help="Specify total stack size of WebAssembly, default 5MB")
     parser.add_argument(
-        "--wasm_initial_memory", default="16777216", help="Specify initial amount of memory to use for WebAssembly, default 16MB")
+        "--wasm_initial_memory", default="16777216",
+        help="Specify initial amount of memory to use for WebAssembly, default 16MB")
 
     # Enable onnxruntime-extensions
     parser.add_argument(
