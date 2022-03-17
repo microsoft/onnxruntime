@@ -3634,7 +3634,6 @@ struct OrtCustomOp {
   ONNXTensorElementDataType(ORT_API_CALL* GetInputType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
   size_t(ORT_API_CALL* GetInputTypeCount)(_In_ const struct OrtCustomOp* op);
   ONNXTensorElementDataType(ORT_API_CALL* GetOutputType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
-  OrtMemType(ORT_API_CALL* GetInputMemoryType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
   size_t(ORT_API_CALL* GetOutputTypeCount)(_In_ const struct OrtCustomOp* op);
 
   // Op kernel callbacks
@@ -3644,6 +3643,9 @@ struct OrtCustomOp {
   // Returns the characteristics of the input & output tensors
   OrtCustomOpInputOutputCharacteristic(ORT_API_CALL* GetInputCharacteristic)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
   OrtCustomOpInputOutputCharacteristic(ORT_API_CALL* GetOutputCharacteristic)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
+
+  // Returns the memory type of the input tensors
+  OrtMemType(ORT_API_CALL* GetInputMemoryType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
 };
 
 /*
