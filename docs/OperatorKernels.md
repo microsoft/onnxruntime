@@ -147,7 +147,8 @@ Do not modify directly.*
 |LSTM|*in* X:**T**<br> *in* W:**T**<br> *in* R:**T**<br> *in* B:**T**<br> *in* sequence_lens:**T1**<br> *in* initial_h:**T**<br> *in* initial_c:**T**<br> *in* P:**T**<br> *out* Y:**T**<br> *out* Y_h:**T**<br> *out* Y_c:**T**|14+|**T** = tensor(double), tensor(float)<br/> **T1** = tensor(int32)|
 |||[7, 13]|**T** = tensor(double), tensor(float)<br/> **T1** = tensor(int32)|
 |LayerNormalization|*in* X:**T**<br> *in* Scale:**V**<br> *in* B:**V**<br> *out* Y:**V**<br> *out* Mean:**U**<br> *out* InvStdDev:**U**|1+|**T** = tensor(double), tensor(float)<br/> **U** = tensor(double), tensor(float)<br/> **V** = tensor(double), tensor(float)|
-|LeakyRelu|*in* X:**T**<br> *out* Y:**T**|6+|**T** = tensor(float)|
+|LeakyRelu|*in* X:**T**<br> *out* Y:**T**|16+|**T** = tensor(float)|
+|||[6, 15]|**T** = tensor(float)|
 |Less|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T1**|13+|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)<br/> **T1** = tensor(bool)|
 |||[9, 12]|**T** = tensor(double), tensor(float), tensor(int32), tensor(int64)<br/> **T1** = tensor(bool)|
 |||[7, 8]|**T** = tensor(double), tensor(float)<br/> **T1** = tensor(bool)|
@@ -559,7 +560,8 @@ Do not modify directly.*
 |LSTM|*in* X:**T**<br> *in* W:**T**<br> *in* R:**T**<br> *in* B:**T**<br> *in* sequence_lens:**T1**<br> *in* initial_h:**T**<br> *in* initial_c:**T**<br> *in* P:**T**<br> *out* Y:**T**<br> *out* Y_h:**T**<br> *out* Y_c:**T**|14+|**T** = tensor(double), tensor(float), tensor(float16)<br/> **T1** = tensor(int32)|
 |||[7, 13]|**T** = tensor(double), tensor(float), tensor(float16)<br/> **T1** = tensor(int32)|
 |LayerNormalization|*in* X:**T**<br> *in* Scale:**V**<br> *in* B:**V**<br> *out* Y:**V**<br> *out* Mean:**U**<br> *out* InvStdDev:**U**|1+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)<br/> **U** = tensor(double), tensor(float)<br/> **V** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
-|LeakyRelu|*in* X:**T**<br> *out* Y:**T**|6+|**T** = tensor(double), tensor(float), tensor(float16)|
+|LeakyRelu|*in* X:**T**<br> *out* Y:**T**|16+|**T** = tensor(double), tensor(float), tensor(float16)|
+|||[6, 15]|**T** = tensor(double), tensor(float), tensor(float16)|
 |Less|*in* A:**T**<br> *in* B:**T**<br> *out* C:**T1**|13+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)<br/> **T1** = tensor(bool)|
 |||[9, 12]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int64), tensor(uint32), tensor(uint64)|
 |||[7, 8]|**T** = tensor(double), tensor(float), tensor(float16)|
