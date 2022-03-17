@@ -42,23 +42,11 @@ jobs:
       jdkArchitectureOption: 'x64'
       jdkSourceOption: 'PreInstalled'
 
-  - script: |
-      python3 tools/ci_build/build.py \
-        --android \
-        --build_dir build \
-        --android_sdk_path $ANDROID_HOME \
-        --android_ndk_path $ANDROID_NDK_HOME \
-        --android_abi=x86_64 \
-        --android_api=30 \
-        --skip_submodule_sync \
-        --parallel \
-        --cmake_generator=Ninja \
-        --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
-        --build_java
-    displayName: CPU EP, Build and Test on Android Emulator
-
   - script: /bin/bash tools/ci_build/github/android/run_nnapi_code_coverage.sh $(pwd)
     displayName: NNAPI EP, Build, Test and Get Code Coverage on Android Emulator
+    
+  - script: /bin/bash cd /data/local/tmp && find -L
+    displayName: check /data/local/tmp
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish code coverage report'
