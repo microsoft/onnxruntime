@@ -219,6 +219,10 @@ jobs:
         artifact: 'NNAPIBuildOutput'
         path: $(Build.SourcesDirectory)
 
+    - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh \
+              $(pwd)
+      displayName: Setup gradle wrapper to use gradle 6.8.3
+    
     - script: |
         python3 tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
@@ -234,7 +238,8 @@ jobs:
         --android_sdk_path $ANDROID_HOME \
         --android_ndk_path $ANDROID_NDK_HOME \
         --android_abi=x86_64 \
-        --android_api=30 \
+        --android_api=29 \
+        --build_java \
         --test \
         --code_coverage
       displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
