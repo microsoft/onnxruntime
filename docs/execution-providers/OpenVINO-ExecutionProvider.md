@@ -121,7 +121,7 @@ Example: set OV_BLOB_PATH=\home\blobs_dir\model.blob
 
 compile_tool:
 
-The device specific Myriadx blobs can be generated using an offline tool called compile_tool from OpenVINO Toolkit.[documentation](https://docs.openvinotoolkit.org/latest/openvino_inference_engine_tools_compile_tool_README.html).
+The device specific Myriadx blobs can be generated using an offline tool called compile_tool from OpenVINO Toolkit.[documentation](https://docs.openvino.ai/latest/openvino_inference_engine_tools_compile_tool_README.html).
 
 ### Support for INT8 Quantized models
 
@@ -130,12 +130,15 @@ However, int8 support won't be available for VPU.
 
 ### Support for Weights saved in external files
 
-Starting from the OpenVINO EP 2021.4 Release, support for external weights is added. OpenVINO™ EP now  supports ONNX models that store weights in external files. It is especially useful for models larger than 2GB because of protobuf limitations.[documentation](https://docs.openvinotoolkit.org/latest/openvino_docs_IE_DG_ONNX_Support.html).
+Starting from the OpenVINO EP 2021.4 Release, support for external weights is added. OpenVINO™ EP now  supports ONNX models that store weights in external files. It is especially useful for models larger than 2GB because of protobuf limitations.
+
+See the [OpenVINO ONNX Support documentation](https://docs.openvino.ai/latest/openvino_docs_IE_DG_ONNX_Support.html).
 
 Converting and Saving an ONNX Model to External Data:
 Use the ONNX API's.[documentation](https://github.com/onnx/onnx/blob/master/docs/ExternalData.md#converting-and-saving-an-onnx-model-to-external-data).
 
 Example:
+
 ```bash
 import onnx
 onnx_model = onnx.load("model.onnx") # Your model in memory as ModelProto
@@ -203,12 +206,13 @@ SessionOptionsAppendExecutionProvider_OpenVINO(session_options, &options);
 ```
 
 ### Summary of options
+
 The following table lists all the available configuration options and the Key-Value pairs to set them:
 
 | **Key** | **Key type** | **Allowable Values** | **Value type** | **Description** |
 | --- | --- | --- | --- | --- |
 | device_type | string | CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16, VAD-F_FP32, Any valid Hetero combination, Any valid Multi or Auto devices combination | string | Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |Overrides the accelerator hardware type and precision with these values at runtime. If this option is not explicitly set, default hardware and precision specified during build time is used. |
-| device_id   | string | Any valid OpenVINO device ID | string | Selects a particular hardware device for inference. The list of valid OpenVINO device ID's available on a platform can be obtained either by Python API (`onnxruntime.capi._pybind_state.get_available_openvino_device_ids()`) or by [OpenVINO C/C++ API](https://docs.openvinotoolkit.org/latest/classInferenceEngine_1_1Core.html#acb212aa879e1234f51b845d2befae41c). If this option is not explicitly set, an arbitrary free device will be automatically selected by OpenVINO runtime.|
+| device_id   | string | Any valid OpenVINO device ID | string | Selects a particular hardware device for inference. The list of valid OpenVINO device ID's available on a platform can be obtained either by Python API (`onnxruntime.capi._pybind_state.get_available_openvino_device_ids()`) or by [OpenVINO C/C++ API](https://docs.openvino.ai/latest/classInferenceEngine_1_1ICore.html#doxid-class-inference-engine-1-1-i-core). If this option is not explicitly set, an arbitrary free device will be automatically selected by OpenVINO runtime.|
 | enable_vpu_fast_compile | string | True/False | boolean | This option is only available for MYRIAD_FP16 VPU devices. During initialization of the VPU device with compiled model, Fast-compile may be optionally enabled to speeds up the model's compilation to VPU device specific format. This in-turn speeds up model initialization time. However, enabling this option may slowdown inference due to some of the optimizations not being fully applied, so caution is to be exercised while enabling this option. |
 | num_of_threads | string | Any unsigned positive number other than 0 | size_t | Overrides the accelerator default value of number of threads with this value at runtime. If this option is not explicitly set, default value of 8 is used during build time. |
 | use_compiled_network | string | True/False | boolean | This option is only available for MYRIAD_FP16 VPU devices for both Linux and Windows and it enables save/load blob functionality. It can be used to directly import pre-compiled blobs if exists or dump a pre-compiled blob at the executable path. |
