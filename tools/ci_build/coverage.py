@@ -48,7 +48,7 @@ def main():
     script_dir = os.path.realpath(os.path.dirname(__file__))
     source_dir = os.path.normpath(os.path.join(script_dir, "..", ".."))
     cwd = os.path.abspath(os.path.join(args.build_dir, args.config))
-    adb_shell('cd /data/local/tmp && tar -zcf gcda_files.tar.gz *.dir')
+    adb_shell('cd /data/local/tmp && pwd && ls -Rl && tar -zcf gcda_files.tar.gz *.dir')
     adb_pull('/data/local/tmp/gcda_files.tar.gz', cwd)
     os.chdir(cwd)
     run_subprocess("tar -zxf gcda_files.tar.gz -C CMakeFiles".split(' '))
