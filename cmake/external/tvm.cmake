@@ -4,7 +4,7 @@ if (onnxruntime_USE_TVM)
   FetchContent_Declare(
     tvm
     GIT_REPOSITORY https://github.com/apache/tvm.git
-    GIT_TAG        ffd5f70370642c909222f9a4cae8400023dacbdc
+    GIT_TAG        4cdbf5cbfec3db5b5ef5177a7611efecaf56d8c7
   )
 
   FetchContent_GetProperties(tvm)
