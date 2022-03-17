@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/ml/tree_ensemble_helper.h"
 #include "core/common/common.h"
+#include "onnx/defs/tensor_proto_util.h"
 
 using namespace ::onnxruntime::common;
 using namespace std;
@@ -49,14 +50,7 @@ Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name
   if (n_elements == 0) {
     return Status::OK();
   }
-  data.reserve(n_elements);
-  for (size_t i = 0; i < n_elements; ++i) {
-    if (proto_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE) {
-      data.push_back(static_cast<TH>(proto.double_data(static_cast<int>(i))));
-    } else if (proto_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
-      data.push_back(static_cast<TH>(proto.float_data(static_cast<int>(i))));
-    }
-  }
+  data = ONNX_NAMESPACE::ParseData<TH>(&proto);
   return Status::OK();
 }
 
