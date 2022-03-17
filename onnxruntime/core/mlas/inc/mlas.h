@@ -1165,7 +1165,10 @@ MlasRequantizeOutput(
     size_t StartM,
     size_t StartN,
     size_t CountM,
-    size_t CountN
+    size_t CountN,
+    const int32_t* Multiplier = nullptr,
+    const int32_t* PreShift = nullptr,
+    const int32_t* PostShiftm = nullptr
     );
 
 class MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR

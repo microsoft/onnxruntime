@@ -885,7 +885,10 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
           0,
           0,
           static_cast<size_t>(output_count),
-          static_cast<size_t>(M));
+          static_cast<size_t>(M),
+          multipliers.data(),
+          pre_shifts.data(),
+          post_shifts.data());
     };
 
     concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, task_count, conv_worker);
