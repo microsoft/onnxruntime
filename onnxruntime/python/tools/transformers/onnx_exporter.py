@@ -384,7 +384,8 @@ def export_onnx_model_from_pt(model_name, opset_version, use_external_data_forma
         dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)
 
         replace_torch_functions()
-        torch.onnx.export(model=model,
+        from torch_onnx_export_helper import torch_onnx_export
+        torch_onnx_export(model=model,
                           args=tuple(example_inputs.values()),
                           f=onnx_model_path,
                           input_names=list(example_inputs.keys()),
