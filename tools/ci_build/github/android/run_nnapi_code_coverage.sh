@@ -29,6 +29,8 @@ python3 ${ORT_ROOT}/tools/ci_build/build.py \
 # Install gcovr
 python3 -m pip install gcovr
 
+cd /data/local/tmp && find -L
+
 # Retrieve runtime code coverage files from the emulator and analyze
 python3 ${ORT_ROOT}/tools/ci_build/coverage.py \
   --build_dir build_nnapi \
