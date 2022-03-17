@@ -18,6 +18,7 @@ Accelerate ONNX models on Intel CPUs, GPUs and VPUs with ONNX Runtime and the In
 {:toc}
 
 ## Install
+
 Pre-built packages and Docker images are published for  ONNX Runtime with OpenVINO by Intel for each release.
 * Python wheels: [intel/onnxruntime](https://github.com/intel/onnxruntime/releases)
 * Docker image: [openvino/onnxruntime_ep_ubuntu18](https://hub.docker.com/r/openvino/onnxruntime_ep_ubuntu18)
@@ -32,9 +33,11 @@ Pre-built packages and Docker images are published for  ONNX Runtime with OpenVI
 |1.8.0|2021.3|[Details](https://github.com/intel/onnxruntime/releases/tag/2021.3)|
 
 ## Build
+
 For build instructions, please see the [BUILD page](../build/eps.md#openvino).
 
 ## Usage
+
 **C#**
 
 To use csharp api for openvino execution provider create a custom nuget package. Follow the instructions [here](../build/inferencing.md#build-nuget-packages) to install prerequisites for nuget creation. Once prerequisites are installed follow the instructions to [build openvino](../build/eps.md#openvino) and add an extra flag `--build_nuget` to create nuget packages. Two nuget packages will be created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino. 
@@ -50,36 +53,39 @@ The heterogeneous Execution enables computing for inference on one network on se
 To utilize accelerators power and calculate heaviest parts of network on accelerator and execute not supported layers on fallback devices like CPU
 To utilize all available hardware more efficiently during one inference
 
-For more information on Heterogeneous plugin of OpenVINO, please refer to the following
-[documentation](https://docs.openvinotoolkit.org/latest/openvino_docs_IE_DG_supported_plugins_HETERO.html).
+For more information on Heterogeneous plugin of OpenVINO, please refer to the
+[Intel OpenVINO Heterogeneous Plugin](https://docs.openvino.ai/latest/openvino_docs_IE_DG_supported_plugins_HETERO.html).
 
 ### Multi-Device Execution for OpenVINO EP
 
-Multi-Device plugin automatically assigns inference requests to available computational devices to execute the requests in parallel. Potential gains are as follows
+Multi-Device plugin automatically assigns inference requests to available computational devices to execute the requests in parallel. Potential gains are as follows:
 
-Improved throughput that multiple devices can deliver (compared to single-device execution)
-More consistent performance, since the devices can now share the inference burden (so that if one device is becoming too busy, another device can take more of the load)
+* Improved throughput that multiple devices can deliver (compared to single-device execution)
+* More consistent performance, since the devices can now share the inference burden (so that if one device is becoming too busy, another device can take more of the load)
 
-For more information on Multi-Device plugin of OpenVINO, please refer to the following
-[documentation](https://docs.openvinotoolkit.org/latest/openvino_docs_IE_DG_supported_plugins_MULTI.html#introducing_multi_device_execution).
+For more information on Multi-Device plugin of OpenVINO, please refer to the
+[Intel OpenVINO Multi Device Plugin](https://docs.openvino.ai/latest/openvino_docs_IE_DG_supported_plugins_MULTI.html).
 
 ### Auto-Device Execution for OpenVINO EP
 
-Use "AUTO:<device 1><device 2>.." as the device name to delegate selection of an actual accelerator to OpenVINO. With the 2021.4 release, Auto-device internally recognizes and selects devices from CPU, integrated GPU and discrete Intel GPUs (when available) depending on the device capabilities and the characteristic of CNN models, for example, precisions. Then Auto-device assigns inference requests to the selected device.
+Use `AUTO:<device 1><device 2>..` as the device name to delegate selection of an actual accelerator to OpenVINO. With the 2021.4 release, Auto-device internally recognizes and selects devices from CPU, integrated GPU and discrete Intel GPUs (when available) depending on the device capabilities and the characteristic of CNN models, for example, precisions. Then Auto-device assigns inference requests to the selected device.
 
 From the application point of view, this is just another device that handles all accelerators in full system.
 
-For more information on Auto-Device plugin of OpenVINO, please refer to the following
-[documentation](https://docs.openvino.ai/cn/latest/openvino_docs_IE_DG_supported_plugins_AUTO.html).
+For more information on Auto-Device plugin of OpenVINO, please refer to the
+[Intel OpenVINO Auto Device Plugin](https://docs.openvino.ai/latest/openvino_docs_IE_DG_supported_plugins_AUTO.html).
 
 ### Model caching feature for OpenVINO EP
+
 The model caching setting enables blobs with Myriadx(VPU) and as cl_cache files with iGPU.
+
 #### Save/Load blob capability for Myriadx(VPU)
+
 This feature enables users to save and load the blobs directly. These pre-compiled blobs can be directly loaded on to the specific hardware device target and inferencing can be done. This feature is only supported on MyriadX(VPU) hardware device target.
 
 #### CL Cache capability for iGPU
 
-Starting from OpenVINO 2021.4 version, this feature is supported in OpenVINO-EP using Model caching mechanism from OpenVINO.[documentation](https://docs.openvinotoolkit.org/latest/openvino_docs_IE_DG_Model_caching_overview.html).
+Starting from version 2021.4 OpenVINO supports [model caching](https://docs.openvino.ai/latest/openvino_docs_IE_DG_Model_caching_overview.html).
 
 This feature enables users to save and load the cl_cache files directly. These cl_cache files can be directly loaded on to igpu hardware device target and inferencing can be done. This feature is only supported on iGPU hardware device target.
 
