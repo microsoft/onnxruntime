@@ -167,6 +167,7 @@ jobs:
       versionSpec: '11'
       jdkArchitectureOption: 'x64'
       jdkSourceOption: 'PreInstalled'
+
   - script: |
       python3 tools/ci_build/build.py \
         --android \
@@ -234,7 +235,23 @@ jobs:
     - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh \
               $(pwd)
       displayName: Setup gradle wrapper to use gradle 6.8.3
-    
+
+    - task: UsePythonVersion@0
+      displayName: Use Python $(pythonVersion)
+      inputs:
+        versionSpec: $(pythonVersion)
+
+    - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
+      displayName: Setup gradle wrapper to use gradle 6.8.3
+
+    # We build the host protoc to <ORT_ROOT>/protobuf_install
+    - script: |
+      /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
+        $(Build.SourcesDirectory) \
+        $(Build.BinariesDirectory)/protobuf \
+        $(Build.SourcesDirectory)/protobuf_install
+      displayName: Build Host Protoc
+
     - script: |
         python3 tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
@@ -243,6 +260,15 @@ jobs:
         --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
       displayName: Start Android emulator
 
+    # Start switching to jdk 11 after the Android Emulator is started
+    # since Android SDK manager requires java 8
+    - task: JavaToolInstaller@0
+      displayName: Use jdk 11
+      inputs:
+        versionSpec: '11'
+        jdkArchitectureOption: 'x64'
+        jdkSourceOption: 'PreInstalled'
+      
     - script: |
         python3 tools/ci_build/build.py \
         --android \
@@ -253,6 +279,7 @@ jobs:
         --android_api=30 \
         --use_nnapi \
         --test \
+        --path_to_protoc_exe $ORT_ROOT/protobuf_install/bin/protoc \
         --code_coverage
       displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
 
