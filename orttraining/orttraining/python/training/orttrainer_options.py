@@ -314,23 +314,6 @@ class ORTTrainerOptions(object):
                     'nullable': True,
                     'default': None
                 },
-                'train_step_info_options': {
-                    'type': 'dict',
-                    'default': {},
-                    'required': False,
-                    'schema': {
-                        'optimization_step': {
-                            'type': 'integer',
-                            'min' : 0,
-                            'default': 0
-                        },
-                        'step': {
-                            'type': 'integer',
-                            'min' : 0,
-                            'default': 0
-                        },
-                    }
-                },
              }
 
     Keyword arguments:
@@ -463,8 +446,6 @@ class ORTTrainerOptions(object):
         provider_options (dict): 
             The provider_options for customized execution providers. it is dict map from EP name to 
             a key-value pairs, like {'EP1' : {'key1' : 'val1'}, ....}
-        train_step_info_options (dict):
-            The optimization step info state for TrainStepInfo instance
 
     Example:
         .. code-block:: python
@@ -859,22 +840,5 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
         'type': 'session_options',
         'nullable': True,
         'default': None
-    },
-    'train_step_info_options': {
-        'type': 'dict',
-        'default_setter': lambda _: {},
-        'required': False,
-        'schema': {
-            'optimization_step': {
-                'type': 'integer',
-                'min' : 0,
-                'default': 0
-            },
-            'step': {
-                'type': 'integer',
-                'min' : 0,
-                'default': 0
-            },
-        }
     },
 }
