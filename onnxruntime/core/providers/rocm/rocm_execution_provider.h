@@ -93,6 +93,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
   static AllocatorPtr CreateRocmAllocator(OrtDevice::DeviceId device_id, size_t rocm_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                           ROCMExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
 
+  std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
+
  private:
   ROCMExecutionProviderInfo info_;
   hipDeviceProp_t device_prop_;

@@ -587,6 +587,9 @@ def parse_arguments():
         "--enable_cuda_profiling", action='store_true', help="enable cuda kernel profiling, \
         cupti library must be added to PATH beforehand.")
 
+    parser.add_argument(
+        "--enable_rocm_profiling", action='store_true', help="enable rocm kernel profiling.")
+
     return parser.parse_args()
 
 
@@ -839,6 +842,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                                                               else "OFF"),
         "-Donnxruntime_NVCC_THREADS=" + str(args.parallel),
         "-Donnxruntime_ENABLE_CUDA_PROFILING=" + ("ON" if args.enable_cuda_profiling else "OFF"),
+        "-Donnxruntime_ENABLE_ROCM_PROFILING=" + ("ON" if args.enable_rocm_profiling else "OFF"),
     ]
     if args.external_graph_transformer_path:
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
