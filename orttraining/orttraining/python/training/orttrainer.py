@@ -970,7 +970,7 @@ class ORTTrainer(object):
         state_dict[_utils.state_dict_trainer_options_key()][H_size] = self.options.distributed.horizontal_parallel_size
 
     def _extract_train_step_info(self, state_dict):
-        """Extract train step info settings and load it into the state_dict"""
+        """Extract train step info settings and save it into the state_dict"""
 
         optimization_step = _utils.state_dict_train_step_info_optimization_step_key()
         step = _utils.state_dict_train_step_info_step_key()
