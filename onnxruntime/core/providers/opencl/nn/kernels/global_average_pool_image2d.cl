@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 // launch a navie 2d grid that is width == CeilDiv(C, 4), height == N
 __kernel void GlobalAveragePool(
     __private const int gs_dim0,

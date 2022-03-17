@@ -1,4 +1,10 @@
-// FIXME: LICENSE NOTICE:  adapted from TNN original BSD3.
+// Modifications Copyright (c) Microsoft Corporation. All rights reserved.
+// This file is derived from TNN (https://github.com/Tencent/TNN)
+
+// Copyright (c) 2020, THL A29 Limited, a Tencent company. All rights reserved.
+// Use of this source code is governed by a BSD 3-Clause license that can be
+// found in the LICENSE file.
+
 #include "./conv_image2d_shared.h"
 
 // this kerenl only support kernel == 1x1 and padding == 0x0 and stride == 1x1

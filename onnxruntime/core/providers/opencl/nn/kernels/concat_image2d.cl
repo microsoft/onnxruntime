@@ -1,4 +1,10 @@
-// FIXME: LICENSE NOTICE:  adapted from TNN original BSD3.
+// Modifications Copyright (c) Microsoft Corporation. All rights reserved.
+// This file is derived from TNN (https://github.com/Tencent/TNN)
+
+// Copyright (c) 2020, THL A29 Limited, a Tencent company. All rights reserved.
+// Use of this source code is governed by a BSD 3-Clause license that can be
+// found in the LICENSE file.
+
 __kernel void ConcatChannel(
     __private const int3 global_size,
     __read_only image2d_t input0,

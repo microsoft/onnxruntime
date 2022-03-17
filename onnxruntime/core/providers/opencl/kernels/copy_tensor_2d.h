@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 // FIXME: this kernel only copies if the width % 4 == 0, otherwise, weird thing

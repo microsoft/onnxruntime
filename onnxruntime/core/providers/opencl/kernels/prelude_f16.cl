@@ -1,4 +1,6 @@
-// This file is not meant to be manually included!
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 // This file will be prepended to kernel
 
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable

@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 __kernel void ReLU(
     const int gs_dim0,
     const int gs_dim1,

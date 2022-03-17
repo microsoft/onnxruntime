@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 // TODO: use transformer to fuse clip into Conv via relu6 activation
 
 __kernel void Clip(

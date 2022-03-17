@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "resize_transfrom_coordinates.h"
 
 inline int clamp_to_edge(int v, int vmax) {

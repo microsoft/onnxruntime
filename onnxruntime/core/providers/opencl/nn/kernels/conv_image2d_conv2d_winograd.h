@@ -1,3 +1,10 @@
+// Modifications Copyright (c) Microsoft Corporation. All rights reserved.
+// This file is derived from TNN (https://github.com/Tencent/TNN)
+
+// Copyright (c) 2020, THL A29 Limited, a Tencent company. All rights reserved.
+// Use of this source code is governed by a BSD 3-Clause license that can be
+// found in the LICENSE file.
+
 #define GLOBAL_SIZE_2_DIMS __private const int global_size_dim0, __private const int global_size_dim1,
 #define DEAL_NON_UNIFORM_DIM2(input1, input2)                     \
   if (input1 >= global_size_dim0 || input2 >= global_size_dim1) { \
