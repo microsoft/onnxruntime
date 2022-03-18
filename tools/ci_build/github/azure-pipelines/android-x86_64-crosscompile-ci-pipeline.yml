@@ -252,10 +252,9 @@ jobs:
         --android_sdk_path $ANDROID_HOME \
         --android_ndk_path $ANDROID_NDK_HOME \
         --android_abi=x86_64 \
-        --android_api=30 \
+        --android_api=29 \
         --use_nnapi \
         --test \
-        --path_to_protoc_exe $ORT_ROOT/protobuf_install/bin/protoc \
         --code_coverage
       displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
 
@@ -288,7 +287,11 @@ jobs:
         versionSpec: '11'
         jdkArchitectureOption: 'x64'
         jdkSourceOption: 'PreInstalled'
-        
+
+    # To save time, the protobuf is copied from last job.
+    - script: sudo chown -R '$(whoami)' '$(Build.SourcesDirectory)/protobuf_install'
+      displayName: Chown protobuf_instal
+
     - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
       # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
       displayName: Build Minimal ORT with NNAPI and run tests
