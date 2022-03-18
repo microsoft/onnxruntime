@@ -75,6 +75,10 @@ std::shared_ptr<KernelRegistry> GetOpenCLKernelRegistry() {
   return kernel_registry;
 }
 
+bool ShouldFlushAfterLaunch(const std::string& device_name) {
+  return device_name.find("Mali") != std::string::npos;
+}
+
 }  // namespace opencl
 
 OpenCLExecutionProvider::OpenCLExecutionProvider(const OpenCLExecutionProviderInfo& info)
@@ -173,7 +177,7 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
     LOGS_DEFAULT(WARNING) << "[CL] FP16 is requested, but is not supported by the device!";
     DisableFp16();
   }
-  flush_after_launch_ = ShouldFlushAfterLaunch(device_name);
+  flush_after_launch_ = opencl::ShouldFlushAfterLaunch(device_name);
   LOGS_DEFAULT(INFO) << "[CL] FP16: " << UseFp16();
   LOGS_DEFAULT(INFO) << "[CL] clFlush after launch: " << flush_after_launch_;
 
@@ -246,6 +250,10 @@ IAllocatorUniquePtrToClMem OpenCLExecutionProvider::GetScratchImage2D(const open
 }
 
 Status OpenCLExecutionProvider::AfterCLLaunch() const {
+  // We observe some performance boost on some devices. If you observe bubble
+  // in command queue while host kernel launch is fast enough to throttle the
+  // GPU during profiling, then you should consider flush the queue immediately
+  // after the kernel launch.
   if (flush_after_launch_) {
     ORT_RETURN_IF_CL_ERROR(clFlush(cmd_queue_), "command queue flush failure.");
   }
@@ -285,9 +293,5 @@ void OpenCLExecutionProvider::InitCopyKernels() {
 /*
 #pragma endregion
 */
-
-bool OpenCLExecutionProvider::ShouldFlushAfterLaunch(const std::string& device_name) {
-  return device_name.find("Mali") != std::string::npos;
-}
 
 }  // namespace onnxruntime

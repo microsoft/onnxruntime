@@ -53,24 +53,30 @@ class OpenCLExecutionProvider : public IExecutionProvider {
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
   void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
 
+  /// OpenCL object accessor, kernel developer might rarely use them.
   cl_device_id GetOpenCLDevice() const { return dev_; }
   cl_context GetOpenCLContext() const { return ctx_; }
   cl_command_queue GetCommandQueue() const { return cmd_queue_; }
 
-  IAllocatorUniquePtr<std::remove_pointer_t<cl_mem>> GetScratchBuffer(size_t nbytes) const;
-  IAllocatorUniquePtr<std::remove_pointer_t<cl_mem>> GetScratchImage2D(const opencl::Image2DDesc& desc) const;
+  /// Get an OpenCL Buffer for temporary usage from Buffer allocator.
+  IAllocatorUniquePtrToClMem GetScratchBuffer(size_t nbytes) const;
 
+  /// Get an OpenCL Buffer for temporary usage from Image2D allocator.
+  IAllocatorUniquePtrToClMem GetScratchImage2D(const opencl::Image2DDesc& desc) const;
+
+  // Utility for other classes, kernel developer should not use them.
+
+  /// whether the kernels is specialized for fp16
   bool UseFp16() const { return use_fp16_; }
-
+  /// OpenCL after kernel launch performance heuristic.
   Status AfterCLLaunch() const;
-
+  ///
   const opencl::OpenCLProgramManager* GetProgramManager() const;
   opencl::OpenCLProgramManager* GetProgramManager();
 
  private:
   Status InitOpenCLContext();
   void DisableFp16() { use_fp16_ = false; }
-  static bool ShouldFlushAfterLaunch(const std::string& device_name);
 
   cl_device_id dev_;
   cl_context ctx_;
