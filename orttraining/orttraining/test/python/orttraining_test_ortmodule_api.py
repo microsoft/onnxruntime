@@ -1136,10 +1136,12 @@ def test_gradient_correctness_reducesum(dim, keepdim):
 
 # In PyTorch 1.11.0, there is issue during reduce node shape handling for exporter, so any sub-graph that
 # contains ReduceProd will fail to run, for example, "sec,sm->ecm", "sec,ecm->sm".
-# Currently move these cases out from the tests, and disable the test_gradient_correctness_einsum2 as well.
-# Will enable these tests again once the issue in PyTorch is fixed.
-@pytest.mark.parametrize("equation", ["s,se->se", "se,sc->sec", "se,se->s",
-                                      "ks,ksm->sm", "kes,ems->mek", "kes,ksm->ms"])
+# Currently move these cases out from the tests, will enable these tests again once the issue in PyTorch is fixed.
+einsum_equations = ["s,se->se", "se,sc->sec", "se,se->s", "ks,ksm->sm", "kes,ems->mek", "kes,ksm->ms"]
+if LooseVersion(torch.__version__) < LooseVersion('1.11.0'):
+    einsum_equations.append("sec,sm->ecm")
+    einsum_equations.append("sec,ecm->sm")
+@pytest.mark.parametrize("equation", einsum_equations)
 def test_gradient_correctness_einsum(equation):
     class NeuralNetEinsum(torch.nn.Module):
         def __init__(self, bias_size):
@@ -1187,89 +1189,94 @@ def test_gradient_correctness_einsum(equation):
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-3)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-3, rtol=1e-3)
 
-# def test_gradient_correctness_einsum_2():
-#     class NeuralNetEinsum(torch.nn.Module):
-#         def __init__(self, bias_size):
-#             super(NeuralNetEinsum, self).__init__()
-#             self.register_parameter(name='bias', param=torch.nn.Parameter(torch.randn(bias_size)))
+def test_gradient_correctness_einsum_2():
+    # In PyTorch 1.11.0, there is issue during reduce node shape handling for exporter that
+    # will fail this test, disable it for now, will enable once the issue is fixed.
+    if LooseVersion(torch.__version__) >= LooseVersion('1.11.0'):
+        return
 
-#         def forward(self, left, right):
-#             left = left + self.bias
-#             return torch.einsum(equation, left, right)
+    class NeuralNetEinsum(torch.nn.Module):
+        def __init__(self, bias_size):
+            super(NeuralNetEinsum, self).__init__()
+            self.register_parameter(name='bias', param=torch.nn.Parameter(torch.randn(bias_size)))
 
-#     device = 'cuda'
-#     A, B, C, D = 16, 32, 8, 64
+        def forward(self, left, right):
+            left = left + self.bias
+            return torch.einsum(equation, left, right)
 
-#     SIZE_MAP = { 'A': A, 'B': B, 'C': C, 'D': D }
+    device = 'cuda'
+    A, B, C, D = 16, 32, 8, 64
 
-#     def to_string(perm):
-#         result = ''
-#         for v in perm:
-#             result += chr(ord('a') + v)
-#         return result
+    SIZE_MAP = { 'A': A, 'B': B, 'C': C, 'D': D }
 
-#     lhs_candidates = [[0], [0,1], [0,1,2]]
-#     perm = [0,1,2,3]
-#     combs = list(itertools.combinations(perm, 1)) + list(itertools.combinations(perm, 2)) + list(itertools.combinations(perm, 3))
-#     rhs_candidates = []
-#     for comb in combs:
-#         rhs_candidates += list(itertools.permutations(comb))
+    def to_string(perm):
+        result = ''
+        for v in perm:
+            result += chr(ord('a') + v)
+        return result
 
-#     all_cases = []
-#     for lhs_candidate in lhs_candidates:
-#         for rhs_candidate in [list(candidate) for candidate in rhs_candidates]:
-#             union = list(set(lhs_candidate + rhs_candidate))
-#             # Union should contains contiguous numbers from 0, otherwise it's same as another case.
-#             if any(v >= len(union) for v in union):
-#                 continue
-#             # Numbers in right but not in left should be sorted, otherwise it's same as another case.
-#             only_in_right = [v for v in rhs_candidate if v not in lhs_candidate]
-#             if any(only_in_right[i] > only_in_right[i + 1] for i in range(len(only_in_right) - 1)):
-#                 continue
-#             combs = []
-#             for i in range(1, len(union) + 1):
-#                 combs += list(itertools.combinations(union, i))
-#             output_candidates = []
-#             for comb in combs:
-#                 output_candidates += list(itertools.permutations(comb))
-#             # When output_candidates is too many, it will take long time to run. Sample part of them.
-#             random.shuffle(output_candidates)
-#             output_candidates = output_candidates[:8]
-#             for output_candidate in [list(candidate) for candidate in output_candidates]:
-#                 all_cases.append((lhs_candidate, rhs_candidate, output_candidate))
+    lhs_candidates = [[0], [0,1], [0,1,2]]
+    perm = [0,1,2,3]
+    combs = list(itertools.combinations(perm, 1)) + list(itertools.combinations(perm, 2)) + list(itertools.combinations(perm, 3))
+    rhs_candidates = []
+    for comb in combs:
+        rhs_candidates += list(itertools.permutations(comb))
 
-#     for case in all_cases:
-#         equation = to_string(case[0]) + ',' + to_string(case[1]) + '->' + to_string(case[2])
-#         pos1 = equation.find(',')
-#         pos2 = equation.find('->')
-#         lhs_op = equation[0:pos1]
-#         rhs_op = equation[pos1 + 1:pos2]
-#         lhs_shape = []
-#         for c in lhs_op:
-#             lhs_shape.append(SIZE_MAP[c.upper()])
-#         rhs_shape = []
-#         for c in rhs_op:
-#             rhs_shape.append(SIZE_MAP[c.upper()])
+    all_cases = []
+    for lhs_candidate in lhs_candidates:
+        for rhs_candidate in [list(candidate) for candidate in rhs_candidates]:
+            union = list(set(lhs_candidate + rhs_candidate))
+            # Union should contains contiguous numbers from 0, otherwise it's same as another case.
+            if any(v >= len(union) for v in union):
+                continue
+            # Numbers in right but not in left should be sorted, otherwise it's same as another case.
+            only_in_right = [v for v in rhs_candidate if v not in lhs_candidate]
+            if any(only_in_right[i] > only_in_right[i + 1] for i in range(len(only_in_right) - 1)):
+                continue
+            combs = []
+            for i in range(1, len(union) + 1):
+                combs += list(itertools.combinations(union, i))
+            output_candidates = []
+            for comb in combs:
+                output_candidates += list(itertools.permutations(comb))
+            # When output_candidates is too many, it will take long time to run. Sample part of them.
+            random.shuffle(output_candidates)
+            output_candidates = output_candidates[:8]
+            for output_candidate in [list(candidate) for candidate in output_candidates]:
+                all_cases.append((lhs_candidate, rhs_candidate, output_candidate))
 
-#         pt_model = NeuralNetEinsum(lhs_shape[-1]).to(device)
-#         ort_model = ORTModule(copy.deepcopy(pt_model))
+    for case in all_cases:
+        equation = to_string(case[0]) + ',' + to_string(case[1]) + '->' + to_string(case[2])
+        pos1 = equation.find(',')
+        pos2 = equation.find('->')
+        lhs_op = equation[0:pos1]
+        rhs_op = equation[pos1 + 1:pos2]
+        lhs_shape = []
+        for c in lhs_op:
+            lhs_shape.append(SIZE_MAP[c.upper()])
+        rhs_shape = []
+        for c in rhs_op:
+            rhs_shape.append(SIZE_MAP[c.upper()])
 
-#         def run_step(model, input_left, input_right):
-#             prediction = model(input_left, input_right)
-#             loss = prediction.sum()
-#             loss.backward()
-#             return prediction
+        pt_model = NeuralNetEinsum(lhs_shape[-1]).to(device)
+        ort_model = ORTModule(copy.deepcopy(pt_model))
 
-#         for _ in range(5):
-#             pt_input_left = torch.rand(lhs_shape, device=device)
-#             pt_input_right = torch.rand(rhs_shape, device=device)
-#             ort_input_left = copy.deepcopy(pt_input_left)
-#             ort_input_right = copy.deepcopy(pt_input_right)
-#             pt_prediction = run_step(pt_model, pt_input_left, pt_input_right)
-#             ort_prediction = run_step(ort_model, ort_input_left, ort_input_right)
+        def run_step(model, input_left, input_right):
+            prediction = model(input_left, input_right)
+            loss = prediction.sum()
+            loss.backward()
+            return prediction
 
-#             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-3)
-#             _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-3, rtol=1e-3)
+        for _ in range(5):
+            pt_input_left = torch.rand(lhs_shape, device=device)
+            pt_input_right = torch.rand(rhs_shape, device=device)
+            ort_input_left = copy.deepcopy(pt_input_left)
+            ort_input_right = copy.deepcopy(pt_input_right)
+            pt_prediction = run_step(pt_model, pt_input_left, pt_input_right)
+            ort_prediction = run_step(ort_model, ort_input_left, ort_input_right)
+
+            _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-3)
+            _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-3, rtol=1e-3)
 
 # Since multinomial is a generator function, we do not have to test for gradient
 # Two consecutive calls on the torch.multinomail on a probability distribution with more
