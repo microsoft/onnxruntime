@@ -25,6 +25,24 @@ from typing import List
 import types
 import warnings
 from distutils.version import LooseVersion
+import random
+import numpy as np
+
+def get_random_states():
+    r_state = random.getstate()
+    np_state = np.random.get_state()
+    torch_state = torch.get_rng_state()
+    torch_cuda_state = torch.cuda.get_rng_state() if torch.cuda.is_available() else None
+    return r_state, np_state, torch_state, torch_cuda_state
+
+def set_random_states(states):
+    r_state, np_state, torch_state, torch_cuda_state = states
+    random.setstate(r_state)
+    np.random.set_state(np_state)
+    torch.set_rng_state(torch_state)
+    if torch_cuda_state is not None:
+        torch.cuda.set_rng_state(torch_cuda_state)
+
 
 def _ortvalue_from_torch_tensor(torch_tensor):
     # TODO: Current DLPack doesn't support bool and PyTorch disables converting bool tensor to DLPack in recent commit.
