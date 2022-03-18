@@ -4847,21 +4847,5 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
   }
 }
 
-TEST(TempTest, LoadModel) {
-  Status status;
-  auto model_uri = ORT_TSTR("D:/temp/pt_mobilenet_v2_qdq.basic.batch_size_1.opset15.qdq_opt.ort");
-  {
-    std::shared_ptr<Model> model;
-    status = Model::Load(model_uri, model, nullptr, DefaultLoggingManager().DefaultLogger());
-    ASSERT_TRUE(status.IsOK()) << status;
-  }
-
-  SessionOptions so;
-  so.session_logid = "TempTest.LoadModel";
-  InferenceSession session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(model_uri));
-  ASSERT_STATUS_OK(session_object.Initialize());  // optimizers run during initialization
-}
-
 }  // namespace test
 }  // namespace onnxruntime
