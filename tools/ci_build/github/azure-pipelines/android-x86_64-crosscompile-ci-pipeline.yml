@@ -289,7 +289,7 @@ jobs:
         jdkSourceOption: 'PreInstalled'
 
     # To save time, the protobuf is copied from last job.
-    - script: sudo chown -R '$(whoami)' '$(Build.SourcesDirectory)/protobuf_install'
+    - script: sudo chown -R $(id -un) '$(Build.SourcesDirectory)/protobuf_install'
       displayName: Chown protobuf_instal
 
     - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
