@@ -11,6 +11,10 @@ parameters:
   displayName: 'Agent pool name'
   type: string
   default: 'Win-CPU-2019'
+- name: PackageName
+  displayName: 'Package name'
+  type: string
+  default: 'NPM_packages'
 
 stages:
 - stage: Extract_commit
@@ -54,6 +58,7 @@ stages:
       BuildConfig: 'Debug'
       NpmPackagingMode: ${{ parameters.NpmPackagingMode }}
       PoolName: ${{ parameters.PoolName }}
+      PackageName: ${{ parameters.PackageName }}
 
 - stage: Build_wasm_Release
   dependsOn: Extract_commit
@@ -74,6 +79,7 @@ stages:
       BuildConfig: 'Release'
       NpmPackagingMode: ${{ parameters.NpmPackagingMode }}
       PoolName: ${{ parameters.PoolName }}
+      PackageName: ${{ parameters.PackageName }}
 
 - ${{ if ne(parameters.IsReleasePipeline, 'true') }}:
   - stage: Test_web_BrowserStack
