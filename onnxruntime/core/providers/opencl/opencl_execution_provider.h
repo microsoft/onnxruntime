@@ -14,10 +14,10 @@
 /* Notes about OpenCL object lifetime
 
 OpenCL have reference counted (RC) object management, however, it is impossible
-to query the current counter. As a result, it makes it difficualt to *share*
-created object, especially of programs and kernels, which are slow to create
-and resulting loooong startup time on the first run of a session. So we are not
-relying on the internal RC mechanism.
+to query the current counter reliably. As a result, it makes it difficualt to
+*share* created object, especially of programs and kernels, which are slow to
+create and resulting loooong session initialization time. So we are not relying
+on the internal RC mechanism.
 
 - cl_device_id, cl_context and cl_command_queue
 
@@ -29,7 +29,7 @@ relying on the internal RC mechanism.
 
 - cl_program and cl_kernel
 
-  is created and managed by OpenCLKernelManager
+  are created and managed by OpenCLKernelManager
 
 */
 
