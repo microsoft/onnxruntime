@@ -26,40 +26,40 @@ inline std::string GetKernelSrc(const std::string& name_define, const std::strin
 namespace onnxruntime {
 namespace opencl {
 
-#define ELEMENT_WISE_OP_IMPL(CLASS_NAME, OP_DEFINE)                         \
-  class CLASS_NAME : public OpenCLKernel {                                  \
-   public:                                                                  \
-    explicit CLASS_NAME(const OpKernelInfo& info) : OpenCLKernel(info) {    \
-      LoadProgram(GetKernelSrc((#CLASS_NAME), (OP_DEFINE)));                \
-      LoadKernel(#CLASS_NAME);                                              \
-    };                                                                      \
-                                                                            \
-    Status Compute(OpKernelContext* context) const override {               \
-      ZoneScopedN(#CLASS_NAME "::Compute");                                 \
-      VLOG_CL_NODE();                                                       \
-      const auto* a = context->Input<Tensor>(0);                            \
-      const auto* b = context->Input<Tensor>(1);                            \
-      const auto* c = context->Output(0, a->Shape());                       \
-      VLOG_CL_IMAGE2D("Input[0]", a);                                       \
-      VLOG_CL_IMAGE2D("Input[1]", b);                                       \
-      VLOG_CL_IMAGE2D("Output[0]", c);                                      \
-                                                                            \
-      auto desc = Image2DDesc::PackFromTensor(a->Shape());                  \
-                                                                            \
-      ORT_RETURN_IF_ERROR(                                                  \
-          KernelLauncher{GetKernel(#CLASS_NAME)}                            \
-              .SetImage2Ds(*a, *b, *c)                                      \
-              .Launch(*exec_, desc.AsNDRange()));                           \
-                                                                            \
-      return Status::OK();                                                  \
-    }                                                                       \
-  };                                                                        \
-                                                                            \
-  ONNX_OPENCL_OPERATOR_KERNEL(                                              \
-      CLASS_NAME,                                                           \
-      7,                                                                    \
-      KernelDefBuilder()                                                    \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),       \
+#define ELEMENT_WISE_OP_IMPL(CLASS_NAME, OP_DEFINE)                      \
+  class CLASS_NAME : public OpenCLKernel {                               \
+   public:                                                               \
+    explicit CLASS_NAME(const OpKernelInfo& info) : OpenCLKernel(info) { \
+      LoadProgram(GetKernelSrc((#CLASS_NAME), (OP_DEFINE)));             \
+      LoadKernel(#CLASS_NAME);                                           \
+    };                                                                   \
+                                                                         \
+    Status Compute(OpKernelContext* context) const override {            \
+      ZoneScopedN(#CLASS_NAME "::Compute");                              \
+      VLOG_CL_NODE();                                                    \
+      const auto* a = context->Input<Tensor>(0);                         \
+      const auto* b = context->Input<Tensor>(1);                         \
+      const auto* c = context->Output(0, a->Shape());                    \
+      VLOG_CL_IMAGE2D("Input[0]", a);                                    \
+      VLOG_CL_IMAGE2D("Input[1]", b);                                    \
+      VLOG_CL_IMAGE2D("Output[0]", c);                                   \
+                                                                         \
+      auto desc = Image2DDesc::PackFromTensor(a->Shape());               \
+                                                                         \
+      ORT_RETURN_IF_ERROR(                                               \
+          KernelLauncher{GetKernel(#CLASS_NAME)}                         \
+              .SetImage2Ds(*a, *b, *c)                                   \
+              .Launch(*exec_, desc.AsNDRange()));                        \
+                                                                         \
+      return Status::OK();                                               \
+    }                                                                    \
+  };                                                                     \
+                                                                         \
+  ONNX_OPENCL_OPERATOR_KERNEL(                                           \
+      CLASS_NAME,                                                        \
+      7,                                                                 \
+      KernelDefBuilder()                                                 \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),    \
       CLASS_NAME)
 
 ELEMENT_WISE_OP_IMPL(AddRelu, "(OUT)=(X)+(Y);(OUT)=max((OUT),0.0f)");
