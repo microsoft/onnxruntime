@@ -115,6 +115,18 @@ struct OP_Cast {
   }
 };
 
+struct OP_Cast_Half2Float {
+  __device__ __inline__ float2 operator()(const __half2& a) const {
+    return __half22float2(a);
+  }
+};
+
+struct OP_Cast_Float2Half {
+  __device__ __inline__ __half2 operator()(const float2& a) const {
+    return __float22half2_rn(a);
+  }
+};
+
 template <typename InT, typename OutT>
 void Impl_Cast(
     cudaStream_t stream,
@@ -127,6 +139,34 @@ void Impl_Cast(
                        OP_Cast<InT, OutT>(),
                        count);
 }
+
+template <>
+void Impl_Cast<half, float>(
+    cudaStream_t stream,
+    const half* input_data,
+    float* output_data,
+    size_t count) {
+    UnaryElementWiseImpl(stream,
+                       input_data,
+                       output_data,
+                       OP_Cast<half, float>(),
+                       OP_Cast_Half2Float(),
+                       count);
+}
+
+// template <>
+// void Impl_Cast<float, half>(
+//     cudaStream_t stream,
+//     const float* input_data,
+//     half* output_data,
+//     size_t count) {
+//       UnaryElementWiseImpl(stream,
+//                        input_data,
+//                        output_data,
+//                        OP_Cast<float, half>(),
+//                        OP_Cast_Float2Half(),
+//                        count);
+// }
 
 #define SPECIALIZED_CAST_IMPL2(InT, OutT) \
   template void Impl_Cast<InT, OutT>(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count);
