@@ -39,7 +39,7 @@ jobs:
       export ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk-bundle
       export ANDROID_NDK_ROOT=/usr/local/lib/android/sdk/ndk-bundle
       env | grep ANDROID
-    displayName: set Android ENVs
+    displayName: Set Android ENVs
 
   # Start switching to jdk 11 after the Android Emulator is started
   # since Android SDK manager requires java 8
@@ -64,25 +64,24 @@ jobs:
         --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
         --build_java \
         --skip_tests
-       ls -ld $(find build)
     displayName: CPU EP, Build
 
   - task: CopyFiles@2
-    displayName: copy apks
+    displayName: Copy apks
     inputs:
       contents: 'build/**/*.apk'
       targetFolder: $(Build.ArtifactStagingDirectory)
       overWrite: true
 
   - task: CopyFiles@2
-    displayName: copy test data 
+    displayName: Copy test data 
     inputs:
       contents: 'build/**/testdata/**'
       targetFolder: $(Build.ArtifactStagingDirectory)
       overWrite: true
 
   - task: CopyFiles@2
-    displayName: copy test executables
+    displayName: Copy test executables
     inputs:
       contents: 'build/Debug/*'
       targetFolder: $(Build.ArtifactStagingDirectory)
@@ -191,28 +190,28 @@ jobs:
     displayName: NNAPI EP, Build
 
   - task: CopyFiles@2
-    displayName: copy apks
+    displayName: Copy apks
     inputs:
       contents: 'build_nnapi/**/*.apk'
       targetFolder: $(Build.ArtifactStagingDirectory)
       overWrite: true
 
   - task: CopyFiles@2
-    displayName: copy test data
+    displayName: Copy test data
     inputs:
       contents: 'build_nnapi/**/testdata/**'
       targetFolder: $(Build.ArtifactStagingDirectory)
       overWrite: true
 
   - task: CopyFiles@2
-    displayName: copy Test Executables
+    displayName: Copy Test Executables
     inputs:
       contents: 'build_nnapi/Debug/*'
       targetFolder: $(Build.ArtifactStagingDirectory)
       overWrite: true
 
   - task: CopyFiles@2
-    displayName: copy protobuf_install
+    displayName: Copy protobuf_install
     inputs:
       contents: 'protobuf_install/**'
       targetFolder: $(Build.ArtifactStagingDirectory)
