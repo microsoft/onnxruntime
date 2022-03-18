@@ -289,8 +289,9 @@ jobs:
         jdkSourceOption: 'PreInstalled'
 
     # To save time, the protobuf is copied from last job.
-    - script: sudo chown -R $(id -un) '$(Build.SourcesDirectory)/protobuf_install'
-      displayName: Chown protobuf_instal
+    - script: sudo chown -R $(id -un) '$(Build.SourcesDirectory)/protobuf_install' \
+             && sudo chmod a+x '$(Build.SourcesDirectory)/protobuf_install/bin/protoc'
+      displayName: Chown protobuf_install
 
     - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
       # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
