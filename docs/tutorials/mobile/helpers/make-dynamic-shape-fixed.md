@@ -39,7 +39,7 @@ optional arguments:
   --dim_value DIM_VALUE
                         Value to replace dim_param with in the model. Must be > 0.
   --input_name INPUT_NAME
-                        Model input name to replace shape of. Provider input_shape if specified.
+                        Model input name to replace shape of. Provide input_shape if specified.
   --input_shape INPUT_SHAPE
                         Shape to use for input_shape. Provide comma separated list for the shape. All values must be > 0. e.g. --input_shape 1,3,256,256
 ```
