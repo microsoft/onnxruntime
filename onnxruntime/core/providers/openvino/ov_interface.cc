@@ -173,7 +173,7 @@ namespace onnxruntime {
     void OVInferRequest::WaitRequest() {
         try {
             #if defined (OV_API_20)
-                ovInfReq.wait_for(std::chrono::milliseconds(10));
+                ovInfReq.wait();
             #else
                 infReq.Wait(WaitMode::RESULT_READY); 
             #endif
