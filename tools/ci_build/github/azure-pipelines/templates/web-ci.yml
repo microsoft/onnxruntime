@@ -74,7 +74,7 @@ stages:
       ExtraBuildArgs: '--skip_tests --disable_wasm_exception_catching --disable_rtti $(ExtraBuildArgs)'
       PoolName: ${{ parameters.PoolName }}
 
-- ${{ if ne(parameters.BuildStaticLib, 'true') }}:
+- ${{ if eq(parameters.BuildStaticLib, 'true') }}:
   - stage: Build_wasm_Release_static_library
     dependsOn: Extract_commit
     jobs:
