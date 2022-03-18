@@ -192,7 +192,7 @@ Status TreeEnsembleCommon<TI, TH, TO>::Init(int parallel_tree, int parallel_N,
   n_nodes_ = nodes_treeids.size();
   nodes_.resize(n_nodes_);
   roots_.clear();
-  std::map<TreeNodeElementId, TreeNodeElement<TH>*> idi;
+  std::unordered_map<TreeNodeElementId, TreeNodeElement<TH>*, TreeNodeElementId::hash_fn> idi;
 
   for (i = 0, limit = nodes_treeids.size(); i < limit; ++i) {
     TreeNodeElement<TH>& node = nodes_[i];

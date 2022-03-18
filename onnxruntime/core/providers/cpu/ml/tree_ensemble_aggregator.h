@@ -21,6 +21,13 @@ struct TreeNodeElementId {
   bool operator<(const TreeNodeElementId& xyz) const {
     return ((tree_id < xyz.tree_id) || (tree_id == xyz.tree_id && node_id < xyz.node_id));
   }
+  struct hash_fn {
+    std::size_t operator()(const TreeNodeElementId& key) const {
+      std::size_t h1 = std::hash<int>()(key.tree_id);
+      std::size_t h2 = std::hash<int>()(key.node_id);
+      return h1 ^ h2;
+    }
+  };
 };
 
 template <typename T>
