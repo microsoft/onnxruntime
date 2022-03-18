@@ -48,7 +48,7 @@ namespace opencl {
 
 class OpenCLKernelHolder {
  public:
-  explicit OpenCLKernelHolder(OpenCLProgramManager* mgr) : mgr_{mgr} {}
+  explicit OpenCLKernelHolder(OpenCLProgramManager& mgr) : mgr_{&mgr} {}
   ~OpenCLKernelHolder();
 
   void LoadProgram(const char* src_body, size_t src_len);
@@ -102,7 +102,7 @@ Lifetime characteristics on clReleaseProgram and clReleaseKernel
 class OpenCLProgramManager {
  public:
   OpenCLProgramManager() = delete;
-  explicit OpenCLProgramManager(OpenCLExecutionProvider* exec) : exec_{exec} {}
+  explicit OpenCLProgramManager(OpenCLExecutionProvider& exec) : exec_{&exec} {}
   ~OpenCLProgramManager() {}  // FIXME: release all managed kernels and programs
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OpenCLProgramManager);
 

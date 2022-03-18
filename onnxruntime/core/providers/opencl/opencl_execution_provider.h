@@ -71,8 +71,8 @@ class OpenCLExecutionProvider : public IExecutionProvider {
   /// OpenCL after kernel launch performance heuristic.
   Status AfterCLLaunch() const;
   ///
-  const opencl::OpenCLProgramManager* GetProgramManager() const;
-  opencl::OpenCLProgramManager* GetProgramManager();
+  const opencl::OpenCLProgramManager& GetProgramManager() const;
+  opencl::OpenCLProgramManager& GetProgramManager();
 
  private:
   Status InitOpenCLContext();

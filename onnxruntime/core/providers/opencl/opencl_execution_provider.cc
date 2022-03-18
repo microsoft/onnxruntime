@@ -90,7 +90,7 @@ OpenCLExecutionProvider::OpenCLExecutionProvider(const OpenCLExecutionProviderIn
   }
 #endif
   ORT_THROW_IF_ERROR(InitOpenCLContext());
-  program_manager_ = std::make_unique<opencl::OpenCLProgramManager>(this);
+  program_manager_ = std::make_unique<opencl::OpenCLProgramManager>(*this);
   InitCopyKernels();
 
 #ifdef TRACY_ENABLE
@@ -260,12 +260,12 @@ Status OpenCLExecutionProvider::AfterCLLaunch() const {
   return Status::OK();
 }
 
-const opencl::OpenCLProgramManager* OpenCLExecutionProvider::GetProgramManager() const {
-  return program_manager_.get();
+const opencl::OpenCLProgramManager& OpenCLExecutionProvider::GetProgramManager() const {
+  return *program_manager_;
 }
 
-opencl::OpenCLProgramManager* OpenCLExecutionProvider::GetProgramManager() {
-  return program_manager_.get();
+opencl::OpenCLProgramManager& OpenCLExecutionProvider::GetProgramManager() {
+  return *program_manager_;
 }
 
 /*
