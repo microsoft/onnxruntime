@@ -473,8 +473,10 @@ class ORTGen:
             writer.writeline(f'return {in_place_params[0]};')
         else:
             if not (isinstance(cpp_func.return_type, ast.TemplateType) and cpp_func.return_type.identifier_tokens[-1].value == 'std::tuple'):
-              raise Exception(f'')    
-            writer.write('return std::tuple(')
+              raise Exception(f'')
+            tensorRef = "Tensor&," * len(in_place_params)
+            tensorRef = tensorRef[:len(tensorRef)-1]
+            writer.write(f'return std::tuple<{tensorRef}>(')
             for index, key in enumerate(sorted(in_place_params)):
                 if index > 0:
                     writer.write(', ')
