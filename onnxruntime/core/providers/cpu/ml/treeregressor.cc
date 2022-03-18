@@ -22,6 +22,8 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_ML_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()).MayInplace(0, 0),
     TreeEnsembleRegressor<double>);
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     TreeEnsembleRegressor,
     3,
@@ -36,6 +38,7 @@ ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()).MayInplace(0, 0),
     TreeEnsembleRegressor<double>);
 
+#endif
 
 
 template <typename T>

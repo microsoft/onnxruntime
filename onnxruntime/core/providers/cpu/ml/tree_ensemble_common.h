@@ -82,10 +82,12 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
 template <typename TI, typename TH, typename TO>
 Status TreeEnsembleCommon<TI, TH, TO>::Init(const OpKernelInfo& info) {
   std::vector<TH> base_values_as_tensor, nodes_hitrates_as_tensor, nodes_values_as_tensor, target_weights_as_tensor;
+#if !defined(ORT_MINIMAL_BUILD)
   ORT_ENFORCE(GetVectorAttrsOrDefault(info, "base_values_as_tensor", base_values_as_tensor).IsOK());
   ORT_ENFORCE(GetVectorAttrsOrDefault(info, "nodes_hitrates_as_tensor", nodes_hitrates_as_tensor).IsOK());
   ORT_ENFORCE(GetVectorAttrsOrDefault(info, "nodes_values_as_tensor", nodes_values_as_tensor).IsOK());
   ORT_ENFORCE(GetVectorAttrsOrDefault(info, "target_weights_as_tensor", target_weights_as_tensor).IsOK());
+#endif
 
   return Init(
       80,
@@ -672,10 +674,12 @@ class TreeEnsembleCommonClassifier : public TreeEnsembleCommon<TI, TH, TO> {
 template <typename TI, typename TH, typename TO>
 Status TreeEnsembleCommonClassifier<TI, TH, TO>::Init(const OpKernelInfo& info) {
   std::vector<TH> base_values_as_tensor, nodes_hitrates_as_tensor, nodes_values_as_tensor, class_weights_as_tensor;
+#if !defined(ORT_MINIMAL_BUILD)
   ORT_ENFORCE(GetVectorAttrsOrDefault(info, "base_values_as_tensor", base_values_as_tensor).IsOK());
   ORT_ENFORCE(GetVectorAttrsOrDefault(info, "nodes_hitrates_as_tensor", nodes_hitrates_as_tensor).IsOK());
   ORT_ENFORCE(GetVectorAttrsOrDefault(info, "nodes_values_as_tensor", nodes_values_as_tensor).IsOK());
   ORT_ENFORCE(GetVectorAttrsOrDefault(info, "class_weights_as_tensor", class_weights_as_tensor).IsOK());
+#endif
 
   return Init(
       80,

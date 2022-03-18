@@ -10,6 +10,18 @@ using namespace std;
 namespace onnxruntime {
 namespace ml {
 
+#if defined(ORT_MINIMAL_BUILD)
+
+#define ADD_IN_TYPE_TREE_ENSEMBLE_CLASSIFIER_OP(in_type)                                                                                                                                          \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_ML_KERNEL(                                                                                                                                                    \
+      TreeEnsembleClassifier,                                                                                                                                                                     \
+      1, 2,                                                                                                                                                                                       \
+      in_type,                                                                                                                                                                                    \
+      KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<in_type>()).TypeConstraint("T2", {DataTypeImpl::GetTensorType<int64_t>(), DataTypeImpl::GetTensorType<std::string>()}), \
+      TreeEnsembleClassifier<in_type>);
+
+#else
+
 #define ADD_IN_TYPE_TREE_ENSEMBLE_CLASSIFIER_OP(in_type)                                                                                                                              \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_ML_KERNEL(                                                                                                                                                    \
       TreeEnsembleClassifier,                                                                                                                                                                     \
@@ -23,6 +35,8 @@ namespace ml {
       in_type,                                                                                                                                                                                    \
       KernelDefBuilder().TypeConstraint("T1", DataTypeImpl::GetTensorType<in_type>()).TypeConstraint("T2", {DataTypeImpl::GetTensorType<int64_t>(), DataTypeImpl::GetTensorType<std::string>()}), \
       TreeEnsembleClassifier<in_type>);
+
+#endif
 
 ADD_IN_TYPE_TREE_ENSEMBLE_CLASSIFIER_OP(float);
 ADD_IN_TYPE_TREE_ENSEMBLE_CLASSIFIER_OP(double);
