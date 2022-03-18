@@ -1136,12 +1136,14 @@ def test_gradient_correctness_reducesum(dim, keepdim):
 
 # In PyTorch 1.11.0, there is issue during reduce node shape handling for exporter, so any sub-graph that
 # contains ReduceProd will fail to run, for example, "sec,sm->ecm", "sec,ecm->sm".
-# Currently move these cases out from the tests, will enable these tests again once the issue in PyTorch is fixed.
-einsum_equations = ["s,se->se", "se,sc->sec", "se,se->s", "ks,ksm->sm", "kes,ems->mek", "kes,ksm->ms"]
-if LooseVersion(torch.__version__) < LooseVersion('1.11.0'):
-    einsum_equations.append("sec,sm->ecm")
-    einsum_equations.append("sec,ecm->sm")
-@pytest.mark.parametrize("equation", einsum_equations)
+# Currently skip these cases and test_gradient_correctness_einsum_2,
+# will enable these tests again once the issue in PyTorch is fixed.
+skip_torch_1_11 = pytest.mark.skipif(LooseVersion(torch.__version__) >= LooseVersion('1.11.0'), reason="PyTorch 1.11 incompatible")
+@pytest.mark.parametrize("equation", [
+    "s,se->se", "se,sc->sec", "se,se->s", "ks,ksm->sm", "kes,ems->mek", "kes,ksm->ms",
+    pytest.param("sec,sm->ecm", marks=[skip_torch_1_11]),
+    pytest.param("sec,ecm->sm", marks=[skip_torch_1_11])
+])
 def test_gradient_correctness_einsum(equation):
     class NeuralNetEinsum(torch.nn.Module):
         def __init__(self, bias_size):
@@ -1189,12 +1191,8 @@ def test_gradient_correctness_einsum(equation):
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-3)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-3, rtol=1e-3)
 
+@skip_torch_1_11
 def test_gradient_correctness_einsum_2():
-    # In PyTorch 1.11.0, there is issue during reduce node shape handling for exporter that
-    # will fail this test, disable it for now, will enable once the issue is fixed.
-    if LooseVersion(torch.__version__) >= LooseVersion('1.11.0'):
-        return
-
     class NeuralNetEinsum(torch.nn.Module):
         def __init__(self, bias_size):
             super(NeuralNetEinsum, self).__init__()
