@@ -178,8 +178,8 @@ option(onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH "Path to external transformer s
 
 option(onnxruntime_ENABLE_CUDA_PROFILING "Enable CUDA kernel profiling" OFF)
 
-# enable tracy for manually performance instrument
-option(onnxruntime_ENABLE_TRACY "Enable Tracy for manually performance instrument" OFF)
+# enable tracy for manually performance instrument (opencl ep only).
+option(onnxruntime_ENABLE_TRACY "Enable Tracy for manually performance instrument (OpenCL EP only)." OFF)
 
 if (onnxruntime_USE_CUDA)
   set(onnxruntime_DISABLE_RTTI OFF)
