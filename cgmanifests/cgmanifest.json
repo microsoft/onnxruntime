@@ -8,7 +8,7 @@
                "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
             }
          }
-      },   
+      },
       {
         "component": {
           "Type": "maven",
@@ -582,6 +582,46 @@
                "repositoryUrl": "https://github.com/google/XNNPACK.git"
             },
             "comments": "xnnpack"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "dcd5bede6859d26833cd85f0d6bbcee7382dc9b3",
+               "repositoryUrl": "https://github.com/KhronosGroup/OpenCL-Headers.git"
+            },
+            "comments": "OpenCL-Headers"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "92b182d47e51e59064778819db08aba0d7017c1e",
+               "repositoryUrl": "https://github.com/wolfpld/tracy.git"
+            },
+            "comments": "Tracy"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "344629419f710b39559e616f1af7bb7bd29617db",
+               "repositoryUrl": "https://github.com/alibaba/MNN.git"
+            },
+            "comments": "MNN, code snippet reused"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "0c6cbaad7c9dc8bed2d93ca64ed650ea055cd6f5",
+               "repositoryUrl": "https://github.com/Tencent/TNN.git"
+            },
+            "comments": "TNN, code snippet reused"
          }
       }
    ],
