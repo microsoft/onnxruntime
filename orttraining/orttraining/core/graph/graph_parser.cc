@@ -7,30 +7,31 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace training {
 
-bool node_equal_properties(const Node* a, const Node* b) {
-  // if the customized constriants has node-node format it should be added here as below
-  // for(auto func:customized_functions){
-  //   if(!func(a, b)) return false;
-  // }
-  if (!a && !b)
+bool PatternGraph::node_equal_properties(const Node* g, const Node* p, const Graph& target,
+                                         const Graph& pattern) {
+  if (!g && !p)
     return true;
-  if (!a && b || !b && a)
+  if (!g && p || !p && g)
     return false;
-  if (strcmp(a->OpType().c_str(), b->OpType().c_str()) != 0)
+  if (check_optype && strcmp(g->OpType().c_str(), p->OpType().c_str()) != 0)
     return false;
-  // if (a->GetInputEdgesCount() != b->GetInputEdgesCount() ||
-  //     a->GetOutputEdgesCount() != b->GetOutputEdgesCount())
-  //   return false;
+  if (check_domain && domain_map.count(p->Name()) && domain_map[p->Name()].size() && !domain_map[p->Name()].count(g->Domain()))
+    return false;
+  if (check_version && version_map.count(p->Name()) && version_map[p->Name()].size() && !version_map[p->Name()].count(g->SinceVersion()))
+    return false;
+  for (auto& func : customized_constriants) {
+    if (!func(g, p, target, pattern)) return false;
+  }
 
   return true;
 }
 
 // let's assume that the graph and pattern do not have a circle.
-bool find_match(const Node* g, const Node* p, std::unordered_set<const Node*>& graph_path, std::unordered_set<const Node*>& pattern_path,
-                std::vector<PNN>& matched) {
+bool PatternGraph::find_match(const Node* g, const Node* p, std::unordered_set<const Node*>& graph_path, std::unordered_set<const Node*>& pattern_path,
+                              std::vector<PNN>& matched, const Graph& target, const Graph& pattern) {
   PARSER_MSG(std::cout << "jump in. g: " << g->Name() << "  p: " << p->Name() << std::endl;)
   // Ensure that the two nodes have same properties
-  if (!node_equal_properties(g, p)) {
+  if (!node_equal_properties(g, p, target, pattern)) {
     PARSER_MSG(std::cout << "return not matched properties." << std::endl;)
     return false;
   }
@@ -55,7 +56,7 @@ bool find_match(const Node* g, const Node* p, std::unordered_set<const Node*>& g
     bool has_matched_branch = false;
     for (auto gin_iter = g->InputNodesBegin(); gin_iter != g->InputNodesEnd(); ++gin_iter) {
       const Node& tar = *gin_iter;
-      if (!graph_path.count(&tar) && !visited_graph_nodes.count(&tar) && find_match(&tar, &cur, graph_path, pattern_path, matched)) {
+      if (!graph_path.count(&tar) && !visited_graph_nodes.count(&tar) && find_match(&tar, &cur, graph_path, pattern_path, matched, target, pattern)) {
         has_matched_branch = true;
         matches_if_success.push_back({tar.Index(), &cur});
         visited_graph_nodes.insert(&tar);
@@ -78,7 +79,7 @@ bool find_match(const Node* g, const Node* p, std::unordered_set<const Node*>& g
     bool has_matched_branch = false;
     for (auto gout_iter = g->OutputNodesBegin(); gout_iter != g->OutputNodesEnd(); ++gout_iter) {
       const Node& tar = *gout_iter;
-      if (!pattern_path.count(&cur) && !graph_path.count(&tar) && !visited_graph_nodes.count(&tar) && find_match(&tar, &cur, graph_path, pattern_path, matched)) {
+      if (!pattern_path.count(&cur) && !graph_path.count(&tar) && !visited_graph_nodes.count(&tar) && find_match(&tar, &cur, graph_path, pattern_path, matched, target, pattern)) {
         has_matched_branch = true;
         matches_if_success.push_back({tar.Index(), &cur});
         visited_graph_nodes.insert(&tar);
@@ -124,38 +125,25 @@ Status PatternGraph::TryMatch(Graph& target_graph, std::vector<PNN>& res,
     }
   }
   if (!pattern_root) {
-    return Status(common::ONNXRUNTIME, common::FAIL);
+    return Status(common::ONNXRUNTIME, common::FAIL, "Pattern root was not found.");
   }
 
   for (auto node_index : graph_topology_list) {
     auto* node = target_graph.GetNode(node_index);
     res.clear();
     std::unordered_set<const Node*> graph_path, pattern_path;
-    if (find_match(node, pattern_root, graph_path, pattern_path, res)) {
+    if (find_match(node, pattern_root, graph_path, pattern_path, res, target_graph, pattern_graph)) {
       res.push_back({node_index, pattern_root});
       return Status::OK();
     }
   }
 
-  return Status(common::ONNXRUNTIME, common::FAIL);
+  return Status(common::ONNXRUNTIME, common::FAIL, "No match for the target graph.");
 }
 
 Status PatternGraph::TryReplace(Graph& graph, const NodeDef& alternative, std::vector<std::pair<std::string, int>> fusion_inputs,
                                 std::vector<std::pair<std::string, int>> fusion_outputs,
                                 const std::unordered_set<std::string>* p_initializer_names_to_preserve) {
-  auto add_node_args_with_name = [](Graph& graph, std::string name, int idx, std::vector<NodeArg*>& args) {
-    GraphViewer viewer(graph);
-    const auto& node_topology_list = viewer.GetNodesInTopologicalOrder();
-    for (auto node_index : node_topology_list) {
-      auto node = graph.GetNode(node_index);
-      if (node->Name() == name) {
-        args.push_back(node->MutableInputDefs()[idx]);
-        return Status::OK();
-      }
-    }
-    return Status(common::ONNXRUNTIME, common::FAIL);
-  };
-
   std::vector<PNN> match_results;
   ORT_RETURN_IF_ERROR(TryMatch(graph, match_results, p_initializer_names_to_preserve));
   InlinedVector<std::reference_wrapper<Node>> matched_nodes;
@@ -163,6 +151,19 @@ Status PatternGraph::TryReplace(Graph& graph, const NodeDef& alternative, std::v
     auto node = graph.GetNode(iter->first);
     matched_nodes.push_back(*node);
   }
+
+  auto add_node_args_with_name = [&match_results](Graph& graph, std::string name, int idx, std::vector<NodeArg*>& args) {
+    GraphViewer viewer(graph);
+    // const auto& node_topology_list = viewer.GetNodesInTopologicalOrder();
+    for (auto [node_index, pattern_node] : match_results) {
+      if (pattern_node->Name() == name) {
+        auto target_node = graph.GetNode(node_index);
+        args.push_back(target_node->MutableInputDefs()[idx]);
+        return Status::OK();
+      }
+    }
+    return Status(common::ONNXRUNTIME, common::FAIL);
+  };
 
   std::vector<NodeArg*> input_args, output_args;
   for (auto item : fusion_inputs) {
