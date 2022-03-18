@@ -937,7 +937,7 @@ Status SessionState::CreateSubgraphSessionState(bool allow_unassigned_node_ep) {
   for (auto& node : graph_.Nodes()) {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       const auto& ep = node.GetExecutionProviderType();
-      ORT_ENFORCE(!ep.empty() || allow_unassigned_node_ep, "Node execution provider type should be assigned.");
+      ORT_ENFORCE(!ep.empty() || allow_unassigned_node_ep, "Node execution provider type must not be empty.");
       if (!ep.empty() && ep != kCpuExecutionProvider && ep != kCudaExecutionProvider) {
         // SessionState is only used when ORT is executing the subgraph. If a non-ORT EP has taken the control flow
         // node containing the subgraph it will create whatever state it needs internally.
