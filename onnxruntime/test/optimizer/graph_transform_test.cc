@@ -149,6 +149,24 @@ TEST_F(GraphTransformationTests, IdentityWithSharedNodeArgNotEliminated) {
   ASSERT_TRUE(op_to_count["Add"] == 1);
 }
 
+TEST_F(GraphTransformationTests, DequantizeLinearNodeNotEliminated) {
+  auto model_uri = MODEL_FOLDER "qdq_with_multi_consumer_dq_nodes.fixed.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["DequantizeLinear"], 25);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(),
+                                                     TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  // CommonSubexpressionElimination should skip the DequantizeLinear nodes
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["DequantizeLinear"], 25);
+}
+
 TEST_F(GraphTransformationTests, IdentityInputIsGraphOutputNotEliminated) {
   auto model_uri = MODEL_FOLDER "scan9_sum.onnx";
   std::shared_ptr<Model> model;
@@ -4827,6 +4845,22 @@ TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
       ASSERT_EQ(op_to_count["Cast"], expected_casts_count);
     }
   }
+}
+
+TEST(TempTest, LoadModel) {
+  Status status;
+  auto model_uri = ORT_TSTR("D:/temp/pt_mobilenet_v2_qdq.basic.batch_size_1.opset15.qdq_opt.ort");
+  {
+    std::shared_ptr<Model> model;
+    status = Model::Load(model_uri, model, nullptr, DefaultLoggingManager().DefaultLogger());
+    ASSERT_TRUE(status.IsOK()) << status;
+  }
+
+  SessionOptions so;
+  so.session_logid = "TempTest.LoadModel";
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+  ASSERT_STATUS_OK(session_object.Initialize());  // optimizers run during initialization
 }
 
 }  // namespace test
