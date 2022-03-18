@@ -6,6 +6,8 @@
 
 from pathlib import Path
 from typing import List, Union
+import sys
+import os
 import logging
 import numpy
 import torch
@@ -14,6 +16,9 @@ from onnxruntime import InferenceSession
 from t5_encoder import T5EncoderInputs
 from past_helper import PastKeyValuesHelper
 
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+from torch_onnx_export_helper import torch_onnx_export
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,7 +26,6 @@ class T5DecoderInit(torch.nn.Module):
     """ A T5 decoder with LM head to create initial past key values.
         This model is only called once during starting decoding.
     """
-
     def __init__(self,
                  decoder: torch.nn.Module,
                  lm_head: torch.nn.Module,
@@ -58,7 +62,6 @@ class T5DecoderInit(torch.nn.Module):
 
 class T5Decoder(torch.nn.Module):
     """ A T5 decoder with LM head and past key values"""
-
     def __init__(self, decoder, lm_head, config):
         super().__init__()
         self.decoder = decoder
@@ -89,7 +92,6 @@ class T5Decoder(torch.nn.Module):
 
 
 class T5DecoderInputs:
-
     def __init__(self, decoder_input_ids, encoder_attention_mask, encoder_hidden_states, past_key_values=None):
         self.decoder_input_ids: torch.LongTensor = decoder_input_ids
         self.encoder_attention_mask: torch.LongTensor = encoder_attention_mask
@@ -160,7 +162,6 @@ class T5DecoderInputs:
 
 
 class T5DecoderHelper:
-
     @staticmethod
     def export_onnx(decoder: Union[T5Decoder, T5DecoderInit],
                     device: torch.device,
@@ -250,7 +251,7 @@ class T5DecoderHelper:
                     }
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
-        torch.onnx.export(decoder,
+        torch_onnx_export(decoder,
                           args=tuple(input_list),
                           f=onnx_model_path,
                           export_params=True,
