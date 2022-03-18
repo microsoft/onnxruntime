@@ -35,7 +35,7 @@ positional arguments:
 optional arguments:
   -h, --help            show this help message and exit
   --dim_param DIM_PARAM
-                        Symbolic parameter name. Provider dim_value if specified.
+                        Symbolic parameter name. Provide dim_value if specified.
   --dim_value DIM_VALUE
                         Value to replace dim_param with in the model. Must be > 0.
   --input_name INPUT_NAME
