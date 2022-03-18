@@ -1,4 +1,4 @@
-# Known issues
+# Known Limits
 # 1. Anchors are not supported in GHA
 # https://github.community/t/support-for-yaml-anchors/16128/90
 # 2. Nested Virutalizaiton isn't supported in Azure pipeline
@@ -21,8 +21,7 @@ jobs:
   - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
     displayName: Install coreutils and ninja
 
-  - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh \
-            $(pwd)
+  - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
     displayName: Setup gradle wrapper to use gradle 6.8.3
 
   # We build the host protoc to <ORT_ROOT>/protobuf_install
@@ -185,8 +184,7 @@ jobs:
         --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
         --build_java \
         --code_coverage \
-        --skip_tests \
-      && ls
+        --skip_tests
     displayName: NNAPI EP, Build
 
   - task: CopyFiles@2
