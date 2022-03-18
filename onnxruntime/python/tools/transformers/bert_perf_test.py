@@ -148,29 +148,27 @@ def create_io_binding(sess, input_tensors, output_tensors):
     return io_binding
 
 def onnxruntime_inference_with_io_binding(session, all_inputs, output_names, test_setting):
-
-    inputs = random.choice(all_inputs)
-    result = session.run(output_names, inputs)
-    outputs = {}
-    for i in range(len(output_names)):
-        outputs[output_names[i]] = result[i]
-
-    device = 'cuda' if test_setting.use_gpu else 'cpu'
-    input_tensors, output_tensors = create_input_output_tensors(inputs, outputs, device)
-    io_binding = create_io_binding(session, input_tensors, output_tensors)
-
-    # warm up
-    for iter in range(1):
-        session.run_with_iobinding(io_binding)
-
     results = []
     latency_list = []
-    max_iters = 10
-    for iter in range(max_iters):
-        start_time = timeit.default_timer()
+    device = 'cuda' if test_setting.use_gpu else 'cpu'
+    for test_case_id, inputs in enumerate(all_inputs):
+        result = session.run(output_names, inputs)
+        outputs = {}
+        for i in range(len(output_names)):
+            outputs[output_names[i]] = result[i]
+
+        input_tensors, output_tensors = create_input_output_tensors(inputs, outputs, device)
+        io_binding = create_io_binding(session, input_tensors, output_tensors)
+
+        # warm up
         session.run_with_iobinding(io_binding)
-        latency = timeit.default_timer() - start_time
-        latency_list.append(latency)
+
+        for i in range(test_setting.test_times):
+            start_time = timeit.default_timer()
+            session.run_with_iobinding(io_binding)
+            latency = timeit.default_timer() - start_time
+            latency_list.append(latency)
+
     return results, latency_list
 
 def onnxruntime_inference(session, all_inputs, output_names):
@@ -212,9 +210,7 @@ def run_one_test(model_setting, test_setting, perf_results, all_inputs, intra_op
 
     all_latency_list = []
     if test_setting.use_io_binding:
-        for i in range(test_setting.test_times):
-            results, latency_list = onnxruntime_inference_with_io_binding(session, all_inputs, output_names, test_setting)
-            all_latency_list.extend(latency_list)
+        results, all_latency_list = onnxruntime_inference_with_io_binding(session, all_inputs, output_names, test_setting)
     else:
         for i in range(test_setting.test_times):
             results, latency_list = onnxruntime_inference(session, all_inputs, output_names)
