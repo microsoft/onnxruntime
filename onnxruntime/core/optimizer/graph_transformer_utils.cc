@@ -23,8 +23,6 @@
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/constant_folding.h"
-#include "core/optimizer/conv_activation_fusion.h"
-#include "core/optimizer/add_relu_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
@@ -217,7 +215,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                                    onnxruntime::kAclExecutionProvider,
                                                                                    onnxruntime::kArmNNExecutionProvider,
                                                                                    onnxruntime::kOpenCLExecutionProvider};
-      const InlinedHashSet<std::string_view> opencl_ep = {onnxruntime::kOpenCLExecutionProvider};
 
       if (!disable_quant_qdq) {
         // currently we don't support QDQS8ToU8Transformer in a minimal build and if supported, this needs to run in
@@ -234,7 +231,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<DynamicQuantizeMatMulFusion>(cpu_ep));
 
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_opencl_eps));
-      transformers.emplace_back(std::make_unique<AddReluFusion>(opencl_ep));
 
       transformers.emplace_back(std::make_unique<GeluFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<LayerNormFusion>(cpu_cuda_rocm_eps));

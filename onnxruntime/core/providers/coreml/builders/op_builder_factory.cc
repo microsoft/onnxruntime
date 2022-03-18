@@ -17,7 +17,6 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   {  // Add
     CreateBinaryOpBuilder("Add", op_registrations);
-    CreateBinaryOpBuilder("AddRelu", op_registrations);
   }
 
   {  // Activations
