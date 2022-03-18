@@ -181,9 +181,11 @@ TEST(GraphRuntimeOptimizationTest, SaveRuntimeOptimizationToOrtFormat) {
 
 namespace {
 using GraphOpCountsCheckerFn = std::function<void(const OpCountMap& loaded_ops, const OpCountMap& initialized_ops)>;
+using GraphCheckerFn = std::function<void(const Graph& graph)>;
 
 void LoadAndInitializeSession(const SessionOptions& so, const PathString& input_model_path,
-                              const GraphOpCountsCheckerFn& graph_op_count_checker_fn) {
+                              const GraphOpCountsCheckerFn& graph_op_count_checker_fn,
+                              const GraphCheckerFn& graph_checker_fn = {}) {
   InferenceSessionWrapper session{so, GetEnvironment()};
 
   ASSERT_STATUS_OK(session.Load(input_model_path));
@@ -194,7 +196,13 @@ void LoadAndInitializeSession(const SessionOptions& so, const PathString& input_
 
   const auto initialized_ops = CountOpsInGraph(session.GetGraph());
 
-  graph_op_count_checker_fn(loaded_ops, initialized_ops);
+  if (graph_op_count_checker_fn) {
+    graph_op_count_checker_fn(loaded_ops, initialized_ops);
+  }
+
+  if (graph_checker_fn) {
+    graph_checker_fn(session.GetGraph());
+  }
 }
 
 void SaveAndLoadRuntimeOptimizationsForModel(
@@ -217,7 +225,7 @@ void SaveAndLoadRuntimeOptimizationsForModel(
     if (do_save) {
       SessionOptions so{};
       ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT"));
-      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigSaveRuntimeOptimizations, "1"));
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigMinimalBuildOptimizations, "save"));
       so.graph_optimization_level = TransformerLevel::Level2;
       so.optimized_model_filepath = saved_runtime_optimizations_model_path;
 
@@ -244,6 +252,54 @@ void SaveAndLoadRuntimeOptimizationsForModel(
   run_test(/* do_save */ true);
 #endif  // !defined(ORT_MINIMAL_BUILD)
   run_test(/* do_save */ false);
+}
+
+// if level 3 optimizations are enabled the NHWC transformer should convert the QLinearConv nodes to use channels_last
+void CheckNhwcTransformerIsApplied() {
+  const auto saved_runtime_optimizations_model_path =
+      ORT_TSTR("testdata/transform/runtime_optimization/qdq_convs.runtime_optimizations.ort");
+
+  // load and replay runtime optimizations
+  {
+    SessionOptions so{};
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
+    so.graph_optimization_level = TransformerLevel::Level3;
+
+    GraphCheckerFn checker_fn = [](const Graph& graph) {
+      for (const auto& node : graph.Nodes()) {
+        if (node.OpType() == "QLinearConv") {
+          EXPECT_EQ(node.Domain(), kMSDomain);
+          bool has_channels_last_set = false;
+          for (const auto& attr : node.GetAttributes()) {
+            if (attr.first == "channels_last") {
+              EXPECT_EQ(attr.second.i(), 1);
+              has_channels_last_set = true;
+              break;
+            }
+          }
+          EXPECT_TRUE(has_channels_last_set);
+        }
+      }
+    };
+
+    ASSERT_NO_FATAL_FAILURE(LoadAndInitializeSession(
+        so, saved_runtime_optimizations_model_path,
+        [](const OpCountMap& loaded_ops, const OpCountMap& initialized_ops) {
+          constexpr int n = 3;  // expected number of QDQ Convs to fuse
+
+          EXPECT_EQ(loaded_ops,
+                    (OpCountMap{{"DequantizeLinear", n * 3},
+                                {"QuantizeLinear", n},
+                                {"Conv", n}}));
+
+          // should have internal version of QLinearConv that runs NHWC, and transposes around each of those nodes
+          // for the layout conversion.
+          EXPECT_EQ(initialized_ops,
+                    (OpCountMap{{"Transpose", 6},
+                                {"com.microsoft.QLinearConv", n}}));
+        },
+        checker_fn));
+  }
 }
 }  // namespace
 
@@ -282,6 +338,46 @@ TEST(GraphRuntimeOptimizationTest, ConvActivation) {
                               {"com.microsoft.FusedConv", expected_num_fusions}}));
       });
 }
+
+TEST(GraphRuntimeOptimizationTest, TestNhwcTransformer) {
+  CheckNhwcTransformerIsApplied();
+}
+
+#if !defined(ORT_MINIMAL_BUILD)
+TEST(GraphRuntimeOptimizationTest, TestOnlyApplyMinimalBuildOptimizations) {
+  // This test assumes that AttentionFusion is not included in the minimal build optimizations.
+  // Update it if that changes.
+
+  // When setting the option to only apply minimal build optimizations, verify that AttentionFusion does not run.
+  {
+    SessionOptions so{};
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigMinimalBuildOptimizations, "apply"));
+    so.graph_optimization_level = TransformerLevel::Level2;
+
+    LoadAndInitializeSession(
+        so,
+        ORT_TSTR("testdata/transform/fusion/attention_int32_mask.onnx"),
+        [](const OpCountMap& /*initialized_ops*/, const OpCountMap& loaded_ops) {
+          // expect no fused node
+          EXPECT_EQ(OpCount(loaded_ops, "com.microsoft.Attention"), 0);
+        });
+  }
+
+  // Otherwise, it should run.
+  {
+    SessionOptions so{};
+    so.graph_optimization_level = TransformerLevel::Level2;
+
+    LoadAndInitializeSession(
+        so,
+        ORT_TSTR("testdata/transform/fusion/attention_int32_mask.onnx"),
+        [](const OpCountMap& /*initialized_ops*/, const OpCountMap& loaded_ops) {
+          // expect fused node
+          EXPECT_EQ(OpCount(loaded_ops, "com.microsoft.Attention"), 1);
+        });
+  }
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 

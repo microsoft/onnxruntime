@@ -12,7 +12,6 @@ import onnx
 import onnxruntime
 from onnx import helper, TensorProto, ModelProto
 from onnx import onnx_pb as onnx_proto
-from six import string_types
 from enum import Enum
 
 from .quant_utils import QuantType, smooth_distribution, apply_plot
@@ -140,19 +139,32 @@ class CalibraterBase:
 
 
 class MinMaxCalibrater(CalibraterBase):
-    def __init__(self, model, op_types_to_calibrate=[], augmented_model_path='augmented_model.onnx', symmetric=False, use_external_data_format=False):
+    def __init__(self, 
+                model,
+                op_types_to_calibrate=[],
+                augmented_model_path='augmented_model.onnx',
+                symmetric=False,
+                use_external_data_format=False,
+                moving_average=False,
+                averaging_constant=0.01):
         '''
         :param model: ONNX model to calibrate. It can be a ModelProto or a model path
         :param op_types_to_calibrate: operator types to calibrate. By default, calibrate all the float32/float16 tensors.
         :param augmented_model_path: save augmented model to this path.
         :param symmetric: make range of tensor symmetric (central point is 0).
         :param use_external_data_format: use external data format to store model which size is >= 2Gb
+        :param moving_average: compute the moving average of the minimum and maximum values instead of the global minimum and maximum.
+        :param averaging_constant: constant smoothing factor to use when computing the moving average.
         '''
         super(MinMaxCalibrater, self).__init__(model, op_types_to_calibrate, augmented_model_path, symmetric, use_external_data_format)
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
         self.num_model_outputs = len(self.model.graph.output)
         self.model_original_outputs = set(output.name for output in self.model.graph.output)
+        self.moving_average = moving_average
+        if moving_average and (averaging_constant < 0 or averaging_constant > 1):
+            raise ValueError("Invalid averaging constant, which should not be < 0 or > 1.")
+        self.averaging_constant = averaging_constant
 
     def augment_graph(self):
         '''
@@ -222,8 +234,12 @@ class MinMaxCalibrater(CalibraterBase):
             return new_range
 
         for key, value in old_range.items(): 
-            min_value = min(value[0], new_range[key][0])
-            max_value = max(value[1], new_range[key][1])
+            if self.moving_average:
+                min_value = value[0] + self.averaging_constant * (new_range[key][0] - value[0])
+                max_value = value[1] + self.averaging_constant * (new_range[key][1] - value[1])
+            else:
+                min_value = min(value[0], new_range[key][0])
+                max_value = max(value[1], new_range[key][1])
             new_range[key] = (min_value, max_value)
 
         return new_range
@@ -258,8 +274,12 @@ class MinMaxCalibrater(CalibraterBase):
         for i in range(0, len(added_output_names), 2):
             min_value = 0
             max_value = 0
-            min_value_array = min(merged_added_output_dict[added_output_names[i]])
-            max_value_array = max(merged_added_output_dict[added_output_names[i + 1]])
+            if self.moving_average:
+                min_value_array = np.mean(merged_added_output_dict[added_output_names[i]], axis = 0)
+                max_value_array = np.mean(merged_added_output_dict[added_output_names[i + 1]], axis = 0)
+            else:
+                min_value_array = min(merged_added_output_dict[added_output_names[i]])
+                max_value_array = max(merged_added_output_dict[added_output_names[i + 1]])
             if type(min_value_array) == int or min_value_array.size > 0:
                 min_value = float(min_value_array)
             if type(max_value_array) == int or max_value_array.size > 0:
@@ -579,7 +599,7 @@ class HistogramCollector(CalibrationDataCollector):
 
         print("Number of tensors : {}".format(len(histogram_dict)))
         print("Number of histogram bins : {}".format(self.num_bins))
-        print("Percentile : {}".format(percentile))
+        print("Percentile : ({},{})".format(100.0 - percentile, percentile))
 
         for tensor, histogram in histogram_dict.items():
             hist = histogram[0]
@@ -587,11 +607,12 @@ class HistogramCollector(CalibrationDataCollector):
             total = hist.sum()
             cdf = np.cumsum(hist/total)
             if self.symmetric:
-                idx_right = np.searchsorted(cdf, percentile/100)
-                thresholds_dict[tensor] = (-float(hist_edges[idx_right]), float(hist_edges[idx_right]))
+                idx_right = np.searchsorted(cdf, percentile / 100.0)
+                thresholds_dict[tensor] = (-float(hist_edges[idx_ringht]), float(hist_edges[idx_right]))
             else:
-                idx_right = np.searchsorted(cdf, percentile/200)
-                idx_left = np.searchsorted(cdf, (1.0 - percentile/200))
+                percent_to_cut_one_side = (100.0 - percentile) / 200.0
+                idx_right = np.searchsorted(cdf, 1.0 - percent_to_cut_one_side)
+                idx_left = np.searchsorted(cdf, percent_to_cut_one_side)
                 thresholds_dict[tensor] = (float(hist_edges[idx_left]), float(hist_edges[idx_right]))
 
             # Plot histogram for debug only
@@ -716,10 +737,14 @@ def create_calibrator(model,
     if calibrate_method == CalibrationMethod.MinMax:
         # default settings for min-max algorithm
         symmetric = False if 'symmetric' not in extra_options else extra_options['symmetric']
+        moving_average = False if 'moving_average' not in extra_options else extra_options['moving_average']
+        averaging_constant = 0.01 if 'averaging_constant' not in extra_options else extra_options['averaging_constant']
         return MinMaxCalibrater(
             model, op_types_to_calibrate, augmented_model_path,
             use_external_data_format=use_external_data_format,
-            symmetric=symmetric
+            symmetric=symmetric,
+            moving_average=moving_average,
+            averaging_constant=averaging_constant
         )
     elif calibrate_method == CalibrationMethod.Entropy:
         # default settings for entropy algorithm

@@ -24,14 +24,17 @@ Status QDQFinalCleanupTransformer::ApplyImpl(Graph& graph, bool& modified, int g
     ORT_RETURN_IF_ERROR(Recurse(q_node, modified, graph_level, logger));
 
     if (!QDQ::MatchQNode(q_node) ||
-        !graph_utils::IsSupportedProvider(q_node, GetCompatibleExecutionProviders()) ||
+        // not filtering on provider currently
+        // !graph_utils::IsSupportedProvider(q_node, GetCompatibleExecutionProviders()) ||
         !optimizer_utils::CheckOutputEdges(graph, q_node, 1)) {
       continue;
     }
 
     Node& dq_node = *graph.GetNode(q_node.OutputNodesBegin()->Index());
-    if (!QDQ::MatchDQNode(dq_node) ||
-        !graph_utils::IsSupportedProvider(dq_node, GetCompatibleExecutionProviders())) {
+    if (!QDQ::MatchDQNode(dq_node) 
+        // not filtering on provider currently
+        // || !graph_utils::IsSupportedProvider(dq_node, GetCompatibleExecutionProviders())
+        ) {
       continue;
     }
 

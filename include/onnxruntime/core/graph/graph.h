@@ -53,7 +53,7 @@ struct IndexedSubGraph;
 class Model;
 class OpSignature;
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 class RuntimeOptimizationRecordContainer;
 #endif
 
@@ -342,59 +342,56 @@ class Node {
   /** Gets the number of output edges from this Node */
   size_t GetOutputEdgesCount() const noexcept { return relationships_.output_edges.size(); }
 
-  /** Add an attribute to this Node with specified attribute name and value. */
-  void AddAttribute(std::string attr_name, const ONNX_NAMESPACE::AttributeProto& value);
-  void AddAttribute(std::string attr_name, ONNX_NAMESPACE::AttributeProto&& value);
+  /** Adds an AttributeProto to this Node.
+  @remarks The attribute name is used as the key in the attribute map. */
+  void AddAttributeProto(ONNX_NAMESPACE::AttributeProto value);
 
-#define ADD_ATTR_INTERFACES(TypeName)                              \
-  void AddAttribute(std::string attr_name, const TypeName& value); \
-  void AddAttribute(std::string attr_name,                         \
-                    gsl::span<TypeName const> values);
+  // keep this signature in sync with ADD_ATTR_SINGLE_INTERFACE below
+  /** Adds an attribute to this Node with the specified attribute name and value. */
+  void AddAttribute(std::string attr_name, int64_t value);
 
-#define ADD_ATTR_MOVE_INTERFACE(TypeName) \
-  void AddAttribute(std::string attr_name, TypeName&& value);
+  // keep this signature in sync with ADD_ATTR_LIST_INTERFACE below
+  /** Adds an attribute to this Node with the specified attribute name and values. */
+  void AddAttribute(std::string attr_name, gsl::span<const int64_t> values);
 
-  void AddAttribute(std::string attr_name, std::string value);
-  void AddAttribute(std::string attr_name, gsl::span<std::string const> values);
+#define ADD_ATTR_SINGLE_INTERFACE(Type) \
+  void AddAttribute(std::string attr_name, Type value)
 
-  ADD_ATTR_INTERFACES(int64_t)
-  ADD_ATTR_INTERFACES(float)
-  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TensorProto)
-  ADD_ATTR_MOVE_INTERFACE(ONNX_NAMESPACE::TensorProto)
+#define ADD_ATTR_LIST_INTERFACE(Type) \
+  void AddAttribute(std::string attr_name, gsl::span<const Type> values)
+
+#define ADD_ATTR_INTERFACES(Type)  \
+  ADD_ATTR_SINGLE_INTERFACE(Type); \
+  ADD_ATTR_LIST_INTERFACE(Type)
+
+  ADD_ATTR_INTERFACES(float);
+  ADD_ATTR_INTERFACES(std::string);
+  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TensorProto);
 #if !defined(DISABLE_SPARSE_TENSORS)
-  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::SparseTensorProto)
-  ADD_ATTR_MOVE_INTERFACE(ONNX_NAMESPACE::SparseTensorProto)
+  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::SparseTensorProto);
 #endif
-  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TypeProto)
-  ADD_ATTR_MOVE_INTERFACE(ONNX_NAMESPACE::TypeProto)
+  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TypeProto);
 
-  void AddAttribute(std::string attr_name, const ONNX_NAMESPACE::GraphProto& value);
-  void AddAttribute(std::string attr_name, ONNX_NAMESPACE::GraphProto&& value);
+  ADD_ATTR_SINGLE_INTERFACE(ONNX_NAMESPACE::GraphProto);
 
-  // The below overloads are made so the compiler does not attempt to resolve
-  // C-strings with a gsl::span overloads
+#undef ADD_ATTR_SINGLE_INTERFACE
+#undef ADD_ATTR_LIST_INTERFACE
+#undef ADD_ATTR_INTERFACES
+
+  // The below overload is made so the compiler does not attempt to resolve
+  // string literals with the gsl::span overload
   template <size_t N>
   void AddAttribute(std::string attr_name, const char (&value)[N]) {
     this->AddAttribute(std::move(attr_name), std::string(value, N - 1));
   }
 
-  template <size_t M, size_t N>
-  void AddAttribute(const char (&attr_name)[M], const char (&value)[N]) {
-    this->AddAttribute(std::string(attr_name, M - 1), std::string(value, N - 1));
-  }
-
-  template <size_t M, typename T>
-  void AddAttribute(const char (&attr_name)[M], T&& value) {
-    this->AddAttribute(std::string(attr_name, M - 1), std::forward<T>(value));
-  }
-
   /** Gets the Node's attributes. */
   const NodeAttributes& GetAttributes() const noexcept { return attributes_; }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Remove the specified attribute from this Node */
   bool ClearAttribute(const std::string& attr_name);
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
   /** Gets the Node's mutable attributes. */
@@ -868,13 +865,13 @@ class Graph {
     return *(result.first->second);
   }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Generate a unique name in this Graph for a NodeArg */
   std::string GenerateNodeArgName(const std::string& base_name);
 
   /** Generate a unique name in this Graph for a Node */
   std::string GenerateNodeName(const std::string& base_name);
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
   /** Copy a Node and add it to this Graph.
@@ -1159,7 +1156,7 @@ class Graph {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Sets the type of a NodeArg, replacing existing type/shape if any */
   void SetNodeArgType(NodeArg& arg, const ONNX_NAMESPACE::TypeProto& type_proto);
 
@@ -1194,7 +1191,7 @@ class Graph {
   void RemoveConsumerNode(const std::string& node_arg_name, Node* consumer) {
     node_arg_to_consumer_nodes_[node_arg_name].erase(consumer->Index());
   }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
   std::vector<Node*> GetMutableConsumerNodes(const std::string& node_arg_name) {
@@ -1299,7 +1296,7 @@ class Graph {
                                   Graph& parent_graph, const Node& parent_node,
                                   const logging::Logger& logger, std::unique_ptr<Graph>& graph);
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   const RuntimeOptimizationRecordContainer& RuntimeOptimizations() const {
     return runtime_optimizations_;
   }
@@ -1321,7 +1318,7 @@ class Graph {
   RuntimeOptimizationReplayContext& MutableRuntimeOptimizationReplayCtx() {
     return runtime_optimization_replay_context_;
   }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   // This friendship relationship should only be used to call Graph::Graph and
   // Graph::LoadGraph All other access should be via the public API.
@@ -1476,7 +1473,7 @@ class Graph {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   Status PopulateNodeArgToProducerConsumerLookupsFromNodes();
 
   template <typename TInstance>
@@ -1503,9 +1500,7 @@ class Graph {
     }
     return nullptr;
   }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   gsl::not_null<Node*> AllocateNode();
 
   // Release the node.
@@ -1513,7 +1508,7 @@ class Graph {
   bool ReleaseNode(NodeIndex node_index);
 
   Node& CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
-#endif
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   Node* NodeAtIndexImpl(NodeIndex node_index) const {
     // if we are trying to access a node that doesn't exist there's (most
@@ -1543,14 +1538,14 @@ class Graph {
                      std::hash<std::string>, std::equal_to<std::string>>
       sparse_tensor_names_;
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // Runtime optimization storage.
   // Note: runtime_optimizations_ == *runtime_optimizations_ptr_ and must be initialized
   std::unique_ptr<RuntimeOptimizationRecordContainer> runtime_optimizations_ptr_;
   RuntimeOptimizationRecordContainer& runtime_optimizations_;
 
   RuntimeOptimizationReplayContext runtime_optimization_replay_context_;
-#endif
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
@@ -1559,7 +1554,7 @@ class Graph {
   std::vector<std::unique_ptr<onnxruntime::Function>> function_container_;
 
   std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions_;
-#endif
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   // Graph nodes.
   // Element in <nodes_> may be nullptr due to graph optimization.
@@ -1603,7 +1598,7 @@ class Graph {
   // All node args owned by <*this> graph. Key is node arg name.
   std::unordered_map<std::string, std::unique_ptr<NodeArg>> node_args_;
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   int name_generator_ = 0;
 
   // Strings which have been used as node names.
@@ -1619,7 +1614,7 @@ class Graph {
 
   // node arg to its consumer nodes
   std::unordered_map<std::string, std::unordered_set<NodeIndex>> node_arg_to_consumer_nodes_;
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   const std::unordered_map<std::string, int> domain_to_version_;
 

@@ -54,6 +54,7 @@ static const char* const kOrtSessionOptionsDisableQuantQDQ = "session.disable_qu
 // other factors like whether the model was created using Quantization Aware Training or Post Training Quantization.
 // As such, it's best to test to determine if enabling this works well for your scenario.
 // The default value is "0"
+// Available since version 1.11.
 static const char* const kOrtSessionOptionsEnableQuantQDQCleanup = "session.enable_quant_qdq_cleanup";
 
 // Enable or disable gelu approximation in graph optimization. "0": disable; "1": enable. The default is "0".
@@ -80,25 +81,18 @@ static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "ses
 
 // This should only be specified when exporting an ORT format model for use on a different platform.
 // If the ORT format model will be used on ARM platforms set to "1". For other platforms set to "0"
+// Available since version 1.11.
 static const char* const kOrtSessionOptionsQDQIsInt8Allowed = "session.qdqisint8allowed";
 
-// Save information for replaying graph optimizations later instead of applying them directly.
-//
-// When an ONNX model is loaded, ORT can perform various optimizations on the graph.
-// However, when an ORT format model is loaded, the logic to perform these optimizations may not be available because
-// this scenario must be supported by minimal builds.
-// When loading an ONNX model, ORT can optionally save the effects of some optimizations for later replay in an ORT
-// format model. These are known as "runtime optimizations" - in an ORT format model, they happen at runtime.
-//
-// Note: This option is only applicable when loading an ONNX model and saving an ORT format model.
-//
-// Note: Runtime optimizations are only supported for certain optimizations at the extended level or higher.
-// Unsupported optimizations at those levels are not applied at all, while optimizations at other levels are applied
-// directly.
-//
-// "0": disabled, "1": enabled
-// The default is "0".
-static const char* const kOrtSessionOptionsConfigSaveRuntimeOptimizations = "optimization.save_runtime_optimizations";
+// Specifies how minimal build graph optimizations are handled in a full build.
+// These optimizations are at the extended level or higher.
+// Possible values and their effects are:
+// "save": Save runtime optimizations when saving an ORT format model.
+// "apply": Only apply optimizations available in a minimal build.
+// ""/<unspecified>: Apply optimizations available in a full build.
+// Available since version 1.11.
+static const char* const kOrtSessionOptionsConfigMinimalBuildOptimizations =
+    "optimization.minimal_build_optimizations";
 
 // Note: The options specific to an EP should be specified prior to appending that EP to the session options object in
 // order for them to take effect.

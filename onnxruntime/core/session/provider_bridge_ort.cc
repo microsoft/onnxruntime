@@ -207,10 +207,10 @@ struct ProviderHostImpl : ProviderHost {
 
   std::string GetEnvironmentVar(const std::string& var_name) override { return Env::Default().GetEnvironmentVar(var_name); }
 
-  InlinedHashSet<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                 const std::string& provider_type,
-                                                 gsl::span<const KernelRegistry* const> kernel_registries,
-                                                 gsl::span<const NodeIndex> tentative_nodes) override {
+  std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
+                                                     const std::string& provider_type,
+                                                     gsl::span<const KernelRegistry* const> kernel_registries,
+                                                     gsl::span<const NodeIndex> tentative_nodes) override {
     return onnxruntime::GetCpuPreferredNodes(graph, provider_type, kernel_registries, tentative_nodes);
   }
 
@@ -556,8 +556,10 @@ struct ProviderHostImpl : ProviderHost {
   void KernelDefBuilder__VariadicAlias(KernelDefBuilder* p, int input_offset, int output_offset) override { p->VariadicAlias(input_offset, output_offset); }
   void KernelDefBuilder__ExternalOutputs(KernelDefBuilder* p) override { p->ExternalOutputs(); }
   void KernelDefBuilder__AllocateInputsContiguously(KernelDefBuilder* p) override { p->AllocateInputsContiguously(); }
+#ifdef ENABLE_TRAINING
   void KernelDefBuilder__MayStridedInput(KernelDefBuilder* p, int input_index) override { p->MayStridedInput(input_index); }
   void KernelDefBuilder__MayStridedOutput(KernelDefBuilder* p, int input_index, int output_index) override { p->MayStridedOutput(input_index, output_index); }
+#endif
 
   std::unique_ptr<KernelDef> KernelDefBuilder__Build(KernelDefBuilder* p) override { return p->Build(); }
 
@@ -720,7 +722,7 @@ struct ProviderHostImpl : ProviderHost {
 
   Status Graph__Resolve(Graph* p) override { return p->Resolve(); }
   void Graph__AddInitializedTensor(Graph* p, const ONNX_NAMESPACE::TensorProto& tensor) override { p->AddInitializedTensor(tensor); }
-  Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const gsl::span<NodeArg* const> & input_args, const gsl::span<NodeArg* const>& output_args, const NodeAttributes* attributes, const std::string& domain) override {
+  Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const gsl::span<NodeArg* const>& input_args, const gsl::span<NodeArg* const>& output_args, const NodeAttributes* attributes, const std::string& domain) override {
     return p->AddNode(name, op_type, description, input_args, output_args, attributes, domain);
   }
 
@@ -785,6 +787,7 @@ struct ProviderHostImpl : ProviderHost {
   int OpKernelContext__InputCount(const OpKernelContext* p) override { return p->InputCount(); }
   int OpKernelContext__OutputCount(const OpKernelContext* p) override { return p->OutputCount(); }
   Status OpKernelContext__GetTempSpaceAllocator(const OpKernelContext* p, AllocatorPtr* output) override { return p->GetTempSpaceAllocator(output); }
+  Status OpKernelContext__GetTempSpaceCPUAllocator(const OpKernelContext* p, AllocatorPtr* output) override { return p->GetTempSpaceCPUAllocator(output); }
   bool OpKernelContext__GetUseDeterministicCompute(const OpKernelContext* p) override { return p->GetUseDeterministicCompute(); }
   bool OpKernelContext__TryGetInferredOutputShape(const OpKernelContext* p, int index, TensorShape& shape) override { return p->TryGetInferredOutputShape(index, shape); }
   bool OpKernelContext__TryGetInferredInputShape(const OpKernelContext* p, int index, TensorShape& shape) override { return p->TryGetInferredInputShape(index, shape); }
@@ -887,9 +890,14 @@ struct ProviderHostImpl : ProviderHost {
   const OrtMemoryInfo& Tensor__Location(const Tensor* p) override { return p->Location(); }
   int32_t Tensor__GetElementType(const Tensor* p) override { return p->GetElementType(); }
   MLDataType Tensor__DataType(const Tensor* p) override { return p->DataType(); }
+#ifdef ENABLE_TRAINING
   gsl::span<const int64_t> Tensor__Strides(const Tensor* p) override { return p->Strides(); }
   bool Tensor__IsContiguous(const Tensor* p) override { return p->IsContiguous(); }
-  void Tensor__SetStrides(Tensor* p, const TensorShapeVector& new_strides) override { return p->SetStrides(new_strides); }
+  void Tensor__SetShapeAndStrides(Tensor* p, const TensorShape& new_shape,
+                                  gsl::span<const int64_t> new_strides) override {
+    return p->SetShapeAndStrides(new_shape, new_strides);
+  }
+#endif
 
   // SparseTensor(wrapped)
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -1108,6 +1116,7 @@ OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const 
   cuda_options_converted.default_memory_arena_cfg = legacy_cuda_options->default_memory_arena_cfg;
   // Use default value as this field is not available in OrtCUDAProviderOptions
   cuda_options_converted.cudnn_conv_use_max_workspace = 0;
+  cuda_options_converted.enable_cuda_graph = 0;
 
   return cuda_options_converted;
 }
@@ -1614,6 +1623,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateCUDAProviderOptions, _Outptr_ OrtCUDAProvider
   (*out)->user_compute_stream = nullptr;
   (*out)->default_memory_arena_cfg = nullptr;
   (*out)->cudnn_conv_use_max_workspace = 0;
+  (*out)->enable_cuda_graph = 0;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);

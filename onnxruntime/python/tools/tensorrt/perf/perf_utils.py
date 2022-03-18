@@ -36,8 +36,6 @@ latency_over_time_name = 'latency_over_time'
 specs_name = 'specs' 
 session_name = 'session'
 
-time_string_format = '%Y-%m-%d %H:%M:%S'
-
 # column names 
 model_title = 'Model'
 group_title = 'Group'
@@ -51,6 +49,12 @@ session_ending = ' \n session creation time (s)'
 ort_provider_list = [cpu, cuda, trt, cuda_fp16, trt_fp16]
 provider_list = [cpu, cuda, trt, standalone_trt, cuda_fp16, trt_fp16, standalone_trt_fp16]
 table_headers = [model_title] + provider_list
+
+# graph options 
+disable = 'disable'
+basic = 'basic'
+extended = 'extended'
+enable_all = 'all'
 
 def is_standalone(ep):
     return ep == standalone_trt or ep == standalone_trt_fp16

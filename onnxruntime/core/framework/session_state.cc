@@ -988,48 +988,50 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
   // kernel hashes for model are in top level SessionState
   const auto& compiled_kernel_hashes = GetCompiledKernelHashes();
 
-  const bool original_nodes_should_exist =
-      compiled_kernel_hashes.empty()
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
-      && graph_.RuntimeOptimizationReplayCtx().num_replayed_optimizations == 0
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
-      ;
-
   // process the nodes that existed when the model was created
   for (FbsSessionStateViewer::Index i = 0, end = fbs_session_state_viewer.GetNumNodeKernelInfos(); i < end; ++i) {
     const auto node_kernel_info = fbs_session_state_viewer.GetNodeKernelInfo(i);
 
     Node* const node = graph_.GetNode(node_kernel_info.node_index);
     if (node == nullptr) {
-      // this is OK if we have compiled kernels/replayed runtime optimizations and the original node was replaced.
+#if defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
+      // this is OK if we have compiled kernels and the original node was replaced.
       // if not the model is invalid.
-      ORT_RETURN_IF(original_nodes_should_exist,
+      ORT_RETURN_IF(compiled_kernel_hashes.empty(),
                     "Can't find node with index ", node_kernel_info.node_index, ". Invalid ORT format model.");
+#endif  // defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
       continue;
     }
 
     ORT_RETURN_IF_ERROR(add_kernel_by_hash(*node, node_kernel_info.kernel_def_hash));
   }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // process the nodes that were added by replaying any loaded runtime optimizations
   for (const auto& [node_index, kernel_def_hash] :
        graph_.RuntimeOptimizationReplayCtx().produced_node_index_to_kernel_def_hash) {
     const auto* node = graph_.GetNode(node_index);
-    ORT_RETURN_IF(node == nullptr,
-                  "Can't find runtime optimization produced node with index ", node_index);
 
-    ORT_RETURN_IF_ERROR(add_kernel_by_hash(*node, kernel_def_hash));
+    // NHWC optimizer may replace a node, so a missing node isn't necessarily an error
+    // ORT_RETURN_IF(node == nullptr, "Can't find runtime optimization produced node with index ", node_index);
+
+    if (node != nullptr) {
+      ORT_RETURN_IF_ERROR(add_kernel_by_hash(*node, kernel_def_hash));
+    }
   }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
   // lookup the hashes for any nodes we compiled or added during graph partitioning.
   // These node indexes for compiled nodes as well as newly added nodes are not in node_indices
   // as they were created at runtime.
   for (const auto& node : graph_.Nodes()) {
     if (kernel_create_info_map_.count(node.Index()) == 0) {
-      if (node.Domain() == kOnnxDomain || node.Domain() == kOnnxDomainAlias) {
+      if (node.Domain() == kOnnxDomain || node.Domain() == kOnnxDomainAlias || node.Domain() == kMSDomain) {
+        // two possible places to get hash from
         auto kernel_hash = utils::GetHashValueFromStaticKernelHashMap(node.OpType(), node.SinceVersion());
+        if (!kernel_hash.has_value()) {
+          kernel_hash = utils::GetInternalNhwcOpHash(node);
+        }
+
         if (kernel_hash.has_value()) {
           ORT_RETURN_IF_ERROR(add_kernel_by_hash(node, *kernel_hash));
         } else {
@@ -1043,6 +1045,7 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
       }
     }
   }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   if (!subgraph_session_states_.empty()) {
     for (const auto& [node_idx, session_states] : subgraph_session_states_) {
@@ -1254,11 +1257,11 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     CreateGraphInfo();
   }
 
-#if defined(ORT_MINIMAL_BUILD) && defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
-  // remove any unused initializers
-  // not needed in a full build because unused initializers should have been removed earlier by Graph::Resolve()
-  // not needed in a minimal build with runtime optimizations disabled because only runtime optimizations are expected
-  //   to possibly result in unused initializers
+#if defined(ORT_EXTENDED_MINIMAL_BUILD)
+  // Remove any unused initializers.
+  // Not needed in a full build because unused initializers should have been removed earlier by Graph::Resolve().
+  // Not needed in a basic minimal build because only runtime optimizations are expected to possibly result in unused
+  //   initializers and they are only enabled in an extended minimal build.
   {
     std::vector<std::string> unused_initializer_names;
     for (const auto& [name, tensor_proto] : graph_.GetAllInitializedTensors()) {
@@ -1273,7 +1276,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       graph_.RemoveInitializedTensor(name);
     }
   }
-#endif  // defined(ORT_MINIMAL_BUILD) && defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   // ignore any outer scope args we don't know about. this can happen if a node contains multiple subgraphs.
   std::vector<const NodeArg*> valid_outer_scope_node_args;

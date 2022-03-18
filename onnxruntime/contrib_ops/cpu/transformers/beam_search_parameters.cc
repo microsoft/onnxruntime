@@ -17,6 +17,7 @@ Status BeamSearchParameters::Validate() const {
 }
 
 void BeamSearchParameters::ParseFromAttributes(const OpKernelInfo& info) {
+  model_type = static_cast<int>(info.GetAttrOrDefault<int64_t>("model_type", 0));
   early_stopping = info.GetAttrOrDefault<int64_t>("early_stopping", 0) == 1;
   eos_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("eos_token_id", -1));
   pad_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("pad_token_id", -1));
