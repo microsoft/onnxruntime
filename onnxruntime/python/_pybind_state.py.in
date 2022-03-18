@@ -24,7 +24,8 @@ if platform.system() == "Windows":
         system_root = os.getenv("SystemRoot") or "C:\\Windows"
         if not os.path.isfile(os.path.join(system_root, "System32", "vcruntime140_1.dll")):
             warnings.warn("Please install the 2019 Visual C++ runtime and then try again. "
-                          "If you've installed the runtime in a non-standard location (other than %SystemRoot%\System32), "
+                          "If you've installed the runtime in a non-standard location "
+                          "(other than %SystemRoot%\System32), "
                           "make sure it can be found by setting the correct path.")
 
 @ONNXRUNTIME_SETDLOPENFLAGS_GLOBAL@
