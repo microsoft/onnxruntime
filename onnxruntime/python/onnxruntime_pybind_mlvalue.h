@@ -37,8 +37,6 @@ int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type);
 
 MLDataType NumpyTypeToOnnxRuntimeTensorType(int numpy_type);
 
-MLDataType NumpyTypeToOnnxRuntimeTensorType(int numpy_type);
-
 using MemCpyFunc = void (*)(void*, const void*, size_t);
 
 void CpuToCpuMemCpy(void*, const void*, size_t);
