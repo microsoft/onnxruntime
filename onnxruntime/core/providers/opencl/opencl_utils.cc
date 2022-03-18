@@ -142,23 +142,25 @@ const char* GetErrorString(cl_int error_code) {
 }
 
 Status KernelLauncher::Launch(const OpenCLExecutionProvider& exec, const NDRange& global, const NDRange& local) {
-    ORT_RETURN_IF_CL_ERROR(err_, " on setting argument ", static_cast<int>(err_index_));
-    VLOGS_DEFAULT(V_KERNEL) << "Launching " << GetKernelFunctionName()
-                            << " with global work size: " << global.ToString()
-                            << " local work size: " << local.ToString();
+  ORT_RETURN_IF_CL_ERROR(err_, " on setting argument ", static_cast<int>(err_index_));
+  VLOGS_DEFAULT(V_KERNEL) << "Launching " << GetKernelFunctionName()
+                          << " with global work size: " << global.ToString()
+                          << " local work size: " << local.ToString();
 
 #ifdef TRACY_ENABLE
-    cl_event kernel_launch_event;
-    {
-        ZoneScopedN("clEnqueueNDRangeKernel");
-        TracyCLZone(const_cast<TracyCLCtx>(exec.GetTracyCLContext()), "clEnqueueNDRangeKernel");
-        ORT_RETURN_IF_CL_ERROR(clEnqueueNDRangeKernel(exec.GetCommandQueue(), kernel_, global.Size(), nullptr, global.Data(), local.Data(), 0, nullptr, &kernel_launch_event));
-        TracyCLZoneSetEvent(kernel_launch_event);
-    }
+  cl_event kernel_launch_event;
+  {
+    ZoneScopedN("clEnqueueNDRangeKernel");
+    TracyCLZone(const_cast<TracyCLCtx>(exec.GetTracyCLContext()), "clEnqueueNDRangeKernel");
+    ORT_RETURN_IF_CL_ERROR(clEnqueueNDRangeKernel(exec.GetCommandQueue(), kernel_, global.Size(), nullptr,
+                                                  global.Data(), local.Data(), 0, nullptr, &kernel_launch_event));
+    TracyCLZoneSetEvent(kernel_launch_event);
+  }
 #else
-    ORT_RETURN_IF_CL_ERROR(clEnqueueNDRangeKernel(exec.GetCommandQueue(), kernel_, global.Size(), nullptr, global.Data(), local.Data(), 0, nullptr, nullptr));
+  ORT_RETURN_IF_CL_ERROR(clEnqueueNDRangeKernel(exec.GetCommandQueue(), kernel_, global.Size(), nullptr,
+                                                global.Data(), local.Data(), 0, nullptr, nullptr));
 #endif
-    return exec.AfterCLLaunch();
+  return exec.AfterCLLaunch();
 }
 
 }  // namespace opencl
