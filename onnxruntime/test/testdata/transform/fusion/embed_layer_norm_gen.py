@@ -44,7 +44,8 @@ def GenerateNodes(model_name, has_cast, suffix=''):
                          ["layernorm_out" + suffix],
                          "layernorm" + suffix,
                          axis=-1,
-                         epsion=0.000009999999747378752),
+                         epsion=0.000009999999747378752,
+                         domain="com.microsoft"),
         helper.make_node("Cast", ["input_mask" + suffix], ["mask_cast_out" + suffix], "mask_cast" + suffix, to=6),
         helper.make_node("ReduceSum", ["mask_cast_out" + suffix, "axes_1"], ["mask_index_out" + suffix], "mask_index" + suffix, keepdims=0) if opset_version == 13 \
             else helper.make_node("ReduceSum", ["mask_cast_out" + suffix], ["mask_index_out" + suffix], "mask_index" + suffix, axes=[1], keepdims=0),
@@ -114,7 +115,9 @@ def GenerateMultipleEmbedModel(model_name):
         ],
         initializers)
 
-    model = helper.make_model(graph)
+    model = helper.make_model(graph, opset_imports=[
+        onnx.helper.make_opsetid("", opset_version),
+        onnx.helper.make_opsetid("com.microsoft", 1)])
     onnx.save(model, model_name)
 
 
@@ -137,7 +140,9 @@ def GenerateModel3(model_name, has_cast):
         ],
         initializers)
 
-    model = helper.make_model(graph)
+    model = helper.make_model(graph, opset_imports=[
+        onnx.helper.make_opsetid("", opset_version),
+        onnx.helper.make_opsetid("com.microsoft", 1)])
     onnx.save(model, model_name)
 
 
@@ -155,7 +160,8 @@ def GenerateModel5(model_name):
         helper.make_node("LayerNormalization", ["add3_out", "layer_norm_weight", "layer_norm_bias"], ["layernorm_out"],
                          "layernorm",
                          axis=-1,
-                         epsion=0.000009999999747378752),
+                         epsion=0.000009999999747378752,
+                         domain="com.microsoft"),
         helper.make_node("Cast", ["input_mask"], ["mask_cast_out"], "mask_cast", to=6),
         helper.make_node("ReduceSum", ["mask_cast_out", "axes_1"], ["mask_index_out"], "mask_index", keepdims=0) if opset_version == 13 \
             else helper.make_node("ReduceSum", ["mask_cast_out"], ["mask_index_out"], "mask_index", axes=[1], keepdims=0),
@@ -202,7 +208,9 @@ def GenerateModel5(model_name):
         ],
         initializers)
 
-    model = helper.make_model(graph)
+    model = helper.make_model(graph, opset_imports=[
+        onnx.helper.make_opsetid("", opset_version),
+        onnx.helper.make_opsetid("com.microsoft", 1)])
     onnx.save(model, model_name)
 
 
@@ -232,7 +240,8 @@ def GenerateModel6(model_name):
         helper.make_node("LayerNormalization", ["add3_out", "layer_norm_weight", "layer_norm_bias"], ["layernorm_out"],
                          "layernorm",
                          axis=-1,
-                         epsion=0.000009999999747378752),
+                         epsion=0.000009999999747378752,
+                         domain="com.microsoft"),
         helper.make_node("Cast", ["input_mask"], ["mask_cast_out"], "mask_cast", to=6),
         helper.make_node("ReduceSum", ["mask_cast_out", "axes_1"], ["mask_index_out"], "mask_index", keepdims=0) if opset_version == 13 \
             else helper.make_node("ReduceSum", ["mask_cast_out"], ["mask_index_out"], "mask_index", axes=[1], keepdims=0),
@@ -282,7 +291,9 @@ def GenerateModel6(model_name):
         ],
         initializers)
 
-    model = helper.make_model(graph)
+    model = helper.make_model(graph, opset_imports=[
+        onnx.helper.make_opsetid("", opset_version),
+        onnx.helper.make_opsetid("com.microsoft", 1)])
     onnx.save(model, model_name)
 
 
@@ -326,7 +337,8 @@ def GenerateNodes2(attention_heads):
         helper.make_node("LayerNormalization", ["add1_out", "layer_norm_weight", "layer_norm_bias"], ["layernorm_out"],
                          "layernorm",
                          axis=-1,
-                         epsion=0.000009999999747378752),
+                         epsion=0.000009999999747378752,
+                         domain="com.microsoft"),
         helper.make_node("Cast", ["input_mask"], ["mask_cast_out"], "mask_cast", to=6),
         helper.make_node("ReduceSum", ["mask_cast_out", "axes_1"], ["mask_index_out"], "mask_index", keepdims=0) if opset_version == 13 \
             else helper.make_node("ReduceSum", ["mask_cast_out"], ["mask_index_out"], "mask_index", axes=[1], keepdims=0),
@@ -364,7 +376,9 @@ def GenerateModel7(model_name):
         ],
         initializers)
 
-    model = helper.make_model(graph)
+    model = helper.make_model(graph, opset_imports=[
+        onnx.helper.make_opsetid("", opset_version),
+        onnx.helper.make_opsetid("com.microsoft", 1)])
     onnx.save(model, model_name)
 
 
@@ -399,7 +413,9 @@ def GenerateModel8(model_name):
         ],
         initializers)
 
-    model = helper.make_model(graph)
+    model = helper.make_model(graph, opset_imports=[
+        onnx.helper.make_opsetid("", opset_version),
+        onnx.helper.make_opsetid("com.microsoft", 1)])
     onnx.save(model, model_name)
 
 
@@ -445,7 +461,9 @@ def GenerateModel9(model_name):
         ],
         initializers)
 
-    model = helper.make_model(graph)
+    model = helper.make_model(graph, opset_imports=[
+        onnx.helper.make_opsetid("", opset_version),
+        onnx.helper.make_opsetid("com.microsoft", 1)])
     onnx.save(model, model_name)
 
 if opset_version == 11:

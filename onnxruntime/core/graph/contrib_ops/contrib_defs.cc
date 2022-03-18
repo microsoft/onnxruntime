@@ -2113,7 +2113,7 @@ void RegisterContribSchemas() {
           });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SimplifiedLayerNormalization)
-      .SetDomain(kOnnxDomain)
+      .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
       .SetDoc("SimplifiedLayerNormalization")

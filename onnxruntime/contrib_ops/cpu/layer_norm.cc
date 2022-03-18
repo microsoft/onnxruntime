@@ -15,7 +15,7 @@ namespace contrib {
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       LayerNormalization,                                         \
-      kOnnxDomain,                                                \
+      kMSDomain,                                                \
       1,                                                          \
       T,                                                          \
       kCpuExecutionProvider,                                      \
@@ -24,7 +24,7 @@ namespace contrib {
       LayerNorm<T, false>);                                       \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       SimplifiedLayerNormalization,                               \
-      kOnnxDomain,                                                \
+      kMSDomain,                                                \
       1,                                                          \
       T,                                                          \
       kCpuExecutionProvider,                                      \

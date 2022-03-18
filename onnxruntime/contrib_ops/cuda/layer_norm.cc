@@ -13,7 +13,7 @@ namespace cuda {
 #define REGISTER_KERNEL_TYPED(T, U)                               \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       LayerNormalization,                                         \
-      kOnnxDomain,                                                \
+      kMSDomain,                                                \
       1,                                                          \
       T##_##U,                                                    \
       kCudaExecutionProvider,                                     \
@@ -23,7 +23,7 @@ namespace cuda {
       LayerNorm<T, U, false>);                                    \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       SimplifiedLayerNormalization,                               \
-      kOnnxDomain,                                                \
+      kMSDomain,                                                \
       1,                                                          \
       T##_##U,                                                    \
       kCudaExecutionProvider,                                     \
