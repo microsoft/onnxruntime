@@ -3556,6 +3556,8 @@ TEST_F(GraphTransformationTests, LayerNormFusionTest) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<LayerNormFusion>(), TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+  auto graph_proto = graph.ToGraphProto();
+  std::cout << graph_proto.DebugString() << std::endl;
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Div"] == 0);
@@ -3564,7 +3566,7 @@ TEST_F(GraphTransformationTests, LayerNormFusionTest) {
   ASSERT_TRUE(op_to_count["ReduceMean"] == 0);
   ASSERT_TRUE(op_to_count["Pow"] == 0);
   ASSERT_TRUE(op_to_count["Sqrt"] == 0);
-  ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.LayerNormalization"] == 1);
 
   for (const Node& node : graph.Nodes()) {
     if (node.OpType() == "LayerNormalization") {

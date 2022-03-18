@@ -307,7 +307,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                           "LayerNormalization",
                                           "fused LayerNorm subgraphs ",
                                           layer_norm_input_defs,
-                                          {}, {}, kOnnxDomain);
+                                          {}, {}, kMSDomain);
 
     // Get constant "epsilon" from "Add2" node if available. Else, default value will be used.
     const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, add2_node.MutableInputDefs()[1]->Name());
@@ -559,7 +559,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
                                           "SimplifiedLayerNormalization",
                                           "fused LayerNorm subgraphs ",
                                           layer_norm_input_defs,
-                                          {}, {}, kOnnxDomain);
+                                          {}, {}, kMSDomain);
 
     // Get constant "epsilon" from "Add" node if available. Else, default value will be used.
     const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, add_node.MutableInputDefs()[1]->Name());
