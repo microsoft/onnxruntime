@@ -23,7 +23,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
     DFT);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -31,7 +31,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
     IDFT);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -357,21 +357,6 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
   }
   Y_shape[axis] = dft_output_size;
   auto Y = ctx->Output(0, Y_shape);
-
-  // ctx->Output(...) will sometimes return a pointer that matched the input tensor.
-  // This happens when there are multiple nodes of the same type that are chained together directly.
-  // This happens freqently in the multidimensional DFT or IDFT cases, due to their implementation
-  // relying on chaining the output of a DFT along one axis with a DFT along another (due to separability of the n-dim DFT).
-  // The implementaion below is not inplace safe, and so the input needs to be copied to a temporary tensor
-  // to avoid corrupting the input while implementing the output. 
-  AllocatorPtr allocator_ptr;
-  std::unique_ptr<onnxruntime::Tensor> x_copy;
-  if (Y->MutableDataRaw() == X->DataRaw()) {
-    ORT_RETURN_IF_ERROR(ctx->GetTempSpaceCPUAllocator(&allocator_ptr));
-    x_copy = Tensor::Create(X->DataType(), X_shape, allocator_ptr);
-    memcpy(x_copy->MutableDataRaw(), X->DataRaw(), X->SizeInBytes());
-    X = x_copy.get();
-  }
 
   // Get data type
   auto data_type = X->DataType();
