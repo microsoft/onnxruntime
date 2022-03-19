@@ -199,8 +199,10 @@ static Status fft_radix2(OpKernelContext* /*ctx*/,
       auto first_idx = bit_reverse(k, current_significant_bits);
       auto second_idx = bit_reverse(midpoint + k, current_significant_bits);
       for (size_t j = 0; j < number_of_samples; j += i) {
-        std::complex<T>* even = (Y_data + j*Y_data_stride) + k;
-        std::complex<T>* odd = (Y_data + j*Y_data_stride) + (midpoint + k);
+        auto even_index = k + j;
+        auto odd_index  = k + j + midpoint;
+        std::complex<T>* even = (Y_data + even_index * Y_data_stride);
+        std::complex<T>* odd = (Y_data + odd_index * Y_data_stride);
         std::complex<T> first = *even + (V[first_idx] * *odd);
         std::complex<T> second = *even + (V[second_idx] * *odd);
         *even = first;
@@ -220,7 +222,7 @@ static Status fft_radix2(OpKernelContext* /*ctx*/,
   if (is_onesided) {
     auto destination = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + Y_offset;
     for (size_t i = 0; i < number_of_samples; i++) {
-      *(destination + Y_stride * i) = *(Y_data + i);
+      *(destination + Y_stride * i) = *(Y_data + i * Y_data_stride);
     }
   }
 
@@ -286,8 +288,6 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
     total_dfts /= X->Shape()[X->Shape().NumDimensions() - 1];
     batch_and_signal_rank -= 1;
   }
-
-
 
   // Calculate x/y offsets/strides
   for (size_t i = 0; i < total_dfts; i++)
@@ -357,6 +357,21 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, int64_t axis, boo
   }
   Y_shape[axis] = dft_output_size;
   auto Y = ctx->Output(0, Y_shape);
+
+  // ctx->Output(...) will sometimes return a pointer that matched the input tensor.
+  // This happens when there are multiple nodes of the same type that are chained together directly.
+  // This happens freqently in the multidimensional DFT or IDFT cases, due to their implementation
+  // relying on chaining the output of a DFT along one axis with a DFT along another (due to separability of the n-dim DFT).
+  // The implementaion below is not inplace safe, and so the input needs to be copied to a temporary tensor
+  // to avoid corrupting the input while implementing the output. 
+  AllocatorPtr allocator_ptr;
+  std::unique_ptr<onnxruntime::Tensor> x_copy;
+  if (Y->MutableDataRaw() == X->DataRaw()) {
+    ORT_RETURN_IF_ERROR(ctx->GetTempSpaceCPUAllocator(&allocator_ptr));
+    x_copy = Tensor::Create(X->DataType(), X_shape, allocator_ptr);
+    memcpy(x_copy->MutableDataRaw(), X->DataRaw(), X->SizeInBytes());
+    X = x_copy.get();
+  }
 
   // Get data type
   auto data_type = X->DataType();

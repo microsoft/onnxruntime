@@ -475,7 +475,135 @@ static void WindowFunction(const wchar_t* window_operator_name, TensorKind kind)
 }
 #endif
 
+static void SaveSoftwareBitmap(const wchar_t* filename, winrt::Windows::Graphics::Imaging::SoftwareBitmap bitmap) {
+  std::wstring modulePath = FileHelpers::GetModulePath();
+  winrt::Windows::Storage::StorageFolder folder = winrt::Windows::Storage::StorageFolder::GetFolderFromPathAsync(modulePath).get();
+  winrt::Windows::Storage::StorageFile file = folder.CreateFileAsync(filename, winrt::Windows::Storage::CreationCollisionOption::ReplaceExisting).get();
+  winrt::Windows::Storage::Streams::IRandomAccessStream write_stream = file.OpenAsync(winrt::Windows::Storage::FileAccessMode::ReadWrite).get();
+  winrt::Windows::Graphics::Imaging::BitmapEncoder encoder = winrt::Windows::Graphics::Imaging::BitmapEncoder::CreateAsync(winrt::Windows::Graphics::Imaging::BitmapEncoder::JpegEncoderId(), write_stream).get();
+  encoder.SetSoftwareBitmap(bitmap);
+  encoder.FlushAsync().get();
+}
+
 #if !defined(BUILD_INBOX) && defined(BUILD_MS_EXPERIMENTAL_OPS)
+static void DiscreteFourierTransform_2D() {
+
+  printf("\nN-Dimensional Discrete Fourier Transform\n");
+
+  using namespace winrt::Windows::Storage;
+  using namespace winrt::Windows::Storage::Streams;
+  using namespace winrt::Windows::Graphics::Imaging;
+  using namespace winrt::Windows::Media;
+  std::wstring fullImagePath = FileHelpers::GetModulePath() + L"kitten_224.png";
+
+  winrt::Windows::Storage::StorageFile imagefile = StorageFile::GetFileFromPathAsync(fullImagePath).get();
+  IRandomAccessStream stream = imagefile.OpenAsync(FileAccessMode::Read).get();
+  SoftwareBitmap softwareBitmap = (BitmapDecoder::CreateAsync(stream).get()).GetSoftwareBitmapAsync().get();
+  VideoFrame frame = VideoFrame::CreateWithSoftwareBitmap(softwareBitmap);
+    
+  auto corrected_image =
+      winrt::Windows::Media::VideoFrame(
+          winrt::Windows::Graphics::Imaging::BitmapPixelFormat::Bgra8,
+          INT32(256),
+          INT32(256));
+
+  frame.CopyToAsync(corrected_image).get();
+
+  auto width = corrected_image.SoftwareBitmap().PixelWidth();
+  auto height = corrected_image.SoftwareBitmap().PixelHeight();
+
+  std::vector<int64_t> shape = {1, 1, height, width};
+  std::vector<int64_t> output_shape = {1, 1, height, width};
+   
+  auto builder =
+      LearningModelBuilder::Create(13)
+        .Inputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Input.Signal", TensorKind::Float, shape))
+        .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Spectra", TensorKind::Float, output_shape))
+        .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Inverse", TensorKind::Float, output_shape))
+        .Outputs().Add(LearningModelBuilder::CreateTensorFeatureDescriptor(L"Output.Error", TensorKind::Float, output_shape))
+      .Operators().Add(Operator(L"Reshape")
+            .SetInput(L"data", L"Input.Signal")
+            .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({4}, {INT64(1), INT64(height), INT64(width), INT64(1) }))
+            .SetOutput(L"reshaped", L"reshaped_output"))
+      .Operators().Add(Operator(L"DFT", MS_EXPERIMENTAL_DOMAIN)
+          .SetInput(L"input", L"reshaped_output")
+          .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(0)}))
+          .SetOutput(L"output", L"DFT.Output.1"))
+       .Operators().Add(Operator(L"DFT", MS_EXPERIMENTAL_DOMAIN)
+          .SetInput(L"input", L"DFT.Output.1")
+          .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(1)}))
+          .SetOutput(L"output", L"DFT.Output.2"))
+       .Operators().Add(Operator(L"IDFT", MS_EXPERIMENTAL_DOMAIN)
+          .SetInput(L"input", L"DFT.Output.2")
+          .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(1)}))
+          .SetOutput(L"output", L"IDFT.Output.1"))
+       .Operators().Add(Operator(L"IDFT", MS_EXPERIMENTAL_DOMAIN)
+          .SetInput(L"input", L"IDFT.Output.1")
+          .SetAttribute(L"axis", TensorInt64Bit::CreateFromArray({}, {INT64(0)}))
+          .SetOutput(L"output", L"IDFT.Output.2"))
+        .Operators().Add(Operator(L"ReduceSumSquare")
+          .SetInput(L"data", L"DFT.Output.2")
+          .SetAttribute(L"axes", TensorInt64Bit::CreateFromArray({1}, {3}))
+          .SetAttribute(L"keepdims", TensorInt64Bit::CreateFromArray({}, {0}))
+          .SetOutput(L"reduced", L"magnitude_squared"))
+        .Operators().Add(Operator(L"Sqrt")
+          .SetInput(L"X", L"magnitude_squared")
+          .SetOutput(L"Y", L"sqrt_magnitude"))
+        .Operators().Add(Operator(L"ReduceSumSquare")
+          .SetInput(L"data", L"IDFT.Output.2")
+          .SetAttribute(L"axes", TensorInt64Bit::CreateFromArray({1}, {3}))
+          .SetAttribute(L"keepdims", TensorInt64Bit::CreateFromArray({}, {0}))
+          .SetOutput(L"reduced", L"magnitude_squared2"))
+        .Operators().Add(Operator(L"Sqrt")
+          .SetInput(L"X", L"magnitude_squared2")
+          .SetOutput(L"Y", L"sqrt_magnitude2"))
+        .Operators()
+          .Add(Operator(L"Reshape")
+          .SetInput(L"data", L"sqrt_magnitude")
+          .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({4}, {INT64(1), INT64(1), INT64(height), INT64(width) }))
+          .SetOutput(L"reshaped", L"Output.Spectra"))
+        .Operators()
+          .Add(Operator(L"Reshape")
+          .SetInput(L"data", L"sqrt_magnitude2")
+          .SetConstant(L"shape", TensorInt64Bit::CreateFromArray({4}, {INT64(1), INT64(1), INT64(height), INT64(width) }))
+          .SetOutput(L"reshaped", L"Output.Inverse"))
+        .Operators().Add(Operator(L"Sub")
+          .SetInput(L"A", L"Input.Signal")
+          .SetInput(L"B", L"Output.Inverse")
+          .SetOutput(L"C", L"Output.Error"));
+
+  auto model = builder.CreateModel();
+  
+  LearningModelSession session(model);
+  LearningModelBinding binding(session);
+
+  // Bind input
+  binding.Bind(L"Input.Signal", frame);
+
+  // Bind output
+  auto spectra = VideoFrame(BitmapPixelFormat::Bgra8, INT32(width), INT32(height));
+  binding.Bind(L"Output.Spectra", spectra);
+  auto inverse = VideoFrame(BitmapPixelFormat::Bgra8, INT32(width), INT32(height));
+  binding.Bind(L"Output.Inverse", inverse);
+
+  // Evaluate
+  auto start = std::chrono::high_resolution_clock::now();
+  auto result = session.Evaluate(binding, L"");
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::micro> evaluate_duration_in_microseconds = end - start;
+  printf("Evaluate Took: %fus\n", evaluate_duration_in_microseconds.count());
+
+  auto error = result.Outputs().Lookup(L"Output.Error").as<TensorFloat>();
+  auto error_ivv = error.GetAsVectorView();
+  for (auto i = 0; i < height * width; i++) {
+    WINML_EXPECT_TRUE(abs(error_ivv.GetAt(i)) < .001);
+  }
+
+  SaveSoftwareBitmap(L"fft2d.jpg", spectra.SoftwareBitmap());
+  SaveSoftwareBitmap(L"fft2d_inverse.jpg", inverse.SoftwareBitmap());
+  builder.Save(L"fft2d.onnx");
+}
+
 static void DiscreteFourierTransform(size_t axis, bool is_onesided = false) {
   auto axis_dim = axis + 1;
   printf("\nDiscrete Fourier Transform [axis=%d, is_onesided=%s]\n", static_cast<int>(axis_dim), is_onesided ? "true" : "false");
@@ -517,7 +645,11 @@ static void DiscreteFourierTransform(size_t axis, bool is_onesided = false) {
           }));
 
   // Evaluate
+  auto start = std::chrono::high_resolution_clock::now();
   auto result = session.Evaluate(binding, L"");
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double, std::micro> evaluate_duration_in_microseconds = end - start;
+  printf("Evaluate Took: %fus\n", evaluate_duration_in_microseconds.count());
 
   // // Check results
   // printf("Output.Spectra\n");
@@ -759,7 +891,7 @@ static void MelSpectrogramOnThreeToneSignal(
   auto result = session.Evaluate(binding, L"");
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double, std::micro> evaluate_duration_in_microseconds = end - start;
-  printf("Evaluate Took: %f\n", evaluate_duration_in_microseconds.count());
+  printf("Evaluate Took: %fus\n", evaluate_duration_in_microseconds.count());
 
   // Check the output video frame object by saving output image to disk
   std::wstring out_name = L"mel_spectrogram.jpg";
@@ -899,7 +1031,7 @@ static void ModelBuilding_DynamicMatmul() {
 
   // Print duration
   std::chrono::duration<double, std::micro> evaluate_duration_in_microseconds = end - start;
-  printf("Evaluate Took: %f\n", evaluate_duration_in_microseconds.count());
+  printf("Evaluate Took: %fus\n", evaluate_duration_in_microseconds.count());
 #endif
 }
 
@@ -930,7 +1062,7 @@ static void ModelBuilding_ConstantMatmul() {
   auto result = session.Evaluate(binding, L"");
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double, std::micro> evaluate_duration_in_microseconds = end - start;
-  printf("Evaluate Took: %f\n", evaluate_duration_in_microseconds.count());
+  printf("Evaluate Took: %fus\n", evaluate_duration_in_microseconds.count());
 #endif
 }
 
@@ -940,6 +1072,7 @@ static void ModelBuilding_DiscreteFourierTransform() {
   DiscreteFourierTransform(0, true /*onesided*/);
   DiscreteFourierTransform(1, false /*onesided*/);
   DiscreteFourierTransform(1, true /*onesided*/);
+  DiscreteFourierTransform_2D();
 
 #endif
 }
