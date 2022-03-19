@@ -325,6 +325,5 @@ jobs:
       azureSubscription: AIInfraBuild
       scriptType: bash
       scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/linux/upload_code_coverage_data.sh
-      arguments: '"$(Build.BinariesDirectory)/coverage_rpt.txt" \
-        "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" arm android nnapi'
+      arguments: '"$(Build.BinariesDirectory)/coverage_rpt.txt" "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" arm android nnapi'
       workingDirectory: '$(Build.BinariesDirectory)'
