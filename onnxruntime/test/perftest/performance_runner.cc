@@ -188,7 +188,9 @@ Status PerformanceRunner::RunParallelDuration() {
       count++;
       counter++;
       tpool->Schedule([this, &counter, &m, &cv]() {
-        session_->ThreadSafeRun();
+        auto status = RunOneIteration<false>();
+        if (!status.IsOK())
+          std::cerr << status.ErrorMessage();
         // Simplified version of Eigen::Barrier
         std::lock_guard<OrtMutex> lg(m);
         counter--;
