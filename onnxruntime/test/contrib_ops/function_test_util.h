@@ -72,6 +72,10 @@ struct FunctionTestCase {
 
   FunctionTestCase(const char* _opname, const char* _domain = onnxruntime::kMSDomain) : domain(_domain), opname(_opname), provider(new CPUExecutionProvider(CPUExecutionProviderInfo())) {}
 
+  void AddOpset(const char* opset_domain, int version) {
+    opsets[opset_domain] = version;
+  }
+
   void AddInput(std::string input_name, std::vector<int64_t> shape, std::vector<float> data, std::vector<std::string> symshape = {});
 
   template <typename T, bool GenData = true>
