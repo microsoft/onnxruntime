@@ -852,7 +852,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     if is_windows():
         if args.enable_msvc_static_runtime:
             add_default_definition(cmake_extra_defines, "CMAKE_MSVC_RUNTIME_LIBRARY",
-                                              "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+                                   "MultiThreaded$<$<CONFIG:Debug>:Debug>")
             add_default_definition(cmake_extra_defines, "ONNX_USE_MSVC_STATIC_RUNTIME", "ON")
             add_default_definition(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "ON")
             add_default_definition(cmake_extra_defines, "gtest_force_shared_crt", "OFF")
