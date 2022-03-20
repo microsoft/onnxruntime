@@ -230,6 +230,7 @@ jobs:
 - job: Test_NNAPI_EP
   pool:
     vmImage: 'macOS-11'
+  timeoutInMinutes: 120
   steps:
     - task: UsePythonVersion@0
       displayName: Use Python $(pythonVersion)
