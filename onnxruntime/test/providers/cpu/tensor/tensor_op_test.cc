@@ -224,7 +224,11 @@ void MeanVarianceNormalizationFunctionDefaultPerChannel() {
   OpTester test("MeanVarianceNormalization", 9);
   test.AddInput<float>("input", {N, C, H, W}, X);
   test.AddOutput<float>("output", {N, C, H, W}, result);
+#if defined(OPENVINO_CONFIG_MYRIAD)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Unsupported combination of indices in layer "output"
+#else
   test.Run();
+#endif
 }
 
 void MeanVarianceNormalizationFunctionAcrossChannels(std::vector<int64_t> axes) {
@@ -247,7 +251,11 @@ void MeanVarianceNormalizationFunctionAcrossChannels(std::vector<int64_t> axes) 
   test.AddAttribute("axes", axes);
   test.AddInput<float>("input", {N, C, H, W}, X);
   test.AddOutput<float>("output", {N, C, H, W}, result);
+#if defined(OPENVINO_CONFIG_MYRIAD)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Unsupported combination of indices in layer "output"
+#else
   test.Run();
+#endif
 }
 
 TEST(TensorOpTest, MeanVarianceNormalizationCPUTest) {

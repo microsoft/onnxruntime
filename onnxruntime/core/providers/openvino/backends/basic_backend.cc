@@ -357,24 +357,24 @@ void BasicBackend::StartRemoteAsyncInference(Ort::CustomOpApi& ort, OrtKernelCon
   //Set the output blob as remote blob
   #if defined (OV_API_20)
   auto graph_output_info = exe_network_.Get().outputs();
-  int output_idx=0;
   for (auto output_info_iter = graph_output_info.begin();
        output_info_iter != graph_output_info.end(); ++output_info_iter) {
     auto output_names = output_info_iter->get_names();
     std::string onnx_output_name;
     std::string output_name;
-    // use names retrieved from original ONNX model to assign the right onnx output name for the graph
+    bool output_name_found = false;
+    // using the output name retrieved from ONNX original to match with the output names returned by OV tensors
     for (auto it = subgraph_context_.output_names.begin(); it != subgraph_context_.output_names.end(); ++it) {
-      if (it->second == output_idx) {
-        onnx_output_name = it->first;
+      onnx_output_name = it->first;
+      if (output_names.find(onnx_output_name) != output_names.end()) {
+        //Assigning the output_name
+        output_name = it->first;
+        output_name_found = true;
         break;
       }
     }
-    // using the output name retrieved from ONNX original to match with the output names returned by OV tensors 
-    if (output_names.find(onnx_output_name) != output_names.end()) {
-        output_name = onnx_output_name;
-    } else {
-      ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX. " + onnx_output_name + " doesn't exist in the list of OpenVINO output tensor names");
+    if(!output_name_found) {
+      ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX. [ONNX Output: ] " + onnx_output_name + " doesn't exist in the list of OpenVINO output tensor names");
     }
   #else
   auto graph_output_info = exe_network_.Get().GetOutputsInfo();
@@ -403,7 +403,6 @@ void BasicBackend::StartRemoteAsyncInference(Ort::CustomOpApi& ort, OrtKernelCon
       #endif
         infer_request->SetTensor(output_name, tensor_ptr);
     }
-    output_idx++;
   }
 
   // Start Async inference
@@ -420,25 +419,25 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContex
   infer_request->WaitRequest();
   #if defined (OV_API_20)
   auto graph_output_info = exe_network_.Get().outputs();
-  int output_idx=0;
   for (auto output_info_iter = graph_output_info.begin();
        output_info_iter != graph_output_info.end(); ++output_info_iter) {
     OVTensorPtr graph_output_blob;
     auto output_names = output_info_iter->get_names();
     std::string onnx_output_name;
     std::string output_name;
-    // use names retrieved from original ONNX model to assign the right onnx output name for the graph
+    bool output_name_found = false;
+    // using the output name retrieved from ONNX original to match with the output names returned by OV tensors
     for (auto it = subgraph_context_.output_names.begin(); it != subgraph_context_.output_names.end(); ++it) {
-      if (it->second == output_idx) {
-        onnx_output_name = it->first;
+      onnx_output_name = it->first;
+      if (output_names.find(onnx_output_name) != output_names.end()) {
+        //Assigning the output_name
+        output_name = it->first;
+        output_name_found = true;
         break;
       }
     }
-    // using the output name retrieved from ONNX original to match with the output names returned by OV tensors 
-    if (output_names.find(onnx_output_name) != output_names.end()) {
-        output_name = onnx_output_name;
-    } else {
-      ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX. " + onnx_output_name + " doesn't exist in the list of OpenVINO output tensor names");
+    if(!output_name_found) {
+      ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX. [ONNX Output: ] " + onnx_output_name + " doesn't exist in the list of OpenVINO output tensor names");
     }
     graph_output_blob = infer_request->GetTensor(output_name);
     size_t batch_size = 1;
@@ -450,7 +449,6 @@ void BasicBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContex
       size_t batch_slice = 0;
       FillOutputBlob(graph_output_blob, output_tensor, ort, batch_slice);
     }
-    output_idx++;
   }
   #else
   auto graph_output_info = exe_network_.Get().GetOutputsInfo();
