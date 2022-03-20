@@ -230,6 +230,9 @@ jobs:
       inputs:
         versionSpec: $(pythonVersion)
 
+    - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
+      displayName: Setup gradle wrapper to use gradle 6.8.3
+
     - script: |
         python3 tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
@@ -237,7 +240,16 @@ jobs:
         --start --emulator-extra-args="-partition-size 4096" \
         --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
       displayName: Start Android emulator
-      
+
+    # Start switching to jdk 11 after the Android Emulator is started
+    # since Android SDK manager requires java 8
+    - task: JavaToolInstaller@0
+      displayName: Use jdk 11
+      inputs:
+        versionSpec: '11'
+        jdkArchitectureOption: 'x64'
+        jdkSourceOption: 'PreInstalled'
+
     - script: |
         python3 tools/ci_build/build.py \
         --android \
@@ -280,18 +292,6 @@ jobs:
           $(Build.BinariesDirectory)/protobuf \
           $(Build.SourcesDirectory)/protobuf_install
       displayName: Build Host Protoc
-
-    - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-      displayName: Setup gradle wrapper to use gradle 6.8.3
-
-    # Start switching to jdk 11 after the Android Emulator is started
-    # since Android SDK manager requires java 8
-    - task: JavaToolInstaller@0
-      displayName: Use jdk 11
-      inputs:
-        versionSpec: '11'
-        jdkArchitectureOption: 'x64'
-        jdkSourceOption: 'PreInstalled'
 
     - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
       # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
