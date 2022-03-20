@@ -185,6 +185,7 @@ jobs:
         --build_java \
         --code_coverage \
         --skip_tests
+      find . | grep .gc
     displayName: NNAPI EP, Build
 
   - task: CopyFiles@2
