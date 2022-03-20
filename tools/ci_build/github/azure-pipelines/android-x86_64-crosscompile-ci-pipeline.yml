@@ -119,6 +119,7 @@ jobs:
         --android_ndk_path $ANDROID_NDK_HOME \
         --android_abi=x86_64 \
         --android_api=30 \
+        --parallel \
         --test
       displayName: CPU EP, Test on Android Emulator
 
@@ -285,8 +286,10 @@ jobs:
         --android_abi=x86_64 \
         --android_api=29 \
         --use_nnapi \
+        --parallel \
         --test \
         --build_java \
+        --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
         --code_coverage
       displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
 
