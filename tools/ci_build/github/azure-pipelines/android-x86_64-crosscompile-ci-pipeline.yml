@@ -209,6 +209,13 @@ jobs:
       overWrite: true
 
   - task: CopyFiles@2
+    displayName: Copy java files
+    inputs:
+      contents: 'java/**/'
+      targetFolder: $(Build.ArtifactStagingDirectory)
+      overWrite: true
+
+  - task: CopyFiles@2
     displayName: Copy gcno files
     inputs:
       contents: 'build_nnapi/**/*.gcno'
