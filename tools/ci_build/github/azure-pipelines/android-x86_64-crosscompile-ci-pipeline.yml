@@ -208,6 +208,13 @@ jobs:
       targetFolder: $(Build.ArtifactStagingDirectory)
       overWrite: true
 
+  - task: CopyFiles@2
+    displayName: Copy gcno files
+    inputs:
+      contents: 'build_nnapi/**/*.gcno'
+      targetFolder: $(Build.ArtifactStagingDirectory)
+      overWrite: true
+
   - task: PublishBuildArtifacts@1
     inputs:
       pathToPublish: $(Build.ArtifactStagingDirectory)
