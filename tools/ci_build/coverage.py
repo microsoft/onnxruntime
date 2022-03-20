@@ -56,6 +56,9 @@ def main():
     cmd.append(os.path.join(source_dir, "onnxruntime"))
     cmd.extend([".", "-o"])
     cmd.append(os.path.join(cwd, "coverage_rpt.txt"))
+    print(cmd)
+    run_subprocess(["find", os.path.join(cwd, "CMakeFiles")])
+    print("-------------------------------\n")
     run_subprocess(cmd, cwd=os.path.join(cwd, "CMakeFiles"))
 
 
