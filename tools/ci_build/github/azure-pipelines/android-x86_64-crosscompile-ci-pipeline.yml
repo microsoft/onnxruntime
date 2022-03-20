@@ -247,6 +247,7 @@ jobs:
         --android_abi=x86_64 \
         --android_api=29 \
         --use_nnapi \
+        --build_java \
         --test \
         --code_coverage
       displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
@@ -257,6 +258,9 @@ jobs:
           --build_dir build_nnapi \
           --android_sdk_path $ANDROID_HOME
       displayName: Retrieve runtime code coverage files from the emulator and analyze
+
+    - script:: /bin/bash cat '$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt'
+      displayName: Print coverage report
 
     - task: PublishPipelineArtifact@0
       displayName: 'Publish code coverage report'
