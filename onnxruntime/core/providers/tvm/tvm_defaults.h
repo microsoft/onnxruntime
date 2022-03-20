@@ -7,6 +7,10 @@
 namespace onnxruntime {
 namespace tvm {
 
+namespace env_vars {
+   static const std::string kDumpSubgraphs = "ORT_TVM_DUMP_SUBGRAPHS";
+}  // namespace env_vars
+
 constexpr const char* default_executor_type = "vm";
 constexpr const char* vm_executor_type = "vm";
 constexpr const char* graph_executor_type = "graph";

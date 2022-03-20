@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef TVM_EXECUTION_PROVIDER_H
-#define TVM_EXECUTION_PROVIDER_H
+#ifndef TVM_SO_EXECUTION_PROVIDER_H
+#define TVM_SO_EXECUTION_PROVIDER_H
 
 #include <string>
 #include <vector>
@@ -22,21 +22,21 @@ namespace onnxruntime {
   class NodeArg;
 namespace tvm {
 
-class TvmExecutionProvider : public IExecutionProvider {
+class TvmSoExecutionProvider : public IExecutionProvider {
   using Compiler = tvm::TVMCompiler;
   using Compilers = std::unordered_map<std::string, std::shared_ptr<Compiler>>;
   using Runner = tvm::TVMRunner;
   using Runners = std::unordered_map<std::string, std::shared_ptr<Runner>>;
 
 public:
-  explicit TvmExecutionProvider(const TvmEPOptions& options);
-  virtual ~TvmExecutionProvider();
+  explicit TvmSoExecutionProvider(const TvmEPOptions& options);
+  virtual ~TvmSoExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph,
                 const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
 
-  common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+  common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
   AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
@@ -44,10 +44,10 @@ public:
 private:
   void printOptions();
   std::shared_ptr<tvm::TvmModule> compileModel(const std::string& func_name,
-                                               const GraphViewer& graph_viewer,
+                                               const Graph& graph,
                                                InputsInfoMap& inputs_info);
-  void setInputShapesForFreezedNN(const GraphViewer& graph_viewer, TVMTensorShapes& input_shapes, InputsInfoMap& all_input_shapes);
-  void setInputShapesForUnfreezedNN(const GraphViewer& graph_viewer, TVMTensorShapes& input_shapes, InputsInfoMap& all_input_shapes);
+  void setInputShapesForFreezedNN(const Graph& graph, TVMTensorShapes& input_shapes, InputsInfoMap& all_input_shapes);
+  void setInputShapesForUnfreezedNN(const Graph& graph, TVMTensorShapes& input_shapes, InputsInfoMap& all_input_shapes);
   TensorShapeVector getInputShape(const NodeArg* node);
   TensorShapeVector convertTensorShape(const ONNX_NAMESPACE::TensorShapeProto& shape_proto);
   void prepareOutputTensors(const std::shared_ptr<tvm::TvmModule>& mod, std::vector<DLTensor>& output_tensors, size_t num);
@@ -66,4 +66,4 @@ private:
 }  // namespace tvm
 }  // namespace onnxruntime
 
-#endif  // TVM_EXECUTION_PROVIDER_H
+#endif  // TVM_SO_EXECUTION_PROVIDER_H
