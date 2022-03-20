@@ -33,6 +33,7 @@ std::set<std::string> ops_supported_only_in_model = {
     "Cast",
     "Concat",
     "ConstantOfShape",
+    "DequantizeLinear",
     "Dropout",
     "Expand",
     "EyeLike",
@@ -40,6 +41,7 @@ std::set<std::string> ops_supported_only_in_model = {
     "GatherND",
     "Identity",
     "Loop",
+    "LSTM",
     "NonMaxSuppression",
     "NonZero",
     "Not",
@@ -178,7 +180,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Resize", V_2021_3, {"MYRIAD"}},
     {"Resize", V_2022_1, {"All"}},
     {"Reshape", V_2020_4, {"All"}},
-    {"ReverseSequence", V_2022_1, {"All"}},
+    {"ReverseSequence", V_2022_1, {"CPU","GPU"}},
     {"RoiAlign", V_2021_1, {"All"}},
     {"Round", V_2021_2, {"MYRIAD"}},
     {"Round", V_2021_4, {"All"}},
@@ -384,6 +386,13 @@ void DataOps::populate_op_mode_supported() {
                                 const bool data_is_int64 = node->InputDefs()[0]->Type()->find("int64") != std::string::npos;
                                 return data_is_int64;
                                }
+                               if (device_id_.find("MYRIAD") != std::string::npos) {
+                                //int64,int8,uint8 data type is not supported on MYRIAD
+                                const bool data_is_int64 = node->InputDefs()[0]->Type()->find("int64") != std::string::npos;
+                                const bool data_is_int8 = node->InputDefs()[0]->Type()->find("int8") != std::string::npos;
+                                const bool data_is_uint8 = node->InputDefs()[0]->Type()->find("uint8") != std::string::npos;
+                                return (data_is_int64 || data_is_int8 || data_is_uint8);
+                               }
                                return false;
                              }};
     op_list_.insert({"Clip", obj});
@@ -432,6 +441,22 @@ void DataOps::populate_op_mode_supported() {
                                     return true;
                                   }
                                 }
+                                return false;
+                             }};
+    op_list_.insert({"Conv", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet& ) {
+                               if (device_id_.find("MYRIAD") != std::string::npos) {
+                                  const auto& attributes = node->GetAttributes();
+                                  auto conv_filter = attributes.find("kernel_shape");
+                                  auto& ints = conv_filter->second().ints();
+                                  //If the kernel size is not 2D, the op is rejected in case of MYRIAD
+                                  if(ints.size() !=2) {
+                                    return true;
+                                  }
+                               }
                                 return false;
                              }};
     op_list_.insert({"Conv", obj});
@@ -614,6 +639,25 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"GatherElements", obj});
   }
   {
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               if (device_id_.find("MYRIAD") != std::string::npos) {
+                                const auto& indices_arg = node->InputDefs()[0];
+                                const auto& output_arg = node->OutputDefs()[0];
+                                if (indices_arg->TypeAsProto()->tensor_type().elem_type() != output_arg->TypeAsProto()->tensor_type().elem_type())
+                                  return true;
+                                if ((indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16) ||
+                                    (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) ||
+                                    (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) ||
+                                    (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64)) {
+                                  return false;
+                                }
+                               }
+                               return true;
+                             }};
+    op_list_.insert({"GatherElements", obj});
+  }
+  {
     UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                const auto& input = node->InputDefs()[0];
@@ -636,6 +680,18 @@ void DataOps::populate_op_mode_supported() {
                                return (initializers.find(cond->Name()) == initializers.end());
                              }};
     op_list_.insert({"Loop", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               //If the Input size of LSTM is greater than 3, it is rejected.
+                               if (device_id_.find("MYRIAD") != std::string::npos) {
+                                 if (node->InputDefs().size() > 3)
+                                   return true;
+                               }
+                               return false;
+                             }};
+    op_list_.insert({"LSTM", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2021_3, V_2021_4},
@@ -896,7 +952,7 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2022_1},
                              [this](const Node* node, const InitializedTensorSet&) {
-                               if (device_id_.find("GPU") != std::string::npos) {
+                               if (device_id_.find("GPU") != std::string::npos || device_id_.find("MYRIAD") != std::string::npos) {
                                  //INT32 dataype is not supported as input
                                  for (size_t i = 0; i < node->InputDefs().size(); i++) {
                                  if (node->InputDefs()[i]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32)
@@ -916,6 +972,35 @@ void DataOps::populate_op_mode_supported() {
                                if (axis_attr->second().i() < 0)
                                  return true;
                                if (device_id_.find("MYRIAD") != std::string::npos) {
+                                 const auto& input_arg = node->InputDefs()[2];
+                                 auto updates_shape = input_arg->Shape();
+                                 const auto& output_arg = node->OutputDefs()[0];
+                                 auto out_shape = output_arg->Shape();
+                                 //If updates attribute dim value greater than output_shape dim value, we reject
+                                 if(node->InputDefs()[2]->Name() == "updates")
+                                 {
+                                  size_t updates_size = updates_shape->dim_size();
+                                  if(updates_size == 2) {
+                                    if(updates_shape->dim(1).dim_value() > out_shape->dim(1).dim_value())
+                                      return true;
+                                  }
+                                  }
+                               }
+                               return false;
+                             }};
+    op_list_.insert({"Scatter", obj});
+    op_list_.insert({"ScatterElements", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               if (device_id_.find("MYRIAD") != std::string::npos) {
+                                 const auto& attributes = node->GetAttributes();
+                                 auto axis_attr = attributes.find("axis");
+                                 //Negative axis is not supported
+                                 if (axis_attr->second().i() < 0)
+                                   return true;
+
                                  const auto& input_arg = node->InputDefs()[2];
                                  auto updates_shape = input_arg->Shape();
                                  const auto& output_arg = node->OutputDefs()[0];
