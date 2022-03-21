@@ -102,7 +102,7 @@ TvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
   return result;
 }
 
-common::Status TvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
+common::Status TvmExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                              std::vector<NodeComputeInfo>& node_compute_funcs) {
   printOptions();
   for (auto& fused_node_graph : fused_nodes_and_graphs) {
@@ -123,7 +123,7 @@ common::Status TvmExecutionProvider::Compile(const std::vector<Node*>& nodes,
     std::string onnx_model_str;
     model_proto.SerializeToString(&onnx_model_str);
     compilers_[func_name] = std::make_shared<Compiler>(std::move(onnx_model_str),
-                              fused_node->ModelPath().ToPathString(),
+                              fused_node.ModelPath().ToPathString(),
                               int(opset->version()));
     InputsInfoMap all_input_shapes;
     auto mod = compileModel(func_name, graph_body_viewer, all_input_shapes);
