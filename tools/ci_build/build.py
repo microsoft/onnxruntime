@@ -737,7 +737,7 @@ def normalize_arg_list(nested_list):
 
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home,
                         mpi_home, nccl_home, tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
-                        path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args, emscripten_settings):
+                        path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
     cmake_args = [
@@ -1042,6 +1042,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             ]
         
         # add default emscripten settings
+        emscripten_settings = normalize_arg_list(args.emscripten_settings)
+
+        # set -s MALLOC
+        if args.wasm_malloc is not None:
+            add_default_definition(emscripten_settings, 'MALLOC', args.wasm_malloc)
         add_default_definition(emscripten_settings, 'MALLOC', 'dlmalloc')
 
         if (emscripten_settings):
@@ -2111,16 +2116,11 @@ def main():
             # To debug ONNX Runtime WebAssembly, use ONNX Runtime Web to debug ort-wasm.wasm in browsers.
             raise BuildError("WebAssembly tests cannot be enabled with flag --enable_wasm_debug_info")
         
-        emscripten_settings = normalize_arg_list(args.emscripten_settings)
         if args.wasm_malloc is not None:
             # mark --wasm_malloc as deprecated
             log.warning(
                 "Flag '--wasm_malloc=<Value>' is deprecated. "
                 "Please use '--emscripten_settings MALLOC=<Value>'.")
-
-            # if both '--wasm_malloc=<Value>' and '--emscripten_settings MALLOC=<Value>' are specified,
-            # we use the value from --emscripten_settings
-            add_default_definition(emscripten_settings, 'MALLOC', args.wasm_malloc)        
 
     if args.code_coverage and not args.android:
         raise BuildError("Using --code_coverage requires --android")
@@ -2345,7 +2345,7 @@ def main():
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
             tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
-            path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args, emscripten_settings)
+            path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args)
 
     if args.clean:
         clean_targets(cmake_path, build_dir, configs)
