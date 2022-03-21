@@ -51,8 +51,7 @@ download_files() {
 setup() {
     apt update
     apt-get install -y --no-install-recommends libprotobuf-dev protobuf-compiler pciutils
-    pip install --upgrade pip
-    pip install flatbuffers pandas coloredlogs numpy flake8 onnx Cython onnxmltools sympy packaging psutil 
+    pip install -r requirements.txt    
     pip install -i https://test.pypi.org/simple/ ort-nightly-gpu
     cleanup_files
     download_files
