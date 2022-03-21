@@ -130,7 +130,7 @@ if (onnxruntime_ENABLE_EAGER_MODE)
   endif()
   if (MSVC) 
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4100" "/wd4324" "/wd4458" "/wd4127" "/wd4193" "/wd4624" "/wd4702")
-    target_compile_options(onnxruntime_pybind11_state PRIVATE "/bigobj" "/wd4275" "/wd4244" "/wd4267")
+    target_compile_options(onnxruntime_pybind11_state PRIVATE "/bigobj" "/wd4275" "/wd4244" "/wd4267" "/wd4067")
   endif()
 endif()
 
@@ -380,6 +380,7 @@ file(GLOB onnxruntime_python_datasets_data CONFIGURE_DEPENDS
 set(onnxruntime_mobile_util_srcs
     ${REPO_ROOT}/tools/python/util/check_onnx_model_mobile_usability.py
     ${REPO_ROOT}/tools/python/util/convert_onnx_models_to_ort.py
+    ${REPO_ROOT}/tools/python/util/file_utils.py
     ${REPO_ROOT}/tools/python/util/logger.py
     ${REPO_ROOT}/tools/python/util/make_dynamic_shape_fixed.py
     ${REPO_ROOT}/tools/python/util/onnx_model_utils.py
@@ -397,6 +398,9 @@ file(GLOB onnxruntime_mobile_helpers_srcs CONFIGURE_DEPENDS
     ${REPO_ROOT}/tools/ci_build/github/android/nnapi_supported_ops.md
     ${REPO_ROOT}/tools/ci_build/github/apple/coreml_supported_ops.md
 )
+file(GLOB onnxruntime_qdq_helper_srcs CONFIGURE_DEPENDS
+    ${REPO_ROOT}/tools/python/util/qdq_helpers/*.py
+)
 
 set(build_output_target onnxruntime_common)
 if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
@@ -408,6 +412,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/datasets
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/mobile_helpers
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/qdq_helpers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/ort_flatbuffers_py
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers
@@ -460,7 +465,17 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_mobile_util_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
-      COMMAND ${CMAKE_COMMAND} -E copy
+  # append the /tools/python/utils imports to the __init__.py that came from /onnxruntime/tools.
+  # we're aggregating scripts from two different locations, and only include selected functionality from
+  # /tools/python/util. due to that we take the full __init__.py from /onnxruntime/tools and append
+  # the required content from /tools/python/util/__init__append.py.
+  COMMAND ${CMAKE_COMMAND} -E cat
+      ${REPO_ROOT}/tools/python/util/__init__append.py >>
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/__init__.py
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_qdq_helper_srcs}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/qdq_helpers/
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_mobile_helpers_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/mobile_helpers/
   COMMAND ${CMAKE_COMMAND} -E copy

@@ -1,65 +1,107 @@
 
-===========
-API Summary
-===========
-
-Summary of public functions and classes exposed
-in *ONNX Runtime*.
+===
+API
+===
 
 .. contents::
     :local:
 
-OrtValue
-=========
+API Overview
+============
 
-*ONNX Runtime* works with native Python data structures which are mapped into ONNX data formats :
-Numpy arrays (tensors), dictionaries (maps), and a list of Numpy arrays (sequences).
-The data backing these are on CPU.
+*ONNX Runtime* loads and runs inference on a model in ONNX graph format, or ORT format (for memory and disk constrained environments).
 
-*ONNX Runtime* supports a custom data structure that supports all ONNX data formats that allows users
-to place the data backing these on a device, for example, on a CUDA supported device. This allows for
-interesting *IOBinding* scenarios (discussed below). In addition, *ONNX Runtime* supports directly
-working with *OrtValue* (s) while inferencing a model if provided as part of the input feed.
+The data consumed and produced by the model can be specified and accessed in the way that best matches your scenario.
 
-Below is an example showing creation of an *OrtValue* from a Numpy array while placing its backing memory
-on a CUDA device:
+Load and run a model
+--------------------
+
+InferenceSession is the main class of ONNX Runtime. It is used to load and run an ONNX model,
+as well as specify environment and application configuration options. 
 
 .. code-block:: python
 
-	# X is numpy array on cpu, create an OrtValue and place it on cuda device id = 0
-	ortvalue = onnxruntime.OrtValue.ortvalue_from_numpy(X, 'cuda', 0)
-	ortvalue.device_name()  # 'cuda'
-	ortvalue.shape()  # shape of the numpy array X
-	ortvalue.data_type()  # 'tensor(float)'
-	ortvalue.is_tensor()  # 'True'
+	session = onnxruntime.InferenceSession('model.onnx')
+
+	outputs = session.run([output names], inputs)
+
+ONNX and ORT format models consist of a graph of computations, modeled as operators,
+and implemented as optimized operator kernels for different hardware targets.
+ONNX Runtime orchestrates the execution of operator kernels via `execution providers`.
+An execution provider contains the set of kernels for a specific execution target (CPU, GPU, IoT etc).
+Execution provides are configured using the `providers` parameter. Kernels from different execution
+providers are chosen in the priority order given in the list of providers. In the example below
+if there is a kernel in the CUDA execution provider ONNX Runtime executes that on GPU. If not
+the kernel is executed on CPU.
+
+.. code-block:: python
+
+	session = onnxruntime.InferenceSession(model,
+	                                       providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+
+The list of available execution providers can be found here: `Execution Providers <https://onnxruntime.ai/docs/execution-providers>`_.
+
+Since ONNX Runtime 1.10, you must explicitly specify the execution provider for your target.
+Running on CPU is the only time the API allows no explicit setting of the `provider` parameter.
+In the examples that follow, the `CUDAExecutionProvider` and `CPUExecutionProvider` are used, assuming the application is running on NVIDIA GPUs.
+Replace these with the execution provider specific to your environment.
+
+You can supply other session configurations via the `session options` parameter. For example, to enable
+profiling on the session:
+
+.. code-block:: python
+
+	options = onnxruntime.SessionOptions()
+	options.enable_profiling=True
+	session = onnxruntime.InferenceSession('model.onnx', sess_options=options, providers=['CUDAExecutionProvider', 'CPUExecutionProvider']))
+
+
+Data inputs and outputs
+-----------------------
+
+The ONNX Runtime Inference Session consumes and produces data using its OrtValue class.
+
+Data on CPU
+^^^^^^^^^^^
+
+On CPU (the default), OrtValues can be mapped to and from native Python data structures: numpy arrays, dictionaries and lists of
+numpy arrays. 
+
+.. code-block:: python
+
+	# X is numpy array on cpu
+	ortvalue = onnxruntime.OrtValue.ortvalue_from_numpy(X)
+	ortvalue.device_name()  # 'cpu'
+	ortvalue.shape()        # shape of the numpy array X
+	ortvalue.data_type()    # 'tensor(float)'
+	ortvalue.is_tensor()    # 'True'
 	np.array_equal(ortvalue.numpy(), X)  # 'True'
 
 	# ortvalue can be provided as part of the input feed to a model
-	ses = onnxruntime.InferenceSession('model.onnx')
-	res = sess.run(["Y"], {"X": ortvalue})
+	session = onnxruntime.InferenceSession('model.onnx', providers=['CUDAExecutionProvider', 'CPUExecutionProvider']))
+	results = session.run(["Y"], {"X": ortvalue})
 
-IOBinding
-=========
+By default, *ONNX Runtime* always places input(s) and output(s) on CPU. Having the data on CPU
+may not optimal if the input or output is consumed and produced on a device
+other than CPU because it introduces data copy between CPU and the device.
 
-By default, *ONNX Runtime* always places input(s) and output(s) on CPU, which 
-is not optimal if the input or output is consumed and produced on a device
-other than CPU because it introduces data copy between CPU and the device. 
-*ONNX Runtime* provides a feature, *IO Binding*, which addresses this issue by
-enabling users to specify which device to place input(s) and output(s) on. 
-Here are scenarios to use this feature. 
 
-(In the following code snippets, *model.onnx* is the model to execute, 
-*X* is the input data to feed, and *Y* is the output data.)
+Data on device
+^^^^^^^^^^^^^^
 
-Scenario 1:
+*ONNX Runtime* supports a custom data structure that supports all ONNX data formats that allows users
+to place the data backing these on a device, for example, on a CUDA supported device. In ONNX Runtime,
+this called `IOBinding`.
+
+To use the `IOBinding` feature, replace `InferenceSession.run()` with `InferenceSession.run_with_iobinding()`.
 
 A graph is executed on a device other than CPU, for instance CUDA. Users can 
-use IOBinding to put input on CUDA as the follows.
+use IOBinding to copy the data onto the GPU.
 
 .. code-block:: python
 
 	# X is numpy array on cpu 
-	session = onnxruntime.InferenceSession('model.onnx')
+	session = onnxruntime.InferenceSession('model.onnx', providers=['CUDAExecutionProvider', 'CPUExecutionProvider']))
 	io_binding = session.io_binding()
 	# OnnxRuntime will copy the data over to the CUDA device if 'input' is consumed by nodes on the CUDA device 
 	io_binding.bind_cpu_input('input', X)
@@ -67,37 +109,32 @@ use IOBinding to put input on CUDA as the follows.
 	session.run_with_iobinding(io_binding)
 	Y = io_binding.copy_outputs_to_cpu()[0]
 
-Scenario 2:
-
 The input data is on a device, users directly use the input. The output data is on CPU.
 
 .. code-block:: python
 
 	# X is numpy array on cpu
 	X_ortvalue = onnxruntime.OrtValue.ortvalue_from_numpy(X, 'cuda', 0)
-	session = onnxruntime.InferenceSession('model.onnx')
+	session = onnxruntime.InferenceSession('model.onnx', providers=['CUDAExecutionProvider', 'CPUExecutionProvider']))
 	io_binding = session.io_binding()
 	io_binding.bind_input(name='input', device_type=X_ortvalue.device_name(), device_id=0, element_type=np.float32, shape=X_ortvalue.shape(), buffer_ptr=X_ortvalue.data_ptr())
 	io_binding.bind_output('output')
 	session.run_with_iobinding(io_binding)
 	Y = io_binding.copy_outputs_to_cpu()[0]
 
-Scenario 3:
-
-The input data and output data are both on a device, users directly use the input and also place output on the device.
+The input data and output data are both on a device, users directly use the input and also place output on the device.	
 
 .. code-block:: python
 
 	#X is numpy array on cpu
 	X_ortvalue = onnxruntime.OrtValue.ortvalue_from_numpy(X, 'cuda', 0)
 	Y_ortvalue = onnxruntime.OrtValue.ortvalue_from_shape_and_type([3, 2], np.float32, 'cuda', 0)  # Change the shape to the actual shape of the output being bound
-	session = onnxruntime.InferenceSession('model.onnx')
+	session = onnxruntime.InferenceSession('model.onnx', providers=['CUDAExecutionProvider', 'CPUExecutionProvider']))
 	io_binding = session.io_binding()
 	io_binding.bind_input(name='input', device_type=X_ortvalue.device_name(), device_id=0, element_type=np.float32, shape=X_ortvalue.shape(), buffer_ptr=X_ortvalue.data_ptr())
 	io_binding.bind_output(name='output', device_type=Y_ortvalue.device_name(), device_id=0, element_type=np.float32, shape=Y_ortvalue.shape(), buffer_ptr=Y_ortvalue.data_ptr())
 	session.run_with_iobinding(io_binding)
 
-Scenario 4:
 
 Users can request *ONNX Runtime* to allocate an output on a device. This is particularly useful for dynamic shaped outputs.
 Users can use the *get_outputs()* API to get access to the *OrtValue* (s) corresponding to the allocated output(s).
@@ -107,7 +144,7 @@ Users can thus consume the *ONNX Runtime* allocated memory for the output as an 
 
 	#X is numpy array on cpu
 	X_ortvalue = onnxruntime.OrtValue.ortvalue_from_numpy(X, 'cuda', 0)
-	session = onnxruntime.InferenceSession('model.onnx')
+	session = onnxruntime.InferenceSession('model.onnx', providers=['CUDAExecutionProvider', 'CPUExecutionProvider']))
 	io_binding = session.io_binding()
 	io_binding.bind_input(name='input', device_type=X_ortvalue.device_name(), device_id=0, element_type=np.float32, shape=X_ortvalue.shape(), buffer_ptr=X_ortvalue.data_ptr())
 	#Request ONNX Runtime to bind and allocate memory on CUDA for 'output'
@@ -117,7 +154,7 @@ Users can thus consume the *ONNX Runtime* allocated memory for the output as an 
 	ort_output = io_binding.get_outputs()[0]
 
 
-Scenario 5:
+In addition, *ONNX Runtime* supports directly working with *OrtValue* (s) while inferencing a model if provided as part of the input feed.
 
 Users can bind *OrtValue* (s) directly.
 
@@ -127,39 +164,52 @@ Users can bind *OrtValue* (s) directly.
 	#X is numpy array on cpu
 	X_ortvalue = onnxruntime.OrtValue.ortvalue_from_numpy(X, 'cuda', 0)
 	Y_ortvalue = onnxruntime.OrtValue.ortvalue_from_shape_and_type([3, 2], np.float32, 'cuda', 0)  # Change the shape to the actual shape of the output being bound
-	session = onnxruntime.InferenceSession('model.onnx')
+	session = onnxruntime.InferenceSession('model.onnx', providers=['CUDAExecutionProvider', 'CPUExecutionProvider']))
 	io_binding = session.io_binding()
 	io_binding.bind_ortvalue_input('input', X_ortvalue)
 	io_binding.bind_ortvalue_output('output', Y_ortvalue)
 	session.run_with_iobinding(io_binding)
 
-Device
-======
 
-The package is compiled for a specific device, GPU or CPU.
-The CPU implementation includes optimizations
-such as MKL (Math Kernel Libary). The following function
-indicates the chosen option:
+You can also bind inputs and outputs directly to a PyTorch tensor.
 
-.. autofunction:: onnxruntime.get_device
+.. code-block:: python
 
-Examples and datasets
-=====================
+    # X is a PyTorch tensor on device
+    session = onnxruntime.InferenceSession('model.onnx', providers=['CUDAExecutionProvider', 'CPUExecutionProvider']))
+    binding = session.io_binding()
 
-The package contains a few models stored in ONNX format
-used in the documentation. These don't need to be downloaded
-as they are installed with the package.
+    X_tensor = X.contiguous()
 
-.. autofunction:: onnxruntime.datasets.get_example
+    binding.bind_input(
+        name='X',
+        device_type='cuda',
+        device_id=0,
+        element_type=np.float32,
+        shape=tuple(x_tensor.shape),
+        buffer_ptr=x_tensor.data_ptr(),
+        )
 
-Load and run a model
-====================
+    ## Allocate the PyTorch tensor for the model output
+    Y_shape = ... # You need to specify the output PyTorch tensor shape
+    Y_tensor = torch.empty(Y_shape, dtype=torch.float32, device='cuda:0').contiguous()
+    binding.bind_output(
+        name='Y',
+        device_type='cuda',
+        device_id=0,
+        element_type=np.float32,
+        shape=tuple(Y_tensor.shape),
+        buffer_ptr=Y_tensor.data_ptr(),
+    )
 
-*ONNX Runtime* reads a model saved in ONNX format.
-The main class *InferenceSession* wraps these functionalities
-in a single place.
+    session.run_with_iobinding(binding)
 
-Main class
+
+API Details
+===========
+
+
+InferenceSession
 ----------
 
 .. autoclass:: onnxruntime.InferenceSession

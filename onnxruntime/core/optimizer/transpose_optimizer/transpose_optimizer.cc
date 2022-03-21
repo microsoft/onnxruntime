@@ -967,35 +967,41 @@ static void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, con
   node.SetInput(i, gather_output);
 }
 
-static bool HandleResize(HandlerArgs& args) {
-  auto inputs = args.node.Inputs();
-  int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
+// static bool HandleResize(HandlerArgs& args) {
+//  auto inputs = args.node.Inputs();
+//  int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
+//
+//  auto p = ChannelFirstToLastPerm(rank_int);
+//  auto& perm = p == args.perm ? args.perm : args.perm_inv;
+//  auto& perm_inv = p == args.perm ? args.perm_inv : args.perm;
+//
+//  if (args.ctx.opset < 11) {
+//     PermuteInput(args.ctx.graph, args.node, 1, perm);
+//   } else {
+//     if (inputs[1] != "") {
+//       std::vector<int64_t> double_perm_inv = perm;
+//       double_perm_inv.reserve(2 * args.perm.size());
+//       for (int64_t p1 : perm) {
+//         double_perm_inv.push_back(p1 + rank_int);
+//       }
+//       PermuteInput(args.ctx.graph, args.node, 1, double_perm_inv);
+//     }
+//     for (size_t i = 2; i < inputs.size(); ++i) {
+//       if (inputs[i] != "") {
+//         PermuteInput(args.ctx.graph, args.node, i, perm);
+//       }
+//     }
+//   }
+//
+//   TransposeFirstInput(args.ctx, args.node, perm);
+//   TransposeOutputs(args.ctx, args.node, perm_inv);
+//
+//   SwapNodeOpTypeAndDomain(args.ctx.graph, args.node, args.node.OpType(), "com.microsoft.nhwc");
+//
+//   return true;
+// }
 
-  if (args.ctx.opset < 11) {
-    PermuteInput(args.ctx.graph, args.node, 1, args.perm_inv);
-  } else {
-    if (inputs[1] != "") {
-      std::vector<int64_t> double_perm_inv = args.perm_inv;
-      double_perm_inv.reserve(2 * args.perm_inv.size());
-      for (int64_t p : args.perm_inv) {
-        double_perm_inv.push_back(p + rank_int);
-      }
-      PermuteInput(args.ctx.graph, args.node, 1, double_perm_inv);
-    }
-    for (size_t i = 2; i < inputs.size(); ++i) {
-      if (inputs[i] != "") {
-        PermuteInput(args.ctx.graph, args.node, i, args.perm_inv);
-      }
-    }
-  }
-
-  TransposeFirstInput(args.ctx, args.node, args.perm_inv);
-  TransposeOutputs(args.ctx, args.node, args.perm);
-
-  return true;
-}
-
-constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
+// constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
 
 static bool HandlePad(HandlerArgs& args) {
   size_t rank = args.perm.size();
@@ -1412,7 +1418,7 @@ static bool HandleTile(HandlerArgs& args) {
 
 constexpr HandlerInfo tile_handler = {&FirstInput, &HandleTile};
 
-// Helper to remove cancelling Transpose -> Transpose or 
+// Helper to remove cancelling Transpose -> Transpose or
 // Transpose -> Reshape nodes.
 static void RemoveCancelingTransposeNodes(HandlerArgs& args) {
   // Input to 1st transpose
@@ -1491,7 +1497,7 @@ static bool HandleTranspose(HandlerArgs& args) {
 constexpr HandlerInfo transpose_handler = {&FirstInput, &HandleTranspose, /*transposes_outputs*/ false};
 
 static bool HandleReshape(HandlerArgs& args) {
-  // We check for a very specific case where Transpose is replaced by Reshape 
+  // We check for a very specific case where Transpose is replaced by Reshape
   // for performance. For example Transpose(input {1, 1, 1, X}, perm{0, 3, 2, 1}) can be replaced by Reshape
   // Reshape(input{1, 1, 1, X}, shape{1, X, 1, 1})
   // During transpose optimization we need to detect such reshape nodes so that we can remove them if possible.
@@ -1502,7 +1508,7 @@ static bool HandleReshape(HandlerArgs& args) {
     return false;
   }
 
-  // Check only 1 dim is not equal to 1. This is to validate that tranpose and reshape are truly canceling nodes 
+  // Check only 1 dim is not equal to 1. This is to validate that tranpose and reshape are truly canceling nodes
   // and can be therefore removed.
   int num_dims_not_equal_to_1 = 0;
   for (int i = 0; i < 4; i++) {
@@ -1521,7 +1527,7 @@ static bool HandleReshape(HandlerArgs& args) {
   }
 
   // Check whether transpose cancels with reshape node
-  // We check if shape of transpose node's input matches the shape data 
+  // We check if shape of transpose node's input matches the shape data
   // provided for reshape node.
   auto reshape_output_shape = DataInt64(*shape_data);
   if (reshape_output_shape != transpose_input_shape) {
@@ -1691,7 +1697,9 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
     {"Split", split_handler},
     {"Shape", shape_handler},
     {"Pad", pad_handler},
-    {"Resize", resize_handler},
+    // Todo: renable resize handler after adding NHWC support in upsample op on cpu
+    // https://github.com/microsoft/onnxruntime/issues/9857
+    //  {"Resize", resize_handler},
     {"ReduceSum", reduce_sum_handler},
 
     {"ReduceLogSum", reduce_op_handler},
@@ -1812,14 +1820,22 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& 
 // Returns nullopt if graph opset is unsupported.
 std::optional<OptimizerCtx> MakeOptimizerContext(api::GraphRef& graph, bool allow_extended_ops,
                                                  const std::string& provider_type, OptimizerMode mode,
-                                                 const std::unordered_set<std::string_view>& layout_sensitive_ops) {
+                                                 const std::unordered_set<std::string_view>& layout_sensitive_ops,
+                                                 std::string& error_msg) {
   auto opset = graph.Opset("");
   if (opset == std::nullopt) {
     opset = graph.Opset("ai.onnx");
   }
+
   if (opset == std::nullopt || *opset > kMaxSupportedOpset || *opset < kMinSupportedOpset) {
+    // if the model doesn't have an ONNX opset that's fine as there are no ops we'd move around
+    if (opset.has_value()) {
+      error_msg = "Unsupported ONNX opset";
+    }
+
     return std::nullopt;
   }
+
   if (allow_extended_ops) {
     auto ms_opset = graph.Opset("com.microsoft");
     if (ms_opset == std::nullopt || *ms_opset != 1) {
@@ -1836,7 +1852,8 @@ std::optional<OptimizerCtx> MakeOptimizerContext(api::GraphRef& graph, bool allo
 
 // Performs optimization. General algorithm: iterate over nodes in topological order. If a node has a transpose
 // as input, push it through if the transpose cost does not increase and is likely to decrease.
-bool OptimizeImpl(OptimizerCtx& ctx) {
+OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
+  OptimizeResult result{};
   const std::vector<std::unique_ptr<api::NodeRef>> nodes = ctx.graph.Nodes();
 
   std::unordered_set<std::string> outputs_leading_to_transpose;
@@ -1901,7 +1918,8 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
   // Currently limiting the second optimization pass to layout transform mode
   // TODO: Enable this for both the modes.
   if (ctx.mode == OptimizerMode::OPTIMIZE_TRANSPOSE) {
-    return changed;
+    result.graph_modified = changed;
+    return result;
   }
 
   // Run second optimization pass.
@@ -1944,25 +1962,35 @@ bool OptimizeImpl(OptimizerCtx& ctx) {
       changed = true;
     }
   }
-  return changed;
+
+  result.graph_modified = changed;
+  return result;
 }
 
 const std::unordered_set<std::string_view>& GetLayoutSensitiveOps() {
   // List of all layout sensitive ops defined in ONNX standard.
   static std::unordered_set<std::string_view> layout_sensitive_ops = {"Conv", "QLinearConv", "BatchNormalization",
                                                                       "AveragePool", "GlobalAveragePool", "MaxPool",
-                                                                      "GlobalMaxPool", "LRN"};
+                                                                      "GlobalMaxPool", "LRN", "GridSample"};
 
   return layout_sensitive_ops;
 }
 
-bool Optimize(api::GraphRef& graph, bool allow_extended_ops,
-              const std::string& provider_type, OptimizerMode mode,
-              const std::unordered_set<std::string_view>& layout_sensitive_ops) {
-  auto ctx = MakeOptimizerContext(graph, allow_extended_ops, provider_type, mode, layout_sensitive_ops);
+OptimizeResult Optimize(api::GraphRef& graph, bool allow_extended_ops,
+                        const std::string& provider_type, OptimizerMode mode,
+                        const std::unordered_set<std::string_view>& layout_sensitive_ops) {
+  OptimizeResult result{};
+
+  std::string error_msg;
+  auto ctx = MakeOptimizerContext(graph, allow_extended_ops, provider_type, mode, layout_sensitive_ops, error_msg);
   if (ctx == std::nullopt) {
-    return false;
+    if (!error_msg.empty()) {
+      result.error_msg = error_msg;
+    }
+
+    return result;
   }
+
   return OptimizeImpl(*ctx);
 }
 

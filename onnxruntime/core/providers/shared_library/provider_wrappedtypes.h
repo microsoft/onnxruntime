@@ -472,6 +472,7 @@ struct KernelDefBuilder final {
     return *this;
   }
 
+#ifdef ENABLE_TRAINING
   KernelDefBuilder& MayStridedInput(int input_index) {
     g_host->KernelDefBuilder__MayStridedInput(this, input_index);
     return *this;
@@ -481,6 +482,7 @@ struct KernelDefBuilder final {
     g_host->KernelDefBuilder__MayStridedOutput(this, input_index, output_index);
     return *this;
   }
+#endif
 
   std::unique_ptr<KernelDef> Build() {
     return g_host->KernelDefBuilder__Build(this);
@@ -745,6 +747,8 @@ struct OpKernelContext final {
 
   Status GetTempSpaceAllocator(AllocatorPtr* output) const { return g_host->OpKernelContext__GetTempSpaceAllocator(this, output); }
 
+  Status GetTempSpaceCPUAllocator(AllocatorPtr* output) const { return g_host->OpKernelContext__GetTempSpaceCPUAllocator(this, output); }
+
   bool GetUseDeterministicCompute() const { return g_host->OpKernelContext__GetUseDeterministicCompute(this); }
 
   bool TryGetInferredOutputShape(int index, TensorShape& shape) const { return g_host->OpKernelContext__TryGetInferredOutputShape(this, index, shape); }
@@ -816,7 +820,7 @@ struct OpKernelInfo final {
     return GetAttrs<T>(name, tmp).IsOK() ? tmp : default_value;
   }
 
-  template<typename T>
+  template <typename T>
   Status GetAttrsAsSpan(const std::string& name, gsl::span<const T>& out) const;
 
   Status GetAttrs(const std::string& name, TensorShapeVector& out) const;
@@ -870,8 +874,6 @@ inline TensorShapeVector OpKernelInfo::GetAttrsOrDefault(const std::string& name
   return GetAttrs(name, tmp).IsOK() ? tmp : default_value;
 }
 
-
-
 class SessionState {
  public:
   const DataTransferManager& GetDataTransferMgr() const noexcept { return g_host->SessionState__GetDataTransferMgr(this); }
@@ -919,9 +921,13 @@ struct Tensor final {
   MLDataType DataType() const { return g_host->Tensor__DataType(this); }
   bool IsDataTypeString() const { return g_host->Tensor__IsDataTypeString(this); }
 
+#ifdef ENABLE_TRAINING
   gsl::span<const int64_t> Strides() const noexcept { return g_host->Tensor__Strides(this); }
   bool IsContiguous() const { return g_host->Tensor__IsContiguous(this); }
-  void SetStrides(const TensorShapeVector& new_strides) { return g_host->Tensor__SetStrides(this, new_strides); }
+  void SetShapeAndStrides(const TensorShape& new_shape, gsl::span<const int64_t> new_strides) {
+    return g_host->Tensor__SetShapeAndStrides(this, new_shape, new_strides);
+  }
+#endif
 
   template <class T>
   bool IsDataType() const;

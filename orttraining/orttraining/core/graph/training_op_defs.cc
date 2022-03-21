@@ -1724,40 +1724,32 @@ Example 4:
               value is specified for ratio. In general, it is unclear why we need the training_mode as an
               input here, since the Gradient will be used only for training.
             */
-            OperatorSetIdProto onnx_opset_13;
-            onnx_opset_13.set_domain("");
-            onnx_opset_13.set_version(13);
-
             auto* tp = ctx.getInputType(0);
             if ((tp == nullptr) || (!tp->has_tensor_type()))
               return false;
             auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
-            if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16)
-              return false;  // ONNX op Where doesn't support bfloat16 yet.
+
+            FunctionBuilder builder(functionProto);
+            builder
+                .AddOpset("", 16)
+                .Const("C0", ToTensor(0.0f, elem_type))
+                .Const("C1", ToTensor(1.0f, elem_type));
 
             if (ctx.hasInput(2)) {
               // ratio specified.
-              std::vector<FunctionBodyHelper::NodeDef> body{
-                  ONNX_NAMESPACE::Const("C0", 0.0f, elem_type),
-                  ONNX_NAMESPACE::Const("C1", 1.0f, elem_type),
-                  {{"ratio_elem_type"}, "Cast", {"ratio"}, {MakeAttribute("to", int64_t(elem_type))}},
-                  {{"scale"}, "Sub", {"C1", "ratio_elem_type"}},
-                  {{"scaled_dy"}, "Div", {"dy", "scale"}},
-                  {{"dx"}, "Where", {"mask", "scaled_dy", "C0"}}};
-
-              return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+              builder.Add("ratio_elem_type = Cast(ratio)", "to", int64_t(elem_type));
             } else {
               // ratio not specified. Use a value of 0.5
-              std::vector<FunctionBodyHelper::NodeDef> body{
-                  ONNX_NAMESPACE::Const("C0", 0.0f, elem_type),
-                  ONNX_NAMESPACE::Const("C1", 1.0f, elem_type),
-                  ONNX_NAMESPACE::Const("ratio_elem_type", 0.5f, elem_type),
-                  {{"scale"}, "Sub", {"C1", "ratio_elem_type"}},
-                  {{"scaled_dy"}, "Div", {"dy", "scale"}},
-                  {{"dx"}, "Where", {"mask", "scaled_dy", "C0"}}};
-
-              return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+              builder.Const("ratio_elem_type", ToTensor(0.5f, elem_type));
             }
+            builder.Add(R"(
+                  scale = Sub (C1, ratio_elem_type)
+                  scaled_dy = Div (dy, scale)
+                  dx = Where (mask, scaled_dy, C0)
+                )");
+
+            schema.BuildFunction(functionProto);
+            return true;
           });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BroadcastGradientArgs)
@@ -2089,16 +2081,16 @@ Example 4:
             auto* tp = ctx.getInputType(0);
             if ((tp == nullptr) || (!tp->has_tensor_type()))
               return false;
-            auto elem_type = tp->tensor_type().elem_type();
+            auto elem_type = (TensorProto_DataType)(tp->tensor_type().elem_type());
             double kAlpha = M_2_SQRTPI * M_SQRT1_2 * 0.5;
             FunctionBuilder builder(functionProto);
             builder
                 .AddOpset("", 13)
-                .Const("C_Half", 0.5f, elem_type)
-                .Const("C_One", 1.0f, elem_type)
-                .Const("C_SqrtHalf", float(M_SQRT1_2), elem_type)
-                .Const("C_MinusHalf", -0.5f, elem_type)
-                .Const("C_alpha", kAlpha, elem_type)
+                .Const("C_Half", ToTensor(0.5f, elem_type))
+                .Const("C_One", ToTensor(1.0f, elem_type))
+                .Const("C_SqrtHalf", ToTensor(float(M_SQRT1_2), elem_type))
+                .Const("C_MinusHalf", ToTensor(-0.5f, elem_type))
+                .Const("C_alpha", ToTensor(kAlpha, elem_type))
                 .Add(R"(
                     ErfArg = Mul (X, C_SqrtHalf)
                     ErfTerm = Erf (ErfArg)
@@ -2774,11 +2766,11 @@ Return true if all elements are true and false otherwise.
             FunctionBuilder builder(functionProto);
             builder
                 .AddOpset("", 13)
-                .Const("half", 0.5f, elem_type)
-                .Const("one", 1.0f, elem_type)
-                .Const("alpha", kAlpha, elem_type)
-                .Const("gamma", kGamma, elem_type)
-                .Const("beta", kBeta, elem_type)
+                .Const("half", ToTensor(0.5f, elem_type))
+                .Const("one", ToTensor(1.0f, elem_type))
+                .Const("alpha", ToTensor(kAlpha, elem_type))
+                .Const("gamma", ToTensor(kGamma, elem_type))
+                .Const("beta", ToTensor(kBeta, elem_type))
                 .Add(R"ONNX(
                   x_square = Mul (X, X)
                   x_cube = Mul (X, x_square)

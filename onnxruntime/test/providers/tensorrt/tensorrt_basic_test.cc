@@ -10,6 +10,7 @@
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/tensorrt/tensorrt_execution_provider_utils.h"
 #include <string>
+#include <thread>
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -35,7 +36,7 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
  * Create a simple model with dynamic or non-dynamic input shape.
  * \param model_name - model name
  * \param graph_name - graph name
- * \params dims - input dimensions 
+ * \params dims - input dimensions
  *
  * input: "X", "Y" and "Z"
  *        you can specify input dimensions, for example (1, 3, 2), (1, 2) or (1, -1, -1)). Note: -1 means the dimension is dynamic.
@@ -45,9 +46,9 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
  *      "X"  "Y"
  *        \  /
  *    "Z"  Add
- *      \  / 
+ *      \  /
  *       Add
- *       / 
+ *       /
  *     "M"
  *
  */
@@ -85,6 +86,190 @@ void CreateBaseModel(std::string model_name, std::string graph_name, std::vector
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
   status = onnxruntime::Model::Save(model, model_name);
+}
+
+void RunSession(InferenceSession& session_object,
+                RunOptions& run_options,
+                NameMLValMap& feeds,
+                std::vector<std::string> output_names,
+                std::vector<int64_t> expected_dims,
+                std::vector<float> expected_values) {
+    std::vector<OrtValue> fetches;
+    auto status = session_object.Run(run_options, feeds, output_names, &fetches);
+    ASSERT_TRUE(status.IsOK());
+    VerifyOutputs(fetches, expected_dims, expected_values);
+}
+
+void RunWithOneSessionSingleThreadInference(std::string model_name, std::string sess_log_id) {
+  SessionOptions so;
+  so.session_logid = sess_log_id;
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  InferenceSession session_object{so, GetEnvironment()};
+  auto allocator_manager = session_object.GetAllocatorManager();
+  auto cuda_provider = DefaultCudaExecutionProvider();
+  cuda_provider->RegisterAllocator(allocator_manager);
+  auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
+  std::vector<int64_t> dims_mul_x = {1, 3, 2};
+  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value_x;
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_x);
+  OrtValue ml_value_y;
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_y);
+  OrtValue ml_value_z;
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_z);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+  feeds.insert(std::make_pair("Y", ml_value_y));
+  feeds.insert(std::make_pair("Z", ml_value_z));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("M");
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_mul_m = {1, 3, 2};
+  std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
+
+  OrtTensorRTProviderOptionsV2 params{
+      0,
+      0,
+      nullptr,
+      1000,
+      1,
+      1 << 30,
+      0,
+      0,
+      nullptr,
+      0,
+      0,
+      0,
+      0,
+      0,
+      nullptr,
+      0,
+      nullptr,
+      0};
+
+    params.trt_engine_cache_enable = 1;
+    std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+    auto status = session_object.Load(model_name);
+    ASSERT_TRUE(status.IsOK());
+    status = session_object.Initialize();
+    ASSERT_TRUE(status.IsOK());
+
+    // run inference
+    // TRT engine will be created and cached
+    // TRT profile will be created and cached only for dynamic input shape
+    // Data in profile,
+    // X: 1, 3, 3, 2, 2, 2
+    // Y: 1, 3, 3, 2, 2, 2
+    // Z: 1, 3, 3, 2, 2, 2
+    RunSession(session_object, run_options, feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
+}
+
+void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string sess_log_id) {
+  SessionOptions so;
+  so.session_logid = sess_log_id;
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  InferenceSession session_object{so, GetEnvironment()};
+  auto allocator_manager = session_object.GetAllocatorManager();
+  auto cuda_provider = DefaultCudaExecutionProvider();
+  cuda_provider->RegisterAllocator(allocator_manager);
+  auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
+  std::vector<int64_t> dims_mul_x = {1, 3, 2};
+  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value_x;
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_x);
+  OrtValue ml_value_y;
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_y);
+  OrtValue ml_value_z;
+  CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_z);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+  feeds.insert(std::make_pair("Y", ml_value_y));
+  feeds.insert(std::make_pair("Z", ml_value_z));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("M");
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_mul_m = {1, 3, 2};
+  std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
+
+  OrtTensorRTProviderOptionsV2 params{
+      0,
+      0,
+      nullptr,
+      1000,
+      1,
+      1 << 30,
+      0,
+      0,
+      nullptr,
+      0,
+      0,
+      0,
+      0,
+      0,
+      nullptr,
+      0,
+      nullptr,
+      0};
+
+    params.trt_engine_cache_enable = 1;
+    std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+    auto status = session_object.Load(model_name);
+    ASSERT_TRUE(status.IsOK());
+    status = session_object.Initialize();
+    ASSERT_TRUE(status.IsOK());
+
+    // run inference with multi-threads
+    // TRT engine will be created and cached
+    // TRT profile will be created and cached only for dynamic input shape
+    // Data in profile,
+    // X: 1, 3, 3, 2, 2, 2
+    // Y: 1, 3, 3, 2, 2, 2
+    // Z: 1, 3, 3, 2, 2, 2
+
+    std::vector<std::thread> threads;
+    int num_thread = 5;
+    for (int i = 0; i < num_thread; ++i)
+      threads.push_back(std::thread(RunSession, std::ref(session_object), std::ref(run_options), std::ref(feeds), std::ref(output_names), std::ref(expected_dims_mul_m), std::ref(expected_values_mul_m)));
+
+    for (auto& th : threads)
+      th.join();
+}
+
+TEST(TensorrtExecutionProviderTest, MultiThreadsTestWithOneSessionSingleThreadInference) {
+  std::vector<std::thread> threads;
+  std::string model_name = "trt_execution_provider_multithreading_test.onnx";
+  std::string graph_name = "multithreading_test";
+  std::string sess_log_id = "TRTEPMultiThreadingTestWithOneSessionSingleThread";
+  std::vector<int> dims = {1, 3, 2};
+  int num_thread = 5;
+
+  CreateBaseModel(model_name, graph_name, dims);
+
+  for (int i = 0; i < num_thread; ++i)
+    threads.push_back(std::thread(RunWithOneSessionSingleThreadInference, model_name, sess_log_id));
+
+  for (auto& th : threads)
+    th.join();
+}
+
+TEST(TensorrtExecutionProviderTest, MultiThreadsTestWithOneSessionMultiThreadsInference) {
+  std::string model_name = "trt_execution_provider_multithreading_test.onnx";
+  std::string graph_name = "multithreading_test";
+  std::string sess_log_id = "TRTEPMultiThreadingTestWithOneSessionMultiThreads";
+  std::vector<int> dims = {1, 3, 2};
+
+  CreateBaseModel(model_name, graph_name, dims);
+  RunWithOneSessionMultiThreadsInference(model_name, sess_log_id);
 }
 
 TEST_P(TensorrtExecutionProviderCacheTest, Run) {
@@ -204,7 +389,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
 
       // check min/max shape ranges of dynamic shape dimensions
       for(auto it = shape_ranges.cbegin(); it != shape_ranges.cend(); ++it) {
-        auto ranges = it->second;  
+        auto ranges = it->second;
         for (auto it2 = ranges.cbegin(); it2 != ranges.cend(); ++it2) {
           if (it2->first == 1) {
             ASSERT_EQ(it2->second.first, 3);
@@ -254,7 +439,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
 
       // check min/max shape ranges of dynamic shape dimensions
       for(auto it = shape_ranges2.cbegin(); it != shape_ranges2.cend(); ++it) {
-        auto ranges = it->second;  
+        auto ranges = it->second;
         for (auto it2 = ranges.cbegin(); it2 != ranges.cend(); ++it2) {
           if (it2->first == 1) {
             ASSERT_EQ(it2->second.first, 1);
@@ -285,7 +470,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
  * We have following test parameters:
  * - engine_static: engine cache enabled with non-dynamic input shape
  * - engine_dynamic: engine cache enabled with dynamic input shape
- * - timing_static: will be added 
+ * - timing_static: will be added
  * - timing_dynamic: will be added
  */
 INSTANTIATE_TEST_SUITE_P(TensorrtExecutionProviderCacheTests, TensorrtExecutionProviderCacheTest, testing::Values("engine_static",
@@ -406,11 +591,7 @@ TEST(TensorrtExecutionProviderTest, NodeIndexMappingTest) {
   auto& output_arg_1 = graph.GetOrCreateNodeArg("node_1_out", &uint8_tensor);
   outputs.push_back(&output_arg_1);
   auto& cast_node = graph.AddNode("cast1", "Cast", "node 1.", inputs, outputs);
-  AttributeProto attr_proto;
-  attr_proto.set_name("to");
-  attr_proto.set_type(AttributeProto_AttributeType_INT);
-  attr_proto.set_i(2);
-  cast_node.AddAttribute("to", attr_proto);
+  cast_node.AddAttribute("to", int64_t{2});
 
   inputs.clear();
   inputs.push_back(&output_arg_1);
@@ -418,11 +599,7 @@ TEST(TensorrtExecutionProviderTest, NodeIndexMappingTest) {
   outputs.clear();
   outputs.push_back(&output_arg_2);
   auto& cast_node_2 = graph.AddNode("cast2", "Cast", "node 2.", inputs, outputs);
-  AttributeProto attr_proto_2;
-  attr_proto_2.set_name("to");
-  attr_proto_2.set_type(AttributeProto_AttributeType_INT);
-  attr_proto_2.set_i(9);
-  cast_node_2.AddAttribute("to", attr_proto_2);
+  cast_node_2.AddAttribute("to", int64_t{9});
 
   auto& input_arg_2 = graph.GetOrCreateNodeArg("Y", &float_tensor);
   auto& input_arg_3 = graph.GetOrCreateNodeArg("Z", &float_tensor);

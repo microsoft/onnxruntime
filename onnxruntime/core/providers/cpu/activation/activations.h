@@ -229,7 +229,7 @@ struct Selu : public ElementWiseRangedTransform<T> {
     T* output_ptr = this->output + first;
     ConstEigenVectorArrayMap<T> xm(this->input + first, len);
     EigenVectorArrayMap<T> ym(output_ptr, len);
-    ym = (T)gamma * (xm.cwiseMax(0.0f) + ((T)alpha * (xm.array().exp() - 1.0f)).cwiseMin(0.0f));
+    ym = (xm > 0).select((T)gamma * xm, (T)gamma * (T)alpha * (xm.exp() - 1.0f));
   }
 };
 }  // namespace functors

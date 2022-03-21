@@ -12,7 +12,6 @@ import onnx
 import onnxruntime
 from onnx import helper, TensorProto, ModelProto
 from onnx import onnx_pb as onnx_proto
-from six import string_types
 from enum import Enum
 
 from .quant_utils import QuantType, smooth_distribution, apply_plot
@@ -600,7 +599,7 @@ class HistogramCollector(CalibrationDataCollector):
 
         print("Number of tensors : {}".format(len(histogram_dict)))
         print("Number of histogram bins : {}".format(self.num_bins))
-        print("Percentile : {}".format(percentile))
+        print("Percentile : ({},{})".format(100.0 - percentile, percentile))
 
         for tensor, histogram in histogram_dict.items():
             hist = histogram[0]
@@ -608,11 +607,12 @@ class HistogramCollector(CalibrationDataCollector):
             total = hist.sum()
             cdf = np.cumsum(hist/total)
             if self.symmetric:
-                idx_right = np.searchsorted(cdf, percentile/100)
+                idx_right = np.searchsorted(cdf, percentile / 100.0)
                 thresholds_dict[tensor] = (-float(hist_edges[idx_right]), float(hist_edges[idx_right]))
             else:
-                idx_right = np.searchsorted(cdf, percentile/200)
-                idx_left = np.searchsorted(cdf, (1.0 - percentile/200))
+                percent_to_cut_one_side = (100.0 - percentile) / 200.0
+                idx_right = np.searchsorted(cdf, 1.0 - percent_to_cut_one_side)
+                idx_left = np.searchsorted(cdf, percent_to_cut_one_side)
                 thresholds_dict[tensor] = (float(hist_edges[idx_left]), float(hist_edges[idx_right]))
 
             # Plot histogram for debug only

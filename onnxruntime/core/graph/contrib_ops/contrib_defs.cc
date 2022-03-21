@@ -485,14 +485,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Gelu, 1,
                                   auto* tp = ctx.getInputType(0);
                                   if ((tp == nullptr) || (!tp->has_tensor_type()))
                                     return false;
-                                  auto elem_type = tp->tensor_type().elem_type();
+                                  auto elem_type = (TensorProto_DataType)(tp->tensor_type().elem_type());
 
                                   FunctionBuilder builder(functionProto);
                                   builder
                                       .AddOpset("", 13)
-                                      .Const("Half", 0.5, elem_type)
-                                      .Const("One", 1.0, elem_type)
-                                      .Const("C", std::sqrt(0.5), elem_type)
+                                      .Const("Half", ToTensor(0.5, elem_type))
+                                      .Const("One", ToTensor(1.0, elem_type))
+                                      .Const("C", ToTensor(std::sqrt(0.5), elem_type))
                                       .Add(R"(
                 CX = Mul (C, X)
                 ERFCX = Erf (CX)
@@ -2070,7 +2070,7 @@ void RegisterContribSchemas() {
             FunctionBuilder builder(functionProto);
             builder
                 .AddOpset("", 13)
-                .Const("Epsilon", epsilon, U)
+                .Const("Epsilon", ToTensor(epsilon, (TensorProto_DataType)U))
                 .Add("XShape = Shape (X)")                                                    // shape of input tensor: 1D tensor
                 .Add("Rank = Size (XShape)")                                                  // rank of input tensor: scalar
                 .Add("Zero1D = Constant()", "value", mktensor(0))                             // [0] : 1D tensor

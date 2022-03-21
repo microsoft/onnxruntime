@@ -107,6 +107,23 @@ struct ModelMetadata {
 
 class InferenceSession {
  public:
+#if !defined(ORT_MINIMAL_BUILD)
+
+  /**
+   * How minimal build graph optimizations should be handled in a full build.
+   * Note: These only apply to optimizations at the extended level or higher.
+   */
+  enum class MinimalBuildOptimizationHandling {
+    /** Run full build optimizations. The default behavior. */
+    ApplyFullBuildOptimizations,
+    /** Save minimal build optimizations as runtime optimizations in an ORT format model. */
+    SaveMinimalBuildRuntimeOptimizations,
+    /** Only run minimal build optimizations. */
+    OnlyApplyMinimalBuildOptimizations,
+  };
+
+#endif
+
   /**
     Create a new InferenceSession
     @param session_options Session options.
@@ -184,7 +201,7 @@ class InferenceSession {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /**
    * Filter the enabled optimizers (either transformer or rewrite rule) using optimizers_to_disable.
    * For an optimizer to be enabled, it must be allowed at the current optimization level (as specified in
@@ -196,7 +213,7 @@ class InferenceSession {
    * @return OK if success.
    */
   common::Status FilterEnabledOptimizers(InlinedHashSet<std::string>&& optimizers_to_disable);
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   /**
@@ -444,6 +461,7 @@ class InferenceSession {
 
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
+
   /**
    * Load an ONNX model.
    * @param protobuf object corresponding to the model file. model_proto will be copied by the API.
@@ -583,9 +601,10 @@ class InferenceSession {
   void ShrinkMemoryArenas(const std::vector<AllocatorPtr>& arenas_to_shrink);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  virtual common::Status AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                                   TransformerLevel graph_optimization_level,
-                                                   bool saving_runtime_optimizations) const;
+  virtual common::Status AddPredefinedTransformers(
+      GraphTransformerManager& transformer_manager,
+      TransformerLevel graph_optimization_level,
+      MinimalBuildOptimizationHandling minimal_build_optimization_handling) const;
 
   common::Status TransformGraph(onnxruntime::Graph& graph,
                                 const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
@@ -735,6 +754,44 @@ class InferenceSession {
   // The life-cycle of the cache itself is maintained by the user and the user will ensure
   // the cache is valid until any session reliant on it is still in scope.
   PrepackedWeightsContainer* prepacked_weights_container_ = nullptr;
+
+  // Cache the EP instance if the user has configured the EP to capture a graph
+  // for the model and all the necessary criteria for graph capture has been met.
+  // At Run() time, if this member is not nullptr and the captured graph is ready
+  // to replay, simply invoke ReplayGraph().
+  struct CachedExecutionProviderForGraphReplay {
+    CachedExecutionProviderForGraphReplay() = default;
+
+    CachedExecutionProviderForGraphReplay(IExecutionProvider* execution_provider) : cached_execution_provider_for_graph_replay_(execution_provider) {}
+
+    void SetExecutionProvider(IExecutionProvider* execution_provider) {
+      cached_execution_provider_for_graph_replay_ = execution_provider;
+    }
+
+    bool IsGraphCaptureEnabled() const {
+      return cached_execution_provider_for_graph_replay_ != nullptr && cached_execution_provider_for_graph_replay_->IsGraphCaptureEnabled();
+    }
+
+    bool IsGraphCaptured() const {
+      return cached_execution_provider_for_graph_replay_ != nullptr && cached_execution_provider_for_graph_replay_->IsGraphCaptured();
+    }
+
+    Status ReplayGraph() {
+      ORT_ENFORCE(IsGraphCaptured());
+      if (cached_execution_provider_for_graph_replay_) {
+        return cached_execution_provider_for_graph_replay_->ReplayGraph();
+      }
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cached EP instance for graph replay is not set yet before calling ReplayGraph()");
+    }
+
+    const std::string& Type() const {
+      return cached_execution_provider_for_graph_replay_->Type();
+    }
+
+    IExecutionProvider* cached_execution_provider_for_graph_replay_ = nullptr;
+  };
+
+  CachedExecutionProviderForGraphReplay cached_execution_provider_for_graph_replay_;
 };
 
 struct SessionIOBinding {

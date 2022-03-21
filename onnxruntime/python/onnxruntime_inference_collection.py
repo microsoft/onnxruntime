@@ -637,6 +637,16 @@ class OrtValue:
         '''
         return self._ortvalue.numpy()
 
+    def update_inplace(self, np_arr):
+        '''
+        Update the OrtValue in place with a new Numpy array. The numpy contents
+        are copied over to the device memory backing the OrtValue. It can be used
+        to update the input valuess for an InferenceSession with CUDA graph
+        enabled or other scenarios where the OrtValue needs to be updated while
+        the memory address can not be changed.
+        '''
+        self._ortvalue.update_inplace(np_arr)
+
 
 class OrtDevice:
     '''

@@ -165,6 +165,24 @@ class IExecutionProvider {
   virtual common::Status OnRunEnd(bool /*sync_stream*/) { return Status::OK(); }
 
   /**
+     Indicate whether the graph capturing mode (e.g., cuda graph) is enabled for
+     the provider. Currently only CUDA execution provider supports it.
+   */
+  virtual bool IsGraphCaptureEnabled() const { return false; }
+
+  /**
+     Indicate whether the graph has been captured and instantiated. Currently
+     only CUDA execution provider supports it.
+   */
+  virtual bool IsGraphCaptured() const { return false; }
+
+  /**
+     Run the instantiated graph. Currently only CUDA execution provider supports
+     it.
+   */
+  virtual common::Status ReplayGraph() { return Status::OK(); }
+
+  /**
      Called when session creation is complete
      This provides an opportunity for execution providers to optionally synchronize and
      clean up its temporary resources to reduce memory and ensure the first run is fast.
