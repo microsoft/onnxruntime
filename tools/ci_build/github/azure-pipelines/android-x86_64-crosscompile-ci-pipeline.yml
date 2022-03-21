@@ -233,23 +233,16 @@ jobs:
     # used by Build Minimal ORT
     - script: brew install coreutils ninja
       displayName: Install coreutils and ninja
-      
-    - script: sudo mkdir -p $(ORTROOT) && sudo chown $(id -un) $(ORTROOT)
-      displayName: make onnxruntime directory same as last job in Linux
-      
-    - task: CopyFiles@2
-      displayName: Copy ONNXRuntime
-      inputs:
-        contents: '**'
-        targetFolder: $(ORTROOT)
-        overWrite: true
 
     - task: DownloadPipelineArtifact@2
       inputs:
         source: 'current'
         artifact: 'NNAPIBuildOutput'
-        path: $(ORTROOT)
+        path: $(Build.SourcesDirectory)
 
+    - script: /bin/bash tools/ci_build/github/android/update_gcno_path.sh
+      displayName: Update GCNO path
+      
     - task: UsePythonVersion@0
       displayName: Use Python $(pythonVersion)
       inputs:
@@ -276,7 +269,7 @@ jobs:
         jdkSourceOption: 'PreInstalled'
 
     - script: |
-        python3 $(ORTROOT)/tools/ci_build/build.py \
+        python3 tools/ci_build/build.py \
         --android \
         --build_dir build_nnapi \
         --android_sdk_path $ANDROID_HOME \
@@ -291,19 +284,19 @@ jobs:
 
     - script: |
         python3 -m pip install gcovr && \
-        python3 $(ORTROOT)/tools/ci_build/coverage.py \
+        python3 tools/ci_build/coverage.py \
           --build_dir build_nnapi \
           --android_sdk_path $ANDROID_HOME
       displayName: Retrieve runtime code coverage files from the emulator and analyze
 
-    - script: cat '$(ORTROOT)/build_nnapi/Debug/coverage_rpt.txt'
+    - script: cat '$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt'
       displayName: Print coverage report
 
     - task: PublishPipelineArtifact@0
       displayName: 'Publish code coverage report'
       inputs:
           artifactName: "coverage_rpt.txt"
-          targetPath: '$(ORTROOT)/build_nnapi/Debug/coverage_rpt.txt'
+          targetPath: '$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt'
           publishLocation: 'pipeline'
 
     # We build the host protoc to <ORT_ROOT>/protobuf_install
