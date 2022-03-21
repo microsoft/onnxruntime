@@ -584,6 +584,16 @@ jobs:
   steps:
   - checkout: self
     submodules: true
+
+  - script: |
+     echo.>>.gitattributes
+     echo /js/** text=auto eol=lf>>.gitattributes
+     rd /s /q js
+     git checkout -- js/**
+     git checkout -- .gitattributes
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Testing: force EOL to lf on windows for /js/**' 
+
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet (Win x64)'
     inputs:
