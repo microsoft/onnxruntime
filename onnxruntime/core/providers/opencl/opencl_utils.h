@@ -134,7 +134,7 @@ class NDRange {
   template <typename T1, typename T2, typename T3>
   NDRange(T1 x, T2 y, T3 z) : values_{static_cast<size_t>(x), static_cast<size_t>(y), static_cast<size_t>(z)} {}
 
-  uint8_t Size() const { return values_.size(); }
+  uint32_t Size() const { return static_cast<uint32_t>(values_.size()); }
 
   const size_t* Data() const {
     if (values_.empty()) {
@@ -170,11 +170,6 @@ struct CLMemType {
   static constexpr OrtDevice::MemoryType OPENCL_IMAGE_2D = OrtDevice::MemType::DEFAULT;
   static constexpr OrtDevice::MemoryType OPENCL_BUFFER = 39;
 };
-
-template <typename T, typename E = std::enable_if_t<std::is_integral_v<T>>>
-T CeilDiv(T a, T b) {
-  return (a - 1) / b + 1;
-}
 
 template <typename T1, typename T2, typename E = std::enable_if_t<std::is_integral_v<T1> && std::is_integral_v<T2>>>
 T1 CeilDiv(T1 a, T2 b) {
@@ -339,9 +334,10 @@ class KernelLauncher {
     return *this;
   }
 
-  template <typename T>
-  KernelLauncher& SetArg(const T& arg) {
-    SKIP_IF_ERRORED(clSetKernelArg(kernel_, index_, sizeof(T), &arg));
+  template <typename T1, typename T2, typename E = std::is_convertible<T2, T1>>
+  KernelLauncher& SetArg(const T2& arg) {
+    auto casted_args = static_cast<T1>(arg);
+    SKIP_IF_ERRORED(clSetKernelArg(kernel_, index_, sizeof(T1), &casted_args));
     index_ += 1;
     return *this;
   }

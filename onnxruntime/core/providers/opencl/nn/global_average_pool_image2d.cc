@@ -37,7 +37,7 @@ class GlobalAveragePool : public OpenCLKernel {
     auto C = X_shape[1];
     auto H = X_shape[2];
     auto W = X_shape[3];
-    float invHW = 1.0 / (H * W);
+    float invHW = 1.0f / (H * W);
 
     ZoneNamedN(_tracy_GlobalAveragePool, "GlobalAveragePool (kernel launch)", true);
     ORT_RETURN_IF_ERROR(

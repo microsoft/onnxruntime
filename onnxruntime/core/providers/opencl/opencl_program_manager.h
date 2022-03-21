@@ -25,7 +25,7 @@ template <>
 struct std::hash<onnxruntime::opencl::ProgramKey> {
   size_t operator()(const onnxruntime::opencl::ProgramKey& key) const {
     std::hash<uint32_t> h{};
-    auto v = 0;
+    size_t v = 0;
     v = onnxruntime::opencl::HashCombine(v, h(key[0]));
     v = onnxruntime::opencl::HashCombine(v, h(key[1]));
     v = onnxruntime::opencl::HashCombine(v, h(key[2]));

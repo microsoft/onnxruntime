@@ -88,8 +88,8 @@ class Resize : public OpenCLKernel, UpsampleBase {
             .SetImage2Ds(*X, *Y)
             .SetInt2(X_shape[3], X_shape[2])
             .SetInt2(Y_shape[3], Y_shape[2])
-            .SetArg<cl_float>(1.0 / scale_x)
-            .SetArg<cl_float>(1.0 / scale_y)
+            .SetArg<cl_float>(1.0f / scale_x)
+            .SetArg<cl_float>(1.0f / scale_y)
             .SetArg<cl_int>(coordinate_transform_mode_)
             .Launch(*exec_, desc.AsNDRange()));
 

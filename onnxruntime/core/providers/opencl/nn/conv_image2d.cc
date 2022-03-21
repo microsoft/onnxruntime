@@ -107,19 +107,19 @@ Status CalWGSizeForWino(const Tensor* X, const Tensor* Y, std::vector<KernelUnit
   const auto& input_dims = X->Shape();
   const auto& output_dims = Y->Shape();
 
-  const int batch = output_dims[0];
-  const int output_channel = output_dims[1];
-  const int output_height = output_dims[2];
-  const int output_width = output_dims[3];
+  const auto batch = output_dims[0];
+  const auto output_channel = output_dims[1];
+  const auto output_height = output_dims[2];
+  const auto output_width = output_dims[3];
 
-  const int input_channel = input_dims[1];
+  const auto input_channel = input_dims[1];
 
-  const int round_up_ouptut_width = CeilDiv(output_width, 2);
-  const int round_up_output_height = CeilDiv(output_height, 2);
-  const int batch_round_h = batch * round_up_output_height;
-  const int output_channel_blocks = CeilDiv(output_channel, 4);
-  const int input_channel_blocks = CeilDiv(input_channel, 4);
-  const int round_up_4x4_ouptut_width = CeilDiv(round_up_ouptut_width, 4);
+  const auto round_up_ouptut_width = CeilDiv(output_width, 2);
+  const auto round_up_output_height = CeilDiv(output_height, 2);
+  const auto batch_round_h = batch * round_up_output_height;
+  const auto output_channel_blocks = CeilDiv(output_channel, 4);
+  const auto input_channel_blocks = CeilDiv(input_channel, 4);
+  const auto round_up_4x4_ouptut_width = CeilDiv(round_up_ouptut_width, 4);
 
   winokernel[0].global_work_size = {static_cast<uint32_t>(input_channel_blocks * round_up_ouptut_width),
                                     static_cast<uint32_t>(batch_round_h)};
@@ -369,13 +369,13 @@ class Conv : public OpenCLKernel {
 
     // wino initialize
     ORT_RETURN_IF(shape[2] != 3 || shape[3] != 3, "Winograd only support 3x3 kernel");
-    int64_t output_channel = shape[0];
-    int64_t input_channel = shape[1];
-    const int kernel_size = shape[3];
-    const int unit_output = 2;  // 4x3
+    const auto output_channel = shape[0];
+    const auto input_channel = shape[1];
+    const auto kernel_size = shape[3];
+    const auto unit_output = 2;  // 4x3
 
     auto cpu_alloc = exec_->GetAllocator(0, OrtMemTypeCPU);
-    WinogradHelper helper(cpu_alloc, unit_output, kernel_size);
+    WinogradHelper helper(cpu_alloc, static_cast<int>(unit_output), static_cast<int>(kernel_size));
     auto transformd_weight = helper.TransformWeight(&src, output_channel, input_channel);
 
     VLOGF_DEFAULT(V_COPY, "[CL] copy    host(%p) --> Image2D(%p)", src.DataRaw(), GetPackedWeight());
@@ -402,7 +402,7 @@ class Conv : public OpenCLKernel {
                          const TensorShapeVector& S,
                          const ConvAttributes::ConvPadVector& P,
                          const TensorShapeVector& D,
-                         const int group) const {
+                         const int64_t group) const {
     ZoneScopedN("DepthwiseConv2D");
     VLOGS_DEFAULT(V_ATTR) << "DepthwiseConv2D, K:" << K << " S:" << S << " P:" << TensorShape{P}
                           << " D:" << D << " group:" << group;
@@ -416,8 +416,8 @@ class Conv : public OpenCLKernel {
     auto H_out = shape[2];
     auto W_out = shape[3];
     ORT_RETURN_IF(C_in != C_out, "depthwise conv2d requires the same number of in channel and out channel");
-    uint32_t gsx = CeilDiv(C_out, 4) * CeilDiv(W_out, 4);
-    uint32_t gsy = N * H_out;
+    uint32_t gsx = gsl::narrow_cast<uint32_t>(CeilDiv(C_out, 4) * CeilDiv(W_out, 4));
+    uint32_t gsy = gsl::narrow_cast<uint32_t>(N * H_out);
 
     bool S1 = S[0] == 1 && S[1] == 1 && D[0] == 1 && D[1] == 1;
 
@@ -470,21 +470,21 @@ class Conv : public OpenCLKernel {
 
     const auto& xshape = X->Shape();
     const auto& yshape = Y->Shape();
-    const int output_channel = yshape[1];
-    const int output_height = yshape[2];
-    const int output_width = yshape[3];
+    const auto output_channel = yshape[1];
+    const auto output_height = yshape[2];
+    const auto output_width = yshape[3];
 
-    const int batch = yshape[0];
-    const int input_channel = xshape[1];
-    const int input_height = xshape[2];
-    const int input_width = xshape[3];
+    const auto batch = yshape[0];
+    const auto input_channel = xshape[1];
+    const auto input_height = xshape[2];
+    const auto input_width = xshape[3];
 
-    const int round_up_ouptut_width = CeilDiv(output_width, 2);
-    const int round_up_output_height = CeilDiv(output_height, 2);
-    const int batch_round_h = batch * round_up_output_height;
-    const int output_channel_blocks = CeilDiv(output_channel, 4);
-    const int input_channel_blocks = CeilDiv(input_channel, 4);
-    const int round_up_4x4_ouptut_width = CeilDiv(round_up_ouptut_width, 4);
+    const auto round_up_ouptut_width = CeilDiv(output_width, 2);
+    const auto round_up_output_height = CeilDiv(output_height, 2);
+    const auto batch_round_h = batch * round_up_output_height;
+    const auto output_channel_blocks = CeilDiv(output_channel, 4);
+    const auto input_channel_blocks = CeilDiv(input_channel, 4);
+    const auto round_up_4x4_ouptut_width = CeilDiv(round_up_ouptut_width, 4);
 
     opencl::Image2DDesc desc{input_channel_blocks * round_up_ouptut_width, 16 * batch * round_up_output_height};
     auto ocl_v_ = exec_->GetScratchImage2D(desc);
@@ -500,14 +500,14 @@ class Conv : public OpenCLKernel {
                             .SetArg<cl_int>(input_channel)
                             .SetArg<cl_int>(round_up_output_height)
                             .SetArg<cl_int>(round_up_ouptut_width)
-                            .SetInt2<cl_int>(P[0], P[1])
+                            .SetInt2(P[0], P[1])
                             .Launch(*exec_, {winokernel[0].global_work_size[0], winokernel[0].global_work_size[1]}));
     ORT_RETURN_IF_ERROR(KernelLauncher{GetKernel(kernel_name::MatrixInnerProduct)}
                             .SetArg<cl_int>(winokernel[1].global_work_size[0])
                             .SetArg<cl_int>(winokernel[1].global_work_size[1])
                             .SetImage2Ds(ocl_v_.get(), static_cast<cl_mem>(packed_weight_.get()), ocl_m_.get())
-                            .SetArg(round_up_ouptut_width)
-                            .SetArg(round_up_4x4_ouptut_width)
+                            .SetArg<cl_int>(round_up_ouptut_width)
+                            .SetArg<cl_int>(round_up_4x4_ouptut_width)
                             .SetArg<cl_int>(batch_round_h)
                             .SetArg<cl_int>(output_channel_blocks)
                             .SetArg<cl_int>(input_channel_blocks)
@@ -516,8 +516,8 @@ class Conv : public OpenCLKernel {
                             .SetArg<cl_int>(winokernel[2].global_work_size[0])
                             .SetArg<cl_int>(winokernel[2].global_work_size[1])
                             .SetImage2Ds(ocl_m_.get(), (B ? *B : *X), *Y)
-                            .SetArg(round_up_ouptut_width)
-                            .SetArg(round_up_output_height)
+                            .SetArg<cl_int>(round_up_ouptut_width)
+                            .SetArg<cl_int>(round_up_output_height)
                             .SetArg<cl_int>(output_width)
                             .SetArg<cl_int>(output_height)
                             .SetArg<cl_int>(act_info_.kind)
@@ -532,7 +532,7 @@ class Conv : public OpenCLKernel {
                 const TensorShapeVector& S,
                 const ConvAttributes::ConvPadVector& P,
                 const TensorShapeVector& D,
-                const int group) const {
+                const int64_t group) const {
     ZoneScopedN("Conv2D");
     VLOGS_DEFAULT(V_ATTR) << "Conv2D, K:" << K << " S:" << S << " P:" << TensorShape{P}
                           << " D:" << D << " group:" << group;
@@ -548,8 +548,8 @@ class Conv : public OpenCLKernel {
     auto C_out = yshape[1];
     auto H_out = yshape[2];
     auto W_out = yshape[3];
-    uint32_t gsx = CeilDiv(C_out, 4) * CeilDiv(W_out, 4);
-    uint32_t gsy = N * H_out;
+    uint32_t gsx = static_cast<uint32_t>(CeilDiv(C_out, 4) * CeilDiv(W_out, 4));
+    uint32_t gsy = static_cast<uint32_t>(N * H_out);
 
     bool K1 = K[0] == 1 && K[1] == 1 && P[0] == 0 && P[1] == 0;
     bool S1 = S[0] == 1 && S[1] == 1 && D[0] == 1 && D[1] == 1;

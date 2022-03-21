@@ -103,7 +103,7 @@ Status LoadKernelFromProgram(cl_program program, std::string_view name, cl_kerne
 inline std::array<uint32_t, 4> GetProgramKeyFromFullSource(const std::string_view full_src) {
   ZoneScopedN("GetProgramKeyFromFullSource");
   std::array<uint32_t, 4> hash{0, 0, 0, 0};
-  MurmurHash3::x86_128(full_src.data(), full_src.length(), hash[0], hash.data());
+  MurmurHash3::x86_128(full_src.data(), static_cast<int>(full_src.length()), hash[0], hash.data());
   return hash;
 }
 

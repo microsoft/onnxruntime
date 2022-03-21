@@ -32,8 +32,8 @@ Status ClipComputeImpl(
           .SetArg<cl_int>(desc.Height())
           .SetImage2D(*X)
           .SetImage2D(*Y)
-          .SetArg(lower_bound)
-          .SetArg(upper_bound)
+          .SetArg<cl_int>(lower_bound)
+          .SetArg<cl_int>(upper_bound)
           .Launch(*exec, desc.AsNDRange()));
 
   return Status::OK();

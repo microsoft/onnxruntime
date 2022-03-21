@@ -30,9 +30,10 @@ WinogradHelper::WinogradHelper(AllocatorPtr& cpu_alloc, int compute_unit, int ke
 /*
 transform weight size: unit*unit*ROUND_UP(oc, 4)*ROUND_UP(ic, 4)
 */
-std::unique_ptr<Tensor> WinogradHelper::AllocWeightTensor(int ochannel, int ichannel, int unit_ci, int unit_co) {
-  int ciC4 = opencl::CeilDiv(ichannel, unit_ci);
-  int coC4 = opencl::CeilDiv(ochannel, unit_co);
+std::unique_ptr<Tensor> AllocWeightTensor(AllocatorPtr& cpu_alloc_,
+                                          int64_t ochannel, int64_t ichannel, int64_t unit_ci, int64_t unit_co) {
+  int64_t ciC4 = opencl::CeilDiv(ichannel, unit_ci);
+  int64_t coC4 = opencl::CeilDiv(ochannel, unit_co);
   return Tensor::Create(DataTypeImpl::GetType<float>(), {16LL, coC4, ciC4, unit_ci, unit_co}, cpu_alloc_);
 }
 
@@ -116,7 +117,7 @@ inline void WeightTransform4x4_3x3(
 TensorShapeVector GetStrides(const Tensor* matrix) {
   auto dims = matrix->Shape();
   TensorShapeVector strides;
-  int count = 1;
+  int64_t count = 1;
   for (auto iter : dims.AsShapeVector()) {
     count *= iter;
   }
@@ -130,19 +131,21 @@ TensorShapeVector GetStrides(const Tensor* matrix) {
 /*
 transform weight from [oc][ic][kh][kw] to [unit][unit][co4][ci4][16]
 */
-std::unique_ptr<Tensor> WinogradHelper::TransformWeight(const Tensor* source, int output_channel, int input_channel) {
-  auto dst = AllocWeightTensor(output_channel, input_channel, 4, 4);
+std::unique_ptr<Tensor> WinogradHelper::TransformWeight(
+    const Tensor* source, int64_t output_channel, int64_t input_channel) {
+  auto dst = AllocWeightTensor(cpu_alloc_, output_channel, input_channel, 4, 4);
   const auto& dst_shape = dst->Shape();
   auto dst_strides = GetStrides(dst.get());
 
-  int ci = input_channel;
-  int co = output_channel;
-  int unitCi = dst_shape[3];
-  int unitCo = dst_shape[4];
-  std::fill_n(dst->MutableData<float>(), dst_shape.Size(), 0.0);
+  auto ci = input_channel;
+  auto co = output_channel;
+  auto unitCi = dst_shape[3];
+  auto unitCo = dst_shape[4];
+  std::fill_n(dst->MutableData<float>(), dst_shape.Size(), 0.0f);
 
   if (unitCi == 4 && unitCo == 4 && kernel_size_ == 3) {
-    WeightTransform4x4_3x3(source, dst.get(), G_.get(), dst_strides, ci, co, 1, 0);
+    WeightTransform4x4_3x3(source, dst.get(), G_.get(), dst_strides,
+                           static_cast<int>(ci), static_cast<int>(co), 1, 0);
   } else {
     ORT_THROW("only surpport F(2,3)");
   }

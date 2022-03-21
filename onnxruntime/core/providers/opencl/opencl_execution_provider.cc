@@ -123,7 +123,7 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   ORT_RETURN_IF_NOT(num_platforms > 0, "Cannot find OpenCL platform.");
 
   std::vector<cl_platform_id> platforms(num_platforms);
-  ORT_RETURN_IF_CL_ERROR(clGetPlatformIDs(platforms.size(), platforms.data(), nullptr));
+  ORT_RETURN_IF_CL_ERROR(clGetPlatformIDs(static_cast<cl_uint>(platforms.size()), platforms.data(), nullptr));
   int selected_platform_idx = -1;
   // FIXME: add platform selection logic
   for (auto& platform : platforms) {
