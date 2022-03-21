@@ -8,6 +8,7 @@
 
 #include "core/providers/cuda/tensor/quantize_linear.cuh"
 #include "qorder_layer_norm.h"
+#include "qorder_common_impl.h"
 #include "qorder_common.h"
 
 namespace onnxruntime {
@@ -108,31 +109,20 @@ Status QOrderedLayerNormalization::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   auto stream = Stream();
-  auto cublasLt = CublasLtHandle();
+  const auto& device_prop = GetDeviceProp();
   auto Y_data = reinterpret_cast<CudaQ*>(Y->MutableData<int8_t>());
   const float* scale_x = ctx->Input<Tensor>(1)->Data<float>();
   const float* scale_y = ctx->Input<Tensor>(4)->Data<float>();
 
   // TODO: Write specific kernel for all these rather than QOrder/DQOrder
-  auto fp16_buffer = GetScratchBuffer<CudaF>(2 * element_count * sizeof(CudaF) + 2 * sizeof(CudaF));
-  // Could move to constructor, yet maybe not needed after rewrite
-  CudaF half_scales[2] = {ToCudaType<MLFloat16>::FromFloat(*scale_x), ToCudaType<MLFloat16>::FromFloat(*scale_y)};
-  CudaF* half_scale_x = fp16_buffer.get() + (2 * element_count);
-  CudaF* half_scale_y = half_scale_x + 1;
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(half_scale_x, half_scales, 2 * sizeof(CudaF), cudaMemcpyHostToDevice, stream));
-
-  ORT_RETURN_IF_ERROR(Reorder(cublasLt, stream, batch, rows, cols, CUDA_R_8I, X_data, CUBLASLT_ORDER_COL32, fp16_buffer.get(), CUBLASLT_ORDER_ROW));
-  ORT_RETURN_IF_ERROR(CudaDequantizeLinear(stream, (const CudaQ*)(fp16_buffer.get()), fp16_buffer.get() + element_count,
-                                           half_scale_x, (const int8_t*)nullptr, element_count));
+  auto fp16_buffer = GetScratchBuffer<CudaF>(2 * element_count * sizeof(CudaF));
+  QOrderDequantizeS8Col32_HalfRow(stream, device_prop, X_data, fp16_buffer.get(), *scale_x, batch, rows, cols);
 
   typedef typename ToCudaType<float>::MappedType CudaU;
   HostApplyLayerNorm<CudaF, CudaU, false>(GetDeviceProp(), Stream(), fp16_buffer.get(), nullptr, nullptr,
                                           fp16_buffer.get() + element_count, n1, n2, epsilon_, scale_data, bias_data);
 
-  ORT_RETURN_IF_ERROR(CudaQuantizeLinear(stream, fp16_buffer.get(), (CudaQ*)(fp16_buffer.get() + element_count),
-                                         half_scale_y, (const int8_t*)nullptr, element_count));
-  ORT_RETURN_IF_ERROR(Reorder(cublasLt, stream, batch, rows, cols, CUDA_R_8I,
-                              fp16_buffer.get() + element_count, CUBLASLT_ORDER_ROW, Y_data, CUBLASLT_ORDER_COL32));
+  QOrderQuantizeHalfRow_S8Col32(stream, device_prop, fp16_buffer.get() + element_count, Y_data, *scale_y, batch, rows, cols);
 
   DUBUG_PERF_CUDA_SYNC();
   return Status::OK();
