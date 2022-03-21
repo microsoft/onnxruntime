@@ -4,7 +4,7 @@ set -ex
 pwd
 echo $ORT_ROOT
 
-files=$(find . -name "*.gcno")
+files=($(find . -name "*.gcno"))
 for my_path in "${files[@]}"
 do 
   parent_path=$( echo $my_path | grep -Eo "(onnxruntime/).*(.gcno)")
