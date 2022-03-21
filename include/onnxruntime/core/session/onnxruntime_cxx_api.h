@@ -48,6 +48,9 @@ struct Exception : std::exception {
 };
 
 #ifdef ORT_NO_EXCEPTIONS
+// The #ifndef is for the very special case where the user of this library wants to define their own way of handling errors.
+// NOTE: This header expects control flow to not continue after calling ORT_CXX_API_THROW
+#ifndef ORT_CXX_API_THROW
 #define ORT_CXX_API_THROW(string, code)       \
   do {                                        \
     std::cerr << Ort::Exception(string, code) \
@@ -55,6 +58,7 @@ struct Exception : std::exception {
               << std::endl;                   \
     abort();                                  \
   } while (false)
+#endif
 #else
 #define ORT_CXX_API_THROW(string, code) \
   throw Ort::Exception(string, code)

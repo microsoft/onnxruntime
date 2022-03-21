@@ -1,4 +1,10 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "core/framework/kernel_def_hash_helpers.h"
+
+#include "core/framework/data_types_internal.h"
+#include "core/graph/graph.h"
 
 namespace onnxruntime {
 namespace utils {
@@ -31,6 +37,26 @@ std::optional<HashValue> GetHashValueFromStaticKernelHashMap(const std::string& 
   auto iter = static_kernel_hashes.find(key);
   if (iter != static_kernel_hashes.end()) {
     return iter->second;
+  }
+
+  return std::nullopt;
+}
+
+// special case for node NHWC optimizer may insert when running in minimal build
+std::optional<HashValue> GetInternalNhwcOpHash(const Node& node) {
+  if (node.Domain() == kMSDomain) {
+    const auto& op_type = node.OpType();
+    const auto& input_0_type = *node.InputDefs()[0]->TypeAsProto();
+
+    if (op_type == "QLinearConv") {
+      // first input is a tensor. could be uint8 or int8
+      bool is_uint8 = input_0_type.tensor_type().elem_type() == utils::ToTensorProtoElementType<uint8_t>();
+      return is_uint8 ? 16835965565578160400ULL : 10904143578341560456ULL;
+    } else if (op_type == "NhwcMaxPool") {
+      // first input is a tensor. could be uint8 or int8
+      bool is_uint8 = input_0_type.tensor_type().elem_type() == utils::ToTensorProtoElementType<uint8_t>();
+      return is_uint8 ? 8512357837341844248ULL : 11773579655431087496ULL;
+    }
   }
 
   return std::nullopt;

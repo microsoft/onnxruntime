@@ -14,9 +14,9 @@ class QDQOperatorBase:
         node = self.node
 
         if self.disable_qdq_for_node_output:
-            nodes_to_iterate = node.input
+            tensors_to_quantize = node.input
         else:
-            nodes_to_iterate = itertools.chain(node.input, node.output)
+            tensors_to_quantize = itertools.chain(node.input, node.output)
 
-        for tensor_name in nodes_to_iterate:
+        for tensor_name in tensors_to_quantize:
             self.quantizer.quantize_tensor(tensor_name)

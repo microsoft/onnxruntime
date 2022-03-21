@@ -326,7 +326,7 @@ void ApiNode::CopyAttributes(const api::NodeRef& node) {
   const ApiNode& ort_node = static_cast<const ApiNode&>(node);
   const NodeAttributes& attributes = ort_node.node_.GetAttributes();
   for (const auto& pair : attributes) {
-    node_.AddAttribute(pair.first, pair.second);
+    node_.AddAttributeProto(pair.second);
   }
 }
 
@@ -680,7 +680,8 @@ std::unique_ptr<api::NodeRef> ApiGraph::AddNode(std::string_view op_type,
 std::unique_ptr<api::NodeRef> ApiGraph::CopyNode(const api::NodeRef& source_node, std::string_view op_type,
                                                  std::string_view domain) {
   Node& node = CreateNodeHelper(graph_, op_type, source_node.Inputs(),
-                                source_node.Outputs().size(), domain, source_node.SinceVersion(), source_node.GetExecutionProviderType());
+                                source_node.Outputs().size(), domain, source_node.SinceVersion(),
+                                source_node.GetExecutionProviderType());
 
   std::unique_ptr<api::NodeRef> new_node = std::make_unique<ApiNode>(node, graph_);
   new_node->CopyAttributes(source_node);
@@ -802,7 +803,7 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
   return ort_layout_senstive_ops;
 }
 
-Status TransformLayout(Graph& graph, bool& modified, IExecutionProvider& execution_provider) {
+Status TransformLayoutForCompilingEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider) {
   // sub graph recurse will be added later
   auto api_graph = MakeApiGraph(graph, execution_provider.GetAllocator(0, OrtMemTypeDefault), nullptr);
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
@@ -875,9 +876,14 @@ Status TransformLayout(Graph& graph, bool& modified, IExecutionProvider& executi
   }
 
   if (modified) {
-    onnx_layout_transformation::Optimize(*api_graph, /*allow_extended_ops*/ true, execution_provider.Type(),
-                                         onnx_layout_transformation::OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM,
-                                         layout_sensitive_ops);
+    OptimizeResult result =
+        onnx_layout_transformation::Optimize(*api_graph, /*allow_extended_ops*/ true, execution_provider.Type(),
+                                             onnx_layout_transformation::OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM,
+                                             layout_sensitive_ops);
+    if (result.error_msg) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optimization after layout transformation failed: ",
+                             result.error_msg.value());
+    }
   }
 
   return Status::OK();

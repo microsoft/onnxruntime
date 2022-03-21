@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/reduction/reduction_all.h"
+#include "orttraining/training_ops/cuda/reduction/reduction_all_impl.h"
 
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/shared_inc/accumulation_type.h"

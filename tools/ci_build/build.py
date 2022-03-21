@@ -376,7 +376,7 @@ def parse_arguments():
     parser.add_argument(
         "--wasm_malloc", default="dlmalloc", help="Specify memory allocator for WebAssembly")
     parser.add_argument(
-        "--emsdk_version", default="2.0.34", help="Specify version of emsdk")
+        "--emsdk_version", default="3.1.3", help="Specify version of emsdk")
 
     # Enable onnxruntime-extensions
     parser.add_argument(
@@ -487,9 +487,6 @@ def parse_arguments():
     parser.add_argument(
         "--enable_wcos", action='store_true',
         help="Build for Windows Core OS.")
-    parser.add_argument(
-        "--enable_windows_store", action='store_true',
-        help="Build for Windows Store")
     parser.add_argument(
         "--enable_lto", action='store_true',
         help="Enable Link Time Optimization")
@@ -1593,6 +1590,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if args.use_tensorrt:
                 return
 
+            python_path = None
+            if args.use_tvm:
+                python_path = os.path.join(build_dir, config, "_deps", "tvm-src", "python")
+
             # Disable python tests in a reduced build as we don't know which ops have been included and which
             # models can run.
             if is_reduced_ops_build(args) or args.minimal_build is not None:
@@ -1601,7 +1602,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if is_windows():
                 cwd = os.path.join(cwd, config)
 
-            run_subprocess([sys.executable, 'onnxruntime_test_python.py'], cwd=cwd, dll_path=dll_path)
+            run_subprocess([sys.executable, 'onnxruntime_test_python.py'],
+                           cwd=cwd, dll_path=dll_path, python_path=python_path)
 
             if not args.disable_contrib_ops:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_sparse_matmul.py'],
@@ -1617,6 +1619,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 # which currently uses Torch's allocator to allocate GPU memory for testing
                 log.info("Testing IOBinding feature")
                 run_subprocess([sys.executable, 'onnxruntime_test_python_iobinding.py'], cwd=cwd, dll_path=dll_path)
+
+                log.info("Testing CUDA Graph feature")
+                run_subprocess([sys.executable, 'onnxruntime_test_python_cudagraph.py'], cwd=cwd, dll_path=dll_path)
 
             if not args.disable_ml_ops:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_mlops.py'], cwd=cwd, dll_path=dll_path)
@@ -1649,7 +1654,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 onnx_test = False
 
             if onnx_test:
-                run_subprocess([sys.executable, 'onnxruntime_test_python_backend.py'], cwd=cwd, dll_path=dll_path)
+                run_subprocess([sys.executable, 'onnxruntime_test_python_backend.py'], cwd=cwd, dll_path=dll_path,
+                               python_path=python_path)
                 if not args.disable_contrib_ops:
                     run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'quantization'],
                                    cwd=cwd, dll_path=dll_path)
@@ -1922,7 +1928,7 @@ def is_cross_compiling_on_apple(args):
 
 
 def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
-    if (args.arm or args.arm64 or args.arm64ec or args.enable_windows_store) and \
+    if (args.arm or args.arm64 or args.arm64ec) and \
             not (is_windows() or is_cross_compiling_on_apple(args)):
         raise BuildError(
             'Currently only support building protoc for Windows host while '
@@ -2055,7 +2061,7 @@ def main():
     if args.use_migraphx:
         args.use_rocm = True
 
-    if args.build_wheel or args.gen_doc:
+    if args.build_wheel or args.gen_doc or args.use_tvm:
         args.enable_pybind = True
 
     if args.build_csharp or args.build_nuget or args.build_java or args.build_nodejs:
@@ -2204,10 +2210,6 @@ def main():
                 cmake_extra_args = [
                     '-A', 'x64', '-T', toolset, '-G', args.cmake_generator
                 ]
-            if args.enable_windows_store:
-                cmake_extra_defines.append(
-                    'CMAKE_TOOLCHAIN_FILE=' + os.path.join(
-                        source_dir, 'cmake', 'store_toolchain.cmake'))
             if args.enable_wcos:
                 cmake_extra_defines.append('CMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake')
         elif args.cmake_generator is not None and not (is_macOS() and args.use_xcode):
@@ -2232,7 +2234,7 @@ def main():
             log.info("Activating emsdk...")
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
 
-        if (args.android or args.ios or args.enable_windows_store or args.build_wasm
+        if (args.android or args.ios or args.build_wasm
                 or is_cross_compiling_on_apple(args)) and args.path_to_protoc_exe is None:
             # Cross-compiling for Android, iOS, and WebAssembly
             path_to_protoc_exe = build_protoc_for_host(

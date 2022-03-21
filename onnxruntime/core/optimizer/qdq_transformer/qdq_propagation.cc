@@ -18,7 +18,9 @@ namespace {
 bool CanNodePropagate(const Node& node) {
   return graph_utils::IsSupportedOptypeVersionAndDomain(node, "MaxPool", {12}) ||
          graph_utils::IsSupportedOptypeVersionAndDomain(node, "Reshape", {5, 13, 14}) ||
-         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1, 13});
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1, 13}) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Squeeze", {1, 11, 13}) ||
+         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Unsqueeze", {1, 11, 13});
 }
 
 // convert this: src_node -> dst_node
@@ -194,7 +196,7 @@ class GraphConstantInitializerGetter {
 };
 
 Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
-                          const std::unordered_set<std::string>& compatible_eps,
+                          const InlinedHashSet<std::string_view>& compatible_eps,
                           const logging::Logger& logger,
                           bool& modified) {
   for (auto node_index : node_indices) {
@@ -244,7 +246,7 @@ Status PropagateDQForward(Graph& graph, gsl::span<const NodeIndex> node_indices,
 }
 
 Status PropagateQBackward(Graph& graph, gsl::span<const NodeIndex> node_indices,
-                          const std::unordered_set<std::string>& compatible_eps,
+                          const InlinedHashSet<std::string_view>& compatible_eps,
                           const logging::Logger& logger,
                           bool& modified) {
   for (auto node_index : node_indices) {

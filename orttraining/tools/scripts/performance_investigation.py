@@ -27,9 +27,9 @@ def process_file(onnx_file):
             memcpu_ops.append(f"{node.op_type} {node.name}")
         if node.op_type == "Cast":
             cast_ops.append(f"{node.name}")
-        if node.op_type == "ATenOp":
+        if node.op_type == "ATen":
             for attr in node.attribute:
-                if attr.name == "name":
+                if attr.name == "operator":
                     aten_ops.append(f"{node.name}: {attr.s.decode('utf-8')}")
         if node.op_type == "PythonOp":
             for attr in node.attribute:
@@ -51,7 +51,7 @@ def process_file(onnx_file):
                 msgs.append(f"Examine whether {node.name} should be fused with the leading {prev.name} op into BiasSoftmax node.")
 
     if aten_ops:
-        print("ATenOp found:")
+        print("ATen op found:")
         for line in aten_ops:
             print(line)
         print(10 * '-')

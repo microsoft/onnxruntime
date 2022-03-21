@@ -57,14 +57,6 @@ stages:
       pool: ${{ parameters.agent_pool }}
       strategy:
         matrix:
-          Python36:
-            PythonVersion: '3.6'
-            TorchVersion: ${{ parameters.torch_version }}
-            OpsetVersion: ${{ parameters.opset_version }}
-            CudaVersion: ${{ parameters.cuda_version }}
-            DockerFile: ${{ parameters.docker_file }}
-            GccVersion: ${{ parameters.gcc_version }}
-            UploadWheel: ${{ parameters.upload_wheel }}
           Python37:
             PythonVersion: '3.7'
             TorchVersion: ${{ parameters.torch_version }}

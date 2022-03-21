@@ -10,7 +10,9 @@
 #include "core/framework/ortdevice.h"
 #include "core/common/common.h"
 
+
 namespace onnxruntime {
+namespace tvm {
 
 inline DLDataType GetDataType(ONNXTensorElementDataType type) {
   if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
@@ -23,6 +25,8 @@ inline DLDataType GetDataType(ONNXTensorElementDataType type) {
     return {kDLInt, 64, 1};
   } else if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
     return {kDLInt, 32, 1};
+  } else if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL) {
+    return {kDLUInt, 1, 1};
   } else {
     ORT_NOT_IMPLEMENTED("Unsupported data type");
   }
@@ -48,6 +52,7 @@ inline DLDevice GetDLDevice(const OrtDevice& device) {
   return context;
 }
 
-}  // namespace onnxruntime
+}   // namespace tvm
+}   // namespace onnxruntime
 
 #endif // TVM_UTILS_H

@@ -8,7 +8,7 @@ file(GLOB onnxruntime_eager_srcs CONFIGURE_DEPENDS
 
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_eager_srcs})
 
-add_library(onnxruntime_eager ${onnxruntime_eager_srcs})
+onnxruntime_add_static_library(onnxruntime_eager ${onnxruntime_eager_srcs})
 if(MSVC AND onnxruntime_ENABLE_EAGER_MODE)
   set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_aten.cpp" PROPERTIES COMPILE_FLAGS "/wd4100 /wd4458")
   set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_customops.g.cpp" PROPERTIES COMPILE_FLAGS "/wd4100")
