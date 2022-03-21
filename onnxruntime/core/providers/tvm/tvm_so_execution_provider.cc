@@ -28,7 +28,7 @@ struct TVMFuncState {
   AllocateFunc allocate_func = nullptr;
   DestroyFunc release_func = nullptr;
   AllocatorHandle allocator = nullptr;
-  std::shared_ptr<tvm::TVMCompiler> compiler = nullptr;
+  std::shared_ptr<TVMCompilerBase> compiler = nullptr;
 };
 
 TvmSoExecutionProvider::TvmSoExecutionProvider(const TvmEPOptions& options)
@@ -44,7 +44,7 @@ TvmSoExecutionProvider::TvmSoExecutionProvider(const TvmEPOptions& options)
   // Get environment variables
   const Env& env_instance = Env::Default();
 
-  const std::string dump_subgraphs_env = env_instance.GetEnvironmentVar(tvm::env_vars::kDumpSubgraphs);
+  const std::string dump_subgraphs_env = env_instance.GetEnvironmentVar(env_vars::kDumpSubgraphs);
   if (!dump_subgraphs_env.empty()) {
     dump_subgraphs_ = std::stoi(dump_subgraphs_env) != 0;
   }
@@ -116,15 +116,8 @@ common::Status TvmSoExecutionProvider::Compile(const std::vector<Node*>& nodes,
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
 
     *(model_proto.mutable_graph()) = node_graph.ToGraphProto();
-    auto opset = model_proto.add_opset_import();
-    opset->set_domain(kOnnxDomain);
-    opset->set_version(node_graph.DomainToVersionMap().at(kOnnxDomain));
 
-    std::string onnx_model_str;
-    model_proto.SerializeToString(&onnx_model_str);
-    compilers_[func_name] = std::make_shared<Compiler>(std::move(onnx_model_str),
-                              fused_node->ModelPath().ToPathString(),
-                              int(opset->version()));
+    compilers_[func_name] = std::make_shared<TVMSoCompiler>();
     InputsInfoMap all_input_shapes;
     auto mod = compileModel(func_name, node_graph, all_input_shapes);
 
@@ -242,7 +235,7 @@ TensorShapeVector TvmSoExecutionProvider::convertTensorShape(const TensorShapePr
   return shape;
 }
 
-void TvmSoExecutionProvider::prepareOutputTensors(const std::shared_ptr<tvm::TvmModule>& mod,
+void TvmSoExecutionProvider::prepareOutputTensors(const std::shared_ptr<TvmModule>& mod,
                                                   std::vector<DLTensor>& output_tensors,
                                                   size_t num) {
   ORT_ENFORCE(mod != nullptr, "TVM module is not compiled");
@@ -251,7 +244,7 @@ void TvmSoExecutionProvider::prepareOutputTensors(const std::shared_ptr<tvm::Tvm
   options_.output_shapes.resize(num);
 
   if (options_.executor != "vm") {
-    tvm::TVMGetOutputShapes(*mod, options_.output_shapes);
+    TVMGetOutputShapes(*mod, options_.output_shapes);
   }
 
   for (auto& output_shape : options_.output_shapes) {

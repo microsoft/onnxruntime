@@ -23,9 +23,9 @@ namespace onnxruntime {
 namespace tvm {
 
 class TvmSoExecutionProvider : public IExecutionProvider {
-  using Compiler = tvm::TVMCompiler;
+  using Compiler = TVMCompilerBase;
   using Compilers = std::unordered_map<std::string, std::shared_ptr<Compiler>>;
-  using Runner = tvm::TVMRunner;
+  using Runner = TVMRunner;
   using Runners = std::unordered_map<std::string, std::shared_ptr<Runner>>;
 
 public:
@@ -43,14 +43,14 @@ public:
 
 private:
   void printOptions();
-  std::shared_ptr<tvm::TvmModule> compileModel(const std::string& func_name,
-                                               const Graph& graph,
-                                               InputsInfoMap& inputs_info);
+  std::shared_ptr<TvmModule> compileModel(const std::string& func_name,
+                                          const Graph& graph,
+                                          InputsInfoMap& inputs_info);
   void setInputShapesForFreezedNN(const Graph& graph, TVMTensorShapes& input_shapes, InputsInfoMap& all_input_shapes);
   void setInputShapesForUnfreezedNN(const Graph& graph, TVMTensorShapes& input_shapes, InputsInfoMap& all_input_shapes);
   TensorShapeVector getInputShape(const NodeArg* node);
   TensorShapeVector convertTensorShape(const ONNX_NAMESPACE::TensorShapeProto& shape_proto);
-  void prepareOutputTensors(const std::shared_ptr<tvm::TvmModule>& mod, std::vector<DLTensor>& output_tensors, size_t num);
+  void prepareOutputTensors(const std::shared_ptr<TvmModule>& mod, std::vector<DLTensor>& output_tensors, size_t num);
   NodeComputeInfo prepareComputeInfo(const std::string& func_name);
   int createStateFunc(ComputeContext*, FunctionState*);
 

@@ -15,9 +15,9 @@ namespace tvm {
 using TvmIntArray = ::tvm::Array<::tvm::Integer>;
 using TvmPackedFunc = ::tvm::PackedFunc;
 
-TvmModule TVMCompile(const std::string& onnx_txt,
+TvmModule TVMCompile(const TvmEPOptions& options,
+                     const std::string& onnx_txt,
                      const std::string& model_path,
-                     const TvmEPOptions& options,
                      int opset,
                      const TVMTensorShapes& input_shapes)
 {
