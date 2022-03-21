@@ -731,9 +731,11 @@ def add_default_definition(definition_list, key, default_value):
             return definition_list
     definition_list.append(key + "=" + default_value)
 
+
 def normalize_arg_list(nested_list):
     return ([i for j in nested_list for i in j]
             if nested_list else [])
+
 
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home,
                         mpi_home, nccl_home, tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
@@ -1040,7 +1042,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             cmake_args += [
                 "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
             ]
-        
+
         # add default emscripten settings
         emscripten_settings = normalize_arg_list(args.emscripten_settings)
 
@@ -2115,7 +2117,7 @@ def main():
             # Node.js when trying to load the .wasm file.
             # To debug ONNX Runtime WebAssembly, use ONNX Runtime Web to debug ort-wasm.wasm in browsers.
             raise BuildError("WebAssembly tests cannot be enabled with flag --enable_wasm_debug_info")
-        
+
         if args.wasm_malloc is not None:
             # mark --wasm_malloc as deprecated
             log.warning(
