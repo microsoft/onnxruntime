@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Tvm, _In_ OrtSessionOptions* options, _In_ const char* settings);
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Tvm, _In_ OrtSessionOptions* options, _In_ const char* opt_str);
 
 #ifdef __cplusplus
 }

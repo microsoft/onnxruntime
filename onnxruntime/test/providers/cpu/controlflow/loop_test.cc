@@ -802,7 +802,7 @@ TEST(Loop, Opset11WithNoVariadicInputsAndOutputs) {
       constant_attribute_tensor_proto->set_data_type(TensorProto_DataType_FLOAT);  // float scalar
       *constant_attribute_tensor_proto->mutable_float_data()->Add() = 1.0f;        // float scalar with value 1.0f
 
-      constant_node.AddAttribute("value", attr_proto);
+      constant_node.AddAttributeProto(std::move(attr_proto));
     }
 
     graph.SetInputs({&iter_num_in, &cond_in});
