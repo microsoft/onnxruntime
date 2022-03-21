@@ -45,18 +45,15 @@ __global__ void _UnaryElementWise(
     const FuncT2 functor2,
     CUDA_LONG N) {
   CUDA_LONG start = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
-  float value[NumElementsPerThread];
-  // printf("in the half2 unaryelementwise function .... \n");
+  InT2 value[NumElementsPerThread];
 
-  // OutT2* output_data2 = (OutT2*)output_data;
   InT2* input_data2 = (InT2*)input_data;
-  // InT2* value2 = (InT2*)value;
 
   CUDA_LONG id = start;
   #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N / 2) {
-      reinterpret_cast<InT2*>(value)[i] = input_data2[id];
+      value[i] = input_data2[id];
       id += NumThreadsPerBlock;
     }
   }
@@ -65,7 +62,7 @@ __global__ void _UnaryElementWise(
   #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N / 2) {
-      reinterpret_cast<OutT2*>(output_data)[id] = functor2(reinterpret_cast<InT2*>(value)[i]);
+      reinterpret_cast<OutT2*>(output_data)[id] = functor2(value[i]);
       id += NumThreadsPerBlock;
     }
   }
@@ -127,9 +124,8 @@ void UnaryElementWiseImpl(
     size_t count) {
   if (count == 0)  // special case where there's a dim value of 0 in the shape
     return;
-  printf("call the half2 unaryelementwise function .... \n");
-
-  int blocksPerGrid = static_cast<int>(CeilDiv(count / 2, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  
+  int blocksPerGrid = static_cast<int>(CeilDiv(CeilDiv(count, 2), GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   typedef typename VectorizeTypeMap<InT>::VectorizeT VectorizeInT;
   typedef typename VectorizeTypeMap<OutT>::VectorizeT VectorizeOuT;

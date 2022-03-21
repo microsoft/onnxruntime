@@ -154,19 +154,19 @@ void Impl_Cast<half, float>(
                        count);
 }
 
-// template <>
-// void Impl_Cast<float, half>(
-//     cudaStream_t stream,
-//     const float* input_data,
-//     half* output_data,
-//     size_t count) {
-//       UnaryElementWiseImpl(stream,
-//                        input_data,
-//                        output_data,
-//                        OP_Cast<float, half>(),
-//                        OP_Cast_Float2Half(),
-//                        count);
-// }
+template <>
+void Impl_Cast<float, half>(
+    cudaStream_t stream,
+    const float* input_data,
+    half* output_data,
+    size_t count) {
+      UnaryElementWiseImpl(stream,
+                       input_data,
+                       output_data,
+                       OP_Cast<float, half>(),
+                       OP_Cast_Float2Half(),
+                       count);
+}
 
 #define SPECIALIZED_CAST_IMPL2(InT, OutT) \
   template void Impl_Cast<InT, OutT>(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count);
