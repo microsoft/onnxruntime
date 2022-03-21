@@ -177,7 +177,7 @@ jobs:
         --android_sdk_path $ANDROID_HOME \
         --android_ndk_path $ANDROID_NDK_HOME \
         --android_abi=x86_64 \
-        --android_api=30 \
+        --android_api=29 \
         --skip_submodule_sync \
         --parallel \
         --use_nnapi \
@@ -263,7 +263,7 @@ jobs:
     - script: |
         python3 tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
+        --create-avd --system-image "system-images;android-29;google_apis;x86_64" \
         --start --emulator-extra-args="-partition-size 4096" \
         --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
       displayName: Start Android emulator
@@ -284,14 +284,10 @@ jobs:
         --android_sdk_path $ANDROID_HOME \
         --android_ndk_path $ANDROID_NDK_HOME \
         --android_abi=x86_64 \
-        --android_api=30 \
-        --skip_submodule_sync \
+        --android_api=29 \
         --use_nnapi \
         --parallel \
         --test \
-        --build_java \
-        --cmake_generator=Ninja \
-        --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
         --code_coverage
       displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
 
