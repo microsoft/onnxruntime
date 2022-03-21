@@ -9,5 +9,3 @@ onnxmltools
 sympy 
 packaging 
 psutil
-ort-nightly-gpu
---extra-index-url https://test.pypi.org/simple/
