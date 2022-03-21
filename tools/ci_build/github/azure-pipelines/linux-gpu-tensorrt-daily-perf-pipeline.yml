@@ -115,6 +115,17 @@ jobs:
       - script: 'mkdir wheel && python3 -m pip download --only-binary :all: --dest wheel --python-version 38 --no-cache --no-deps -i https://test.pypi.org/simple/ ort-nightly-gpu'
         displayName: 'Get Nightly Wheel'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+      
+      - script: |
+          pip install wheel 
+          pip install twine
+          
+      - task: TwineAuthenticate@1
+        inputs:
+          artifactFeed: 'Lotus/ort-gpu-nightly'
+       
+      - script: python -m twine upload -r ort-gpu-nightly wheel/*.whl
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         
     - ${{ each option in parameters.ModelGroups }}:
       - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $(${{option}})'
