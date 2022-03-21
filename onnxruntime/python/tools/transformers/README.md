@@ -111,6 +111,7 @@ Here is a list of PyTorch models from [Huggingface Transformers](https://github.
 - RoBERTa
 - ALBERT
 - GPT-2 (**GPT2Model**, **GPT2LMHeadModel**)
+- Wav2vec2
 
 For Tensorflow model, we only tested BERT model so far.
 
