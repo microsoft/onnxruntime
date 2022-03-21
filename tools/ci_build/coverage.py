@@ -53,7 +53,7 @@ def main():
     os.chdir(cwd)
     run_subprocess("tar -zxf gcda_files.tar.gz -C CMakeFiles".split(' '))
     cmd = ["gcovr", "-s", "-r"]
-    #cmd.append(os.path.join(source_dir, "onnxruntime"))
+    cmd.append(os.path.join(source_dir, "onnxruntime"))
     cmd.extend([".", "-o"])
     cmd.append(os.path.join(cwd, "coverage_rpt.txt"))
     print(cmd)
