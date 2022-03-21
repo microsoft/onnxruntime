@@ -146,7 +146,11 @@ def tvm_so_compile(so_folder,
                    target):
     import pathlib
     so_dir_path = pathlib.Path(so_folder)
-    so_files = list(so_dir_path.glob("*.so"))
+    def check(so_file):
+        filter = ["libtvm_runtime.so", "liboctomized_model.so"]
+        check = filter[0] in str(so_file) or filter[1] in str(so_file)
+        return check
+    so_files = [so_file for so_file in so_dir_path.glob("*.so") if not check(so_file)]
     assert (len(so_files) == 1)
     ro_files = list(so_dir_path.glob("*.ro"))
     assert (len(ro_files) == 1)
