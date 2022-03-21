@@ -114,9 +114,6 @@ class DnnlSubgraph {
   void AddTensor(std::unique_ptr<DnnlTensor> new_tensor);
   void RemoveTensor(const std::string& tensor_name);
 
-  bool GetInitializedTensor(const std::string& arg_name, const ONNX_NAMESPACE::TensorProto*& value);
-  //bool IsConstantInitializer(const std::string& arg_name, bool check_outer_scope);
-
  private:
   //graph owns all nodes
   std::vector<std::unique_ptr<DnnlNode>> dnnl_nodes_;
@@ -126,12 +123,6 @@ class DnnlSubgraph {
   std::vector<DnnlTensor*> inputs_;
   std::vector<DnnlTensor*> outputs_; //output should never get deleted from graph transformation
   std::vector<DnnlTensor*> initializers_;
-  // The passed in GraphViewer will be released after "Compile" call.
-  // Save a copy of tensor proto in DNNL IR.
-  // TODO: it seems we only need tensor proto for some scalar variables.
-  // we can optimize that only save scalars to save memory.
-  std::vector<std::unique_ptr<ONNX_NAMESPACE::TensorProto>> initializer_tensors_;
-  std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto*> named_initializers_;
   bool is_dynamic_;
 };
 }  // namespace ort_dnnl

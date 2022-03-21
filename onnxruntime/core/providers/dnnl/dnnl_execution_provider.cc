@@ -274,7 +274,7 @@ Status DNNLExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
 
     //apply transformation to subgraph
     if (enable_fusion_) {
-      ort_dnnl::DnnlGraphTransformer().Apply(*subgraphs_[fused_node.Name()].get());
+      ort_dnnl::DnnlGraphTransformer().Apply(*subgraphs_[fused_node.Name()].get(), graph_body_viewer);
     }
 
     //subgraph primitive

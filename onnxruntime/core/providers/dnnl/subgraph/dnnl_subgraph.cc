@@ -332,20 +332,6 @@ void DnnlSubgraph::AddNode(std::unique_ptr<DnnlNode> new_node) {
   dnnl_nodes_.back()->Index() = index;
 }
 
-bool DnnlSubgraph::GetInitializedTensor(const std::string& arg_name, const ONNX_NAMESPACE::TensorProto*& value) {
-  auto iter = named_initializers_.find(arg_name);
-  if (named_initializers_.end() == iter) {
-    value = nullptr;
-    return false;
-  }
-  value = iter->second;
-  return true;
-}
-
-//bool DnnlSubgraph::IsConstantInitializer(const std::string& arg_name, bool check_outer_scope) {
-//  return graph_viewer_.IsConstantInitializer(arg_name, check_outer_scope);
-//}
-
 void DnnlSubgraph::Build(const GraphViewer& graph_viewer) {
   //establish nodes, tensors and nodeargs
   const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
@@ -401,15 +387,6 @@ void DnnlSubgraph::Build(const GraphViewer& graph_viewer) {
   for (auto& initializer : graph_viewer.GetAllInitializedTensors()) {
     auto& name = initializer.first;
     initializers_.push_back(dnnl_tensors_[name].get());
-  }
-
-  // save initializers
-  auto& all_iniitializers = graph_viewer.GetAllInitializedTensors();
-  for (auto& kv : all_iniitializers) {
-    auto tensor_proto = ONNX_NAMESPACE::TensorProto::Create();
-    tensor_proto->copy_from(kv.second);
-    named_initializers_.insert({kv.first, tensor_proto.get()});
-    initializer_tensors_.emplace_back(std::move(tensor_proto));
   }
 }
 
