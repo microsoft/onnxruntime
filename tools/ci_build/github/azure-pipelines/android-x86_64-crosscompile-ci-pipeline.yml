@@ -230,7 +230,11 @@ jobs:
   - name: ORTROOT
     value: /mnt/vss/_work/1/
   steps:
-    - script: mkdir -p $(ORTROOT)
+    # used by Build Minimal ORT
+    - script: brew install coreutils ninja
+      displayName: Install coreutils and ninja
+      
+    - script: sudo mkdir -p $(ORTROOT) && sudo chown $(id -un) $(ORTROOT)
       displayName: make onnxruntime directory same as last job in Linux
       
     - task: CopyFiles@2
@@ -253,10 +257,6 @@ jobs:
 
     - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
       displayName: Setup gradle wrapper to use gradle 6.8.3
-
-    # used by Build Minimal ORT
-    - script: brew install coreutils ninja
-      displayName: Install coreutils and ninja
 
     - script: |
         python3 tools/python/run_android_emulator.py \
