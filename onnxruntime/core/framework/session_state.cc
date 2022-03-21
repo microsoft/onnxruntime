@@ -1187,8 +1187,11 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
 
   if (serialized_session_state) {
     ORT_RETURN_IF_ERROR(LoadFromOrtFormat(*serialized_session_state, kernel_registry_manager));
+    // LoadFromOrtFormat() may assign node EPs so check afterwards
+    ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph_, logger_));
   } else {
 #if !defined(ORT_MINIMAL_BUILD)
+    ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph_, logger_));
     ORT_RETURN_IF_ERROR(PopulateKernelCreateInfo(kernel_registry_manager, saving_ort_format));
 #else
     ORT_UNUSED_PARAMETER(graph_location);
@@ -1200,8 +1203,6 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
                   "Serialized session state must be provided from an ORT format model in this build.");
 #endif
   }
-
-  ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph_, logger_));
 
   std::unordered_map<std::string, size_t> constant_initializers_use_count;
   ComputeConstantInitializerUseCount(graph_, constant_initializers_use_count);
