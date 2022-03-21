@@ -107,8 +107,8 @@ jobs:
           displayName: 'Build latest ORT'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
-    - ${{ if ne(parameters.BuildORT, true) }}:
-      - script: 'docker pull nvcr.io/nvidia/tensorrt:$(trtContainer)-py3'
+    # - ${{ if ne(parameters.BuildORT, true) }}:
+    #   - script: 'docker pull nvcr.io/nvidia/tensorrt:$(trtContainer)-py3'
 
     - ${{ if eq(parameters.PublishWheel, true) }}:
       
@@ -117,14 +117,14 @@ jobs:
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
       
       - script: |
-          pip install wheel 
-          pip install twine
+          python3 -m pip install wheel 
+          python3 -m pip install twine
           
       - task: TwineAuthenticate@1
         inputs:
           artifactFeed: 'Lotus/ort-gpu-nightly'
        
-      - script: python -m twine upload -r ort-gpu-nightly wheel/*.whl
+      - script: python3 -m pip install twine && python3 -m twine upload -r ort-gpu-nightly wheel/*.whl
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         
     - ${{ each option in parameters.ModelGroups }}:
