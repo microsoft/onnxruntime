@@ -272,7 +272,18 @@ stages:
           SourceFolder: '$(Build.BinariesDirectory)'
           Contents: 'Release/dist/*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
+         
+      - script: |
+          pip install wheel 
+          pip install twine
+          
+      - task: TwineAuthenticate@1
+        inputs:
+          artifactFeed: 'Lotus/ort-gpu-nightly'
+       
+      - script: python -m twine upload -r ort-gpu-nightly Release/dist/*.whl
+        workingDirectory: '$(Build.BinariesDirectory)'
+    
       - task: PublishBuildArtifacts@1
         displayName: 'Publish Artifact: ONNXRuntime python wheel'
         inputs:
