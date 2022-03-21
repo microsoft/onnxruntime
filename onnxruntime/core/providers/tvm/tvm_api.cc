@@ -50,6 +50,16 @@ TvmModule TVMCompile(const std::string& onnx_txt,
   return mod;
 }
 
+TvmModule TVMSoCompile(const TvmEPOptions& options)
+{
+  const TvmPackedFunc* compile = ::tvm::runtime::Registry::Get("tvm_import_from_so_and_compile");
+  ORT_ENFORCE(compile != nullptr, "Unable to retrieve 'tvm_import_from_so_and_compile'.");
+  TvmModule mod = (*compile)(options.so_folder,
+                             options.target);
+  ORT_ENFORCE(mod.get() != nullptr, "Compiled TVM Module is nullptr!");
+  return mod;
+}
+
 void TVMSetInputs(TvmModule& mod,
                   std::vector<size_t>& inds,
                   std::vector<DLTensor>& inputs)

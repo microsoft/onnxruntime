@@ -20,6 +20,8 @@ struct TvmProviderFactory : IExecutionProviderFactory {
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
     std::unique_ptr<IExecutionProvider> provider = nullptr;
     if(options_.so_folder != "") {
+      ORT_ENFORCE(options_.executor == "vm",
+                  "Only virtual machine module is compiled from shared lib and dependences!");
       provider = std::move(std::make_unique<tvm::TvmSoExecutionProvider>(options_));
     } else {
       provider = std::move(std::make_unique<tvm::TvmExecutionProvider>(options_));
