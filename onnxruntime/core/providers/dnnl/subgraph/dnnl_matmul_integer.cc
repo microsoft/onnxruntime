@@ -67,14 +67,14 @@ void DnnlMatMulInteger::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& nod
 
   if (has_a_zero_point) {
     auto zp_A_mem_desc_s32 = dnnl::memory::desc({1}, dnnl::memory::data_type::s32, {1});
-    auto tensor = node.Input(IN_A_ZERO_POINT);
+    auto& tensor = node.Input(IN_A_ZERO_POINT);
     auto zp_A_mem_s32 = sp.GetMemoryAndReshape(tensor, zp_A_mem_desc_s32, eng);
     mem_map[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC] = zp_A_mem_s32;
   }
 
   if (has_b_zero_point) {
     auto zp_B_mem_desc_s32 = dnnl::memory::desc({1}, dnnl::memory::data_type::s32, {1});
-    auto tensor = node.Input(IN_B_ZERO_POINT);
+    auto& tensor = node.Input(IN_B_ZERO_POINT);
     auto zp_B_mem_s32 = sp.GetMemoryAndReshape(tensor, zp_B_mem_desc_s32, eng);
     mem_map[DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS] = zp_B_mem_s32;
   }

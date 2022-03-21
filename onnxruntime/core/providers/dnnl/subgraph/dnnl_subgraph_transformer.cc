@@ -488,7 +488,7 @@ void DnnlGraphTransformer::FastGeluSecondFormula(DnnlSubgraph& subgraph, DnnlNod
     return;
   }
 
-  auto pow_exponent = pow_node->Input(1);
+  auto& pow_exponent = pow_node->Input(1);
   if (!IsInitilizedWithExpectedValue(subgraph, pow_exponent, 3.0f)) {
     return;
   }
@@ -763,7 +763,7 @@ void DnnlGraphTransformer::RemoveMatMulIntegerZP(DnnlSubgraph& subgraph) {
       continue;
     }
 
-    auto b_zero_point = dnnl_node->Input(3);
+    auto& b_zero_point = dnnl_node->Input(3);
     const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
     if (!subgraph.GetInitializedTensor(b_zero_point.Name(), tensor_proto)) {
       continue;

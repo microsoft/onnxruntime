@@ -55,8 +55,12 @@ class DnnlTensor {
   void RemoveConsumer(const DnnlNodeArg& arg);
 
  private:
+
+  const ONNX_NAMESPACE::TensorShapeProto* GetShape() const;
+
   std::string tensor_name_;
-  const NodeArg* arg_;
+  ONNX_NAMESPACE::DataType arg_type_;
+  std::unique_ptr<ONNX_NAMESPACE::TypeProto> arg_type_proto_;
   //a tensor can have no producer (input.initializer) or no consumer (output for subgraph)
   DnnlNodeArg producer_;
   std::vector<DnnlNodeArg> consumers_;
@@ -79,7 +83,7 @@ class DnnlNode {
   int SinceVersion();
 
  private:
-  const Node* onnx_node_ = nullptr;
+  int since_version_;
   std::vector<DnnlTensor*> inputs_;
   std::vector<DnnlTensor*> outputs_;
   static DnnlTensor empty_tensor_;
@@ -101,7 +105,7 @@ class DnnlSubgraph {
   std::vector<DnnlTensor*> GetDnnlOutputs();
   std::vector<DnnlTensor*> GetDnnlInitializers();
   // build the subgraph IR
-  void Build();
+  void Build(const GraphViewer& graph_viewer);
   //check whether the subgraph is dynamic
   void TopoSort();
   bool IsDynamic();
@@ -111,7 +115,7 @@ class DnnlSubgraph {
   void RemoveTensor(const std::string& tensor_name);
 
   bool GetInitializedTensor(const std::string& arg_name, const ONNX_NAMESPACE::TensorProto*& value);
-  bool IsConstantInitializer(const std::string& arg_name, bool check_outer_scope);
+  //bool IsConstantInitializer(const std::string& arg_name, bool check_outer_scope);
 
  private:
   //graph owns all nodes
@@ -122,7 +126,12 @@ class DnnlSubgraph {
   std::vector<DnnlTensor*> inputs_;
   std::vector<DnnlTensor*> outputs_; //output should never get deleted from graph transformation
   std::vector<DnnlTensor*> initializers_;
-  const GraphViewer& graph_viewer_;
+  // The passed in GraphViewer will be released after "Compile" call.
+  // Save a copy of tensor proto in DNNL IR.
+  // TODO: it seems we only need tensor proto for some scalar variables.
+  // we can optimize that only save scalars to save memory.
+  std::vector<std::unique_ptr<ONNX_NAMESPACE::TensorProto>> initializer_tensors_;
+  std::unordered_map<std::string, const ONNX_NAMESPACE::TensorProto*> named_initializers_;
   bool is_dynamic_;
 };
 }  // namespace ort_dnnl
