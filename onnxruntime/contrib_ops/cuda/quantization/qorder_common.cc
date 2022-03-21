@@ -9,6 +9,8 @@
 #include "gsl/gsl"
 
 #include "core/providers/cuda/tensor/quantize_linear.cuh"
+#include "qorder_common_impl.h"
+#include "qorder_common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -306,19 +308,25 @@ Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
   Tensor* output_tensor = context->Output(0, input_tensor.Shape());
   cublasLtHandle_t cublasLt = CublasLtHandle();
   cudaStream_t stream = Stream();
+  const auto& device_prop = GetDeviceProp();
 
-  // TODO: Currently use existing quantize kernel first, may merge into one kernel if performance needed
-  auto q8_buffer = GetScratchBuffer<int8_t>(order_input_ == order_output_ ? 0LL : n);
-  int8_t* dst = order_input_ == order_output_ ? output_tensor->MutableData<int8_t>() : q8_buffer.get();
-  if (input_tensor.IsDataType<float>()) {
-    ORT_RETURN_IF_ERROR(CudaQuantizeLinear(stream, input_tensor.Data<float>(), dst, (const float*)scale, (const int8_t*)nullptr, n));
+  if (order_output_ == CUBLASLT_ORDER_COL32 && order_input_ == CUBLASLT_ORDER_ROW && input_tensor.IsDataType<MLFloat16>()) {
+    QOrderQuantizeHalfRow_S8Col32(stream, device_prop, (const half*)input_tensor.Data<MLFloat16>(), output_tensor->MutableData<int8_t>(),
+                                  (float)*(MLFloat16 const*)scale, gsl::narrow_cast<int>(batch), rows, cols);
+    // TODO: more specific kernels
   } else {
-    ORT_RETURN_IF_ERROR(CudaQuantizeLinear(stream, (const half*)input_tensor.Data<MLFloat16>(), dst, (const half*)scale, (const int8_t*)nullptr, n));
-  }
+    auto q8_buffer = GetScratchBuffer<int8_t>(order_input_ == order_output_ ? 0LL : n);
+    int8_t* dst = order_input_ == order_output_ ? output_tensor->MutableData<int8_t>() : q8_buffer.get();
+    if (input_tensor.IsDataType<float>()) {
+      ORT_RETURN_IF_ERROR(CudaQuantizeLinear(stream, input_tensor.Data<float>(), dst, (const float*)scale, (const int8_t*)nullptr, n));
+    } else {
+      ORT_RETURN_IF_ERROR(CudaQuantizeLinear(stream, (const half*)input_tensor.Data<MLFloat16>(), dst, (const half*)scale, (const int8_t*)nullptr, n));
+    }
 
-  if (order_input_ != order_output_) {
-    ORT_RETURN_IF_ERROR(Reorder(cublasLt, stream, gsl::narrow_cast<int>(batch), rows, cols, CUDA_R_8I,
-                                q8_buffer.get(), (cublasLtOrder_t)order_input_, output_tensor->MutableDataRaw(), (cublasLtOrder_t)order_output_));
+    if (order_input_ != order_output_) {
+      ORT_RETURN_IF_ERROR(Reorder(cublasLt, stream, gsl::narrow_cast<int>(batch), rows, cols, CUDA_R_8I,
+                                  q8_buffer.get(), (cublasLtOrder_t)order_input_, output_tensor->MutableDataRaw(), (cublasLtOrder_t)order_output_));
+    }
   }
 
   DUBUG_PERF_CUDA_SYNC();
@@ -337,19 +345,25 @@ Status DequantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
   Tensor* output_tensor = context->Output(0, input_tensor.Shape());
   cublasLtHandle_t cublasLt = CublasLtHandle();
   cudaStream_t stream = Stream();
+  const auto& device_prop = GetDeviceProp();
 
-  // TODO: Currently use existing quantize kernel first, may merge into one kernel if performance needed
-  const int8_t* src = input_tensor.Data<int8_t>();
-  auto q8_buffer = GetScratchBuffer<int8_t>(order_input_ == order_output_ ? 0LL : n);
-  if (order_input_ != order_output_) {
-    src = (const int8_t*)q8_buffer.get();
-    ORT_RETURN_IF_ERROR(Reorder(cublasLt, stream, gsl::narrow_cast<int>(batch), rows, cols, CUDA_R_8I,
-                                input_tensor.DataRaw(), (cublasLtOrder_t)order_input_, q8_buffer.get(), (cublasLtOrder_t)order_output_));
-  }
-  if (scale_tensor.IsDataType<float>()) {
-    ORT_RETURN_IF_ERROR(CudaDequantizeLinear(stream, src, output_tensor->MutableData<float>(), (const float*)scale, (const int8_t*)nullptr, n));
+  if (order_output_ == CUBLASLT_ORDER_ROW && order_input_ == CUBLASLT_ORDER_COL32 && output_tensor->IsDataType<MLFloat16>()) {
+    QOrderDequantizeS8Col32_HalfRow(stream, device_prop, input_tensor.Data<int8_t>(), (half*)output_tensor->MutableData<MLFloat16>(),
+                                    (float)*(MLFloat16 const*)scale, batch, rows, cols);
+    // TODO: more specific kernels
   } else {
-    ORT_RETURN_IF_ERROR(CudaDequantizeLinear(stream, src, (half*)output_tensor->MutableData<MLFloat16>(), (const half*)scale, (const int8_t*)nullptr, n));
+    const int8_t* src = input_tensor.Data<int8_t>();
+    auto q8_buffer = GetScratchBuffer<int8_t>(order_input_ == order_output_ ? 0LL : n);
+    if (order_input_ != order_output_) {
+      src = (const int8_t*)q8_buffer.get();
+      ORT_RETURN_IF_ERROR(Reorder(cublasLt, stream, gsl::narrow_cast<int>(batch), rows, cols, CUDA_R_8I,
+                                  input_tensor.DataRaw(), (cublasLtOrder_t)order_input_, q8_buffer.get(), (cublasLtOrder_t)order_output_));
+    }
+    if (scale_tensor.IsDataType<float>()) {
+      ORT_RETURN_IF_ERROR(CudaDequantizeLinear(stream, src, output_tensor->MutableData<float>(), (const float*)scale, (const int8_t*)nullptr, n));
+    } else {
+      ORT_RETURN_IF_ERROR(CudaDequantizeLinear(stream, src, (half*)output_tensor->MutableData<MLFloat16>(), (const half*)scale, (const int8_t*)nullptr, n));
+    }
   }
 
   DUBUG_PERF_CUDA_SYNC();
