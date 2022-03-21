@@ -240,7 +240,7 @@ jobs:
         artifact: 'NNAPIBuildOutput'
         path: $(Build.SourcesDirectory)
 
-    - script: /bin/bash tools/ci_build/github/android/update_gcno_path.sh
+    - script: ORT_ROOT="$(Build.SourcesDirectory)" /bin/bash tools/ci_build/github/android/update_gcno_path.sh
       displayName: Update GCNO path
       
     - task: UsePythonVersion@0
