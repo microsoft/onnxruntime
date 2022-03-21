@@ -25,7 +25,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("Q", DataTypeImpl::GetTensorType<int8_t>())
-        .TypeConstraint("F", BuildKernelDefConstraints<float, MLFloat16>()),
+        .TypeConstraint("F", BuildKernelDefConstraints<float, MLFloat16>())
+        .InputMemoryType(OrtMemTypeCPUInput, 1),   // scale_A
     QuantizeWithOrder);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -35,7 +36,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("F", BuildKernelDefConstraints<float, MLFloat16>())
-        .TypeConstraint("Q", DataTypeImpl::GetTensorType<int8_t>()),
+        .TypeConstraint("Q", DataTypeImpl::GetTensorType<int8_t>())
+        .InputMemoryType(OrtMemTypeCPUInput, 1),   // scale_A
     DequantizeWithOrder);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -352,6 +354,7 @@ Status DequantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
                                     (float)*(MLFloat16 const*)scale, batch, rows, cols);
     // TODO: more specific kernels
   } else {
+    // TODO: scale copy to gpu
     const int8_t* src = input_tensor.Data<int8_t>();
     auto q8_buffer = GetScratchBuffer<int8_t>(order_input_ == order_output_ ? 0LL : n);
     if (order_input_ != order_output_) {
