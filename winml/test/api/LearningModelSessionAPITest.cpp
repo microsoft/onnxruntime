@@ -660,7 +660,7 @@ static void DiscreteFourierTransform(
    auto y_ivv = y_tensor.GetAsVectorView();
    for (uint32_t i = 0; i < y_ivv.Size(); i += 2) {
      // Check results
-     constexpr float error_threshold = .01f;
+     constexpr float error_threshold = .001f;
      WINML_EXPECT_TRUE(abs(y_ivv.GetAt(i) - expected_output[i / 2].real()) < error_threshold);
      WINML_EXPECT_TRUE(abs(y_ivv.GetAt(i + 1) - expected_output[i / 2].imag()) < error_threshold);
    }  
