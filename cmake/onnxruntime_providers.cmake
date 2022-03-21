@@ -720,7 +720,8 @@ if (onnxruntime_USE_OPENCL)
     string(REPLACE ${opencl_cl_path_prefix} "" suffix ${f})
     get_filename_component(dir_of_f ${f} DIRECTORY ABSOLUTE)
     set(output "${opencl_target_dir}/${suffix}.inc")
-    add_custom_command(
+    string(REGEX REPLACE "[/.]" "_" scan_tgt_name ${suffix})
+    add_custom_target(${scan_tgt_name}
       # The Scanning Step:
       #
       # ${output}.deps-nonexisting will not be created, it purely work as
@@ -728,7 +729,7 @@ if (onnxruntime_USE_OPENCL)
       # a full list of included files by expanding all #include and calculate
       # checksum for each header file. If the new content match the existing
       # ${output}.deps, this file will not be updated.
-      OUTPUT ${output}.deps ${output}.deps-nonexisting
+      BYPRODUCTS ${output}.deps ${output}.deps-nonexisting
       COMMAND ${Python3_EXECUTABLE} ${embed_tool} -x cl
               -I "${ONNXRUNTIME_ROOT}/core/providers/opencl"
               -I "${dir_of_f}"
