@@ -283,9 +283,24 @@ jobs:
         --cmake_generator=Ninja \
         --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
         --build_java \
+        --skip_tests \
         --code_coverage
       displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
 
+    - script: |
+        python3 tools/ci_build/build.py \
+        --android \
+        --build_dir build_nnapi \
+        --android_sdk_path $ANDROID_HOME \
+        --android_ndk_path $ANDROID_NDK_HOME \
+        --android_abi=x86_64 \
+        --android_api=29 \
+        --parallel \
+        --use_nnapi \
+        --test \
+        --code_coverage
+      displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
+      
     - script: |
         python3 -m pip install gcovr && \
         python3 tools/ci_build/coverage.py \
