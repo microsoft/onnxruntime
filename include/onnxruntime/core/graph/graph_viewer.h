@@ -160,6 +160,9 @@ class GraphViewer {
   */
   bool IsConstantInitializer(const std::string& name, bool check_outer_scope) const;
 
+  /** Check if a given name is an initializer tensor's name in this graph. */
+  bool IsInitializedTensor(const std::string& name) const;
+
   /** returns the initializer's TensorProto if 'name' is an initializer, is constant and
   cannot be overridden at runtime. If the initializer is not found or is not constant, a nullptr is returned.
   @param check_outer_scope If true and the graph is a subgraph,
