@@ -421,22 +421,20 @@ Status NupharExecutionProvider::SaveInitializer(
 
 // Compile nodes into node_compute_funcs
 // Here, each of nodes is a fuse node
-Status NupharExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                        std::vector<NodeComputeInfo>& node_compute_funcs) {
-  for (const auto& fused_node_graph : fused_nodes_and_graphs) {
-    const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
-    const Node& fused_node = fused_node_graph.fused_node;
+Status NupharExecutionProvider::Compile(
+    const std::vector<onnxruntime::Node*>& nodes,
+    std::vector<NodeComputeInfo>& node_compute_funcs) {
+  for (const auto* node : nodes) {
     NodeComputeInfo info;
 
     // Create state function
     // This is similar to the original OpKernel constructor
     // TODO move compilation part out of create_state_func to above
     info.create_state_func =
-        [&, fused_node, graph_body_viewer](ComputeContext* ctx, FunctionState* state) {
+        [&, node](ComputeContext* ctx, FunctionState* state) {
           std::unique_ptr<NupharKernelState> s =
               std::make_unique<NupharKernelState>(
-                  fused_node,
-                  graph_body_viewer,
+                  *node,
                   *ctx,
                   *this);
 

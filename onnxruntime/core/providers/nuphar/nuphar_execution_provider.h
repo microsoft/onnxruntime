@@ -56,8 +56,8 @@ class NupharExecutionProvider : public IExecutionProvider {
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                 const std::vector<const KernelRegistry*>& kernel_registries) const override;
 
-  common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                         std::vector<NodeComputeInfo>& node_compute_funcs) override;
+  Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+                 std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
   const void* GetExecutionHandle() const noexcept override {
     // The Nuphar interface does not return anything interesting.

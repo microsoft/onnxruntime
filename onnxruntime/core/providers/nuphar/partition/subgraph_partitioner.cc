@@ -172,12 +172,12 @@ bool SubgraphPartitioner::ForcePartition(
 // Main interface for Partition
 Status SubgraphPartitioner::Partition(
     const Node& node,
-    const GraphViewer& graph_viewer,
     std::vector<NupharSubgraphUnit>& results,
     FindInitializerFunc find_initializer_func) {
-  
+  const Graph* onnx_subgraph = GetSubgraph(node);
+
   // Handle single node
-  if (graph_viewer.NumberOfNodes() == 1) {
+  if (nullptr == onnx_subgraph) {
     NupharSubgraphUnit subgraph;
     // set node
     subgraph.nodes.push_back(&node);
@@ -217,6 +217,7 @@ Status SubgraphPartitioner::Partition(
   ///////////////////////////////////
   // The rest code handles a subgraph
   ///////////////////////////////////
+  const onnxruntime::GraphViewer& graph_viewer = GraphViewer(*onnx_subgraph);
   std::unordered_set<std::string> real_output_names;
   ORT_RETURN_IF_ERROR(node.ForEachWithIndex(
       node.OutputDefs(),
