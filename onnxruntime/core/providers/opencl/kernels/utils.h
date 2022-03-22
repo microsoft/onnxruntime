@@ -51,21 +51,21 @@
       int i = base_offset;                                            \
       if (r >= 4) {                                                   \
         (output)[i] = (v).s0;                                         \
-        i += HW;                                                      \
+        i += (stride);                                                \
         (output)[i] = (v).s1;                                         \
-        i += HW;                                                      \
+        i += (stride);                                                \
         (output)[i] = (v).s2;                                         \
-        i += HW;                                                      \
+        i += (stride);                                                \
         (output)[i] = (v).s3;                                         \
       } else if (r == 3) {                                            \
         (output)[i] = (v).s0;                                         \
-        i += HW;                                                      \
+        i += (stride);                                                \
         (output)[i] = (v).s1;                                         \
-        i += HW;                                                      \
+        i += (stride);                                                \
         (output)[i] = (v).s2;                                         \
       } else if (r == 2) {                                            \
         (output)[i] = (v).s0;                                         \
-        i += HW;                                                      \
+        i += (stride);                                                \
         (output)[i] = (v).s1;                                         \
       } else if (r == 1) {                                            \
         (output)[i] = (v).s0;                                         \
