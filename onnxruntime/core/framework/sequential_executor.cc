@@ -14,6 +14,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
+#include "nlohmann/json.hpp"
 
 #if defined DEBUG_NODE_INPUTS_OUTPUTS
 #include "core/framework/debug_node_inputs_outputs_utils.h"
@@ -58,8 +59,7 @@ namespace onnxruntime {
 static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context,
                                       size_t& total_output_sizes, const std::string& node_name, std::string& output_type_shape) {
   // Calculate total output sizes for this operation.
-  std::stringstream ss;
-  ss << "[";
+  nlohmann::json types_shapes = nlohmann::json::array();
   total_output_sizes = 0;
   ORT_UNUSED_PARAMETER(node_name);
   int output_count = op_kernel_context->OutputCount();
@@ -77,13 +77,16 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
                          << "\n";
 #endif
       total_output_sizes += tensor_size;
-      auto shape_str = tensor.Shape().ToString();
-      ss << "{\"" << DataTypeImpl::ToString(tensor.DataType()) << "\":["
-         << shape_str.substr(1, shape_str.size() - 2) << "]" << (i == output_count - 1 ? "}" : "},");
+      nlohmann::json shapes = nlohmann::json::array();
+      for (auto n : tensor.Shape().AsShapeVector()) {
+        shapes.insert(shapes.end(), n);
+      }
+      nlohmann::json type_shape;
+      type_shape[DataTypeImpl::ToString(tensor.DataType())] = shapes;
+      types_shapes.insert(types_shapes.end(), type_shape);
     }
   }
-  ss << "]";
-  output_type_shape = ss.str();
+  output_type_shape = types_shapes.dump();
 }
 
 static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_context,
@@ -91,8 +94,7 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
                                      size_t& input_activation_sizes, size_t& input_parameter_sizes,
                                      const std::string& node_name, std::string& input_type_shape) {
   // Calculate total input sizes for this operation.
-  std::stringstream ss;
-  ss << "[";
+  nlohmann::json types_shapes = nlohmann::json::array();
   input_activation_sizes = 0;
   input_parameter_sizes = 0;
   ORT_UNUSED_PARAMETER(node_name);
@@ -123,13 +125,16 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
       } else {
         input_activation_sizes += tensor_size;
       }
-      auto shape_str = p_tensor->Shape().ToString();
-      ss << "{\"" << DataTypeImpl::ToString(p_tensor->DataType()) << "\":["
-         << shape_str.substr(1, shape_str.size() - 2) << "]" << (i == input_count - 1 ? "}" : "},");
+      nlohmann::json shapes = nlohmann::json::array();
+      for (auto n : p_tensor->Shape().AsShapeVector()) {
+        shapes.insert(shapes.end(), n);
+      }
+      nlohmann::json type_shape;
+      type_shape[DataTypeImpl::ToString(p_tensor->DataType())] = shapes;
+      types_shapes.insert(types_shapes.end(), type_shape);
     }
   }
-  ss << "]";
-  input_type_shape = ss.str();
+  input_type_shape = types_shapes.dump();
 }
 
 static Status ReleaseNodeMLValues(ExecutionFrame& frame,
