@@ -5,7 +5,7 @@ pwd
 echo $ORT_ROOT
 echo $FILE_TYPE
 
-files=($(find . -name "*.$FILE_TYPE"))
+files=($(find $ORT_ROOT -name "*.$FILE_TYPE"))
 for my_path in "${files[@]}"
 do
   old_root=$(echo $my_path | grep -Eo "(/mnt/.*/s/)")

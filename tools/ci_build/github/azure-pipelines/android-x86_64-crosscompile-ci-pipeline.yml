@@ -240,8 +240,8 @@ jobs:
         artifact: 'NNAPIBuildOutput'
         path: $(Build.SourcesDirectory)
 
-    - script: ORT_ROOT="$(Build.SourcesDirectory)" FILE_TYPE=gcno /bin/bash tools/ci_build/github/android/update_gcno_path.sh
-      displayName: Update GCNO path
+    ##- script: ORT_ROOT="$(Build.SourcesDirectory)" FILE_TYPE=gcno /bin/bash tools/ci_build/github/android/update_gcno_path.sh
+    ##  displayName: Update GCNO path
       
     - task: UsePythonVersion@0
       displayName: Use Python $(pythonVersion)
@@ -282,8 +282,8 @@ jobs:
         --code_coverage
       displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
 
-    - script: ORT_ROOT="$(Build.SourcesDirectory)" FILE_TYPE=gcda /bin/bash tools/ci_build/github/android/update_gcno_path.sh
-      displayName: Update gcda path
+    ##- script: ORT_ROOT="$(Build.SourcesDirectory)" FILE_TYPE=gcda /bin/bash tools/ci_build/github/android/update_gcno_path.sh
+    ##  displayName: Update gcda path
       
     - script: |
         python3 -m pip install gcovr && \
