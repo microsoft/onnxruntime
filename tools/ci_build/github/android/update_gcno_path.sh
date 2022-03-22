@@ -17,7 +17,7 @@ do
 	  dest_dir="$ORT_ROOT"/"$prefix_path"/"$ORT_ROOT"
 	  mkdir -p $dest_dir
 
-	  if [ -n "$parent_dir1" ]; then
+	  if [ -n "$old_dir" ]; then
 		  pushd $old_dir
 	      # https://stackoverflow.com/questions/11246070/cp-parents-option-on-mac
 	      rsync --remove-source-files -R "$file_with_parent" "$dest_dir"
