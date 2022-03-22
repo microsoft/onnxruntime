@@ -289,6 +289,8 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
     batch_and_signal_rank -= 1;
   }
 
+
+
   // Calculate x/y offsets/strides
   for (size_t i = 0; i < total_dfts; i++)
   {

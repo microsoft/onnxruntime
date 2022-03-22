@@ -219,14 +219,12 @@ class TupleType(Type):
 class AliasInfo(Node):
   before_set: List[str]
   after_set: List[str]
-  contained_types: List[Type]
   tokens: List[Token]
 
   def __init__(self):
     super().__init__()
     self.before_set = []
     self.after_set = []
-    self.contained_types = []
     self.tokens = []
     self.is_writable = False
   
