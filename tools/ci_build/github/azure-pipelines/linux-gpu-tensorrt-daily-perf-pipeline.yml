@@ -122,9 +122,18 @@ jobs:
           project: 'Lotus'
           buildVersionToDownload: 'latest'
           pipeline: '841'
-          targetPath: '$(Pipeline.Workspace)'
+          targetPath: '$(Build.ArtifactStagingDirectory)'
 
-      - script: 'ls $(Pipeline.Worskpace)'
+      - script: 'ls $(Build.ArtifactStagingDirectory)'
+
+      - task: UniversalPackages@0
+        displayName: Universal Publish
+        inputs:
+          command: publish
+          publishDirectory: '$(Build.ArtifactStagingDirectory)'
+          vstsFeedPublish: 'Lotus/ort-nightly-gpu'
+          vstsFeedPackagePublish: 'nightly-wheel'
+          packagePublishDescription: 'wheelfile'
 
       - script: |
           python3 -m pip install wheel 
