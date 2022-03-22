@@ -464,11 +464,10 @@ if(onnxruntime_USE_COREML)
 endif()
 
 if(onnxruntime_USE_NUPHAR)
-  file(GLOB_RECURSE onnxruntime_test_nuphar_src CONFIGURE_DEPENDS
-    "${TEST_SRC_DIR}/nuphar_tvm/*.h"
-    "${TEST_SRC_DIR}/nuphar_tvm/*.cc"
-  )
-
+  # the test case under nuphar_tvm is only to verify some basic tvm show case, which is already out of date
+  # it doesn't have relationship to nuphar directly. consider we have an official tvm execution provider now,
+  # keep those test cases doesn't bring any value now. 
+  
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/framework/nuphar/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nuphar)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nuphar)
