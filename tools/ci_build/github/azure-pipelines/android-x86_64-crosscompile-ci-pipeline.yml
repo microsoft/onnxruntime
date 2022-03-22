@@ -184,6 +184,7 @@ jobs:
         --cmake_generator=Ninja \
         --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
         --build_java \
+        --code_coverage \
         --skip_tests
     displayName: NNAPI EP, Build
 
@@ -247,8 +248,23 @@ jobs:
         --android_abi=x86_64 \
         --android_api=29 \
         --use_nnapi \
-        --test
+        --test \
+        --code_coverage
       displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
+
+    - script: |
+        python3 -m pip install gcovr && \
+        python3 tools/ci_build/coverage.py \
+          --build_dir build_nnapi \
+          --android_sdk_path $ANDROID_HOME
+      displayName: Retrieve runtime code coverage files from the emulator and analyze
+
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish code coverage report'
+      inputs:
+          artifactName: "coverage_rpt.txt"
+          targetPath: '$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt'
+          publishLocation: 'pipeline'
 
     # used by Build Minimal ORT
     - script: brew install coreutils ninja
@@ -291,7 +307,7 @@ jobs:
   pool:
     vmImage: 'macOS-11'
   timeoutInMinutes: 120
-  # condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+  condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
   steps:
     - task: UsePythonVersion@0
       displayName: Use Python $(pythonVersion)
