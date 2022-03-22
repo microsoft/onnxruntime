@@ -35,9 +35,7 @@ TensorShape GetShape(const pybind11::array& arr);
 
 int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type);
 
-MLDataType NumpyTypeToOnnxRuntimeType(int numpy_type);
-
-MLDataType NumpyToOnnxRuntimeTensorType(int numpy_type);
+MLDataType NumpyTypeToOnnxRuntimeTensorType(int numpy_type);
 
 using MemCpyFunc = void (*)(void*, const void*, size_t);
 
