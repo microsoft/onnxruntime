@@ -343,9 +343,11 @@ class GraphExecutionManager(GraphExecutionInterface):
                                                             input_schema,
                                                             inputs,
                                                             kwargs)
-        output_names, output_dynamic_axes, self._module_output_schema = \
-            _io.parse_outputs_for_onnx_export_and_extract_schema(
-                self._original_module, inputs, kwargs)
+        #output_names, output_dynamic_axes, self._module_output_schema = \
+        #    _io.parse_outputs_for_onnx_export_and_extract_schema(
+        #        self._original_module, inputs, kwargs)
+        output_names, output_dynamic_axes, self._module_output_schema = ['output-0'], {'output-0': {0: 'output-0_dim0', 1: 'output-0_dim1'}}, _io._TensorStub(dtype=torch.float32, shape_dims=2)
+        
         self._input_info.dynamic_axes.update(output_dynamic_axes)
 
         # FlattenedModule needs _InputInfo to expand user input from *args to *args + **kwargs
@@ -378,6 +380,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                                           'dynamic_axes': self._input_info.dynamic_axes,
                                           'verbose': self._debug_options.logging.log_level < LogLevel.WARNING,
                                           'export_params': False,
+                                          'example_outputs': torch.ones(2, 256, dtype=torch.float32),
                                           'keep_initializers_as_inputs': True}
                 invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys()
                 assert len(invalid_args) == 0,\

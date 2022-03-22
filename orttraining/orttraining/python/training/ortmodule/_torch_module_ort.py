@@ -18,7 +18,8 @@ T = TypeVar('T', bound='torch.nn.Module')
 class TorchModuleORT(TorchModuleInterface):
     def __init__(self, module: torch.nn.Module, debug_options: DebugOptions, fallback_manager: _FallbackManager):
         super().__init__(module)
-        self._flattened_module = _io._FlattenedModule(module)
+        #self._flattened_module = _io._FlattenedModule(module)
+        self._flattened_module = module
 
         _utils.patch_torch_module_ort_forward_method(self)
 
