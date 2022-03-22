@@ -6,6 +6,8 @@
 
 from pathlib import Path
 from typing import List
+import sys
+import os
 import logging
 import numpy
 import torch
@@ -15,13 +17,15 @@ from t5_encoder import T5Encoder, T5EncoderInputs
 from t5_decoder import T5DecoderInit
 from past_helper import PastKeyValuesHelper
 
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+from torch_onnx_export_helper import torch_onnx_export
+
 logger = logging.getLogger(__name__)
 
 
 class T5EncoderDecoderInit(torch.nn.Module):
     """ A combination of T5Encoder and T5DecoderInit.
     """
-
     def __init__(self,
                  encoder: torch.nn.Module,
                  decoder: torch.nn.Module,
@@ -44,7 +48,6 @@ class T5EncoderDecoderInit(torch.nn.Module):
 
 
 class T5EncoderDecoderInitInputs:
-
     def __init__(self, encoder_input_ids, encoder_attention_mask, decoder_input_ids=None):
         self.encoder_input_ids: torch.LongTensor = encoder_input_ids
         self.encoder_attention_mask: torch.LongTensor = encoder_attention_mask
@@ -70,7 +73,6 @@ class T5EncoderDecoderInitInputs:
 
 
 class T5EncoderDecoderInitHelper:
-
     @staticmethod
     def export_onnx(model: T5EncoderDecoderInit,
                     device: torch.device,
@@ -153,7 +155,7 @@ class T5EncoderDecoderInitHelper:
                 dynamic_axes[name] = {0: 'batch_size', 1: num_heads, 2: sequence_length, 3: head_size}
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
-        torch.onnx.export(model,
+        torch_onnx_export(model,
                           args=tuple(input_list),
                           f=onnx_model_path,
                           export_params=True,
