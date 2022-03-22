@@ -116,6 +116,17 @@ jobs:
         displayName: 'Get Nightly Wheel'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
       
+      - task: DownloadPipelineArtifact@2
+        inputs:
+          buildType: 'specific'
+          project: 'Lotus'
+          buildVersionToDownload: 'latest'
+          pipeline: '841'
+          targetPath: '$(Pipeline.Workspace)'
+
+      - script: 'ls'
+        workingDirectory: '$(Pipeline.Worskpace)'
+
       - script: |
           python3 -m pip install wheel 
           python3 -m pip install twine
