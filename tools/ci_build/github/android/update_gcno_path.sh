@@ -9,13 +9,13 @@ for my_path in "${files[@]}"
 do 
   parent_path=$( echo $my_path | grep -Eo "(onnxruntime/).*(.gcno)")
   prefix_path=$( echo $my_path | grep -Eo ".*(.dir)" )
-  dest_dir="$ORT_ROOT"/""$prefix_path"/"$ORT_ROOT"
-  mkdir -p dest_dir
+  dest_dir="$ORT_ROOT"/"$prefix_path"/"$ORT_ROOT"
+  mkdir -p $dest_dir
   # Mac doesn't support -Po
   parent_dir=$(echo $my_path | grep -Eo ".*(onnxruntime/)")
   parent_dir1=${parent_dir%%'onnxruntime/'}
   pushd $parent_dir1
   # https://stackoverflow.com/questions/11246070/cp-parents-option-on-mac
-  rsync -R "$parent_path" "$des_dir"
+  rsync -R "$parent_path" "$dest_dir"
   popd
 done
