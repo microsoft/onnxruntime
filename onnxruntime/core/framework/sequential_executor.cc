@@ -95,7 +95,7 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
   }
 #if !defined(ORT_MINIMAL_BUILD)
   output_type_shape = types_shapes.dump();
-#else:
+#else
   output_type_shape = "not_available";
 #endif
 }
@@ -151,7 +151,7 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
   }
 #if !defined(ORT_MINIMAL_BUILD)
   input_type_shape = types_shapes.dump();
-#else:
+#else
   input_type_shape = "not_available";
 #endif
 }
