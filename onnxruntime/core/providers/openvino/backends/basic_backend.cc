@@ -315,6 +315,7 @@ void BasicBackend::StartRemoteAsyncInference(Ort::CustomOpApi& ort, OrtKernelCon
     } else {
       ORT_THROW(log_tag + "Input names mismatch between OpenVINO and ONNX. " + onnx_input_name + " doesn't exist in the list of OpenVINO input tensor names");
     }
+    input_idx++;
   #else 
   auto graph_input_info = exe_network_.Get().GetInputsInfo();
   for (auto input_info_iter = graph_input_info.begin();
@@ -351,7 +352,6 @@ void BasicBackend::StartRemoteAsyncInference(Ort::CustomOpApi& ort, OrtKernelCon
         FillInputBlob(graph_input_blob, batch_slice_idx, input_name, ort, context, precision, subgraph_context_);
       #endif  
     }
-    input_idx++;
   }
 
   //Set the output blob as remote blob
