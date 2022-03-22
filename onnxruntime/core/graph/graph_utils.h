@@ -17,7 +17,9 @@
 namespace onnxruntime {
 namespace graph_utils {
 
-/** Checks if the operator's type, version, and domain of the given node match the given values. */
+/** Checks if the operator's type, version, and domain of the given node match the given values.
+ * @remarks Use kOnnxDomain and not kOnnxDomainAlias for ONNX operators.
+ */
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        std::string_view op_type,
                                        std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
