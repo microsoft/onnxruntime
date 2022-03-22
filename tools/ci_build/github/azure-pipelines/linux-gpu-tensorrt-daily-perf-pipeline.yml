@@ -143,8 +143,8 @@ jobs:
         inputs:
           artifactFeed: 'Lotus/ort-gpu-nightly'
        
-      # - script: python3 -m pip install twine && python3 -m twine upload -r ort-gpu-nightly wheel/*.whl
-      - script: 'python3 -m pip install twine && python3 -m twine upload --skip-existing --verbose -p $(pypi-api-token) -u __token__ --repository ort-gpu-nightly --repository-url https://aiinfra.pkgs.visualstudio.com/Lotus/_packaging/ort-gpu-nightly/pypi/simple/ wheel/*.whl'
+      - script: python3 -m pip install twine && python3 -m twine upload -r ort-gpu-nightly --config-file $(PYPIRC_PATH) wheel/*.whl
+      #- script: 'python3 -m pip install twine && python3 -m twine upload --skip-existing --verbose -p $(pypi-api-token) -u __token__ --repository ort-gpu-nightly --repository-url https://aiinfra.pkgs.visualstudio.com/Lotus/_packaging/ort-gpu-nightly/pypi/simple/ wheel/*.whl'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         
     - ${{ each option in parameters.ModelGroups }}:
