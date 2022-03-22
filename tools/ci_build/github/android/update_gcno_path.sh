@@ -7,7 +7,7 @@ echo $ORT_ROOT
 files=($(find . -name "*.gcno"))
 for my_path in "${files[@]}"
 do
-  parent_path=$( echo $my_path | grep -Eo "(onnxruntime/).*(.gcno)")
+  parent_path=$( echo $my_path | grep -Eo "(onnxruntime/).*(.gcno)" || true)
   if [ -n $parent_path ]; then
 	  prefix_path=$( echo $my_path | grep -Eo ".*(.dir)" )
 	  dest_dir="$ORT_ROOT"/"$prefix_path"/"$ORT_ROOT"
