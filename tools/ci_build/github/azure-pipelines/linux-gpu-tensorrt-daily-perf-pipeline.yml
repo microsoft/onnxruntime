@@ -125,7 +125,7 @@ jobs:
         inputs:
           artifactFeed: 'Lotus/ort-gpu-nightly'
        
-      - script: python3 twine upload -r ort-gpu-nightly --config-file $(PYPIRC_PATH) wheel/*.whl
+      - script: python3 -m twine upload -r ort-gpu-nightly --config-file $(PYPIRC_PATH) wheel/*.whl
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
       # Logic to download pypi from artifact feed 
