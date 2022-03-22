@@ -6,7 +6,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/safeint.h"
 #include "core/common/logging/severity.h"
-// #include "migraphx_execution_provider.h"
+#include "migraphx_execution_provider_utils.h"
 // #include "hip_allocator.h"
 // #include "hip_fence.h"
 // #include "gpu_data_transfer.h"
@@ -28,7 +28,7 @@ bool IsGraphInput(const GraphViewer& graph, const std::string& name)
   return (std::find(input_names.begin(), input_names.end(), name) != input_names.end());
 }
 
-bool IsGraphInitializer(const GraphViewer& graph, const std::string& name, bool check_outer_scope = true) {
+bool IsGraphInitializer(const GraphViewer& graph, const std::string& name, bool check_outer_scope) {
   const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
   return graph.GetInitializedTensor(name, initializer);
 }
