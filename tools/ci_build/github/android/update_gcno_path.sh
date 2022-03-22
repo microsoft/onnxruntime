@@ -8,6 +8,10 @@ files=($(find . -name "*.gcno"))
 for my_path in "${files[@]}"
 do
   old_root=$(echo $my_path | grep -Eo "(/mnt/.*/s/)")
+  if [ -z "$old_root" ]; then
+      echo $my_path
+      continue
+  fi
   # Mac doesn't support -Po, we could use (?=)
   file_with_parent=$(echo $my_path | grep -Eo "(($old_root).*)")
   file_with_parent=${file_with_parent##$old_root}
