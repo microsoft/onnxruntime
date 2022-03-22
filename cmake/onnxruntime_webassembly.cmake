@@ -181,9 +181,15 @@ else()
                         -s LLD_REPORT_UNDEFINED                                     \
                         -s VERBOSE=0                                                \
                         -s NO_FILESYSTEM=1                                          \
-                        -s MALLOC=${onnxruntime_WEBASSEMBLY_MALLOC}                 \
                         --closure 1                                                 \
                         --no-entry")
+
+  if (onnxruntime_EMSCRIPTEN_SETTINGS)
+    foreach(setting IN LISTS onnxruntime_EMSCRIPTEN_SETTINGS)
+    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS
+      " -s ${setting}")
+    endforeach()
+  endif()
 
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=2 -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=1 -s DEMANGLE_SUPPORT=1")
