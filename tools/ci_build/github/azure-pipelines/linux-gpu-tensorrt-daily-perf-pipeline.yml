@@ -112,40 +112,37 @@ jobs:
 
     - ${{ if eq(parameters.PublishWheel, true) }}:
       
-      - script: 'mkdir wheel && python3 -m pip download --only-binary :all: --dest wheel --python-version 38 --no-cache --no-deps -i https://test.pypi.org/simple/ ort-nightly-gpu'
-        displayName: 'Get Nightly Wheel'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+      # - script: 'mkdir wheel && python3 -m pip download --only-binary :all: --dest wheel --python-version 38 --no-cache --no-deps -i https://test.pypi.org/simple/ ort-nightly-gpu'
+      #   displayName: 'Get Nightly Wheel'
+      #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
       
-      - task: DownloadPipelineArtifact@2
-        inputs:
-          buildType: 'specific'
-          project: 'Lotus'
-          buildVersionToDownload: 'latest'
-          pipeline: '841'
-          targetPath: '$(Build.ArtifactStagingDirectory)'
+      # - task: DownloadPipelineArtifact@2
+      #   inputs:
+      #     buildType: 'specific'
+      #     project: 'Lotus'
+      #     buildVersionToDownload: 'latest'
+      #     pipeline: '841'
+      #     targetPath: '$(Build.ArtifactStagingDirectory)'
 
-      - script: 'ls $(Build.ArtifactStagingDirectory)'
+      # - script: 'ls $(Build.ArtifactStagingDirectory)'
 
-      - task: UniversalPackages@0
-        displayName: Universal Publish
-        inputs:
-          command: publish
-          publishDirectory: '$(Build.ArtifactStagingDirectory)/onnxruntime'
-          vstsFeedPublish: 'Lotus/ort-gpu-nightly'
-          vstsFeedPackagePublish: 'nightly-wheel'
-          packagePublishDescription: 'wheelfile'
+      # - task: UniversalPackages@0
+      #   displayName: Universal Publish
+      #   inputs:
+      #     command: publish
+      #     publishDirectory: '$(Build.ArtifactStagingDirectory)/onnxruntime'
+      #     vstsFeedPublish: 'Lotus/ort-gpu-nightly'
+      #     vstsFeedPackagePublish: 'nightly-wheel'
+      #     packagePublishDescription: 'wheelfile'
 
-      - script: |
-          python3 -m pip install wheel 
-          python3 -m pip install twine
-          
-      - task: TwineAuthenticate@1
-        inputs:
-          artifactFeed: 'Lotus/ort-gpu-nightly'
+      # - task: TwineAuthenticate@1
+      #   inputs:
+      #     artifactFeed: 'Lotus/ort-gpu-nightly'
        
-      - script: python3 -m pip install twine && python3 -m twine upload -r ort-gpu-nightly --config-file $(PYPIRC_PATH) wheel/*.whl
-      #- script: 'python3 -m pip install twine && python3 -m twine upload --skip-existing --verbose -p $(pypi-api-token) -u __token__ --repository ort-gpu-nightly --repository-url https://aiinfra.pkgs.visualstudio.com/Lotus/_packaging/ort-gpu-nightly/pypi/simple/ wheel/*.whl'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+      # - script: python3 -m pip install twine && python3 -m twine upload -r ort-gpu-nightly --config-file $(PYPIRC_PATH) wheel/*.whl
+      #   workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+
+      - script: 'python3 -m pip install -i https://aiinfra.pkgs.visualstudio.com/Lotus/_packaging/ort-gpu-nightly/pypi/simple/ ort-nightly-gpu'
         
     - ${{ each option in parameters.ModelGroups }}:
       - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $(${{option}})'
