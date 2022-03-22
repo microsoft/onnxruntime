@@ -14,6 +14,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
+#define JSON_NOEXCEPTION
 #include "nlohmann/json.hpp"
 
 #if defined DEBUG_NODE_INPUTS_OUTPUTS
