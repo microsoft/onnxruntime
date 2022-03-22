@@ -46,7 +46,8 @@ TvmSoExecutionProvider::TvmSoExecutionProvider(const TvmEPOptions& options)
 
   const std::string dump_subgraphs_env = env_instance.GetEnvironmentVar(env_vars::kDumpSubgraphs);
   if (!dump_subgraphs_env.empty()) {
-    dump_subgraphs_ = std::stoi(dump_subgraphs_env) != 0;
+    LOGS(*GetLogger(), INFO) << "TVM EP processing shared lib does not save subgraphs " <<
+                                "due to it supports full model graph";
   }
 }
 
@@ -110,27 +111,15 @@ common::Status TvmSoExecutionProvider::Compile(const std::vector<Node*>& nodes,
       return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Function body is empty");
     const std::string func_name = fused_node->Name();
     const Graph& node_graph = func_body->Body();
-    Model model(node_graph.Name(), true, ModelMetaData(), PathString(),
-                             IOnnxRuntimeOpSchemaRegistryList(), node_graph.DomainToVersionMap(),
-                             std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
-    ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-
-    *(model_proto.mutable_graph()) = node_graph.ToGraphProto();
 
     compilers_[func_name] = std::make_shared<TVMSoCompiler>();
     InputsInfoMap all_input_shapes;
     auto mod = compileModel(func_name, node_graph, all_input_shapes);
 
     std::vector<DLTensor> output_tensors;
-    prepareOutputTensors(mod, output_tensors, node_graph.GetOutputs().size());
+    prepareOutputTensors(output_tensors, node_graph.GetOutputs().size());
 
     runners_[func_name] = std::make_shared<Runner>(options_, mod, all_input_shapes, output_tensors);
-
-    if (dump_subgraphs_) {
-        std::fstream dump("/tmp/" + func_name + ".onnx",
-                          std::ios::out | std::ios::trunc | std::ios::binary);
-        model_proto.SerializeToOstream(&dump);
-    }
 
     // TODO(vvchernov): implement ops checking and mechanism of gracefully passing the responsibility to other EPs
     // if the checking fails due to unsupported op(s)
@@ -235,33 +224,20 @@ TensorShapeVector TvmSoExecutionProvider::convertTensorShape(const TensorShapePr
   return shape;
 }
 
-void TvmSoExecutionProvider::prepareOutputTensors(const std::shared_ptr<TvmModule>& mod,
-                                                  std::vector<DLTensor>& output_tensors,
+void TvmSoExecutionProvider::prepareOutputTensors(std::vector<DLTensor>& output_tensors,
                                                   size_t num) {
-  ORT_ENFORCE(mod != nullptr, "TVM module is not compiled");
   output_tensors.clear();
-  options_.output_shapes.clear();
-  options_.output_shapes.resize(num);
 
-  if (options_.executor != "vm") {
-    TVMGetOutputShapes(*mod, options_.output_shapes);
-  }
-
-  for (auto& output_shape : options_.output_shapes) {
+  for (size_t i = 0; i < num; ++i) {
     DLTensor t;
     // Draft for tensor, correct data is defined during inference
     t.strides = nullptr;
     t.byte_offset = 0;
     t.data = nullptr;
-    if (options_.executor == "vm") {
-      t.ndim = 0;
-      t.shape = nullptr;
-    } else {
-      t.ndim = output_shape.size();
-      t.shape = output_shape.data();
-    }
+    t.ndim = 0;
+    t.shape = nullptr;
 
-    output_tensors.push_back(t);
+    output_tensors.emplace_back(t);
   }
 }
 

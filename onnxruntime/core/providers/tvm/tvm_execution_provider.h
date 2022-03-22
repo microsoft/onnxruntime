@@ -63,7 +63,6 @@ private:
   Compilers compilers_;
   Runners runners_;
   bool dump_subgraphs_ = false;
-  OrtMutex tvm_mu_;
   AllocatorPtr allocator_;
 };
 

@@ -50,7 +50,7 @@ private:
   void setInputShapesForUnfreezedNN(const Graph& graph, TVMTensorShapes& input_shapes, InputsInfoMap& all_input_shapes);
   TensorShapeVector getInputShape(const NodeArg* node);
   TensorShapeVector convertTensorShape(const ONNX_NAMESPACE::TensorShapeProto& shape_proto);
-  void prepareOutputTensors(const std::shared_ptr<TvmModule>& mod, std::vector<DLTensor>& output_tensors, size_t num);
+  void prepareOutputTensors(std::vector<DLTensor>& output_tensors, size_t num);
   NodeComputeInfo prepareComputeInfo(const std::string& func_name);
   int createStateFunc(ComputeContext*, FunctionState*);
 
@@ -58,8 +58,6 @@ private:
   TvmEPOptions options_;
   Compilers compilers_;
   Runners runners_;
-  bool dump_subgraphs_ = false;
-  OrtMutex tvm_mu_;
   AllocatorPtr allocator_;
 };
 
