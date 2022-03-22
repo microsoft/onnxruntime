@@ -7,19 +7,20 @@ echo $ORT_ROOT
 files=($(find . -name "*.gcno"))
 for my_path in "${files[@]}"
 do
-  parent_path=$( echo $my_path | grep -Eo "(onnxruntime/).*(.gcno)" )
-  if [ -n "$parent_path" ]; then
-	  prefix_path=$( echo $my_path | grep -Eo ".*(.dir)" )
+  old_root=$(echo $my_path | grep -Eo "(/mnt/.*/s/)")
+  # Mac doesn't support -Po, we could use (?=)
+  file_with_parent=$(echo $my_path | grep -Eo "(($old_root).*)")
+  file_with_parent=${file_with_parent##$old_root}
+  if [ -n "$file_with_parent" ]; then
+	  old_dir=$(echo $my_path | grep -Eo "(.*($old_root))")
+	  prefix_path=${old_dir%%$old_root}
 	  dest_dir="$ORT_ROOT"/"$prefix_path"/"$ORT_ROOT"
 	  mkdir -p $dest_dir
-	  # Mac doesn't support -Po
-	  parent_dir=$(echo $my_path | grep -Eo ".*(onnxruntime/)")
-	  parent_dir1=${parent_dir%%'onnxruntime/'}
+
 	  if [ -n "$parent_dir1" ]; then
-		  pushd $parent_dir1
+		  pushd $old_dir
 	      # https://stackoverflow.com/questions/11246070/cp-parents-option-on-mac
-	      rsync -R "$parent_path" "$dest_dir"
-		  rm -f "$parent_path"
+	      rsync --remove-source-files -R "$file_with_parent" "$dest_dir"
 		  popd
 	  else
 	      echo $my_path
