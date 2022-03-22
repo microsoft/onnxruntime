@@ -149,6 +149,13 @@ def numpy_T(g, self):
         # output a permute so use ATen instead
         return g.op("com.microsoft::ATenOp", self, name_s='aten::numpy_T')
 
+
+@register_symbolic('squeeze')
+def squeeze(g, self, dim=None):
+    from torch.onnx.symbolic_opset9 import squeeze as squeeze_without_if
+    return squeeze_without_if(g, self, dim)
+
+
 # For torch.einsum.
 def parse_equation(equation):
     pos_comma = equation.find(',')
