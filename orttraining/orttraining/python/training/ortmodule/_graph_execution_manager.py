@@ -343,10 +343,16 @@ class GraphExecutionManager(GraphExecutionInterface):
                                                             input_schema,
                                                             inputs,
                                                             kwargs)
-        #output_names, output_dynamic_axes, self._module_output_schema = \
-        #    _io.parse_outputs_for_onnx_export_and_extract_schema(
-        #        self._original_module, inputs, kwargs)
-        output_names, output_dynamic_axes, self._module_output_schema = ['output-0'], {'output-0': {0: 'output-0_dim0', 1: 'output-0_dim1'}}, _io._TensorStub(dtype=torch.float32, shape_dims=2)
+        if hasattr(self._original_module, 'output_names') and \
+           hasattr(self._original_module, 'output_dynamic_axes') and \
+           hasattr(self._original_module, 'module_output_schema'):
+            output_names = self._original_module.output_names
+            output_dynamic_axes = self._original_module.output_dynamic_axes
+            self._module_output_schema = self._original_module.module_output_schema
+        else:
+            output_names, output_dynamic_axes, self._module_output_schema = \
+                _io.parse_outputs_for_onnx_export_and_extract_schema(
+                    self._original_module, inputs, kwargs)
         
         self._input_info.dynamic_axes.update(output_dynamic_axes)
 
@@ -380,7 +386,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                                           'dynamic_axes': self._input_info.dynamic_axes,
                                           'verbose': self._debug_options.logging.log_level < LogLevel.WARNING,
                                           'export_params': False,
-                                          'example_outputs': torch.ones(2, 256, dtype=torch.float32),
+                                          'set_onnx_output': False,
                                           'keep_initializers_as_inputs': True}
                 invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys()
                 assert len(invalid_args) == 0,\

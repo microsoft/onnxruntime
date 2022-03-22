@@ -291,8 +291,6 @@ def patch_torch_module_ort_forward_method(torch_module_ort):
     # Bind the forward method.
     torch_module_ort.forward = _forward.__get__(torch_module_ort)
     # Copy the forward signature from the PyTorch module.
-    #functools.update_wrapper(
-    #    torch_module_ort.forward.__func__, torch_module_ort._original_module.forward.__func__)
     functools.update_wrapper(
         torch_module_ort.forward.__func__, torch_module_ort._original_module.forward.__call__)
 
