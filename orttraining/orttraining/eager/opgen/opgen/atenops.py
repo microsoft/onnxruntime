@@ -87,8 +87,8 @@ hand_implemented = {
   'aten::max' : ReduceMax('self', keepdims=1),
   'aten::min' : ReduceMin('self', keepdims=1),
   'aten::_cat': Concat('tensors', 'dim'),
+  'aten::fill_.Scalar': ConstantOfShape('self', value='value'),
 
-  'aten::fill_.Scalar': MakeTorchFallback(),
   'aten::ne.Scalar':MakeTorchFallback(),
   'aten::ne.Scalar_out': MakeTorchFallback(),
   'aten::ne.Tensor_out': MakeTorchFallback(),
