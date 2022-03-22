@@ -276,7 +276,7 @@ def parse_arguments():
 
     # Build options
     parser.add_argument(
-        "--cmake_extra_defines", nargs="+",
+        "--cmake_extra_defines", nargs="+", action='append',
         help="Extra definitions to pass to CMake during build system "
         "generation. These are just CMake -D options without the leading -D.")
     parser.add_argument(
@@ -718,11 +718,11 @@ def use_dev_mode(args):
     return 'ON'
 
 
-def add_cmake_define_without_override(cmake_extra_defines, key, value):
-    for x in cmake_extra_defines:
+def add_default_definition(definition_list, key, default_value):
+    for x in definition_list:
         if x.startswith(key + "="):
-            return cmake_extra_defines
-    cmake_extra_defines.append(key + "=" + value)
+            return definition_list
+    definition_list.append(key + "=" + default_value)
 
 
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home,
@@ -841,26 +841,26 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
     # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
     # And OFF for the people who are not actively developing onnx runtime.
-    add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_DEV_MODE", use_dev_mode(args))
+    add_default_definition(cmake_extra_defines, "onnxruntime_DEV_MODE", use_dev_mode(args))
     if args.use_cuda:
-        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_USE_CUDA", "ON")
-        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_CUDA_VERSION", args.cuda_version)
+        add_default_definition(cmake_extra_defines, "onnxruntime_USE_CUDA", "ON")
+        add_default_definition(cmake_extra_defines, "onnxruntime_CUDA_VERSION", args.cuda_version)
         # TODO: this variable is not really needed
-        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_CUDA_HOME", cuda_home)
-        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_CUDNN_HOME", cudnn_home)
+        add_default_definition(cmake_extra_defines, "onnxruntime_CUDA_HOME", cuda_home)
+        add_default_definition(cmake_extra_defines, "onnxruntime_CUDNN_HOME", cudnn_home)
 
     if is_windows():
         if args.enable_msvc_static_runtime:
-            add_cmake_define_without_override(cmake_extra_defines, "CMAKE_MSVC_RUNTIME_LIBRARY",
-                                              "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-            add_cmake_define_without_override(cmake_extra_defines, "ONNX_USE_MSVC_STATIC_RUNTIME", "ON")
-            add_cmake_define_without_override(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "ON")
-            add_cmake_define_without_override(cmake_extra_defines, "gtest_force_shared_crt", "OFF")
+            add_default_definition(cmake_extra_defines, "CMAKE_MSVC_RUNTIME_LIBRARY",
+                                   "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+            add_default_definition(cmake_extra_defines, "ONNX_USE_MSVC_STATIC_RUNTIME", "ON")
+            add_default_definition(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "ON")
+            add_default_definition(cmake_extra_defines, "gtest_force_shared_crt", "OFF")
         else:
             # CMAKE_MSVC_RUNTIME_LIBRARY is default to MultiThreaded$<$<CONFIG:Debug>:Debug>DLL
-            add_cmake_define_without_override(cmake_extra_defines, "ONNX_USE_MSVC_STATIC_RUNTIME", "OFF")
-            add_cmake_define_without_override(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "OFF")
-            add_cmake_define_without_override(cmake_extra_defines, "gtest_force_shared_crt", "ON")
+            add_default_definition(cmake_extra_defines, "ONNX_USE_MSVC_STATIC_RUNTIME", "OFF")
+            add_default_definition(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "OFF")
+            add_default_definition(cmake_extra_defines, "gtest_force_shared_crt", "ON")
 
     if acl_home and os.path.exists(acl_home):
         cmake_args += ["-Donnxruntime_ACL_HOME=" + acl_home]
@@ -1071,9 +1071,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-Donnxruntime_USE_FULL_PROTOBUF=ON"]
 
     if args.gen_doc:
-        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "ON")
+        add_default_definition(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "ON")
     else:
-        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "OFF")
+        add_default_definition(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "OFF")
 
     if args.build_eager_mode:
         import torch
@@ -2037,7 +2037,7 @@ def main():
     log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))
 
     args = parse_arguments()
-    cmake_extra_defines = (args.cmake_extra_defines
+    cmake_extra_defines = ([i for j in args.cmake_extra_defines for i in j]
                            if args.cmake_extra_defines else [])
     cross_compiling = args.arm or args.arm64 or args.arm64ec or args.android
 
