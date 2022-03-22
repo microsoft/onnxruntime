@@ -43,6 +43,17 @@ NonCudaOps non_cuda;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
+// TODO: Nuphar is out of maintain, temporary keep the legacy code here.
+// We want to deprecate it soon.
+#if USE_NUPHAR
+static void BuildFusedKernelDef(KernelDefBuilder& builder, const onnxruntime::Node& node) {
+  auto schema = node.Op();
+  builder.SetName(schema->Name())
+      .SetDomain(schema->domain())
+      .SinceVersion(schema->SinceVersion())
+      .Provider(node.GetExecutionProviderType());
+}
+#else
 // minimal KernelDef based on MetaDef instead of a Function based node
 static void BuildFusedKernelDef(KernelDefBuilder& builder, const IndexedSubGraph::MetaDef& metadef,
                                 const std::string& provider_type) {
@@ -51,6 +62,7 @@ static void BuildFusedKernelDef(KernelDefBuilder& builder, const IndexedSubGraph
       .SinceVersion(metadef.since_version)
       .Provider(provider_type);
 }
+#endif
 
 /// <summary>
 /// Validate all the layout sensitive nodes which were transformed for current EP are indeed taken by current EP.
@@ -206,14 +218,16 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
         std::string node_name = oss.str();
 
         Node* fused_node = nullptr;
-        // TODO: The DML currently use some legacy approach.
+        // TODO1: The DML currently use some legacy approach.
         // It registers a generic predefined kernel for all purpose fusion,
         // so it rely on the function body in the fused node during kernel creation,
         // which is after the graph partition phase.
         // Ideally, it should be moved to "Compile" call.
         // Here we temporary keep the function body for DML fusion
         // Need to remove it after migrate DML to the Compile-based approach.
-        if (provider_type == kDmlExecutionProvider) {
+        // TODO2: Nuphar is out of maintain, keep it with old API temporarily.
+        // We want to deprecate Nuphar soon.
+        if (provider_type == kDmlExecutionProvider || provider_type == kNupharExecutionProvider) {
           fused_node = &graph.FuseSubGraph(capability, node_name);
         } else {
           // create a fused node without copying everything to a Function body. The IndexedSubGraph will be passed
@@ -329,7 +343,30 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   // for example, it want to JIT an optimized kernel for LSTM with a given shape.
   if (!nodes_to_compile.empty()) {
     std::vector<NodeComputeInfo> node_compute_funcs;
+#ifdef USE_NUPHAR
+      // TODO: Nuphar is out of maintain. Use the old api temporarily.
+      // We want to deprecate it soon.
+      // Create a Function based node where the fused nodes have a new Graph instance.
+      ORT_RETURN_IF_ERROR(current_ep.Compile(nodes_to_compile, node_compute_funcs));
 
+      if (node_compute_funcs.size() != nodes_to_compile.size()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, type, " did not return correct number of compiled functions");
+      }
+
+      for (size_t j = 0, end = nodes_to_compile.size(); j < end; j++) {
+        ORT_RETURN_IF_ERROR(func_mgr.AddFuncInfo(nodes_to_compile[j]->Name(), std::move(node_compute_funcs[j])));
+      }
+
+      for (auto* node : nodes_to_compile) {
+        // add the KernelDef instances for the compiled nodes
+        KernelDefBuilder builder;
+        BuildFusedKernelDef(builder, *node);
+        ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(builder,
+                                                           [](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                                                             return FunctionKernel::Create(func_mgr, info, out);
+                                                           }));
+      }
+#else
     // temporary storage for the GraphViewer for each IndexedSubGraph
     std::vector<std::unique_ptr<GraphViewer>> viewers;
     viewers.reserve(nodes_to_compile.size());
@@ -349,27 +386,28 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     }
 
     for (size_t j = 0, end = nodes_to_compile.size(); j < end; j++) {
-    auto* node = nodes_to_compile[j];
+      auto* node = nodes_to_compile[j];
 
-    ORT_RETURN_IF_ERROR(func_mgr.AddFuncInfo(node->Name(), std::move(node_compute_funcs[j])));
+      ORT_RETURN_IF_ERROR(func_mgr.AddFuncInfo(node->Name(), std::move(node_compute_funcs[j])));
 
-    const auto& cur_capability = capabilities_to_compile[j];
-    const IndexedSubGraph& indexed_sub_graph = *cur_capability->sub_graph;
-    const IndexedSubGraph::MetaDef& metadef = *indexed_sub_graph.GetMetaDef();
+      const auto& cur_capability = capabilities_to_compile[j];
+      const IndexedSubGraph& indexed_sub_graph = *cur_capability->sub_graph;
+      const IndexedSubGraph::MetaDef& metadef = *indexed_sub_graph.GetMetaDef();
 
-    // create the func kernel for the name in the MetaDef. this is also the node name and that name that will
-    // used as the key in the FuncManager entry. We need the registry to own the KernelCreateInfo that is
-    // used by SessionState
-    KernelDefBuilder builder;
-    BuildFusedKernelDef(builder, metadef, type);
-    ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(builder,
-                                                        [](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-                                                            return FunctionKernel::Create(func_mgr, info, out);
-                                                        }));
+      // create the func kernel for the name in the MetaDef. this is also the node name and that name that will
+      // used as the key in the FuncManager entry. We need the registry to own the KernelCreateInfo that is
+      // used by SessionState
+      KernelDefBuilder builder;
+      BuildFusedKernelDef(builder, metadef, type);
+      ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(builder,
+                                                          [](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                                                              return FunctionKernel::Create(func_mgr, info, out);
+                                                          }));
 
-    // now that we're done compiling we can remove the original nodes from the Graph and wire in the new one
-    graph.FinalizeFuseSubGraph(indexed_sub_graph, *node);
+      // now that we're done compiling we can remove the original nodes from the Graph and wire in the new one
+      graph.FinalizeFuseSubGraph(indexed_sub_graph, *node);
     }
+#endif // use_nuphar
   }
 
   // TODO: The DML currently use some legacy approach.
@@ -471,6 +509,8 @@ Status GraphPartitioner::PartitionOnnxFormatModel(Graph& graph, FuncManager& fun
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+// Nuphar doesn't support ortformat on mobile.
+#ifndef USE_NUPHAR
 static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                           KernelRegistryManager& kernel_registry_mgr,
                                           KernelRegistry& fused_kernel_registry,
@@ -593,6 +633,7 @@ Status GraphPartitioner::PartitionOrtFormatModel(
 
   return Status::OK();
 }
+#endif // USE_NUPHAR
 
 Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr, 
                                    TransformLayoutFunction transform_layout_function, Mode mode,
@@ -625,11 +666,14 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
 #endif  //! defined(ORT_MINIMAL_BUILD)
   } else {
     ORT_ENFORCE(compiled_kernel_hashes != nullptr, "Compiled kernel hashes must be provided");
+#ifndef USE_NUPHAR
 
     ORT_RETURN_IF_ERROR(PartitionOrtFormatModel(graph, func_mgr, *fused_kernel_registry, *compiled_kernel_hashes,
                                                 fused_node_unique_id, transform_layout_function));
+#else
+    ORT_THROW("Not supported in this build.");
+#endif // NOT USE_NUPHAR
   }
-
   if (!fused_kernel_registry->IsEmpty()) {
     kernel_registry_mgr_.RegisterKernelRegistry(fused_kernel_registry);
   }

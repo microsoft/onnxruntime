@@ -197,13 +197,22 @@ class IExecutionProvider {
   // TODO: temparary sulotion, need to unify the interface in EP and AllocatorManager
   void TryInsertAllocator(AllocatorPtr allocator);
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   struct FusedNodeAndGraph {
     const std::reference_wrapper<onnxruntime::Node> fused_node;
     // GraphViewer that filters the full graph to the nodes that are covered by 'node'
     const std::reference_wrapper<GraphViewer> filtered_graph;
   };
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#ifdef USE_NUPHAR
+  //TODO: Nuphar is out of maintain. keep the old API here for nuphar temporarily.
+  // we will deprecate it soon.
+  /**
+  Given a list of fused_node, return create_state/compute/release_state func for each node.
+  */
+  virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
+                                 std::vector<NodeComputeInfo>& node_compute_funcs);
+#else
   /**
   Given a collection of fused Nodes and the respective GraphViewer instance for the nodes that were fused,
   return create_state/compute/release_state func for each node.
@@ -215,6 +224,7 @@ class IExecutionProvider {
   */
   virtual common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                  std::vector<NodeComputeInfo>& node_compute_funcs);
+#endif // use_nuphar
 #endif
 
   void SetLogger(const logging::Logger* logger) {
