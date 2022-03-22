@@ -140,33 +140,3 @@ def onnx_compile(
         return None
 
     return m.module
-
-@tvm.register_func("tvm_import_from_so_and_compile")
-def tvm_so_compile(so_folder,
-                   target):
-    import pathlib
-    so_dir_path = pathlib.Path(so_folder)
-    def check(so_file):
-        filter = ["libtvm_runtime.so", "liboctomized_model.so"]
-        check = filter[0] in str(so_file) or filter[1] in str(so_file)
-        return check
-    so_files = [so_file for so_file in so_dir_path.glob("*.so") if not check(so_file)]
-    assert (len(so_files) == 1)
-    ro_files = list(so_dir_path.glob("*.ro"))
-    assert (len(ro_files) == 1)
-    exported_module_path = str(so_files[0])
-    exported_consts_path = so_folder + "/consts"
-    serialized_vm_exec_path = str(ro_files[0])
-
-    mod = tvm.runtime.load_module(str(exported_module_path))
-
-    with open(serialized_vm_exec_path, "rb") as f:
-        vm_bytes = f.read()
-
-    vm_exec = tvm.runtime.vm.Executable.load_exec(vm_bytes, mod)
-    vm_exec.mod["load_late_bound_consts"](str(exported_consts_path))
-
-    ctx = tvm.device(target, 0)
-    m = tvm.runtime.vm.VirtualMachine(vm_exec, ctx)
-
-    return m.module
