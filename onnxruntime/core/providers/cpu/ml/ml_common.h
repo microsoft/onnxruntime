@@ -259,7 +259,7 @@ static inline float sigmoid_probability(float score, float proba, float probb) {
 }
 
 template <typename T>
-static inline void ComputeSoftmax(const gsl::span<T>& values) {
+static inline void ComputeSoftmax(gsl::span<T>& values) {
   // TODO: Replace this with usage of code in Softmax operator
 
   // compute exp with negative number to be numerically stable
@@ -277,15 +277,9 @@ static inline void ComputeSoftmax(const gsl::span<T>& values) {
     *it = static_cast<float>(*it) / this_sum;
 }
 
-template <typename T>
-static inline void ComputeSoftmax(std::vector<T>& values) {
-  auto span = gsl::make_span(values);
-  ComputeSoftmax(span);
-}
-
 //this function skips zero values (since exp(0) is non zero)
 template <typename T>
-static inline void ComputeSoftmaxZero(const gsl::span<T>& values) {
+static inline void ComputeSoftmaxZero(gsl::span<T>& values) {
   // compute exp with negative number to be numerically stable
   float v_max = -std::numeric_limits<float>::max();
   for (auto it = values.cbegin(); it != values.cend(); ++it) {
@@ -304,12 +298,6 @@ static inline void ComputeSoftmaxZero(const gsl::span<T>& values) {
   }
   for (auto it = values.begin(); it != values.end(); ++it)
     *it = *it / this_sum;
-}
-
-template <typename T>
-static inline void ComputeSoftmaxZero(std::vector<T>& values) {
-  auto span = gsl::make_span(values);
-  ComputeSoftmaxZero(span);
 }
 
 template <typename T, typename IT>
