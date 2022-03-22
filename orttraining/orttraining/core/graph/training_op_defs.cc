@@ -1724,40 +1724,32 @@ Example 4:
               value is specified for ratio. In general, it is unclear why we need the training_mode as an
               input here, since the Gradient will be used only for training.
             */
-            OperatorSetIdProto onnx_opset_13;
-            onnx_opset_13.set_domain("");
-            onnx_opset_13.set_version(13);
-
             auto* tp = ctx.getInputType(0);
             if ((tp == nullptr) || (!tp->has_tensor_type()))
               return false;
             auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
-            if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16)
-              return false;  // ONNX op Where doesn't support bfloat16 yet.
+
+            FunctionBuilder builder(functionProto);
+            builder
+                .AddOpset("", 16)
+                .Const("C0", ToTensor(0.0f, elem_type))
+                .Const("C1", ToTensor(1.0f, elem_type));
 
             if (ctx.hasInput(2)) {
               // ratio specified.
-              std::vector<FunctionBodyHelper::NodeDef> body{
-                  ONNX_NAMESPACE::Const("C0", 0.0f, elem_type),
-                  ONNX_NAMESPACE::Const("C1", 1.0f, elem_type),
-                  {{"ratio_elem_type"}, "Cast", {"ratio"}, {MakeAttribute("to", int64_t(elem_type))}},
-                  {{"scale"}, "Sub", {"C1", "ratio_elem_type"}},
-                  {{"scaled_dy"}, "Div", {"dy", "scale"}},
-                  {{"dx"}, "Where", {"mask", "scaled_dy", "C0"}}};
-
-              return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+              builder.Add("ratio_elem_type = Cast(ratio)", "to", int64_t(elem_type));
             } else {
               // ratio not specified. Use a value of 0.5
-              std::vector<FunctionBodyHelper::NodeDef> body{
-                  ONNX_NAMESPACE::Const("C0", 0.0f, elem_type),
-                  ONNX_NAMESPACE::Const("C1", 1.0f, elem_type),
-                  ONNX_NAMESPACE::Const("ratio_elem_type", 0.5f, elem_type),
-                  {{"scale"}, "Sub", {"C1", "ratio_elem_type"}},
-                  {{"scaled_dy"}, "Div", {"dy", "scale"}},
-                  {{"dx"}, "Where", {"mask", "scaled_dy", "C0"}}};
-
-              return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+              builder.Const("ratio_elem_type", ToTensor(0.5f, elem_type));
             }
+            builder.Add(R"(
+                  scale = Sub (C1, ratio_elem_type)
+                  scaled_dy = Div (dy, scale)
+                  dx = Where (mask, scaled_dy, C0)
+                )");
+
+            schema.BuildFunction(functionProto);
+            return true;
           });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BroadcastGradientArgs)

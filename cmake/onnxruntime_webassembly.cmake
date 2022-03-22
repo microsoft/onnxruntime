@@ -110,35 +110,37 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       re2::re2
     )
 
-    file(GLOB_RECURSE onnxruntime_webassembly_test_src CONFIGURE_DEPENDS
-      "${ONNXRUNTIME_ROOT}/test/wasm/test_main.cc"
-      "${ONNXRUNTIME_ROOT}/test/wasm/test_inference.cc"
-    )
+    if (onnxruntime_BUILD_UNIT_TESTS)
+      file(GLOB_RECURSE onnxruntime_webassembly_test_src CONFIGURE_DEPENDS
+        "${ONNXRUNTIME_ROOT}/test/wasm/test_main.cc"
+        "${ONNXRUNTIME_ROOT}/test/wasm/test_inference.cc"
+      )
 
-    source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_webassembly_test_src})
+      source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_webassembly_test_src})
 
-    add_executable(onnxruntime_webassembly_test
-      ${onnxruntime_webassembly_test_src}
-    )
+      add_executable(onnxruntime_webassembly_test
+        ${onnxruntime_webassembly_test_src}
+      )
 
-    set_target_properties(onnxruntime_webassembly_test PROPERTIES LINK_FLAGS
-      "-s ALLOW_MEMORY_GROWTH=1 -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1"
-    )
+      set_target_properties(onnxruntime_webassembly_test PROPERTIES LINK_FLAGS
+        "-s ALLOW_MEMORY_GROWTH=1 -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1"
+      )
 
-    target_link_libraries(onnxruntime_webassembly_test PUBLIC
-      onnxruntime_webassembly
-      GTest::gtest
-    )
+      target_link_libraries(onnxruntime_webassembly_test PUBLIC
+        onnxruntime_webassembly
+        GTest::gtest
+      )
 
-    find_program(NODE_EXECUTABLE node required)
-    if (NOT NODE_EXECUTABLE)
-      message(FATAL_ERROR "Node is required for a test")
+      find_program(NODE_EXECUTABLE node required)
+      if (NOT NODE_EXECUTABLE)
+        message(FATAL_ERROR "Node is required for a test")
+      endif()
+
+      add_test(NAME onnxruntime_webassembly_test
+        COMMAND ${NODE_EXECUTABLE} onnxruntime_webassembly_test.js
+        WORKING_DIRECTORY $<TARGET_FILE_DIR:onnxruntime_webassembly_test>
+      )
     endif()
-
-    add_test(NAME onnxruntime_webassembly_test
-      COMMAND ${NODE_EXECUTABLE} onnxruntime_webassembly_test.js
-      WORKING_DIRECTORY $<TARGET_FILE_DIR:onnxruntime_webassembly_test>
-    )
 else()
   file(GLOB_RECURSE onnxruntime_webassembly_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/wasm/api.cc"

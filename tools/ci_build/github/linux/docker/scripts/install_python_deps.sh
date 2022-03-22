@@ -42,6 +42,8 @@ elif [[ "$PYTHON_VER" = "3.8" && -d "/opt/python/cp38-cp38"  ]]; then
    PYTHON_EXE="/opt/python/cp38-cp38/bin/python3.8"
 elif [[ "$PYTHON_VER" = "3.9" && -d "/opt/python/cp39-cp39"  ]]; then
    PYTHON_EXE="/opt/python/cp39-cp39/bin/python3.9"
+elif [[ "$PYTHON_VER" = "3.10" && -d "/opt/python/cp310-cp310"  ]]; then
+   PYTHON_EXE="/opt/python/cp310-cp310/bin/python3.10"
 else
    PYTHON_EXE="/usr/bin/python${PYTHON_VER}"
 fi

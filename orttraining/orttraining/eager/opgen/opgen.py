@@ -25,7 +25,7 @@ ops_module = SourceFileLoader("opgen.customop", args.ops_module).load_module()
 ortgen = ORTGen(ops_module.ops, type_promotion_ops=ops_module.type_promotion_ops, custom_ops=args.custom_ops)
 
 regdecs_path = args.header_file
-print(f"INFO: Using ATen RegistrationDeclations from: {regdecs_path}")
+print(f"INFO: Using RegistrationDeclarations from: {regdecs_path}")
 output = sys.stdout
 if args.output_file:
   output = open(args.output_file, 'wt')

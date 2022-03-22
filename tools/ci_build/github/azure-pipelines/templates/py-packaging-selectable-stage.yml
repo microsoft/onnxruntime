@@ -22,12 +22,12 @@ parameters:
 - name: python_version
   displayName: 'Python version used for build'
   type: object
-  default: ['3.7', '3.8', '3.9']
+  default: ["'3.7'", "'3.8'", "'3.9'"]
 
 - name: cpu_build_py_parameters
   displayName: 'Extra parameters to pass to build.py for CPU package.'
   type: string
-  default: '--use_dnnl --use_openvino CPU_FP32'
+  default: '--use_openvino CPU_FP32'
 
 - name: gpu_build_py_parameters
   displayName: 'Extra parameters to pass to build.py for GPU package.'
@@ -153,7 +153,7 @@ stages:
           modifyEnvironment: true
 
       - script: |
-          python -m pip install -q setuptools wheel numpy==1.16.6
+          python -m pip install -q setuptools wheel numpy==1.21.0
         workingDirectory: '$(Build.BinariesDirectory)'
         displayName: 'Install python modules'
 
@@ -416,7 +416,7 @@ stages:
           workingFolder: '$(Build.BinariesDirectory)'
 
       - script: |
-          python -m pip install -q setuptools wheel numpy==1.16.6
+          python -m pip install -q setuptools wheel numpy==1.21.0
         workingDirectory: '$(Build.BinariesDirectory)'
         displayName: 'Install python modules'
 
