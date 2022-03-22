@@ -119,33 +119,13 @@ jobs:
         displayName: 'Get Nightly Wheel'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-      ### PROJECT SCOPED PACKAGES 
-      # Logic to get from Python packaging pipeline (NO ARTIFACT FEED)    
-      - task: DownloadPipelineArtifact@2
-        inputs:
-          buildType: 'specific'
-          project: 'Lotus'
-          buildVersionToDownload: 'latest'
-          pipeline: '841'
-          targetPath: '$(Build.ArtifactStagingDirectory)'
-
-      # IF DESIRED: Logic to upload from Python packaging pipeline (then CONSUME FROM ARTIFACT FEED)
-      - task: UniversalPackages@0
-        displayName: Universal Publish
-        inputs:
-          command: publish
-          publishDirectory: '$(Build.ArtifactStagingDirectory)/onnxruntime'
-          vstsFeedPublish: 'Lotus/ort-gpu-nightly'
-          vstsFeedPackagePublish: 'nightly-wheel'
-          packagePublishDescription: 'wheelfile'
-
       ### PYPI PACKAGE WITH ARTIFACT FEED
       # Logic to upload with Twine (Authenticate generates PYPRIC_PATH)
       - task: TwineAuthenticate@1
         inputs:
           artifactFeed: 'Lotus/ort-gpu-nightly'
        
-      - script: python3 -m pip install twine && python3 -m twine upload -r ort-gpu-nightly --config-file $(PYPIRC_PATH) wheel/*.whl
+      - script: python3 twine upload -r ort-gpu-nightly --config-file $(PYPIRC_PATH) wheel/*.whl
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
       # Logic to download pypi from artifact feed 
