@@ -19,6 +19,7 @@ do
 		  pushd $parent_dir1
 	      # https://stackoverflow.com/questions/11246070/cp-parents-option-on-mac
 	      rsync -R "$parent_path" "$dest_dir"
+		  rm -f "$parent_path"
 		  popd
 	  else
 	      echo $my_path
