@@ -124,8 +124,7 @@ jobs:
           pipeline: '841'
           targetPath: '$(Pipeline.Workspace)'
 
-      - script: 'ls'
-        workingDirectory: '$(Pipeline.Worskpace)'
+      - script: 'ls $(Pipeline.Worskpace)'
 
       - script: |
           python3 -m pip install wheel 
