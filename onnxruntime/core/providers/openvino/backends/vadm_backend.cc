@@ -98,12 +98,29 @@ void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* c
   
   #if defined (OV_API_20)
   auto graph_input_info = ie_cnn_network_->inputs();
+    int input_idx = 0;
     for (auto input_info_iter = graph_input_info.begin();
       input_info_iter != graph_input_info.end(); ++input_info_iter) {
-      std::string input_name = input_info_iter->get_node()->get_name();
+      auto input_names = input_info_iter->get_names();
+      std::string onnx_input_name;
+      std::string input_name;
+      // use names retrieved from original ONNX model to assign the right onnx input name for the graph
+      for (auto it = subgraph_context_.input_names.begin(); it != subgraph_context_.input_names.end(); ++it) {
+        if (it->second == input_idx) {
+          onnx_input_name = it->first;
+          break;
+        }
+      }
+      // using the input name retrieved from ONNX original to match with the input names returned by OV tensors 
+      if (input_names.find(onnx_input_name) != input_names.end()) {
+          input_name = onnx_input_name;
+      } else {
+        ORT_THROW(log_tag + "Input names mismatch between OpenVINO and ONNX. " + onnx_input_name + " doesn't exist in the list of OpenVINO input tensor names");
+      }
       OVTensorPtr graph_input_blob; 
       graph_input_blob = infer_request->GetTensor(input_name);
       FillInputBlob(graph_input_blob, batch_slice_idx, input_name, ort, context, subgraph_context_);
+      input_idx++;
     }        
   #else 
     auto graph_input_info = ie_cnn_network_->getInputsInfo();
@@ -137,7 +154,23 @@ void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext
   for (auto output_info_iter = graph_output_info.begin();
        output_info_iter != graph_output_info.end(); ++output_info_iter) {
     OVTensorPtr graph_output_blob;
-    auto output_name = output_info_iter->get_node()->get_name();
+    auto output_names = output_info_iter->get_names();
+    std::string onnx_output_name;
+    std::string output_name;
+    bool output_name_found = false;
+    // using the output name retrieved from ONNX original to match with the output names returned by OV tensors
+    for (auto it = subgraph_context_.output_names.begin(); it != subgraph_context_.output_names.end(); ++it) {
+      onnx_output_name = it->first;
+      if (output_names.find(onnx_output_name) != output_names.end()) {
+        //Assigning the output_name
+        output_name = it->first;
+        output_name_found = true;
+        break;
+      }
+    }
+    if(!output_name_found) {
+      ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX. [ONNX Output: ] " + onnx_output_name + " doesn't exist in the list of OpenVINO output tensor names");
+    }
     graph_output_blob = infer_request->GetTensor(output_name);
     auto output_tensor = GetOutputTensor(ort, context, batch_size, infer_request, output_name, subgraph_context_.output_names);
     FillOutputBlob(graph_output_blob, output_tensor, ort, batch_slice_idx);
