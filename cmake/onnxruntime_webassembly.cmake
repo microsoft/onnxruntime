@@ -110,6 +110,10 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       re2::re2
     )
 
+    if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+      bundle_static_library(onnxruntime_webassembly tensorboard)
+    endif()
+
     if (onnxruntime_BUILD_UNIT_TESTS)
       file(GLOB_RECURSE onnxruntime_webassembly_test_src CONFIGURE_DEPENDS
         "${ONNXRUNTIME_ROOT}/test/wasm/test_main.cc"
@@ -168,6 +172,10 @@ else()
     onnxruntime_util
     re2::re2
   )
+
+  if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+    target_link_libraries(onnxruntime_webassembly PRIVATE tensorboard)
+  endif()
 
   set(EXPORTED_RUNTIME_METHODS "['stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8']")
 
