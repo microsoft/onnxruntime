@@ -29,6 +29,10 @@
 #include "core/session/provider_bridge_ort.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 
+#if !defined(ORT_MINIMAL_BUILD) || !defined(DISABLE_CONTRIB_OPS)
+#include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
+#endif
+
 // Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
 // GCC 4.x doesn't seem to define this and it breaks the pipelines based on CentOS as it uses
 // GCC 4.x.
@@ -1000,6 +1004,19 @@ void addGlobalMethods(py::module& m, Environment& env) {
     LogDeprecationWarning("set_arena_extend_strategy", "CUDA/ROCM execution provider option \"arena_extend_strategy\"");
     arena_extend_strategy = strategy;
   });
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD) || !defined(DISABLE_CONTRIB_OPS)
+  m.def("register_aten_op_executor",
+        [](const std::string& is_tensor_argument_address_str, const std::string& aten_op_executor_address_str) -> void {
+          size_t is_tensor_argument_address_int, aten_op_executor_address_int;
+          ORT_THROW_IF_ERROR(
+              ParseStringWithClassicLocale(is_tensor_argument_address_str, is_tensor_argument_address_int));
+          ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(aten_op_executor_address_str, aten_op_executor_address_int));
+          void* p_is_tensor_argument = reinterpret_cast<void*>(is_tensor_argument_address_int);
+          void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
+          contrib::aten_ops::ATenOperatorExecutor::Instance().Initialize(p_is_tensor_argument, p_aten_op_executor);
+        });
 #endif
 }
 

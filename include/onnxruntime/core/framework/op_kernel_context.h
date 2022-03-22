@@ -209,7 +209,7 @@ class OpKernelContext {
   const OrtValue* GetImplicitInputMLValue(int index) const;
   OrtValue* GetOutputMLValue(int index);
 
-#ifdef ENABLE_TRAINING
+#if !defined(ORT_MINIMAL_BUILD) || !defined(DISABLE_CONTRIB_OPS)
   Status SetOutputMLValue(int index, const OrtValue& ort_value);
 #endif
 

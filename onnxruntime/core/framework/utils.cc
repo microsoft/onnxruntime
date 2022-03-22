@@ -21,7 +21,10 @@
 #include "core/framework/TensorSeq.h"
 #ifdef ENABLE_TRAINING
 #include "core/framework/orttraining_partial_executor.h"
-#include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD) || !defined(DISABLE_CONTRIB_OPS)
+#include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
 
 namespace ONNX_NAMESPACE {
@@ -785,8 +788,9 @@ bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index)
     return true;
   }
 
-#ifdef ENABLE_TRAINING
-  if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATen" && node.Domain() == kPytorchAtenDomain) {
+#if !defined(ORT_MINIMAL_BUILD) || !defined(DISABLE_CONTRIB_OPS)
+  if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATen" &&
+      node.Domain() == kPytorchAtenDomain) {
     const auto& attrs = node.GetAttributes();
     ORT_ENFORCE(utils::HasString(attrs.at("operator")));
     std::string op_name = attrs.at("operator").s();

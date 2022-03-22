@@ -53,7 +53,7 @@ class OpKernelContextInternal : public OpKernelContext {
     return OpKernelContext::GetOutputMLValue(index);
   }
 
-#ifdef ENABLE_TRAINING
+#if !defined(ORT_MINIMAL_BUILD) || !defined(DISABLE_CONTRIB_OPS)
   Status SetOutputMLValue(int index, const OrtValue& ort_value) {
     return OpKernelContext::SetOutputMLValue(index, ort_value);
   }

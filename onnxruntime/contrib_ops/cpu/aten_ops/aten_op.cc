@@ -1,18 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/cpu/aten_ops/aten_op.h"
+#include "contrib_ops/cpu/aten_ops/aten_op.h"
 
 #include "core/dlpack/dlpack_converter.h"
 #include "core/framework/op_kernel_context_internal.h"
-#include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
+#include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
 
 namespace onnxruntime {
 namespace contrib {
 
 ONNX_OPERATOR_KERNEL_EX(ATen, kPytorchAtenDomain, 1, kCpuExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
-                        ATen);
+                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()), ATen);
 
 Status ATen::Compute(OpKernelContext* p_ctx) const {
   auto* p_ctx_internal = static_cast<OpKernelContextInternal*>(p_ctx);
@@ -35,9 +34,7 @@ Status ATen::Compute(OpKernelContext* p_ctx) const {
   return Status::OK();
 }
 
-bool IsATenOperatorExecutorInitialized() {
-  return aten_ops::ATenOperatorExecutor::Instance().IsInitialized();
-}
+bool IsATenOperatorExecutorInitialized() { return aten_ops::ATenOperatorExecutor::Instance().IsInitialized(); }
 
 Status ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) {
   ORT_ENFORCE(aten_ops::ATenOperatorExecutor::Instance().IsInitialized() && !axes.empty());
@@ -52,9 +49,10 @@ Status ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   OrtMemoryInfo info("Cpu", OrtDeviceAllocator);
   auto axes_tensor_obj = std::make_unique<Tensor>(DataTypeImpl::GetType<int64_t>(), axes_tensor_shape,
-                              const_cast<void*>(reinterpret_cast<const void*>(&axes[0])), info);
+                                                  const_cast<void*>(reinterpret_cast<const void*>(&axes[0])), info);
   axes_tensor.Init(axes_tensor_obj.release(), ml_tensor, ml_tensor->GetDeleteFunc());
-  auto keepdims_tensor_obj = std::make_unique<Tensor>(DataTypeImpl::GetType<bool>(), keepdims_tensor_shape, reinterpret_cast<void*>(&keepdims), info);
+  auto keepdims_tensor_obj = std::make_unique<Tensor>(DataTypeImpl::GetType<bool>(), keepdims_tensor_shape,
+                                                      reinterpret_cast<void*>(&keepdims), info);
   keepdims_tensor.Init(keepdims_tensor_obj.release(), ml_tensor, ml_tensor->GetDeleteFunc());
   dlpacks.emplace_back(dlpack::OrtValueToDlpack(axes_tensor));
   dlpacks.emplace_back(dlpack::OrtValueToDlpack(keepdims_tensor));

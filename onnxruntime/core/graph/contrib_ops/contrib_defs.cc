@@ -2323,6 +2323,23 @@ void RegisterContribSchemas() {
         updateOutputShape(ctx, 0, output_shape);
       });
 
+#ifndef ORT_MINIMAL_BUILD
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ATen)
+      .SetDomain(kPytorchAtenDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("ATen")
+      .Input(0, "inputs", "ATen Op inputs.", "T", OpSchema::Variadic,
+             /*is_homogeneous*/ false,
+             /*min_arity*/ 1)
+      .Output(0, "outputs", "ATen Op outputs.", "T", OpSchema::Variadic,
+              /*is_homogeneous*/ false,
+              /*min_arity*/ 1)
+      .Attr("operator", "Name of ATen operator.", AttributeProto::STRING)
+      .Attr("overload_name", "Overload name of ATen operator.", AttributeProto::STRING, false)
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.");
+#endif
+
 #ifndef _OPSCHEMA_LIB_
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {

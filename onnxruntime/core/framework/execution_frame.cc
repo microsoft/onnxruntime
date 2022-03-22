@@ -38,7 +38,7 @@ IExecutionFrame::IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
 
 IExecutionFrame::~IExecutionFrame() = default;
 
-#ifdef ENABLE_TRAINING
+#if !defined(ORT_MINIMAL_BUILD) || !defined(DISABLE_CONTRIB_OPS)
 Status IExecutionFrame::SetOutputMLValue(int index, const OrtValue& ort_value) {
   int ort_value_idx = GetNodeIdxToMLValueIdx(index);
   if (ort_value_idx == NodeIndexInfo::kInvalidEntry || static_cast<size_t>(ort_value_idx) >= all_values_size_) {
@@ -49,7 +49,9 @@ Status IExecutionFrame::SetOutputMLValue(int index, const OrtValue& ort_value) {
   all_values_[ort_value_idx] = ort_value;
   return Status::OK();
 }
+#endif
 
+#ifdef ENABLE_TRAINING
 void IExecutionFrame::UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, const std::vector<OrtValue>& feeds) {
   ORT_ENFORCE(feed_mlvalue_idxs.size() == feeds.size());
 
