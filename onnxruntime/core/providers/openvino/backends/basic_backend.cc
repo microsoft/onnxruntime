@@ -536,11 +536,13 @@ void BasicBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
       //Once the inference is completed, the infer_request becomes free and is placed back into pool of infer_requests_
       inferRequestsQueue_->putIdleRequest(infer_request);
 #ifndef NDEBUG
+  #ifndef IO_BUFFER_ENABLED // Printing performance counts is disabled when IO_BUFFER_ENABLED
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
       inferRequestsQueue_->printstatus();  //Printing the elements of infer_requests_ vector pool only in debug mode
       std::string& hw_target = (global_context_.device_id != "") ? global_context_.device_id : global_context_.device_type;
       printPerformanceCounts(infer_request, std::cout, hw_target);
     }
+  #endif
 #endif
   }
 }
