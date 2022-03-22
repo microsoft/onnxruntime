@@ -130,8 +130,8 @@ jobs:
         displayName: Universal Publish
         inputs:
           command: publish
-          publishDirectory: '$(Build.ArtifactStagingDirectory)'
-          vstsFeedPublish: 'Lotus/ort-nightly-gpu'
+          publishDirectory: '$(Build.ArtifactStagingDirectory)/onnxruntime'
+          vstsFeedPublish: 'Lotus/ort-gpu-nightly'
           vstsFeedPackagePublish: 'nightly-wheel'
           packagePublishDescription: 'wheelfile'
 
