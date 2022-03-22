@@ -23,7 +23,10 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     float);
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Clip, 12, Input, 0,
-    float, double, int8_t, uint8_t, int32_t, int64_t, uint64_t);
+    float, double, int8_t, uint8_t, int64_t, uint64_t, int32_t);
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
+    kCpuExecutionProvider, kOnnxDomain, Clip, 13, Input, 0,
+    float, double, int8_t, uint8_t, int64_t, uint64_t);
 }  // namespace op_kernel_type_control
 
 using Clip11Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
@@ -34,11 +37,17 @@ using Clip12Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Clip, 12, Input, 0);
 using EnabledClip12Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Clip, 12, Input, 0);
+using Clip13Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Clip, 13, Input, 0);
+using EnabledClip13Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Clip, 13, Input, 0);
+using OldClip12Types = onnxruntime::TypeList<float, double, int8_t, uint8_t, int64_t, uint64_t>;
 
 using AllEnabledClipTypes =
     utils::TypeSetUnion<
         EnabledClip11Types,
-        EnabledClip12Types>;
+        EnabledClip12Types,
+        EnabledClip13Types>;
 
 #define REG_KERNEL_VERSIONED_NONTEMPL(                                                 \
     OP_TYPE, START_VER, END_VER, KERNEL_CLASS, DEFAULT_TYPE_LIST, ENABLED_TYPE_LIST)   \
@@ -66,8 +75,21 @@ using AllEnabledClipTypes =
       KERNEL_CLASS);
 
 REG_KERNEL_VERSIONED_NONTEMPL(Clip, 11, 11, Clip, Clip11Types, EnabledClip11Types);
-REG_KERNEL_VERSIONED_NONTEMPL(Clip, 12, 12, Clip, Clip12Types, EnabledClip12Types);
-REG_KERNEL_NONTEMPL(Clip, 13, Clip, Clip12Types, EnabledClip12Types);
+
+// TODO: refactor REG_KERNEL_VERSIONED_NONTEMPL to support fixed type constraints
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+      Clip,
+      12,
+      12,
+      KernelDefBuilder()
+          .MayInplace(0, 0)
+          .TypeConstraint("T",
+                          BuildKernelDefConstraintsFromTypeList<Clip12Types>(),
+                          BuildKernelDefConstraintsFromTypeList<EnabledClip12Types>())
+          .FixedTypeConstraintForHash("T", BuildKernelDefConstraintsFromTypeList<OldClip12Types>()),
+      Clip);
+
+REG_KERNEL_NONTEMPL(Clip, 13, Clip, Clip13Types, EnabledClip13Types);
 
 #undef REG_KERNEL_VERSIONED_NONTEMPL
 #undef REG_KERNEL_NONTEMPL
