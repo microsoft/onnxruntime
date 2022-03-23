@@ -34,6 +34,7 @@ Status ATen::Compute(OpKernelContext* p_ctx) const {
   return Status::OK();
 }
 
+#ifdef ENABLE_TRAINING
 bool IsATenOperatorExecutorInitialized() { return aten_ops::ATenOperatorExecutor::Instance().IsInitialized(); }
 
 Status ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) {
@@ -61,6 +62,7 @@ Status ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_
   ORT_RETURN_IF_ERROR(p_ctx_internal->SetOutputMLValue(0, dlpack::DlpackToOrtValue(result[0])));
   return Status::OK();
 }
+#endif
 
 }  // namespace contrib
 }  // namespace onnxruntime
