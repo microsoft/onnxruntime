@@ -802,7 +802,8 @@ struct MLAS_GEMM_QUANT_DISPATCH {
 };
 
 struct MLAS_SYMM_QGEMM_DISPATCH {
-    MLAS_SYMM_QGEMM_OPERATION* Operation;
+    MLAS_SYMM_QGEMM_OPERATION* LitOperation; /// running on little cores with narrow memory load
+    MLAS_SYMM_QGEMM_OPERATION* BigOperation; /// running on big cores with wider memory load
     MLAS_GEMM_QUANT_COPY_PACKB_ROUTINE* CopyPackBRoutine;
     size_t StrideM; /**< num of rows processed by kernel at a time */
     size_t PackedK;
@@ -847,6 +848,12 @@ MlasGemmQuantGetDispatch(
 #elif defined(MLAS_TARGET_WASM_SIMD)
     if (!AIsSigned) {
         GemmQuantDispatch = &MlasGemmU8X8DispatchWasmSimd;
+    }
+#elif defined(MLAS_TARGET_POWER) && defined(__linux__)  && defined(POWER10) && \
+    ((defined(__GNUC__) && ((__GNUC__ > 10) || (__GNUC__== 10 && __GNUC_MINOR__ >= 2))) || \
+    (defined(__clang__) && (__clang_major__ >= 12)))
+    if (GetMlasPlatform().GemmU8X8Dispatch == &MlasGemm8X8DispatchPOWER10) {
+        GemmQuantDispatch = GetMlasPlatform().GemmU8X8Dispatch;
     }
 #endif
 

@@ -14,44 +14,51 @@ public:
         DML_REDUCE_FUNCTION function
         )
     :   DmlOperator(kernelInfo),
-        ReduceHelperBase(kernelInfo,
-                         kernelInfo.GetTensorShapeDescription(),
-                        (function != DML_REDUCE_FUNCTION_ARGMAX && function != DML_REDUCE_FUNCTION_ARGMIN))
+        ReduceHelperBase(
+            kernelInfo,
+            kernelInfo.GetTensorShapeDescription(),
+            (function != DML_REDUCE_FUNCTION_ARGMAX && function != DML_REDUCE_FUNCTION_ARGMIN)
+        )
     {
-        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 1);
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() >= 1);
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
-        DmlOperator::Initialize(kernelInfo);
+        std::vector<std::optional<uint32_t>> inputIndices = { 0 };
+        std::vector<std::optional<uint32_t>> outputIndices = { 0 };
+        DmlOperator::Initialize(kernelInfo, inputIndices, outputIndices, std::nullopt, std::nullopt, 1u);
 
         std::vector<uint32_t> dmlAxes;
         std::vector<DimensionType> reducedDims = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(0);
-        int dimOffset = gsl::narrow_cast<int>(m_inputTensorDescs[0].GetDimensionCount() - reducedDims.size());
         for (auto& dim : m_axes)
         {
+            // Replace all reduced axes with 1 for their size.
             assert(dim < static_cast<int32_t>(reducedDims.size())); // ReduceHelperBase already validated this.
             reducedDims[dim] = 1;
-            dmlAxes.push_back(static_cast<uint32_t>(dim + dimOffset));
+            dmlAxes.push_back(static_cast<uint32_t>(dim)); // Signed to unsigned which DML expects.
         }
 
         if (!m_keepDims)
         {
-            // DML doesn't know about keepDim and always assume the dim is preserved after reduce.
+            // DML expects the input and output tensors to have identical counts and doesn't know about
+            // ONNX's 'keepdims' attribute, keeping all dimensions anyway rather removing those of size 1.
             // So if m_keepDims is false, the ONNX output dim is different than DML tensor desc dim.
-            // ReduceSum example:
-            // input dims: {3, 2, 2}
-            // axes: 1
-            // keepDims: 0
-            // 
-            // the ONNX output expect to be of dim {3, 2}, while DML expect the output tensor desc
-            // dim to be {3, 1, 2}.
             //
+            // ReduceSum example:
+            //     input dims: {3, 2, 2}
+            //     axes: 1
+            //     keepDims: 0
+            // 
+            // The ONNX output expects output dims of {3, 2},
+            // while DML expect the output tensor desc of {3, 1, 2}.
 
             m_outputTensorDescs[0] = CreateTensorDescFromOutput(
-                kernelInfo, 
-                0, 
-                TensorAxis::DoNotCoerce, 
-                TensorAxis::W, 
+                kernelInfo,
+                0,
+                TensorAxis::DoNotCoerce,
+                TensorAxis::W,
                 TensorAxis::RightAligned,
-                reducedDims);
+                reducedDims,
+                1 // minimumDimensionCount
+            );
         }
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();

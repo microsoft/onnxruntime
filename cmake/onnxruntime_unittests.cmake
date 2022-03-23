@@ -9,7 +9,7 @@ set(TEST_INC_DIR ${ONNXRUNTIME_ROOT})
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND TEST_INC_DIR ${ORTTRAINING_ROOT})
 endif()
-if (onnxruntime_USE_TVM)
+if (onnxruntime_USE_NUPHAR_TVM)
   list(APPEND TEST_INC_DIR ${TVM_INCLUDES})
 endif()
 
@@ -236,7 +236,7 @@ else()  # minimal and/or reduced ops build
   endif()
 endif()
 
-if((NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+if((NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_EXTENDED_MINIMAL_BUILD)
    AND NOT onnxruntime_REDUCED_OPS_BUILD)
   list(APPEND onnxruntime_test_optimizer_src
        "${TEST_SRC_DIR}/optimizer/runtime_optimization/graph_runtime_optimization_test.cc")
@@ -430,6 +430,10 @@ endif()
 
 set (onnxruntime_test_providers_dependencies ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
+if(onnxruntime_USE_CUDA)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda)
+endif()
+
 if(onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
@@ -460,10 +464,10 @@ if(onnxruntime_USE_COREML)
 endif()
 
 if(onnxruntime_USE_NUPHAR)
-  file(GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
-    "${TEST_SRC_DIR}/tvm/*.h"
-    "${TEST_SRC_DIR}/tvm/*.cc"
-    )
+  file(GLOB_RECURSE onnxruntime_test_nuphar_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/nuphar_tvm/*.h"
+    "${TEST_SRC_DIR}/nuphar_tvm/*.cc"
+  )
 
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/framework/nuphar/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nuphar)
@@ -495,7 +499,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_COREML}
-    # ${PROVIDERS_STVM}
+    # ${PROVIDERS_TVM}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -519,6 +523,7 @@ set(onnxruntime_test_providers_libs
 
 if(onnxruntime_USE_TENSORRT)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/tensorrt/*)
+  list(APPEND onnxruntime_test_framework_src_patterns  "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/tensorrt_execution_provider_utils.h")
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_tensorrt)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tensorrt onnxruntime_providers_shared)
 endif()
@@ -550,17 +555,17 @@ if(onnxruntime_USE_COREML)
   endif()
 endif()
 
-if (onnxruntime_USE_STVM)
-  file (GLOB_RECURSE onnxruntime_test_stvm_src CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/test/stvm/*.h"
-    "${ONNXRUNTIME_ROOT}/test/stvm/*.cc"
+if (onnxruntime_USE_TVM)
+  file (GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/tvm/*.h"
+    "${TEST_SRC_DIR}/tvm/*.cc"
   )
 
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_stvm)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tvm)
 endif()
 
 if(WIN32)
-  if (onnxruntime_USE_TVM)
+  if (onnxruntime_USE_NUPHAR_TVM)
     list(APPEND disabled_warnings ${DISABLED_WARNINGS_FOR_TVM})
   endif()
 endif()
@@ -645,11 +650,11 @@ if (onnxruntime_ENABLE_TRAINING)
 endif()
 
 if (onnxruntime_USE_NUPHAR)
-  list(APPEND all_tests ${onnxruntime_test_tvm_src})
+  list(APPEND all_tests ${onnxruntime_test_nuphar_src})
 endif()
 
-if (onnxruntime_USE_STVM)
-    list(APPEND all_tests ${onnxruntime_test_stvm_src})
+if (onnxruntime_USE_TVM)
+    list(APPEND all_tests ${onnxruntime_test_tvm_src})
 endif()
 
 if (onnxruntime_USE_OPENVINO)
@@ -664,15 +669,7 @@ if(WIN32)
 endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
-  if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-    # WebAssembly threading support in node is an experimental feature yet
-    # and that makes some intensive threadpool tests fail randomly.
-    # Will enable this test when node.js releases a stable version supporting multi-threads.
-    list(REMOVE_ITEM all_tests
-      "${TEST_SRC_DIR}/platform/threadpool_test.cc"
-      "${TEST_SRC_DIR}/providers/cpu/nn/string_normalizer_test.cc"
-    )
-  else()
+  if (NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     list(REMOVE_ITEM all_tests
       "${TEST_SRC_DIR}/framework/execution_frame_test.cc"
       "${TEST_SRC_DIR}/framework/inference_session_test.cc"
@@ -751,12 +748,11 @@ add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDEN
 #onnx_proto target should mark this definition as public, instead of private
 target_compile_definitions(onnx_test_data_proto PRIVATE "-DONNX_API=")
 if(WIN32)
-  target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456" "/wd4100" "/wd4267" "/wd6011" "/wd6387" "/wd28182")
+  target_compile_options(onnx_test_data_proto PRIVATE "/wd4100" "/wd4125" "/wd4127" "/wd4267" "/wd4456" "/wd4800" "/wd6011" "/wd6387" "/wd28182")
 else()
   #Once we upgrade protobuf to 3.17.3+, we can remove this
   target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-parameter")
 endif()
-add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto)
 target_include_directories(onnx_test_data_proto PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 set_target_properties(onnx_test_data_proto PROPERTIES FOLDER "ONNXRuntimeTest")
@@ -794,7 +790,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       )
   endif()
   if(WIN32)
-    if (onnxruntime_USE_TVM)
+    if (onnxruntime_USE_NUPHAR_TVM)
       add_custom_command(
         TARGET ${test_data_target} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:tvm> $<TARGET_FILE_DIR:${test_data_target}>
@@ -851,7 +847,7 @@ if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 endif()
 set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
 
-if (onnxruntime_USE_TVM)
+if (onnxruntime_USE_NUPHAR_TVM)
   if (WIN32)
     target_link_options(onnx_test_runner PRIVATE "/STACK:4000000")
   endif()
@@ -1050,7 +1046,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_link_libraries(onnxruntime_perf_test PRIVATE onnxruntime_language_interop onnxruntime_pyop)
   endif()
 
-  if (onnxruntime_USE_TVM)
+  if (onnxruntime_USE_NUPHAR_TVM)
     if (WIN32)
       target_link_options(onnxruntime_perf_test PRIVATE "/STACK:4000000")
     endif()
@@ -1268,8 +1264,8 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   )
 
   onnxruntime_add_shared_library_module(test_execution_provider ${test_execution_provider_srcs})
-  add_dependencies(test_execution_provider onnxruntime_providers_shared onnx)
-  target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared)
+  add_dependencies(test_execution_provider onnxruntime_providers_shared onnx absl::raw_hash_set)
+  target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared absl::raw_hash_set)
   target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
   target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
   target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${ORTTRAINING_ROOT})
@@ -1285,14 +1281,6 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   else()
     message(FATAL_ERROR "test_execution_provider unknown platform, need to specify shared library exports for it")
   endif()
-endif()
-
-if (onnxruntime_USE_STVM)
-  # find_library(STVM_LIBS NAMES libtvm.so PATHS ${onnxruntime_STVM_HOME}/lib)
-  # link_directories(onnxruntime_test_all ${STVM_LIBS})
-  find_library(PYTHON_LIBS NAMES libpython PATHS /usr/local/lib)
-  #target_link_libraries(onnxruntime_test_all PRIVATE ${PYTHON_LIBRARIES} -lutil)
-  # set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-rpath,${STVM_LIBS}")
 endif()
 
 include(onnxruntime_fuzz_test.cmake)

@@ -18,11 +18,11 @@ inline constexpr bool QDQIsInt8Allowed(){
 
 
 /**
-Transformer that fuses QDQ and fp32 ops into quantized ops. 
+Transformer that fuses QDQ and fp32 ops into quantized ops.
 */
 class QDQSelectorActionTransformer : public SelectorActionTransformer {
  public:
-  QDQSelectorActionTransformer(const SatApplyContextVariant& apply_context = SatApplyContextVariant{});
+  QDQSelectorActionTransformer(bool is_int8_allowed, const SatApplyContextVariant& apply_context = {});
 };
 
 }  // namespace onnxruntime

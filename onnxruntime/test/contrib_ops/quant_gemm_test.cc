@@ -35,7 +35,7 @@ void RunQuantGemmU8X8Test(const int M,
 
   constexpr int overflow_adjust = std::is_signed_v<WeightType> ? 2 : 1;
   constexpr int random_B_min = std::numeric_limits<WeightType>::min() / overflow_adjust;
-  constexpr int random_B_max = std::numeric_limits<WeightType>::min() / overflow_adjust;
+  constexpr int random_B_max = std::numeric_limits<WeightType>::max() / overflow_adjust;
   static std::uniform_int_distribution<int> random_B(random_B_min,
                                                      random_B_max);
   static std::uniform_real_distribution<float> n_apha(1.0f, 2.0f);

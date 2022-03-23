@@ -13,7 +13,7 @@ Fuse Add + Gelu to BiasGelu or FastGelu
 */
 class BiasGeluFusion : public GraphTransformer {
  public:
-  BiasGeluFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  BiasGeluFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("BiasGeluFusion", compatible_execution_providers) {
   }
 

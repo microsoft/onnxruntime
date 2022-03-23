@@ -1,16 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "qdq_s8_to_u8.h"
+#include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
 
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/utils.h"
 
 namespace onnxruntime {
 
 // Convert QuantizeLinear and DequantizeLinear pair with type int8_t to type uint8_t
-Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
+                                       const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
@@ -23,20 +25,20 @@ Status QDQS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_l
     Node& q_node = *q_node_ptr;
     ORT_RETURN_IF_ERROR(Recurse(q_node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(q_node, "QuantizeLinear", {10, 13}) ||
+    if (!QDQ::MatchQNode(q_node) ||
         !graph_utils::IsSupportedProvider(q_node, GetCompatibleExecutionProviders()) ||
         !optimizer_utils::CheckOutputEdges(graph, q_node, 1)) {
       continue;
     }
 
     Node& dq_node = *graph.GetNode(q_node.OutputNodesBegin()->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(dq_node, "DequantizeLinear", {10, 13}) ||
+    if (!QDQ::MatchDQNode(dq_node) ||
         !graph_utils::IsSupportedProvider(dq_node, GetCompatibleExecutionProviders())) {
       continue;
     }
 
-    std::vector<NodeArg*>& q_input_defs = q_node.MutableInputDefs();
-    std::vector<NodeArg*>& dq_input_defs = dq_node.MutableInputDefs();
+    auto& q_input_defs = q_node.MutableInputDefs();
+    auto& dq_input_defs = dq_node.MutableInputDefs();
 
     constexpr size_t input_cnt_required = 3;
     if (q_input_defs.size() != input_cnt_required ||

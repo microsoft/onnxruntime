@@ -3,6 +3,8 @@
 
 // This is the Onnxruntime side of the bridge to allow providers to be built as a DLL
 // It implements onnxruntime::ProviderHost
+
+#include "core/common/inlined_containers.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/data_types.h"
@@ -207,8 +209,8 @@ struct ProviderHostImpl : ProviderHost {
 
   std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                      const std::string& provider_type,
-                                                     const std::vector<const KernelRegistry*>& kernel_registries,
-                                                     const std::vector<NodeIndex>& tentative_nodes) override {
+                                                     gsl::span<const KernelRegistry* const> kernel_registries,
+                                                     gsl::span<const NodeIndex> tentative_nodes) override {
     return onnxruntime::GetCpuPreferredNodes(graph, provider_type, kernel_registries, tentative_nodes);
   }
 
@@ -554,6 +556,10 @@ struct ProviderHostImpl : ProviderHost {
   void KernelDefBuilder__VariadicAlias(KernelDefBuilder* p, int input_offset, int output_offset) override { p->VariadicAlias(input_offset, output_offset); }
   void KernelDefBuilder__ExternalOutputs(KernelDefBuilder* p) override { p->ExternalOutputs(); }
   void KernelDefBuilder__AllocateInputsContiguously(KernelDefBuilder* p) override { p->AllocateInputsContiguously(); }
+#ifdef ENABLE_TRAINING
+  void KernelDefBuilder__MayStridedInput(KernelDefBuilder* p, int input_index) override { p->MayStridedInput(input_index); }
+  void KernelDefBuilder__MayStridedOutput(KernelDefBuilder* p, int input_index, int output_index) override { p->MayStridedOutput(input_index, output_index); }
+#endif
 
   std::unique_ptr<KernelDef> KernelDefBuilder__Build(KernelDefBuilder* p) override { return p->Build(); }
 
@@ -716,12 +722,12 @@ struct ProviderHostImpl : ProviderHost {
 
   Status Graph__Resolve(Graph* p) override { return p->Resolve(); }
   void Graph__AddInitializedTensor(Graph* p, const ONNX_NAMESPACE::TensorProto& tensor) override { p->AddInitializedTensor(tensor); }
-  Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const std::vector<NodeArg*>& input_args, const std::vector<NodeArg*>& output_args, const NodeAttributes* attributes, const std::string& domain) override {
+  Node& Graph__AddNode(Graph* p, const std::string& name, const std::string& op_type, const std::string& description, const gsl::span<NodeArg* const>& input_args, const gsl::span<NodeArg* const>& output_args, const NodeAttributes* attributes, const std::string& domain) override {
     return p->AddNode(name, op_type, description, input_args, output_args, attributes, domain);
   }
 
   const std::vector<const NodeArg*>& Graph__GetOutputs(const Graph* p) noexcept override { return p->GetOutputs(); }
-  void Graph__SetOutputs(Graph* p, const std::vector<const NodeArg*>& outputs) override { p->SetOutputs(outputs); }
+  void Graph__SetOutputs(Graph* p, gsl::span<const NodeArg* const> outputs) override { p->SetOutputs(outputs); }
 
   const std::vector<const NodeArg*>& Graph__GetInputs(const Graph* p) noexcept override { return p->GetInputs(); }
   bool Graph__GetInitializedTensor(const Graph* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) override { return p->GetInitializedTensor(tensor_name, value); }
@@ -781,6 +787,7 @@ struct ProviderHostImpl : ProviderHost {
   int OpKernelContext__InputCount(const OpKernelContext* p) override { return p->InputCount(); }
   int OpKernelContext__OutputCount(const OpKernelContext* p) override { return p->OutputCount(); }
   Status OpKernelContext__GetTempSpaceAllocator(const OpKernelContext* p, AllocatorPtr* output) override { return p->GetTempSpaceAllocator(output); }
+  Status OpKernelContext__GetTempSpaceCPUAllocator(const OpKernelContext* p, AllocatorPtr* output) override { return p->GetTempSpaceCPUAllocator(output); }
   bool OpKernelContext__GetUseDeterministicCompute(const OpKernelContext* p) override { return p->GetUseDeterministicCompute(); }
   bool OpKernelContext__TryGetInferredOutputShape(const OpKernelContext* p, int index, TensorShape& shape) override { return p->TryGetInferredOutputShape(index, shape); }
   bool OpKernelContext__TryGetInferredInputShape(const OpKernelContext* p, int index, TensorShape& shape) override { return p->TryGetInferredInputShape(index, shape); }
@@ -883,6 +890,14 @@ struct ProviderHostImpl : ProviderHost {
   const OrtMemoryInfo& Tensor__Location(const Tensor* p) override { return p->Location(); }
   int32_t Tensor__GetElementType(const Tensor* p) override { return p->GetElementType(); }
   MLDataType Tensor__DataType(const Tensor* p) override { return p->DataType(); }
+#ifdef ENABLE_TRAINING
+  gsl::span<const int64_t> Tensor__Strides(const Tensor* p) override { return p->Strides(); }
+  bool Tensor__IsContiguous(const Tensor* p) override { return p->IsContiguous(); }
+  void Tensor__SetShapeAndStrides(Tensor* p, const TensorShape& new_shape,
+                                  gsl::span<const int64_t> new_strides) override {
+    return p->SetShapeAndStrides(new_shape, new_strides);
+  }
+#endif
 
   // SparseTensor(wrapped)
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -1101,6 +1116,7 @@ OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const 
   cuda_options_converted.default_memory_arena_cfg = legacy_cuda_options->default_memory_arena_cfg;
   // Use default value as this field is not available in OrtCUDAProviderOptions
   cuda_options_converted.cudnn_conv_use_max_workspace = 0;
+  cuda_options_converted.enable_cuda_graph = 0;
 
   return cuda_options_converted;
 }
@@ -1148,7 +1164,43 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGrap
   return nullptr;
 }
 
+// Adapter to convert the legacy OrtTensorRTProviderOptions to the latest OrtTensorRTProviderOptionsV2
+OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOptionsV2(const OrtTensorRTProviderOptions* legacy_trt_options) {
+  OrtTensorRTProviderOptionsV2 trt_options_converted;
+
+  trt_options_converted.device_id = legacy_trt_options->device_id;
+  trt_options_converted.has_user_compute_stream = legacy_trt_options->has_user_compute_stream;
+  trt_options_converted.user_compute_stream = legacy_trt_options->user_compute_stream;
+  trt_options_converted.trt_max_partition_iterations = legacy_trt_options->trt_max_partition_iterations;
+  trt_options_converted.trt_min_subgraph_size = legacy_trt_options->trt_min_subgraph_size;
+  trt_options_converted.trt_max_workspace_size = legacy_trt_options->trt_max_workspace_size;
+  trt_options_converted.trt_fp16_enable = legacy_trt_options->trt_fp16_enable;
+  trt_options_converted.trt_int8_enable = legacy_trt_options->trt_int8_enable;
+  trt_options_converted.trt_int8_calibration_table_name = legacy_trt_options->trt_int8_calibration_table_name;
+  trt_options_converted.trt_int8_use_native_calibration_table = legacy_trt_options->trt_int8_use_native_calibration_table;
+  trt_options_converted.trt_dla_enable = legacy_trt_options->trt_dla_enable;
+  trt_options_converted.trt_dla_core = legacy_trt_options->trt_dla_core;
+  trt_options_converted.trt_dump_subgraphs = legacy_trt_options->trt_dump_subgraphs;
+  trt_options_converted.trt_engine_cache_enable = legacy_trt_options->trt_engine_cache_enable;
+  trt_options_converted.trt_engine_cache_path = legacy_trt_options->trt_engine_cache_path;
+  trt_options_converted.trt_engine_decryption_enable = legacy_trt_options->trt_engine_decryption_enable;
+  trt_options_converted.trt_engine_decryption_lib_path = legacy_trt_options->trt_engine_decryption_lib_path;
+  trt_options_converted.trt_force_sequential_engine_build = legacy_trt_options->trt_force_sequential_engine_build;
+  // Add new provider option below
+  // Use default value as this field is not available in OrtTensorRTProviderOptionsV
+
+  return trt_options_converted;
+}
+
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* provider_options) {
+  OrtTensorRTProviderOptionsV2 trt_options_converted = onnxruntime::OrtTensorRTProviderOptionsToOrtTensorRTProviderOptionsV2(provider_options);
+  if (auto* provider = s_library_tensorrt.Get())
+    return provider->CreateExecutionProviderFactory(&trt_options_converted);
+
+  return nullptr;
+}
+
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptionsV2* provider_options) {
   if (auto* provider = s_library_tensorrt.Get())
     return provider->CreateExecutionProviderFactory(provider_options);
 
@@ -1420,7 +1472,15 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM, _In_ Or
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options) {
-  return OrtApis::SessionOptionsAppendExecutionProvider_TensorRT(options, reinterpret_cast<const OrtTensorRTProviderOptions*>(tensorrt_options));
+  API_IMPL_BEGIN
+  auto factory = onnxruntime::CreateExecutionProviderFactory_Tensorrt(tensorrt_options);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_TensorRT: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptionsV2** out) {
@@ -1563,6 +1623,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateCUDAProviderOptions, _Outptr_ OrtCUDAProvider
   (*out)->user_compute_stream = nullptr;
   (*out)->default_memory_arena_cfg = nullptr;
   (*out)->cudnn_conv_use_max_workspace = 0;
+  (*out)->enable_cuda_graph = 0;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);

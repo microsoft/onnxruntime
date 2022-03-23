@@ -100,7 +100,7 @@ class TestOpResize(unittest.TestCase):
 
         # Verify QOperator mode
         data_reader = self.input_feeds(1, {'input': [1, 2, 26, 42]})
-        quantize_static(model_fp32_path, model_uint8_path, data_reader,
+        quantize_static(model_fp32_path, model_uint8_path, data_reader, quant_format=QuantFormat.QOperator,
                         activation_type = activation_type, weight_type = weight_type, extra_options = extra_options)
         # make sure resize become xint8 operator, its input name could tell that
         check_op_nodes(self, model_uint8_path, lambda node: (node.name != "resize_node" or node.input[0] != 'conv_output'))

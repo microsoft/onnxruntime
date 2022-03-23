@@ -56,7 +56,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
             else
             {
-                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Unable to get information for type: " + elemType.ToString());
+                throw new ArgumentException("Unable to get information for type: " + elemType.ToString());
             }
         }
 

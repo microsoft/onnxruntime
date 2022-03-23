@@ -9,7 +9,7 @@
 #include "GraphPartitioner.h"
 #include "core/providers/dml/OperatorAuthorHelper/Attributes.h"
 #include "core/providers/dml/OperatorAuthorHelper/OperatorHelper.h"
-#include "core/providers/dml/OperatorAuthorHelper/OperatorRegistration.h"
+#include "core/providers/dml/OperatorAuthorHelper/OperatorVersions.h"
 #include "core/framework/kernel_registry.h"
 #include "core/graph/graph_utils.h"
 
@@ -214,7 +214,7 @@ namespace Dml
                 // Change the name of the attribute to its fused node version
                 std::string fusedAttributeName = Dml::FusionHelpers::GetFusedAttributeName(attribute.first);
                 attribute.second.set_name(fusedAttributeName);
-                node.AddAttribute(fusedAttributeName, attribute.second);
+                node.AddAttributeProto(attribute.second);
             }
         }
     }

@@ -330,7 +330,7 @@ struct TensorCheck<BFloat16> {
     /// XXX: May need to adjust threshold as BFloat is coarse
     float threshold = 0.001f;
 #if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM)
-    threshold = 0.008f;
+    threshold = 0.05f; // expect at least 95% close
 #endif
     for (int i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
@@ -1122,7 +1122,7 @@ void OpTester::Run(
           if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
               provider_type == onnxruntime::kTensorrtExecutionProvider ||
               provider_type == onnxruntime::kNupharExecutionProvider ||
-              // provider_type == onnxruntime::kStvmExecutionProvider ||
+              // provider_type == onnxruntime::kTvmExecutionProvider ||
               provider_type == onnxruntime::kNnapiExecutionProvider ||
               provider_type == onnxruntime::kCoreMLExecutionProvider ||
               provider_type == onnxruntime::kDnnlExecutionProvider)

@@ -378,7 +378,7 @@ Status PrepareForReduce(const Tensor* X,
   }
 
   const auto input_dims = input_shape.GetDims();
-  InlinedShapeVector<bool> reduced(rank, false);
+  InlinedVector<bool> reduced(rank, false);
   if (axes.size() > 0) {
     prepare_reduce_metadata.output_dims = input_shape.AsShapeVector();
     for (auto axis : axes) {
@@ -509,17 +509,21 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
   HIP_RETURN_IF_ERROR(hipMemsetAsync(output.MutableDataRaw(), 0, output.SizeInBytes(), stream));
 
   IAllocatorUniquePtr<float> temp_X;
-  miopenDataType_t miopen_type_X = MiopenTensor::GetDataType<HipT>();
+  miopenDataType_t miopen_type_X = miopenFloat;
 
-  if (ReduceTensorIndices == MIOPEN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) {
+  // unlike bfp16 not supported in cudnn, miopen call for bfp16 succeeded below, however, UT shows data error
+  // so for now, follow the same logic in cudnn and convert input to fp32 then call miopen
+  if ((ReduceTensorIndices == MIOPEN_REDUCE_TENSOR_FLATTENED_INDICES && std::is_same<T, MLFloat16>::value) ||
+      (ReduceTensorIndices == MIOPEN_REDUCE_TENSOR_NO_INDICES && std::is_same<T, BFloat16>::value)) {
     // ArgMax/ArgMin with FP16 are not supported by miopen, so convert input to fp32 then call miopen
     temp_X = rocm_ep.GetScratchBuffer<float>(input_count);
-    miopen_type_X = miopenFloat;
     Impl_Cast<HipT, float>(stream, reinterpret_cast<const HipT*>(input.template Data<T>()), temp_X.get(), input_shape.Size());
+  } else {
+    miopen_type_X = MiopenTensor::GetDataType<HipT>();
   }
 
   MiopenReduceDescriptor reduce_desc;
-  if (std::is_same<T, MLFloat16>::value) {
+  ORT_IF_CONSTEXPR (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value) {
     ORT_RETURN_IF_ERROR(reduce_desc.Set(miopen_reduce_op, MiopenTensor::GetDataType<float>(), ReduceTensorIndices));
   } else {
     ORT_RETURN_IF_ERROR(reduce_desc.Set(miopen_reduce_op, miopen_type_X, ReduceTensorIndices));
@@ -651,11 +655,22 @@ Status ReduceComputeCore(ROCMExecutionProvider& rocm_ep, const Tensor& input, Pr
           HIP_RETURN_IF_ERROR(hipMemcpyAsync(output.template MutableData<T>(), input.template Data<T>(), input_count * sizeof(T), hipMemcpyDeviceToDevice, stream));
         }
       } else {
-        MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
-            rocm_ep.PerThreadMiopenHandle(), reduce_desc, indices_rocm.get(), indices_bytes,
-            workspace_rocm.get(), workspace_bytes,
-            &one, input_tensor, reinterpret_cast<const HipT*>(input.template Data<T>()),
-            &zero, output_tensor, reinterpret_cast<HipT*>(output.template MutableData<T>())));
+        if (temp_X) {
+          auto temp_output = rocm_ep.GetScratchBuffer<float>(output_count);
+          MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
+              rocm_ep.PerThreadMiopenHandle(), reduce_desc, indices_rocm.get(), indices_bytes,
+              workspace_rocm.get(), workspace_bytes,
+              &one, input_tensor, temp_X.get(),
+              &zero, output_tensor, temp_output.get()));
+
+          Impl_Cast<float, HipT>(stream, temp_output.get(), reinterpret_cast<HipT*>(output.template MutableData<T>()), output_count); 
+        } else {
+          MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(
+              rocm_ep.PerThreadMiopenHandle(), reduce_desc, indices_rocm.get(), indices_bytes,
+              workspace_rocm.get(), workspace_bytes,
+              &one, input_tensor, reinterpret_cast<const HipT*>(input.template Data<T>()),
+              &zero, output_tensor, reinterpret_cast<HipT*>(output.template MutableData<T>())));
+        }
       }
     }
   } else {
@@ -822,111 +837,6 @@ SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(int32_t)
 SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(int64_t)
 SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(int8_t)
 SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(uint8_t)
-
-template <>
-template <>
-Status ReduceKernel<true>::ComputeImpl<BFloat16, MIOPEN_REDUCE_TENSOR_NO_INDICES>(
-    OpKernelContext* ctx, miopenReduceTensorOp_t miopen_reduce_op) const {
-  typedef typename ToHipType<BFloat16>::MappedType HipT;
-  const Tensor* X = ctx->Input<Tensor>(0);
-  TensorShapeVector axes;
-  size_t num_inputs = ctx->InputCount();
-  if (num_inputs == 2) {
-    const Tensor* axes_tensor = ctx->Input<Tensor>(1);
-    ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
-    ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1, "An axes tensor must be a vector tensor.");
-    auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
-    const auto* data = axes_tensor->template Data<int64_t>();
-    axes.assign(data, data + nDims);
-  } else {
-    axes.assign(axes_.begin(), axes_.end());
-  }
-
-  if (axes.empty() && noop_with_empty_axes_) {
-    auto* Y = ctx->Output(0, X->Shape());
-    HIP_RETURN_IF_ERROR(hipMemcpyAsync(Y->template MutableData<BFloat16>(), X->template Data<BFloat16>(),
-                                       X->SizeInBytes(), hipMemcpyDeviceToDevice, Stream()));
-    return Status::OK();
-  }
-
-  PrepareReduceMetadata prepare_reduce_metadata;
-  ORT_RETURN_IF_ERROR(PrepareForReduce(X, keepdims_, axes, prepare_reduce_metadata));
-
-  Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);
-
-  int64_t input_count = prepare_reduce_metadata.input_count;
-  int64_t output_count = prepare_reduce_metadata.output_count;
-  auto& input_dims_miopen = prepare_reduce_metadata.input_dims_miopen;
-  auto& output_dims_miopen = prepare_reduce_metadata.output_dims_miopen;
-
-  if (input_count == 0) {
-    assert(Y->Shape().Size() == 0);
-    return Status::OK();
-  }
-
-  if (input_count == output_count) {
-    if (Y->template MutableData<BFloat16>() != X->template Data<BFloat16>()) {
-      HIP_RETURN_IF_ERROR(hipMemcpyAsync(Y->template MutableData<BFloat16>(), X->template Data<BFloat16>(),
-                                         input_count * sizeof(BFloat16), hipMemcpyDeviceToDevice, Stream()));
-    }
-    return Status::OK();
-  }
-
-  if (fast_reduction_ && !ctx->GetUseDeterministicCompute()) {
-    int m{}, n{};
-    const auto applicable_matrix_reduction =
-        get_applicable_matrix_reduction(miopen_reduce_op, X->Shape().GetDims(), axes, m, n);
-    switch (applicable_matrix_reduction) {
-      case ApplicableMatrixReduction::Rows: {
-        return reduce_matrix_rows(Stream(), reinterpret_cast<const HipT*>(X->template Data<BFloat16>()),
-                                  reinterpret_cast<HipT*>(Y->template MutableData<BFloat16>()), m, n);
-      }
-      case ApplicableMatrixReduction::Columns: {
-        const auto buffer_size_bytes = compute_reduce_matrix_columns_buffer_size<HipT>(m, n);
-        auto buffer = rocm_ep_->GetScratchBuffer<void>(buffer_size_bytes);
-        return reduce_matrix_columns(Stream(), reinterpret_cast<const HipT*>(X->template Data<BFloat16>()),
-                                     reinterpret_cast<HipT*>(Y->template MutableData<BFloat16>()), m, n, buffer.get(),
-                                     buffer_size_bytes);
-      }
-      default:
-        break;
-    }
-  }
-
-  HIP_RETURN_IF_ERROR(hipMemsetAsync(Y->MutableDataRaw(), 0, Y->SizeInBytes(), Stream()));
-
-  size_t indices_bytes = 0;
-  size_t workspace_bytes = 0;
-  MiopenTensor input_tensor;
-  MiopenTensor output_tensor;
-  MiopenReduceDescriptor reduce_desc;
-
-  miopenDataType_t miopen_type_X = miopenFloat;
-  IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count);
-  Impl_Cast<HipT, float>(Stream(), reinterpret_cast<const HipT*>(X->template Data<BFloat16>()), temp_X.get(),
-                         X->Shape().Size());
-
-  ORT_RETURN_IF_ERROR(reduce_desc.Set(miopen_reduce_op, miopen_type_X, MIOPEN_REDUCE_TENSOR_NO_INDICES));
-  ORT_RETURN_IF_ERROR(input_tensor.Set(input_dims_miopen, miopen_type_X));
-  ORT_RETURN_IF_ERROR(output_tensor.Set(output_dims_miopen, miopen_type_X));
-  MIOPEN_RETURN_IF_ERROR(
-      miopenGetReductionIndicesSize(MiopenHandle(), reduce_desc, input_tensor, output_tensor, &indices_bytes));
-  MIOPEN_RETURN_IF_ERROR(
-      miopenGetReductionIndicesSize(MiopenHandle(), reduce_desc, input_tensor, output_tensor, &workspace_bytes));
-  IAllocatorUniquePtr<uint32_t> indices_rocm = GetScratchBuffer<uint32_t>(indices_bytes);
-  IAllocatorUniquePtr<HipT> workspace_rocm = GetScratchBuffer<HipT>(workspace_bytes);
-
-  const auto one = Consts<float>::One;
-  const auto zero = Consts<float>::Zero;
-  auto temp_Y = GetScratchBuffer<float>(output_count);
-  MIOPEN_RETURN_IF_ERROR(miopenReduceTensor(MiopenHandle(), reduce_desc, indices_rocm.get(), indices_bytes,
-                                            workspace_rocm.get(), workspace_bytes, &one, input_tensor, temp_X.get(),
-                                            &zero, output_tensor, temp_Y.get()));
-
-  Impl_Cast<float, HipT>(Stream(), temp_Y.get(), reinterpret_cast<HipT*>(Y->template MutableData<BFloat16>()), output_count);
-
-  return Status::OK();
-}
 
 namespace ReductionOps {
 

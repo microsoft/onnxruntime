@@ -4,7 +4,7 @@
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "9336be04a242237cd41a525bedfcf3be1bb55377",
+               "commitHash": "215105818dfde3174fe799600bb0f3cae233d0bf",
                "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
             }
          }
@@ -39,17 +39,17 @@
                "commitHash": "638d7d2407de27f98f542f61a37a33c90a2e75a9",
                "repositoryUrl": "https://github.com/microsoft/onnxruntime-tvm.git"
             },
-            "comments": "needed for nuphar"
+            "comments": "needed for Nuphar EP"
          }
       },
       {
          "component": {
             "type": "git",
             "git": {
-               "commitHash": "7b3a22e465dd6aca4729504a19beb4bc23312755",
+               "commitHash": "ffd5f70370642c909222f9a4cae8400023dacbdc",
                "repositoryUrl": "https://github.com/apache/tvm.git"
             },
-            "comments": "needed for EP STVM"
+            "comments": "needed for TVM EP"
          }
       },
       {

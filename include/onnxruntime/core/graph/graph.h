@@ -53,7 +53,7 @@ struct IndexedSubGraph;
 class Model;
 class OpSignature;
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 class RuntimeOptimizationRecordContainer;
 #endif
 
@@ -150,6 +150,12 @@ class Node {
   @remarks Prefer over Op()->SinceVersion() as Op() is disabled in a minimal build
   */
   int SinceVersion() const noexcept { return since_version_; }
+
+  /** Sets the since version (opset version that the Node's operator was first defined in.) for this node.
+  @remarks Used during layout transformation for setting since vesion for layout transformed nodes with 
+  domain kMSNHWC.
+  */
+  void SetSinceVersion(int since_version) noexcept { since_version_ = since_version; }
 
 #if !defined(ORT_MINIMAL_BUILD)
   /** Gets the Node's OpSchema.
@@ -336,31 +342,56 @@ class Node {
   /** Gets the number of output edges from this Node */
   size_t GetOutputEdgesCount() const noexcept { return relationships_.output_edges.size(); }
 
-  /** Add an attribute to this Node with specified attribute name and value. */
-  void AddAttribute(const std::string& attr_name, const ONNX_NAMESPACE::AttributeProto& value);
+  /** Adds an AttributeProto to this Node.
+  @remarks The attribute name is used as the key in the attribute map. */
+  void AddAttributeProto(ONNX_NAMESPACE::AttributeProto value);
 
-#define ADD_ATTR_INTERFACES(TypeName)                                     \
-  void AddAttribute(const std::string& attr_name, const TypeName& value); \
-  void AddAttribute(const std::string& attr_name,                         \
-                    const std::vector<TypeName>& values);
+  // keep this signature in sync with ADD_ATTR_SINGLE_INTERFACE below
+  /** Adds an attribute to this Node with the specified attribute name and value. */
+  void AddAttribute(std::string attr_name, int64_t value);
 
-  ADD_ATTR_INTERFACES(int64_t)
-  ADD_ATTR_INTERFACES(float)
-  ADD_ATTR_INTERFACES(std::string)
-  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TensorProto)
-  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::GraphProto)
+  // keep this signature in sync with ADD_ATTR_LIST_INTERFACE below
+  /** Adds an attribute to this Node with the specified attribute name and values. */
+  void AddAttribute(std::string attr_name, gsl::span<const int64_t> values);
+
+#define ADD_ATTR_SINGLE_INTERFACE(Type) \
+  void AddAttribute(std::string attr_name, Type value)
+
+#define ADD_ATTR_LIST_INTERFACE(Type) \
+  void AddAttribute(std::string attr_name, gsl::span<const Type> values)
+
+#define ADD_ATTR_INTERFACES(Type)  \
+  ADD_ATTR_SINGLE_INTERFACE(Type); \
+  ADD_ATTR_LIST_INTERFACE(Type)
+
+  ADD_ATTR_INTERFACES(float);
+  ADD_ATTR_INTERFACES(std::string);
+  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TensorProto);
 #if !defined(DISABLE_SPARSE_TENSORS)
-  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::SparseTensorProto)
+  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::SparseTensorProto);
 #endif
-  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TypeProto)
+  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TypeProto);
+
+  ADD_ATTR_SINGLE_INTERFACE(ONNX_NAMESPACE::GraphProto);
+
+#undef ADD_ATTR_SINGLE_INTERFACE
+#undef ADD_ATTR_LIST_INTERFACE
+#undef ADD_ATTR_INTERFACES
+
+  // The below overload is made so the compiler does not attempt to resolve
+  // string literals with the gsl::span overload
+  template <size_t N>
+  void AddAttribute(std::string attr_name, const char (&value)[N]) {
+    this->AddAttribute(std::move(attr_name), std::string(value, N - 1));
+  }
 
   /** Gets the Node's attributes. */
   const NodeAttributes& GetAttributes() const noexcept { return attributes_; }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Remove the specified attribute from this Node */
   bool ClearAttribute(const std::string& attr_name);
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
   /** Gets the Node's mutable attributes. */
@@ -481,8 +512,9 @@ class Node {
     They are pseudo-inputs to this Node as it has an implicit dependency on them. */
     std::vector<NodeArg*> implicit_input_defs;
 
-   private:
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Definitions);
+
+   private:
   };
 
   /**
@@ -833,13 +865,13 @@ class Graph {
     return *(result.first->second);
   }
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Generate a unique name in this Graph for a NodeArg */
   std::string GenerateNodeArgName(const std::string& base_name);
 
   /** Generate a unique name in this Graph for a Node */
   std::string GenerateNodeName(const std::string& base_name);
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
   /** Copy a Node and add it to this Graph.
@@ -865,10 +897,49 @@ class Graph {
   Node& AddNode(const std::string& name,
                 const std::string& op_type,
                 const std::string& description,
-                const std::vector<NodeArg*>& input_args,
-                const std::vector<NodeArg*>& output_args,
+                gsl::span<NodeArg* const> input_args,
+                gsl::span<NodeArg* const> output_args,
                 const NodeAttributes* attributes = nullptr,
-                const std::string& domain = "");
+                const std::string& domain = std::string());
+
+  Node& AddNode(const std::string& name,
+                const std::string& op_type,
+                const std::string& description,
+                std::initializer_list<NodeArg*> input_args,
+                std::initializer_list<NodeArg*> output_args,
+                const NodeAttributes* attributes = nullptr,
+                const std::string& domain = std::string()) {
+    return AddNode(name, op_type, description,
+                   gsl::make_span(input_args.begin(), input_args.end()),
+                   gsl::make_span(output_args.begin(), output_args.end()),
+                   attributes, domain);
+  }
+
+  Node& AddNode(const std::string& name,
+                const std::string& op_type,
+                const std::string& description,
+                gsl::span<NodeArg* const> input_args,
+                std::initializer_list<NodeArg*> output_args,
+                const NodeAttributes* attributes = nullptr,
+                const std::string& domain = std::string()) {
+    return AddNode(name, op_type, description,
+                   input_args,
+                   gsl::make_span(output_args.begin(), output_args.end()),
+                   attributes, domain);
+  }
+
+  Node& AddNode(const std::string& name,
+                const std::string& op_type,
+                const std::string& description,
+                std::initializer_list<NodeArg*> input_args,
+                gsl::span<NodeArg* const> output_args,
+                const NodeAttributes* attributes = nullptr,
+                const std::string& domain = std::string()) {
+    return AddNode(name, op_type, description,
+                   gsl::make_span(input_args.begin(), input_args.end()),
+                   output_args,
+                   attributes, domain);
+  }
 
   /** Remove a Node from this Graph and free it.
   The output edges of this specified node MUST have been removed before removing the node.
@@ -938,7 +1009,7 @@ class Graph {
   @param leave Visit function invoked on the node after its parents have all been visited.
   @param comp Comparison function to stabilize the traversal order by making Node ordering deterministic.
   */
-  void ReverseDFSFrom(const std::vector<NodeIndex>& from,
+  void ReverseDFSFrom(gsl::span<NodeIndex const> from,
                       const std::function<void(const Node*)>& enter,
                       const std::function<void(const Node*)>& leave,
                       const std::function<bool(const Node*, const Node*)>& comp = {}) const;
@@ -950,7 +1021,7 @@ class Graph {
   @param leave Visit function invoked on the node after its parents have all been visited.
   @param comp Comparison function to stabilize the traversal order by making Node ordering deterministic.
   */
-  void ReverseDFSFrom(const std::vector<const Node*>& from,
+  void ReverseDFSFrom(gsl::span<const Node* const> from,
                       const std::function<void(const Node*)>& enter,
                       const std::function<void(const Node*)>& leave,
                       const std::function<bool(const Node*, const Node*)>& comp = {}) const;
@@ -963,7 +1034,7 @@ class Graph {
   @param stop Stop traversal from node n to input node p if stop(n, p) is true.
   @param comp Comparison function to stabilize the traversal order by making Node ordering deterministic.
   */
-  void ReverseDFSFrom(const std::vector<const Node*>& from,
+  void ReverseDFSFrom(gsl::span<const Node* const> from,
                       const std::function<void(const Node*)>& enter,
                       const std::function<void(const Node*)>& leave,
                       const std::function<bool(const Node*, const Node*)>& comp,
@@ -1067,17 +1138,25 @@ class Graph {
   @param inputs NodeArgs that represent complete graph inputs which need to be explicitly ordered.
   @remarks Note that the input order matters for subgraphs.
   */
-  void SetInputs(const std::vector<const NodeArg*>& inputs);
+  void SetInputs(gsl::span<const NodeArg* const> inputs);
+
+  void SetInputs(std::initializer_list<const NodeArg*> inputs) {
+    SetInputs(gsl::make_span(inputs));
+  }
 
   /** Explicitly set graph outputs.
   @param outputs NodeArgs that represent complete graph outputs which need to be explicitly ordered.
   @remarks Note that the output order matters for subgraphs.
   */
-  void SetOutputs(const std::vector<const NodeArg*>& outputs);
+  void SetOutputs(gsl::span<const NodeArg* const> outputs);
+
+  void SetOutputs(std::initializer_list<const NodeArg*> outputs) {
+    SetOutputs(gsl::make_span(outputs.begin(), outputs.end()));
+  }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Sets the type of a NodeArg, replacing existing type/shape if any */
   void SetNodeArgType(NodeArg& arg, const ONNX_NAMESPACE::TypeProto& type_proto);
 
@@ -1112,21 +1191,28 @@ class Graph {
   void RemoveConsumerNode(const std::string& node_arg_name, Node* consumer) {
     node_arg_to_consumer_nodes_[node_arg_name].erase(consumer->Index());
   }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
   std::vector<Node*> GetMutableConsumerNodes(const std::string& node_arg_name) {
     return GetConsumerNodesImpl(*this, node_arg_name);
   }
 
-  void UpdateConsumerNodes(const std::string& node_arg_name, const std::vector<Node*>& nodes) {
-    auto iter = node_arg_to_consumer_nodes_.find(node_arg_name);
-    if (iter != node_arg_to_consumer_nodes_.end()) {
-      node_arg_to_consumer_nodes_.erase(node_arg_name);
+  void UpdateConsumerNodes(const std::string& node_arg_name, gsl::span<Node* const> nodes) {
+    // Replace nodes for the arg
+    auto& nodes_for_arg = node_arg_to_consumer_nodes_[node_arg_name];
+    if (!nodes_for_arg.empty()) {
+      nodes_for_arg.clear();
     }
+
+    nodes_for_arg.reserve(nodes.size());
     for (Node* node : nodes) {
-      node_arg_to_consumer_nodes_[node_arg_name].insert(node->Index());
+      nodes_for_arg.insert(node->Index());
     }
+  }
+
+  void UpdateConsumerNodes(const std::string& node_arg_name, std::initializer_list<Node*> nodes) {
+    UpdateConsumerNodes(node_arg_name, gsl::make_span(nodes));
   }
 
   /** During constant folding it may become possible to infer the shape for a node.
@@ -1210,7 +1296,7 @@ class Graph {
                                   Graph& parent_graph, const Node& parent_node,
                                   const logging::Logger& logger, std::unique_ptr<Graph>& graph);
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   const RuntimeOptimizationRecordContainer& RuntimeOptimizations() const {
     return runtime_optimizations_;
   }
@@ -1232,7 +1318,7 @@ class Graph {
   RuntimeOptimizationReplayContext& MutableRuntimeOptimizationReplayCtx() {
     return runtime_optimization_replay_context_;
   }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   // This friendship relationship should only be used to call Graph::Graph and
   // Graph::LoadGraph All other access should be via the public API.
@@ -1274,8 +1360,9 @@ class Graph {
         const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
         const logging::Logger& logger);
 
- private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
+
+ private:
   void InitializeStateFromModelFileGraphProto();
 
   // Add node with specified <node_proto>.
@@ -1386,7 +1473,7 @@ class Graph {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   Status PopulateNodeArgToProducerConsumerLookupsFromNodes();
 
   template <typename TInstance>
@@ -1413,9 +1500,7 @@ class Graph {
     }
     return nullptr;
   }
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   gsl::not_null<Node*> AllocateNode();
 
   // Release the node.
@@ -1423,7 +1508,7 @@ class Graph {
   bool ReleaseNode(NodeIndex node_index);
 
   Node& CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
-#endif
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   Node* NodeAtIndexImpl(NodeIndex node_index) const {
     // if we are trying to access a node that doesn't exist there's (most
@@ -1453,14 +1538,14 @@ class Graph {
                      std::hash<std::string>, std::equal_to<std::string>>
       sparse_tensor_names_;
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // Runtime optimization storage.
   // Note: runtime_optimizations_ == *runtime_optimizations_ptr_ and must be initialized
   std::unique_ptr<RuntimeOptimizationRecordContainer> runtime_optimizations_ptr_;
   RuntimeOptimizationRecordContainer& runtime_optimizations_;
 
   RuntimeOptimizationReplayContext runtime_optimization_replay_context_;
-#endif
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
@@ -1469,7 +1554,7 @@ class Graph {
   std::vector<std::unique_ptr<onnxruntime::Function>> function_container_;
 
   std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions_;
-#endif
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   // Graph nodes.
   // Element in <nodes_> may be nullptr due to graph optimization.
@@ -1513,7 +1598,7 @@ class Graph {
   // All node args owned by <*this> graph. Key is node arg name.
   std::unordered_map<std::string, std::unique_ptr<NodeArg>> node_args_;
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   int name_generator_ = 0;
 
   // Strings which have been used as node names.
@@ -1529,7 +1614,7 @@ class Graph {
 
   // node arg to its consumer nodes
   std::unordered_map<std::string, std::unordered_set<NodeIndex>> node_arg_to_consumer_nodes_;
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   const std::unordered_map<std::string, int> domain_to_version_;
 
