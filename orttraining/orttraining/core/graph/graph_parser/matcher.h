@@ -31,17 +31,6 @@
 #include "core/optimizer/initializer.h"
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
 
-#define PARSER_DEBUG 1
-
-// Open this to output info to debug
-#if PARSER_DEBUG
-#define PARSER_MSG(_expr) _expr
-#else
-#define PARSER_MSG(_expr)
-#endif
-
-#undef PARSER_DEBUG
-
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
@@ -52,8 +41,7 @@ class PInput {
 
 namespace GraphParser {
 
-Status TryMatch(Graph& target_graph, PatternGraph& _graph, std::vector<PNN>& res);
-
+// TODO: move this into pattern_graph???
 Status TryReplace(Graph& graph, PatternGraph& pattern, const NodeDef& alternative,
                   std::vector<std::pair<std::string, int>> fusion_inputs,
                   std::vector<std::pair<std::string, int>> fusion_outputs);

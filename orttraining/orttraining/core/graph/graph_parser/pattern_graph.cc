@@ -7,42 +7,55 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace training {
 
-bool PatternGraph::node_equal_properties(const Node* g, const Node* p, const Graph& target,
-                                         const Graph& pattern) {
-  if (!g && !p)
-    return true;
-  if (!g && p || !p && g)
-    return false;
-  if (check_optype && strcmp(g->OpType().c_str(), p->OpType().c_str()) != 0) {
-    PARSER_MSG(std::cout << "OpType mismatch, "
-                         << "g is: " << g->OpType() << ", p is: " << p->OpType() << std::endl;)
-    return false;
+Status PatternGraph::TryMatch(Graph& target_graph, std::vector<PNN>& res) {
+  Graph& pattern_graph = GetGraph();
+  GraphViewer graph_viewer(target_graph);
+  GraphViewer pattern_viewer(pattern_graph);
+  const auto& graph_topology_list = graph_viewer.GetNodesInTopologicalOrder();
+  const auto& pattern_topology_list = pattern_viewer.GetNodesInTopologicalOrder();
+
+  Node* pattern_root = nullptr;  // Not real root, only a root specified by user
+  if (pattern_topology_list.size() && root_node().empty()) {
+    pattern_root = pattern_graph.GetNode(0);
   }
-  if (check_domain && domain_map.count(p->Name()) && domain_map[p->Name()].size() && !domain_map[p->Name()].count(g->Domain())) {
-    PARSER_MSG(std::cout << "Domain mismatch, "
-                         << "g is: " << g->Domain() << ", p is: " << p->Domain() << std::endl;)
-    return false;
+  for (auto node_index : pattern_topology_list) {
+    auto* node = pattern_graph.GetNode(node_index);
+    if (strcmp(node->Name().c_str(), root_node().c_str()) == 0) {
+      pattern_root = node;
+      break;
+    }
   }
-  if (check_version && version_map.count(p->Name()) && version_map[p->Name()].size() && !version_map[p->Name()].count(g->SinceVersion())) {
-    PARSER_MSG(std::cout << "Version mismatch, "
-                         << "g is: " << g->SinceVersion() << ", p is: " << p->SinceVersion() << std::endl;)
-    return false;
-  }
-  for (auto& func : customized_constriants) {
-    if (!func(g, p, target, pattern)) return false;
+  if (!pattern_root) {
+    return Status(common::ONNXRUNTIME, common::FAIL, "Pattern root was not found.");
   }
 
-  return true;
+  for (auto node_index : graph_topology_list) {
+    auto* node = target_graph.GetNode(node_index);
+    res.clear();
+    std::unordered_set<const Node*> graph_path, pattern_path;
+    std::unordered_map<const Node*, const Node*> path_map;
+    if (FindMatchRecursively(node, pattern_root, graph_path, pattern_path, path_map, res, target_graph)) {
+      res.push_back({node_index, pattern_root});
+      return Status::OK();
+    }
+  }
+
+  return Status(common::ONNXRUNTIME, common::FAIL, "No match for the target graph.");
 }
 
 // let's assume that the graph and pattern do not have a circle.
-bool PatternGraph::find_match(const Node* g, const Node* p, std::unordered_set<const Node*>& graph_path,
-                              std::unordered_set<const Node*>& pattern_path, std::unordered_map<const Node*, const Node*>& path_map,
-                              std::vector<PNN>& matched, const Graph& target, const Graph& pattern) {
-  PARSER_MSG(std::cout << "jump in. g: " << g->Name() << "  p: " << p->Name() << std::endl;)
+bool PatternGraph::FindMatchRecursively(const Node* g, const Node* p,
+                                        std::unordered_set<const Node*>& graph_path, std::unordered_set<const Node*>& pattern_path,
+                                        std::unordered_map<const Node*, const Node*>& path_map,
+                                        std::vector<PNN>& matched, const Graph& target) {
+  PARSER_LOG << "jump in. g: " << g->Name() << "  p: " << p->Name();
+
+  const std::string pnode_name = p->Name();
+  const PNode* pnode = name_pnode_mapping_[pnode_name];
+  auto func = custom_constraints_.count(pnode_name) > 0 ? custom_constraints_[pnode_name].get() : default_compare_func_.get();
   // Ensure that the two nodes have same properties
-  if (!node_equal_properties(g, p, target, pattern)) {
-    PARSER_MSG(std::cout << "return not matched properties." << std::endl;)
+  if (!(*func)(g, pnode, target, *this)) {
+    PARSER_LOG << "return not matched properties.";
     return false;
   }
 
@@ -90,7 +103,7 @@ bool PatternGraph::find_match(const Node* g, const Node* p, std::unordered_set<c
     bool has_matched_branch = false;
     for (auto gin_iter = g->InputNodesBegin(); gin_iter != g->InputNodesEnd(); ++gin_iter) {
       const Node& tar = *gin_iter;
-      if (!graph_path.count(&tar) && !visited_graph_nodes.count(&tar) && find_match(&tar, &cur, graph_path, pattern_path, path_map, matched, target, pattern)) {
+      if (!graph_path.count(&tar) && !visited_graph_nodes.count(&tar) && FindMatchRecursively(&tar, &cur, graph_path, pattern_path, path_map, matched, target)) {
         has_matched_branch = true;
         matches_if_success.push_back({tar.Index(), &cur});
         visited_graph_nodes.insert(&tar);
@@ -99,7 +112,7 @@ bool PatternGraph::find_match(const Node* g, const Node* p, std::unordered_set<c
       }
     }
     if (!has_matched_branch) {
-      PARSER_MSG(std::cout << "return false." << std::endl;)
+      PARSER_LOG << "return false.";
       pattern_path.erase(p);
       graph_path.erase(g);
       path_map.erase(p);
@@ -123,7 +136,7 @@ bool PatternGraph::find_match(const Node* g, const Node* p, std::unordered_set<c
     bool has_matched_branch = false;
     for (auto gout_iter = g->OutputNodesBegin(); gout_iter != g->OutputNodesEnd(); ++gout_iter) {
       const Node& tar = *gout_iter;
-      if (!graph_path.count(&tar) && !visited_graph_nodes.count(&tar) && find_match(&tar, &cur, graph_path, pattern_path, path_map, matched, target, pattern)) {
+      if (!graph_path.count(&tar) && !visited_graph_nodes.count(&tar) && FindMatchRecursively(&tar, &cur, graph_path, pattern_path, path_map, matched, target)) {
         has_matched_branch = true;
         matches_if_success.push_back({tar.Index(), &cur});
         visited_graph_nodes.insert(&tar);
@@ -133,7 +146,7 @@ bool PatternGraph::find_match(const Node* g, const Node* p, std::unordered_set<c
       graph_path.erase(&tar);
     }
     if (!has_matched_branch) {
-      PARSER_MSG(std::cout << "return false." << std::endl;)
+      PARSER_LOG << "return false.";
       pattern_path.erase(p);
       graph_path.erase(g);
       path_map.erase(p);
@@ -143,7 +156,7 @@ bool PatternGraph::find_match(const Node* g, const Node* p, std::unordered_set<c
 
   matched.insert(matched.end(), matches_if_success.begin(), matches_if_success.end());
 
-  PARSER_MSG(std::cout << "return true." << std::endl;)
+  PARSER_LOG << "return true.";
   return true;
 }
 

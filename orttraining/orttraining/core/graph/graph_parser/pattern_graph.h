@@ -31,24 +31,16 @@
 #include "core/optimizer/initializer.h"
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
 
-#define PARSER_DEBUG 1
-
-// Open this to output info to debug
-#if PARSER_DEBUG
-#define PARSER_MSG(_expr) _expr
-#else
-#define PARSER_MSG(_expr)
-#endif
-
-#undef PARSER_DEBUG
+#define PARSER_LOG \
+  LOGS_DEFAULT(INFO)
 
 namespace onnxruntime {
 namespace training {
 
 // First: graph node index. Second: corresponding pattern node.
 typedef std::pair<onnxruntime::NodeIndex, const onnxruntime::Node*> PNN;
-typedef std::function<bool(const onnxruntime::Node*, const onnxruntime::Node*, const onnxruntime::Graph&, const onnxruntime::Graph&)> customized_function;
 
+// TODO: we should sperate initializer and constant nodes.
 // Add dangling nodedef, which helps to construct the graph but will not be treated as a part of pattern
 template <typename T>
 NodeDef Constant(const std::string& name, T value = T(0), const std::vector<int64_t>& shape = {1}) {
@@ -69,33 +61,53 @@ NodeDef Constant(const std::string& name, T value = T(0), const std::vector<int6
                  {ONNX_NAMESPACE::MakeAttribute("value", t_proto)});
 }
 
-class PNode {
- public:
-  PNode(std::string op_type, std::vector<std::string> input_args_name,
-        std::vector<std::string> output_args_name, std::string name = "",
-        std::vector<std::string> domains = {}, std::vector<int> versions = {},
-        std::vector<AttributeProto> attributes = {}) : op_type(op_type),
-                                                       input_args_name(input_args_name),
-                                                       output_args_name(output_args_name),
-                                                       node_name(name),
-                                                       domains(domains),
-                                                       versions(versions),
-                                                       attributes(attributes) {}
+struct PNode {
+  PNode(std::string op_type,
+        std::vector<std::string> input_args_name,
+        std::vector<std::string> output_args_name,
+        std::string node_name = "",
+        std::vector<std::string> domains = {},
+        std::vector<int> versions = {},
+        std::vector<AttributeProto> attributes = {})
+      : op_type_(op_type),
+        input_args_name(input_args_name),
+        output_args_name(output_args_name),
+        domains(domains),
+        versions(versions),
+        attributes(attributes) {
+    if (node_name.empty()) {
+      std::stringstream ss;
+      ss << op_type_ << "_";
 
-  std::string GetNodeName() {
-    bool need_construct = node_name.empty();
-    if (need_construct) {
-      node_name += op_type + "_";
-    }
-    if (need_construct) {
       for (size_t i = 0; i < input_args_name.size(); i++) {
-        node_name += input_args_name[i] + "_";
+        ss << input_args_name[i] << "_";
       }
       for (size_t i = 0; i < output_args_name.size(); i++) {
-        node_name += output_args_name[i] + "_";
+        ss << output_args_name[i] << "_";
       }
+
+      node_name_ = ss.str();
     }
-    return node_name;
+  }
+
+  std::string GetNodeName() const {
+    return node_name_;
+  }
+
+  bool OpTypeEquals(const std::string& op_type) const {
+    return op_type_.compare(op_type) == 0;
+  }
+
+  bool NameEquals(const std::string& name) const {
+    return node_name_.compare(name) == 0;
+  }
+
+  bool DomainsContain(const std::string& domain) const {
+    return std::find(domains.begin(), domains.end(), domain) != domains.end();
+  }
+
+  bool VersionsContain(int version) const {
+    return std::find(versions.begin(), versions.end(), version) != versions.end();
   }
 
   std::unordered_set<std::string> GetValidDomains() { return valid_domains; }
@@ -117,14 +129,14 @@ class PNode {
     for (size_t i = 0; i < output_args_name.size(); i++) {
       output_args[i] = IA(output_args_name[i]);
     }
-    return NodeDef(OpDef(op_type, domain, version), input_args, output_args, attributes, GetNodeName());
+    return NodeDef(OpDef(op_type_, domain, version), input_args, output_args, attributes, GetNodeName());
   }
 
  private:
-  std::string op_type;
+  std::string op_type_;
   std::vector<std::string>& input_args_name;
   std::vector<std::string>& output_args_name;
-  std::string node_name;
+  std::string node_name_;
   std::vector<std::string>& domains;
   std::vector<int>& versions;
   std::vector<AttributeProto>& attributes;
@@ -132,43 +144,88 @@ class PNode {
   std::unordered_set<int> valid_versions;
 };
 
-class PatternGraph {
- private:
-  std::string name_;  // name of the graph
-  std::string root_node_;
-  bool check_optype, check_domain, check_version, check_path;
-  std::vector<customized_function> customized_constriants;
-  Model model;
-  std::vector<NodeDef> nodes;  // node definitions
-  std::map<std::string, std::unordered_set<std::string>> domain_map;
-  std::map<std::string, std::unordered_set<int>> version_map;
+struct PatternGraph;
 
+class NodeCompareFunc {
  public:
-  PatternGraph(const std::vector<NodeDef>& constants, const std::vector<PNode>& pnodes, const std::string& root_node = "", const std::string& name = "",
-               const std::vector<customized_function>& customized_constriants = {})
+  virtual bool operator()(const Node* g, const PNode* p, const Graph& /*target*/, const PatternGraph& /*pattern*/) const = 0;
+};
+
+class DefaultNodeCompareFunc : public NodeCompareFunc {
+ public:
+  DefaultNodeCompareFunc(bool skip_optype, bool skip_domain,
+                         bool skip_version, bool skip_path)
+      : skip_optype_(skip_optype),
+        skip_domain_(skip_domain),
+        skip_version_(skip_version),
+        skip_path_(skip_path) {}
+
+  bool operator()(const Node* g, const PNode* p, const Graph& /*target*/, const PatternGraph& /*pattern*/) const override {
+    if (!g && !p)
+      return true;
+    if (!g && p || !p && g)
+      return false;
+    if (!skip_optype_ && p->NameEquals(g->OpType())) {
+      // PARSER_LOG << "OpType mismatch, "
+      //            << "g is: " << g->OpType() << ", p is: " << p->OpType();
+      return false;
+    }
+    if (!skip_domain_ && p->DomainsContain(g->Domain())) {
+      // PARSER_LOG << "Domain mismatch, "
+      //            << "g is: " << g->Domain() << ", p is: " << p->Domain();
+      return false;
+    }
+    if (!skip_version_ && p->VersionsContain(g->SinceVersion())) {
+      // PARSER_LOG << "Version mismatch, "
+      //            << "g is: " << g->SinceVersion() << ", p is: " << p->SinceVersion();
+      return false;
+    }
+    return true;
+  }
+
+  bool skip_optype_, skip_domain_, skip_version_, skip_path_;
+};
+
+// typedef std::function<bool(const Node*, const PNode*, const Graph&, const PatternGraph&)> NodeCompareFunc;
+
+struct PatternGraph {
+  PatternGraph(const std::vector<NodeDef>& constants, const std::vector<PNode>& pnodes,
+               const std::string& root_node = "", const std::string& name = "")
       : name_(name),
         root_node_(root_node),
-        check_optype(true),
-        check_domain(true),
-        check_version(true),
-        check_path(true),
-        customized_constriants(customized_constriants),
         nodes(constants) {
     ort_model_ptr_ = std::make_unique<Model>("pattern_model", false, logging::LoggingManager::DefaultLogger());
     for (auto pnode : pnodes) {
+      name_pnode_mapping_[pnode.GetNodeName()] = &pnode;
       nodes.push_back(pnode.GetNodeDef());
       domain_map[pnode.GetNodeName()] = pnode.GetValidDomains();
       version_map[pnode.GetNodeName()] = pnode.GetValidVersions();
     }
 
     ORT_ENFORCE(ToGraphInternal().IsOK());
+
+    default_compare_func_ = std::make_unique<DefaultNodeCompareFunc>(false, false, false, false);
   }
 
-  std::string name() const { return name_; }
+  const std::string& name() const {
+    return name_;
+  }
 
   // TODO: should hide this in private field.
   const std::string& root_node() const { return root_node_; }
 
+  PatternGraph& SetCustomConstraint(std::unique_ptr<NodeCompareFunc> func, std::string node_name = "") {
+    if (node_name.empty()) {
+      default_compare_func_ = std::move(func);
+      custom_constraints_.clear();
+    } else {
+      custom_constraints_[node_name] = std::move(func);
+    }
+    return *this;
+  }
+
+  // TODO: evaluate should we have them?
+  /*
   PatternGraph& add_node(NodeDef node) {
     nodes.push_back(node);
     return *this;
@@ -179,10 +236,6 @@ class PatternGraph {
     return *this;
   }
 
-  PatternGraph& add_customized_constriant(customized_function func) {
-    customized_constriants.push_back(func);
-    return *this;
-  }
 
   PatternGraph& disable_optype_check() {
     check_optype = false;
@@ -203,19 +256,15 @@ class PatternGraph {
     check_path = false;
     return *this;
   }
+  */
 
   Graph& GetGraph() {
     return ort_model_ptr_->MainGraph();
   }
 
-  bool find_match(const Node* g, const Node* p, std::unordered_set<const Node*>& graph_path,
-                  std::unordered_set<const Node*>& pattern_path, std::unordered_map<const Node*, const Node*>& path_map,
-                  std::vector<PNN>& matched, const Graph& target, const Graph& pattern);
+  Status TryMatch(Graph& target_graph, std::vector<PNN>& res);
 
  private:
-  bool node_equal_properties(const Node* g, const Node* p, const Graph& target,
-                             const Graph& pattern);
-
   Status ToGraphInternal() {
     // Todo: p_initializer_names_to_preserve should contains all names in the pattern graphs.
     const std::unordered_set<std::string>* p_initializer_names_to_preserve = nullptr;
@@ -226,8 +275,24 @@ class PatternGraph {
     return Status::OK();
   }
 
+  bool FindMatchRecursively(const Node* g, const Node* p,
+                          std::unordered_set<const Node*>& graph_path, std::unordered_set<const Node*>& pattern_path,
+                          std::unordered_map<const Node*, const Node*>& path_map,
+                          std::vector<PNN>& matched, const Graph& target);
+
   std::unique_ptr<Model> ort_model_ptr_;
-  bool ort_graph_ready_;
+
+  std::string name_;  // name of the graph
+  std::string root_node_;
+
+  std::vector<NodeDef> nodes;  // node definitions
+  std::map<std::string, std::unordered_set<std::string>> domain_map;
+  std::map<std::string, std::unordered_set<int>> version_map;
+
+  std::unordered_map<std::string, const PNode*> name_pnode_mapping_;
+
+  std::unique_ptr<NodeCompareFunc> default_compare_func_;
+  std::unordered_map<std::string, std::unique_ptr<NodeCompareFunc>> custom_constraints_;
 };
 
 }  // namespace training

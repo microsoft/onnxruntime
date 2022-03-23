@@ -243,16 +243,19 @@ TEST(GraphParser, match1) {
        PNode("Sub", {"Z", "C2"}, {"W"}, "Sub")},
       "Exp", "pattern_graph");
 
-  auto customized_func = [](const Node* g, const Node* p, const Graph& target, const Graph& pattern) {
-    return g->Name() == p->Name();
+  class CustomNodeCompareFunc : public NodeCompareFunc {
+   public:
+    bool operator()(const Node* g, const PNode* p, const Graph& /*target*/,
+                    const PatternGraph& /*pattern*/) const override {
+      return p->NameEquals(g->Name());
+    }
   };
 
-  pattern.add_customized_constriant(customized_func);
-
+  pattern.SetCustomConstraint(std::make_unique<CustomNodeCompareFunc>());
   Graph& target_graph = target.GetGraph();
 
   std::vector<PNN> res;
-  ASSERT_TRUE(TryMatch(target_graph, pattern, res).IsOK());
+  ASSERT_TRUE(pattern.TryMatch(target_graph, res).IsOK());
 
   for (auto node_pair : res) {
     auto g = target_graph.GetNode(node_pair.first);
@@ -314,7 +317,7 @@ TEST(GraphParser, match2) {
 
   std::vector<PNN> res;
   auto& target_graph = target.GetGraph();
-  ASSERT_TRUE(TryMatch(target_graph, pattern, res).IsOK());
+  ASSERT_TRUE(pattern.TryMatch(target_graph, res).IsOK());
 
   for (auto iter = res.rbegin(); iter != res.rend(); iter++) {
     auto g = target_graph.GetNode(iter->first);
@@ -361,7 +364,7 @@ TEST(GraphParser, match3) {
 
   std::vector<PNN> res;
   auto& target_graph = target.GetGraph();
-  ASSERT_TRUE(TryMatch(target_graph, pattern, res).IsOK());
+  ASSERT_TRUE(pattern.TryMatch(target_graph, res).IsOK());
 
   for (auto iter = res.rbegin(); iter != res.rend(); iter++) {
     auto g = target_graph.GetNode(iter->first);
@@ -639,12 +642,12 @@ TEST(GraphParser, LayerNormWithCastFusionTest) {
   bool match = false;
   if (!match) {
     vector<PNN> res;
-    std::cout << TryMatch(graph, pattern1, res).ToString() << std::endl;
+    std::cout << pattern1.TryMatch(graph, res).ToString() << std::endl;
     match = TryReplace(graph, pattern1, NodeDef("LayerNormalization", {}, {}, NodeAttributes(), "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}).IsOK();
   }
   if (!match) {
     vector<PNN> res;
-    std::cout << TryMatch(graph, pattern2, res).ToString() << std::endl;
+    std::cout << pattern2.TryMatch(graph, res).ToString() << std::endl;
     match = TryReplace(graph, pattern2, NodeDef("LayerNormalization", {}, {}, NodeAttributes(), "replaced_node"), {{"p_rm1", 0}, {"p_mul", 0}, {"p_final", 1}}, {}).IsOK();
   }
   ASSERT_TRUE(match);
@@ -669,11 +672,15 @@ TEST(GraphParser, NoopEliminationTest) {
       {PNode("Add", {"X", "C0"}, {"Y"}, "p_add")},
       "p_add", "pattern_graph");
 
-  auto customized_func = [](const Node* g, const Node* p, const Graph& target, const Graph& pattern) {
-    return p->Name() != "p_add" || GraphParser::HasSingleSpeciefiedConstantValue(target, g, .0);
+  class CustomNodeCompareFunc : public NodeCompareFunc {
+   public:
+    bool operator()(const Node* g, const PNode* p, const Graph& target,
+                    const PatternGraph& /*pattern*/) const override {
+      return !(p->NameEquals("p_add")) || GraphParser::HasSingleSpeciefiedConstantValue(target, g, .0);
+    }
   };
-  pattern1.add_customized_constriant(customized_func);
 
+  pattern1.SetCustomConstraint(std::make_unique<CustomNodeCompareFunc>());
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 4);
 
@@ -681,7 +688,7 @@ TEST(GraphParser, NoopEliminationTest) {
   bool match = true;
   while (match) {
     vector<PNN> res;
-    auto st = TryMatch(graph, pattern1, res);
+    auto st = pattern1.TryMatch(graph, res);
     match = st.IsOK();
     std::cout << st.ToString() << std::endl;
     for (auto [idx, pnode] : res) {
@@ -723,26 +730,31 @@ TEST(GraphParser, ReshapeFusionTest) {
        PNode("Reshape", {"X", "Concat"}, {"Y"}, "p_reshape")},
       "p_reshape", "pattern_graph");
 
-  auto customized_func = [](const Node* g, const Node* p, const Graph& target, const Graph& pattern) {
-    if (p->Name() == "p_concat") {
-      return GraphParser::GetConstantInitializerCount(target, g) == 2;
-    } else if (p->Name() == "p_gather1" && !optimizer_utils::IsInitializerWithExpectedValue(target, *(g->InputDefs()[1]), int64_t(0), false)) {
-      return false;
-    } else if (p->Name() == "p_gather2" && !optimizer_utils::IsInitializerWithExpectedValue(target, *(g->InputDefs()[1]), int64_t(1), false)) {
-      return false;
-    } else if (p->OpType() == "Unqueeze") {
-      InlinedVector<int64_t> axes;
-      if (!(graph_utils::GetRepeatedNodeAttributeValues(*g, "axes", axes) && axes.size() == 1 && axes[0] == 0)) {
+  class CustomNodeCompareFunc : public NodeCompareFunc {
+   public:
+    bool operator()(const Node* g, const PNode* p, const Graph& target,
+                    const PatternGraph& /*pattern*/) const override {
+      if (p->NameEquals("p_concat")) {
+        return GraphParser::GetConstantInitializerCount(target, g) == 2;
+      } else if (p->NameEquals("p_gather1") && !optimizer_utils::IsInitializerWithExpectedValue(target, *(g->InputDefs()[1]), int64_t(0), false)) {
         return false;
+      } else if (p->NameEquals("p_gather2") && !optimizer_utils::IsInitializerWithExpectedValue(target, *(g->InputDefs()[1]), int64_t(1), false)) {
+        return false;
+      } else if (p->OpTypeEquals("Unqueeze")) {
+        InlinedVector<int64_t> axes;
+        if (!(graph_utils::GetRepeatedNodeAttributeValues(*g, "axes", axes) && axes.size() == 1 && axes[0] == 0)) {
+          return false;
+        }
       }
+      return true;
     }
-    return true;
   };
-  pattern1.add_customized_constriant(customized_func);
+
+  pattern1.SetCustomConstraint(std::make_unique<CustomNodeCompareFunc>());
 
   print_graph(graph);
   vector<PNN> res;
-  auto st = TryMatch(graph, pattern1, res);
+  auto st = pattern1.TryMatch(graph, res);
   bool match = st.IsOK();
   std::cout << st.ToString() << std::endl;
   print_graph(graph);
@@ -839,18 +851,18 @@ TEST(GraphParser, GemmActivationFusionTest1) {
        PNode("Sqrt", {"Y"}, {"Z"}, "p_active")},
       "p_gemm", "pattern_graph");
 
-  auto customized_func = [](const Node* g, const Node* p, const Graph& target, const Graph& pattern) {
-    if (p->Name() == "p_active") {
+  class CustomNodeCompareFunc : public NodeCompareFunc {
+   public:
+    bool operator()(const Node* g, const PNode* p, const Graph& target,
+                    const PatternGraph& /*pattern*/) const override {
       return IsFusableActivation(*g);
-    } else {
-      return p->OpType() == g->OpType();
     }
   };
-  pattern1.disable_optype_check().add_customized_constriant(customized_func);
+  pattern1.SetCustomConstraint(std::make_unique<CustomNodeCompareFunc>(), "p_active");
 
   print_graph(graph);
   vector<PNN> res;
-  auto st = TryMatch(graph, pattern1, res);
+  auto st = pattern1.TryMatch(graph, res);
   bool match = st.IsOK();
   std::cout << st.ToString() << std::endl;
   ASSERT_TRUE(match);
@@ -880,18 +892,18 @@ TEST(GraphParser, GemmActivationFusionTest2) {
        PNode("Sqrt", {"Y"}, {"Z"}, "p_active")},
       "p_gemm", "pattern_graph");
 
-  auto customized_func = [](const Node* g, const Node* p, const Graph& target, const Graph& pattern) {
-    if (p->Name() == "p_active") {
+  class CustomNodeCompareFunc : public NodeCompareFunc {
+   public:
+    bool operator()(const Node* g, const PNode* p, const Graph& target,
+                    const PatternGraph& /*pattern*/) const override {
       return IsFusableActivation(*g);
-    } else {
-      return p->OpType() == g->OpType();
     }
   };
-  pattern1.disable_optype_check().add_customized_constriant(customized_func);
+  pattern1.SetCustomConstraint(std::make_unique<CustomNodeCompareFunc>(), "p_active");
 
   print_graph(graph);
   vector<PNN> res;
-  auto st = TryMatch(graph, pattern1, res);
+  auto st = pattern1.TryMatch(graph, res);
   bool match = st.IsOK();
   std::cout << st.ToString() << std::endl;
   ASSERT_TRUE(match);
@@ -934,7 +946,7 @@ TEST(GraphParser, EmbedLayerNormFusionTest1) {
       "p_attention", "pattern_graph");
   print_graph(graph);
   vector<PNN> res;
-  auto st = TryMatch(graph, pattern, res);
+  auto st = pattern.TryMatch(graph, res);
   bool match = st.IsOK();
   std::cout << st.ToString() << std::endl;
   ASSERT_TRUE(match);
@@ -1033,18 +1045,19 @@ TEST(GraphParser, EmbedLayerNormFusionTest2) {
        PNode("ReduceSum", {"X", "C0"}, {"ReduceSum"}, "p_reducesum", {}, {1}),
        PNode("Attention", {"ReduceSum", "LayerNorm", "C1"}, {"Y"}, "p_attention", {"com.microsoft"}, {1}, {MakeAttribute("num_heads", int64_t{1})})},
       "p_attention", "pattern_graph");
-  pattern.disable_optype_check().add_customized_constriant([](const onnxruntime::Node* g, const onnxruntime::Node* p, const onnxruntime::Graph& target, const onnxruntime::Graph& pattern) {
-    if (p->Name() == "p_cos") {
+
+  class CustomNodeCompareFunc : public NodeCompareFunc {
+   public:
+    bool operator()(const Node* g, const PNode* p, const Graph& target,
+                    const PatternGraph& /*pattern*/) const override {
       return g->OpType() == "ConstantOfShape";
     }
-    PARSER_MSG(std::cout << "OpType mismatch, "
-                         << "g is: " << g->OpType() << ", p is: " << p->OpType() << std::endl;)
-    return g->OpType() == p->OpType();
-  });
+  };
+  pattern.SetCustomConstraint(std::make_unique<CustomNodeCompareFunc>(), "p_cos");
 
   print_graph(graph);
   vector<PNN> res;
-  auto st = TryMatch(graph, pattern, res);
+  auto st = pattern.TryMatch(graph, res);
   bool match = st.IsOK();
   std::cout << st.ToString() << std::endl;
   ASSERT_TRUE(match);
@@ -1144,24 +1157,20 @@ TEST(GraphParser, EmbedLayerNormFusionTest3) {
        PNode("ReduceSum", {"X", "C0"}, {"ReduceSum"}, "p_reducesum", {}, {1}),
        PNode("Attention", {"ReduceSum", "LayerNorm", "C1"}, {"Attention"}, "p_attention", {"com.microsoft"}, {1}, {MakeAttribute("num_heads", int64_t{1})})},
       "p_shape1", "pattern_graph");
-  pattern.disable_optype_check().add_customized_constriant([](const onnxruntime::Node* g, const onnxruntime::Node* p, const onnxruntime::Graph& target, const onnxruntime::Graph& pattern) {
-    if (p->Name() == "p_unsqueeze2" || p->Name() == "p_unsqueeze3") {
-      if (g->OpType() != "Unsqueeze") {
-        PARSER_MSG(std::cout << "OpType mismatch, "
-                             << "g is: " << g->OpType() << ", p is: " << p->OpType() << std::endl;)
-      }
+
+  class CustomNodeCompareFunc : public NodeCompareFunc {
+   public:
+    bool operator()(const Node* g, const PNode* p, const Graph& target,
+                    const PatternGraph& /*pattern*/) const override {
       return g->OpType() == "Unsqueeze";
     }
-    if (g->OpType() != p->OpType()) {
-      PARSER_MSG(std::cout << "OpType mismatch, "
-                           << "g is: " << g->OpType() << ", p is: " << p->OpType() << std::endl;)
-    }
-    return g->OpType() == p->OpType();
-  });
+  };
+  pattern.SetCustomConstraint(std::make_unique<CustomNodeCompareFunc>(), "p_unsqueeze2");
+  pattern.SetCustomConstraint(std::make_unique<CustomNodeCompareFunc>(), "p_unsqueeze3");
 
   print_graph(graph);
   vector<PNN> res;
-  auto st = TryMatch(graph, pattern, res);
+  auto st = pattern.TryMatch(graph, res);
   bool match = st.IsOK();
   std::cout << st.ToString() << std::endl;
   ASSERT_TRUE(match);

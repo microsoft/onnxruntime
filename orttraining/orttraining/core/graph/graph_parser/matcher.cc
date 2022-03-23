@@ -33,17 +33,6 @@
 #include "orttraining/core/graph/graph_parser/pattern_graph.h"
 #include "orttraining/core/graph/graph_parser/matcher.h"
 
-#define PARSER_DEBUG 1
-
-// Open this to output info to debug
-#if PARSER_DEBUG
-#define PARSER_MSG(_expr) _expr
-#else
-#define PARSER_MSG(_expr)
-#endif
-
-#undef PARSER_DEBUG
-
 using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
@@ -51,47 +40,11 @@ namespace training {
 
 namespace GraphParser {
 
-Status TryMatch(Graph& target_graph, PatternGraph& _graph, std::vector<PNN>& res) {
-  Graph& pattern_graph = _graph.GetGraph();
-  GraphViewer graph_viewer(target_graph);
-  GraphViewer pattern_viewer(pattern_graph);
-  const auto& graph_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  const auto& pattern_topology_list = pattern_viewer.GetNodesInTopologicalOrder();
-
-  Node* pattern_root = nullptr;  // Not real root, only a root specified by user
-  if (pattern_topology_list.size() && _graph.root_node().empty()) {
-    pattern_root = pattern_graph.GetNode(0);
-  }
-  for (auto node_index : pattern_topology_list) {
-    auto* node = pattern_graph.GetNode(node_index);
-    if (strcmp(node->Name().c_str(), _graph.root_node().c_str()) == 0) {
-      pattern_root = node;
-      break;
-    }
-  }
-  if (!pattern_root) {
-    return Status(common::ONNXRUNTIME, common::FAIL, "Pattern root was not found.");
-  }
-
-  for (auto node_index : graph_topology_list) {
-    auto* node = target_graph.GetNode(node_index);
-    res.clear();
-    std::unordered_set<const Node*> graph_path, pattern_path;
-    std::unordered_map<const Node*, const Node*> path_map;
-    if (_graph.find_match(node, pattern_root, graph_path, pattern_path, path_map, res, target_graph, pattern_graph)) {
-      res.push_back({node_index, pattern_root});
-      return Status::OK();
-    }
-  }
-
-  return Status(common::ONNXRUNTIME, common::FAIL, "No match for the target graph.");
-}
-
 Status TryReplace(Graph& graph, PatternGraph& pattern, const NodeDef& alternative,
                   std::vector<std::pair<std::string, int>> fusion_inputs,
                   std::vector<std::pair<std::string, int>> fusion_outputs) {
   std::vector<PNN> match_results;
-  ORT_RETURN_IF_ERROR(TryMatch(graph, pattern, match_results));
+  ORT_RETURN_IF_ERROR(pattern.TryMatch(graph, match_results));
   InlinedVector<std::reference_wrapper<Node>> matched_nodes;
   for (auto iter = match_results.rbegin(); iter != match_results.rend(); iter++) {
     auto node = graph.GetNode(iter->first);
