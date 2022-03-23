@@ -10,13 +10,29 @@ import {GpuData, GpuDataId, GpuDataType} from './types';
  * manages GpuDataId -> GpuBuffer
  */
 export interface GpuDataManager {
-  uploadData(tensor: Tensor, gpuDataType: GpuDataType): GpuData;
-  createData(type: Tensor.DataType, dims: readonly number[], gpuDataType: GpuDataType): GpuData;
-  releaseData(tensorId: Tensor.Id): void;
-  downloadData(tensorId: Tensor.Id): Promise<ArrayBufferLike>;
+  /**
+   * upload data to GPU. if the ID already exists in cache, returns the cached value without uploading anything.
+   */
+  upload(id: GpuDataId, data: Tensor.NumberType, gpuDataType: GpuDataType): Promise<GpuData>;
+  /**
+   * create new data on GPU.
+   */
+  create(type: Tensor.DataType, dims: readonly number[], gpuDataType: GpuDataType): GpuData;
+  /**
+   * get GPU data by ID.
+   */
+  get(id: GpuDataId): GpuData|undefined;
+  /**
+   * release the data on GPU by ID.
+   */
+  release(id: GpuDataId): void;
+  /**
+   * download the data from GPU.
+   */
+  download(id: GpuDataId): Promise<ArrayBufferLike>;
 }
 
-interface DefaultCacheValue {
+interface StorageCacheValue {
   gpuData: GpuData;
   size: number;
 }
@@ -27,27 +43,25 @@ interface DownloadCacheValue {
 }
 
 class GpuDataManagerImpl implements GpuDataManager {
-  defaultCache: Map<GpuDataId, DefaultCacheValue>;
+  // GPU Data ID => GPU Data ( storage buffer )
+  storageCache: Map<GpuDataId, StorageCacheValue>;
+
+  // GPU Data ID => GPU Data ( read buffer )
   downloadCache: Map<GpuDataId, DownloadCacheValue>;
+
   constructor(private device: GPUDevice) {
-    this.defaultCache = new Map();
+    this.storageCache = new Map();
     this.downloadCache = new Map();
   }
 
-  uploadData(tensor: Tensor, gpuDataType: GpuDataType): GpuData {
+  async upload(id: GpuDataId, data: Tensor.NumberType, gpuDataType: GpuDataType): Promise<GpuData> {
     if (gpuDataType !== GpuDataType.default) {
       throw new Error('we only support default GPU data type now');
     }
 
-    const cachedData = this.defaultCache.get(tensor.dataId);
-    if (cachedData) {
-      return cachedData.gpuData;
-    }
-
-    const src = tensor.numberData;
-    const srcArrayBuffer = src.buffer;
-    const srcOffset = src.byteOffset;
-    const srcLength = src.byteLength;
+    const srcArrayBuffer = data.buffer;
+    const srcOffset = data.byteOffset;
+    const srcLength = data.byteLength;
 
     // create gpu buffer
     const gpuBuffer =
@@ -58,12 +72,12 @@ class GpuDataManagerImpl implements GpuDataManager {
     new Uint8Array(arrayBuffer).set(new Uint8Array(srcArrayBuffer, srcOffset, srcLength));
     gpuBuffer.unmap();
 
-    const gpuData = {id: tensor.dataId, type: GpuDataType.default, buffer: gpuBuffer};
-    this.defaultCache.set(gpuData.id, {gpuData, size: srcLength});
+    const gpuData = {id, type: GpuDataType.default, buffer: gpuBuffer};
+    this.storageCache.set(id, {gpuData, size: srcLength});
     return gpuData;
   }
 
-  createData(type: Tensor.DataType, dims: readonly number[], gpuDataType: GpuDataType): GpuData {
+  create(type: Tensor.DataType, dims: readonly number[], gpuDataType: GpuDataType): GpuData {
     if (gpuDataType !== GpuDataType.default) {
       throw new Error('we only support default GPU data type now');
     }
@@ -82,27 +96,39 @@ class GpuDataManagerImpl implements GpuDataManager {
         this.device.createBuffer({size: bufferLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC});
 
     const gpuData = {id: Guid.create(), type: GpuDataType.default, buffer: gpuBuffer};
-    this.defaultCache.set(gpuData.id, {gpuData, size: bufferLength});
+    this.storageCache.set(gpuData.id, {gpuData, size: bufferLength});
     return gpuData;
   }
 
-  releaseData(tensorId: Tensor.Id): void {
-    const cachedData = this.defaultCache.get(tensorId);
+  get(id: GpuDataId): GpuData|undefined {
+    return this.storageCache.get(id)?.gpuData;
+  }
+
+  release(id: GpuDataId): void {
+    const cachedData = this.storageCache.get(id);
     if (!cachedData) {
       throw new Error('releasing data does not exist');
     }
 
-    this.defaultCache.delete(tensorId);
+    this.storageCache.delete(id);
     cachedData.gpuData.buffer.destroy();
+
+    const downloadingData = this.downloadCache.get(id);
+    if (downloadingData) {
+      void downloadingData.data.then(() => {
+        downloadingData.gpuData.buffer.destroy();
+      });
+      this.downloadCache.delete(id);
+    }
   }
 
-  async downloadData(tensorId: Tensor.Id): Promise<ArrayBufferLike> {
-    const downloadData = this.downloadCache.get(tensorId);
+  async download(id: GpuDataId): Promise<ArrayBufferLike> {
+    const downloadData = this.downloadCache.get(id);
     if (downloadData) {
       return downloadData.data;
     }
 
-    const cachedData = this.defaultCache.get(tensorId);
+    const cachedData = this.storageCache.get(id);
     if (!cachedData) {
       throw new Error('data does not exist');
     }

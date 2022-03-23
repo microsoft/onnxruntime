@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 import {InferenceHandler} from '../../backend';
-import {createView, Tensor} from '../../tensor';
+import {Tensor} from '../../tensor';
 
-import {createGpuDataManager, GpuDataManager} from './gpu-data-manager';
 import {WebGpuSessionHandler} from './session-handler';
+import {createTensorDataManager, TensorDataManager} from './tensor-data-manager';
 import {GpuData, GpuDataType, ProgramInfo, ProgramInfoLoader} from './types';
 
 const getProgramInfoUniqueKey = (programInfo: ProgramInfo|ProgramInfoLoader, inputGpuDatas: GpuData[]): string => {
@@ -19,24 +19,26 @@ const getProgramInfoUniqueKey = (programInfo: ProgramInfo|ProgramInfoLoader, inp
 };
 
 export class WebGpuInferenceHandler implements InferenceHandler {
-  dataManager: GpuDataManager;
+  // per inference context
+  dataManager: TensorDataManager;
+
   constructor(public session: WebGpuSessionHandler) {
-    this.dataManager = createGpuDataManager(session.backend.device);
+    this.dataManager = createTensorDataManager(session.backend.device);
   }
 
   private uploadGpuData(tensor: Tensor, textureType: GpuDataType): GpuData {
     if (this.session.isInitializer(tensor.dataId)) {
-      return this.session.dataManager.uploadData(tensor, textureType);
+      return this.session.dataManager.uploadTensorToGpu(tensor, textureType);
     }
 
-    return this.dataManager.uploadData(tensor, textureType);
+    return this.dataManager.uploadTensorToGpu(tensor, textureType);
   }
 
-  private createGpuData(type: Tensor.DataType, dims: readonly number[], gpuDataType: GpuDataType): GpuData {
-    return this.dataManager.createData(type, dims, gpuDataType);
+  private createGpuData(type: Tensor.DataType, dims: readonly number[], gpuDataType: GpuDataType): [Tensor, GpuData] {
+    return this.dataManager.createGpuTensor(type, dims, gpuDataType);
   }
 
-  run(program: ProgramInfoLoader|ProgramInfo, inputs: readonly Tensor[]): Tensor[] {
+  async run(program: ProgramInfoLoader|ProgramInfo, inputs: readonly Tensor[]): Promise<Tensor[]> {
     if (inputs.length !== program.inputTypes.length) {
       throw new Error(`Input size must be equal to ${program.inputTypes.length}.`);
     }
@@ -56,9 +58,12 @@ export class WebGpuInferenceHandler implements InferenceHandler {
 
     // create texture info for outputs
     const outputDatas: GpuData[] = [];
+    const outputTensors: Tensor[] = [];
     for (let i = 0; i < programInfo.outputs.length; ++i) {
-      outputDatas.push(this.createGpuData(
-          programInfo.outputs[i].type, programInfo.outputs[i].dims, programInfo.outputs[i].gpuDataType));
+      const [tensor, gpuData] = this.createGpuData(
+          programInfo.outputs[i].type, programInfo.outputs[i].dims, programInfo.outputs[i].gpuDataType);
+      outputTensors.push(tensor);
+      outputDatas.push(gpuData);
     }
 
     if (!artifact) {
@@ -68,19 +73,13 @@ export class WebGpuInferenceHandler implements InferenceHandler {
 
     this.session.programManager.run(artifact, inputDatas, outputDatas, artifact.programInfo.dispatchGroup(inputs));
 
-    const outputTensors: Tensor[] = [];
-    for (let i = 0; i < outputDatas.length; i++) {
-      const outputTensorInfo = artifact.programInfo.outputs[i];
-      const dims = outputTensorInfo.dims;
-      const type = outputTensorInfo.type;
-      const outputData = outputDatas[i];
-      const tensor = new Tensor(dims, type, undefined, async () => {
-        const data = await this.dataManager.downloadData(outputData.id);
-        return createView(data, type);
-      }, undefined, outputData.id);
-      outputTensors.push(tensor);
-    }
     return outputTensors;
+  }
+
+  reshape(input: Tensor, reshapedDims: readonly number[]): Tensor {
+    return this.dataManager.hasGpuData(input.dataId) ?
+        this.dataManager.createGpuRef(input.dataId, input.type, reshapedDims)[0] :
+        new Tensor(reshapedDims, input.type, undefined, undefined, input.data);
   }
 
   dispose(): void {}

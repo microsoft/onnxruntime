@@ -3,7 +3,9 @@
 
 import {OpSet} from '../../opset';
 
+import {reshape} from './ops/reshape';
 import * as unaryOps from './ops/unary-op';
+import {parseUnsqueezeAttributes, unsqueeze, unsqueezeV13} from './ops/unsqueeze';
 
 export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Abs', '', '6+', unaryOps.abs], ['Acos', '', '7+', unaryOps.acos],
@@ -59,7 +61,7 @@ export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   // ['ReduceSum', '', '1-12', reduceSum, parseReduceAttributes],
   // ['ReduceSumSquare', '', '1+', reduceLogSumSquare, parseReduceAttributes],
   // ['Relu', '', '6+', unaryOps.relu],
-  // ['Reshape', '', '5+', reshape],
+  ['Reshape', '', '5+', reshape],
   // ['Resize', '', '10', resize, parseResizeAttributesV10],
   // ['Resize', '', '11+', resize, parseResizeAttributesV11],
   // ['Shape', '', '1+', shape],
@@ -86,7 +88,6 @@ export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   // ['Transpose', '', '1+', transpose, parseTransposeAttributes],
   // ['Upsample', '', '7-8', upsample, parseUpsampleAttributesV7],
   // ['Upsample', '', '9', upsample, parseUpsampleAttributesV9],
-  // ['Unsqueeze', '', '1-12', unsqueeze, parseUnsqueezeAttributes],
-  // ['Unsqueeze', '', '13+', unsqueezeV13],
+  ['Unsqueeze', '', '1-12', unsqueeze, parseUnsqueezeAttributes], ['Unsqueeze', '', '13+', unsqueezeV13],
   // ['Xor', '', '7+', binaryOps.xor],
 ];
