@@ -135,6 +135,7 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalCont
     ngraph::pass::ConvertFP32ToFP16().run_on_function(ng_function);
     ng_function->validate_nodes_and_infer_types();
   }
+
   if (!global_context.is_wholly_supported_graph) {
     std::map<std::string, std::string> result_to_output;
     for (auto& result : ng_function->get_results()) {
@@ -181,13 +182,31 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
 
   const std::string model = model_proto.SerializeAsString();
   auto cnn_network = global_context.ie_core.ReadModel(model);
+
   if (global_context.device_type.find("GPU") != std::string::npos &&
       subgraph_context.precision == InferenceEngine::Precision::FP16) {
     //FP16 transformations
     ov::pass::ConvertFP32ToFP16 pass_obj;
+    pass_obj.run_on_function(cnn_network);
     pass_obj.run_on_model(cnn_network);
-    cnn_network.get()->validate_nodes_and_infer_types();
+    cnn_network->validate_nodes_and_infer_types();
+
+    auto proc = ov::preprocess::PrePostProcessor(cnn_network);
+    for (size_t i=0; i < cnn_network->inputs().size(); i++) {
+      if(cnn_network->inputs()[i].get_element_type() == ov::element::f16) {
+        proc.input(i).tensor().set_element_type(ov::element::f32);
+        proc.input(i).preprocess().convert_element_type(ov::element::f16);
+      }
+    }
+
+    for (size_t i=0; i < cnn_network->outputs().size(); i++) {
+      if(cnn_network->outputs()[i].get_element_type() == ov::element::f16) {
+        proc.output(i).postprocess().convert_element_type(ov::element::f32);
+      }
+    }
+    cnn_network = proc.build();
   }
+
   //Check for Constant Folding
   if (!global_context.is_wholly_supported_graph) {
     ov::pass::ConstantFolding pass_const_obj;
