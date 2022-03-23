@@ -4873,7 +4873,7 @@ def test_squeeze_custom_symbolic_registry():
     class SqueezeModel(torch.nn.Module):
         def __init__(self):
             super(SqueezeModel, self).__init__()
-            self.conv = torch.nn.Conv2d(in_channels=3, out_channels=1024, kernel_size=14, stride=14, bias=False)
+            self.conv = torch.nn.Conv2d(in_channels=3, out_channels=32, kernel_size=14, stride=14, bias=False)
         def forward(self, x):
             x = x.squeeze(1)
             return self.conv(x)
