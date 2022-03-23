@@ -273,7 +273,7 @@ stages:
           Contents: 'Release/dist/*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
           
-       - task: TwineAuthenticate@1
+      - task: TwineAuthenticate@1
         inputs:
           artifactFeed: 'Lotus/ort-gpu-nightly'
        
