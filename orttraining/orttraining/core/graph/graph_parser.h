@@ -31,7 +31,7 @@
 #include "core/optimizer/initializer.h"
 #include "orttraining/core/optimizer/graph_transformer_utils.h"
 
-#define PARSER_DEBUG 0
+#define PARSER_DEBUG 1
 
 // Open this to output info to debug
 #if PARSER_DEBUG
@@ -50,6 +50,9 @@ typedef std::function<bool(const onnxruntime::Node*, const onnxruntime::Node*, c
 
 namespace onnxruntime {
 namespace training {
+
+class PInput {
+};
 
 class PNode {
  public:
@@ -118,7 +121,7 @@ class PatternGraph {
  private:
   std::string name_;  // name of the graph
   std::string root_node;
-  bool check_optype, check_domain, check_version;
+  bool check_optype, check_domain, check_version, check_path;
   std::vector<customized_function> customized_constriants;
   Model model;
   std::vector<NodeDef> nodes;  // node definitions
@@ -133,6 +136,7 @@ class PatternGraph {
         check_optype(true),
         check_domain(true),
         check_version(true),
+        check_path(true),
         customized_constriants(customized_constriants),
         model(Model("pattern_model", false, logging::LoggingManager::DefaultLogger())),
         nodes(constants) {
@@ -205,10 +209,16 @@ class PatternGraph {
     return *this;
   }
 
+  PatternGraph& disable_path_check() {
+    check_path = false;
+    return *this;
+  }
+
  private:
   bool node_equal_properties(const Node* g, const Node* p, const Graph& target,
                              const Graph& pattern);
-  bool find_match(const Node* g, const Node* p, std::unordered_set<const Node*>& graph_path, std::unordered_set<const Node*>& pattern_path,
+  bool find_match(const Node* g, const Node* p, std::unordered_set<const Node*>& graph_path,
+                  std::unordered_set<const Node*>& pattern_path, std::unordered_map<const Node*, const Node*>& path_map,
                   std::vector<PNN>& matched, const Graph& target, const Graph& pattern);
 };
 
@@ -298,10 +308,10 @@ inline int GetConstantInitializerCount(const Graph& graph, const Node* node) {
   return res;
 }
 
-inline const Node* GetNodeOfPatternNodeName(const Graph& graph, const std::vector<PNN>& collection, const std::string& name) {
+inline Node* GetNodeOfPatternNodeName(const Graph& graph, const std::vector<PNN>& collection, const std::string& name) {
   for (auto [idx, pnode] : collection) {
     if (pnode->Name() == name) {
-      return graph.GetNode(idx);
+      return const_cast<Node*>(graph.GetNode(idx));
     }
   }
   return nullptr;

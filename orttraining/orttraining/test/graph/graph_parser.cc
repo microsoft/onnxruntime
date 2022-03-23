@@ -17,6 +17,7 @@
 #include "orttraining/test/session/training_session_test_utils.h"
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "core/optimizer/utils.h"
+#include "core/graph/contrib_ops/contrib_defs.h"
 
 #include "orttraining/core/graph/graph_parser.h"
 
@@ -36,7 +37,7 @@ namespace test {
 
 using namespace GraphParser;
 
-void print_graph(const Graph& graph) {
+static void print_graph(const Graph& graph) {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   for (auto node_index : node_topology_list) {
@@ -44,6 +45,144 @@ void print_graph(const Graph& graph) {
     std::cout << "Name: " << node->Name() << ", OpType: " << node->OpType()
               << ", Domain: " << node->Domain() << ", SinceVersion: " << node->SinceVersion() << std::endl;
   }
+}
+
+template <typename T>
+bool CheckEmbeddingData(const T* data, int64_t batch_size, int64_t element_count) {
+  // check that all batches has same data.
+  size_t data_length = SafeInt<size_t>(batch_size) * element_count;
+  for (size_t i = gsl::narrow<size_t>(element_count); i < data_length; i++) {
+    if (data[i] != data[i % element_count]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static NodeArg* ExtractEmbedding(Graph& graph,
+                                 int64_t batch_size,
+                                 int64_t sequence_length,
+                                 int64_t hidden_size,
+                                 const ONNX_NAMESPACE::TensorProto* tensor) {
+  assert(nullptr != tensor);
+  assert(batch_size > 0);
+  assert(sequence_length > 0);
+  assert(hidden_size > 0);
+
+  Initializer old_initializer{*tensor, graph.ModelPath()};
+  auto data_type = tensor->data_type();
+
+  ONNX_NAMESPACE::TensorProto initializer;
+  initializer.set_name(graph.GenerateNodeArgName("position_embeddings"));
+  initializer.add_dims(sequence_length);
+  initializer.add_dims(hidden_size);
+  initializer.set_data_type(data_type);
+  const int64_t element_count = sequence_length * hidden_size;
+
+  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    const float* data = old_initializer.data<float>();
+    if (!CheckEmbeddingData(data, batch_size, element_count)) {
+      return nullptr;
+    }
+
+    initializer.set_raw_data(data, gsl::narrow<size_t>(element_count) * sizeof(float));
+  } else {  // data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
+    const MLFloat16* data = old_initializer.data<MLFloat16>();
+    if (!CheckEmbeddingData(data, batch_size, element_count)) {
+      return nullptr;
+    }
+
+    initializer.set_raw_data(data, gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
+  }
+
+  NodeArg& node_arg = graph_utils::AddInitializer(graph, initializer);
+  return &node_arg;
+}
+
+static NodeArg* CastToInt32(Graph& graph, NodeArg* input, ProviderType provider_type) {
+  auto data_type = input->TypeAsProto()->tensor_type().elem_type();
+  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+    return input;
+  }
+  const TensorShapeProto* input_shape = input->Shape();
+  TypeProto input_int32;
+  input_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  auto dim0 = input_int32.mutable_tensor_type()->mutable_shape()->add_dim();
+  *dim0 = input_shape->dim(0);
+  auto dim1 = input_int32.mutable_tensor_type()->mutable_shape()->add_dim();
+  *dim1 = input_shape->dim(1);
+  auto& cast32 = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(input->Name() + "_Int32"), &input_int32);
+
+  Node& node = graph.AddNode(graph.GenerateNodeName(input->Name() + "_Cast"),
+                             "Cast",
+                             "Cast Input from int64 to int32",
+                             std::array{input},
+                             std::array{&cast32},
+                             nullptr,
+                             kOnnxDomain);
+
+  // Add attribute: "to" = 6
+  ONNX_NAMESPACE::AttributeProto to;
+  to.set_name("to");
+  to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
+  to.set_i(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32));
+  node.AddAttribute("to", std::move(to));
+
+  node.SetExecutionProviderType(provider_type);
+  return &cast32;
+}
+
+static void CreateEmbedLayernormNode(Graph& graph,
+                                     NodeArg* input_ids,
+                                     NodeArg* segment_ids,
+                                     NodeArg* word_embedding,
+                                     NodeArg* position_embedding,
+                                     NodeArg* segment_embedding,
+                                     Node& layer_norm_node,
+                                     Node* embed_layer_norm_node) {
+  // Cast input_ids and segment_ids to int32 if needed.
+  input_ids = CastToInt32(graph, input_ids, layer_norm_node.GetExecutionProviderType());
+  if (segment_ids != nullptr && segment_embedding != nullptr) {
+    segment_ids = CastToInt32(graph, segment_ids, layer_norm_node.GetExecutionProviderType());
+  }
+
+  NodeArg place_holder("", nullptr);
+  if (segment_ids == nullptr && segment_embedding == nullptr) {
+    segment_ids = &place_holder;
+    segment_embedding = &place_holder;
+  }
+
+  const std::vector<NodeArg*> embed_layer_norm_input_defs{
+      input_ids,
+      segment_ids,
+      word_embedding,
+      position_embedding,
+      segment_embedding,
+      layer_norm_node.MutableInputDefs()[1],
+      layer_norm_node.MutableInputDefs()[2]};
+
+  auto& mask_index = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("mask_index"), nullptr);
+
+  auto& node = graph.AddNode(graph.GenerateNodeName("EmbedLayerNormalization"),
+                             "EmbedLayerNormalization",
+                             "fused EmbedLayerNorm subgraphs ",
+                             embed_layer_norm_input_defs,
+                             std::array{layer_norm_node.MutableOutputDefs()[0], &mask_index},
+                             {}, kMSDomain);
+  embed_layer_norm_node = &node;
+
+  // Get attribute "epsilon" from "LayerNormalization" node if available. Else, default value
+  // will be used.
+  NodeAttributes ln_attrs = layer_norm_node.GetAttributes();
+  NodeAttributes::const_iterator epsilon = ln_attrs.find("epsilon");
+  if (epsilon != ln_attrs.end()) {
+    embed_layer_norm_node->AddAttribute("epsilon", epsilon->second);
+  } else {
+    embed_layer_norm_node->AddAttribute("epsilon", contrib::kDefaultEmbedLayerNormEpsilon);
+  }
+
+  // Assign provider to this new node. Provider should be same as the provider for old node.
+  embed_layer_norm_node->SetExecutionProviderType(layer_norm_node.GetExecutionProviderType());
 }
 
 TEST(GraphParser, base1) {
@@ -783,19 +922,338 @@ TEST(GraphParser, GemmActivationFusionTest2) {
   ASSERT_TRUE(op_to_count["com.microsoft.FusedGemm"] == 1);
 }
 
-// TEST(GraphParser, EmbedLayerNormFusionTest1) {
-//   auto model_uri = MODEL_FOLDER "fusion/embed_layer_norm_format1.onnx";
-//   std::shared_ptr<Model> p_model;
-//   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, logging::LoggingManager::DefaultLogger()));
-//   Graph& graph = p_model->MainGraph();
+TEST(GraphParser, EmbedLayerNormFusionTest1) {
+  auto model_uri = MODEL_FOLDER "fusion/embed_layer_norm_format1.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, logging::LoggingManager::DefaultLogger()));
+  Graph& graph = p_model->MainGraph();
 
-//   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-//   std::cout << "==================================================" << std::endl;
-//   for (auto iter = op_to_count.begin(); iter != op_to_count.end(); iter++) {
-//     std::cout << "op " << iter->first << ": " << iter->second << std::endl;
-//   }
-//   std::cout << "==================================================" << std::endl;
-// }
+  PatternGraph pattern(
+      {Constant<float>("X", .0f, {2, 2, 2}),
+       Constant<int64_t>("C0"),
+       Constant<int64_t>("C1"),
+       Constant<int64_t>("C2"),
+       Constant<float>("C3"),
+       Constant<int64_t>("C4"),
+       Constant<float>("C5")},
+      {PNode("Gather", {"X", "C0"}, {"Gather1"}, "p_gather1"),
+       PNode("Gather", {"X", "C1"}, {"Gather2"}, "p_gather2"),
+       PNode("Add", {"Gather1", "Gather2"}, {"Add1"}, "p_add1"),
+       PNode("Gather", {"X", "C2"}, {"Gather3"}, "p_gather3"),
+       PNode("Add", {"Add1", "Gather3"}, {"Add2"}, "p_add2"),
+       PNode("LayerNormalization", {"Add2", "C3"}, {"LayerNorm"}, "p_layernorm"),
+       PNode("ReduceSum", {"X", "C4"}, {"ReduceSum"}, "p_reducesum"),
+       PNode("Attention", {"ReduceSum", "LayerNorm", "C5"}, {"Y"}, "p_attention", {"com.microsoft"}, {1}, {MakeAttribute("num_heads", int64_t{1})})},
+      "p_attention", "pattern_graph");
+  print_graph(graph);
+  vector<PNN> res;
+  auto st = pattern.TryMatch(graph, res);
+  bool match = st.IsOK();
+  std::cout << st.ToString() << std::endl;
+  ASSERT_TRUE(match);
+
+  // replace
+  std::vector<NodeIndex> nodes_to_remove;
+  auto layer_norm_node = GetNodeOfPatternNodeName(graph, res, "p_layernorm");
+  auto layer_norm_add_node = GetNodeOfPatternNodeName(graph, res, "p_add2");
+  auto segment_gather_node = GetNodeOfPatternNodeName(graph, res, "p_gather3");
+  NodeArg* segment_embedding = segment_gather_node->MutableInputDefs()[0];
+  auto add_node = GetNodeOfPatternNodeName(graph, res, "p_add1");
+  auto word_gather_node = GetNodeOfPatternNodeName(graph, res, "p_gather1");
+  NodeArg* word_embedding = word_gather_node->MutableInputDefs()[0];
+  NodeArg* input_ids = word_gather_node->MutableInputDefs()[1];
+  NodeArg* segment_ids = segment_gather_node->MutableInputDefs()[1];
+  auto input_shape = input_ids->Shape();
+  ASSERT_FALSE(input_shape->dim_size() != 2 ||
+               !utils::HasDimValue(input_shape->dim()[0]) ||
+               !utils::HasDimValue(input_shape->dim()[1]));
+  int64_t batch_size = input_shape->dim()[0].dim_value();
+  int64_t sequence_length = input_shape->dim()[1].dim_value();
+  ASSERT_FALSE(batch_size <= 0 || sequence_length <= 0);
+  auto sg_shape = segment_embedding->Shape();
+  ASSERT_FALSE(sg_shape == nullptr || sg_shape->dim_size() != 2 ||
+               !utils::HasDimValue(sg_shape->dim()[1]) ||
+               sg_shape->dim()[1].dim_value() <= 0);
+  auto hidden_size = sg_shape->dim()[1].dim_value();
+  auto add_input_name = add_node->MutableInputDefs()[1]->Name();
+  const ONNX_NAMESPACE::TensorProto* position_embed_tensor;
+  NodeArg* position_embedding = nullptr;
+  if (graph_utils::IsConstantInitializer(graph, add_input_name)) {
+    ASSERT_TRUE(graph.GetInitializedTensor(add_input_name, position_embed_tensor));
+    position_embedding = ExtractEmbedding(graph, batch_size, sequence_length, hidden_size, position_embed_tensor);
+  } else {
+    auto position_gather_node = GetNodeOfPatternNodeName(graph, res, "p_gather2");
+    position_embedding = position_gather_node->MutableInputDefs()[0];
+    nodes_to_remove.push_back(position_gather_node->Index());
+  }
+  Node* replace_node = nullptr;
+  CreateEmbedLayernormNode(graph, input_ids, segment_ids, word_embedding, position_embedding, segment_embedding,
+                           *layer_norm_node, replace_node);
+  if (!nodes_to_remove.empty()) {
+    graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *graph.GetNode(nodes_to_remove[0]));
+  }
+
+  nodes_to_remove.clear();
+
+  nodes_to_remove.push_back(word_gather_node->Index());
+  nodes_to_remove.push_back(segment_gather_node->Index());
+  nodes_to_remove.push_back(add_node->Index());
+  nodes_to_remove.push_back(layer_norm_add_node->Index());
+  nodes_to_remove.push_back(layer_norm_node->Index());
+
+  for (const NodeIndex index : nodes_to_remove) {
+    Node* node = graph.GetNode(index);
+    graph_utils::RemoveNodeOutputEdges(graph, *node);
+    graph.RemoveNode(node->Index());
+  }
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Gather"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["ReduceSum"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.Attention"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.SkipLayerNormalization"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.EmbedLayerNormalization"] == 1);
+}
+
+TEST(GraphParser, EmbedLayerNormFusionTest2) {
+  auto model_uri = MODEL_FOLDER "fusion/embed_layer_norm_format2.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, logging::LoggingManager::DefaultLogger()));
+  Graph& graph = p_model->MainGraph();
+
+  PatternGraph pattern(
+      {Constant<float>("X", 0, {2, 3, 1}),
+       Constant<int64_t>("C0"),
+       Constant<float>("C1")},
+      {PNode("Shape", {"X"}, {"Shape1"}, "p_shape1", {}, {1}),
+       PNode("Gather", {"Shape1", "C0"}, {"Gather1"}, "p_gather1", {}, {1}),
+       PNode("Unsqueeze", {"Gather1", "C0"}, {"Unsqueeze1"}, "p_unsqueeze1", {}, {1}),
+       PNode("Shape", {"Unsqueeze1"}, {"COS"}, "p_cos"),
+       PNode("NonZero", {"COS"}, {"NonZero"}, "p_nonzero"),
+       PNode("Transpose", {"NonZero"}, {"Transpose"}, "p_transpose", {}, {1}),
+       PNode("Squeeze", {"Transpose", "C0"}, {"Squeeze"}, "p_squeeze", {}, {1}),
+       PNode("Cast", {"Squeeze"}, {"Cast1"}, "p_cast1", {""}, {9}, {MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT})}),
+       PNode("Unsqueeze", {"Cast1", "C0"}, {"Unsqueeze2"}, "p_unsqueeze2", {}, {1}),
+       PNode("Shape", {"X"}, {"Shape2"}, "p_shape2", {}, {1}),
+       PNode("Expand", {"Unsqueeze2", "Shape2"}, {"Expand"}, "p_expand", {}, {8}),
+       PNode("Gather", {"Expand", "C0"}, {"Gather2"}, "p_gather2", {}, {1}),
+       PNode("Gather", {"X", "C0"}, {"Gather3"}, "p_gather3", {}, {1}),
+       PNode("Add", {"Gather2", "Gather3"}, {"Add1"}, "p_add1"),
+       PNode("Gather", {"X", "C0"}, {"Gather4"}, "p_gather4"),
+       PNode("Add", {"Add1", "Gather4"}, {"Add2"}, "p_add2"),
+       PNode("LayerNormalization", {"Add2", "C1"}, {"LayerNorm"}, "p_layernorm"),
+       PNode("ReduceSum", {"X", "C0"}, {"ReduceSum"}, "p_reducesum", {}, {1}),
+       PNode("Attention", {"ReduceSum", "LayerNorm", "C1"}, {"Y"}, "p_attention", {"com.microsoft"}, {1}, {MakeAttribute("num_heads", int64_t{1})})},
+      "p_attention", "pattern_graph");
+  pattern.disable_optype_check().add_customized_constriant([](const onnxruntime::Node* g, const onnxruntime::Node* p, const onnxruntime::Graph& target, const onnxruntime::Graph& pattern) {
+    if (p->Name() == "p_cos") {
+      return g->OpType() == "ConstantOfShape";
+    }
+    PARSER_MSG(std::cout << "OpType mismatch, "
+                         << "g is: " << g->OpType() << ", p is: " << p->OpType() << std::endl;)
+    return g->OpType() == p->OpType();
+  });
+
+  print_graph(graph);
+  vector<PNN> res;
+  auto st = pattern.TryMatch(graph, res);
+  bool match = st.IsOK();
+  std::cout << st.ToString() << std::endl;
+  ASSERT_TRUE(match);
+
+  // replace
+  std::vector<NodeIndex> nodes_to_remove;
+  auto layer_norm_node = GetNodeOfPatternNodeName(graph, res, "p_layernorm");
+  auto layer_norm_add_node = GetNodeOfPatternNodeName(graph, res, "p_add2");
+  auto segment_gather_node = GetNodeOfPatternNodeName(graph, res, "p_gather4");
+  NodeArg* segment_embedding = segment_gather_node->MutableInputDefs()[0];
+  auto add_node = GetNodeOfPatternNodeName(graph, res, "p_add1");
+  auto word_gather_node = GetNodeOfPatternNodeName(graph, res, "p_gather3");
+  NodeArg* word_embedding = word_gather_node->MutableInputDefs()[0];
+  NodeArg* input_ids = word_gather_node->MutableInputDefs()[1];
+  NodeArg* segment_ids = segment_gather_node->MutableInputDefs()[1];
+  auto input_shape = input_ids->Shape();
+  ASSERT_FALSE(input_shape->dim_size() != 2 ||
+               !utils::HasDimValue(input_shape->dim()[0]) ||
+               !utils::HasDimValue(input_shape->dim()[1]));
+  int64_t batch_size = input_shape->dim()[0].dim_value();
+  int64_t sequence_length = input_shape->dim()[1].dim_value();
+  ASSERT_FALSE(batch_size <= 0 || sequence_length <= 0);
+  auto sg_shape = segment_embedding->Shape();
+  ASSERT_FALSE(sg_shape == nullptr || sg_shape->dim_size() != 2 ||
+               !utils::HasDimValue(sg_shape->dim()[1]) ||
+               sg_shape->dim()[1].dim_value() <= 0);
+  auto hidden_size = sg_shape->dim()[1].dim_value();
+  auto add_input_name = add_node->MutableInputDefs()[1]->Name();
+  const ONNX_NAMESPACE::TensorProto* position_embed_tensor;
+  NodeArg* position_embedding = nullptr;
+  if (graph_utils::IsConstantInitializer(graph, add_input_name)) {
+    ASSERT_TRUE(graph.GetInitializedTensor(add_input_name, position_embed_tensor));
+    position_embedding = ExtractEmbedding(graph, batch_size, sequence_length, hidden_size, position_embed_tensor);
+  } else {
+    auto position_gather_node = GetNodeOfPatternNodeName(graph, res, "p_gather2");
+    position_embedding = position_gather_node->MutableInputDefs()[0];
+    nodes_to_remove.push_back(position_gather_node->Index());
+  }
+  Node* replace_node = nullptr;
+  CreateEmbedLayernormNode(graph, input_ids, segment_ids, word_embedding, position_embedding, segment_embedding,
+                           *layer_norm_node, replace_node);
+  if (!nodes_to_remove.empty()) {
+    graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *graph.GetNode(nodes_to_remove[0]));
+  }
+
+  nodes_to_remove.clear();
+
+  nodes_to_remove.push_back(word_gather_node->Index());
+  nodes_to_remove.push_back(segment_gather_node->Index());
+  nodes_to_remove.push_back(add_node->Index());
+  nodes_to_remove.push_back(layer_norm_add_node->Index());
+  nodes_to_remove.push_back(layer_norm_node->Index());
+
+  for (const NodeIndex index : nodes_to_remove) {
+    Node* node = graph.GetNode(index);
+    graph_utils::RemoveNodeOutputEdges(graph, *node);
+    graph.RemoveNode(node->Index());
+  }
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Gather"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["ReduceSum"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.Attention"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.SkipLayerNormalization"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.EmbedLayerNormalization"] == 1);
+}
+
+TEST(GraphParser, EmbedLayerNormFusionTest3) {
+  auto model_uri = MODEL_FOLDER "fusion/embed_layer_norm_format3.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, logging::LoggingManager::DefaultLogger()));
+  Graph& graph = p_model->MainGraph();
+
+  PatternGraph pattern(
+      {Constant<float>("X", 0, {2, 3, 1}),
+       Constant<int64_t>("C0"),
+       Constant<float>("C1"),
+       Constant<int64_t>("S1", 0, {})},
+      {PNode("Shape", {"X"}, {"Shape1"}, "p_shape1", {}, {1}),
+       PNode("Gather", {"Shape1", "C0"}, {"Gather1"}, "p_gather1", {}, {1}),
+       PNode("Cast", {"Gather1"}, {"Cast1"}, "p_cast1", {""}, {9}, {MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT})}),
+       PNode("Range", {"Cast1", "Cast1", "Cast1"}, {"Range"}, "p_range"),
+       PNode("Unsqueeze", {"Range", "C0"}, {"Unsqueeze1"}, "p_unsqueeze1", {}, {1}),
+       PNode("Add", {"Gather1", "C0"}, {"Unsqueeze2"}, "p_unsqueeze2"),
+       PNode("Shape", {"X"}, {"Shape2"}, "p_shape2", {}, {1}),
+       PNode("Gather", {"Shape2", "C0"}, {"Gather2"}, "p_gather2", {}, {1}),
+       PNode("Add", {"Gather2", "C0"}, {"Unsqueeze3"}, "p_unsqueeze3"),
+       PNode("Concat", {"Unsqueeze2", "Unsqueeze3"}, {"Concat"}, "p_concat", {}, {}, {MakeAttribute("axis", int64_t(0))}),
+       PNode("Expand", {"Unsqueeze1", "Concat"}, {"Expand"}, "p_expand"),
+       PNode("Gather", {"Expand", "C0"}, {"Gather3"}, "p_gather3", {}, {1}),
+       PNode("Gather", {"X", "C0"}, {"Gather4"}, "p_gather4", {}, {1}),
+       PNode("Add", {"Gather3", "Gather4"}, {"Add1"}, "p_add1"),
+       PNode("Gather", {"X", "C0"}, {"Gather5"}, "p_gather5"),
+       PNode("Add", {"Add1", "Gather5"}, {"Add2"}, "p_add2"),
+       PNode("LayerNormalization", {"Add2", "C1"}, {"LayerNorm"}, "p_layernorm"),
+       PNode("ReduceSum", {"X", "C0"}, {"ReduceSum"}, "p_reducesum", {}, {1}),
+       PNode("Attention", {"ReduceSum", "LayerNorm", "C1"}, {"Attention"}, "p_attention", {"com.microsoft"}, {1}, {MakeAttribute("num_heads", int64_t{1})})},
+      "p_shape1", "pattern_graph");
+  pattern.disable_optype_check().add_customized_constriant([](const onnxruntime::Node* g, const onnxruntime::Node* p, const onnxruntime::Graph& target, const onnxruntime::Graph& pattern) {
+    if (p->Name() == "p_unsqueeze2" || p->Name() == "p_unsqueeze3") {
+      if (g->OpType() != "Unsqueeze") {
+        PARSER_MSG(std::cout << "OpType mismatch, "
+                             << "g is: " << g->OpType() << ", p is: " << p->OpType() << std::endl;)
+      }
+      return g->OpType() == "Unsqueeze";
+    }
+    if (g->OpType() != p->OpType()) {
+      PARSER_MSG(std::cout << "OpType mismatch, "
+                           << "g is: " << g->OpType() << ", p is: " << p->OpType() << std::endl;)
+    }
+    return g->OpType() == p->OpType();
+  });
+
+  print_graph(graph);
+  vector<PNN> res;
+  auto st = pattern.TryMatch(graph, res);
+  bool match = st.IsOK();
+  std::cout << st.ToString() << std::endl;
+  ASSERT_TRUE(match);
+
+  // replace
+  std::vector<NodeIndex> nodes_to_remove;
+  auto layer_norm_node = GetNodeOfPatternNodeName(graph, res, "p_layernorm");
+  auto layer_norm_add_node = GetNodeOfPatternNodeName(graph, res, "p_add2");
+  auto segment_gather_node = GetNodeOfPatternNodeName(graph, res, "p_gather5");
+  NodeArg* segment_embedding = segment_gather_node->MutableInputDefs()[0];
+  auto add_node = GetNodeOfPatternNodeName(graph, res, "p_add1");
+  auto word_gather_node = GetNodeOfPatternNodeName(graph, res, "p_gather4");
+  NodeArg* word_embedding = word_gather_node->MutableInputDefs()[0];
+  NodeArg* input_ids = word_gather_node->MutableInputDefs()[1];
+  NodeArg* segment_ids = segment_gather_node->MutableInputDefs()[1];
+  auto input_shape = input_ids->Shape();
+  // ASSERT_FALSE(input_shape->dim_size() != 2 ||
+  //              !utils::HasDimValue(input_shape->dim()[0]) ||
+  //              !utils::HasDimValue(input_shape->dim()[1]));
+  int64_t batch_size = input_shape->dim()[0].dim_value();
+  int64_t sequence_length = input_shape->dim()[1].dim_value();
+  ASSERT_FALSE(batch_size <= 0 || sequence_length <= 0);
+  auto sg_shape = segment_embedding->Shape();
+  ASSERT_FALSE(sg_shape == nullptr || sg_shape->dim_size() != 2 ||
+               !utils::HasDimValue(sg_shape->dim()[1]) ||
+               sg_shape->dim()[1].dim_value() <= 0);
+  auto hidden_size = sg_shape->dim()[1].dim_value();
+  auto add_input_name = add_node->MutableInputDefs()[1]->Name();
+  const ONNX_NAMESPACE::TensorProto* position_embed_tensor;
+  NodeArg* position_embedding = nullptr;
+  if (graph_utils::IsConstantInitializer(graph, add_input_name)) {
+    ASSERT_TRUE(graph.GetInitializedTensor(add_input_name, position_embed_tensor));
+    position_embedding = ExtractEmbedding(graph, batch_size, sequence_length, hidden_size, position_embed_tensor);
+  } else {
+    auto position_gather_node = GetNodeOfPatternNodeName(graph, res, "p_gather3");
+    position_embedding = position_gather_node->MutableInputDefs()[0];
+    nodes_to_remove.push_back(position_gather_node->Index());
+  }
+  Node* replace_node = nullptr;
+  CreateEmbedLayernormNode(graph, input_ids, segment_ids, word_embedding, position_embedding, segment_embedding,
+                           *layer_norm_node, replace_node);
+  if (!replace_node) {
+    std::cout << "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++" << std::endl;
+  }
+  if (!nodes_to_remove.empty()) {
+    graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *graph.GetNode(nodes_to_remove[0]));
+  }
+
+  nodes_to_remove.clear();
+
+  nodes_to_remove.push_back(word_gather_node->Index());
+  nodes_to_remove.push_back(segment_gather_node->Index());
+  nodes_to_remove.push_back(add_node->Index());
+  nodes_to_remove.push_back(layer_norm_add_node->Index());
+  nodes_to_remove.push_back(layer_norm_node->Index());
+
+  for (const NodeIndex index : nodes_to_remove) {
+    Node* node = graph.GetNode(index);
+    graph_utils::RemoveNodeOutputEdges(graph, *node);
+    graph.RemoveNode(node->Index());
+  }
+
+  print_graph(graph);
+  onnxruntime::test::PrintArgsInGraph(graph);
+  std::cout << "==================================" << std::endl;
+  onnxruntime::test::PrintPathsInGraph(graph);
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  std::cout << "==================================================" << std::endl;
+  for (auto iter = op_to_count.begin(); iter != op_to_count.end(); iter++) {
+    std::cout << "op " << iter->first << ": " << iter->second << std::endl;
+  }
+  std::cout << "==================================================" << std::endl;
+  ASSERT_TRUE(op_to_count["Gather"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["ReduceSum"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.Attention"] == 1);
+  ASSERT_TRUE(op_to_count["com.microsoft.SkipLayerNormalization"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.EmbedLayerNormalization"] == 1);
+}
 
 }  // namespace test
 }  // namespace training
