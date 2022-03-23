@@ -121,11 +121,11 @@ jobs:
 
       ### PYPI PACKAGE WITH ARTIFACT FEED
       # Logic to upload with Twine (Authenticate generates PYPRIC_PATH)
-      - task: TwineAuthenticate@1
+      - task: TwineAuthenticate@0
         inputs:
           artifactFeed: 'Lotus/ort-gpu-nightly'
        
-      - script: python3 -m pip install twine && python3 -m twine upload -r Lotus/ort-gpu-nightly --config-file $(PYPIRC_PATH) wheel/*.whl
+      - script: python3 -m pip install twine && python3 -m twine upload -r ort-gpu-nightly --config-file $(PYPIRC_PATH) wheel/*.whl
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
       # Logic to download pypi from artifact feed 
