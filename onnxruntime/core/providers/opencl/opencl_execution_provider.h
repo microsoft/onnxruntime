@@ -64,13 +64,18 @@ class OpenCLExecutionProvider : public IExecutionProvider {
   /// Get an OpenCL Buffer for temporary usage from Image2D allocator.
   IAllocatorUniquePtrToClMem GetScratchImage2D(const opencl::Image2DDesc& desc) const;
 
-  // Utility for other classes, kernel developer should not use them.
+  // Utility for other classes, kernel developer should not call them directly.
+  // They are left as public to avoid friending those classes.
 
-  /// whether the kernels is specialized for fp16
+  /// Whether fp16 is enabled. Used by Image2D allocator to decide the datatype
+  /// and OpenCLProgramManager to build kernels.
   bool UseFp16() const { return use_fp16_; }
-  /// OpenCL after kernel launch performance heuristic.
+
+  /// OpenCL after kernel launch performance heuristic. This is called in
+  /// KernelLauncher
   Status AfterCLLaunch() const;
-  ///
+
+  /// OpenCLKernel use it to initialize OpenCLKernelHolder
   const opencl::OpenCLProgramManager& GetProgramManager() const;
   opencl::OpenCLProgramManager& GetProgramManager();
 
