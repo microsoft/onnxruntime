@@ -133,6 +133,7 @@ jobs:
 - job: Build_NNAPI_EP
   pool: Linux-CPU-2019
   timeoutInMinutes: 30
+  condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
   steps:
   - task: UsePythonVersion@0
     displayName: Use Python $(pythonVersion)
@@ -183,7 +184,6 @@ jobs:
         --cmake_generator=Ninja \
         --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
         --build_java \
-        --code_coverage \
         --skip_tests
     displayName: NNAPI EP, Build
 
@@ -217,7 +217,7 @@ jobs:
   pool:
     vmImage: 'macOS-11'
   dependsOn: Build_NNAPI_EP
-  condition: succeeded()
+  condition: and(succeeded(), notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
   steps:
     - task: DownloadPipelineArtifact@2
       inputs:
@@ -247,23 +247,8 @@ jobs:
         --android_abi=x86_64 \
         --android_api=29 \
         --use_nnapi \
-        --test \
-        --code_coverage
+        --test
       displayName: NNAPI EP, Test, CodeCoverage on Android Emulator
-
-    - script: |
-        python3 -m pip install gcovr && \
-        python3 tools/ci_build/coverage.py \
-          --build_dir build_nnapi \
-          --android_sdk_path $ANDROID_HOME
-      displayName: Retrieve runtime code coverage files from the emulator and analyze
-
-    - task: PublishPipelineArtifact@0
-      displayName: 'Publish code coverage report'
-      inputs:
-          artifactName: "coverage_rpt.txt"
-          targetPath: '$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt'
-          publishLocation: 'pipeline'
 
     # used by Build Minimal ORT
     - script: brew install coreutils ninja
@@ -301,6 +286,94 @@ jobs:
       displayName: Stop Android emulator
       condition: always()
 
+# The below jobs only run on master build
+- job: NNAPI_EP_MASTER
+  pool:
+    vmImage: 'macOS-11'
+  timeoutInMinutes: 120
+  condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+  steps:
+    - task: UsePythonVersion@0
+      displayName: Use Python $(pythonVersion)
+      inputs:
+        versionSpec: $(pythonVersion)
+
+    - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
+      displayName: Setup gradle wrapper to use gradle 6.8.3
+
+    # used by Build Minimal ORT
+    - script: brew install coreutils ninja
+      displayName: Install coreutils and ninja
+
+    # We build the host protoc to <ORT_ROOT>/protobuf_install
+    - script: |
+        /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
+          $(Build.SourcesDirectory) \
+          $(Build.BinariesDirectory)/protobuf \
+          $(Build.SourcesDirectory)/protobuf_install
+      displayName: Build Host Protoc
+ 
+    - script: |
+        python3 tools/python/run_android_emulator.py \
+        --android-sdk-root ${ANDROID_SDK_ROOT} \
+        --create-avd --system-image "system-images;android-29;google_apis;x86_64" \
+        --start --emulator-extra-args="-partition-size 4096" \
+        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+      displayName: Start Android emulator
+    # Start switching to jdk 11 after the Android Emulator is started
+    # since Android SDK manager requires java 8
+    - task: JavaToolInstaller@0
+      displayName: Use jdk 11
+      inputs:
+        versionSpec: '11'
+        jdkArchitectureOption: 'x64'
+        jdkSourceOption: 'PreInstalled'
+
+    - script: |
+        python3 tools/ci_build/build.py \
+        --android \
+        --build_dir build_nnapi \
+        --android_sdk_path $ANDROID_HOME \
+        --android_ndk_path $ANDROID_NDK_HOME \
+        --android_abi=x86_64 \
+        --android_api=29 \
+        --skip_submodule_sync \
+        --parallel \
+        --use_nnapi \
+        --cmake_generator=Ninja \
+        --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
+        --build_java \
+        --code_coverage
+      displayName: NNAPI EP, Build, Test, CodeCoverage on Android Emulator
+      
+    - script: |
+        python3 -m pip install gcovr && \
+        python3 tools/ci_build/coverage.py \
+          --build_dir build_nnapi \
+          --android_sdk_path $ANDROID_HOME
+      displayName: Retrieve runtime code coverage files from the emulator and analyze
+    - script: cat '$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt'
+      displayName: Print coverage report
+
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish code coverage report'
+      inputs:
+          artifactName: "coverage_rpt.txt"
+          targetPath: '$(Build.SourcesDirectory)/build_nnapi/Debug/coverage_rpt.txt'
+          publishLocation: 'pipeline'
+
+    - script: /bin/bash tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh $(pwd)
+      # Build Minimal ORT with NNAPI and reduced Ops, run unit tests on Android Emulator
+      displayName: Build Minimal ORT with NNAPI and run tests
+
+    - script: |
+        python3 tools/python/run_android_emulator.py \
+          --android-sdk-root ${ANDROID_SDK_ROOT} \
+          --stop \
+          --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+      displayName: Stop Android emulator
+      condition: always()
+      
 - job: Update_Dashboard
   workspace:
     clean: all
@@ -309,9 +382,9 @@ jobs:
     value: true
   pool: 'Linux-CPU-2019'
   condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
-  dependsOn:
+  dependsOn: 
   - Test_CPU_EP
-  - Test_NNAPI_EP
+  - NNAPI_EP_MASTER
   steps:
   - task: DownloadPipelineArtifact@0
     displayName: 'Download code coverage report'
