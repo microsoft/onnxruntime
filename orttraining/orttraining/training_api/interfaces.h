@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_API)
+
 namespace onnxruntime {
 namespace training {
 namespace api_test {
@@ -174,3 +176,5 @@ void SetExecutionProvider(const Module& module, const Optimizer& optimizer, IExe
 }  // namespace api_test
 }  // namespace training
 }  // namespace onnxruntime
+
+#endif

@@ -137,6 +137,7 @@ option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_MEMORY_PROFILE "Enable memory profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
+option(onnxruntime_ENABLE_TRAINING_API "Enable training C++ apis." OFF)
 option(onnxruntime_ENABLE_TRAINING_OPS "Include training operators but no training session support." OFF)
 option(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP "Enable training kernels interop with torch." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
@@ -1762,6 +1763,10 @@ if (onnxruntime_USE_DML)
   endif()
 
   include(dml)
+endif()
+
+if (onnxruntime_ENABLE_TRAINING_API)
+  add_compile_definitions(ENABLE_TRAINING_API)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING_OPS)
