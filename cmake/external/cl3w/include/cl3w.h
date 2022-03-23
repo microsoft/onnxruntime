@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 /*
  * This file was generated with cl3w_gen.py, part of cl3w
  * (hosted at https://github.com/cloudhan/cl3w)
