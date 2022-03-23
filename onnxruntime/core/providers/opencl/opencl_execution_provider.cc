@@ -199,7 +199,7 @@ void OpenCLExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager
   //
   // See https://stackoverflow.com/a/40951614
   InsertAllocator(CreateAllocator(AllocatorCreationInfo{
-      [=](int) {
+      [this](int) {
         return std::make_unique<opencl::OpenCLBufferAllocator>(ctx_);
       },
       0,
@@ -207,7 +207,7 @@ void OpenCLExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager
   }));
 
   InsertAllocator(CreateAllocator(AllocatorCreationInfo{
-      [=](int) {
+      [this](int) {
         return std::make_unique<opencl::OpenCLImage2DAllocator>(ctx_, UseFp16());
       },
       0,
