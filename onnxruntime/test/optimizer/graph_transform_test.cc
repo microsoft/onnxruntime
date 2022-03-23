@@ -149,6 +149,24 @@ TEST_F(GraphTransformationTests, IdentityWithSharedNodeArgNotEliminated) {
   ASSERT_TRUE(op_to_count["Add"] == 1);
 }
 
+TEST_F(GraphTransformationTests, DequantizeLinearNodeNotEliminated) {
+  auto model_uri = MODEL_FOLDER "qdq_with_multi_consumer_dq_nodes.fixed.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["DequantizeLinear"], 25);
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(),
+                                                     TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  // CommonSubexpressionElimination should skip the DequantizeLinear nodes
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["DequantizeLinear"], 25);
+}
+
 TEST_F(GraphTransformationTests, IdentityInputIsGraphOutputNotEliminated) {
   auto model_uri = MODEL_FOLDER "scan9_sum.onnx";
   std::shared_ptr<Model> model;

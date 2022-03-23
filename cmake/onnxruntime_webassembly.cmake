@@ -110,6 +110,10 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       re2::re2
     )
 
+    if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+      bundle_static_library(onnxruntime_webassembly tensorboard)
+    endif()
+
     if (onnxruntime_BUILD_UNIT_TESTS)
       file(GLOB_RECURSE onnxruntime_webassembly_test_src CONFIGURE_DEPENDS
         "${ONNXRUNTIME_ROOT}/test/wasm/test_main.cc"
@@ -169,6 +173,10 @@ else()
     re2::re2
   )
 
+  if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+    target_link_libraries(onnxruntime_webassembly PRIVATE tensorboard)
+  endif()
+
   set(EXPORTED_RUNTIME_METHODS "['stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8']")
 
   set_target_properties(onnxruntime_webassembly PROPERTIES LINK_FLAGS "             \
@@ -181,9 +189,15 @@ else()
                         -s LLD_REPORT_UNDEFINED                                     \
                         -s VERBOSE=0                                                \
                         -s NO_FILESYSTEM=1                                          \
-                        -s MALLOC=${onnxruntime_WEBASSEMBLY_MALLOC}                 \
                         --closure 1                                                 \
                         --no-entry")
+
+  if (onnxruntime_EMSCRIPTEN_SETTINGS)
+    foreach(setting IN LISTS onnxruntime_EMSCRIPTEN_SETTINGS)
+    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS
+      " -s ${setting}")
+    endforeach()
+  endif()
 
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s ASSERTIONS=2 -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=1 -s DEMANGLE_SUPPORT=1")

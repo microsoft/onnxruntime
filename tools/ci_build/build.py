@@ -356,7 +356,14 @@ def parse_arguments():
     # WebAssembly build
     parser.add_argument("--build_wasm", action='store_true', help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action='store_true', help="Build for WebAssembly static library")
+    parser.add_argument(
+        "--emsdk_version", default="3.1.3", help="Specify version of emsdk")
+
     parser.add_argument("--enable_wasm_simd", action='store_true', help="Enable WebAssembly SIMD")
+    parser.add_argument(
+        "--enable_wasm_threads", action='store_true',
+        help="Enable WebAssembly multi-threads support")
+
     parser.add_argument(
         "--disable_wasm_exception_catching", action='store_true',
         help="Disable exception catching in WebAssembly.")
@@ -364,19 +371,19 @@ def parse_arguments():
         "--enable_wasm_exception_throwing_override", action='store_true',
         help="Enable exception throwing in WebAssembly, this will override default disabling exception throwing "
         "behavior when disable exceptions.")
-    parser.add_argument(
-        "--enable_wasm_threads", action='store_true',
-        help="Enable WebAssembly multi-threads support")
+
     parser.add_argument(
         "--enable_wasm_profiling", action='store_true',
         help="Enable WebAsselby profiling and preserve function names")
     parser.add_argument(
         "--enable_wasm_debug_info", action='store_true',
         help="Build WebAssembly with DWARF format debug info")
+
+    parser.add_argument("--wasm_malloc", help="Specify memory allocator for WebAssembly")
+
     parser.add_argument(
-        "--wasm_malloc", default="dlmalloc", help="Specify memory allocator for WebAssembly")
-    parser.add_argument(
-        "--emsdk_version", default="3.1.3", help="Specify version of emsdk")
+        "--emscripten_settings", nargs="+", action='append',
+        help="Extra emscripten settings to pass to emcc using '-s <key>=<value>' during build.")
 
     # Enable onnxruntime-extensions
     parser.add_argument(
@@ -725,6 +732,11 @@ def add_default_definition(definition_list, key, default_value):
     definition_list.append(key + "=" + default_value)
 
 
+def normalize_arg_list(nested_list):
+    return ([i for j in nested_list for i in j]
+            if nested_list else [])
+
+
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home,
                         mpi_home, nccl_home, tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
                         path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
@@ -830,7 +842,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_PROFILING=" + ("ON" if args.enable_wasm_profiling else "OFF"),
-        "-Donnxruntime_WEBASSEMBLY_MALLOC=" + args.wasm_malloc,
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
         "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS=" + ("ON" if args.enable_external_custom_op_schemas
                                                               else "OFF"),
@@ -1031,6 +1042,17 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             cmake_args += [
                 "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
             ]
+
+        # add default emscripten settings
+        emscripten_settings = normalize_arg_list(args.emscripten_settings)
+
+        # set -s MALLOC
+        if args.wasm_malloc is not None:
+            add_default_definition(emscripten_settings, 'MALLOC', args.wasm_malloc)
+        add_default_definition(emscripten_settings, 'MALLOC', 'dlmalloc')
+
+        if (emscripten_settings):
+            cmake_args += [f"-Donnxruntime_EMSCRIPTEN_SETTINGS={';'.join(emscripten_settings)}"]
 
     # Append onnxruntime-extensions cmake options
     if args.use_extensions:
@@ -2037,8 +2059,7 @@ def main():
     log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))
 
     args = parse_arguments()
-    cmake_extra_defines = ([i for j in args.cmake_extra_defines for i in j]
-                           if args.cmake_extra_defines else [])
+    cmake_extra_defines = normalize_arg_list(args.cmake_extra_defines)
     cross_compiling = args.arm or args.arm64 or args.arm64ec or args.android
 
     # If there was no explicit argument saying what to do, default
@@ -2096,6 +2117,12 @@ def main():
             # Node.js when trying to load the .wasm file.
             # To debug ONNX Runtime WebAssembly, use ONNX Runtime Web to debug ort-wasm.wasm in browsers.
             raise BuildError("WebAssembly tests cannot be enabled with flag --enable_wasm_debug_info")
+
+        if args.wasm_malloc is not None:
+            # mark --wasm_malloc as deprecated
+            log.warning(
+                "Flag '--wasm_malloc=<Value>' is deprecated. "
+                "Please use '--emscripten_settings MALLOC=<Value>'.")
 
     if args.code_coverage and not args.android:
         raise BuildError("Using --code_coverage requires --android")
