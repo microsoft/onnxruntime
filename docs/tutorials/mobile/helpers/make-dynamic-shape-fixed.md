@@ -26,7 +26,7 @@ The helper can be used to update specific dimensions, or the entire input shape.
 python -m onnxruntime.tools.make_dynamic_shape_fixed -h
 usage: make_dynamic_shape_fixed.py:make_dynamic_shape_fixed_helper [-h] [--dim_param DIM_PARAM] [--dim_value DIM_VALUE] [--input_name INPUT_NAME] [--input_shape INPUT_SHAPE] input_model output_model
 
-Assign a fixed value to a dim_param or input shape Provide either dim_param and dim_value or input_name and input_shape.
+Assign a fixed value to a dim_param or input shape. Provide either dim_param and dim_value or input_name and input_shape.
 
 positional arguments:
   input_model           Provide path to ONNX model to update.
@@ -35,11 +35,11 @@ positional arguments:
 optional arguments:
   -h, --help            show this help message and exit
   --dim_param DIM_PARAM
-                        Symbolic parameter name. Provider dim_value if specified.
+                        Symbolic parameter name. Provide dim_value if specified.
   --dim_value DIM_VALUE
                         Value to replace dim_param with in the model. Must be > 0.
   --input_name INPUT_NAME
-                        Model input name to replace shape of. Provider input_shape if specified.
+                        Model input name to replace shape of. Provide input_shape if specified.
   --input_shape INPUT_SHAPE
                         Shape to use for input_shape. Provide comma separated list for the shape. All values must be > 0. e.g. --input_shape 1,3,256,256
 ```
