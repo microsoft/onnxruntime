@@ -19,7 +19,8 @@
 #include "core/optimizer/utils.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 
-#include "orttraining/core/graph/graph_parser.h"
+#include "orttraining/core/graph/graph_parser/pattern_graph.h"
+#include "orttraining/core/graph/graph_parser/matcher.h"
 
 #include <iostream>
 #include <memory>
@@ -193,10 +194,7 @@ TEST(GraphParser, base1) {
        PNode("Exp", {"Y"}, {"Z"}, "Y-Z")},
       "", "test_graph");
 
-  Model model("test", false, logging::LoggingManager::DefaultLogger());
-  auto res = g.to_graph(model);
-  ASSERT_TRUE(res.IsOK());
-  Graph& graph = model.MainGraph();
+  Graph& graph = g.GetGraph();
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   for (auto node_index : node_topology_list) {
@@ -216,10 +214,7 @@ TEST(GraphParser, base2) {
        PNode("Sub", {"Z", "C2"}, {"W"}, "Sub")},
       "", "pattern_graph");
 
-  Model model("test", false, logging::LoggingManager::DefaultLogger());
-  auto res = g.to_graph(model);
-  ASSERT_TRUE(res.IsOK());
-  Graph& graph = model.MainGraph();
+  Graph& graph = g.GetGraph();
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   for (auto node_index : node_topology_list) {
@@ -254,12 +249,10 @@ TEST(GraphParser, match1) {
 
   pattern.add_customized_constriant(customized_func);
 
-  Model target_model("target_model", false, logging::LoggingManager::DefaultLogger());
-  ASSERT_TRUE(target.to_graph(target_model).IsOK());
+  Graph& target_graph = target.GetGraph();
 
   std::vector<PNN> res;
-  auto& target_graph = target_model.MainGraph();
-  ASSERT_TRUE(pattern.TryMatch(target_graph, res).IsOK());
+  ASSERT_TRUE(TryMatch(target_graph, pattern, res).IsOK());
 
   for (auto node_pair : res) {
     auto g = target_graph.GetNode(node_pair.first);
@@ -319,12 +312,9 @@ TEST(GraphParser, match2) {
        PNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")},
       "p_rm1", "pattern_graph");
 
-  Model target_model("target_model", false, logging::LoggingManager::DefaultLogger());
-  ASSERT_TRUE(target.to_graph(target_model).IsOK());
-
   std::vector<PNN> res;
-  auto& target_graph = target_model.MainGraph();
-  ASSERT_TRUE(pattern.TryMatch(target_graph, res).IsOK());
+  auto& target_graph = target.GetGraph();
+  ASSERT_TRUE(TryMatch(target_graph, pattern, res).IsOK());
 
   for (auto iter = res.rbegin(); iter != res.rend(); iter++) {
     auto g = target_graph.GetNode(iter->first);
@@ -369,12 +359,9 @@ TEST(GraphParser, match3) {
        PNode("Reshape", {"Z2", "Y4"}, {"oup"}, "p_reshape")},
       "", "pattern_graph");
 
-  Model target_model("target_model", false, logging::LoggingManager::DefaultLogger());
-  ASSERT_EQ(target.to_graph(target_model).ToString(), "OK");
-
   std::vector<PNN> res;
-  auto& target_graph = target_model.MainGraph();
-  ASSERT_TRUE(pattern.TryMatch(target_graph, res).IsOK());
+  auto& target_graph = target.GetGraph();
+  ASSERT_TRUE(TryMatch(target_graph, pattern, res).IsOK());
 
   for (auto iter = res.rbegin(); iter != res.rend(); iter++) {
     auto g = target_graph.GetNode(iter->first);
@@ -403,11 +390,11 @@ TEST(GraphParser, replace1) {
        PNode("Sub", {"Y1", "Y2"}, {"Z"}, "pSub")},
       "pMul", "pattern_graph");
 
-  Model target_model("target_model", false, logging::LoggingManager::DefaultLogger());
-  ASSERT_TRUE(target.to_graph(target_model).IsOK());
-
-  auto& target_graph = target_model.MainGraph();
-  ASSERT_TRUE(pattern.TryReplace(target_graph, NodeDef("Sqrt", {}, {}, NodeAttributes(), "test123"), {{"pAdd", 0}}, {}).IsOK());
+  auto& target_graph = target.GetGraph();
+  ASSERT_TRUE(TryReplace(target_graph, pattern,
+                         NodeDef("Sqrt", {}, {}, NodeAttributes(), "test123"),
+                         {{"pAdd", 0}}, {})
+                  .IsOK());
 
   GraphViewer graph_viewer(target_graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -469,11 +456,11 @@ TEST(GraphParser, replace2) {
        PNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")},
       "p_rm1", "pattern_graph");
 
-  Model target_model("target_model", false, logging::LoggingManager::DefaultLogger());
-  ASSERT_TRUE(target.to_graph(target_model).IsOK());
-
-  auto& target_graph = target_model.MainGraph();
-  ASSERT_TRUE(pattern.TryReplace(target_graph, NodeDef("Sqrt", {}, {}, NodeAttributes(), "test123"), {{"p_rm1", 0}}, {}).IsOK());
+  auto& target_graph = target.GetGraph();
+  ASSERT_TRUE(TryReplace(target_graph, pattern,
+                         NodeDef("Sqrt", {}, {}, NodeAttributes(), "test123"),
+                         {{"p_rm1", 0}}, {})
+                  .IsOK());
 
   GraphViewer graph_viewer(target_graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -564,16 +551,16 @@ TEST(GraphParser, LayerNormFusionTest) {
   print_graph(graph);
   bool match = false;
   if (!match) {
-    match = pattern1.TryReplace(graph, NodeDef("LayerNormalization", {}, {}, NodeAttributes(), "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}).IsOK();
+    match = TryReplace(graph, pattern1, NodeDef("LayerNormalization", {}, {}, NodeAttributes(), "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}).IsOK();
   }
   if (!match) {
-    match = pattern2.TryReplace(graph, NodeDef("LayerNormalization", {}, {}, NodeAttributes(), "replaced_node"), {{"p_rm1", 0}, {"p_mul", 0}, {"p_final", 1}}, {}).IsOK();
+    match = TryReplace(graph, pattern2, NodeDef("LayerNormalization", {}, {}, NodeAttributes(), "replaced_node"), {{"p_rm1", 0}, {"p_mul", 0}, {"p_final", 1}}, {}).IsOK();
   }
   if (!match) {
-    match = pattern3.TryReplace(graph, NodeDef("LayerNormalization", {}, {}, NodeAttributes(), "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}).IsOK();
+    match = TryReplace(graph, pattern3, NodeDef("LayerNormalization", {}, {}, NodeAttributes(), "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}).IsOK();
   }
   if (!match) {
-    match = pattern4.TryReplace(graph, NodeDef("LayerNormalization", {}, {}, NodeAttributes(), "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}).IsOK();
+    match = TryReplace(graph, pattern4, NodeDef("LayerNormalization", {}, {}, NodeAttributes(), "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}).IsOK();
   }
   ASSERT_TRUE(match);
 
@@ -652,13 +639,13 @@ TEST(GraphParser, LayerNormWithCastFusionTest) {
   bool match = false;
   if (!match) {
     vector<PNN> res;
-    std::cout << pattern1.TryMatch(graph, res).ToString() << std::endl;
-    match = pattern1.TryReplace(graph, NodeDef("LayerNormalization", {}, {}, NodeAttributes(), "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}).IsOK();
+    std::cout << TryMatch(graph, pattern1, res).ToString() << std::endl;
+    match = TryReplace(graph, pattern1, NodeDef("LayerNormalization", {}, {}, NodeAttributes(), "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}).IsOK();
   }
   if (!match) {
     vector<PNN> res;
-    std::cout << pattern2.TryMatch(graph, res).ToString() << std::endl;
-    match = pattern2.TryReplace(graph, NodeDef("LayerNormalization", {}, {}, NodeAttributes(), "replaced_node"), {{"p_rm1", 0}, {"p_mul", 0}, {"p_final", 1}}, {}).IsOK();
+    std::cout << TryMatch(graph, pattern2, res).ToString() << std::endl;
+    match = TryReplace(graph, pattern2, NodeDef("LayerNormalization", {}, {}, NodeAttributes(), "replaced_node"), {{"p_rm1", 0}, {"p_mul", 0}, {"p_final", 1}}, {}).IsOK();
   }
   ASSERT_TRUE(match);
 
@@ -683,7 +670,7 @@ TEST(GraphParser, NoopEliminationTest) {
       "p_add", "pattern_graph");
 
   auto customized_func = [](const Node* g, const Node* p, const Graph& target, const Graph& pattern) {
-    return p->Name() != "p_add" || HasSingleSpeciefiedConstantValue(target, g, .0);
+    return p->Name() != "p_add" || GraphParser::HasSingleSpeciefiedConstantValue(target, g, .0);
   };
   pattern1.add_customized_constriant(customized_func);
 
@@ -694,7 +681,7 @@ TEST(GraphParser, NoopEliminationTest) {
   bool match = true;
   while (match) {
     vector<PNN> res;
-    auto st = pattern1.TryMatch(graph, res);
+    auto st = TryMatch(graph, pattern1, res);
     match = st.IsOK();
     std::cout << st.ToString() << std::endl;
     for (auto [idx, pnode] : res) {
@@ -738,7 +725,7 @@ TEST(GraphParser, ReshapeFusionTest) {
 
   auto customized_func = [](const Node* g, const Node* p, const Graph& target, const Graph& pattern) {
     if (p->Name() == "p_concat") {
-      return GetConstantInitializerCount(target, g) == 2;
+      return GraphParser::GetConstantInitializerCount(target, g) == 2;
     } else if (p->Name() == "p_gather1" && !optimizer_utils::IsInitializerWithExpectedValue(target, *(g->InputDefs()[1]), int64_t(0), false)) {
       return false;
     } else if (p->Name() == "p_gather2" && !optimizer_utils::IsInitializerWithExpectedValue(target, *(g->InputDefs()[1]), int64_t(1), false)) {
@@ -755,7 +742,7 @@ TEST(GraphParser, ReshapeFusionTest) {
 
   print_graph(graph);
   vector<PNN> res;
-  auto st = pattern1.TryMatch(graph, res);
+  auto st = TryMatch(graph, pattern1, res);
   bool match = st.IsOK();
   std::cout << st.ToString() << std::endl;
   print_graph(graph);
@@ -763,10 +750,10 @@ TEST(GraphParser, ReshapeFusionTest) {
 
   // replace
   InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
-  auto x = GetNodeArgWithName(graph, res, "p_reshape", 0);
+  auto x = GraphParser::GetNodeArgWithName(graph, res, "p_reshape", 0);
   std::vector<NodeArg*> input_args({x});
   InlinedVector<int64_t> shape_value;
-  auto concat_node = GetNodeOfPatternNodeName(graph, res, "p_concat");
+  auto concat_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_concat");
   const auto* shape_def = concat_node->OutputDefs()[0];
   for (auto def : concat_node->InputDefs()) {
     if (graph_utils::IsInitializer(graph, def->Name(), false)) {
@@ -863,13 +850,13 @@ TEST(GraphParser, GemmActivationFusionTest1) {
 
   print_graph(graph);
   vector<PNN> res;
-  auto st = pattern1.TryMatch(graph, res);
+  auto st = TryMatch(graph, pattern1, res);
   bool match = st.IsOK();
   std::cout << st.ToString() << std::endl;
   ASSERT_TRUE(match);
 
   // replace
-  ASSERT_EQ(pattern1.TryReplace(graph, NodeDef("FusedGemm", {}, {}, NodeAttributes(), "replaced_node"), {{"p_gemm", 0}, {"p_gemm", 1}, {"p_gemm", 2}}, {}).ToString(), "OK");
+  ASSERT_EQ(TryReplace(graph, pattern1, NodeDef("FusedGemm", {}, {}, NodeAttributes(), "replaced_node"), {{"p_gemm", 0}, {"p_gemm", 1}, {"p_gemm", 2}}, {}).ToString(), "OK");
   print_graph(graph);
 
   // verify
@@ -904,13 +891,13 @@ TEST(GraphParser, GemmActivationFusionTest2) {
 
   print_graph(graph);
   vector<PNN> res;
-  auto st = pattern1.TryMatch(graph, res);
+  auto st = TryMatch(graph, pattern1, res);
   bool match = st.IsOK();
   std::cout << st.ToString() << std::endl;
   ASSERT_TRUE(match);
 
   // replace
-  ASSERT_EQ(pattern1.TryReplace(graph, NodeDef("FusedGemm", {}, {}, NodeAttributes(), "replaced_node"), {{"p_gemm", 0}, {"p_gemm", 1}, {"p_gemm", 2}}, {}).ToString(), "OK");
+  ASSERT_EQ(TryReplace(graph, pattern1, NodeDef("FusedGemm", {}, {}, NodeAttributes(), "replaced_node"), {{"p_gemm", 0}, {"p_gemm", 1}, {"p_gemm", 2}}, {}).ToString(), "OK");
   print_graph(graph);
 
   // verify
@@ -947,19 +934,19 @@ TEST(GraphParser, EmbedLayerNormFusionTest1) {
       "p_attention", "pattern_graph");
   print_graph(graph);
   vector<PNN> res;
-  auto st = pattern.TryMatch(graph, res);
+  auto st = TryMatch(graph, pattern, res);
   bool match = st.IsOK();
   std::cout << st.ToString() << std::endl;
   ASSERT_TRUE(match);
 
   // replace
   std::vector<NodeIndex> nodes_to_remove;
-  auto layer_norm_node = GetNodeOfPatternNodeName(graph, res, "p_layernorm");
-  auto layer_norm_add_node = GetNodeOfPatternNodeName(graph, res, "p_add2");
-  auto segment_gather_node = GetNodeOfPatternNodeName(graph, res, "p_gather3");
+  auto layer_norm_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_layernorm");
+  auto layer_norm_add_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_add2");
+  auto segment_gather_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_gather3");
   NodeArg* segment_embedding = segment_gather_node->MutableInputDefs()[0];
-  auto add_node = GetNodeOfPatternNodeName(graph, res, "p_add1");
-  auto word_gather_node = GetNodeOfPatternNodeName(graph, res, "p_gather1");
+  auto add_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_add1");
+  auto word_gather_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_gather1");
   NodeArg* word_embedding = word_gather_node->MutableInputDefs()[0];
   NodeArg* input_ids = word_gather_node->MutableInputDefs()[1];
   NodeArg* segment_ids = segment_gather_node->MutableInputDefs()[1];
@@ -982,7 +969,7 @@ TEST(GraphParser, EmbedLayerNormFusionTest1) {
     ASSERT_TRUE(graph.GetInitializedTensor(add_input_name, position_embed_tensor));
     position_embedding = ExtractEmbedding(graph, batch_size, sequence_length, hidden_size, position_embed_tensor);
   } else {
-    auto position_gather_node = GetNodeOfPatternNodeName(graph, res, "p_gather2");
+    auto position_gather_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_gather2");
     position_embedding = position_gather_node->MutableInputDefs()[0];
     nodes_to_remove.push_back(position_gather_node->Index());
   }
@@ -1057,19 +1044,19 @@ TEST(GraphParser, EmbedLayerNormFusionTest2) {
 
   print_graph(graph);
   vector<PNN> res;
-  auto st = pattern.TryMatch(graph, res);
+  auto st = TryMatch(graph, pattern, res);
   bool match = st.IsOK();
   std::cout << st.ToString() << std::endl;
   ASSERT_TRUE(match);
 
   // replace
   std::vector<NodeIndex> nodes_to_remove;
-  auto layer_norm_node = GetNodeOfPatternNodeName(graph, res, "p_layernorm");
-  auto layer_norm_add_node = GetNodeOfPatternNodeName(graph, res, "p_add2");
-  auto segment_gather_node = GetNodeOfPatternNodeName(graph, res, "p_gather4");
+  auto layer_norm_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_layernorm");
+  auto layer_norm_add_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_add2");
+  auto segment_gather_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_gather4");
   NodeArg* segment_embedding = segment_gather_node->MutableInputDefs()[0];
-  auto add_node = GetNodeOfPatternNodeName(graph, res, "p_add1");
-  auto word_gather_node = GetNodeOfPatternNodeName(graph, res, "p_gather3");
+  auto add_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_add1");
+  auto word_gather_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_gather3");
   NodeArg* word_embedding = word_gather_node->MutableInputDefs()[0];
   NodeArg* input_ids = word_gather_node->MutableInputDefs()[1];
   NodeArg* segment_ids = segment_gather_node->MutableInputDefs()[1];
@@ -1092,7 +1079,7 @@ TEST(GraphParser, EmbedLayerNormFusionTest2) {
     ASSERT_TRUE(graph.GetInitializedTensor(add_input_name, position_embed_tensor));
     position_embedding = ExtractEmbedding(graph, batch_size, sequence_length, hidden_size, position_embed_tensor);
   } else {
-    auto position_gather_node = GetNodeOfPatternNodeName(graph, res, "p_gather2");
+    auto position_gather_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_gather2");
     position_embedding = position_gather_node->MutableInputDefs()[0];
     nodes_to_remove.push_back(position_gather_node->Index());
   }
@@ -1174,19 +1161,19 @@ TEST(GraphParser, EmbedLayerNormFusionTest3) {
 
   print_graph(graph);
   vector<PNN> res;
-  auto st = pattern.TryMatch(graph, res);
+  auto st = TryMatch(graph, pattern, res);
   bool match = st.IsOK();
   std::cout << st.ToString() << std::endl;
   ASSERT_TRUE(match);
 
   // replace
   std::vector<NodeIndex> nodes_to_remove;
-  auto layer_norm_node = GetNodeOfPatternNodeName(graph, res, "p_layernorm");
-  auto layer_norm_add_node = GetNodeOfPatternNodeName(graph, res, "p_add2");
-  auto segment_gather_node = GetNodeOfPatternNodeName(graph, res, "p_gather5");
+  auto layer_norm_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_layernorm");
+  auto layer_norm_add_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_add2");
+  auto segment_gather_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_gather5");
   NodeArg* segment_embedding = segment_gather_node->MutableInputDefs()[0];
-  auto add_node = GetNodeOfPatternNodeName(graph, res, "p_add1");
-  auto word_gather_node = GetNodeOfPatternNodeName(graph, res, "p_gather4");
+  auto add_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_add1");
+  auto word_gather_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_gather4");
   NodeArg* word_embedding = word_gather_node->MutableInputDefs()[0];
   NodeArg* input_ids = word_gather_node->MutableInputDefs()[1];
   NodeArg* segment_ids = segment_gather_node->MutableInputDefs()[1];
@@ -1209,7 +1196,7 @@ TEST(GraphParser, EmbedLayerNormFusionTest3) {
     ASSERT_TRUE(graph.GetInitializedTensor(add_input_name, position_embed_tensor));
     position_embedding = ExtractEmbedding(graph, batch_size, sequence_length, hidden_size, position_embed_tensor);
   } else {
-    auto position_gather_node = GetNodeOfPatternNodeName(graph, res, "p_gather3");
+    auto position_gather_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_gather3");
     position_embedding = position_gather_node->MutableInputDefs()[0];
     nodes_to_remove.push_back(position_gather_node->Index());
   }
@@ -1238,9 +1225,9 @@ TEST(GraphParser, EmbedLayerNormFusionTest3) {
   }
 
   print_graph(graph);
-  onnxruntime::test::PrintArgsInGraph(graph);
+  // onnxruntime::test::PrintArgsInGraph(graph);
   std::cout << "==================================" << std::endl;
-  onnxruntime::test::PrintPathsInGraph(graph);
+  // onnxruntime::test::PrintPathsInGraph(graph);
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   std::cout << "==================================================" << std::endl;
   for (auto iter = op_to_count.begin(); iter != op_to_count.end(); iter++) {
