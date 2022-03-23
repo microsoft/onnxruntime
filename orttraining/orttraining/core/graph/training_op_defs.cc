@@ -305,15 +305,37 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
                 orig_shape = Shape (log_prob)
                 log_prob_BCD = Reshape (log_prob, reshape_arg)
                 prob_BCD = Exp (log_prob_BCD)
+            )");
 
-                label_BD = Flatten (label) # convert from [B, d1, d2, ...] to [B, D = d1 * d2 * ...]
+  // Encoding using OneHot operation:
+  // builder.Add(R"(
+  //               label_BD = Flatten (label) # convert from [B, d1, d2, ...] to [B, D = d1 * d2 * ...]
 
-                zero_one = Constant < value = int32[2] {0, 1}>()
-                zero_one_typed = CastLike (zero_one, prob_BCD)
-                C1d = Shape <start = 1, end = 2> (prob_BCD)
-                C = Squeeze(C1d)
-                one_hot_label_BCD = OneHot <axis=1> (label_BD, C, zero_one_typed)
+  //               zero_one = Constant < value = int32[2] {0, 1}>()
+  //               zero_one_typed = CastLike (zero_one, prob_BCD)
+  //               C1d = Shape <start = 1, end = 2> (prob_BCD)
+  //               C = Squeeze(C1d)
+  //               one_hot_label_BCD = OneHot <axis=1> (label_BD, C, zero_one_typed)
+  //           )");
 
+  // Alternative encoding without using OneHot:
+  builder.Add(R"(
+              # Compute: one_hot_label_BCD [b, c, d] = (label [b, d] == c)
+              B1D_shape = Constant < value = int64[3] {0, 1, -1} > ()
+              label_B1D = Reshape (label, B1D_shape) # convert from [B, d1, d2, ...] to [B, 1, D = d1 * d2 * ...]
+              zero_int64 = Constant < value = int64 {0}>()
+              one_int64 = Constant < value = int64 {1}>()
+              C1d = Shape <start = 1, end = 2> (prob_BCD)
+              C = Squeeze(C1d)
+              index = Range (zero_int64, C, one_int64)
+              index_typed = CastLike (index, label_B1D)
+              shape_1C1 = Constant < value = int64[3] {1, -1, 1} > ()
+              index_1C1 = Reshape (index_typed, shape_1C1) # reshape index to have shape [1, C, 1]
+              # use equality comparison with broadcast between shapes [B, 1, D] and [1, C, 1]
+              one_hot_label_BCD = Equal (label_B1D, index_1C1)
+            )");
+
+  builder.Add(R"(
                 adj_BCD = CastLike (one_hot_label_BCD, prob_BCD)
                 grad_BCD = Sub (prob_BCD, adj_BCD)
                 d_logits_BCD = Mul (d_loss_B1D, grad_BCD)
