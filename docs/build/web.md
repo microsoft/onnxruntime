@@ -89,6 +89,16 @@ Q: unittest fails on Debug build with debug info.
 
 > A: building with debug info will generate very huge artifacts (>1GB for unittest) and failed to load in Node.js. So please specify `--skip_tests` in build with debug info.
 
+Q: I have a C++ project for web scenario, which runs a ML model using ONNX Runtime and generates WebAssembly as an output. Does ONNX Runtime Web support a static WebAssembly library, so that my application can link with it and make all pre/post processors to be compiled together into WebAssembly?
+
+> A: With `--build_wasm`, a build script generates `.wasm` and `.js` files for web scenarios and intermediate libraries are not linked properly with other C/C++ projects. When you build ONNX Runtime Web using `--build_was_static_lib` instead of `--build_wasm`, a build script generates a static library of ONNX Runtime Web named `libonnxruntime_webassembly.a` in output directory. To run a simple inferencing like an [unit test](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/test/wasm/test_inference.cc), what you need is three header files as follows and `libonnxruntime_webassembly.a`.
+
+- include/onnxruntime/core/session/onnxruntime_c_api.h
+- include/onnxruntime/core/session/onnxruntime_cxx_api.h
+- include/onnxruntime/core/session/onnxruntime_cxx_inline.h
+
+> One important note is that ONNX Runtime has dependencies on lots of 3rd party libraries such as protobuf, onnx, and others. You may need copy necessary header files to your project. You also take care of cases of library version conflicts or emsdk version conflicts between ONNX Runtime and your project.
+
 ## Build onnxruntime-web (NPM package)
 
 ### Prerequisites
