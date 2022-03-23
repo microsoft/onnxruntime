@@ -14,9 +14,24 @@ OpenCL EP serve the purpose to enable the accelerated ORT inference execution
 on mobile GPU without sacrificing the flexiblity of the neural network models.
 This enables the developers to implement the op as a final resort.
 
-This EP is in its early stage. Only a few ops are supported and tested.
-Currently, only [MobileNet v2](https://pytorch.org/hub/pytorch_vision_mobilenet_v2/),
-standard ResNet 34 and UNet is tested.
+
+## Status
+
+This EP is in its early stage.
+
+### OPs
+
+Only a few ops are supported and tested. Currently, only [MobileNet
+v2](https://pytorch.org/hub/pytorch_vision_mobilenet_v2/), standard ResNet 34
+and UNet is tested.
+
+### Memory Management
+
+The memory management strategy is primal. All allocated memory is cached in the
+the allocator. Reuse only happens if the requested dimension **exact match**
+the cached dimension.
+
+Improvement is left as a future effort.
 
 ## Build
 
@@ -113,3 +128,69 @@ ro.log_verbosity_level = log_verbosity
 
 For kernel code debugging, [Oclgrind](https://github.com/jrprice/Oclgrind) can
 be used.
+
+## Additional Note about the Image2D Packed Data Tensor Layout
+
+To put a Tensor (a N-dimensional array) into Image2D texture type, the data
+must be packed so that the array can fit into the 2D representation. This also
+impose assumption on the dimension.
+
+For a Image2D with dimension H x W:
+
+```
+|<-------W------->|
++-----------------+---
+|                 | ^
+|     Image2D     | |H
+|                 | v
++-----------------+---
+```
+
+It is always allocated as 4-channel Image2D.
+
+### 1D
+
+1D tensor is simply stacked row by row, each row can hold W*4 number of elements.
+
+### 2D
+
+2D tensor is kept as is. The feature map dimension is limited by the Image2D
+dimmension limit, imposed by OpenCL driver.
+
+### 3D
+
+3D tensor packing is not implemented at the moment.
+
+### 4D
+
+Only NCHW tensor is supported. It is packed as `N*CeilDiv(C, 4)*H*W*4`, then
+`H*W*4` can be viewed as a tile of H*W, and each element is a 4 elements RGBA
+vector type for Image2D channels. Some tiles may have its channel filled with
+grabage data if C is not divisible by 4.
+
+This layout is inherited from MNN and TNN:
+```
+|<-------------------Image2D width = CeilDiv(C, 4)*W------------------->|
+|<-------W------->|
++-----------------+-----------------+-------...-------+-----------------+-------
+|    A Tile of    |                 |                 |      H x W      | ^   ^
+|      H x W      |      H x W      |       ...       |     channel     | |H  |
+|                 |                 |                 |   may not full  | v   |
++-----------------+-----------------+-------...-------+-----------------+     |
+|                 |                 |                 |      H x W      |     |
+|      H x W      |      H x W      |       ...       |     channel     |     |
+|                 |                 |                 |   may not full  |     | Image2D
++-----------------+-----------------+-------...-------+-----------------+     | height
+|        .        |        .        |      .          |        .        |     | == N*H
+...      .       ...       .       ...       .       ...       .      ...     |
+|        .        |        .        |          .      |        .        |     |
++-----------------+-----------------+-------...-------+-----------------+     |
+|                 |                 |                 |      H x W      |     |
+|      H x W      |      H x W      |       ...       |     channel     |     |
+|                 |                 |                 |   may not full  |     |
++-----------------+-----------------+-------...-------+-----------------+    ---
+```
+
+### 5D and more
+
+5D and more tensor packing is not implemented at the moment.
