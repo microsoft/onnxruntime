@@ -4,10 +4,10 @@ import os
 import pandas as pd
 import time
 from azure.kusto.data import KustoConnectionStringBuilder
+from azure.kusto.data.data_format import DataFormat
 from azure.kusto.data.helpers import dataframe_from_result_table 
 from azure.kusto.ingest import (
     IngestionProperties,
-    DataFormat,
     ReportLevel,
     QueuedIngestClient,
 )
@@ -91,7 +91,7 @@ def get_specs(specs, branch, commit_id, date_time):
 
 def get_session(session, model_group):
     session_columns = session.keys()
-    session_db_columns = [model_title] + ort_provider_list
+    session_db_columns = [model_title] + ort_provider_list + [p + second for p in ort_provider_list]
     session = adjust_columns(session, session_columns, session_db_columns, model_group)
     return session
 

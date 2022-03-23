@@ -132,8 +132,21 @@ TEST_F(FunExpansionTest, DropoutGrad_WithRatio) {
 }
 
 template <typename T>
+int DropoutGradOpset() {
+  return 13;
+}
+
+template <>
+int DropoutGradOpset<BFloat16>() {
+  return 16; // Need opset version 16 for Where op for BFloat16
+}
+
+template <typename T>
 void CheckDropoutGradWithoutRatio(bool inline_call) {
   FunctionTestCase testCase("DropoutGrad");
+  testCase.AddOpset(kOnnxDomain, DropoutGradOpset<T>());
+  testCase.AddOpset(kMSDomain, 1);
+  
   std::vector<int64_t> shape{16, 4, 4};
   testCase.AddInput<T, false>("dY", shape);
   testCase.AddInput<bool, false>("mask", shape);
@@ -147,14 +160,16 @@ void CheckDropoutGradWithoutRatio(bool inline_call) {
 }
 
 TEST_F(FunExpansionTest, DropoutGrad_WithoutRatio2) {
-  // bfloat16 not yet supported by ONNX op Where
-  CheckDropoutGradWithoutRatio<BFloat16>(false);
+  CheckDropoutGradWithoutRatio<BFloat16>(true);
   CheckDropoutGradWithoutRatio<MLFloat16>(true);
 }
 
 template <typename T>
 void CheckDropoutGradWithRatio(bool inline_call) {
   FunctionTestCase testCase("DropoutGrad");
+  testCase.AddOpset(kOnnxDomain, DropoutGradOpset<T>());
+  testCase.AddOpset(kMSDomain, 1);
+
   std::vector<int64_t> shape{16, 4, 4};
   testCase.AddInput<T, false>("dY", shape);
   testCase.AddInput<bool, false>("mask", shape);
@@ -164,8 +179,7 @@ void CheckDropoutGradWithRatio(bool inline_call) {
 }
 
 TEST_F(FunExpansionTest, DropoutGrad_WithRatio2) {
-  // bfloat16 not yet supported by ONNX op Where
-  CheckDropoutGradWithRatio<BFloat16>(false);
+  CheckDropoutGradWithRatio<BFloat16>(true);
   CheckDropoutGradWithRatio<MLFloat16>(true);
 }
 

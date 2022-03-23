@@ -21,6 +21,7 @@ from onnx_model import OnnxModel
 from fusion_utils import FusionUtils
 from benchmark_helper import Precision
 from io_binding_helper import IOBindingHelper
+from torch_onnx_export_helper import torch_onnx_export
 
 logger = logging.getLogger(__name__)
 
@@ -402,12 +403,11 @@ class Gpt2Helper:
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
-        torch.onnx.export(model,
+        torch_onnx_export(model,
                           args=tuple(input_list),
                           f=onnx_model_path,
                           input_names=input_names,
                           output_names=output_names,
-                          example_outputs=outputs,
                           dynamic_axes=dynamic_axes,
                           opset_version=11,
                           do_constant_folding=True,

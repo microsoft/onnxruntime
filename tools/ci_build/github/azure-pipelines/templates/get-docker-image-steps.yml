@@ -13,6 +13,9 @@ parameters:
 - name: UseImageCacheContainerRegistry
   type: boolean
   default: true
+- name: ScriptName
+  type: string
+  default: "tools/ci_build/get_docker_image.py" 
 
 steps:
 - ${{ if eq(parameters.UseImageCacheContainerRegistry, true) }}:
@@ -20,7 +23,7 @@ steps:
     parameters:
       Steps:
       - script: |
-          tools/ci_build/get_docker_image.py \
+          ${{ parameters.ScriptName }} \
             --dockerfile "${{ parameters.Dockerfile }}" \
             --context "${{ parameters.Context }}" \
             --docker-build-args "${{ parameters.DockerBuildArgs }}" \
@@ -30,7 +33,7 @@ steps:
       ContainerRegistry: onnxruntimebuildcache
 - ${{ if eq(parameters.UseImageCacheContainerRegistry, false) }}:
   - script: |
-      tools/ci_build/get_docker_image.py \
+      ${{ parameters.ScriptName }} \
         --dockerfile "${{ parameters.Dockerfile }}" \
         --context "${{ parameters.Context }}" \
         --docker-build-args "${{ parameters.DockerBuildArgs }}" \

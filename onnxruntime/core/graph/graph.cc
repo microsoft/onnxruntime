@@ -22,6 +22,7 @@
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/model.h"
 #include "core/graph/model_load_utils.h"
+#include "core/graph/node_attr_utils.h"
 #include "core/graph/op.h"
 #include "core/graph/runtime_optimization_record_container.h"
 
@@ -762,7 +763,7 @@ Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, const log
         subgraphs_.push_back(std::move(subgraph));
       }
 
-      AddAttribute(attr_proto.name(), std::move(attr_proto));
+      AddAttributeProto(std::move(attr_proto));
     }
   }
 
@@ -872,106 +873,52 @@ void Node::CreateSubgraph(const std::string& attr_name) {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-void Node::AddAttribute(std::string attr_name, const ONNX_NAMESPACE::AttributeProto& value) {
+void Node::AddAttributeProto(AttributeProto value) {
+  utils::SetNodeAttribute(std::move(value), attributes_);
+
   graph_->SetGraphResolveNeeded();
   graph_->SetGraphProtoSyncNeeded();
-  attributes_[std::move(attr_name)] = value;
 }
 
-void Node::AddAttribute(std::string attr_name, ONNX_NAMESPACE::AttributeProto&& value) {
-  graph_->SetGraphResolveNeeded();
-  graph_->SetGraphProtoSyncNeeded();
-  attributes_[std::move(attr_name)] = std::move(value);
-}
-
-static void AddAttributeHelper(Node& node, std::string attr_name,
-                               AttributeProto_AttributeType attr_type, AttributeProto&& a) {
-  a.set_name(attr_name);
-  a.set_type(attr_type);
-  node.AddAttribute(std::move(attr_name), std::move(a));
-}
-
-void Node::AddAttribute(std::string attr_name, std::string value) {
-  AttributeProto a;
-  *(a.mutable_s()) = std::move(value);
-  AddAttributeHelper(*this, std::move(attr_name),
-                     AttributeProto_AttributeType::AttributeProto_AttributeType_STRING,
-                     std::move(a));
-};
-
-#define ADD_BASIC_ATTR_IMPL(type, enumType, field)                           \
-  void Node::AddAttribute(std::string attr_name, const type& value) {        \
-    AttributeProto a;                                                        \
-    a.set_##field(value);                                                    \
-    AddAttributeHelper(*this, std::move(attr_name), enumType, std::move(a)); \
-  };
-
-#define ADD_ATTR_IMPL(type, enumType, field)                                 \
-  void Node::AddAttribute(std::string attr_name, const type& value) {        \
-    AttributeProto a;                                                        \
-    *(a.mutable_##field()) = value;                                          \
-    AddAttributeHelper(*this, std::move(attr_name), enumType, std::move(a)); \
+#define ADD_ATTR_SINGLE_IMPL(Type)                                                   \
+  void Node::AddAttribute(std::string attr_name, Type value) {                       \
+    AttributeProto a = utils::MakeAttribute(std::move(attr_name), std::move(value)); \
+    AddAttributeProto(std::move(a));                                                 \
   }
 
-#define ADD_ATTR_MOVE_IMPL(type, enumType, field)                            \
-  void Node::AddAttribute(std::string attr_name, type&& value) {             \
-    AttributeProto a;                                                        \
-    *(a.mutable_##field()) = std::move(value);                               \
-    AddAttributeHelper(*this, std::move(attr_name), enumType, std::move(a)); \
+#define ADD_ATTR_LIST_IMPL(Type)                                                 \
+  void Node::AddAttribute(std::string attr_name, gsl::span<const Type> values) { \
+    AttributeProto a = utils::MakeAttribute(std::move(attr_name), values);       \
+    AddAttributeProto(std::move(a));                                             \
   }
 
-#define ADD_LIST_ATTR_IMPL(type, enumType, field)                            \
-  void Node::AddAttribute(std::string attr_name,                             \
-                          gsl::span<type const> values) {                    \
-    AttributeProto a;                                                        \
-    auto* mutable_field = a.mutable_##field();                               \
-    for (const auto& val : values) {                                         \
-      *(mutable_field->Add()) = val;                                         \
-    }                                                                        \
-    AddAttributeHelper(*this, std::move(attr_name), enumType, std::move(a)); \
-  }
+#define ADD_ATTR_IMPLS(Type) \
+  ADD_ATTR_SINGLE_IMPL(Type) \
+  ADD_ATTR_LIST_IMPL(Type)
 
-void Node::AddAttribute(std::string attr_name, const GraphProto& value) {
-  AttributeProto a;
-  *a.mutable_g() = value;
-  // Do not move attr_name as it is needed below
-  AddAttributeHelper(*this, attr_name, AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH, std::move(a));
-
-#if !defined(ORT_MINIMAL_BUILD)
-  // subgraph is created via deserialization and not here in a minimal build
-  CreateSubgraph(attr_name);
-#endif
-};
-
-void Node::AddAttribute(std::string attr_name, GraphProto&& value) {
-  AttributeProto a;
-  *a.mutable_g() = std::move(value);
-  // Do not move attr_name as it is needed below
-  AddAttributeHelper(*this, attr_name, AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH, std::move(a));
-
-#if !defined(ORT_MINIMAL_BUILD)
-  // subgraph is created via deserialization and not here in a minimal build
-  CreateSubgraph(attr_name);
-#endif
-};
-
-ADD_BASIC_ATTR_IMPL(float, AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT, f)
-ADD_BASIC_ATTR_IMPL(int64_t, AttributeProto_AttributeType::AttributeProto_AttributeType_INT, i)
-ADD_ATTR_IMPL(TensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TENSOR, t)
-ADD_ATTR_MOVE_IMPL(TensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TENSOR, t)
-ADD_ATTR_IMPL(TypeProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TYPE_PROTO, tp)
-ADD_ATTR_MOVE_IMPL(TypeProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TYPE_PROTO, tp)
-
-ADD_LIST_ATTR_IMPL(float, AttributeProto_AttributeType::AttributeProto_AttributeType_FLOATS, floats)
-ADD_LIST_ATTR_IMPL(int64_t, AttributeProto_AttributeType::AttributeProto_AttributeType_INTS, ints)
-ADD_LIST_ATTR_IMPL(std::string, AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS, strings)
-ADD_LIST_ATTR_IMPL(TensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS, tensors)
-ADD_LIST_ATTR_IMPL(TypeProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TYPE_PROTOS, type_protos)
+ADD_ATTR_IMPLS(int64_t)
+ADD_ATTR_IMPLS(float)
+ADD_ATTR_IMPLS(std::string)
+ADD_ATTR_IMPLS(TensorProto)
 #if !defined(DISABLE_SPARSE_TENSORS)
-ADD_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSOR, sparse_tensor)
-ADD_ATTR_MOVE_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSOR, sparse_tensor)
-ADD_LIST_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSORS, sparse_tensors)
+ADD_ATTR_IMPLS(SparseTensorProto)
 #endif
+ADD_ATTR_IMPLS(TypeProto)
+
+#undef ADD_ATTR_SINGLE_IMPL
+#undef ADD_ATTR_LIST_IMPL
+#undef ADD_ATTR_IMPLS
+
+void Node::AddAttribute(std::string attr_name, GraphProto value) {
+  // Do not move attr_name as it is needed below
+  AttributeProto a = utils::MakeAttribute(attr_name, std::move(value));
+  AddAttributeProto(std::move(a));
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // subgraph is created via deserialization and not here in a minimal build
+  CreateSubgraph(attr_name);
+#endif
+};
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 bool Node::ClearAttribute(const std::string& attr_name) {
@@ -2588,8 +2535,9 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         // The attribute was not specified in the node.
         if (!attr_def.second.required) {
           if (utils::HasName(attr_def.second.default_value)) {
+            assert(attr_def.first == attr_def.second.default_value.name());
             // Set default value to the node attributes.
-            node.AddAttribute(attr_def.first, attr_def.second.default_value);
+            node.AddAttributeProto(attr_def.second.default_value);
           }
           // TODO: Handle optional attribute but no default value specified in op definition.
         } else {

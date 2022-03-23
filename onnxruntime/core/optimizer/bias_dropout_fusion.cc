@@ -188,10 +188,10 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
                                                   kMSDomain);
 
     // Get attribute "seed" from "Dropout" node if available.
-    NodeAttributes dropout_attrs = dropout_node.GetAttributes();
+    const NodeAttributes& dropout_attrs = dropout_node.GetAttributes();
     NodeAttributes::const_iterator seed = dropout_attrs.find("seed");
     if (seed != dropout_attrs.end()) {
-      dropout_add_fusion_node.AddAttribute("seed", seed->second);
+      dropout_add_fusion_node.AddAttributeProto(seed->second);
     }
 
     // Assign provider to this new node. Provider should be same as the provider for old node.

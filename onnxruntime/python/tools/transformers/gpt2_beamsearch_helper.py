@@ -17,6 +17,7 @@ from typing import List, Dict, Tuple, Union
 from transformers import GPT2LMHeadModel, GPT2Config
 from benchmark_helper import Precision
 from gpt2_helper import Gpt2Helper, Gpt2Inputs, GPT2ModelNoPastState, MyGPT2Model, MyGPT2LMHeadModel, MyGPT2LMHeadModel_NoPadding
+from torch_onnx_export_helper import torch_onnx_export
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ class Gpt2HelperFactory:
 
 
 class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
-    """Here we wrap a class for Onnx model conversion for GPT2LMHeadModel with past state and one 
+    """Here we wrap a class for Onnx model conversion for GPT2LMHeadModel with past state and one
     step beam search."""
     def __init__(self, config, batch_size, beam_size):
         super().__init__(config)
@@ -120,7 +121,7 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
 
 
 class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
-    """Here we wrap a class for Onnx model conversion for GPT2LMHeadModel with past state and one 
+    """Here we wrap a class for Onnx model conversion for GPT2LMHeadModel with past state and one
     step beam search with configuration support."""
     def __init__(self,
                  config,
@@ -628,13 +629,12 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
-        torch.onnx.export(
+        torch_onnx_export(
             model,
             args=tuple(input_list),
             f=onnx_model_path,
             input_names=input_names,
             output_names=output_names,
-            example_outputs=outputs,
             dynamic_axes=dynamic_axes,
             opset_version=12,
             do_constant_folding=True,
