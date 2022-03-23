@@ -47,7 +47,7 @@ void multi_tensor_axpby_cuda(int chunk_size,
 class MemoryBuffer {
     public:
         MemoryBuffer(size_t numel, at::Tensor val){
-            data_buffer_ = at::empty({numel}, val.options());
+          data_buffer_ = at::empty({static_cast<int64_t>(numel)}, val.options());
         }
 
         at::Tensor Get(at::Tensor param, size_t start_index) {

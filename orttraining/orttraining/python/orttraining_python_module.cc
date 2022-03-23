@@ -324,7 +324,13 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
     LOGS(default_logger, WARNING) << "Init provider bridge failed.";
   }
 #endif
-  
+
+#ifdef onnxruntime_PYBIND_EXPORT_OPSCHEMA
+  addGlobalSchemaFunctions(m);
+  addOpSchemaSubmodule(m);
+  addOpKernelSubmodule(m);
+#endif
+
   addObjectMethodsForTraining(m, ORTTrainingRegisterExecutionProviders);
 #ifdef ENABLE_EAGER_MODE
   addObjectMethodsForEager(m);
