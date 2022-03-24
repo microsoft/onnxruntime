@@ -206,7 +206,7 @@ def run_pytorch(use_gpu, model_names, model_class, config_modifier, precision, n
 
     for model_name in model_names:
         config = AutoConfig.from_pretrained(model_name, torchscript=torchscript, cache_dir=cache_dir)
-        config_modifier(config)
+        config_modifier.modify(config)
         model = load_pretrained_model(model_name, config=config, cache_dir=cache_dir, custom_model_class=model_class)
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
@@ -248,6 +248,7 @@ def run_pytorch(use_gpu, model_names, model_class, config_modifier, precision, n
                     result = {
                         "engine": "torchscript" if torchscript else "torch",
                         "version": torch.__version__,
+                        "providers": "NA",
                         "device": "cuda" if use_gpu else "cpu",
                         "optimizer": "",
                         "precision": precision,
@@ -323,7 +324,7 @@ def run_tensorflow(use_gpu, model_names, model_class, config_modifier, precision
 
     for model_name in model_names:
         config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
-        config_modifier(config)
+        config_modifier.modify(config)
 
         model = load_pretrained_model(model_name,
                                       config=config,
@@ -381,6 +382,7 @@ def run_tensorflow(use_gpu, model_names, model_class, config_modifier, precision
                     result = {
                         "engine": "tensorflow",
                         "version": tf.__version__,
+                        "providers": "NA",
                         "device": "cuda" if use_gpu else "cpu",
                         "optimizer": "",
                         "precision": precision,

@@ -213,9 +213,6 @@ install(TARGETS onnxruntime
 
 set_target_properties(onnxruntime PROPERTIES FOLDER "ONNXRuntime")
 
-if (WINDOWS_STORE)
-  target_link_options(onnxruntime PRIVATE /DELAYLOAD:api-ms-win-core-libraryloader-l1-2-1.dll)
-endif()
 if (WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
   # Workaround STL bug https://github.com/microsoft/STL/issues/434#issuecomment-921321254
   # Note that the workaround makes std::system_error crash before Windows 10
