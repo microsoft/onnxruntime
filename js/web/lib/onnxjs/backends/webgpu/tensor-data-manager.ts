@@ -12,7 +12,7 @@ export interface TensorDataManager {
   /**
    * upload a CPU tensor to GPU.
    */
-  uploadTensorToGpu(tensor: Tensor, gpuDataType: GpuDataType): GpuData;
+  uploadTensorToGpu(tensor: Tensor, gpuDataType: GpuDataType): Promise<GpuData>;
 
   /**
    * create a new GPU tensor.
@@ -55,7 +55,7 @@ class TensorDataManagerImpl implements TensorDataManager {
     tensorIds.add(tensorId);
   }
 
-  uploadTensorToGpu(tensor: Tensor, gpuDataType: GpuDataType): GpuData {
+  async uploadTensorToGpu(tensor: Tensor, gpuDataType: GpuDataType): Promise<GpuData> {
     const gpuDataId = this.map.get(tensor.dataId);
     if (gpuDataId) {
       const gpuData = this.gpuDataManager.get(gpuDataId);
@@ -65,7 +65,7 @@ class TensorDataManagerImpl implements TensorDataManager {
       return gpuData;
     }
 
-    const gpuData = this.gpuDataManager.create(tensor.type, tensor.dims, gpuDataType);
+    const gpuData = await this.gpuDataManager.upload(tensor.numberData, gpuDataType);
     this.registerIdMapping(tensor.dataId, gpuData.id);
     return gpuData;
   }

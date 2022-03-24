@@ -26,7 +26,7 @@ export class WebGpuInferenceHandler implements InferenceHandler {
     this.dataManager = createTensorDataManager(session.backend.device);
   }
 
-  private uploadGpuData(tensor: Tensor, textureType: GpuDataType): GpuData {
+  private async uploadGpuData(tensor: Tensor, textureType: GpuDataType): Promise<GpuData> {
     if (this.session.isInitializer(tensor.dataId)) {
       return this.session.dataManager.uploadTensorToGpu(tensor, textureType);
     }
@@ -46,7 +46,7 @@ export class WebGpuInferenceHandler implements InferenceHandler {
     // create info for input
     const inputDatas: GpuData[] = [];
     for (let i = 0; i < program.inputTypes.length; ++i) {
-      inputDatas[i] = this.uploadGpuData(inputs[i], program.inputTypes[i]);
+      inputDatas[i] = await this.uploadGpuData(inputs[i], program.inputTypes[i]);
     }
 
     const key = getProgramInfoUniqueKey(program, inputDatas);

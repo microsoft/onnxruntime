@@ -13,7 +13,7 @@ export interface GpuDataManager {
   /**
    * upload data to GPU. if the ID already exists in cache, returns the cached value without uploading anything.
    */
-  upload(id: GpuDataId, data: Tensor.NumberType, gpuDataType: GpuDataType): Promise<GpuData>;
+  upload(data: Tensor.NumberType, gpuDataType: GpuDataType): Promise<GpuData>;
   /**
    * create new data on GPU.
    */
@@ -54,7 +54,7 @@ class GpuDataManagerImpl implements GpuDataManager {
     this.downloadCache = new Map();
   }
 
-  async upload(id: GpuDataId, data: Tensor.NumberType, gpuDataType: GpuDataType): Promise<GpuData> {
+  async upload(data: Tensor.NumberType, gpuDataType: GpuDataType): Promise<GpuData> {
     if (gpuDataType !== GpuDataType.default) {
       throw new Error('we only support default GPU data type now');
     }
@@ -72,8 +72,8 @@ class GpuDataManagerImpl implements GpuDataManager {
     new Uint8Array(arrayBuffer).set(new Uint8Array(srcArrayBuffer, srcOffset, srcLength));
     gpuBuffer.unmap();
 
-    const gpuData = {id, type: GpuDataType.default, buffer: gpuBuffer};
-    this.storageCache.set(id, {gpuData, size: srcLength});
+    const gpuData = {id: Guid.create(), type: GpuDataType.default, buffer: gpuBuffer};
+    this.storageCache.set(gpuData.id, {gpuData, size: srcLength});
     return gpuData;
   }
 
