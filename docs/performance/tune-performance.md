@@ -23,14 +23,12 @@ This document covers basic tools and knobs that can be leveraged to find the bes
 ## Performance Tuning Tools
 
 ### ONNX GO Live Tool
-{: .no_toc }
 
 The [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) is a Python package that automates the process of accelerating models with ONNX Runtime(ORT). It contains two parts: (1) model conversion to ONNX with correctness checking (2) auto performance tuning with ORT. Users can run these two together through a single pipeline or run them independently as needed.
 
 As a quickstart, please see the [notebook tutorials](https://github.com/microsoft/OLive/tree/master/notebook-tutorial) and [command line examples](https://github.com/microsoft/OLive/tree/master/cmd-example) 
 
 ### Profiling and Performance Report
-{: .no_toc }
 
 The onnxruntime_perf_test.exe tool (available from the build drop) can be used to test various knobs. Please find the usage instructions using `onnxruntime_perf_test.exe -h`.
 
@@ -52,25 +50,28 @@ In both cases, you will get a JSON file which contains the detailed performance 
 * Load the generated JSON file
 
 To profile CUDA kernels, please add cupti library to PATH and use onnxruntime binary built from source with `--enable_cuda_profiling`, performance numbers from device will then be attached to those from host. For example:
-```
+
+```json
 {"cat":"Node", "name":"Add_1234", "dur":17, ...}
 {"cat":"Kernel", "name":"ort_add_cuda_kernel", dur:33, ...}
 ```
+
 Here, "Add" operator from host initiated a CUDA kernel on device named "ort_add_cuda_kernel" which lasted for 33 microseconds.
 If an operator called multiple kernels during execution, the performance numbers of those kernels will all be listed following the calling sequence:
-```
+
+```json
 {"cat":"Node", "name":<name of the node>, ...}
 {"cat":"Kernel", "name":<name of the kernel called first>, ...}
 {"cat":"Kernel", "name":<name of the kernel called next>, ...}
 ```
-onnxruntime also offers a [tool](https://github.com/microsoft/onnxruntime/tree/master/tools/perf_view) to render the statistics as a summarized view in the browser.
+
+ONNX Runtime also offers a [tool](https://github.com/microsoft/onnxruntime/tree/master/tools/perf_view) to render the statistics as a summarized view in the browser.
 
 ## Using different Execution Providers
 
 To learn more about different Execution Providers, see [Reference: Execution Providers](../execution-providers).
 
 ### Build the EP
-{: .no_toc }
 
 **Python**
 
@@ -92,9 +93,7 @@ For example:
 
 `CUDA:	     ./build.sh --config RelWithDebInfo --use_cuda  --build_csharp --parallel`
 
-
 ### Register the EP
-{: .no_toc }
 
 In order to use DNNL, CUDA, or TensorRT execution provider, you need to call the C API OrtSessionOptionsAppendExecutionProvider.
 
@@ -130,28 +129,30 @@ so.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
 session = rt.InferenceSession(model, sess_options=so, providers=['CUDAExecutionProvider'])
 ```
 
-## Which Execution Provider will provide the best performance? 
+## Which Execution Provider will provide the best performance?
 
 Performance is dependent on the specific model you're trying to run, the session and run options you've selected, and of course, your specific hardware target. Below you'll find some more information that may be helpful to select the right Execution Provider.
 
 ### CUDA (Default GPU) or CPU?
-{: .no_toc }
+
 The CPU version of ONNX Runtime provides a complete implementation of all operators in the ONNX spec. This ensures that your ONNX-compliant model can execute successfully. In order to keep the binary size small, common data types are supported for the ops. If you are using an uncommon data type that is not supported, you can file an issue and/or contribute a PR (see examples - [PR #2112](https://github.com/microsoft/onnxruntime/pull/2112), [PR #2034](https://github.com/microsoft/onnxruntime/pull/2034), [PR #1565](https://github.com/microsoft/onnxruntime/pull/1565)). Please make sure you provide details on usage justification.
 
 Additionally, not all CUDA kernels are implemented, as these have been prioritized on an as-needed basis. This means that if your model contains operators that do not have a CUDA implementation, it will fall back to CPU. Switching between CPU and GPU can cause significant performance impact. If you require a specific operator that is not currently supported, please consider [contributing](https://github.com/microsoft/onnxruntime/tree/master/CONTRIBUTING.md) and/or [file an issue](https://github.com/microsoft/onnxruntime/issues) clearly describing your use case and share your model if possible.
 
 ### TensorRT or CUDA?
-{: .no_toc }
+
 TensorRT and CUDA are separate execution providers for ONNX Runtime. On the same hardware, TensorRT will generally provide better performance; however, this depends on the specific model and whether the operators in the model can be supported by TensorRT. In cases where TensorRT cannot handle the subgraph(s), it will fall back to CUDA. Note that the TensorRT EP may depend on a different version of CUDA than the CUDA EP.
 
 ### TensorRT/CUDA or DirectML? 
-{: .no_toc }
+
 DirectML is the hardware-accelerated DirectX 12 library for machine learning on Windows and supports all DirectX 12 capable devices (Nvidia, Intel, AMD). This means that if you are targeting Windows GPUs, using the DirectML Execution Provider is likely your best bet. This can be used with both the ONNX Runtime as well as [WinML APIs](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference).
 
-## Tuning performance
+## Tips for tuning performance
+
 Below are some suggestions for things to try for various EPs for tuning performance. 
 
 ### Shared arena based allocator
+
 Memory consumption can be reduced between multiple sessions by configuring the shared arena based allocation. See the `Share allocator(s) between sessions` section in the [C API documentation](../get-started/with-c.md).
 
 ### MiMalloc allocator usage
@@ -164,7 +165,6 @@ Depending on your model and usage it can deliver single- or double-digits improv
 Mimalloc is a submodule in the Onnxruntime source tree. On Windows one can employ `--use_mimalloc` build flag which would build a static version of mimalloc and link it to Onnxruntime. This would redirect Onnxruntime allocators and all new/delete calls to mimalloc.
 Currently, there are no special provisions to employ Mimalloc on Linux. This can be done via LD_PRELAOD mechanism using pre-built binaries that you can build/obtain separately.
 
-
 ### Thread management
 
 * If ORT is built with OpenMP, use the OpenMP env variable to control the number of intra op num threads.
@@ -173,10 +173,11 @@ Currently, there are no special provisions to employ Mimalloc on Linux. This can
 always be set using the ORT APIs.
 
 ### Custom threading callbacks
+
 Occasionally, customers might prefer to use their own fine-tuned threads for multithreading,
 hence ORT offers thread creation and joining callbacks by [C++ API](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_cxx_api.h):
 
-```
+```c++
   std::vector<std::thread> threads;
   void* custom_thread_creation_options = nullptr;
   // initialize custom_thread_creation_options
@@ -212,7 +213,7 @@ hence ORT offers thread creation and joining callbacks by [C++ API](https://gith
 
 For global thread pool:
 
-```
+```c++
   int main() {
     const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
     OrtThreadingOptions* tp_options = nullptr;
@@ -268,10 +269,12 @@ The most widely used environment variables are:
   * Use PASSIVE if your CPU usage already high, and use ACTIVE when you want to trade CPU with latency
 
 ### IOBinding
+
 When working with non-CPU execution providers it's most efficient to have inputs (and/or outputs) arranged on the target device (abstracted by the execution provider used) prior to executing the graph (calling Run). When the input is not copied to the target device, ORT copies it from the CPU as part of the Run() call. Similarly if the output is not pre-allocated on the device, ORT assumes that the output is requested on the CPU and copies it from the device as the last step of the Run() call. This obviously eats into the execution time of the graph misleading users into thinking ORT is slow when the majority of the time is spent in these copies. To address this we've introduced the notion of IOBinding. The key idea is to arrange for inputs to be copied to the device and for outputs to be pre-allocated on the device prior to calling Run(). IOBinding is available in all our language bindings. Following are code snippets in various languages demonstrating the usage of this feature.
 
 * C++
-```
+
+```c++
   Ort::Env env;
   Ort::Session session(env, model_path, session_options);
   Ort::IoBinding io_binding{session};
@@ -286,24 +289,30 @@ When working with non-CPU execution providers it's most efficient to have inputs
   io_binding.BindOutput("output1", output_mem_info);
   session.Run(run_options, io_binding);
 ```
+
 * Python
-https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/api_summary.rst#iobinding
+
+Refer to the [Python API docs](https://onnxruntime.ai/docs/api/python)
 
 * C#
-https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.Tests/OrtIoBindingAllocationTest.cs 
+
+Refer to https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.Tests/OrtIoBindingAllocationTest.cs 
 
 ### Convolution heavy models and the CUDA EP
+
 ORT leverages CuDNN for convolution operations and the first step in this process is to determine which "optimal" convolution algorithm to use while performing the convolution operation for the given input configuration (input shape, filter shape, etc.) in each `Conv` node . This sub-step involves querying CuDNN for a "workspace" memory size and have this allocated so that CuDNN can use this auxiliary memory while determining the "optimal" convolution algorithm to use. By default, ORT clamps the workspace size to 32 MB which may lead to a sub-optimal convolution algorithm getting picked by CuDNN. To allow ORT to allocate the maximum possible workspace as determined by CuDNN, a provider option needs to get set (as shown below). Keep in mind that using this flag may increase the peak memory usage by a factor (sometimes a few GBs) but this does help CuDNN pick the best convolution algorithm for the given input. We have found that this is an important flag to use while using an fp16 model as this allows CuDNN to pick tensor core algorithms for the convolution operations (if the hardware supports tensor core operations). This flag may or may not result in performance gains for other data types (`float` and `double`).
 
 * Python
-```
+
+```python
 providers = [("CUDAExecutionProvider", {"cudnn_conv_use_max_workspace": '1'})]
 sess_options = ort.SessionOptions()
 sess = ort.InferenceSession("my_conv_heavy_fp16_model.onnx",  sess_options = sess_options, providers=providers)
 ```
 
 * C/C++
-```
+
+```c++
 OrtCUDAProviderOptionsV2* cuda_options = nullptr;
 CreateCUDAProviderOptions(&cuda_options);
 
@@ -320,7 +329,8 @@ ReleaseCUDAProviderOptions(cuda_options);
 ```
 
 * C#
-```
+
+```csharp
 var cudaProviderOptions = new OrtCUDAProviderOptions(); // Dispose this finally
 
 var providerOptionsDict = new Dictionary<string, string>();
@@ -454,33 +464,28 @@ Will be supported in future releases
 
 The answers below are troubleshooting suggestions based on common previous user-filed issues and questions. This list is by no means exhaustive and there is a lot of case-by-case fluctuation depending on the model and specific usage scenario. Please use this information to guide your troubleshooting, search through previously filed issues for related topics, and/or file a new issue if your problem is still not resolved.
 
-
 ### Performance Troubleshooting Checklist
-{: .no_toc }
 
 Here is a list of things to check through when assessing performance issues.
+
 * Are you using OpenMP? OpenMP will parallelize some of the code for potential performance improvements. This is not recommended for running on single threads.
 * Have you enabled all [graph optimizations](graph-optimizations.md)? The official published packages do enable all by default, but when building from source, check that these are enabled in your build.
 * Have you searched through prior filed [Github issues](https://github.com/microsoft/onnxruntime/issues) to see if your problem has been discussed previously? Please do this before filing new issues.
 * If using CUDA or TensorRT, do you have the right versions of the dependent libraries installed? 
 
 ### I need help performance tuning for BERT models
-{: .no_toc }
 
 For BERT models, sometimes ONNX Runtime cannot apply the best optimization due to reasons such as framework version updates. We recommend trying out the [BERT optimization tool](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers), which reflects the latest changes in graph pattern matching and model conversions, and a set of [notebooks](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/notebooks) to help get started.
 
 ### Why is the model graph not optimized even with graph_optimization_level set to ORT_ENABLE_ALL?
-{: .no_toc }
 
 The ONNX model from IR_VERSION 4 only treats initializers that appear in graph input as non-constant. This may fail some of the graph optimizations, like const folding, operator fusion and etc. Move initializers out of graph inputs if there is no need to override them, by either re-generating the model with latest exporter/converter or with the tool [remove_initializer_from_input.py](https://github.com/microsoft/onnxruntime/tree/master/tools/python/remove_initializer_from_input.py).
 
 ### Why is my model running slower on GPU than CPU?
-{: .no_toc }
 
 Depending on which execution provider you're using, it may not have full support for all the operators in your model. Fallback to CPU ops can cause hits in performance speed. Moreover even if an op is implemented by the CUDA execution provider, it may not necessarily assign/place the op to the CUDA EP due to performance reasons. To see the placement decided by ORT, turn on verbose logging and look at the console output.
 
 ### My converted Tensorflow model is slow - why?
-{: .no_toc }
 
 NCHW and NHWC are two different memory layout for 4-D tensors.
 
@@ -492,17 +497,18 @@ On some platforms, onnxruntime may exhibit high latency variance during inferenc
 For each task, the constant cost model will calculate a granularity for parallelization among threads, which stays constant to the end of the task execution. This approach can bring imbalanced load sometimes, causing high latency variance.
 To mitigate this, onnxruntime provides a dynamic cost model which could be enbabled by session option:
 
-```
-sess_options.add_session_config_entry('session.dynamic_block_base', '4') #python API
+```python
+sess_options.add_session_config_entry('session.dynamic_block_base', '4')
 ```
 
 Whenever set with a positive value, onnxruntime thread pool will parallelize internal tasks with a decreasing granularity.
 Specifically, assume there is a function expected to run N number of times by the thread pool, with the dynamic cost model enabled, each thread in the pool will claim
 
-```
+```python
 residual_of_N / (dynamic_block_base * num_of_threads)
 ```
 
-whenever it is ready to run. So over a period of time, threads in the pool are likely to be better load balanced, thereby lowering the latency variance.
+Whenever it is ready to run. So over a period of time, threads in the pool are likely to be better load balanced, thereby lowering the latency variance.
+
 Due to the same reason, the dynamic cost model may also better the performance for cases when threads are more likely be preempted.
-Per our tests, by far the best configuration for dynamic_block_base is 4, which lowers the variance while keeping the performance as good. 
+Per our tests, by far the best configuration for dynamic_block_base is 4, which lowers the variance while keeping the performance as good.
