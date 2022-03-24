@@ -216,20 +216,17 @@ bool MatchesOpSinceVersion(const Node& node, std::initializer_list<ONNX_NAMESPAC
 
 bool MatchesOpSetDomain(const Node& node, std::string_view domain) {
   const auto& node_domain = node.Domain();
-  // We do a special check for the ONNX domain, as it has two aliases.
-  return node_domain == domain ||
-         ((node_domain == kOnnxDomain || node_domain == kOnnxDomainAlias) &&
-          (domain == kOnnxDomain || domain == kOnnxDomainAlias));
+  return node_domain == domain;
 }
 
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        std::string_view op_type,
                                        std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
                                        std::string_view domain) {
-  return (node.OpType() == op_type && 
-      // we don't have op schemas in the minimal build so there's no way to check the deprecated flag
+  return (node.OpType() == op_type &&
+  // we don't have op schemas in the minimal build so there's no way to check the deprecated flag
 #if !defined(ORT_MINIMAL_BUILD)
-      !node.Op()->Deprecated() &&
+          !node.Op()->Deprecated() &&
 #endif
           MatchesOpSinceVersion(node, versions) && MatchesOpSetDomain(node, domain));
 }
@@ -506,8 +503,8 @@ bool CanRemoveNode(const Graph& graph, const Node& node, const logging::Logger& 
 }
 
 bool RemoveNode(Graph& graph, Node& node) {
-  //TODO: enable the check back
-  //assert(CanRemoveNode(graph, node, nullptr));
+  // TODO: enable the check back
+  // assert(CanRemoveNode(graph, node, nullptr));
 
   // Note: Node does not produce any graph outputs, and only a single output is used.
 
