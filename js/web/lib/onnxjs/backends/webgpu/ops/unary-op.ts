@@ -107,11 +107,11 @@ export const clipV11 = (handler: WebGpuInferenceHandler, inputs: Tensor[]): Tens
   return clip(handler, [inputs[0]], attributes);
 };
 
-// export const ceil = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-//     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslCeil()), inputs)];
+export const ceil = (handler: WebGpuInferenceHandler, inputs: Tensor[]): Tensor[] =>
+    handler.run(createElementwiseProgramInfoLoader(inputs[0], 'ceil'), inputs);
 
-// export const cos = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-//     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslCos()), inputs)];
+export const cos = (handler: WebGpuInferenceHandler, inputs: Tensor[]): Tensor[] =>
+    handler.run(createElementwiseProgramInfoLoader(inputs[0], 'cos'), inputs);
 
 // export interface EluAttributes extends AttributeWithCacheKey {
 //   readonly alpha: number;
