@@ -1287,9 +1287,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     // Release function state
     compute_info.release_state_func = [](FunctionState state) {
       if (state) {
+        // Serialize and save engine to cache
+        // 
+        // Noete: only save engine to file if engine cache enable is set and engine is being updated due to input shape changed
+        // or engine file is not previously existed
         TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
-        // only save engine to file if engine cache is enabled and engine is being updated due to input shape changed
-        // or engine file is not existed
         if (trt_state->save_engine_to_file) {
           // Serialize engine
           const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
@@ -1310,10 +1312,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           serializedModel->destroy();
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path;
 
-          // Serialize engine profile
-          const std::string profile_cache_path = cache_path + ".profile";
-          SerializeProfile(profile_cache_path, trt_state->input_shape_ranges);
-          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
+          // Serialize engine profile if needed
+          if (!trt_state->input_shape_ranges.empty()) {
+            const std::string profile_cache_path = cache_path + ".profile";
+            SerializeProfile(profile_cache_path, trt_state->input_shape_ranges);
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
+          }
         }
         
         delete static_cast<TensorrtFuncState*>(state);
