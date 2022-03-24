@@ -79,8 +79,8 @@ export const clip = (handler: WebGpuInferenceHandler, inputs: Tensor[], attribut
     handler.run(
         createElementwiseProgramInfoLoader(
             inputs[0], 'clip', `
-    let clip_min_: f32 = f32(${attributes.min});
-    let clip_max_: f32 = f32(${attributes.max});
+    let clip_min_: vec4<f32> = vec4(f32(${attributes.min}));
+    let clip_max_: vec4<f32> = vec4(f32(${attributes.max}));
 
     fn clip(x: vec4<f32>) -> vec4<f32> {
       return clamp(x, clip_min_, clip_max_);
