@@ -107,6 +107,7 @@ struct TensorrtFuncState {
   bool engine_decryption_enable;
   int (*engine_decryption)(const char*, char*, size_t*);
   int (*engine_encryption)(const char*, char*, size_t);
+  bool save_engine_to_file; // Whether to save engine to file. Default is false
 };
 
 // Logical device representation.
