@@ -12,9 +12,9 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 // LayerNorm supports limited data types.
-static std::vector<std::string> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(double)"};
+static constexpr std::array<std::string_view, 3> supported_data_types{"tensor(float16)", "tensor(float)", "tensor(double)"};
 // Default epsilon
-static const float DEFAULT_LAYERNORM_EPSILON = 1e-5f;
+static constexpr float DEFAULT_LAYERNORM_EPSILON = 1e-5f;
 
 static bool IsSupportedDataType(const Node& node) {
   for (const auto& input_arg : node.InputDefs()) {
@@ -66,7 +66,7 @@ X --> ReduceMean --> Sub -->  Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mu
 Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  std::vector<std::reference_wrapper<Node>> nodes_to_remove;
+  InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
   for (auto node_index : node_topology_list) {
     nodes_to_remove.clear();
     auto* p_reduce_mean = graph.GetNode(node_index);
@@ -302,7 +302,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     if (!same_dim)
       continue;
 
-    const std::vector<NodeArg*> layer_norm_input_defs{reduce_mean_node.MutableInputDefs()[0], scale, bias};
+    const std::array layer_norm_input_defs{reduce_mean_node.MutableInputDefs()[0], scale, bias};
     Node& layer_norm_node = graph.AddNode(graph.GenerateNodeName("LayerNormalization"),
                                           "LayerNormalization",
                                           "fused LayerNorm subgraphs ",
@@ -364,7 +364,7 @@ Scale --> Cast ---------------|
 Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  std::vector<std::reference_wrapper<Node>> nodes_to_remove;
+  InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
   for (auto node_index : node_topology_list) {
     nodes_to_remove.clear();
     auto* p_pow = graph.GetNode(node_index);
@@ -447,7 +447,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       continue;
     }
     bool cast_1_present = false;
-    int64_t cast_1_to_attr;
+    int64_t cast_1_to_attr{};
     // check if there are Casts as input to the Pow and Div
     if (p_div_input == p_pow_input) {
       const Node* p_pow_input_node = graph_utils::GetInputNode(pow_node, 0);
@@ -527,7 +527,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       continue;
     }
 
-    std::vector<NodeArg*> layer_norm_input_defs{pow_node.MutableInputDefs()[0]};
+    InlinedVector<NodeArg*> layer_norm_input_defs{pow_node.MutableInputDefs()[0]};
     // There was a cast at input, so make sure the 'to' type for input casts
     // is the same as type for scale input. If not, add a Cast.
     if (allow_precision_change_ && cast_1_present) {
@@ -541,8 +541,8 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
 
         auto* casted_scale = &graph.GetOrCreateNodeArg(node_name, casted_type);
 
-        std::vector<NodeArg*> input_defs = {scale};
-        std::vector<NodeArg*> output_defs = {casted_scale};
+        const std::array input_defs = {scale};
+        const std::array output_defs = {casted_scale};
 
         auto& cast_node = graph.AddNode(node_name, "Cast", "cast scale of layer norm", input_defs, output_defs);
         cast_node.AddAttribute("to", cast_1_to_attr);
@@ -574,7 +574,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // Assign provider to this new node. Provider should be same as the provider for old node.
     layer_norm_node.SetExecutionProviderType(reduce_mean_node.GetExecutionProviderType());
 
-    if (allow_precision_change_ && p_cast_2 != nullptr) {
+    if (allow_precision_change_ && cast_1_present && p_cast_2 != nullptr) {
       ONNX_NAMESPACE::TensorProto_DataType cast_1_type = gsl::narrow_cast<ONNX_NAMESPACE::TensorProto_DataType>(cast_1_to_attr);
       const ONNX_NAMESPACE::TypeProto* casted_type = DataTypeImpl::TensorTypeFromONNXEnum(cast_1_type)->GetTypeProto();
       NodeArg* LN_output = &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("layer_norm_out"), casted_type);

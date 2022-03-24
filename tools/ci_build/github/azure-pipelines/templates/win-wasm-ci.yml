@@ -11,14 +11,23 @@ parameters:
   type: string
   default: ''
 
+- name: PoolName
+  type: string
+  default: 'Win-CPU-2019'
+
+- name: SkipPublish
+  type: boolean
+  default: false
+
 jobs:
 - job: build_WASM
-  pool: 'Win-CPU-2019'
+  pool: ${{ parameters.PoolName }}
 
   variables:
     EnvSetupScript: setup_env.bat
     buildArch: x64
-    CommonBuildArgs: '--config ${{ parameters.BuildConfig }} --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wasm --emsdk_version releases-upstream-823d37b15d1ab61bc9ac0665ceef6951d3703842-64bit ${{ parameters.ExtraBuildArgs }}'
+    CommonBuildArgs: '--config ${{ parameters.BuildConfig }} --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --build_wasm --emsdk_version releases-upstream-2ddc66235392b37e5b33477fd86cbe01a14b8aa2-64bit ${{ parameters.ExtraBuildArgs }}'
+    runCodesignValidationInjection: false
   timeoutInMinutes: 120
   workspace:
     clean: all
@@ -84,17 +93,19 @@ jobs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
       arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)\wasm_simd --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --enable_wasm_simd'
       workingDirectory: '$(Build.BinariesDirectory)'
-  - script: |
-      copy $(Build.BinariesDirectory)\wasm\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
-      copy $(Build.BinariesDirectory)\wasm_threads\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
-      copy $(Build.BinariesDirectory)\wasm_simd_threads\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
-      copy $(Build.BinariesDirectory)\wasm_simd\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
-    displayName: 'Create Artifacts'
-  - task: PublishPipelineArtifact@0
-    displayName: 'Publish Pipeline Artifact'
-    inputs:
-      artifactName: '${{ parameters.BuildConfig }}_wasm'
-      targetPath: '$(Build.ArtifactStagingDirectory)'
+  - ${{ if eq(parameters.SkipPublish, false) }}:
+    - script: |
+        copy $(Build.BinariesDirectory)\wasm\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
+        copy $(Build.BinariesDirectory)\wasm_threads\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
+        copy $(Build.BinariesDirectory)\wasm_simd_threads\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
+        copy $(Build.BinariesDirectory)\wasm_simd\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
+      displayName: 'Create Artifacts'
+  - ${{ if eq(parameters.SkipPublish, false) }}:
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        artifactName: '${{ parameters.BuildConfig }}_wasm'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
     inputs:

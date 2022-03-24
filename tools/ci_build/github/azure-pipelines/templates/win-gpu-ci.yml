@@ -1,0 +1,278 @@
+parameters:
+- name: BuildConfig
+  type: string
+
+- name: EnvSetupScript
+  type: string
+
+- name: job_name_suffix
+  type: string
+
+- name: buildArch
+  type: string
+
+- name: additionalBuildFlags
+  type: string
+
+- name: msbuildPlatform
+  type: string
+
+- name: isX86
+  type: boolean
+  default: false
+  
+- name: isTraining
+  type: boolean
+  default: false
+
+- name: EnablePython
+  type: boolean
+  default: true
+
+- name: RunOnnxRuntimeTests
+  displayName: Run Tests?
+  type: boolean
+  default: true
+
+- name: RunStaticCodeAnalysis
+  displayName: Run Static Code Analysis
+  type: boolean
+  default: true  
+  
+- name: ORT_EP_NAME
+  type: string
+
+- name: DocUpdateNeeded
+  displayName: Run Tests?
+  type: boolean
+  default: false
+
+jobs:
+- job: build_${{ parameters.job_name_suffix }}
+  variables:
+    OrtPackageId: 'Microsoft.ML.OnnxRuntime'
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true    
+    setVcvars: true
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+    DocUpdateNeeded: ${{ parameters.DocUpdateNeeded }}    
+  workspace:
+    clean: all
+  pool: 'Win-GPU-2019'
+  timeoutInMinutes:  300  
+  steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.7'
+      addToPath: true
+      architecture: ${{ parameters.buildArch }}
+
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '12.x'
+      force32bit: ${{ parameters.isX86 }}
+
+  # Our build machine doesn't have java x86
+  - ${{ if eq(parameters.buildArch, 'x64') }}:
+      - task: JavaToolInstaller@0
+        inputs:
+          versionSpec: '11'
+          jdkArchitectureOption: ${{ parameters.buildArch }}
+          jdkSourceOption: 'PreInstalled'
+
+  - task: BatchScript@1
+    displayName: 'setup env'
+    inputs:
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
+      modifyEnvironment: true
+      workingFolder: '$(Build.BinariesDirectory)'
+
+  - script: |
+     set ORT_DOXY_SRC=$(Build.SourcesDirectory)
+     set ORT_DOXY_OUT=$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}
+     mkdir %ORT_DOXY_SRC% 
+     mkdir %ORT_DOXY_OUT%
+     "C:\Program Files\doxygen\bin\doxygen.exe" $(Build.SourcesDirectory)\tools\ci_build\github\Doxyfile_csharp.cfg
+     
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'API Documentation Check and generate'
+
+  - script: |
+     python -m pip install -q setuptools wheel numpy
+    workingDirectory: '$(Build.BinariesDirectory)'
+    displayName: 'Install python modules'
+
+  - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
+      - powershell: |
+         $Env:USE_MSVC_STATIC_RUNTIME=1
+         $Env:ONNX_ML=1
+         $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ parameters.buildArch }}-windows-static"
+         python setup.py bdist_wheel
+         python -m pip uninstall -y onnx -qq
+         Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
+        workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
+        displayName: 'Install ONNX'
+
+      - ${{ if eq(parameters.isTraining, true) }}:
+          - script: |
+             python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\docker\scripts\training\ortmodule\stage1\requirements_torch1.9.0_cu11.1.txt
+             python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\docker\scripts\training\requirements.txt
+            workingDirectory: '$(Build.BinariesDirectory)'
+            displayName: 'Install python modules'
+
+  - task: NuGetToolInstaller@0
+    displayName: Use Nuget 5.7.0
+    inputs:
+      versionSpec: 5.7.0
+
+  - task: NuGetCommand@2
+    displayName: 'NuGet restore'
+    inputs:
+      command: 'restore'
+      feedsToUse: 'config'
+      restoreSolution: '$(Build.SourcesDirectory)\packages.config'
+      nugetConfigPath: '$(Build.SourcesDirectory)\NuGet.config'
+      restoreDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
+
+  - task: PythonScript@0
+    displayName: 'Generate cmake config'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019"  --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}'
+      workingDirectory: '$(Build.BinariesDirectory)'
+
+  - task: VSBuild@1
+    displayName: 'Build'
+    inputs:
+      solution: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\onnxruntime.sln'
+      platform: ${{ parameters.msbuildPlatform }}
+      configuration: ${{ parameters.BuildConfig }}
+      msbuildArgs: -maxcpucount
+      msbuildArchitecture: ${{ parameters.buildArch }}
+      maximumCpuCount: true
+      logProjectEvents: false
+      workingFolder: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
+      createLogFile: true
+
+  - ${{ if eq(parameters.EnablePython, true) }}:
+      - task: PythonScript@0
+        displayName: 'Build wheel'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\setup.py'
+          arguments: 'bdist_wheel'
+          workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
+
+  - task: MSBuild@1
+    displayName: 'Restore NuGet Packages'
+    inputs:
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      platform: 'Any CPU'
+      configuration: '${{ parameters.BuildConfig }}'
+      msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+  - task: MSBuild@1
+    displayName: 'Build C#'    
+    inputs:
+      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
+      configuration: '${{ parameters.BuildConfig }}'
+      platform: 'Any CPU'
+      msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:DefineConstants=USE_${{ parameters.ORT_EP_NAME }}'
+      workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+
+  - ${{ if and(eq(parameters.BuildConfig, 'RelWithDebInfo'), eq(parameters.RunOnnxRuntimeTests, true)) }}:
+      - task: DotNetCoreCLI@2
+        displayName: 'Test C#'
+        inputs:
+          command: test
+          projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj'
+          configuration: '${{ parameters.BuildConfig }}'          
+          arguments: '--configuration ${{ parameters.BuildConfig }} -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:DefineConstants=USE_${{ parameters.ORT_EP_NAME }} --blame'
+          workingDirectory: '$(Build.SourcesDirectory)\csharp'
+
+  - ${{ if eq(parameters.EnablePython, true) }}:
+      - powershell: |
+         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
+         Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
+       
+        workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
+        displayName: 'Install onnxruntime wheel'
+
+  - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
+      - powershell: |
+         python $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019"  --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
+       
+        workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
+        displayName: 'Run tests'
+
+
+  - ${{ if eq(parameters.RunStaticCodeAnalysis, true) }}:
+      - task: DeleteFiles@1
+        displayName: 'Delete binaries files from $(Build.BinariesDirectory)\RelWithDebInfo'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+          Contents: |
+           **/*.obj
+           **/*.pdb
+           **/*.dll
+
+
+      #Manually set msBuildCommandline so that we can also set CAExcludePath
+      #build_dir must be a sub folder of $(Build.SourcesDirectory)
+      #TODO: move this step to a CPU-only machine to save GPU resources.
+      - task: SDLNativeRules@3
+        displayName: 'Run the PREfast SDL Native Rules for MSBuild'
+        inputs:
+          msBuildArchitecture: amd64
+          setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --build_dir $(Build.SourcesDirectory)\b --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }} onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
+          msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.SourcesDirectory)\b\RelWithDebInfo\onnxruntime.sln" /p:RunCodeAnalysis=true /p:platform=${{ parameters.msbuildPlatform }} /p:configuration=RelWithDebInfo /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
+          excludedPaths: '$(Build.SourcesDirectory)\b#$(Build.SourcesDirectory)\cmake#C:\program files (x86)'
+          rulesetName: Custom
+          customRuleset: $(Build.SourcesDirectory)\cmake\Sdl.ruleset
+          publishXML: true
+          
+      - task: SdtReport@2
+        displayName: 'Create Security Analysis Report'
+        inputs:
+          SDLNativeRules: true
+    
+      - task: PublishSecurityAnalysisLogs@3
+        displayName: 'Publish Security Analysis Logs'
+        continueOnError: true
+   
+      - task: PostAnalysis@2
+        displayName: 'Guardian Break v2'
+        inputs:
+          GdnBreakGdnToolSDLNativeRulesSeverity: Warning
+          GdnBreakGdnToolSDLNativeRules: true
+
+
+  - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
+      - task: PublishTestResults@2
+        displayName: 'Publish unit test results'
+        inputs:
+          testResultsFiles: '**/*.results.xml'
+          searchFolder: '$(Build.BinariesDirectory)/${{ parameters.BuildConfig }}'
+          testRunTitle: 'Unit Test Run'
+        condition: succeededOrFailed()
+
+  # if the validation from --gen_doc failed it sets a variable so we can publish the latest version of the docs
+  # as an artifact, allowing a developer to download this and replace the current version instead of having to build
+  # and generate the docs locally themselves. handle each of the two md files separately - simpler than copying
+  # them to another location and publishing from there in a single task.
+  - task: PublishBuildArtifacts@1
+    condition: and(failed(), eq(variables['DocUpdateNeeded'], 'true'))
+    inputs:
+      pathtoPublish: '$(Build.SourcesDirectory)/docs/OperatorKernels.md'
+      artifactName: 'OperatorKernels.md'
+
+  - task: PublishBuildArtifacts@1
+    condition: and(failed(), eq(variables['DocUpdateNeeded'], 'true'))
+    inputs:
+      pathtoPublish: '$(Build.SourcesDirectory)/docs/ContribOperators.md'
+      artifactName: 'ContribOperators.md'
+
+  - template: component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'

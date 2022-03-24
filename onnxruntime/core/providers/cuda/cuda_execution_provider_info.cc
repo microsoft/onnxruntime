@@ -3,6 +3,7 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
+#include "core/providers/cuda/cuda_provider_options.h"
 
 #include "core/common/make_string.h"
 #include "core/common/parse_string.h"
@@ -21,6 +22,7 @@ constexpr const char* kGpuExternalAlloc = "gpu_external_alloc";
 constexpr const char* kGpuExternalFree = "gpu_external_free";
 constexpr const char* kGpuExternalEmptyCache = "gpu_external_empty_cache";
 constexpr const char* kCudnnConvUseMaxWorkspace = "cudnn_conv_use_max_workspace";
+constexpr const char* kEnableCudaGraph = "enable_cuda_graph";
 }  // namespace provider_option_names
 }  // namespace cuda
 
@@ -91,6 +93,7 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
               *ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)
           .AddAssignmentToReference(cuda::provider_option_names::kDoCopyInDefaultStream, info.do_copy_in_default_stream)
           .AddAssignmentToReference(cuda::provider_option_names::kCudnnConvUseMaxWorkspace, info.cudnn_conv_use_max_workspace)
+          .AddAssignmentToReference(cuda::provider_option_names::kEnableCudaGraph, info.enable_cuda_graph)
           .Parse(options));
 
   CUDAExecutionProviderExternalAllocatorInfo alloc_info{alloc, free, empty_cache};
@@ -109,6 +112,20 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecution
        EnumToName(*arena_extend_strategy_mapping, info.arena_extend_strategy)},
       {cuda::provider_option_names::kCudnnConvAlgoSearch,
        EnumToName(*ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)},
+      {cuda::provider_option_names::kDoCopyInDefaultStream, MakeStringWithClassicLocale(info.do_copy_in_default_stream)},
+      {cuda::provider_option_names::kCudnnConvUseMaxWorkspace, MakeStringWithClassicLocale(info.cudnn_conv_use_max_workspace)},
+      {cuda::provider_option_names::kEnableCudaGraph, MakeStringWithClassicLocale(info.enable_cuda_graph)}
+  };
+
+  return options;
+}
+
+ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const OrtCUDAProviderOptionsV2& info) {
+  const ProviderOptions options{
+      {cuda::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
+      {cuda::provider_option_names::kMemLimit, MakeStringWithClassicLocale(info.gpu_mem_limit)},
+      {cuda::provider_option_names::kArenaExtendStrategy, EnumToName(*arena_extend_strategy_mapping, info.arena_extend_strategy)},
+      {cuda::provider_option_names::kCudnnConvAlgoSearch, EnumToName(*ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)},
       {cuda::provider_option_names::kDoCopyInDefaultStream, MakeStringWithClassicLocale(info.do_copy_in_default_stream)},
       {cuda::provider_option_names::kCudnnConvUseMaxWorkspace, MakeStringWithClassicLocale(info.cudnn_conv_use_max_workspace)},
   };

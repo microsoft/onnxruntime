@@ -78,7 +78,7 @@ common::Status ScalerOp<T>::Compute(OpKernelContext* context) const {
   Tensor* Y = context->Output(0, x_shape);
   const T* x_data = X.template Data<T>();
   auto* y_data = Y->template MutableData<float>();
-  const vector<int64_t>& x_dims = x_shape.GetDims();
+  auto x_dims = x_shape.GetDims();
   if (x_dims.empty()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid argument: input has empty dimensions.");
   }

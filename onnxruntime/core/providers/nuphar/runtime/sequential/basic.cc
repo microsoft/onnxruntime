@@ -49,7 +49,7 @@ void BasicExecBlock::Run(KernelComputeCtx* kernel_compute_ctx) {
       int ort_output_idx = p.first;
       size_t tvm_idx = p.second;
       size_t tvm_output_idx = tvm_idx - func_info_->func_input_count;
-      const TensorShape& shape = TensorShape::ReinterpretBaseType(dl_output_shapes[tvm_output_idx]);
+      const TensorShape shape = TensorShape::FromExistingBuffer(dl_output_shapes[tvm_output_idx]);
       MLDataType dtype = output_metas[tvm_output_idx].dtype;
       void* dst = kernel_compute_ctx->OutputData(func_info_, ort_output_idx, shape, dtype);
       void* src = dl_tensors[tvm_idx].data;
@@ -125,7 +125,7 @@ void BasicExecBlock::InitContext(KernelComputeCtx* kernel_compute_ctx) const {
     MLDataType data_type = output_meta.dtype;
     void* output_data = kernel_compute_ctx->OutputData(func_info_,
                                                        ort_output_idx,
-                                                       TensorShape::ReinterpretBaseType(realized_output_shape),
+                                                       TensorShape::FromExistingBuffer(realized_output_shape),
                                                        data_type);
 
     ORT_ENFORCE_DEBUG(kernel_compute_ctx->GetRuntimeHandle()->allow_unaligned_buffers ||
@@ -183,7 +183,7 @@ void BasicExecBlock::UpdateContext(KernelComputeCtx* kernel_compute_ctx) const {
     // update pointer
     dl_tensor.data = kernel_compute_ctx->OutputData(func_info_,
                                                     ort_output_idx,
-                                                    TensorShape::ReinterpretBaseType(dl_output_shapes[tvm_output_idx]),
+                                                    TensorShape::FromExistingBuffer(dl_output_shapes[tvm_output_idx]),
                                                     output_meta.dtype);
     ++tvm_output_idx;
   }

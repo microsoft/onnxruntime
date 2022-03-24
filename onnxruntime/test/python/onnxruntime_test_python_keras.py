@@ -68,7 +68,7 @@ class TestInferenceSessionKeras(unittest.TestCase):
 
         # runtime
         content = converted_model.SerializeToString()
-        rt = onnxrt.InferenceSession(content)
+        rt = onnxrt.InferenceSession(content, providers=onnxrt.get_available_providers())
         input = {rt.get_inputs()[0].name: x}
         actual_rt = rt.run(None, input)
         self.assertEqual(len(actual_rt), 1)

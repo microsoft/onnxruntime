@@ -74,6 +74,14 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
 #endif
         },
         {
+            kTvmExecutionProvider,
+#ifdef USE_TVM
+            true,
+#else
+            false,
+#endif
+        },
+        {
             kVitisAIExecutionProvider,
 #ifdef USE_VITISAI
             true,

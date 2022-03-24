@@ -21,13 +21,15 @@ void DnnlReshape::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   dnnl::memory::dims shape_dims = shape_mem.get_desc().dims();
   int64_t* shape_data = (int64_t*)shape_mem.get_data_handle();
 
-  dnnl::memory::dims reshape_shape(shape_data, shape_data + shape_dims[0]);
   // Reshape helper will take input data_dims shape and the reshape_shape and replace the -1 and 0s with the calculated
   // Output values. The Reshape helper also does a lot of error checking to make sure the Reshape is possible.
-  ReshapeHelper helper(TensorShape(data_dims), reshape_shape, GetAllowZero(node));
+  const auto data_dims_span = gsl::span<const int64_t>(data_dims.data(), data_dims.size());
+  TensorShapeVector reshape_shape(shape_data, shape_data + shape_dims[0]);
+  ReshapeHelper helper(TensorShape(data_dims_span), reshape_shape, GetAllowZero(node));
 
+  dnnl::memory::dims reshape_shape_dims(reshape_shape.cbegin(), reshape_shape.cend());
   //the dnnl::memory::desc.reshape(shape) failed on some models so we instead create a new dnnl:memory::desc
-  dnnl::memory::desc reshaped_md(reshape_shape, node.Input(IN_DATA).Type(), sp.GetDnnlFormat(reshape_shape.size()));
+  dnnl::memory::desc reshaped_md(reshape_shape_dims, node.Input(IN_DATA).Type(), sp.GetDnnlFormat(reshape_shape.size()));
 
   dnnl::memory reshaped_mem = dnnl::memory(reshaped_md, dnnl_engine, nullptr);
   sp.AddReshape(data_mem, reshaped_mem);

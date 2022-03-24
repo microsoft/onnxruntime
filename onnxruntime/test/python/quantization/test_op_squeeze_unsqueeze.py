@@ -10,8 +10,8 @@ import unittest
 import onnx
 import numpy as np
 from onnx import helper, TensorProto
-from onnxruntime.quantization import quantize_static, QuantFormat
-from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count
+from onnxruntime.quantization import quantize_static, QuantFormat, QuantType
+from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
 
 class TestOpSqueezeUnsqueeze(unittest.TestCase):
@@ -26,8 +26,8 @@ class TestOpSqueezeUnsqueeze(unittest.TestCase):
         return dr
 
     def construct_model_conv_squeezes(self, output_model_path,
-                                     conv_input_shape, conv_weight_shape, conv_output_shape,
-                                     opset = 13):
+                                      conv_input_shape, conv_weight_shape, conv_output_shape,
+                                      opset=13):
         #             (input)
         #            /   |     \
         #         Conv1 conv2    conv3
@@ -55,7 +55,6 @@ class TestOpSqueezeUnsqueeze(unittest.TestCase):
         conv3_weight_initializer = onnx.numpy_helper.from_array(conv3_weight_arr, name='conv3_weight')
         conv3_node = onnx.helper.make_node('Conv', ['input', 'conv3_weight'], ['conv3_output'], name='conv3_node')
 
-
         if (opset >= 13):
             squeeze_axes_initializer = onnx.numpy_helper.from_array(np.array([0], dtype=np.int64), name='squeeze_axes')
             squeeze1_node = helper.make_node('Squeeze', ['conv1_output', 'squeeze_axes'], ['squeeze1_output'], name='suqeeze1_node')
@@ -66,9 +65,10 @@ class TestOpSqueezeUnsqueeze(unittest.TestCase):
 
         add1_node = helper.make_node('Add', ['squeeze1_output', 'squeeze2_output'], ['add1_output'], name='add1_node')
         if (opset >= 13):
-            unsqueeze_node = helper.make_node('Unsqueeze', ['add1_output', 'squeeze_axes'], ['unsqueeze_output'], name = 'unsqueeze_node')
+            unsqueeze_node = helper.make_node('Unsqueeze', ['add1_output', 'squeeze_axes'], [
+                                              'unsqueeze_output'], name='unsqueeze_node')
         else:
-            unsqueeze_node = helper.make_node('Unsqueeze', ['add1_output'], ['unsqueeze_output'], name = 'unsqueeze_node', axes=[0])
+            unsqueeze_node = helper.make_node('Unsqueeze', ['add1_output'], ['unsqueeze_output'], name='unsqueeze_node', axes=[0])
 
         output_tensor = helper.make_tensor_value_info('output', TensorProto.FLOAT, conv_output_shape)
         add2_node = helper.make_node('Add', ['unsqueeze_output', 'conv3_output'], ['output'], name='add2_node')
@@ -79,39 +79,54 @@ class TestOpSqueezeUnsqueeze(unittest.TestCase):
         graph = helper.make_graph([conv1_node, conv2_node, conv3_node, squeeze1_node, squeeze2_node, add1_node, unsqueeze_node, add2_node],
                                   'TestOpSuqeezes_test_model', [input_tensor], [output_tensor], initializer=initializers)
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
-        model.ir_version = 7 # use stable onnx ir version
+        model.ir_version = 7  # use stable onnx ir version
         onnx.save(model, output_model_path)
 
-    def run_quantize_squeezes_of_opset(self, opset = 13):
+    def run_quantize_squeezes_of_opset(self, opset=13, activation_type=QuantType.QUInt8, weight_type=QuantType.QUInt8, extra_options={}):
         np.random.seed(1)
 
         model_fp32_path = 'squeezes_opset{}_fp32.onnx'.format(opset)
-        model_uint8_path = 'squeezes_opset{}_uint8.onnx'.format(opset)
-        model_uint8_qdq_path = 'squeezes_opset{}_uint8_qdq.onnx'.format(opset)
-
         self.construct_model_conv_squeezes(model_fp32_path, [1, 2, 26, 42], [3, 2, 3, 3], [1, 3, 24, 40], opset=opset)
+
+        activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
+        activation_type_str = 'u8' if (activation_type == QuantType.QUInt8) else 's8'
+        weight_type_str = 'u8' if (weight_type == QuantType.QUInt8) else 's8'
+        model_uint8_path = 'squeezes_opset{}_{}{}.onnx'.format(opset, activation_type_str, weight_type_str)
+        model_uint8_qdq_path = 'squeezes_opset{}_{}{}_qdq.onnx'.format(opset, activation_type_str, weight_type_str)
 
         # Verify QOperator mode
         data_reader = self.input_feeds(1, {'input': [1, 2, 26, 42]})
-        quantize_static(model_fp32_path, model_uint8_path, data_reader)
+        quantize_static(model_fp32_path, model_uint8_path, data_reader, quant_format=QuantFormat.QOperator,
+                        activation_type=activation_type, weight_type=weight_type, extra_options=extra_options)
 
         # make sure squeezes become xint8 operator, its input name could tell that
         qnode_counts = {'QuantizeLinear': 1, 'DequantizeLinear': 1}
         check_op_type_count(self, model_uint8_path, **qnode_counts)
+        qnode_io_qtypes = {'QuantizeLinear': [['i', 2, activation_proto_qtype], ['o', 0, activation_proto_qtype]]}
+        qnode_io_qtypes.update({'DequantizeLinear': [['i', 2, activation_proto_qtype]]})
+        check_qtype_by_node_type(self, model_uint8_path, qnode_io_qtypes)
         data_reader.rewind()
         check_model_correctness(self, model_fp32_path, model_uint8_path, data_reader.get_next(), rtol=0.01, atol=0.5)
 
         # Verify QDQ mode
         data_reader.rewind()
-        quantize_static(model_fp32_path, model_uint8_qdq_path, data_reader, quant_format=QuantFormat.QDQ)
+        quantize_static(model_fp32_path, model_uint8_qdq_path, data_reader, quant_format=QuantFormat.QDQ,
+                        activation_type=activation_type, weight_type=weight_type, extra_options=extra_options)
         qdqnode_counts = {'Conv': 3, 'QuantizeLinear': 9, 'DequantizeLinear': 12}
         check_op_type_count(self, model_uint8_qdq_path, **qdqnode_counts)
+        qnode_io_qtypes = {'QuantizeLinear': [['i', 2, activation_proto_qtype], ['o', 0, activation_proto_qtype]]}
+        check_qtype_by_node_type(self, model_uint8_qdq_path, qnode_io_qtypes)
         data_reader.rewind()
         check_model_correctness(self, model_fp32_path, model_uint8_qdq_path, data_reader.get_next(), rtol=0.01, atol=0.5)
 
     def test_quantize_squeeze_unsqueeze(self):
         self.run_quantize_squeezes_of_opset(11)
         self.run_quantize_squeezes_of_opset(13)
+
+    def test_quantize_squeeze_unsqueeze_s8s8(self):
+        self.run_quantize_squeezes_of_opset(11, QuantType.QInt8, QuantType.QInt8, extra_options={'ActivationSymmetric': True})
+        self.run_quantize_squeezes_of_opset(13, QuantType.QInt8, QuantType.QInt8, extra_options={'ActivationSymmetric': True})
+
 
 if __name__ == '__main__':
     unittest.main()

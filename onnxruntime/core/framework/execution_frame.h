@@ -178,7 +178,7 @@ class ExecutionFrame final : public IExecutionFrame {
     //   std::unique_lock<std::mutex> lock(mtx_);
     return static_activation_memory_sizes_in_byte_;
   }
-  #endif
+#endif
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExecutionFrame);
@@ -189,6 +189,8 @@ class ExecutionFrame final : public IExecutionFrame {
   void VerifyOutputSizes(int output_index, const Node& node, const TensorShape& output_shape) override;
   Status CopyTensor(const Tensor& src, Tensor& dest) const override;
   const DataTransferManager& GetDataTransferManager() const override;
+
+  common::Status AllocateReusedOrtValueIfNotAllocatedHelper(int reuse_mlvalue_index, const TensorShape* shape);
 
   common::Status AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_value_index, const TensorShape* shape);
 

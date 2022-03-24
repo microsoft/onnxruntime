@@ -4,8 +4,10 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_provider_factory_creator.h"
 #include "core/providers/cuda/cuda_provider_factory.h"
+#include "core/providers/cuda/cuda_provider_options.h"
 
 #include <memory>
+#include <chrono>
 
 #include "gsl/gsl"
 
@@ -130,9 +132,26 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
   }
 
   // Used by slice_concatenate_test.cc and onnxruntime_pybind_state.cc
-  void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) override { CUDA_CALL_THROW(cudaMemcpy(dst, src, count, cudaMemcpyHostToDevice)); }
+
+  void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) override {
+    // cudaMemcpy() operates on the default stream
+    CUDA_CALL_THROW(cudaMemcpy(dst, src, count, cudaMemcpyHostToDevice));
+
+    // To ensure that the copy has completed, invoke a stream sync for the default stream.
+    // https://docs.nvidia.com/cuda/cuda-runtime-api/api-sync-behavior.html#api-sync-behavior__memcpy-sync
+    // For transfers from pageable host memory to device memory, a stream sync is performed before the copy is initiated.
+    // The function will return once the pageable buffer has been copied to the staging memory for DMA transfer
+    // to device memory, but the DMA to final destination may not have completed.
+
+    CUDA_CALL_THROW(cudaStreamSynchronize(0));
+  }
+
   // Used by onnxruntime_pybind_state.cc
-  void cudaMemcpy_DeviceToHost(void* dst, const void* src, size_t count) override { CUDA_CALL_THROW(cudaMemcpy(dst, src, count, cudaMemcpyDeviceToHost)); }
+  void cudaMemcpy_DeviceToHost(void* dst, const void* src, size_t count) override {
+    // https://docs.nvidia.com/cuda/cuda-runtime-api/api-sync-behavior.html#api-sync-behavior__memcpy-sync
+    // For transfers from device to either pageable or pinned host memory, the function returns only once the copy has completed.
+    CUDA_CALL_THROW(cudaMemcpy(dst, src, count, cudaMemcpyDeviceToHost));
+  }
 
   int cudaGetDeviceCount() override {
     int num_devices = 0;
@@ -169,19 +188,62 @@ struct CUDA_Provider : Provider {
   void* GetInfo() override { return &g_info; }
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
-    auto params = reinterpret_cast<const OrtCUDAProviderOptions*>(void_params);
+
+    // Calling a function like ::cudaDeviceSynchronize will cause CUDA to ensure there is binary code for the current GPU architecture
+    // Ideally this will be already part of the binary, but if not, CUDA will JIT it during this call. This can take a very long time
+    // (minutes even), so we want to detect when this happens and let the user know why so they can report it properly or even fix it.
+    // See the linked issue in the warning message for more info
+    {
+      auto start_time = std::chrono::steady_clock::now();
+      // Do a trivial cuda operation that will cause JIT to occur
+      {
+        void** cuda_memory {};
+        ::cudaMalloc(&cuda_memory, 1);
+        ::cudaFree(cuda_memory);
+      }
+      auto end_time = std::chrono::steady_clock::now();
+      auto duration = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time);
+      if (duration > std::chrono::seconds{30}) {
+        LOGS_DEFAULT(WARNING) << "CUDA took " << duration.count() << " seconds to start, please see this issue for how to fix it: https://github.com/microsoft/onnxruntime/issues/10746";
+      }
+    }
+
+    auto params = reinterpret_cast<const OrtCUDAProviderOptionsV2*>(void_params);
 
     CUDAExecutionProviderInfo info{};
     info.device_id = gsl::narrow<OrtDevice::DeviceId>(params->device_id);
     info.gpu_mem_limit = params->gpu_mem_limit;
-    info.arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(params->arena_extend_strategy);
+    info.arena_extend_strategy = params->arena_extend_strategy;
     info.cudnn_conv_algo_search = params->cudnn_conv_algo_search;
-    info.do_copy_in_default_stream = params->do_copy_in_default_stream;
-    info.has_user_compute_stream = params->has_user_compute_stream;
+    info.do_copy_in_default_stream = params->do_copy_in_default_stream != 0;
+    info.has_user_compute_stream = params->has_user_compute_stream != 0;
     info.user_compute_stream = params->user_compute_stream;
     info.default_memory_arena_cfg = params->default_memory_arena_cfg;
+    info.cudnn_conv_use_max_workspace = params->cudnn_conv_use_max_workspace != 0;
+    info.enable_cuda_graph = params->enable_cuda_graph != 0;
 
     return std::make_shared<CUDAProviderFactory>(info);
+  }
+
+  void UpdateProviderOptions(void* provider_options, const ProviderOptions& options) override {
+    auto internal_options = onnxruntime::CUDAExecutionProviderInfo::FromProviderOptions(options);
+    auto& cuda_options = *reinterpret_cast<OrtCUDAProviderOptionsV2*>(provider_options);
+
+    cuda_options.device_id = internal_options.device_id;
+    cuda_options.cudnn_conv_algo_search = internal_options.cudnn_conv_algo_search;
+    cuda_options.gpu_mem_limit = internal_options.gpu_mem_limit;
+    cuda_options.arena_extend_strategy = internal_options.arena_extend_strategy;
+    cuda_options.do_copy_in_default_stream = internal_options.do_copy_in_default_stream;
+    cuda_options.has_user_compute_stream = internal_options.has_user_compute_stream;
+    cuda_options.user_compute_stream = internal_options.user_compute_stream;
+    cuda_options.default_memory_arena_cfg = internal_options.default_memory_arena_cfg;
+    cuda_options.cudnn_conv_use_max_workspace = internal_options.cudnn_conv_use_max_workspace;
+    cuda_options.enable_cuda_graph = internal_options.enable_cuda_graph;
+  }
+
+  ProviderOptions GetProviderOptions(const void* provider_options) override {
+    auto& options = *reinterpret_cast<const OrtCUDAProviderOptionsV2*>(provider_options);
+    return onnxruntime::CUDAExecutionProviderInfo::ToProviderOptions(options);
   }
 
   void Shutdown() override {

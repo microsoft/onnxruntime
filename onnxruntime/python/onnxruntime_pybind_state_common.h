@@ -15,7 +15,7 @@
 #include "core/dlpack/dlpack_converter.h"
 #endif
 
-#include <pybind11/pybind11.h>
+#include "onnxruntime_pybind.h"  // must use this for the include of <pybind11/pybind11.h>
 
 // execution provider factory creator headers
 struct OrtStatus {
@@ -23,22 +23,17 @@ struct OrtStatus {
   char msg[1];  // a null-terminated string
 };
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_TVM BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
+#include "core/providers/tensorrt/tensorrt_provider_options.h"
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 #define BACKEND_PROC "GPU"
 #else
 #define BACKEND_PROC "CPU"
-#endif
-
-#if _OPENMP
-#define BACKEND_OPENMP "-OPENMP"
-#else
-#define BACKEND_OPENMP ""
 #endif
 
 #if USE_DNNL
@@ -75,6 +70,9 @@ struct OrtStatus {
 #elif OPENVINO_CONFIG_MULTI
 #define BACKEND_OPENVINO "-OPENVINO_MULTI"
 
+#elif OPENVINO_CONFIG_AUTO
+#define BACKEND_OPENVINO "-OPENVINO_AUTO"
+
 #elif OPENVINO_CONFIG_HETERO
 #define BACKEND_OPENVINO "-OPENVINO_HETERO"
 #endif
@@ -86,6 +84,12 @@ struct OrtStatus {
 #define BACKEND_NUPHAR "-NUPHAR"
 #else
 #define BACKEND_NUPHAR ""
+#endif
+
+#ifdef USE_TVM
+#define BACKEND_TVM "-TVM"
+#else
+#define BACKEND_TVM ""
 #endif
 
 #if USE_VITISAI
@@ -152,6 +156,9 @@ extern std::string nuphar_settings;
 }
 }  // namespace onnxruntime
 #endif
+#ifdef USE_TVM
+#include "core/providers/tvm/tvm_ep_options.h"
+#endif
 #ifdef USE_VITISAI
 #include "core/providers/vitisai/vitisai_provider_factory.h"
 #endif
@@ -199,12 +206,12 @@ extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 #include "core/providers/shared_library/provider_host_api.h"
 
 namespace onnxruntime {
-#ifndef SHARED_PROVIDER
+#if !defined(SHARED_PROVIDER) && !defined(DISABLE_SPARSE_TENSORS)
 class SparseTensor;
 #endif
 namespace python {
 
-using ExecutionProviderRegistrationFn = std::function<void(InferenceSession*, 
+using ExecutionProviderRegistrationFn = std::function<void(InferenceSession*,
                                                            const std::vector<std::string>&,
                                                            const ProviderOptionsMap&)>;
 
@@ -300,15 +307,23 @@ inline const PySessionOptions& GetDefaultCPUSessionOptions() {
 }
 
 inline AllocatorPtr& GetAllocator() {
-  static AllocatorPtr alloc = std::make_shared<TAllocator>();
+  static AllocatorPtr alloc = std::make_shared<CPUAllocator>();
   return alloc;
 }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 // This class exposes SparseTensor to Python
 // The class serves two major purposes
 // - to be able to map numpy arrays memory and use it on input, this serves as a reference holder
-//   so incoming arrays do not disappear
-// - to be able to expose SparseTensor returned from run method
+//   so incoming arrays do not disappear. To this end we create an instance of SparseTensor
+//   on top of the user provided numpy arrays and create a duplicate of py::objects for those
+//   numpy array for ref-counting purposes and store it here.
+//
+// - to be able to expose SparseTensor returned from run method. We get an OrtValue from run()
+//   and store a copy of it in ort_value_. The OrtValue shared_ptr ref-counting will make sure
+//   the memory stays around.
+//
+//   An object of the class must never have both instance_ and ort_value_ have data at the same time.
 class PySparseTensor {
  public:
   /// <summary>
@@ -320,8 +335,7 @@ class PySparseTensor {
   /// <param name="storage">a collection reference guards</param>
   PySparseTensor(std::unique_ptr<SparseTensor>&& instance,
                  std::vector<pybind11::object>&& storage)
-      : backing_storage_(std::move(storage)), ort_value_() {
-    Init(std::move(instance));
+      : instance_(std::move(instance)), backing_storage_(std::move(storage)), ort_value_() {
   }
 
   /// <summary>
@@ -329,12 +343,16 @@ class PySparseTensor {
   /// </summary>
   /// <param name="instance"></param>
   explicit PySparseTensor(std::unique_ptr<SparseTensor>&& instance)
-      : backing_storage_(), ort_value_() {
-    Init(std::move(instance));
+      : instance_(std::move(instance)), backing_storage_(), ort_value_() {
   }
 
+  /// <summary>
+  /// Edge case when we can not copy memory on GPU and therefore
+  /// can not own it.
+  /// </summary>
+  /// <param name="ort_value"></param>
   explicit PySparseTensor(const OrtValue& ort_value)
-      : backing_storage_(), ort_value_(ort_value) {}
+      : instance_(), backing_storage_(), ort_value_(ort_value) {}
 
   PySparseTensor(const PySparseTensor&) = delete;
   PySparseTensor& operator=(const PySparseTensor&) = delete;
@@ -344,30 +362,43 @@ class PySparseTensor {
   }
 
   PySparseTensor& operator=(PySparseTensor&& o) noexcept {
-    ort_value_ = std::move(o.ort_value_);
+    instance_ = std::move(o.instance_);
     backing_storage_ = std::move(o.backing_storage_);
+    ort_value_ = std::move(o.ort_value_);
     return *this;
   }
 
   ~PySparseTensor();
 
   const SparseTensor& Instance() const {
+    if (instance_) {
+      return *instance_;
+    }
     return ort_value_.Get<SparseTensor>();
   }
 
-  std::unique_ptr<OrtValue> AsOrtValue() const {
-    return std::make_unique<OrtValue>(ort_value_);
-  }
+  std::unique_ptr<OrtValue> AsOrtValue() const;
 
  private:
-  void Init(std::unique_ptr<SparseTensor>&& instance);
+  // instance_ represents data that comes as input. Thus we depend on numpy
+  //arrays that own the underlying memory to stay around. We store copies
+  //of py::objects for those arrays in backing_storage_ as an extra ref-count.
 
-  // These will hold references to underpinning python array objects
-  // when they serve as a backing storage for a feeding SparseTensor
+  // If we have and are able to copy from the OrtValue returned by run() to CPU, then this owns the data
+  // and backing_storage_ is empty.
+  std::unique_ptr<SparseTensor> instance_;
   std::vector<pybind11::object> backing_storage_;
+
+  // We create a copy of OrtValue when we obtain it from a run method.
   OrtValue ort_value_;
 };
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+//You can attempt to make 'onnxruntime::python::SessionObjectInitializer::Get' constexpr
+#pragma warning(disable : 26497)
+#endif
 class SessionObjectInitializer {
  public:
   typedef const PySessionOptions& Arg1;
@@ -388,7 +419,9 @@ class SessionObjectInitializer {
     return SessionObjectInitializer();
   }
 };
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 Environment& GetEnv();
 
 // Initialize an InferenceSession.
@@ -442,12 +475,18 @@ OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor);
 }  // namespace python
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* params);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptionsV2* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(const OrtMIGraphXProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
+#ifdef USE_TVM
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const tvm::TvmEPOptions& info);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const char* params);
+#endif
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id,
                                                                                   const char* export_runtime_module,
                                                                                   const char* load_runtime_module);
@@ -459,5 +498,5 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CoreML(uint32_t flags);
 
-constexpr const char* kDefaultExecutionProviderEntry = "GetProvider"; 
+constexpr const char* kDefaultExecutionProviderEntry = "GetProvider";
 }  // namespace onnxruntime

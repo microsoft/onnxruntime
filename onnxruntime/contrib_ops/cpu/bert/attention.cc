@@ -196,7 +196,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mask_index' with 3D data shall have shape batch_size x sequence_length x (past_sequence_length + sequence_length)");
       }
     } else if (mask_dims.size() == 4) {
-      if (static_cast<int>(mask_dims[0]) != batch_size || mask_dims[1] != 1 || mask_dims[2] != mask_dims[3] || mask_dims[2] < past_sequence_length + sequence_length) {
+      if (static_cast<int>(mask_dims[0]) != batch_size || mask_dims[1] != 1 || mask_dims[2] != mask_dims[3] || mask_dims[2] < static_cast<int64_t>(past_sequence_length) + sequence_length) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mask_index' with 4D data shall have shape batch_size x 1 x max_sequence_length x max_sequence_length)");
       }
       if (is_unidirectional_ == true) {
@@ -423,7 +423,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                                   past,
                                   extra_add_qk));
 
-  const auto& shape = input->Shape().GetDims();
+  const auto shape = input->Shape().GetDims();
   const int batch_size = static_cast<int>(shape[0]);
   const int sequence_length = static_cast<int>(shape[1]);
   const int input_hidden_size = static_cast<int>(shape[2]);

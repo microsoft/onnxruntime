@@ -55,9 +55,6 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorKernel(
     bool canAliasFirstInput,
     bool supportsGraph,
     const uint32_t* requiredInputCountForGraph,
-    bool supportedWith64BitTensorsVia32BitStrides,
-    bool supportedWith64BitTensorsVia32BitStridesFromAnyEp,
-    bool prefer64BitTensorsDirectly,
     _In_reads_(constantCpuInputCount) const uint32_t* requiredConstantCpuInputs,
     uint32_t constantCpuInputCount) const noexcept try {
 #ifdef LAYERING_DONE
@@ -80,9 +77,6 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorKernel(
       canAliasFirstInput,
       supportsGraph,
       requiredInputCountForGraph,
-      supportedWith64BitTensorsVia32BitStrides,
-      supportedWith64BitTensorsVia32BitStridesFromAnyEp,
-      prefer64BitTensorsDirectly,
       requiredConstantCpuInputs,
       constantCpuInputCount);
 }

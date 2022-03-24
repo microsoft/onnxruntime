@@ -25,7 +25,7 @@ struct ExtractScalarAsFloatDispatchTarget {
   }
 };
 
-optional<float> GetScalarConstantInitializer(const Graph& graph, const NodeArg& node_arg) {
+std::optional<float> GetScalarConstantInitializer(const Graph& graph, const NodeArg& node_arg) {
   const auto* initializer = graph_utils::GetConstantInitializer(graph, node_arg.Name());
 
   if (!initializer) {
@@ -54,9 +54,9 @@ optional<float> GetScalarConstantInitializer(const Graph& graph, const NodeArg& 
 }
 
 // gets the scale value and its input index if node is a fusable scale (Mul or Div by scalar constant)
-optional<std::pair<float, int>> GetScaleFromNode(
+std::optional<std::pair<float, int>> GetScaleFromNode(
     const Graph& graph, const Node& scale_node,
-    const std::unordered_set<std::string>& excluded_initializer_names) {
+    const InlinedHashSet<std::string>& excluded_initializer_names) {
   const auto is_excluded_initializer =
       [&excluded_initializer_names](const NodeArg& node_arg) {
         return excluded_initializer_names.find(node_arg.Name()) != excluded_initializer_names.end();
@@ -67,14 +67,14 @@ optional<std::pair<float, int>> GetScaleFromNode(
     const auto div_inputs = scale_node.InputDefs();
     ORT_ENFORCE(div_inputs.size() == 2);
 
-    const int scale_reciprocal_arg_index = 1;
+    constexpr int scale_reciprocal_arg_index = 1;
     const NodeArg& scale_reciprocal_node_arg = *div_inputs[scale_reciprocal_arg_index];
 
-    if (is_excluded_initializer(scale_reciprocal_node_arg)) return {};
+    if (is_excluded_initializer(scale_reciprocal_node_arg)) return std::nullopt;
 
     const auto divisor = GetScalarConstantInitializer(graph, scale_reciprocal_node_arg);
 
-    if (!divisor.has_value()) return {};
+    if (!divisor.has_value()) return std::nullopt;
 
     return {std::make_pair(1.0f / *divisor, scale_reciprocal_arg_index)};
   }
@@ -96,10 +96,10 @@ optional<std::pair<float, int>> GetScaleFromNode(
       return {std::make_pair(*multiplier, scale_arg_index)};
     }
 
-    return {};
+    return std::nullopt;
   }
 
-  return {};
+  return std::nullopt;
 }
 
 struct ScaleMergeInfo {
@@ -118,7 +118,7 @@ struct ScaleMergeInfo {
 
 std::vector<ScaleMergeInfo> GetInputNodeMerges(
     Graph& graph, Node& node,
-    const std::unordered_set<std::string>& excluded_initializer_names) {
+    const InlinedHashSet<std::string>& excluded_initializer_names) {
   std::vector<ScaleMergeInfo> input_node_merges{};
   for (auto input_edge = node.InputEdgesBegin(); input_edge != node.InputEdgesEnd(); ++input_edge) {
     const Node& input_node = input_edge->GetNode();
@@ -142,7 +142,7 @@ std::vector<ScaleMergeInfo> GetInputNodeMerges(
 
 std::vector<ScaleMergeInfo> GetOutputNodeMerges(
     Graph& graph, Node& node,
-    const std::unordered_set<std::string>& excluded_initializer_names) {
+    const InlinedHashSet<std::string>& excluded_initializer_names) {
   if (!optimizer_utils::CheckOutputEdges(graph, node, 1)) {
     return {};
   }
@@ -156,7 +156,7 @@ std::vector<ScaleMergeInfo> GetOutputNodeMerges(
     if (!scale_and_index.has_value()) continue;
 
     ORT_ENFORCE(output_node.OutputDefs().size() == 1);
-    const int scaled_index = 0;
+    constexpr int scaled_index = 0;
 
     output_node_merges.push_back(
         {output_edge,
@@ -169,7 +169,7 @@ std::vector<ScaleMergeInfo> GetOutputNodeMerges(
 
 bool IsMatMulInputTypeSupported(const Node& node) {
   // if no matching key is present, any data type is allowed
-  static const std::map<std::string, std::vector<std::string>> k_supported_data_types{
+  static const InlinedHashMap<std::string_view, InlinedVector<std::string_view, 4>> k_supported_data_types{
       {kCudaExecutionProvider, {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}},
       {kRocmExecutionProvider, {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}},
       {kCpuExecutionProvider, {"tensor(float)"}},
@@ -181,8 +181,8 @@ bool IsMatMulInputTypeSupported(const Node& node) {
 
 Status ProcessNode(
     Graph& graph, Node& node, bool& modified,
-    const std::unordered_set<std::string>& excluded_initializer_names,
-    const std::unordered_set<std::string>& compatible_execution_providers) {
+    const InlinedHashSet<std::string>& excluded_initializer_names,
+    const InlinedHashSet<std::string_view>& compatible_execution_providers) {
   if (!graph_utils::IsSupportedProvider(node, compatible_execution_providers)) {
     return Status::OK();
   }
@@ -225,14 +225,14 @@ Status ProcessNode(
     return *graph.GetNode(merge.node_to_merge_edge->GetNode().Index());
   };
 
-  std::vector<NodeArg*> fused_node_inputs = node.MutableInputDefs();
+  auto fused_node_inputs = node.MutableInputDefs();
   for (const auto& input_node_merge : input_node_merges) {
     Node& input_node = get_mutable_node_to_merge(input_node_merge);
     fused_node_inputs[input_node_merge.fused_node_def_index] =
         input_node.MutableInputDefs()[input_node_merge.node_to_merge_def_index];
   }
 
-  std::vector<NodeArg*> fused_node_outputs = node.MutableOutputDefs();
+  auto fused_node_outputs = node.MutableOutputDefs();
   for (const auto& output_node_merge : output_node_merges) {
     Node& output_node = get_mutable_node_to_merge(output_node_merge);
     fused_node_outputs[output_node_merge.fused_node_def_index] =
@@ -251,7 +251,7 @@ Status ProcessNode(
   matmul_scale_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
   {
-    std::vector<std::reference_wrapper<Node>> nodes_to_remove{node};
+    InlinedVector<std::reference_wrapper<Node>> nodes_to_remove{node};
 
     for (const auto& input_node_merge : input_node_merges) {
       // remove merged input node's output edge

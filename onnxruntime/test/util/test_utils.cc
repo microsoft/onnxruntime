@@ -18,7 +18,8 @@ namespace onnxruntime {
 namespace test {
 static void VerifyOutputs(const std::vector<std::string>& output_names,
                           const std::vector<OrtValue>& expected_fetches,
-                          const std::vector<OrtValue>& fetches) {
+                          const std::vector<OrtValue>& fetches,
+                          const EPVerificationParams& params) {
   ASSERT_EQ(expected_fetches.size(), fetches.size());
 
   for (size_t i = 0, end = expected_fetches.size(); i < end; ++i) {
@@ -35,11 +36,13 @@ static void VerifyOutputs(const std::vector<std::string>& output_names,
         EXPECT_THAT(ltensor.DataAsSpan<int64_t>(), ::testing::ContainerEq(rtensor.DataAsSpan<int64_t>()))
             << " mismatch for " << output_names[i];
         break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+        EXPECT_THAT(ltensor.DataAsSpan<uint8_t>(), ::testing::ContainerEq(rtensor.DataAsSpan<uint8_t>()))
+            << " mismatch for " << output_names[i];
+        break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
-        const float abs_err = float(1e-5);
-
         EXPECT_THAT(ltensor.DataAsSpan<float>(),
-                    ::testing::Pointwise(::testing::FloatNear(abs_err), rtensor.DataAsSpan<float>()));
+                    ::testing::Pointwise(::testing::FloatNear(params.fp32_abs_err), rtensor.DataAsSpan<float>()));
         break;
       }
       default:
@@ -68,7 +71,18 @@ int CountAssignedNodes(const Graph& current_graph, const std::string& ep_type) {
 
 void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
                                std::unique_ptr<IExecutionProvider> execution_provider,
-                               const NameMLValMap& feeds) {
+                               const NameMLValMap& feeds,
+                               const EPVerificationParams& params) {
+  // read raw data from model provided by the model_path
+  std::ifstream stream(model_path, std::ios::in | std::ios::binary);
+  std::string model_data((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+  RunAndVerifyOutputsWithEP(model_data, log_id, std::move(execution_provider), feeds, params);
+}
+
+void RunAndVerifyOutputsWithEP(const std::string& model_data, const char* log_id,
+                               std::unique_ptr<IExecutionProvider> execution_provider,
+                               const NameMLValMap& feeds,
+                               const EPVerificationParams& params) {
   SessionOptions so;
   so.session_logid = log_id;
   RunOptions run_options;
@@ -78,7 +92,7 @@ void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
   // get expected output from CPU EP
   //
   InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(model_path));
+  ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
   ASSERT_STATUS_OK(session_object.Initialize());
 
   const auto& graph = session_object.GetGraph();
@@ -103,18 +117,26 @@ void RunAndVerifyOutputsWithEP(const ORTCHAR_T* model_path, const char* log_id,
   //
   InferenceSessionWrapper session_object2{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object2.RegisterExecutionProvider(std::move(execution_provider)));
-  ASSERT_STATUS_OK(session_object2.Load(model_path));
+  ASSERT_STATUS_OK(session_object2.Load(model_data.data(), static_cast<int>(model_data.size())));
   ASSERT_STATUS_OK(session_object2.Initialize());
 
   // make sure that some nodes are assigned to the EP, otherwise this test is pointless...
   const auto& graph2 = session_object2.GetGraph();
   auto ep_nodes = CountAssignedNodes(graph2, provider_type);
-  ASSERT_GT(ep_nodes, 0) << "No nodes were assigned to " << provider_type << " for " << model_path;
+  if (params.ep_node_assignment == ExpectedEPNodeAssignment::All) {
+    // Verify the entire graph is assigned to the EP
+    ASSERT_EQ(ep_nodes, graph2.NumberOfNodes()) << "Not all nodes were assigned to " << provider_type;
+  } else if (params.ep_node_assignment == ExpectedEPNodeAssignment::None) {
+    // Check if expected failure path is correctly handled by ep. (only used in NNAPI EP QDQ model test case for now)
+    ASSERT_EQ(ep_nodes, 0) << "No nodes are supposed to be assigned to " << provider_type;
+  } else {
+    ASSERT_GT(ep_nodes, 0) << "No nodes were assigned to " << provider_type;
+  }
 
   // Run with EP and verify the result
   std::vector<OrtValue> fetches;
   ASSERT_STATUS_OK(session_object2.Run(run_options, feeds, output_names, &fetches));
-  VerifyOutputs(output_names, expected_fetches, fetches);
+  VerifyOutputs(output_names, expected_fetches, fetches, params);
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -178,7 +200,7 @@ void SparseIndicesChecker(const ONNX_NAMESPACE::TensorProto& indices_proto, gsl:
   ASSERT_THAT(ind_span, testing::ContainerEq(expected_indicies));
 }
 
-#endif // DISABLE_SPARSE_TENSORS
+#endif  // DISABLE_SPARSE_TENSORS
 
 }  // namespace test
 }  // namespace onnxruntime

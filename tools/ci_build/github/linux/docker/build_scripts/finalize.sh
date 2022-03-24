@@ -28,11 +28,10 @@ for PREFIX in $(find /opt/_internal/ -mindepth 1 -maxdepth 1 \( -name 'cpython*'
 	ABI_TAG=$(${PREFIX}/bin/python ${MY_DIR}/python-tag-abi-tag.py)
 	ln -s ${PREFIX} /opt/python/${ABI_TAG}
 	# Make versioned python commands available directly in environment.
-	PYVERS=$(${PREFIX}/bin/python -c "import sys; print('.'.join(map(str, sys.version_info[:2])))")
 	if [[ "${PREFIX}" == *"/pypy"* ]]; then
-		ln -s ${PREFIX}/bin/python /usr/local/bin/pypy${PYVERS}
+		ln -s ${PREFIX}/bin/python /usr/local/bin/pypy${PY_VER}
 	else
-		ln -s ${PREFIX}/bin/python /usr/local/bin/python${PYVERS}
+		ln -s ${PREFIX}/bin/python /usr/local/bin/python${PY_VER}
 	fi
 done
 

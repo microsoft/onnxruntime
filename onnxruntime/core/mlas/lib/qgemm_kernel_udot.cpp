@@ -6,11 +6,11 @@ Licensed under the MIT License.
 
 Module Name:
 
-    qgemm_kernel_default.cpp
+    qgemm_kernel_udot.cpp
 
 Abstract:
 
-    This module implements default QGEMM kernel.
+    This module implements udot QGEMM kernel.
 
 --*/
 
@@ -44,21 +44,22 @@ struct MLAS_GEMM_U8X8_KERNEL_UDOT
 {
     typedef uint8_t PackedAType;
     typedef uint8_t PackedBType;
+    typedef uint8_t OffsetAType;
     typedef uint8_t OffsetBType;
 
     static constexpr size_t PackedK = 8;
-    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{ 24, 128, 256 };
-    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{ 24, 128, 384 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES Strides{ 24, 128, 256 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{ 24, 128, 384 };
 };
 
 constexpr size_t MLAS_GEMM_U8X8_KERNEL_UDOT::PackedK;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_UDOT::Strides;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_UDOT::PackedStrides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_UDOT::Strides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8X8_KERNEL_UDOT::PackedStrides;
 
 template<>
 MLAS_FORCEINLINE
 int32_t
-MlasGemmU8X8FixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_UDOT>(
+MlasGemmQuantFixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_UDOT>(
     int32_t ZeroPointB,
     bool BIsSigned
     )
@@ -72,15 +73,17 @@ MlasGemmU8X8FixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_UDOT>(
 
 template<>
 void
-MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>(
+MlasGemmQuantCopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>(
     MLAS_GEMM_U8X8_KERNEL_UDOT::PackedAType* D,
     const uint8_t* A,
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumBuffer
+    int32_t* RowSumBuffer,
+    bool AIsSigned
     )
 {
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     uint8_t PaddedMatrixAData[16];
 
     //
@@ -550,7 +553,7 @@ MlasGemmU8X8CopyPackBProcessUdot(
 
 template<>
 void
-MlasGemmU8X8CopyPackB<MLAS_GEMM_U8X8_KERNEL_UDOT>(
+MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_UDOT>(
     MLAS_GEMM_U8X8_KERNEL_UDOT::PackedBType* D,
     const uint8_t* B,
     size_t ldb,
@@ -732,7 +735,7 @@ MlasGemmU8X8CopyPackB<MLAS_GEMM_U8X8_KERNEL_UDOT>(
 template<>
 MLAS_FORCEINLINE
 size_t
-MlasGemmU8X8Kernel<MLAS_GEMM_U8X8_KERNEL_UDOT>(
+MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_UDOT>(
     const MLAS_GEMM_U8X8_KERNEL_UDOT::PackedAType* A,
     const MLAS_GEMM_U8X8_KERNEL_UDOT::PackedBType* B,
     int32_t* C,
@@ -750,10 +753,10 @@ MlasGemmU8X8Kernel<MLAS_GEMM_U8X8_KERNEL_UDOT>(
         RowSumBuffer, ColumnSumBuffer, ZeroPointB, ZeroMode);
 }
 
-const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchUdot = {
-    MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_UDOT>,
-    MlasGemmU8X8PackedOperation<MLAS_GEMM_U8X8_KERNEL_UDOT>,
-    MlasGemmU8X8CopyPackB<MLAS_GEMM_U8X8_KERNEL_UDOT>,
+const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUdot = {
+    MlasGemmQuantOperation<MLAS_GEMM_U8X8_KERNEL_UDOT>,
+    MlasGemmQuantPackedOperation<MLAS_GEMM_U8X8_KERNEL_UDOT>,
+    MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_UDOT>,
     MLAS_GEMM_U8X8_KERNEL_UDOT::PackedK,
     MLAS_GEMM_U8X8_KERNEL_UDOT::PackedStrides.K,
 };

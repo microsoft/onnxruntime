@@ -13,7 +13,7 @@ namespace utils {
 namespace test {
 
 TEST(EndianTest, EndiannessDetection) {
-  const uint16_t test_value = 0x1234;
+  constexpr uint16_t test_value = 0x1234;
   const unsigned char* test_value_first_byte = reinterpret_cast<const unsigned char*>(&test_value);
   if constexpr (endian::native == endian::little) {
     EXPECT_EQ(*test_value_first_byte, 0x34);

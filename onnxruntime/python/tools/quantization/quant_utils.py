@@ -168,16 +168,23 @@ def quantize_data(data, qType, symmetric, reduce_range=False):
     - *S*: scale
     - *z*: zero point
     '''
-    rmin = min(data)
-    rmax = max(data)
-    qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range)
 
-    zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric)
+    rmin = 0
+    rmax = 0
+    zero_point = 0
+    scale = 1.0
+    if len(data):
+        rmin = min(data)
+        rmax = max(data)
+        qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range, symmetric=symmetric)
+
+        zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric)
+
     quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
 
     return rmin, rmax, zero_point, scale, quantized_data
 
-def get_qmin_qmax_for_qType(qType, reduce_range=False):
+def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):
     '''
     Return qmin and qmax, the minimum and maximum value representable by the given qType
     :parameter qType: onnx.onnx_pb.TensorProto.UINT8 or onnx.onnx_pb.TensorProto.UINT8
@@ -186,18 +193,21 @@ def get_qmin_qmax_for_qType(qType, reduce_range=False):
     if qType == onnx_proto.TensorProto.UINT8:
         (qmin, qmax) = (0,127) if reduce_range else (0,255)
     elif qType == onnx_proto.TensorProto.INT8:
-        (qmin, qmax) = (-64,64) if reduce_range else (-127,127)
+        if symmetric:
+            (qmin, qmax) = (-64,64) if reduce_range else (-127,127)
+        else:
+            (qmin, qmax) = (-64,64) if reduce_range else (-128,127)
     else:
         raise ValueError("Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType))
     return qmin, qmax
 
-def get_qrange_for_qType(qType, reduce_range=False):
+def get_qrange_for_qType(qType, reduce_range=False, symmetric=False):
     '''
     Helper function to get the quantization range for a type.
         parameter qType: quantization type.
         return: quantization range.
     '''
-    qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range)
+    qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range, symmetric=symmetric)
     return  qmax - qmin
 
 class QuantizedInitializer:
@@ -333,6 +343,21 @@ def generate_identified_filename(filename: Path, identifier: str) -> Path:
     '''
     return filename.parent.joinpath(filename.stem + identifier).with_suffix(filename.suffix)
 
+def apply_plot(hist, hist_edges):
+    import sys
+    import numpy
+    import matplotlib.pyplot as plt
+    numpy.set_printoptions(threshold=sys.maxsize)
+    print("Histogram:")
+    print(hist)
+    print("Histogram Edges:")
+    print(hist_edges)
+    plt.stairs(hist, hist_edges, fill=True)
+    plt.xlabel('Tensor value')
+    plt.ylabel('Counts')
+    plt.title('Tensor value V.S. Counts')
+    plt.show()
+
 def write_calibration_table(calibration_cache):
     '''
     Helper function to write calibration table to files.   
@@ -368,7 +393,7 @@ def write_calibration_table(calibration_cache):
     TrtTable.TrtTableStartDictVector(builder, len(key_value_list))
     for key_value in key_value_list:
         builder.PrependUOffsetTRelative(key_value)
-    main_dict = builder.EndVector(len(key_value_list))
+    main_dict = builder.EndVector()
 
     TrtTable.TrtTableStart(builder)
     TrtTable.TrtTableAddDict(builder, main_dict)

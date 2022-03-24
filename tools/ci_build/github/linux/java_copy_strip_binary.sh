@@ -9,7 +9,7 @@ a) ARTIFACT_NAME=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
 l) LIB_NAME=${OPTARG};;
 n) NATIVE_LIB_NAME=${OPTARG};;
-h) ARCH=${OPTARG};;
+h) ARCH=${OPTARG};; #must match the JAVA_OS_ARCH variable in onnxruntime_java.cmake
 v) VERSION_NUMBER=${OPTARG};;
 esac
 done
@@ -19,6 +19,9 @@ EXIT_CODE=1
 uname -a
 
 echo "Version: $VERSION_NUMBER"
+if [[ $LIB_NAME == *.dylib ]] && [[ $ARCH == 'osx-x86_64' ]]; then
+	ARCH='osx-x64'
+fi
 NATIVE_FOLDER=ai/onnxruntime/native/$ARCH
 
 mkdir -p $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER

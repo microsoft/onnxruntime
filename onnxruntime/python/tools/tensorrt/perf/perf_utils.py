@@ -9,6 +9,58 @@ import sys
 debug = False
 debug_verbose = False 
 
+# ORT ep names 
+cpu_ep = "CPUExecutionProvider"
+cuda_ep = "CUDAExecutionProvider"
+trt_ep = "TensorrtExecutionProvider"
+acl_ep = "ACLExecutionProvider"
+
+# provider names 
+cpu = "ORT-CPUFp32"
+cuda = "ORT-CUDAFp32"
+cuda_fp16 = "ORT-CUDAFp16"
+trt = "ORT-TRTFp32"
+trt_fp16 = "ORT-TRTFp16"
+standalone_trt = "TRTFp32"
+standalone_trt_fp16 = "TRTFp16"
+acl = "ORT-ACLFp32"
+
+# table names
+metrics_name = 'metrics'
+success_name = 'success'
+fail_name = 'fail'
+memory_name = 'memory'
+latency_name = 'latency'
+status_name = 'status'
+latency_over_time_name = 'latency_over_time'
+specs_name = 'specs' 
+session_name = 'session'
+
+# column names 
+model_title = 'Model'
+group_title = 'Group'
+
+# endings 
+second = "_second"
+csv_ending = '.csv'
+avg_ending =  ' \nmean (ms)'
+percentile_ending = ' \n90th percentile (ms)'
+memory_ending = ' \npeak memory usage (MiB)'
+session_ending = ' \n session creation time (s)'
+second_session_ending = ' \n second session creation time (s)'
+ort_provider_list = [cpu, cuda, trt, cuda_fp16, trt_fp16]
+provider_list = [cpu, cuda, trt, standalone_trt, cuda_fp16, trt_fp16, standalone_trt_fp16]
+table_headers = [model_title] + provider_list
+
+# graph options 
+disable = 'disable'
+basic = 'basic'
+extended = 'extended'
+enable_all = 'all'
+
+def is_standalone(ep):
+    return ep == standalone_trt or ep == standalone_trt_fp16
+
 def get_output(command):
     p = subprocess.run(command, check=True, stdout=subprocess.PIPE)
     output = p.stdout.decode("ascii").strip()
@@ -203,7 +255,6 @@ def calculate_trt_latency_percentage(trt_op_map):
     return (total_trt_execution_time, total_execution_time, ratio_of_trt_execution_time)
 
 
-
 def get_profile_metrics(path, profile_already_parsed, logger=None):
     logger.info("Parsing/Analyzing profiling files in {} ...".format(path))
     p1 = subprocess.Popen(["find", path, "-name", "onnxruntime_profile*", "-printf", "%T+\t%p\n"], stdout=subprocess.PIPE)
@@ -231,4 +282,3 @@ def get_profile_metrics(path, profile_already_parsed, logger=None):
         return None
 
     return data[-1]
-

@@ -51,7 +51,9 @@ def assert_model_outputs(output_a, output_b, verbose=False, rtol=1e-7, atol=0):
     """
     assert isinstance(output_a, list) and isinstance(output_b, list),\
         "output_a and output_b must be list of numbers"
-    assert len(output_a) == len(output_b), "output_a and output_b must have the same length"
+    if len(output_a) != len(output_b):
+        raise AssertionError(
+            "output_a and output_b must have the same length (%r != %r)." % (len(output_a), len(output_b)))
 
     # for idx in range(len(output_a)):
     assert_allclose(output_a, output_b, rtol=rtol, atol=atol, err_msg=f"Model output value mismatch")
@@ -213,88 +215,84 @@ def assert_values_are_close(input, other, rtol=1e-05, atol=1e-06):
 def enable_custom_autograd_function(module):
     enable_custom_autograd_support()
 
-def run_with_pytorch_on_device(device, model, input_list, label_input, is_eval_mode=False):
-    with torch.no_grad():
-        model = copy.deepcopy(model).to(device)
+def _run_model_on_device(device, model, input_list, label_input, is_eval_mode=False, run_forward_twice=False):
     if is_eval_mode:
         model.eval()
     else:
         model.train()
 
-    with torch.no_grad():
-        inputs_on_device = [input_.to(device) for input_ in input_list]
-        for i, val in enumerate(input_list):
-            if val.requires_grad:
-                inputs_on_device[i].requires_grad_()
-        target = label_input.to(device)
+    def generate_inputs(input_list_, label_input_):
+        with torch.no_grad():
+            inputs_on_device = [input_.to(device) for input_ in input_list_]
+            for i, val in enumerate(input_list_):
+                if val.requires_grad:
+                    inputs_on_device[i].requires_grad_()
+            with torch.no_grad():
+                target = label_input_.to(device)
+        return inputs_on_device, target
 
-    output = model(*inputs_on_device)
-    forward_outputs = [output]
+    inputs_on_device1, target1 = generate_inputs(input_list, label_input)
+    if run_forward_twice is True:
+        inputs_on_device2, target2 = generate_inputs(input_list, label_input)
+
+    output1 = model(*inputs_on_device1)
+    if run_forward_twice is True:
+        output2 = model(*inputs_on_device2)
+
+    forward_outputs = [output1]
     grad_outputs = []
 
     if not is_eval_mode:
         criterion = torch.nn.MSELoss()
-        loss = criterion(output, target)
+        loss = criterion(output1, target1)
+
+        if run_forward_twice is True:
+            loss += criterion(output2, target2)
+
         loss.backward()
         for name, param in model.named_parameters():
             if param.requires_grad:
                 grad_outputs.append(param.grad)
     return forward_outputs, grad_outputs
 
-def run_with_ort_on_device(device, model, input_list, label_input, is_eval_mode=False):
+def run_with_pytorch_on_device(device, model, input_list, label_input, is_eval_mode=False, run_forward_twice=False):
+    with torch.no_grad():
+        model = copy.deepcopy(model).to(device)
+
+    return _run_model_on_device(device, model, input_list, label_input, is_eval_mode, run_forward_twice)
+
+def run_with_ort_on_device(device, model, input_list, label_input, is_eval_mode=False, run_forward_twice=False):
     with torch.no_grad():
         model = copy.deepcopy(model)
         model.to(device)
     enable_custom_autograd_function(model)
     model = ORTModule(model)
-    if is_eval_mode:
-        model.eval()
-    else:
-        model.train()
 
-    with torch.no_grad():
-        inputs_on_device = [input_.to(device) for input_ in input_list]
-        for i, val in enumerate(input_list):
-            if val.requires_grad:
-                inputs_on_device[i].requires_grad_()
-
-        target = label_input.to(device)
-    output = model(*inputs_on_device)
-    forward_outputs = [output]
-    grad_outputs = []
-
-    if not is_eval_mode:
-        criterion = torch.nn.MSELoss()
-        loss = criterion(output, target)
-        loss.backward()
-        for name, param in model.named_parameters():
-            if param.requires_grad:
-                grad_outputs.append(param.grad)
-    return forward_outputs, grad_outputs
+    return _run_model_on_device(device, model, input_list, label_input, is_eval_mode, run_forward_twice)
 
 def compare_tensor_list(val_list_a, val_list_b):
     for val_a, val_b in zip(val_list_a, val_list_b):
        assert_values_are_close(val_a, val_b, atol=1e-7, rtol=1e-6)
 
 def run_training_test_and_compare(pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input,
-                                  ignore_grad_compare=False, expected_outputs=[], expected_grads=[]):
+                                  run_forward_twice=False, ignore_grad_compare=False, expected_outputs=[], expected_grads=[]):
     cpu = torch.device("cpu")
 
     def cpu_barrier_func():
         pass
     run_training_test_on_device_and_compare(
         cpu, pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, cpu_barrier_func,
-        ignore_grad_compare, expected_outputs, expected_grads)
+        run_forward_twice, ignore_grad_compare, expected_outputs, expected_grads)
 
     def cuda_barrier_func():
         torch.cuda.synchronize()
     cuda = torch.device('cuda:0')
     run_training_test_on_device_and_compare(
         cuda, pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, cuda_barrier_func,
-        ignore_grad_compare, expected_outputs, expected_grads)
+        run_forward_twice, ignore_grad_compare, expected_outputs, expected_grads)
 
 def run_training_test_on_device_and_compare(device, pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, barrier_func,
-                                            ignore_grad_compare=False, expected_outputs=[], expected_grads=[]):
+                                            run_forward_twice=False, ignore_grad_compare=False, expected_outputs=[], expected_grads=[]):
     repeats = 16
     for i in range(repeats):
         m = pt_model_builder_func()
@@ -305,11 +303,11 @@ def run_training_test_on_device_and_compare(device, pt_model_builder_func, pt_mo
             x_ort = copy.deepcopy(x)
 
         outputs, grads = run_with_pytorch_on_device(
-            device, m, [x], pt_model_label_input)
+            device, m, [x], pt_model_label_input, run_forward_twice=run_forward_twice)
         barrier_func()
 
         outputs_ort, grads_ort = run_with_ort_on_device(
-            device, m_ort, [x_ort], pt_model_label_input)
+            device, m_ort, [x_ort], pt_model_label_input, run_forward_twice=run_forward_twice)
         barrier_func()
 
         val_list_a = [o.detach().cpu() for o in outputs if o is not None]
@@ -328,14 +326,16 @@ def run_training_test_on_device_and_compare(device, pt_model_builder_func, pt_mo
             if len(expected_grads) > 0:
                 compare_tensor_list(val_list_a, expected_grads)
 
-def run_evaluate_test_and_compare(pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input):
+def run_evaluate_test_and_compare(pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input,
+    run_forward_twice=False):
     cpu = torch.device("cpu")
 
     def cpu_barrier_func():
         pass
 
     run_evaluate_test_on_device_and_compare(
-        cpu, pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, cpu_barrier_func)
+        cpu, pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input,
+        cpu_barrier_func, run_forward_twice=run_forward_twice)
 
     def cuda_barrier_func():
         torch.cuda.synchronize()
@@ -343,9 +343,11 @@ def run_evaluate_test_and_compare(pt_model_builder_func, pt_model_inputs_generat
 
     cuda = torch.device('cuda:0')
     run_evaluate_test_on_device_and_compare(
-        cuda, pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, cuda_barrier_func)
+        cuda, pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input,
+        cuda_barrier_func, run_forward_twice=run_forward_twice)
 
-def run_evaluate_test_on_device_and_compare(device, pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, barrier_func):
+def run_evaluate_test_on_device_and_compare(device, pt_model_builder_func, pt_model_inputs_generator,
+    pt_model_label_input, barrier_func, run_forward_twice=False):
     repeats = 16
     for i in range(repeats):
         m = pt_model_builder_func()
@@ -355,11 +357,11 @@ def run_evaluate_test_on_device_and_compare(device, pt_model_builder_func, pt_mo
         x_ort = copy.deepcopy(x)
 
         outputs, grads = run_with_pytorch_on_device(
-            device, m, [x], pt_model_label_input, is_eval_mode=True)
+            device, m, [x], pt_model_label_input, is_eval_mode=True, run_forward_twice=run_forward_twice)
         barrier_func()
 
         outputs_ort, grads_ort = run_with_ort_on_device(
-            device, m_ort, [x_ort], pt_model_label_input, is_eval_mode=True)
+            device, m_ort, [x_ort], pt_model_label_input, is_eval_mode=True, run_forward_twice=run_forward_twice)
         barrier_func()
 
         val_list_a = [o.detach().cpu() for o in outputs if o is not None]

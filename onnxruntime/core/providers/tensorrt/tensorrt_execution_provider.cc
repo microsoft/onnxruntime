@@ -8,19 +8,17 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/safeint.h"
 #include "tensorrt_execution_provider.h"
+#include "tensorrt_execution_provider_utils.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "cuda_runtime_api.h"
 #include "gsl/gsl"
-#include <experimental/filesystem>
 #include <unordered_map>
 #include <utility>
 #include <limits>
 #include <map>
 #include <memory>
-#include "flatbuffers/idl.h"
-#include "ort_trt_int8_cal_table.fbs.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -41,90 +39,9 @@
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
-namespace fs = std::experimental::filesystem;
 namespace {
-std::string GetCachePath(const std::string& root, const std::string& name) {
-  if (root.empty()) {
-    return name;
-  } else {
-    fs::path path = root;
-    path.append(name);
-    return path.string();
-  }
-}
-
-float ConvertSinglePrecisionIEEE754ToFloat(unsigned long input) {
-  int s = (input >> 31) & 0x01;
-  int e = ((input & 0x7f800000) >> 23) - 127;
-  int p = -1;
-  double m = 0.0;
-  for (int i = 0; i < 23; ++i) {
-    m += ((input >> (23 - i - 1)) & 0x01) * pow(2.0, p--);
-  }
-  return (s ? -1 : 1) * pow(2.0, e) * (m + 1.0);
-}
-
-/*
-* Seralize engine profile
-* The profile contains min/max shape ranges of dynamic shape dimensions of each input tensor
-* For example, assume tensor_a has two dynamic shape dimensions: dim_0 and dim_2, and tensor_b
-* has one dynamic shape dimension: dim_1. The data in profile will be,
-* key: tensor_a, value: dim_0 min_shape max_shape dim_2 min_shape max_shape
-* key: tensor_b, value: dim_1 min_shape max_shape
-*/
-void SerializeProfile(const std::string& file_name, std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>>& shape_ranges) {
-  // Serialize profile
-  flexbuffers::Builder builder;
-  auto profile_start = builder.StartMap();
-  for (auto outer_it = shape_ranges.begin(); outer_it != shape_ranges.end(); ++outer_it) {
-    builder.TypedVector(outer_it->first.c_str(), [&] {
-      for (auto inner_it = outer_it->second.begin(); inner_it != outer_it->second.end(); ++inner_it) {
-        builder.Int(inner_it->first);
-        builder.Int(inner_it->second.first);
-        builder.Int(inner_it->second.second);
-      }
-    });
-  }
-  builder.EndMap(profile_start);
-  builder.Finish();
-
-  // Save flexbuffer
-  std::ofstream file(file_name, std::ios::binary | std::ios::out);
-  auto buf = builder.GetBuffer();
-  size_t size = builder.GetSize();
-  file.write(reinterpret_cast<const char*>(&buf[0]), size);
-  file.close();
-}
-
-// Deserialize engine profile
-std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> DeserializeProfile(std::ifstream& infile) {
-  // Load flexbuffer
-  infile.seekg(0, std::ios::end);
-  size_t length = infile.tellg();
-  infile.seekg(0, std::ios::beg);
-  std::unique_ptr<char[]> data{new char[length]};
-  infile.read((char*)data.get(), length);
-  infile.close();
-
-  // Deserialize profile
-  std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> shape_ranges;
-  auto tensors_range_entries = flexbuffers::GetRoot((const uint8_t*)data.get(), length).AsMap();
-  auto keys = tensors_range_entries.Keys();
-  auto values = tensors_range_entries.Values();
-  for (size_t i = 0, end = keys.size(); i < end; ++i) {
-    auto dim_range_vectors = values[i].AsTypedVector();
-    std::unordered_map<int, std::pair<int64_t, int64_t>> inner_map;
-    for (size_t j = 0, end = dim_range_vectors.size() / 3; j < end; ++j) {
-      size_t idx = 3 * j;
-      inner_map[dim_range_vectors[idx].AsInt64()] = std::make_pair(dim_range_vectors[idx + 1].AsInt64(), dim_range_vectors[idx + 2].AsInt64());
-    }
-    shape_ranges[keys[i].AsString().c_str()] = inner_map;
-  }
-  return shape_ranges;
-}
-
 // Check if cycle exists in the graph after partitioning
-bool FindCycleHelper(int i, const std::list<int>* adjacency_map, bool visited[], bool* st, std::vector<int>& cycles) {
+bool FindCycleHelper(size_t i, const std::list<size_t>* adjacency_map, bool visited[], bool* st, std::vector<size_t>& cycles) {
   if (!visited[i]) {
     visited[i] = true;
     st[i] = true;
@@ -140,72 +57,6 @@ bool FindCycleHelper(int i, const std::list<int>* adjacency_map, bool visited[],
   }
   st[i] = false;
   return false;
-}
-
-/*
-* Read calibration table for INT8 quantization
-* Two kind of calibration tables are supported,
-* 1. ORT generated calibration table
-* The table is pre-serialized by flatbuffers.
-* Each entry in the table is a key-value pair,
-* key: tensor name, value: maximum absolute value in floating point
-* For example,
-*   data_0 2.008338
-*   ...
-* 2. Native TensorRT generated calibration table
-* Data format is defined by TensorRT as,
-* tensor name : scale in 32-bit single precision IEEE754 format
-* For example,
-*   TRT-7103-EntropyCalibration2
-*   data_0: 4000889d
-*   ...
-*/
-bool ReadDynamicRange(const std::string file_name, const bool is_trt_calibration_table, std::unordered_map<std::string, float>& dynamic_range_map) {
-  std::ifstream infile(file_name, std::ios::binary | std::ios::in);
-  if (!infile) {
-    return false;
-  }
-
-  if (is_trt_calibration_table) {
-    // Native TensorRT generated calibration table
-    std::string line;
-    char delim = ':';
-    if (std::getline(infile, line)) {
-      std::istringstream first_line(line);
-      std::string version;
-      std::getline(first_line, version, delim);
-      std::size_t found = version.find("TRT-");
-      if (found != std::string::npos) {
-        while (std::getline(infile, line)) {
-          std::istringstream in_line(line);
-          std::string str;
-          std::getline(in_line, str, delim);
-          std::string tensor_name = str;
-          std::getline(in_line, str, delim);
-          unsigned long scale_int = std::strtoul(str.c_str(), nullptr, 16);
-          float scale_float = ConvertSinglePrecisionIEEE754ToFloat(scale_int);
-          float dynamic_range = scale_float * 127.0;
-          dynamic_range_map[tensor_name] = dynamic_range;
-        }
-      } else {
-        throw std::runtime_error("This is not a TensorRT generated calibration table " + file_name);
-      }
-    }
-  } else {
-    // ORT generated calibration table
-    infile.seekg(0, std::ios::end);
-    size_t length = infile.tellg();
-    infile.seekg(0, std::ios::beg);
-    std::unique_ptr<char[]> data{new char[length]};
-    infile.read((char*)data.get(), length);
-    infile.close();
-    auto flat_table = flatbuffers::GetRoot<CalTableFlatBuffers::TrtTable>((const uint8_t*)data.get());
-    auto flat_dict = flat_table->dict();
-    for (size_t i = 0, end = flat_dict->size(); i < end; ++i) {
-      dynamic_range_map[flat_dict->Get(i)->key()->str()] = std::stof(flat_dict->Get(i)->value()->str());
-    }
-  }
-  return true;
 }
 
 bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<std::string, float>& dynamic_range_map) {
@@ -255,7 +106,7 @@ bool SetDynamicRange(nvinfer1::INetworkDefinition& network, std::unordered_map<s
           }
           max_weight = std::max(max_weight, std::abs(weight));
         }
-        if (!trt_layer->getOutput(j)->setDynamicRange(-max_weight, max_weight)) {
+        if (!trt_layer->getOutput(j)->setDynamicRange(static_cast<float>(-max_weight), static_cast<float>(max_weight))) {
           return false;
         }
       }
@@ -375,28 +226,34 @@ static Status RegisterTensorrtKernels(KernelRegistry& kernel_registry) {
   return Status::OK();
 }
 
-static std::shared_ptr<KernelRegistry> s_kernel_registry;
+static std::shared_ptr<KernelRegistry>& TensorrtKernelRegistry() {
+  // static local variable ensures thread-safe initialization
+  static std::shared_ptr<KernelRegistry> tensorrt_kernel_registry = []() {
+    std::shared_ptr<KernelRegistry> registry = KernelRegistry::Create();
+    ORT_THROW_IF_ERROR(RegisterTensorrtKernels(*registry));
+    return registry;
+  }();
+
+  return tensorrt_kernel_registry;
+}
 
 void Shutdown_DeleteRegistry() {
-  s_kernel_registry.reset();
+  TensorrtKernelRegistry().reset();
 }
 
 std::shared_ptr<KernelRegistry> TensorrtExecutionProvider::GetKernelRegistry() const {
-  if (!s_kernel_registry) {
-    s_kernel_registry = KernelRegistry::Create();
-    auto status = RegisterTensorrtKernels(*s_kernel_registry);
-    if (!status.IsOK())
-      s_kernel_registry.reset();
-    ORT_THROW_IF_ERROR(status);
-  }
-
-  return s_kernel_registry;
+  return TensorrtKernelRegistry();
 }
 
 // Per TensorRT documentation, logger needs to be a singleton.
 TensorrtLogger& GetTensorrtLogger() {
   static TensorrtLogger trt_logger(nvinfer1::ILogger::Severity::kWARNING);
   return trt_logger;
+}
+
+std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetApiLock() const {
+  static OrtMutex singleton;
+  return std::unique_lock<OrtMutex>(singleton);
 }
 
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
@@ -544,7 +401,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
         throw std::runtime_error("Failed to create directory " + cache_path_);
       }
     }
-    runtime_ = tensorrt_ptr::unique_pointer<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger()));
+    {
+      auto lock = GetApiLock();
+      runtime_ = tensorrt_ptr::unique_pointer<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger()));
+    }
   }
 
   if (engine_decryption_enable_) {
@@ -713,10 +573,15 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   int input_order = 0;
   int output_order = 0;
 
+  std::vector<std::string> initializers;
   for (const auto& index : graph_nodes_index.first) {
     sub_graph->Nodes().push_back(node_index[index]);
     const auto& node = graph.GetNode(node_index[index]);
     for (const auto& input : node->InputDefs()) {
+      if (graph.IsConstantInitializer(input->Name(), true)) {
+        initializers.push_back(input->Name());
+        continue;
+      }
       const auto& it = fused_outputs.find(input);
       if (it != fused_outputs.end()) {
         fused_outputs.erase(it);
@@ -728,6 +593,10 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
     }
 
     for (const auto& input : node->ImplicitInputDefs()) {
+      if (graph.IsConstantInitializer(input->Name(), true)) {
+        initializers.push_back(input->Name());
+        continue;
+      }
       const auto& it = fused_outputs.find(input);
       if (it != fused_outputs.end()) {
         fused_outputs.erase(it);
@@ -795,7 +664,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   }
 
   // Generate unique kernel name for TRT subgraph
-  uint64_t model_hash = 0;
+  HashValue model_hash = 0;
   int id = GenerateMetaDefId(graph, model_hash);
   std::string subgraph_id = std::to_string(model_hash) + "_" + std::to_string(id);
   auto meta_def = IndexedSubGraph_MetaDef::Create();
@@ -807,6 +676,10 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
     if (input.second->Exists()) {
       meta_def->inputs().push_back(input.second->Name());
     }
+  }
+
+  for (const auto& initializer : initializers) {
+    meta_def->constant_initializers().push_back(initializer);
   }
 
   for (const auto& output : outputs) {
@@ -925,7 +798,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
               ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                                  "TensorRT input: " + input_arg->Name() + " has no shape specified. " +
                                                      "Please run shape inference on the onnx model first. Details can be found in " +
-                                                     "https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#shape-inference-for-tensorrt-subgraphs"));
+                                                     "https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#shape-inference-for-tensorrt-subgraphs"));
             }
           }
         }
@@ -959,8 +832,8 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         SubGraphCollection_t next_nodes_list;
         const std::vector<NodeIndex>& subgraph_node_index = graph_viewer->GetNodesInTopologicalOrder();
         next_nodes_list = GetSupportedList(parser_nodes_list, iterations, max_iterations, *graph_viewer, early_termination);
-        for (int i = 0, end = next_nodes_list.size(); i < end; ++i) {
-          for (int j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
+        for (size_t i = 0, end = next_nodes_list.size(); i < end; ++i) {
+          for (size_t j = 0, end = next_nodes_list[i].first.size(); j < end; ++j) {
             next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
           }
           nodes_list_output.push_back(next_nodes_list[i]);
@@ -977,11 +850,11 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
   bool trt_cycle = true;
   while (trt_cycle) {
     trt_cycle = false;
-    std::unordered_map<std::string, int> node_to_index_map;
-    std::unordered_map<int, std::string> index_to_node_map;
+    std::unordered_map<std::string, size_t> node_to_index_map;
+    std::unordered_map<size_t, std::string> index_to_node_map;
     std::unordered_map<std::string, std::unordered_set<std::string>> input_to_nodes_map, node_to_outputs_map;
-    std::unordered_set<int> non_trt_node_index(node_index.begin(), node_index.end());
-    int id = 0;
+    std::unordered_set<size_t> non_trt_node_index(node_index.begin(), node_index.end());
+    size_t id = 0;
     for (const auto& group : supported_nodes_vector) {
       if (!group.first.empty()) {
         // Construct subgraph from node list
@@ -1030,15 +903,15 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
     }
 
     // Create adjacency list
-    int graph_size = node_to_index_map.size();
-    std::list<int>* adjacency_map = new std::list<int>[graph_size];
+    size_t graph_size = node_to_index_map.size();
+    std::list<size_t>* adjacency_map = new std::list<size_t>[graph_size];
     for (const auto& node : node_to_outputs_map) {
       for (auto iter = node.second.begin(); iter != node.second.end(); ++iter) {
         const auto& loc = input_to_nodes_map.find(*iter);
         if (loc != input_to_nodes_map.end()) {
-          int parent_node_index = node_to_index_map.find(node.first)->second;
+          size_t parent_node_index = node_to_index_map.find(node.first)->second;
           for (auto child_node : loc->second) {
-            int child_node_index = node_to_index_map.find(child_node)->second;
+            size_t child_node_index = node_to_index_map.find(child_node)->second;
             adjacency_map[parent_node_index].push_back(child_node_index);
           }
         }
@@ -1048,14 +921,14 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
     // Check cycle in the graph
     bool* visited = new bool[graph_size];
     bool* st = new bool[graph_size];
-    for (int i = 0; i < graph_size; ++i) {
+    for (size_t i = 0; i < graph_size; ++i) {
       visited[i] = false;
       st[i] = false;
     }
 
-    std::vector<int> cycles;
+    std::vector<size_t> cycles;
     bool has_cycle = false;
-    for (int i = 0; i < graph_size; ++i) {
+    for (size_t i = 0; i < graph_size; ++i) {
       if (FindCycleHelper(i, adjacency_map, visited, st, cycles)) {
         has_cycle = true;
         break;
@@ -1064,7 +937,7 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
 
     // Remove TensorRT subgraph from the supported node list if it's part of the cycle
     if (has_cycle) {
-      for (int i = 0; i < static_cast<int>(cycles.size()); ++i) {
+      for (size_t i = 0; i < cycles.size(); ++i) {
         auto loc = index_to_node_map.find(cycles[i]);
         if (loc != index_to_node_map.end() && loc->second.find("TRTKernel") != std::string::npos) {
           supported_nodes_vector.erase(supported_nodes_vector.begin() + cycles[i]);
@@ -1086,7 +959,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   // Get ModelPath
   const auto& path_string = graph.ModelPath().ToPathString();
 #ifdef _WIN32
-  wcstombs(model_path_, path_string.c_str(), sizeof(model_path_));
+  wcstombs_s(nullptr, model_path_, sizeof(model_path_), path_string.c_str(), sizeof(model_path_));
 #else
   strcpy(model_path_, path_string.c_str());
 #endif
@@ -1104,7 +977,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 
   // Remove subgraphs if its size is less than the predefined minimal size
   for (auto it = supported_nodes_vector.begin(); it != supported_nodes_vector.end(); ++it) {
-    const int subgraph_size = it->first.size();
+    const size_t subgraph_size = it->first.size();
     if (subgraph_size < min_subgraph_size_) {
       supported_nodes_vector.erase(it--);
     }
@@ -1120,45 +993,38 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     if (!group.first.empty()) {
       std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph);
       result.push_back(ComputeCapability::Create(std::move(sub_graph)));
-      number_of_trt_nodes += group.first.size();
+      number_of_trt_nodes += static_cast<int>(group.first.size());
     }
   }
 
-  const int number_of_subgraphs = supported_nodes_vector.size();
+  const size_t number_of_subgraphs = supported_nodes_vector.size();
   if (number_of_trt_nodes == 0) {
-    LOGS_DEFAULT(WARNING) << "[TensorRT EP] No graph will run on TensorRT exeuction provider";
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] No graph will run on TensorRT execution provider";
   } else if (number_of_trt_nodes == number_of_ort_nodes) {
-    LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT exeuction provider";
+    LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT execution provider";
   } else {
-    LOGS_DEFAULT(INFO) << "[TensorRT EP] Graph is partitioned and number of subgraphs running on TensorRT exeuction provider is " << number_of_subgraphs;
+    LOGS_DEFAULT(INFO) << "[TensorRT EP] Graph is partitioned and number of subgraphs running on TensorRT execution provider is " << number_of_subgraphs;
   }
 
   return result;
-}
-
-std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetEngineBuildLock() const {
-  static OrtMutex singleton;
-
-  // Acquire a lock only when force_sequential_engine_build_ is true;
-  return force_sequential_engine_build_ ? std::unique_lock<OrtMutex>(singleton) : std::unique_lock<OrtMutex>();
 }
 
 common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fused_nodes,
                                                   std::vector<NodeComputeInfo>& node_compute_funcs) {
   for (const auto* fused_node : fused_nodes) {
     // Build map from input name to its index in input definitions
-    std::unordered_map<std::string, int> input_map;
+    std::unordered_map<std::string, size_t> input_map;
     const auto& input_defs = fused_node->InputDefs();
     input_map.reserve(input_defs.size());
-    for (int i = 0, end = input_defs.size(); i < end; ++i) {
+    for (size_t i = 0, end = input_defs.size(); i < end; ++i) {
       input_map[input_defs[i]->Name()] = i;
     }
 
     // Build map from output name to its index in output definitions
-    std::unordered_map<std::string, int> output_map;
+    std::unordered_map<std::string, size_t> output_map;
     const auto& output_defs = fused_node->OutputDefs();
     output_map.reserve(output_defs.size());
-    for (int i = 0, end = output_defs.size(); i < end; ++i) {
+    for (size_t i = 0, end = output_defs.size(); i < end; ++i) {
       output_map[output_defs[i]->Name()] = i;
     }
 
@@ -1193,10 +1059,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
 
     int num_inputs = trt_network->getNbInputs();
     int num_outputs = trt_network->getNbOutputs();
-    std::unordered_map<std::string, int> input_indexes(num_inputs);
-    std::unordered_map<std::string, std::unordered_map<int, std::pair<int64_t, int64_t>>> input_shape_ranges;
-    std::unordered_map<std::string, int> output_indexes(num_outputs);
-    std::unordered_map<std::string, int> output_types(num_outputs);
+    std::unordered_map<std::string, size_t> input_indexes(num_inputs);
+    std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> input_shape_ranges;
+    std::unordered_map<std::string, size_t> output_indexes(num_outputs);
+    std::unordered_map<std::string, size_t> output_types(num_outputs);
 
     // Initialize shape range for dynamic shape tensors
     bool has_dynamic_shape = false;
@@ -1332,7 +1198,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
 
         // Build engine
         {
-          auto lock = GetEngineBuildLock();
+          auto lock = GetApiLock();
           trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
         }
         if (trt_engine == nullptr) {
@@ -1423,17 +1289,17 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       Ort::CustomOpApi ort{*api};
       TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
       std::lock_guard<OrtMutex> lock(*(trt_state->tensorrt_mu_ptr));
-      const std::unordered_map<std::string, int>& input_indexes = (trt_state->input_info)[0];
-      const std::unordered_map<std::string, int>& output_indexes = (trt_state->output_info)[0];
-      const std::unordered_map<std::string, int>& output_types = (trt_state->output_info)[1];
+      const std::unordered_map<std::string, size_t>& input_indexes = (trt_state->input_info)[0];
+      const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];
+      const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
       auto& shape_ranges = trt_state->input_shape_ranges;
       auto trt_builder = trt_state->builder->get();
       auto trt_engine = trt_state->engine->get();
       auto trt_context = trt_state->context->get();
       auto trt_profile = &(trt_state->trt_profile);
       auto alloc = trt_state->scratch_allocator;
-      int num_inputs = input_indexes.size();
-      int num_outputs = output_indexes.size();
+      int num_inputs = static_cast<int>(input_indexes.size());
+      int num_outputs = static_cast<int>(output_indexes.size());
       bool engine_update = false;
       std::unordered_set<std::string> input_names;
       std::unordered_map<std::string, std::vector<int32_t>> tensor_shape_values;
@@ -1513,7 +1379,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         // Check and update shape ranges for dynamic shape inputs
         input_names.insert(input_name);
         if (shape_ranges.find(input_name) != shape_ranges.end()) {
-          int input_index = 0;
+          size_t input_index = 0;
           const auto& iter = input_indexes.find(input_name);
           if (iter != input_indexes.end()) {
             input_index = iter->second;
@@ -1528,7 +1394,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           if (input->isShapeTensor()) {
             // Get shape values for shape tensor input
             const auto& tensor_type = ort.GetTensorElementType(tensor_info);
-            int shape_size = nb_dims == 0 ? 1 : tensor_shapes[0];
+            int shape_size = nb_dims == 0 ? 1 : static_cast<int>(tensor_shapes[0]);
             tensor_shape_values[input_name].resize(shape_size);
             switch (tensor_type) {
               case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: {
@@ -1559,13 +1425,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
 
             // Update shape ranges
             std::vector<int32_t> shapes_min(shape_size), shapes_opt(shape_size), shapes_max(shape_size);
-            int shape_range_size = shape_range.size();
+            int shape_range_size = static_cast<int>(shape_range.size());
             if (shape_size == shape_range_size) {
               // If shape size matches, check/update shape range
               for (int j = 0; j < shape_size; ++j) {
-                shapes_min[j] = shape_range[j].first;
-                shapes_opt[j] = shape_range[j].second;
-                shapes_max[j] = shape_range[j].second;
+                shapes_min[j] = static_cast<int32_t>(shape_range[j].first);
+                shapes_opt[j] = static_cast<int32_t>(shape_range[j].second);
+                shapes_max[j] = static_cast<int32_t>(shape_range[j].second);
 
                 const auto& tensor_shape_value = tensor_shape_values[input_name][j];
                 // Update shape range lower bound
@@ -1606,21 +1472,21 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
             for (int j = 0, end = nb_dims; j < end; ++j) {
               const auto& tensor_shape = tensor_shapes[j];
               if (shape_range.find(j) != shape_range.end()) {
-                dims_min.d[j] = shape_range[j].first;
-                dims_opt.d[j] = shape_range[j].second;
-                dims_max.d[j] = shape_range[j].second;
+                dims_min.d[j] = static_cast<int32_t>(shape_range[j].first);
+                dims_opt.d[j] = static_cast<int32_t>(shape_range[j].second);
+                dims_max.d[j] = static_cast<int32_t>(shape_range[j].second);
 
                 // Update minimum dimension
                 if (tensor_shape < shape_range[j].first) {
                   shape_range[j].first = tensor_shape;
-                  dims_min.d[j] = tensor_shape;
+                  dims_min.d[j] = static_cast<int32_t>(tensor_shape);
                   engine_update = true;
                 }
                 // Update maximum dimension
                 if (tensor_shape > shape_range[j].second) {
                   shape_range[j].second = tensor_shape;
-                  dims_max.d[j] = tensor_shape;
-                  dims_opt.d[j] = tensor_shape;
+                  dims_max.d[j] = static_cast<int32_t>(tensor_shape);
+                  dims_opt.d[j] = static_cast<int32_t>(tensor_shape);
                   engine_update = true;
                 }
               }
@@ -1673,7 +1539,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
 
         // Build engine
         {
-          auto lock = GetEngineBuildLock();
+          auto lock = GetApiLock();
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
               trt_builder->buildEngineWithConfig(*trt_state->network->get(), *trt_config));
         }
@@ -1725,14 +1591,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
 
       // Set input shapes and assign input buffers
       std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
-      for (int i = 0, end = input_binding_names.size(); i < end; ++i) {
+      for (size_t i = 0, end = input_binding_names.size(); i < end; ++i) {
         const std::string& input_name = input_binding_names[i];
         int binding_index = trt_engine->getBindingIndex(input_name.c_str());
         if (binding_index == -1) {
           continue;
         }
 
-        int input_index = 0;
+        size_t input_index = 0;
         const auto& iter = input_indexes.find(input_name);
         if (iter != input_indexes.end()) {
           input_index = iter->second;
@@ -1749,7 +1615,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
             trt_context->setInputShapeBinding(binding_index, &tensor_shape_values[input_name][0]);
           } else {
             for (int j = 0, end = nb_dims; j < end; ++j) {
-              dimensions.d[j] = tensor_shapes[j];
+              dimensions.d[j] = static_cast<int32_t>(tensor_shapes[j]);
             }
             trt_context->setBindingDimensions(binding_index, dimensions);
           }
@@ -1862,7 +1728,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       // Set output shapes and assign output buffers
       std::vector<int> output_dim_sizes(num_outputs, 1);
       std::vector<OrtValue*> output_tensor(num_outputs, nullptr);
-      for (int i = 0, end = output_binding_names.size(); i < end; ++i) {
+      for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
         // Set dynamic shapes
         const std::string& output_name = output_binding_names[i];
         int binding_index = trt_engine->getBindingIndex(output_name.c_str());
@@ -1870,7 +1736,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           continue;
         }
 
-        int output_index = 0;
+        size_t output_index = 0;
         const auto& index_iter = output_indexes.find(output_name);
         if (index_iter != output_indexes.end()) {
           output_index = index_iter->second;
@@ -1883,7 +1749,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         }
         output_tensor[i] = ort.KernelContext_GetOutput(context, output_index, output_shapes.data(), output_shapes.size());
 
-        int output_type = 0;
+        size_t output_type = 0;
         const auto& type_iter = output_types.find(output_name);
         if (type_iter != output_types.end()) {
           output_type = type_iter->second;
@@ -1998,10 +1864,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       }
 
       // Cast INT64 input to INT32 because TensorRT doesn't fully support INT64
-      for (int i = 0, end = output_binding_names.size(); i < end; ++i) {
+      for (size_t i = 0, end = output_binding_names.size(); i < end; ++i) {
         const std::string& output_name = output_binding_names[i];
         size_t binding_index = trt_engine->getBindingIndex(output_name.c_str());
-        int output_type = 0;
+        size_t output_type = 0;
         const auto& iter = output_types.find(output_name);
         if (iter != output_types.end()) {
           output_type = iter->second;

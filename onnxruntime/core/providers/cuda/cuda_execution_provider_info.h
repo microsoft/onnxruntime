@@ -52,7 +52,10 @@ struct CUDAExecutionProviderInfo {
   // If set to true, try to use as much as possible memory for algo search.
   bool cudnn_conv_use_max_workspace{false};
 
+  bool enable_cuda_graph{false};
+
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);
+  static ProviderOptions ToProviderOptions(const OrtCUDAProviderOptionsV2& info);
 };
 }  // namespace onnxruntime

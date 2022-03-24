@@ -206,7 +206,7 @@ class Session:
         Compute the predictions.
 
         :param output_names: name of the outputs
-        :param input_feed: dictionary ``{ input_name: input_ort_value }``
+        :param input_dict_ort_values: dictionary ``{ input_name: input_ort_value }``
             See ``OrtValue`` class how to create `OrtValue`
             from numpy array or `SparseTensor`
         :param run_options: See :class:`onnxruntime.RunOptions`.
@@ -349,6 +349,8 @@ class InferenceSession(Session):
         # Tensorrt can fall back to CUDA. All others fall back to CPU.
         if 'TensorrtExecutionProvider' in available_providers:
             self._fallback_providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        elif 'MIGraphXExecutionProvider' in available_providers:
+            self._fallback_providers = ['ROCMExecutionProvider', 'CPUExecutionProvider']
         else:
             self._fallback_providers = ['CPUExecutionProvider']
 
@@ -356,13 +358,12 @@ class InferenceSession(Session):
         providers, provider_options = check_and_normalize_provider_args(providers,
                                                                         provider_options,
                                                                         available_providers)
-
         if providers == [] and len(available_providers) > 1:
-            warnings.warn("Deprecation warning. This ORT build has {} enabled. ".format(available_providers) +
-                          "The next release (ORT 1.10) will require explicitly setting the providers parameter " +
-                          "(as opposed to the current behavior of providers getting set/registered by default " +
-                          "based on the build flags) when instantiating InferenceSession."
-                          "For example, onnxruntime.InferenceSession(..., providers=[\"CUDAExecutionProvider\"], ...)")
+            self.disable_fallback()
+            raise ValueError("This ORT build has {} enabled. ".format(available_providers) +
+                             "Since ORT 1.9, you are required to explicitly set " +
+                             "the providers parameter when instantiating InferenceSession. For example, "
+                             "onnxruntime.InferenceSession(..., providers={}, ...)".format(available_providers))
 
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
         if self._model_path:
@@ -449,6 +450,9 @@ class IOBinding:
         '''
         self._iobinding.bind_ortvalue_input(name, ortvalue._ortvalue)
 
+    def synchronize_inputs(self):
+        self._iobinding.synchronize_inputs()
+
     def bind_output(self, name, device_type='cpu', device_id=0, element_type=None, shape=None, buffer_ptr=None):
         '''
         :param name: output name
@@ -483,6 +487,9 @@ class IOBinding:
         :param ortvalue: OrtValue instance to bind
         '''
         self._iobinding.bind_ortvalue_output(name, ortvalue._ortvalue)
+
+    def synchronize_outputs(self):
+        self._iobinding.synchronize_outputs()
 
     def get_outputs(self):
         '''
@@ -597,6 +604,13 @@ class OrtValue:
         '''
         return self._ortvalue.data_type()
 
+    def has_value(self):
+        '''
+        Returns True if the OrtValue corresponding to an
+        optional type contains data, else returns False
+        '''
+        return self._ortvalue.has_value()
+
     def is_tensor(self):
         '''
         Returns True if the OrtValue contains a Tensor, else returns False
@@ -622,6 +636,16 @@ class OrtValue:
         Use accessors to gain a reference to non-Tensor objects such as SparseTensor
         '''
         return self._ortvalue.numpy()
+
+    def update_inplace(self, np_arr):
+        '''
+        Update the OrtValue in place with a new Numpy array. The numpy contents
+        are copied over to the device memory backing the OrtValue. It can be used
+        to update the input valuess for an InferenceSession with CUDA graph
+        enabled or other scenarios where the OrtValue needs to be updated while
+        the memory address can not be changed.
+        '''
+        self._ortvalue.update_inplace(np_arr)
 
 
 class OrtDevice:

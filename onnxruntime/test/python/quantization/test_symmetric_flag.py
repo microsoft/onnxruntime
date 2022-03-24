@@ -50,6 +50,7 @@ class TestSymmetricFlag(unittest.TestCase):
     quantization.quantize_static(model_input="model.onnx",
                                  model_output="quantized-model.onnx",
                                  calibration_data_reader=DummyDataReader(),
+                                 quant_format=quantization.QuantFormat.QOperator,
                                  activation_type=quantization.QuantType.QInt8,
                                  weight_type=quantization.QuantType.QInt8,
                                  op_types_to_quantize=["Conv", "MatMul"],

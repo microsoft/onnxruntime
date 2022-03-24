@@ -1,15 +1,30 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.regex.Pattern;
+import org.junit.jupiter.api.Assertions;
 
 /** Test helpers for manipulating primitive arrays. */
 class TestHelpers {
+
+  private static final Pattern LOAD_PATTERN = Pattern.compile("[,\\[\\] ]");
 
   static boolean[] toPrimitiveBoolean(List<Boolean> input) {
     boolean[] output = new boolean[input.size()];
@@ -233,5 +248,180 @@ class TestHelpers {
 
   static void flattenStringBase(String[] input, List<String> output) {
     output.addAll(Arrays.asList(input));
+  }
+
+  static Path getResourcePath(String path) {
+    return new File(InferenceTest.class.getResource(path).getFile()).toPath();
+  }
+
+  static float[] loadTensorFromFile(Path filename) {
+    return loadTensorFromFile(filename, true);
+  }
+
+  static float[] loadTensorFromFile(Path filename, boolean skipHeader) {
+    // read data from file
+    try (BufferedReader reader = new BufferedReader(new FileReader(filename.toFile()))) {
+      if (skipHeader) {
+        reader.readLine(); // skip the input name
+      }
+      String[] dataStr = LOAD_PATTERN.split(reader.readLine());
+      List<Float> tensorData = new ArrayList<>();
+      for (int i = 0; i < dataStr.length; i++) {
+        if (!dataStr[i].isEmpty()) {
+          tensorData.add(Float.parseFloat(dataStr[i]));
+        }
+      }
+      return toPrimitiveFloat(tensorData);
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  private static TypeWidth getTypeAndWidth(OnnxMl.TensorProto.DataType elemType) {
+    OnnxJavaType type;
+    int width;
+    switch (elemType) {
+      case FLOAT:
+        type = OnnxJavaType.FLOAT;
+        width = 4;
+        break;
+      case UINT8:
+      case INT8:
+        type = OnnxJavaType.INT8;
+        width = 1;
+        break;
+      case UINT16:
+      case INT16:
+        type = OnnxJavaType.INT16;
+        width = 2;
+        break;
+      case INT32:
+      case UINT32:
+        type = OnnxJavaType.INT32;
+        width = 4;
+        break;
+      case INT64:
+      case UINT64:
+        type = OnnxJavaType.INT64;
+        width = 8;
+        break;
+      case STRING:
+        type = OnnxJavaType.STRING;
+        width = 1;
+        break;
+      case BOOL:
+        type = OnnxJavaType.BOOL;
+        width = 1;
+        break;
+      case FLOAT16:
+        type = OnnxJavaType.FLOAT;
+        width = 2;
+        break;
+      case DOUBLE:
+        type = OnnxJavaType.DOUBLE;
+        width = 8;
+        break;
+      default:
+        type = null;
+        width = 0;
+        break;
+    }
+    return new TypeWidth(type, width);
+  }
+
+  static StringTensorPair loadTensorFromFilePb(
+      OrtEnvironment env, File filename, Map<String, NodeInfo> nodeMetaDict)
+      throws IOException, OrtException {
+    InputStream is = new BufferedInputStream(new FileInputStream(filename), 1024 * 1024 * 4);
+    OnnxMl.TensorProto tensor = OnnxMl.TensorProto.parseFrom(is);
+    is.close();
+
+    TypeWidth tw = getTypeAndWidth(OnnxMl.TensorProto.DataType.forNumber(tensor.getDataType()));
+    int width = tw.width;
+    OnnxJavaType tensorElemType = tw.type;
+    long[] intDims = new long[tensor.getDimsCount()];
+    for (int i = 0; i < tensor.getDimsCount(); i++) {
+      intDims[i] = tensor.getDims(i);
+    }
+
+    TensorInfo nodeMeta = null;
+    String nodeName = "";
+    if (nodeMetaDict.size() == 1) {
+      for (Map.Entry<String, NodeInfo> e : nodeMetaDict.entrySet()) {
+        nodeMeta = (TensorInfo) e.getValue().getInfo();
+        nodeName = e.getKey(); // valid for single node input
+      }
+    } else if (nodeMetaDict.size() > 1) {
+      if (!tensor.getName().isEmpty()) {
+        nodeMeta = (TensorInfo) nodeMetaDict.get(tensor.getName()).getInfo();
+        nodeName = tensor.getName();
+      } else {
+        boolean matchfound = false;
+        // try to find from matching type and shape
+        for (Map.Entry<String, NodeInfo> e : nodeMetaDict.entrySet()) {
+          if (e.getValue().getInfo() instanceof TensorInfo) {
+            TensorInfo meta = (TensorInfo) e.getValue().getInfo();
+            if (tensorElemType == meta.type && tensor.getDimsCount() == meta.shape.length) {
+              int i = 0;
+              for (; i < meta.shape.length; i++) {
+                if (meta.shape[i] != -1 && meta.shape[i] != intDims[i]) {
+                  break;
+                }
+              }
+              if (i >= meta.shape.length) {
+                matchfound = true;
+                nodeMeta = meta;
+                nodeName = e.getKey();
+                break;
+              }
+            }
+          }
+        }
+        if (!matchfound) {
+          // throw error
+          throw new IllegalStateException(
+              "No matching Tensor found in InputOutputMetadata corresponding to the serialized tensor loaded from "
+                  + filename);
+        }
+      }
+    } else {
+      // throw error
+      throw new IllegalStateException(
+          "While reading the serialized tensor loaded from "
+              + filename
+              + ", metaDataDict has 0 elements");
+    }
+
+    Assertions.assertEquals(tensorElemType, nodeMeta.type);
+    Assertions.assertEquals(nodeMeta.shape.length, tensor.getDimsCount());
+    for (int i = 0; i < nodeMeta.shape.length; i++) {
+      Assertions.assertTrue((nodeMeta.shape[i] == -1) || (nodeMeta.shape[i] == intDims[i]));
+    }
+
+    ByteBuffer buffer = ByteBuffer.wrap(tensor.getRawData().toByteArray());
+
+    OnnxTensor onnxTensor = OnnxTensor.createTensor(env, buffer, intDims, tensorElemType);
+
+    return new StringTensorPair(nodeName, onnxTensor);
+  }
+
+  private static class TypeWidth {
+    public final OnnxJavaType type;
+    public final int width;
+
+    public TypeWidth(OnnxJavaType type, int width) {
+      this.type = type;
+      this.width = width;
+    }
+  }
+
+  static class StringTensorPair {
+    public final String string;
+    public final OnnxTensor tensor;
+
+    public StringTensorPair(String string, OnnxTensor tensor) {
+      this.string = string;
+      this.tensor = tensor;
+    }
   }
 }

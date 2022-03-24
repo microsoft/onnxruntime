@@ -1531,27 +1531,17 @@ TEST_F(GraphTest, AddTensorAttribute) {
   *(t.mutable_int64_data()->Add()) = 3;
   *(t.mutable_dims()->Add()) = 1;
   *(t.mutable_dims()->Add()) = 3;
-  node_1.AddAttribute(kConstantValue, t);
+  node_1.AddAttribute(kConstantValue, std::move(t));
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 }
 
 void AddAttribute(onnxruntime::Node& p_node, const std::string& attr_name, int64_t attr_value) {
-  AttributeProto attr;
-  attr.set_name(attr_name);
-  attr.set_type(AttributeProto_AttributeType_INT);
-  attr.set_i(attr_value);
-  p_node.AddAttribute(attr_name, attr);
+  p_node.AddAttribute(attr_name, attr_value);
 }
 
 void AddAttribute(onnxruntime::Node& p_node, const std::string& attr_name, std::initializer_list<int64_t> attr_value) {
-  AttributeProto attr;
-  attr.set_name(attr_name);
-  attr.set_type(AttributeProto_AttributeType_INTS);
-  for (auto v : attr_value) {
-    attr.add_ints(v);
-  }
-  p_node.AddAttribute(attr_name, attr);
+  p_node.AddAttribute(attr_name, attr_value);
 }
 
 // Test that output type can be inferred for ops with a type-attribute
@@ -1960,6 +1950,78 @@ TEST_F(GraphTest, DontRemoveUnusedInitializerWithGraphInput) {
                         });
 
   ASSERT_NE(j, inputs_including_initializers.cend()) << "Unused initializer was incorrectly removed.";
+}
+
+// The Model class internally:
+// 1. Converts the ONNX Model to an ORT Model
+// 2. Converts the ORT Model's Graph back to an ONNX Graph so that it
+//    can run the ONNX Checker on it.
+// Previously this was buggy for models containing subgraphs with IR Version < 4.
+// We didn't always ensure that initializers are a subset of inputs, which is
+// required for IR version < 4.
+TEST_F(GraphTest, ConstantsBecomeInitializersAndInputs) {
+  ModelProto m;
+  m.set_ir_version(ONNX_NAMESPACE::IR_VERSION_2017_11_3);
+  ImportOpset(m, "", 13);
+  GraphProto* g = m.mutable_graph();
+  g->set_name("test");
+
+  // Construct "output = if x: 2.0 else 1.0"
+  ValueInfoProto* x = g->add_input();
+  x->set_name("x");
+  SetTypeAndShape(x->mutable_type()->mutable_tensor_type(), TensorProto_DataType_BOOL, {1});
+
+  NodeProto* if_node = g->add_node();
+  if_node->set_op_type("If");
+  if_node->set_name("If");
+  if_node->add_input("x");
+  if_node->add_output("output");
+
+  AttributeProto* if_attr = if_node->add_attribute();
+  if_attr->set_name("then_branch");
+  if_attr->set_type(AttributeProto_AttributeType_GRAPH);
+  GraphProto* then_g = if_attr->mutable_g();
+  then_g->set_name("then");
+  ValueInfoProto* then_out = then_g->add_output();
+  then_out->set_name("then_out");
+  SetTypeAndShape(then_out->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {1});
+  NodeProto* two_node = then_g->add_node();
+  two_node->set_op_type("Constant");
+  AttributeProto* two_attr = two_node->add_attribute();
+  two_attr->set_name("value");
+  two_attr->set_type(AttributeProto_AttributeType_TENSOR);
+  two_attr->mutable_t()->add_float_data(2.0);
+  two_attr->mutable_t()->set_data_type(TensorProto_DataType_FLOAT);
+  two_attr->mutable_t()->add_dims(1);
+  two_node->set_name("Constant_two");
+  two_node->add_output("then_out");
+
+  AttributeProto* else_attr = if_node->add_attribute();
+  else_attr->set_name("else_branch");
+  else_attr->set_type(AttributeProto_AttributeType_GRAPH);
+  GraphProto* else_g = else_attr->mutable_g();
+  else_g->set_name("else");
+  ValueInfoProto* else_out = else_g->add_output();
+  else_out->set_name("else_out");
+  SetTypeAndShape(else_out->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {1});
+  NodeProto* one_node = else_g->add_node();
+  one_node->set_op_type("Constant");
+  AttributeProto* one_attr = one_node->add_attribute();
+  one_attr->set_name("value");
+  one_attr->set_type(AttributeProto_AttributeType_TENSOR);
+  one_attr->mutable_t()->add_float_data(1.0);
+  one_attr->mutable_t()->set_data_type(TensorProto_DataType_FLOAT);
+  one_attr->mutable_t()->add_dims(1);
+  one_node->set_name("Constant_one");
+  one_node->add_output("else_out");
+
+  ValueInfoProto* output = g->add_output();
+  output->set_name("output");
+  SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {1});
+
+  std::shared_ptr<Model> model;
+  Status st = Model::Load(std::move(m), model, nullptr, *logger_);
+  ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 }
 }  // namespace test
 }  // namespace onnxruntime

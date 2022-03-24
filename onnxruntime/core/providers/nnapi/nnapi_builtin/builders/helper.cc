@@ -5,22 +5,20 @@
 #include <string>
 #include <vector>
 
-#include <core/common/safeint.h>
-#include <core/common/logging/logging.h>
-#include <core/framework/tensorprotoutils.h>
-#include <core/graph/graph.h>
-#include <core/graph/graph_viewer.h>
-#include <core/providers/common.h>
-
-#include "core/providers/shared/utils/utils.h"
 #include "helper.h"
+
+#include "core/common/safeint.h"
+#include "core/common/logging/logging.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
+#include "core/providers/common.h"
+#include "core/providers/shared/node_unit/node_unit.h"
+#include "core/providers/shared/utils/utils.h"
 #include "op_support_checker.h"
 
 namespace onnxruntime {
 namespace nnapi {
-
-using std::string;
-using std::vector;
 
 std::string GetErrorCause(int error_code) {
   switch (error_code) {
@@ -50,36 +48,56 @@ std::string GetErrorCause(int error_code) {
   }
 }
 
-QLinearOpType GetQLinearOpType(const onnxruntime::Node& node) {
-  const auto& op_type = node.OpType();
-  if (op_type == "DequantizeLinear")
-    return QLinearOpType::DequantizeLinear;
-  else if (op_type == "QuantizeLinear")
-    return QLinearOpType::QuantizeLinear;
-  else if (op_type == "QLinearConv")
-    return QLinearOpType::QLinearConv;
-  else if (op_type == "QLinearMatMul")
-    return QLinearOpType::QLinearMatMul;
-  else if (op_type == "QLinearAdd")
-    return QLinearOpType::QLinearAdd;
-  else if (op_type == "QLinearSigmoid")
-    return QLinearOpType::QLinearSigmoid;
-  else if (op_type == "QLinearAveragePool")
-    return QLinearOpType::QLinearAveragePool;
+QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit) {
+  const auto& op_type = node_unit.OpType();
+  if (node_unit.UnitType() == NodeUnit::Type::SingleNode) {
+    if (op_type == "DequantizeLinear")
+      return QuantizedOpType::DequantizeLinear;
+    else if (op_type == "QuantizeLinear")
+      return QuantizedOpType::QuantizeLinear;
+    else if (op_type == "QLinearConv")
+      return QuantizedOpType::QLinearConv;
+    else if (op_type == "QLinearMatMul")
+      return QuantizedOpType::QLinearMatMul;
+    else if (op_type == "QLinearAdd")
+      return QuantizedOpType::QLinearAdd;
+    else if (op_type == "QLinearMul")
+      return QuantizedOpType::QLinearMul;
+    else if (op_type == "QLinearSigmoid")
+      return QuantizedOpType::QLinearSigmoid;
+    else if (op_type == "QLinearAveragePool")
+      return QuantizedOpType::QLinearAveragePool;
+  } else if (node_unit.UnitType() == NodeUnit::Type::QDQGroup) {
+    if (op_type == "Conv")
+      return QuantizedOpType::QDQConv;
+    else if (op_type == "Resize")
+      return QuantizedOpType::QDQResize;
+    else if (op_type == "AveragePool")
+      return QuantizedOpType::QDQAveragePool;
+    else if (op_type == "Add")
+      return QuantizedOpType::QDQAdd;
+    else if (op_type == "Mul")
+      return QuantizedOpType::QDQMul;
+    else if (op_type == "Transpose")
+      return QuantizedOpType::QDQTranspose;
+    else if (op_type == "Reshape")
+      return QuantizedOpType::QDQReshape;
+    else if (op_type == "Softmax")
+      return QuantizedOpType::QDQSoftmax;
+    else if (op_type == "Concat")
+      return QuantizedOpType::QDQConcat;
+  } else {
+    // throw?
+  }
 
-  return QLinearOpType::Unknown;
+  return QuantizedOpType::Unknown;
 }
 
-ConvType GetConvType(const onnxruntime::Node& node, const InitializedTensorSet& initializers) {
-  const auto& op_type = node.OpType();
-  bool is_qlinear_conv = (op_type == "QLinearConv");
-  ORT_ENFORCE(op_type == "Conv" || is_qlinear_conv);
-
-  NodeAttrHelper helper(node);
+ConvType GetConvType(const NodeUnit& node_unit, const InitializedTensorSet& initializers) {
+  NodeAttrHelper helper(node_unit);
   const auto group = helper.Get("group", 1);
 
-  size_t w_idx = is_qlinear_conv ? 3 : 1;
-  const auto& weight = node.InputDefs()[w_idx]->Name();
+  const auto& weight = node_unit.Inputs()[1].node_arg.Name();
   const auto& weight_tensor = *initializers.at(weight);
 
   // For ONNX we only have 1 conv ops
@@ -96,52 +114,51 @@ ConvType GetConvType(const onnxruntime::Node& node, const InitializedTensorSet& 
     return ConvType::Grouped;
 }
 
-bool IsQLinearBinaryOp(QLinearOpType qlinear_op_type) {
-  return qlinear_op_type == QLinearOpType::QLinearConv ||
-         qlinear_op_type == QLinearOpType::QLinearMatMul ||
-         qlinear_op_type == QLinearOpType::QLinearAdd;
+bool IsQuantizedConv(QuantizedOpType quant_op_type) {
+  return (quant_op_type == QuantizedOpType::QLinearConv) ||
+         (quant_op_type == QuantizedOpType::QDQConv);
 }
 
-bool HasValidUnaryOpQuantizedInputs(const Node& node) {
-  int32_t input_type;
-  if (!GetType(*node.InputDefs()[0], input_type))
-    return false;
-
-  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
-                          << "] Input type: [" << input_type
-                          << "] is not supported for now";
-    return false;
-  }
-
-  return true;
+bool IsQuantizedPool(QuantizedOpType quant_op_type) {
+  return (quant_op_type == QuantizedOpType::QLinearAveragePool) ||
+         (quant_op_type == QuantizedOpType::QDQAveragePool);
 }
 
-bool HasValidBinaryOpQuantizedInputs(const Node& node) {
-  auto op_type = GetQLinearOpType(node);
+bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type) {
+  return quant_op_type == QuantizedOpType::QLinearMatMul ||
+         quant_op_type == QuantizedOpType::QLinearAdd ||
+         quant_op_type == QuantizedOpType::QLinearMul ||
+         quant_op_type == QuantizedOpType::QDQAdd ||
+         quant_op_type == QuantizedOpType::QDQMul ||
+         IsQuantizedConv(quant_op_type);
+}
+
+bool HasValidBinaryOpQuantizedInputTypes(const NodeUnit& node_unit) {
+  auto quant_op_type = GetQuantizedOpType(node_unit);
   int32_t a_input_type, b_input_type;
-  if (!IsQLinearBinaryOp(op_type)) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType() << "] is not a binary qlinear op";
+  if (!IsQuantizedBinaryOp(quant_op_type)) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node_unit.OpType() << "] is not a binary qlinear op";
     return false;
   }
 
-  const auto input_defs(node.InputDefs());
-  if (!GetType(*input_defs[0], a_input_type))
+  const auto& inputs = node_unit.Inputs();
+  if (!GetType(inputs[0].node_arg, a_input_type))
     return false;
-  if (!GetType(*input_defs[3], b_input_type))
+  if (!GetType(inputs[1].node_arg, b_input_type))
     return false;
 
-  // QlinearConv supports u8u8 or u8s8
-  // QLinearMatMul/Add only support u8u8
-  bool is_qlinear_conv = op_type == QLinearOpType::QLinearConv;
+  // QlinearConv/MatMul supports u8u8 or u8s8
+  // QLinearAdd/QLinearMul only support u8u8
+  bool is_quant_conv_or_matmul = IsQuantizedConv(quant_op_type) || (quant_op_type == QuantizedOpType::QLinearMatMul);
+
   bool has_valid_qlinear_conv_weight =
       (b_input_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
        b_input_type == ONNX_NAMESPACE::TensorProto_DataType_INT8);
 
   if (a_input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
-      (!is_qlinear_conv && a_input_type != b_input_type) ||
-      (is_qlinear_conv && !has_valid_qlinear_conv_weight)) {
-    LOGS_DEFAULT(VERBOSE) << "[" << node.OpType()
+      (!is_quant_conv_or_matmul && a_input_type != b_input_type) ||
+      (is_quant_conv_or_matmul && !has_valid_qlinear_conv_weight)) {
+    LOGS_DEFAULT(VERBOSE) << "[" << node_unit.OpType()
                           << "] A Input type: [" << a_input_type
                           << "] B Input type: [" << b_input_type
                           << "] is not supported for now";
@@ -151,186 +168,61 @@ bool HasValidBinaryOpQuantizedInputs(const Node& node) {
   return true;
 }
 
-bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const Node& node,
-                                const std::vector<size_t>& indices, const OpSupportCheckParams& params) {
-  const auto& op_type = node.OpType();
-  auto qlinear_op_type = GetQLinearOpType(node);
-  bool is_qlinear_conv = (qlinear_op_type == QLinearOpType::QLinearConv);
-  bool is_qlinear_matmul = (qlinear_op_type == QLinearOpType::QLinearMatMul);
-  const auto input_defs(node.InputDefs());
-  for (const auto idx : indices) {
-    if (idx >= input_defs.size()) {
-      LOGS_DEFAULT(VERBOSE) << "HasValidQuantizationScales, Input index,  " << idx
-                            << " >= input number, " << input_defs.size();
-      return false;
-    }
+common::Status GetQuantizationScaleAndZeroPoint(
+    const InitializedTensorSet& initializers, const NodeUnitIODef& io_def, const Path& model_path,
+    float& scale, int32_t& zero_point) {
+  scale = 0.0f;
+  zero_point = 0;
 
-    const auto scale_name = input_defs[idx]->Name();
-    if (!Contains(initializers, scale_name)) {
-      LOGS_DEFAULT(VERBOSE) << "The scale of " << op_type << " must be an initializer tensor";
-      return false;
-    }
-
-    // If this op is Qlinear[Conv/MatMul], we want to check u8s8 support for weight tensor (or B tensor for QlinearMatMul)
-    bool is_conv_matmul_weight = (is_qlinear_conv || is_qlinear_matmul) && idx == 4;
-    bool is_conv_matmul_u8s8_weight = false;
-
-    if (is_conv_matmul_weight) {
-      const auto& weight_tensor = *initializers.at(node.InputDefs()[3]->Name());
-      is_conv_matmul_u8s8_weight = weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT8;
-    }
-
-    const auto& scale_tensor = *initializers.at(scale_name);
-    int64_t scales_dim = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
-    if (!is_conv_matmul_u8s8_weight) {
-      if (scales_dim != 1) {
-        LOGS_DEFAULT(VERBOSE) << op_type << " does not support per-channel quantization, "
-                              << " for now, only u8s8 QlinearConv supports per-channel quantization on API 29+";
-        return false;
-      }
-    } else if (scales_dim != 1) {
-      // For u8s8 Qlinear[Conv/MatMul], we support
-      // 1. Per-tensor, the weight will be transformed to uint8 later
-      // 2. Per-channel, only from Android API level 29
-      if (is_qlinear_matmul) {
-        LOGS_DEFAULT(VERBOSE) << "QLinearMatMul does not support per-channel quantization";
-        return false;
-      }
-
-      if (params.android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
-        LOGS_DEFAULT(VERBOSE) << op_type << " only supports per-channel quantization on Android API 29+, "
-                              << "system NNAPI feature level: " << params.android_feature_level;
-        return false;
-      }
-
-      const auto& weight_tensor = *initializers.at(node.InputDefs()[3]->Name());
-      if (weight_tensor.dims()[0] != scales_dim) {
-        LOGS_DEFAULT(VERBOSE) << op_type << " mismatch int8 per-channel quantization weight,"
-                              << " weight dimension[0] " << weight_tensor.dims()[0]
-                              << " scale dimension " << scales_dim;
-        return false;
-      }
-    }
+  if (!io_def.quant_param) {  // Not a quantized IO
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "NodeArg: ", io_def.node_arg.Name(), " is not quantized");
   }
 
-  return true;
-}
+  const auto unpack_tensor = [&model_path](const InitializedTensorSet& initializers,
+                                           const std::string& name, std::vector<uint8_t>& unpacked_tensor) {
+    const auto& tensor = *initializers.at(name);
+    ORT_RETURN_IF_ERROR(
+        onnxruntime::utils::UnpackInitializerData(tensor, model_path, unpacked_tensor));
+    return Status::OK();
+  };
 
-bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, const Node& node,
-                                    const std::vector<size_t>& indices) {
-  const auto& op_type = node.OpType();
-  auto qlinear_op_type = GetQLinearOpType(node);
-  bool is_qlinear_conv = (qlinear_op_type == QLinearOpType::QLinearConv);
-  bool is_qlinear_matmul = (qlinear_op_type == QLinearOpType::QLinearMatMul);
-  const auto input_defs(node.InputDefs());
-  for (const auto idx : indices) {
-    if (idx >= input_defs.size()) {
-      LOGS_DEFAULT(VERBOSE) << "HasValidQuantizationZeroPoints, Input index,  " << idx
-                            << " >= input number, " << input_defs.size();
-      return false;
-    }
-
-    const auto zero_point_name = input_defs[idx]->Name();
-    if (!Contains(initializers, zero_point_name)) {
-      LOGS_DEFAULT(VERBOSE) << "The zero point of " << op_type << " must be an initializer tensor";
-      return false;
-    }
-
-    bool is_conv_matmul_weight = is_qlinear_conv && idx == 5;
-    bool is_conv_matmul_u8s8_weight = false;
-    if (is_conv_matmul_weight) {
-      const auto& weight_tensor = *initializers.at(node.InputDefs()[3]->Name());
-      is_conv_matmul_u8s8_weight = weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT8;
-    }
-
-    const auto& zero_tensor = *initializers.at(zero_point_name);
-    int64_t zero_dim = zero_tensor.dims().empty() ? 1 : zero_tensor.dims()[0];
-
-    if (!is_conv_matmul_u8s8_weight) {
-      if (zero_dim != 1) {
-        LOGS_DEFAULT(VERBOSE) << op_type << " does not support per-channel quantization, "
-                              << " for now, only u8s8 QlinearConv supports per-channel quantization on API 29+";
-        return false;
-      }
-    } else {
-      // For u8s8 Qlinear[Conv/MatMul], we support
-      // 1. Per-tensor, the weight will be transformed to uint8 later
-      // 2. Per-channel, only from Android API level 29
-      if (zero_tensor.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8) {
-        LOGS_DEFAULT(VERBOSE) << "u8s8 Qlinear[Conv/MatMul] only supports int8 zero point for weight, "
-                              << "actual zero point type: [" << zero_tensor.data_type() << "]";
-        return false;
-      }
-
-      if (zero_dim != 1) {
-        if (is_qlinear_matmul) {
-          LOGS_DEFAULT(VERBOSE) << "QLinearMatMul does not support per-channel quantization";
-          return false;
-        }
-      }
-
-      // For onnx, u8s8 QlinearConv, the weight zero point can be a scalar,
-      // or a tensor with same channel as weight, for NNAPI we only support it be
-      // 0 (scalar) or all 0 (tensor), NNAPI will assume the zero point for per-channel
-      // quantization is 0 there is no input for it
-      const auto& weight_tensor = *initializers.at(node.InputDefs()[3]->Name());
-      if (weight_tensor.dims()[0] != zero_dim && zero_dim != 1) {
-        LOGS_DEFAULT(VERBOSE) << op_type << " mismatch int8 per-channel quantization weight,"
-                              << " weight dimension[0] " << weight_tensor.dims()[0]
-                              << " zero point dimension " << zero_dim;
-        return false;
-      }
-
-      std::vector<uint8_t> unpacked_tensor;
-      auto status = onnxruntime::utils::UnpackInitializerData(zero_tensor, node.ModelPath(), unpacked_tensor);
-      if (!status.IsOK()) {
-        LOGS_DEFAULT(ERROR) << "Qlinear[Conv/MatMul] error when unpack zero tensor: " << zero_point_name
-                            << ", error msg: " << status.ErrorMessage();
-        return false;
-      }
-
-      // Verify all onnx weight zero point(s) are 0(s)
-      const int8_t* zero_points = reinterpret_cast<const int8_t*>(unpacked_tensor.data());
-      for (size_t i = 0; i < unpacked_tensor.size(); i++) {
-        if (zero_points[i] != 0) {
-          LOGS_DEFAULT(VERBOSE) << "u8s8 Qlinear[Conv/MatMul]  only support 0 as zero point, "
-                                << "zero_points[" << i << "] has value: " << zero_points[i];
-          return false;
-        }
-      }
-    }
+  const auto& quant_param = *io_def.quant_param;
+  {  // get the scale
+    std::vector<uint8_t> unpacked_tensor;
+    const auto& name = quant_param.scale.Name();
+    ORT_RETURN_IF_ERROR(unpack_tensor(initializers, name, unpacked_tensor));
+    // The scale should be one or more floats
+    ORT_RETURN_IF(unpacked_tensor.size() < 4,
+                  "The initializer [", name, "] should have one or more floats ",
+                  "with size no less than 4, actual size: ", unpacked_tensor.size());
+    scale = reinterpret_cast<const float*>(unpacked_tensor.data())[0];
   }
 
-  return true;
-}
+  if (quant_param.zero_point) {  // get the zero point if it's there
+    std::vector<uint8_t> unpacked_tensor;
+    const auto& name = quant_param.zero_point->Name();
+    ORT_RETURN_IF_ERROR(unpack_tensor(initializers, name, unpacked_tensor));
+    ORT_RETURN_IF(unpacked_tensor.empty(), "The initializer [", name, "] is empty");
+    // Onnx quantization uses uint8 [int8 not yet supported], need to cast to int32_t used by NNAPI
+    zero_point = static_cast<int32_t>(unpacked_tensor[0]);
+  }
 
-common::Status GetQuantizationScale(const InitializedTensorSet& initializers, const Node& node,
-                                    size_t idx, float& scale) {
-  std::vector<uint8_t> unpacked_tensor;
-  const auto& name = node.InputDefs()[idx]->Name();
-  const auto& scale_tensor = *initializers.at(name);
-  ORT_RETURN_IF_ERROR(
-      onnxruntime::utils::UnpackInitializerData(scale_tensor, node.ModelPath(), unpacked_tensor));
-
-  // The scale should be one or more floats
-  ORT_RETURN_IF(unpacked_tensor.size() < 4, "The initializer [", name, "] should have one or more floats ",
-                "with size no less than 4, actual size: ", unpacked_tensor.size());
-  scale = reinterpret_cast<const float*>(unpacked_tensor.data())[0];
   return Status::OK();
 }
 
-common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers,
-                                        const Node& node, size_t idx, int32_t& zero_point) {
-  std::vector<uint8_t> unpacked_tensor;
-  const auto& name = node.InputDefs()[idx]->Name();
-  const auto& zero_point_tensor = *initializers.at(name);
-  ORT_RETURN_IF_ERROR(
-      onnxruntime::utils::UnpackInitializerData(zero_point_tensor, node.ModelPath(), unpacked_tensor));
+common::Status GetQuantizationScaleAndZeroPoint(
+    const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::string& name,
+    float& scale, int32_t& zero_point, IOKind io_kind) {
+  const auto& io_defs = io_kind == IOKind::Input ? node_unit.Inputs() : node_unit.Outputs();
+  for (const auto& io_def : io_defs) {
+    if (io_def.node_arg.Name() == name)
+      return GetQuantizationScaleAndZeroPoint(initializers, io_def, node_unit.ModelPath(),
+                                              scale, zero_point);
+  }
 
-  ORT_RETURN_IF(unpacked_tensor.empty(), "The initializer [", name, "] is empty");
-  // Onnx quantization uses uint8 [int8 not yet supported], need to cast to int32_t used by NNAPI
-  zero_point = static_cast<int32_t>(unpacked_tensor[0]);
-  return Status::OK();
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                         "Unknown input: ", name, ", for NodeUnit with node index: ", node_unit.Index());
 }
 
 bool GetShape(const NodeArg& node_arg, Shape& shape) {
@@ -361,9 +253,9 @@ bool GetType(const NodeArg& node_arg, int32_t& type) {
   return true;
 }
 
-void GetFlattenOutputShape(const Node& node, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2) {
+void GetFlattenOutputShape(const NodeUnit& node_unit, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2) {
   int32_t rank = static_cast<int>(input_shape.size());
-  NodeAttrHelper helper(node);
+  NodeAttrHelper helper(node_unit);
   int32_t axis = helper.Get("axis", 1);
   // axis == rank is a valid input, but invalid for HandleNegativeAxis
   // Skip non-negative axis here
@@ -390,7 +282,11 @@ bool IsValidSupportedNodeGroup(const std::vector<const Node*>& supported_node_pa
   return true;
 }
 
-bool IsInternalQuantizedNode(const Node& node) {
+static bool IsInternalQuantizedNodeUnit(const NodeUnit& node_unit) {
+  // First, ignore QDQ NodeUnit which is not internal quantized node
+  if (node_unit.UnitType() == NodeUnit::Type::QDQGroup)
+    return false;
+
   // These operators can use uint8 input without specific QLinear version of it
   // However, the mode has to be internal to the graph/partition (they cannot consume graph inputs)
   static const std::unordered_set<std::string> internal_quantized_op_types =
@@ -401,6 +297,7 @@ bool IsInternalQuantizedNode(const Node& node) {
           "MaxPool",
       };
 
+  const auto& node = node_unit.GetNode();
   if (!Contains(internal_quantized_op_types, node.OpType()))
     return false;
 
@@ -434,45 +331,24 @@ bool IsInternalQuantizationSupported(const Node& node, const std::unordered_set<
   return true;
 }
 
-bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
+bool IsNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
   const auto& op_support_checkers = GetOpSupportCheckers();
-  if (!Contains(op_support_checkers, node.OpType()))
+  if (!Contains(op_support_checkers, node_unit.OpType()))
     return false;
 
-  const auto* op_support_checker = op_support_checkers.at(node.OpType());
-  return op_support_checker->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, params);
+  const auto* op_support_checker = op_support_checkers.at(node_unit.OpType());
+  return op_support_checker->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node_unit, params);
 }
 
-bool IsNodeSupportedInGroup(const Node& node, const GraphViewer& graph_viewer,
+bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_viewer,
                             const OpSupportCheckParams& params,
                             const std::unordered_set<std::string>& node_outputs_in_group) {
-  if (!IsNodeSupported(node, graph_viewer, params))
+  if (!IsNodeSupported(node_unit, graph_viewer, params))
     return false;
 
-  // We also want to check if the node is supported as an internal quantized node
-  if (IsInternalQuantizedNode(node))
-    return IsInternalQuantizationSupported(node, node_outputs_in_group);
-  else  // This is not a internal quantized node, it is supported
-    return true;
-}
-
-bool IsInputSupported(const NodeArg& input, const std::string& parent_name) {
-  const auto& input_name = input.Name();
-  const auto* shape_proto = input.Shape();
-  // We do not support input with no shape
-  if (!shape_proto) {
-    LOGS_DEFAULT(VERBOSE) << "Input [" << input_name << "] of [" << parent_name
-                          << "] has no shape";
-    return false;
-  }
-
-  for (const auto& dim : shape_proto->dim()) {
-    // For now we do not support dynamic shape
-    if (!dim.has_dim_value()) {
-      LOGS_DEFAULT(WARNING) << "Dynamic shape is not supported for now, for input:" << input_name;
-      return false;
-    }
-  }
+  // We also want to check if the node is supported as an internal quantized node_unit
+  if (IsInternalQuantizedNodeUnit(node_unit))
+    return IsInternalQuantizationSupported(node_unit.GetNode(), node_outputs_in_group);
 
   return true;
 }
@@ -487,10 +363,11 @@ std::string Shape2String(const std::vector<uint32_t>& shape) {
   return os.str();
 }
 
-bool CheckIsInitializer(const InitializedTensorSet& initializers, const Node& node,
-                        size_t input_idx, const char* input_name) {
-  if (!Contains(initializers, node.InputDefs()[input_idx]->Name())) {
-    LOGS_DEFAULT(VERBOSE) << input_name << " of " << node.OpType() << " must be an initializer tensor";
+bool CheckIsInitializer(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+                        const std::string& input_name, const char* input_description) {
+  if (!Contains(initializers, input_name)) {
+    LOGS_DEFAULT(VERBOSE) << input_description << " of " << node_unit.Name() << "of type ["
+                          << node_unit.OpType() << "] must be an initializer tensor";
     return false;
   }
 

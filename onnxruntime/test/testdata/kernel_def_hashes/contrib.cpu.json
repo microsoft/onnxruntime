@@ -4,6 +4,10 @@
         7811918192248490408
     ],
     [
+        "BeamSearch com.microsoft CPUExecutionProvider",
+        6968087233460196528
+    ],
+    [
         "Crop ai.onnx CPUExecutionProvider",
         6914973556202621376
     ],
@@ -26,6 +30,10 @@
     [
         "MeanVarianceNormalization ai.onnx CPUExecutionProvider",
         13114085849278607104
+    ],
+    [
+        "NhwcMaxPool com.microsoft CPUExecutionProvider",
+        11773579655431087496
     ],
     [
         "ParametricSoftplus ai.onnx CPUExecutionProvider",
@@ -85,7 +93,7 @@
     ],
     [
         "CropAndResize com.microsoft CPUExecutionProvider",
-        7642430665819070720
+        8620498355864235632
     ],
     [
         "DequantizeLinear com.microsoft CPUExecutionProvider",
@@ -136,12 +144,20 @@
         4658746266161736328
     ],
     [
+        "GridSample com.microsoft CPUExecutionProvider",
+        11924582339825775592
+    ],
+    [
         "Inverse com.microsoft CPUExecutionProvider",
         1037755270231788608
     ],
     [
         "MatMulInteger16 com.microsoft CPUExecutionProvider",
         5265636774129358144
+    ],
+    [
+        "MatMulIntegerToFloat com.microsoft CPUExecutionProvider",
+        1363870470731747600
     ],
     [
         "MatMulIntegerToFloat com.microsoft CPUExecutionProvider",
@@ -182,6 +198,10 @@
     [
         "QLinearAveragePool com.microsoft CPUExecutionProvider",
         9152647959212466896
+    ],
+    [
+        "QLinearConv com.microsoft CPUExecutionProvider",
+        10904143578341560456
     ],
     [
         "QLinearConv com.microsoft CPUExecutionProvider",
@@ -269,10 +289,10 @@
     ],
     [
       "QGemm com.microsoft CPUExecutionProvider",
-      13737193491843065240
+      13009794669709617232
     ],
     [
-      "GridSample com.microsoft CPUExecutionProvider",
-      15019666093341768288
+      "QGemm com.microsoft CPUExecutionProvider",
+      13737193491843065240
     ]
 ]

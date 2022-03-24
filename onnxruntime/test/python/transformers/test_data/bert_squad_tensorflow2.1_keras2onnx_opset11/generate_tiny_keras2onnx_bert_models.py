@@ -280,7 +280,8 @@ def generate_test_data(onnx_file,
         else:
             sess_options.optimized_model_filepath = path_prefix + "_optimized_gpu.onnx"
 
-        session = onnxruntime.InferenceSession(onnx_file, sess_options)
+        session = onnxruntime.InferenceSession(onnx_file, sess_options=sess_options,
+                                               providers=onnxruntime.get_available_providers())
         if use_cpu:
             session.set_providers(['CPUExecutionProvider'])  # use cpu
         else:

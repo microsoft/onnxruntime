@@ -1,21 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <PropertyGroup>
-    <WindowsAI-Platform Condition="'$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')">x64</WindowsAI-Platform>
-    <WindowsAI-Platform Condition="'$(PlatformTarget)' == 'x86' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' == 'true')">x86</WindowsAI-Platform>
-    <WindowsAI-Platform Condition="'$(PlatformTarget)' == '' AND '$(Prefer32Bit)' != 'true'">x64</WindowsAI-Platform>
-    <WindowsAI-Platform Condition="'$(PlatformTarget)' == '' AND '$(Prefer32Bit)' == 'true'">x86</WindowsAI-Platform>
-    <WindowsAI-Platform Condition="'$(WindowsAI-Platform)' == ''">$(PlatformTarget)</WindowsAI-Platform>
-  </PropertyGroup>
-
-  <PropertyGroup>
-    <RuntimesDirectory Condition="'$(TargetPlatformIdentifier)' == 'UAP'">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\lib\uap10.0</RuntimesDirectory>
-    <RuntimesDirectory Condition="'$(TargetPlatformIdentifier)' != 'UAP'">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\_native</RuntimesDirectory>
-    <WindowsAIBinarySubfolder Condition="'$(UseWindowsMLStaticRuntime)' == 'true'">static\</WindowsAIBinarySubfolder>
-    <WindowsAIBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)Microsoft.AI.MachineLearning.dll</WindowsAIBinary>
-    <OnnxRuntimeBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)onnxruntime.dll</OnnxRuntimeBinary>
-  </PropertyGroup>
-
   <Target Name="CopyMLBinaries" BeforeTargets="CoreBuild">
     <PropertyGroup>
       <WindowsAIBinplaceMessage>Binplacing WindowsAI binaries: {0} and {1}.</WindowsAIBinplaceMessage>

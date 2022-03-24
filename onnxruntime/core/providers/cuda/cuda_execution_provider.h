@@ -11,6 +11,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
+#include "core/providers/cuda/cuda_graph.h"
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
@@ -94,6 +95,12 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
+  bool IsGraphCaptureEnabled() const override;
+  bool IsGraphCaptured() const override;
+  Status ReplayGraph() override;
+#endif
+
  private:
   CUDAExecutionProviderInfo info_;
   cudaDeviceProp device_prop_;
@@ -143,13 +150,11 @@ class CUDAExecutionProvider : public IExecutionProvider {
           constant_ones_half_ = cuda::CreateConstantOnes<half>();
         }
         return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(stream_, count));
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-      } else if (std::is_same<T, nv_bfloat16>::value) {
+      } else if (std::is_same<T, BFloat16>::value) {
         if (!constant_ones_bfloat16_) {
-          constant_ones_bfloat16_ = cuda::CreateConstantOnes<nv_bfloat16>();
+          constant_ones_bfloat16_ = cuda::CreateConstantOnes<BFloat16>();
         }
         return reinterpret_cast<const T*>(constant_ones_bfloat16_->GetBuffer(stream_, count));
-#endif
       } else {
         return nullptr;
       }
@@ -158,6 +163,15 @@ class CUDAExecutionProvider : public IExecutionProvider {
     AllocatorPtr GetAllocator() const {
       return allocator_;
     }
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
+  bool IsGraphCaptureAllowed() const;
+  void CaptureBegin();
+  void CaptureEnd();
+  bool IsGraphCaptured() const;
+  Status ReplayGraph();
+  void IncrementRegularRunCountBeforeGraphCapture();
+#endif
 
    private:
     cudaStream_t stream_ = nullptr;
@@ -172,11 +186,20 @@ class CUDAExecutionProvider : public IExecutionProvider {
     std::unique_ptr<cuda::IConstantBuffer<float>> constant_ones_float_;
     std::unique_ptr<cuda::IConstantBuffer<double>> constant_ones_double_;
     std::unique_ptr<cuda::IConstantBuffer<half>> constant_ones_half_;
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-    std::unique_ptr<cuda::IConstantBuffer<nv_bfloat16>> constant_ones_bfloat16_;
-#endif
+    std::unique_ptr<cuda::IConstantBuffer<BFloat16>> constant_ones_bfloat16_;
 
     AllocatorPtr allocator_;
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
+    // Cuda graph with multi threads will be supported in the future, so cuda_graph_
+    // is put under PerThreadContext.
+    CUDAGraph cuda_graph_;
+    bool is_graph_captured_ = false;
+    int regular_run_count_before_graph_capture_ = 0;
+    const int min_num_runs_before_cuda_graph_capture_ = 1; // required min regular runs before graph capture for the necessary memory allocations.
+
+#endif
+
   };
 
   using PerThreadContextMap = std::unordered_map<const CUDAExecutionProvider*, std::weak_ptr<PerThreadContext>>;

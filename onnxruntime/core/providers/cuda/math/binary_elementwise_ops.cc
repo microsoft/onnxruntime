@@ -117,6 +117,17 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
       x<T>);
 
+#define BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_VERSIONED_TYPED(x, startver, endver, T)                                                         \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                                                           \
+      x,                                                                                                                                             \
+      kOnnxDomain,                                                                                                                                   \
+      startver,                                                                                                                                      \
+      endver,                                                                                                                                        \
+      T,                                                                                                                                             \
+      kCudaExecutionProvider,                                                                                                                        \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
+      x<T>);
+
 #define BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(x, startver, endver, T)         \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       x,                                                                                   \
@@ -189,22 +200,6 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
 // D: double
 // O: bool
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-#define BINARY_OP_TYPED_BF16(name, ver) BINARY_OP_TYPED(name, ver, BFloat16)
-#define BINARY_OP_VERSIONED_TYPED_BF16(name, startver, endver) BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, BFloat16)
-#define BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED_BF16(name, ver) BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, BFloat16)
-#define BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED_BF16(name, ver) BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, BFloat16)
-#define BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED_BF16(name, startver, endver) BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, BFloat16)
-#define BINARY_OP_TYPED_VERSIONED_V_BF16(name, class_name, startver, endver) BINARY_OP_TYPED_VERSIONED_V(name, class_name, startver, endver, BFloat16)
-#else
-#define BINARY_OP_TYPED_BF16(name, ver)
-#define BINARY_OP_VERSIONED_TYPED_BF16(name, startver, endver)
-#define BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED_BF16(name, ver)
-#define BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED_BF16(name, ver)
-#define BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED_BF16(name, startver, endver)
-#define BINARY_OP_TYPED_VERSIONED_V_BF16(name, class_name, startver, endver)
-#endif
-
 #define BINARY_OP_VERSIONED_HFD(name, startver, endver)        \
   BINARY_OP_VERSIONED_TYPED(name, startver, endver, MLFloat16) \
   BINARY_OP_VERSIONED_TYPED(name, startver, endver, float)     \
@@ -222,14 +217,14 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   BINARY_OP_VERSIONED_TYPED(name, startver, endver, uint64_t)         \
   BINARY_OP_VERSIONED_TYPED(name, startver, endver, int32_t)          \
   BINARY_OP_VERSIONED_TYPED(name, startver, endver, int64_t)          \
-  BINARY_OP_VERSIONED_TYPED_BF16(name, startver, endver)              \
-  BINARY_OP_VERSIONED_HFD(name, startver, endver)
+  BINARY_OP_VERSIONED_HFD(name, startver, endver)                     \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, BFloat16)
 
 #define BINARY_OP_HFD(name, ver)        \
   BINARY_OP_TYPED(name, ver, MLFloat16) \
-  BINARY_OP_TYPED_BF16(name, ver)       \
   BINARY_OP_TYPED(name, ver, float)     \
-  BINARY_OP_TYPED(name, ver, double)
+  BINARY_OP_TYPED(name, ver, double)    \
+  BINARY_OP_TYPED(name, ver, BFloat16)
 
 #define BINARY_OP_UZILHFD(name, ver)   \
   BINARY_OP_TYPED(name, ver, uint32_t) \
@@ -250,9 +245,9 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
 
 #define BINARY_OP_REGISTER_HFD(name, ver)                        \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, MLFloat16) \
-  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED_BF16(name, ver)       \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, float)     \
-  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, double)
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, double)    \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, BFloat16)
 
 #define BINARY_OP_REGISTER_UZILHFD(name, ver)                   \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, uint32_t) \
@@ -267,21 +262,31 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, int32_t)   \
   BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, int64_t)   \
   BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, MLFloat16) \
-  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED_BF16(name, ver)       \
   BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, float)     \
-  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, double)
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, double)    \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, BFloat16)
+
+#define BINARY_LOGICALOP_REGISTER_VERSIONED_UZILHFD(name, startver, endver)                       \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, uint32_t)  \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, uint64_t)  \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, int32_t)   \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, int64_t)   \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, MLFloat16) \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, float)     \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, double)    \
+  BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, BFloat16)
 
 #define BINARY_OP_REGISTER_VERSIONED_HFD(name, startver, endver)                        \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, MLFloat16) \
-  BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED_BF16(name, startver, endver)       \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, float)     \
-  BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, double)
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, double)    \
+  BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, BFloat16)
 
 #define BINARY_OP_REGISTER_VERSIONED_CLASS_HFD(name, class_name, startver, endver) \
   BINARY_OP_TYPED_VERSIONED_V(name, class_name, startver, endver, MLFloat16)       \
-  BINARY_OP_TYPED_VERSIONED_V_BF16(name, class_name, startver, endver)             \
   BINARY_OP_TYPED_VERSIONED_V(name, class_name, startver, endver, float)           \
-  BINARY_OP_TYPED_VERSIONED_V(name, class_name, startver, endver, double)
+  BINARY_OP_TYPED_VERSIONED_V(name, class_name, startver, endver, double)          \
+  BINARY_OP_TYPED_VERSIONED_V(name, class_name, startver, endver, BFloat16)
 
 #define BINARY_OP_REGISTER_VERSIONED_UZILHFD(name, startver, endver)                   \
   BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, uint32_t) \
@@ -310,7 +315,9 @@ BINARY_LOGICALOP_TYPED(And, 7, bool)
 BINARY_LOGICALOP_TYPED(Or, 7, bool)
 BINARY_LOGICALOP_TYPED(Xor, 7, bool)
 BINARY_OP_VERSIONED_HFD(PRelu, 7, 8)
-BINARY_OP_HFD(PRelu, 9)
+BINARY_OP_VERSIONED_HFD(PRelu, 9, 15)
+// Opset-16 adds BFloat16 to allowed types for the PRelu operator
+BINARY_OP_HFD(PRelu, 16)
 
 // Pow since version 12
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -525,8 +532,14 @@ BINARY_OP_REGISTER_VERSIONED_HFD(Greater, 7, 8)
 BINARY_LOGICALOP_REGISTER_UZILHFD(Less, 13)
 BINARY_OP_REGISTER_VERSIONED_UZILHFD(Less, 9, 12)
 BINARY_OP_REGISTER_VERSIONED_HFD(Less, 7, 8)
-BINARY_LOGICALOP_REGISTER_UZILHFD(GreaterOrEqual, 12)
-BINARY_LOGICALOP_REGISTER_UZILHFD(LessOrEqual, 12)
+BINARY_LOGICALOP_REGISTER_VERSIONED_UZILHFD(GreaterOrEqual, 12, 15)
+BINARY_LOGICALOP_REGISTER_VERSIONED_UZILHFD(LessOrEqual, 12, 15)
+
+// Opset-16 adds BFloat16 to allowed types for the GreaterOrEqual operator
+BINARY_LOGICALOP_REGISTER_UZILHFD(GreaterOrEqual, 16)
+
+// Opset-16 adds BFloat16 to allowed types for the LessOrEqual operator
+BINARY_LOGICALOP_REGISTER_UZILHFD(LessOrEqual, 16)
 
 }  // namespace cuda
 }  // namespace onnxruntime

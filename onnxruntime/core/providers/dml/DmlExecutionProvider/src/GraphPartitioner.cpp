@@ -105,7 +105,7 @@ namespace Dml
 
         for (GraphPartition* partitionToMerge : partitionsToMerge)
         {
-            if (partitionToMerge == this)
+            if (partitionToMerge->GetRootMergedPartition() == this)
             {
                 continue;
             }
@@ -139,69 +139,6 @@ namespace Dml
         }
     };
 
-    bool NodeArgSupportedInGraph(const onnxruntime::NodeArg* arg, uint32_t supportedDeviceDataTypeMask)
-    {            
-        if (arg->Exists())
-        {
-            const onnx::TypeProto* typeProto = arg->TypeAsProto();
-            if (typeProto->value_case() == onnx::TypeProto::kTensorType)
-            {
-                const onnx::TypeProto_Tensor tensorType = typeProto->tensor_type();
-                if (tensorType.has_elem_type())
-                {
-                    // TODO: Remove this by handling zeroing on the output of fused graph nodes and handling of non-float 
-                    // types in DML's identity operator, which is used for strided copies.
-
-                    MLOperatorTensorDataType mlDataType = ToMLTensorDataType(static_cast<onnx::TensorProto_DataType>(tensorType.elem_type()));
-
-                    if (mlDataType == MLOperatorTensorDataType::UInt64 ||
-                        mlDataType == MLOperatorTensorDataType::Int64)
-                    {
-                        constexpr uint32_t deviceDataTypeMask64bit = (1 << DML_TENSOR_DATA_TYPE_UINT64) | (1 << DML_TENSOR_DATA_TYPE_INT64);
-                        if ((supportedDeviceDataTypeMask & deviceDataTypeMask64bit) != deviceDataTypeMask64bit)
-                        {
-                            return false;
-                        }
-                    }
-
-                }
-            }
-        }
-
-        return true;
-    }
-
-    bool NodeTensorTypesSupportedInGraph(const onnxruntime::Node& node, const InternalRegistrationInfo& registration, uint32_t supportedDeviceDataTypeMask)
-    {
-        for (size_t i = 0; i < node.InputDefs().size(); ++i)
-        {
-            bool isConstantCpuInput = std::find(registration.requiredConstantCpuInputs.begin(), registration.requiredConstantCpuInputs.end(), i) !=
-                  registration.requiredConstantCpuInputs.end();
-
-            if (!isConstantCpuInput &&
-                !NodeArgSupportedInGraph(
-                    node.InputDefs()[i],
-                    supportedDeviceDataTypeMask
-                ))
-            {
-                return false;
-            }
-        }
-
-        for (auto arg : node.OutputDefs())
-        {
-            if (!NodeArgSupportedInGraph(
-                    arg,
-                    supportedDeviceDataTypeMask
-                ))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
     bool TryGetTensorDataType(
         const onnxruntime::NodeArg& nodeArg,
         _Out_ MLOperatorTensorDataType* onnxElementType
@@ -231,26 +168,12 @@ namespace Dml
         uint32_t supportedDeviceDataTypeMask // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         )
     {
-        THROW_HR_IF(E_INVALIDARG, allow64BitInputThroughStrides && !nodeNameToPartitionMap);
+        ORT_THROW_HR_IF(E_INVALIDARG, allow64BitInputThroughStrides && !nodeNameToPartitionMap);
 
-        bool prefer64BitTensorsDirectly = false;
-        bool supportedWith64BitTensorsVia32BitStrides = false;
-        bool supportedWith64BitTensorsVia32BitStridesFromAnyEp = false;
         std::vector<onnxruntime::NodeArg const*> constantCpuInputs;
 
         if (regInfo != nullptr)
         {
-            // Read the operator flags for handling 64-bit tensors and whether it's allowed to fall back
-            // to 32-bit tensors via strides. If the caller passes allow64BitInputThroughStrides = false
-            // in this particular call, then the operator-specific flags do not matter as the caller has
-            // disabled 64-bit support.
-            if (allow64BitInputThroughStrides)
-            {
-                prefer64BitTensorsDirectly = regInfo->prefer64BitTensorsDirectly;
-                supportedWith64BitTensorsVia32BitStridesFromAnyEp = regInfo->supportedWith64BitTensorsVia32BitStridesFromAnyEp;
-                supportedWith64BitTensorsVia32BitStrides = regInfo->supportedWith64BitTensorsVia32BitStrides | supportedWith64BitTensorsVia32BitStridesFromAnyEp;
-            }
-
             // Collect the list of CPU-bound input tensors, needed when checking 64-bit fallback
             // or for other data types like int-8 which may be supported for CPU inputs but not
             // GPU inputs.
@@ -306,45 +229,10 @@ namespace Dml
                 return;
             }
 
-            // If this operator implements 64-bit support in terms of strided 32-bit tensors,
-            // then the data type needs to be remapped, regardless of whether input or output.
-            //
-            // Some operators can fairly safely implement 64-bit tensors in terms of
-            // strided 32-bit tensors regardless of input tensor's execution provider
-            // because the indices measure along a single axis and should fall within
-            // the range of an int32/uint32.
-            //
-            // Currently all DML kernels outputting int64 and uint64 are expected to
-            // not *introduce* values out of range, which allows the temporary trick
-            // using strides to emulate 64 bit tensors to work. If the source is a CPU
-            // operator, graph input or initializer, it's not safe to assume the input
-            // can be represented with 32 bits.
-            //
-            bool is64BitIntType = (dmlElementType == DML_TENSOR_DATA_TYPE_UINT64 || dmlElementType == DML_TENSOR_DATA_TYPE_INT64);
-            bool needsFallbackTo32Bit = !prefer64BitTensorsDirectly || !((1 << dmlElementType) & supportedDeviceDataTypeMask);
-            if (is64BitIntType && supportedWith64BitTensorsVia32BitStrides && needsFallbackTo32Bit)
-            {
-                dmlElementType = Remap64bitDmlDataTypeTo32bit(dmlElementType);
-
-                if (isInput && !supportedWith64BitTensorsVia32BitStridesFromAnyEp)
-                {
-                    // Look up the input partition.  If it's a graph input or initializer it will be missing
-                    // from the partition map.
-                    const std::string& argName = nodeArg.Name(); 
-
-                    // If input tensor's data comes from the output of a different execution provider,
-                    // consider it unsafe to apply fallback to.
-                    auto partitionIter = nodeNameToPartitionMap->find(argName);
-                    if (partitionIter == nodeNameToPartitionMap->end() || !partitionIter->second->IsDmlPartition())
-                    {
-                        nodeContainsSupportedDataTypes = false;
-                        return;
-                    }
-                }
-            }
+            bool isDataTypeSupported = (1 << dmlElementType) & supportedDeviceDataTypeMask;
 
             // Reject node if the data type is unsupported by the device.
-            if (!((1 << dmlElementType) & supportedDeviceDataTypeMask))
+            if (!isDataTypeSupported)
             {
                 nodeContainsSupportedDataTypes = false;
                 return;
@@ -368,7 +256,7 @@ namespace Dml
         _In_opt_ const std::unordered_map<std::string, GraphPartition*>* nodeNameToPartitionMap
         )
     {
-        THROW_HR_IF(E_INVALIDARG, allow64BitInputThroughStrides && !nodeNameToPartitionMap);
+        ORT_THROW_HR_IF(E_INVALIDARG, allow64BitInputThroughStrides && !nodeNameToPartitionMap);
 
         const onnxruntime::KernelCreateInfo* createInfo;
         Status st = registry.TryFindKernel(node, onnxruntime::kDmlExecutionProvider, &createInfo);
@@ -426,7 +314,7 @@ namespace Dml
 
                 // Get the kernel creation info for the registration, and check if it carries the property
                 // set during registration of kernels that support DML graph node usage.
-                auto& graphNodeProperty = dmlNodePropertyMap.insert(std::make_pair(&node, GraphNodeProperties()));
+                auto graphNodeProperty = dmlNodePropertyMap.insert(std::make_pair(&node, GraphNodeProperties()));
 
                 // Ensure that shape information is known statically for the inputs and outputs of the node,
                 // which is required for MLGraph compilation.
@@ -441,8 +329,7 @@ namespace Dml
                 {
                     auto internalRegInfo = regInfoIter->second;
 
-                    if (internalRegInfo && internalRegInfo->graphNodeFactoryRegistration && 
-                        NodeTensorTypesSupportedInGraph(node, *internalRegInfo, supportedDeviceDataTypeMask))
+                    if (internalRegInfo && internalRegInfo->graphNodeFactoryRegistration)
                     {
                         bool requiredCpuInputsConstant = true;
                         for (uint32_t inputIndex : internalRegInfo->requiredConstantCpuInputs)
@@ -598,7 +485,7 @@ namespace Dml
             {
                 partition->AddInput(arg->Name());
 
-                auto& inputPartition = nodeNameToPartitionMap.find(arg->Name());
+                auto inputPartition = nodeNameToPartitionMap.find(arg->Name());
                 if (inputPartition != nodeNameToPartitionMap.end())
                 {
                     inputPartition->second->GetRootMergedPartition()->AddOutput(arg->Name());
@@ -657,9 +544,10 @@ namespace Dml
             printf("\n");
 #endif
 
-            auto fused_kernel_func = [partitionNodePropsMap, transferredInitializerMap](const onnxruntime::OpKernelInfo& info) mutable ->onnxruntime::OpKernel*
+            auto fused_kernel_func = [partitionNodePropsMap, transferredInitializerMap](onnxruntime::FuncManager& func_mgr, const onnxruntime::OpKernelInfo& info, std::unique_ptr<onnxruntime::OpKernel>& out) mutable ->onnxruntime::Status
             {
-                return CreateFusedGraphKernel(info, partitionNodePropsMap, *transferredInitializerMap);
+                out.reset(CreateFusedGraphKernel(info, partitionNodePropsMap, *transferredInitializerMap));
+				return Status::OK();
             };
 
             // build the kernel definition on the fly, and register it to the fused_kernel_regisitry.
@@ -822,7 +710,7 @@ namespace Dml
                     const auto* arg = node.InputDefs()[i];
                     if (arg->Exists())
                     {
-                        auto& inputPartition = nodeNameToPartitionMap.find(arg->Name());
+                        auto inputPartition = nodeNameToPartitionMap.find(arg->Name());
 
                         // Add the input of the current node into the partition which the node will be merged into.
                         // Skip this if the input is already merged into the same partition or is not finalized,
@@ -947,7 +835,6 @@ namespace Dml
                         assert(iter != initializerPartitionMap.end());
                         if (iter->second.size() > 1)
                         {
-                            bool inputConstant = false;
                             if (requiredInitializerMap.find(input) != requiredInitializerMap.end())
                             {
                                 // The kernel relies on this input to be initialized, and it should be small enough to copy

@@ -32,7 +32,7 @@ Status Compress::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* input_tensor = ctx->Input<Tensor>(0);
   ORT_ENFORCE(input_tensor);
   size_t rank = input_tensor->Shape().NumDimensions();
-  auto& input_dimensions = input_tensor->Shape().GetDims();
+  auto input_dimensions = input_tensor->Shape().GetDims();
   int64_t axis = 0;
   if (has_axis_) {
     axis = HandleNegativeAxis(axis_, rank);
@@ -71,7 +71,7 @@ Status Compress::ComputeInternal(OpKernelContext* ctx) const {
   int32_t positive_condition_count = 0;
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(&positive_condition_count, condition_cumulative_sum + valid_condition_length - 1, sizeof(int32_t), cudaMemcpyDeviceToHost, Stream()));
 
-  std::vector<int64_t> output_dims(input_dimensions);
+  std::vector<int64_t> output_dims(input_dimensions.begin(), input_dimensions.end());
   if (has_axis_) {
     output_dims[axis] = positive_condition_count;
   } else {

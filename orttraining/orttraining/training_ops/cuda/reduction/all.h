@@ -15,8 +15,5 @@ class All final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-template<typename T>
-void LaunchAllKernel(cudaStream_t stream, const T* data, const int size, bool* output);
-
 }  // namespace cuda
 }  // namespace onnxruntime

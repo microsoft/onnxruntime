@@ -17,7 +17,10 @@
 #include "core/providers/cpu/rnn/rnn_activation_functors.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26451)
+#endif
 namespace onnxruntime {
 namespace rnn {
 namespace detail {
@@ -101,18 +104,18 @@ Status ValidateCommonRnnInputs(const Tensor& X,
 }  // namespace detail
 
 // map of arg name and whether the alpha and/or beta arguments are required
-static std::unordered_map<std::string, std::pair<bool, bool>>
-    NameToArgUsageMap{{"affine", {1, 1}},
-                      {"relu", {0, 0}},
-                      {"leakyrelu", {1, 0}},
-                      {"thresholdedrelu", {1, 0}},
-                      {"tanh", {0, 0}},
-                      {"scaledtanh", {1, 1}},
-                      {"sigmoid", {0, 0}},
-                      {"hardsigmoid", {1, 1}},
-                      {"elu", {1, 0}},
-                      {"softsign", {0, 0}},
-                      {"softplus", {0, 0}}};
+static std::unordered_map<std::string, std::pair<bool, bool>> NameToArgUsageMap{
+    {"affine", {true, true}},
+    {"relu", {false, false}},
+    {"leakyrelu", {true, false}},
+    {"thresholdedrelu", {true, false}},
+    {"tanh", {false, false}},
+    {"scaledtanh", {true, true}},
+    {"sigmoid", {false, false}},
+    {"hardsigmoid", {true, true}},
+    {"elu", {true, false}},
+    {"softsign", {false, false}},
+    {"softplus", {false, false}}};
 
 // map of alpha/beta defaults
 static std::unordered_map<std::string, std::pair<float, float>>
@@ -288,13 +291,13 @@ void ComputeGemm(const int M,
       beta == 1.0f ? MLAS_QGEMM_OUTPUT_MODE::AccumulateMode : MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
       scale_multiplier.size() == 1 ? MLAS_QUANTIZATION_GRANULARITY::PerMatrix : MLAS_QUANTIZATION_GRANULARITY::PerColumn);
 
-  MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+  MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape;
   gemm_shape.M = static_cast<size_t>(M);
   gemm_shape.N = static_cast<size_t>(N);
   gemm_shape.K = static_cast<size_t>(K);
   gemm_shape.BIsSigned = b_is_signed;
 
-  MLAS_GEMM_U8X8_DATA_PARAMS gemm_params;
+  MLAS_GEMM_QUANT_DATA_PARAMS gemm_params;
   gemm_params.A = quantized_A_buffer;
   gemm_params.lda = static_cast<size_t>(K);
   gemm_params.ZeroPointA = a_zero_point;
@@ -311,21 +314,21 @@ void ComputeGemm(const int M,
 
 namespace deepcpu {
 
-const float alpha_1 = 4.89352455891786e-03f;
-const float alpha_3 = 6.37261928875436e-04f;
-const float alpha_5 = 1.48572235717979e-05f;
-const float alpha_7 = 5.12229709037114e-08f;
-const float alpha_9 = -8.60467152213735e-11f;
-const float alpha_11 = 2.00018790482477e-13f;
-const float alpha_13 = -2.76076847742355e-16f;
+constexpr float alpha_1 = 4.89352455891786e-03f;
+constexpr float alpha_3 = 6.37261928875436e-04f;
+constexpr float alpha_5 = 1.48572235717979e-05f;
+constexpr float alpha_7 = 5.12229709037114e-08f;
+constexpr float alpha_9 = -8.60467152213735e-11f;
+constexpr float alpha_11 = 2.00018790482477e-13f;
+constexpr float alpha_13 = -2.76076847742355e-16f;
 
-const float beta_0 = 4.89352518554385e-03f;
-const float beta_2 = 2.26843463243900e-03f;
-const float beta_4 = 1.18534705686654e-04f;
-const float beta_6 = 1.19825839466702e-06f;
+constexpr float beta_0 = 4.89352518554385e-03f;
+constexpr float beta_2 = 2.26843463243900e-03f;
+constexpr float beta_4 = 1.18534705686654e-04f;
+constexpr float beta_6 = 1.19825839466702e-06f;
 
-const float sigmoid_bound = 20.0f;
-const float tanh_bound = 10.0f;
+constexpr float sigmoid_bound = 20.0f;
+constexpr float tanh_bound = 10.0f;
 
 #if defined(__GNUC__) && !defined(__wasm__)
 #define restrict __restrict__
@@ -918,4 +921,3 @@ GruOutputGateFuncPtr GruOutputGateFuncByName(const std::string& func) {
 }  // namespace detail
 }  // namespace rnn
 }  // namespace onnxruntime
-

@@ -10,7 +10,11 @@
 #include "core/common/logging/logging.h"
 #include "core/platform/threadpool.h"
 #include "core/framework/allocator.h"
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
 namespace onnxruntime {
 namespace contrib {
 
@@ -96,7 +100,7 @@ Status DeepCpuAttnLstmOp::ComputeImpl(OpKernelContext& context) const {
   int input_size = gsl::narrow<int>(X_shape[2]);
 
   // Processing attention wrapper
-  const int first_attn_input = 8;
+  constexpr int first_attn_input = 8;
   const Tensor& am_query_layer_weights = *context.Input<Tensor>(first_attn_input + 0);   // [num_directions, query_depth(hidden_size of lstm), am_attn_size]
   const Tensor& am_memory_layer_weights = *context.Input<Tensor>(first_attn_input + 1);  // [num_directions, memory_depth, am_attn_size]
   const Tensor& am_v_weights = *context.Input<Tensor>(first_attn_input + 2);             // [num_directions, am_attn_size]

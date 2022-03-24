@@ -15,7 +15,7 @@ class BaseOpBuilder : public IOpBuilder {
   virtual ~BaseOpBuilder() = default;
 
   // Add operator related
-  
+
 #ifdef __APPLE__
  public:
   virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */, const Node& /* node */) const override {}
@@ -46,7 +46,7 @@ class BaseOpBuilder : public IOpBuilder {
   virtual bool HasSupportedInputsImpl(const Node& node, const logging::Logger& logger) const;
 
   virtual int GetMinSupportedOpSet(const Node& /* node */) const { return 1; }
-  virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 14; }
+  virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 15; }
 
  private:
   bool HasSupportedOpSet(const Node& node, const logging::Logger& logger) const;

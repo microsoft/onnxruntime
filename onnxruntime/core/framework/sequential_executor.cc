@@ -21,8 +21,8 @@
 
 #ifdef ENABLE_NVTX_PROFILE
 // This header is for profile using Nvidia's visual profilier.
-#include "core/providers/cuda/nvtx_profile.h" 
-#include "core/profile/context.h"
+#include "core/providers/cuda/nvtx_profile.h"
+#include "core/providers/cuda/nvtx_profile_context.h"
 #endif
 
 // #define TRACE_EXECUTION
@@ -56,11 +56,14 @@ LARGE_INTEGER perf_freq = OrtGetPerformanceFrequency();
 namespace onnxruntime {
 
 static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context,
-                                      size_t& total_output_sizes, const std::string& node_name) {
+                                      size_t& total_output_sizes, const std::string& node_name, std::string& output_type_shape) {
   // Calculate total output sizes for this operation.
+  std::stringstream ss;
+  ss << "[";
   total_output_sizes = 0;
   ORT_UNUSED_PARAMETER(node_name);
-  for (auto i = 0; i < op_kernel_context->OutputCount(); i++) {
+  int output_count = op_kernel_context->OutputCount();
+  for (auto i = 0; i < output_count; i++) {
     const OrtValue* p_output = op_kernel_context->GetOutputMLValue(i);
     if (p_output != nullptr && p_output->IsTensor()) {
       const auto& tensor = p_output->Get<Tensor>();
@@ -74,15 +77,22 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
                          << "\n";
 #endif
       total_output_sizes += tensor_size;
+      auto shape_str = tensor.Shape().ToString();
+      ss << "{\"" << DataTypeImpl::ToString(tensor.DataType()) << "\":["
+         << shape_str.substr(1, shape_str.size() - 2) << "]" << (i == output_count - 1 ? "}" : "},");
     }
   }
+  ss << "]";
+  output_type_shape = ss.str();
 }
 
 static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_context,
                                      const onnxruntime::OpKernel* p_op_kernel,
                                      size_t& input_activation_sizes, size_t& input_parameter_sizes,
-                                     const std::string& node_name) {
+                                     const std::string& node_name, std::string& input_type_shape) {
   // Calculate total input sizes for this operation.
+  std::stringstream ss;
+  ss << "[";
   input_activation_sizes = 0;
   input_parameter_sizes = 0;
   ORT_UNUSED_PARAMETER(node_name);
@@ -113,8 +123,13 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
       } else {
         input_activation_sizes += tensor_size;
       }
+      auto shape_str = p_tensor->Shape().ToString();
+      ss << "{\"" << DataTypeImpl::ToString(p_tensor->DataType()) << "\":["
+         << shape_str.substr(1, shape_str.size() - 2) << "]" << (i == input_count - 1 ? "}" : "},");
     }
   }
+  ss << "]";
+  input_type_shape = ss.str();
 }
 
 static Status ReleaseNodeMLValues(ExecutionFrame& frame,
@@ -134,6 +149,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   size_t input_activation_sizes = 0;
   size_t input_parameter_sizes = 0;
   size_t total_output_sizes = 0;
+  std::string input_type_shape{};
+  std::string output_type_shape{};
 
   if (is_profiler_enabled) {
     tp = session_state.Profiler().Start();
@@ -300,7 +317,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
       // Calculate total input sizes for this operation.
       CalculateTotalInputSizes(&op_kernel_context, p_op_kernel,
-                               input_activation_sizes, input_parameter_sizes, node_name_for_profiling);
+                               input_activation_sizes, input_parameter_sizes,
+                               node_name_for_profiling, input_type_shape);
     }
 
     Status compute_status;
@@ -349,7 +367,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 
     if (is_profiler_enabled) {
       // Calculate total output sizes for this operation.
-      CalculateTotalOutputSizes(&op_kernel_context, total_output_sizes, node_name_for_profiling);
+      CalculateTotalOutputSizes(&op_kernel_context, total_output_sizes, node_name_for_profiling, output_type_shape);
 
 #if defined(TRACE_EXECUTION)
       // Trace execution step.
@@ -376,6 +394,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                          {"activation_size", std::to_string(input_activation_sizes)},
                                                          {"parameter_size", std::to_string(input_parameter_sizes)},
                                                          {"output_size", std::to_string(total_output_sizes)},
+                                                         {"input_type_shape", input_type_shape},
+                                                         {"output_type_shape", output_type_shape},
                                                          {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state.GetThreadPool())},
                                                      });
       sync_time_begin = session_state.Profiler().Start();
@@ -462,21 +482,18 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
 
   if (frame.HasMemoryPatternPlanner()) {
-    std::vector<std::reference_wrapper<const TensorShape>> input_shapes;
     bool all_tensors = true;
     for (const auto& feed : feeds) {
       if (!(feed.IsTensor())) {
         all_tensors = false;
         break;
       }
-      auto& tensor = feed.Get<Tensor>();
-      input_shapes.push_back(std::cref(tensor.Shape()));
     }
 
     if (all_tensors) {
       auto mem_patterns = std::make_unique<MemoryPatternGroup>();
       ORT_RETURN_IF_ERROR(frame.GeneratePatterns(mem_patterns.get()));
-      ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(input_shapes, std::move(mem_patterns)));
+      ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(feeds, std::move(mem_patterns)));
     }
   }
 

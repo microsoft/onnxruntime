@@ -20,11 +20,13 @@ namespace onnxruntime {
 
 REGISTER_VERSIONED_TYPED_KERNEL(float, 7, 8);
 REGISTER_VERSIONED_TYPED_KERNEL(int32_t, 7, 8);
+REGISTER_VERSIONED_TYPED_KERNEL(int8_t, 7, 8);
 REGISTER_VERSIONED_TYPED_KERNEL(uint8_t, 7, 8);
 
 // Upsample was deprecated in opset 10
 REGISTER_VERSIONED_TYPED_KERNEL(float, 9, 9);
 REGISTER_VERSIONED_TYPED_KERNEL(int32_t, 9, 9);
+REGISTER_VERSIONED_TYPED_KERNEL(int8_t, 9, 9);
 REGISTER_VERSIONED_TYPED_KERNEL(uint8_t, 9, 9);
 
 template <typename T>
@@ -569,8 +571,6 @@ void UpsampleBilinear(int64_t batch_size,
                                                            p.dx1[x] * p.dy1[y] * X22);
             }
           }
-          Xdata += input_height * input_width;
-          Ydata += output_width * output_height;
         });
   }
 }
@@ -1025,10 +1025,10 @@ template <typename T>
 Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 const std::vector<float>& roi,
                                 const std::vector<float>& scales,
-                                const std::vector<int64_t>& output_dims) const {
+                                const gsl::span<const int64_t>& output_dims) const {
   const auto* X = context->Input<Tensor>(0);
   ORT_ENFORCE(X != nullptr);
-  const std::vector<int64_t>& dims = X->Shape().GetDims();
+  auto dims = X->Shape().GetDims();
   ORT_ENFORCE(output_dims.size() == dims.size(), "Rank of input and output tensor should be same.");
 
   Tensor* Y = context->Output(0, output_dims);
@@ -1150,7 +1150,7 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
   ORT_ENFORCE(X != nullptr);
 
-  std::vector<int64_t> output_dims(X->Shape().GetDims().size());
+  TensorShapeVector output_dims(X->Shape().GetDims().size());
 
   // Get roi data
   // Initialize the roi array to all zeros as this will be the most common case
