@@ -117,7 +117,7 @@ cudaError_t NonZeroOutputPositions(
     const int* prefix_counts, int nonzero_elements, int64_t* results) {
   int num_blocks = NonZeroCalcBlockCount(x_size);
   if (x_rank > MAX_DIMS) {
-  NonZeroOutputPositionsKernel<InputT, NONZERO_THREADS_PER_BLOCK><<<num_blocks, NONZERO_THREADS_PER_BLOCK, 0, stream>>>(
+    NonZeroOutputPositionsKernel<InputT, NONZERO_THREADS_PER_BLOCK><<<num_blocks, NONZERO_THREADS_PER_BLOCK, 0, stream>>>(
       x, x_size, x_rank, x_strides,
       prefix_counts, nonzero_elements, results);
   } else {
