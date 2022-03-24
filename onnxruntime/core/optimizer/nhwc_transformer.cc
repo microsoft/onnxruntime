@@ -37,7 +37,7 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       auto domain = node->Domain();
 
       // Skip if domain is incorrect
-      if (domain != kOnnxDomain && domain != kOnnxDomainAlias && domain != kMSDomain) {
+      if (domain != kOnnxDomain && domain != kMSDomain) {
         continue;
       }
 
