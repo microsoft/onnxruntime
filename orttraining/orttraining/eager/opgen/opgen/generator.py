@@ -360,9 +360,7 @@ class ORTGen:
           writer.write(f'"{attr_name}", {attr.value}')
           if attr.type.startswith('at::ScalarType::'):
             writer.write(f', {attr.type}')
-          elif attr.type.startswith('at::Tensor'):
-            pass
-          elif attr.type != AttrType.STRING:
+          elif attr.type != AttrType.STRING or attr.type != AttrType.Tensor:
             raise FunctionGenerationError(
               cpp_func,
               f'Unsure how how to map ONNX op "{onnx_op.name}" attribute ' + 
