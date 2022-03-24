@@ -1289,7 +1289,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       if (state) {
         // Serialize and save engine to cache
         // 
-        // Noete: only save engine to file if engine cache enable is set and engine is being updated due to input shape changed
+        // Note: only save engine to file if engine cache enable is set and engine is being updated due to input shape changed
         // or engine file is not previously existed
         TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
         if (trt_state->save_engine_to_file) {
