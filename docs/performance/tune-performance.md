@@ -342,6 +342,9 @@ SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaPr
 ```
 
 ### Using CUDA Graphs in the CUDA EP
+
+NOTE: Please note that this feature is currently being offered in "preview" mode.
+
 While using the CUDA EP, ORT supports the usage of [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) to remove CPU overhead associated with launching CUDA kernels sequentially. To enable the usage of CUDA Graphs, use the provider option as shown in the samples below.
 Currently, there are some constraints with regards to using the CUDA Graphs feature which are listed below:
 
