@@ -323,7 +323,6 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
               # Compute: one_hot_label_BCD [b, c, d] = (label [b, d] == c)
               B1D_shape = Constant < value = int64[3] {0, 1, -1} > ()
               label_B1D = Reshape (label, B1D_shape) # convert from [B, d1, d2, ...] to [B, 1, D = d1 * d2 * ...]
-              zero_int64 = Constant < value = int64 {0}>()
               one_int64 = Constant < value = int64 {1}>()
               C1d = Shape <start = 1, end = 2> (prob_BCD)
               C = Squeeze(C1d)
