@@ -664,7 +664,7 @@ def test_gradient_correctness():
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
 @pytest.mark.parametrize("device", ['cpu', 'cuda'])
-@pytest.mark.parametrize("indices", ([[ 2, 3, -1, -1],[0, 1, -1, -1]], 
+@pytest.mark.parametrize("indices", ([[ 2, 3, -1, -1],[0, 1, -1, -1]],
                                      [[ 2, 3, 4, 4],[ 0, 1, 4, 4]]))
 def test_scatternd_correctness(device, indices):
     class NeuralNetScatterND(torch.nn.Module):
@@ -685,7 +685,7 @@ def test_scatternd_correctness(device, indices):
     rerouted_output = torch.tensor([[0.],[0.],[0.],[0.],[0.]], device=device)
     dispatch_mask = torch.tensor(indices, device=device)
     expert_output = torch.tensor([[[0.3817],[0.9625],[0.9625],[0.9625]],[[0.3817],[0.9625],[0.9625],[0.9625]]], device=device)
-    
+
     pt_prediction = run_step(pt_model, rerouted_output, dispatch_mask, expert_output)
     ort_prediction = run_step(ort_model, rerouted_output, dispatch_mask, expert_output)
     _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-5)
@@ -4534,7 +4534,7 @@ def test_sigmoid_grad_opset13():
         os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = old_opset
     assert ortmodule.ONNX_OPSET_VERSION == 13
     ortmodule.ONNX_OPSET_VERSION = old_opst_cst
- 
+
 @pytest.mark.parametrize("opset_version", [12, 13, 14])
 def test_opset_version_change(opset_version):
     device = 'cuda'
@@ -4688,3 +4688,72 @@ def test_check_opset_is_default_opset_after_training():
     _test_helpers.assert_values_are_close(pt_loss, ort_loss)
     _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
     assert ortmodule_module.ONNX_OPSET_VERSION == DEFAULT_OPSET
+
+
+def test_random_states_unchanged_for_ortmodule():
+    import numpy
+
+    os.environ['ORTMODULE_FALLBACK_RETRY'] = 'False'
+
+    class NeuralNetSlice(torch.nn.Module):
+        def __init__(self):
+            super(NeuralNetSlice, self).__init__()
+            self.dim = 32
+
+        def forward(self, x):
+            # This slice operation will call sympy.Min() when exporting, which will change Python's random state
+            return x[:self.dim, :]
+
+    def random_state_equal(a, b):
+        assert type(a) == type(b)
+        if isinstance(a, tuple):
+            assert len(a) == len(b)
+            return all([random_state_equal(a_i, b_i) for a_i, b_i in zip(a, b)])
+        if isinstance(a, numpy.ndarray):
+            return numpy.array_equal(a, b)
+        if isinstance(a, torch.Tensor):
+            return torch.equal(a, b)
+        return a == b
+
+    model = NeuralNetSlice()
+    x = torch.randn(16, 16)
+
+    ori_random_states = _utils.get_random_states()
+
+    ort_model = ORTModule(model)
+    ort_model(x)
+
+    new_random_states = _utils.get_random_states()
+
+    assert random_state_equal(ori_random_states, new_random_states)
+
+    del os.environ['ORTMODULE_FALLBACK_RETRY']
+
+
+def test_squeeze_custom_symbolic_registry():
+    class SqueezeModel(torch.nn.Module):
+        def __init__(self):
+            super(SqueezeModel, self).__init__()
+            self.conv = torch.nn.Conv2d(in_channels=3, out_channels=32, kernel_size=14, stride=14, bias=False)
+        def forward(self, x):
+            x = x.squeeze(1)
+            return self.conv(x)
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+
+    device = 'cuda'
+    pt_model = SqueezeModel().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.randn(1, 1, 3, 224, 224, requires_grad=True, device=device)
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_prediction, pt_loss = run_step(pt_model, pt_x)
+    ort_prediction, ort_loss = run_step(ort_model, ort_x)
+    _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
+    _test_helpers.assert_values_are_close(pt_loss, ort_loss)
+    _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
