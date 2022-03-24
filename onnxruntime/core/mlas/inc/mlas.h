@@ -739,6 +739,7 @@ struct MLAS_CONV_PARAMETERS {
     size_t InputSize;
     size_t OutputSize;
     size_t K;
+    float accumulated_beta;
     MLAS_CONV_ALGORITHM Algorithm;
     ptrdiff_t ThreadCount;
     union {
@@ -769,6 +770,7 @@ MlasConvPrepare(
     size_t FilterCount,
     const MLAS_ACTIVATION* Activation,
     size_t* WorkingBufferSize,
+    float accumulated_beta,
     MLAS_THREADPOOL* ThreadPool
     );
 
