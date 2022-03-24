@@ -1249,7 +1249,7 @@ RunOptions instance. The individual calls will exit gracefully and return an err
       .def(
           "add_run_config_entry",
           [](RunOptions* options, const char* config_key, const char* config_value) -> void {
-            //config_key and config_value will be copied
+            // config_key and config_value will be copied
             const Status status = options->config_options.AddConfigEntry(config_key, config_value);
             if (!status.IsOK())
               throw std::runtime_error(status.ErrorMessage());
@@ -1570,33 +1570,21 @@ void InitArray() {
   })();
 }
 
-// static variable used to create inference session and training session.
-static std::unique_ptr<Environment> session_env;
-
-void InitializeEnv() {
-  auto initialize = [&]() {
-    // Initialization of the module
-    InitArray();
-    Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
-    OrtPybindThrowIfError(Environment::Create(std::make_unique<LoggingManager>(
-                                                  std::make_unique<CLogSink>(),
-                                                  Severity::kWARNING, false, LoggingManager::InstanceType::Default,
-                                                  &SessionObjectInitializer::default_logger_id),
-                                              session_env));
-
-    static bool initialized = false;
-    if (initialized) {
-      return;
-    }
-    initialized = true;
-  };
-  initialize();
+static std::unique_ptr<Environment> InitializeEnv() {
+  // Initialization of the module
+  std::unique_ptr<Environment> ret;
+  InitArray();
+  Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
+  OrtPybindThrowIfError(Environment::Create(std::make_unique<LoggingManager>(
+                                                std::make_unique<CLogSink>(),
+                                                Severity::kWARNING, false, LoggingManager::InstanceType::Default,
+                                                &SessionObjectInitializer::default_logger_id),
+                                            ret));
+  return ret;
 }
 
 onnxruntime::Environment& GetEnv() {
-  if (!session_env) {
-    InitializeEnv();
-  }
+  static std::unique_ptr<Environment> session_env = InitializeEnv();
   return *session_env;
 }
 
