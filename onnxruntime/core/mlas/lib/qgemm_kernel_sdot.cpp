@@ -757,3 +757,320 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSdot = {
     MLAS_GEMM_S8S8_KERNEL_SDOT::PackedK,
     MLAS_GEMM_S8S8_KERNEL_SDOT::PackedStrides.K,
 };
+
+
+/**
+ * @brief Type parameter for symmetric qgemm
+ */
+struct MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT {
+    typedef uint8_t PackedAType;
+    typedef uint8_t PackedBType;
+    typedef int8_t OffsetAType;
+    typedef int8_t OffsetBType;
+
+    static constexpr size_t PackedK = 16;
+};
+
+constexpr size_t MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT::PackedK;
+
+template<>
+void
+MlasGemmQuantCopyPackB<MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT>(
+    MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT::PackedBType* Dst,
+    const uint8_t* B,
+    size_t ldb,
+    size_t CountN,
+    size_t CountK,
+    int32_t* ColumnSumBuffer,
+    bool BIsSigned
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(BIsSigned);
+    int8_t* D = reinterpret_cast<int8_t*>(Dst);
+    const int8x16_t ZeroVector = vmovq_n_s8(0);
+    int8x8_t BytesRow[4];
+
+    //  Kernel MlasSymQgemmS8KernelSdot code loads 4x16 B block like:
+    // 
+    //  |v4.b[0]..v4.b[12] v5.b[0]..v5.b[12]  v6.b[0]..v6.b[12]  v7.b[0]..v7.b[12]|
+    //  |  ...      ...     ...       ...       ...      ...       ...      ...   |
+    //  |v4.b[3]..v4.b[15] v5.b[3]..v5.b[15]  v6.b[3]..v6.b[15]  v7.b[3]..v7.b[15]|
+    //
+    // So we process B data similar with MlasGemmQuantCopyPackB<MLAS_GEMM_S8S8_KERNEL_SDOT>
+    // But twice as wide and twice as deep:
+    //     16 CountN and 16 CountK
+    //
+    //      [ A0 A1 A2 A3 B0 B1 B2 B3 C0 C1 C2 C3 D0 D1 D2 D3 ]
+    //      [ E0 E1 E2 E3 F0 F1 F2 F3 G0 G1 G2 G3 H0 H1 H2 H3 ]
+    //      [ I4 I5 I6 I7 J4 J5 J6 J7 K4 K5 K6 K7 L4 L5 L6 L7 ]
+    //      [ M4 M5 M6 M7 N4 N5 N6 N7 O4 O5 O6 O7 P4 P5 P6 P7 ]
+    //      .... repeat 4 times on K dimension ....
+    //
+    // If CountK is not aligned to a multiple of 16, then the packed buffer
+    // is padded with zero vectors.
+    //
+    // If CountN is not aligned to a multiple of 16, then the extra columns
+    // are padded with zeroes.
+    //
+
+    while (CountN >= 16) {
+
+        const int8_t* b = reinterpret_cast<const int8_t*>(B);
+        size_t k = CountK;
+        int32x4_t ColumnSums0[2];
+        int32x4_t ColumnSums1[2];
+
+        ColumnSums0[0] = vmovq_n_s32(0);
+        ColumnSums0[1] = vmovq_n_s32(0);
+        ColumnSums1[0] = vmovq_n_s32(0);
+        ColumnSums1[1] = vmovq_n_s32(0);
+
+        //
+        // Interleave rows of matrix B and write to the packed buffer.
+        //
+
+        while (k >= 4) {
+
+            BytesRow[0] = vld1_s8(&b[ldb * 0]);
+            BytesRow[1] = vld1_s8(&b[ldb * 1]);
+            BytesRow[2] = vld1_s8(&b[ldb * 2]);
+            BytesRow[3] = vld1_s8(&b[ldb * 3]);
+            MlasGemmS8S8CopyPackBProcessSDot(D, BytesRow, ColumnSums0);
+            D += 32;
+
+            BytesRow[0] = vld1_s8(&b[ldb * 0 + 8]);
+            BytesRow[1] = vld1_s8(&b[ldb * 1 + 8]);
+            BytesRow[2] = vld1_s8(&b[ldb * 2 + 8]);
+            BytesRow[3] = vld1_s8(&b[ldb * 3 + 8]);
+            MlasGemmS8S8CopyPackBProcessSDot(D, BytesRow, ColumnSums1);
+            D += 32;
+
+            b += ldb * 4;
+            k -= 4;
+        }
+
+        if (k > 0) {
+
+            BytesRow[0] = vld1_s8(&b[ldb * 0]);
+            BytesRow[1] = (k >= 2) ? vld1_s8(&b[ldb * 1]) : vget_low_s8(ZeroVector);
+            BytesRow[2] = (k > 2) ? vld1_s8(&b[ldb * 2]) : vget_low_s8(ZeroVector);
+            BytesRow[3] = vget_low_s8(ZeroVector);
+            MlasGemmS8S8CopyPackBProcessSDot(D, BytesRow, ColumnSums0);
+            D += 32;
+
+            BytesRow[0] = vld1_s8(&b[ldb * 0 + 8]);
+            BytesRow[1] = (k >= 2) ? vld1_s8(&b[ldb * 1 + 8]) : vget_low_s8(ZeroVector);
+            BytesRow[2] = (k > 2) ? vld1_s8(&b[ldb * 2 + 8]) : vget_low_s8(ZeroVector);
+            BytesRow[3] = vget_low_s8(ZeroVector);
+            MlasGemmS8S8CopyPackBProcessSDot(D, BytesRow, ColumnSums1);
+            D += 32;
+        }
+
+        //
+        // Zero pad the output buffer to a multiple of PackedK
+        //
+        constexpr size_t mask = MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT::PackedK - 1;
+        size_t remain = (MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT::PackedK - (CountK & mask)) & mask;
+        remain = remain >> 2; // divid by 4
+        for (; remain > 0; remain--) {
+            vst1q_s8(&D[0], ZeroVector);
+            vst1q_s8(&D[16], ZeroVector);
+            vst1q_s8(&D[32], ZeroVector);
+            vst1q_s8(&D[48], ZeroVector);
+            D += 64;
+        }
+
+        vst1q_s32(&ColumnSumBuffer[0], ColumnSums0[0]);
+        vst1q_s32(&ColumnSumBuffer[4], ColumnSums0[1]);
+        vst1q_s32(&ColumnSumBuffer[8], ColumnSums1[0]);
+        vst1q_s32(&ColumnSumBuffer[12], ColumnSums1[1]);
+        ColumnSumBuffer += 16;
+
+        B += 16;
+        CountN -= 16;
+    }
+
+    //
+    // Process the remaining columns of matrix B.
+    //
+
+    if (CountN > 0) {
+
+        const int8_t* b = reinterpret_cast<const int8_t*>(B);
+        size_t k = CountK;
+        int8_t PaddedMatrixBData[64];
+        int32x4_t ColumnSums0[2];
+        int32x4_t ColumnSums1[2];
+
+        vst1q_s8(&PaddedMatrixBData[0], ZeroVector);
+        vst1q_s8(&PaddedMatrixBData[16], ZeroVector);
+        vst1q_s8(&PaddedMatrixBData[32], ZeroVector);
+        vst1q_s8(&PaddedMatrixBData[48], ZeroVector);
+
+        ColumnSums0[0] = vmovq_n_s32(0);
+        ColumnSums0[1] = vmovq_n_s32(0);
+        ColumnSums1[0] = vmovq_n_s32(0);
+        ColumnSums1[1] = vmovq_n_s32(0);
+
+        //
+        // Interleave rows of matrix B using an intermediate zero padded stack
+        // buffer and write to the packed buffer.
+        //
+
+        while (k > 0) {
+
+            const int8_t* bcopy0 = &b[ldb * 0];
+            const int8_t* bcopy1 = &b[ldb * 1];
+            const int8_t* bcopy2 = &b[ldb * 2];
+            const int8_t* bcopy3 = &b[ldb * 3];
+
+            if (k >= 4) {
+
+                b += ldb * 4;
+                k -= 4;
+
+            } else {
+
+                vst1q_s8(&PaddedMatrixBData[0], ZeroVector);
+                vst1q_s8(&PaddedMatrixBData[16], ZeroVector);
+                vst1q_s8(&PaddedMatrixBData[32], ZeroVector);
+                vst1q_s8(&PaddedMatrixBData[48], ZeroVector);
+
+                bcopy1 = (k >= 2) ? bcopy1 : &PaddedMatrixBData[48];
+                bcopy2 = (k > 2) ? bcopy2 : &PaddedMatrixBData[48];
+                bcopy3 = &PaddedMatrixBData[48];
+
+                k = 0;
+            }
+
+            int8_t* padded = PaddedMatrixBData;
+            int8_t* padded_end = padded + CountN;
+
+            do {
+                padded[0] = *bcopy0++;
+                padded[16] = *bcopy1++;
+                padded[32] = *bcopy2++;
+                padded[48] = *bcopy3++;
+            } while (++padded < padded_end);
+
+            BytesRow[0] = vld1_s8(&PaddedMatrixBData[0]);
+            BytesRow[1] = vld1_s8(&PaddedMatrixBData[16]);
+            BytesRow[2] = vld1_s8(&PaddedMatrixBData[32]);
+            BytesRow[3] = vld1_s8(&PaddedMatrixBData[48]);
+            MlasGemmS8S8CopyPackBProcessSDot(D, BytesRow, ColumnSums0);
+            D += 32;
+
+            BytesRow[0] = vld1_s8(&PaddedMatrixBData[8]);
+            BytesRow[1] = vld1_s8(&PaddedMatrixBData[24]);
+            BytesRow[2] = vld1_s8(&PaddedMatrixBData[40]);
+            BytesRow[3] = vld1_s8(&PaddedMatrixBData[56]);
+            MlasGemmS8S8CopyPackBProcessSDot(D, BytesRow, ColumnSums1);
+            D += 32;
+        }
+
+        //
+        // Zero pad the output buffer to a multiple of PackedK
+        //
+        constexpr size_t mask = MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT::PackedK - 1;
+        size_t remain = (MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT::PackedK - (CountK & mask)) & mask;
+        remain = remain >> 2;  // divid by 4
+        for (; remain > 0; remain--) {
+            vst1q_s8(&D[0], ZeroVector);
+            vst1q_s8(&D[16], ZeroVector);
+            vst1q_s8(&D[32], ZeroVector);
+            vst1q_s8(&D[48], ZeroVector);
+            D += 64;
+        }
+
+        vst1q_s32(&ColumnSumBuffer[0], ColumnSums0[0]);
+        vst1q_s32(&ColumnSumBuffer[4], ColumnSums0[1]);
+        vst1q_s32(&ColumnSumBuffer[8], ColumnSums1[0]);
+        vst1q_s32(&ColumnSumBuffer[12], ColumnSums1[1]);
+    }
+}
+
+extern "C" {
+    // Prototype of SDOT symmetric qgemm kernel in assembly
+
+    size_t
+    MLASCALL
+    MlasSymQgemmS8KernelSdot(
+        const int8_t* A,
+        const int8_t* B,
+        int32_t* C,
+        size_t PackedCountK,
+        size_t CountM,
+        size_t CountN,
+        size_t ldc,
+        size_t lda,
+        const int32_t* ColumnSumVector
+        );
+
+    size_t
+    MLASCALL
+    MlasSymQgemmS8KernelSdotLd64(
+        const int8_t* A,
+        const int8_t* B,
+        int32_t* C,
+        size_t PackedCountK,
+        size_t CountM,
+        size_t CountN,
+        size_t ldc,
+        size_t lda,
+        const int32_t* ColumnSumVector
+        );
+
+}
+
+template<>
+MLAS_FORCEINLINE
+size_t MlasSymmQGemmKernel<MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT>(
+    const int8_t* A,
+    const int8_t* B,
+    int32_t* C,
+    size_t PackedCountK,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    size_t lda,
+    const int32_t* ColumnSumVector
+)
+{
+    return MlasSymQgemmS8KernelSdot(A, B, C, PackedCountK, CountM, CountN, ldc, lda,
+                                    ColumnSumVector);
+}
+
+/**
+ * @brief Type parameter for symmetric qgemm, little core
+ */
+struct MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT_LIT {
+    static constexpr size_t PackedK = MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT::PackedK;
+};
+constexpr size_t MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT_LIT::PackedK;
+
+
+template <>
+MLAS_FORCEINLINE
+size_t MlasSymmQGemmKernel<MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT_LIT>(
+    const int8_t* A,
+    const int8_t* B,
+    int32_t* C,
+    size_t PackedCountK,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    size_t lda,
+    const int32_t* ColumnSumVector
+)
+{
+    return MlasSymQgemmS8KernelSdotLd64(A, B, C, PackedCountK, CountM, CountN, ldc, lda,
+                                        ColumnSumVector);
+}
+
+const MLAS_SYMM_QGEMM_DISPATCH MlasSymmQgemmS8DispatchSdot = {
+    MlasSymmQGemmPackedOperation<MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT_LIT>,
+    MlasSymmQGemmPackedOperation<MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT>,
+    MlasGemmQuantCopyPackB<MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT>,
+    4,  // StrideM
+    MLAS_SYMM_GEMM_S8S8_KERNEL_SDOT::PackedK
+};

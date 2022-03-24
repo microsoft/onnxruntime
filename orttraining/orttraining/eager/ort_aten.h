@@ -49,11 +49,8 @@ OrtValue create_ort_value(
   onnxruntime::ORTInvoker& invoker,
   const T val) {
   OrtValue ort_val;
-  CreateMLValue(
-    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
-    onnxruntime::DataTypeImpl::GetType<T>(),
-    {1,},
-    &ort_val);
+  onnxruntime::Tensor::InitOrtValue(onnxruntime::DataTypeImpl::GetType<T>(), onnxruntime::TensorShape({1}),
+                                    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), ort_val);
   auto* ort_tensor = ort_val.GetMutable<onnxruntime::Tensor>();
   CopyVectorToTensor<T>(invoker, &val, 1, *ort_tensor);
   return ort_val;
@@ -68,14 +65,12 @@ OrtValue create_ort_value(
 
 template<typename T>
 OrtValue create_ort_value(
-  onnxruntime::ORTInvoker& invoker, 
+  onnxruntime::ORTInvoker& invoker,
   const std::vector<T> values) {
   OrtValue ort_value;
-  CreateMLValue(
-    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault),
-    onnxruntime::DataTypeImpl::GetType<T>(),
-    {(int64_t)values.size(),},
-    &ort_value);
+  onnxruntime::Tensor::InitOrtValue(
+      onnxruntime::DataTypeImpl::GetType<T>(), onnxruntime::TensorShape({(int64_t)values.size()}),
+      invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), ort_value);
   CopyVectorToTensor<T>(
     invoker,
     values.data(),
@@ -86,7 +81,7 @@ OrtValue create_ort_value(
 
 template<typename T>
 OrtValue create_ort_value(
-  onnxruntime::ORTInvoker& invoker, 
+  onnxruntime::ORTInvoker& invoker,
   const at::ArrayRef<T> values) {
   std::vector<T> values_vector;
   values_vector.assign(values.begin(), values.end());
@@ -118,5 +113,12 @@ bool IsSupportedType(c10::optional<int64_t> val, const std::vector<at::ScalarTyp
 
 bool IsSupportedType(at::TensorList tensors, const std::vector<at::ScalarType>& valid_types);
 
+c10::optional<at::ScalarType> PromoteScalarTypesWithCategory(
+    const std::vector<at::ScalarType>& typesFromTensors,
+    const std::vector<at::ScalarType>& typesFromScalars);
+
+ONNX_NAMESPACE::TensorProto_DataType GetONNXTensorProtoDataType(at::ScalarType dtype);
+
+OrtValue CastToType(onnxruntime::ORTInvoker& invoker, const OrtValue& input, at::ScalarType type);
 } // namespace eager
 } // namespace torch_ort

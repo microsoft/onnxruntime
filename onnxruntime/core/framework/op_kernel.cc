@@ -94,6 +94,18 @@ Status OpKernelContext::GetTempSpaceAllocator(AllocatorPtr* output) const {
   return Status::OK();
 }
 
+Status OpKernelContext::GetTempSpaceCPUAllocator(AllocatorPtr* output) const {
+  // While looking up the allocator from SessionState
+  // (which is called via ExecutionFrame), the allocator lookup
+  // logic doesn't key on OrtAllocatorType, so any OrtAllocatorType
+  // is good here.
+  *output = execution_frame_->GetAllocator(
+      OrtMemoryInfo(CPU, OrtAllocatorType::OrtArenaAllocator));
+  if (!*output)
+    return Status(common::ONNXRUNTIME, common::FAIL, "CPU allocator not found");
+  return Status::OK();
+}
+
 MLDataType OpKernelContext::InputType(int index) const {
   int input_arg_index = GetInputArgIndex(index);
   const OrtValue* p_ml_value = execution_frame_->GetNodeInputOrOutputMLValue(input_arg_index);

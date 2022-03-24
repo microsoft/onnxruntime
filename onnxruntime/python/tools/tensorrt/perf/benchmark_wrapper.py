@@ -47,12 +47,13 @@ def main():
 
     model_to_fail_ep = {}
 
-    benchmark_fail_csv = 'fail.csv'
-    benchmark_metrics_csv = 'metrics.csv' 
-    benchmark_success_csv = 'success.csv'  
-    benchmark_latency_csv = 'latency.csv' 
-    benchmark_status_csv = 'status.csv' 
-    specs_csv = 'specs.csv'
+    benchmark_fail_csv = fail_name + csv_ending
+    benchmark_metrics_csv = metrics_name + csv_ending
+    benchmark_success_csv = success_name + csv_ending
+    benchmark_latency_csv = latency_name + csv_ending
+    benchmark_status_csv = status_name + csv_ending
+    benchmark_session_csv = session_name + csv_ending
+    specs_csv = specs_name + csv_ending
 
     for model, model_info in models.items():
         logger.info("\n" + "="*40 + "="*len(model))
@@ -63,7 +64,7 @@ def main():
         
         model_list_file = os.path.join(os.getcwd(), model +'.json')
         write_model_info_to_file([model_info], model_list_file)
-        
+
         for ep in ep_list:
             
             command =  ["python3",
@@ -120,6 +121,16 @@ def main():
             logger.info("\nSaved model metrics results to {}".format(benchmark_metrics_csv)) 
     
     elif args.running_mode == "benchmark":
+        logger.info("\n=========================================")
+        logger.info("======= Models/EPs session creation =======")
+        logger.info("=========================================")
+
+        if os.path.exists(SESSION_FILE):
+            model_to_session = read_map_from_file(SESSION_FILE)
+            pretty_print(pp, model_to_session)
+            output_session_creation(model_to_session, os.path.join(path, benchmark_session_csv))
+            logger.info("\nSaved session creation results to {}".format(benchmark_session_csv)) 
+        
         logger.info("\n=========================================================")
         logger.info("========== Failing Models/EPs (accumulated) ==============")
         logger.info("==========================================================")

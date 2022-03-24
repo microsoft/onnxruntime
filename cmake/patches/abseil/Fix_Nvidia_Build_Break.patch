@@ -1,0 +1,63 @@
+diff --git a/absl/container/internal/inlined_vector.h b/absl/container/internal/inlined_vector.h
+index 1d7d6cd..f6a7a78 100644
+--- a/absl/container/internal/inlined_vector.h
++++ b/absl/container/internal/inlined_vector.h
+@@ -904,7 +904,7 @@ auto Storage<T, N, A>::Swap(Storage* other_storage_ptr) -> void {
+                            inlined_ptr->GetSize());
+     }
+     ABSL_INTERNAL_CATCH_ANY {
+-      allocated_ptr->SetAllocation(
++      allocated_ptr->SetAllocation(Allocation<A>
+           {allocated_storage_view.data, allocated_storage_view.capacity});
+       ABSL_INTERNAL_RETHROW;
+     }
+@@ -912,7 +912,7 @@ auto Storage<T, N, A>::Swap(Storage* other_storage_ptr) -> void {
+     DestroyElements<A>(inlined_ptr->GetAllocator(),
+                        inlined_ptr->GetInlinedData(), inlined_ptr->GetSize());
+ 
+-    inlined_ptr->SetAllocation(
++    inlined_ptr->SetAllocation(Allocation<A>
+         {allocated_storage_view.data, allocated_storage_view.capacity});
+   }
+ 
+diff --git a/absl/copts/GENERATED_AbseilCopts.cmake b/absl/copts/GENERATED_AbseilCopts.cmake
+index a4ab1aa..dfd13fd 100644
+--- a/absl/copts/GENERATED_AbseilCopts.cmake
++++ b/absl/copts/GENERATED_AbseilCopts.cmake
+@@ -129,8 +129,6 @@ list(APPEND ABSL_MSVC_FLAGS
+     "/wd4005"
+     "/wd4068"
+     "/wd4180"
+-    "/wd4244"
+-    "/wd4267"
+     "/wd4503"
+     "/wd4800"
+ )
+diff --git a/absl/copts/GENERATED_copts.bzl b/absl/copts/GENERATED_copts.bzl
+index a6efc98..8c4de8e 100644
+--- a/absl/copts/GENERATED_copts.bzl
++++ b/absl/copts/GENERATED_copts.bzl
+@@ -130,8 +130,6 @@ ABSL_MSVC_FLAGS = [
+     "/wd4005",
+     "/wd4068",
+     "/wd4180",
+-    "/wd4244",
+-    "/wd4267",
+     "/wd4503",
+     "/wd4800",
+ ]
+diff --git a/absl/copts/copts.py b/absl/copts/copts.py
+index 0d6c1ec..75fd935 100644
+--- a/absl/copts/copts.py
++++ b/absl/copts/copts.py
+@@ -132,10 +132,6 @@ COPT_VARS = {
+             "/wd4068",  # unknown pragma
+             # qualifier applied to function type has no meaning; ignored
+             "/wd4180",
+-            # conversion from 'type1' to 'type2', possible loss of data
+-            "/wd4244",
+-            # conversion from 'size_t' to 'type', possible loss of data
+-            "/wd4267",
+             # The decorated name was longer than the compiler limit
+             "/wd4503",
+             # forcing value to bool 'true' or 'false' (performance warning)

@@ -13,7 +13,7 @@
 #include "core/platform/env.h"
 #include "core/platform/path_lib.h"
 #ifdef ENABLE_NVTX_PROFILE
-#include "core/profile/context.h"
+#include "core/providers/cuda/nvtx_profile_context.h"
 #endif
 #include "core/session/environment.h"
 #include "orttraining/core/framework/checkpointing.h"
@@ -904,7 +904,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
             const auto status = Env::Default().DeleteFolder(old_checkpoint_path);
             LOGS_DEFAULT_IF(!status.IsOK(), WARNING)
                 << "Failed to delete old checkpoint. "
-                << "Path: " << ToMBString(old_checkpoint_path)
+                << "Path: " << ToUTF8String(old_checkpoint_path)
                 << ", error: " << status.ErrorMessage();
           }
 
@@ -1011,7 +1011,7 @@ Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const siz
   Path model_path{};
   ORT_RETURN_IF_ERROR(Path::Parse(params_.model_path, model_path));
   PathString leaf = model_path.GetComponents().back();
-  std::string model_name = ToMBString(leaf.c_str());
+  std::string model_name = ToUTF8String(leaf.c_str());
   perf_metrics["ModelName"] = model_name;
 
   std::string display_name = model_name + "_" + params_.model_type + "_" + (params_.use_mixed_precision ? "fp16" : "fp32") +
@@ -1031,9 +1031,9 @@ Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const siz
   bookkeeping_params["WarmupRatio"] = params_.lr_params.warmup_ratio;
   bookkeeping_params["WarmupMode"] = params_.lr_params.warmup_mode;
   bookkeeping_params["TrainSteps"] = params_.num_train_steps;
-  bookkeeping_params["ModelPath"] = ToMBString(params_.model_path.c_str());
-  bookkeeping_params["TrainDataDir"] = ToMBString(params_.train_data_dir.c_str());
-  bookkeeping_params["TestDataDir"] = ToMBString(params_.test_data_dir.c_str());
+  bookkeeping_params["ModelPath"] = ToUTF8String(params_.model_path.c_str());
+  bookkeeping_params["TrainDataDir"] = ToUTF8String(params_.train_data_dir.c_str());
+  bookkeeping_params["TestDataDir"] = ToUTF8String(params_.test_data_dir.c_str());
 
   perf_metrics["RunConfig"] = bookkeeping_params.dump();  // serialize the params as json string
 
@@ -1048,7 +1048,7 @@ Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const siz
   perf_metrics_stream.open(perf_metrics_path, std::ios::out | std::ios::trunc);
   ORT_RETURN_IF_NOT(perf_metrics_stream << json_string << "\n", "Failed to write to output file.");
 
-  std::cout << "\n\nSaved perf metrics file: " << ToMBString(perf_metrics_path) << "\n\n";
+  std::cout << "\n\nSaved perf metrics file: " << ToUTF8String(perf_metrics_path) << "\n\n";
 
   return Status::OK();
 }

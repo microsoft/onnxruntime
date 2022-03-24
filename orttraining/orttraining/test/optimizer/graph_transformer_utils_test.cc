@@ -20,7 +20,7 @@ TEST(GraphTransformerUtilsTestsForTraining, TestGenerateGraphTransformers) {
   std::string l1_rule1 = "EliminateIdentity";
   std::string l1_transformer = "ConstantFolding";
   std::string l2_transformer = "ConvActivationFusion";
-  std::unordered_set<std::string> disabled = {l1_rule1, l1_transformer, l2_transformer};
+  InlinedHashSet<std::string> disabled = {l1_rule1, l1_transformer, l2_transformer};
   CPUExecutionProvider cpu_ep(CPUExecutionProviderInfo{});
 
   auto all_transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, {}, cpu_ep);

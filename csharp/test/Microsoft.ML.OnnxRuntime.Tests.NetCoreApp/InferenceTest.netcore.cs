@@ -337,6 +337,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_optional_get_element_sequence", "not implemented yet"},
                 { "test_optional_has_element", "not implemented yet"},
                 { "test_optional_has_element_empty", "not implemented yet"},
+                { "test_identity_opt", "opset16 version not implemented yet"},
+                { "test_if_opt", "opset16 version not implemented yet"},
+                { "test_loop16_seq_none", "opset16 version not implemented yet"},
             };
 
             // The following models fails on nocontribops win CI

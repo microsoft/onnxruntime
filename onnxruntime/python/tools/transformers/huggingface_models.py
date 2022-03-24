@@ -6,7 +6,8 @@
 
 # Maps model class name to a tuple of model class
 MODEL_CLASSES = [
-    'AutoModel', 'AutoModelWithLMHead', 'AutoModelForSequenceClassification', 'AutoModelForQuestionAnswering'
+    'AutoModel', 'AutoModelWithLMHead', 'AutoModelForSequenceClassification', 'AutoModelForQuestionAnswering',
+    'AutoModelForCausalLM',
 ]
 
 # List of pretrained models: https://huggingface.co/transformers/pretrained_models.html

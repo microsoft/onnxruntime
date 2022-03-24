@@ -371,23 +371,18 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
   // and we have execution plan generated, try to setup
   // memory pattern optimization.
   if (session_state.GetEnableMemoryPattern() && session_state.GetExecutionPlan()) {
-    std::vector<std::reference_wrapper<const TensorShape> > input_shapes;
     bool all_tensors = true;
     // Reserve mem to avoid re-allocation.
-    input_shapes.reserve(feeds.size());
     for (const auto& feed : feeds) {
       if (!feed.IsTensor()) {
         all_tensors = false;
         break;
       }
-      auto& tensor = feed.Get<Tensor>();
-
-      input_shapes.push_back(std::cref(tensor.Shape()));
     }
 
     //if there are some traditional ml value type in inputs disable the memory pattern optimization.
     if (all_tensors) {
-      mem_patterns_ = session_state.GetMemoryPatternGroup(input_shapes, feed_mlvalue_idxs, inferred_shapes_);
+      mem_patterns_ = session_state.GetMemoryPatternGroup(feeds, feed_mlvalue_idxs, inferred_shapes_);
       // if no existing patterns, generate one in this executionframe
       if (!mem_patterns_) {
         planner_ = std::make_unique<OrtValuePatternPlanner>(*session_state.GetExecutionPlan());
@@ -615,7 +610,7 @@ Status ExecutionFrame::AllocateTensorWithPreAllocateBufferHelper(OrtValue& ort_v
                                                                  MLDataType element_type,
                                                                  const OrtMemoryInfo& location,
                                                                  const TensorShape& shape) {
-  Tensor::InitOrtValue(element_type, shape, pBuffer, location, ort_value);
+  Tensor::InitOrtValue(element_type, shape, pBuffer, location, ort_value, 0L);
   return Status::OK();
 }
 

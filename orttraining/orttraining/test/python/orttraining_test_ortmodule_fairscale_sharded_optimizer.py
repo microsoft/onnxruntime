@@ -9,7 +9,7 @@ from torchvision import datasets, transforms
 import time
 from torch.nn.parallel import DistributedDataParallel as DDP
 import os
-from onnxruntime.training.ortmodule import ORTModule
+from onnxruntime.training.ortmodule import ORTModule, DebugOptions
 import numpy as np
 
 # Usage : 
@@ -179,7 +179,9 @@ def train(
 
     if args.use_ortmodule:
         print("Converting to ORTModule....")
-        model = ORTModule(model)
+        debug_options = DebugOptions(save_onnx=args.export_onnx_graphs, onnx_prefix='NeuralNet')
+
+        model = ORTModule(model, debug_options)
 
     train_dataloader, test_dataloader = get_dataloader(args,rank,args.batch_size)
     loss_fn = my_loss
@@ -239,6 +241,8 @@ if __name__ == "__main__":
                         help='number of steps to train. Set -1 to run through whole dataset (default: -1)')
     parser.add_argument('--view-graphs', action='store_true', default=False,
                         help='views forward and backward graphs')
+    parser.add_argument('--export-onnx-graphs', action='store_true', default=False,
+                        help='export ONNX graphs to current directory')
     parser.add_argument('--log-interval', type=int, default=300, metavar='N',
                         help='how many batches to wait before logging training status (default: 300)')
     parser.add_argument("--cpu", action="store_true", default=False)

@@ -42,7 +42,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
-  auto x_dims = x_shape.GetDimsAsVector();
+  auto x_dims = x_shape.AsShapeVector();
   auto x_data = reinterpret_cast<const HipT*>(X->template Data<T>());
 
   auto x_dimensions = X->Shape().NumDimensions();
@@ -53,7 +53,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   }
   const Tensor* W = context->Input<Tensor>(1);
   const TensorShape& w_shape = W->Shape();
-  std::vector<int64_t> w_dims = w_shape.GetDimsAsVector();
+  auto w_dims = w_shape.AsShapeVector();
   auto w_data = reinterpret_cast<const HipT*>(W->template Data<T>());
 
   size_t num_inputs = OpKernel::Node().InputDefs().size();
@@ -68,21 +68,21 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   {
     std::lock_guard<OrtMutex> lock(s_.mutex);
     // TODO: add a global cache if need to handle cases for multiple frames running simultaneously with different batch_size
-    bool input_dims_changed = (s_.last_x_dims != x_dims);
-    bool w_dims_changed = (s_.last_w_dims != w_dims);
+    bool input_dims_changed = (s_.last_x_dims.GetDims() != gsl::make_span(x_dims));
+    bool w_dims_changed = (s_.last_w_dims.GetDims() != gsl::make_span(w_dims));
     if (input_dims_changed || w_dims_changed) {
       if (input_dims_changed)
-        s_.last_x_dims = x_dims;
+        s_.last_x_dims = gsl::make_span(x_dims);
 
       if (w_dims_changed) {
-        s_.last_w_dims = w_dims;
+        s_.last_w_dims = gsl::make_span(w_dims);
         s_.cached_benchmark_bwd_results.clear();
       }
 
       ConvTransposeAttributes::Prepare p;
       ORT_RETURN_IF_ERROR(conv_transpose_attrs_.PrepareForCompute(context, has_bias, p, dynamic_padding));
 
-      auto y_dims = p.Y->Shape().GetDimsAsVector();
+      auto y_dims = p.Y->Shape().AsShapeVector();
       if (x_dimensions == 3) {
         y_dims.insert(y_dims.begin() + 2, 1);
         p.kernel_shape.insert(p.kernel_shape.begin(), 1);
@@ -91,7 +91,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
         p.strides.insert(p.strides.begin(), 1);
         p.dilations.insert(p.dilations.begin(), 1);
       }
-      s_.y_dims = y_dims;
+      s_.y_dims = gsl::make_span(y_dims);
 
       if (w_dims_changed)
 	{
@@ -159,7 +159,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
     // The following block will be executed in case there has been no change in the shapes of the
     // input and the filter compared to the previous run
     if (!y_data) {
-      auto y_dims = s_.y_dims.GetDimsAsVector();
+      auto y_dims = s_.y_dims.AsShapeVector();
       if (x_dimensions == 3) {
         y_dims.erase(y_dims.begin() + 2);
       }

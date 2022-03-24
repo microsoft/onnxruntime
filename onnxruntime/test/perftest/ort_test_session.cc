@@ -1,6 +1,7 @@
 #include "ort_test_session.h"
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include <assert.h>
 #include "providers.h"
 #include "TestCase.h"
@@ -59,7 +60,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   } else if (provider_name == onnxruntime::kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
     int device_id = 0;
-    int trt_max_partition_iterations  = 1000;
+    int trt_max_partition_iterations = 1000;
     int trt_min_subgraph_size = 1;
     size_t trt_max_workspace_size = 1 << 30;
     bool trt_fp16_enable = false;
@@ -75,11 +76,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::string trt_engine_decryption_lib_path = "";
     bool trt_force_sequential_engine_build = false;
 
-    #ifdef _MSC_VER
-    std::string ov_string = ToMBString(performance_test_config.run_config.ep_runtime_config_string);
-    #else
+#ifdef _MSC_VER
+    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
-    #endif
+#endif
     std::istringstream ss(ov_string);
     std::string token;
     while (ss >> token) {
@@ -209,12 +210,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['device_id', 'trt_max_partition_iterations', 'trt_min_subgraph_size', 'trt_max_workspace_size', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_dla_enable', 'trt_dla_core', 'trt_dump_subgraphs', 'trt_engine_cache_enable', 'trt_engine_cache_path', 'trt_engine_decryption_enable', 'trt_engine_decryption_lib_path', 'trt_force_sequential_engine_build'] \n");
       }
     }
-    OrtTensorRTProviderOptions tensorrt_options;
+    OrtTensorRTProviderOptionsV2 tensorrt_options;
     tensorrt_options.device_id = device_id;
     tensorrt_options.has_user_compute_stream = 0;
     tensorrt_options.user_compute_stream = nullptr;
     tensorrt_options.trt_max_partition_iterations = trt_max_partition_iterations;
-    tensorrt_options.trt_min_subgraph_size = trt_min_subgraph_size;	
+    tensorrt_options.trt_min_subgraph_size = trt_min_subgraph_size;
     tensorrt_options.trt_max_workspace_size = trt_max_workspace_size;
     tensorrt_options.trt_fp16_enable = trt_fp16_enable;
     tensorrt_options.trt_int8_enable = trt_int8_enable;
@@ -228,12 +229,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     tensorrt_options.trt_engine_decryption_enable = trt_engine_decryption_enable;
     tensorrt_options.trt_engine_decryption_lib_path = trt_engine_decryption_lib_path.c_str();
     tensorrt_options.trt_force_sequential_engine_build = trt_force_sequential_engine_build;
-    session_options.AppendExecutionProvider_TensorRT(tensorrt_options);
+    session_options.AppendExecutionProvider_TensorRT_V2(tensorrt_options);
 
     OrtCUDAProviderOptions cuda_options;
-    cuda_options.device_id=device_id;
-    cuda_options.cudnn_conv_algo_search=static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo);
-    cuda_options.do_copy_in_default_stream=!performance_test_config.run_config.do_cuda_copy_in_separate_stream;
+    cuda_options.device_id = device_id;
+    cuda_options.cudnn_conv_algo_search = static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo);
+    cuda_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
     // TODO: Support arena configuration for users of perf test
     session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else
@@ -249,7 +250,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::string blob_dump_path = "";       // [blob_dump_path]: Explicitly specify the path where you would like to dump and load the blobs for the use_compiled_network(save/load blob) feature. This overrides the default path.
 
 #ifdef _MSC_VER
-    std::string ov_string = ToMBString(performance_test_config.run_config.ep_runtime_config_string);
+    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
 #else
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
@@ -323,7 +324,29 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kNnapiExecutionProvider) {
 #ifdef USE_NNAPI
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, 0));
+    uint32_t nnapi_flags = 0;
+#ifdef _MSC_VER
+    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+    std::istringstream ss(ov_string);
+    std::string key;
+    while (ss >> key) {
+      if (key == "NNAPI_FLAG_USE_FP16") {
+        nnapi_flags |= NNAPI_FLAG_USE_FP16;
+      } else if (key == "NNAPI_FLAG_USE_NCHW") {
+        nnapi_flags |= NNAPI_FLAG_USE_NCHW;
+      } else if (key == "NNAPI_FLAG_CPU_DISABLED") {
+        nnapi_flags |= NNAPI_FLAG_CPU_DISABLED;
+      } else if (key == "NNAPI_FLAG_CPU_ONLY") {
+        nnapi_flags |= NNAPI_FLAG_CPU_ONLY;
+      } else if (key.empty()) {
+      } else {
+        ORT_THROW("[ERROR] [NNAPI] wrong key type entered. Choose from the following runtime key options that are available for NNAPI. ['NNAPI_FLAG_USE_FP16', 'NNAPI_FLAG_USE_NCHW', 'NNAPI_FLAG_CPU_DISABLED', 'NNAPI_FLAG_CPU_ONLY'] \n");
+      }
+    }
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nnapi(session_options, nnapi_flags));
 #else
     ORT_THROW("NNAPI is not supported in this build\n");
 #endif
@@ -367,6 +390,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   } else if (provider_name == onnxruntime::kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(session_options, 0));
+
+    OrtROCMProviderOptions rocm_options;
+    rocm_options.miopen_conv_exhaustive_search = performance_test_config.run_config.cudnn_conv_algo;
+    rocm_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
+    // TODO: Support arena configuration for users of perf test
+    session_options.AppendExecutionProvider_ROCM(rocm_options);
 #else
     ORT_THROW("MIGraphX is not supported in this build\n");
 #endif
@@ -405,19 +434,19 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     session_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
   if (!performance_test_config.run_config.free_dim_name_overrides.empty()) {
     for (auto const& dim_override : performance_test_config.run_config.free_dim_name_overrides) {
-      if (g_ort->AddFreeDimensionOverrideByName(session_options, ToMBString(dim_override.first).c_str(), dim_override.second) != nullptr) {
-        fprintf(stderr, "AddFreeDimensionOverrideByName failed for named dimension: %s\n", ToMBString(dim_override.first).c_str());
+      if (g_ort->AddFreeDimensionOverrideByName(session_options, ToUTF8String(dim_override.first).c_str(), dim_override.second) != nullptr) {
+        fprintf(stderr, "AddFreeDimensionOverrideByName failed for named dimension: %s\n", ToUTF8String(dim_override.first).c_str());
       } else {
-        fprintf(stdout, "Overriding dimension with name, %s, to %d\n", ToMBString(dim_override.first).c_str(), (int)dim_override.second);
+        fprintf(stdout, "Overriding dimension with name, %s, to %d\n", ToUTF8String(dim_override.first).c_str(), (int)dim_override.second);
       }
     }
   }
   if (!performance_test_config.run_config.free_dim_denotation_overrides.empty()) {
     for (auto const& dim_override : performance_test_config.run_config.free_dim_denotation_overrides) {
-      if (g_ort->AddFreeDimensionOverride(session_options, ToMBString(dim_override.first).c_str(), dim_override.second) != nullptr) {
-        fprintf(stderr, "AddFreeDimensionOverride failed for dimension denotation: %s\n", ToMBString(dim_override.first).c_str());
+      if (g_ort->AddFreeDimensionOverride(session_options, ToUTF8String(dim_override.first).c_str(), dim_override.second) != nullptr) {
+        fprintf(stderr, "AddFreeDimensionOverride failed for dimension denotation: %s\n", ToUTF8String(dim_override.first).c_str());
       } else {
-        fprintf(stdout, "Overriding dimension with denotation, %s, to %d\n", ToMBString(dim_override.first).c_str(), (int)dim_override.second);
+        fprintf(stdout, "Overriding dimension with denotation, %s, to %d\n", ToUTF8String(dim_override.first).c_str(), (int)dim_override.second);
       }
     }
   }

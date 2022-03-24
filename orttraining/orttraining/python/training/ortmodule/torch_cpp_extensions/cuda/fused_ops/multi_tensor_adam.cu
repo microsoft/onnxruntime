@@ -24,8 +24,9 @@
 #define ILP 4
 
 typedef enum {
-    ADAM_MODE_0 = 0,  // L2 regularization mode
-    ADAM_MODE_1 = 1   // Decoupled weight decay mode(AdamW)
+    ADAM_MODE_0 = 0,   // L2 regularization mode
+    ADAM_MODE_1 = 1,   // Decoupled weight decay mode (AdamW) as implemented in transformers/AdamW
+    ADAM_MODE_2 = 2    // Decoupled weight decay mode (AdamW) as implemented in pytorch/AdamW
 } adamMode_t;
 
 using MATH_T = float;
@@ -40,6 +41,8 @@ struct AdamFunctor {
                                                const float epsilon,
                                                const float lr,
                                                const float lr_corrected,
+                                               const float bias_correction1,
+                                               const float bias_correction2,
                                                adamMode_t mode,
                                                const float decay)
     {
@@ -91,13 +94,20 @@ struct AdamFunctor {
                     r_v[ii] = beta2 * r_v[ii] + (1 - beta2) * r_g[ii] * r_g[ii];
                     MATH_T denom = sqrtf(r_v[ii]) + epsilon;
                     r_p[ii] = r_p[ii] - (lr_corrected * r_m[ii] / denom);
-                } else {  // weight decay
+                } else if (mode == ADAM_MODE_1) {  // weight decay
                     // Adapted to be mathematically equivalent to transformers AdamW
                     r_m[ii] = beta1 * r_m[ii] + (1 - beta1) * r_g[ii];
                     r_v[ii] = beta2 * r_v[ii] + (1 - beta2) * r_g[ii] * r_g[ii];
                     MATH_T denom = sqrtf(r_v[ii]) + epsilon;
                     r_p[ii] = r_p[ii] - (lr_corrected * r_m[ii] / denom);
                     r_p[ii] = r_p[ii] - (lr * decay * r_p[ii]);
+                } else if (mode == ADAM_MODE_2) {
+                    // Adapted to be mathematically equivalent to torch AdamW
+                    r_p[ii] = r_p[ii] -  (r_p[ii] * lr * decay);
+                    r_m[ii] = beta1 * r_m[ii] + (1 - beta1) * r_g[ii];
+                    r_v[ii] = beta2 * r_v[ii] + (1 - beta2) * r_g[ii] * r_g[ii];
+                    MATH_T denom = (sqrtf(r_v[ii]) / sqrtf(bias_correction2)) + epsilon;
+                    r_p[ii] = r_p[ii] - (lr * r_m[ii]) / (bias_correction1 * denom);
                 }
             }
 #pragma unroll
@@ -128,7 +138,7 @@ void multi_tensor_adam_cuda(int chunk_size,
     using namespace at;
 
     // Handle bias correction mode
-    double bias_correction1 = 1.0, bias_correction2 = 1.0;
+    float bias_correction1 = 1.0, bias_correction2 = 1.0;
     float lr_corrected = lr;
     if (bias_correction == 1) {
         bias_correction1 = 1 - std::pow(beta1, step);
@@ -150,6 +160,8 @@ void multi_tensor_adam_cuda(int chunk_size,
                                                          epsilon,
                                                          lr,
                                                          lr_corrected,
+                                                         bias_correction1,
+                                                         bias_correction2,
                                                          (adamMode_t)mode,
                                                          weight_decay);)
 

@@ -10,6 +10,7 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
+#include "core/framework/tensor.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
@@ -56,7 +57,7 @@ gsl::span<TAlloc> Allocate(std::shared_ptr<IAllocator> allocator,
                            size_t size,
                            IAllocatorUniquePtr<TAlloc>& unique_ptr,
                            bool fill = false, TAlloc fill_value = TAlloc{}) {
-  unique_ptr = IAllocator::MakeUniquePtr<TAlloc>(allocator, size);
+  unique_ptr = IAllocator::MakeUniquePtr<TAlloc>(std::move(allocator), size);
   auto span = gsl::make_span(unique_ptr.get(), size);
 
   if (fill) {

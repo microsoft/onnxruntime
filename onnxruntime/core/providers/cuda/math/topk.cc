@@ -42,7 +42,7 @@ TopK<inputk>::TopK(const OpKernelInfo& info) : CudaKernel(info) {
 }
 
 #define IS_PRIM_TYPE(T) utils::IsPrimitiveDataType<T>(prim_type)
-#define TOPKIMPL(T) TopKImpl<T>(this, tensor_X->Data<T>(),                         \
+#define TOPKIMPL(T) TopKImpl<T>(this, stream, tensor_X->Data<T>(),                 \
                                 static_cast<T*>(tensor_V->MutableDataRaw()),       \
                                 static_cast<int64_t*>(tensor_I->MutableDataRaw()), \
                                 elem_nums_cuda,                                    \
@@ -73,7 +73,7 @@ Status TopK<inputk>::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  auto elem_nums = tensor_X->Shape().GetDimsAsVector();
+  auto elem_nums = tensor_X->Shape().AsShapeVector();
   auto dimension = elem_nums[axis];
   for (auto i = static_cast<int32_t>(elem_nums.size()) - 2; i >= 0; --i) {
     elem_nums[i] *= elem_nums[i + 1];
@@ -87,6 +87,7 @@ Status TopK<inputk>::ComputeInternal(OpKernelContext* ctx) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for TopK operator");
   }
 
+  cudaStream_t stream = this->Stream();
   if (IS_PRIM_TYPE(uint8_t)) return TOPKIMPL(uint8_t);
   if (IS_PRIM_TYPE(uint16_t)) return TOPKIMPL(uint16_t);
   if (IS_PRIM_TYPE(uint32_t)) return TOPKIMPL(uint32_t);

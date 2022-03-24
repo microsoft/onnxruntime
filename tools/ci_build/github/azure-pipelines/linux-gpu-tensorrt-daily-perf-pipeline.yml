@@ -90,7 +90,10 @@ jobs:
         value: machine.sh
         
     - name: with_arguments
-      value: $(environment) -e "$(epList)"
+      value: $(environment) -e "$(epList)" 
+    
+    - name: optional_arguments
+      value: -a "-a -g $(optimizeGraph) -b $(bindInputs) -n $(enableCache)"
 
   steps:
 
@@ -127,7 +130,7 @@ jobs:
         displayName: 'Start Anubis Job'
 
     - ${{ each option in parameters.ModelGroups }}:
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $(${{option}})'
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $(${{option}}) $(optional_arguments)'
         displayName: '${{option}} perf'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         
@@ -171,6 +174,12 @@ jobs:
           scriptLocation: inlineScript
           scriptType: bash
           inlineScript: |
-            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch)
+            short_hash=$(git rev-parse --short HEAD^) &&
+            commit_date=$(git log -1 --date=short --pretty=format:%cd) &&
+            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch)
     
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+        
     - template: templates/clean-agent-build-directory-step.yml

@@ -1,14 +1,21 @@
 # Python frontend owners
-orttraining/*.py @thiagocrepaldi @tlh20 @liqunfu @baijumeswani @SherlockNoMad @xadupre
-orttraining/orttraining/python/** @thiagocrepaldi @tlh20 @liqunfu @baijumeswani @SherlockNoMad @xadupre
-orttraining/orttraining/test/python/** @thiagocrepaldi @tlh20 @liqunfu @baijumeswani @SherlockNoMad @xadupre
-orttraining/pytorch_frontend_examples/** @thiagocrepaldi @tlh20 @liqunfu @baijumeswani @SherlockNoMad @xadupre
-onnxruntime/python/training/** @thiagocrepaldi @tlh20 @liqunfu @baijumeswani @SherlockNoMad @xadupre
-onnxruntime/test/python/onnxruntime_test_ort_trainer.py @thiagocrepaldi @tlh20 @liqunfu @baijumeswani @SherlockNoMad @xadupre
-onnxruntime/test/python/onnxruntime_test_ort_trainer_with_mixed_precision.py @thiagocrepaldi @tlh20 @liqunfu @baijumeswani @SherlockNoMad @xadupre
-onnxruntime/test/python/onnxruntime_test_training_unit_tests.py @thiagocrepaldi @tlh20 @liqunfu @baijumeswani @SherlockNoMad @xadupre
-onnxruntime/test/python/onnxruntime_test_training_unittest_utils.py @thiagocrepaldi @tlh20 @liqunfu @baijumeswani @SherlockNoMad @xadupre
-samples/python/training/** @thiagocrepaldi @tlh20 @liqunfu @baijumeswani @SherlockNoMad @xadupre
+orttraining/*.py @thiagocrepaldi @tlh20 @baijumeswani @xadupre
+orttraining/orttraining/python/** @thiagocrepaldi @tlh20 @baijumeswani @xadupre
+orttraining/orttraining/test/python/** @thiagocrepaldi @tlh20 @baijumeswani @xadupre
+orttraining/pytorch_frontend_examples/** @thiagocrepaldi @tlh20 @baijumeswani @xadupre
+onnxruntime/python/training/** @thiagocrepaldi @tlh20 @baijumeswani @xadupre
+onnxruntime/test/python/onnxruntime_test_ort_trainer.py @thiagocrepaldi @tlh20 @baijumeswani @xadupre
+onnxruntime/test/python/onnxruntime_test_ort_trainer_with_mixed_precision.py @thiagocrepaldi @tlh20 @baijumeswani @xadupre
+onnxruntime/test/python/onnxruntime_test_training_unit_tests.py @thiagocrepaldi @tlh20 @baijumeswani @xadupre
+onnxruntime/test/python/onnxruntime_test_training_unittest_utils.py @thiagocrepaldi @tlh20 @baijumeswani @xadupre
+samples/python/training/** @thiagocrepaldi @tlh20 @baijumeswani @xadupre
 
 # Mobile
-/onnxruntime/test/testdata/kernel_def_hashes/ @skottmckay @gwang-msft @YUNQIUGUO @edgchen1
+/onnxruntime/test/testdata/kernel_def_hashes/ @skottmckay @YUNQIUGUO @edgchen1
+/onnxruntime/core/framework/kernel_def_hash_helpers.* @skottmckay @YUNQIUGUO @edgchen1
+
+# Contrib Ops
+onnxruntime/core/graph/contrib_ops/nhwc_schema_defs.cc @zhanghuanrong @chenfucn @yufenglee @yihonglyu @snnn
+onnxruntime/core/graph/contrib_ops/nchwc_schema_defs.cc @zhanghuanrong @chenfucn @yufenglee @yihonglyu @snnn
+onnxruntime/core/graph/contrib_ops/quantization_defs.* @zhanghuanrong @chenfucn @yufenglee @yihonglyu @snnn
+onnxruntime/core/mlas/** @zhanghuanrong @chenfucn @yufenglee @yihonglyu @snnn

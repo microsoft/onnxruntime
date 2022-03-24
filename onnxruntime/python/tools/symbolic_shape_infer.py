@@ -201,6 +201,7 @@ class SymbolicShapeInference:
             'aten::avg_pool2d': self._infer_aten_pool2d,
             'aten::_adaptive_avg_pool2d': self._infer_aten_pool2d,
             'aten::binary_cross_entropy_with_logits': self._infer_aten_bce,
+            'aten::numpy_T': self._infer_Transpose,
         }
         self.run_ = True
         self.suggested_merge_ = {}
@@ -416,6 +417,7 @@ class SymbolicShapeInference:
                                           [make_named_value_info(i) for i in node.output], initializers)
 
             self.tmp_mp_.graph.CopyFrom(tmp_graph)
+
             self.tmp_mp_ = shape_inference.infer_shapes(self.tmp_mp_)
 
         for i_o in range(len(node.output)):
@@ -1055,23 +1057,23 @@ class SymbolicShapeInference:
         else:
             pads = self._try_get_value(node, 1)
 
+        sympy_shape = self._get_sympy_shape(node, 0)
+        rank = len(sympy_shape)
+
+        if pads is not None:
+            assert len(pads) == 2 * rank
+            new_sympy_shape = [
+                d + pad_up + pad_down for d, pad_up, pad_down in zip(sympy_shape, pads[:rank], pads[rank:])
+            ]
+            self._update_computed_dims(new_sympy_shape)
+        else:
+            # dynamic pads, create new symbolic dimensions
+            new_sympy_shape = self._new_symbolic_shape(rank, node)
+        output_tp = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+
         vi = self.known_vi_[node.output[0]]
-        output_shape = get_shape_from_type_proto(vi.type)
-        if len(output_shape) == 0 or None in output_shape:
-            sympy_shape = self._get_sympy_shape(node, 0)
-            rank = len(sympy_shape)
-            if pads is not None:
-                assert len(pads) == 2 * rank
-                new_sympy_shape = [
-                    d + pad_up + pad_down for d, pad_up, pad_down in zip(sympy_shape, pads[:rank], pads[rank:])
-                ]
-                self._update_computed_dims(new_sympy_shape)
-            else:
-                # dynamic pads, create new symbolic dimensions
-                new_sympy_shape = self._new_symbolic_shape(rank, node)
-            output_tp = self.known_vi_[node.input[0]].type.tensor_type.elem_type
-            vi.CopyFrom(
-                helper.make_tensor_value_info(node.output[0], output_tp, get_shape_from_sympy_shape(new_sympy_shape)))
+        vi.CopyFrom(
+            helper.make_tensor_value_info(node.output[0], output_tp, get_shape_from_sympy_shape(new_sympy_shape)))
 
     def _infer_Pool(self, node):
         sympy_shape = self._compute_conv_pool_shape(node)
@@ -1801,6 +1803,21 @@ class SymbolicShapeInference:
         vi = self.known_vi_[node.output[output_index]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[output_index], output_dtype, shape))
 
+    def _is_none_dim(self, dim_value):
+        if type(dim_value) != str:
+            return False
+        if "unk__" not in dim_value:
+            return False
+        if dim_value in self.symbolic_dims_.keys():
+            return False
+        return True
+    
+    def _is_shape_contains_none_dim(self, out_shape):
+        for out in out_shape:
+            if self._is_none_dim(out):
+                return out
+        return None
+    
     def _infer_impl(self, start_sympy_data=None):
         self.sympy_data_ = start_sympy_data or {}
         self.out_mp_.graph.ClearField('value_info')
@@ -1897,9 +1914,10 @@ class SymbolicShapeInference:
                 vi = self.known_vi_[node.output[0]]
                 if len(vi.type.tensor_type.shape.dim) == 0:
                     vi.type.tensor_type.elem_type = onnx.TensorProto.UNDEFINED
-            elif node.op_type == 'ATenOp' and node.domain == 'com.microsoft':
+            elif node.op_type == 'ATen' and node.domain == 'org.pytorch.aten':
                 for attr in node.attribute:
-                    if attr.name == 'name':
+                    # TODO: Is overload_name needed?
+                    if attr.name == 'operator':
                         aten_op_name = attr.s.decode('utf-8') if isinstance(attr.s, bytes) else attr.s
                         if aten_op_name in self.aten_op_dispatcher_:
                             known_aten_op = True
@@ -1953,7 +1971,8 @@ class SymbolicShapeInference:
                     if node.output[i_o] in self.sympy_data_:
                         logger.debug('  Sympy Data: ' + str(self.sympy_data_[node.output[i_o]]))
 
-                if (out_shape is not None and None in out_shape) or out_type_undefined:
+                # onnx >= 1.11.0, use unk__#index instead of None when the shape dim is uncertain
+                if (out_shape is not None and (None in out_shape or self._is_shape_contains_none_dim(out_shape))) or out_type_undefined:
                     if self.auto_merge_:
                         if node.op_type in [
                                 'Add', 'Sub', 'Mul', 'Div', 'MatMul', 'MatMulInteger', 'MatMulInteger16', 'Concat',
@@ -1961,8 +1980,11 @@ class SymbolicShapeInference:
                         ]:
                             shapes = [self._get_shape(node, i) for i in range(len(node.input))]
                             if node.op_type in ['MatMul', 'MatMulInteger', 'MatMulInteger16']:
-                                if None in out_shape:
-                                    idx = out_shape.index(None)
+                                if None in out_shape or self._is_shape_contains_none_dim(out_shape):
+                                    if None in out_shape:
+                                        idx = out_shape.index(None)
+                                    else:
+                                        idx = out_shape.index(self._is_shape_contains_none_dim(out_shape))
                                     dim_idx = [len(s) - len(out_shape) + idx for s in shapes]
                                     # only support auto merge for MatMul for dim < rank-2 when rank > 2
                                     assert len(shapes[0]) > 2 and dim_idx[0] < len(shapes[0]) - 2
@@ -1975,7 +1997,7 @@ class SymbolicShapeInference:
 
                         if shapes:
                             for idx in range(len(out_shape)):
-                                if out_shape[idx] is not None:
+                                if out_shape[idx] is not None and not self._is_none_dim(out_shape[idx]):
                                     continue
                                 # note that the broadcasting rule aligns from right to left
                                 # if a tensor has a lower rank (dim_idx[idx] < 0), it would automatically broadcast and need no merge

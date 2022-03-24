@@ -689,14 +689,15 @@ class ResizeOpTester : public OpTester {
     OpTester::AddNodes(graph, graph_input_defs, graph_output_defs, add_attribute_funcs);
 
     // set the Graph inputs to just X and roi (exclude 'scales') so the 'scales' are a constant initializer
-    if (scales_in_initializer_) {
-      // this isn't intended to work with a scenario where the optional 'sizes' input is provided
-      ASSERT_TRUE(graph_input_defs.size() == 3);
+    if(scales_in_initializer_) {
       graph.SetInputs({graph.GetNodeArg(graph_input_defs[0]->Name()),
                        graph.GetNodeArg(graph_input_defs[1]->Name())});
-    }
-
-    if (sizes_in_initializer_) {
+      if(sizes_in_initializer_) {
+        ASSERT_TRUE(graph_input_defs.size() == 4);
+      } else {
+        ASSERT_TRUE(graph_input_defs.size() == 3);
+      }
+    } else if (sizes_in_initializer_) {
       ASSERT_TRUE(graph_input_defs.size() == 4);  // 'sizes' is 4th input
       graph.SetInputs({graph.GetNodeArg(graph_input_defs[0]->Name()),
                        graph.GetNodeArg(graph_input_defs[1]->Name()),
@@ -744,9 +745,10 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization_Scales) {
 
 TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization_Sizes) {
   auto run_test = [](bool sizes_in_initializer) {
-    ResizeOpTester test(false, sizes_in_initializer);
+    ResizeOpTester test(sizes_in_initializer, sizes_in_initializer);
 
     std::vector<float> roi{};
+    std::vector<float> scales{};
     std::vector<int64_t> sizes{1, 1, 4, 4};
 
     test.AddAttribute("mode", "nearest");
@@ -760,7 +762,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization_Sizes) {
 
     test.AddInput<float>("X", {N, C, H, W}, X);
     test.AddInput<float>("roi", {0}, roi);
-    test.AddInput<float>("scales", {0}, {});
+    test.AddInput<float>("scales", {0}, scales, sizes_in_initializer);
     test.AddInput<int64_t>("sizes", {4}, sizes, sizes_in_initializer);
 
     std::vector<float> Y = {1.0f, 1.0f, 2.0f, 2.0f,

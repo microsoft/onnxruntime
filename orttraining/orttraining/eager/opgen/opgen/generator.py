@@ -105,11 +105,13 @@ class ORTGen:
   def __init__(
     self,
     ops: Optional[Dict[str, ONNXOp]] = None,
-    custom_ops : bool = False):
+    custom_ops : bool = False,
+    type_promotion_ops : List = ()):
     self._mapped_ops = {}    
     if ops:
       self.register_many(ops)
-    self._custom_ops = custom_ops      
+    self._custom_ops = custom_ops  
+    self.type_promotion_ops = type_promotion_ops    
 
   def register(self, aten_name: str, onnx_op: ONNXOp):
     self._mapped_ops[aten_name] = onnx_op
@@ -244,11 +246,6 @@ class ORTGen:
     if mapped_func.make_torch_fallback:
       return self._write_cpu_fall_back(writer, mapped_func)
 
-    return_alias_info = self._get_alias_info(cpp_func.torch_func.return_type) if cpp_func.torch_func else None
-    if return_alias_info and not return_alias_info.is_writable:
-      return_alias_info = None
-    in_place_param: ast.ParameterDecl = None
-
     # Eval the outer ONNX op to produce a topologically ordered list of ops
     ctx = ONNXOpEvalContext()
     onnx_op.eval(ctx)
@@ -310,20 +307,44 @@ class ORTGen:
 
     # Perform kernel fission on the ATen op to yield a chain of ORT Invokes
     # e.g. aten::add(x, y, α) -> onnx::Add(x, onnx::Mul(α, y))
+    
+    # whether need type promotion
+    need_type_promotion = False
+    if mapped_func.mapped_op_name in self.type_promotion_ops:
+      types_from_tensor = []
+      types_from_scalar = []
+      for onnx_op_index, onnx_op in enumerate(ctx.ops):
+        for op_input in onnx_op.inputs:
+          if isinstance(op_input, Outputs):
+            continue
+        cpp_param = cpp_func.get_parameter(op_input)
+        if cpp_param:
+          if cpp_param.parameter_type.desugar().identifier_tokens[0].value == 'Tensor':
+            types_from_tensor.append(f'{op_input}.scalar_type()')
+          elif cpp_param.parameter_type.desugar().identifier_tokens[0].value == 'Scalar':
+            types_from_scalar.append(f'{op_input}.type()')
+      if len(types_from_tensor) > 0 or len(types_from_scalar) > 0 :
+        need_type_promotion = True
+        writer.writeline('auto promoted_type = PromoteScalarTypesWithCategory({%s}, {%s});'
+                         % (','.join(types_from_tensor), ','.join(types_from_scalar)))
+        writer.writeline()
+
     for onnx_op_index, onnx_op in enumerate(ctx.ops):
       # Torch -> ORT inputs
       for op_input in onnx_op.inputs:
         if isinstance(op_input, Outputs):
           continue
-        # See if this input is aliased as an in-place tensor
         cpp_param = cpp_func.get_parameter(op_input)
-        if return_alias_info and cpp_param:
-          for torch_p in cpp_param.torch_param:
-            if self._get_alias_info(torch_p) == return_alias_info:
-              in_place_param = cpp_param
-
         writer.write(f'auto ort_input_{op_input} = ')
         writer.writeline(f'create_ort_value(invoker, {op_input});')
+        if need_type_promotion:
+          type_func_str = 'type()' if cpp_param.parameter_type.desugar().identifier_tokens[0].value == 'Scalar' else 'scalar_type()'
+          writer.write(f'if ({op_input}.{type_func_str} != *promoted_type)')
+          writer.writeline('{')
+          writer.push_indent()
+          writer.writeline(f'ort_input_{op_input} = CastToType(invoker, ort_input_{op_input}, *promoted_type);')
+          writer.pop_indent()
+          writer.writeline('}')
 
       # Torch kwargs -> ORT attributes
       attrs = { k:v for k, v in onnx_op.attributes.items() if v and v.value }
@@ -356,11 +377,36 @@ class ORTGen:
       writer.write(f'std::vector<OrtValue> {onnx_op.outputs}')
       writer.writeline(f'({onnx_op.outputs.count});')
 
-      if in_place_param:
-        assert(onnx_op.outputs.count == 1)
-        # TODO: This assumes that the first output corresponds to the first input.
-        # This may not work for more complicated ops.
-        writer.writeline(f'{onnx_op.outputs}[0] = ort_input_{onnx_op.inputs[0]};')
+      return_info = cpp_func.torch_func.return_type if cpp_func.torch_func else None
+      in_place_params = {}
+
+      if return_info:
+        for input_index, op_input in enumerate(onnx_op.inputs):
+          if isinstance(op_input, Outputs):
+            continue
+        
+          # See if this input is aliased as an in-place tensor
+          cpp_param = cpp_func.get_parameter(op_input)
+          if cpp_param:
+            for torch_p in cpp_param.torch_param:
+              if isinstance(return_info, ast.TupleType):
+                for output_index, output_param in enumerate(return_info.elements):
+                  assert isinstance(output_param.member, ast.TupleMemberType), "output_param.member must be of TupleMemberType"
+                  output_alias = self._get_alias_info(output_param.member.element_type)
+                  if output_alias and self._get_alias_info(torch_p) == output_alias and output_alias.is_writable:
+                    writer.writeline(f'{onnx_op.outputs}[{output_index}] = ort_input_{onnx_op.inputs[input_index]};')
+                    in_place_params[output_index] = cpp_param.identifier.value
+                    break                      
+              else:
+                output_alias = self._get_alias_info(return_info)
+                if output_alias and self._get_alias_info(torch_p) == output_alias and output_alias.is_writable:
+                  writer.writeline(f'{onnx_op.outputs}[0] = ort_input_{onnx_op.inputs[input_index]};')
+                  in_place_params[0] = cpp_param.identifier.value
+                  break
+
+        if len(in_place_params) != 0 and len(in_place_params) != (len(return_info.elements) if isinstance(return_info, ast.TupleType) else 1):
+            raise Exception(f'Cannot mix and match inplace with non-inplace parameters - function: {cpp_func.identifier.value} ' +
+                    f'in_place_params={in_place_params}, return_elements={return_info.elements}')            
 
       # Perform the invocation
       writer.writeline()
@@ -402,26 +448,40 @@ class ORTGen:
     # TODO: Handle mutliple results
     # TODO: Assert return type
 
-    if not return_alias_info:     
+    if len(in_place_params) == 0:     
+      # tensor options
+      writer.write(f'at::TensorOptions tensor_options = {first_param.identifier.value}')
+      if first_param.parameter_type.desugar().identifier_tokens[0].value == 'TensorList':
+        writer.write('[0]')
+      writer.write('.options()')
+      if need_type_promotion:
+        writer.write('.dtype(*promoted_type)')
+      writer.writeline(';')
+
       writer.writeline('return aten_tensor_from_ort(')
       writer.push_indent()
       if isinstance(cpp_func.return_type, ast.TemplateType) and cpp_func.return_type.identifier_tokens[-1].value == 'std::vector':
         writer.writeline(f'{return_outputs},')
-        writer.writeline(f'{first_param.identifier.value}.options());')
+        writer.writeline('tensor_options);')
       else:
         writer.writeline(f'std::move({return_outputs}[0]),')
-        writer.write(first_param.identifier.value)
-        if first_param.parameter_type.desugar().identifier_tokens[0].value == 'TensorList':
-          writer.write('[0]')
-        writer.writeline('.options());')
+        writer.writeline('tensor_options);')
       writer.pop_indent()
       return
-
-    if not in_place_param:
-      raise Exception(f'"{cpp_func.torch_func.torch_schema}" ' +
-        'has alias info on its return type but no associated parameter')
-
-    writer.writeline(f'return {in_place_param.identifier.value};')
+    else:
+        if len(in_place_params) == 1:
+            writer.writeline(f'return {in_place_params[0]};')
+        else:
+            if not (isinstance(cpp_func.return_type, ast.TemplateType) and cpp_func.return_type.identifier_tokens[-1].value == 'std::tuple'):
+              raise Exception(f'')
+            tensorRef = "Tensor&," * len(in_place_params)
+            tensorRef = tensorRef[:len(tensorRef)-1]
+            writer.write(f'return std::tuple<{tensorRef}>(')
+            for index, key in enumerate(sorted(in_place_params)):
+                if index > 0:
+                    writer.write(', ')
+                writer.write(in_place_params[key])
+            writer.writeline(');')
 
   def _write_function_registrations(
     self,
@@ -512,15 +572,18 @@ class ORTGen:
     # Parse the Torch schema from the JSON comment that follows each C++ decl
     # and link associated Torch and C++ decls (functions, parameters, returns)
     for cpp_func in tu:
-      if self._custom_ops == True:
-        # customops don't have torch schema
-        cpp_func.torch_func = None
-        yield cpp_func
-      elif cpp_func.semicolon and cpp_func.semicolon.trailing_trivia:
+      hasSchema = False
+      if cpp_func.semicolon and cpp_func.semicolon.trailing_trivia:
         for trivia in cpp_func.semicolon.trailing_trivia:
           if trivia.kind == lexer.TokenKind.SINGLE_LINE_COMMENT:
             yield self._parse_and_link_torch_function_decl(cpp_func, trivia)
+            hasSchema = True
             break
+
+      if not hasSchema:
+        # customops might not have torch schema
+        cpp_func.torch_func = None
+        yield cpp_func
 
   def _parse_and_link_torch_function_decl(
     self,

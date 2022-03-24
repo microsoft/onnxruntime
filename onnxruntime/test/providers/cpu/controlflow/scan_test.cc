@@ -381,24 +381,25 @@ static void RunTest_v9(const std::string test_name, int64_t sequence_len, int64_
 
   test.AddOutput<float>("scan_loop_state_out_0", loop_state_shape, loop_state_out_0);
 
-  std::vector<int64_t> output_shape{sequence_len, 1};
+  TensorShape output_shape{sequence_len, 1};
 
   auto calculate_output_shape = [&](size_t output_index) {
     if (output_axes && output_axes->size() > output_index) {
-      auto axis = output_axes->at(output_index);
-      auto rank = gsl::narrow_cast<int64_t>(output_shape.size());
+      const auto axis = output_axes->at(output_index);
+      const auto rank = gsl::narrow_cast<int64_t>(output_shape.NumDimensions());
 
       // skip if this is an invalid input test and axis is out of the valid range
       if (axis >= -rank && axis < rank) {
-        std::vector<size_t> permutations;
-        std::vector<int64_t> new_shape;
-        scan::detail::CalculateTransposedShapeForOutput(output_shape, HandleNegativeAxis(axis, output_shape.size()),
+        InlinedVector<size_t> permutations;
+        TensorShapeVector new_shape;
+        scan::detail::CalculateTransposedShapeForOutput(output_shape, HandleNegativeAxis(axis, rank),
                                                         permutations, new_shape);
-        return new_shape;
+        return std::vector<int64_t>(new_shape.cbegin(), new_shape.cend());
       }
     }
 
-    return output_shape;
+    const auto output_dims = output_shape.GetDims();
+    return std::vector<int64_t>(output_dims.cbegin(), output_dims.cend());
   };
 
   test.AddOutput<float>("scan_output_0", calculate_output_shape(0), output_0);
