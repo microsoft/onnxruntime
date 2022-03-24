@@ -146,12 +146,20 @@ void Impl_Cast<half, float>(
     const half* input_data,
     float* output_data,
     size_t count) {
+  if (count % 2 == 0) {
+    UnaryElementWiseImplVectorize(stream,
+                         input_data,
+                         output_data,
+                         OP_Cast_Half2Float(),
+                         count);
+  } else {
     UnaryElementWiseImpl(stream,
-                       input_data,
-                       output_data,
-                       OP_Cast<half, float>(),
-                       OP_Cast_Half2Float(),
-                       count);
+                         input_data,
+                         output_data,
+                         OP_Cast<half, float>(),
+                         count);
+  }
+    
 }
 
 template <>
@@ -160,12 +168,19 @@ void Impl_Cast<float, half>(
     const float* input_data,
     half* output_data,
     size_t count) {
-      UnaryElementWiseImpl(stream,
-                       input_data,
-                       output_data,
-                       OP_Cast<float, half>(),
-                       OP_Cast_Float2Half(),
-                       count);
+  if (count % 2 == 0) {
+    UnaryElementWiseImplVectorize(stream,
+                        input_data,
+                        output_data,
+                        OP_Cast_Float2Half(),
+                        count);
+  } else {
+    UnaryElementWiseImpl(stream,
+                         input_data,
+                         output_data,
+                         OP_Cast<float, half>(),
+                         count);
+  }
 }
 
 #define SPECIALIZED_CAST_IMPL2(InT, OutT) \
