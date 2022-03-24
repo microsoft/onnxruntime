@@ -408,7 +408,6 @@ class Gpt2Helper:
                           f=onnx_model_path,
                           input_names=input_names,
                           output_names=output_names,
-                          example_outputs=outputs,
                           dynamic_axes=dynamic_axes,
                           opset_version=11,
                           do_constant_folding=True,

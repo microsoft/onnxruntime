@@ -23,7 +23,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
     DFT);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -31,7 +31,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
     IDFT);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -199,8 +199,10 @@ static Status fft_radix2(OpKernelContext* /*ctx*/,
       auto first_idx = bit_reverse(k, current_significant_bits);
       auto second_idx = bit_reverse(midpoint + k, current_significant_bits);
       for (size_t j = 0; j < number_of_samples; j += i) {
-        std::complex<T>* even = (Y_data + j*Y_data_stride) + k;
-        std::complex<T>* odd = (Y_data + j*Y_data_stride) + (midpoint + k);
+        auto even_index = k + j;
+        auto odd_index  = k + j + midpoint;
+        std::complex<T>* even = (Y_data + even_index * Y_data_stride);
+        std::complex<T>* odd = (Y_data + odd_index * Y_data_stride);
         std::complex<T> first = *even + (V[first_idx] * *odd);
         std::complex<T> second = *even + (V[second_idx] * *odd);
         *even = first;
@@ -220,7 +222,7 @@ static Status fft_radix2(OpKernelContext* /*ctx*/,
   if (is_onesided) {
     auto destination = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + Y_offset;
     for (size_t i = 0; i < number_of_samples; i++) {
-      *(destination + Y_stride * i) = *(Y_data + i);
+      *(destination + Y_stride * i) = *(Y_data + i * Y_data_stride);
     }
   }
 

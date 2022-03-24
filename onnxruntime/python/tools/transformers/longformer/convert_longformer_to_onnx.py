@@ -232,7 +232,6 @@ def export_longformer(model, onnx_model_path, export_padding):
                       example_inputs,
                       onnx_model_path,
                       opset_version=11,
-                      example_outputs=example_outputs,
                       input_names=["input_ids", "attention_mask", "global_attention_mask"],
                       output_names=["last_state", "pooler"],
                       dynamic_axes={
