@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <cuda_runtime.h>
-#include "unary_elementwise_ops_impl.h"
-#include "core/providers/cuda/cu_inc/common.cuh"
-#include "core/providers/cuda/cu_inc/unary_elementwise_impl.cuh"
+#include <hip/hip_runtime.h>
+#include "core/providers/rocm/math/unary_elementwise_ops_impl.h"
+#include "core/providers/rocm/cu_inc/common.cuh"
+#include "core/providers/rocm/cu_inc/unary_elementwise_impl.cuh"
 
 namespace onnxruntime {
-namespace cuda {
+namespace rocm {
 
 #define OP(name, expr)                                     \
   template <typename T>                                    \
@@ -27,7 +27,7 @@ namespace cuda {
   }
 
 #define SPECIALIZED_UNARY_ELEMENTWISE_IMPL(name, T) \
-  template void Impl_##name<T>(cudaStream_t stream, const T* input_data, T* output_data, size_t count);
+  template void Impl_##name<T>(hipStream_t stream, const T* input_data, T* output_data, size_t count);
 
 #define UNARY_OP_NAME_EXPR(name, expr) \
   OP(name, expr)                       \
@@ -115,9 +115,21 @@ struct OP_Cast {
   }
 };
 
+struct OP_Cast_Half2Float {
+  __device__ __inline__ float2 operator()(const __half2& a) const {
+    return __half22float2(a);
+  }
+};
+
+struct OP_Cast_Float2Half {
+  __device__ __inline__ __half2 operator()(const float2& a) const {
+    return __float22half2_rn(a);
+  }
+};
+
 template <typename InT, typename OutT>
 void Impl_Cast(
-    cudaStream_t stream,
+    hipStream_t stream,
     const InT* input_data,
     OutT* output_data,
     size_t count) {
@@ -128,8 +140,51 @@ void Impl_Cast(
                        count);
 }
 
+template <>
+void Impl_Cast<half, float>(
+    hipStream_t stream,
+    const half* input_data,
+    float* output_data,
+    size_t count) {
+  if (count % 2 == 0) {
+    UnaryElementWiseImplVectorize(stream,
+                         input_data,
+                         output_data,
+                         OP_Cast_Half2Float(),
+                         count);
+  } else {
+    UnaryElementWiseImpl(stream,
+                         input_data,
+                         output_data,
+                         OP_Cast<half, float>(),
+                         count);
+  }
+    
+}
+
+template <>
+void Impl_Cast<float, half>(
+    hipStream_t stream,
+    const float* input_data,
+    half* output_data,
+    size_t count) {
+  if (count % 2 == 0) {
+    UnaryElementWiseImplVectorize(stream,
+                        input_data,
+                        output_data,
+                        OP_Cast_Float2Half(),
+                        count);
+  } else {
+    UnaryElementWiseImpl(stream,
+                         input_data,
+                         output_data,
+                         OP_Cast<float, half>(),
+                         count);
+  }
+}
+
 #define SPECIALIZED_CAST_IMPL2(InT, OutT) \
-  template void Impl_Cast<InT, OutT>(cudaStream_t stream, const InT* input_data, OutT* output_data, size_t count);
+  template void Impl_Cast<InT, OutT>(hipStream_t stream, const InT* input_data, OutT* output_data, size_t count);
 
 #define SPECIALIZED_CAST_FROM(T)      \
   SPECIALIZED_CAST_IMPL2(T, half)     \
@@ -160,5 +215,6 @@ SPECIALIZED_CAST_FROM(uint64_t)
 SPECIALIZED_CAST_FROM(bool)
 SPECIALIZED_CAST_FROM(BFloat16)
 
-}  // namespace cuda
+}  // namespace rocm
 }  // namespace onnxruntime
+
