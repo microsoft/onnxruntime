@@ -42,13 +42,13 @@ Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name
   } else if (proto_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) {
     ORT_ENFORCE((std::is_same<float, TH>::value));
   } else {
-    ORT_ENFORCE(false, "Not implemented for type ", proto_type);
+    ORT_NOT_IMPLEMENTED("GetVectorAttrsOrDefault not implemented for type ", proto_type);
   }
 
   ONNX_NAMESPACE::TensorProto proto;
   size_t n_elements;
   data.clear();
-  ORT_ENFORCE(GetNumberOfElementsAttrsOrDefault(info, name, proto_type, n_elements, proto).IsOK());
+  ORT_THROW_IF_ERROR(GetNumberOfElementsAttrsOrDefault(info, name, proto_type, n_elements, proto));
   if (n_elements == 0) {
     return Status::OK();
   }

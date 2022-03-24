@@ -47,14 +47,12 @@ ADD_IN_TYPE_TREE_ENSEMBLE_CLASSIFIER_OP(int32_t);
 template <typename T>
 TreeEnsembleClassifier<T>::TreeEnsembleClassifier(const OpKernelInfo& info) : OpKernel(info) {
   ORT_IF_CONSTEXPR(std::is_same<T, double>::value) {
-    p_tree_ensemble_ = std::make_unique<detail::TreeEnsembleCommonClassifier<T, double, TO>>();
+    p_tree_ensemble_ = std::make_unique<detail::TreeEnsembleCommonClassifier<T, double, OutputType>>();
   }
   else {
-    p_tree_ensemble_ = std::make_unique<detail::TreeEnsembleCommonClassifier<T, float, TO>>();
+    p_tree_ensemble_ = std::make_unique<detail::TreeEnsembleCommonClassifier<T, float, OutputType>>();
   }
-  if (!p_tree_ensemble_->Init(info).IsOK()) {
-    // TODO: look into other operators.
-  }
+  ORT_THROW_IF_ERROR(p_tree_ensemble_->Init(info));
 }
 
 template <typename T>
@@ -66,7 +64,7 @@ common::Status TreeEnsembleClassifier<T>::Compute(OpKernelContext* context) cons
   }
 
   int64_t N = x_dims.size() == 1 ? 1 : x_dims[0];
-  Tensor* label = context->Output(0, {N});  // int54_t
+  Tensor* label = context->Output(0, {N});  // int64_t
   Tensor* Z = context->Output(1, {N, p_tree_ensemble_->get_target_or_class_count()});  // TO
   return p_tree_ensemble_->compute(context, &X, Z, label);
 }

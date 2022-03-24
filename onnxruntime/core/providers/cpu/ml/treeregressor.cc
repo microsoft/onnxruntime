@@ -44,14 +44,12 @@ ONNX_CPU_OPERATOR_TYPED_ML_KERNEL(
 template <typename T>
 TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info) : OpKernel(info) {
   ORT_IF_CONSTEXPR(std::is_same<T, double>::value) {
-    p_tree_ensemble_ = std::make_unique<detail::TreeEnsembleCommon<T, double, TO>>();
+    p_tree_ensemble_ = std::make_unique<detail::TreeEnsembleCommon<T, double, OutputType>>();
   }
   else {
-    p_tree_ensemble_ = std::make_unique<detail::TreeEnsembleCommon<T, float, TO>>();
+    p_tree_ensemble_ = std::make_unique<detail::TreeEnsembleCommon<T, float, OutputType>>();
   }
-  if (!p_tree_ensemble_->Init(info).IsOK()) {
-    // TODO: look into other operators.
-  }
+  ORT_THROW_IF_ERROR(p_tree_ensemble_->Init(info));
 } 
 
 
