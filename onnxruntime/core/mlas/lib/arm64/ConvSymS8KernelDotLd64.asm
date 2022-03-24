@@ -16,6 +16,7 @@ Abstract:
 --*/
 
 #include "kxarm64.h"
+#include "AssembleDotProduct.h"
 
 #define     MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE 2
 
@@ -648,4 +649,6 @@ LT2Store
         str     b0,[x2]
         b       ExitKernel
 
-        .end
+        NESTED_END MlasConvSymS8KernelDotLd64
+
+        END

@@ -364,12 +364,15 @@ MlasConvSymPackWSize(
     } else {
 
 #ifdef MLAS_TARGET_ARM64
-        // TODO!! remove this for functional testing!
-        // TODO!! is there a way to know whether this is called by tests?
-        if (KernelSize <= 1) return 0;
+        if (KernelSize <= 1) {
+            // im2col not needed, indirected buffer not needed
+            // just use qgemm path for pointwise
+            return 0;
+        }
         if (InputChannels < 64) {
             // Shallow indirect conv runs slower.
-            // TODO!! for DOT arch, threshold should be 32 for better perf
+            // TODO!! remove this for functional testing!
+            // TODO!! is there a way to know whether this is called by tests?
             return 0;
         }
 #endif
