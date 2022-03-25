@@ -293,15 +293,16 @@ Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor&
     }
 
     // cuDNN only takes 4D or 5D x tensor, so pad dimensions if needed.
+    // Pad [N,C,D] to [N,C,1,D] instead of [N,C,D,1] as we observed much batter perf, expacially on A100.
     if (rank < 2) {
-      x_dims.push_back(1);
-      dy_dims.push_back(1);
-      w_dims.push_back(1);
+      x_dims.insert(x_dims.begin() + 2, 1);
+      dy_dims.insert(dy_dims.begin() + 2, 1);
+      w_dims.insert(w_dims.begin() + 2, 1);
       pads.insert(pads.begin() + rank, 0);
-      pads.insert(pads.end(), 0);
-      kernel_shape.push_back(1);
-      strides.push_back(1);
-      dilations.push_back(1);
+      pads.insert(pads.begin(), 0);
+      kernel_shape.insert(kernel_shape.begin(), 1);
+      strides.insert(strides.begin(), 1);
+      dilations.insert(dilations.begin(), 1);
     }
 
     const CUDAExecutionProvider* cuda_ep =
