@@ -175,10 +175,6 @@ def parse_args():
                              "number of nodes. The saved optimizations can further optimize nodes not assigned to the "
                              "compiling EP at runtime.")
 
-    parser.add_argument('--optimization_level', default='all', choices=['disable', 'basic', 'extended', 'all'],
-                        help='Graph optimization level to use. '
-                             'For general usage, the default of \'all\' should be fine.')
-
     parser.add_argument('--enable_type_reduction', action='store_true',
                         help='Add operator specific type information to the configuration file to potentially reduce '
                              'the types supported by individual operator implementations.')
@@ -216,7 +212,9 @@ def convert_onnx_models_to_ort():
     args = parse_args()
 
     optimization_styles = [OptimizationStyle[style_str] for style_str in args.optimization_style]
-    optimization_level_str = args.optimization_level
+    # setting optimization level is not expected to be needed by typical users, but it can be set with this
+    # environment variable
+    optimization_level_str = os.getenv("ORT_CONVERT_ONNX_MODELS_TO_ORT_OPTIMIZATION_LEVEL", "all")
     model_path_or_dir = args.model_path_or_dir.resolve()
     custom_op_library = args.custom_op_library.resolve() if args.custom_op_library else None
 

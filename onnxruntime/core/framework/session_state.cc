@@ -933,11 +933,10 @@ Status SessionState::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-Status SessionState::CreateSubgraphSessionState(bool allow_unassigned_node_ep) {
+Status SessionState::CreateSubgraphSessionState() {
   for (auto& node : graph_.Nodes()) {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       const auto& ep = node.GetExecutionProviderType();
-      ORT_ENFORCE(!ep.empty() || allow_unassigned_node_ep, "Node execution provider type must not be empty.");
       if (!ep.empty() && ep != kCpuExecutionProvider && ep != kCudaExecutionProvider) {
         // SessionState is only used when ORT is executing the subgraph. If a non-ORT EP has taken the control flow
         // node containing the subgraph it will create whatever state it needs internally.
@@ -957,7 +956,7 @@ Status SessionState::CreateSubgraphSessionState(bool allow_unassigned_node_ep) {
       subgraph_session_state->fused_funcs_mgr_.SetFusedFuncs(fused_funcs_mgr_);
 
       // recurse
-      ORT_RETURN_IF_ERROR(subgraph_session_state->CreateSubgraphSessionState(allow_unassigned_node_ep));
+      ORT_RETURN_IF_ERROR(subgraph_session_state->CreateSubgraphSessionState());
 
       // add the subgraph SessionState instance to the parent graph SessionState so it can be retrieved
       // by Compute() via OpKernelContextInternal.
@@ -1049,7 +1048,7 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
       continue;
     }
 
-    if (node.Domain() == kOnnxDomain || node.Domain() == kOnnxDomainAlias || node.Domain() == kMSDomain) {
+    if (node.Domain() == kOnnxDomain || node.Domain() == kMSDomain) {
       // two possible places to get hash from
       auto kernel_hash = utils::GetHashValueFromStaticKernelHashMap(node.OpType(), node.SinceVersion());
       if (!kernel_hash.has_value()) {
@@ -1181,9 +1180,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   // recursively create the subgraph session state instances and populate the kernel create info in them.
   // it's simpler to handle the kernel create info recursively when deserializing,
   // so also do it recursively when calling PopulateKernelCreateInfo for consistency.
-  ORT_RETURN_IF_ERROR(CreateSubgraphSessionState(
-      // allow unassigned node EPs if loading from ORT format
-      serialized_session_state != nullptr /* allow_unassigned_node_ep */));
+  ORT_RETURN_IF_ERROR(CreateSubgraphSessionState());
 
   if (serialized_session_state) {
     ORT_RETURN_IF_ERROR(LoadFromOrtFormat(*serialized_session_state, kernel_registry_manager));

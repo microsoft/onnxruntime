@@ -346,10 +346,12 @@ TEST(GraphRuntimeOptimizationTest, TestNhwcTransformer) {
 TEST(GraphRuntimeOptimizationTest, TestNhwcTransformerDirectlyUpdatesQLinearConv) {
   CheckNhwcTransformerIsApplied(
       // ORT format model that contains QLinearConv nodes
-      // generated with:
-      //   python -m onnxruntime.tools.convert_onnx_models_to_ort
-      //     --optimization_style Fixed --optimization_level extended
-      //     testdata/transform/runtime_optimization/qdq_convs.onnx
+      // to generate:
+      // - set environment variable ORT_CONVERT_ONNX_MODELS_TO_ORT_OPTIMIZATION_LEVEL=extended
+      // - run:
+      //     python -m onnxruntime.tools.convert_onnx_models_to_ort
+      //       --optimization_style Fixed
+      //       testdata/transform/runtime_optimization/qdq_convs.onnx
       ORT_TSTR("testdata/transform/runtime_optimization/qdq_convs.extended.ort"),
       [](const OpCountMap& loaded_ops, const OpCountMap& initialized_ops) {
         constexpr int n = 3;  // expected number of QLinearConvs

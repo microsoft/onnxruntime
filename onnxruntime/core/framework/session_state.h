@@ -363,7 +363,7 @@ class SessionState {
 
   SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
 
-  Status CreateSubgraphSessionState(bool allow_unassigned_node_ep);
+  Status CreateSubgraphSessionState();
 
   void AddSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name,
                                std::unique_ptr<SessionState> session_state);
