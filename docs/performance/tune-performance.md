@@ -26,7 +26,7 @@ This document covers basic tools and knobs that can be leveraged to find the bes
 
 The [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) is a Python package that automates the process of accelerating models with ONNX Runtime(ORT). It contains two parts: (1) model conversion to ONNX with correctness checking (2) auto performance tuning with ORT. Users can run these two together through a single pipeline or run them independently as needed.
 
-As a quickstart, please see the [notebook tutorials](https://github.com/microsoft/OLive/tree/master/notebook-tutorial) and [command line examples](https://github.com/microsoft/OLive/tree/master/cmd-example) 
+As a quickstart, please see the [notebook tutorials](https://github.com/microsoft/OLive/tree/master/notebook-tutorial) and [command line examples](https://github.com/microsoft/OLive/tree/master/cmd-example)
 
 ### Profiling and Performance Report
 
@@ -143,13 +143,13 @@ Additionally, not all CUDA kernels are implemented, as these have been prioritiz
 
 TensorRT and CUDA are separate execution providers for ONNX Runtime. On the same hardware, TensorRT will generally provide better performance; however, this depends on the specific model and whether the operators in the model can be supported by TensorRT. In cases where TensorRT cannot handle the subgraph(s), it will fall back to CUDA. Note that the TensorRT EP may depend on a different version of CUDA than the CUDA EP.
 
-### TensorRT/CUDA or DirectML? 
+### TensorRT/CUDA or DirectML?
 
 DirectML is the hardware-accelerated DirectX 12 library for machine learning on Windows and supports all DirectX 12 capable devices (Nvidia, Intel, AMD). This means that if you are targeting Windows GPUs, using the DirectML Execution Provider is likely your best bet. This can be used with both the ONNX Runtime as well as [WinML APIs](https://docs.microsoft.com/en-us/windows/ai/windows-ml/api-reference).
 
 ## Tips for tuning performance
 
-Below are some suggestions for things to try for various EPs for tuning performance. 
+Below are some suggestions for things to try for various EPs for tuning performance.
 
 ### Shared arena based allocator
 
@@ -193,7 +193,7 @@ hence ORT offers thread creation and joining callbacks by [C++ API](https://gith
   void JoinThreadCustomized(OrtCustomThreadHandle handle) {
     for (auto& t : threads) {
       if (reinterpret_cast<OrtCustomThreadHandle>(t.native_handle()) == handle) {
-        // recycling resources ... 
+        // recycling resources ...
         t.join();
       }
     }
@@ -282,7 +282,7 @@ When working with non-CPU execution providers it's most efficient to have inputs
   io_binding.BindInput("input1", input_tensor);
   Ort::MemoryInfo output_mem_info{"Cuda", OrtDeviceAllocator, 0,
                                   OrtMemTypeDefault};
-  
+
   // Use this to bind output to a device when the shape is not known in advance. If the shape is known you can use the other overload of this function that takes an Ort::Value as input (IoBinding::BindOutput(const char* name, const Value& value)).
   // This internally calls the BindOutputToDevice C API.
 
@@ -296,7 +296,7 @@ Refer to the [Python API docs](https://onnxruntime.ai/docs/api/python)
 
 * C#
 
-Refer to https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.Tests/OrtIoBindingAllocationTest.cs 
+Refer to https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.Tests/OrtIoBindingAllocationTest.cs
 
 ### Convolution heavy models and the CUDA EP
 
@@ -350,16 +350,17 @@ Currently, there are some constraints with regards to using the CUDA Graphs feat
 
 1) Models with control-flow ops (i.e.) models with `If`, `Loop`, and `Scan` ops are not supported
 2) Usage of CUDA Graphs is limited to models where-in all the model ops (graph nodes) can be partitioned to the CUDA EP
-3) The input/output types of models need to be tensors 
+3) The input/output types of models need to be tensors
 4) Shapes of inputs/outputs cannot change across inference calls. Dynamic shape models are supported - the only constraint is that the input/output shapes should be the same across all inference calls
 5) By design, [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) is designed to read from/write to the same CUDA virtual memory addresses during the graph replaying step as it does during the graph capturing step. Due to this requirement, usage of this feature requires using IOBinding so as to bind memory which will be used as input(s)/output(s) for the CUDA Graph machinery to read from/write to(please see samples below)
 6) While updating the input(s) for subsequent inference calls, the fresh input(s) need to be copied over to the corresponding CUDA memory location(s) of the bound `OrtValue` input(s) (please see samples below to see how this can be achieved). This is due to the fact that the "graph replay" will require reading inputs from the same CUDA virtual memory addresses
 7) Multi-threaded usage is not supported currently (i.e.) `Run()` MAY NOT be invoked on the same `InferenceSession` object from multiple threads while using CUDA Graphs
 
-NOTE: The very first `Run()` performs a variety of tasks under the hood like making CUDA memory allocations, capturing the CUDA graph for the model, and then performing a graph replay to ensure that the graph runs. Due to this, the latency associated with the first `Run()` is bound to be high. The subsequent `Run()`s only perform graph replays of the graph captured and cached in the first `Run()`. 
+NOTE: The very first `Run()` performs a variety of tasks under the hood like making CUDA memory allocations, capturing the CUDA graph for the model, and then performing a graph replay to ensure that the graph runs. Due to this, the latency associated with the first `Run()` is bound to be high. The subsequent `Run()`s only perform graph replays of the graph captured and cached in the first `Run()`.
 
 * Python
-```
+
+```python
 providers = [("CUDAExecutionProvider", {"enable_cuda_graph": '1'})]
 sess_options = ort.SessionOptions()
 sess = ort.InferenceSession("my_model.onnx",  sess_options = sess_options, providers=providers)
@@ -392,7 +393,8 @@ session.run_with_iobinding(io_binding)
 ```
 
 * C/C++
-```
+
+```cpp
 const auto& api = Ort::GetApi();
 
 struct CudaMemoryDeleter {
@@ -405,7 +407,7 @@ void operator()(void* ptr) const {
 
 const Ort::Allocator* alloc_;
 };
-  
+
 // Enable cuda graph in cuda provider option.
 OrtCUDAProviderOptionsV2* cuda_options = nullptr;
 api.CreateCUDAProviderOptions(&cuda_options);
@@ -474,7 +476,7 @@ Here is a list of things to check through when assessing performance issues.
 * Are you using OpenMP? OpenMP will parallelize some of the code for potential performance improvements. This is not recommended for running on single threads.
 * Have you enabled all [graph optimizations](graph-optimizations.md)? The official published packages do enable all by default, but when building from source, check that these are enabled in your build.
 * Have you searched through prior filed [Github issues](https://github.com/microsoft/onnxruntime/issues) to see if your problem has been discussed previously? Please do this before filing new issues.
-* If using CUDA or TensorRT, do you have the right versions of the dependent libraries installed? 
+* If using CUDA or TensorRT, do you have the right versions of the dependent libraries installed?
 
 ### I need help performance tuning for BERT models
 
