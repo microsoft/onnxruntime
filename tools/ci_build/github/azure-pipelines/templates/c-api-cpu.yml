@@ -330,11 +330,25 @@ jobs:
       targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
 
   - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact - Linux AARCH64'
+    inputs:
+      buildType: 'current'
+      artifactName: 'drop-onnxruntime-java-linux-aarch64'
+      targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-aarch64'
+
+  - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - MacOS x64'
     inputs:
       buildType: 'current'
       artifactName: 'drop-onnxruntime-java-osx-x86_64'
       targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-x86_64'
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact - MacOS ARM64'
+    inputs:
+      buildType: 'current'
+      artifactName: 'drop-onnxruntime-java-osx-arm64'
+      targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-arm64'
 
   - task: PowerShell@2
     displayName: 'PowerShell Script'
