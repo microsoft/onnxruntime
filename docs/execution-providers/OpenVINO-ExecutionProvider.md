@@ -80,17 +80,6 @@ For more information on Auto-Device plugin of OpenVINO, please refer to the
 The model caching setting enables blobs with Myriadx(VPU) and as cl_cache files with iGPU.
 
 #### Save/Load blob capability for Myriadx(VPU)
-
-Use "AUTO:<device 1><device 2>.." as the device name to delegate selection of an actual accelerator to OpenVINO. With the 2021.4 release, Auto-device internally recognizes and selects devices from CPU, integrated GPU and discrete Intel GPUs (when available) depending on the device capabilities and the characteristic of CNN models, for example, precisions. Then Auto-device assigns inference requests to the selected device.
-
-From the application point of view, this is just another device that handles all accelerators in full system.
-
-For more information on Auto-Device plugin of OpenVINO, please refer to the following
-[documentation](https://docs.openvino.ai/cn/latest/openvino_docs_IE_DG_supported_plugins_AUTO.html).
-
-### Model caching feature for OpenVINO EP
-The model caching setting enables blobs with Myriadx(VPU) and as cl_cache files with iGPU.
-#### Save/Load blob capability for Myriadx(VPU)
 This feature enables users to save and load the blobs directly. These pre-compiled blobs can be directly loaded on to the specific hardware device target and inferencing can be done. This feature is only supported on MyriadX(VPU) hardware device target.
 
 #### CL Cache capability for iGPU
