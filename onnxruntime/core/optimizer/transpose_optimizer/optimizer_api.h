@@ -346,7 +346,7 @@ class GraphRef {
   /// <param name="domain">The new node's domain. Empty string signifies default onnx domain.</param>
   /// <returns>The new node</returns>
   virtual std::unique_ptr<NodeRef> AddNode(std::string_view op_type, const std::vector<std::string_view>& inputs,
-                                           size_t num_outputs, std::string_view domain = "") = 0;
+                                           size_t num_outputs, std::string_view domain = /*kOnnxDomain*/ "") = 0;
 
   /// <summary>
   /// Creates a copy of the provided node in the graph with the specified op type and domain.

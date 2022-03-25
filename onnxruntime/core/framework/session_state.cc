@@ -1112,7 +1112,7 @@ static void ComputeConstantInitializerUseCount(const Graph& graph, std::unordere
 using NodePlacementMap = std::unordered_map<std::string, std::vector<std::string>>;
 
 static Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_verbose,
-                                          NodePlacementMap& node_placements) {
+                                                 NodePlacementMap& node_placements) {
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
     if (node_provider.empty()) {
