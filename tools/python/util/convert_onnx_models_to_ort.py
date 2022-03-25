@@ -197,7 +197,7 @@ def parse_args():
 
     parser.add_argument('--providers', nargs="+", default=["CPUExecutionProvider"],
                         choices=ort.get_available_providers(),
-                        help ="This option should not be used unless instructed by EP's documentation.")
+                        help="This option should not be used unless instructed by EP's documentation.")
 
     parser.add_argument('model_path_or_dir', type=pathlib.Path,
                         help='Provide path to ONNX model or directory containing ONNX model/s to convert. '
