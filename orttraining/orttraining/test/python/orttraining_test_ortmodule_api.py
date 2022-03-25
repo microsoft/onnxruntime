@@ -1396,6 +1396,37 @@ def test_gradient_correctness_bce_with_logits():
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
+def test_gradient_correctness_cast_chain():
+    class NeuralNetCast(torch.nn.Module):
+        def __init__(self, D):
+            super(NeuralNetCast, self).__init__()
+            self.a = torch.nn.parameter.Parameter(torch.rand(D))
+        def forward(self, b):
+            mask = self.a.bool().float()
+            output = self.a + b + mask
+            return output
+
+    D=16
+    device = 'cuda'
+    pt_model = NeuralNetCast(D).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    for _ in range(10):
+        pt_input = torch.rand((D), device=device, requires_grad=True)
+        ort_input = copy.deepcopy(pt_input)
+        pt_prediction = run_step(pt_model, pt_input)
+        ort_prediction = run_step(ort_model, ort_input)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+        _test_helpers.assert_values_are_close(ort_model.a.grad, pt_model.a.grad)
+
 def test_module_with_non_differential_output():
     device = 'cuda'
     N, D_in, H, D_out = 32, 128, 64, 10
