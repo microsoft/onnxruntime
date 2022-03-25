@@ -322,6 +322,10 @@ def parse_arguments():
     parser.add_argument("--android_run_emulator", action="store_true",
                         help="Start up an Android emulator if needed.")
 
+    parser.add_argument("--gdk", action='store_true', help="build with GDK")
+    parser.add_argument("--gdk_edition", default=os.path.normpath(os.environ.get("GameDKLatest","")).split(os.sep)[-1], 
+                        help="build with specific GDK edition")
+
     parser.add_argument("--ios", action='store_true', help="build for ios")
     parser.add_argument(
         "--ios_sysroot", default="",
@@ -962,6 +966,12 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
         if args.android_cpp_shared:
             cmake_args += ["-DANDROID_STL=c++_shared"]
+
+    if args.gdk:
+        cmake_args += [
+            "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, 'cmake', 'gdk_toolchain.cmake'),
+            "-DGDK_EDITION=" + args.gdk_edition,
+        ]
 
     if is_macOS() and not args.android:
         cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch]
