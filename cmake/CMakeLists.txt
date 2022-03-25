@@ -1219,7 +1219,7 @@ function(onnxruntime_add_shared_library target_name)
 endfunction()
 
 function(onnxruntime_add_static_library target_name)
-  add_library(${target_name} ${ARGN})
+  add_library(${target_name} STATIC ${ARGN})
   onnxruntime_configure_target(${target_name})
 endfunction()
 
