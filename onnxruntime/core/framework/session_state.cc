@@ -1025,7 +1025,7 @@ Status SessionState::LoadFromOrtFormat(const fbs::SessionState& fbs_session_stat
   // as they were created at runtime.
   for (const auto& node : graph_.Nodes()) {
     if (kernel_create_info_map_.count(node.Index()) == 0) {
-      if (node.Domain() == kOnnxDomain || node.Domain() == kOnnxDomainAlias || node.Domain() == kMSDomain) {
+      if (node.Domain() == kOnnxDomain || node.Domain() == kMSDomain) {
         // two possible places to get hash from
         auto kernel_hash = utils::GetHashValueFromStaticKernelHashMap(node.OpType(), node.SinceVersion());
         if (!kernel_hash.has_value()) {
