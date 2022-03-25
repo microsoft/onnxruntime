@@ -294,7 +294,17 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
 
   CreateBaseModel(model_name, cache_type + "cachingtest", dims);
 
-  // first inference run
+  /* If cache_type is "engine", following code will test the functionality of engine and optimization profile of ORT TRT, including:
+   * - engine cache serialization/de-serialization
+   * - profile cache serialization/de-serialization
+   * - engine/profile cache should be updated when the input shape changes
+   * - min/max shape ranges of dynamic shape dimensions saved in profile cache
+   * - read corrupted profile cache #TODO
+   */
+
+  /*
+   * First inference run
+   */
   {
     SessionOptions so;
     so.session_logid = "TensorrtExecutionProvider" + cache_type + "cacheTest";
@@ -348,15 +358,6 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
       0};
 
     if (cache_type.compare("engine") == 0) {
-      /* Following code block tests the functionality of engine and optimization profile of ORT TRT, including:
-       * - engine cache serialization/de-serialization
-       * - profile cache serialization/de-serialization
-       * - engine/profile cache should be updated when the input shape changes
-       * - min/max shape ranges of dynamic shape dimensions saved in profile cache
-       * - read corrupted profile cache #TODO
-       *
-       */
-
       params.trt_engine_cache_enable = 1;
       std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
       EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
@@ -379,11 +380,16 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
     } else if (cache_type.compare("timing") == 0) {
       // add test code here for timing cache
     }
-  }
+  } // end of first inference run scope
 
-  // validate engine cache counts and engine profile content after first inference run
-  // Note: engine cache and timing cache will not be saved to file until inference session is released
-  // at this point the first inference session is released since the scope ends
+
+  /* Validate engine cache counts and engine profile content after first inference run.
+   *  
+   * Note: Cache won't be saved to file until destructor of inference session is called,
+   * to be more specific, cache is saved at FunctionKernel's destructor (the release_state_func will be called).
+   * At this point, all the cache are saved becasue inference run scope ends.
+   * 
+   */ 
   if (cache_type.compare("engine") == 0) {
     ASSERT_TRUE(IsCacheExistedByType("./", ".engine"));
 
@@ -419,12 +425,12 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
         }
       }
     }
-  } else if (cache_type.compare("timing") == 0) {
-    // add test code here for timing cache
   }
 
 
-  // second inference run
+  /*
+   * Second inference run
+   */
   {
     SessionOptions so;
     so.session_logid = "TensorrtExecutionProvider" + cache_type + "cacheTest";
@@ -502,11 +508,16 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
         VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
       }
     }
-  }
+  } // end of second inference run scope
 
-  // validate engine cache counts and engine profile content after second inference run
-  // Note: engine cache and timing cache will not be saved to file until inference session is released
-  // at this point the second inference session is released since the scope ends
+
+  /* Validate engine cache counts and engine profile content after second inference run.
+   *  
+   * Note: Cache won't be saved to file until destructor of inference session is called,
+   * to be more specific, cache is saved at FunctionKernel's destructor (the release_state_func will be called).
+   * At this point, all the cache are saved becasue inference run scope ends.
+   * 
+   */ 
   if (cache_type.compare("engine") == 0) {
     ASSERT_TRUE(IsCacheExistedByType("./", ".engine"));
 
