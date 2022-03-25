@@ -14,15 +14,25 @@ ONNX Runtime is an accelerator for machine learning models with multi platform s
 
 |:----------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------|
 |  <span class="fs-5"> [Get started with ORT](./get-started){: .btn  .mr-4 target="_blank"} </span> |  <span class="fs-5"> [API Docs](./api){: .btn target="_blank"} </span>      |
-| <span class="fs-5"> [Tutorials](./tutorials){: .btn target="_blank"} </span>                     |   <span class="fs-5"> [Ecosystem](./ecosystem){: .btn target="_blank"} </span>                          |
+| <span class="fs-5"> [Tutorials](./tutorials){: .btn target="_blank"} </span>                     |   <span class="fs-5"> [Ecosystem](./ecosystem){: .btn target="_blank"} </span>                          | 
+| <span class="fs-5">[ONNX Runtime YouTube](https://www.youtube.com/channel/UC_SJk17KdRvDulXz-nc1uFg/featured){: .btn  .mr-4 target="_blank"} </span>         | 
 
 ## Contribute and Customize
 
 |:----------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------|
-|  <span class="fs-5"> [Build ORT Packages](./build){: .btn  .mr-4 target="_blank"} </span>         | <span class="fs-5"> [ORT GitHub](https://github.com/microsoft/onnxruntime){: .btn target="_blank"} </span>  |
+|  <span class="fs-5"> [Build ORT Packages](./build){: .btn  .mr-4 target="_blank"} </span>| <span class="fs-5">[ONNX Runtime GitHub](https://github.com/microsoft/onnxruntime){: .btn target="_blank"} </span>  | 
 
 
 ---
+
+## QuickStart Template
+
+|:----------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------|
+|  <span class="fs-5"> [ORT Web JavaScript Site Template](https://github.com/microsoft/onnxruntime-nextjs-template){: .btn  .mr-4 target="_blank"} </span>         |  <span class="fs-5"> [ORT C# Console App Template](https://github.com/microsoft/onnxruntime-csharp-cv-template){: .btn  .mr-4 target="_blank"} </span>         | 
+
+
+---
+
 
 ## ONNX Runtime for Inferencing
 

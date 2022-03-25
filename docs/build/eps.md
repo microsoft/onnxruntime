@@ -1,7 +1,9 @@
 ---
 title: Build with different EPs
-parent: Build ORT
+parent: Build ONNX Runtime
+description: Learm how to build ONNX Runtime from source for different execution providers
 nav_order: 3
+redirect_from: /docs/how-to/build/eps 
 ---
 
 # Build ONNX Runtime with Execution Providers
@@ -98,7 +100,7 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
    * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter.
  * Install [TensorRT](https://developer.nvidia.com/tensorrt)
    * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.0.3.4.
-   * To use earlier versions of TensorRT, prior to building, change the onnx-tensorrt submodule to a branch corresponding to the TensorRT version. e.g. To use TensorRT 7.2.x,
+   * To use different versions of TensorRT, prior to building, change the onnx-tensorrt submodule to a branch corresponding to the TensorRT version. e.g. To use TensorRT 7.2.x,
      * cd cmake/external/onnx-tensorrt
      * git remote update
      * git checkout 7.2.1
@@ -118,7 +120,7 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 ```
 # to build with the latest supported TensorRT version
 ./build.sh --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home>
-# to build with earlier version. e.g. TensorRT 7.2.1
+# to build with different version. e.g. TensorRT 7.2.1
 cd cmake/external/onnx-tensorrt
 git remote update
 git checkout 7.2.1
@@ -319,9 +321,6 @@ Usage: --use_openvino CPU_FP32_NO_PARTITION or --use_openvino GPU_FP32_NO_PARTIT
 For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO-ExecutionProvider](../execution-providers/OpenVINO-ExecutionProvider.md)
 
 ---
-
-## NUPHAR
-See more information on the Nuphar Execution Provider [here](../execution-providers/Nuphar-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -611,3 +610,53 @@ See more information on the MIGraphX Execution Provider [here](../execution-prov
 ```
 
 Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/blob/master/dockerfiles#migraphx).
+
+## NNAPI
+
+Usage of NNAPI on Android platforms is via the NNAPI Execution Provider (EP).
+
+See the [NNAPI Execution Provider](../execution-providers/NNAPI-ExecutionProvider.md) documentation for more details.
+
+The pre-built ONNX Runtime Mobile package for Android includes the NNAPI EP.
+
+If performing a custom build of ONNX Runtime, support for the NNAPI EP or CoreML EP must be enabled when building.
+
+### Create a minimal build with NNAPI EP support
+
+Please see [the instructions](./android.md) for setting up the Android environment required to build. The Android build can be cross-compiled on Windows or Linux.
+
+Once you have all the necessary components setup, follow the instructions to [create the custom build](./custom.md), with the following changes:
+
+* Replace `--minimal_build` with `--minimal_build extended` to enable support for execution providers that dynamically create kernels at runtime, which is required by the NNAPI EP.
+* Add `--use_nnapi` to include the NNAPI EP in the build
+
+#### Example build commands with the NNAPI EP enabled
+
+Windows example:
+
+```dos
+<ONNX Runtime repository root>.\build.bat --config MinSizeRel --android --android_sdk_path D:\Android --android_ndk_path D:\Android\ndk\21.1.6352462\ --android_abi arm64-v8a --android_api 29 --cmake_generator Ninja --minimal_build extended --use_nnapi --disable_ml_ops --disable_exceptions --build_shared_lib --skip_tests --include_ops_by_config <config file from model conversion>
+```
+
+Linux example:
+
+```bash
+<ONNX Runtime repository root>./build.sh --config MinSizeRel --android --android_sdk_path /Android --android_ndk_path /Android/ndk/21.1.6352462/ --android_abi arm64-v8a --android_api 29 --minimal_build extended --use_nnapi --disable_ml_ops --disable_exceptions --build_shared_lib --skip_tests --include_ops_by_config <config file from model conversion>`
+```
+
+## CoreML
+
+Usage of CoreML on iOS and macOS platforms is via the CoreML EP.
+
+See the [CoreML Execution Provider](../execution-providers/CoreML-ExecutionProvider.md) documentation for more details.
+
+The pre-built ONNX Runtime Mobile package for iOS includes the CoreML EP.
+
+### Create a minimal build with CoreML EP support
+
+Please see [the instructions](./ios.md) for setting up the iOS environment required to build. The iOS/macOS build must be performed on a mac machine.
+
+Once you have all the necessary components setup, follow the instructions to [create the custom build](./custom.md), with the following changes:
+
+* Replace `--minimal_build` with `--minimal_build extended` to enable support for execution providers that dynamically create kernels at runtime, which is required by the CoreML EP.
+* Add `--use_coreml` to include the CoreML EP in the build

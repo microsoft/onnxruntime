@@ -1,3 +1,7 @@
+html{
+    scroll-padding-top:100px;
+} 
+
 body {
     font-family: 'Lato', sans-serif;
     font-size:18px;
@@ -202,12 +206,16 @@ a.link:active .link-arrow{
     width: 50px;
     height: 55px;
 }
-.sponsor-logo img{
+.customer-logo img{
    max-width: 100%;
-   max-height: 100px;
+   padding-right:20px;
+   padding-left:20px;
 }
-.hw-logo img{
-    max-width:150px;
+
+
+ div.customer-logo:hover{
+    background-color: #e8e8e8;
+    transition: .4s;
  }
 
 .blue-text{
@@ -274,7 +282,7 @@ transition:all 200ms ease-in-out;
     font-size: 34px;
 }
 .footer .footer-heading{
-    color:#1fa2ff;
+    color:#ffffff;
     font-size:28px;
     margin-right: 60px;
 }
@@ -471,6 +479,16 @@ a .abbr[data-original-title], a abbr[title]{
 
   .r-wrap .r-content .row {
     margin-right: 0;
+  }
+
+  div.quotebox {
+    border: 1px solid #cccccc;
+    background-color: #e8e8e8;
+    padding-top:15px;
+  }
+
+  .quotebox img{
+      max-height:180px;
   }
   .r-wrap .r-content .r-option,
   .r-wrap .r-content .col-disable {
@@ -671,9 +689,9 @@ a .abbr[data-original-title], a abbr[title]{
     font-size: 18px;
 }
 .row.blue-title-columns{
-    margin-bottom:30px;
+    margin-bottom:5px;
 }
-.blue-title-columns span.quote-attribution{
+.blue-title-columns div.quote-attribution{
     font-size: 18px;
     font-weight: normal;
     font-style: italic;

@@ -1,6 +1,6 @@
 var searchData=
 [
-  ['add_0',['Add',['../struct_ort_1_1_custom_op_domain.html#af18dafed4860a3faf5417381665747a5',1,'Ort::CustomOpDomain::Add()'],['../struct_ort_1_1_session_options.html#ae421fd429166a3edb84748fc485a9a8f',1,'Ort::SessionOptions::Add()']]],
+  ['add_0',['Add',['../struct_ort_1_1_session_options.html#ae421fd429166a3edb84748fc485a9a8f',1,'Ort::SessionOptions::Add()'],['../struct_ort_1_1_custom_op_domain.html#af18dafed4860a3faf5417381665747a5',1,'Ort::CustomOpDomain::Add()']]],
   ['addconfigentry_1',['AddConfigEntry',['../struct_ort_1_1_run_options.html#ac752cfb944b9aa2621f626d3997b90d2',1,'Ort::RunOptions::AddConfigEntry()'],['../struct_ort_1_1_session_options.html#a0b663133b32d005998b1c8c75adcd5f7',1,'Ort::SessionOptions::AddConfigEntry()']]],
   ['addcustomopdomain_2',['AddCustomOpDomain',['../struct_ort_api.html#a6d0dfa93efdfec2e8d28990fe9df001e',1,'OrtApi']]],
   ['addfreedimensionoverride_3',['AddFreeDimensionOverride',['../struct_ort_api.html#a56fbbde53eeab444f84985c8b257b9d3',1,'OrtApi']]],
@@ -8,7 +8,7 @@ var searchData=
   ['addinitializer_5',['AddInitializer',['../struct_ort_api.html#a21a723218a1f795a0deabb6f8a2c541a',1,'OrtApi::AddInitializer()'],['../struct_ort_1_1_session_options.html#a85b55eeb514e2cbef7fd57de6279b93d',1,'Ort::SessionOptions::AddInitializer()']]],
   ['addrunconfigentry_6',['AddRunConfigEntry',['../struct_ort_api.html#a2f1045685fc54ddc63e4b05d73b85d24',1,'OrtApi']]],
   ['addsessionconfigentry_7',['AddSessionConfigEntry',['../struct_ort_api.html#a1a291812aeece3d42de92e98bd9d4d30',1,'OrtApi']]],
-  ['alloc_8',['Alloc',['../struct_ort_1_1_allocator_with_default_options.html#aaf5cfa706c5aacf878a4a1369e846093',1,'Ort::AllocatorWithDefaultOptions::Alloc()'],['../struct_ort_1_1_allocator.html#a7788c9fedefbe00dc1c5fdd7dba7175c',1,'Ort::Allocator::Alloc(size_t size) const']]],
+  ['alloc_8',['Alloc',['../struct_ort_1_1_allocator.html#a7788c9fedefbe00dc1c5fdd7dba7175c',1,'Ort::Allocator::Alloc()'],['../struct_ort_1_1_allocator_with_default_options.html#aaf5cfa706c5aacf878a4a1369e846093',1,'Ort::AllocatorWithDefaultOptions::Alloc()']]],
   ['allocator_9',['Allocator',['../struct_ort_1_1_allocator.html#af4b20c5ca170d5468cd595a8db380baa',1,'Ort::Allocator']]],
   ['allocatoralloc_10',['AllocatorAlloc',['../struct_ort_api.html#aab593df6319bf3668363c40a1469af25',1,'OrtApi']]],
   ['allocatorfree_11',['AllocatorFree',['../struct_ort_api.html#a8b6f017da618c4e5b8182f390e2cfef5',1,'OrtApi']]],

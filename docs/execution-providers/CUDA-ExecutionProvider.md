@@ -1,7 +1,9 @@
 ---
 title: CUDA
+description: Instructions to execute ONNX Runtime applications with CUDA
 parent: Execution Providers
 nav_order: 1
+redirect_from: /docs/reference/execution-providers/CUDA-ExecutionProvider
 ---
 
 # CUDA Execution Provider
@@ -17,16 +19,21 @@ The CUDA Execution Provider enables hardware accelerated computation on Nvidia C
 {:toc}
 
 ## Install
+
 Pre-built binaries of ONNX Runtime with CUDA EP are published for most language bindings. Please reference [Install ORT](../install).
 
-
 ## Requirements
+
 Please reference table below for official GPU packages dependencies for the ONNX Runtime inferencing package. Note that ONNX Runtime Training is aligned with PyTorch CUDA versions; refer to the Training tab on https://onnxruntime.ai/ for supported versions. 
+
+Note: Because of CUDA Minor Version Compatibility, Onnx Runtime built with CUDA 11.4 should be compatible with any CUDA 11.x version.
+Please reference [Nvidia CUDA Minor Version Compatibility](https://docs.nvidia.com/deploy/cuda-compatibility/#minor-version-compatibility).
 
 |ONNX Runtime|CUDA|cuDNN|Notes|
 |---|---|---|---|
-|1.9|11.4|8.2.4 (Linux)<br/>8.2.2.26 (Windows)|libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.1.51<br/>libcublas 11.6.1.51<br/>libcudnn 8.2.4<br/>libcupti.so 2021.2.2|
-|1.8|11.0.3|8.0.4 (Linux)<br/>8.0.2.39 (Windows)|libcudart 11.0.221<br/>libcufft 10.2.1.245<br/>libcurand 10.2.1.245<br/>libcublasLt 11.2.0.252<br/>libcublas 11.2.0.252<br/>libcudnn 8.0.4<br/>libcupti.so 2020.1.1|
+|1.10|11.4|8.2.4 (Linux)<br/>8.2.2.26 (Windows)|libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.1.51<br/>libcublas 11.6.1.51<br/>libcudnn 8.2.4|
+|1.9|11.4|8.2.4 (Linux)<br/>8.2.2.26 (Windows)|libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.1.51<br/>libcublas 11.6.1.51<br/>libcudnn 8.2.4|
+|1.8|11.0.3|8.0.4 (Linux)<br/>8.0.2.39 (Windows)|libcudart 11.0.221<br/>libcufft 10.2.1.245<br/>libcurand 10.2.1.245<br/>libcublasLt 11.2.0.252<br/>libcublas 11.2.0.252<br/>libcudnn 8.0.4|
 |1.7|11.0.3|8.0.4 (Linux)<br/>8.0.2.39 (Windows)|libcudart 11.0.221<br/>libcufft 10.2.1.245<br/>libcurand 10.2.1.245<br/>libcublasLt 11.2.0.252<br/>libcublas 11.2.0.252<br/>libcudnn 8.0.4|
 |1.5-1.6|10.2|8.0.3|CUDA 11 can be built from source|
 |1.2-1.4|10.1|7.6.5|Requires cublas10-10.2.1.243; cublas 10.1.x will not work|
@@ -75,6 +82,18 @@ Whether to do copies in the default stream or use separate streams. The recommen
 
 Default value: true
 
+### cudnn_conv_use_max_workspace
+Check [tuning performance for convolution heavy models](../performance/tune-performance.md#convolution-heavy-models-and-the-cuda-ep) for details on what this flag does.
+This flag is only supported from the V2 version of the provider options struct when used using the C API. The V2 provider options struct can be created using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a0d29cbf555aa806c050748cf8d2dc172) and updated using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a4710fc51f75a4b9a75bde20acbfa0783). Please take a look at the sample below for an example.
+
+Default value: 0
+
+### enable_cuda_graph
+Check [using CUDA Graphs in the CUDA EP](../performance/tune-performance.md#using-cuda-graphs-in-the-cuda-ep) for details on what this flag does.
+This flag is only supported from the V2 version of the provider options struct when used using the C API. The V2 provider options struct can be created using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a0d29cbf555aa806c050748cf8d2dc172) and updated using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a4710fc51f75a4b9a75bde20acbfa0783).
+
+Default value: 0
+
 ## Samples
 
 ### Python
@@ -100,6 +119,8 @@ session = ort.InferenceSession(model_path, providers=providers)
 
 ### C/C++
 
+#### Using legacy provider options struct
+
 ```c++
 OrtSessionOptions* session_options = /* ... */;
 
@@ -113,3 +134,38 @@ options.do_copy_in_default_stream = 1;
 SessionOptionsAppendExecutionProvider_CUDA(session_options, &options);
 ```
 
+#### Using V2 provider options struct
+
+```c++
+OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+CreateCUDAProviderOptions(&cuda_options);
+
+std::vector<const char*> keys{"device_id", "gpu_mem_limit", "arena_extend_strategy", "cudnn_conv_algo_search", "do_copy_in_default_stream", "cudnn_conv_use_max_workspace"};
+std::vector<const char*> values{"0", "2147483648", "kSameAsRequested", "DEFAULT", "1", "1"};
+
+UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 6);
+
+OrtSessionOptions* session_options = /* ... */;
+SessionOptionsAppendExecutionProvider_CUDA_V2(session_options, cuda_options);
+
+// Finally, don't forget to release the provider options
+ReleaseCUDAProviderOptions(cuda_options);
+```
+
+### C#
+
+```c#
+var cudaProviderOptions = new OrtCUDAProviderOptions(); // Dispose this finally
+
+var providerOptionsDict = new Dictionary<string, string>();
+providerOptionsDict["device_id"] = "0";
+providerOptionsDict["gpu_mem_limit"] = "2147483648";
+providerOptionsDict["arena_extend_strategy"] = "kSameAsRequested";
+providerOptionsDict["cudnn_conv_algo_search"] = "DEFAULT";
+providerOptionsDict["do_copy_in_default_stream"] = "1";
+providerOptionsDict["cudnn_conv_use_max_workspace"] = "1";
+
+cudaProviderOptions.UpdateOptions(providerOptionsDict);
+
+SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
+```

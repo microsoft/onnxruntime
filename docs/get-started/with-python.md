@@ -16,9 +16,17 @@ Below is a quick guide to get the packages installed to use ONNX for model seria
 {:toc}
 
 
-## Install ONNX Runtime (ORT)
+## Install ONNX Runtime
 
-```python
+There are two Python packages for ONNX Runtime. Only one of these packages should be installed at a time in any one environment. The GPU package encompasses most of the CPU functionality.
+
+```bash
+pip install onnxruntime-gpu
+```
+
+Use the CPU package if you are running on Arm CPUs and/or macOS.
+
+```bash
 pip install onnxruntime
 ```
 

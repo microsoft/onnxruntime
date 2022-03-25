@@ -1,7 +1,9 @@
 ---
-title: ARM NN
+title: Arm NN
+description: Instructions to execute ONNX Runtime with Arm NN on Armv8 cores
 parent: Execution Providers
 nav_order: 3
+redirect_from: /docs/reference/execution-providers/ArmNN-ExecutionProvider
 ---
 
 # ArmNN Execution Provider
@@ -13,7 +15,7 @@ nav_order: 3
 * TOC placeholder
 {:toc}
 
-[ArmNN](https://github.com/ARM-software/armnn) is an open source inference engine maintained by Arm and Linaro companies. The integration of ArmNN as an execution provider (EP) into ONNX Runtime accelerates performance of ONNX model workloads across Armv8 cores.
+Accelerate performance of ONNX model workloads across Armv8 cores with the ArmNN execution provider. [ArmNN](https://github.com/ARM-software/armnn) is an open source inference engine maintained by Arm and Linaro companies. 
 
 ## Build
 For build instructions, please see the [BUILD page](../build/eps.md#armnn).

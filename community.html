@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-156955408-1"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'UA-156955408-1');
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <title>ONNX Runtime | Community</title>
+    <link rel="icon" href="./images/ONNXRuntime-Favicon.png" type="image/gif" sizes="16x16">
+    <link rel="stylesheet" href="css/fonts.css">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <link rel="stylesheet" href="css/custom.css">
+    <link rel="stylesheet" href="css/responsive.css">
+</head>
+
+<body>
+    <a class="skip-main" href="#skipMain">Skip to main content</a>
+    <div class="main-wrapper">
+        <div class="top-banner-bg">
+            <header class="fixed-top header-content">
+                <nav class="navbar navbar-expand-md navbar-custom" aria-label="Main menu">
+                    <a id="ONNXLogo" class="navbar-brand" href="./index.html">
+                        <img src="images/svg/ONNX-Runtime-logo.svg" class="d-inline-block align-top onnx-logo" alt="ONNX Runtime Home" />
+                    </a>
+                    <button class="navbar-toggler p-0" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
+                    <div class="collapse navbar-collapse border-md-top mt-md-0 mt-2" id="navbarNav">
+                        <div class="mr-auto"></div>
+                        <div class="my-md-2 mb-0 mt-2 my-lg-0 pl-3 pl-md-0">
+                            <ul class="navbar-nav navbar-nav mr-auto text-uppercase" id="navigation">
+                                <li class="nav-item">
+                                    <a class="nav-link pr-3" href="./index.html#getStartedTable">Get Started</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link pr-3" href="./docs">Docs</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link pr-3" target="_blank" href="https://cloudblogs.microsoft.com/opensource/tag/onnx">News</a>
+                                </li>
+                                <li class="nav-item active">
+                                    <a class="nav-link pr-3" href="./community.html">Community</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link pr-3" href="./about.html">About</a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" target="_blank" href="http://github.com/microsoft/onnxruntime">GitHub</a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </nav>
+            </header>
+
+            <div id="skipMain" role="main">
+                <div class="outer-container mx-auto py-5">
+                    
+                    <section class="blue-title-columns py-md-5 pb-4 pt-4 mt-5">
+                        <div class="container-fluid">
+                            <h1 class="mb-3 blue-text">Organizations and products using ONNX Runtime</h1>
+                            <div id = "adobe" class="quotebox row col-12 col-md-12 mb-4">
+                                <div class="customer-logo col-12 col-md-3 text-center">
+                                    <img src="./images/logos/adobe-logo.png" alt="Adobe logo">
+                                </div>
+                                <div class="col-12 col-md-9 quote">&ldquo;With ONNX Runtime, Adobe Target got flexibility and standardization in one package: flexibility for our customers to train ML models in the frameworks of their choice, and standardization to robustly deploy those models at scale for fast inference, to deliver true, real-time personalized experiences.&rdquo;<br/><br/>
+                                    <div class="quote-attribution text-right">&ndash;Georgiana Copil, Senior Computer Scientist, Adobe</div>
+                                </div>						
+                            </div>
+                            <div id = "atlas-experiment" class="quotebox row col-12 col-md-12 mb-4">
+                                <div class="customer-logo col-12 col-md-3 text-center">
+                                    <img src="./images/logos/ATLAS-logo.png" alt="Atlas Experiment logo">
+                                </div>
+                                <div class="col-12 col-md-9 quote">&ldquo;At CERN in the ATLAS experiment, we have integrated the C++ API of ONNX Runtime into our software framework: Athena. We are currently performing inferences using ONNX models especially in the reconstruction of electrons and muons. We are benefiting from its C++ compatibility, platform*-to-ONNX converters (* Keras, TensorFlow, PyTorch, etc) and its thread safety.&rdquo;<br/><br/>
+                                    <div class="quote-attribution text-right">&ndash;ATLAS Experiment team, CERN (European Organization for Nuclear Research)</div>
+                                </div>						
+                            </div>
+                            <div id = "ghostwriter-ai" class="quotebox row col-12 col-md-12 mb-4">
+                                <div class="customer-logo col-12 col-md-3 text-center">
+                                    <img src="./images/logos/ghostwriter-logo.png" alt="Ghostwriter AI logo">
+                                </div>
+                                <div class="col-12 col-md-9 quote">&ldquo;At GhostWriter.AI, we integrate NLP models in different international markets and regulated industries. Our customers use many technology stacks and frameworks, which change over time. With ONNX Runtime, we can provide maximum performance combined with the total flexibility of making inferences using the technology our customers prefer, from Python to C#, deploying where they choose, from cloud to embedded systems.&rdquo;<br/><br/>
+                                    <div class="quote-attribution text-right">&ndash;Mauro Bennici, CTO, Ghostwriter.AI</div>
+                                </div>						
+                            </div>
+                            <div id = "hugging-face" class="quotebox row col-12 col-md-12 mb-4">
+                                <div class="customer-logo col-12 col-md-3 text-center">
+                                    <img src="./images/logos/huggingface-logo.png" alt="Hugging Face logo">
+                                </div>
+                                <div class="col-12 col-md-9 quote">&ldquo;We use ONNX Runtime to easily deploy thousands of open-source state-of-the-art models in the Hugging Face model hub and accelerate private models for customers of the Accelerated Inference API on CPU and GPU.&rdquo;<br/><br/>
+                                    <div class="quote-attribution text-right">&ndash;Morgan Funtowicz, Machine Learning Engineer, Hugging Face</div>
+                                </div>						
+                            </div>
+                            <div id = "hypefactors" class="quotebox row col-12 col-md-12 mb-4">
+                                <div class="customer-logo col-12 col-md-3 text-center">
+                                    <img src="./images/logos/hypefactors-logo.png" alt="Hypefactors logo">
+                                </div>
+                                <div class="col-12 col-md-9 quote">&ldquo;ONNX Runtime powers many of our Natural Language Processing (NLP) and Computer Vision (CV) models that crunch the global media landscape in real-time. It is our go-to framework for scaling our production workload, providing important features ranging from built-in quantization tools to easy GPU and VNNI acceleration.&rdquo;<br/><br/>
+                                    <div class="quote-attribution text-right">&ndash;Viet Yen Nguyen, CTO, Hypefactors</div>
+                                </div>						
+                            </div>
+                            <div id = "intel" class="quotebox row col-12 col-md-12 mb-4">
+                                <div class="customer-logo col-12 col-md-3 text-center">
+                                    <img src="./images/logos/intel-logo.png" alt="Intel logo">
+                                </div>
+                                <div class="col-12 col-md-9 quote">&ldquo;We are excited to support ONNX Runtime on the Intel® Distribution of OpenVINO™. This accelerates machine learning inference across Intel hardware and gives developers the flexibility to choose the combination of Intel hardware that best meets their needs from CPU to VPU or FPGA.&rdquo;<br/><br/>
+                                    <div class="quote-attribution text-right">&ndash;Jonathan Ballon, Vice President and General Manager, Intel Internet of Things Group</div>
+                                </div>						
+                            </div>
+                            <div id = "visual-studio" class="quotebox row col-12 col-md-12 mb-4">
+                                <div class="customer-logo col-12 col-md-3 text-center">
+                                    <img src="./images/logos/visual-studio-logo.png" alt="Visual Studio logo">
+                                </div>
+                                <div class="col-12 col-md-9 quote">&ldquo;We use ONNX Runtime to accelerate model training for a 300M+ parameters model that powers code autocompletion in Visual Studio IntelliCode.&rdquo;<br/><br/>
+                                    <div class="quote-attribution text-right">&ndash;Neel Sundaresan, Director SW Engineering, Data & AI, Developer Division, Microsoft</div>
+                                </div>						
+                            </div>
+                            <div id = "navitaire" class="quotebox row col-12 col-md-12 mb-4">
+                                <div class="customer-logo col-12 col-md-3 text-center">
+                                    <img src="./images/logos/navitaire-amadeus-logo.png" alt="Navitaire Amadeus logo">
+                                </div>
+                                <div class="col-12 col-md-9 quote">&ldquo;With customers around the globe, we’re seeing increased interest in deploying more effective models to power pricing solutions via ONNX Runtime. ONNX Runtime’s performance has given us the confidence to use this solution with our customers with more extreme transaction volume requirements.&rdquo;<br/><br/>
+                                    <div class="quote-attribution text-right">&ndash;Jason Coverston, Product Director, Navitaire</div>
+                                </div>						
+                            </div>
+                            <div id = "nvidia" class="quotebox row col-12 col-md-12 mb-4">
+                                <div class="customer-logo col-12 col-md-3 text-center">
+                                    <img src="./images/logos/nvidia.png" alt="NVIDIA logo">
+                                </div>
+                                <div class="col-12 col-md-9 quote">&ldquo;ONNX Runtime enables our customers to easily apply NVIDIA TensorRT’s powerful optimizations to machine learning models, irrespective of the training framework, and deploy across NVIDIA GPUs and edge devices.&rdquo;<br/><br/>
+                                    <div class="quote-attribution text-right">&ndash; Kari Ann Briski, Sr. Director, Accelerated Computing Software and AI Product, NVIDIA</div>
+                                </div>						
+                            </div>
+                            <div id = "oracle" class="quotebox row col-12 col-md-12 mb-4">
+                                <div class="customer-logo col-12 col-md-3 text-center">
+                                    <img src="./images/logos/oracle-logo.png" alt="Oracle logo">
+                                </div>
+                                <div class="col-12 col-md-9 quote">&ldquo;The ONNX Runtime API for Java enables Java developers and Oracle customers to seamlessly consume and execute ONNX machine-learning models, while taking advantage of the expressive power, high performance, and scalability of Java.&rdquo;<br/><br/>
+                                    <div class="quote-attribution text-right">&ndash;Stephen Green, Director of Machine Learning Research Group, Oracle</div>
+                                </div>						
+                            </div>
+                            <div id = "peakspeed" class="quotebox row col-12 col-md-12 mb-4">
+                                <div class="customer-logo col-12 col-md-3 text-center">
+                                    <img src="./images/logos/PeakSpeed_logo.png" alt="Peakspeed logo">
+                                </div>
+                                <div class="col-12 col-md-9 quote">&ldquo;Using a common model and code base, the ONNX Runtime allows Peakspeed to easily flip between platforms to help our customers choose the most cost-effective solution based on their infrastructure and requirements.&rdquo;<br/><br/>
+                                    <div class="quote-attribution text-right">&ndash;Oscar Kramer, Chief Geospatial Scientist, Peakspeed</div>
+                                </div>						
+                            </div>
+                            <div id = "ptw" class="quotebox row col-12 col-md-12 mb-4">
+                                <div class="customer-logo col-12 col-md-3 text-center">
+                                    <img src="./images/logos/ptw-logo.png" alt="PTW logo">
+                                </div>
+                                <div class="col-12 col-md-9 quote">&ldquo;The mission of PTW is to guarantee radiation therapy safely. Bringing an AI model from research into the clinic can be a challenge, however. These are very different software and hardware environments. ONNX Runtime bridges the gap and allows us to choose the best possible tools for research and be sure deployment into any environment will just work.&rdquo;<br/><br/>
+                                    <div class="quote-attribution text-right">&ndash;Jan Weidner, Research Software Engineer, PTW Dosimetry</div>
+                                </div>						
+                            </div>
+                            <div id = "rockchip" class="quotebox row col-12 col-md-12 mb-4">
+                                <div class="customer-logo col-12 col-md-3 text-center">
+                                    <img src="./images/logos/Rockchip-logo.png" alt="Rockchip logo">
+                                </div>
+                                <div class="col-12 col-md-9 quote">&ldquo;With support for ONNX Runtime, our customers and developers can cross the boundaries of the model training framework, easily deploy ML models in Rockchip NPU powered devices.&rdquo;<br/><br/>
+                                    <div class="quote-attribution text-right">&ndash;Feng Chen, Senior Vice President, Rockchip</div>
+                                </div>						
+                            </div>
+                            <div id = "samtec" class="quotebox row col-12 col-md-12 mb-4">
+                                <div class="customer-logo col-12 col-md-3 text-center">
+                                    <img src="./images/logos/samtec-logo.png" alt="Samtec logo">
+                                </div>
+                                <div class="col-12 col-md-9 quote">&ldquo;We needed a runtime engine to handle the transition from data science land to a high-performance production runtime system. ONNX Runtime (ORT) simply ‘just worked’. Having no previous experience with ORT, I was able to easily convert my models, and had prototypes running inference in multiple languages within just a few hours. ORT will be my go-to runtime engine for the foreseeable future.&rdquo;<br/><br/>
+                                    <div class="quote-attribution text-right">&ndash;Bill McCrary, Application Architect, Samtec</div>
+                                </div>						
+                            </div>
+                            <div id = "sas" class="quotebox row col-12 col-md-12 mb-4">
+                                <div class="customer-logo col-12 col-md-3 text-center">
+                                    <img src="./images/logos/sas-logo.png" alt="SAS logo">
+                                </div>
+                                <div class="col-12 col-md-9 quote">&ldquo;The unique combination of ONNX Runtime and SAS Event Stream Processing changes the game for developers and systems integrators by supporting flexible pipelines and enabling them to target multiple hardware platforms for the same AI models without bundling and packaging changes. This is crucial considering the additional build and test effort saved on an ongoing basis.&rdquo;<br/><br/>
+                                    <div class="quote-attribution text-right">&ndash;Saurabh Mishra, Senior Manager, Product Management, Internet of Things, SAS</div>
+                                </div>						
+                            </div>
+                            <div id = "topaz-labs" class="quotebox row col-12 col-md-12 mb-4">
+                                <div class="customer-logo col-12 col-md-3 text-center">
+                                    <img src="./images/logos/topazlabs-logo.png" alt="Topaz Labs logo">
+                                </div>
+                                <div class="col-12 col-md-9 quote">&ldquo;ONNX Runtime’s simple C API with DirectML provider enabled Topaz Labs to add support for AMD GPUs and NVIDIA Tensor Cores in just a couple of days. Furthermore, our models load many times faster on GPU than any other frameworks. Even our larger models with about 100 million parameters load within seconds.&rdquo;<br/><br/>
+                                    <div class="quote-attribution text-right">&ndash;Suraj Raghuraman, Head of AI Engine, Topaz Labs</div>
+                                </div>						
+                            </div>
+                            <div id = "usda" class="quotebox row col-12 col-md-12 mb-4">
+                                <div class="customer-logo col-12 col-md-3 text-center">
+                                    <img src="./images/logos/usda-logo.png" alt="USDA logo">
+                                </div>
+                                <div class="col-12 col-md-9 quote">&ldquo;At the USDA we use ONNX Runtime in GuideMaker, a program we developed to design pools of guide RNAs needed for large-scale gene editing experiments with CRISPR-Cas. ONNX allowed us to make an existing model more interoperable and ONNX Runtime speeds up predictions of guide RNA binding.&rdquo;<br/><br/>
+                                    <div class="quote-attribution text-right">&ndash;Adam Rivers, Computational Biologist, United States Department of Agriculture, Agricultural Research Service</div>
+                                </div>						
+                            </div>
+                            <div id = "vespa" class="quotebox row col-12 col-md-12 mb-4">
+                                <div class="customer-logo col-12 col-md-3 text-center">
+                                    <img src="./images/logos/vespa-logo.png" alt="Vespa logo">
+                                </div>
+                                <div class="col-12 col-md-9 quote">&ldquo;ONNX Runtime has vastly increased Vespa.ai’s capacity for evaluating large models, both in performance and model types we support.&rdquo;<br/><br/>
+                                    <div class="quote-attribution text-right">&ndash;Lester Solbakken, Principal Engineer, Vespa.ai, Verizon Media</div>
+                                </div>						
+                            </div>
+                            <div id = "writer" class="quotebox row col-12 col-md-12 mb-4">
+                                <div class="customer-logo col-12 col-md-3 text-center">
+                                    <img src="./images/logos/writer-logo.png" alt="Writer logo">
+                                </div>
+                                <div class="col-12 col-md-9 quote">&ldquo;We're big fans of ONNX Runtime at Writer. ONNX Runtime allows us to run inference on CPUs for models that we would otherwise have to use GPUs for, and allows us to run models on GPUs that would otherwise be too slow to meet our SLAs. The end result is that we can deliver better quality outputs to our users, and at lower costs.&rdquo;<br/><br/>
+                                    <div class="quote-attribution text-right">&ndash;Sam Havens, Director of NLP Engineering, Writer</div>
+                                </div>						
+                            </div>
+                            <div id = "xilinx" class="quotebox row col-12 col-md-12 mb-4">
+                                <div class="customer-logo col-12 col-md-3 text-center">
+                                    <img src="./images/logos/xilinx-logo.png" alt="Xilinx logo">
+                                </div>
+                                <div class="col-12 col-md-9 quote">&ldquo;Xilinx is excited that Microsoft has announced Vitis™ AI interoperability and runtime support for ONNX Runtime, enabling developers to deploy machine learning models for inference to FPGA IaaS such as Azure NP series VMs and Xilinx edge devices.&rdquo;<br/><br/>
+                                    <div class="quote-attribution text-right">&ndash;Sudip Nag, Corporate Vice President, Software & AI Products, Xilinx</div>
+                                </div>						
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+	    </div>	    
+    </div>
+    <!-- Partial footer.html Start-->
+    <div w3-include-html="footer.html"></div>
+    <!-- Partial footer.html End-->
+
+    <a id="back-to-top" href="JavaScript:void(0);" class="btn btn-lg back-to-top" role="button" aria-label="Back to top"><span class="fa fa-angle-up"></span></a>
+
+    <script src="https://www.w3schools.com/lib/w3.js"></script>
+    <script>w3.includeHTML();</script>
+    <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+    <script src="./js/custom.js"></script>
+
+</body>
+
+</html>

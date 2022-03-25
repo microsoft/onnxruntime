@@ -1,7 +1,9 @@
 ---
 title: Build for web
-parent: Build ORT
+parent: Build ONNX Runtime
+description: Learn how to build ONNX Runtime from source to deploy on the web
 nav_order: 4
+redirect_from: /docs/how-to/build/web
 ---
 
 # Build ONNX Runtime for Web
@@ -75,7 +77,7 @@ To get all build artifacts of ONNX Runtime WebAssembly, it needs 4 times of buil
 
 ### Minimal Build Support
 
-ONNX Runtime WebAssembly can be built with flag `--minimal_build`. This will generate smaller artifacts and also have a less runtime memory usage. An ORT format model is required. A detailed instruction will come soon. See also [ONNX Model Conversion](../tutorials/mobile/model-conversion.html).
+ONNX Runtime WebAssembly can be built with flag `--minimal_build`. This will generate smaller artifacts and also have a less runtime memory usage. An ORT format model is required. A detailed instruction will come soon. See also [ORT format Conversion](../reference/ort-model-format.md).
 
 ### FAQ
 

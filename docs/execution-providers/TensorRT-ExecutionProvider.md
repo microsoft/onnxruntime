@@ -1,15 +1,17 @@
 ---
 title: TensorRT
+description: Instructions to execute ONNX Runtime on NVIDIA GPUs with the TensorRT execution provider
 parent: Execution Providers
 nav_order: 12
+redirect_from: /docs/reference/execution-providers/TensorRT-ExecutionProvider
 ---
 
 # TensorRT Execution Provider
 {: .no_toc }
 
-The TensorRT execution provider in the ONNX Runtime makes use of NVIDIA's [TensorRT](https://developer.nvidia.com/tensorrt) Deep Learning inferencing engine to accelerate ONNX model in their family of GPUs. Microsoft and NVIDIA worked closely to integrate the TensorRT execution provider with ONNX Runtime.
-
 With the TensorRT execution provider, the ONNX Runtime delivers better inferencing performance on the same hardware compared to generic GPU acceleration. 
+
+The TensorRT execution provider in the ONNX Runtime makes use of NVIDIA's [TensorRT](https://developer.nvidia.com/tensorrt) Deep Learning inferencing engine to accelerate ONNX model in their family of GPUs. Microsoft and NVIDIA worked closely to integrate the TensorRT execution provider with ONNX Runtime.
 
 ## Contents
 {: .no_toc }
@@ -24,6 +26,8 @@ Pre-built packages and Docker images are available for Jetpack in the [Jetson Zo
 
 |ONNX Runtime|TensorRT|CUDA|
 |---|---|---|
+|master|8.2|11.4|
+|1.10|8.0|11.4|
 |1.9|8.0|11.4|
 |1.7-1.8|7.2|11.0.3|
 |1.5-1.6|7.1|10.2|
@@ -56,9 +60,13 @@ If some operators in the model are not supported by TensorRT, ONNX Runtime will 
 
 
 ### Python
-When using the Python wheel from the ONNX Runtime build with TensorRT execution provider, it will be automatically prioritized over the default GPU or CPU execution providers. There is no need to separately register the execution provider.
-*Note that the next release (ORT 1.10) will require explicitly setting the providers parameter if you want to use execution providers other than the default CPU provider when instantiating InferenceSession.*
-
+To use TensorRT execution provider, you must explicitly register TensorRT execution provider when instantiating the InferenceSession.
+Note that it is recommended you also register CUDAExecutionProvider to allow Onnx Runtime to assign nodes to CUDA execution provider that TensorRT does not support.
+```
+import onnxruntime as ort
+# set providers to ['TensorrtExecutionProvider', 'CUDAExecutionProvider'] with TensorrtExecutionProvider having the higher priority.
+sess = ort.InferenceSession('model.onnx', providers=['TensorrtExecutionProvider', 'CUDAExecutionProvider'])
+```
 
 ## Configurations
 There are two ways to configure TensorRT settings, either by environment variables or by execution provider option APIs.
@@ -180,9 +188,27 @@ session_options.AppendExecutionProvider_TensorRT(trt_options);
 
 #### Python API example
 ```
+import onnxruntime as ort
+
+model_path = '<path to model>'
+
+providers = [
+    ('TensorrtExecutionProvider', {
+        'device_id': 1,
+        'trt_max_workspace_size': 2147483648,
+        'trt_fp16_enable': True,
+    }),
+    ('CUDAExecutionProvider', {
+        'device_id': 1,
+        'arena_extend_strategy': 'kNextPowerOfTwo',
+        'gpu_mem_limit': 2 * 1024 * 1024 * 1024,
+        'cudnn_conv_algo_search': 'EXHAUSTIVE',
+        'do_copy_in_default_stream': True,
+    })
+]
+
 sess_opt = ort.SessionOptions()
-sess = ort.InferenceSession('model.onnx', sess_options=sess_opt)
-sess.set_providers(["TensorrtExecutionProvider"],[{'device_id': '1', 'trt_max_workspace_size': '2147483648', 'trt_fp16_enable':'True'}])
+sess = ort.InferenceSession(model_path, sess_options=sess_opt, providers=providers)
 ```
 
 ## Performance Tuning

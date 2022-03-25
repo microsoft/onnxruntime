@@ -1,15 +1,18 @@
 ---
-title: ONNX Runtime Mobile Performance Tuning
+title: Tune Mobile Performance
 parent: Performance
-nav_order: 1
+nav_order: 2
+redirect_from: /docs/how-to/mobile-performance-tuning
 ---
 {::options toc_levels="2" /}
 
-# Performance Tuning 
+# ONNX Runtime Mobile Performance Tuning
 
-ONNX Runtime Mobile can be used to execute ORT format models using NNAPI (via the NNAPI Execution Provider (EP)) on Android platforms, and CoreML (via the CoreML EP) on iOS platforms. This section explains the details of how different optimizations affect performance, and provides some suggestions for performance testing with ORT format models.
+Learn how different optimizations affect performance, and get suggestions for performance testing with ORT format models.
 
-First, please review the introductory details in [using NNAPI and CoreML with ONNX Runtime Mobile](../tutorials/mobile/using-nnapi-coreml-with-ort-mobile.md).
+ONNX Runtime Mobile can be used to execute ORT format models using NNAPI (via the NNAPI Execution Provider (EP)) on Android platforms, and CoreML (via the CoreML EP) on iOS platforms.
+
+First, please review the introductory details in [using NNAPI with ONNX Runtime Mobile](../execution-providers/NNAPI-ExecutionProvider.md) and [using CoreML with ONNX Runtime](../execution-providers/CoreML-ExecutionProvider.md).
 
 **IMPORTANT NOTE:** The examples on this page refer to the NNAPI EP for brevity. The information equally applies to the CoreML EP, so any reference to 'NNAPI' below can be substituted with 'CoreML'.<br>
 Support for creating a CoreML-aware ORT format model, similar to [creating an NNAPI-aware ORT format model](#3-creating-an-nnapi-aware-ort-format-model), was added in ONNX Runtime version 1.9.
@@ -45,7 +48,7 @@ _Layout_ optimizations may be hardware specific and involve internal conversions
 
 ### Outcome of optimizations when creating an optimized ORT format model
 
-Below is an example of the changes that occur in _basic_ and _extended_ optimizations when applied to the MNIST model with only the CPU EP enabled. The optimization level is specified when [creating the ORT format model](../tutorials/mobile/model-conversion.md#optimization-level).
+Below is an example of the changes that occur in _basic_ and _extended_ optimizations when applied to the MNIST model with only the CPU EP enabled. The optimization level is specified when [creating the ORT format model](../reference/ort-model-format.md#optimization-level).
 
   - At the _basic_ level we combine the Conv and Add nodes (the addition is done via the 'B' input to Conv), we combine the MatMul and Add into a single Gemm node (the addition is done via the 'C' input to Gemm), and constant fold to remove one of the Reshape nodes.
     - `python <ORT repository root>/tools/python/convert_onnx_models_to_ort.py --optimization_level basic /dir_with_mnist_onnx_model`
@@ -108,7 +111,7 @@ To create an NNAPI-aware ORT format model please follow these steps.
         <ONNX Runtime repository root>/build.sh --config RelWithDebInfo --use_nnapi --build_shared_lib --build_wheel --parallel
         ```
 
-    **NOTE** if you have previously done a minimal build you will need to run `git reset --hard` to make sure any operator kernel exclusions are reversed prior to performing the 'full' build. If you do not, you may not be able to load the ONNX format model due to missing kernels.
+    **NOTE**: For **ONNX Runtime version 1.10 and earlier**, if you have previously done a minimal build with reduced operator kernels you will need to run `git reset --hard` to make sure any operator kernel exclusions are reversed prior to performing the 'full' build. If you do not, you may not be able to load the ONNX format model due to missing kernels.
 
 2. Install the python wheel from the build output directory.
     - Windows : This is located in `build/Windows/<config>/<config>/dist/<package name>.whl`.
@@ -118,7 +121,7 @@ To create an NNAPI-aware ORT format model please follow these steps.
             pip install -U build\Windows\RelWithDebIfo\RelWithDebIfo\dist\onnxruntime_noopenmp-1.7.0-cp37-cp37m-win_amd64.whl
         ```
 
-3. Create an NNAPI-aware ORT format model by running `convert_onnx_models_to_ort.py` as per the [standard instructions](../tutorials/mobile/model-conversion.md), with NNAPI enabled (`--use_nnapi`), and the optimization level set to _extended_ or _all_ (e.g. `--optimization_level extended`). This will allow higher level optimizations to run on any nodes that NNAPI can not handle.
+3. Create an NNAPI-aware ORT format model by running `convert_onnx_models_to_ort.py` as per the [standard instructions](../reference/ort-model-format.md), with NNAPI enabled (`--use_nnapi`), and the optimization level set to _extended_ or _all_ (e.g. `--optimization_level extended`). This will allow higher level optimizations to run on any nodes that NNAPI can not handle.
       ```
       python <ORT repository root>/tools/python/convert_onnx_models_to_ort.py --use_nnapi --optimization_level extended /models
       ```

@@ -1,13 +1,15 @@
 ---
-title: Install ORT
+title: Install ONNX Runtime
+description: Instructions to install ONNX Runtime on your target platform in your environment
 has_children: false
 nav_order: 1
+redirect_from: /docs/how-to/install
 ---
 
 # Install ONNX Runtime (ORT)
-{: .no_toc }
 
-See the [installation matrix](https://onnxruntime.ai) for recommended instructions for desired combinations of target operating system, hardware, accelerator, and language. 
+
+See the [installation matrix](https://onnxruntime.ai) for recommended instructions for desired combinations of target operating system, hardware, accelerator, and language.
 
 Details on OS versions, compilers, language versions, dependent libraries, etc can be found under [Compatibility](../reference/compatibility).
 
@@ -21,7 +23,6 @@ Details on OS versions, compilers, language versions, dependent libraries, etc c
 ## Python Installs
 
 ### Install ONNX Runtime (ORT)
-{: .no_toc }
 
 ```bash
 pip install onnxruntime
@@ -32,7 +33,6 @@ pip install onnxruntime-gpu
 ```
 
 ### Install ONNX to export the model
-{: .no_toc }
 
 ```bash
 ## ONNX is built into PyTorch
@@ -51,29 +51,34 @@ pip install skl2onnx
 ## C#/C/C++/WinML Installs
 
 ### Install ONNX Runtime (ORT)
-{: .no_toc }
 
 ```bash
-# CPU 
-dotnet add package Microsoft.ML.OnnxRuntime --version 1.8.1
+# CPU
+dotnet add package Microsoft.ML.OnnxRuntime
 ```
 ```bash
 # GPU
-dotnet add package Microsoft.ML.OnnxRuntime.Gpu --version 1.8.1
+dotnet add package Microsoft.ML.OnnxRuntime.Gpu
 ```
 ```bash
 # DirectML
-dotnet add package Microsoft.ML.OnnxRuntime.DirectML --version 1.8.1
+dotnet add package Microsoft.ML.OnnxRuntime.DirectML
 ```
 
 ```bash
 # WinML
-dotnet add package Microsoft.AI.MachineLearning --version 1.8.1
+dotnet add package Microsoft.AI.MachineLearning
 ```
-## JavaScript Installs
 
-### Install ONNX Runtime Web (browsers)
-{: .no_toc }
+## Install on web and mobile
+
+The installation instructions in this section use pre-built packages that include support for selected operators and ONNX opset versions based on the requirements of popular models. Your model must only use the [opsets and operators](../reference/operators/mobile_package_op_type_support_1.9.md) supported by the pre-built package.
+
+If the pre-built package is too large, or does not include the operators in your model/s, you can create a [custom build](../build/custom.md).
+
+### JavaScript Installs
+
+#### Install ONNX Runtime Web (browsers)
 
 ```bash
 # install latest release version
@@ -83,21 +88,68 @@ npm install onnxruntime-web
 npm install onnxruntime-web@dev
 ```
 
-### Install ONNX Runtime Node.js binding (Node.js)
-{: .no_toc }
+#### Install ONNX Runtime Node.js binding (Node.js)
 
 ```bash
 # install latest release version
 npm install onnxruntime-node
 ```
 
-### Install ONNX Runtime for React Native
-{: .no_toc }
+#### Install ONNX Runtime for React Native
+
 
 ```bash
 # install latest release version
 npm install onnxruntime-react-native
 ```
+
+### Install on iOS
+
+In your CocoaPods `Podfile`, add the `onnxruntime-mobile-c` or `onnxruntime-mobile-objc` pod depending on which API you wish to use.
+
+#### C/C++
+
+  ```pod
+  use_frameworks!
+
+  pod 'onnxruntime-mobile-c'
+  ```
+
+#### Objective-C
+
+  ```pod
+  use_frameworks!
+
+  pod 'onnxruntime-mobile-objc'
+  ```
+
+Run `pod install`.
+
+### Install on Android
+
+#### Java/Kotlin
+
+In your Android Studio Project, make the following changes to:
+
+1. build.gradle (Project):
+
+   ```gradle
+    repositories {
+        mavenCentral()
+    }
+   ```
+
+2. build.gradle (Module):
+
+    ```gradle
+    dependencies {
+        implementation 'com.microsoft.onnxruntime:onnxruntime-mobile:<onnxruntime mobile version>'
+    }
+    ```
+
+#### C/C++
+
+Download the onnxruntime-mobile AAR hosted at [MavenCentral](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile), change the file extension from `.aar` to `.zip`, and unzip it. Include the header files from the `headers` folder, and the relevant `libonnxruntime.so` dynamic library from the `jni` folder in your NDK project.
 
 ## ORT Training package
 
@@ -125,7 +177,6 @@ python -m torch_ort.configure
 The table below lists the build variants available as officially supported packages. Others can be [built from source](../build/inferencing) from each release branch.
 
 ### Requirements
-{: .no_toc }
 
 * All builds require the English language package with `en_US.UTF-8` locale. On Linux, install [language-pack-en package](https://packages.ubuntu.com/search?keywords=language-pack-en)
 by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
@@ -147,9 +198,9 @@ by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
 |WinML|[**Microsoft.AI.MachineLearning**](https://www.nuget.org/packages/Microsoft.AI.MachineLearning)||[View](https://docs.microsoft.com/en-us/windows/ai/windows-ml/port-app-to-nuget#prerequisites)|
 |Java|CPU: [**com.microsoft.onnxruntime:onnxruntime**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime)||[View](../api/java)|
 ||GPU - CUDA: [**com.microsoft.onnxruntime:onnxruntime_gpu**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu)||[View](../api/java)|
-|Android|[**com.microsoft.onnxruntime:onnxruntime-mobile**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime-mobile) ||[View](../tutorials/mobile/initial-setup)|
-|iOS (C/C++)|CocoaPods: **onnxruntime-mobile-c**||[View](../tutorials/mobile/initial-setup)|
-|Objective-C|CocoaPods: **onnxruntime-mobile-objc**||[View](../tutorials/mobile/initial-setup)|
+|Android|[**com.microsoft.onnxruntime:onnxruntime-mobile**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime-mobile) ||[View](../install/index.md#install-on-ios)|
+|iOS (C/C++)|CocoaPods: **onnxruntime-mobile-c**||[View](../install/index.md#install-on-ios)|
+|Objective-C|CocoaPods: **onnxruntime-mobile-objc**||[View](../install/index.md#install-on-ios)|
 |React Native|[**onnxruntime-react-native**](https://www.npmjs.com/package/onnxruntime-react-native)||[View](../api/js)|
 |Node.js|[**onnxruntime-node**](https://www.npmjs.com/package/onnxruntime-node)||[View](../api/js)|
 |Web|[**onnxruntime-web**](https://www.npmjs.com/package/onnxruntime-web)||[View](../api/js)|
@@ -163,7 +214,7 @@ by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
 
 ## Training install table for all languages
 
-ONNX Runtime Training packages are available for different versions of PyTorch, CUDA and ROCm versions. 
+ONNX Runtime Training packages are available for different versions of PyTorch, CUDA and ROCm versions.
 
 The install command is:
 ```cmd

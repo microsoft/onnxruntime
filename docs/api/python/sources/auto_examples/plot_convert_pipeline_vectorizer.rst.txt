@@ -53,6 +53,49 @@ The first step consists in retrieving the boston datset.
 
 
 
+.. rst-class:: sphx-glr-script-out
+
+ Out:
+
+ .. code-block:: none
+
+    /home/runner/.local/lib/python3.8/site-packages/sklearn/utils/deprecation.py:87: FutureWarning: Function load_boston is deprecated; `load_boston` is deprecated in 1.0 and will be removed in 1.2.
+
+        The Boston housing prices dataset has an ethical problem. You can refer to
+        the documentation of this function for further details.
+
+        The scikit-learn maintainers therefore strongly discourage the use of this
+        dataset unless the purpose of the code is to study and educate about
+        ethical issues in data science and machine learning.
+
+        In this special case, you can fetch the dataset from the original
+        source::
+
+            import pandas as pd
+            import numpy as np
+
+
+            data_url = "http://lib.stat.cmu.edu/datasets/boston"
+            raw_df = pd.read_csv(data_url, sep="\s+", skiprows=22, header=None)
+            data = np.hstack([raw_df.values[::2, :], raw_df.values[1::2, :2]])
+            target = raw_df.values[1::2, 2]
+
+        Alternative datasets include the California housing dataset (i.e.
+        :func:`~sklearn.datasets.fetch_california_housing`) and the Ames housing
+        dataset. You can load the datasets as follows::
+
+            from sklearn.datasets import fetch_california_housing
+            housing = fetch_california_housing()
+
+        for the California housing dataset and::
+
+            from sklearn.datasets import fetch_openml
+            housing = fetch_openml(name="house_prices", as_frame=True)
+
+        for the Ames housing dataset.
+    
+      warnings.warn(msg, category=FutureWarning)
+
 
 
 
@@ -114,7 +157,7 @@ and we show the confusion matrix.
 
  .. code-block:: none
 
-    0.848444978558249
+    0.877658073886333
 
 
 
@@ -161,7 +204,7 @@ its input and output.
     import onnxruntime as rt
     from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
 
-    sess = rt.InferenceSession("pipeline_vectorize.onnx")
+    sess = rt.InferenceSession("pipeline_vectorize.onnx", providers=rt.get_available_providers())
 
     import numpy
     inp, out = sess.get_inputs()[0], sess.get_outputs()[0]
@@ -252,7 +295,7 @@ We compare them to the model's ones.
 
  .. code-block:: none
 
-    0.9999999999999528
+    0.9999999999999737
 
 
 
@@ -265,7 +308,7 @@ that explains the small discrepencies.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** ( 0 minutes  1.592 seconds)
+   **Total running time of the script:** ( 0 minutes  1.113 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_convert_pipeline_vectorizer.py:

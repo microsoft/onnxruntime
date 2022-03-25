@@ -9,5 +9,7 @@ var struct_ort_1_1_io_binding =
     [ "GetOutputNames", "struct_ort_1_1_io_binding.html#a74dd1e588e1fa13259823549ac4dd71b", null ],
     [ "GetOutputNames", "struct_ort_1_1_io_binding.html#a95c306e1e6682e7462669f477ff4f65b", null ],
     [ "GetOutputValues", "struct_ort_1_1_io_binding.html#a32f4ebbfc39913bb89afe7bf9af9c652", null ],
-    [ "GetOutputValues", "struct_ort_1_1_io_binding.html#a8cbf585065d10b9b2ad920b802c4b083", null ]
+    [ "GetOutputValues", "struct_ort_1_1_io_binding.html#a8cbf585065d10b9b2ad920b802c4b083", null ],
+    [ "SynchronizeInputs", "struct_ort_1_1_io_binding.html#ad6696497b21831e2539dfb9ddac3ec31", null ],
+    [ "SynchronizeOutputs", "struct_ort_1_1_io_binding.html#a6690ef71a4a3590203f0dba03fbdaa4b", null ]
 ];
