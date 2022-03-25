@@ -105,8 +105,9 @@ inline Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t str
                          C, order_weight);
 }
 
+// using the following issue to locate error by reporting errors in the operator with error.
 // #define DUBUG_PERF_CUDA_SYNC() CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize())
-#define DUBUG_PERF_CUDA_SYNC() 
+#define DUBUG_PERF_CUDA_SYNC()
 
 // #endif
 
