@@ -34,10 +34,6 @@ parameters:
   type: boolean
   default: false
 
-- name: PublishWheel
-  displayName: Publish Wheel 
-  type: boolean
-  default: false
 
 - name: ModelGroups
   type: object
@@ -74,9 +70,6 @@ jobs:
       ${{ if eq(parameters.TrtVersion, '7.2.3.4') }}:
         value: 20.12
         
-    - name: anubis_image
-      value: ort-master-py38
-
     - name: build_args
       ${{ if eq(parameters.RunNvidiaContainer, true) }}:
         value: Dockerfile.tensorrt-perf -t $(trtContainer) -v ${{parameters.TrtVersion}} -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt
@@ -107,31 +100,8 @@ jobs:
           displayName: 'Build latest ORT'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
-    # - ${{ if ne(parameters.BuildORT, true) }}:
-    #   - script: 'docker pull nvcr.io/nvidia/tensorrt:$(trtContainer)-py3'
-
-    - ${{ if eq(parameters.PublishWheel, true) }}:
-      #### NIGHTLY LOGIC START
-      
-      ### TEST PYPI DOWNLOAD
-      # Logic to download the wheel from test pypi (not good as external source)
-      - script: 'mkdir wheel && python3 -m pip download --only-binary :all: --dest wheel --python-version 38 --no-cache --no-deps -i https://test.pypi.org/simple/ ort-nightly-gpu'
-        displayName: 'Get Nightly Wheel'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-
-      ### PYPI PACKAGE WITH ARTIFACT FEED
-      # Logic to upload with Twine (Authenticate generates PYPRIC_PATH)
-      - task: TwineAuthenticate@0
-        inputs:
-          artifactFeed: 'Lotus/ort-gpu-nightly'
-       
-      - script: python3 -m pip install twine && python3 -m twine upload -r ort-gpu-nightly --config-file $(PYPIRC_PATH) wheel/*.whl
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-
-      # Logic to download pypi from artifact feed 
-      - script: 'python3 -m pip install -i https://aiinfra.pkgs.visualstudio.com/Lotus/_packaging/ort-gpu-nightly/pypi/simple/ ort-nightly-gpu'
-      
-      #### NIGHTLY LOGIC DONE 
+    - ${{ if ne(parameters.BuildORT, true) }}:
+      - script: 'docker pull nvcr.io/nvidia/tensorrt:$(trtContainer)-py3'
 
     - ${{ each option in parameters.ModelGroups }}:
       - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $(${{option}})'
@@ -157,12 +127,6 @@ jobs:
 
     - ${{ if eq(parameters.MemTest, true) }}:
       - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/build/result $(Build.SourcesDirectory)/Artifact/result_mem_test'
-        displayName: 'Copy Artifacts'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-        condition: always()
-
-    - ${{ if eq(parameters.PublishWheel, true) }}:
-      - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/wheel $(Build.SourcesDirectory)/Artifact/anubis_wheel'
         displayName: 'Copy Artifacts'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         condition: always()
