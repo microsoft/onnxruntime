@@ -17,8 +17,8 @@ FetchContent_Declare(
     abseil_cpp
     PREFIX "${CMAKE_CURRENT_BINARY_DIR}/abseil-cpp"
     BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/external/abseil-cpp"
-    URL https://github.com/abseil/abseil-cpp/archive/refs/tags/20211102.0.zip
-    PATCH_COMMAND ${ABSL_PATCH_COMMAND}
+    GIT_REPOSITORY https://github.com/jstoecker/abseil-cpp.git
+    GIT_TAG        c4ae5fa3144c8f04359c9344a104453c2315314e
 )
 
 FetchContent_MakeAvailable(abseil_cpp)
