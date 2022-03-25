@@ -169,6 +169,8 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/i386/SgemmKernelAvx.asm
     )
   endif()
+  
+  target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_TARGET_AMD64)
 endfunction()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
@@ -490,6 +492,8 @@ else()
         else()
           set(MLAS_SOURCE_IS_NOT_SET 0)
         endif()
+        
+        target_compile_definitions(onnxruntime_mlas PRIVATE MLAS_TARGET_AMD64_IX86)
     endif()
     if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH AND MLAS_SOURCE_IS_NOT_SET)
         file(GLOB_RECURSE mlas_platform_srcs
