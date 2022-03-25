@@ -82,6 +82,33 @@ python tools/ci_build/github/android/build_aar_package.py --config Release openc
 
 The resulting aar package is a ready dependency for gradle project.
 
+## Run model
+
+### .onnx file format
+
+You must not enable `--minimal_build` or related options during building to
+support onnx file format.
+
+### .ort file format
+
+1. Build a full package of onnxruntime with `--build_wheel`, this will install
+   the wheel package files to `<build_dir>/<OS>/<config>/build/lib/`, say the
+   path is `~/onnxruntime/build/Linux/Debug/build/lib/`
+
+2. Convert onnx file format to ort file format:
+
+```
+export PYTHONPATH=`realpath ~/onnxruntime/build/Linux/Debug/build/lib`
+python -m onnxruntime.tools.convert_onnx_models_to_ort --optimization_style Fixed --providers OpenCLExecutionProvider CPUExecutionProvider -- <model.onnx>
+```
+
+3. The resulting ort file can be run with OpenCL EP in the minimal build.
+
+**Why is only `--optimization_style Fixed` supported?**
+
+In ort file format, the kernel is resolved by kernel def hash. It is not easy
+to prompt the hash from CPU EP to other EP in the current implementation. This
+limitation might be addressed in the future.
 
 ## Testing
 
