@@ -92,15 +92,25 @@ support onnx file format.
 ### .ort file format
 
 1. Build a full package of onnxruntime with `--build_wheel`, this will install
-   the wheel package files to `<build_dir>/<OS>/<config>/build/lib/`, say the
-   path is `~/onnxruntime/build/Linux/Debug/build/lib/`
+   the wheel package files to `<build_dir>\<OS>\<config>\<config>\build\lib` on
+   Windows and `<build_dir>/<OS>/<config>/build/lib/` otherwise, say the
+   onnxruntime repository root is `~/onnxruntime`
 
 2. Convert onnx file format to ort file format:
 
-```
-export PYTHONPATH=`realpath ~/onnxruntime/build/Linux/Debug/build/lib`
-python -m onnxruntime.tools.convert_onnx_models_to_ort --optimization_style Fixed --providers OpenCLExecutionProvider CPUExecutionProvider -- <model.onnx>
-```
+   - Windows
+     ```powershell
+     $env:PYTHONPATH=(Resolve-Path ~\onnxruntime\build\Windows\Debug\Debug\build\lib\)
+     # Do not run the python command in ~/onnxruntime
+     python -m onnxruntime.tools.convert_onnx_models_to_ort --optimization_style Fixed --providers OpenCLExecutionProvider CPUExecutionProvider -- <model.onnx>
+     ```
+
+   - Otherwise
+     ```bash
+     export PYTHONPATH=`realpath ~/onnxruntime/build/Linux/Debug/build/lib`
+     # Do not run the python command in ~/onnxruntime
+     python -m onnxruntime.tools.convert_onnx_models_to_ort --optimization_style Fixed --providers OpenCLExecutionProvider CPUExecutionProvider -- <model.onnx>
+     ```
 
 3. The resulting ort file can be run with OpenCL EP in the minimal build.
 
