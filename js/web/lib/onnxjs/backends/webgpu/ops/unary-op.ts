@@ -58,16 +58,16 @@ const createElementwiseProgramInfoLoader =
       };
     };
 
-export const abs = (handler: WebGpuInferenceHandler, inputs: Tensor[]): Tensor[] =>
+export const abs = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
     handler.run(createElementwiseProgramInfoLoader(inputs[0], 'abs'), inputs);
 
-export const acos = (handler: WebGpuInferenceHandler, inputs: Tensor[]): Tensor[] =>
+export const acos = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
     handler.run(createElementwiseProgramInfoLoader(inputs[0], 'acos'), inputs);
 
-export const asin = (handler: WebGpuInferenceHandler, inputs: Tensor[]): Tensor[] =>
+export const asin = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
     handler.run(createElementwiseProgramInfoLoader(inputs[0], 'asin'), inputs);
 
-export const atan = (handler: WebGpuInferenceHandler, inputs: Tensor[]): Tensor[] =>
+export const atan = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
     handler.run(createElementwiseProgramInfoLoader(inputs[0], 'atan'), inputs);
 
 export interface ClipAttributes extends AttributeWithCacheKey {
@@ -75,18 +75,18 @@ export interface ClipAttributes extends AttributeWithCacheKey {
   readonly max: number;
 }
 
-export const clip = (handler: WebGpuInferenceHandler, inputs: Tensor[], attributes: ClipAttributes): Tensor[] =>
-    handler.run(
-        createElementwiseProgramInfoLoader(
-            inputs[0], 'clip', `
+export const clip = async(handler: WebGpuInferenceHandler, inputs: Tensor[], attributes: ClipAttributes):
+                        Promise<Tensor[] >=>handler.run(
+                            createElementwiseProgramInfoLoader(
+                                inputs[0], 'clip', `
     let clip_min_: vec4<f32> = vec4(f32(${attributes.min}));
     let clip_max_: vec4<f32> = vec4(f32(${attributes.max}));
 
     fn clip(x: vec4<f32>) -> vec4<f32> {
       return clamp(x, clip_min_, clip_max_);
     }`,
-            attributes.cacheKey),
-        inputs);
+                                attributes.cacheKey),
+                            inputs);
 
 export const parseClipAttributes = (node: Graph.Node): ClipAttributes => createAttributeWithCacheKey(
     {min: node.attributes.getFloat('min', MIN_CLIP), max: node.attributes.getFloat('max', MAX_CLIP)});
@@ -102,15 +102,15 @@ const generateClipAttributesFromInputs = (handler: WebGpuInferenceHandler, input
   return createAttributeWithCacheKey({min, max});
 };
 
-export const clipV11 = (handler: WebGpuInferenceHandler, inputs: Tensor[]): Tensor[] => {
+export const clipV11 = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> => {
   const attributes = generateClipAttributesFromInputs(handler, inputs);
   return clip(handler, [inputs[0]], attributes);
 };
 
-export const ceil = (handler: WebGpuInferenceHandler, inputs: Tensor[]): Tensor[] =>
+export const ceil = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
     handler.run(createElementwiseProgramInfoLoader(inputs[0], 'ceil'), inputs);
 
-export const cos = (handler: WebGpuInferenceHandler, inputs: Tensor[]): Tensor[] =>
+export const cos = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
     handler.run(createElementwiseProgramInfoLoader(inputs[0], 'cos'), inputs);
 
 // export interface EluAttributes extends AttributeWithCacheKey {
