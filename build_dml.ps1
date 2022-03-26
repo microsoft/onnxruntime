@@ -3,7 +3,6 @@ python $PSScriptRoot\tools\ci_build\build.py `
     --config Debug `
     --build_shared_lib `
     --parallel `
-    --use_dml `
     --skip_tests `
     --skip_submodule_sync `
     --target install `
