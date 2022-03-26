@@ -32,10 +32,12 @@
 #elif _GAMING_XBOX_XBOXONE
 #include <d3d12_x.h>
 #include <d3dx12_x.h>
-#else
+#else // Desktop
 #include <d3d12.h>
 #include <d3d12sdklayers.h>
 #include "External/D3DX12/d3dx12.h"
+#define IGraphicsUnknown IUnknown
+#define IID_GRAPHICS_PPV_ARGS IID_PPV_ARGS
 #endif
 
 #include <DirectML.h>
