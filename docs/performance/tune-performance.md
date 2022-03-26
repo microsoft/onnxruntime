@@ -359,7 +359,9 @@ Currently, there are some constraints with regards to using the CUDA Graphs feat
 NOTE: The very first `Run()` performs a variety of tasks under the hood like making CUDA memory allocations, capturing the CUDA graph for the model, and then performing a graph replay to ensure that the graph runs. Due to this, the latency associated with the first `Run()` is bound to be high. The subsequent `Run()`s only perform graph replays of the graph captured and cached in the first `Run()`. 
 
 * Python
+
 ```
+python
 providers = [("CUDAExecutionProvider", {"enable_cuda_graph": '1'})]
 sess_options = ort.SessionOptions()
 sess = ort.InferenceSession("my_model.onnx",  sess_options = sess_options, providers=providers)
@@ -392,7 +394,8 @@ session.run_with_iobinding(io_binding)
 ```
 
 * C/C++
-```
+
+```c++
 const auto& api = Ort::GetApi();
 
 struct CudaMemoryDeleter {
