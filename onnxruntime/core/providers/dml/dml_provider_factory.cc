@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #include <DirectML.h>
+#ifndef _GAMING_XBOX
 #include <dxgi1_4.h>
+#endif
 
 #include <wrl/client.h>
 using Microsoft::WRL::ComPtr;

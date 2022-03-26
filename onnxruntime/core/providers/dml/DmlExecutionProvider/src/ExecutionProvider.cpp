@@ -25,7 +25,9 @@
 
 #include "core/session/onnxruntime_c_api.h"
 #include <wil/wrl.h>
+#ifndef _GAMING_XBOX
 #include <dxgi1_6.h>
+#endif
 
 #define ENABLE_GRAPH_COMPILATION
 
