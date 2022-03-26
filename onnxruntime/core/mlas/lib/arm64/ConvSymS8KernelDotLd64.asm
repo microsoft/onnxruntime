@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    ConvSymS8KernelDot.S
+    ConvSymS8KernelDotLd64.S
 
 Abstract:
 
@@ -15,26 +15,26 @@ Abstract:
 
 --*/
 
-#include "asmmacro.h"
+#include "kxarm64.h"
 #include "AssembleDotProduct.h"
 
-        .equ    .LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE, 2
+#define     MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE 2
 
 //
 // Stack frame layout for the symmetric convolution kernel.
 // d8-d15, x19-x30 need to be preserved if used
 //
-        .equ    .LConvSymFrame_SavedRegisters,       (6 * 8)
-        .equ    .LConvSymFrame_PostProcessParams,    0 + .LConvSymFrame_SavedRegisters
-        .equ    .LConvSymFrame_KernelFlags,          8 + .LConvSymFrame_SavedRegisters
+#define     ConvSymFrame_SavedRegisters         (10 * 8)
+#define     ConvSymFrame_PostProcessParams      (0 + ConvSymFrame_SavedRegisters)
+#define     ConvSymFrame_KernelFlags            (8 + ConvSymFrame_SavedRegisters)
 
-        .equ    .LConvSymPostProcessParams_Bias,      0
-        .equ    .LConvSymPostProcessParams_Scale,     8
-        .equ    .LConvSymPostProcessParams_Min,       16
-        .equ    .LConvSymPostProcessParams_Max,       20
-        .equ    .LConvSymPostProcessParams_ZeroPoint, 24
+#define     ConvSymPostProcessParams_Bias       0
+#define     ConvSymPostProcessParams_Scale      8
+#define     ConvSymPostProcessParams_Min        16
+#define     ConvSymPostProcessParams_Max        20
+#define     ConvSymPostProcessParams_ZeroPoint  24
 
-        .text
+        TEXTAREA
 
 /*++
 
@@ -45,17 +45,24 @@ Routine Description:
 
 Arguments:
 
-    Input (x0) - Points to the indirection buffer. Every pointer in the indirection
-        buffer points at a InputChannels length vector (either from the input tensor
-        or a vector of padding values). These are grouped in batches of length
-        KernelSize.  These batches are then repeated OutputCount times.
+    Input (x0) - Points to the input buffer.
+
+        If MLAS_CONV_SYM_FLAG_INPUT_DIRECT is set, then the input buffer points
+        directly at the input tensor.
+
+        If MLAS_CONV_SYM_FLAG_INPUT_DIRECT is clear, then the input buffer is an
+        indirection buffer. Every pointer in the indirection buffer points at a
+        InputChannels length vector (either from the input tensor or a vector of
+        padding values). These are grouped in batches of length KernelSize.
+        These batches are then repeated OutputCount times.
 
     Filter (x1) - Points to the filter buffer.
 
     Output (x2) - Points the output buffer.
 
     KernelSize (x3/x9) - Size of the kernel (most commonly. 3x3=9, 5x5=25).
-                         Must be > 1
+
+        If MLAS_CONV_SYM_FLAG_INPUT_DIRECT is set, then kernel size should be 1.
 
     InputChannels (x4/x7) - Number of input channels.
 
@@ -76,31 +83,35 @@ Return Value:
     None.
 
 --*/
-        FUNCTION_ENTRY MlasConvSymS8KernelDot
+        NESTED_ENTRY MlasConvSymS8KernelDotLd64
 
-        stp     d8,d9,[sp,#-.LConvSymFrame_SavedRegisters]!
-        ldr     x8,[sp,#.LConvSymFrame_PostProcessParams]
-        str     d10,[sp,#16]
-        cmp     x7,2                    // OutputCount < 2 ?
-        str     d11,[sp,#24]
-        add     x16,x2,x5               // x16 -> C1
-        str     x19,[sp,#32]
-        lsl     x3,x3,#3                // KernelSize * sizeof(int8_t*)
-        csel    x16,x2,x16,lo           // if OutputCount < 2  x16/C1 -> C0
-        add     x4,x4,3                 // InputChannels align to 4
-        add     x17,x16,x5              // x17 -> C2
-        ldr     x11,[x8,#.LConvSymPostProcessParams_Bias]
+        PROLOG_SAVE_REG_PAIR     d8,d9,#-ConvSymFrame_SavedRegisters!
+        PROLOG_NOP       ldr     x8,[sp,#ConvSymFrame_PostProcessParams]
+        PROLOG_SAVE_REG          d10,#16
+        PROLOG_NOP       cmp     x7,2                    // OutputCount < 2 ?
+        PROLOG_SAVE_REG          d11,#24
+        PROLOG_NOP       add     x16,x2,x5               // x16 -> C1
+        PROLOG_SAVE_REG          x19,#32
+        PROLOG_NOP       lsl     x3,x3,#3                // KernelSize * sizeof(int8_t*)
+        PROLOG_SAVE_REG          x20,#40
+        PROLOG_NOP       csel    x16,x2,x16,lo           // if OutputCount < 2  x16/C1 -> C0
+        PROLOG_SAVE_REG          x21,#48
+        PROLOG_NOP       add     x4,x4,3                 // InputChannels align to 4
+        PROLOG_SAVE_REG          x22,#56
+        PROLOG_NOP       add     x17,x16,x5              // x17 -> C2
+        PROLOG_SAVE_REG          x23,#64
+        ldr     x11,[x8,#ConvSymPostProcessParams_Bias]
         csel    x17,x16,x17,ls          // if OutputCount <= 2  x17/C2 -> C1
         bic     x4,x4,3
         cmp     x7,4                    // OutputCount < 4 ?
-        ldr     w10,[sp,#.LConvSymFrame_KernelFlags]
+        ldr     w10,[sp,#ConvSymFrame_KernelFlags]
         add     x5,x17,x5               // x5 -> C3
-        ldr     x19,[x8,#.LConvSymPostProcessParams_Scale]
+        ldr     x19,[x8,#ConvSymPostProcessParams_Scale]
         csel    x5,x17,x5,lo            // if OutputCount < 4  x5/C3 -> C2
 
         // TODO!! tiptoe around loading biases if we need to support
         // output channels none divisible by 16
-OutputChannelLoop:
+OutputChannelLoop
         ldp     q16,q20,[x11],32        // Init accumulators with biases
         mov     v17.16b,v16.16b
         mov     v18.16b,v16.16b
@@ -117,7 +128,7 @@ OutputChannelLoop:
         mov     v31.16b,v28.16b
         mov     x9,x3                   // restore KernelSize * sizeof(int8_t*)
 
-KernelSizeLoop:
+KernelSizeLoop
         ldr     x12,[x0]                // x12 -> A0
         cmp     x16,x2
         b.eq    SkipLoadA1              // C1==C0 -> A0=A1=A2=A3
@@ -131,11 +142,11 @@ KernelSizeLoop:
         b.eq    SkipLoadA3              // C3==C2 -> A2=A3
         ldr     x15,[x0,x15]            // x15 -> A3
         b       FinishLoadAPtr
-SkipLoadA1:
+SkipLoadA1
         mov     x13,x12
-SkipLoadA2:
+SkipLoadA2
         mov     x14,x13
-SkipLoadA3:
+SkipLoadA3
         mov     x15,x14
 
 // Register Usage
@@ -152,7 +163,7 @@ SkipLoadA3:
 // x15 |v3.b[0]..v3.b[3]| |v19.s[0]_v19.s[3] v23.s[0]_v23.s[3]  v27.s[0]_v27.s[3]   v31.s[0]_v31.s[3]|  x5
 //     ------------------ ----------------------------------------------------------------------------
 
-FinishLoadAPtr:
+FinishLoadAPtr
         subs    x7,x4,16                // Need 16 input channels for loop
         add     x0,x0,8                 // indirect A advance to next pointer, prepare for kernel size loop
         b.lo    InChannels8
@@ -163,204 +174,268 @@ FinishLoadAPtr:
         subs    x7,x7,16
         ldr     d2,[x14],8
         ldr     d3,[x15],8
-        ldr     q5,[x1],16
-        ldr     q6,[x1],16
-        ldr     q7,[x1],16
+        ldr     d5,[x1],#8
+        ldr     x21,[x1],#8
+        ldr     d6,[x1],#8
+        ldr     x22,[x1],#8
+        ldr     d7,[x1],#8
         b.lo    InChLoopEpilogue        // Need 32 input channels for main loop
 
-InputChannelLoop:
+InputChannelLoop
         SdotByElement    16, 4, 0,0
+        ldr     x23,[x1],#8
         SdotByElement    17, 4, 1,0
-        ldr     d8,[x12],8
+        ins     v5.d[1],x21
         SdotByElement    18, 4, 2,0
+        ldr     d8,[x12],8
         SdotByElement    19, 4, 3,0
-        ldr     q4,[x1],16
+        ldr     d4,[x1],#8
         SdotByElement    20, 5, 0,0
+        ldr     x20,[x1],#8
         SdotByElement    21, 5, 1,0
-        ldr     d9,[x13],8
+        ins     v6.d[1],x22
         SdotByElement    22, 5, 2,0
+        ldr     d9,[x13],8
         SdotByElement    23, 5, 3,0
-        ldr     q5,[x1],16
+        ldr     d5,[x1],#8
         SdotByElement    24, 6, 0,0
+        ldr     x21,[x1],#8
         SdotByElement    25, 6, 1,0
-        ldr     d10,[x14],8
+        ins     v7.d[1],x23
         SdotByElement    26, 6, 2,0
+        ldr     d10,[x14],8
         SdotByElement    27, 6, 3,0
-        ldr     q6,[x1],16
+        ldr     d6,[x1],#8
         SdotByElement    28, 7, 0,0
+        ldr     x22,[x1],#8
         SdotByElement    29, 7, 1,0
-        ldr     d11,[x15],8
+        ins     v4.d[1],x20
         SdotByElement    30, 7, 2,0
+        ldr     d11,[x15],8
         SdotByElement    31, 7, 3,0
-        ldr     q7,[x1],16
+        ldr     d7,[x1],#8
         SdotByElement    16, 4, 0,1
+        ldr     x23,[x1],#8
         SdotByElement    17, 4, 1,1
+        ins     v5.d[1],x21
         SdotByElement    18, 4, 2,1
         SdotByElement    19, 4, 3,1
-        ldr     q4,[x1],16
+        ldr     d4,[x1],#8
         SdotByElement    20, 5, 0,1
+        ldr     x20,[x1],#8
         SdotByElement    21, 5, 1,1
+        ins     v6.d[1],x22
         SdotByElement    22, 5, 2,1
         SdotByElement    23, 5, 3,1
-        ldr     q5,[x1],16
+        ldr     d5,[x1],#8
         SdotByElement    24, 6, 0,1
+        ldr     x21,[x1],#8
         SdotByElement    25, 6, 1,1
+        ins     v7.d[1],x23
         SdotByElement    26, 6, 2,1
         SdotByElement    27, 6, 3,1
-        ldr     q6,[x1],16
+        ldr     d6,[x1],#8
         SdotByElement    28, 7, 0,1
+        ldr     x22,[x1],#8
         SdotByElement    29, 7, 1,1
+        ins     v4.d[1],x20
         SdotByElement    30, 7, 2,1
         SdotByElement    31, 7, 3,1
-        ldr     q7,[x1],16
+        ldr     d7,[x1],#8
         SdotByElement    16, 4, 8,0
+        ldr     x23,[x1],#8
         SdotByElement    17, 4, 9,0
-        ldr     d0,[x12],8
+        ins     v5.d[1],x21
         SdotByElement    18, 4,10,0
+        ldr     d0,[x12],8
         SdotByElement    19, 4,11,0
-        ldr     q4,[x1],16
+        ldr     d4,[x1],#8
         SdotByElement    20, 5, 8,0
+        ldr     x20,[x1],#8
         SdotByElement    21, 5, 9,0
-        ldr     d1,[x13],8
+        ins     v6.d[1],x22
         SdotByElement    22, 5,10,0
+        ldr     d1,[x13],8
         SdotByElement    23, 5,11,0
-        ldr     q5,[x1],16
+        ldr     d5,[x1],#8
         SdotByElement    24, 6, 8,0
+        ldr     x21,[x1],#8
         SdotByElement    25, 6, 9,0
-        ldr     d2,[x14],8
+        ins     v7.d[1],x23
         SdotByElement    26, 6,10,0
+        ldr     d2,[x14],8
         SdotByElement    27, 6,11,0
-        ldr     q6,[x1],16
+        ldr     d6,[x1],#8
         SdotByElement    28, 7, 8,0
+        ldr     x22,[x1],#8
         SdotByElement    29, 7, 9,0
-        ldr     d3,[x15],8
+        ins     v4.d[1],x20
         SdotByElement    30, 7,10,0
+        ldr     d3,[x15],8
         SdotByElement    31, 7,11,0
-        ldr     q7,[x1],16
+        ldr     d7,[x1],#8
         SdotByElement    16, 4, 8,1
+        ldr     x23,[x1],#8
         SdotByElement    17, 4, 9,1
+        ins     v5.d[1],x21
         SdotByElement    18, 4,10,1
         SdotByElement    19, 4,11,1
-        ldr     q4,[x1],16
+        ldr     d4,[x1],#8
         SdotByElement    20, 5, 8,1
+        ldr     x20,[x1],#8
         SdotByElement    21, 5, 9,1
+        ins     v6.d[1],x22
         SdotByElement    22, 5,10,1
         SdotByElement    23, 5,11,1
-        ldr     q5,[x1],16
+        ldr     d5,[x1],#8
         SdotByElement    24, 6, 8,1
+        ldr     x21,[x1],#8
         SdotByElement    25, 6, 9,1
+        ins     v7.d[1],x23
         SdotByElement    26, 6,10,1
-        SdotByElement    27, 6,11,1
-        ldr     q6,[x1],16
-        SdotByElement    28, 7, 8,1
-        SdotByElement    29, 7, 9,1
         subs    x7,x7,16                // InputChannels -= 16
+        SdotByElement    27, 6,11,1
+        ldr     d6,[x1],#8
+        SdotByElement    28, 7, 8,1
+        ldr     x22,[x1],#8
+        SdotByElement    29, 7, 9,1
+        ins     v4.d[1],x20
         SdotByElement    30, 7,10,1
         SdotByElement    31, 7,11,1
-        ldr     q7,[x1],16
+        ldr     d7,[x1],#8
         b.hs    InputChannelLoop
 
-InChLoopEpilogue:
+InChLoopEpilogue
         SdotByElement    16, 4, 0,0
+        ldr     x23,[x1],#8
         SdotByElement    17, 4, 1,0
-        ldr     d8,[x12],8
+        ins     v5.d[1],x21
         SdotByElement    18, 4, 2,0
+        ldr     d8,[x12],8
         SdotByElement    19, 4, 3,0
-        ldr     q4,[x1],16
+        ldr     d4,[x1],#8
         SdotByElement    20, 5, 0,0
+        ldr     x20,[x1],#8
         SdotByElement    21, 5, 1,0
-        ldr     d9,[x13],8
+        ins     v6.d[1],x22
         SdotByElement    22, 5, 2,0
+        ldr     d9,[x13],8
         SdotByElement    23, 5, 3,0
-        ldr     q5,[x1],16
+        ldr     d5,[x1],#8
         SdotByElement    24, 6, 0,0
+        ldr     x21,[x1],#8
         SdotByElement    25, 6, 1,0
-        ldr     d10,[x14],8
+        ins     v7.d[1],x23
         SdotByElement    26, 6, 2,0
+        ldr     d10,[x14],8
         SdotByElement    27, 6, 3,0
-        ldr     q6,[x1],16
+        ldr     d6,[x1],#8
         SdotByElement    28, 7, 0,0
+        ldr     x22,[x1],#8
         SdotByElement    29, 7, 1,0
-        ldr     d11,[x15],8
+        ins     v4.d[1],x20
         SdotByElement    30, 7, 2,0
+        ldr     d11,[x15],8
         SdotByElement    31, 7, 3,0
-        ldr     q7,[x1],16
+        ldr     d7,[x1],#8
         SdotByElement    16, 4, 0,1
+        ldr     x23,[x1],#8
         SdotByElement    17, 4, 1,1
+        ins     v5.d[1],x21
         SdotByElement    18, 4, 2,1
         SdotByElement    19, 4, 3,1
-        ldr     q4,[x1],16
+        ldr     d4,[x1],#8
         SdotByElement    20, 5, 0,1
+        ldr     x20,[x1],#8
         SdotByElement    21, 5, 1,1
+        ins     v6.d[1],x22
         SdotByElement    22, 5, 2,1
         SdotByElement    23, 5, 3,1
-        ldr     q5,[x1],16
+        ldr     d5,[x1],#8
         SdotByElement    24, 6, 0,1
+        ldr     x21,[x1],#8
         SdotByElement    25, 6, 1,1
+        ins     v7.d[1],x23
         SdotByElement    26, 6, 2,1
         SdotByElement    27, 6, 3,1
-        ldr     q6,[x1],16
+        ldr     d6,[x1],#8
         SdotByElement    28, 7, 0,1
+        ldr     x22,[x1],#8
         SdotByElement    29, 7, 1,1
+        ins     v4.d[1],x20
         SdotByElement    30, 7, 2,1
         SdotByElement    31, 7, 3,1
-        ldr     q7,[x1],16
+        ldr     d7,[x1],#8
         SdotByElement    16, 4, 8,0
+        ldr     x23,[x1],#8
         SdotByElement    17, 4, 9,0
+        ins     v5.d[1],x21
         SdotByElement    18, 4,10,0
         SdotByElement    19, 4,11,0
-        ldr     q4,[x1],16
+        ldr     d4,[x1],#8
         SdotByElement    20, 5, 8,0
+        ldr     x20,[x1],#8
         SdotByElement    21, 5, 9,0
+        ins     v6.d[1],x22
         SdotByElement    22, 5,10,0
         SdotByElement    23, 5,11,0
-        ldr     q5,[x1],16
+        ldr     d5,[x1],#8
         SdotByElement    24, 6, 8,0
+        ldr     x21,[x1],#8
         SdotByElement    25, 6, 9,0
+        ins     v7.d[1],x23
         SdotByElement    26, 6,10,0
         SdotByElement    27, 6,11,0
-        ldr     q6,[x1],16
+        ldr     d6,[x1],#8
         SdotByElement    28, 7, 8,0
+        ldr     x22,[x1],#8
         SdotByElement    29, 7, 9,0
+        ins     v4.d[1],x20
         SdotByElement    30, 7,10,0
         SdotByElement    31, 7,11,0
-        ldr     q7,[x1],16
+        ldr     d7,[x1],#8
         SdotByElement    16, 4, 8,1
+        ldr     x23,[x1],#8
         SdotByElement    17, 4, 9,1
+        ins     v5.d[1],x21
         SdotByElement    18, 4,10,1
         SdotByElement    19, 4,11,1
         SdotByElement    20, 5, 8,1
         SdotByElement    21, 5, 9,1
+        ins     v6.d[1],x22
         SdotByElement    22, 5,10,1
         SdotByElement    23, 5,11,1
         SdotByElement    24, 6, 8,1
         SdotByElement    25, 6, 9,1
+        ins     v7.d[1],x23
         SdotByElement    26, 6,10,1
         SdotByElement    27, 6,11,1
         SdotByElement    28, 7, 8,1
         SdotByElement    29, 7, 9,1
-        tst     x7,15
         SdotByElement    30, 7,10,1
         SdotByElement    31, 7,11,1
+
+        tst     x7,15
         b.ne    InChannels8             // 4 ~ 12 InputChannels
+
         subs    x9,x9,8                 // KernelSize-=1
         b.hi    KernelSizeLoop
 
-Requantize:
-        tst     w10,#.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        ldr     w13,[x8,#.LConvSymPostProcessParams_ZeroPoint]
+Requantize
+        tst     w10,#MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
+        ldr     w13,[x8,#ConvSymPostProcessParams_ZeroPoint]
         beq     BroadcastScaleValue
         ldp     q0,q1,[x19],32          // load scale vector
         ldp     q2,q3,[x19],32
         b       AccumulatorsToFloat
 
-BroadcastScaleValue:
+BroadcastScaleValue
         ld1r    {v0.4s},[x19]           // load scale Value
         mov     v1.16b, v0.16b
         mov     v2.16b, v0.16b
         mov     v3.16b, v0.16b
 
-AccumulatorsToFloat:
+AccumulatorsToFloat
         scvtf   v16.4s,v16.4s           // convert to float
         scvtf   v17.4s,v17.4s
         scvtf   v18.4s,v18.4s
@@ -453,13 +528,15 @@ AccumulatorsToFloat:
         st1     {v0.16b},[x2],16
         b.hi    OutputChannelLoop
 
-ExitKernel:
-        ldr     x19,[sp,#32]
-        ldp     d10,d11,[sp,#16]
-        ldp     d8,d9,[sp],#.LConvSymFrame_SavedRegisters
-        ret
+ExitKernel
+        EPILOG_RESTORE_REG          x23,#64
+        EPILOG_RESTORE_REG_PAIR     x21,x22,#48
+        EPILOG_RESTORE_REG_PAIR     x19,x20,#32
+        EPILOG_RESTORE_REG_PAIR     d10,d11,#16
+        EPILOG_RESTORE_REG_PAIR     d8,d9,#ConvSymFrame_SavedRegisters!
+        EPILOG_RETURN
 
-InChannels8:
+InChannels8
         tbz     x7,3,InChannels4
         ldr     d0,[x12],8
         ldr     q4,[x1],16
@@ -504,13 +581,13 @@ InChannels8:
         SdotByElement    31, 7, 3,1
         tbz     x7,2,SkipInCh4
 
-InChannels4:
+InChannels4
         ldr     s0,[x12],4
         ldr     q4,[x1],16
         ldr     s1,[x13],4
         ldr     s2,[x14],4
         ldr     s3,[x15],4
-        ldr     q5,[x1],16
+        ldr     q5, [x1], 16
         SdotByElement    16, 4, 0,0
         SdotByElement    17, 4, 1,0
         ldp     q6, q7, [x1], 32
@@ -529,12 +606,12 @@ InChannels4:
         SdotByElement    30, 7, 2,0
         SdotByElement    31, 7, 3,0
 
-SkipInCh4:
+SkipInCh4
         subs    x9,x9,8             // ks -= 1
         b.hi    KernelSizeLoop
         b       Requantize
 
-PartialStore:
+PartialStore
         tbz     x6,3,LT8Store
         str     d3,[x5],8           // no less than 8 channels
         str     d2,[x17],8
@@ -544,7 +621,7 @@ PartialStore:
         str     d0,[x2],8
         dup     d1,v1.d[1]
         dup     d0,v0.d[1]
-LT8Store:
+LT8Store
         tbz     x6,2,LT4Store
         str     s3,[x5],4
         str     s2,[x17],4
@@ -554,7 +631,7 @@ LT8Store:
         str     s0,[x2],4
         dup     s1,v1.s[1]
         dup     s0,v0.s[1]
-LT4Store:
+LT4Store
         tbz     x6,1, LT2Store
         str     h3,[x5],2
         str     h2,[x17],2
@@ -564,7 +641,7 @@ LT4Store:
         str     h0,[x2],2
         dup     h1,v1.h[1]
         dup     h0,v0.h[1]
-LT2Store:
+LT2Store
         tbz     x6,0,ExitKernel
         str     b3,[x5]
         str     b2,[x17]
@@ -572,4 +649,6 @@ LT2Store:
         str     b0,[x2]
         b       ExitKernel
 
-        .end
+        NESTED_END MlasConvSymS8KernelDotLd64
+
+        END
