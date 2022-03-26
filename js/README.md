@@ -311,7 +311,7 @@ By default, the main bundle file `ort.min.js` of ONNX Runtime Web contains all f
 |ort.es5.min.js|594.15KB|134.25KB|O|O|O|O|O|
 |ort.min.js|526.02KB|125.07KB|O|O|O|O|X|
 |ort.webgl.min.js|385.25KB|83.83KB|O|X|X|X|X|
-|ort.wasm.min.js|148.56|44KB|X|O|O|O|X|
+|ort.wasm.min.js|148.56KB|44KB|X|O|O|O|X|
 |ort.wasm-core.min.js|40.56KB|12.74KB|X|O|X|X|X|
 
 #### Build ONNX Runtime as a WebAssembly static library
