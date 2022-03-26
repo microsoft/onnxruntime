@@ -592,8 +592,10 @@ def parse_arguments():
         cupti library must be added to PATH beforehand.")
 
     args = parser.parse_args()
-    if args.android_sdk_path: args.android_sdk_path = os.path.normpath(args.android_sdk_path)
-    if args.android_ndk_path: args.android_ndk_path = os.path.normpath(args.android_ndk_path)
+    if args.android_sdk_path:
+        args.android_sdk_path = os.path.normpath(args.android_sdk_path)
+    if args.android_ndk_path:
+        args.android_ndk_path = os.path.normpath(args.android_ndk_path)
 
     return args
 
