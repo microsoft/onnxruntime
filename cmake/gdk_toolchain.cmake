@@ -18,6 +18,7 @@ foreach(lang C CXX)
     string(APPEND CMAKE_${lang}_FLAGS_INIT " /D__WRL_CLASSIC_COM_STRICT__")
     string(APPEND CMAKE_${lang}_FLAGS_INIT " /D_CRT_USE_WINAPI_PARTITION_APP")
     string(APPEND CMAKE_${lang}_FLAGS_INIT " /DWIN32_LEAN_AND_MEAN")
+    string(APPEND CMAKE_${lang}_FLAGS_INIT " /DUSE_PATHCCH_LIB")
     string(APPEND CMAKE_${lang}_FLAGS_INIT " /favor:AMD64")
 
     if(GDK_PLATFORM STREQUAL Scarlett)
@@ -29,6 +30,8 @@ foreach(lang C CXX)
     endif()
 
     set(CMAKE_${lang}_STANDARD_INCLUDE_DIRECTORIES ${gdk_gxdk_path}/gameKit/Include/${GDK_PLATFORM})
+
+    set(CMAKE_${lang}_STANDARD_LIBRARIES "onecoreuap_apiset.lib" CACHE STRING "" FORCE)
 endforeach()
 
 # It's best to avoid inadvertently linking with any libraries not present in the OS.
@@ -79,8 +82,6 @@ foreach(link_type EXE SHARED MODULE)
     string(APPEND CMAKE_${link_type}_LINKER_FLAGS_INIT " /NXCOMPAT")
     string(APPEND CMAKE_${link_type}_LINKER_FLAGS_INIT " /MANIFEST:NO")
 endforeach()
-
-set(CMAKE_CXX_STANDARD_LIBRARIES_INIT xgameplatform.lib)
 
 set(gdk_dx_libs ${gdk_gxdk_path}/gameKit/lib/amd64/PIXEvt.lib)
 if(GDK_PLATFORM STREQUAL XboxScarlett)
