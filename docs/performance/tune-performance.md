@@ -360,8 +360,7 @@ NOTE: The very first `Run()` performs a variety of tasks under the hood like mak
 
 * Python
 
-```
-python
+```python
 providers = [("CUDAExecutionProvider", {"enable_cuda_graph": '1'})]
 sess_options = ort.SessionOptions()
 sess = ort.InferenceSession("my_model.onnx",  sess_options = sess_options, providers=providers)
