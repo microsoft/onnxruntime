@@ -118,7 +118,7 @@ namespace Dml
                     &buffer,
                     m_initialState,
                     nullptr,
-                    IID_PPV_ARGS(&resource)
+                    IID_GRAPHICS_PPV_ARGS(resource.ReleaseAndGetAddressOf())
                 ));
 
                 resourceId = ++m_currentResourceId;
@@ -203,7 +203,7 @@ namespace Dml
         else
         {
             // Free the underlying allocation once queued work has completed.
-            m_context->QueueReference(allocInfo->GetResource());
+            m_context->QueueReference(WrapGraphicsUnknown(allocInfo->GetResource()));
             allocInfo->DetachResource();
         }
 

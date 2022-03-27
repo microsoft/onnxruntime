@@ -12,9 +12,7 @@ namespace Dml
         m_headGpuHandle(heap->GetGPUDescriptorHandleForHeapStart()),
         m_heapFlags(heap->GetDesc().Flags)
     {
-        ComPtr<ID3D12Device> device;
-        ORT_THROW_IF_FAILED(heap->GetDevice(IID_PPV_ARGS(&device)));
-
+        ComPtr<ID3D12Device> device = GetDeviceFromDeviceChild(heap);
         m_handleIncrementSize = device->GetDescriptorHandleIncrementSize(heap->GetDesc().Type);
     }
 

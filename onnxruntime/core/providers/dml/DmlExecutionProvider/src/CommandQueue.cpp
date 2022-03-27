@@ -10,10 +10,8 @@ namespace Dml
         : m_queue(existingQueue)
         , m_type(existingQueue->GetDesc().Type)
     {
-        ComPtr<ID3D12Device> device;
-        ORT_THROW_IF_FAILED(m_queue->GetDevice(IID_PPV_ARGS(&device)));
-
-        ORT_THROW_IF_FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
+        ComPtr<ID3D12Device> device = GetDeviceFromDeviceChild(m_queue.Get());
+        ORT_THROW_IF_FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_GRAPHICS_PPV_ARGS(m_fence.ReleaseAndGetAddressOf())));
     }
 
     void CommandQueue::ExecuteCommandList(ID3D12CommandList* commandList)

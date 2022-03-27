@@ -72,8 +72,7 @@ namespace Dml
             ORT_THROW_HR(E_INVALIDARG);
         }
 
-        ComPtr<ID3D12Device> device;
-        ORT_THROW_IF_FAILED(commandQueue->GetDevice(IID_PPV_ARGS(&device)));
+        ComPtr<ID3D12Device> device = GetDeviceFromDeviceChild(commandQueue);
 
         m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands);
 

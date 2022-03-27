@@ -36,9 +36,9 @@
 #include <d3d12.h>
 #include <d3d12sdklayers.h>
 #include "External/D3DX12/d3dx12.h"
-#define IGraphicsUnknown IUnknown
-#define IID_GRAPHICS_PPV_ARGS IID_PPV_ARGS
 #endif
+
+#include "GraphicsUnknownHelper.h"
 
 #include <DirectML.h>
 #include "core/common/common.h"
