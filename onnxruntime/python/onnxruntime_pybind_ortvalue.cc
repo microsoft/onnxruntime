@@ -246,9 +246,9 @@ void addOrtValueMethods(pybind11::module& m) {
 
         return *ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto);
       })
-      .def("proto_type", [](const OrtValue* ort_value) -> int32_t {
-        return GetProtoType(*ort_value);
-      }, "Returns an integer equal to the ONNX proto type of the tensor or sequence. "
+      .def("element_type", [](const OrtValue* ort_value) -> int32_t {
+        return GetTensorProtoType(*ort_value);
+      }, "Returns an integer equal to the ONNX tensor proto type of the tensor or sequence. "
          "This integer is one type defined by ONNX TensorProto_DataType "
          "(such as onnx.TensorProto.FLOAT)."
          "Raises an exception in any other case.")

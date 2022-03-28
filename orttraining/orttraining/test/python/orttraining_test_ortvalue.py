@@ -103,7 +103,7 @@ class TestOrtValue(unittest.TestCase):
         for i, (ov, ar) in enumerate(zip(vect, narrays)):
             ovar = ov.numpy()
             assert_almost_equal(ar, ovar)
-            self.assertEqual(ov.proto_type(), vect.proto_type_at(i))
+            self.assertEqual(ov.element_type(), vect.proto_type_at(i))
 
     def testOrtValueVector_bool(self):
         narrays = [
@@ -353,7 +353,7 @@ class TestOrtValue(unittest.TestCase):
         device = torch.device('cuda:0')
         self._ortvalues_to_torch_tensor_list(device, torch.Tensor, False)
 
-    def test_type_proto(self):
+    def test_element_type(self):
         values = {
             np.bool_: ("tensor(bool)", 9),
             np.int8: ("tensor(int8)", 3),
@@ -373,7 +373,7 @@ class TestOrtValue(unittest.TestCase):
             ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)
             stype = ortvalue.data_type()
             self.assertIn(stype, expected)
-            proto_type = ortvalue.proto_type()
+            proto_type = ortvalue.element_type()
             self.assertIn(proto_type, expected)
 
 

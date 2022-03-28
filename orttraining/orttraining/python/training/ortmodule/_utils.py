@@ -62,7 +62,7 @@ def _ortvalues_to_torch_tensor(ortvalues, device):
     if len(ortvalues) == 0:
         return tuple()
     if hasattr(ortvalues, 'to_dlpacks'):
-        if all(ortvalue.proto_type() != TensorProto.BOOL for ortvalue in ortvalues):
+        if all(ortvalue.element_type() != TensorProto.BOOL for ortvalue in ortvalues):
             if 'ort' == device.type:
                 if not hasattr(C, 'to_aten_ort_device_tensor'):
                     raise AttributeError("onnxruntime is missing to_aten_ort_device_tensor needed to support device == 'ort'.")
@@ -99,7 +99,7 @@ def _ortvalues_to_torch_tensor(ortvalues, device):
         for i in range(len(ortvalues)):
             dlp = ortvalues.dlpack_at(i)
             te = from_dlpack(dlp)
-            if C.is_dlpack_uint8_tensor(dlp) and ortvalues[i].proto_type() == TensorProto.BOOL:
+            if C.is_dlpack_uint8_tensor(dlp) and ortvalues[i].element_type() == TensorProto.BOOL:
                 te = te.to(torch.bool)
             tensors.append(te)
         return tuple(tensors)
@@ -111,7 +111,7 @@ def _ortvalues_to_torch_tensor(ortvalues, device):
             ov = ov._ortvalue
         dlp = ov.to_dlpack()
         te = from_dlpack(dlp)
-        if ov.proto_type() == TensorProto.BOOL:
+        if ov.element_type() == TensorProto.BOOL:
             te = te.to(torch.bool)
         tensors.append(te)
     return tuple(tensors)

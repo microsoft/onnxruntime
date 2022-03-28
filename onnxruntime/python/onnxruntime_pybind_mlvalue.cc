@@ -110,7 +110,7 @@ OrtMemoryInfo GetMemoryInfoPerDeviceType(const OrtDevice& ort_device) {
   return mem_info;
 }
 
-int32_t GetProtoType(const OrtValue& ort_value) {
+int32_t GetTensorProtoType(const OrtValue& ort_value) {
   if (ort_value.IsTensor()) {
     return ort_value.Get<Tensor>().GetElementType();
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -120,7 +120,7 @@ int32_t GetProtoType(const OrtValue& ort_value) {
   } else if (ort_value.IsTensorSequence()) {
     return ort_value.Get<TensorSeq>().DataType()->AsPrimitiveDataType()->GetDataType();
   } else {
-    throw std::runtime_error("proto_type is unavailable for this value.");
+    throw std::runtime_error("Tensor proto_type is unavailable for this value.");
   }
 }
 

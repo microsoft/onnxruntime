@@ -379,8 +379,8 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) {
         return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx)));
       })
-      .def("proto_type_at", [](std::vector<OrtValue>* v, const size_t idx) -> int32_t {
-        return GetProtoType(v->at(idx));
+      .def("element_type_at", [](std::vector<OrtValue>* v, const size_t idx) -> int32_t {
+        return GetTensorProtoType(v->at(idx));
       }, "Returns an integer equal to the ONNX proto type of the tensor at position i. "
          "This integer is one type defined by ONNX TensorProto_DataType "
          "(such as onnx.TensorProto.FLOAT)."
