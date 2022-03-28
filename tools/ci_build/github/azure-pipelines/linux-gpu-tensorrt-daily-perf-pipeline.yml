@@ -88,6 +88,15 @@ jobs:
 
   steps:
 
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        buildType: 'specific'
+        project: 'Lotus'
+        buildVersionToDownload: 'latest'
+        pipeline: '841'
+        artifact: 'onnxruntime_gpu/Release'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+
     - ${{ if eq(parameters.BuildORT, true) }}:
 
       - ${{ if eq(parameters.RunDocker, true) }}: 
