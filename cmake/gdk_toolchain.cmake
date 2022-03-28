@@ -84,7 +84,7 @@ foreach(link_type EXE SHARED MODULE)
 endforeach()
 
 set(gdk_dx_libs ${gdk_gxdk_path}/gameKit/lib/amd64/PIXEvt.lib)
-if(GDK_PLATFORM STREQUAL XboxScarlett)
+if(GDK_PLATFORM STREQUAL Scarlett)
     list(APPEND gdk_dx_libs ${gdk_gxdk_path}/gameKit/lib/amd64/Scarlett/d3d12_xs.lib)
     list(APPEND gdk_dx_libs ${gdk_gxdk_path}/gameKit/lib/amd64/Scarlett/xg_xs.lib)
 elseif(GDK_PLATFORM STREQUAL XboxOne)
