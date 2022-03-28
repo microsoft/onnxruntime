@@ -131,7 +131,7 @@ However, int8 support won't be available for VPU.
 
 Starting from the OpenVINO EP 2021.4 Release, support for external weights is added. OpenVINO™ EP now  supports ONNX models that store weights in external files. It is especially useful for models larger than 2GB because of protobuf limitations.
 
-See the [OpenVINO ONNX Support documentation](https://docs.openvino.ai/latest/openvino_docs_MO_DG_prepare_model_convert_model_Convert_Model_From_ONNX.html).
+See the [OpenVINO ONNX Support documentation](https://docs.openvino.ai/latest/classov_1_1Core.html).
 
 Converting and Saving an ONNX Model to External Data:
 Use the ONNX API's.[documentation](https://github.com/onnx/onnx/blob/master/docs/ExternalData.md#converting-and-saving-an-onnx-model-to-external-data).
