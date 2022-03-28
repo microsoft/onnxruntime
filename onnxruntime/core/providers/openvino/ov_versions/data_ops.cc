@@ -61,6 +61,7 @@ std::set<std::string> ops_supported_only_in_model = {
 //Ops which are supported as functions (as composite ops)
 std::set<std::string> ops_supported_as_function = {
     "LessOrEqual",
+    "GreaterOrEqual",
 };
 
 std::vector<SupportedOp> supported_op_mode = {
@@ -275,6 +276,7 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Max", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Add", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Add", V_2022_1, {"All"}});
+  no_dimension_supported_.push_back({"And", V_2022_1, {"All"}});
   no_dimension_supported_.push_back({"Less", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Less", V_2022_1, {"CPU"}});
   no_dimension_supported_.push_back({"Greater", V_2021_2, {"MYRIAD"}});
@@ -282,6 +284,7 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Clip", V_2022_1, {"All"}});
   no_dimension_supported_.push_back({"Resize", V_2021_2, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Equal", V_2021_2, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"Equal", V_2022_1, {"CPU"}});
   no_dimension_supported_.push_back({"Reshape", V_2021_3, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Reshape", V_2022_1, {"All"}});
   no_dimension_supported_.push_back({"Ceil", V_2021_3, {"MYRIAD"}});
@@ -937,6 +940,19 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Reshape", obj});
   }
   {
+    UnsupportedOpMode obj = {{V_2022_1},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                                auto& attributes = node->GetAttributes();
+                                if (attributes.count("mode") ==1 && attributes.at("mode").s() == "linear") {
+                                  if (node->InputDefs().size() == 4) {
+                                    return true;
+                                  }
+                                }
+                               return false;
+                             }};
+    op_list_.insert({"Resize", obj});
+  }
+  {
     UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                 if (device_id_.find("GPU") != std::string::npos) {
@@ -1075,7 +1091,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Slice", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4, V_2022_1},
+    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
                                //Shape can't have empty axes attribute
                                const auto& attributes = node->GetAttributes();
@@ -1111,8 +1127,9 @@ void DataOps::populate_op_mode_supported() {
                                 //If the operator is unsqueeze
                                 //If axes is an input, then we cannot produce a static graph. Conversion fails in convert_function_to_cnn_network.
                                 for (size_t i = 0; i < node->InputDefs().size(); i++) {
-                                  if(node->InputDefs()[i]->Name() == "axes")
+                                  if(node->InputDefs()[i]->Name() == "axes") {
                                     return true;
+                                  }
                                 }
                                 return (!this->dimension_unsupported(node));
                              }};
@@ -1316,7 +1333,7 @@ bool DataOps::dimension_unsupported(const Node* node) {
       if (input_dims != 4 && input_dims != 5)
         return false;
     }
-
+    /*
     if (node->OpType() == "Unsqueeze") {
       auto& attributes = node->GetAttributes();
       int64_t axes_size = attributes.count("axes") > 0 ? attributes.at("axes").ints().size() : 0;
@@ -1328,6 +1345,7 @@ bool DataOps::dimension_unsupported(const Node* node) {
         return false;
       }
     }
+    */
 
     if (node->OpType() == "ReduceSum") {
       auto& attributes = node->GetAttributes();
