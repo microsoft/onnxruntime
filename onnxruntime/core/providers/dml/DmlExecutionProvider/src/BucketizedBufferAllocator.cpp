@@ -143,7 +143,7 @@ namespace Dml
                 &buffer,
                 m_initialState,
                 nullptr,
-                IID_PPV_ARGS(&resource)
+                IID_GRAPHICS_PPV_ARGS(resource.ReleaseAndGetAddressOf())
             ));
 
             resourceId = ++m_currentResourceId;

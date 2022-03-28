@@ -670,8 +670,13 @@ namespace Dml
         }
         else
         {         
+#ifdef _GAMING_XBOX
+            ComPtr<GraphicsUnknownWrapper> wrappedResource = Microsoft::WRL::Make<GraphicsUnknownWrapper>(m_allocator->DecodeDataHandle(data)->GetResource());
+            *abiData = wrappedResource.Detach();
+#else
             ComPtr<ID3D12Resource> resource = m_allocator->DecodeDataHandle(data)->GetResource();
             *abiData = resource.Detach();
+#endif
         } 
     }
 
@@ -696,9 +701,16 @@ namespace Dml
         }
         else
         {
+#ifdef _GAMING_XBOX
+            ComPtr<ID3D12GraphicsCommandList> commandList;
+            m_context->GetCommandListForRecording(commandList.GetAddressOf());
+            ComPtr<GraphicsUnknownWrapper> wrappedCommandList = Microsoft::WRL::Make<GraphicsUnknownWrapper>(commandList.Get());
+            *abiExecutionObject = wrappedCommandList.Detach();
+#else
             ComPtr<ID3D12GraphicsCommandList> commandList;
             m_context->GetCommandListForRecording(commandList.GetAddressOf());
             *abiExecutionObject = commandList.Detach();
+#endif
         }  
     }
     

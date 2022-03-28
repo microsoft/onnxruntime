@@ -11,7 +11,8 @@ namespace Dml
 class GraphicsUnknownWrapper : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IUnknown>
 {
 public:
-    GraphicsUnknownWrapper(IGraphicsUnknown* graphicsUnknown) : m_graphicsUnknown(graphicsUnknown) {}
+    explicit GraphicsUnknownWrapper(const Microsoft::WRL::ComPtr<IGraphicsUnknown>& graphicsUnknown) : m_graphicsUnknown(graphicsUnknown.Get()) {}
+    explicit GraphicsUnknownWrapper(IGraphicsUnknown* graphicsUnknown) : m_graphicsUnknown(graphicsUnknown) {}
 
     HRESULT __stdcall QueryInterface(const IID& iid, void** object) noexcept final
     {

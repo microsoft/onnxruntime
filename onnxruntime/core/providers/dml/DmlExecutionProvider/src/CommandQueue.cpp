@@ -11,7 +11,7 @@ namespace Dml
         , m_type(existingQueue->GetDesc().Type)
     {
         ComPtr<ID3D12Device> device;
-        ORT_THROW_IF_FAILED_NOT_GAMING_XBOX(m_queue->GetDevice(IID_PPV_ARGS(device.GetAddressOf())));
+        ORT_THROW_IF_FAILED_NOT_GAMING_XBOX(m_queue->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
         ORT_THROW_IF_FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_GRAPHICS_PPV_ARGS(m_fence.ReleaseAndGetAddressOf())));
     }
 

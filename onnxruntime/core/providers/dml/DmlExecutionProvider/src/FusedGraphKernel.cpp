@@ -475,8 +475,8 @@ namespace Dml
             // Queue references to objects which must be kept alive until resulting GPU work completes
             m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(m_graphicsCommandList).Get());
             m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(m_heap).Get());
-            m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(m_bindingTable).Get());
-            m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(m_persistentResourceAllocatorUnk).Get());
+            m_winmlProvider->QueueReference(m_bindingTable.Get());
+            m_winmlProvider->QueueReference(m_persistentResourceAllocatorUnk.Get());
         }
 
         ComPtr<IDMLCompiledOperator> m_compiledExecutionPlanOperator;
