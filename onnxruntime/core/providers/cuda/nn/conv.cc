@@ -195,7 +195,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       // especially for EXHAUSTIVE algo search which may result in a better algo selection.
       // ORTModule uses different algo search options (HEURISTIC, and use max workspace size) compared to
       // inference build (EXHAUSTIVE, 32M workspace size). We observed better perf when we pad input shape
-      // [N,C,D] to [N,C,1,D], expecially on A100, and excpecially for ConvGrad.
+      // [N,C,D] to [N,C,1,D], expecially on A100, and especially for ConvGrad.
       // PyTorch also pads to [N,C,1,D]. For inference build, we still pad it to [N, C, D, 1] as this seems
       // to be the sweet spot for all algo search options: EXHAUSTIVE, HEURISTIC, and DEFAULT.
       // See PR #7348 and #7702 for more context.
