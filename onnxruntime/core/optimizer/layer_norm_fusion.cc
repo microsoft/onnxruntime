@@ -72,9 +72,19 @@ X --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Cas
                       |                                               |
                       +-----------------------------------------------+
 
-Since LayerNormalization supports input and scale/bias have different data type, and during the kernel execution,
-data are casted to float/double to calculate for precision, so if there is a Cast before ReduceMean, we can also
-remove this Cast.
+OR
+
+         +---------------------+
+         |                     |
+         |                     v
+X --> Cast --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Cast --> Mul --> Add
+                               |                                               ^
+                               |                                               |
+                               +-----------------------------------------------+
+
+Logically since LayerNormalization supports input and scale/bias in different data types, and during the kernel execution,
+data are casted to float/double to calculate for precision, so if there is any Cast Ops in the sub-graph, we can remove it.
+Such Cast Op can be the input of the sub-graph, or an Cast Op between the Div and Mul nodes.
 */
 Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
@@ -130,8 +140,10 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
     nodes_to_remove.push_back(sub_node);
 
-    // Check if the ReduceMean and Sub nodes have same input, and if that input is a Cast
-    // node, we can also remove it.
+    // Apex O2 pattern specific match starts...
+    // Logically since we support input and scale/bias in different data types, those Cast Ops in sub-graph
+    // can be removed. This is one possible place a Cast Op can exist, that is the input of the sub-graph.
+    // Make sure it consumes by the sub-graph only.
     const NodeArg* p_reduce_mean_input = reduce_mean_node.MutableInputDefs()[0];
     const NodeArg* p_sub_input = nullptr;
     for (NodeArg* node_arg : sub_node.MutableInputDefs()) {
@@ -162,7 +174,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     bool has_leading_cast = false;
     if (p_reduce_mean_input_node) {
       Node& reduce_mean_input_node = *graph.GetNode(p_reduce_mean_input_node->Index());
-      // If input to Pow is a Cast, and the Cast has same consumer count as subCnt + 1
+      // If input to the 1st ReduceMean is a Cast, and the Cast has same consumer count as subCnt + 1
       if (graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_input_node, "Cast", {9, 13}) &&
           reduce_mean_input_node.GetExecutionProviderType() == reduce_mean_node.GetExecutionProviderType() &&
           optimizer_utils::CheckOutputEdges(graph, reduce_mean_input_node, static_cast<size_t>(subCnt + 1))) {
@@ -170,6 +182,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         has_leading_cast = true;
       }
     }
+    // Apex O2 pattern specific match ends...
 
     // Find the "Div" node after "Sub".
     const Node* p_div = nullptr;
@@ -276,6 +289,9 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       }
     }
 
+    // Apex O2 pattern specific match starts...
+    // Logically since we support input and scale/bias in different data types, those Cast Ops in sub-graph
+    // can be removed. This is one possible place a Cast Op can exist, that is between Div and Mul nodes.
     // div --> mul or div --> cast --> mul
     Node* next_node = graph.GetNode(div_node.OutputNodesBegin()->Index());
     if (graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Cast", {9, 13}) &&
@@ -283,6 +299,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       nodes_to_remove.push_back(*next_node);
       next_node = graph.GetNode(next_node->OutputNodesBegin()->Index());
     }
+    // Apex O2 pattern specific match ends...
 
     Node& mul_node = *next_node;
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7, 13, 14}) ||
@@ -416,7 +433,7 @@ X --> Cast1 --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Cast2 --> Mul
         |                                               |                  |
         +-----------------------------------------------+                Scale
 
-Since SimplifiedLayerNormalization supports input and scale have different data type,
+Since SimplifiedLayerNormalization supports input and scale in different data types,
 and during the kernel execution, data are casted to float/double to calculate for precision,
 so we can fuse it to a single SimplifiedLayerNormalization, the output type is same as Scale.
 This results in the graph:

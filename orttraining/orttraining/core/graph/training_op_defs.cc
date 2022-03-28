@@ -2193,7 +2193,7 @@ Example 4:
           "Constrain input X and its gradient's type to float tensors.")
       .TypeConstraint(
           "U",
-          {"tensor(float)", "tensor(bfloat16)"},
+          {"tensor(float)", "tensor(double)"},
           "Constrain mean and inv_std_var to float tensors.")
       .TypeConstraint(
           "V",
@@ -2233,7 +2233,7 @@ Example 4:
             // Inputs Y_grad and X are of shape [d[0], ..., d[axis-1], d[axis], ..., d[rank-1]]
             // Input scale is of shape [d[axis], ..., d[rank-1]]
             // Inputs mean and inv_std_dev are of shape [d[0], ..., d[axis-1], 1, ..., 1] (same rank as X).
-            // Cast to type U for calculation for batter precision.
+            // Cast to type U for calculation for better precision.
             //
             auto axis_ref_attr = MakeRefAttribute("axis", AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
             builder
@@ -2298,7 +2298,7 @@ Example 4:
           "Constrain input X and its gradient's type to float tensors.")
       .TypeConstraint(
           "U",
-          {"tensor(float)"},
+          {"tensor(float)", "tensor(double)"},
           "Constrain mean and inv_std_var to float tensors.")
       .TypeConstraint(
           "V",
@@ -2328,7 +2328,7 @@ Example 4:
           "Constrain input X and its gradient's type to float tensors.")
       .TypeConstraint(
           "U",
-          {"tensor(float)"},
+          {"tensor(float)", "tensor(double)"},
           "Constrain mean and inv_std_var to float tensors.")
       .TypeConstraint(
           "V",

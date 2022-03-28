@@ -1993,7 +1993,7 @@ void RegisterContribSchemas() {
           "Constrain input X type to float tensors.")
       .TypeConstraint(
           "U",
-          {"tensor(float)", "tensor(bfloat16)"},
+          {"tensor(float)", "tensor(double)"},
           "Type of Mean and InvStdDev tensors.")
       .TypeConstraint(
           "V",
@@ -2138,7 +2138,7 @@ void RegisterContribSchemas() {
           "Constrain input X type to float tensors.")
       .TypeConstraint(
           "U",
-          {"tensor(float)"},
+          {"tensor(float)", "tensor(double)"},
           "Constrain mean and inv_std_var to be float tensors.")
       .TypeConstraint(
           "V",
