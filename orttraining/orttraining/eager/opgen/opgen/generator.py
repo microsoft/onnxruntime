@@ -362,7 +362,7 @@ class ORTGen:
             writer.write(f', {attr.type}')
           elif attr.type == AttrType.TENSOR:
             writer.write(f', true')
-          elif attr.type != AttrType.STRING and attr.type != AttrType.TENSOR:
+          elif attr.type != AttrType.STRING:
             raise FunctionGenerationError(
               cpp_func,
               f'Unsure how how to map ONNX op "{onnx_op.name}" attribute ' + 
