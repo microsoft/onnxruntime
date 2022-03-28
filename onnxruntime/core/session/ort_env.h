@@ -81,6 +81,8 @@ struct OrtEnv {
   static onnxruntime::OrtMutex m_;
   static int ref_count_;
 
+  static std::atomic_bool dtor_has_run_once_;
+
   std::unique_ptr<onnxruntime::Environment> value_;
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtEnv);

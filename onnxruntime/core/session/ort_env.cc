@@ -20,6 +20,8 @@ std::unique_ptr<OrtEnv> OrtEnv::p_instance_;
 int OrtEnv::ref_count_ = 0;
 onnxruntime::OrtMutex OrtEnv::m_;
 
+std::atomic_bool OrtEnv::dtor_has_run_once_{false};
+
 LoggingWrapper::LoggingWrapper(OrtLoggingFunction logging_function, void* logger_param)
     : logging_function_(logging_function), logger_param_(logger_param) {
 }
@@ -33,6 +35,7 @@ void LoggingWrapper::SendImpl(const onnxruntime::logging::Timestamp& /*timestamp
 
 OrtEnv::OrtEnv(std::unique_ptr<onnxruntime::Environment> value1)
     : value_(std::move(value1)) {
+  ORT_ENFORCE(!dtor_has_run_once_, "Cannot initialize OrtEnv again after it has already been destroyed.");
 }
 
 OrtEnv::~OrtEnv() {
@@ -40,6 +43,7 @@ OrtEnv::~OrtEnv() {
 #if !defined(ORT_MINIMAL_BUILD)
   UnloadSharedProviders();
 #endif
+  dtor_has_run_once_ = true;
 }
 
 OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_info,
