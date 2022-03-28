@@ -360,6 +360,8 @@ class ORTGen:
           writer.write(f'"{attr_name}", {attr.value}')
           if attr.type.startswith('at::ScalarType::'):
             writer.write(f', {attr.type}')
+          elif attr.type == AttrType.TENSOR:
+            writer.write(f', true')
           elif attr.type != AttrType.STRING and attr.type != AttrType.TENSOR:
             raise FunctionGenerationError(
               cpp_func,
