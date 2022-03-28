@@ -92,7 +92,9 @@ jobs:
       inputs:
         buildType: 'specific'
         project: 'Lotus'
-        buildVersionToDownload: 'latest'
+        preferTriggeringPipeline: true 
+        runBranch: 'ref/heads/master'
+        buildVersionToDownload: 'latestFromBranch'
         pipeline: '841'
         artifact: 'onnxruntime_gpu'
         targetPath: '$(Build.ArtifactStagingDirectory)'
