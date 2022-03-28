@@ -203,7 +203,7 @@ namespace Dml
         else
         {
             // Free the underlying allocation once queued work has completed.
-            m_context->QueueReference(WrapGraphicsUnknown(allocInfo->GetResource()));
+            m_context->QueueReference(allocInfo->GetResource());
             allocInfo->DetachResource();
         }
 

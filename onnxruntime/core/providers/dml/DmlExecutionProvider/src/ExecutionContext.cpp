@@ -178,7 +178,18 @@ namespace Dml
         bool waitForUnsubmittedWork = (m_currentRecorder != nullptr);
         m_queue->QueueReference(object, waitForUnsubmittedWork);
     }
-    
+
+#ifdef _GAMING_XBOX
+    void ExecutionContext::QueueReference(IGraphicsUnknown* object) 
+    {              
+        assert(!m_closed);
+        // If something has been recorded into a command list but not submitted yet, it means that the *next* fence
+        // value is the one to signal completion.
+        bool waitForUnsubmittedWork = (m_currentRecorder != nullptr);
+        m_queue->QueueReference(object, waitForUnsubmittedWork);
+    }
+#endif
+
     void ExecutionContext::Close()
     {
         assert(!m_closed);

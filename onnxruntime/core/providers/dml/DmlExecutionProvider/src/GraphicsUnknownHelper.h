@@ -5,72 +5,47 @@
 
 namespace Dml
 {
+// D3D12.x interfaces inherit from IGraphicsUnknown, which does not inherit from IUnknown. This
+// wrapper exists to pass IGraphicsUnknown-inheriting objects to functions with IUnknown parameters.
 #ifdef _GAMING_XBOX
-// Helper to pass IGraphicsUnknown objects as IUnknown
-class GraphicsUnknownWrapper : public IUnknown
+class GraphicsUnknownWrapper : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IUnknown>
 {
 public:
-    GraphicsUnknownWrapper(IGraphicsUnknown* gfxUnk)
-        : m_inner(gfxUnk)
-    {
-    }
+    GraphicsUnknownWrapper(IGraphicsUnknown* graphicsUnknown) : m_graphicsUnknown(graphicsUnknown) {}
 
-    void Assign(IGraphicsUnknown* gfxUnk)
+    HRESULT __stdcall QueryInterface(const IID& iid, void** object) noexcept final
     {
-        m_inner = gfxUnk;
-    }
+        if (iid == __uuidof(IUnknown))
+        {
+            return RuntimeClass::QueryInterface(iid, object);
+        }
 
-    ULONG AddRef()
-    {
-        return m_inner->AddRef();
-    }
-
-    ULONG Release()
-    {
-        return m_inner->Release();
-    }
-
-    virtual HRESULT STDMETHODCALLTYPE QueryInterface(
-        REFIID riid,
-        _COM_Outptr_ void __RPC_FAR* __RPC_FAR* ppvObject)
-    {
-        return m_inner->QueryInterface(riid, ppvObject);
+        return m_graphicsUnknown->QueryInterface(iid, object);
     }
 
 private:
-    Microsoft::WRL::ComPtr<IGraphicsUnknown> m_inner;
+    Microsoft::WRL::ComPtr<IGraphicsUnknown> m_graphicsUnknown;
 };
-
-IUnknown* WrapGraphicsUnknown(IGraphicsUnknown* graphicsUnknown)
-{
-    // TODO: this is a hack to build but will leak and needs to be replaced.
-    Microsoft::WRL::ComPtr<GraphicsUnknownWrapper> wrapper{ new GraphicsUnknownWrapper(graphicsUnknown) };
-    return wrapper.Detach();
-}
-
-#else // !_GAMING_XBOX
-
-#define IGraphicsUnknown IUnknown
-#define IID_GRAPHICS_PPV_ARGS IID_PPV_ARGS
-
-IUnknown* WrapGraphicsUnknown(IGraphicsUnknown* graphicsUnknown)
-{
-    return graphicsUnknown;
-}
-
 #endif
 
-Microsoft::WRL::ComPtr<ID3D12Device> GetDeviceFromDeviceChild(ID3D12DeviceChild* child)
-{
-    Microsoft::WRL::ComPtr<ID3D12Device> device;
 #ifdef _GAMING_XBOX
-    // Return type of ID3D12DeviceChild::GetDevice is void
-    child->GetDevice(IID_GRAPHICS_PPV_ARGS(device.ReleaseAndGetAddressOf()));
+#define WRAP_GRAPHICS_UNKNOWN(expr) Microsoft::WRL::Make<GraphicsUnknownWrapper>(expr)
 #else
-    // Return type of ID3D12DeviceChild::GetDevice is HRESULT
-    ORT_THROW_IF_FAILED(child->GetDevice(IID_PPV_ARGS(device.ReleaseAndGetAddressOf())));
+#define WRAP_GRAPHICS_UNKNOWN(expr) (expr)
 #endif
-    return device;
-}
 
+// IID_GRAPHICS_PPV_ARGS is to IGraphicsUnknown as IID_PPV_ARGS is to IUnknown.
+// There is no IGraphicsUnknown in stock D3D, so this is the same as IID_PPV_ARGS.
+// This macro should be used anywhere an interface is represented in both D3D12.x and
+// D3D12.
+#ifndef _GAMING_XBOX
+#define IID_GRAPHICS_PPV_ARGS IID_PPV_ARGS
+#endif
+
+// APIs like ID3D12DeviceChild::GetDevice return void in D3D12.x, but return HRESULT in D3D12.
+#ifdef _GAMING_XBOX
+#define ORT_THROW_IF_FAILED_NOT_GAMING_XBOX(hr) (hr)
+#else
+#define ORT_THROW_IF_FAILED_NOT_GAMING_XBOX(hr) ORT_THROW_IF_FAILED(hr)
+#endif
 } // namespace Dml

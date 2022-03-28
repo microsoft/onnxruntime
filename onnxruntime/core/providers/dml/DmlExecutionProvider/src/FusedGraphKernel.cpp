@@ -164,7 +164,7 @@ namespace Dml
             std::for_each(
                 initializeResourceRefs.begin(), 
                 initializeResourceRefs.end(), 
-                [&](ComPtr<ID3D12Resource>& resource){ m_winmlProvider->QueueReference(WrapGraphicsUnknown(resource.Get())); }
+                [&](ComPtr<ID3D12Resource>& resource){ m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(resource).Get()); }
             );  
 
             if (graphDesc.reuseCommandList)
@@ -473,10 +473,10 @@ namespace Dml
             m_completionValue = completionValue;
 
             // Queue references to objects which must be kept alive until resulting GPU work completes
-            m_winmlProvider->QueueReference(WrapGraphicsUnknown(m_graphicsCommandList.Get()));
-            m_winmlProvider->QueueReference(WrapGraphicsUnknown(m_heap.Get()));
-            m_winmlProvider->QueueReference(m_bindingTable.Get());
-            m_winmlProvider->QueueReference(m_persistentResourceAllocatorUnk.Get());
+            m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(m_graphicsCommandList).Get());
+            m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(m_heap).Get());
+            m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(m_bindingTable).Get());
+            m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(m_persistentResourceAllocatorUnk).Get());
         }
 
         ComPtr<IDMLCompiledOperator> m_compiledExecutionPlanOperator;
