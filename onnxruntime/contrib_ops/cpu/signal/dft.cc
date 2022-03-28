@@ -23,7 +23,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
     DFT);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -31,7 +31,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSExperimentalDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder().MayInplace(0, 0).TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraints<float, double>()),
     IDFT);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -199,8 +199,10 @@ static Status fft_radix2(OpKernelContext* /*ctx*/,
       auto first_idx = bit_reverse(k, current_significant_bits);
       auto second_idx = bit_reverse(midpoint + k, current_significant_bits);
       for (size_t j = 0; j < number_of_samples; j += i) {
-        std::complex<T>* even = (Y_data + j*Y_data_stride) + k;
-        std::complex<T>* odd = (Y_data + j*Y_data_stride) + (midpoint + k);
+        auto even_index = k + j;
+        auto odd_index  = k + j + midpoint;
+        std::complex<T>* even = (Y_data + even_index * Y_data_stride);
+        std::complex<T>* odd = (Y_data + odd_index * Y_data_stride);
         std::complex<T> first = *even + (V[first_idx] * *odd);
         std::complex<T> second = *even + (V[second_idx] * *odd);
         *even = first;
@@ -220,7 +222,7 @@ static Status fft_radix2(OpKernelContext* /*ctx*/,
   if (is_onesided) {
     auto destination = reinterpret_cast<std::complex<T>*>(Y->MutableDataRaw()) + Y_offset;
     for (size_t i = 0; i < number_of_samples; i++) {
-      *(destination + Y_stride * i) = *(Y_data + i);
+      *(destination + Y_stride * i) = *(Y_data + i * Y_data_stride);
     }
   }
 
@@ -278,17 +280,22 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
   
   auto batch_and_signal_rank = X->Shape().NumDimensions();
   auto total_dfts = static_cast<size_t>(X->Shape().Size() / X->Shape()[axis]);
+
+  auto is_input_real = X->Shape().NumDimensions() == 2 || X->Shape()[X->Shape().NumDimensions() - 1] == 1;
+  auto compex_input_factor = is_input_real ? 1 : 2;
   if (X->Shape().NumDimensions() > 2)
   {
     total_dfts /= X->Shape()[X->Shape().NumDimensions() - 1];
     batch_and_signal_rank -= 1;
   }
 
+
+
   // Calculate x/y offsets/strides
   for (size_t i = 0; i < total_dfts; i++)
   {
     size_t X_offset = 0;
-    size_t X_stride = X_shape.SizeFromDimension(axis+1);
+    size_t X_stride = X_shape.SizeFromDimension(axis+1) / compex_input_factor;
     size_t cumulative_packed_stride = total_dfts;
     size_t temp = i;
     for (size_t r = 0; r < batch_and_signal_rank; r++) {
@@ -299,7 +306,7 @@ static Status discrete_fourier_transform(OpKernelContext* ctx, const Tensor* X, 
       cumulative_packed_stride /= X_shape[r];
       auto index = temp / cumulative_packed_stride;
       temp -= (index * cumulative_packed_stride);
-      X_offset += index * X_shape.SizeFromDimension(r + 1);
+      X_offset += index * X_shape.SizeFromDimension(r + 1) / compex_input_factor;
     }
 
     size_t Y_offset = 0;

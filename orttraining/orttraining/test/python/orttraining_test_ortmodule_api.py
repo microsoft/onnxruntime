@@ -1134,8 +1134,16 @@ def test_gradient_correctness_reducesum(dim, keepdim):
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
-@pytest.mark.parametrize("equation", ["s,se->se", "se,sc->sec", "se,se->s", "sec,sm->ecm",
-                                      "sec,ecm->sm", "ks,ksm->sm", "kes,ems->mek", "kes,ksm->ms"])
+# In PyTorch 1.11.0, there is issue during reduce node shape handling for exporter, so any sub-graph that
+# contains ReduceProd will fail to run, for example, "sec,sm->ecm", "sec,ecm->sm".
+# Currently skip these cases and test_gradient_correctness_einsum_2,
+# will enable these tests again once the issue in PyTorch is fixed.
+skip_torch_1_11 = pytest.mark.skipif(LooseVersion(torch.__version__) >= LooseVersion('1.11.0'), reason="PyTorch 1.11 incompatible")
+@pytest.mark.parametrize("equation", [
+    "s,se->se", "se,sc->sec", "se,se->s", "ks,ksm->sm", "kes,ems->mek", "kes,ksm->ms",
+    pytest.param("sec,sm->ecm", marks=[skip_torch_1_11]),
+    pytest.param("sec,ecm->sm", marks=[skip_torch_1_11])
+])
 def test_gradient_correctness_einsum(equation):
     class NeuralNetEinsum(torch.nn.Module):
         def __init__(self, bias_size):
@@ -1183,6 +1191,7 @@ def test_gradient_correctness_einsum(equation):
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-3)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-3, rtol=1e-3)
 
+@skip_torch_1_11
 def test_gradient_correctness_einsum_2():
     class NeuralNetEinsum(torch.nn.Module):
         def __init__(self, bias_size):
@@ -4858,3 +4867,32 @@ def test_random_states_unchanged_for_ortmodule():
     assert random_state_equal(ori_random_states, new_random_states)
 
     del os.environ['ORTMODULE_FALLBACK_RETRY']
+
+
+def test_squeeze_custom_symbolic_registry():
+    class SqueezeModel(torch.nn.Module):
+        def __init__(self):
+            super(SqueezeModel, self).__init__()
+            self.conv = torch.nn.Conv2d(in_channels=3, out_channels=32, kernel_size=14, stride=14, bias=False)
+        def forward(self, x):
+            x = x.squeeze(1)
+            return self.conv(x)
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+
+    device = 'cuda'
+    pt_model = SqueezeModel().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.randn(1, 1, 3, 224, 224, requires_grad=True, device=device)
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_prediction, pt_loss = run_step(pt_model, pt_x)
+    ort_prediction, ort_loss = run_step(ort_model, ort_x)
+    _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
+    _test_helpers.assert_values_are_close(pt_loss, ort_loss)
+    _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)

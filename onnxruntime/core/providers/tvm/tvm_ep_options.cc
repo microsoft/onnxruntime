@@ -134,6 +134,11 @@ void TvmEPOptionsHelper::optionsPostprocess(TvmEPOptions& options) {
   optLevelPostprocess(options.opt_level);
 }
 
+bool TvmEPOptionsHelper::checkCPUTarget(const std::string& target) {
+  bool check = target.find("llvm") != std::string::npos;
+  return check;
+}
+
 bool TvmEPOptionsHelper::checkGPUTarget(const std::string& target) {
   bool check = (
     target.find("cuda") != std::string::npos ||

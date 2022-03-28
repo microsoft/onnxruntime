@@ -22,7 +22,6 @@ PRETRAINED_T5_MODELS = ["t5-small", "t5-base", "t5-large", "t5-3B", "t5-11B"]
 
 
 class T5Helper:
-
     @staticmethod
     def get_onnx_path(output_dir: str, model_name_or_path: str, suffix: str = "", new_folder: bool = False) -> str:
         """Build onnx path

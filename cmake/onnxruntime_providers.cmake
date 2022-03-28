@@ -632,6 +632,9 @@ if (onnxruntime_USE_TENSORRT)
   # Needed for the provider interface, as it includes training headers when training is enabled
   if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
     target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ORTTRAINING_ROOT})
+    if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+      onnxruntime_add_include_to_target(onnxruntime_providers_tensorrt Python::Module)
+    endif()
   endif()
 
   if(APPLE)
@@ -1004,11 +1007,7 @@ if (onnxruntime_USE_DML)
   target_add_dml(onnxruntime_providers_dml)
   target_link_libraries(onnxruntime_providers_dml PRIVATE d3d12.lib dxgi.lib)
 
-  if (WINDOWS_STORE)
-    target_link_libraries(onnxruntime_providers_dml PRIVATE dloadhelper.lib)
-  else()
-    target_link_libraries(onnxruntime_providers_dml PRIVATE delayimp.lib)
-  endif()
+  target_link_libraries(onnxruntime_providers_dml PRIVATE delayimp.lib)
 
   set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:api-ms-win-core-com-l1-1-0.dll /DELAYLOAD:shlwapi.dll /DELAYLOAD:oleaut32.dll /ignore:4199")
 

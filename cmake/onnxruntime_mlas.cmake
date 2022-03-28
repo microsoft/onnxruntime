@@ -48,6 +48,7 @@ function(setup_mlas_source_for_windows)
 
       set(mlas_platform_preprocess_srcs
         ${MLAS_SRC_DIR}/arm64/ConvSymS8KernelDot.asm
+        ${MLAS_SRC_DIR}/arm64/ConvSymS8KernelDotLd64.asm
         ${MLAS_SRC_DIR}/arm64/ConvSymU8KernelDot.asm
         ${MLAS_SRC_DIR}/arm64/ConvSymS8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/ConvSymU8KernelNeon.asm
@@ -277,6 +278,7 @@ else()
         enable_language(ASM)
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/aarch64/ConvSymS8KernelDot.S
+          ${MLAS_SRC_DIR}/aarch64/ConvSymS8KernelDotLd64.S
           ${MLAS_SRC_DIR}/aarch64/ConvSymU8KernelDot.S
           ${MLAS_SRC_DIR}/aarch64/ConvSymS8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/ConvSymU8KernelNeon.S

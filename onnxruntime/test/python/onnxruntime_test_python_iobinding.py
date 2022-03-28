@@ -1,5 +1,11 @@
 import numpy as np
+from numpy.testing import assert_almost_equal
+from onnx.mapping import NP_TYPE_TO_TENSOR_TYPE
+from onnx.defs import onnx_opset_version
+from onnx import helper
 import onnxruntime as onnxrt
+from onnxruntime.capi._pybind_state import (  # pylint: disable=E0611
+    OrtDevice as C_OrtDevice, OrtValue as C_OrtValue, SessionIOBinding)
 import unittest
 
 from helper import get_name
@@ -47,6 +53,54 @@ class TestIOBinding(unittest.TestCase):
 
         # Validate results
         self.assertTrue(np.array_equal(self.create_expected_output(), ort_output))
+
+    def test_bind_input_types(self):
+
+        opset = onnx_opset_version()
+        devices = [(C_OrtDevice(C_OrtDevice.cpu(), C_OrtDevice.default_memory(), 0), ['CPUExecutionProvider'])]
+        if "CUDAExecutionProvider" in onnxrt.get_all_providers():
+            devices.append((C_OrtDevice(C_OrtDevice.cuda(), C_OrtDevice.default_memory(), 0), ['CUDAExecutionProvider']))
+            
+        for device, provider in devices:
+            for dtype in [np.float32, np.float64, np.int32, np.uint32,
+                          np.int64, np.uint64, np.int16, np.uint16,
+                          np.int8, np.uint8, np.float16, np.bool_]:
+                with self.subTest(dtype=dtype, device=str(device)):
+
+                    x = np.arange(8).reshape((-1, 2)).astype(dtype)
+                    proto_dtype = NP_TYPE_TO_TENSOR_TYPE[x.dtype]
+
+                    X = helper.make_tensor_value_info('X', proto_dtype, [None, x.shape[1]])
+                    Y = helper.make_tensor_value_info('Y', proto_dtype, [None, x.shape[1]])
+
+                    # inference
+                    node_add = helper.make_node('Identity', ['X'], ['Y'])
+
+                    # graph
+                    graph_def = helper.make_graph([node_add], 'lr', [X], [Y], [])
+                    model_def = helper.make_model(
+                        graph_def, producer_name='dummy', ir_version=7,
+                        producer_version="0",
+                        opset_imports=[helper.make_operatorsetid('', opset)])
+
+                    sess = onnxrt.InferenceSession(model_def.SerializeToString(), providers=provider)
+
+                    bind = SessionIOBinding(sess._sess)
+                    ort_value = C_OrtValue.ortvalue_from_numpy(x, device)
+                    bind.bind_ortvalue_input('X', ort_value)
+                    bind.bind_output('Y', device)
+                    sess._sess.run_with_iobinding(bind, None)
+                    ortvalue = bind.get_outputs()[0]
+                    y = ortvalue.numpy()
+                    assert_almost_equal(x, y)
+
+                    bind = SessionIOBinding(sess._sess)
+                    bind.bind_input('X', device, dtype, x.shape, ort_value.data_ptr())
+                    bind.bind_output('Y', device)
+                    sess._sess.run_with_iobinding(bind, None)
+                    ortvalue = bind.get_outputs()[0]
+                    y = ortvalue.numpy()
+                    assert_almost_equal(x, y)
 
     def test_bind_input_only(self):
         input = self.create_ortvalue_input_on_gpu()

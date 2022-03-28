@@ -147,6 +147,7 @@ Status PerformanceRunner::Run() {
             << "Average inference time cost: " << performance_result_.total_time_cost / performance_result_.time_costs.size() * 1000 << " ms\n"
             // Time between start and end of run. Less than Total time cost when running requests in parallel.
             << "Total inference run time: " << inference_duration.count() << " s\n"
+            << "Number of inferences per second: " << performance_result_.time_costs.size() / inference_duration.count() << " \n"
             << "Avg CPU usage: " << performance_result_.average_CPU_usage << " %\n"
             << "Peak working set size: " << performance_result_.peak_workingset_size << " bytes"
             << std::endl;
@@ -188,7 +189,9 @@ Status PerformanceRunner::RunParallelDuration() {
       count++;
       counter++;
       tpool->Schedule([this, &counter, &m, &cv]() {
-        session_->ThreadSafeRun();
+        auto status = RunOneIteration<false>();
+        if (!status.IsOK())
+          std::cerr << status.ErrorMessage();
         // Simplified version of Eigen::Barrier
         std::lock_guard<OrtMutex> lg(m);
         counter--;
