@@ -94,7 +94,7 @@ jobs:
         project: 'Lotus'
         buildVersionToDownload: 'latest'
         pipeline: '841'
-        artifact: 'onnxruntime_gpu/Release'
+        artifact: 'onnxruntime_gpu'
         targetPath: '$(Build.ArtifactStagingDirectory)'
 
     - ${{ if eq(parameters.BuildORT, true) }}:
