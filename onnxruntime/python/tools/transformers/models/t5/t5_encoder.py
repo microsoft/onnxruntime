@@ -101,7 +101,6 @@ class T5EncoderHelper:
                           export_params=True,
                           input_names=['input_ids', 'attention_mask'],
                           output_names=['hidden_states'],
-                          example_outputs=outputs,
                           dynamic_axes={
                               'input_ids': {
                                   0: 'batch_size',

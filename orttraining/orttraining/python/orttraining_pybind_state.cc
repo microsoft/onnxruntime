@@ -782,16 +782,16 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
                                           const std::unordered_set<std::string>& x_node_arg_names,
                                           const std::string loss_node_arg_name) {
         std::shared_ptr<Model> model;
-        auto logger = logging::LoggingManager::DefaultLogger();
+        auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
+        logger_ptr->SetSeverity(logging::Severity::kINFO);
         ONNX_NAMESPACE::ModelProto model_proto;
         std::istringstream model_istream(serialized_model);
         ORT_THROW_IF_ERROR(Model::Load(model_istream, &model_proto));
-        ORT_THROW_IF_ERROR(Model::Load(model_proto, model, nullptr, logger));
+        ORT_THROW_IF_ERROR(Model::Load(model_proto, model, nullptr, *logger_ptr));
         GradientGraphConfiguration gradient_graph_config{};
         gradient_graph_config.set_gradients_as_graph_outputs = true;
         // Save some objects, otherwise they get lost.
-        auto gradient_graph_config_ptr = std::make_unique<GradientGraphConfiguration>(gradient_graph_config);        
-        auto logger_ptr = std::make_unique<logging::Logger>(logger);
+        auto gradient_graph_config_ptr = std::make_unique<GradientGraphConfiguration>(gradient_graph_config);
 
         auto builder = std::make_unique<GradientGraphBuilder>(
             &model->MainGraph(),
@@ -808,6 +808,11 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       })
       .def("save", [](PyGradientGraphBuilder* gradient_graph_builder, const std::string& path) {
         ORT_THROW_IF_ERROR(Model::Save(*(gradient_graph_builder->model), path));
+      })
+      .def("get_model", [](PyGradientGraphBuilder* gradient_graph_builder) {
+        std::string model_str;
+        gradient_graph_builder->model->ToProto().SerializeToString(&model_str);
+        return py::bytes(model_str);
       });
 
   py::class_<GradientNodeAttributeDefinition> gradient_node_attribute_definition(

@@ -939,6 +939,9 @@ def run_onnxruntime(args, models):
     model_to_fail_ep = {} # model -> failing ep
     model_to_session = {} # models -> session creation time 
     
+    if args.running_mode == "benchmark": 
+        model_to_session = read_map_from_file(SESSION_FILE)
+        
     ep_list = []
     if args.ep:
         ep_list.append(args.ep)
@@ -995,9 +998,9 @@ def run_onnxruntime(args, models):
             # Set environment variables for ort-trt benchmarking 
             if "ORT-TRT" in ep:
                 os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1" if "Fp16" in ep else "0"
-                os.environ["ORT_TENSORRT_ENGINE_CACHE_ENABLE"] = "1"
                 os.environ["ORT_TENSORRT_MAX_WORKSPACE_SIZE"] = "4294967296"
-           
+                if args.enable_cache:
+                    os.environ["ORT_TENSORRT_ENGINE_CACHE_ENABLE"] = "1"
             fp16 = False
             
             # use float16.py for cuda fp16 only            
@@ -1054,6 +1057,7 @@ def run_onnxruntime(args, models):
                     # resolve providers to create session
                     providers = ep_to_provider_list[ep] 
                     options = onnxruntime.SessionOptions()
+                    
                     enablement = args.graph_enablement
                     if enablement == enable_all:
                         options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
@@ -1066,12 +1070,15 @@ def run_onnxruntime(args, models):
                     
                     # create onnxruntime inference session
                     try:
-                        sess, _ = create_session(model_path, providers, options)
+                        sess, second_creation_time = create_session(model_path, providers, options)
 
                     except Exception as e:
                         logger.error(e)
                         update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
                         continue
+
+                    if second_creation_time:                     
+                        model_to_session[name] = copy.deepcopy({ep + second: second_creation_time})
                     
                     logger.info("start to inference {} with {} ...".format(name, ep))
                     logger.info(sess.get_providers())
@@ -1091,6 +1098,8 @@ def run_onnxruntime(args, models):
                         "device": ep,
                         "fp16": fp16,
                         "io_binding": args.io_binding,
+                        "graph_optimizations": args.graph_enablement,
+                        "enable_cache": args.enable_cache,
                         "model_name": name,
                         "inputs": len(sess.get_inputs()),
                         "batch_size": batch_size,
@@ -1110,6 +1119,7 @@ def run_onnxruntime(args, models):
                         continue
                 
                 if result:
+                    
                     latency_result[ep] = {}
                     latency_result[ep]["average_latency_ms"] = result["average_latency_ms"]
                     latency_result[ep]["latency_90_percentile"] = result["latency_90_percentile"]
@@ -1241,9 +1251,7 @@ def output_details(results, csv_filename):
 
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = [
-            "engine", "version", "device", "fp16", "io_binding", "model_name", "inputs", "batch_size",
-            "sequence_length", "datetime", "test_times", "QPS", "average_latency_ms", "latency_variance",
-            "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
+                "engine", "version", "device", "fp16", "io_binding", "graph_optimizations", "enable_cache", "model_name", "inputs", "batch_size", "sequence_length", "datetime", "test_times", "QPS", "average_latency_ms", "latency_variance", "latency_90_percentile", "latency_95_percentile", "latency_99_percentile"
         ]
 
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
@@ -1374,10 +1382,9 @@ def output_session_creation(results, csv_filename):
         need_write_header = False 
 
     with open(csv_filename, mode="a", newline='') as csv_file:
-        column_names = [model_title]
-        for provider in ort_provider_list: 
-            column_names.append(provider + session_ending)
-
+        session_1 = [p + session_ending for p in ort_provider_list]
+        session_2 = [p + second_session_ending for p in ort_provider_list]
+        column_names = [model_title] + session_1 + session_2 
         csv_writer = csv.writer(csv_file)
 
             
@@ -1391,6 +1398,11 @@ def output_session_creation(results, csv_filename):
         trt_fp32_time = ""
         cuda_fp16_time = ""
         trt_fp16_time = ""
+        cpu_time_2 = ""
+        cuda_fp32_time_2 = ""
+        trt_fp32_time_2 = ""
+        cuda_fp16_time_2 = ""
+        trt_fp16_time_2 = ""
 
         for model_name, ep_dict in results.items():
             for ep, time in ep_dict.items():
@@ -1404,6 +1416,16 @@ def output_session_creation(results, csv_filename):
                     cuda_fp16_time = time
                 elif ep == trt_fp16:
                     trt_fp16_time = time
+                if ep == cpu + second: 
+                    cpu_time_2 = time 
+                elif ep == cuda + second: 
+                    cuda_fp32_time_2 = time
+                elif ep == trt + second: 
+                    trt_fp32_time_2 = time
+                elif ep == cuda_fp16 + second: 
+                    cuda_fp16_time_2 = time
+                elif ep == trt_fp16 + second:
+                    trt_fp16_time_2 = time
                 else: 
                     continue
                     
@@ -1412,7 +1434,12 @@ def output_session_creation(results, csv_filename):
                    cuda_fp32_time, 
                    trt_fp32_time, 
                    cuda_fp16_time, 
-                   trt_fp16_time] 
+                   trt_fp16_time, 
+                   cpu_time_2, 
+                   cuda_fp32_time_2, 
+                   trt_fp32_time_2, 
+                   cuda_fp16_time_2, 
+                   trt_fp16_time_2] 
             csv_writer.writerow(row)
 
 
@@ -1659,15 +1686,17 @@ def parse_arguments():
     
     parser.add_argument("-w", "--workspace", required=False, default="/", help="Workspace to find tensorrt and perf script (with models if parsing with model file)")
     
-    parser.add_argument("--track_memory", required=False, default=True, help="Track CUDA and TRT Memory Usage")
-
-    parser.add_argument("--io_binding", required=False, default=False, help="Bind Inputs")
+    parser.add_argument("-e", "--ep_list", nargs="+", required=False, default=None, help="Specify ORT Execution Providers list.")
     
-    parser.add_argument("--graph_enablement", required=False, default=enable_all, choices=[disable, basic, extended, enable_all], help="Choose graph optimization enablement.")
+    parser.add_argument("-z", "--track_memory", required=False, default=True, help="Track CUDA and TRT Memory Usage")
 
-    parser.add_argument("--ep", required=False, default=None, help="Specify ORT Execution Provider.")
+    parser.add_argument("-b", "--io_binding", required=False, default=False, help="Bind Inputs")
     
-    parser.add_argument("--ep_list", nargs="+", required=False, default=None, help="Specify ORT Execution Providers list.")
+    parser.add_argument("-g", "--graph_enablement", required=False, default=enable_all, choices=[disable, basic, extended, enable_all], help="Choose graph optimization enablement.")
+
+    parser.add_argument("-n", "--enable_cache", required=False, default=True, help="Enable ORT-TRT Caching")
+
+    parser.add_argument("--ep", required=False, default=None, help="Specify ORT Execution Provider.") 
 
     parser.add_argument("--fp16", required=False, default=True, action="store_true", help="Inlcude Float16 into benchmarking.")
 
@@ -1703,12 +1732,13 @@ def setup_logger(verbose):
         logging.getLogger("transformers").setLevel(logging.WARNING)
 
 def parse_models_helper(args, models): 
-    if ".json" in args.model_source:
+    model_source = os.path.join(args.workspace, args.model_source)
+    if ".json" in model_source:
         logger.info("Parsing model information from file ...")
-        parse_models_info_from_file(args.workspace, args.model_source, models)
+        parse_models_info_from_file(args.workspace, model_source, models)
     else:
         logger.info("Parsing model information from directory ...")
-        parse_models_info_from_directory(args.model_source, models)
+        parse_models_info_from_directory(model_source, models)
 
 def main():
     args = parse_arguments()

@@ -133,7 +133,7 @@ OrtValue create_ort_value(
 
   OrtValue ort_tensor;
   onnxruntime::Tensor::InitOrtValue(element_type, onnxruntime::TensorShape(tensor.sizes().vec()), tensor.data_ptr(),
-                                    *mem_info, ort_tensor, tensor.storage_offset() * element_type->Size(),
+                                    *mem_info, ort_tensor, 0L /* offset = 0 - because tensor.data_ptr() includes the underyling offset */,
                                     tensor.strides().vec());
   return ort_tensor;
 }
