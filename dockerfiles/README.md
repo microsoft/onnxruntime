@@ -152,6 +152,11 @@ If the `device_type` runtime config option is not explicitly specified, CPU will
     ```
     docker run -it --rm --device-cgroup-rule='c 189:* rmw' -v /dev/bus/usb:/dev/bus/usb --device /dev/dri:/dev/dri onnxruntime-gpu:latest
     ```
+    If your host system is Ubuntu 20, use the below command to run. Please find the alternative steps [here](https://github.com/openvinotoolkit/docker_ci/blob/master/configure_gpu_ubuntu20.md).
+    ```
+    docker run -it --rm --device-cgroup-rule='c 189:* rmw' -v /dev/bus/usb:/dev/bus/usb --device /dev/dri:/dev/dri --group-add=$(stat -c "%g" /dev/dri/render*) onnxruntime-gpu:latest
+    ```
+
 ### OpenVINO on Myriad VPU Accelerator
 
 1. Build the docker image from the DockerFile in this repository.
