@@ -164,6 +164,12 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
 
   gsl::copy(sequence_lengths, beam_state->next_positions);
 
+  // positions are starting from 0, not from 1, decrement by 1
+  gsl::span<int>& positions = beam_state->next_positions;
+  for (int i = 0; i < batch_size*num_beams; i++) {
+    positions[i]--;
+  }
+
   memset(cpu_state->sequences_space.data(), 0, cpu_state->sequences_space.size_bytes());
 
   // Copy input_ids to sequences[0].
@@ -227,6 +233,13 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   dumper->Print("next_token_logits", next_token_logits.data(), batch_size, num_beams, vocab_size);
 #endif
 
+  // Apply all score processors that updates scores
+  logits_processors->Process(sequences, next_token_logits, step);
+
+#ifdef DEBUG_BEAM_SEARCH
+  dumper->Print("next_token_logits", next_token_logits.data(), batch_size, num_beams, vocab_size);
+#endif
+
   // Get scores for candidates of next token: next_token_scores = log_softmax(next_token_logits, dim=-1)
   gsl::span<T>& next_token_scores = beam_state->next_token_scores;
   ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(batch_beam_size,  // rows
@@ -237,14 +250,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                                     thread_pool));
 
 #ifdef DEBUG_BEAM_SEARCH
-  dumper->Print("next_token_scores after softmax", next_token_scores.data(), batch_size, num_beams, vocab_size);
-#endif
-
-  // Apply all score processors that updates scores
-  logits_processors->Process(sequences, next_token_scores, step);
-
-#ifdef DEBUG_BEAM_SEARCH
-  dumper->Print("next_token_scores after logits processor", next_token_scores.data(), batch_size, num_beams, vocab_size);
+  dumper->Print("next_token_scores after log softmax", next_token_scores.data(), batch_size, num_beams, vocab_size);
 #endif
 
   // Add beam score to next token scores. Corresponding python code is like:

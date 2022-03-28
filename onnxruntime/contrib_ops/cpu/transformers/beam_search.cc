@@ -119,6 +119,7 @@ struct BeamSearchCpuState : public IBeamSearchCpuState {
   void Init(AllocatorPtr allocator, size_t batch_beam_size, int max_length, bool is_cuda) {
     this->sequence_lengths = AllocateBuffer<int32_t>(allocator, sequence_lengths_buffer_, batch_beam_size);
     this->sequences_space = AllocateBuffer<int32_t>(allocator, sequences_space_buffer_, SafeInt<size_t>(2) * batch_beam_size * max_length);
+    this->sequences_score = AllocateBuffer<float>(allocator, sequences_score_buffer_, SafeInt<size_t>(2) * batch_beam_size);
 
     if (is_cuda) {
       // buffers used by CUDA operator but not by CPU operator.
@@ -136,6 +137,7 @@ struct BeamSearchCpuState : public IBeamSearchCpuState {
   BufferUniquePtr topk_tokens_buffer_;
   BufferUniquePtr topk_indices_buffer_;
   BufferUniquePtr sequences_space_buffer_;
+  BufferUniquePtr sequences_score_buffer_;  
 };
 
 template <typename T>
@@ -380,6 +382,42 @@ Status BeamSearchImpl<T>::CheckInputs(const OpKernelContextInternal& context) {
     parameters_->prefix_vocab_mask = prefix_vocab_mask->DataAsSpan<int32_t>();
   }
 
+  const Tensor* vocab_ids_len = context.Input<Tensor>(10);
+  if (vocab_ids_len != nullptr) {
+    //vocab_ids_len is optional
+    const auto& vocab_ids_len_dims = vocab_ids_len->Shape().GetDims();
+    if (vocab_ids_len_dims.size() != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'vocabs_ids_len' is expected to have 1 dimension, got ",
+                             vocab_ids_len_dims.size());
+    }
+
+    if (static_cast<int>(vocab_ids_len_dims[0]) != parameters_->vocab_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'vocabs_ids_len' shape does not match with vocab_size, got ",
+                             vocab_ids_len_dims[0]);
+    }
+
+    // store vocab ids length in parameters.
+    parameters_->vocab_id2_len = vocab_ids_len->DataAsSpan<int32_t>();
+  }
+
+  const Tensor* prefix_lens = context.Input<Tensor>(11);
+  if (prefix_lens != nullptr) {
+    // prefix_lens is optional
+    const auto& prefix_lens_dims = prefix_lens->Shape().GetDims();
+    if (prefix_lens_dims.size() != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'prefix_lens' is expected to have 1 dimension, got ",
+                             prefix_lens_dims.size());
+    }
+
+    // prefix_lens first dimension should be same as the first dimension of input_ids
+    if (static_cast<int>(prefix_lens_dims[0]) != static_cast<int>(dims[0])) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "input_ids and prefix_lens must have the same batch_size");
+    }
+
+    //Store prefix length in parameters
+    parameters_->prefix_lens = prefix_lens->DataAsSpan<int32_t>();
+  }
+
   return Status::OK();
 }
 
@@ -471,7 +509,7 @@ Status BeamSearchImpl<T>::GenerateNextToken(
   cpu_dumper_.Print("beam_indices after scorer", beam_indices.data(), parameters_->batch_size, parameters_->num_beams);
 #endif
 
-  cpu_state.sequences.AppendNextTokenToSequences(beam_indices, beam_next_tokens);
+  cpu_state.sequences.AppendNextTokenToSequences(beam_indices, beam_next_tokens, beam_scores);
 
 #ifdef DEBUG_BEAM_SEARCH
   cpu_state.sequences.PrintSequences(&cpu_dumper_);
@@ -528,7 +566,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& feeds_fetches_manag
                                                     parameters_->eos_token_id,
                                                     hypothesis_score_allocator,
                                                     beam_hyps_allocator);
-  beam_scorer_->Initialize(cpu_allocator_, parameters_->sequence_length);
+  beam_scorer_->Initialize(cpu_allocator_, parameters_->sequence_length, parameters_->vocab_id2_len, parameters_->prefix_lens);
 
   BeamSearchCpuState cpu_state;
   cpu_state.Init(cpu_allocator_, static_cast<size_t>(parameters_->BatchBeamSize()), parameters_->max_length, IsCuda());
@@ -550,6 +588,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& feeds_fetches_manag
                   parameters_->output_scores);
 
   cpu_state.sequences.Init(cpu_state.sequences_space,
+                           cpu_state.sequences_score,
                            parameters_->BatchBeamSize(),
                            parameters_->sequence_length,
                            parameters_->max_length);
@@ -567,6 +606,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& feeds_fetches_manag
 
 #ifdef DEBUG_BEAM_SEARCH
   const IConsoleDumper* dumper = GetConsoleDumper();
+  std::cout<<"---------------------------------------------------------------"<<std::endl;
   dumper->Print("input_ids", feeds[0]);
   dumper->Print("position_ids", feeds[1]);
   dumper->Print("attention_mask", feeds[2]);
@@ -580,6 +620,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& feeds_fetches_manag
 
   int current_length = parameters_->sequence_length;
   int iteration_counter = 0;
+
   while (current_length < parameters_->max_length) {
     iteration_counter++;
 #ifdef DEBUG_BEAM_SEARCH
