@@ -380,10 +380,9 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     if (!same_dim)
       continue;
 
-    const std::array layer_norm_input_defs{has_leading_cast
-                                               ? graph.GetNode(p_reduce_mean_input_node->Index())->MutableInputDefs()[0]
-                                               : reduce_mean_node.MutableInputDefs()[0],
-                                           scale, bias};
+    NodeArg* x_input = has_leading_cast ? graph.GetNode(p_reduce_mean_input_node->Index())->MutableInputDefs()[0]
+                                        : reduce_mean_node.MutableInputDefs()[0];
+    InlinedVector<NodeArg*> layer_norm_input_defs{x_input, scale, bias};
     Node& layer_norm_node = graph.AddNode(graph.GenerateNodeName("LayerNormalization"),
                                           "LayerNormalization",
                                           "fused LayerNorm subgraphs ",
@@ -398,6 +397,12 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
     } else {
       layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
+    }
+
+    // Set stash_type to double if any input is double, default value if float.
+    if (x_input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE ||
+        scale->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
+      layer_norm_node.AddAttribute("stash_type", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE));
     }
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
@@ -590,10 +595,9 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       continue;
     }
 
-    InlinedVector<NodeArg*> layer_norm_input_defs{has_leading_cast
-                                                      ? graph.GetNode(p_pow_input_node->Index())->MutableInputDefs()[0]
-                                                      : pow_node.MutableInputDefs()[0],
-                                                  scale};
+    NodeArg* x_input = has_leading_cast ? graph.GetNode(p_pow_input_node->Index())->MutableInputDefs()[0]
+                                        : pow_node.MutableInputDefs()[0];
+    InlinedVector<NodeArg*> layer_norm_input_defs{x_input, scale};
     Node& layer_norm_node = graph.AddNode(graph.GenerateNodeName("SimplifiedLayerNormalization"),
                                           "SimplifiedLayerNormalization",
                                           "fused LayerNorm subgraphs ",
@@ -608,6 +612,12 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
     } else {
       layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
+    }
+
+    // Set stash_type to double if any input is double, default value if float.
+    if (x_input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE ||
+        scale->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
+      layer_norm_node.AddAttribute("stash_type", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE));
     }
 
     // Assign provider to this new node. Provider should be same as the provider for old node.
