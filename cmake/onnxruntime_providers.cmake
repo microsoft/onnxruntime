@@ -1002,7 +1002,11 @@ if (onnxruntime_USE_DML)
   endfunction()
 
   target_add_dml(onnxruntime_providers_dml)
-  target_link_libraries(onnxruntime_providers_dml PRIVATE d3d12.lib dxgi.lib)
+  if (GDK_PLATFORM STREQUAL Scarlett)
+    target_link_libraries(onnxruntime_providers_dml PRIVATE ${gdk_dx_libs})
+  else()
+    target_link_libraries(onnxruntime_providers_dml PRIVATE d3d12.lib dxgi.lib)
+  endif()
 
   if (WINDOWS_STORE)
     target_link_libraries(onnxruntime_providers_dml PRIVATE dloadhelper.lib)
@@ -1010,7 +1014,9 @@ if (onnxruntime_USE_DML)
     target_link_libraries(onnxruntime_providers_dml PRIVATE delayimp.lib)
   endif()
 
-  set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:api-ms-win-core-com-l1-1-0.dll /DELAYLOAD:shlwapi.dll /DELAYLOAD:oleaut32.dll /ignore:4199")
+  if (NOT GDK_PLATFORM)
+    set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:api-ms-win-core-com-l1-1-0.dll /DELAYLOAD:shlwapi.dll /DELAYLOAD:oleaut32.dll /ignore:4199")
+  endif()
 
   target_compile_definitions(onnxruntime_providers_dml PRIVATE ONNX_NAMESPACE=onnx ONNX_ML LOTUS_LOG_THRESHOLD=2 LOTUS_ENABLE_STDERR_LOGGING PLATFORM_WINDOWS)
   target_compile_definitions(onnxruntime_providers_dml PRIVATE UNICODE _UNICODE NOMINMAX)
