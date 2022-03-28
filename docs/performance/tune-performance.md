@@ -374,20 +374,20 @@ y_ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(y, 'cuda', 0)
 session = onnxrt.InferenceSession("matmul_2.onnx", providers=providers)
 io_binding = session.io_binding()
 
-'''Bind the input and output'''
+# Bind the input and output
 io_binding.bind_ortvalue_input('X', x_ortvalue)
 io_binding.bind_ortvalue_output('Y', y_ortvalue)
 
-'''One regular run for the necessary memory allocation and cuda graph capturing'''
+# One regular run for the necessary memory allocation and cuda graph capturing
 session.run_with_iobinding(io_binding)
 expected_y = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
 np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
 
-'''After capturing, CUDA graph replay happens from this Run onwards'''
+# After capturing, CUDA graph replay happens from this Run onwards
 session.run_with_iobinding(io_binding)
 np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
 
-'''Update input and then replay CUDA graph with the updated input'''
+# Update input and then replay CUDA graph with the updated input
 x_ortvalue.update_inplace(np.array([[10.0, 20.0], [30.0, 40.0], [50.0, 60.0]], dtype=np.float32))
 session.run_with_iobinding(io_binding)
 ```
