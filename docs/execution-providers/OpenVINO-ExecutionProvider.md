@@ -73,7 +73,7 @@ Use `AUTO:<device 1><device 2>..` as the device name to delegate selection of an
 From the application point of view, this is just another device that handles all accelerators in full system.
 
 For more information on Auto-Device plugin of OpenVINO, please refer to the
-[Intel OpenVINO Auto Device Plugin](https://docs.openvino.ai/latest/openvino_docs_IE_DG_supported_plugins_AUTO.html).
+[Intel OpenVINO Auto Device Plugin](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Hetero_execution.html).
 
 ### Model caching feature for OpenVINO EP
 
@@ -84,7 +84,7 @@ This feature enables users to save and load the blobs directly. These pre-compil
 
 #### CL Cache capability for iGPU
 
-Starting from version 2021.4 OpenVINO supports [model caching](https://docs.openvino.ai/latest/openvino_docs_IE_DG_Model_caching_overview.html).
+Starting from version 2021.4 OpenVINO supports [model caching](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Model_caching_overview.html).
 
 This feature enables users to save and load the cl_cache files directly. These cl_cache files can be directly loaded on to igpu hardware device target and inferencing can be done. This feature is only supported on iGPU hardware device target.
 
