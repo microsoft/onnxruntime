@@ -56,7 +56,7 @@ jobs:
 
   - task: NodeTool@0
     inputs:
-      versionSpec: '12.x'
+      versionSpec: '16.x'
       force32bit: ${{ parameters.isX86 }}
 
   # Our build machine doesn't have java x86
