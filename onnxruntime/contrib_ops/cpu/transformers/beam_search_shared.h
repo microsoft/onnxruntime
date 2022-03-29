@@ -95,6 +95,11 @@ struct IBeamSearchParameters {
   int batch_size;       // deduce from first dimension of input_ids
   int sequence_length;  // deduce from second dimension of input_ids
 
+  //expected character savings parameters
+  int ecs_min_chars;
+  float ecs_log_prob_threshold;
+  float ecs_cost;
+
   gsl::span<const int32_t> vocab_mask;
   gsl::span<const int32_t> prefix_vocab_mask;
   gsl::span<const int32_t> vocab_id2_len;

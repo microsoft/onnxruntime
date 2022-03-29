@@ -160,6 +160,11 @@ def parse_arguments(argv=None):
                                    default=-1,
                                    help="Vocab_size of the underlying model")
 
+    beam_search_group.add_argument('--enable_ecs',
+                                   required=False,
+                                   action='store_true')
+    beam_search_group.set_defaults(enable_ecs=False)
+
     beam_search_group.add_argument(
         '--prefix_vocab_mask',
         required=False,
@@ -252,9 +257,9 @@ def verify_gpt2_subgraph(graph, precision):
             expected_type = onnx_proto.TensorProto.FLOAT16 if is_float16 else onnx_proto.TensorProto.FLOAT
 
         if graph.input[i].type.tensor_type.elem_type != expected_type:
-            raise ValueError(
-                f"Input {i} is expected to have onnx data type {expected_type}. Got {graph.input[i].type.tensor_type.elem_type}"
-            )
+            print(f"Gpt-2 subgraph currently handles only INT32, converting input type {graph.input[i].name} from {graph.input[i].type.tensor_type.elem_type} to {expected_type}")
+            graph.input[i].type.tensor_type.elem_type = expected_type
+
     print("Verifying GPT-2 graph inputs: name and data type are good.")
 
     expected_outputs = ['logits'] + [f"present_{i}" for i in range(layer_count)]
@@ -330,6 +335,9 @@ def convert_model(args):
     if args.prefix_vocab_mask:
         inputs.append("prefix_vocab_mask")
 
+    if args.enable_ecs:
+        inputs.extend(["vocab_ids2_len", "prefix_lens", "ecs_min_chars", "ecs_log_prob_threshold", "ecs_cost"])
+
     outputs = ["sequences"]
     if args.output_sequences_scores:
         outputs.append("sequences_scores")
@@ -338,6 +346,7 @@ def convert_model(args):
         assert args.output_sequences_scores, "--output_token_scores requires --output_sequences_scores"
         outputs.append("scores")
 
+    print(inputs)
     node = helper.make_node('BeamSearch', inputs=inputs, outputs=outputs, name=f'BeamSearch_{args.model_type}')
     node.domain = "com.microsoft"
     node.attribute.extend([
@@ -382,6 +391,15 @@ def convert_model(args):
         prefix_vocab_mask = helper.make_tensor_value_info('prefix_vocab_mask', TensorProto.INT32,
                                                           ['batch_size', vocab_size])
         graph_inputs.append(prefix_vocab_mask)
+
+    if args.enable_ecs:
+        vocab_ids2_len = helper.make_tensor_value_info('vocab_ids2_len', TensorProto.INT32, [vocab_size])
+        prefix_lens = helper.make_tensor_value_info('prefix_lens', TensorProto.INT32, ['batch_size'])
+        ecs_min_chars = helper.make_tensor_value_info('ecs_min_chars', TensorProto.INT32, [1])
+        ecs_log_prob_threshold = helper.make_tensor_value_info('ecs_log_prob_threshold', TensorProto.FLOAT, [1])
+        ecs_cost = helper.make_tensor_value_info('ecs_cost', TensorProto.FLOAT, [1])
+
+        graph_inputs.extend([ecs_min_chars, ecs_log_prob_threshold, ecs_cost, vocab_ids2_len, prefix_lens])
 
     # graph outputs
     sequences = helper.make_tensor_value_info('sequences', TensorProto.INT32,

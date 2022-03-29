@@ -56,8 +56,8 @@ class BeamHypotheses {
                                           int num_beams,
                                           gsl::span<const int32_t>* ids2_len,
                                           int min_chars,
-                                          double ecs_cost,
-                                          double log_prob_cutoff,
+                                          float ecs_cost,
+                                          float log_prob_cutoff,
                                           gsl::span<const float>& next_scores,
                                           gsl::span<const int32_t>& next_tokens);
 
@@ -72,7 +72,7 @@ class BeamHypotheses {
   float length_penalty_;
   bool early_stopping_;
   float worst_score_;
-  double best_net_;
+  float best_net_;
 
   std::priority_queue<HypothesisScore, onnxruntime::FastAllocVector<HypothesisScore>, HypothesisScoreCompare> beams_;  // min-heap for top k
 };
@@ -87,6 +87,9 @@ class BeamSearchScorer : public IBeamScorer {
                    size_t num_return_sequences,
                    int pad_token_id,
                    int eos_token_id,
+                   int min_chars,
+                   float log_prob_threshold,
+                   float ecs_cost,
                    onnxruntime::OrtStlAllocator<HypothesisScore>& hypothesis_score_allocator,
                    onnxruntime::OrtStlAllocator<BeamHypotheses>& beam_hyps_allocator);
 
@@ -118,9 +121,9 @@ class BeamSearchScorer : public IBeamScorer {
   size_t num_beam_hyps_to_keep_;
   int pad_token_id_;
   int eos_token_id_;
-  double log_prob_cutoff_;
   int min_chars_;
-  double ecs_cost_;
+  float log_prob_cutoff_;
+  float ecs_cost_;
   int intial_sequence_length_;
 
   IAllocatorUniquePtr<bool> done_ptr_;  // Allocated buffer for done_

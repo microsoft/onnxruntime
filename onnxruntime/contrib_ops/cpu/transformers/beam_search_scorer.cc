@@ -26,12 +26,21 @@ BeamHypotheses::BeamHypotheses(int num_beams,
       early_stopping_(early_stopping),
       worst_score_(1e9),
       beams_(hypothesis_score_allocator) {
-  best_net_ = std::numeric_limits<double>::lowest();
+  best_net_ = std::numeric_limits<float>::lowest();
 }
 
 void BeamHypotheses::Add(gsl::span<const int32_t>& hypothesis, float sum_logprobs) {
-  if (this->Size() < num_beams_ || sum_logprobs > worst_score_) {
-    HypothesisScore item(hypothesis, sum_logprobs);
+  /* TODO
+   * Is the length_penalty_ needed for final hypothesus?
+   * Understand the repercussions of this. Can be made optional.
+   *
+  auto length = hypothesis.size();
+  float score = sum_logprobs / pow(static_cast<float>(length), length_penalty_);
+  */
+  float score = sum_logprobs;
+
+  if (this->Size() < num_beams_ || score > worst_score_) {
+    HypothesisScore item(hypothesis, score);
     beams_.push(item);
     if (this->Size() > num_beams_) {
       beams_.pop();
@@ -47,12 +56,12 @@ bool BeamHypotheses::CheckBestCandidate(ISequences* sequences,
                                         int num_beams,
                                         gsl::span<const int32_t>* ids2_len,
                                         int min_chars,
-                                        double ecs_cost,
-                                        double log_prob_cutoff,
+                                        float ecs_cost,
+                                        float log_prob_cutoff,
                                         gsl::span<const float>& next_scores,
                                         gsl::span<const int32_t>& next_tokens) {
   int max_index = 0;
-  double max_generated_net = std::numeric_limits<double>::lowest();
+  float max_generated_net = std::numeric_limits<float>::lowest();
 
   for (int i = 0; i < num_beams; i++) {
     int batch_beam_idx = batch * num_beams + i; 
@@ -68,14 +77,14 @@ bool BeamHypotheses::CheckBestCandidate(ISequences* sequences,
       int beam_idx = batch * 2 * num_beams + j;
       int beam_generated_length = generated_length + (*ids2_len)[next_tokens[beam_idx]];
       beam_generated_length = beam_generated_length - prefix_length;
-      double generated_net = std::numeric_limits<double>::lowest();;
+      float generated_net = std::numeric_limits<float>::lowest();;
 
       if (beam_generated_length < min_chars) {
-        generated_net = std::numeric_limits<double>::lowest();
+        generated_net = std::numeric_limits<float>::lowest();
       } else {
-        double generated_prob = exp(next_scores[beam_idx]);
-        double generated_ecs = beam_generated_length * generated_prob;
-        double generated_cost = beam_generated_length * ecs_cost;
+        float generated_prob = exp(next_scores[beam_idx]);
+        float generated_ecs = beam_generated_length * generated_prob;
+        float generated_cost = beam_generated_length * ecs_cost;
         generated_net = generated_ecs - generated_cost;
       }
 
@@ -150,6 +159,9 @@ BeamSearchScorer::BeamSearchScorer(size_t batch_size,
                                    size_t num_return_sequences,
                                    int pad_token_id,
                                    int eos_token_id,
+                                   int min_chars,
+                                   float log_prob_threshold,
+                                   float ecs_cost,
                                    onnxruntime::OrtStlAllocator<HypothesisScore>& hypothesis_score_allocator,
                                    onnxruntime::OrtStlAllocator<BeamHypotheses>& beam_hyps_allocator)
     : batch_size_(batch_size),
@@ -158,16 +170,15 @@ BeamSearchScorer::BeamSearchScorer(size_t batch_size,
       num_beam_hyps_to_keep_(num_return_sequences),
       pad_token_id_(pad_token_id),
       eos_token_id_(eos_token_id),
+      min_chars_(min_chars),
+      log_prob_cutoff_(log_prob_threshold),
+      ecs_cost_(ecs_cost),
       hypothesis_buffer_length_(0),
       hypothesis_buffer_offset_(0),
       beam_hyps_(beam_hyps_allocator) {
   for (size_t i = 0; i < batch_size; i++) {
     beam_hyps_.push_back(BeamHypotheses(num_beams, length_penalty, early_stopping, hypothesis_score_allocator));
   }
-
-  log_prob_cutoff_ = -1.4088;
-  min_chars_ = 6;
-  ecs_cost_ = 0.0;
 }
 
 bool BeamSearchScorer::IsDone() {
@@ -199,7 +210,6 @@ void BeamSearchScorer::Initialize(AllocatorPtr& allocator,
   hypothesis_buffer_length_ = batch_beam_size * buffer_per_beam;
   hypothesis_buffer_ = Allocate<int32_t>(allocator, hypothesis_buffer_length_, hypothesis_buffer_ptr_, no_fill);
 
-  log_prob_cutoff_ = -1.4088;
   ids2_len_ = &ids2_len;
   prefix_lens_ = &prefix_lens;
   intial_sequence_length_ = sequence_length;

@@ -418,6 +418,24 @@ Status BeamSearchImpl<T>::CheckInputs(const OpKernelContextInternal& context) {
     parameters_->prefix_lens = prefix_lens->DataAsSpan<int32_t>();
   }
 
+  auto* ecs_min_chars_tensor = context.Input<Tensor>(12);
+  // All ecs parameters will co-exist, there is no need for just one yet.
+  if (ecs_min_chars_tensor){
+    parameters_->ecs_min_chars = ecs_min_chars_tensor ? static_cast<int>(*ecs_min_chars_tensor->Data<int>()) : -1;
+
+    auto* ecs_log_prob_threshold_tensor = context.Input<Tensor>(13);
+    if (ecs_log_prob_threshold_tensor == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ORT couldn't find ecs_log_prob_threshold, ecs needs ecs_log_prob_threshold input with ecs_min_chars");
+    }
+    parameters_->ecs_log_prob_threshold = static_cast<float>(*ecs_log_prob_threshold_tensor->Data<float>());
+
+    auto* ecs_cost_tensor = context.Input<Tensor>(14);
+    if (ecs_cost_tensor == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ORT couldn't find ecs_min_cost_tensor, ecs needs ecs_min_cost_tensor input with ecs_min_chars");
+    }
+    parameters_->ecs_cost = static_cast<float>(*ecs_cost_tensor->Data<float>());
+  }
+
   return Status::OK();
 }
 
@@ -564,6 +582,9 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& feeds_fetches_manag
                                                     static_cast<size_t>(parameters_->num_return_sequences),
                                                     parameters_->pad_token_id,
                                                     parameters_->eos_token_id,
+                                                    parameters_->ecs_min_chars,
+                                                    parameters_->ecs_log_prob_threshold,
+                                                    parameters_->ecs_cost,
                                                     hypothesis_score_allocator,
                                                     beam_hyps_allocator);
   beam_scorer_->Initialize(cpu_allocator_, parameters_->sequence_length, parameters_->vocab_id2_len, parameters_->prefix_lens);

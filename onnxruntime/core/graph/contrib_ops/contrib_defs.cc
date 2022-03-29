@@ -938,6 +938,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                 .Input(9, "prefix_vocab_mask", "Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)", "M", OpSchema::Optional)
                                 .Input(10, "vocab_ids_len", "Tokenizer's vocab ids to len tensor. Shape is (vocab_size)", "M", OpSchema::Optional)
                                 .Input(11, "prefix_lens", "Prefix lengths. Shape is (batch_size)", "M", OpSchema::Optional)
+                                .Input(12, "ecs_min_chars", "minimum number of characters needed for expected character savings. Shape is (1)", "I", OpSchema::Optional)
+                                .Input(13, "ecs_log_prob_threshold", "minimum score required to qualify for best candidate. Shape is (1)", "T", OpSchema::Optional)
+                                .Input(14, "ecs_cost", "cost of expected character savings. Shape is (1)", "T", OpSchema::Optional)
                                 .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, num_return_sequences, max_sequence_length)", "I")
                                 .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)", "T", OpSchema::Optional)
                                 .Output(2, "scores",
