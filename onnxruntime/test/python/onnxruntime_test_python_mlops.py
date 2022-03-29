@@ -174,8 +174,7 @@ class TestInferenceSession(unittest.TestCase):
 
     def test_run_model_tree_ensemble_aionnxml_3(self):
         # Checks onnxruntime can load and execute TreeEnsembleRegressor with double threashold.
-        folder = get_name("test_python_mlops")
-        model = os.path.join(folder, "tree_ensemble_as_tensor.onnx")
+        model = get_name("tree_ensemble_as_tensor.onnx")
         # first threshold of the tree is 1.7999999523162842
         # all number 1.79* are the same once converting to float32.
         # predictions must be the same with float32 and different with float64.
