@@ -26,25 +26,12 @@ BeamHypotheses::BeamHypotheses(int num_beams,
       early_stopping_(early_stopping),
       worst_score_(1e9),
       beams_(hypothesis_score_allocator) {
-
   best_net_ = std::numeric_limits<double>::lowest();
 }
 
 void BeamHypotheses::Add(gsl::span<const int32_t>& hypothesis, float sum_logprobs) {
-  //auto length = hypothesis.size();
-
-  //TODO boga why is this devided by length!??
-  //float score = sum_logprobs / pow(static_cast<float>(length), length_penalty_);
-
-  float score = sum_logprobs;
-
-  /* debug boga
-  std::cout<<"Adding hypothesus:";
-  std::cout<<"l:"<<length<<"score:"<<sum_logprobs<<std::endl;
-  */
-
-  if (this->Size() < num_beams_ || score > worst_score_) {
-    HypothesisScore item(hypothesis, score);
+  if (this->Size() < num_beams_ || sum_logprobs > worst_score_) {
+    HypothesisScore item(hypothesis, sum_logprobs);
     beams_.push(item);
     if (this->Size() > num_beams_) {
       beams_.pop();
@@ -64,11 +51,6 @@ bool BeamHypotheses::CheckBestCandidate(ISequences* sequences,
                                         double log_prob_cutoff,
                                         gsl::span<const float>& next_scores,
                                         gsl::span<const int32_t>& next_tokens) {
-  /*Debug boga
-  std::cout<<"b:"<<batch<<",best_net_:"<<best_net_<<std::endl;
-  std::cout<<"intial_seq_length:"<<initial_seq_length<<","<<",prefix_length:"<<prefix_length<<",num_beams:"<<num_beams<<",min_chars"<<min_chars<<std::endl;
-  std::cout<<"ecs_cost:"<<ecs_cost<<",log_prob_cutoff:"<<log_prob_cutoff<<std::endl;
-  */
   int max_index = 0;
   double max_generated_net = std::numeric_limits<double>::lowest();
 
@@ -79,40 +61,38 @@ bool BeamHypotheses::CheckBestCandidate(ISequences* sequences,
     int generated_length = 0; 
     for (int j = initial_seq_length; j < sequences->GetSequenceLength(); j++) {
       generated_length = generated_length + (*ids2_len)[src[j]];
-      //Debug boga
-      //std::cout<<"Id:"<<src[j]<<", score:"<<(*ids2_len)[src[j]]<<std::endl;
     }
 
-    generated_length = generated_length + (*ids2_len)[next_tokens[batch_beam_idx]];
-    generated_length = generated_length - prefix_length;
+    // Each beam would have 2 as internally we are extracting 2*topK beams.
+    for (int j = 0; j < 2; j++) {
+      int beam_idx = batch * 2 * num_beams + j;
+      int beam_generated_length = generated_length + (*ids2_len)[next_tokens[beam_idx]];
+      beam_generated_length = beam_generated_length - prefix_length;
+      double generated_net = std::numeric_limits<double>::lowest();;
 
-    //std::cout<<"beam:"<<i<<",generated_length:"<<generated_length<<std::endl;
-    double generated_net = std::numeric_limits<double>::lowest();;
+      if (beam_generated_length < min_chars) {
+        generated_net = std::numeric_limits<double>::lowest();
+      } else {
+        double generated_prob = exp(next_scores[beam_idx]);
+        double generated_ecs = beam_generated_length * generated_prob;
+        double generated_cost = beam_generated_length * ecs_cost;
+        generated_net = generated_ecs - generated_cost;
+      }
 
-    if (generated_length < min_chars) {
-      generated_net = std::numeric_limits<double>::lowest();
-    } else {
-      double generated_prob = exp(next_scores[batch_beam_idx]);
-      double generated_ecs = generated_length * generated_prob;
-      double generated_cost = generated_length * ecs_cost;
-      generated_net = generated_ecs - generated_cost;
-    }
-
-    if (generated_net >= max_generated_net) {
-      max_generated_net = generated_net;
-      max_index = batch_beam_idx;
+      // beam_generated_length is less than min_chars, it will always default to the first index, topK are sorted
+      // so that is OK. may be a better way to make sure it will find the maximum
+      if (generated_net > max_generated_net) {
+        max_generated_net = generated_net;
+        max_index = beam_idx;
+      }
     }
   }
 
-  //std::cout<<"max_generated_net:"<<max_generated_net<<"next_scores[max_index]:"<<next_scores[max_index]<<std::endl;
-
-  if (max_generated_net >= best_net_ && next_scores[max_index] > log_prob_cutoff) {
+  if (max_generated_net >= best_net_ && next_scores[max_index] >= log_prob_cutoff) {
     best_net_ = max_generated_net;
-    //std::cout<<"best_net_ updated to:"<<best_net_<<std::endl;
     return false;
   }
 
-  //std::cout<<"Size is:"<<Size()<<std::endl;
   return true;
 }
 
@@ -254,11 +234,8 @@ void BeamSearchScorer::Process(ISequences* sequences,
                                                next_tokens);
 
     if (done_here) {
-      size_t top_k = 2 * num_beams_;
-      for (size_t j = 0; j < top_k; j++) {
-        //float next_score = next_scores[batch * top_k + j];
-        int32_t next_index = next_indices[batch * top_k + j];
-        int batch_beam_idx = static_cast<int>(batch * num_beams_) + next_index;
+      for (size_t beam = 0; beam < num_beams_; beam++) {
+        int batch_beam_idx = batch * num_beams_ + beam; 
 
         // Clone the sequence and append to buffer.
         gsl::span<const int32_t> src = sequences->GetSequence(batch_beam_idx);
@@ -269,22 +246,18 @@ void BeamSearchScorer::Process(ISequences* sequences,
         hypothesis_buffer_offset_ += static_cast<size_t>(sequence_length);
         auto sequence = clone.template as_span<const int32_t>();
 
-        //TODO boga, the next score here is basically wrong, this is the score that failed the CheckBestCandidate()
-        // new token is not added to the sequence, but score should be from previous round -> this needs extra storage
         beam_hyp.Add(sequence, score);
       }
-
       done_[batch] = true;
     }
 
     if (done_[batch]) {
-      //ORT_ENFORCE(beam_hyp.Size() >= gsl::narrow_cast<int>(num_beams_), "Batch can only be done if all beams have been generated");
+      ORT_ENFORCE(beam_hyp.Size() >= gsl::narrow_cast<int>(num_beams_), "Batch can only be done if all beams have been generated");
       
       // Pad the batch.
       for (size_t j = 0; j < num_beams_; j++) {
         next_beam_scores_[batch * num_beams_ + j] = 0.0f;
         next_beam_tokens_[batch * num_beams_ + j] = pad_token_id_;
-        // TODO shouldn't this be batch index?? or it zero because we don't want it to generate anymore.
         next_beam_indices_[batch * num_beams_ + j] = 0;
       }
       continue;

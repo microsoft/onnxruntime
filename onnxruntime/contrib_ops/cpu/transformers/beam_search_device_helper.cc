@@ -233,7 +233,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   dumper->Print("next_token_logits", next_token_logits.data(), batch_size, num_beams, vocab_size);
 #endif
 
-  // Apply all score processors that updates scores
+  // Apply all score processors that updates scores 
   logits_processors->Process(sequences, next_token_logits, step);
 
 #ifdef DEBUG_BEAM_SEARCH
@@ -256,6 +256,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   // Add beam score to next token scores. Corresponding python code is like:
   //    next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
   // TODO: use thread pool to parrellel
+  // TODO: this can be done after extracting topK - there would be performance gain. Its only adding scores
   int offset = 0;
   int batch_beam_index = 0;
   for (int i = 0; i < batch_size; i++) {

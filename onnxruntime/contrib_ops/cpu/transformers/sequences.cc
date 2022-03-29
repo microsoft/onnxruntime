@@ -29,7 +29,7 @@ gsl::span<const int32_t> Sequences::GetSequence(int beam_index) const {
 }
 
 float Sequences::GetSequenceScore(int beam_index) const {
-  gsl::span<float> buffer(scores[1-current_sequences_buffer].data(), scores[1-current_sequences_buffer].size());
+  gsl::span<float> buffer(scores[current_sequences_buffer].data(), scores[current_sequences_buffer].size());
   return buffer[beam_index];
 }
 
@@ -64,7 +64,7 @@ void Sequences::AppendNextTokenToSequences(
   // Append next token to each beam.
   for (int i = 0; i < batch_beam_size_; i++) {
     output[SafeInt<size_t>(i) * max_length_ + current_length_] = beam_next_tokens[i];
-    scores[current_sequences_buffer][i] = beam_scores[i];
+    scores[1-current_sequences_buffer][i] = beam_scores[i];
   }
 
   ++current_length_;

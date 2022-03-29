@@ -32,6 +32,7 @@ struct IBeamSearchState {
 struct IBeamSearchCpuState {
   gsl::span<int32_t> sequence_lengths;  // shape (batch_size, num_beams), initial sequence length
   gsl::span<int32_t> sequences_space;   // shape (2, batch_size, num_beams, max_seq_length)
+  gsl::span<float> sequences_score;     // shape (2, batch_size, num_beams, max_seq_length)
 
   // The following are used only by CUDA operator for data copied from device.
   gsl::span<float> topk_scores;        // shape (batch_size, 2*num_beams), scores of topk candidates (K=2*num_beams).
@@ -44,6 +45,7 @@ class ISequences {
  public:
   virtual ~ISequences() {}
   virtual gsl::span<const int32_t> GetSequence(int beam_index) const = 0;
+  virtual float GetSequenceScore(int beam_index) const = 0;
   virtual int GetSequenceLength() const = 0;
 };
 
@@ -58,7 +60,10 @@ class IBeamScorer {
  public:
   virtual ~IBeamScorer() {}
 
-  virtual void Initialize(AllocatorPtr& allocator, int sequence_length) = 0;
+  virtual void Initialize(AllocatorPtr& allocator,
+                          int sequence_length,
+                          gsl::span<const int32_t>& ids2_len,
+                          gsl::span<const int32_t>& prefix_lens) = 0;
 
   virtual void Process(ISequences* sequences,
                        gsl::span<const float>& next_scores,
@@ -92,6 +97,8 @@ struct IBeamSearchParameters {
 
   gsl::span<const int32_t> vocab_mask;
   gsl::span<const int32_t> prefix_vocab_mask;
+  gsl::span<const int32_t> vocab_id2_len;
+  gsl::span<const int32_t> prefix_lens;
 
   // Parameters from outputs.
   bool output_scores;  // whether scores existed in output

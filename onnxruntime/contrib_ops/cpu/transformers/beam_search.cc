@@ -606,7 +606,6 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& feeds_fetches_manag
 
 #ifdef DEBUG_BEAM_SEARCH
   const IConsoleDumper* dumper = GetConsoleDumper();
-  std::cout<<"---------------------------------------------------------------"<<std::endl;
   dumper->Print("input_ids", feeds[0]);
   dumper->Print("position_ids", feeds[1]);
   dumper->Print("attention_mask", feeds[2]);
@@ -620,7 +619,6 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& feeds_fetches_manag
 
   int current_length = parameters_->sequence_length;
   int iteration_counter = 0;
-
   while (current_length < parameters_->max_length) {
     iteration_counter++;
 #ifdef DEBUG_BEAM_SEARCH
