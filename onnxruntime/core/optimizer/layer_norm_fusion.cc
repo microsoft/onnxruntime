@@ -177,7 +177,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       // If input to the 1st ReduceMean is a Cast, and the Cast has same consumer count as subCnt + 1
       if (graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_input_node, "Cast", {9, 13}) &&
           reduce_mean_input_node.GetExecutionProviderType() == reduce_mean_node.GetExecutionProviderType() &&
-          optimizer_utils::CheckOutputEdges(graph, reduce_mean_input_node, static_cast<size_t>(subCnt + 1))) {
+          optimizer_utils::CheckOutputEdges(graph, reduce_mean_input_node, static_cast<size_t>(subCnt) + 1)) {
         nodes_to_remove.insert(nodes_to_remove.begin(), reduce_mean_input_node);
         has_leading_cast = true;
       }
