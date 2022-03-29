@@ -122,7 +122,7 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
   auto output_rank = output_dims.size();
   cuda::TArray<cuda::fast_divmod> gpu_output_strides(static_cast<int32_t>(output_rank));
   TensorPitches output_strides(output_dims);
-  for (auto i = 0; i < output_rank; i++) {
+  for (size_t i = 0; i < output_rank; i++) {
     gpu_output_strides[i] = cuda::fast_divmod(static_cast<int>(output_strides[i]));
   }
 

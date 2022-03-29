@@ -158,7 +158,7 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
   TArray<int64_t> input_strides(input_pitches);
 
   TArray<fast_divmod> fdm_input_shape(rank);
-  for (int32_t i = 0; i < input_dims.size(); ++i) {
+  for (size_t i = 0; i < input_dims.size(); ++i) {
     fdm_input_shape[i] = fast_divmod(gsl::narrow_cast<int>(input_dims[i]));
   }
 
