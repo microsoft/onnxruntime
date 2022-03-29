@@ -33,6 +33,35 @@ the cached dimension. This causes excessive memory wasting.
 
 Improvement is left as a future effort.
 
+## Current Limitation Imposed by ONNX Runtime
+
+### Shape-aware Allocation
+
+Currently, the allocator interface in ONNX Runtime only supports size-based
+allocation. That is, the interface has the following signature:
+```cpp
+virtual void* Alloc(size_t size);
+```
+However, it is not enough for Texture-like memory allocation. This type of
+memory exists in CUDA, DirectX, OpenGL, Vulkan and Metal. It has dedicated
+hardware to accelerate reading and writing. But it requires the spatial
+dimension and data type infomation to setup. So we must extend the interface to
+support shape-aware allocation. It is currently implemented in this branch as
+```cpp
+virtual void* Alloc(const TensorShape&);
+```
+which is subject to discuss.
+
+### Memory Copy to Deivce
+
+OpenCL supports Buffer and Image2D memory. In ORT, to copy memory from host to
+device during graph execution, we need to insert MemcpyFromHost Op to serve the
+purpose. Current implementation only supports copy to the memory type which is
+registered as the default type. To see the implication and limitation it
+imposes, see [PR #10871](https://github.com/microsoft/onnxruntime/pull/10871)
+for more information. Without it, we are unable to support two memory type
+simultaneously. We only support operators backed by Image2D at the moment.
+
 ## Build
 
 ### Development Environment
