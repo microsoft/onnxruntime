@@ -11,7 +11,7 @@
 
 #if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
 #define CPUIDINFO_ARCH_ARM
-#endif
+#endif  // ARM or ARM64
 
 namespace onnxruntime {
 
@@ -39,6 +39,25 @@ class CPUIDInfo {
   */
   int32_t GetCurrentUarch() const;
 
+  /**
+   * @return CPU core micro-architecture
+  */
+  int32_t GetCoreUarch(uint32_t coreId) const;
+
+  /**
+  * @brief Some ARMv8 power efficient core has narrower 64b load/store
+  *        that needs specialized optimiztion in kernels
+  * @return whether the indicated core has narrower load/store device
+  */
+  bool IsCoreArmv8NarrowLd(uint32_t coreId) const;
+  
+  /**
+  * @brief Some ARMv8 power efficient core has narrower 64b load/store
+  *        that needs specialized optimiztion in kernels
+  * @return whether the current core has narrower load/store device
+  */
+  bool IsCurrentCoreArmv8NarrowLd() const;
+
  private:
   CPUIDInfo();
   bool has_avx_{false};
@@ -49,6 +68,14 @@ class CPUIDInfo {
   bool has_sse3_{false};
   bool has_sse4_1_{false};
   bool is_hybrid_{false};
+
+  std::vector<uint32_t> core_uarchs_; // micro-arch of each core
+
+  // In ARMv8 systems, some power efficient cores has narrower
+  // 64b load/store devices. It takes longer for them to load
+  // 128b vectore registers.
+  std::vector<bool> is_armv8_narrow_ld_;
+
 
 #if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED)
   bool pytorch_cpuinfo_init_{false};

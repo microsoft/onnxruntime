@@ -411,14 +411,6 @@ Return Value:
 #endif // __linux__
 #endif // MLAS_TARGET_POWER
 
-    // Init the table describing the type (big or litte) of each core
-#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
-    // TODO!! implemente core uarch detection in Windows
-    auto tbl_size = std::thread::hardware_concurrency();
-    if (tbl_size > 0) {
-        mlas_coretype_tbl.resize(tbl_size, mlas_core_unknown);    
-    }
-#endif
 }
 
 size_t
