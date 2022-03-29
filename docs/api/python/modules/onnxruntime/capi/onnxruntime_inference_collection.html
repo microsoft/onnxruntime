@@ -244,7 +244,7 @@
 <span class="sd">        Compute the predictions.</span>
 
 <span class="sd">        :param output_names: name of the outputs</span>
-<span class="sd">        :param input_feed: dictionary ``{ input_name: input_ort_value }``</span>
+<span class="sd">        :param input_dict_ort_values: dictionary ``{ input_name: input_ort_value }``</span>
 <span class="sd">            See ``OrtValue`` class how to create `OrtValue`</span>
 <span class="sd">            from numpy array or `SparseTensor`</span>
 <span class="sd">        :param run_options: See :class:`onnxruntime.RunOptions`.</span>
@@ -387,6 +387,8 @@
         <span class="c1"># Tensorrt can fall back to CUDA. All others fall back to CPU.</span>
         <span class="k">if</span> <span class="s1">&#39;TensorrtExecutionProvider&#39;</span> <span class="ow">in</span> <span class="n">available_providers</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_fallback_providers</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;CUDAExecutionProvider&#39;</span><span class="p">,</span> <span class="s1">&#39;CPUExecutionProvider&#39;</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="s1">&#39;MIGraphXExecutionProvider&#39;</span> <span class="ow">in</span> <span class="n">available_providers</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_fallback_providers</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;ROCMExecutionProvider&#39;</span><span class="p">,</span> <span class="s1">&#39;CPUExecutionProvider&#39;</span><span class="p">]</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_fallback_providers</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;CPUExecutionProvider&#39;</span><span class="p">]</span>
 
@@ -671,7 +673,17 @@
 <span class="sd">        Valid only for OrtValues holding Tensors. Throws for OrtValues holding non-Tensors.</span>
 <span class="sd">        Use accessors to gain a reference to non-Tensor objects such as SparseTensor</span>
 <span class="sd">        &#39;&#39;&#39;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span></div></div>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span></div>
+
+<div class="viewcode-block" id="OrtValue.update_inplace"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.OrtValue.update_inplace">[docs]</a>    <span class="k">def</span> <span class="nf">update_inplace</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">np_arr</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Update the OrtValue in place with a new Numpy array. The numpy contents</span>
+<span class="sd">        are copied over to the device memory backing the OrtValue. It can be used</span>
+<span class="sd">        to update the input valuess for an InferenceSession with CUDA graph</span>
+<span class="sd">        enabled or other scenarios where the OrtValue needs to be updated while</span>
+<span class="sd">        the memory address can not be changed.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ortvalue</span><span class="o">.</span><span class="n">update_inplace</span><span class="p">(</span><span class="n">np_arr</span><span class="p">)</span></div></div>
 
 
 <div class="viewcode-block" id="OrtDevice"><a class="viewcode-back" href="../../../api_summary.html#onnxruntime.OrtDevice">[docs]</a><span class="k">class</span> <span class="nc">OrtDevice</span><span class="p">:</span>
@@ -889,7 +901,7 @@
 <h3>Navigation</h3>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../../tutorial.html">Tutorial</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../api_summary.html">API Summary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api_summary.html">API</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../auto_examples/index.html">Gallery of examples</a></li>
 </ul>
 
@@ -928,7 +940,7 @@
       &copy;2018-2021, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 4.3.2</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 4.4.0</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
     </div>
