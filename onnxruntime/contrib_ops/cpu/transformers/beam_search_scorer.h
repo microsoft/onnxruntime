@@ -49,17 +49,17 @@ class BeamHypotheses {
 
   bool IsDone(float best_sum_logprobs, int current_length);
 
-  bool BeamHypotheses::CheckBestCandidate(ISequences* sequences,
-                                          int batch,
-                                          int initial_seq_length,
-                                          const int prefix_length,
-                                          int num_beams,
-                                          gsl::span<const int32_t>* ids2_len,
-                                          int min_chars,
-                                          float ecs_cost,
-                                          float log_prob_cutoff,
-                                          gsl::span<const float>& next_scores,
-                                          gsl::span<const int32_t>& next_tokens);
+  bool CheckBestCandidate(ISequences* sequences,
+                          int batch,
+                          int initial_seq_length,
+                          const int prefix_length,
+                          int num_beams,
+                          gsl::span<const int32_t>* ids2_len,
+                          int min_chars,
+                          float ecs_cost,
+                          float log_prob_cutoff,
+                          gsl::span<const float>& next_scores,
+                          gsl::span<const int32_t>& next_tokens);
 
   // Output results. Note that it will clear all beams.
   void Output(int top_k,                            // number of sequences to return
