@@ -8,12 +8,8 @@
 namespace onnxruntime {
 namespace ml {
 
-#if !defined(ORT_MINIMAL_BUILD)
-
 Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name, std::vector<double>& data);
 Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name, std::vector<float>& data);
-
-#endif
 
 }  // namespace ml
 }  // namespace onnxruntime

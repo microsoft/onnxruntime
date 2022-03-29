@@ -10,8 +10,6 @@ using namespace std;
 namespace onnxruntime {
 namespace ml {
 
-#if !defined(ORT_MINIMAL_BUILD)
-
 Status GetNumberOfElementsAttrsOrDefault(const OpKernelInfo& info, const std::string& name,
                                          ONNX_NAMESPACE::TensorProto_DataType proto_type,
                                          size_t& n_elements, ONNX_NAMESPACE::TensorProto& proto) {
@@ -63,8 +61,6 @@ Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name
 Status GetVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& name, std::vector<float>& data) {
   return GetVectorAttrsOrDefault(info, name, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, data);
 }
-
-#endif
 
 }  // namespace ml
 }  // namespace onnxruntime
