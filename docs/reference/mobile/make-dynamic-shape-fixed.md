@@ -3,6 +3,7 @@ title: Make dynamic input shape fixed
 descriptions: 
 parent: Mobile
 grand_parent: Reference
+nav_exclude: true
 ---
 
 # Making dynamic input shapes fixed
