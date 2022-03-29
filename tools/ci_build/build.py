@@ -1283,7 +1283,7 @@ def setup_migraphx_vars(args):
 
 
 def setup_dml_build(args, cmake_path, build_dir, configs):
-    if args.use_dml:
+    if args.use_dml and not args.gdk:
         for config in configs:
             # Run the RESTORE_PACKAGES target to perform the initial
             # NuGet setup.
