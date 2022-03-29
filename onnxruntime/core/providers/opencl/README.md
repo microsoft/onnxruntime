@@ -15,7 +15,7 @@ on mobile GPU without sacrificing the flexiblity of the neural network models.
 This enables the developers to implement the op as a final resort.
 
 
-## Status
+## Status and Current Limitation of the EP
 
 This EP is in its early stage.
 
@@ -29,7 +29,7 @@ and UNet is tested.
 
 The memory management strategy is primal. All allocated memory is cached in the
 the allocator. Reuse only happens if the requested dimension **exact match**
-the cached dimension.
+the cached dimension. This causes excessive memory wasting.
 
 Improvement is left as a future effort.
 
@@ -200,12 +200,13 @@ dimmension limit, imposed by OpenCL driver.
 
 ### 4D
 
-Only NCHW tensor is supported. It is packed as `N*CeilDiv(C, 4)*H*W*4`, then
-`H*W*4` can be viewed as a tile of H*W, and each element is a 4 elements RGBA
+Only NCHW tensor is supported. It is packed as `N*H*CeilDiv(C, 4)*W*4`, then it
+can be viewed as repeating a tile of H*W, and each element is a 4 elements RGBA
 vector type for Image2D channels. Some tiles may have its channel filled with
 grabage data if C is not divisible by 4.
 
-This layout is inherited from MNN and TNN:
+This layout is inherited from MNN and TNN, the H*W tile of RGBA is repeated
+CeilDiv(C, 4) times along x-axis and N times along y-axis:
 ```
 |<-------------------Image2D width = CeilDiv(C, 4)*W------------------->|
 |<-------W------->|
