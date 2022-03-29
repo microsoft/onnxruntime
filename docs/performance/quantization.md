@@ -21,17 +21,17 @@ Quantization in ONNX Runtime refers to 8 bit linear quantization of an ONNX mode
 
  Scale is a positive real number used to map the floating point numbers to a quantization space. It is calculated as follows:
 
- For unsigned 8 bit
+ For asymmetric quantization:
  ```
  scale = (data_range_max - data_range_min) / (quantization_range_max - quantization_range_min)
  ```
 
- For signed 8 bit
+ For symmetric quantization:
  ```
  scale = abs(data_range_max, data_range_min) * 2 / (quantization_range_max - quantization_range_min)
  ```
 
- Zero point represents zero in the quantization space. It is important that the floating point zero value be exactly representable in quantization space. This is because zero padding is used in many CNNs. If it is not possible to represent 0 uniquely after quantization, it will result in accuracy errors.
+ Zero_point represents zero in the quantization space. It is important that the floating point zero value be exactly representable in quantization space. This is because zero padding is used in many CNNs. If it is not possible to represent 0 uniquely after quantization, it will result in accuracy errors.
 
 ## ONNX quantization representation format
 There are 2 ways to represent quantized ONNX models:
@@ -41,7 +41,7 @@ There are 2 ways to represent quantized ONNX models:
   - Quantization-Aware training (QAT) models converted from Tensorflow or exported from PyTorch.
   - Quantized models converted from tflite and other framework.
 
-For the last 2 cases, you don't need to quantize the model with quantization tool. OnnxRuntime CPU EP can run them directly as quantized model. TensorRT and NNAPI EP are adding support. 
+For the latter 2 cases, you don't need to quantize the model with quantization tool. OnnxRuntime can run them directly as quantized model.
 
 Picture below shows the equivalent representation with QDQ format and Operator oriented format for quantized Conv. This [E2E](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/quantization/image_classification/cpu/run.py) example demonstrates QDQ and Operator Oriented format.
 
@@ -77,18 +77,7 @@ from onnxruntime.quantization import quantize_dynamic, QuantType
 
 model_fp32 = 'path/to/the/model.onnx'
 model_quant = 'path/to/the/model.quant.onnx'
-quantized_model = quantize_dynamic(model_fp32, model_quant, weight_type=QuantType.QUInt8)
-```
-
-- QAT quantization
-
-```python
-import onnx
-from onnxruntime.quantization import quantize_qat, QuantType
-
-model_fp32 = 'path/to/the/model.onnx'
-model_quant = 'path/to/the/model.quant.onnx'
-quantized_model = quantize_qat(model_fp32, model_quant)
+quantized_model = quantize_dynamic(model_fp32, model_quant)
 ```
 
 - Static quantization
@@ -98,11 +87,11 @@ quantized_model = quantize_qat(model_fp32, model_quant)
 ### Method selection
 {: .no_toc}
 
-The main difference between dynamic quantization and static quantization is how scale and zero point of activation is calculated. For static quantization, they are calculated offline with calibration data set. All the activations have same scale and zero point. While for dynamic quantization, they are calculated on flight and will be specific for each activation, thus they are more accurate but introduce extra computation overhead.
+The main difference between dynamic quantization and static quantization is how scale and zero point of activation are calculated. For static quantization, they are calculated offline with calibration data set. All the activations have same scale and zero point. While for dynamic quantization, they are calculated on flight and will be specific for each activation, thus they are more accurate but introduce extra computation overhead.
 
 In general, it is recommended to use dynamic quantization for RNN and transformer-based models, and static quantization for CNN models.
 
-If both post-training quantization can not meet your accuracy goal, you can try quantization-aware training (QAT) to retrain the model. ONNX Runtime does not provide retraining at this time, but you can retrain your model with the original framework and reconvert back to ONNX.
+If both post-training quantization can not meet your accuracy goal, you can try quantization-aware training (QAT) to retrain the model. ONNX Runtime does not provide retraining at this time, but you can retrain your models with the original framework and reconvert them back to ONNX.
 
 ### Data type selection
 {: .no_toc}
@@ -111,25 +100,15 @@ Quantization represents value with 8 bit, which can be either int8 and uint8. Co
 
 Let's use U8U8 as as shorthand for (activation:uint8, weight:uint8), and U8S8 for (activation:uint8, weight:int8), and S8U8, S8S8 for other two formats.
 
-Currently, OnnxRuntime CPU only supports activation with type uint8, i.e., U8X8 only.
+OnnxRuntime Quantization on CPU can run U8U8, U8S8 and S8S8. S8S8 with QDQ format is the default setting for blance of performance and accuracy. It should be the first choice. Only in cases that the accuracy drops a lot, you can try U8U8. Note that S8S8 with QOperator format will be slow on x86-64 CPUs and it should be avoided in general.
+OnnxRuntime Quantization on GPU only support S8S8 format.
 
-#### x86-64
+#### When and why do I need to try U8U8?
 {: .no_toc }
 
-- AVX2: Try U8U8 first, and then U8S8.
-  - Performance U8S8 leverage VPMADDUBSW instruction but U8U8 kernel can process 6 rows at a time versus 4 rows for the U8S8 kernel, and U8U8 sequence is two instructions vs three instructions for U8S8. Thus, this balance ends up with u8u8 just in reach of U8S8 for older HW (Broadwell)
-  - Accuracy VPMADDUBSW has saturation issue, thus U8S8 needs to use [reduce_range](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/quantize.py) if accuracy is not good enough.
+On x86-64 machines with AVX2 and AVX512 extensions, OnnxRuntime uses VPMADDUBSW instruction for U8S8 for performance, but this instruction suffer saturation issue. Generally, it is not a big issue for final result. If you hit a big accuracy drop for some models, it may be caused by the saturation. In this case, you can either try [reduce_range](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/quantize.py) or U8U8 format which doesn't have saturation issue.
 
-- AVX512: U8S8 is much faster, but may suffer saturation issue.
-  - Performance U8S8 can do twice as many mul/adds per instruction compared to U8U8 so can be twice as fast.
-  - Accuracy Same as the AVX2 because of VPMADDUBSW. Needs to use reduce_range if accuracy is not good enough.
-
-- VNNI No difference.
-
-#### ARM64
-{: .no_toc }
-
-U8S8 can be faster than U8U8 for low end ARM64 and no difference on accuracy. There is no difference for high end ARM64.
+There is no such issue on other CPU archs(x64 with VNNI and ARM).
 
 ### List of Supported Quantized Ops
 {: .no_toc}
