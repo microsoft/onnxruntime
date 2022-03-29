@@ -107,12 +107,12 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   using CudaT = ToCudaType<MLFloat16>::MappedType;
   constexpr size_t element_size = sizeof(MLFloat16);
 
-  auto gemm_buffer = GetScratchBuffer<int8_t>(m * n * element_size); //row, fp16
-  QOrderDequantizeS8Col32_HalfRow(stream, GetDeviceProp(), gemm_buffer_quantized.get(), (CudaT*)gemm_buffer.get(),
-                                  *(const float*)scale_gemm_data, batch_size, sequence_length, n);
+  auto gemm_buffer = GetScratchBuffer<int8_t>(m * n * element_size);  // row, fp16
+  QOrderDequantizeCol32ToRow(stream, GetDeviceProp(), gemm_buffer_quantized.get(), (CudaT*)gemm_buffer.get(),
+                             *(const float*)scale_gemm_data, batch_size, sequence_length, n);
   // // reorder to row major
   // ORT_RETURN_IF_ERROR(
-  //   Reorder(cublasLt, stream, gsl::narrow_cast<int>(1), m, n, CUDA_R_8I,
+  //   Reorder(cublasLt, stream, device_prop, gsl::narrow_cast<int>(1), m, n, CUDA_R_8I,
   //           gemm_buffer_quantized.get(), (cublasLtOrder_t)2, gemm_buffer_quantized.get() + m*n, (cublasLtOrder_t)1));
 
   // // dequantize back to fp16
@@ -148,8 +148,8 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
     return Status(common::ONNXRUNTIME, common::FAIL);
   }
 
-  QOrderQuantizeHalfRow_S8Col32(stream, GetDeviceProp(), (const CudaT*)output_buffer.get(), output->MutableData<int8_t>(),
-                                *(const float*)scale_output_data, batch_size, sequence_length, hidden_size);
+  QOrderQuantizeRowToCol32(stream, GetDeviceProp(), (const CudaT*)output_buffer.get(), output->MutableData<int8_t>(),
+                           *(const float*)scale_output_data, batch_size, sequence_length, hidden_size);
   // // quantize to int8
   // auto output_buffer_quantized = GetScratchBuffer<int8_t>(batch_size * sequence_length * hidden_size * 1);  // row, int8
   // ORT_RETURN_IF_ERROR(
@@ -158,7 +158,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
 
   // // reorder to col32
   // ORT_RETURN_IF_ERROR(
-  //     Reorder(cublasLt, stream, gsl::narrow_cast<int>(batch_size), sequence_length, hidden_size, CUDA_R_8I,
+  //     Reorder(cublasLt, stream, device_prop, gsl::narrow_cast<int>(batch_size), sequence_length, hidden_size, CUDA_R_8I,
   //             output_buffer_quantized.get(), (cublasLtOrder_t)1, output->MutableData<int8_t>(), (cublasLtOrder_t)2));
   return Status::OK();
 }
