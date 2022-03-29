@@ -195,7 +195,7 @@ TEST_F(GraphTransformationTests, NoopElimination) {
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Add"] == 4);
+  ASSERT_TRUE(op_to_count["Add"] == 5);
 
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
   ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<NoopElimination>()));
