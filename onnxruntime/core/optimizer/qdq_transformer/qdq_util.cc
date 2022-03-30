@@ -54,7 +54,7 @@ bool IsQDQPairSupported(
   Initializer dq_scale(*dq_scale_tensor_proto, model_path);
 
   return q_zp.data_type() == dq_zp.data_type() &&
-         *q_zp.data<int8_t>() == *dq_zp.data<int8_t>() &&
+         *q_zp.raw_data() == *dq_zp.raw_data() &&
          *q_scale.data<float>() == *dq_scale.data<float>();
 }
 

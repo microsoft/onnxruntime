@@ -409,7 +409,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     nchwc_conv_W_arg = filters_it->second;
   } else {
     Initializer conv_W{*conv_W_tensor_proto, graph_.ModelPath()};
-    const auto& conv_W_dims = conv_W.dims();
+    const auto conv_W_dims = conv_W.dims();
 
     int64_t reordered_filter_size = nchwc_output_channels * filter_input_channels;
     for (size_t i = 2; i < 4; i++) {

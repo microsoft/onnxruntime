@@ -294,6 +294,10 @@ inline bool HasDataType(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   return ten_proto.data_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;
 }
 
+inline bool HasString(const ONNX_NAMESPACE::TensorProto& ten_proto) {
+  return ten_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_STRING;
+}
+
 #ifndef SHARED_PROVIDER
 inline bool HasName(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   return ten_proto.has_name();  // XXX
