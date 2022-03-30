@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include "core/common/inlined_containers.h"
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "ml_common.h"
@@ -20,6 +21,13 @@ struct TreeNodeElementId {
   bool operator<(const TreeNodeElementId& xyz) const {
     return ((tree_id < xyz.tree_id) || (tree_id == xyz.tree_id && node_id < xyz.node_id));
   }
+  struct hash_fn {
+    std::size_t operator()(const TreeNodeElementId& key) const {
+      std::size_t h1 = std::hash<int>()(key.tree_id);
+      std::size_t h2 = std::hash<int>()(key.node_id);
+      return h1 ^ h2;
+    }
+  };
 };
 
 template <typename T>
@@ -32,9 +40,22 @@ template <typename T>
 struct ScoreValue {
   T score;
   unsigned char has_score;
-  operator float() const { return has_score ? static_cast<float>(score) : 0; }
+  operator T() const { return has_score ? score : 0; }
+  T operator-() { return has_score ? -score : 0; }
+  T operator*(float val) { return has_score ? score * static_cast<T>(val) : 0; }
+  T operator*(double val) { return has_score ? score * static_cast<T>(val) : 0; }
+  ScoreValue<T>& operator=(ScoreValue<T> v) {
+    this->score = v.score;
+    this->has_score = v.has_score;
+    return *this;
+  }
   ScoreValue<T>& operator=(float v) {
-    this->score = v;
+    this->score = static_cast<T>(v);
+    this->has_score = 1;
+    return *this;
+  }
+  ScoreValue<T>& operator=(double v) {
+    this->score = static_cast<T>(v);
     this->has_score = 1;
     return *this;
   }
@@ -62,45 +83,53 @@ struct TreeNodeElement {
   bool is_missing_track_true;
 };
 
-template <typename ITYPE, typename OTYPE>
+template <typename InputType, typename ThresholdType, typename OutputType>
 class TreeAggregator {
  protected:
   size_t n_trees_;
   int64_t n_targets_or_classes_;
   POST_EVAL_TRANSFORM post_transform_;
-  const std::vector<OTYPE>& base_values_;
-  OTYPE origin_;
+  const std::vector<ThresholdType>& base_values_;
+  ThresholdType origin_;
   bool use_base_values_;
 
  public:
   TreeAggregator(size_t n_trees,
                  const int64_t& n_targets_or_classes,
                  POST_EVAL_TRANSFORM post_transform,
-                 const std::vector<OTYPE>& base_values) : n_trees_(n_trees), n_targets_or_classes_(n_targets_or_classes), post_transform_(post_transform), base_values_(base_values) {
-    origin_ = base_values_.size() == 1 ? base_values_[0] : 0.f;
+                 const std::vector<ThresholdType>& base_values) : 
+      n_trees_(n_trees), n_targets_or_classes_(n_targets_or_classes),
+      post_transform_(post_transform), base_values_(base_values) {
+    origin_ = base_values_.size() == 1 ? base_values_[0] : 0;
     use_base_values_ = base_values_.size() == static_cast<size_t>(n_targets_or_classes_);
   }
 
   // 1 output
 
-  void ProcessTreeNodePrediction1(ScoreValue<OTYPE>& /*prediction*/, const TreeNodeElement<OTYPE>& /*root*/) const {}
+  void ProcessTreeNodePrediction1(ScoreValue<ThresholdType>& /*prediction*/,
+                                  const TreeNodeElement<ThresholdType>& /*root*/) const {}
 
-  void MergePrediction1(ScoreValue<OTYPE>& /*prediction*/, ScoreValue<OTYPE>& /*prediction2*/) const {}
+  void MergePrediction1(ScoreValue<ThresholdType>& /*prediction*/, ScoreValue<ThresholdType>& /*prediction2*/) const {}
 
-  void FinalizeScores1(OTYPE* Z, ScoreValue<OTYPE>& prediction, int64_t* /*Y*/) const {
+  void FinalizeScores1(OutputType* Z, ScoreValue<ThresholdType>& prediction, int64_t* /*Y*/) const {
     prediction.score = prediction.has_score ? (prediction.score + origin_) : origin_;
-    *Z = this->post_transform_ == POST_EVAL_TRANSFORM::PROBIT ? static_cast<OTYPE>(ComputeProbit(static_cast<float>(prediction.score))) : prediction.score;
+    *Z = this->post_transform_ == POST_EVAL_TRANSFORM::PROBIT
+             ? static_cast<OutputType>(ComputeProbit(static_cast<float>(prediction.score)))
+             : static_cast<OutputType>(prediction.score);
   }
 
   // N outputs
 
-  void ProcessTreeNodePrediction(std::vector<ScoreValue<OTYPE>>& /*predictions*/, const TreeNodeElement<OTYPE>& /*root*/) const {}
+  void ProcessTreeNodePrediction(InlinedVector<ScoreValue<ThresholdType>>& /*predictions*/, 
+                                 const TreeNodeElement<ThresholdType>& /*root*/) const {}
 
-  void MergePrediction(std::vector<ScoreValue<OTYPE>>& /*predictions*/, const std::vector<ScoreValue<OTYPE>>& /*predictions2*/) const {}
+  void MergePrediction(InlinedVector<ScoreValue<ThresholdType>>& /*predictions*/,
+                       const InlinedVector<ScoreValue<ThresholdType>>& /*predictions2*/) const {}
 
-  void FinalizeScores(std::vector<ScoreValue<OTYPE>>& predictions, OTYPE* Z, int add_second_class, int64_t*) const {
+  void FinalizeScores(InlinedVector<ScoreValue<ThresholdType>>& predictions,
+                      OutputType* Z, int add_second_class, int64_t*) const {
     ORT_ENFORCE(predictions.size() == (size_t)n_targets_or_classes_);
-    OTYPE val;
+    ThresholdType val;
     auto it = predictions.begin();
     for (int64_t jt = 0; jt < n_targets_or_classes_; ++jt, ++it) {
       val = use_base_values_ ? base_values_[jt] : 0.f;
@@ -115,33 +144,39 @@ class TreeAggregator {
 // regression
 /////////////
 
-template <typename ITYPE, typename OTYPE>
-class TreeAggregatorSum : public TreeAggregator<ITYPE, OTYPE> {
+template <typename InputType, typename ThresholdType, typename OutputType>
+class TreeAggregatorSum : public TreeAggregator<InputType, ThresholdType, OutputType> {
  public:
   TreeAggregatorSum(size_t n_trees,
                     const int64_t& n_targets_or_classes,
                     POST_EVAL_TRANSFORM post_transform,
-                    const std::vector<OTYPE>& base_values) : TreeAggregator<ITYPE, OTYPE>(n_trees, n_targets_or_classes,
-                                                                                          post_transform, base_values) {}
+                    const std::vector<ThresholdType>& base_values) :
+      TreeAggregator<InputType, ThresholdType, OutputType>(n_trees, 
+                                                           n_targets_or_classes, post_transform, base_values) {}
 
   // 1 output
 
-  void ProcessTreeNodePrediction1(ScoreValue<OTYPE>& prediction, const TreeNodeElement<OTYPE>& root) const {
+  void ProcessTreeNodePrediction1(ScoreValue<ThresholdType>& prediction,
+                                  const TreeNodeElement<ThresholdType>& root) const {
     prediction.score += root.weights[0].value;
   }
 
-  void MergePrediction1(ScoreValue<OTYPE>& prediction, const ScoreValue<OTYPE>& prediction2) const {
+  void MergePrediction1(ScoreValue<ThresholdType>& prediction, 
+                        const ScoreValue<ThresholdType>& prediction2) const {
     prediction.score += prediction2.score;
   }
 
-  void FinalizeScores1(OTYPE* Z, ScoreValue<OTYPE>& prediction, int64_t* /*Y*/) const {
+  void FinalizeScores1(OutputType* Z, ScoreValue<ThresholdType>& prediction, int64_t* /*Y*/) const {
     prediction.score += this->origin_;
-    *Z = this->post_transform_ == POST_EVAL_TRANSFORM::PROBIT ? static_cast<OTYPE>(ComputeProbit(static_cast<float>(prediction.score))) : prediction.score;
+    *Z = this->post_transform_ == POST_EVAL_TRANSFORM::PROBIT
+             ? static_cast<OutputType>(ComputeProbit(static_cast<float>(prediction.score)))
+             : static_cast<OutputType>(prediction.score);
   }
 
   // N outputs
 
-  void ProcessTreeNodePrediction(std::vector<ScoreValue<OTYPE>>& predictions, const TreeNodeElement<OTYPE>& root) const {
+  void ProcessTreeNodePrediction(InlinedVector<ScoreValue<ThresholdType>>& predictions, 
+                                 const TreeNodeElement<ThresholdType>& root) const {
     for (auto it = root.weights.cbegin(); it != root.weights.cend(); ++it) {
       ORT_ENFORCE(it->i < (int64_t)predictions.size());
       predictions[it->i].score += it->value;
@@ -149,7 +184,8 @@ class TreeAggregatorSum : public TreeAggregator<ITYPE, OTYPE> {
     }
   }
 
-  void MergePrediction(std::vector<ScoreValue<OTYPE>>& predictions, const std::vector<ScoreValue<OTYPE>>& predictions2) const {
+  void MergePrediction(InlinedVector<ScoreValue<ThresholdType>>& predictions, 
+                       const InlinedVector<ScoreValue<ThresholdType>>& predictions2) const {
     ORT_ENFORCE(predictions.size() == predictions2.size());
     for (size_t i = 0; i < predictions.size(); ++i) {
       if (predictions2[i].has_score) {
@@ -159,7 +195,8 @@ class TreeAggregatorSum : public TreeAggregator<ITYPE, OTYPE> {
     }
   }
 
-  void FinalizeScores(std::vector<ScoreValue<OTYPE>>& predictions, OTYPE* Z, int add_second_class, int64_t*) const {
+  void FinalizeScores(InlinedVector<ScoreValue<ThresholdType>>& predictions,
+                      OutputType* Z, int add_second_class, int64_t*) const {
     auto it = predictions.begin();
     if (this->use_base_values_) {
       auto it2 = this->base_values_.cbegin();
@@ -170,22 +207,28 @@ class TreeAggregatorSum : public TreeAggregator<ITYPE, OTYPE> {
   }
 };
 
-template <typename ITYPE, typename OTYPE>
-class TreeAggregatorAverage : public TreeAggregatorSum<ITYPE, OTYPE> {
+template <typename InputType, typename ThresholdType, typename OutputType>
+class TreeAggregatorAverage : public TreeAggregatorSum<InputType, ThresholdType, OutputType> {
  public:
   TreeAggregatorAverage(size_t n_trees,
                         const int64_t& n_targets_or_classes,
                         POST_EVAL_TRANSFORM post_transform,
-                        const std::vector<OTYPE>& base_values) : TreeAggregatorSum<ITYPE, OTYPE>(n_trees, n_targets_or_classes,
-                                                                                                 post_transform, base_values) {}
+                        const std::vector<ThresholdType>& base_values) : 
+      TreeAggregatorSum<InputType, ThresholdType, OutputType>(n_trees,
+                                                              n_targets_or_classes,
+                                                              post_transform,
+                                                              base_values) {}
 
-  void FinalizeScores1(OTYPE* Z, ScoreValue<OTYPE>& prediction, int64_t* /*Y*/) const {
+  void FinalizeScores1(OutputType* Z, ScoreValue<ThresholdType>& prediction, int64_t* /*Y*/) const {
     prediction.score /= this->n_trees_;
     prediction.score += this->origin_;
-    *Z = this->post_transform_ == POST_EVAL_TRANSFORM::PROBIT ? static_cast<OTYPE>(ComputeProbit(static_cast<float>(prediction.score))) : prediction.score;
+    *Z = this->post_transform_ == POST_EVAL_TRANSFORM::PROBIT
+             ? static_cast<OutputType>(ComputeProbit(static_cast<float>(prediction.score)))
+             : static_cast<OutputType>(prediction.score);
   }
 
-  void FinalizeScores(std::vector<ScoreValue<OTYPE>>& predictions, OTYPE* Z, int add_second_class, int64_t*) const {
+  void FinalizeScores(InlinedVector<ScoreValue<ThresholdType>>& predictions, 
+                      OutputType* Z, int add_second_class, int64_t*) const {
     if (this->use_base_values_) {
       ORT_ENFORCE(this->base_values_.size() == predictions.size());
       auto it = predictions.begin();
@@ -201,25 +244,30 @@ class TreeAggregatorAverage : public TreeAggregatorSum<ITYPE, OTYPE> {
   }
 };
 
-template <typename ITYPE, typename OTYPE>
-class TreeAggregatorMin : public TreeAggregator<ITYPE, OTYPE> {
+template <typename InputType, typename ThresholdType, typename OutputType>
+class TreeAggregatorMin : public TreeAggregator<InputType, ThresholdType, OutputType> {
  public:
   TreeAggregatorMin(size_t n_trees,
                     const int64_t& n_targets_or_classes,
                     POST_EVAL_TRANSFORM post_transform,
-                    const std::vector<OTYPE>& base_values) : TreeAggregator<ITYPE, OTYPE>(n_trees, n_targets_or_classes,
-                                                                                          post_transform, base_values) {}
+                    const std::vector<ThresholdType>& base_values) : 
+      TreeAggregator<InputType, ThresholdType, OutputType>(n_trees, 
+                                                           n_targets_or_classes,
+                                                           post_transform,
+                                                           base_values) {}
 
   // 1 output
 
-  void ProcessTreeNodePrediction1(ScoreValue<OTYPE>& prediction, const TreeNodeElement<OTYPE>& root) const {
+  void ProcessTreeNodePrediction1(ScoreValue<ThresholdType>& prediction, 
+                                  const TreeNodeElement<ThresholdType>& root) const {
     prediction.score = (!(prediction.has_score) || root.weights[0].value < prediction.score)
                            ? root.weights[0].value
                            : prediction.score;
     prediction.has_score = 1;
   }
 
-  void MergePrediction1(ScoreValue<OTYPE>& prediction, const ScoreValue<OTYPE>& prediction2) const {
+  void MergePrediction1(ScoreValue<ThresholdType>& prediction, 
+                        const ScoreValue<ThresholdType>& prediction2) const {
     if (prediction2.has_score) {
       prediction.score = prediction.has_score && (prediction.score < prediction2.score)
                              ? prediction.score
@@ -230,7 +278,8 @@ class TreeAggregatorMin : public TreeAggregator<ITYPE, OTYPE> {
 
   // N outputs
 
-  void ProcessTreeNodePrediction(std::vector<ScoreValue<OTYPE>>& predictions, const TreeNodeElement<OTYPE>& root) const {
+  void ProcessTreeNodePrediction(InlinedVector<ScoreValue<ThresholdType>>& predictions,
+                                 const TreeNodeElement<ThresholdType>& root) const {
     for (auto it = root.weights.begin(); it != root.weights.end(); ++it) {
       predictions[it->i].score = (!predictions[it->i].has_score || it->value < predictions[it->i].score)
                                      ? it->value
@@ -239,7 +288,8 @@ class TreeAggregatorMin : public TreeAggregator<ITYPE, OTYPE> {
     }
   }
 
-  void MergePrediction(std::vector<ScoreValue<OTYPE>>& predictions, const std::vector<ScoreValue<OTYPE>>& predictions2) const {
+  void MergePrediction(InlinedVector<ScoreValue<ThresholdType>>& predictions,
+                       const InlinedVector<ScoreValue<ThresholdType>>& predictions2) const {
     ORT_ENFORCE(predictions.size() == predictions2.size());
     for (size_t i = 0; i < predictions.size(); ++i) {
       if (predictions2[i].has_score) {
@@ -252,25 +302,27 @@ class TreeAggregatorMin : public TreeAggregator<ITYPE, OTYPE> {
   }
 };
 
-template <typename ITYPE, typename OTYPE>
-class TreeAggregatorMax : public TreeAggregator<ITYPE, OTYPE> {
+template <typename InputType, typename ThresholdType, typename OutputType>
+class TreeAggregatorMax : public TreeAggregator<InputType, ThresholdType, OutputType> {
  public:
-  TreeAggregatorMax<ITYPE, OTYPE>(size_t n_trees,
-                                  const int64_t& n_targets_or_classes,
-                                  POST_EVAL_TRANSFORM post_transform,
-                                  const std::vector<OTYPE>& base_values) : TreeAggregator<ITYPE, OTYPE>(n_trees, n_targets_or_classes,
-                                                                                                        post_transform, base_values) {}
+  TreeAggregatorMax<InputType, ThresholdType, OutputType>(size_t n_trees,
+                                const int64_t& n_targets_or_classes,
+                                POST_EVAL_TRANSFORM post_transform,
+                                const std::vector<ThresholdType>& base_values) : 
+      TreeAggregator<InputType, ThresholdType, OutputType>(n_trees, n_targets_or_classes, 
+                                                           post_transform, base_values) {}
 
   // 1 output
 
-  void ProcessTreeNodePrediction1(ScoreValue<OTYPE>& prediction, const TreeNodeElement<OTYPE>& root) const {
+  void ProcessTreeNodePrediction1(ScoreValue<ThresholdType>& prediction,
+                                  const TreeNodeElement<ThresholdType>& root) const {
     prediction.score = (!(prediction.has_score) || root.weights[0].value > prediction.score)
                            ? root.weights[0].value
                            : prediction.score;
     prediction.has_score = 1;
   }
 
-  void MergePrediction1(ScoreValue<OTYPE>& prediction, const ScoreValue<OTYPE>& prediction2) const {
+  void MergePrediction1(ScoreValue<ThresholdType>& prediction, const ScoreValue<ThresholdType>& prediction2) const {
     if (prediction2.has_score) {
       prediction.score = prediction.has_score && (prediction.score > prediction2.score)
                              ? prediction.score
@@ -281,7 +333,8 @@ class TreeAggregatorMax : public TreeAggregator<ITYPE, OTYPE> {
 
   // N outputs
 
-  void ProcessTreeNodePrediction(std::vector<ScoreValue<OTYPE>>& predictions, const TreeNodeElement<OTYPE>& root) const {
+  void ProcessTreeNodePrediction(InlinedVector<ScoreValue<ThresholdType>>& predictions,
+                                 const TreeNodeElement<ThresholdType>& root) const {
     for (auto it = root.weights.begin(); it != root.weights.end(); ++it) {
       predictions[it->i].score = (!predictions[it->i].has_score || it->value > predictions[it->i].score)
                                      ? it->value
@@ -290,7 +343,8 @@ class TreeAggregatorMax : public TreeAggregator<ITYPE, OTYPE> {
     }
   }
 
-  void MergePrediction(std::vector<ScoreValue<OTYPE>>& predictions, const std::vector<ScoreValue<OTYPE>>& predictions2) const {
+  void MergePrediction(InlinedVector<ScoreValue<ThresholdType>>& predictions,
+                       const InlinedVector<ScoreValue<ThresholdType>>& predictions2) const {
     ORT_ENFORCE(predictions.size() == predictions2.size());
     for (size_t i = 0; i < predictions.size(); ++i) {
       if (predictions2[i].has_score) {
@@ -307,8 +361,8 @@ class TreeAggregatorMax : public TreeAggregator<ITYPE, OTYPE> {
 // classification
 /////////////////
 
-template <typename ITYPE, typename OTYPE>
-class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
+template <typename InputType, typename ThresholdType, typename OutputType>
+class TreeAggregatorClassifier : public TreeAggregatorSum<InputType, ThresholdType, OutputType> {
  private:
   const std::vector<int64_t>& class_labels_;
   bool binary_case_;
@@ -320,20 +374,22 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
   TreeAggregatorClassifier(size_t n_trees,
                            const int64_t& n_targets_or_classes,
                            POST_EVAL_TRANSFORM post_transform,
-                           const std::vector<OTYPE>& base_values,
+                           const std::vector<ThresholdType>& base_values,
                            const std::vector<int64_t>& class_labels,
                            bool binary_case,
                            bool weights_are_all_positive,
                            int64_t positive_label = 1,
-                           int64_t negative_label = 0) : TreeAggregatorSum<ITYPE, OTYPE>(n_trees, n_targets_or_classes,
-                                                                                         post_transform, base_values),
-                                                         class_labels_(class_labels),
-                                                         binary_case_(binary_case),
-                                                         weights_are_all_positive_(weights_are_all_positive),
-                                                         positive_label_(positive_label),
-                                                         negative_label_(negative_label) {}
+                           int64_t negative_label = 0) : 
+      TreeAggregatorSum<InputType, ThresholdType, OutputType>(n_trees, n_targets_or_classes,
+                                                              post_transform, base_values),
+      class_labels_(class_labels),
+      binary_case_(binary_case),
+      weights_are_all_positive_(weights_are_all_positive),
+      positive_label_(positive_label),
+      negative_label_(negative_label) {}
 
-  void get_max_weight(const std::vector<ScoreValue<OTYPE>>& classes, int64_t& maxclass, OTYPE& maxweight) const {
+  void get_max_weight(const InlinedVector<ScoreValue<ThresholdType>>& classes, int64_t& maxclass,
+                      ThresholdType& maxweight) const {
     maxclass = -1;
     maxweight = 0;
     for (auto it = classes.cbegin(); it != classes.cend(); ++it) {
@@ -344,15 +400,18 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
     }
   }
 
-  int64_t _set_score_binary(int& write_additional_scores, const std::vector<ScoreValue<OTYPE>>& classes) const {
+  int64_t _set_score_binary(int& write_additional_scores,
+                            const InlinedVector<ScoreValue<ThresholdType>>& classes) const {
     ORT_ENFORCE(classes.size() == 2 || classes.size() == 1);
     return (classes.size() == 2 && classes[1].has_score)
-               ? _set_score_binary(write_additional_scores, classes[0].score, classes[0].has_score, classes[1].score, classes[1].has_score)
+               ? _set_score_binary(write_additional_scores, classes[0].score,
+                                   classes[0].has_score, classes[1].score, classes[1].has_score)
                : _set_score_binary(write_additional_scores, classes[0].score, classes[0].has_score, 0, 0);
   }
 
-  int64_t _set_score_binary(int& write_additional_scores, OTYPE score0, unsigned char has_score0, OTYPE score1, unsigned char has_score1) const {
-    OTYPE pos_weight = has_score1 ? score1 : (has_score0 ? score0 : 0);  // only 1 class
+  int64_t _set_score_binary(int& write_additional_scores, ThresholdType score0, unsigned char has_score0, 
+                            ThresholdType score1, unsigned char has_score1) const {
+    ThresholdType pos_weight = has_score1 ? score1 : (has_score0 ? score0 : 0);  // only 1 class
     if (binary_case_) {
       if (weights_are_all_positive_) {
         if (pos_weight > 0.5) {
@@ -379,8 +438,8 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
 
   // 1 output
 
-  void FinalizeScores1(OTYPE* Z, ScoreValue<OTYPE>& prediction, int64_t* Y) const {
-    std::vector<OTYPE> scores(2);
+  void FinalizeScores1(OutputType* Z, ScoreValue<ThresholdType>& prediction, int64_t* Y) const {
+    InlinedVector<ThresholdType> scores(2);
     unsigned char has_scores[2] = {1, 0};
 
     int write_additional_scores = -1;
@@ -398,7 +457,7 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
       scores[0] = prediction.score;
       scores.pop_back();
       *Y = _set_score_binary(write_additional_scores, scores[0], has_scores[0], 0, 0);
-    } else if (this->base_values_.size() == 0) {
+    } else if (this->base_values_.empty()) {
       scores[0] = prediction.score;
       scores.pop_back();
       *Y = _set_score_binary(write_additional_scores, scores[0], has_scores[0], 0, 0);
@@ -413,8 +472,9 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
 
   // N outputs
 
-  void FinalizeScores(std::vector<ScoreValue<OTYPE>>& predictions, OTYPE* Z, int /*add_second_class*/, int64_t* Y = 0) const {
-    OTYPE maxweight = 0;
+  void FinalizeScores(InlinedVector<ScoreValue<ThresholdType>>& predictions,
+                      OutputType* Z, int /*add_second_class*/, int64_t* Y = 0) const {
+    ThresholdType maxweight = 0;
     int64_t maxclass = -1;
 
     int write_additional_scores = -1;
@@ -452,7 +512,7 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<ITYPE, OTYPE> {
         predictions[0].score += this->base_values_[0];
         if (!predictions[1].has_score)
           predictions.pop_back();
-      } else if (this->base_values_.size() == 0) {
+      } else if (this->base_values_.empty()) {
         write_additional_scores = 3;
         if (!predictions[1].has_score)
           predictions.pop_back();
