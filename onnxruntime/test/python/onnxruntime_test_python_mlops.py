@@ -173,6 +173,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(total, 0)
 
     def test_run_model_tree_ensemble_aionnxml_3(self):
+        available_providers = onnxrt.get_available_providers()
         # Checks onnxruntime can load and execute TreeEnsembleRegressor with double threashold.
         model = get_name("tree_ensemble_as_tensor.onnx")
         # first threshold of the tree is 1.7999999523162842
@@ -181,7 +182,7 @@ class TestInferenceSession(unittest.TestCase):
         iris = np.array([[0, 1, 1.7999999523162842, 3],
                          [0, 1, 1.7999999523, 3],
                          [0, 1, 1.79999995232, 3]], dtype=np.float64)
-        sess = onnxrt.InferenceSession(model)
+        sess = onnxrt.InferenceSession(model, providers=available_providers)
         got = sess.run(None, {'X': iris})
         self.assertEqual(got[0].dtype, np.float64)
         self.assertEqual(got[0].shape, (3, 1))
