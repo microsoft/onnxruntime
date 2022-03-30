@@ -27,6 +27,7 @@ Pre-built packages and Docker images are published for  ONNX Runtime with OpenVI
 
 |ONNX Runtime|OpenVINO|Notes|
 |---|---|---|
+|1.11.0|2022.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v4.0)|
 |1.10.0|2021.4.2|[Details](https://github.com/intel/onnxruntime/releases/tag/v3.4)|
 |1.9.0|2021.4.1|[Details](https://github.com/intel/onnxruntime/releases/tag/v3.1)|
 |1.8.1|2021.4|[Details](https://github.com/intel/onnxruntime/releases/tag/v3.0)|
@@ -48,10 +49,9 @@ OpenVINO Execution Provider enables thread-safe deep learning inference
 
 ### Heterogeneous Execution for OpenVINO EP
 
-The heterogeneous Execution enables computing for inference on one network on several devices. Purposes to execute networks in heterogeneous mode
+The heterogeneous execution enables computing for inference on one network on several devices. Purposes to execute networks in heterogeneous mode:
 
-To utilize accelerators power and calculate heaviest parts of network on accelerator and execute not supported layers on fallback devices like CPU
-To utilize all available hardware more efficiently during one inference
+* To utilize accelerators power and calculate heaviest parts of network on accelerator and execute not supported layers on fallback devices like CPU to utilize all available hardware more efficiently during one inference.
 
 For more information on Heterogeneous plugin of OpenVINO, please refer to the
 [Intel OpenVINO Heterogeneous Plugin](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Hetero_execution.html).
@@ -73,20 +73,31 @@ Use `AUTO:<device 1><device 2>..` as the device name to delegate selection of an
 From the application point of view, this is just another device that handles all accelerators in full system.
 
 For more information on Auto-Device plugin of OpenVINO, please refer to the
-[Intel OpenVINO Auto Device Plugin](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Hetero_execution.html).
+[Intel OpenVINO Auto Device Plugin](https://docs.openvino.ai/latest/openvino_docs_OV_UG_supported_plugins_AUTO.html).
 
 ### Model caching feature for OpenVINO EP
 
 The model caching setting enables blobs with Myriadx(VPU) and as cl_cache files with iGPU.
 
-#### Save/Load blob capability for Myriadx(VPU)
+### OpenCL queue throttling for GPU device
+
+Enables [OpenCL queue throttling](https://docs.openvino.ai/latest/groupov_runtime_ocl_gpu_prop_cpp_api.html?highlight=throttling) for GPU device. Reduces CPU Utilization when using GPU with OpenVINO EP.
+
+#### Save/Load blob capability for Myriadx(VPU) with OpenVINO 2021.3 version
 This feature enables users to save and load the blobs directly. These pre-compiled blobs can be directly loaded on to the specific hardware device target and inferencing can be done. This feature is only supported on MyriadX(VPU) hardware device target.
 
-#### CL Cache capability for iGPU
+#### Model caching
 
-Starting from version 2021.4 OpenVINO supports [model caching](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Model_caching_overview.html).
+Starting from version 2021.4 OpenVINO supports [model caching](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Model_caching_overview.html). With OpenVINO 2021.4, it is supported on Myriadx(VPU)
+and iGPU.
 
-This feature enables users to save and load the cl_cache files directly. These cl_cache files can be directly loaded on to igpu hardware device target and inferencing can be done. This feature is only supported on iGPU hardware device target.
+From OpenVINO 2022.1 version, this feature is supported on Myriadx(VPU), iGPU and CPU.
+
+iGPU:
+This feature enables users to save and load the cl_cache files directly. These cl_cache files can be directly loaded on to igpu hardware device target and inferencing can be done.
+
+Myriadx(VPU) and CPU:
+This feature enables users to save and load the blob file directly. This file can be directly loaded on to hardware device target and inferencing can be done.
 
 There are two different methods of exercising this feature:
 
@@ -94,7 +105,7 @@ There are two different methods of exercising this feature:
 
 This flow can be enabled by setting the runtime config option 'use_compiled_network' to True while using the c++/python API'S. This config option acts like a switch to on and off the feature.
 
-The blobs are saved and loaded from a directory named 'ov_compiled_blobs' from the executable path by default. This path however can be overridden using another runtime config option 'blob_dump_path' which is used to explicitly specify the path where you would like to dump and load the blobs (VPU) or cl_cache(iGPU) files from when already using the use_compiled_network(model caching) setting.
+The blobs are saved and loaded from a directory named 'ov_compiled_blobs' from the executable path by default. This path however can be overridden using another runtime config option 'blob_dump_path' which is used to explicitly specify the path where you would like to dump and load the blobs (VPU, CPU) or cl_cache(iGPU) files from when already using the use_compiled_network(model caching) setting.
 
 Refer to [Configuration Options](#configuration-options) for more information about using these runtime options.
 
@@ -201,6 +212,7 @@ options.num_of_threads = 8;
 options.use_compiled_network = false;
 options.blob_dump_path = "";
 options.context = 0x123456ff;
+options.enable_opencl_throttling = false;
 SessionOptionsAppendExecutionProvider_OpenVINO(session_options, &options);
 ```
 
@@ -217,6 +229,7 @@ The following table lists all the available configuration options and the Key-Va
 | use_compiled_network | string | True/False | boolean | This option is only available for MYRIAD_FP16 VPU devices for both Linux and Windows and it enables save/load blob functionality. It can be used to directly import pre-compiled blobs if exists or dump a pre-compiled blob at the executable path. |
 | blob_dump_path | string | Any valid string path on the hardware target | string | Explicitly specify the path where you would like to dump and load the blobs for the save/load blob feature when use_compiled_network setting is enabled . This overrides the default path.|
 | context | string | OpenCL Context | void* | This option is only alvailable when OpenVINO EP is built with OpenCL flags enabled. It takes in the remote context i.e the cl_context address as a void pointer.|
+| enable_opencl_throttling | string | True/False | boolean | This option enables OpenCL queue throttling for GPU device (Reduces CPU Utilization when using GPU). |
 
 Valid Hetero or Multi or Auto Device combinations:
 HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...
@@ -247,7 +260,7 @@ SessionOptions::SetGraphOptimizationLevel(ORT_DISABLE_ALL);
 **Note: This API has been deprecated. Please use the mechanism mentioned above to set the 'device-type' option.**
 When ONNX Runtime is built with OpenVINO Execution Provider, a target hardware option needs to be provided. This build time option becomes the default target harware the EP schedules inference on. However, this target may be overriden at runtime to schedule inference on a different hardware as shown below.
 
-Note. This dynamic hardware selection is optional. The EP falls back to the build-time default selection if no dynamic hardware option value is specified.
+Note: This dynamic hardware selection is optional. The EP falls back to the build-time default selection if no dynamic hardware option value is specified.
 
 **Python API**
 ```
@@ -279,17 +292,19 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | **ONNX Layers** | **CPU** | **GPU** | **VPU** |
 | --- | --- | --- | --- |
 | Abs | Yes | Yes | No |
-| Acos | Yes | No | No |
-| Acosh | Yes | No | No |
+| Acos | Yes | Yes | No |
+| Acosh | Yes | Yes | No |
 | Add | Yes | Yes | Yes |
-| ArgMax | Yes | No | No |
-| ArgMin | Yes | No | No |
+| And | Yes | Yes | Yes |
+| ArgMax | Yes | Yes | Yes |
+| ArgMin | Yes | Yes | Yes |
 | Asin | Yes | Yes | No |
 | Asinh | Yes | Yes | No |
 | Atan | Yes | Yes | No |
-| Atanh | Yes | No | No |
+| Atanh | Yes | Yes | No |
 | AveragePool | Yes | Yes | Yes |
 | BatchNormalization | Yes | Yes | Yes |
+| BitShift | Yes | No | No |
 | Ceil | Yes | Yes | Yes |
 | Cast | Yes | Yes | Yes |
 | Clip | Yes | Yes | Yes |
@@ -297,9 +312,11 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Constant | Yes | Yes | Yes |
 | ConstantOfShape | Yes | Yes | Yes |
 | Conv | Yes | Yes | Yes |
+| ConvInteger | Yes | Yes | Yes |
 | ConvTranspose | Yes | Yes | Yes |
-| Cos | Yes | No | No |
-| Cosh | Yes | No | No |
+| Cos | Yes | Yes | No |
+| Cosh | Yes | Yes | No |
+| CumSum | Yes | Yes | No |
 | DepthToSpace | Yes | Yes | Yes |
 | DequantizeLinear | Yes | Yes | No |
 | Div | Yes | Yes | Yes |
@@ -308,7 +325,7 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Equal | Yes | Yes | Yes |
 | Erf | Yes | Yes | Yes |
 | Exp | Yes | Yes | Yes |
-| Expand | No | No | Yes |
+| Expand | Yes | Yes | Yes |
 | Flatten | Yes | Yes | Yes |
 | Floor | Yes | Yes | Yes |
 | Gather | Yes | Yes | Yes |
@@ -317,52 +334,75 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | Gemm | Yes | Yes | Yes |
 | GlobalAveragePool | Yes | Yes | Yes |
 | GlobalLpPool | Yes | Yes | No |
+| GlobalMaxPool | Yes | Yes | No |
+| Greater | Yes | Yes | Yes |
+| GreaterOrEqual | Yes | Yes | Yes |
+| HardMax | Yes | Yes | No |
 | HardSigmoid | Yes | Yes | No |
 | Identity | Yes | Yes | Yes |
+| ImageScaler | Yes | Yes | Yes |
 | InstanceNormalization | Yes | Yes | Yes |
 | LeakyRelu | Yes | Yes | Yes |
 | Less | Yes | Yes | Yes |
+| LessOrEqual | Yes | Yes | Yes |
 | Log | Yes | Yes | Yes |
+| LogSoftMax | Yes | Yes | Yes |
 | Loop | Yes | Yes | Yes |
 | LRN | Yes | Yes | Yes |
+| LSTM | Yes | Yes | Yes |
 | MatMul | Yes | Yes | Yes |
+| MatMulInteger | Yes | No | No |
 | Max | Yes | Yes | Yes |
 | MaxPool | Yes | Yes | Yes |
 | Mean | Yes | Yes | Yes |
+| MeanVarianceNormalization | Yes | Yes | Yes |
 | Min | Yes | Yes | Yes |
+| Mod | Yes | Yes | No |
 | Mul | Yes | Yes | Yes |
 | Neg | Yes | Yes | Yes |
-| NonMaxSuppression | No | No | Yes |
+| NonMaxSuppression | Yes | Yes | Yes |
 | NonZero | Yes | No | Yes |
 | Not | Yes | Yes | Yes |
 | OneHot | Yes | Yes | Yes |
+| Or | Yes | Yes | No |
 | Pad | Yes | Yes | Yes |
 | Pow | Yes | Yes | Yes |
 | PRelu | Yes | Yes | Yes |
 | QuantizeLinear | Yes | Yes | No |
+| Range | Yes | Yes | Yes |
 | Reciprocal | Yes | Yes | Yes |
-| ReduceLogSum | Yes | No | Yes |
+| ReduceL1 | Yes | Yes | No |
+| ReduceL2 | Yes | Yes | No |
+| ReduceLogSum | Yes | Yes | Yes |
+| ReduceLogSumExp | Yes | Yes | Yes |
 | ReduceMax | Yes | Yes | Yes |
 | ReduceMean | Yes | Yes | Yes |
 | ReduceMin | Yes | Yes | Yes |
-| ReduceProd | Yes | No | No |
+| ReduceProd | Yes | Yes | No |
 | ReduceSum | Yes | Yes | Yes |
-| ReduceSumSquare | Yes | No | Yes |
+| ReduceSumSquare | Yes | Yes | Yes |
 | Relu | Yes | Yes | Yes |
 | Reshape | Yes | Yes | Yes |
-| Resize | Yes | No | Yes |
-| RoiAlign | No | No | Yes |
+| Resize | Yes | Yes | Yes |
+| ReverseSequence | Yes | Yes | No |
+| RoiAlign | Yes | Yes | Yes |
 | Round | Yes | Yes | Yes |
-| Scatter | No | No | Yes |
+| Scatter | Yes | Yes | Yes |
+| ScatterElements | Yes | Yes | Yes |
+| ScatterND | Yes | Yes | No |
 | Selu | Yes | Yes | No |
 | Shape | Yes | Yes | Yes |
+| Shrink | Yes | Yes | No |
 | Sigmoid | Yes | Yes | Yes |
-| Sign | Yes | No | No |
-| SinFloat | No | No | Yes |
+| Sign | Yes | Yes | No |
+| Sin | Yes | Yes | No |
 | Sinh | Yes | No | No |
+| SinFloat | No | No | Yes |
+| Size | Yes | Yes | No |
 | Slice | Yes | Yes | Yes |
 | Softmax | Yes | Yes | Yes |
-| Softsign | Yes | No | No |
+| Softplus | Yes | Yes | Yes |
+| Softsign | Yes | Yes | Yes |
 | SpaceToDepth | Yes | Yes | Yes |
 | Split | Yes | Yes | Yes |
 | Sqrt | Yes | Yes | Yes |
@@ -375,6 +415,10 @@ VPUs as well as Intel<sup>®</sup> Vision accelerator Design with Intel Movidiu
 | TopK | Yes | Yes | Yes |
 | Transpose | Yes | Yes | Yes |
 | Unsqueeze | Yes | Yes | Yes |
+| Upsample | Yes | Yes | Yes |
+| Where | Yes | Yes | Yes |
+| Xor | Yes | Yes | No |
+
 
 ### Topology Support
 
@@ -382,65 +426,63 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 
 ### Image Classification Networks
 
-| **MODEL NAME** | **CPU** | **GPU** | **VPU** | **FPGA** |
-| --- | --- | --- | --- | --- |
-| bvlc_alexnet | Yes | Yes | Yes | Yes* |
-| bvlc_googlenet | Yes | Yes | Yes | Yes* |
-| bvlc_reference_caffenet | Yes | Yes | Yes | Yes* |
-| bvlc_reference_rcnn_ilsvrc13 | Yes | Yes | Yes | Yes* |
-| emotion ferplus | Yes | Yes | Yes | Yes* |
-| densenet121 | Yes | Yes | Yes | Yes* |
-| inception_v1 | Yes | Yes | Yes | Yes* |
-| inception_v2 | Yes | Yes | Yes | Yes* |
-| mobilenetv2 | Yes | Yes | Yes | Yes* |
-| resnet18v1 | Yes | Yes | Yes | Yes* |
-| resnet34v1 | Yes | Yes | Yes | Yes* |
-| resnet101v1 | Yes | Yes | Yes | Yes* |
-| resnet152v1 | Yes | Yes | Yes | Yes* |
-| resnet18v2 | Yes | Yes | Yes | Yes* |
-| resnet34v2 | Yes | Yes | Yes | Yes* |
-| resnet101v2 | Yes | Yes | Yes | Yes* |
-| resnet152v2 | Yes | Yes | Yes | Yes* |
-| resnet50 | Yes | Yes | Yes | Yes* |
-| resnet50v2 | Yes | Yes | Yes | Yes* |
-| shufflenet | Yes | Yes | Yes | Yes* |
-| squeezenet1.1 | Yes | Yes | Yes | Yes* |
-| vgg19 | Yes | Yes | Yes | Yes* |
-| vgg16 | Yes | Yes | Yes | Yes* |
-| zfnet512 | Yes | Yes | Yes | Yes* |
-| arcface | Yes | Yes | Yes | Yes* |
+| **MODEL NAME** | **CPU** | **GPU** | **VPU** |
+| --- | --- | --- | --- |
+| bvlc_alexnet | Yes | Yes | Yes |
+| bvlc_googlenet | Yes | Yes | Yes |
+| bvlc_reference_caffenet | Yes | Yes | Yes |
+| bvlc_reference_rcnn_ilsvrc13 | Yes | Yes | Yes |
+| emotion ferplus | Yes | Yes | Yes |
+| densenet121 | Yes | Yes | Yes |
+| inception_v1 | Yes | Yes | Yes |
+| inception_v2 | Yes | Yes | Yes |
+| mobilenetv2 | Yes | Yes | Yes |
+| resnet18v1 | Yes | Yes | Yes |
+| resnet34v1 | Yes | Yes | Yes |
+| resnet101v1 | Yes | Yes | Yes |
+| resnet152v1 | Yes | Yes | Yes |
+| resnet18v2 | Yes | Yes | Yes |
+| resnet34v2 | Yes | Yes | Yes |
+| resnet101v2 | Yes | Yes | Yes |
+| resnet152v2 | Yes | Yes | Yes |
+| resnet50 | Yes | Yes | Yes |
+| resnet50v2 | Yes | Yes | Yes |
+| shufflenet | Yes | Yes | Yes |
+| squeezenet1.1 | Yes | Yes | Yes |
+| vgg19 | Yes | Yes | Yes |
+| vgg16 | Yes | Yes | Yes |
+| zfnet512 | Yes | Yes | Yes |
+| mxnet_arcface | No | Yes | No |
 
 
 ### Image Recognition Networks
 
-| **MODEL NAME** | **CPU** | **GPU** | **VPU** | **FPGA** |
-| --- | --- | --- | --- | --- |
-| mnist | Yes | Yes | Yes | Yes* |
+| **MODEL NAME** | **CPU** | **GPU** | **VPU** |
+| --- | --- | --- | --- |
+| mnist | Yes | Yes | Yes |
 
 ### Object Detection Networks
 
-| **MODEL NAME** | **CPU** | **GPU** | **VPU** | **FPGA** |
-| --- | --- | --- | --- | --- |
-| tiny_yolov2 | Yes | Yes | Yes | Yes* |
-| yolov3 | Yes | Yes | Yes | No* |
-| tiny_yolov3 | Yes | Yes | Yes | No* |
-| mask_rcnn | Yes | Yes | Yes | No* |
-| faster_rcnn | Yes | Yes | Yes | No* |
-| yolov4 | Yes | Yes | Yes | No* |
-| yolov5 | Yes | Yes | Yes | No* |
+| **MODEL NAME** | **CPU** | **GPU** | **VPU** |
+| --- | --- | --- | --- |
+| tiny_yolov2 | Yes | Yes | Yes |
+| yolov3 | Yes | Yes | Yes |
+| tiny_yolov3 | Yes | Yes | Yes |
+| mask_rcnn | Yes | Yes | Yes |
+| faster_rcnn | Yes | Yes | Yes |
+| yolov4 | Yes | Yes | Yes |
+| yolov5 | Yes | Yes | Yes |
 
 ### Image Manipulation Networks
 
-| **MODEL NAME** | **CPU** | **GPU** | **VPU** | **FPGA** |
-| --- | --- | --- | --- | --- |
-| mosaic | Yes | Yes | Yes | No* |
-| candy | Yes | Yes | Yes | No* |
-| cgan | Yes | Yes | Yes | No* |
-| rain_princess | Yes | yes | Yes | No* |
-| pointilism | Yes | Yes | Yes | No* |
-| udnie | Yes | Yes | Yes | No* |
-
-*FPGA only runs in HETERO mode wherein the layers that are not supported on FPGA fall back to OpenVINO CPU.
+| **MODEL NAME** | **CPU** | **GPU** | **VPU** |
+| --- | --- | --- | --- |
+| mosaic | Yes | Yes | Yes |
+| candy | Yes | Yes | Yes |
+| cgan | Yes | Yes | Yes |
+| rain_princess | Yes | yes | Yes |
+| pointilism | Yes | Yes | Yes |
+| udnie | Yes | Yes | Yes |
 
 ## OpenVINO-EP samples Tutorials
 
