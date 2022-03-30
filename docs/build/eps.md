@@ -178,7 +178,7 @@ These instructions are for JetPack SDK 4.6.1.
     --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu
     ```
 
-    Note: You may optionally build with experimental TensorRT support.
+    Note: You may optionally build with TensorRT support.
 
     ```bash
     ./build.sh --config Release --update --build --parallel --build_wheel \
