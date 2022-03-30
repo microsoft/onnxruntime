@@ -599,12 +599,15 @@ void NhwcUpsampleBilinear(const int64_t batch_size,
                                            height_scale, width_scale, roi,
                                            alloc, get_original_coordinate, false);
   for (int64_t n = 0; n < batch_size; ++n) {
-    concurrency::ThreadPool::TrySimpleParallelFor(
-        tp, output_height,
-        [&](std::ptrdiff_t y) {
-          const T* Xdata = XdataBase + n * (input_height * input_width) * num_channels;
-          T* Ydata = YdataBase + n * (output_height * output_width) * num_channels;
-          for (int64_t x = 0; x < output_width; ++x) {
+    const T* Xdata = XdataBase + n * (input_height * input_width) * num_channels;
+    T* Ydata = YdataBase + n * (output_height * output_width) * num_channels;
+    concurrency::ThreadPool::TryParallelFor(
+        tp, output_height * output_width,
+        static_cast<double>(input_height * input_width * output_height * output_width * num_channels),
+        [&](std::ptrdiff_t first, std::ptrdiff_t last) {
+          for (std::ptrdiff_t i = first; i < last; ++i) {
+            const int64_t x = i % output_width;
+            const int64_t y = i / output_width;
             for (int64_t c = 0; c < num_channels; ++c) {
               // when use_extrapolation is set and original index of x or y is out of the dim range
               // then use extrapolation_value as the output value.
@@ -1190,7 +1193,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                height_scale, width_scale, roi,
                                use_extrapolation_, extrapolation_value_, X->Data<T>(),
                                Y->MutableData<T>(), alloc, get_original_coordinate_,
-                               output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+                               output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
         }
         return Status::OK();
       } else if (dims.size() == 3 || dims.size() == 5) {
