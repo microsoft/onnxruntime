@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>My First JavaScript Treemap Chart</title>
+    <title id="filename">Onnxruntime Perf View</title>
     <script type="text/javascript" src="https://cdn.anychart.com/releases/v8/js/anychart-core.min.js"></script>
     <script src="https://cdn.anychart.com/releases/8.11.0/js/anychart-ui.min.js"></script>
     <script type="text/javascript" src="https://cdn.anychart.com/releases/v8/js/anychart-treemap.min.js"></script>
@@ -60,6 +60,7 @@
         preloader.visible(true);
 
         const fileList = event.target.files;
+		document.getElementById('filename').text = fileList[0].name;
         console.log(fileList);
         const reader = new FileReader();
         reader.addEventListener('load', (event) => {
