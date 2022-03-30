@@ -49,7 +49,7 @@ class BeamHypotheses {
 
   bool IsDone(float best_sum_logprobs, int current_length);
 
-  bool CheckBestCandidate(ISequences* sequences,
+  bool IsEcsBetterThanLastIteration(ISequences* sequences,
                           int batch,
                           int initial_seq_length,
                           const int prefix_length,
@@ -57,7 +57,7 @@ class BeamHypotheses {
                           gsl::span<const int32_t>* ids2_len,
                           int min_chars,
                           float ecs_cost,
-                          float log_prob_cutoff,
+                          float log_prob_threshold,
                           gsl::span<const float>& next_scores,
                           gsl::span<const int32_t>& next_tokens);
 
@@ -121,8 +121,8 @@ class BeamSearchScorer : public IBeamScorer {
   size_t num_beam_hyps_to_keep_;
   int pad_token_id_;
   int eos_token_id_;
-  int min_chars_;
-  float log_prob_cutoff_;
+  int ecs_min_chars_;
+  float ecs_log_prob_threshold_;
   float ecs_cost_;
   int intial_sequence_length_;
 

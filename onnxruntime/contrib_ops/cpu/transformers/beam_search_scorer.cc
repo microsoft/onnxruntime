@@ -49,7 +49,7 @@ void BeamHypotheses::Add(gsl::span<const int32_t>& hypothesis, float sum_logprob
   }
 }
 
-bool BeamHypotheses::CheckBestCandidate(ISequences* sequences,
+bool BeamHypotheses::IsEcsBetterThanLastIteration(ISequences* sequences,
                                         int batch,
                                         int initial_seq_length,
                                         const int prefix_length,
@@ -57,7 +57,7 @@ bool BeamHypotheses::CheckBestCandidate(ISequences* sequences,
                                         gsl::span<const int32_t>* ids2_len,
                                         int min_chars,
                                         float ecs_cost,
-                                        float log_prob_cutoff,
+                                        float log_prob_threshold,
                                         gsl::span<const float>& next_scores,
                                         gsl::span<const int32_t>& next_tokens) {
   int max_index = 0;
@@ -97,7 +97,7 @@ bool BeamHypotheses::CheckBestCandidate(ISequences* sequences,
     }
   }
 
-  if (max_generated_net > best_net_ && next_scores[max_index] >= log_prob_cutoff) {
+  if (max_generated_net >= best_net_ && next_scores[max_index] >= log_prob_threshold) {
     best_net_ = max_generated_net;
     return false;
   }
@@ -159,8 +159,8 @@ BeamSearchScorer::BeamSearchScorer(size_t batch_size,
                                    size_t num_return_sequences,
                                    int pad_token_id,
                                    int eos_token_id,
-                                   int min_chars,
-                                   float log_prob_threshold,
+                                   int ecs_min_chars,
+                                   float ecs_log_prob_threshold,
                                    float ecs_cost,
                                    onnxruntime::OrtStlAllocator<HypothesisScore>& hypothesis_score_allocator,
                                    onnxruntime::OrtStlAllocator<BeamHypotheses>& beam_hyps_allocator)
@@ -170,8 +170,8 @@ BeamSearchScorer::BeamSearchScorer(size_t batch_size,
       num_beam_hyps_to_keep_(num_return_sequences),
       pad_token_id_(pad_token_id),
       eos_token_id_(eos_token_id),
-      min_chars_(min_chars),
-      log_prob_cutoff_(log_prob_threshold),
+      ecs_min_chars_(ecs_min_chars),
+      ecs_log_prob_threshold_(ecs_log_prob_threshold),
       ecs_cost_(ecs_cost),
       hypothesis_buffer_length_(0),
       hypothesis_buffer_offset_(0),
@@ -231,34 +231,37 @@ void BeamSearchScorer::Process(ISequences* sequences,
   for (size_t batch = 0; batch < batch_size_; batch++) {
     BeamHypotheses& beam_hyp = beam_hyps_[batch];
 
-    bool done_here = beam_hyp.CheckBestCandidate(sequences,
-                                               batch,
-                                               intial_sequence_length_,
-                                               (*prefix_lens_)[batch],
-                                               num_beams_,
-                                               ids2_len_,
-                                               min_chars_,
-                                               ecs_cost_,
-                                               log_prob_cutoff_,
-                                               next_scores,
-                                               next_tokens);
+    // ecs_min_chars is never negative, using this to decide whether to call ECS
+    if (ecs_min_chars_ >= 0) {
+      bool done_here = beam_hyp.IsEcsBetterThanLastIteration(sequences,
+                                                             batch,
+                                                             intial_sequence_length_,
+                                                             (*prefix_lens_)[batch],
+                                                             num_beams_,
+                                                             ids2_len_,
+                                                             ecs_min_chars_,
+                                                             ecs_cost_,
+                                                             ecs_log_prob_threshold_,
+                                                             next_scores,
+                                                             next_tokens);
 
-    if (done_here) {
-      for (size_t beam = 0; beam < num_beams_; beam++) {
-        int batch_beam_idx = batch * num_beams_ + beam; 
+      if (done_here) {
+        for (size_t beam = 0; beam < num_beams_; beam++) {
+          int batch_beam_idx = batch * num_beams_ + beam;
 
-        // Clone the sequence and append to buffer.
-        gsl::span<const int32_t> src = sequences->GetSequence(batch_beam_idx);
-        float score = sequences->GetSequenceScore(batch_beam_idx);
+          // Clone the sequence and append to buffer.
+          gsl::span<const int32_t> src = sequences->GetSequence(batch_beam_idx);
+          float score = sequences->GetSequenceScore(batch_beam_idx);
 
-        auto clone = hypothesis_buffer_.subspan(hypothesis_buffer_offset_, sequence_length);
-        gsl::copy(src, clone);
-        hypothesis_buffer_offset_ += static_cast<size_t>(sequence_length);
-        auto sequence = clone.template as_span<const int32_t>();
+          auto clone = hypothesis_buffer_.subspan(hypothesis_buffer_offset_, sequence_length);
+          gsl::copy(src, clone);
+          hypothesis_buffer_offset_ += static_cast<size_t>(sequence_length);
+          auto sequence = clone.template as_span<const int32_t>();
 
-        beam_hyp.Add(sequence, score);
+          beam_hyp.Add(sequence, score);
+        }
+        done_[batch] = true;
       }
-      done_[batch] = true;
     }
 
     if (done_[batch]) {
