@@ -346,7 +346,6 @@ def convert_model(args):
         assert args.output_sequences_scores, "--output_token_scores requires --output_sequences_scores"
         outputs.append("scores")
 
-    print(inputs)
     node = helper.make_node('BeamSearch', inputs=inputs, outputs=outputs, name=f'BeamSearch_{args.model_type}')
     node.domain = "com.microsoft"
     node.attribute.extend([

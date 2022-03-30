@@ -71,7 +71,6 @@ void Sequences::AppendNextTokenToSequences(
 
   // Rotate buffer for next round.
   current_sequences_buffer = 1 - current_sequences_buffer;
-
 }
 
 }  // namespace transformers

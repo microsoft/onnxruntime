@@ -72,7 +72,7 @@ bool BeamHypotheses::CheckBestCandidate(ISequences* sequences,
       generated_length = generated_length + (*ids2_len)[src[j]];
     }
 
-    // Each beam would have 2 as internally we are extracting 2*topK beams.
+    // Each beam would have 2 as internally we are extracting topK = 2* num_beams_
     for (int j = 0; j < 2; j++) {
       int beam_idx = batch * 2 * num_beams + j;
       int beam_generated_length = generated_length + (*ids2_len)[next_tokens[beam_idx]];
@@ -97,7 +97,7 @@ bool BeamHypotheses::CheckBestCandidate(ISequences* sequences,
     }
   }
 
-  if (max_generated_net >= best_net_ && next_scores[max_index] >= log_prob_cutoff) {
+  if (max_generated_net > best_net_ && next_scores[max_index] >= log_prob_cutoff) {
     best_net_ = max_generated_net;
     return false;
   }
@@ -263,7 +263,7 @@ void BeamSearchScorer::Process(ISequences* sequences,
 
     if (done_[batch]) {
       ORT_ENFORCE(beam_hyp.Size() >= gsl::narrow_cast<int>(num_beams_), "Batch can only be done if all beams have been generated");
-      
+
       // Pad the batch.
       for (size_t j = 0; j < num_beams_; j++) {
         next_beam_scores_[batch * num_beams_ + j] = 0.0f;
@@ -316,7 +316,6 @@ void BeamSearchScorer::Process(ISequences* sequences,
     if (!done_[batch]) {
       gsl::span<const float> topk_scores = next_scores.subspan(batch * num_beams_, top_k);
       const float* best_sum_logprobs = std::max_element(topk_scores.begin(), topk_scores.end());
-      //std::cout<<"Best sum log_probs for batch:" << batch << ", and log_probs:"<< (*best_sum_logprobs);
       if (beam_hyp.IsDone(*best_sum_logprobs, sequence_length)) {
         done_[batch] = true;
       }
