@@ -23,8 +23,16 @@ ONNX Runtime gives you a variety of options to add machine learning to your mobi
    We publish the following ONNX Runtime mobile libraries:
    * Android C/C++
    * Android Java
+     * Mobile and full builds
    * iOS C/C++
    * iOS Objective C
+     * Mobile and full builds
+
+   A mobile build has a smaller binary size but limited feature support, like a reduced set of operator implementations.
+   A full build has the full feature set.
+
+   If the binary size of the full build is acceptable, using the full build is recommended because it is easier to use.
+   Otherwise, consider using the mobile build or even a custom build.
 
 2. Which machine learning model does my application use?
 
@@ -44,6 +52,6 @@ ONNX Runtime gives you a variety of options to add machine learning to your mobi
 
 4. How do I optimize my application?
 
-   The execution environment on mobile devices has fixed memory and disk storage. Therefore, it is essential that any AI execution library is optimized to consume minimum resources in terms of disk footprint, memory and network usage (both model size and binary size).
+   The execution environment on mobile devices has limited memory and disk storage. In certain cases, it is preferable for a library to be optimized to consume minimum resources in terms of disk footprint, memory and network usage (both model size and binary size).
 
-   ONNX Runtime Mobile uses the ORT model format which enables us to create a [custom ORT build](../../build/custom.md) that minimizes the binary size and reduces memory usage for client side inference. The ORT model format file is generated from the regular ONNX model using the `onnxruntime` python package. The custom build does this primarily by only including specified operators and types in the build, as well as trimming down dependencies per custom needs.
+   ONNX Runtime Mobile uses the ORT model format which is supported by a minimal build with a reduced set of dependencies. A regular ONNX model file can be converted to an ORT format file with a [tool](../../reference/ort-model-format.md#convert-onnx-models-to-ort-format) from the `onnxruntime` Python package. A [custom build](../../build/custom.md) can additionally reduce the binary size by only including specified operators and types in the build, as well as trimming down dependencies per custom needs.
