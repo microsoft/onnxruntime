@@ -127,7 +127,6 @@ class ConvAddActivation : public NodeSelector {
       return nullptr;
     }
     // Test if all of inputs have an equal shape.
-    bool all_shapes_match = true;
     auto* input_0_shape = input_defs[0]->Shape();
     // Check if ONNX shape inferencing has computed a precise dimension value.
     if ((input_0_shape == nullptr) || (input_0_shape->dim_size() != kTensorDims)) {
@@ -143,7 +142,7 @@ class ConvAddActivation : public NodeSelector {
       }
     }
     // we can't fuse them if shape is not matched, it will happens when broadcast-Add
-    for (size_t n = 1; (n < input_defs_count) && all_shapes_match; n++) {
+    for (size_t n = 1; n < input_defs_count; n++) {
       auto* input_n_shape = input_defs[n]->Shape();
       if (input_n_shape == nullptr || (input_n_shape->dim_size() != kTensorDims)) {
         return nullptr;
