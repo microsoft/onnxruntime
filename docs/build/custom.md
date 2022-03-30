@@ -55,21 +55,30 @@ ONNX format models are not guaranteed to include the required per-node type info
 
 ## Minimal build
 
-ONNX Runtime can be built to further minimize the binary size, by only including support for loading and executing models in [ORT format](../reference/ort-model-format.md), and not ONNX format.
+ONNX Runtime can be built to further minimize the binary size.
+These reduced size builds are called minimal builds and there are different minimal build levels described below.
+
+### Basic
 
 **`--minimal_build`**
 
-* RTTI is disabled by default in this build, unless the Python bindings (`--build_wheel`) are enabled.
-* If you wish to enable execution providers that compile kernels such as NNAPI or CoreML specify `--minimal_build extended`. See [here](../execution-providers/NNAPI-ExecutionProvider.md) and [here](../execution-providers/CoreML-ExecutionProvider.md) for details on using NNAPI and CoreML with ONNX Runtime Mobile
+RTTI is disabled by default in this build, unless the Python bindings (`--build_wheel`) are enabled.
 
-A minimal build has the following limitations:
+A basic minimal build has the following limitations:
 
-* No support for ONNX format models, that is model must be converted to ORT format
-* No support for runtime optimizations. Optimizations are performed during conversion to ORT format
-* Limited support for runtime partitioning (assigning nodes in a model to specific execution providers). Execution providers that statically register kernels (e.g. ONNX Runtime CPU Execution Provider) are supported by default. All execution providers that will be used at runtime MUST be registered when creating the ORT format model
-    - Execution providers that compile nodes are optionally supported
-      - currently this is limited to the NNAPI and CoreML Execution Providers
+* No support for ONNX format models. The model must be converted to [ORT format](../reference/ort-model-format.md).
+* No support for runtime optimizations. Optimizations are performed during conversion to ORT format.
+* Support for execution providers that statically register kernels (e.g. ONNX Runtime CPU Execution Provider) only.
 
+### Extended
+
+**`--minimal_build extended`**
+
+An extended minimal build supports more functionality than a basic minimal build:
+
+* Limited support for runtime partitioning (assigning nodes in a model to specific execution providers).
+* Additional support for execution providers that compile kernels such as [NNAPI](../execution-providers/NNAPI-ExecutionProvider.md) and [CoreML](../execution-providers/CoreML-ExecutionProvider.md).
+* **ONNX Runtime version 1.11 and later**: Limited support for runtime optimizations, via saved runtime optimizations and a few graph optimizers that are enabled at runtime.
 
 ## Other customizations
 
@@ -112,7 +121,7 @@ _[This section is coming soon]_
 
 ### iOS
 
-To produce pods for an iOS build, the build options are wrapped in the [build_and_assemble_ios_pods.py](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/apple/build_ios_framework.py) script.
+To produce pods for an iOS build, use the [build_and_assemble_ios_pods.py](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/apple/build_and_assemble_ios_pods.py) script.
 
 Example usage:
 
@@ -127,7 +136,7 @@ This will do a custom build and create the pod package files for it in /path/to/
 
 Next, update the Podfile to use the local pods:
 
-```
+```diff
 -  pod 'onnxruntime-mobile-objc'
 +  pod 'onnxruntime-mobile-objc', :path => "/path/to/staging/dir/onnxruntime-mobile-objc"
 +  pod 'onnxruntime-mobile-c', :path => "/path/to/staging/dir/onnxruntime-mobile-c"
@@ -168,15 +177,8 @@ cd onnxruntime
 git checkout <release branch>
 ```
 
-where `release branch` is one of the values in the `Branch` column:
-
-| Release | Date | Branch |
-|---------|------|--------|
-| 1.9 | 2021-09-22 | rel-1.9.1 |
-| 1.8 | 2021-06-02 | rel-1.8.2 |
-| 1.7 | 2021-03-03 | rel-1.7.2 |
-| 1.6 | 2020-12-11 | rel-1.6.0 |
-| 1.5 | 2020-10-30 | rel-1.5.3 |
+Release branch names follow the pattern `rel-<version>`. For example, `rel-1.11.0`.
+Find them [here](https://github.com/microsoft/onnxruntime/branches/all?query=rel-).
 
 ## Example build commands
 
