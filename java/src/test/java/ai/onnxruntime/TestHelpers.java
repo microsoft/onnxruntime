@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.Assertions;
 
 /** Test helpers for manipulating primitive arrays. */
-class TestHelpers {
+public class TestHelpers {
 
   private static final Pattern LOAD_PATTERN = Pattern.compile("[,\\[\\] ]");
 
@@ -136,7 +136,7 @@ class TestHelpers {
     return toPrimitiveLong(output);
   }
 
-  static float[] flattenFloat(Object o) {
+  public static float[] flattenFloat(Object o) {
     List<Float> output = new ArrayList<>();
 
     flatten((Object[]) o, output, float.class);
@@ -250,15 +250,15 @@ class TestHelpers {
     output.addAll(Arrays.asList(input));
   }
 
-  static Path getResourcePath(String path) {
+  public static Path getResourcePath(String path) {
     return new File(InferenceTest.class.getResource(path).getFile()).toPath();
   }
 
-  static float[] loadTensorFromFile(Path filename) {
+  public static float[] loadTensorFromFile(Path filename) {
     return loadTensorFromFile(filename, true);
   }
 
-  static float[] loadTensorFromFile(Path filename, boolean skipHeader) {
+  public static float[] loadTensorFromFile(Path filename, boolean skipHeader) {
     // read data from file
     try (BufferedReader reader = new BufferedReader(new FileReader(filename.toFile()))) {
       if (skipHeader) {
