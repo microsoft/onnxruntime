@@ -3,6 +3,7 @@
 
 # -*- coding: UTF-8 -*-
 import unittest
+import os
 import numpy as np
 import onnxruntime as onnxrt
 from helper import get_name
@@ -170,6 +171,31 @@ class TestInferenceSession(unittest.TestCase):
         mat = res[1]
         total = mat.sum()
         self.assertEqual(total, 0)
+
+    def test_run_model_tree_ensemble_aionnxml_3(self):
+        available_providers = onnxrt.get_available_providers()
+        # Checks onnxruntime can load and execute TreeEnsembleRegressor with double threashold.
+        model = get_name("tree_ensemble_as_tensor.onnx")
+        # first threshold of the tree is 1.7999999523162842
+        # all number 1.79* are the same once converting to float32.
+        # predictions must be the same with float32 and different with float64.
+        iris = np.array([[0, 1, 1.7999999523162842, 3],
+                         [0, 1, 1.7999999523, 3],
+                         [0, 1, 1.79999995232, 3]], dtype=np.float64)
+        sess = onnxrt.InferenceSession(model, providers=available_providers)
+        got = sess.run(None, {'X': iris})
+        self.assertEqual(got[0].dtype, np.float64)
+        self.assertEqual(got[0].shape, (3, 1))
+        res64 = got[0].tolist()
+        self.assertEqual(res64, [[0.7284910678863525], [0.7284910678863525], [0.9134243130683899]])
+        iris = np.array([[0, 1, 1.7999999523162842, 3],
+                         [0, 1, 1.7999999523, 3],
+                         [0, 1, 1.79999995232, 3]], dtype=np.float32)
+        got = sess.run(None, {'X': iris.astype(np.float64)})
+        self.assertEqual(got[0].dtype, np.float64)
+        self.assertEqual(got[0].shape, (3, 1))
+        res32 = got[0].tolist()
+        self.assertEqual(res32, [[0.7284910678863525], [0.7284910678863525], [0.7284910678863525]])
 
 
 if __name__ == '__main__':
