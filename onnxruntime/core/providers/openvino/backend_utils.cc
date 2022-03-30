@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright (C) 2019-2022 Intel Corporation
 // Licensed under the MIT License
 
 #include <map>
@@ -187,7 +187,6 @@ CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext
       subgraph_context.precision == InferenceEngine::Precision::FP16) {
     //FP16 transformations
     ov::pass::ConvertFP32ToFP16 pass_obj;
-    pass_obj.run_on_function(cnn_network);
     pass_obj.run_on_model(cnn_network);
     cnn_network->validate_nodes_and_infer_types();
 

@@ -1,4 +1,4 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright (C) 2019-2022 Intel Corporation
 // Licensed under the MIT License
 
 #pragma once
@@ -7,6 +7,7 @@
 #if defined (OPENVINO_2022_1)
 #define OV_API_20
 #include "openvino/openvino.hpp"
+#include "openvino/pass/convert_fp32_to_fp16.hpp"
 #endif 
 
 #ifdef IO_BUFFER_ENABLED
