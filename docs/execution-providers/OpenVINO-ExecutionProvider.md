@@ -37,6 +37,13 @@ Pre-built packages and Docker images are published for  ONNX Runtime with OpenVI
 
 For build instructions, please see the [BUILD page](../build/eps.md#openvino).
 
+**Announcement: OpenVINO-EP v4.0 Release with OpenVINO 2022.1 version**:
+* The new OpenVINO-EP v4.0 Release introduces a new version of OpenVINO API (API 2.0). For more information on the changes and transition steps, see the [transition guide](https://docs.openvino.ai/latest/openvino_2_0_transition_guide.html)
+
+* With this release, we have officialy stopped for centos. We will start supporting RHEL OS from
+OpenVINO 2022.1.
+
+
 ## Usage
 
 **C#**

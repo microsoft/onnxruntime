@@ -260,6 +260,8 @@ See more information on the OpenVINO Execution Provider [here](../execution-prov
    ```
       C:\ <openvino_install_directory>\setupvars.bat
    ```
+   **Note:** If you are using a dockerfile to use OpenVINO-EP, sourcing OpenVINO won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO libraries location. Refer our [dockerfile].(https://github.com/microsoft/onnxruntime/blob/master/dockerfiles/Dockerfile.openvino)
+
 
 4. Extra configuration step for Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs:
    * After setting the environment using setupvars script, follow these steps to change the default scheduler of VAD-M to Bypass:
