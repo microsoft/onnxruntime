@@ -341,6 +341,136 @@ cudaProviderOptions.UpdateOptions(providerOptionsDict);
 SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
 ```
 
+### Using CUDA Graphs in the CUDA EP
+
+NOTE: Please note that this feature is currently being offered in "preview" mode.
+
+While using the CUDA EP, ORT supports the usage of [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) to remove CPU overhead associated with launching CUDA kernels sequentially. To enable the usage of CUDA Graphs, use the provider option as shown in the samples below.
+Currently, there are some constraints with regards to using the CUDA Graphs feature which are listed below:
+
+1) Models with control-flow ops (i.e.) models with `If`, `Loop`, and `Scan` ops are not supported
+
+2) Usage of CUDA Graphs is limited to models where-in all the model ops (graph nodes) can be partitioned to the CUDA EP
+
+3) The input/output types of models need to be tensors
+
+4) Shapes of inputs/outputs cannot change across inference calls. Dynamic shape models are supported - the only constraint is that the input/output shapes should be the same across all inference calls
+
+5) By design, [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) is designed to read from/write to the same CUDA virtual memory addresses during the graph replaying step as it does during the graph capturing step. Due to this requirement, usage of this feature requires using IOBinding so as to bind memory which will be used as input(s)/output(s) for the CUDA Graph machinery to read from/write to(please see samples below)
+
+6) While updating the input(s) for subsequent inference calls, the fresh input(s) need to be copied over to the corresponding CUDA memory location(s) of the bound `OrtValue` input(s) (please see samples below to see how this can be achieved). This is due to the fact that the "graph replay" will require reading inputs from the same CUDA virtual memory addresses
+
+7) Multi-threaded usage is not supported currently (i.e.) `Run()` MAY NOT be invoked on the same `InferenceSession` object from multiple threads while using CUDA Graphs
+
+NOTE: The very first `Run()` performs a variety of tasks under the hood like making CUDA memory allocations, capturing the CUDA graph for the model, and then performing a graph replay to ensure that the graph runs. Due to this, the latency associated with the first `Run()` is bound to be high. The subsequent `Run()`s only perform graph replays of the graph captured and cached in the first `Run()`. 
+
+* Python
+
+```python
+providers = [("CUDAExecutionProvider", {"enable_cuda_graph": '1'})]
+sess_options = ort.SessionOptions()
+sess = ort.InferenceSession("my_model.onnx",  sess_options = sess_options, providers=providers)
+
+providers = [("CUDAExecutionProvider", {'enable_cuda_graph': True})]
+x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+y = np.array([[0.0], [0.0], [0.0]], dtype=np.float32)
+x_ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(x, 'cuda', 0)
+y_ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(y, 'cuda', 0)
+
+session = onnxrt.InferenceSession("matmul_2.onnx", providers=providers)
+io_binding = session.io_binding()
+
+# Bind the input and output
+io_binding.bind_ortvalue_input('X', x_ortvalue)
+io_binding.bind_ortvalue_output('Y', y_ortvalue)
+
+# One regular run for the necessary memory allocation and cuda graph capturing
+session.run_with_iobinding(io_binding)
+expected_y = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
+np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
+
+# After capturing, CUDA graph replay happens from this Run onwards
+session.run_with_iobinding(io_binding)
+np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
+
+# Update input and then replay CUDA graph with the updated input
+x_ortvalue.update_inplace(np.array([[10.0, 20.0], [30.0, 40.0], [50.0, 60.0]], dtype=np.float32))
+session.run_with_iobinding(io_binding)
+```
+
+* C/C++
+
+```c++
+const auto& api = Ort::GetApi();
+
+struct CudaMemoryDeleter {
+explicit CudaMemoryDeleter(const Ort::Allocator* alloc) {
+  alloc_ = alloc;
+}
+void operator()(void* ptr) const {
+  alloc_->Free(ptr);
+}
+
+const Ort::Allocator* alloc_;
+};
+  
+// Enable cuda graph in cuda provider option.
+OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+api.CreateCUDAProviderOptions(&cuda_options);
+std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)> rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
+std::vector<const char*> keys{"enable_cuda_graph"};
+std::vector<const char*> values{"1"};
+api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1);
+
+Ort::SessionOptions session_options;
+api.SessionOptionsAppendExecutionProvider_CUDA_V2(static_cast<OrtSessionOptions*>(session_options), rel_cuda_options.get();
+
+
+// Create IO bound inputs and outputs.
+Ort::Session session(*ort_env, L"matmul_2.onnx", session_options);
+Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+Ort::Allocator cuda_allocator(session, info_cuda);
+
+const std::array<int64_t, 2> x_shape = {3, 2};
+std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+auto input_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(x_values.size() * sizeof(float)),
+                                                             CudaMemoryDeleter(&cuda_allocator));
+cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+
+// Create an OrtValue tensor backed by data on CUDA memory
+Ort::Value bound_x = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(input_data.get()), x_values.size(),
+                                              x_shape.data(), x_shape.size());
+
+const std::array<int64_t, 2> expected_y_shape = {3, 2};
+std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+auto output_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(expected_y.size() * sizeof(float)),
+                                                              CudaMemoryDeleter(&cuda_allocator));
+
+// Create an OrtValue tensor backed by data on CUDA memory
+Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()),
+                                                expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
+
+Ort::IoBinding binding(session);
+binding.BindInput("X", bound_x);
+binding.BindOutput("Y", bound_y);
+
+// One regular run for necessary memory allocation and graph capturing
+session.Run(Ort::RunOptions(), binding);
+
+// After capturing, CUDA graph replay happens from this Run onwards
+session.Run(Ort::RunOptions(), binding);
+
+// Update input and then replay CUDA graph with the updated input
+x_values = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
+cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+session.Run(Ort::RunOptions(), binding);
+```
+
+* C#
+
+Will be supported in future releases
+
+
 ## Troubleshooting performance issues
 
 The answers below are troubleshooting suggestions based on common previous user-filed issues and questions. This list is by no means exhaustive and there is a lot of case-by-case fluctuation depending on the model and specific usage scenario. Please use this information to guide your troubleshooting, search through previously filed issues for related topics, and/or file a new issue if your problem is still not resolved.
