@@ -97,6 +97,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(InstanceNormalization);
 DML_OP_EXTERN_CREATION_FUNCTION(BatchNormalization);
 DML_OP_EXTERN_CREATION_FUNCTION(LRN);
 DML_OP_EXTERN_CREATION_FUNCTION(MeanVarianceNormalization);
+DML_OP_EXTERN_CREATION_FUNCTION(LayerNormalization);
 DML_OP_EXTERN_CREATION_FUNCTION(LpNormalization);
 DML_OP_EXTERN_CREATION_FUNCTION(RNN);
 DML_OP_EXTERN_CREATION_FUNCTION(GRU);
@@ -392,11 +393,13 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      7,  MeanVarianceNormalization,          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      9,  MeanVarianceNormalization,          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(     13,  MeanVarianceNormalization,          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
+    {REG_INFO(      7,  LayerNormalization,                 typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  LpNormalization,                    typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO(      7,  RNN,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::NotSupported)},
     {REG_INFO(      7,  GRU,                                typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::NotSupported)},
     {REG_INFO(      7,  LSTM,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::NotSupported)},
     {REG_INFO_MS(   1,  ConvTransposeWithDynamicPads,       typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported,      requiredConstantCpuInputs(2))},
+
 
     // Data Reorganization Layers
     {REG_INFO_VER(  7,  Split,                              typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},

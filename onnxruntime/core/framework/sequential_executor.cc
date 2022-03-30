@@ -243,6 +243,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
 #endif
 
     auto p_op_kernel = session_state.GetKernel(node_index);
+    std::cout << "NodeIndex: " << node_index << " NodeName: " << node.Name() << std::endl;
 
     // if a kernel has been added in the session state, it better be NON-null.
     if (p_op_kernel == nullptr)

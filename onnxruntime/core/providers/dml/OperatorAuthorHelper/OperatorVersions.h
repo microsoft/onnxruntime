@@ -37,6 +37,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_MaxPool = 1;
         static const int sc_sinceVer_MaxRoiPool = 1;
         static const int sc_sinceVer_MeanVarianceNormalization = 1;
+        static const int sc_sinceVer_LayerNormalization = 1;
         static const int sc_sinceVer_Not = 1;
         static const int sc_sinceVer_ParametricSoftplus = 1;
         static const int sc_sinceVer_RandomNormal = 1;

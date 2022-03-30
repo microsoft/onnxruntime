@@ -359,8 +359,8 @@ namespace Dml
                             !ContainsEmptyDimensions(graphNodeProperty.first->second.outputShapes, internalRegInfo->requiredConstantCpuInputs) &&
                             (requiredInputCount == std::nullopt || *requiredInputCount == node.InputDefs().size()))
                         {
-                            *isDmlGraphNode = true;
-                            graphNodeProperty.first->second.internalRegInfo = internalRegInfo;
+                           /* *isDmlGraphNode = true;
+                            graphNodeProperty.first->second.internalRegInfo = internalRegInfo;*/
                         }
                     }
                 }
