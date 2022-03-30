@@ -142,27 +142,23 @@ class ConvAddActivation : public NodeSelector {
         }
       }
     }
+    // we can't fuse them if shape is not matched, it will happens when broadcast-Add
     for (size_t n = 1; (n < input_defs_count) && all_shapes_match; n++) {
       auto* input_n_shape = input_defs[n]->Shape();
       if (input_n_shape == nullptr || (input_n_shape->dim_size() != kTensorDims)) {
-        all_shapes_match = false;
-        break;
+        return nullptr;
       }
       for (int i = 0; i < kTensorDims; i++) {
         auto& input_0_dim = input_0_shape->dim(i);
         auto& input_n_dim = input_n_shape->dim(i);
         if (!utils::HasDimValue(input_n_dim) || (input_0_dim.dim_value() != input_n_dim.dim_value())) {
           if (!utils::HasDimParam(input_0_dim) || !utils::HasDimParam(input_n_dim) || (input_0_dim.dim_param() != input_n_dim.dim_param())) {
-            all_shapes_match = false;
-            break;
+            return nullptr;
           }
         }
       }
     }
-    // we can't fuse them if shape is not matched, it will happens when broadcast-Add
-    if (!all_shapes_match) {
-      return nullptr;
-    }
+
     // If one of the inputs to the Add node is a convolution, then
     // attempt to fuse the addition into the convolution itself.
     for (size_t n = 0; (n < inputs_node.size()) && inputs_node[n]; n++) {
