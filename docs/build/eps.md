@@ -99,7 +99,7 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter.
  * Install [TensorRT](https://developer.nvidia.com/tensorrt)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.0.3.4.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.2.3.0.
    * To use different versions of TensorRT, prior to building, change the onnx-tensorrt submodule to a branch corresponding to the TensorRT version. e.g. To use TensorRT 7.2.x,
      * cd cmake/external/onnx-tensorrt
      * git remote update
@@ -136,7 +136,7 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 ### Build Instructions
 {: .no_toc }
 
-These instructions are for JetPack SDK 4.6.
+These instructions are for JetPack SDK 4.6.1.
 
 1. Clone the ONNX Runtime repo on the Jetson host
 
@@ -159,7 +159,7 @@ These instructions are for JetPack SDK 4.6.
     export PATH="/usr/local/cuda/bin:${PATH}"
     ```
 
-3. Install the ONNX Runtime build dependencies on the Jetpack 4.6 host:
+3. Install the ONNX Runtime build dependencies on the Jetpack 4.6.1 host:
 
     ```bash
     sudo apt install -y --no-install-recommends \
@@ -169,7 +169,7 @@ These instructions are for JetPack SDK 4.6.
 
 4. Cmake is needed to build ONNX Runtime. Because the minimum required version is 3.18,
    it is necessary to build CMake from source. Download Unix/Linux sources from https://cmake.org/download/
-   and follow https://cmake.org/install/ to build from source. Version 3.21.1 has been tested on Jetson.
+   and follow https://cmake.org/install/ to build from source. Version 3.23.0 has been tested on Jetson.
 
 5. Build the ONNX Runtime Python wheel:
 
