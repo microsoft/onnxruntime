@@ -337,5 +337,26 @@ class DnnlQAttentionNodeCapability : public DnnlDefaultNodeCapability {
  private:
   bool IsDimensionSupported(const Node* node) const;
 };
+
+/**
+ * We need to access the valid input types in order to check if the cast target
+ * is valid, and since inputTypes_ is private, we generate our own copy
+ */
+class DnnlCastNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlCastNodeCapability(std::vector<ORT_DataType> validTypes = {type_float32,
+                                                                 type_float16,
+                                                                 type_bfloat16,
+                                                                 type_int32,
+                                                                 type_int8,
+                                                                 type_uint8});
+
+  bool Supported(const Node* node, const GraphViewer& graph_viewer) const override;
+
+ private:
+  std::vector<ORT_DataType> validTypes_;
+  bool IsCastSupported(const Node* node) const;
+};
+
                                  
 }  // namespace onnxruntime

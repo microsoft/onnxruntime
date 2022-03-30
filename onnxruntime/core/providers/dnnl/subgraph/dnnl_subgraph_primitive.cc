@@ -5,6 +5,7 @@
 
 #include "dnnl_batchnorm.h"
 #include "dnnl_binary.h"
+#include "dnnl_cast.h"
 #include "dnnl_conv.h"
 #include "dnnl_dynamicquantizelinear.h"
 #include "dnnl_elementwise.h"
@@ -135,6 +136,8 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlBatchNorm().CreatePrimitive(*this, node);
     } else if (binary_ops.count(node.OpType())) {
       DnnlBinary().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Cast") {
+      DnnlCast().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Conv" || node.OpType() == "ConvRelu") {
       DnnlConv().CreatePrimitive(*this, node);
     } else if (node.OpType() == "DynamicQuantizeLinear") {
