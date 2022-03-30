@@ -421,7 +421,7 @@ Status BeamSearchImpl<T>::CheckInputs(const OpKernelContextInternal& context) {
   parameters_->ecs_min_chars = -1;
   auto* ecs_min_chars_tensor = context.Input<Tensor>(12);
   if (ecs_min_chars_tensor != nullptr){
-    parameters_->ecs_min_chars = ecs_min_chars_tensor ? static_cast<int>(*ecs_min_chars_tensor->Data<int>());
+    parameters_->ecs_min_chars = static_cast<int>(*ecs_min_chars_tensor->Data<int>());
   }
 
   auto* ecs_log_prob_threshold_tensor = context.Input<Tensor>(13);
