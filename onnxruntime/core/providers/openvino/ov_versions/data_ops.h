@@ -1,3 +1,6 @@
+// Copyright (C) 2019-2022 Intel Corporation
+// Licensed under the MIT License
+
 #pragma once
 #include <unordered_set>
 
