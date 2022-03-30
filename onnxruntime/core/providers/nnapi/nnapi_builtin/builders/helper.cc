@@ -86,6 +86,8 @@ QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit) {
       return QuantizedOpType::QDQSoftmax;
     else if (op_type == "Concat")
       return QuantizedOpType::QDQConcat;
+    else if (op_type == "Gemm")
+      return QuantizedOpType::QDQGemm;
   } else {
     // throw?
   }

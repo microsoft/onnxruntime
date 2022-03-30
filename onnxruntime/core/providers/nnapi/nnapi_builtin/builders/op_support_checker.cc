@@ -1260,7 +1260,15 @@ class GemmOpSupportChecker : public BaseOpSupportChecker {
       const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
       const OpSupportCheckParams& /* params */) const override;
   int GetMinSupportedOpSet(const NodeUnit& node_unit) const override;
+
+  bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
+
+  bool IsQuantizedOp(const NodeUnit& node_unit) const override;
 };
+
+bool GemmOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
+  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQGemm;
+}
 
 bool GemmOpSupportChecker::HasSupportedInputOutputsImpl(
     const InitializedTensorSet& initializers, const NodeUnit& node_unit,
