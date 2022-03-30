@@ -591,7 +591,13 @@ def parse_arguments():
         "--enable_cuda_profiling", action='store_true', help="enable cuda kernel profiling, \
         cupti library must be added to PATH beforehand.")
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.android_sdk_path:
+        args.android_sdk_path = os.path.normpath(args.android_sdk_path)
+    if args.android_ndk_path:
+        args.android_ndk_path = os.path.normpath(args.android_ndk_path)
+
+    return args
 
 
 def is_reduced_ops_build(args):
