@@ -30,7 +30,8 @@ cuda::INcclService& GetINcclService();
 }
 #endif
 
-void Shutdown_DeleteRegistry();
+void InitializeRegistry();
+void DeleteRegistry();
 
 struct CUDAProviderFactory : IExecutionProviderFactory {
   CUDAProviderFactory(const CUDAExecutionProviderInfo& info)
@@ -248,8 +249,12 @@ struct CUDA_Provider : Provider {
     return onnxruntime::CUDAExecutionProviderInfo::ToProviderOptions(options);
   }
 
+  void Initialize() override {
+    InitializeRegistry();
+  }
+
   void Shutdown() override {
-    Shutdown_DeleteRegistry();
+    DeleteRegistry();
   }
 
 } g_provider;

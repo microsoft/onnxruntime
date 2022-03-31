@@ -1031,6 +1031,7 @@ struct ProviderLibrary {
     }
 
     provider_ = PGetProvider();
+    provider_->Initialize();
     return provider_;
   }
 

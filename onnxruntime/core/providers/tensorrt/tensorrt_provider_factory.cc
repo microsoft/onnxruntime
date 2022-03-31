@@ -13,7 +13,8 @@ using namespace onnxruntime;
 
 namespace onnxruntime {
 
-void Shutdown_DeleteRegistry();
+void InitializeRegistry();
+void DeleteRegistry();
 
 struct TensorrtProviderFactory : IExecutionProviderFactory {
   TensorrtProviderFactory(const TensorrtExecutionProviderInfo& info) : info_{info} {}
@@ -142,8 +143,12 @@ struct Tensorrt_Provider : Provider {
     return onnxruntime::TensorrtExecutionProviderInfo::ToProviderOptions(options);
   }
 
+  void Initialize() override {
+    InitializeRegistry();
+  }
+
   void Shutdown() override {
-    Shutdown_DeleteRegistry();
+    DeleteRegistry();
   }
 
 } g_provider;

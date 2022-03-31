@@ -226,23 +226,19 @@ static Status RegisterTensorrtKernels(KernelRegistry& kernel_registry) {
   return Status::OK();
 }
 
-static std::shared_ptr<KernelRegistry>& TensorrtKernelRegistry() {
-  // static local variable ensures thread-safe initialization
-  static std::shared_ptr<KernelRegistry> tensorrt_kernel_registry = []() {
-    std::shared_ptr<KernelRegistry> registry = KernelRegistry::Create();
-    ORT_THROW_IF_ERROR(RegisterTensorrtKernels(*registry));
-    return registry;
-  }();
+static std::shared_ptr<KernelRegistry> s_kernel_registry;
 
-  return tensorrt_kernel_registry;
+void InitializeRegistry() {
+  s_kernel_registry = KernelRegistry::Create();
+  ORT_THROW_IF_ERROR(RegisterTensorrtKernels(*s_kernel_registry));
 }
 
-void Shutdown_DeleteRegistry() {
-  TensorrtKernelRegistry().reset();
+void DeleteRegistry() {
+  s_kernel_registry.reset();
 }
 
 std::shared_ptr<KernelRegistry> TensorrtExecutionProvider::GetKernelRegistry() const {
-  return TensorrtKernelRegistry();
+  return s_kernel_registry;
 }
 
 // Per TensorRT documentation, logger needs to be a singleton.

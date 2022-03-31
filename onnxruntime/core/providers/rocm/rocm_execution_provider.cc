@@ -2119,23 +2119,19 @@ static Status RegisterRocmKernels(KernelRegistry& kernel_registry) {
 
 }  // namespace rocm
 
-static std::shared_ptr<KernelRegistry>& RocmKernelRegistry() {
-  // static local variable ensures thread-safe initialization
-  static std::shared_ptr<KernelRegistry> rocm_kernel_registry = []() {
-    std::shared_ptr<KernelRegistry> registry = KernelRegistry::Create();
-    ORT_THROW_IF_ERROR(rocm::RegisterRocmKernels(*registry));
-    return registry;
-  }();
+static std::shared_ptr<KernelRegistry> s_kernel_registry;
 
-  return rocm_kernel_registry;
+void InitializeRegistry() {
+  s_kernel_registry = KernelRegistry::Create();
+  ORT_THROW_IF_ERROR(rocm::RegisterRocmKernels(*s_kernel_registry));
 }
 
-void Shutdown_DeleteRegistry() {
-  RocmKernelRegistry().reset();
+void DeleteRegistry() {
+  s_kernel_registry.reset();
 }
 
 std::shared_ptr<KernelRegistry> ROCMExecutionProvider::GetKernelRegistry() const {
-  return RocmKernelRegistry();
+  return s_kernel_registry;
 }
 
 static bool CastNeedFallbackToCPU(const onnxruntime::Node& node) {
