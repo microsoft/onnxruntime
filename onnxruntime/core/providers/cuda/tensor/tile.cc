@@ -47,14 +47,14 @@ ONNX_OPERATOR_KERNEL_EX(
              reinterpret_cast<typename ToCudaType<type>::MappedType*>(output_data), output_tensor.Shape().Size()); \
   } break
 
-#define CASE_TILE_MEMORY(type)                                                                                \
+#define CASE_TILE_MEMCPY(type)                                                                                \
   case sizeof(type): {                                                                                        \
     TileMemcpyImpl(Stream(), reinterpret_cast<const typename ToCudaType<type>::MappedType*>(input_data),      \
                    reinterpret_cast<typename ToCudaType<type>::MappedType*>(output_data), input_shape.Size(), \
                    num_of_copies_per_batch);                                                                  \
   } break
 
-#define CASE_TILE_BATCHED_MEMORY(type)                                                                          \
+#define CASE_TILE_BATCHED_MEMCPY(type)                                                                          \
   case sizeof(type): {                                                                                          \
     TileBatchedMemcpyImpl(Stream(), reinterpret_cast<const typename ToCudaType<type>::MappedType*>(input_data), \
                           reinterpret_cast<typename ToCudaType<type>::MappedType*>(output_data),                \
@@ -112,18 +112,18 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
                            num_of_batch_copies)) {
     if (!is_batched_memcpy) {
       switch (element_size) {
-        CASE_TILE_MEMORY(float);
-        CASE_TILE_MEMORY(double);
-        CASE_TILE_MEMORY(MLFloat16);
+        CASE_TILE_MEMCPY(float);
+        CASE_TILE_MEMCPY(double);
+        CASE_TILE_MEMCPY(MLFloat16);
         default:
           ORT_THROW("Unsupported value attribute datatype with sizeof=: ", element_size);
           break;
       }
     } else {
       switch (element_size) {
-        CASE_TILE_BATCHED_MEMORY(float);
-        CASE_TILE_BATCHED_MEMORY(double);
-        CASE_TILE_BATCHED_MEMORY(MLFloat16);
+        CASE_TILE_BATCHED_MEMCPY(float);
+        CASE_TILE_BATCHED_MEMCPY(double);
+        CASE_TILE_BATCHED_MEMCPY(MLFloat16);
         default:
           ORT_THROW("Unsupported value attribute datatype with sizeof=: ", element_size);
           break;
@@ -138,7 +138,7 @@ Status Tile::ComputeInternal(OpKernelContext* ctx) const {
 
   TArray<fast_divmod> fdm_input_shape(rank);
   for (size_t i = 0; i < input_dims.size(); ++i) {
-    fdm_input_shape[i] = fast_divmod(gsl::narrow_cast<int>(input_dims[i]));
+    fdm_input_shape[gsl::narrow_cast<int>(i)] = fast_divmod(gsl::narrow_cast<int>(input_dims[i]));
   }
 
   TArray<fast_divmod> fdm_output_strides(rank);

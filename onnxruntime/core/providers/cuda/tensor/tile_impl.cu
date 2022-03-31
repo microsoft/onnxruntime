@@ -84,30 +84,29 @@ void TileMemcpyImpl(cudaStream_t stream, const T* input_data, T* output_data, co
   constexpr int vec2_alignment = std::alignment_of<Vec2T>::value;
   uint64_t address_input = reinterpret_cast<uint64_t>(input_data);
   uint64_t address_output = reinterpret_cast<uint64_t>(output_data);
-  size_t N = num_input_elements;
+  CUDA_LONG N = static_cast<CUDA_LONG>(num_input_elements);
   if (num_input_elements % 4 == 0 && address_input % vec4_alignment == 0 && address_output % vec4_alignment == 0) {
-    N = num_input_elements / 4;
-    int blocksPerGrid = static_cast<int>(CeilDiv(N, num_threads_per_block));
-    _TileMemcpyKernel<<<blocksPerGrid, num_threads_per_block, 0, stream>>>(reinterpret_cast<const Vec4T*>(input_data),
-                                                                           reinterpret_cast<Vec4T*>(output_data),
-                                                                           static_cast<CUDA_LONG>(N), repeats);
+    N /= 4;
+    int blocksPerGrid = CeilDiv(N, num_threads_per_block);
+    _TileMemcpyKernel<<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
+        reinterpret_cast<const Vec4T*>(input_data), reinterpret_cast<Vec4T*>(output_data), N, repeats);
     return;
   } else if (num_input_elements % 2 == 0 && address_input % vec2_alignment == 0 &&
              address_output % vec2_alignment == 0) {
-    N = num_input_elements / 2;
-    int blocksPerGrid = static_cast<int>(CeilDiv(N, num_threads_per_block));
-    _TileMemcpyKernel<<<blocksPerGrid, num_threads_per_block, 0, stream>>>(reinterpret_cast<const Vec2T*>(input_data),
-                                                                           reinterpret_cast<Vec2T*>(output_data),
-                                                                           static_cast<CUDA_LONG>(N), repeats);
+    N /= 2;
+    int blocksPerGrid = CeilDiv(N, num_threads_per_block);
+    _TileMemcpyKernel<<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
+        reinterpret_cast<const Vec2T*>(input_data), reinterpret_cast<Vec2T*>(output_data), N, repeats);
     return;
   }
 
-  int blocksPerGrid = static_cast<int>(CeilDiv(N, num_threads_per_block));
-  _TileMemcpyKernel<<<blocksPerGrid, num_threads_per_block, 0, stream>>>(input_data, output_data,
-                                                                         static_cast<CUDA_LONG>(N), repeats);
+  int blocksPerGrid = CeilDiv(N, num_threads_per_block);
+  _TileMemcpyKernel<<<blocksPerGrid, num_threads_per_block, 0, stream>>>(input_data, output_data, N, repeats);
 }
 
-// Input size is [n, c], output size is [n * batch_repeats, c * repeats].
+// Input size is [batch, data], output size is [batch * batch_repeats, data * repeats_per_batch].
+// Here size_input_row = data, size_output_row = data * repeats_per_batch,
+// size_output_batch = batch * data * repeats_per_batch
 template <typename T>
 __global__ void _TileBatchedMemcpyKernel(const T* input_data, T* output_data, const fast_divmod divmod_size_input_row,
                                          const CUDA_LONG size_input_row, const CUDA_LONG size_output_row,
@@ -128,7 +127,8 @@ __global__ void _TileBatchedMemcpyKernel(const T* input_data, T* output_data, co
   }
 }
 
-// Input size is [n, c], output size is [n * batch_repeats, c * repeats].
+// Input size is [batch, data], output size is [batch * batch_repeats, data * repeats_per_batch].
+// Here size_input_row = data, num_input_elements = batch * data
 template <typename T>
 void TileBatchedMemcpyImpl(cudaStream_t stream, const T* input_data, T* output_data, const size_t size_input_row,
                            const size_t num_input_elements, const size_t batch_repeats,
@@ -139,35 +139,35 @@ void TileBatchedMemcpyImpl(cudaStream_t stream, const T* input_data, T* output_d
   constexpr int vec2_alignment = std::alignment_of<Vec2T>::value;
   uint64_t address_input = reinterpret_cast<uint64_t>(input_data);
   uint64_t address_output = reinterpret_cast<uint64_t>(output_data);
-  size_t size_input_row_vec = size_input_row;
-  size_t N = num_input_elements;
+  CUDA_LONG size_input_row_vec = static_cast<CUDA_LONG>(size_input_row);
+  CUDA_LONG N = static_cast<CUDA_LONG>(num_input_elements);
   if (size_input_row % 4 == 0 && address_input % vec4_alignment == 0 && address_output % vec4_alignment == 0) {
-    size_input_row_vec = size_input_row / 4;
-    N = num_input_elements / 4;
-    int blocksPerGrid = static_cast<int>(CeilDiv(N, num_threads_per_block));
+    size_input_row_vec /= 4;
+    N /= 4;
+    int blocksPerGrid = CeilDiv(N, num_threads_per_block);
     _TileBatchedMemcpyKernel<<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
         reinterpret_cast<const Vec4T*>(input_data), reinterpret_cast<Vec4T*>(output_data),
-        fast_divmod(size_input_row_vec), static_cast<CUDA_LONG>(size_input_row_vec),
-        static_cast<CUDA_LONG>(size_input_row_vec * repeats_per_batch), static_cast<CUDA_LONG>(N * repeats_per_batch),
-        batch_repeats, repeats_per_batch, static_cast<CUDA_LONG>(N));
+        fast_divmod(size_input_row_vec), size_input_row_vec,
+        size_input_row_vec * static_cast<CUDA_LONG>(repeats_per_batch), N * static_cast<CUDA_LONG>(repeats_per_batch),
+        batch_repeats, repeats_per_batch, N);
     return;
   } else if (size_input_row % 2 == 0 && address_input % vec2_alignment == 0 && address_output % vec2_alignment == 0) {
-    size_input_row_vec = size_input_row / 2;
-    N = num_input_elements / 2;
-    int blocksPerGrid = static_cast<int>(CeilDiv(N, num_threads_per_block));
+    size_input_row_vec /= 2;
+    N /= 2;
+    int blocksPerGrid = CeilDiv(N, num_threads_per_block);
     _TileBatchedMemcpyKernel<<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
         reinterpret_cast<const Vec2T*>(input_data), reinterpret_cast<Vec2T*>(output_data),
-        fast_divmod(size_input_row_vec), static_cast<CUDA_LONG>(size_input_row_vec),
-        static_cast<CUDA_LONG>(size_input_row_vec * repeats_per_batch), static_cast<CUDA_LONG>(N * repeats_per_batch),
-        batch_repeats, repeats_per_batch, static_cast<CUDA_LONG>(N));
+        fast_divmod(size_input_row_vec), size_input_row_vec,
+        size_input_row_vec * static_cast<CUDA_LONG>(repeats_per_batch), N * static_cast<CUDA_LONG>(repeats_per_batch),
+        batch_repeats, repeats_per_batch, N);
     return;
   }
 
   int blocksPerGrid = static_cast<int>(CeilDiv(N, num_threads_per_block));
   _TileBatchedMemcpyKernel<<<blocksPerGrid, num_threads_per_block, 0, stream>>>(
-      input_data, output_data, fast_divmod(size_input_row_vec), static_cast<CUDA_LONG>(size_input_row_vec),
-      static_cast<CUDA_LONG>(size_input_row_vec * repeats_per_batch), static_cast<CUDA_LONG>(N * repeats_per_batch),
-      batch_repeats, repeats_per_batch, static_cast<CUDA_LONG>(N));
+      input_data, output_data, fast_divmod(size_input_row_vec), size_input_row_vec,
+      size_input_row_vec * static_cast<CUDA_LONG>(repeats_per_batch), N * static_cast<CUDA_LONG>(repeats_per_batch),
+      batch_repeats, repeats_per_batch, N);
 }
 
 #define SPECIALIZED_IMPL(T)                                                                                           \
