@@ -317,9 +317,9 @@ class TrainingManager(GraphExecutionManager):
                                 len(self._graph_info.frontier_node_arg_map))
         else:
             fw_outputs_device_info = [
-                C.OrtDevice(get_ort_device_type(self._device),
+                C.OrtDevice(get_ort_device_type(self._device.type, self._device.get_device_index),
                             C.OrtDevice.default_memory(),
-                            _utils.get_device_index(self._device)
+                            _utils.get_device_index(self._device.type, self._device.get_device_index)
                             )] * (len(self._graph_info.user_output_names) +
                                 len(self._graph_info.frontier_node_arg_map))
 
@@ -329,9 +329,9 @@ class TrainingManager(GraphExecutionManager):
                     C.get_ort_device(self._device.index)] * len(bw_fetches_names)
         else:
             bw_outputs_device_info = [
-                C.OrtDevice(get_ort_device_type(self._device),
+                C.OrtDevice(get_ort_device_type(self._device.type, self._device.get_device_index),
                             C.OrtDevice.default_memory(),
-                            _utils.get_device_index(self._device)
+                            _utils.get_device_index(self._device.type, self._device.get_device_index)
                             )] * len(bw_fetches_names)
 
         self._execution_agent = TrainingAgent(self._onnx_models.optimized_model.SerializeToString(),

@@ -10,14 +10,13 @@ import warnings
 from onnxruntime.capi import _pybind_state as C
 
 
-def get_ort_device_type(device):
-    device_type = device if type(device) is str else device.type.lower()
+def get_ort_device_type(device_type, device_index):
     if device_type == 'cuda':
         return C.OrtDevice.cuda()
     elif device_type == 'cpu':
         return C.OrtDevice.cpu()
     elif device_type == 'ort':
-        return C.get_ort_device(device.index).device_type()
+        return C.get_ort_device(device_index).device_type()
     else:
         raise Exception('Unsupported device type: ' + device_type)
 
@@ -439,7 +438,7 @@ class IOBinding:
         :param buffer_ptr: memory pointer to input data
         '''
         self._iobinding.bind_input(name,
-                                   C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
+                                   C.OrtDevice(get_ort_device_type(device_type, device_id), C.OrtDevice.default_memory(),
                                                device_id),
                                    element_type, shape, buffer_ptr)
 
@@ -471,13 +470,13 @@ class IOBinding:
         # (2) The output has a dynamic shape and hence the size of the buffer may not be fixed across runs
         if buffer_ptr is None:
             self._iobinding.bind_output(name,
-                                        C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
+                                        C.OrtDevice(get_ort_device_type(device_type, device_id), C.OrtDevice.default_memory(),
                                                     device_id))
         else:
             if element_type is None or shape is None:
                 raise ValueError("`element_type` and `shape` are to be provided if pre-allocated memory is provided")
             self._iobinding.bind_output(name,
-                                        C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(),
+                                        C.OrtDevice(get_ort_device_type(device_type, device_id), C.OrtDevice.default_memory(),
                                                     device_id),
                                         element_type, shape, buffer_ptr)
 
@@ -547,7 +546,7 @@ class OrtValue:
         # Hold a reference to the numpy object (if device_type is 'cpu') as the OrtValue
         # is backed directly by the data buffer of the numpy object and so the numpy object
         # must be around until this OrtValue instance is around
-        return OrtValue(C.OrtValue.ortvalue_from_numpy(numpy_obj, C.OrtDevice(get_ort_device_type(device_type),
+        return OrtValue(C.OrtValue.ortvalue_from_numpy(numpy_obj, C.OrtDevice(get_ort_device_type(device_type, device_id),
                         C.OrtDevice.default_memory(), device_id)), numpy_obj if device_type.lower() == 'cpu' else None)
 
     @staticmethod
@@ -564,7 +563,7 @@ class OrtValue:
             raise ValueError("`element_type` and `shape` are to be provided if pre-allocated memory is provided")
 
         return OrtValue(C.OrtValue.ortvalue_from_shape_and_type(shape, element_type,
-                        C.OrtDevice(get_ort_device_type(device_type), C.OrtDevice.default_memory(), device_id)))
+                        C.OrtDevice(get_ort_device_type(device_type, device_id), C.OrtDevice.default_memory(), device_id)))
 
     @staticmethod
     def ort_value_from_sparse_tensor(sparse_tensor):
@@ -670,7 +669,7 @@ class OrtDevice:
 
     @staticmethod
     def make(ort_device_name, device_id):
-        return OrtDevice(C.OrtDevice(get_ort_device_type(ort_device_name),
+        return OrtDevice(C.OrtDevice(get_ort_device_type(ort_device_name, device_id),
                                      C.OrtDevice.default_memory(), device_id))
 
     def device_id(self):

@@ -53,7 +53,10 @@ def _ortvalue_from_torch_tensor(torch_tensor):
     is_bool_tensor = torch_tensor.dtype == torch.bool
     if is_bool_tensor and LooseVersion(torch.__version__) >= LooseVersion('1.10.0'):
         torch_tensor = torch_tensor.to(torch.uint8)
-    return C.OrtValue.from_dlpack(to_dlpack(torch_tensor), is_bool_tensor)
+    if torch_tensor.device.type == 'ort':
+        return C.aten_ort_tensor_to_ort_value(torch_tensor)
+    else:
+        return C.OrtValue.from_dlpack(to_dlpack(torch_tensor), is_bool_tensor)
 
 
 def _torch_tensor_from_dl_pack(dlpack, ortvalue):
