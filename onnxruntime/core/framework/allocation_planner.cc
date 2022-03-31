@@ -65,6 +65,9 @@ std::ostream& operator<<(std::ostream& out, AllocKind alloc_kind) {
     case AllocKind::kAllocatedExternally:
       out << "AllocatedExternally";
       break;
+    case AllocKind::kShareInputTensors:
+      out << "ShareMultipleExisting";
+      break;
     case AllocKind::kNotSet:
       out << "NotSet";
       break;
@@ -299,7 +302,7 @@ class PlannerImpl {
     if (p_next_node != node.OutputNodesEnd() && p_next_node->OpType() == "YieldOp") {
       return false;
     }
-#endif  //ENABLE_TRAINING
+#endif  // ENABLE_TRAINING
 
     auto p_output_arg = node.OutputDefs()[output_arg_num];
     const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
@@ -396,6 +399,42 @@ class PlannerImpl {
     return false;
   }
 
+#ifdef ENABLE_TRAINING
+  // Find if there exists some input tensor that we can use in-place for output_arg_num-th input in the node.
+  bool FindSequenceAliasInput(const onnxruntime::Node& node, int output_arg_num, std::vector<OrtValueIndex>& reusable_inputs) {
+    // Inputs of Yields are essentially the outputs for FW partial subgraph
+    // Thses tensors will be pass back to pytorch, thus cannot share the buffer with other tensors
+
+    // Unhandled corner case:
+    // If FW output tensor is consumed by BW graph, and pytorch performs an inplace operation on th returned tensor,
+    // we will run into a buffer corruption problem.
+    // One potential fix is returning a copy of output tensor, if it has downstream dependency
+    auto p_next_node = node.OutputNodesBegin();
+    if (p_next_node != node.OutputNodesEnd() && p_next_node->OpType() == "YieldOp") {
+      return false;
+    }
+
+    const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
+
+    if (ci.kernel_def == nullptr) {
+      return false;
+    }
+
+    auto input_args = node.InputDefs();
+    const auto& inplace_seq_output_arg = ci.kernel_def->SequenceAlias();
+    if (inplace_seq_output_arg == output_arg_num) {
+      for (auto& p_input_arg : input_args) {
+        if (p_input_arg->Exists()) {
+          auto input_arg_index = Index(p_input_arg->Name());
+          reusable_inputs.push_back(input_arg_index);
+        }
+      }
+    }
+
+    return !reusable_inputs.empty();
+  }
+#endif  // ENABLE_TRAINING
+
   static bool SameShape(const TensorShapeProto& shape1, const TensorShapeProto& shape2) {
     // TODO: This should probably be defined to be the equality operator on TensorShapeProto.
     namespace on = ONNX_NAMESPACE;
@@ -418,7 +457,7 @@ class PlannerImpl {
   }
 
   /*! \brief Given a tensor-type, return the size of an element of the tensor.
-  */
+   */
   static size_t GetElementSize(const DataType& tensor_type) {
     const TypeProto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(tensor_type);
     MLDataType ml_data_type = DataTypeImpl::TypeFromProto(type_proto);
@@ -836,7 +875,7 @@ class PlannerImpl {
   // Should only be used after ProcessDef()
   Status ComputeReusePlan() {
     std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan(plan_.execution_plan);
-    //copy the use counts to a vector, before computing reuse
+    // copy the use counts to a vector, before computing reuse
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
     std::vector<int> ort_value_usecount;
     for (auto ort_value_info : ort_value_info_) {
@@ -898,6 +937,10 @@ class PlannerImpl {
         // Declare OrtValue index of the reused buffer.
         // The the OrtValue indexed by current may reuse the memory in the OrtValue indexed by reused.
         OrtValueIndex reused;
+
+#ifdef ENABLE_TRAINING
+        std::vector<OrtValueIndex> seq_tensor_reusable_inputs;
+#endif  // ENABLE_TRAINING
         if (has_external_outputs) {
           ORT_ENFORCE(!IsNonTensor(*node_output), "Only tensors are supported for external outputs for now.");
           AllocPlan(current).alloc_kind = AllocKind::kAllocatedExternally;
@@ -951,6 +994,14 @@ class PlannerImpl {
           Reuse(reused, current, AllocKind::kReuse);
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
           InplaceReuse(reused, current);
+#endif
+#ifdef ENABLE_TRAINING
+        } else if (!context_.IsParallelExecutionEnabled() &&
+                   FindSequenceAliasInput(*pnode, static_cast<int>(output_arg_def_index), seq_tensor_reusable_inputs)) {
+          // Re-using all tensor inputs for one sequence tensor output,
+          AllocPlan(current).alloc_kind = AllocKind::kShareInputTensors;
+          AllocPlan(current).reused_ortvalues = seq_tensor_reusable_inputs;
+          AllocPlan(current).program_counter.AddStart(program_counter);
 #endif
         } else if (IsNonTensor(*node_output)) {
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
@@ -1039,6 +1090,7 @@ class PlannerImpl {
     }
     return Status::OK();
   }
+
 #ifdef ENABLE_TRAINING
   bool AllocateInputsContiguously(const Node& node) const {
     const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
@@ -1152,7 +1204,7 @@ class PlannerImpl {
     plan_.to_be_freed.reserve(freelist_.size());
     bool has_prev_dealloc_point = false;
     size_t prev_dealloc_point = 0;
-    //TODO: should be size_t
+    // TODO: should be size_t
     int current = 0;  // current index into the to_be_freed vector
 
     // Copy all items from freelist to to_be_freed in reverse order
@@ -1199,7 +1251,7 @@ class PlannerImpl {
   }
 #endif
 
-  //For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
+  // For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   void AdjustInplaceLifeIntervals() {
     std::unordered_map<OrtValueIndex, std::vector<OrtValueIndex>> inplace_reuse_buffer;
@@ -1247,7 +1299,7 @@ Status PlannerImpl::CreatePlan() {
   ORT_RETURN_IF_ERROR(ComputeFenceCheck());
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  //Adjust the allocate and lifetime intervals for all ml-values, based on their allocation kind.
+  // Adjust the allocate and lifetime intervals for all ml-values, based on their allocation kind.
   AdjustInplaceLifeIntervals();
 #endif
 

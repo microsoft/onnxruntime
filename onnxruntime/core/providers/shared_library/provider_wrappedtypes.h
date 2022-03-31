@@ -442,6 +442,7 @@ struct KernelDefBuilder final {
     g_host->KernelDefBuilder__MayInplace(this, input_index, output_index);
     return *this;
   }
+
   KernelDefBuilder& Alias(const std::vector<std::pair<int, int>>& aliases) {
     g_host->KernelDefBuilder__Alias(this, aliases);
     return *this;
@@ -473,6 +474,11 @@ struct KernelDefBuilder final {
 
   KernelDefBuilder& MayStridedOutput(int input_index, int output_index) {
     g_host->KernelDefBuilder__MayStridedOutput(this, input_index, output_index);
+    return *this;
+  }
+
+  KernelDefBuilder& SequenceAlias(int output_index) {
+    g_host->KernelDefBuilder__SequenceAlias(this, output_index);
     return *this;
   }
 #endif
@@ -1017,7 +1023,7 @@ struct SparseTensor final {
 };
 #endif
 
-//TensorSeq
+// TensorSeq
 struct TensorSeq final {
   MLDataType DataType() const noexcept { return g_host->TensorSeq__DataType(this); }
   void SetType(MLDataType elem_type) { g_host->TensorSeq__SetType(this, elem_type); }

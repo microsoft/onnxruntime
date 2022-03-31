@@ -67,6 +67,12 @@ class KernelDef {
     return inplace_map_;
   }
 
+#ifdef ENABLE_TRAINING
+  const int& SequenceAlias() const {
+    return sequence_alias_output_index_;
+  }
+#endif
+
   const std::vector<std::pair<int, int>>& Alias() const {
     return alias_map_;
   }
@@ -174,6 +180,9 @@ class KernelDef {
 
   // An element <i, j> means j-th output can be a strided tensor, which share the data from i-th input.
   std::vector<std::pair<int, int>> may_strided_output_map_;
+
+  // An element <j> means that output j (of type TensorSeq) reuses the memory of all inputs (of type Tensor).
+  int sequence_alias_output_index_{-1};
 #endif
 
   // The memory types of inputs/outputs of this kernel
@@ -277,6 +286,15 @@ class KernelDefBuilder {
   */
   KernelDefBuilder& MayInplace(const std::vector<std::pair<int, int>>& inplaces);
   KernelDefBuilder& MayInplace(int input_index, int output_index);
+
+#ifdef ENABLE_TRAINING
+  /**
+     The output index (of type TensorSeq) that reuses the memory of all inputs (of type Tensor).
+     It means that specified TensorSeq output could just reuse those tensors stored
+     in kernel inputs, without explicitly copying.
+  */
+  KernelDefBuilder& SequenceAlias(int output_index);
+#endif
 
   /**
      Alias mapping from inputs to outputs. Different from Inplace that the

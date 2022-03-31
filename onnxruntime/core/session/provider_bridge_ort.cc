@@ -339,7 +339,7 @@ struct ProviderHostImpl : ProviderHost {
   ONNX_NAMESPACE::TensorShapeProto* TypeProto_Tensor__mutable_shape(ONNX_NAMESPACE::TypeProto_Tensor* p) override { return p->mutable_shape(); }
   int32_t TypeProto_Tensor__elem_type(const ONNX_NAMESPACE::TypeProto_Tensor* p) override { return p->elem_type(); }
 
-  //TypeProto_SparseTensor (wrapped)
+  // TypeProto_SparseTensor (wrapped)
 #if !defined(DISABLE_SPARSE_TENSORS)
   bool TypeProto_SparseTensor__has_shape(const ONNX_NAMESPACE::TypeProto_SparseTensor* p) override { return p->has_shape(); }
   const ONNX_NAMESPACE::TensorShapeProto& TypeProto_SparseTensor__shape(const ONNX_NAMESPACE::TypeProto_SparseTensor* p) override {
@@ -551,6 +551,7 @@ struct ProviderHostImpl : ProviderHost {
   void KernelDefBuilder__OutputMemoryType(KernelDefBuilder* p, OrtMemType type, int input_index) override { p->OutputMemoryType(type, input_index); }
   void KernelDefBuilder__ExecQueueId(KernelDefBuilder* p, int queue_id) override { p->ExecQueueId(queue_id); }
   void KernelDefBuilder__MayInplace(KernelDefBuilder* p, int input_index, int output_index) override { p->MayInplace(input_index, output_index); }
+
   void KernelDefBuilder__Alias(KernelDefBuilder* p, int input_index, int output_index) override { p->Alias(input_index, output_index); }
   void KernelDefBuilder__Alias(KernelDefBuilder* p, const std::vector<std::pair<int, int>>& aliases) override { p->Alias(aliases); }
   void KernelDefBuilder__VariadicAlias(KernelDefBuilder* p, int input_offset, int output_offset) override { p->VariadicAlias(input_offset, output_offset); }
@@ -559,6 +560,7 @@ struct ProviderHostImpl : ProviderHost {
 #ifdef ENABLE_TRAINING
   void KernelDefBuilder__MayStridedInput(KernelDefBuilder* p, int input_index) override { p->MayStridedInput(input_index); }
   void KernelDefBuilder__MayStridedOutput(KernelDefBuilder* p, int input_index, int output_index) override { p->MayStridedOutput(input_index, output_index); }
+  void KernelDefBuilder__SequenceAlias(KernelDefBuilder* p, int output_index) override { p->SequenceAlias(output_index); }
 #endif
 
   std::unique_ptr<KernelDef> KernelDefBuilder__Build(KernelDefBuilder* p) override { return p->Build(); }

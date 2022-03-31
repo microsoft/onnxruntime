@@ -1047,6 +1047,165 @@ void RegisterTrainingOpSchemas() {
           {"tensor(bool)"},
           "Constrain types to boolean tensors.");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Adam)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "R", "The initial learning rate.", "T1")
+      .Input(1, "T", "The update count of \"X\". It should be a scalar.", "T2")
+      .Input(
+          2,
+          "weights",
+          "Sequence of weights to optimize.",
+          "S_WEIGHT")
+      .Input(
+          3,
+          "gradients",
+          "Sequence of gradients computed in this iteration.",
+          "S_GRAD")
+      .Input(
+          4,
+          "moment_1",
+          "Sequence of exponentially averaged historical gradients.",
+          "S")
+      .Input(
+          5,
+          "moment_2",
+          "Sequence of exponentially averaged historical squared gradients.",
+          "S")
+      .Output(
+          1,
+          "new_weights",
+          "New weights.",
+          "S_WEIGHT")
+      .Output(
+          2,
+          "new_moment_1",
+          "New averaged gradients.",
+          "S")
+      .Output(
+          3,
+          "new_moment_2",
+          "New averaged squared gradients.",
+          "S")
+      .Attr(
+          "alpha",
+          "Coefficient of previous gradient in running average.",
+          AttributeProto::FLOAT,
+          0.9f)
+      .Attr(
+          "beta",
+          "Coefficient of previous squared gradient in running average."
+          "The effective learning rate is computed by r = R / (1 + T * decay_factor). "
+          "Default to 0 so that increasing update counts doesn't reduce the learning rate.",
+          AttributeProto::FLOAT,
+          0.999f)
+      .Attr(
+          "lambda",
+          "Regularization coefficient of 0.5 * lambda * ||X||_2^2. Default to 0, "
+          "which means no regularization.",
+          AttributeProto::FLOAT,
+          0.0f)
+      .Attr(
+          "epsilon",
+          "Small scalar to avoid dividing by zero.",
+          AttributeProto::FLOAT,
+          1e-8f)
+      .Attr(
+          "do_bias_correction",
+          "Compute unbiased 1st and 2nd momentums.",
+          AttributeProto::INT,
+          static_cast<int64_t>(1))
+      .Attr(
+          "weight_decay_mode",
+          "Modes for applying weight decay, "
+          "0 means applying decay before weight update, "
+          "1 means applying decay after weight update.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .TypeConstraint(
+          "S",
+          {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))", "seq(tensor(bfloat16))"},
+          "Constrain input types to float tensors")
+      .TypeConstraint(
+          "S_WEIGHT",
+          {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))"},
+          "Constrain input types to float tensors.")
+      .TypeConstraint(
+          "S_GRAD",
+          {"seq(tensor(float16))", "seq(tensor(float))", "seq(tensor(double))", "seq(tensor(bfloat16))"},
+          "Constrain input types to float tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain learning rate to float")
+      .TypeConstraint(
+          "T2",
+          {"int64"},
+          "Constrain step count to 64-bit integer");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(InPlaceToSequence)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("")
+      .Input(
+          0,
+          "inputs",
+          "Tensors.",
+          "T",
+          OpSchema::Variadic)
+      .Output(
+          0,
+          "output_sequence",
+          "Sequence enclosing the input tensors.",
+          "S")
+      .TypeConstraint(
+          "T",
+          OpSchema::all_tensor_types(),
+          "Constrain input types to any tensor type.")
+      .TypeConstraint(
+          "S",
+          OpSchema::all_tensor_sequence_types(),
+          "Constrain output types to any tensor type.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        const size_t numInputs = ctx.getNumInputs();
+        if (numInputs < 1) {
+          fail_type_inference("SequenceConstruct is expected to have at least 1 input.");
+        }
+
+        std::vector<int> input_elem_types;
+        input_elem_types.reserve(numInputs);
+        for (size_t i = 0; i < numInputs; ++i) {
+          auto input_type = ctx.getInputType(i);
+          if (nullptr == input_type) {
+            fail_type_inference("Input type for input at index ", i, " is null. Type info is expected.");
+          }
+          input_elem_types.emplace_back(input_type->tensor_type().elem_type());
+        }
+        if (std::adjacent_find(input_elem_types.begin(), input_elem_types.end(), std::not_equal_to<int>()) != input_elem_types.end()) {
+          // not all input elem types are the same.
+          fail_type_inference("Element type of inputs are expected to be the same.");
+        }
+
+        auto* output_tensor_type =
+            ctx.getOutputType(0)
+                ->mutable_sequence_type()
+                ->mutable_elem_type()
+                ->mutable_tensor_type();
+
+        output_tensor_type->set_elem_type(static_cast<TensorProto_DataType>(input_elem_types[0]));
+
+        if (!hasNInputShapes(ctx, static_cast<int>(numInputs))) {
+          return;
+        }
+
+        *(output_tensor_type->mutable_shape()) = ctx.getInputType(0)->tensor_type().shape();
+
+        for (size_t i = 1; i < numInputs; ++i) {
+          const auto& input_shape = ctx.getInputType(i)->tensor_type().shape();
+          UnionShapeInfo(input_shape, *output_tensor_type);
+        }
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(LambOptimizer, RegisterLambOpSchema);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(InPlaceAccumulator)

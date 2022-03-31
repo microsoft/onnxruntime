@@ -91,10 +91,15 @@ struct OrtValue {
     fence_ = v.fence_;
   }
 
+  void ShareTensorsFrom(std::vector<OrtValue>& reused_ort_values) {
+    reused_ort_values_ = reused_ort_values;
+  }
+
  private:
   std::shared_ptr<void> data_;
   onnxruntime::MLDataType type_{nullptr};
   onnxruntime::FencePtr fence_;
+  std::vector<OrtValue> reused_ort_values_;
 };
 
 template <>

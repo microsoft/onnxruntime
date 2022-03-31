@@ -114,9 +114,9 @@ struct Node__EdgeIterator {
 // a specific implementation of a virtual class member. Trying to get a pointer to member of a virtual function will return a thunk that
 // calls the virtual function (which will lead to infinite recursion in the bridge). There is no known way to get the non virtual member
 // function pointer implementation in this case.
-//The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
-//However, we do not allocate this type on heap.
-//Please do not new or delete this type(and subtypes).
+// The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
+// However, we do not allocate this type on heap.
+// Please do not new or delete this type(and subtypes).
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26436)
@@ -473,6 +473,7 @@ struct ProviderHost {
   virtual void KernelDefBuilder__OutputMemoryType(KernelDefBuilder* p, OrtMemType type, int input_index) = 0;
   virtual void KernelDefBuilder__ExecQueueId(KernelDefBuilder* p, int queue_id) = 0;
   virtual void KernelDefBuilder__MayInplace(KernelDefBuilder* p, int input_index, int output_index) = 0;
+
   virtual void KernelDefBuilder__Alias(KernelDefBuilder* p, int input_index, int output_index) = 0;
   virtual void KernelDefBuilder__Alias(KernelDefBuilder* p, const std::vector<std::pair<int, int>>& aliases) = 0;
   virtual void KernelDefBuilder__VariadicAlias(KernelDefBuilder* p, int input_offset, int output_offset) = 0;
@@ -481,6 +482,7 @@ struct ProviderHost {
 #ifdef ENABLE_TRAINING
   virtual void KernelDefBuilder__MayStridedInput(KernelDefBuilder* p, int input_index) = 0;
   virtual void KernelDefBuilder__MayStridedOutput(KernelDefBuilder* p, int input_index, int output_index) = 0;
+  virtual void KernelDefBuilder__SequenceAlias(KernelDefBuilder* p, int output_index) = 0;
 #endif
 
   virtual std::unique_ptr<KernelDef> KernelDefBuilder__Build(KernelDefBuilder* p) = 0;

@@ -275,7 +275,7 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
                                                                 *dest.GetMutable<SparseTensor>()));
       } else {
 #else
-        ORT_UNUSED_PARAMETER(is_initializer_sparse_func);
+      ORT_UNUSED_PARAMETER(is_initializer_sparse_func);
 #endif  //  !defined(DISABLE_SPARSE_TENSORS)
         if (!dest.IsAllocated()) {
           // NOTE: This doesn't need to support ExecutionFrame custom allocators as they only come into play
@@ -380,7 +380,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
       }
     }
 
-    //if there are some traditional ml value type in inputs disable the memory pattern optimization.
+    // if there are some traditional ml value type in inputs disable the memory pattern optimization.
     if (all_tensors) {
       mem_patterns_ = session_state.GetMemoryPatternGroup(feeds, feed_mlvalue_idxs, inferred_shapes_);
       // if no existing patterns, generate one in this executionframe
@@ -433,7 +433,7 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
               buffers_[location] = BufferUniquePtr(buffer, alloc);
             }
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-            //Record activation memory pattern
+            // Record activation memory pattern
             MemoryInfo::ClearMemoryInfoPerExecution();
             if (mem_patterns_ && buffer != nullptr) {
               MemoryInfo::RecordPatternInfo(*mem_patterns_, MemoryInfo::MapType::StaticActivation);
@@ -536,7 +536,7 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     }
   }
 
-  //no memory pattern, or the pattern is not correct.
+  // no memory pattern, or the pattern is not correct.
   if (!alloc) alloc = GetAllocator(location);
   Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value);
 
@@ -752,7 +752,6 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
 #endif
   ) {
     AllocKind alloc_kind = per_alloc_plan.alloc_kind;
-
     if (alloc_kind == AllocKind::kReuse) {
       int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
 
@@ -764,6 +763,19 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       ort_value = reuse_value;
 
       return Status::OK();
+#ifdef ENABLE_TRAINING
+    } else if (alloc_kind == AllocKind::kShareInputTensors) {
+      ORT_RETURN_IF_ERROR(AllocateTensorSequence(ort_value));
+      std::vector<OrtValue> reused_ortvalues;
+      for (int resued_ortvalue_index : per_alloc_plan.reused_ortvalues) {
+        OrtValue& reused_ort_value = GetMutableMLValue(resued_ortvalue_index);
+        // copy at the OrtValue level so the shared_ptr for the data is shared between the two OrtValue instances
+        reused_ortvalues.push_back(reused_ort_value);
+      }
+
+      ort_value.ShareTensorsFrom(reused_ortvalues);
+      return Status::OK();
+#endif
     } else {
       return AllocateTensorSequence(ort_value);
     }
