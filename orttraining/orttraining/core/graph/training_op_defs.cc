@@ -1073,20 +1073,10 @@ void RegisterTrainingOpSchemas() {
           "Sequence of exponentially averaged historical squared gradients.",
           "S")
       .Output(
-          1,
-          "new_weights",
-          "New weights.",
-          "S_WEIGHT")
-      .Output(
-          2,
-          "new_moment_1",
-          "New averaged gradients.",
-          "S")
-      .Output(
-          3,
-          "new_moment_2",
-          "New averaged squared gradients.",
-          "S")
+          0,
+          "is_updated",
+          "Whether gradient is applied or not, mostly used as the optimizer applying trigger.",
+          "T2")
       .Attr(
           "alpha",
           "Coefficient of previous gradient in running average.",

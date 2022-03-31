@@ -120,7 +120,7 @@ bool KernelDef::IsConflict(const KernelDef& other) const {
       return false;
   }
 
-#define ENABLE_TRAINING
+#ifdef ENABLE_TRAINING
   // check in-place sequence
   if (sequence_alias_output_index_ != other.SequenceAlias()) {
     return false;
@@ -253,7 +253,7 @@ KernelDefBuilder& KernelDefBuilder::MayInplace(int input_index, int output_index
   return *this;
 }
 
-#define ENABLE_TRAINING
+#ifdef ENABLE_TRAINING
 KernelDefBuilder& KernelDefBuilder::SequenceAlias(int output_index) {
   // TODO: validate inputs.
   kernel_def_->sequence_alias_output_index_ = output_index;
