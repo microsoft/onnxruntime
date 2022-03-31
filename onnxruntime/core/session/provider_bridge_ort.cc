@@ -1031,7 +1031,12 @@ struct ProviderLibrary {
     }
 
     provider_ = PGetProvider();
-    provider_->Initialize();
+    ORT_TRY {
+      provider_->Initialize();
+    } ORT_CATCH (...) {
+      Unload(); // If Initialize fails we unload the library and rethrow
+      ORT_RETHROW
+    }
     return provider_;
   }
 

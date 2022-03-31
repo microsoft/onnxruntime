@@ -73,27 +73,19 @@ ONNX_OPERATOR_KERNEL_EX(
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyFromHost);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyToHost);
 
-static Status RegisterMIGraphXKernels(KernelRegistry& kernel_registry) {
+static std::shared_ptr<KernelRegistry> s_kernel_registry;
+
+void InitializeRegistry() {
+  s_kernel_registry = KernelRegistry::Create();
+
   static const BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyFromHost)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kMIGraphXExecutionProvider, kOnnxDomain, 1, MemcpyToHost)>,
   };
 
   for (auto& function_table_entry : function_table) {
-    ORT_ENFORCE(kernel_registry.Register(function_table_entry()).IsOK());
+    ORT_THROW_IF_ERROR(s_kernel_registry->Register(function_table_entry()));
   }
-
-  return Status::OK();
-}
-
-static std::shared_ptr<KernelRegistry> s_kernel_registry;
-
-void InitializeRegistry() {
-  s_kernel_registry = KernelRegistry::Create();
-  auto status = RegisterMIGraphXKernels(*s_kernel_registry);
-  if (!status.IsOK())
-    s_kernel_registry.reset();
-  ORT_THROW_IF_ERROR(status);
 }
 
 void DeleteRegistry() {

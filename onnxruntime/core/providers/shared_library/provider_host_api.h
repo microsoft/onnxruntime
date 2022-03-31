@@ -26,7 +26,7 @@ struct Provider {
   // Update provider options from key-value string configuration
   virtual void UpdateProviderOptions(void* /*provider options to be configured*/, const ProviderOptions& /*key-value string provider options*/){};
 
-  virtual void Initialize() = 0;
+  virtual void Initialize() = 0; // Called right after loading the shared library, if this throws any errors Shutdown() will be called and the library unloaded
   virtual void Shutdown() = 0;
 };
 #if defined(_MSC_VER) && !defined(__clang__)
