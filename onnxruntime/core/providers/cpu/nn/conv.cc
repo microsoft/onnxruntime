@@ -197,7 +197,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   const auto* Bdata = B != nullptr ? B->template Data<float>() : nullptr;
   auto* Ydata = Y->template MutableData<float>();
   // Check for the optional Conv/Sum fusion.
-  float accumulated_beta = 0.0f;
+  float Beta = 0.0f;
   if (Sum != nullptr) {
     const auto& sum_shape = Sum->Shape();
     ORT_RETURN_IF_NOT(Y->Shape() == sum_shape, "output and sum shape must match");
@@ -206,7 +206,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
     if (Ydata != sum_data) {
       memcpy(Ydata, sum_data, sum_shape.Size() * sizeof(float));
     }
-    accumulated_beta = 1.0f;
+    Beta = 1.0f;
   }
   const size_t kernel_rank = kernel_shape.size();
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
@@ -228,7 +228,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
                     static_cast<size_t>(M / conv_attrs_.group),
                     &activation_,
                     &WorkingBufferSize,
-                    accumulated_beta,
+                    Beta,
                     thread_pool);
 
     auto* working_data = WorkingBufferSize > 0 ? alloc->Alloc(SafeInt<size_t>(sizeof(float)) * WorkingBufferSize)
@@ -279,7 +279,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
             1,
             W->template Data<float>() + group_id * W_offset,
             col_buffer_data,
-            accumulated_beta,
+            Beta,
             Ydata + group_id * Y_offset,
             thread_pool);
       }

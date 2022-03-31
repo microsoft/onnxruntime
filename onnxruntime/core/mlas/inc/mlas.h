@@ -739,7 +739,7 @@ struct MLAS_CONV_PARAMETERS {
     size_t InputSize;
     size_t OutputSize;
     size_t K;
-    float accumulated_beta;
+    float Beta;
     MLAS_CONV_ALGORITHM Algorithm;
     ptrdiff_t ThreadCount;
     union {
@@ -753,26 +753,23 @@ struct MLAS_CONV_PARAMETERS {
     } u;
 };
 
-void
-MLASCALL
-MlasConvPrepare(
-    MLAS_CONV_PARAMETERS* Parameters,
-    size_t Dimensions,
-    size_t BatchCount,
-    size_t GroupCount,
-    size_t InputChannels,
-    const int64_t* InputShape,
-    const int64_t* KernelShape,
-    const int64_t* DilationShape,
-    const int64_t* Padding,
-    const int64_t* StrideShape,
-    const int64_t* OutputShape,
-    size_t FilterCount,
-    const MLAS_ACTIVATION* Activation,
-    size_t* WorkingBufferSize,
-    float accumulated_beta,
-    MLAS_THREADPOOL* ThreadPool
-    );
+void MLASCALL
+MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
+                size_t Dimensions,
+                size_t BatchCount,
+                size_t GroupCount,
+                size_t InputChannels,
+                const int64_t* InputShape,
+                const int64_t* KernelShape,
+                const int64_t* DilationShape,
+                const int64_t* Padding,
+                const int64_t* StrideShape,
+                const int64_t* OutputShape,
+                size_t FilterCount,
+                const MLAS_ACTIVATION* Activation,
+                size_t* WorkingBufferSize,
+                float Beta,
+                MLAS_THREADPOOL* ThreadPool);
 
 void
 MLASCALL

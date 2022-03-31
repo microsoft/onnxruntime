@@ -571,7 +571,7 @@ Return Value:
         //
 
         size_t CountK;
-        float beta = Parameters->accumulated_beta;
+        float beta = Parameters->Beta;
         float* SegmentOutput = Output + SegmentStartN + n;
 
         for (size_t k = 0; k < K; k += CountK) {
@@ -936,7 +936,7 @@ Return Value:
 
                     MlasGemm(CblasNoTrans, Parameters->u.GemmDirect.TransB, FilterCount, OutputSize,
                              K, 1.0f, filter, K, Input, Parameters->u.GemmDirect.ldb,
-                             Parameters->accumulated_beta, Output, OutputSize, ThreadPool);
+                             Parameters->Beta, Output, OutputSize, ThreadPool);
 
                     //
                     // Apply the activation with optional bias.
@@ -962,8 +962,8 @@ Return Value:
                     }
 
                     MlasGemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f, filter,
-                             K, WorkingBuffer, OutputSize, Parameters->accumulated_beta, Output,
-                             OutputSize, ThreadPool);
+                             K, WorkingBuffer, OutputSize, Parameters->Beta, Output, OutputSize,
+                             ThreadPool);
 
                     //
                     // Apply the activation with optional bias.
@@ -1039,7 +1039,7 @@ MlasConvPrepare(
     size_t FilterCount,
     const MLAS_ACTIVATION* Activation,
     size_t* WorkingBufferSize,
-    float accumulated_beta,
+    float Beta,
     MLAS_THREADPOOL* ThreadPool
     )
 /*++
@@ -1102,7 +1102,7 @@ Return Value:
     Parameters->GroupCount = GroupCount;
     Parameters->InputChannels = InputChannels;
     Parameters->FilterCount = FilterCount;
-    Parameters->accumulated_beta = accumulated_beta;
+    Parameters->Beta = Beta;
 
     size_t InputSize = 1;
     size_t OutputSize = 1;
