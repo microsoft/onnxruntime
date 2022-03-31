@@ -8,12 +8,17 @@ namespace onnxruntime {
 namespace ml {
 template <typename T>
 class TreeEnsembleClassifier final : public OpKernel {
+  typedef T InputType;          // input type
+  typedef float OutputType;     // output type
  public:
   explicit TreeEnsembleClassifier(const OpKernelInfo& info);
   common::Status Compute(OpKernelContext* context) const override;
 
  private:
-  detail::TreeEnsembleCommonClassifier<T, float> tree_ensemble_;
+  // Following pointer holds a pointer on one instance of 
+  // detail::TreeEnsembleCommonClassifier<T, ThresholdType, float>
+  // where TH is defined after accessing the attributes.
+  std::unique_ptr<detail::TreeEnsembleCommonAttributes> p_tree_ensemble_;
 };
 }  // namespace ml
 }  // namespace onnxruntime
