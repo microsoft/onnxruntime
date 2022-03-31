@@ -65,8 +65,15 @@ def _ortvalues_to_torch_tensor(ortvalues, device):
         if not hasattr(C, 'to_aten_ort_device_tensor'):
             raise AttributeError("onnxruntime is missing to_aten_ort_device_tensor needed to support device == 'ort'.")
         return tuple(C.to_aten_ort_device_tensor(ov) for ov in ortvalues)
-    res = ortvalues.to_dlpacks(_from_dlpack)
-    if ortvalues.has_bool_tensor():
+    if hasattr(ortvalues, 'to_dlpacks'):
+        res = ortvalues.to_dlpacks(_from_dlpack)
+        has_bool_tensor = ortvalues.has_bool_tensor()
+    else:
+        # This happens because TrainingAgent.run_forward, TrainingAgent.run_backward
+        # do not use OrtValueVector.
+        res = [from_dlpack(ov.to_dlpack()) for ov in ortvalues]
+        has_bool_tensor = True
+    if has_bool_tensor:
         # DLPack structure does not know for sure if it stores boolean
         # or uint8. Method to_dlpacks cannot be used in that case.
         # Signature of *dl_packs* is `to_dlpacks(dlp, fct) -> list[torch.Tensor]`.
