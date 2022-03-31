@@ -72,9 +72,13 @@ dotnet add package Microsoft.AI.MachineLearning
 
 ## Install on web and mobile
 
-The installation instructions in this section use pre-built packages that include support for selected operators and ONNX opset versions based on the requirements of popular models. Your model must only use the [opsets and operators](../reference/operators/mobile_package_op_type_support_1.9.md) supported by the pre-built package.
+Unless stated otherwise, the installation instructions in this section refer to pre-built packages that include support for selected operators and ONNX opset versions based on the requirements of popular models. These packages may be referred to as "mobile packages". If you use mobile packages, your model must only use the supported [opsets and operators](../reference/operators/mobile_package_op_type_support_1.9.md).
 
-If the pre-built package is too large, or does not include the operators in your model/s, you can create a [custom build](../build/custom.md).
+Another type of pre-built package has full support for all ONNX opsets and operators, at the cost of larger binary size. These packages are referred to as "full packages".
+
+If the pre-built mobile package is too large, you can create a [custom build](../build/custom.md).
+
+If the pre-built mobile package does not include the operators in your model/s, you can either use the full package if available, or create a custom build.
 
 ### JavaScript Installs
 
@@ -105,14 +109,16 @@ npm install onnxruntime-react-native
 
 ### Install on iOS
 
-In your CocoaPods `Podfile`, add the `onnxruntime-mobile-c` or `onnxruntime-mobile-objc` pod depending on which API you wish to use.
+In your CocoaPods `Podfile`, add the `onnxruntime-c`, `onnxruntime-mobile-c`, `onnxruntime-objc`, or `onnxruntime-mobile-objc` pod, depending on whether you want to use a full or mobile package and which API you want to use.
 
 #### C/C++
 
   ```pod
   use_frameworks!
 
-  pod 'onnxruntime-mobile-c'
+  # choose one of the two below:
+  pod 'onnxruntime-c'  # full package
+  #pod 'onnxruntime-mobile-c'  # mobile package
   ```
 
 #### Objective-C
@@ -120,7 +126,9 @@ In your CocoaPods `Podfile`, add the `onnxruntime-mobile-c` or `onnxruntime-mobi
   ```pod
   use_frameworks!
 
-  pod 'onnxruntime-mobile-objc'
+  # choose one of the two below:
+  pod 'onnxruntime-objc'  # full package
+  #pod 'onnxruntime-mobile-objc'  # mobile package
   ```
 
 Run `pod install`.
@@ -143,13 +151,15 @@ In your Android Studio Project, make the following changes to:
 
     ```gradle
     dependencies {
-        implementation 'com.microsoft.onnxruntime:onnxruntime-mobile:<onnxruntime mobile version>'
+        // choose one of the two below:
+        implementation 'com.microsoft.onnxruntime:onnxruntime-android:latest.release'  // full package
+        //implementation 'com.microsoft.onnxruntime:onnxruntime-mobile:latest.release'  // mobile package
     }
     ```
 
 #### C/C++
 
-Download the onnxruntime-mobile AAR hosted at [MavenCentral](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile), change the file extension from `.aar` to `.zip`, and unzip it. Include the header files from the `headers` folder, and the relevant `libonnxruntime.so` dynamic library from the `jni` folder in your NDK project.
+Download the [onnxruntime-android](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android) (full package) or [onnxruntime-mobile](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile) (mobile package) AAR hosted at MavenCentral, change the file extension from `.aar` to `.zip`, and unzip it. Include the header files from the `headers` folder, and the relevant `libonnxruntime.so` dynamic library from the `jni` folder in your NDK project.
 
 ## ORT Training package
 
