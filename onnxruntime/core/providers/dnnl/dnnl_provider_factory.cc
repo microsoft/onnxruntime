@@ -47,8 +47,10 @@ struct Dnnl_Provider : Provider {
     return std::make_shared<DnnlProviderFactory>(use_arena != 0);
   }
 
+  void Initialize() override {
+  }
+
   void Shutdown() override {
-    return;
   }
 
 } g_provider;
