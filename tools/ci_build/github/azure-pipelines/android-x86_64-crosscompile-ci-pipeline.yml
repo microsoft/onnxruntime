@@ -16,6 +16,7 @@ jobs:
     inputs:
       filename: "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Auxiliary/Build/vcvarsall.bat"
       arguments: "x64 -vcvars_ver=14.31"
+      modifyEnvironment: true
     displayName: Set VS Envs
 
   - script: set PATH="C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.31.31103\bin\Hostx64\x64";%PATH%
