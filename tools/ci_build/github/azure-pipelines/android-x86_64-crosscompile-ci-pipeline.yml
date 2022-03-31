@@ -20,6 +20,11 @@ jobs:
 
   - script: set PATH="C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.31.31103\bin\Hostx64\x64";%PATH%
     displayName: Set VS PATH
+    
+  - script: |
+      where cl
+      set
+    displayName: check Envs
 
   - script: |
       python3 tools/ci_build/build.py ^
@@ -29,7 +34,6 @@ jobs:
         --android_ndk_path %ANDROID_NDK_HOME% ^
         --android_abi=x86_64 ^
         --android_api=30 ^
-        --skip_submodule_sync ^
         --parallel ^
         --cmake_generator=Ninja ^
         --build_java ^
