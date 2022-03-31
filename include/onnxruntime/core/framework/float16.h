@@ -21,8 +21,8 @@ namespace onnxruntime {
 struct MLFloat16 {
   uint16_t val;
 
-  MLFloat16() : val(0) {}
-  explicit MLFloat16(uint16_t x) : val(x) {}
+  constexpr MLFloat16() : val(0) {}
+  explicit constexpr MLFloat16(uint16_t x) : val(x) {}
   explicit MLFloat16(float f);
 
   float ToFloat() const;
@@ -45,7 +45,7 @@ struct BFloat16 {
 
   struct FromBitsT {};
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
-  constexpr ORT_HOST_DEVICE BFloat16(unsigned short bits, FromBitsT) : val(bits){};
+  constexpr ORT_HOST_DEVICE BFloat16(unsigned short bits, FromBitsT) : val(bits) {}
 
   inline ORT_HOST_DEVICE BFloat16(float v) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800

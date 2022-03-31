@@ -29,7 +29,6 @@ Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const 
 
   ORT_ENFORCE(utils::HasDataType(tensor_proto), "Initializer must have a datatype");
   if (utils::HasExternalData(tensor_proto)) {
-    ORT_ENFORCE(!utils::HasString(tensor_proto), "External data type must not be UNDEFINED or STRING.");
     ORT_ENFORCE(!model_path.IsEmpty(),
         "model_path must not be empty. Ensure that a path is provided when the model is created or loaded.");
   }
