@@ -99,11 +99,12 @@ class TestOrtValue(unittest.TestCase):
         for a in narrays:
             ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(a)
             vect.push_back(ortvalue._ortvalue)
+        self.assertFalse(vect.has_bool_tensor())
         self.assertEqual(len(vect), 2)
         for i, (ov, ar) in enumerate(zip(vect, narrays)):
             ovar = ov.numpy()
             assert_almost_equal(ar, ovar)
-            self.assertEqual(ov.element_type(), vect.proto_type_at(i))
+            self.assertEqual(ov.element_type(), vect.element_type_at(i))
 
     def testOrtValueVector_bool(self):
         narrays = [
@@ -113,6 +114,7 @@ class TestOrtValue(unittest.TestCase):
         for a in narrays:
             ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(a)
             vect.push_back(ortvalue._ortvalue)
+        self.assertTrue(vect.has_bool_tensor())
         self.assertEqual(len(vect), 2)
         for ov, ar in zip(vect, narrays):
             ovar = ov.numpy()

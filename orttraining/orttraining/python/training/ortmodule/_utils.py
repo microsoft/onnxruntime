@@ -61,21 +61,12 @@ def _ortvalue_from_torch_tensor(torch_tensor):
 def _ortvalues_to_torch_tensor(ortvalues, device):
     if len(ortvalues) == 0:
         return tuple()
-    if hasattr(ortvalues, 'to_dlpacks'):
-        if all(ortvalue.element_type() != TensorProto.BOOL for ortvalue in ortvalues):
-            if 'ort' == device.type:
-                if not hasattr(C, 'to_aten_ort_device_tensor'):
-                    raise AttributeError("onnxruntime is missing to_aten_ort_device_tensor needed to support device == 'ort'.")
-                # The below expression could be used as well but it fails.
-                # return tuple(ortvalues.to_dlpacks(C.to_aten_ort_device_tensor))
-                # The following expressions fails too:
-                # tensors = tuple(C.to_aten_ort_device_tensor(ov) for ov in ortvalues);print(tensors[0])
-                # due to: NotImplementedError: Could not run 'aten::_cat' with arguments from the 'ORT' backend.
-                # C.to_aten_ort_device_tensor returns a torch tensor with device 'ort:0'
-                # instead of one of the allowed backend (cpu, cuda:0, ...).
-                return tuple(C.to_aten_ort_device_tensor(ov) for ov in ortvalues)
-            return tuple(ortvalues.to_dlpacks(_from_dlpack))
-
+    if 'ort' == device.type:
+        if not hasattr(C, 'to_aten_ort_device_tensor'):
+            raise AttributeError("onnxruntime is missing to_aten_ort_device_tensor needed to support device == 'ort'.")
+        return tuple(C.to_aten_ort_device_tensor(ov) for ov in ortvalues)
+    res = ortvalues.to_dlpacks(_from_dlpack)
+    if ortvalues.has_bool_tensor():
         # DLPack structure does not know for sure if it stores boolean
         # or uint8. Method to_dlpacks cannot be used in that case.
         # Signature of *dl_packs* is `to_dlpacks(dlp, fct) -> list[torch.Tensor]`.
@@ -88,33 +79,10 @@ def _ortvalues_to_torch_tensor(ortvalues, device):
         # Second option makes it impossible to directly use `_from_dlpack` or
         # or `from_dlpack` from torch.
         # The best option would be to add boolean type in DLDataTypeCode.
-
-    if 'ort' == device.type:
-        if not hasattr(C, 'to_aten_ort_device_tensor'):
-            raise AttributeError("onnxruntime is missing to_aten_ort_device_tensor needed to support device == 'ort'.")
-        return tuple(C.to_aten_ort_device_tensor(ov) for ov in ortvalues)
-
-    if hasattr(ortvalues, 'dlpack_at'):
-        tensors = []
-        for i in range(len(ortvalues)):
-            dlp = ortvalues.dlpack_at(i)
-            te = from_dlpack(dlp)
-            if C.is_dlpack_uint8_tensor(dlp) and ortvalues[i].element_type() == TensorProto.BOOL:
-                te = te.to(torch.bool)
-            tensors.append(te)
-        return tuple(tensors)
-
-    tensors = []
-    for i in range(len(ortvalues)):
-        ov = ortvalues[i]
-        if hasattr(ov, '_ortvalue'):
-            ov = ov._ortvalue
-        dlp = ov.to_dlpack()
-        te = from_dlpack(dlp)
-        if ov.element_type() == TensorProto.BOOL:
-            te = te.to(torch.bool)
-        tensors.append(te)
-    return tuple(tensors)
+        for i in range(0, len(ortvalues)):
+            if ortvalues.element_type_at(i) == TensorProto.BOOL:
+                res[i] = res[i].to(torch.bool)
+    return tuple(res)
 
 
 def _torch_tensor_to_dlpack(tensor):

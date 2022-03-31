@@ -376,6 +376,16 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def("__getitem__", [](const std::vector<OrtValue>& v, const size_t idx) {
         return v.at(idx);
       })
+      .def("has_bool_tensor", [](std::vector<OrtValue>* v) {
+         for (auto it : *v) {
+           if (GetTensorProtoType(it) == ONNX_NAMESPACE::TensorProto_DataType_BOOL)
+             return true;
+         }
+         return false;
+      }, "Returns true if the vector contains one tensor with boolean values. "
+         "In that case, method to_dlpacks returns uint8 tensor instead of boolean tensors. "
+         "If torch consumes the dlpack structure, `.to(torch.bool)` must be applied to the torch tensor "
+         "to get a boolean tensor.")
       .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) {
         return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx)));
       })
