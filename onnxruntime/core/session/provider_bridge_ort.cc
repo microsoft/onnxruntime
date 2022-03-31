@@ -1009,7 +1009,9 @@ struct ProviderLibrary {
     // assert(!handle_); // We should already be unloaded at this point (disabled until Python shuts down deterministically)
   }
 
-  Provider* Get() {
+  Provider* Get() ORT_TRY {
+    std::lock_guard<std::mutex> lock{mutex_};
+
     if (provider_)
       return provider_;
 
@@ -1031,13 +1033,12 @@ struct ProviderLibrary {
     }
 
     provider_ = PGetProvider();
-    ORT_TRY {
-      provider_->Initialize();
-    } ORT_CATCH (...) {
-      Unload(); // If Initialize fails we unload the library and rethrow
-      ORT_RETHROW
-    }
+    provider_->Initialize();
     return provider_;
+  }
+  ORT_CATCH(...) {
+    Unload(); // If anything fails we unload the library and rethrow
+    ORT_RETHROW
   }
 
   void Unload() {
@@ -1058,6 +1059,7 @@ struct ProviderLibrary {
   }
 
  private:
+  std::mutex mutex_;
   const char* filename_;
   bool unload_;
   Provider* provider_{};
