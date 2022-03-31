@@ -167,8 +167,8 @@ class PlannerTest : public ::testing::Test {
   std::unique_ptr<::onnxruntime::KernelDef> in_place_kernel_;          // a unary kernel with in-place
   std::unique_ptr<::onnxruntime::KernelDef> external_outputs_kernel_;  // an unary kernel with external outputs
 #ifdef ENABLE_TRAINING
-  std::unique_ptr<::onnxruntime::KernelDef> may_strided_input_kernel_;  // an uinary kernel with may_strided_input
-  std::unique_ptr<::onnxruntime::KernelDef> may_strided_output_kernel_; // an unary kernel with may_strided_output
+  std::unique_ptr<::onnxruntime::KernelDef> may_strided_input_kernel_;   // an unary kernel with may_strided_input
+  std::unique_ptr<::onnxruntime::KernelDef> may_strided_output_kernel_;  // an unary kernel with may_strided_output
 #endif
 
   std::unordered_map<std::string, onnxruntime::NodeArg*> name_to_arg_;

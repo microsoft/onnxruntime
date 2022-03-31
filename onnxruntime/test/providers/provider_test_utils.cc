@@ -330,7 +330,7 @@ struct TensorCheck<BFloat16> {
     /// XXX: May need to adjust threshold as BFloat is coarse
     float threshold = 0.001f;
 #if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM)
-    threshold = 0.05f; // expect at least 95% close
+    threshold = 0.05f;  // expect at least 95% close
 #endif
     for (int i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
@@ -653,7 +653,7 @@ void OpTester::AddSparseCsrTensorData(std::vector<Data>& data,
 
 void OpTester::AddSparseCsrTensorStrings(std::vector<Data>& data,
                                          const char* name,
-                                         gsl::span<const  int64_t> dims,
+                                         gsl::span<const int64_t> dims,
                                          gsl::span<const std::string> values,
                                          gsl::span<const int64_t> inner_indices,
                                          gsl::span<const int64_t> outer_indices,
@@ -709,7 +709,7 @@ void OpTester::AddInitializers(onnxruntime::Graph& graph) {
 
 std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(
     const std::unordered_map<std::string, int>& extra_domain_to_version,
-    bool allow_released_onnx_opset_only) {
+    const ModelOptions& model_options) {
   // Generate the input & output def lists
   std::vector<onnxruntime::NodeArg*> node_input_defs;
   std::vector<onnxruntime::NodeArg*> output_defs;
@@ -739,7 +739,8 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(
   auto p_model = std::make_unique<onnxruntime::Model>(
       "test", false, ModelMetaData(), PathString(), custom_schema_registries_,
       domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>{},
-      DefaultLoggingManager().DefaultLogger(), allow_released_onnx_opset_only);
+      DefaultLoggingManager().DefaultLogger(),
+      model_options);
   onnxruntime::Graph& graph = p_model->MainGraph();
   AddNodes(graph, node_input_defs, output_defs, add_attribute_funcs_);
 
@@ -904,6 +905,7 @@ void OpTester::Run(
   so.execution_mode = execution_mode;
   so.use_deterministic_compute = use_determinism_;
   so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
+  so.strict_shape_type_inference = true;
   Run(so, expect_result, expected_failure_string, excluded_provider_types,
       run_options, execution_providers, options);
 }
@@ -952,7 +954,9 @@ void OpTester::Run(
 
     fetches_.clear();
     bool cache_enabled = cached_model_ != nullptr;
-    auto p_model = !cache_enabled ? BuildGraph({}, allow_released_onnx_opset_only) : cached_model_;
+    const ModelOptions model_options{.allow_released_opsets_only = allow_released_onnx_opset_only,
+                                     .strict_shape_type_inference = so.strict_shape_type_inference};
+    auto p_model = !cache_enabled ? BuildGraph({}, model_options) : cached_model_;
     auto& graph = p_model->MainGraph();
 
     Status status = Status::OK();
