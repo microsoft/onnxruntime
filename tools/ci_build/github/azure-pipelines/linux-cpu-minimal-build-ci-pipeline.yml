@@ -293,18 +293,4 @@ jobs:
               --skip_tests
       workingDirectory: $(Build.SourcesDirectory)
 
-  - task: PublishTestResults@2
-    displayName: 'Publish unit test results'
-    inputs:
-      testResultsFiles: '**/*.results.xml'
-      searchFolder: '$(Build.BinariesDirectory)'
-      testRunTitle: 'Unit Test Run'
-    condition: succeededOrFailed()
-
-  - template: templates/component-governance-component-detection-steps.yml
-    parameters:
-      condition: 'succeeded'
-
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
+  - template: templates/clean-agent-build-directory-step.yml
