@@ -988,7 +988,7 @@ struct ProviderSharedLibrary {
 
   ProviderSharedLibrary() = default;
   ~ProviderSharedLibrary() {
-    // assert(!handle_); // We should already be unloaded at this point (disabled until Python shuts down deterministically)
+    assert(!handle_); // We should already be unloaded at this point
   }
 
  private:
