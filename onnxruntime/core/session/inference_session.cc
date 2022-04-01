@@ -841,8 +841,8 @@ common::Status InferenceSession::Load(std::istream& model_istream, bool allow_re
       ORT_RETURN_IF_ERROR(AddCustomOpDomains({domain.get()}));
     }
 #endif
-    ModelOptions model_opts{.allow_released_opsets_only = allow_released_opsets_only,
-                            .strict_shape_type_inference = session_options_.strict_shape_type_inference};
+    ModelOptions model_opts(allow_released_opsets_only,
+                            session_options_.strict_shape_type_inference);
     return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                     *session_logger_, model_opts);
