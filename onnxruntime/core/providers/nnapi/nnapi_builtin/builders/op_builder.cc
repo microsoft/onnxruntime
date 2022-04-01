@@ -1650,6 +1650,9 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   NodeAttrHelper helper(node_unit);
   bool is_qlinear_matmul = op == "QLinearMatMul";
 
+  const auto quant_type = GetQuantizedOpType(node_unit);
+  bool is_qdq_gemm = quant_type == QuantizedOpType::QDQGemm;
+
   const auto& input1 = inputs[0].node_arg.Name();
   const auto& input2 = inputs[1].node_arg.Name();
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
@@ -1695,6 +1698,20 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   if (is_qlinear_matmul) {
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input1, a_scale, a_zero_point));
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input2, b_scale, b_zero_point));
+  }
+
+  if (is_qdq_gemm) {
+    float x_scale = 0.0f,
+          w_scale = 0.0f;
+    int32_t x_zero_point = 0,
+            w_zero_point = 0;
+
+    ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
+        initializers, node_unit.Inputs()[0], node_unit.ModelPath(), x_scale, x_zero_point));
+    ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
+        initializers, node_unit.Inputs()[0], node_unit.ModelPath(), w_scale, w_zero_point));
+    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
+    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, w_scale, w_zero_point));
   }
 
   uint32_t bias_idx;
