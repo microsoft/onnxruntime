@@ -4,7 +4,7 @@ description: Define the ORT format and show how to convert an ONNX model to ORT 
 parent: Reference
 has_children: false
 nav_order: 4
-redirect_from: /docs/tutorials/mobile/model-conversion, /docs/tutorials/mobile/model-execution, /docs/reference/ort-model-format
+redirect_from: /docs/tutorials/mobile/model-conversion, /docs/tutorials/mobile/model-execution
 ---
 
 # ORT format models
