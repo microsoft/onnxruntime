@@ -1590,8 +1590,9 @@ class GemmOpBuilder : public BaseOpBuilder {
 };
 
 bool GemmOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
-  // TODO, add support for QDQ NodeUnit
-  return node_unit.OpType() == "QLinearMatMul";
+  // TODO, add support for QDQ NodeUnit (for Matmul)
+  const auto quant_type = GetQuantizedOpType(node_unit);
+  return quant_type == QuantizedOpType::QDQGemm || quant_type == QuantizedOpType::QLinearMatMul;
 }
 
 /* static */ void GemmOpBuilder::CreateSharedOpBuilder(
@@ -1608,9 +1609,23 @@ bool GemmOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
 void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& inputs = node_unit.Inputs();
   if (IsQuantizedOp(node_unit)) {
-    AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[0].quant_param);               // b_scale, b_zp
-    AddInputToSkip(model_builder, inputs[1]);                                                    // b, b_scale, b_zp
-    AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
+    if (node_unit.OpType() == "QlinearMatMul") {
+      AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[0].quant_param);               // a_scale, a_zp
+      AddInputToSkip(model_builder, inputs[1]);                                                    // b, b_scale, b_zp
+      AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
+    }
+    if (node_unit.OpType() == "Gemm") {                                                            // QDQGemm
+      AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[0].quant_param);               // x_scale, x_zp
+      AddInputToSkip(model_builder, inputs[1]);                                                    // w, w_scale, w_zp
+      AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
+      if (inputs.size() > 2) {
+        AddInputToSkip(model_builder, inputs[2]);  // B, B_scale, B_zp
+      }
+      NodeAttrHelper helper(node_unit);
+      const auto transB = helper.Get("transB", 0);
+      if (transB == 0)
+        model_builder.AddInitializerToSkip(node_unit.GetNode().InputDefs()[1]->Name());
+    }
   } else {
     const auto& op = node_unit.OpType();
     if (op == "MatMul") {

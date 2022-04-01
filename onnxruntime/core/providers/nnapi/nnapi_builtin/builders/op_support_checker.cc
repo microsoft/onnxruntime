@@ -1267,19 +1267,24 @@ class GemmOpSupportChecker : public BaseOpSupportChecker {
 };
 
 bool GemmOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
-  return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQGemm;
+  const auto quant_type = GetQuantizedOpType(node_unit);
+  return quant_type == QuantizedOpType::QDQGemm || quant_type == QuantizedOpType::QLinearMatMul;
 }
 
 bool GemmOpSupportChecker::HasSupportedInputOutputsImpl(
     const InitializedTensorSet& initializers, const NodeUnit& node_unit,
     const OpSupportCheckParams& params) const {
-  if (node_unit.OpType() != "QLinearMatMul")
+  if (!IsQuantizedOp(node_unit)) {
     return BaseOpSupportChecker::HasSupportedInputOutputsImpl(initializers, node_unit, params);
+  }
 
   // QLinearMatMul
-  if (!HasValidBinaryOpQuantizedInputTypes(node_unit))
-    return false;
-
+  if (node_unit.OpType() == "QlinearMatMul") {
+    if (!HasValidBinaryOpQuantizedInputTypes(node_unit))
+      return false;
+  }
+  
+  // QlinearMatMul/QDQGemm
   if (!IsQuantizedIOSupported(initializers, node_unit, {0, 1}, params, IOKind::Input))
     return false;
 
