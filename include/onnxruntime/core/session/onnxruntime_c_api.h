@@ -3303,6 +3303,24 @@ struct OrtApi {
   */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_MIGraphX,
                   _In_ OrtSessionOptions* options, _In_ const OrtMIGraphXProviderOptions* migraphx_options);
+
+  /** \brief Replace initialized Tensors with external data with the data provided in inputs.
+  *
+  * The function will find the initialized tensors with external in the graph and will replace
+  * them with the tensors provided with inputs. The API verifies that the tensor being replaced
+  * has external data reference(s), has the same name, dimensions and data type. The replacement
+  * will take place before any of the optimizations take place.
+  *
+  * \param[in] options
+  * \param[in] input_names Array of null terminated UTF8 encoded strings of the initializers names
+  * \param[in] inputs Array of ::OrtValue%s of the input values
+  * \param[in] input_len Number of elements in the input_names and inputs arrays
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  */
+  ORT_API2_STATUS(ProvideExternalInitializersData, _In_ OrtSessionOptions* options,
+                  _In_reads_(input_len) const char* const* input_names,
+                  _In_reads_(input_len) const OrtValue* const* inputs, size_t input_len);
 };
 
 /*
@@ -3372,8 +3390,6 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOpt
  * \param device_id HIP device id, starts from zero.
 */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, int device_id);
-
-
 #ifdef __cplusplus
 }
 #endif

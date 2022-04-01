@@ -177,9 +177,34 @@ ORT_API_STATUS_IMPL(OrtApis::AddSessionConfigEntry, _Inout_ OrtSessionOptions* o
 
 ORT_API_STATUS_IMPL(OrtApis::AddInitializer, _Inout_ OrtSessionOptions* options, _In_z_ const char* name,
                     _In_ const OrtValue* val) {
+  API_IMPL_BEGIN
   auto st = options->value.AddInitializer(name, val);
   if (!st.IsOK()) {
     return onnxruntime::ToOrtStatus(st);
   }
   return nullptr;
+  API_IMPL_END
 }
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
+ORT_API_STATUS_IMPL(OrtApis::ProvideExternalInitializersData, _In_ OrtSessionOptions* options,
+                    _In_reads_(input_len) const char* const* input_names,
+                    _In_reads_(input_len) const OrtValue* const* inputs, size_t input_len) {
+
+  API_IMPL_BEGIN
+  auto st = options->value.AddExternalInitializers(input_names, inputs, input_len);
+  if (!st.IsOK()) {
+    return onnxruntime::ToOrtStatus(st);
+  }
+  return nullptr;
+  API_IMPL_END
+}
+#else
+ORT_API_STATUS_IMPL(OrtApis::ProvideExternalInitializersData, _In_ OrtSessionOptions*,
+                    _In_reads_(input_len) const char* const*,
+                    _In_reads_(input_len) const OrtValue* const*, size_t input_len) {
+  ORT_UNUSED_PARAMETER(input_len);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "External initializers are not supported in this build");
+}
+#endif
+
