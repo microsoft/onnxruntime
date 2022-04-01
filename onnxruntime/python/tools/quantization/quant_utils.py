@@ -4,6 +4,7 @@ import onnx
 
 from enum import Enum
 from onnx import onnx_pb as onnx_proto
+from onnx import external_data_helper
 from pathlib import Path
 
 __producer__ = "onnx.quantize"
@@ -447,3 +448,10 @@ def smooth_distribution(p, eps=0.0001):
     assert (hist <= 0).sum() == 0
 
     return hist
+
+def model_has_external_data(model_path : Path):
+    model = onnx.load(model_path.as_posix(), load_external_data=False)
+    for intializer in model.graph.initializer:
+        if external_data_helper.uses_external_data(intializer):
+            return True
+    return False

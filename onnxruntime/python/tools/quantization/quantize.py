@@ -9,6 +9,7 @@ import onnx.numpy_helper
 import struct
 import logging
 import numpy as np
+import tempfile
 
 from pathlib import Path
 
@@ -16,7 +17,7 @@ from onnx import onnx_pb as onnx_proto
 from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
 from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue
-from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg
+from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg, model_has_external_data
 from .quant_utils import QuantType, QuantFormat
 
 from .registry import QLinearOpsRegistry, IntegerOpsRegistry
@@ -27,24 +28,30 @@ from .qdq_quantizer import QDQQuantizer
 from .calibrate import CalibrationDataReader, create_calibrator, CalibrationMethod 
 
 
-def optimize_model(model_path : Path):
+def optimize_model(model_path : Path, opt_model_path : Path):
     '''
         Generate model that applies graph optimization (constant folding, etc.)
         parameter model_path: path to the original onnx model
+        parameter opt_model_path: path to the optimized onnx model
     :return: optimized onnx model
     '''
-    opt_model_path = generate_identified_filename(model_path, "-opt")
     sess_option = SessionOptions()
     sess_option.optimized_model_filepath = opt_model_path.as_posix()
     sess_option.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
     _ = InferenceSession(model_path.as_posix(), sess_option, providers=['CPUExecutionProvider'])
-    optimized_model = onnx.load(opt_model_path.as_posix())
-    return optimized_model
 
 
 def load_model(model_path : Path, optimize=True, handle_gemm_with_matmul=True):
+    with tempfile.TemporaryDirectory(prefix='ort.quant') as quant_tmp_dir:
+        if optimize and not model_has_external_data(model_path):
+            opt_model_path = Path(quant_tmp_dir).joinpath("model.onnx")
+            optimize_model(model_path, opt_model_path)
+            model_path = opt_model_path
 
-    model = optimize_model(Path(model_path)) if optimize else onnx.load(Path(model_path))
+        inferred_model_path = generate_identified_filename(model_path, "-inferred")
+        onnx.shape_inference.infer_shapes_path(str(model_path), str(inferred_model_path))
+        model = onnx.load(inferred_model_path.as_posix())
+        inferred_model_path.unlink(missing_ok=True)
 
     if handle_gemm_with_matmul:
         onnx_model = ONNXModel(model)
