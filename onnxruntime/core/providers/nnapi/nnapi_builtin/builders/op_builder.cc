@@ -1709,9 +1709,9 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
         initializers, node_unit.Inputs()[0], node_unit.ModelPath(), x_scale, x_zero_point));
     ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-        initializers, node_unit.Inputs()[0], node_unit.ModelPath(), w_scale, w_zero_point));
-    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
-    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, w_scale, w_zero_point));
+        initializers, node_unit.Inputs()[1], node_unit.ModelPath(), w_scale, w_zero_point));
+    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input1, x_scale, x_zero_point));
+    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input2, w_scale, w_zero_point));
   }
 
   uint32_t bias_idx;

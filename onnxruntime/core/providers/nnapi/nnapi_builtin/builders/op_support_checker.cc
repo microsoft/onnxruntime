@@ -217,6 +217,8 @@ static bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, con
   bool is_input = io_kind == IOKind::Input;
   bool is_quant_conv = IsQuantizedConv(quant_op_type);
   bool is_quant_matmul = (quant_op_type == QuantizedOpType::QLinearMatMul);
+  bool is_quant_gemm = (quant_op_type == QuantizedOpType::QDQGemm);
+  bool is_quant_matmul_or_gemm = (quant_op_type == QuantizedOpType::QLinearMatMul || quant_op_type == QuantizedOpType::QDQGemm);
   const auto& io_defs = is_input ? node_unit.Inputs() : node_unit.Outputs();
 
   for (const auto idx : indices) {
@@ -231,7 +233,7 @@ static bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, con
     ORT_ENFORCE(io_def.quant_param.has_value(), "Input index,  ", idx, " has no quant_param");
 
     // If this op is Qlinear[Conv/MatMul], we want to check u8s8 support for weight tensor (or B tensor for QlinearMatMul)
-    bool is_conv_matmul_weight = is_input && (is_quant_conv || is_quant_matmul) && idx == 1;
+    bool is_conv_matmul_weight = is_input && (is_quant_conv || is_quant_matmul || is_quant_gemm) && idx == 1;
     bool is_conv_matmul_u8s8_weight = false;
 
     if (is_conv_matmul_weight) {
@@ -259,12 +261,12 @@ static bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, con
 
     // Check scale and zero point
     if (!IsQuantizationScaleSupported(initializers, io_def, params, op_type,
-                                      is_quant_matmul, is_conv_matmul_u8s8_weight)) {
+                                      is_quant_matmul_or_gemm, is_conv_matmul_u8s8_weight)) {
       return false;
     }
 
     if (!IsQuantizationZeroPointSupported(initializers, io_def, op_type, node_unit.ModelPath(),
-                                          is_quant_matmul, is_conv_matmul_u8s8_weight)) {
+                                          is_quant_matmul_or_gemm, is_conv_matmul_u8s8_weight)) {
       return false;
     }
   }
