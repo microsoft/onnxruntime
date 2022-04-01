@@ -19,18 +19,42 @@ jobs:
       modifyEnvironment: true
     displayName: Set VS Envs
 
-  - script: set PATH="C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.31.31103\bin\Hostx64\x64";%PATH%
-    displayName: Set VS PATH
-    
   - script: |
       where cl
       set
     displayName: check Envs
 
+  - script: set PATH="%VCToolsInstallDir%\bin\Hostx64\x64";%PATH%
+    displayName: Set VS PATH
+
+  # Start switching to jdk 11 after the Android Emulator is started since Android SDK manager requires java 8
+  - task: JavaToolInstaller@0
+    displayName: Use jdk 8
+    inputs:
+      versionSpec: '8'
+      jdkArchitectureOption: 'x64'
+      jdkSourceOption: 'PreInstalled'
+
+  - script: |
+      python3 tools/python/run_android_emulator.py ^
+        --android-sdk-root ${ANDROID_SDK_ROOT} ^
+        --create-avd --system-image "system-images;android-29;google_apis;x86_64" ^
+        --start --emulator-extra-args="-partition-size 2047" ^
+        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+    displayName: Start Android emulator
+
   # without it, it hangs at 'Linking CXX executable onnxruntime_test_all'
   - script: bash tools/ci_build/github/android/setup_gradle_wrapper.sh %cd%
     displayName: Setup gradle wrapper to use gradle 6.8.3
-    
+
+  # Start switching to jdk 11 after the Android Emulator is started since Android SDK manager requires java 8
+  - task: JavaToolInstaller@0
+    displayName: Use jdk 11
+    inputs:
+      versionSpec: '11'
+      jdkArchitectureOption: 'x64'
+      jdkSourceOption: 'PreInstalled'
+
   - script: |
       python3 tools/ci_build/build.py ^
         --android ^
@@ -42,5 +66,4 @@ jobs:
         --parallel ^
         --cmake_generator=Ninja ^
         --build_java ^
-        --skip_tests
-    displayName: CPU EP, Build
+    displayName: CPU EP, Build, Test
