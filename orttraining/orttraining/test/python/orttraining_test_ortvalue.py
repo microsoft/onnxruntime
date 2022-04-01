@@ -265,7 +265,9 @@ class TestOrtValue(unittest.TestCase):
             vect.push_back(ortvalue._ortvalue)
             ptr.append(ortvalue.data_ptr())
         self.assertEqual(len(vect), 2)
-        if new_impl:
+        if new_impl == 'list':
+            tensors = _utils._ortvalues_to_torch_tensor_list(list(vect), device)
+        elif new_impl:
             tensors = _utils._ortvalues_to_torch_tensor(vect, device)
         else:
             tensors = _ortvalues_to_torch_tensor(vect, device)
@@ -278,6 +280,10 @@ class TestOrtValue(unittest.TestCase):
     def test_ortvalues_to_torch_tensor_ortvaluevector_cpu_new(self):
         device = torch.device('cpu')
         self._ortvalues_to_torch_tensor_ortvaluevector(device, torch.Tensor, True)
+
+    def test_ortvalues_to_torch_tensor_ortvaluevector_cpu_list(self):
+        device = torch.device('cpu')
+        self._ortvalues_to_torch_tensor_ortvaluevector(device, torch.Tensor, 'list')
 
     def test_ortvalues_to_torch_tensor_ortvaluevector_cpu_old(self):
         device = torch.device('cpu')
