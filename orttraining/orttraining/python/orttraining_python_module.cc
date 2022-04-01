@@ -318,21 +318,10 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
       "from highest to lowest.");
   
   m.def("clear_training_ep_instances", []() -> void {
-         ort_training_env->ClearExecutionProviderInstances();
+        GetTrainingEnv().ClearExecutionProviderInstances();
          },
         "Clean the execution provider instances used in ort training module.");
 
-  // clean the ort training environment when python interpreter exit
-  // otherwise the global var will be de-constrcut after user main.
-  // the order of ort training environment deconstruction and cudart
-  // deconstruction is not stable, which will lead to crash.
-  auto atexit = py::module_::import("atexit");
-  atexit.attr("register")(py::cpp_function([]() {
-    ort_training_env = nullptr;
-#ifdef ENABLE_EAGER_MODE
-    ort_backends_manager_instance = nullptr;
-#endif
-  }));
 }
 
 }
