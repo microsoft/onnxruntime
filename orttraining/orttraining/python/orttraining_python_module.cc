@@ -181,59 +181,33 @@ void ORTTrainingPythonEnv::ClearExecutionProviderInstances(){
   execution_provider_instances_map_.clear();
 }
 
-static std::unique_ptr<ORTTrainingPythonEnv> ort_training_env;
 
-void InitializeTrainingEnv() {
-  auto initialize = [&]() {
-    static bool initialized = false;
-    if (initialized) {
-      return;
-    }
-    // Initialization of the module
-    InitArray();
-    Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
-    ort_training_env = std::make_unique<ORTTrainingPythonEnv>();
-    initialized = true;
-  };
-  initialize();
+static std::unique_ptr<Environment> InitializeTrainingEnv() {
+  // Initialization of the module
+  InitArray();
+  Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
+  return std::make_unique<ORTTrainingPythonEnv>();
 }
 
 ORTTrainingPythonEnv& GetTrainingEnv() {
-  if (!ort_training_env) {
-    InitializeTrainingEnv();
-  }
-  return *ort_training_env;
+  static std::unique_ptr<Environment> session_env = InitializeTrainingEnv();
+  return *session_env;
 }
 
 Environment& GetTrainingORTEnv() {
-  if (!ort_training_env) {
-    InitializeTrainingEnv();
-  }
-  return ort_training_env->GetORTEnv();
+  return GetTrainingEnv().GetORTEnv();
 }
 
 #ifdef ENABLE_EAGER_MODE
 using namespace torch_ort::eager;
-static std::unique_ptr<ORTBackendsManager> ort_backends_manager_instance;
-
-void InitializeBackendsManager() {
-  auto initialize = [&]() {
-    static bool initialized = false;
-    if (initialized) {
-      return;
-    }
+static std::unique_ptr<ORTBackendsManager> InitializeBackendsManager() {
     // Initialization of the module
     auto& env = onnxruntime::python::GetTrainingORTEnv();
-    ort_backends_manager_instance = std::make_unique<ORTBackendsManager>(env.GetLoggingManager()->DefaultLogger());
-    initialized = true;
-  };
-  initialize();
+    return std::make_unique<ORTBackendsManager>(env.GetLoggingManager()->DefaultLogger());
 }
 
 ORTBackendsManager& GetORTBackendsManager() {
-  if (!ort_backends_manager_instance) {
-    InitializeBackendsManager();
-  }
+  static std::unique_ptr<ORTBackendsManager> ort_backends_manager_instance = InitializeBackendsManager();
   return *ort_backends_manager_instance;
 }
 #endif
