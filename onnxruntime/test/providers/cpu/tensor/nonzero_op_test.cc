@@ -67,19 +67,18 @@ TEST(NonZeroOpTest, ThreeDims) {
   test.Run();
 }
 
-TEST(NonZeroOpTest, Scalar) {
-  {
-    OpTester test{kOpName, kOpVersion};
-    test.AddInput<int32_t>("X", {}, {0});
-    test.AddOutput<int64_t>("Y", {1, 0}, {});
-    test.Run();
-  }
-  {
-    OpTester test{kOpName, kOpVersion};
-    test.AddInput<int32_t>("X", {}, {1});
-    test.AddOutput<int64_t>("Y", {1, 1}, {0});
-    test.Run();
-  }
+TEST(NonZeroOpTest, ScalarZero) {
+  OpTester test{kOpName, kOpVersion};
+  test.AddInput<int32_t>("X", {1}, {0});
+  test.AddOutput<int64_t>("Y", {1, 0}, {});
+  test.Run();
+}
+
+TEST(NonZeroOpTest, ScalarOne) {
+  OpTester test{kOpName, kOpVersion};
+  test.AddInput<int32_t>("X", {1}, {1});
+  test.AddOutput<int64_t>("Y", {1, 1}, {0});
+  test.Run();
 }
 
 TEST(NonZeroOpTest, EmptyInput) {
