@@ -1,7 +1,7 @@
 jobs:
 - job: Build_CPU_EP
   pool: onnxruntime-win-cpu-2022
-  timeoutInMinutes: 30
+  timeoutInMinutes: 60
   steps:
   # Onnx has no 3.9 python package available yet, need to use python 3.8
   # to avoid build onnx package
@@ -27,6 +27,10 @@ jobs:
       set
     displayName: check Envs
 
+  # without it, it hangs at 'Linking CXX executable onnxruntime_test_all'
+  - script: bash tools/ci_build/github/android/setup_gradle_wrapper.sh %cd%
+    displayName: Setup gradle wrapper to use gradle 6.8.3
+    
   - script: |
       python3 tools/ci_build/build.py ^
         --android ^
