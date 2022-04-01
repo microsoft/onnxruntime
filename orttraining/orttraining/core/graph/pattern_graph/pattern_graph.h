@@ -18,6 +18,8 @@ namespace training {
 typedef std::pair<onnxruntime::NodeIndex, const onnxruntime::Node*> PatternMatchPair;
 
 struct PatternMatchResult {
+  friend class PatternGraph;
+
  public:
   explicit PatternMatchResult(Graph& target_graph) : target_graph_(target_graph) {}
 
@@ -53,6 +55,7 @@ struct PatternMatchResult {
     return target_graph_;
   }
 
+ private:
   void InsertMatchMappings(std::map<std::string, PatternMatchPair> results) {
     mapping_.insert(results.begin(), results.end());
   }
@@ -65,12 +68,13 @@ struct PatternMatchResult {
     mapping_.clear();
   }
 
- private:
   Graph& target_graph_;
   std::map<std::string, PatternMatchPair> mapping_;
 };
 
-class PatternType {
+struct PatternType {
+  friend class IArg;
+
  public:
   enum class PatternTypeCategory {
     Integer,
@@ -106,20 +110,11 @@ class PatternType {
 
   PatternType(const std::vector<ONNX_NAMESPACE::TensorProto_DataType>& types) : types_(types) {}
 
+ private:
   ONNX_NAMESPACE::TensorProto_DataType GetDefaultType() const {
-    ORT_ENFORCE(size(), "Empty type list in PatternType.");
+    ORT_ENFORCE(types_.size(), "Empty type list in PatternType.");
     return types_.at(0);
   }
-
-  std::vector<ONNX_NAMESPACE::TensorProto_DataType> GetTypes() const {
-    return types_;
-  }
-
-  size_t size() const {
-    return types_.size();
-  }
-
- private:
   void Init(const std::vector<ONNX_NAMESPACE::TensorProto_DataType>& types) {
     types_ = types;
   }
@@ -131,29 +126,29 @@ class PatternType {
 /* 
 * \brief Dangling node
 */
-class IArg {
+struct IArg {
+  friend class PatternGraph;
+
  public:
-  IArg(const std::string& name, const PatternType& type, std::vector<int> shape = {1},
-       bool is_dangling = true, bool is_constant = true) : name_(name), is_constant_(is_constant), is_dangling_(is_dangling), types_(type.GetTypes()) {
+  /*
+  * is_dangling: if it's set to false, this arg would not be required to match an arg in target graph
+  * is_constant: it indicates if the arg is a constant. 
+  * Since we reuse Augumenter to implement the pattern graph, we cannot get real constant but only use a flag.
+  */
+  IArg(const std::string& name, const PatternType& type, std::vector<int> shape,
+       bool is_dangling = true, bool is_constant = true) : name_(name), is_constant_(is_constant), is_dangling_(is_dangling), types_(type.types_) {
     SetTensorProto(type.GetDefaultType());
     for (auto dim : shape) {
       t_proto_.add_dims(dim);
     }
   }
 
-  IArg(const std::string& name, const PatternType& type, int rank,
-       bool is_dangling = true, bool is_constant = true) : name_(name), is_constant_(is_constant), is_dangling_(is_dangling), types_(type.GetTypes()) {
+  IArg(const std::string& name, const PatternType& type, int rank = 1,
+       bool is_dangling = true, bool is_constant = true) : name_(name), is_constant_(is_constant), is_dangling_(is_dangling), types_(type.types_) {
     SetTensorProto(type.GetDefaultType());
     while (rank--) {
       t_proto_.add_dims(1);
     }
-  }
-
-  NodeDef GetNodeDef() const {
-    return NodeDef("Constant",
-                   {},
-                   {ArgDef(name_, nullptr)},
-                   {ONNX_NAMESPACE::MakeAttribute("value", t_proto_)});
   }
 
   std::string GetArgName() const {
@@ -200,6 +195,17 @@ class IArg {
   }
 
  private:
+  NodeDef GetNodeDef() const {
+    return NodeDef("Constant",
+                   {},
+                   {ArgDef(name_, nullptr)},
+                   {ONNX_NAMESPACE::MakeAttribute("value", t_proto_)});
+  }
+
+  /*
+  * We need to set the value to help to build the graph but the value would not be used in matching.
+  * So we assign 0 to the tensor value here.
+  */
   void SetTensorProto(ONNX_NAMESPACE::TensorProto_DataType type) {
     switch (type) {
       case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32:
@@ -244,17 +250,25 @@ class IArg {
 };
 
 struct PNode {
+  friend class DefaultNodeCompareFunc;
+  /*
+  * output_edges_count: if it remains default, it will decide the output_edges_count by the generated onnx graph.
+  * If it is set to negative, then no check for output edges count will be taken in the node.
+  * If it is set to positive, then we will check the corresponding node in target graph that if it has that number output edges.
+  */
   PNode(const std::string& op_type,
         const std::vector<std::string>& input_args_name,
         const std::vector<std::string>& output_args_name,
         const std::string& node_name = "",
         const std::vector<std::string>& domains = {},
         const std::vector<int>& versions = {},
-        const std::vector<AttributeProto>& attributes = {})
+        const std::vector<AttributeProto>& attributes = {},
+        int output_edges_count = 0)
       : op_type_(op_type),
         input_args_name(input_args_name),
         output_args_name(output_args_name),
         node_name_(node_name),
+        output_edges_count_(output_edges_count),
         domains(domains),
         versions(versions),
         attributes(attributes) {
@@ -313,7 +327,6 @@ struct PNode {
     int version = versions.empty() ? 9 : versions[0];
     std::vector<ArgDef> input_args(input_args_name.size());
     std::vector<ArgDef> output_args(output_args_name.size());
-    // give a name if the name is not given by user
     for (size_t i = 0; i < input_args_name.size(); i++) {
       input_args[i] = IA(input_args_name[i]);
     }
@@ -328,6 +341,7 @@ struct PNode {
   std::vector<std::string> input_args_name;
   std::vector<std::string> output_args_name;
   std::string node_name_;
+  int output_edges_count_;
   std::vector<std::string> domains;
   std::vector<int> versions;
   std::vector<AttributeProto> attributes;
@@ -335,7 +349,7 @@ struct PNode {
   std::unordered_set<int> valid_versions;
 };
 
-struct PatternGraph;
+class PatternGraph;
 
 class NodeCompareFunc {
  public:
@@ -356,28 +370,7 @@ class DefaultNodeCompareFunc : public NodeCompareFunc {
         skip_version_(skip_version),
         skip_path_(skip_path) {}
 
-  bool operator()(const Node* g, const PNode* p, const Graph& /*target*/, const PatternGraph& /*pattern*/) const override {
-    if (!g && !p)
-      return true;
-    if (!g && p || !p && g)
-      return false;
-    if (!skip_optype_ && !p->OpTypeEquals(g->OpType())) {
-      PARSER_LOG << "OpType mismatch, "
-                 << "g is: " << g->OpType();
-      return false;
-    }
-    if (!skip_domain_ && !p->DomainsContain(g->Domain())) {
-      PARSER_LOG << "Domain mismatch, "
-                 << "g is: " << g->Domain();
-      return false;
-    }
-    if (!skip_version_ && !p->VersionsContain(g->SinceVersion())) {
-      PARSER_LOG << "Version mismatch, "
-                 << "g is: " << g->SinceVersion();
-      return false;
-    }
-    return true;
-  }
+  bool operator()(const Node* g, const PNode* p, const Graph& /*target*/, const PatternGraph& pattern) const override;
 
   bool skip_optype_, skip_domain_, skip_version_, skip_path_;
 };
@@ -389,7 +382,8 @@ class DefaultArgCompareFunc : public ArgCompareFunc {
   }
 };
 
-struct PatternGraph {
+class PatternGraph {
+ public:
   PatternGraph(const std::vector<IArg>& constants, const std::vector<PNode>& pnodes,
                const std::string& name = "")
       : name_(name),
@@ -408,12 +402,18 @@ struct PatternGraph {
     }
 
     ORT_ENFORCE(ToGraphInternal().IsOK());
+    auto& graph = GetGraph();
+    GraphViewer viewer(graph);
+    for (auto node_idx : viewer.GetNodesInTopologicalOrder()) {
+      auto node = graph.GetNode(node_idx);
+      name_patten_graph_node_mapping_[node->Name()] = node;
+    }
 
     default_node_compare_func_ = std::make_unique<DefaultNodeCompareFunc>(false, false, false, false);
     default_arg_compare_func_ = std::make_unique<DefaultArgCompareFunc>();
   }
 
-  const std::string& name() const {
+  const std::string& Name() const {
     return name_;
   }
 
@@ -439,6 +439,12 @@ struct PatternGraph {
 
   Graph& GetGraph() {
     return ort_model_ptr_->MainGraph();
+  }
+
+  const Node* GetPatternGraphNode(const std::string& name) const {
+    auto res = name_patten_graph_node_mapping_.find(name);
+    ORT_ENFORCE(res != name_patten_graph_node_mapping_.end(), "No pattern node named %s", name);
+    return res->second;
   }
 
   Status TryMatch(Graph& target_graph, PatternMatchResult& res, const std::string& root_node = "");
@@ -470,6 +476,7 @@ struct PatternGraph {
   std::map<std::string, std::unordered_set<std::string>> domain_map;
   std::map<std::string, std::unordered_set<int>> version_map;
 
+  std::unordered_map<std::string, const Node*> name_patten_graph_node_mapping_;
   std::unordered_map<std::string, const PNode*> name_pnode_mapping_;
   std::unordered_map<std::string, const IArg*> name_parg_mapping_;
 

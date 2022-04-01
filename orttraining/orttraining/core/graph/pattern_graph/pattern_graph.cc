@@ -51,23 +51,24 @@ Then we keep the order of {ai} fixed and try to match it with {bj}.
 We first choose b1, then choose an arg in {bj | j != 1, j <= n} as next arg and the recurse it.
 "visited" is used to record visited args to avoid duplicated conditions.
 */
-bool DFSArgs(const Graph& graph, PatternGraph& pattern_graph, const std::unordered_map<std::string, const IArg*>& name_pargs_mapping,
-             ConstPointerContainer<std::vector<NodeArg*>>& p_args, ConstPointerContainer<std::vector<NodeArg*>>& t_args,
-             const std::unordered_map<std::string, std::unique_ptr<ArgCompareFunc>>& arg_constraints, const std::unique_ptr<ArgCompareFunc>& arg_default_constraint,
-             size_t p_arg_idx, std::unordered_set<const NodeArg*>& visited) {
+bool FindMatchForArgs(const Graph& graph, PatternGraph& pattern_graph, const std::unordered_map<std::string, const IArg*>& name_pargs_mapping,
+                      ConstPointerContainer<std::vector<NodeArg*>>& p_args, ConstPointerContainer<std::vector<NodeArg*>>& t_args,
+                      const std::unordered_map<std::string, std::unique_ptr<ArgCompareFunc>>& arg_constraints, const std::unique_ptr<ArgCompareFunc>& arg_default_constraint,
+                      size_t p_arg_idx, std::unordered_set<const NodeArg*>& visited) {
+  // TODO: constraint the order of the args
   if (p_arg_idx >= p_args.size()) return true;
   auto p_arg = p_args[p_arg_idx];
   PARSER_LOG << "Try to find match for arg " << p_arg->Name();
   auto p_arg_name = p_arg->Name();
   auto find_defined_arg = name_pargs_mapping.find(p_arg_name);
-  if (find_defined_arg == name_pargs_mapping.end()) return DFSArgs(graph, pattern_graph, name_pargs_mapping, p_args, t_args, arg_constraints, arg_default_constraint, p_arg_idx + 1, visited);
+  if (find_defined_arg == name_pargs_mapping.end()) return FindMatchForArgs(graph, pattern_graph, name_pargs_mapping, p_args, t_args, arg_constraints, arg_default_constraint, p_arg_idx + 1, visited);
   const IArg* p_arg_define = find_defined_arg->second;
   auto func = arg_constraints.count(p_arg_name) > 0 ? arg_constraints.find(p_arg_name)->second.get() : arg_default_constraint.get();
   for (auto t_arg : t_args) {
     if (!visited.count(t_arg)) {
       visited.insert(t_arg);
       if ((*func)(t_arg, p_arg_define, graph, pattern_graph) &&
-          DFSArgs(graph, pattern_graph, name_pargs_mapping, p_args, t_args, arg_constraints, arg_default_constraint, p_arg_idx + 1, visited)) {
+          FindMatchForArgs(graph, pattern_graph, name_pargs_mapping, p_args, t_args, arg_constraints, arg_default_constraint, p_arg_idx + 1, visited)) {
         return true;
       } else {
         visited.erase(t_arg);
@@ -86,11 +87,16 @@ match.
 "path_map" is a mapping from nodes in graph_path and its corresponding matched node in pattern graph. It's used to look ahead when the match encounters 
 visited nodes to avoid wrong match. We give a simple example below to indicate the condition and effect of "look ahead".
 
-C ------------ B
-|              |
-D ---- E1 ---- A
+C <----------- B
+|              ^
+v              |
+D ---> E1 <--- A
 |
+v
 E2
+|
+v
+F
 
 We start search from A, then B, C and D and all these nodes find a match. Then we want to find match for E1 and E2, which are all the same except the position.
 If we do not look ahead, we find E1 reach the end of recursion (A has been visited) and return true. Then We may actually match E1 with a node which should match E2.
@@ -125,7 +131,7 @@ bool PatternGraph::FindMatchRecursively(const Node* g, const Node* p,
   auto p_args = p->InputDefs();
   auto t_args = g->InputDefs();
   std::unordered_set<const NodeArg*> visited_args;
-  if (!DFSArgs(target, *this, name_parg_mapping_, p_args, t_args, custom_arg_constraints_, default_arg_compare_func_, 0, visited_args)) {
+  if (!FindMatchForArgs(target, *this, name_parg_mapping_, p_args, t_args, custom_arg_constraints_, default_arg_compare_func_, 0, visited_args)) {
     PARSER_LOG << "return not matched args.";
     return false;
   }
@@ -159,6 +165,7 @@ bool PatternGraph::FindMatchRecursively(const Node* g, const Node* p,
   std::unordered_set<const Node*> visited_pattern_nodes;
 
   // try to find a full match for all the input nodes of the current node p in pattern graph
+  // TODO: constraint the order of the input nodes?
   for (auto pin_iter = p->InputNodesBegin(); pin_iter != p->InputNodesEnd(); ++pin_iter) {
     const Node& cur = *pin_iter;  // one of the input node of p
     if (visited_pattern_nodes.count(&cur))
@@ -233,6 +240,38 @@ bool PatternGraph::FindMatchRecursively(const Node* g, const Node* p,
   matched.InsertMatchMappings(matches_if_success);
 
   PARSER_LOG << "return true.";
+  return true;
+}
+
+bool DefaultNodeCompareFunc::operator()(const Node* g, const PNode* p, const Graph& /*target*/, const PatternGraph& pattern) const {
+  if (!g && !p)
+    return true;
+  if (!g && p || !p && g)
+    return false;
+  if (!skip_optype_ && !p->OpTypeEquals(g->OpType())) {
+    PARSER_LOG << "OpType mismatch, "
+               << "g is: " << g->OpType();
+    return false;
+  }
+  if (!skip_domain_ && !p->DomainsContain(g->Domain())) {
+    PARSER_LOG << "Domain mismatch, "
+               << "g is: " << g->Domain();
+    return false;
+  }
+  if (!skip_version_ && !p->VersionsContain(g->SinceVersion())) {
+    PARSER_LOG << "Version mismatch, "
+               << "g is: " << g->SinceVersion();
+    return false;
+  }
+  if (p->output_edges_count_ == 0 && g->GetOutputEdgesCount() != pattern.GetPatternGraphNode(p->node_name_)->GetOutputEdgesCount()) {
+    PARSER_LOG << "Output edges count mismatch, "
+               << "g is: " << g->SinceVersion();
+    return false;
+  } else if (p->output_edges_count_ > 0 && g->GetOutputEdgesCount() != static_cast<size_t>(p->output_edges_count_)) {
+    PARSER_LOG << "Output edges count mismatch, "
+               << "g is: " << g->SinceVersion();
+    return false;
+  }
   return true;
 }
 

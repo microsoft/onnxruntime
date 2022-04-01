@@ -273,16 +273,16 @@ TEST(GraphParser, SimpleMatch2) {
        IArg("C2", float_type),
        IArg("C3", float_type),
        IArg("X", float_type)},
-      {PNode("ReduceMean", {"X"}, {"Y"}, "p_rm1"),
-       PNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1"),
-       PNode("Sub", {"X", "Y"}, {"Sub2"}, "p_sub2"),
-       PNode("Pow", {"Sub2", "C0"}, {"Pow"}, "p_pow"),
-       PNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2"),
-       PNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1"),
-       PNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt"),
-       PNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div"),
-       PNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul"),
-       PNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")});
+      {PNode("ReduceMean", {"X"}, {"Y"}, "p_rm1", {}, {}, {}, -1),
+       PNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1", {}, {}, {}, -1),
+       PNode("Sub", {"X", "Y"}, {"Sub2"}, "p_sub2", {}, {}, {}, -1),
+       PNode("Pow", {"Sub2", "C0"}, {"Pow"}, "p_pow", {}, {}, {}, -1),
+       PNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2", {}, {}, {}, -1),
+       PNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1", {}, {}, {}, -1),
+       PNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt", {}, {}, {}, -1),
+       PNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div", {}, {}, {}, -1),
+       PNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul", {}, {}, {}, -1),
+       PNode("Add", {"Mul", "C3"}, {"Final"}, "p_final", {}, {}, {}, -1)});
 
   auto& target_graph = target.GetGraph();
   PatternMatchResult res(target_graph);
@@ -393,16 +393,16 @@ TEST(GraphParser, SimpleReplace2) {
        IArg("C2", float_type),
        IArg("C3", float_type),
        IArg("X", float_type)},
-      {PNode("ReduceMean", {"X"}, {"Y"}, "p_rm1"),
-       PNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1"),
-       PNode("Sub", {"X", "Y"}, {"Sub2"}, "p_sub2"),
-       PNode("Pow", {"Sub2", "C0"}, {"Pow"}, "p_pow"),
-       PNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2"),
-       PNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1"),
-       PNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt"),
-       PNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div"),
-       PNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul"),
-       PNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")});
+      {PNode("ReduceMean", {"X"}, {"Y"}, "p_rm1", {}, {}, {}, -1),
+       PNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1", {}, {}, {}, -1),
+       PNode("Sub", {"X", "Y"}, {"Sub2"}, "p_sub2", {}, {}, {}, -1),
+       PNode("Pow", {"Sub2", "C0"}, {"Pow"}, "p_pow", {}, {}, {}, -1),
+       PNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2", {}, {}, {}, -1),
+       PNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1", {}, {}, {}, -1),
+       PNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt", {}, {}, {}, -1),
+       PNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div", {}, {}, {}, -1),
+       PNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul", {}, {}, {}, -1),
+       PNode("Add", {"Mul", "C3"}, {"Final"}, "p_final", {}, {}, {}, -1)});
 
   auto& target_graph = target.GetGraph();
   ASSERT_TRUE(TryReplace(target_graph, pattern, PNode("Sqrt", {}, {}, "test123"), {{"p_rm1", 0}}, {}, "p_rm1", "p_final").IsOK());
@@ -1112,25 +1112,25 @@ TEST(GraphParser, EmbedLayerNormFusionTest3) {
       {IArg("X", PatternType(PatternTypeCategory::Float), 3),
        IArg("C0", PatternType(PatternTypeCategory::Integer)),
        IArg("C1", PatternType(PatternTypeCategory::Float))},
-      {PNode("Shape", {"X"}, {"Shape1"}, "p_shape1"),
-       PNode("Gather", {"Shape1", "C0"}, {"Gather1"}, "p_gather1"),
-       PNode("Cast", {"Gather1"}, {"Cast1"}, "p_cast1", {""}, {}, {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT})}),
-       PNode("Range", {"Cast1", "Cast1", "Cast1"}, {"Range"}, "p_range"),
-       PNode("Unsqueeze", {"Range", "C0"}, {"Unsqueeze1"}, "p_unsqueeze1"),
-       PNode("Add", {"Gather1", "C0"}, {"Unsqueeze2"}, "p_unsqueeze2"),
-       PNode("Shape", {"X"}, {"Shape2"}, "p_shape2"),
-       PNode("Gather", {"Shape2", "C0"}, {"Gather2"}, "p_gather2"),
-       PNode("Add", {"Gather2", "C0"}, {"Unsqueeze3"}, "p_unsqueeze3"),
-       PNode("Concat", {"Unsqueeze2", "Unsqueeze3"}, {"Concat"}, "p_concat", {}, {}, {ONNX_NAMESPACE::MakeAttribute("axis", int64_t(0))}),
-       PNode("Expand", {"Unsqueeze1", "Concat"}, {"Expand"}, "p_expand"),
-       PNode("Gather", {"Expand", "C0"}, {"Gather3"}, "p_gather3"),
-       PNode("Gather", {"X", "C0"}, {"Gather4"}, "p_gather4"),
-       PNode("Add", {"Gather3", "Gather4"}, {"Add1"}, "p_add1"),
-       PNode("Gather", {"X", "C0"}, {"Gather5"}, "p_gather5"),
-       PNode("Add", {"Add1", "Gather5"}, {"Add2"}, "p_add2"),
-       PNode("LayerNormalization", {"Add2", "C1"}, {"LayerNorm"}, "p_layernorm"),
-       PNode("ReduceSum", {"X"}, {"ReduceSum"}, "p_reducesum"),
-       PNode("Attention", {"ReduceSum", "LayerNorm", "C1"}, {"Attention"}, "p_attention", {"com.microsoft"}, {}, {ONNX_NAMESPACE::MakeAttribute("num_heads", int64_t{1})})});
+      {PNode("Shape", {"X"}, {"Shape1"}, "p_shape1", {}, {}, {}, -1),
+       PNode("Gather", {"Shape1", "C0"}, {"Gather1"}, "p_gather1", {}, {}, {}, -1),
+       PNode("Cast", {"Gather1"}, {"Cast1"}, "p_cast1", {""}, {}, {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT})}, -1),
+       PNode("Range", {"Cast1", "Cast1", "Cast1"}, {"Range"}, "p_range", {}, {}, {}, -1),
+       PNode("Unsqueeze", {"Range", "C0"}, {"Unsqueeze1"}, "p_unsqueeze1", {}, {}, {}, -1),
+       PNode("Add", {"Gather1", "C0"}, {"Unsqueeze2"}, "p_unsqueeze2", {}, {}, {}, -1),
+       PNode("Shape", {"X"}, {"Shape2"}, "p_shape2", {}, {}, {}, -1),
+       PNode("Gather", {"Shape2", "C0"}, {"Gather2"}, "p_gather2", {}, {}, {}, -1),
+       PNode("Add", {"Gather2", "C0"}, {"Unsqueeze3"}, "p_unsqueeze3", {}, {}, {}, -1),
+       PNode("Concat", {"Unsqueeze2", "Unsqueeze3"}, {"Concat"}, "p_concat", {}, {}, {ONNX_NAMESPACE::MakeAttribute("axis", int64_t(0))}, -1),
+       PNode("Expand", {"Unsqueeze1", "Concat"}, {"Expand"}, "p_expand", {}, {}, {}, -1),
+       PNode("Gather", {"Expand", "C0"}, {"Gather3"}, "p_gather3", {}, {}, {}, -1),
+       PNode("Gather", {"X", "C0"}, {"Gather4"}, "p_gather4", {}, {}, {}, -1),
+       PNode("Add", {"Gather3", "Gather4"}, {"Add1"}, "p_add1", {}, {}, {}, -1),
+       PNode("Gather", {"X", "C0"}, {"Gather5"}, "p_gather5", {}, {}, {}, -1),
+       PNode("Add", {"Add1", "Gather5"}, {"Add2"}, "p_add2", {}, {}, {}, -1),
+       PNode("LayerNormalization", {"Add2", "C1"}, {"LayerNorm"}, "p_layernorm", {}, {}, {}, -1),
+       PNode("ReduceSum", {"X"}, {"ReduceSum"}, "p_reducesum", {}, {}, {}, -1),
+       PNode("Attention", {"ReduceSum", "LayerNorm", "C1"}, {"Attention"}, "p_attention", {"com.microsoft"}, {}, {ONNX_NAMESPACE::MakeAttribute("num_heads", int64_t{1})}, -1)});
 
   class CustomNodeCompareFunc : public NodeCompareFunc {
    public:
@@ -1221,7 +1221,7 @@ TEST(GraphParser, FastGeluWithBiasFusionTestPart1) {
       {IArg("X", PatternType(PatternTypeCategory::Float)),
        IArg("C0", PatternType(PatternTypeCategory::Integer)),
        IArg("C1", PatternType(PatternTypeCategory::Float))},
-      {PNode("Add", {"C1", "C1"}, {"Add1"}, "p_add1"),
+      {PNode("Add", {"C1", "C1"}, {"Add1"}, "p_add1", {}, {}, {}, -1),
        PNode("Mul", {"Add1", "C1"}, {"Mul1"}, "p_mul1"),
        PNode("Mul", {"Add1", "Mul1"}, {"Mul2"}, "p_mul2"),
        PNode("Add", {"Mul2", "C1"}, {"Add2"}, "p_add2"),
@@ -1229,7 +1229,7 @@ TEST(GraphParser, FastGeluWithBiasFusionTestPart1) {
        PNode("Tanh", {"Mul4"}, {"Tanh"}, "p_tanh"),
        PNode("Add", {"Tanh", "C1"}, {"Add3"}, "p_add3"),
        PNode("Mul", {"Add1", "C1"}, {"Mul5"}, "p_mul5"),
-       PNode("Mul", {"Mul5", "Add3"}, {"Mul6"}, "p_mul6")});
+       PNode("Mul", {"Mul5", "Add3"}, {"Mul6"}, "p_mul6", {}, {}, {}, -1)});
 
   PatternMatchResult res(graph);
   ASSERT_TRUE(pattern.TryMatch(graph, res).IsOK());
