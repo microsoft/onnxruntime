@@ -1,10 +1,10 @@
 ---
 title: ORT format models
-description: Define the ORT model format and show how to convert an ONNX model to ORT format to run on mobile or web
+description: Define the ORT format and show how to convert an ONNX model to ORT format to run on mobile or web
 parent: Reference
 has_children: false
 nav_order: 4
-redirect_from: /docs/tutorials/mobile/model-conversion, /docs/tutorials/mobile/model-execution
+redirect_from: /docs/tutorials/mobile/model-conversion, /docs/tutorials/mobile/model-execution, /docs/reference/ort-model-format
 ---
 
 # ORT format models
