@@ -7,21 +7,13 @@ import {Tensor} from '../../../tensor';
 import {MAX_CLIP, MIN_CLIP} from '../../../util';
 import {WebGpuInferenceHandler} from '../inference-handler';
 import {GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
+import {WORKGROUP_SIZE} from './common';
 
 const createElementwiseProgramShader = (funcName: string, funcImpl: string): (datasize: number) => string =>
     (datasize) => {
       const vecSize = Math.ceil(datasize / 4);
       return `
-  // constant value for a workgroup size.
-  //
-  // We definitely can do further optimization in future, but for now we use 64.
-  //
-  // rule of thumb: Use [a workgroup size of] 64 unless you know what GPU you are targeting or that your workload
-  //                needs something different.
-  //
-  // from: https://surma.dev/things/webgpu/
-  //
-  let WORKGROUP_SIZE: u32 = 64u;
+  let WORKGROUP_SIZE: u32 = ${WORKGROUP_SIZE}u;
 
   @group(0) @binding(0) var<storage, read> inputData : array<vec4<f32>>;
   @group(0) @binding(1) var<storage, write> outputData : array<vec4<f32>>;
@@ -113,17 +105,28 @@ export const ceil = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Pr
 export const cos = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
     handler.run(createElementwiseProgramInfoLoader(inputs[0], 'cos'), inputs);
 
-// export interface EluAttributes extends AttributeWithCacheKey {
-//   readonly alpha: number;
-// }
+export interface EluAttributes extends AttributeWithCacheKey {
+  readonly alpha: number;
+}
 
-// export const elu =
-//     (handler: WebGLInferenceHandler, inputs: Tensor[], attributes: EluAttributes): Tensor[] => [handler.run(
-//         createElementwiseProgramInfoLoader(handler, inputs[0], glslElu(attributes.alpha), attributes.cacheKey),
-//         inputs)];
+export const elu = async(handler: WebGpuInferenceHandler, inputs: Tensor[], attributes: EluAttributes):
+                       Promise<Tensor[] >=>handler.run(
+                           createElementwiseProgramInfoLoader(
+                               inputs[0], 'elu', `
+    let elu_alpha_: f32 = f32(${attributes.alpha});
 
-// export const parseEluAttributes = (node: Graph.Node): EluAttributes =>
-//     createAttributeWithCacheKey({alpha: node.attributes.getFloat('alpha', 1.0)});
+    fn elu_(a: f32) -> f32 {
+      return select((exp(a) - 1.0) * elu_alpha_, a, a >= 0.0);
+    }
+
+    fn elu(v: vec4<f32>) -> vec4<f32> {
+      return vec4(elu_(v.x), elu_(v.y), elu_(v.z), elu_(v.w));
+    }`,
+                               attributes.cacheKey),
+                           inputs);
+
+export const parseEluAttributes = (node: Graph.Node): EluAttributes =>
+    createAttributeWithCacheKey({alpha: node.attributes.getFloat('alpha', 1.0)});
 
 // export const exp = (handler: WebGLInferenceHandler, inputs: Tensor[]):
 //     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslExp()), inputs)];
