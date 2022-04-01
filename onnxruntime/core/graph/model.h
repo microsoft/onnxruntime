@@ -29,16 +29,21 @@ using IOnnxRuntimeOpSchemaRegistryList = std::list<std::shared_ptr<IOnnxRuntimeO
 
 // Options to configure Model.
 struct ModelOptions {
-  bool allow_released_opsets_only = true;
+  bool allow_released_opsets_only;
   // If true, all inconsistencies encountered during shape and type inference
   // will be exposed to the caller as failures. If false, in some cases
   // warnings will be logged but processing will continue and no error will
   // be returned.
-  bool strict_shape_type_inference = false;
+  bool strict_shape_type_inference;
+
+  ModelOptions(bool allow_released_opsets_only, bool strict_shape_type_inference)
+      : allow_released_opsets_only(allow_released_opsets_only), strict_shape_type_inference(strict_shape_type_inference) {}
+
+  ModelOptions() : ModelOptions(true, false) {}
 };
 
 namespace {
-static ModelOptions default_model_options{};
+static ModelOptions default_model_options;
 }  // namespace
 
 // A machine learning model representation class.
