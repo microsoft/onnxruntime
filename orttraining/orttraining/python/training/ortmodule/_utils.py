@@ -104,7 +104,7 @@ def _ortvalues_to_torch_tensor_list(ortvalues, device):
     if not isinstance(ortvalues, list):
         raise TypeError("ortvalues must be a list not %r." % type(ortvalues))
 
-    res = [_from_dlpack(ov.to_dlpack()) for ov in ortvalues]
+    res = [_from_dlpack(ov._ortvalue.to_dlpack()) for ov in ortvalues]
     # DLPack structure does not know for sure if it stores boolean
     # or uint8. Method to_dlpacks cannot be used in that case.
     # Signature of *dl_packs* is `to_dlpacks(dlp, fct) -> list[torch.Tensor]`.
