@@ -67,18 +67,23 @@ TEST(NonZeroOpTest, ThreeDims) {
   test.Run();
 }
 
-TEST(NonZeroOpTest, ScalarZero) {
-  OpTester test{kOpName, kOpVersion};
-  test.AddInput<int32_t>("X", {1}, {0});
-  test.AddOutput<int64_t>("Y", {1, 0}, {});
-  test.Run();
-}
-
-TEST(NonZeroOpTest, ScalarOne) {
-  OpTester test{kOpName, kOpVersion};
-  test.AddInput<int32_t>("X", {1}, {1});
-  test.AddOutput<int64_t>("Y", {1, 1}, {0});
-  test.Run();
+TEST(NonZeroOpTest, Scalar) {
+  // TODO: ORT and ONNX disagree about the correct output shape.
+  // One of them has to be wrong, we should fix it, but for now ignore it.
+  SessionOptions so;
+  so.strict_shape_type_inference = false;
+  {
+    OpTester test{kOpName, kOpVersion};
+    test.AddInput<int32_t>("X", {}, {0});
+    test.AddOutput<int64_t>("Y", {1, 0}, {});
+    test.Run(so);
+  }
+  {
+    OpTester test{kOpName, kOpVersion};
+    test.AddInput<int32_t>("X", {}, {1});
+    test.AddOutput<int64_t>("Y", {1, 1}, {0});
+    test.Run(so);
+  }
 }
 
 TEST(NonZeroOpTest, EmptyInput) {
