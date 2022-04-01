@@ -445,6 +445,24 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
   if (!external_stream_ && stream_) {
     CUDA_CALL(cudaStreamDestroy(stream_));
   }
+  
+  json old_metadata_json = GetMetadata(metadata_path_);
+  json new_metadata_json;
+ 
+  new_metadata_json["engine_cache"] = metadata_->engine_cache_list;
+  new_metadata_json["profile_cache"] = metadata_->profile_cache_list;
+
+  old_metadata_json.merge_patch(new_metadata_json);
+
+  SaveMetadata(new_metadata_json, metadata_path_);
+
+  for (auto element : subgraph_info_) {
+    std::unordered_map<std::string, std::vector<bool>> trt_engine_to_subgraph_status = element.second;
+    for (auto engine_to_subgraph_status : trt_engine_to_subgraph_status) {
+      std::string trt_node_name = engine_to_subgraph_status.first;
+      std::vector<bool> subgraph_status = engine_to_subgraph_status.second;
+    }
+  }
 }
 
 AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
@@ -1064,6 +1082,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     std::unordered_map<std::string, size_t> output_indexes(num_outputs);
     std::unordered_map<std::string, size_t> output_types(num_outputs);
     bool update_engine_cache = false;
+    //std::unordered_map<std::string, std::vector<bool>> trt_engine_to_subgraph_status;
+    //std::vector<bool> subgraph_status;
 
     // Initialize shape range for dynamic shape tensors
     bool has_dynamic_shape = false;
@@ -1197,6 +1217,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           input_shape_ranges = DeserializeProfile(profile_file);
         }
       }
+
+      /*
+      // Update sub-graph info
+      subgraph_status.push_back(has_dynamic_shape); // record input shape
+      subgraph_status.push_back(false);             // record engine cache needs to be updated or not
+      trt_engine_to_subgraph_status[trt_node_name_with_precision] = subgraph_status;
+      subgraph_info_[fused_node->Name()] = trt_engine_to_subgraph_status;
+      */
     }
 
     // Build TRT engine here if the graph doesn't have dynamic shape input. Otherwise engine will
@@ -1223,8 +1251,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
                                  "TensorRT EP could not build engine for fused node: " + fused_node->Name());
         }
 
-        if (engine_cache_enable_)
+        if (engine_cache_enable_) {
+          //subgraph_info_[fused_node->Name()][trt_node_name_with_precision][1] = true; // engine cache needs to be saved
           update_engine_cache = true;
+        }
       }
 
       // Build context
@@ -1279,7 +1309,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
             input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
             runtime_.get(), nullptr, allocator_, dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_,
-            update_engine_cache};
+            update_engine_cache, &metadata_};
       *state = p.release();
       return 0;
     };
@@ -1311,12 +1341,14 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           }
           serializedModel->destroy();
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path;
+          trt_state->metadata->get()->engine_cache_list.push_back(engine_cache_path);
 
           // Serialize engine profile if needed
           if (!trt_state->input_shape_ranges.empty()) {
             const std::string profile_cache_path = cache_path + ".profile";
             SerializeProfile(profile_cache_path, trt_state->input_shape_ranges);
             LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
+            trt_state->metadata->get()->profile_cache_list.push_back(profile_cache_path);
           }
         }
         

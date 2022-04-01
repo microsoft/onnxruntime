@@ -77,6 +77,12 @@ template <typename T>
 using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 };  // namespace tensorrt_ptr
 
+// Important trt ep information that will be saved as a file after inference
+struct TensorrtMetadata {
+  std::vector<std::string> engine_cache_list;
+  std::vector<std::string> profile_cache_list;
+};
+
 // Information to construct kernel function state.
 struct TensorrtFuncState {
   AllocateFunc test_allocate_func = nullptr;
@@ -107,9 +113,10 @@ struct TensorrtFuncState {
   bool engine_decryption_enable;
   int (*engine_decryption)(const char*, char*, size_t*);
   int (*engine_encryption)(const char*, char*, size_t);
-  // If sub-graph has dynamic input shape and the shape range changes, or the first time writing out engine cache, this flag is set to true and engine cache will be saved. Otherwise the flag is false.
-  // Note: For dynamic input shape, if update_engine_cache flag is true, profile cache will be saved as well.
-  bool update_engine_cache;
+  // If sub-graph has dynamic input shape and the shape range changes or the first time writing out engine cache, this flag is true and engine cache will be saved. Default is false.
+  // Note: For dynamic input shape, if update_engine_cache is true, profile cache will be saved as well.
+  bool update_engine_cache; 
+  std::unique_ptr<TensorrtMetadata>* metadata = nullptr;
 };
 
 // Logical device representation.
@@ -170,6 +177,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool engine_decryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*);
   int (*engine_encryption_)(const char*, char*, size_t);
+  std::string metadata_path_ = "./trt_metadata.json";
 
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>> engines_;
@@ -179,6 +187,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> input_info_;
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> output_info_;
   std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
+  // {key: sub-graph name  value: {key: trt_node_name_with_precision  value: <has dynamic shape input, engine cache needs to be updated or not>}}  
+  std::unordered_map<std::string, std::unordered_map<std::string, std::vector<bool>>> subgraph_info_;
+
+  // metadata
+  std::unique_ptr<TensorrtMetadata> metadata_ = std::make_unique<TensorrtMetadata>();
 
   /**Get IndexedSubGraph based on node list of the subgraph*/
   std::unique_ptr<IndexedSubGraph> GetSubGraph(SubGraph_t graph_nodes_index,

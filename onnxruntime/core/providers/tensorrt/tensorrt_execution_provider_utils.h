@@ -8,8 +8,10 @@
 #include <experimental/filesystem>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
+#include "nlohmann/json.hpp"
 
 namespace fs = std::experimental::filesystem;
+using json = nlohmann::json;
 
 namespace onnxruntime {
 
@@ -194,4 +196,21 @@ void RemoveCachesByType(const std::string& root, std::string file_extension) {
     fs::remove(entry);
   }
 }
+
+json GetMetadata(std::string metadata_file) {
+  json metadata_json;
+  std::ifstream metadata_input(metadata_file);
+  if (metadata_input) {
+    metadata_input >> metadata_json;
+  }
+
+  return metadata_json;
+}
+
+void SaveMetadata(json metadata_json, std::string metadata_file) {
+  // write prettified JSON to another file
+  std::ofstream metadata_output(metadata_file);
+  metadata_output << std::setw(4) << metadata_json << std::endl;
+}
+
 }
