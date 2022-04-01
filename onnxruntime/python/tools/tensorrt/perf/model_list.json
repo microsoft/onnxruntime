@@ -1,13 +1,13 @@
 [
     {
         "model_name": "FasterRCNN-10",
-        "working_directory": "./onnx-zoo-models/faster-rcnn/",
+        "working_directory": "./onnx-zoo-models/FasterRCNN-10",
         "model_path": "./faster_rcnn_R_50_FPN_1x.onnx",
         "test_data_path": "./"
     },
     {
         "model_name": "MaskRCNN-10",
-        "working_directory": "./onnx-zoo-models/mask-rcnn/",
+        "working_directory": "./onnx-zoo-models/MaskRCNN-10/",
         "model_path": "./mask_rcnn_R_50_FPN_1x.onnx",
         "test_data_path": "./"
     },
