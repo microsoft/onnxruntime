@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 #include "core/graph/contrib_ops/onnx_function_util.h"
@@ -6,13 +9,66 @@
 #include "core/graph/model.h"
 
 #define PARSER_LOG \
-  LOGS_DEFAULT(WARNING)
+  LOGS_DEFAULT(INFO)
 
 namespace onnxruntime {
 namespace training {
 
 // First: graph node index. Second: corresponding pattern node.
-typedef std::pair<onnxruntime::NodeIndex, const onnxruntime::Node*> PNN;
+typedef std::pair<onnxruntime::NodeIndex, const onnxruntime::Node*> PatternMatchPair;
+
+struct PatternMatchResult {
+ public:
+  explicit PatternMatchResult(Graph& target_graph) : target_graph_(target_graph) {}
+
+  Node* GetTargetNodeWithName(std::string name) const {
+    auto res = mapping_.find(name);
+    ORT_ENFORCE(res != mapping_.end(), "No target node has cooresponding name %s in pattern graph", name);
+    return target_graph_.GetNode(res->second.first);
+  }
+
+  NodeIndex GetTargetNodeIdxWithName(std::string name) const {
+    auto res = mapping_.find(name);
+    ORT_ENFORCE(res != mapping_.end(), "No target node has cooresponding name %s in pattern graph", name);
+    return res->second.first;
+  }
+
+  PatternMatchPair GetMatchPairWithName(std::string name) const {
+    auto res = mapping_.find(name);
+    ORT_ENFORCE(res != mapping_.end(), "No node with name %s in pattern graph", name);
+    return res->second;
+  }
+
+  const onnxruntime::Node* GetPatternNodeWithName(std::string name) const {
+    auto res = mapping_.find(name);
+    ORT_ENFORCE(res != mapping_.end(), "No node with name %s in pattern graph", name);
+    return res->second.second;
+  }
+
+  std::map<std::string, PatternMatchPair> GetMatchMap() const {
+    return mapping_;
+  }
+
+  Graph& GetTargetGraph() const {
+    return target_graph_;
+  }
+
+  void InsertMatchMappings(std::map<std::string, PatternMatchPair> results) {
+    mapping_.insert(results.begin(), results.end());
+  }
+
+  void AddMatchMapping(std::string pattern_node_name, PatternMatchPair result) {
+    mapping_[pattern_node_name] = result;
+  }
+
+  void Clear() {
+    mapping_.clear();
+  }
+
+ private:
+  Graph& target_graph_;
+  std::map<std::string, PatternMatchPair> mapping_;
+};
 
 class PatternType {
  public:
@@ -26,39 +82,33 @@ class PatternType {
   PatternType(PatternTypeCategory category) {
     switch (category) {
       case PatternTypeCategory::Integer:
-        Init(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64, {ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
-                                                                                ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
-                                                                                ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16,
-                                                                                ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8});
+        Init({ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
+              ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
+              ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT16,
+              ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8});
         break;
       case PatternTypeCategory::Float:
-        Init(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, {ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT,
-                                                                                ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE,
-                                                                                ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16,
-                                                                                ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16});
+        Init({ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT,
+              ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE,
+              ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16,
+              ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16});
         break;
       case PatternTypeCategory::UnsignedInteger:
-        Init(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT64, {ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT64,
-                                                                                 ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT32,
-                                                                                 ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16,
-                                                                                 ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8});
+        Init({ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT64,
+              ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT32,
+              ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT16,
+              ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8});
         break;
       default:
         break;
     }
   }
 
-  PatternType(ONNX_NAMESPACE::TensorProto_DataType default_type, const std::vector<ONNX_NAMESPACE::TensorProto_DataType>& types = {}) {
-    Init(default_type, types);
-  }
-
-  PatternType& ResetDefault(ONNX_NAMESPACE::TensorProto_DataType type) {
-    default_type_ = type;
-    return *this;
-  }
+  PatternType(const std::vector<ONNX_NAMESPACE::TensorProto_DataType>& types) : types_(types) {}
 
   ONNX_NAMESPACE::TensorProto_DataType GetDefaultType() const {
-    return default_type_;
+    ORT_ENFORCE(size(), "Empty type list in PatternType.");
+    return types_.at(0);
   }
 
   std::vector<ONNX_NAMESPACE::TensorProto_DataType> GetTypes() const {
@@ -70,17 +120,11 @@ class PatternType {
   }
 
  private:
-  void Init(ONNX_NAMESPACE::TensorProto_DataType default_type, const std::vector<ONNX_NAMESPACE::TensorProto_DataType>& types = {}) {
-    default_type_ = default_type;
-    if (!types.empty()) {
-      types_ = std::vector<ONNX_NAMESPACE::TensorProto_DataType>(types);
-    } else {
-      types_ = std::vector<ONNX_NAMESPACE::TensorProto_DataType>(default_type);
-    }
+  void Init(const std::vector<ONNX_NAMESPACE::TensorProto_DataType>& types) {
+    types_ = types;
   }
 
  private:
-  ONNX_NAMESPACE::TensorProto_DataType default_type_;
   std::vector<ONNX_NAMESPACE::TensorProto_DataType> types_;
 };
 
@@ -397,7 +441,7 @@ struct PatternGraph {
     return ort_model_ptr_->MainGraph();
   }
 
-  Status TryMatch(Graph& target_graph, std::vector<PNN>& res, const std::string& root_node = "");
+  Status TryMatch(Graph& target_graph, PatternMatchResult& res, const std::string& root_node = "");
 
  private:
   Status ToGraphInternal() {
@@ -406,7 +450,6 @@ struct PatternGraph {
     GraphAugmenter::GraphDefs graph_defs;
     graph_defs.AddNodeDefs(nodes);
     auto status = GraphAugmenter::AugmentGraph(ort_model_ptr_->MainGraph(), graph_defs, p_initializer_names_to_preserve);
-    std::cout << status.ToString() << std::endl;
     ORT_ENFORCE(status.IsOK());
     // ORT_ENFORCE(GraphAugmenter::AugmentGraph(ort_model_ptr_->MainGraph(), graph_defs, p_initializer_names_to_preserve).IsOK());
 
@@ -416,7 +459,7 @@ struct PatternGraph {
   bool FindMatchRecursively(const Node* g, const Node* p,
                             std::unordered_set<const Node*>& graph_path, std::unordered_set<const Node*>& pattern_path,
                             std::unordered_map<const Node*, const Node*>& path_map,
-                            std::vector<PNN>& matched, const Graph& target);
+                            PatternMatchResult& matched, const Graph& target);
 
   std::string name_;  // name of the graph
 

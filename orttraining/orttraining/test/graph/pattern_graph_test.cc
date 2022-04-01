@@ -1,5 +1,7 @@
-#include "gtest/gtest.h"
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
+#include "gtest/gtest.h"
 #include "core/graph/graph.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
@@ -7,11 +9,8 @@
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/common/safeint.h"
 #include "core/optimizer/initializer.h"
-
-#include "orttraining/core/graph/graph_parser/pattern_graph.h"
-#include "orttraining/core/graph/graph_parser/matcher.h"
-
-#include <iostream>
+#include "orttraining/core/graph/graph_augmenter.h"
+#include "orttraining/core/graph/pattern_graph/pattern_graph.h"
 
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
 
@@ -22,17 +21,46 @@ namespace onnxruntime {
 namespace training {
 namespace test {
 
-using namespace GraphParser;
-
-static void print_graph(const Graph& graph) {
-  GraphViewer graph_viewer(graph);
-  const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  for (auto node_index : node_topology_list) {
-    auto* node = graph.GetNode(node_index);
-    std::cout << "Name: " << node->Name() << ", OpType: " << node->OpType()
-              << ", Domain: " << node->Domain() << ", SinceVersion: " << node->SinceVersion() << std::endl;
+// TODO: move this into pattern_graph?
+Status TryReplace(Graph& graph, PatternGraph& pattern, const PNode& alternative,
+                  std::vector<std::pair<std::string, int>> fusion_inputs,
+                  std::vector<std::pair<std::string, int>> fusion_outputs,
+                  const std::string& start_node_name, const std::string& end_node_name) {
+  PatternMatchResult match_results(graph);
+  ORT_RETURN_IF_ERROR(pattern.TryMatch(graph, match_results));
+  InlinedVector<std::reference_wrapper<Node>> matched_nodes;
+  matched_nodes.push_back(*match_results.GetTargetNodeWithName(start_node_name));
+  auto mapping = match_results.GetMatchMap();
+  for (auto iter = mapping.rbegin(); iter != mapping.rend(); iter++) {
+    if (iter->first != start_node_name && iter->first != end_node_name) {
+      auto node = graph.GetNode(iter->second.first);
+      matched_nodes.push_back(*node);
+    }
   }
+  matched_nodes.push_back(*match_results.GetTargetNodeWithName(end_node_name));
+
+  auto add_node_args_with_name = [&match_results](std::string name, int idx, std::vector<NodeArg*>& args) {
+    auto target_node = match_results.GetTargetNodeWithName(name);
+    args.push_back(target_node->MutableInputDefs()[idx]);
+  };
+
+  std::vector<NodeArg*> input_args, output_args;
+  for (auto item : fusion_inputs) {
+    add_node_args_with_name(item.first, item.second, input_args);
+  }
+  for (auto item : fusion_outputs) {
+    add_node_args_with_name(item.first, item.second, output_args);
+  }
+  auto node_def = alternative.GetNodeDef();
+  Node& replace_node = graph.AddNode(node_def.name, node_def.op_type, "",
+                                     input_args, output_args, {}, node_def.domain.c_str());
+  for (auto& attr : node_def.attributes) {
+    replace_node.AddAttributeProto(attr.second);
+  }
+  graph_utils::FinalizeNodeFusion(graph, matched_nodes, replace_node);
+  return Status::OK();
 }
+
 // This method is used to replace node for EmbedLayerNorm case. It could be removed before formal PR.
 template <typename T>
 bool CheckEmbeddingData(const T* data, int64_t batch_size, int64_t element_count) {
@@ -45,6 +73,7 @@ bool CheckEmbeddingData(const T* data, int64_t batch_size, int64_t element_count
   }
   return true;
 }
+
 // This method is used to replace node for EmbedLayerNorm case. It could be removed before formal PR.
 static NodeArg* ExtractEmbedding(Graph& graph,
                                  int64_t batch_size,
@@ -91,9 +120,9 @@ static NodeArg* CastToInt32(Graph& graph, NodeArg* input, ProviderType provider_
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
     return input;
   }
-  const TensorShapeProto* input_shape = input->Shape();
+  const ONNX_NAMESPACE::TensorShapeProto* input_shape = input->Shape();
   TypeProto input_int32;
-  input_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  input_int32.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
   auto dim0 = input_int32.mutable_tensor_type()->mutable_shape()->add_dim();
   *dim0 = input_shape->dim(0);
   auto dim1 = input_int32.mutable_tensor_type()->mutable_shape()->add_dim();
@@ -113,7 +142,7 @@ static NodeArg* CastToInt32(Graph& graph, NodeArg* input, ProviderType provider_
   to.set_name("to");
   to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
   to.set_i(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32));
-  node.AddAttribute("to", std::move(to));
+  node.AddAttributeProto(std::move(to));
 
   node.SetExecutionProviderType(provider_type);
   return &cast32;
@@ -163,7 +192,7 @@ static void CreateEmbedLayernormNode(Graph& graph,
   NodeAttributes ln_attrs = layer_norm_node.GetAttributes();
   NodeAttributes::const_iterator epsilon = ln_attrs.find("epsilon");
   if (epsilon != ln_attrs.end()) {
-    embed_layer_norm_node->AddAttribute("epsilon", epsilon->second);
+    embed_layer_norm_node->AddAttributeProto(epsilon->second);
   } else {
     embed_layer_norm_node->AddAttribute("epsilon", contrib::kDefaultEmbedLayerNormEpsilon);
   }
@@ -172,33 +201,7 @@ static void CreateEmbedLayernormNode(Graph& graph,
   embed_layer_norm_node->SetExecutionProviderType(layer_norm_node.GetExecutionProviderType());
 }
 
-TEST(GraphParser, base1) {
-  PatternType float_type(PatternTypeCategory::Float);
-  PatternGraph g(
-      {IArg("C", float_type),
-       IArg("X", float_type)},
-      {PNode("Add", {"C", "X"}, {"Y"}, "CX-Y"),
-       PNode("Exp", {"Y"}, {"Z"}, "Y-Z")});
-
-  Graph& graph = g.GetGraph();
-  print_graph(graph);
-}
-
-TEST(GraphParser, base2) {
-  PatternType float_type(PatternTypeCategory::Float);
-  PatternGraph g(
-      {IArg("C1", float_type),
-       IArg("C2", float_type),
-       IArg("X", float_type)},
-      {PNode("Exp", {"X"}, {"Y"}, "Exp"),
-       PNode("Add", {"Y", "C1"}, {"Z"}, "Add"),
-       PNode("Sub", {"Z", "C2"}, {"W"}, "Sub")});
-
-  Graph& graph = g.GetGraph();
-  print_graph(graph);
-}
-
-TEST(GraphParser, match1) {
+TEST(GraphParser, SimpleMatch1) {
   PatternType float_type(PatternTypeCategory::Float);
   PatternGraph target(
       {IArg("C1", float_type),
@@ -227,11 +230,11 @@ TEST(GraphParser, match1) {
   pattern.SetCustomConstraint(std::make_unique<CustomNodeCompareFunc>());
   Graph& target_graph = target.GetGraph();
 
-  std::vector<PNN> res;
+  PatternMatchResult res(target_graph);
   ASSERT_TRUE(pattern.TryMatch(target_graph, res, "Exp").IsOK());
 }
 
-TEST(GraphParser, match2) {
+TEST(GraphParser, SimpleMatch2) {
   PatternType float_type(PatternTypeCategory::Float);
   PatternGraph target(
       {IArg("C0", float_type),
@@ -281,12 +284,12 @@ TEST(GraphParser, match2) {
        PNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul"),
        PNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")});
 
-  std::vector<PNN> res;
   auto& target_graph = target.GetGraph();
+  PatternMatchResult res(target_graph);
   ASSERT_TRUE(pattern.TryMatch(target_graph, res, "p_rm1").IsOK());
 }
 
-TEST(GraphParser, match3) {
+TEST(GraphParser, SimpleMatch3) {
   PatternType float_type(PatternTypeCategory::Float);
   PatternType integer_type(PatternTypeCategory::Integer);
   PatternGraph target(
@@ -303,7 +306,7 @@ TEST(GraphParser, match3) {
        PNode("Add", {"P2", "P3"}, {"P4"}, "ex_p4"),
        PNode("Gather", {"Y1", "C3"}, {"Y2"}, "g_gather"),
        PNode("Unsqueeze", {"Y2", "C4"}, {"Y3"}, "g_unsqueeze"),
-       PNode("Concat", {"Y3"}, {"Y4"}, "g_concat", {""}, {}, {MakeAttribute("axis", int64_t(0))}),
+       PNode("Concat", {"Y3"}, {"Y4"}, "g_concat", {""}, {}, {ONNX_NAMESPACE::MakeAttribute("axis", int64_t(0))}),
        PNode("MatMul", {"X", "C0"}, {"Z1"}, "g_matmul"),
        PNode("Add", {"Z1", "C1"}, {"Z2"}, "g_add"),
        PNode("Reshape", {"Z2", "Y4"}, {"oup"}, "g_reshape")});
@@ -318,17 +321,17 @@ TEST(GraphParser, match3) {
       {PNode("Shape", {"X"}, {"Y1"}, "p_shape"),
        PNode("Gather", {"Y1", "C2"}, {"Y2"}, "p_gather"),
        PNode("Unsqueeze", {"Y2", "C3"}, {"Y3"}, "p_unsqueeze"),
-       PNode("Concat", {"Y3"}, {"Y4"}, "p_concat", {""}, {}, {MakeAttribute("axis", int64_t(0))}),
+       PNode("Concat", {"Y3"}, {"Y4"}, "p_concat", {""}, {}, {ONNX_NAMESPACE::MakeAttribute("axis", int64_t(0))}),
        PNode("MatMul", {"X", "C0"}, {"Z1"}, "p_matmul"),
        PNode("Add", {"Z1", "C1"}, {"Z2"}, "p_add"),
        PNode("Reshape", {"Z2", "Y4"}, {"oup"}, "p_reshape")});
 
-  std::vector<PNN> res;
   auto& target_graph = target.GetGraph();
+  PatternMatchResult res(target_graph);
   ASSERT_TRUE(pattern.TryMatch(target_graph, res).IsOK());
 }
 
-TEST(GraphParser, replace1) {
+TEST(GraphParser, SimpleReplace1) {
   PatternType float_type(PatternTypeCategory::Float);
   PatternGraph target(
       {IArg("C1", float_type),
@@ -348,12 +351,10 @@ TEST(GraphParser, replace1) {
        PNode("Sub", {"Y1", "Y2"}, {"Z"}, "pSub")});
 
   Graph& graph = target.GetGraph();
-  ASSERT_TRUE(TryReplace(graph, pattern, NodeDef("Sqrt", {}, {}, NodeAttributes(), "test123"), {{"pAdd", 0}}, {}).IsOK());
-
-  print_graph(graph);
+  ASSERT_TRUE(TryReplace(graph, pattern, PNode("Sqrt", {}, {}, "test123"), {{"pAdd", 0}}, {}, "pMul", "pSub").IsOK());
 }
 
-TEST(GraphParser, replace2) {
+TEST(GraphParser, SimpleReplace2) {
   PatternType float_type(PatternTypeCategory::Float);
   PatternGraph target(
       {IArg("C0", float_type),
@@ -404,12 +405,7 @@ TEST(GraphParser, replace2) {
        PNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")});
 
   auto& target_graph = target.GetGraph();
-  ASSERT_TRUE(TryReplace(target_graph, pattern,
-                         NodeDef("Sqrt", {}, {}, NodeAttributes(), "test123"),
-                         {{"p_rm1", 0}}, {})
-                  .IsOK());
-
-  print_graph(target_graph);
+  ASSERT_TRUE(TryReplace(target_graph, pattern, PNode("Sqrt", {}, {}, "test123"), {{"p_rm1", 0}}, {}, "p_rm1", "p_final").IsOK());
 }
 
 TEST(GraphParser, LayerNormFusionTest) {
@@ -418,7 +414,7 @@ TEST(GraphParser, LayerNormFusionTest) {
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, logging::LoggingManager::DefaultLogger()));
   Graph& graph = p_model->MainGraph();
 
-  PatternType float_type(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE);
+  PatternType float_type({ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE});
   PatternGraph pattern1(
       {IArg("C0", float_type),
        IArg("C1", float_type),
@@ -460,7 +456,7 @@ TEST(GraphParser, LayerNormFusionTest) {
        IArg("X", float_type)},
       {PNode("ReduceMean", {"X"}, {"Y"}, "p_rm1"),
        PNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1"),
-       PNode("Cast", {"Sub1"}, {"Cast"}, "p_cast", {""}, {}, {MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE})}),
+       PNode("Cast", {"Sub1"}, {"Cast"}, "p_cast", {""}, {}, {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE})}),
        PNode("Pow", {"Cast", "C0"}, {"Pow"}, "p_pow"),
        PNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2"),
        PNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1"),
@@ -472,12 +468,12 @@ TEST(GraphParser, LayerNormFusionTest) {
   PatternGraph pattern4(
       {IArg("C0", float_type),
        IArg("C1", float_type),
-       IArg("C2", float_type),
-       IArg("C3", float_type),
+       IArg("C2", float_type, 1, false),
+       IArg("C3", float_type, 1, false),
        IArg("X", float_type)},
       {PNode("ReduceMean", {"X"}, {"Y"}, "p_rm1"),
        PNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1"),
-       PNode("Cast", {"C0"}, {"Cast"}, "p_cast", {""}, {}, {MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE})}),
+       PNode("Cast", {"C0"}, {"Cast"}, "p_cast", {""}, {}, {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE})}),
        PNode("Pow", {"Cast", "Sub1"}, {"Pow"}, "p_pow"),
        PNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2"),
        PNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1"),
@@ -486,24 +482,29 @@ TEST(GraphParser, LayerNormFusionTest) {
        PNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul"),
        PNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")});
 
-  print_graph(graph);
+  class CustomArgCompareFunc : public ArgCompareFunc {
+   public:
+    bool operator()(const NodeArg* g, const IArg*, const Graph& target,
+                    const PatternGraph& /*pattern*/) const override {
+      return graph_utils::NodeArgIsConstant(target, *g) || graph_utils::IsGraphInput(target, g);
+    }
+  };
+
+  pattern2.SetCustomConstraint(std::make_unique<CustomArgCompareFunc>(), "C2").SetCustomConstraint(std::make_unique<CustomArgCompareFunc>(), "C3");
   bool match = false;
   if (!match) {
-    match = TryReplace(graph, pattern1, NodeDef("LayerNormalization", {}, {}, NodeAttributes(), "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}).IsOK();
+    match = TryReplace(graph, pattern1, PNode("LayerNormalization", {}, {}, "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}, "p_rm1", "p_final").IsOK();
   }
   if (!match) {
-    match = TryReplace(graph, pattern2, NodeDef("LayerNormalization", {}, {}, NodeAttributes(), "replaced_node"), {{"p_rm1", 0}, {"p_mul", 0}, {"p_final", 1}}, {}).IsOK();
+    match = TryReplace(graph, pattern2, PNode("LayerNormalization", {}, {}, "replaced_node"), {{"p_rm1", 0}, {"p_mul", 0}, {"p_final", 1}}, {}, "p_rm1", "p_final").IsOK();
   }
   if (!match) {
-    match = TryReplace(graph, pattern3, NodeDef("LayerNormalization", {}, {}, NodeAttributes(), "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}).IsOK();
+    match = TryReplace(graph, pattern3, PNode("LayerNormalization", {}, {}, "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}, "p_rm1", "p_final").IsOK();
   }
   if (!match) {
-    match = TryReplace(graph, pattern4, NodeDef("LayerNormalization", {}, {}, NodeAttributes(), "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}).IsOK();
+    match = TryReplace(graph, pattern4, PNode("LayerNormalization", {}, {}, "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}, "p_rm1", "p_final").IsOK();
   }
   ASSERT_TRUE(match);
-
-  std::cout << "==========================================" << std::endl;
-  print_graph(graph);
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_to_count["Div"], 0);
@@ -536,8 +537,7 @@ TEST(GraphParser, LayerNormWithCastFusionTest) {
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, logging::LoggingManager::DefaultLogger()));
   Graph& graph = p_model->MainGraph();
 
-  PatternType float_type(PatternTypeCategory::Float);
-  float_type.ResetDefault(ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE);
+  PatternType float_type({ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE});
   PatternGraph pattern1(
       {IArg("C0", float_type),
        IArg("C1", float_type),
@@ -546,7 +546,7 @@ TEST(GraphParser, LayerNormWithCastFusionTest) {
        IArg("X", float_type)},
       {PNode("ReduceMean", {"X"}, {"Y"}, "p_rm1"),
        PNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1"),
-       PNode("Cast", {"Sub1"}, {"Cast"}, "p_cast", {""}, {}, {MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE})}),
+       PNode("Cast", {"Sub1"}, {"Cast"}, "p_cast", {""}, {}, {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE})}),
        PNode("Pow", {"Cast", "C0"}, {"Pow"}, "p_pow"),
        PNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2"),
        PNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1"),
@@ -564,7 +564,7 @@ TEST(GraphParser, LayerNormWithCastFusionTest) {
        IArg("X", float_type)},
       {PNode("ReduceMean", {"X"}, {"Y"}, "p_rm1"),
        PNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1"),
-       PNode("Cast", {"C4"}, {"Cast"}, "p_cast", {""}, {}, {MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE})}),
+       PNode("Cast", {"C4"}, {"Cast"}, "p_cast", {""}, {}, {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE})}),
        PNode("Pow", {"Cast", "Sub1"}, {"Pow"}, "p_pow"),
        PNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2"),
        PNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1"),
@@ -573,22 +573,16 @@ TEST(GraphParser, LayerNormWithCastFusionTest) {
        PNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul"),
        PNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")});
 
-  print_graph(graph);
   bool match = false;
   if (!match) {
-    std::vector<PNN> res;
-    std::cout << pattern1.TryMatch(graph, res).ToString() << std::endl;
-    match = TryReplace(graph, pattern1, NodeDef("LayerNormalization", {}, {}, NodeAttributes(), "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}).IsOK();
+    std::vector<PatternMatchPair> res;
+    match = TryReplace(graph, pattern1, PNode("LayerNormalization", {}, {}, "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}, "p_rm1", "p_final").IsOK();
   }
   if (!match) {
-    std::vector<PNN> res;
-    std::cout << pattern2.TryMatch(graph, res).ToString() << std::endl;
-    match = TryReplace(graph, pattern2, NodeDef("LayerNormalization", {}, {}, NodeAttributes(), "replaced_node"), {{"p_rm1", 0}, {"p_mul", 0}, {"p_final", 1}}, {}).IsOK();
+    std::vector<PatternMatchPair> res;
+    match = TryReplace(graph, pattern2, PNode("LayerNormalization", {}, {}, "replaced_node"), {{"p_rm1", 0}, {"p_mul", 0}, {"p_final", 1}}, {}, "p_rm1", "p_final").IsOK();
   }
   ASSERT_TRUE(match);
-
-  std::cout << "==========================================" << std::endl;
-  print_graph(graph);
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Cast"] == 0);
@@ -609,34 +603,92 @@ TEST(GraphParser, NoopEliminationTest) {
 
   class CustomNodeCompareFunc : public NodeCompareFunc {
    public:
-    bool operator()(const Node* g, const PNode* p, const Graph& target,
+    bool operator()(const Node* g, const PNode*, const Graph& target,
                     const PatternGraph& /*pattern*/) const override {
-      return !(p->NameEquals("p_add")) || GraphParser::HasSingleSpeciefiedConstantValue(target, g, .0);
+      if (g->OpType() != "Add") return false;
+      bool input0_is_initializer = graph_utils::IsConstantInitializer(target, g->InputDefs()[0]->Name());
+      bool input1_is_initializer = graph_utils::IsConstantInitializer(target, g->InputDefs()[1]->Name());
+
+      // reject if both or neither inputs are initializers for now
+      if (input0_is_initializer == input1_is_initializer) {
+        return false;
+      }
+
+      const auto* initializer = graph_utils::GetConstantInitializer(target, g->InputDefs()[input0_is_initializer ? 0 : 1]->Name());
+
+      // if initializer_rank is bigger, the output is expected to be initializer_rank per broadcasting rule,
+      // but it won't happen if the case is accepted, thus reject it
+      auto initializer_rank = initializer->dims().size();
+      const auto* other_input_shape = g->InputDefs()[input0_is_initializer ? 1 : 0]->Shape();
+      if (other_input_shape == nullptr || initializer_rank > other_input_shape->dim_size()) {
+        return false;
+      }
+
+      int32_t data_type = initializer->data_type();
+      Initializer add_init(*initializer, target.ModelPath());
+      if (add_init.size() > 1) {
+        return false;
+      }
+      // handle edge case where the total size of the initializer is 0
+      if (add_init.size() == 0) {
+        return true;
+      }
+      switch (data_type) {
+        case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+          if (*add_init.data<float>() != 0.f) {
+            return false;
+          }
+          break;
+        case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+          if (math::halfToFloat(add_init.data<MLFloat16>()->val) != 0.f) {
+            return false;
+          }
+          break;
+        case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+          if (*add_init.data<double>() != static_cast<double>(0.f)) {
+            return false;
+          }
+          break;
+        case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+          if (*add_init.data<int32_t>() != static_cast<int32_t>(0)) {
+            return false;
+          }
+          break;
+        case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+          if (*add_init.data<int64_t>() != static_cast<int64_t>(0)) {
+            return false;
+          }
+          break;
+        default:
+          return false;
+      }
+
+      // reject node output is graph output for now
+      if (!graph_utils::CanRemoveNode(target, *g, logging::LoggingManager::DefaultLogger())) {
+        return false;
+      }
+
+      return true;
     }
   };
 
-  pattern1.SetCustomConstraint(std::make_unique<CustomNodeCompareFunc>());
+  pattern1.SetCustomConstraint(std::make_unique<CustomNodeCompareFunc>(), "p_add");
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Add"] == 4);
+  ASSERT_TRUE(op_to_count["Add"] == 5);
 
-  print_graph(graph);
   bool match = true;
   while (match) {
-    std::vector<PNN> res;
+    PatternMatchResult res(graph);
     auto st = pattern1.TryMatch(graph, res);
     match = st.IsOK();
     std::cout << st.ToString() << std::endl;
-    for (auto [idx, pnode] : res) {
-      auto gnode = graph.GetNode(idx);
+    for (auto [name, pair] : res.GetMatchMap()) {
+      auto gnode = graph.GetNode(pair.first);
       if (graph_utils::CanRemoveNode(graph, *gnode, logging::LoggingManager::DefaultLogger())) {
         ASSERT_TRUE(graph_utils::RemoveNode(graph, *gnode));
       }
     }
-    print_graph(graph);
   }
-
-  std::cout << "==========================================" << std::endl;
-  print_graph(graph);
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Add"] == 1);
@@ -650,7 +702,7 @@ TEST(GraphParser, ReshapeFusionTest) {
 
   PatternType float_type(PatternTypeCategory::Float);
   PatternType integer_type(PatternTypeCategory::Integer);
-  PatternGraph pattern1(
+  PatternGraph pattern(
       {IArg("X", float_type),
        IArg("C0", integer_type),
        IArg("C1", float_type),
@@ -663,16 +715,24 @@ TEST(GraphParser, ReshapeFusionTest) {
        PNode("Shape", {"C1"}, {"Shape2"}, "p_shape2"),
        PNode("Gather", {"Shape2", "C2"}, {"Gather2"}, "p_gather2"),
        PNode("Unsqueeze", {"Gather2", "C4"}, {"Unsqueeze2"}, "p_unsqueeze2"),
-       PNode("Concat", {"Unsqueeze1", "Unsqueeze2"}, {"Concat"}, "p_concat", {""}, {}, {MakeAttribute("axis", int64_t(0))}),
+       PNode("Concat", {"Unsqueeze1", "Unsqueeze2"}, {"Concat"}, "p_concat", {""}, {}, {ONNX_NAMESPACE::MakeAttribute("axis", int64_t(0))}),
        PNode("Reshape", {"X", "Concat"}, {"Y"}, "p_reshape")});
 
   class CustomNodeCompareFunc : public NodeCompareFunc {
    public:
     bool operator()(const Node* g, const PNode* p, const Graph& target,
                     const PatternGraph& /*pattern*/) const override {
+      auto GetConstantInitializerCount = [](const Graph& graph, const Node* node) {
+        int res = 0;
+        for (size_t i = 0; i < node->InputDefs().size(); i++) {
+          res += graph_utils::IsConstantInitializer(graph, node->InputDefs()[i]->Name());
+        }
+        return res;
+      };
+
       if (!p->OpTypeEquals(g->OpType())) return false;
       if (p->NameEquals("p_concat")) {
-        return GraphParser::GetConstantInitializerCount(target, g) == 2;
+        return GetConstantInitializerCount(target, g) == 2;
       } else if (p->NameEquals("p_gather1") && !optimizer_utils::IsInitializerWithExpectedValue(target, *(g->InputDefs()[1]), int64_t(0), false)) {
         return false;
       } else if (p->NameEquals("p_gather2") && !optimizer_utils::IsInitializerWithExpectedValue(target, *(g->InputDefs()[1]), int64_t(1), false)) {
@@ -687,22 +747,17 @@ TEST(GraphParser, ReshapeFusionTest) {
     }
   };
 
-  pattern1.SetCustomConstraint(std::make_unique<CustomNodeCompareFunc>());
+  pattern.SetCustomConstraint(std::make_unique<CustomNodeCompareFunc>());
 
-  print_graph(graph);
-  std::vector<PNN> res;
-  auto st = pattern1.TryMatch(graph, res);
-  bool match = st.IsOK();
-  std::cout << st.ToString() << std::endl;
-  print_graph(graph);
-  ASSERT_TRUE(match);
+  PatternMatchResult res(graph);
+  ASSERT_TRUE(pattern.TryMatch(graph, res).IsOK());
 
   // replace
   InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
-  auto x = GraphParser::GetNodeArgWithName(graph, res, "p_reshape", 0);
+  auto x = res.GetTargetNodeWithName("p_reshape")->MutableInputDefs()[0];
   std::vector<NodeArg*> input_args({x});
   InlinedVector<int64_t> shape_value;
-  auto concat_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_concat");
+  auto concat_node = res.GetTargetNodeWithName("p_concat");
   const auto* shape_def = concat_node->OutputDefs()[0];
   for (auto def : concat_node->InputDefs()) {
     if (graph_utils::IsInitializer(graph, def->Name(), false)) {
@@ -718,14 +773,18 @@ TEST(GraphParser, ReshapeFusionTest) {
   shape_initializer_proto.set_raw_data(shape_value.data(), shape_value.size() * sizeof(int64_t));
   auto& new_node_arg = graph_utils::AddInitializer(graph, shape_initializer_proto);
   input_args.push_back(&new_node_arg);
-  for (auto iter = res.begin(); iter != res.end(); iter++) {
-    nodes_to_remove.push_back(*graph.GetNode(iter->first));
+  nodes_to_remove.push_back(*res.GetTargetNodeWithName("p_shape1"));
+  auto mapping = res.GetMatchMap();
+  for (auto iter = mapping.begin(); iter != mapping.end(); iter++) {
+    if (iter->first != "p_shape1" && iter->first != "p_reshape") {
+      nodes_to_remove.push_back(*graph.GetNode(iter->second.first));
+    }
   }
+  nodes_to_remove.push_back(*res.GetTargetNodeWithName("p_reshape"));
   Node& replace_node = graph.AddNode("replace", "Reshape", "", input_args, {}, {}, "");
   graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, replace_node);
 
   // verify
-  std::cout << "==========================================" << std::endl;
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Shape"] == 0);
   ASSERT_TRUE(op_to_count["Gather"] == 0);
@@ -781,7 +840,7 @@ TEST(GraphParser, GemmActivationFusionTest1) {
   Graph& graph = p_model->MainGraph();
 
   PatternType float_type(PatternTypeCategory::Float);
-  PatternGraph pattern1(
+  PatternGraph pattern(
       {IArg("X", float_type, {1, 1}),
        IArg("C0", float_type, {1, 1}),
        IArg("C1", float_type, {1, 1})},
@@ -795,22 +854,15 @@ TEST(GraphParser, GemmActivationFusionTest1) {
       return IsFusableActivation(*g);
     }
   };
-  pattern1.SetCustomConstraint(std::make_unique<CustomNodeCompareFunc>(), "p_active");
+  pattern.SetCustomConstraint(std::make_unique<CustomNodeCompareFunc>(), "p_active");
 
-  print_graph(graph);
-  std::vector<PNN> res;
-  auto st = pattern1.TryMatch(graph, res);
-  bool match = st.IsOK();
-  std::cout << st.ToString() << std::endl;
-  ASSERT_TRUE(match);
+  PatternMatchResult res(graph);
+  ASSERT_TRUE(pattern.TryMatch(graph, res).IsOK());
 
   // replace
-  ASSERT_EQ(TryReplace(graph, pattern1, NodeDef("FusedGemm", {}, {}, NodeAttributes(), "replaced_node"), {{"p_gemm", 0}, {"p_gemm", 1}, {"p_gemm", 2}}, {}).ToString(), "OK");
-  print_graph(graph);
+  ASSERT_EQ(TryReplace(graph, pattern, PNode("FusedGemm", {}, {}, "replaced_node"), {{"p_gemm", 0}, {"p_gemm", 1}, {"p_gemm", 2}}, {}, "p_gemm", "p_active").ToString(), "OK");
 
   // verify
-  std::cout
-      << "==========================================" << std::endl;
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Relu"] == 0);
 }
@@ -822,7 +874,7 @@ TEST(GraphParser, GemmActivationFusionTest2) {
   Graph& graph = p_model->MainGraph();
 
   PatternType float_type(PatternTypeCategory::Float);
-  PatternGraph pattern1(
+  PatternGraph pattern(
       {IArg("X", float_type, {1, 1}),
        IArg("C0", float_type, {1, 1}),
        IArg("C1", float_type, {1, 1})},
@@ -836,22 +888,15 @@ TEST(GraphParser, GemmActivationFusionTest2) {
       return IsFusableActivation(*g);
     }
   };
-  pattern1.SetCustomConstraint(std::make_unique<CustomNodeCompareFunc>(), "p_active");
+  pattern.SetCustomConstraint(std::make_unique<CustomNodeCompareFunc>(), "p_active");
 
-  print_graph(graph);
-  std::vector<PNN> res;
-  auto st = pattern1.TryMatch(graph, res);
-  bool match = st.IsOK();
-  std::cout << st.ToString() << std::endl;
-  ASSERT_TRUE(match);
+  PatternMatchResult res(graph);
+  ASSERT_TRUE(pattern.TryMatch(graph, res).IsOK());
 
   // replace
-  ASSERT_EQ(TryReplace(graph, pattern1, NodeDef(OpDef("FusedGemm", "com.microsoft"), {}, {}, NodeAttributes(), "replaced_node"), {{"p_gemm", 0}, {"p_gemm", 1}, {"p_gemm", 2}}, {}).ToString(), "OK");
-  print_graph(graph);
+  ASSERT_EQ(TryReplace(graph, pattern, PNode("FusedGemm", {}, {}, "replaced_node", {"com.microsoft"}), {{"p_gemm", 0}, {"p_gemm", 1}, {"p_gemm", 2}}, {}, "p_gemm", "p_active").ToString(), "OK");
 
   // verify
-  std::cout
-      << "==========================================" << std::endl;
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["LeakyRelu"] == 0);
   ASSERT_TRUE(op_to_count["Gemm"] == 0);
@@ -881,22 +926,18 @@ TEST(GraphParser, EmbedLayerNormFusionTest1) {
        PNode("Add", {"Add1", "Gather3"}, {"Add2"}, "p_add2"),
        PNode("LayerNormalization", {"Add2", "C3"}, {"LayerNorm"}, "p_layernorm"),
        PNode("ReduceSum", {"X"}, {"ReduceSum"}, "p_reducesum"),
-       PNode("Attention", {"ReduceSum", "LayerNorm", "C5"}, {"Y"}, "p_attention", {"com.microsoft"}, {1}, {MakeAttribute("num_heads", int64_t{1})})});
-  print_graph(graph);
-  std::vector<PNN> res;
-  auto st = pattern.TryMatch(graph, res);
-  bool match = st.IsOK();
-  std::cout << st.ToString() << std::endl;
-  ASSERT_TRUE(match);
+       PNode("Attention", {"ReduceSum", "LayerNorm", "C5"}, {"Y"}, "p_attention", {"com.microsoft"}, {1}, {ONNX_NAMESPACE::MakeAttribute("num_heads", int64_t{1})})});
+  PatternMatchResult res(graph);
+  ASSERT_TRUE(pattern.TryMatch(graph, res).IsOK());
 
   // replace
   std::vector<NodeIndex> nodes_to_remove;
-  auto layer_norm_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_layernorm");
-  auto layer_norm_add_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_add2");
-  auto segment_gather_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_gather3");
+  auto layer_norm_node = res.GetTargetNodeWithName("p_layernorm");
+  auto layer_norm_add_node = res.GetTargetNodeWithName("p_add2");
+  auto segment_gather_node = res.GetTargetNodeWithName("p_gather3");
   NodeArg* segment_embedding = segment_gather_node->MutableInputDefs()[0];
-  auto add_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_add1");
-  auto word_gather_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_gather1");
+  auto add_node = res.GetTargetNodeWithName("p_add1");
+  auto word_gather_node = res.GetTargetNodeWithName("p_gather1");
   NodeArg* word_embedding = word_gather_node->MutableInputDefs()[0];
   NodeArg* input_ids = word_gather_node->MutableInputDefs()[1];
   NodeArg* segment_ids = segment_gather_node->MutableInputDefs()[1];
@@ -919,7 +960,7 @@ TEST(GraphParser, EmbedLayerNormFusionTest1) {
     ASSERT_TRUE(graph.GetInitializedTensor(add_input_name, position_embed_tensor));
     position_embedding = ExtractEmbedding(graph, batch_size, sequence_length, hidden_size, position_embed_tensor);
   } else {
-    auto position_gather_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_gather2");
+    auto position_gather_node = res.GetTargetNodeWithName("p_gather2");
     position_embedding = position_gather_node->MutableInputDefs()[0];
     nodes_to_remove.push_back(position_gather_node->Index());
   }
@@ -972,7 +1013,7 @@ TEST(GraphParser, EmbedLayerNormFusionTest2) {
        PNode("NonZero", {"COS"}, {"NonZero"}, "p_nonzero"),
        PNode("Transpose", {"NonZero"}, {"Transpose"}, "p_transpose", {}, {1}),
        PNode("Squeeze", {"Transpose", "C0"}, {"Squeeze"}, "p_squeeze", {}, {1}),
-       PNode("Cast", {"Squeeze"}, {"Cast1"}, "p_cast1", {""}, {}, {MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT})}),
+       PNode("Cast", {"Squeeze"}, {"Cast1"}, "p_cast1", {""}, {}, {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT})}),
        PNode("Unsqueeze", {"Cast1", "C0"}, {"Unsqueeze2"}, "p_unsqueeze2", {}, {1}),
        PNode("Shape", {"X"}, {"Shape2"}, "p_shape2", {}, {1}),
        PNode("Expand", {"Unsqueeze2", "Shape2"}, {"Expand"}, "p_expand", {}, {8}),
@@ -983,7 +1024,7 @@ TEST(GraphParser, EmbedLayerNormFusionTest2) {
        PNode("Add", {"Add1", "Gather4"}, {"Add2"}, "p_add2"),
        PNode("LayerNormalization", {"Add2", "C1"}, {"LayerNorm"}, "p_layernorm"),
        PNode("ReduceSum", {"X"}, {"ReduceSum"}, "p_reducesum", {}, {1}),
-       PNode("Attention", {"ReduceSum", "LayerNorm", "C1"}, {"Y"}, "p_attention", {"com.microsoft"}, {1}, {MakeAttribute("num_heads", int64_t{1})})});
+       PNode("Attention", {"ReduceSum", "LayerNorm", "C1"}, {"Y"}, "p_attention", {"com.microsoft"}, {1}, {ONNX_NAMESPACE::MakeAttribute("num_heads", int64_t{1})})});
 
   class CustomNodeCompareFunc : public NodeCompareFunc {
    public:
@@ -994,21 +1035,17 @@ TEST(GraphParser, EmbedLayerNormFusionTest2) {
   };
   pattern.SetCustomConstraint(std::make_unique<CustomNodeCompareFunc>(), "p_cos");
 
-  print_graph(graph);
-  std::vector<PNN> res;
-  auto st = pattern.TryMatch(graph, res);
-  bool match = st.IsOK();
-  std::cout << st.ToString() << std::endl;
-  ASSERT_TRUE(match);
+  PatternMatchResult res(graph);
+  ASSERT_TRUE(pattern.TryMatch(graph, res).IsOK());
 
   // replace
   std::vector<NodeIndex> nodes_to_remove;
-  auto layer_norm_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_layernorm");
-  auto layer_norm_add_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_add2");
-  auto segment_gather_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_gather4");
+  auto layer_norm_node = res.GetTargetNodeWithName("p_layernorm");
+  auto layer_norm_add_node = res.GetTargetNodeWithName("p_add2");
+  auto segment_gather_node = res.GetTargetNodeWithName("p_gather4");
   NodeArg* segment_embedding = segment_gather_node->MutableInputDefs()[0];
-  auto add_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_add1");
-  auto word_gather_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_gather3");
+  auto add_node = res.GetTargetNodeWithName("p_add1");
+  auto word_gather_node = res.GetTargetNodeWithName("p_gather3");
   NodeArg* word_embedding = word_gather_node->MutableInputDefs()[0];
   NodeArg* input_ids = word_gather_node->MutableInputDefs()[1];
   NodeArg* segment_ids = segment_gather_node->MutableInputDefs()[1];
@@ -1031,7 +1068,7 @@ TEST(GraphParser, EmbedLayerNormFusionTest2) {
     ASSERT_TRUE(graph.GetInitializedTensor(add_input_name, position_embed_tensor));
     position_embedding = ExtractEmbedding(graph, batch_size, sequence_length, hidden_size, position_embed_tensor);
   } else {
-    auto position_gather_node = GraphParser::GetNodeOfPatternNodeName(graph, res, "p_gather2");
+    auto position_gather_node = res.GetTargetNodeWithName("p_gather2");
     position_embedding = position_gather_node->MutableInputDefs()[0];
     nodes_to_remove.push_back(position_gather_node->Index());
   }
@@ -1077,14 +1114,14 @@ TEST(GraphParser, EmbedLayerNormFusionTest3) {
        IArg("C1", PatternType(PatternTypeCategory::Float))},
       {PNode("Shape", {"X"}, {"Shape1"}, "p_shape1"),
        PNode("Gather", {"Shape1", "C0"}, {"Gather1"}, "p_gather1"),
-       PNode("Cast", {"Gather1"}, {"Cast1"}, "p_cast1", {""}, {}, {MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT})}),
+       PNode("Cast", {"Gather1"}, {"Cast1"}, "p_cast1", {""}, {}, {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT})}),
        PNode("Range", {"Cast1", "Cast1", "Cast1"}, {"Range"}, "p_range"),
        PNode("Unsqueeze", {"Range", "C0"}, {"Unsqueeze1"}, "p_unsqueeze1"),
        PNode("Add", {"Gather1", "C0"}, {"Unsqueeze2"}, "p_unsqueeze2"),
        PNode("Shape", {"X"}, {"Shape2"}, "p_shape2"),
        PNode("Gather", {"Shape2", "C0"}, {"Gather2"}, "p_gather2"),
        PNode("Add", {"Gather2", "C0"}, {"Unsqueeze3"}, "p_unsqueeze3"),
-       PNode("Concat", {"Unsqueeze2", "Unsqueeze3"}, {"Concat"}, "p_concat", {}, {}, {MakeAttribute("axis", int64_t(0))}),
+       PNode("Concat", {"Unsqueeze2", "Unsqueeze3"}, {"Concat"}, "p_concat", {}, {}, {ONNX_NAMESPACE::MakeAttribute("axis", int64_t(0))}),
        PNode("Expand", {"Unsqueeze1", "Concat"}, {"Expand"}, "p_expand"),
        PNode("Gather", {"Expand", "C0"}, {"Gather3"}, "p_gather3"),
        PNode("Gather", {"X", "C0"}, {"Gather4"}, "p_gather4"),
@@ -1093,7 +1130,7 @@ TEST(GraphParser, EmbedLayerNormFusionTest3) {
        PNode("Add", {"Add1", "Gather5"}, {"Add2"}, "p_add2"),
        PNode("LayerNormalization", {"Add2", "C1"}, {"LayerNorm"}, "p_layernorm"),
        PNode("ReduceSum", {"X"}, {"ReduceSum"}, "p_reducesum"),
-       PNode("Attention", {"ReduceSum", "LayerNorm", "C1"}, {"Attention"}, "p_attention", {"com.microsoft"}, {}, {MakeAttribute("num_heads", int64_t{1})})});
+       PNode("Attention", {"ReduceSum", "LayerNorm", "C1"}, {"Attention"}, "p_attention", {"com.microsoft"}, {}, {ONNX_NAMESPACE::MakeAttribute("num_heads", int64_t{1})})});
 
   class CustomNodeCompareFunc : public NodeCompareFunc {
    public:
@@ -1105,12 +1142,8 @@ TEST(GraphParser, EmbedLayerNormFusionTest3) {
   pattern.SetCustomConstraint(std::make_unique<CustomNodeCompareFunc>(), "p_unsqueeze2");
   pattern.SetCustomConstraint(std::make_unique<CustomNodeCompareFunc>(), "p_unsqueeze3");
 
-  print_graph(graph);
-  std::vector<PNN> res;
-  auto st = pattern.TryMatch(graph, res);
-  bool match = st.IsOK();
-  std::cout << st.ToString() << std::endl;
-  ASSERT_TRUE(match);
+  PatternMatchResult res(graph);
+  ASSERT_TRUE(pattern.TryMatch(graph, res).IsOK());
 }
 
 TEST(GraphParser, AttentionFusionInt32Test) {
@@ -1147,14 +1180,8 @@ TEST(GraphParser, AttentionFusionInt32Test) {
        PNode("Add", {"Matmul", "C1"}, {"Add1"}, "p_add1"),
        PNode("Add", {"Add1", "LayerNorm"}, {"final"}, "p_add2")});
 
-  print_graph(graph);
-  std::vector<PNN> res;
-  auto st = pattern.TryMatch(graph, res);
-  bool match = st.IsOK();
-  std::cout << st.ToString() << std::endl;
-  ASSERT_TRUE(match);
-
-  // replace
+  PatternMatchResult res(graph);
+  ASSERT_TRUE(pattern.TryMatch(graph, res).IsOK());
 }
 
 TEST(GraphParser, FastGeluWithBiasFusionTest) {
@@ -1180,35 +1207,32 @@ TEST(GraphParser, FastGeluWithBiasFusionTest) {
        PNode("Mul", {"Mul5", "Add3"}, {"Mul6"}, "p_mul6"),
        PNode("Identity", {"Mul6"}, {"Identity2"}, "p_identity2")});
 
-  print_graph(graph);
-  std::vector<PNN> res;
-  auto st = pattern.TryMatch(graph, res);
-  bool match = st.IsOK();
-  std::cout << st.ToString() << std::endl;
-  ASSERT_TRUE(match);
+  PatternMatchResult res(graph);
+  ASSERT_TRUE(pattern.TryMatch(graph, res).IsOK());
+}
 
-  // // replace
-  // InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
-  // std::vector<NodeArg*> input_args, output_args;
-  // for (auto [idx, node] : res) {
-  //   if (node->OpType() != "Identity") {
-  //     nodes_to_remove.push_back(*graph.GetNode(idx));
-  //   }
-  //   if (node->Name() == "p_add1") {
-  //     input_args.push_back(const_cast<Node*>(node)->MutableInputDefs()[0]);
-  //   } else if (node->Name() == "p_mul6") {
-  //     output_args.push_back(const_cast<Node*>(node)->MutableOutputDefs()[0]);
-  //   }
-  // }
-  // graph.AddNode("ReplaceNode", "FastGelu", "", input_args, output_args, {}, "");
-  // for (auto& node : nodes_to_remove) {
-  //   graph_utils::RemoveNodesWithOneOutputBottomUp(graph, node);
-  // }
-  // std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  // ASSERT_TRUE(op_to_count["Add"] == 0);
-  // ASSERT_TRUE(op_to_count["Tanh"] == 0);
-  // ASSERT_TRUE(op_to_count["Mul"] == 0);
-  // ASSERT_TRUE(op_to_count["com.microsoft.FastGelu"] == 1);
+TEST(GraphParser, FastGeluWithBiasFusionTestPart1) {
+  auto model_uri = MODEL_FOLDER "fusion/fast_gelu_with_bias.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, logging::LoggingManager::DefaultLogger()));
+  Graph& graph = p_model->MainGraph();
+
+  PatternGraph pattern(
+      {IArg("X", PatternType(PatternTypeCategory::Float)),
+       IArg("C0", PatternType(PatternTypeCategory::Integer)),
+       IArg("C1", PatternType(PatternTypeCategory::Float))},
+      {PNode("Add", {"C1", "C1"}, {"Add1"}, "p_add1"),
+       PNode("Mul", {"Add1", "C1"}, {"Mul1"}, "p_mul1"),
+       PNode("Mul", {"Add1", "Mul1"}, {"Mul2"}, "p_mul2"),
+       PNode("Add", {"Mul2", "C1"}, {"Add2"}, "p_add2"),
+       PNode("Mul", {"Add2", "C1"}, {"Mul4"}, "p_mul4"),
+       PNode("Tanh", {"Mul4"}, {"Tanh"}, "p_tanh"),
+       PNode("Add", {"Tanh", "C1"}, {"Add3"}, "p_add3"),
+       PNode("Mul", {"Add1", "C1"}, {"Mul5"}, "p_mul5"),
+       PNode("Mul", {"Mul5", "Add3"}, {"Mul6"}, "p_mul6")});
+
+  PatternMatchResult res(graph);
+  ASSERT_TRUE(pattern.TryMatch(graph, res).IsOK());
 }
 
 }  // namespace test
