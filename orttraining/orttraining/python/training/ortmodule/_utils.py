@@ -67,7 +67,7 @@ def _ortvalues_to_torch_tensor(ortvalues, device):
             raise AttributeError("onnxruntime is missing to_aten_ort_device_tensor needed to support device == 'ort'.")
         return tuple(C.to_aten_ort_device_tensor(ov) for ov in ortvalues)
 
-    if not isinstance(ortvalues, OrtValueVector):
+    if not isinstance(ortvalues, C.OrtValueVector):
         raise TypeError("ortvalues must be an instance of OrtValueVector not %r." % type(ortvalues))
 
     res = ortvalues.to_dlpacks(_from_dlpack)
