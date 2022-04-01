@@ -662,7 +662,7 @@ class Graph {
   /** Returns the mutable parent graph if this is a subgraph */
   Graph* MutableParentGraph() { return parent_graph_; }
 
-  /** */
+  /** Returns the strict_shape_type_inference that was passed into the constructor. */
   bool StrictShapeTypeInference() const { return strict_shape_type_inference_; }
 
 #if !defined(ORT_MINIMAL_BUILD)

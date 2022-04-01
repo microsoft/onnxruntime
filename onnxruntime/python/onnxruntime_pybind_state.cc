@@ -1226,7 +1226,11 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             // This is no different than the native APIs
             const OrtValue* ml_value = ml_value_pyobject.attr(PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR).cast<OrtValue*>();
             ORT_THROW_IF_ERROR(options->AddInitializer(name, ml_value));
-          });
+          })
+      .def_readwrite("strict_shape_type_inference", &PySessionOptions::strict_shape_type_inference,
+                     R"pbdoc(If True, all inconsistencies encountered during shape and type inference
+will result in failures. Else, in some cases warnings will be logged
+but processing will continue. Defaults to False.)pbdoc");
 
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
@@ -1249,7 +1253,7 @@ RunOptions instance. The individual calls will exit gracefully and return an err
       .def(
           "add_run_config_entry",
           [](RunOptions* options, const char* config_key, const char* config_value) -> void {
-            //config_key and config_value will be copied
+            // config_key and config_value will be copied
             const Status status = options->config_options.AddConfigEntry(config_key, config_value);
             if (!status.IsOK())
               throw std::runtime_error(status.ErrorMessage());
