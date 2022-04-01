@@ -13,7 +13,7 @@
 #include "core/providers/opencl/opencl_execution_provider.h"
 #include "core/providers/opencl/opencl_program_manager.h"
 #include "core/providers/opencl/nn/conv_winograd_helper.h"
-
+#include "contrib_ops/cpu/fused_activation.h"
 namespace {
 #define CONTENT_NAME generic_conv_kernel_src
 #include "opencl_generated/nn/kernels/conv_image2d_generic.cl.inc"
@@ -43,53 +43,10 @@ namespace opencl {
 
 // TODO: This is shared across C++ code and opencl kernel code
 // unify them in a shared header
-enum ActivationKind {
-  ActivationKind_None = 0,
-  ActivationKind_ReLU = 1,
-  ActivationKind_Clip = 5,
-};
-
+typedef MLAS_ACTIVATION_KIND ActivationKind;
 struct KernelUnitParam {
   std::vector<uint32_t> global_work_size = {};
   std::vector<uint32_t> local_work_size = {};
-};
-
-struct FusedConvAct {
-  ActivationKind kind;
-  float param0;
-  float param1;
-
-  FusedConvAct()
-      : kind{ActivationKind_None},
-        param0{std::numeric_limits<float>::quiet_NaN()},
-        param1{std::numeric_limits<float>::quiet_NaN()} {}
-
-  Status LoadInfo(const OpKernelInfo& info) {
-    std::string activation_type;
-    info.GetAttrOrDefault<std::string>("activation", &activation_type, "None");
-    size_t activation_params_count = 0;
-    if (activation_type == "None") {
-      kind = ActivationKind_None;
-    } else if (activation_type == "Relu") {
-      kind = ActivationKind_ReLU;
-    } else if (activation_type == "Clip") {
-      kind = ActivationKind_Clip;
-      activation_params_count = 2;
-    } else {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "unimplemented activation: " + activation_type);
-    }
-
-    std::vector<float> activation_params = info.GetAttrsOrDefault<float>("activation_params");
-    ORT_RETURN_IF(activation_params.size() < activation_params_count, "insufficient size of activation_params");
-    if (activation_params_count >= 1) {
-      param0 = activation_params[0];
-    }
-    if (activation_params_count >= 2) {
-      param1 = activation_params[1];
-    }
-
-    return Status::OK();
-  }
 };
 
 // local size 2d calculate, special for conv default.
@@ -145,7 +102,7 @@ enum class ConvKind : uint8_t {
 class Conv : public OpenCLKernel {
  public:
   explicit Conv(const OpKernelInfo& info) : OpenCLKernel(info), attrs_{info} {
-    ORT_THROW_IF_ERROR(act_info_.LoadInfo(info));
+    ORT_ENFORCE(GetFusedActivationAttr(info, act_info_).IsOK());
     auto status = InitConvKind();
     if (!status.IsOK()) {
       conv_kind_ = ConvKind::Generic;
@@ -204,8 +161,12 @@ class Conv : public OpenCLKernel {
   Status Compute(OpKernelContext* context) const override {
     ZoneScopedN("Conv::Compute");
     VLOG_CL_NODE();
+
+    size_t num_inputs = OpKernel::Node().InputDefs().size();
     const Tensor* X = context->Input<Tensor>(0);
-    const Tensor* B = context->InputCount() >= 2 ? context->Input<Tensor>(2) : nullptr;
+    //const Tensor* W =packed_weight_;
+    const Tensor* B = num_inputs >= 3 ? context->Input<Tensor>(2) : nullptr;
+    const Tensor* Sum = num_inputs >= 4 ? context->Input<Tensor>(3) : nullptr;
 
     ORT_RETURN_IF_ERROR(attrs_.ValidateInputShape(X->Shape(), W_shape_));
     auto N = X->Shape()[0];
@@ -246,11 +207,11 @@ class Conv : public OpenCLKernel {
     if (rank == 2) {
       switch (conv_kind_) {
         case ConvKind::Winograd:
-          return WinogradConv2D(X, B, Y, P);
+          return WinogradConv2D(X, B, Sum, Y, P);
         case ConvKind::Depthwise:
-          return DepthwiseConv2D(X, B, Y, K, S, P, D, attrs_.group);
+          return DepthwiseConv2D(X, B, Sum, Y, K, S, P, D, attrs_.group);
         case ConvKind::Generic:
-          return Conv2D(X, B, Y, K, S, P, D, attrs_.group);
+          return Conv2D(X, B, Sum, Y, K, S, P, D, attrs_.group);
       }
     }
 
@@ -397,6 +358,7 @@ class Conv : public OpenCLKernel {
 
   Status DepthwiseConv2D(const Tensor* X,
                          const Tensor* B,
+                         const Tensor* Sum,
                          Tensor* Y,
                          const TensorShapeVector& K,
                          const TensorShapeVector& S,
@@ -427,15 +389,16 @@ class Conv : public OpenCLKernel {
           KernelLauncher{GetKernel(kernel_name::DepthwiseConv2DS1)}
               .SetArg<cl_int>(gsx)
               .SetArg<cl_int>(gsy)
-              .SetImage2Ds(*X, static_cast<cl_mem>(packed_weight_.get()), (B ? *B : *X), *Y)
+              .SetImage2Ds(*X, static_cast<cl_mem>(packed_weight_.get()), (B ? *B : *X), (Sum ? *Sum : *X), *Y)
               .SetInt2(W_in, H_in)
               .SetInt2(W_out, H_out)
               .SetInt2(K[0], K[1])
               .SetInt2(P[0], P[1])
               .SetArg<cl_int>(B != nullptr)
-              .SetArg<cl_int>(act_info_.kind)
-              .SetArg<cl_float>(act_info_.param0)
-              .SetArg<cl_float>(act_info_.param1)
+              .SetArg<cl_int>(Sum != nullptr)
+              .SetArg<cl_int>(act_info_.ActivationKind)
+              .SetArg<cl_float>(act_info_.Parameters.Values[0])
+              .SetArg<cl_float>(act_info_.Parameters.Values[1])
               .Launch(*exec_, {gsx, gsy}));
     } else {
       ZoneScopedN("DepthwiseConv2D (kernel launch)");
@@ -443,7 +406,7 @@ class Conv : public OpenCLKernel {
           KernelLauncher{GetKernel(kernel_name::DepthwiseConv2D)}
               .SetArg<cl_int>(gsx)
               .SetArg<cl_int>(gsy)
-              .SetImage2Ds(*X, static_cast<cl_mem>(packed_weight_.get()), (B ? *B : *X), *Y)
+              .SetImage2Ds(*X, static_cast<cl_mem>(packed_weight_.get()), (B ? *B : *X), (Sum ? *Sum : *X), *Y)
               .SetInt2(W_in, H_in)
               .SetInt2(W_out, H_out)
               .SetInt2(K[0], K[1])
@@ -451,9 +414,10 @@ class Conv : public OpenCLKernel {
               .SetInt2(P[0], P[1])
               .SetInt2(D[0], D[1])
               .SetArg<cl_int>(B != nullptr)
-              .SetArg<cl_int>(act_info_.kind)
-              .SetArg<cl_float>(act_info_.param0)
-              .SetArg<cl_float>(act_info_.param1)
+              .SetArg<cl_int>(Sum != nullptr)
+              .SetArg<cl_int>(act_info_.ActivationKind)
+              .SetArg<cl_float>(act_info_.Parameters.Values[0])
+              .SetArg<cl_float>(act_info_.Parameters.Values[1])
               .Launch(*exec_, {gsx, gsy}));
     }
 
@@ -462,6 +426,7 @@ class Conv : public OpenCLKernel {
 
   Status WinogradConv2D(const Tensor* X,
                         const Tensor* B,
+                        const Tensor* Sum,
                         Tensor* Y,
                         const ConvAttributes::ConvPadVector& P) const {
     ZoneScopedN("WinogradConv2D");
@@ -515,18 +480,22 @@ class Conv : public OpenCLKernel {
     ORT_RETURN_IF_ERROR(KernelLauncher{GetKernel(kernel_name::TransformFromMatrixM)}
                             .SetArg<cl_int>(winokernel[2].global_work_size[0])
                             .SetArg<cl_int>(winokernel[2].global_work_size[1])
-                            .SetImage2Ds(ocl_m_.get(), (B ? *B : *X), *Y)
+                            .SetImage2Ds(ocl_m_.get(), (B ? *B : *X), (Sum ? *Sum : *X), *Y)
                             .SetArg<cl_int>(round_up_ouptut_width)
                             .SetArg<cl_int>(round_up_output_height)
                             .SetArg<cl_int>(output_width)
                             .SetArg<cl_int>(output_height)
-                            .SetArg<cl_int>(act_info_.kind)
+                            .SetArg<cl_int>(act_info_.ActivationKind)
+                            .SetArg<cl_float>(act_info_.Parameters.Values[0])
+                            .SetArg<cl_float>(act_info_.Parameters.Values[1])
                             .SetArg<cl_int>(B != nullptr)
+                            .SetArg<cl_int>(Sum != nullptr)
                             .Launch(*exec_, {winokernel[2].global_work_size[0], winokernel[2].global_work_size[1]}));
     return Status::OK();
   }
   Status Conv2D(const Tensor* X,
                 const Tensor* B,
+                const Tensor* Sum,
                 Tensor* Y,
                 const TensorShapeVector& K,
                 const TensorShapeVector& S,
@@ -559,14 +528,15 @@ class Conv : public OpenCLKernel {
           KernelLauncher{GetKernel(kernel_name::Conv2DK1S1)}
               .SetArg<cl_int>(gsx)
               .SetArg<cl_int>(gsy)
-              .SetImage2Ds(*X, static_cast<cl_mem>(packed_weight_.get()), (B ? *B : *X), *Y)
+              .SetImage2Ds(*X, static_cast<cl_mem>(packed_weight_.get()), (B ? *B : *X), (Sum ? *Sum : *X), * Y)
               .SetInt2(W_in, H_in)
               .SetArg<cl_int>(CeilDiv(C_in, 4))
               .SetArg<cl_int>(CeilDiv(W_out, 4))
               .SetArg<cl_int>(B != nullptr)
-              .SetArg<cl_int>(act_info_.kind)
-              .SetArg<cl_float>(act_info_.param0)
-              .SetArg<cl_float>(act_info_.param1)
+              .SetArg<cl_int>(Sum != nullptr)
+              .SetArg<cl_int>(act_info_.ActivationKind)
+              .SetArg<cl_float>(act_info_.Parameters.Values[0])
+              .SetArg<cl_float>(act_info_.Parameters.Values[1])
               .Launch(*exec_, {gsx, gsy}));
     } else if (K1) {
       ZoneScopedN("Conv2DK1 (kernel launch)");
@@ -574,16 +544,17 @@ class Conv : public OpenCLKernel {
           KernelLauncher{GetKernel(kernel_name::Conv2DK1)}
               .SetArg<cl_int>(gsx)
               .SetArg<cl_int>(gsy)
-              .SetImage2Ds(*X, static_cast<cl_mem>(packed_weight_.get()), (B ? *B : *X), *Y)
+              .SetImage2Ds(*X, static_cast<cl_mem>(packed_weight_.get()), (B ? *B : *X), (Sum ? *Sum : *X), *Y)
               .SetInt2(W_in, H_in)
               .SetArg<cl_int>(CeilDiv(C_in, 4))
               .SetInt2(W_out, H_out)
               .SetInt2(S[0], S[1])
               .SetArg<cl_int>(CeilDiv(W_out, 4))
               .SetArg<cl_int>(B != nullptr)
-              .SetArg<cl_int>(act_info_.kind)
-              .SetArg<cl_float>(act_info_.param0)
-              .SetArg<cl_float>(act_info_.param1)
+              .SetArg<cl_int>(Sum != nullptr)
+              .SetArg<cl_int>(act_info_.ActivationKind)
+              .SetArg<cl_float>(act_info_.Parameters.Values[0])
+              .SetArg<cl_float>(act_info_.Parameters.Values[1])
               .Launch(*exec_, {gsx, gsy}));
     } else {
       ZoneScopedN("Conv2D (kernel launch)");
@@ -591,7 +562,7 @@ class Conv : public OpenCLKernel {
           KernelLauncher{GetKernel(kernel_name::Conv2D)}
               .SetArg<cl_int>(gsx)
               .SetArg<cl_int>(gsy)
-              .SetImage2Ds(*X, static_cast<cl_mem>(packed_weight_.get()), (B ? *B : *X), *Y)
+              .SetImage2Ds(*X, static_cast<cl_mem>(packed_weight_.get()), (B ? *B : *X), (Sum ? *Sum : *X), *Y)
               .SetInt2(W_in, H_in)
               .SetArg<cl_int>(CeilDiv(C_in, 4))
               .SetInt2(W_out, H_out)
@@ -601,16 +572,17 @@ class Conv : public OpenCLKernel {
               .SetInt2(D[0], D[1])
               .SetArg<cl_int>(CeilDiv(W_out, 4))
               .SetArg<cl_int>(B != nullptr)
-              .SetArg<cl_int>(act_info_.kind)
-              .SetArg<cl_float>(act_info_.param0)
-              .SetArg<cl_float>(act_info_.param1)
+              .SetArg<cl_int>(Sum != nullptr)
+              .SetArg<cl_int>(act_info_.ActivationKind)
+              .SetArg<cl_float>(act_info_.Parameters.Values[0])
+              .SetArg<cl_float>(act_info_.Parameters.Values[1])
               .Launch(*exec_, {gsx, gsy}));
     }
     return Status::OK();
   }
 
   ConvAttributes attrs_;
-  FusedConvAct act_info_;
+  MLAS_ACTIVATION act_info_;
   ConvKind conv_kind_;
   TensorShape W_shape_;
   IAllocatorUniquePtrToClMem packed_weight_;

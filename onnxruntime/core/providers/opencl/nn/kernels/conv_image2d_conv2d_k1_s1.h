@@ -14,11 +14,13 @@ __kernel void Conv2DK1S1(
     __read_only image2d_t input,
     __read_only image2d_t weights,
     __read_only image2d_t bias,
+    __read_only image2d_t sum,
     __write_only image2d_t output,
     __private const int2 input_wh,  // output_wh == input_wh
     __private const int input_c_blocks,
     __private const int output_w_updiv_4,
     __private const int has_bias,
+    __private const int has_sum,
     __private const int act_type,
     __private const float act_param0,
     __private const float act_param1) {
@@ -74,22 +76,12 @@ __kernel void Conv2DK1S1(
     weights_w_base += 4;
   }
 
-  if (act_type == ActivationKind_Clip) {
-    out0 = Clip(out0, act_param0, act_param1);
-    out1 = Clip(out1, act_param0, act_param1);
-    out2 = Clip(out2, act_param0, act_param1);
-    out3 = Clip(out3, act_param0, act_param1);
-  } else {
-    out0 = Act(out0, act_type);
-    out1 = Act(out1, act_type);
-    out2 = Act(out2, act_type);
-    out3 = Act(out3, act_type);
-  }
-
   const int out_x_base = mul24(output_c_block_idx, input_wh.x);
   int out_x_idx = output_w_block_idx << 2;
 
   const int remain = input_wh.x - out_x_idx;
   int output_w_idx = out_x_base + out_x_idx;
+  AddSumFusedInplace(sum, out0, out1, out2, out3, output_w_idx, bh_idx, remain, has_sum);
+  ActivationInPlaceFloat4Vec4(out0, out1, out2, out3, act_type, act_param0, act_param1);
   SafeWriteOutput(output, out0, out1, out2, out3, output_w_idx, bh_idx, remain);
 }

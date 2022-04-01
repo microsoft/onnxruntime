@@ -46,7 +46,8 @@ class ConvAddActivation : public NodeSelector {
 
   std::optional<NodesToOptimizeIndices> Select(const GraphViewer& graph_viewer, const Node& node) const override {
     const std::string_view node_ep = node.GetExecutionProviderType();
-    if (node_ep != kCpuExecutionProvider || !HasElementDataType(*node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
+    if ((node_ep != kCpuExecutionProvider && node_ep != kOpenCLExecutionProvider)
+        || !HasElementDataType(*node.InputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
       return std::nullopt;
     }
     // we can't assign `conv_node` as the producer-node, even it is, because we have to make sure
@@ -89,7 +90,7 @@ class ConvAddActivation : public NodeSelector {
   }
 
   static bool SelectActivation(const GraphViewer& graph_viewer, const Node& activation_node) {
-    auto is_supported_cpu_ep_activation = [&graph_viewer](const Node& activation_node) {
+    auto is_supported_activation = [&graph_viewer](const Node& activation_node) {
       if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Relu", {6, 13, 14}) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Sigmoid", {6, 13}) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Tanh", {6, 13}) ||
@@ -110,7 +111,7 @@ class ConvAddActivation : public NodeSelector {
       }
       return false;
     };
-    return is_supported_cpu_ep_activation(activation_node);
+    return is_supported_activation(activation_node);
   }
 
   const Node* SelectProducerConv(const Node& node) const {

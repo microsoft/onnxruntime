@@ -4,6 +4,7 @@
 // Copyright (c) 2020, THL A29 Limited, a Tencent company. All rights reserved.
 // Use of this source code is governed by a BSD 3-Clause license that can be
 // found in the LICENSE file.
+#include "./conv_image2d_shared.h"
 
 #define GLOBAL_SIZE_2_DIMS __private const int global_size_dim0, __private const int global_size_dim1,
 #define DEAL_NON_UNIFORM_DIM2(input1, input2)                     \
@@ -172,33 +173,20 @@ __kernel void MatrixInnerProduct(GLOBAL_SIZE_2_DIMS __read_only image2d_t matrix
     WI_F(matrix_m, (int2)(output_cw_idx + 3, output_16_bh_idx), m3);
   }
 }
-enum ActivationType {
-  ActivationType_None = 0x0000,
-  ActivationType_ReLU = 0x0001,
-  ActivationType_ReLU6 = 0x0005,
-  ActivationType_SIGMOID_MUL = 0x0100,
-};
-inline FLOAT4 ActivationProcess(FLOAT4 out0, enum ActivationType activation_type) {
-  if (activation_type == ActivationType_ReLU) {
-    return fmax(out0, (FLOAT4)0);
-  } else if (activation_type == ActivationType_ReLU6) {
-    return clamp(out0, (FLOAT4)0, (FLOAT4)6);
-  } else if (activation_type == ActivationType_SIGMOID_MUL) {
-    float4 convert_out0 = convert_float4(out0);
-    return CONVERT_FLOAT4(native_recip((float4)1 + native_exp(-convert_out0)) * convert_out0);
-  } else {
-    return out0;
-  }
-}
+
 __kernel void TransformFromMatrixM(GLOBAL_SIZE_2_DIMS __read_only image2d_t matrix_m,
                                    __read_only image2d_t bias,
+                                   __read_only image2d_t sum,
                                    __write_only image2d_t output,
                                    __private const int round_w,
                                    __private const int round_h,
                                    __private const int out_width,
                                    __private const int out_height,
                                    __private const int activation_type,
-                                   __private const int has_bias) {
+                                   __private const float act_param0,
+                                   __private const float act_param1,
+                                   __private const int has_bias,
+                                   __private const int has_sum) {
   const int output_cw_idx = get_global_id(0);  // c/4 w/2
   const int output_bh_idx = get_global_id(1);  // b h/2
   DEAL_NON_UNIFORM_DIM2(output_cw_idx, output_bh_idx);
@@ -241,21 +229,25 @@ __kernel void TransformFromMatrixM(GLOBAL_SIZE_2_DIMS __read_only image2d_t matr
   int2 ox = mad24((int2)(c_block_idx), (int2)(out_width), ow);
   int2 oy = mad24((int2)(batch), (int2)(out_height), oh);
   FLOAT4 res00 = bias_value + out00 + out10 + out20;
-  res00 = ActivationProcess(res00, activation_type);
+  res00 += (has_sum) ? RI_F(sum, (int2)(ox.s0, oy.s0)) : (FLOAT4)0;
+  ActivationInPlaceFloat4(res00, activation_type, 0, 0);
   WI_F(output, (int2)(ox.s0, oy.s0), res00);
   if (ow.s1 < out_width && oh.s0 < out_height) {
     FLOAT4 res10 = bias_value + out10 - out20 + out30;
-    res10 = ActivationProcess(res10, activation_type);
+    res10 += (has_sum) ? RI_F(sum, (int2)(ox.s1, oy.s0)) : (FLOAT4)0;
+    ActivationInPlaceFloat4(res10, activation_type, 0, 0);
     WI_F(output, (int2)(ox.s1, oy.s0), res10);
   }
   if (ow.s0 < out_width && oh.s1 < out_height) {
     FLOAT4 res01 = bias_value + out01 + out11 + out21;
-    res01 = ActivationProcess(res01, activation_type);
+    res01 += (has_sum) ? RI_F(sum, (int2)(ox.s0, oy.s1)) : (FLOAT4)0;
+    ActivationInPlaceFloat4(res01, activation_type, 0, 0);
     WI_F(output, (int2)(ox.s0, oy.s1), res01);
   }
   if (ow.s1 < out_width && oh.s1 < out_height) {
     FLOAT4 res11 = bias_value + out11 - out21 + out31;
-    res11 = ActivationProcess(res11, activation_type);
+    res11 += (has_sum) ? RI_F(sum, (int2)(ox.s1, oy.s1)) : (FLOAT4)0;
+    ActivationInPlaceFloat4(res11, activation_type, 0, 0);
     WI_F(output, (int2)(ox.s1, oy.s1), res11);
   }
 }
