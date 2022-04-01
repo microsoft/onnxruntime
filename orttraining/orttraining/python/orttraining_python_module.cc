@@ -182,7 +182,7 @@ void ORTTrainingPythonEnv::ClearExecutionProviderInstances(){
 }
 
 
-static std::unique_ptr<Environment> InitializeTrainingEnv() {
+static std::unique_ptr<ORTTrainingPythonEnv> InitializeTrainingEnv() {
   // Initialization of the module
   InitArray();
   Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
@@ -190,7 +190,7 @@ static std::unique_ptr<Environment> InitializeTrainingEnv() {
 }
 
 ORTTrainingPythonEnv& GetTrainingEnv() {
-  static std::unique_ptr<Environment> session_env = InitializeTrainingEnv();
+  static std::unique_ptr<ORTTrainingPythonEnv> session_env = InitializeTrainingEnv();
   return *session_env;
 }
 
