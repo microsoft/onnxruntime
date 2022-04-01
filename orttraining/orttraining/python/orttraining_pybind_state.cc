@@ -376,14 +376,16 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def("__getitem__", [](const std::vector<OrtValue>& v, const size_t idx) {
         return v.at(idx);
       })
-      .def("has_bool_tensor", [](std::vector<OrtValue>* v) {
-         for (auto it : *v) {
-           if (GetTensorProtoType(it) == ONNX_NAMESPACE::TensorProto_DataType_BOOL)
-             return true;
+      .def("bool_tensor_indices", [](std::vector<OrtValue>* v) -> std::vector<int64_t> {
+         std::vector<int64_t> indices;
+         for (size_t i = 0; i < v->size(); ++i) {
+           if (GetTensorProtoType((*v)[i]) == ONNX_NAMESPACE::TensorProto_DataType_BOOL) {
+             indices.push_back(static_cast<int64_t>(i));
+           }
          }
-         return false;
-      }, "Returns true if the vector contains one tensor with boolean values. "
-         "In that case, method to_dlpacks returns uint8 tensor instead of boolean tensors. "
+         return indices;
+      }, "Returns the indices of every boolean tensor in this vector of OrtValue. "
+         "In case of a boolean tensor, method to_dlpacks returns a uint8 tensor instead of a boolean tensor. "
          "If torch consumes the dlpack structure, `.to(torch.bool)` must be applied to the torch tensor "
          "to get a boolean tensor.")
       .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) {

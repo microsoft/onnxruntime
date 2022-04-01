@@ -99,7 +99,7 @@ class TestOrtValue(unittest.TestCase):
         for a in narrays:
             ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(a)
             vect.push_back(ortvalue._ortvalue)
-        self.assertFalse(vect.has_bool_tensor())
+        self.assertEqual(len(vect.bool_tensor_indices()), 0)
         self.assertEqual(len(vect), 2)
         for i, (ov, ar) in enumerate(zip(vect, narrays)):
             ovar = ov.numpy()
@@ -114,7 +114,7 @@ class TestOrtValue(unittest.TestCase):
         for a in narrays:
             ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(a)
             vect.push_back(ortvalue._ortvalue)
-        self.assertTrue(vect.has_bool_tensor())
+        self.assertEqual(vect.bool_tensor_indices(), [0, 1])
         self.assertEqual(len(vect), 2)
         for ov, ar in zip(vect, narrays):
             ovar = ov.numpy()
@@ -309,12 +309,13 @@ class TestOrtValue(unittest.TestCase):
         narrays = [
             np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32),
             np.array([[6.0, 7.0], [8.0, 9.0], [1.0, 6.0]], dtype=np.float32)]
-        vect = []
+        vect = C.OrtValueVector()
+        vect.reserve(len(narrays))
         ptr = []
         for a in narrays:
             ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(
                 a, device.type if device.type != 'ort' else 'cpu')
-            vect.append(ortvalue._ortvalue)
+            vect.push_back(ortvalue._ortvalue)
             ptr.append(ortvalue.data_ptr())
         self.assertEqual(len(vect), 2)
         if new_impl:

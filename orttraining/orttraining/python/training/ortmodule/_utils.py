@@ -61,36 +61,33 @@ def _ortvalue_from_torch_tensor(torch_tensor):
 def _ortvalues_to_torch_tensor(ortvalues, device):
     if len(ortvalues) == 0:
         return tuple()
+
     if 'ort' == device.type:
         if not hasattr(C, 'to_aten_ort_device_tensor'):
             raise AttributeError("onnxruntime is missing to_aten_ort_device_tensor needed to support device == 'ort'.")
         return tuple(C.to_aten_ort_device_tensor(ov) for ov in ortvalues)
-    if hasattr(ortvalues, 'to_dlpacks'):
-        res = ortvalues.to_dlpacks(_from_dlpack)
-        has_bool_tensor = ortvalues.has_bool_tensor()
-        if has_bool_tensor:
-            # DLPack structure does not know for sure if it stores boolean
-            # or uint8. Method to_dlpacks cannot be used in that case.
-            # Signature of *dl_packs* is `to_dlpacks(dlp, fct) -> list[torch.Tensor]`.
-            # And fct is a function with signature `fct(dlp) -> torch.Tensor`.
-            # Boolean tensors are converted into uint8 tensor with the DLPack protocol.
-            # Therefore, the function `fct` does not know if the dlpack structure
-            # is a boolean tensor or a uint8 tensor.
-            # We could either consider another function as an input in
-            # `to_dlpacks` or add an argument to `fct(dlp, ortvalue)`.
-            # Second option makes it impossible to directly use `_from_dlpack` or
-            # or `from_dlpack` from torch.
-            # The best option would be to add boolean type in DLDataTypeCode.
-            for i in range(0, len(ortvalues)):
-                if ortvalues.element_type_at(i) == TensorProto.BOOL:
-                    res[i] = res[i].to(torch.bool)
-    else:
-        # This happens because TrainingAgent.run_forward, TrainingAgent.run_backward
-        # do not use OrtValueVector.
-        res = [from_dlpack(ov.to_dlpack()) for ov in ortvalues]
-        for i in range(0, len(ortvalues)):
-            if ortvalue[i].element_type() == TensorProto.BOOL:
-                res[i] = res[i].to(torch.bool)
+
+    if not isinstance(ortvalues, OrtValueVector):
+        raise TypeError("ortvalues must be an instance of OrtValueVector not %r." % type(ortvalues))
+
+    res = ortvalues.to_dlpacks(_from_dlpack)
+    bool_indices = ortvalues.bool_tensor_indices()
+    if len(bool_indices):
+        # DLPack structure does not know for sure if it stores boolean
+        # or uint8. Method to_dlpacks cannot be used in that case.
+        # Signature of *dl_packs* is `to_dlpacks(dlp, fct) -> list[torch.Tensor]`.
+        # And fct is a function with signature `fct(dlp) -> torch.Tensor`.
+        # Boolean tensors are converted into uint8 tensor with the DLPack protocol.
+        # Therefore, the function `fct` does not know if the dlpack structure
+        # is a boolean tensor or a uint8 tensor.
+        # We could either consider another function as an input in
+        # `to_dlpacks` or add an argument to `fct(dlp, ortvalue)`.
+        # Second option makes it impossible to directly use `_from_dlpack` or
+        # or `from_dlpack` from torch.
+        # The best option would be to add boolean type in DLDataTypeCode.
+        for i in range(0, len(bool_indices)):
+            j = bool_indices[i]
+            res[j] = res[j].to(torch.bool)
 
     return tuple(res)
 
