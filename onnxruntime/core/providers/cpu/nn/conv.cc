@@ -154,9 +154,10 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
 
 Status Conv<float>::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
-  const auto* X = context->Input<Tensor>(0);
-  const auto* W = context->Input<Tensor>(1);
-  const Tensor* B = num_inputs == 3 ? context->Input<Tensor>(2) : nullptr;
+  const Tensor* X = context->Input<Tensor>(0);
+  const Tensor* W = context->Input<Tensor>(1);
+  const Tensor* B = num_inputs >= 3 ? context->Input<Tensor>(2) : nullptr;
+  const Tensor* Sum = num_inputs >= 4 ? context->Input<Tensor>(3) : nullptr;
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[1];
   const int64_t M = W->Shape()[0];
@@ -195,7 +196,18 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   const auto* Xdata = X->template Data<float>();
   const auto* Bdata = B != nullptr ? B->template Data<float>() : nullptr;
   auto* Ydata = Y->template MutableData<float>();
-
+  // Check for the optional Conv/Sum fusion.
+  float Beta = 0.0f;
+  if (Sum != nullptr) {
+    const auto& sum_shape = Sum->Shape();
+    ORT_RETURN_IF_NOT(Y->Shape() == sum_shape, "output and sum shape must match");
+    // If the output was not allocated inplace with the sum tensor, then copy here.
+    const auto* sum_data = Sum->template Data<float>();
+    if (Ydata != sum_data) {
+      memcpy(Ydata, sum_data, sum_shape.Size() * sizeof(float));
+    }
+    Beta = 1.0f;
+  }
   const size_t kernel_rank = kernel_shape.size();
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
@@ -216,6 +228,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
                     static_cast<size_t>(M / conv_attrs_.group),
                     &activation_,
                     &WorkingBufferSize,
+                    Beta,
                     thread_pool);
 
     auto* working_data = WorkingBufferSize > 0 ? alloc->Alloc(SafeInt<size_t>(sizeof(float)) * WorkingBufferSize)
@@ -266,7 +279,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
             1,
             W->template Data<float>() + group_id * W_offset,
             col_buffer_data,
-            0,
+            Beta,
             Ydata + group_id * Y_offset,
             thread_pool);
       }
