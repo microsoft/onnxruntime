@@ -38,17 +38,19 @@ ONNX Runtime gives you a variety of options to add machine learning to your mobi
 
    To give an idea of the binary size difference between mobile and full packages:
 
-   ONNX Runtime 1.11.0 Android package `jni/arm64-v8a/libonnxruntime.so` file size:
+   ONNX Runtime 1.11.0 Android package `jni/arm64-v8a/libonnxruntime.so` dynamic library file size:
    |Package|Size|
    |-|-|
    |onnxruntime-mobile|3.3 MB|
    |onnxruntime-android|12 MB|
 
-   ONNX Runtime 1.11.0 iOS package `onnxruntime.xcframework/ios-arm64/onnxruntime.framework/onnxruntime` file size:
+   ONNX Runtime 1.11.0 iOS package `onnxruntime.xcframework/ios-arm64/onnxruntime.framework/onnxruntime` static library file size:
    |Package|Size|
    |-|-|
    |onnxruntime-mobile-c|22 MB|
    |onnxruntime-c|48 MB|
+
+   Note: The iOS package is a static framework that will have a reduced binary size impact when compiled into your app.
 
    See [here](../../install/index.md#install-on-web-and-mobile) for installation instructions.
 
@@ -58,7 +60,7 @@ ONNX Runtime gives you a variety of options to add machine learning to your mobi
 
    ONNX models can be obtained from the [ONNX model zoo](https://github.com/onnx/models), converted from PyTorch or TensorFlow, and many other places.
 
-   Once you have sourced or converted the model into ONNX format, it must be [converted to an ORT format model](../../reference/ort-format-models.md) in order to be used with the ONNX Runtime mobile package. This conversion is not necessary if you are using the full package.
+   Once you have sourced or converted the model into ONNX format, it must be [converted to an ORT format model](../../reference/ort-format-models.md#convert-onnx-models-to-ort-format) in order to be used with the ONNX Runtime mobile package. This conversion is not necessary if you are using the full package.
 
 3. How do I bootstrap my app development?
 
@@ -70,6 +72,10 @@ ONNX Runtime gives you a variety of options to add machine learning to your mobi
 
 4. How do I optimize my application?
 
-   The execution environment on mobile devices has limited memory and disk storage. In certain cases, it is preferable for a library to be optimized to consume minimum resources in terms of disk footprint, memory and network usage (both model size and binary size).
+   To reduce binary size:
 
-   ONNX Runtime Mobile uses the ORT model format which is supported by a minimal build with a reduced set of dependencies. A regular ONNX model file can be converted to an ORT format file with a [tool](../../reference/ort-format-models.md#convert-onnx-models-to-ort-format) from the `onnxruntime` Python package. A [custom build](../../build/custom.md) can additionally reduce the binary size by only including specified operators and types in the build, as well as trimming down dependencies per custom needs.
+   Use the ONNX Runtime mobile package or a custom build to reduce the binary size. The mobile package requires use of an ORT format model.
+
+   To reduce memory usage:
+
+   Use an ORT format model as that uses less memory.

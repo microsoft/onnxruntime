@@ -76,9 +76,9 @@ Unless stated otherwise, the installation instructions in this section refer to 
 
 Another type of pre-built package has full support for all ONNX opsets and operators, at the cost of larger binary size. These packages are referred to as "full packages".
 
-If the pre-built mobile package is too large, you can create a [custom build](../build/custom.md).
+If the pre-built mobile package is too large, you can create a [custom build](../build/custom.md). A custom build can contain just the opsets and operators that you need, so it may be smaller.
 
-If the pre-built mobile package does not include the operators in your model/s, you can either use the full package if available, or create a custom build.
+If the pre-built mobile package does not include the opsets or operators in your model/s, you can either use the full package if available, or create a custom build.
 
 ### JavaScript Installs
 

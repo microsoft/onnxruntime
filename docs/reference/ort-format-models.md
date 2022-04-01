@@ -40,7 +40,7 @@ Later, when loading the ORT format model with saved runtime optimizations, the e
 
 In a reduced size build (an [extended minimal build](../build/custom.md#minimal-build)), only enough implementation to support (2) is included, reducing the graph optimizers' binary size.
 
-Note that saving runtime optimizations is optional. Alternatively, it is possible to save a fully optimized ORT format model, but the graph's optimizations would be more hardware-dependent and less flexible at runtime.
+Note that saving runtime optimizations is optional. Alternatively, it is possible to save a fully optimized ORT format model, but the graph's optimizations may be hardware-dependent and less flexible at runtime.
 
 ## Convert ONNX models to ORT format
 
