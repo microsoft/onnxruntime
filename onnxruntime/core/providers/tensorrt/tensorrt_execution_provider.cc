@@ -1063,7 +1063,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>> input_shape_ranges;
     std::unordered_map<std::string, size_t> output_indexes(num_outputs);
     std::unordered_map<std::string, size_t> output_types(num_outputs);
-    bool save_engine_to_file = false;
+    bool update_engine_cache = false;
 
     // Initialize shape range for dynamic shape tensors
     bool has_dynamic_shape = false;
@@ -1224,7 +1224,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         }
 
         if (engine_cache_enable_)
-          save_engine_to_file = true;
+          update_engine_cache = true;
       }
 
       // Build context
@@ -1279,7 +1279,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
             input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
             dla_enable_, dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_,
             runtime_.get(), nullptr, allocator_, dynamic_range_map, engine_decryption_enable_, engine_decryption_, engine_encryption_,
-            save_engine_to_file};
+            update_engine_cache};
       *state = p.release();
       return 0;
     };
@@ -1292,7 +1292,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         // Note: only save engine to file if engine cache enable is set and engine is being updated due to input shape changed
         // or engine file is not previously existed
         TensorrtFuncState* trt_state = reinterpret_cast<TensorrtFuncState*>(state);
-        if (trt_state->save_engine_to_file) {
+        if (trt_state->update_engine_cache) {
           // Serialize engine
           const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
           const std::string engine_cache_path = cache_path + ".engine";
@@ -1532,7 +1532,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         trt_context = trt_state->context->get();
 
         if (trt_state->engine_cache_enable)
-          trt_state->save_engine_to_file = true;
+          trt_state->update_engine_cache = true;
         trt_state->input_shape_ranges = shape_ranges;
       }
 
