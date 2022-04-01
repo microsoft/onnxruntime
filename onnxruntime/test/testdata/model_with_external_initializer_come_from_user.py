@@ -10,7 +10,7 @@ from onnx.external_data_helper import set_external_data
 
 
 def create_external_data_tensor(value, tensor_name):  # type: (List[Any], Text) -> TensorProto
-    tensor = from_array(np.array(value))
+    tensor = from_array(value)
     tensor.name = tensor_name
     tensor_filename = "{}.bin".format(tensor_name)
     set_external_data(tensor, location=tensor_filename)
@@ -38,12 +38,13 @@ def GenerateModel(model_name):
     )
 
     # Create the graph (GraphProto)
+    initializer_data = np.array([0, 0, 1, 1]).astype(np.int64)
     graph_def = helper.make_graph(
         [node_def],
         "test-model",
         [X, Pads],
         [Y],
-        [create_external_data_tensor([0, 0, 1, 1, ], "Pads_not_on_disk")]
+        [create_external_data_tensor(initializer_data, "Pads_not_on_disk")]
     )
 
     # Create the model (ModelProto)

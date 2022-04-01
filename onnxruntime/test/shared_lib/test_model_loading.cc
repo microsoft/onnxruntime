@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/inlined_containers.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "onnxruntime_session_options_config_keys.h"
 #include "test/util/include/asserts.h"
@@ -61,7 +60,7 @@ TEST(CApiTest, model_from_array) {
 #ifdef DISABLE_EXTERNAL_INITIALIZERS
 TEST(CApiTest, TestDisableExternalInitiliazers) {
 
-  constexpr ORTCHAR_T* model_path = ORT_TSTR("testdata/model_with_external_initializers.onnx");
+  constexpr auto model_path = ORT_TSTR("testdata/model_with_external_initializers.onnx");
 
   Ort::SessionOptions so;
   try {
@@ -74,7 +73,7 @@ TEST(CApiTest, TestDisableExternalInitiliazers) {
 
 #elif !defined(ORT_MINIMAL_BUILD)
 TEST(CApiTest, TestExternalInitializersInjection) {
-  constexpr ORTCHAR_T* model_path = ORT_TSTR("testdata/model_with_external_initializer_come_from_user.onnx");
+  constexpr auto model_path = ORT_TSTR("testdata/model_with_external_initializer_come_from_user.onnx");
   std::array<int64_t, 4> Pads_not_on_disk{0, 0, 1, 1};
   constexpr std::array<int64_t, 1> init_shape{4};
 
@@ -82,7 +81,7 @@ TEST(CApiTest, TestExternalInitializersInjection) {
   std::vector<Ort::Value> initializer_data;
 
   auto cpu_mem_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
-  auto init_tensor = Ort::Value::CreateTensor<int64_t>(cpu_mem_info, Pads_not_on_disk.data(), Pads_not_on_disk.size(), init_shape.data(), init_shape.size());
+  auto init_tensor = Ort::Value::CreateTensor(cpu_mem_info, Pads_not_on_disk.data(), Pads_not_on_disk.size(), init_shape.data(), init_shape.size());
   initializer_data.push_back(std::move(init_tensor));
 
   Ort::SessionOptions so;
