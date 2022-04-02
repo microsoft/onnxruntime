@@ -134,23 +134,28 @@ export const exp = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Pro
 export const floor = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
     handler.run(createElementwiseProgramInfoLoader(inputs[0], 'floor'), inputs);
 
-// export const floor = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-//     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslFloor()), inputs)];
+export interface LeakyReluAttributes extends AttributeWithCacheKey {
+  readonly alpha: number;
+}
 
-// export const identity = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-//     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslIdentity()), inputs)];
+export const leakyRelu = async(handler: WebGpuInferenceHandler, inputs: Tensor[], attributes: EluAttributes):
+                             Promise<Tensor[] >=>handler.run(
+                                 createElementwiseProgramInfoLoader(
+                                     inputs[0], 'leaky_relu', `
+    let leaky_relu_alpha_: f32 = f32(${attributes.alpha});
 
-// export interface LeakyReluAttributes extends AttributeWithCacheKey {
-//   readonly alpha: number;
-// }
+    fn leaky_relu_(a: f32) -> f32 {
+      return select(a, a * leaky_relu_alpha_, a < 0.0);
+    }
 
-// export const leakyRelu =
-//     (handler: WebGLInferenceHandler, inputs: Tensor[], attributes: LeakyReluAttributes): Tensor[] => [handler.run(
-//         createElementwiseProgramInfoLoader(handler, inputs[0], glslLeakyRelu(attributes.alpha), attributes.cacheKey),
-//         inputs)];
+    fn leaky_relu(v: vec4<f32>) -> vec4<f32> {
+      return vec4(leaky_relu_(v.x), leaky_relu_(v.y), leaky_relu_(v.z), leaky_relu_(v.w));
+    }`,
+                                     attributes.cacheKey),
+                                 inputs);
 
-// export const parseLeakyReluAttributes = (node: Graph.Node): LeakyReluAttributes =>
-//     createAttributeWithCacheKey({alpha: node.attributes.getFloat('alpha', 0.01)});
+export const parseLeakyReluAttributes = (node: Graph.Node): LeakyReluAttributes =>
+    createAttributeWithCacheKey({alpha: node.attributes.getFloat('alpha', 0.01)});
 
 // export const log = (handler: WebGLInferenceHandler, inputs: Tensor[]):
 //     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslLog()), inputs)];

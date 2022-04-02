@@ -38,7 +38,7 @@ export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   // ['Identity', '', '1+', unaryOps.identity],
   // ['ImageScaler', '', '1+', imageScaler, parseImageScalerAttributes],
   // ['InstanceNormalization', '', '6+', instanceNormalization, parseInstanceNormalizationAttributes],
-  // ['LeakyRelu', '', '6+', unaryOps.leakyRelu, unaryOps.parseLeakyReluAttributes],
+  ['LeakyRelu', '', '6+', unaryOps.leakyRelu, unaryOps.parseLeakyReluAttributes],
   // ['Less', '', '7+', binaryOps.less],
   // ['Log', '', '6+', unaryOps.log],
   // ['MatMul', '', '1+', matMul, parseMatMulAttributes],
