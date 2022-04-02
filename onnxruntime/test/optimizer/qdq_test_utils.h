@@ -294,44 +294,34 @@ GetQDQTestCaseFn BuildQDQConcatTestCaseUnsupportedInputScaleZp();
 template <typename Input1Type, typename Input2Type, typename OutputType, typename BiasType = int32_t>
 GetQDQTestCaseFn BuildQDQGemmTestCase(const std::vector<int64_t>& input1_shape,
                                       const std::vector<int64_t>& input2_shape,
-                                      bool has_output_q,
-                                      bool has_bias,
-                                      bool beta_not_one = false) {
-  return [input1_shape, input2_shape, has_output_q, has_bias, beta_not_one](ModelTestBuilder& builder) {
-    auto* input1_arg = builder.MakeInput<float>(input1_shape, -1.f, 1.f);
-    auto* input2_arg = builder.MakeInput<float>(input2_shape, -1.f, 1.f);
+                                      bool has_bias) {
+  return [input1_shape, input2_shape, has_bias](ModelTestBuilder& builder) {
+    auto* input1_arg = builder.MakeInput<Input1Type>(input1_shape,
+                                                     std::numeric_limits<Input1Type>::min(),
+                                                     std::numeric_limits<Input1Type>::max());
+    auto* input2_arg = builder.MakeInput<Input2Type>(input2_shape,
+                                                     std::numeric_limits<Input2Type>::min(),
+                                                     std::numeric_limits<Input2Type>::max());
     auto* output_arg = builder.MakeOutput();
 
-    typedef std::numeric_limits<Input1Type> Input1Limits;
-    typedef std::numeric_limits<Input2Type> Input2Limits;
     typedef std::numeric_limits<OutputType> OutputTypeLimits;
 
     std::vector<NodeArg*> input_args;
 
-    // add QDQ A
-    auto* q1_output = builder.MakeIntermediate();
+    // add DQ A
     auto* dq1_output = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<Input1Type>(input1_arg,
-                                              .039f,
-                                              (Input1Limits::max() + Input1Limits::min()) / 2 + 1,
-                                              q1_output);
-    builder.AddDequantizeLinearNode<Input1Type>(q1_output,
+    builder.AddDequantizeLinearNode<Input1Type>(input1_arg,
                                                 .039f,
-                                                (Input2Limits::max() + Input1Limits::min()) / 2 + 1,
+                                                0,
                                                 dq1_output);
 
     input_args.push_back(dq1_output);
 
-    // add QDQ B
-    auto* q2_output = builder.MakeIntermediate();
+    // add DQ B
     auto* dq2_output = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<Input2Type>(input2_arg,
-                                              .04f,
-                                              (Input2Limits::max() + Input2Limits::min()) / 2 + 1,
-                                              q2_output);
-    builder.AddDequantizeLinearNode<Input2Type>(q2_output,
+    builder.AddDequantizeLinearNode<Input2Type>(input2_arg,
                                                 .04f,
-                                                (Input2Limits::max() + Input2Limits::min()) / 2 + 1,
+                                                0,
                                                 dq2_output);
     input_args.push_back(dq2_output);
 
@@ -346,27 +336,14 @@ GetQDQTestCaseFn BuildQDQGemmTestCase(const std::vector<int64_t>& input1_shape,
 
     Node* gemm_node = nullptr;
 
-    if (has_output_q) {
-      auto* gemm_op_output = builder.MakeIntermediate();
-      gemm_node = &builder.AddNode("Gemm", input_args, {gemm_op_output});
+    auto* gemm_op_output = builder.MakeIntermediate();
+    gemm_node = &builder.AddNode("Gemm", input_args, {gemm_op_output});
 
-      // add QDQ output
-      auto* q3_output = builder.MakeIntermediate();
-      builder.AddQuantizeLinearNode<OutputType>(gemm_op_output,
-                                                .039f,
-                                                (OutputTypeLimits::max() + OutputTypeLimits::min()) / 2 + 1,
-                                                q3_output);
-      builder.AddDequantizeLinearNode<OutputType>(q3_output,
-                                                  .039f,
-                                                  (OutputTypeLimits::max() + OutputTypeLimits::min()) / 2 + 1,
-                                                  output_arg);
-    } else {
-      gemm_node = &builder.AddNode("Gemm", input_args, {output_arg});
-    }
-
-    if (beta_not_one) {
-      gemm_node->AddAttribute("beta", 2.0f);
-    }
+    // add Q
+    builder.AddQuantizeLinearNode<OutputType>(gemm_op_output,
+                                              .039f,
+                                              (OutputTypeLimits::max() + OutputTypeLimits::min()) / 2 + 1,
+                                              output_arg);
   };
 }
 
