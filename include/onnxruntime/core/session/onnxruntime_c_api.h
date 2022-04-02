@@ -30,7 +30,7 @@
 *
 * This value is used by some API functions to behave as this version of the header expects.
 */
-#define ORT_API_VERSION 12 
+#define ORT_API_VERSION 12
 
 #ifdef __cplusplus
 extern "C" {
@@ -483,7 +483,7 @@ typedef struct OrtTensorRTProviderOptions {
   const char* trt_engine_decryption_lib_path;   // specify engine decryption library path
   int trt_force_sequential_engine_build;        // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
   // This is the legacy struct and don't add new fields here.
-  // For new field that can be represented by string, please add it in include/onnxruntime/core/providers/tensorrt/tensorrt_provider_options.h   
+  // For new field that can be represented by string, please add it in include/onnxruntime/core/providers/tensorrt/tensorrt_provider_options.h
   // For non-string field, need to create a new separate api to handle it.
 } OrtTensorRTProviderOptions;
 
@@ -492,9 +492,9 @@ typedef struct OrtTensorRTProviderOptions {
 * \see OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
 */
 typedef struct OrtMIGraphXProviderOptions {
-  int device_id;                                // hip device id.
-  int migraphx_fp16_enable;                     // enable MIGraphX FP16 precision. Default 0 = false, nonzero = true
-  int migraphx_int8_enable;                     // enable MIGraphX INT8 precision. Default 0 = false, nonzero = true
+  int device_id;             // hip device id.
+  int migraphx_fp16_enable;  // enable MIGraphX FP16 precision. Default 0 = false, nonzero = true
+  int migraphx_int8_enable;  // enable MIGraphX INT8 precision. Default 0 = false, nonzero = true
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options
@@ -3318,7 +3318,7 @@ struct OrtApi {
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
   */
-  ORT_API2_STATUS(ProvideExternalInitializersData, _In_ OrtSessionOptions* options,
+  ORT_API2_STATUS(AddExternalInitializers, _In_ OrtSessionOptions* options,
                   _In_reads_(input_len) const char* const* input_names,
                   _In_reads_(input_len) const OrtValue* const* inputs, size_t input_len);
 };

@@ -43,22 +43,18 @@ Status SessionOptions::AddInitializer(_In_z_ const char* name, _In_ const OrtVal
 }
 
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
-Status SessionOptions::AddExternalInitializers(const char* const* names, const OrtValue* const* values, size_t init_num) {
+Status SessionOptions::AddExternalInitializers(gsl::span<const std::string> names, gsl::span<const OrtValue> values) {
+  const auto init_num = names.size();
+  ORT_ENFORCE(init_num == values.size(), "Expecting same size spans");
   external_initializers.reserve(external_initializers.size() + init_num);
   for (size_t i = 0; i < init_num; ++i) {
-    const char* name = names[i];
-    const OrtValue* val = values[i];
-    ORT_RETURN_IF_ERROR(CheckInitializer(name, val));
-    bool result = external_initializers.emplace(name, val).second;
+    ORT_RETURN_IF_ERROR(CheckInitializer(names[i].c_str(), &values[i]));
+    bool result = external_initializers.emplace(names[i], values[i]).second;
     if (!result) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, MakeString("An OrtValue for this name has already been added: ", name));
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, MakeString("An OrtValue for this name has already been added: ", names[i]));
     }
   }
   return Status::OK();
-}
-#else
-Status SessionOptions::AddExternalInitializers(const char* const*, const OrtValue* const*, size_t) {
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Adding external initializers is not supported in minimal builds");
 }
 #endif  // ORT_MINIMAL_BUILD
 }  // namespace onnxruntime

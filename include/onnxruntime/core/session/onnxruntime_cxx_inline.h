@@ -503,8 +503,8 @@ inline SessionOptions& SessionOptions::AddInitializer(const char* name, const Or
   return *this;
 }
 
-inline SessionOptions& SessionOptions::ProvideExternalInitializersData(const std::vector<std::string>& names,
-                                                                       const std::vector<Value>& ort_values) {
+inline SessionOptions& SessionOptions::AddExternalInitializers(const std::vector<std::string>& names,
+                                                               const std::vector<Value>& ort_values) {
   const size_t inputs_num = names.size();
   if (inputs_num != ort_values.size()) {
     ORT_CXX_API_THROW("Expecting names and ort_values to have the same length", ORT_INVALID_ARGUMENT);
@@ -517,7 +517,7 @@ inline SessionOptions& SessionOptions::ProvideExternalInitializersData(const std
     names_ptr.push_back(names[i].c_str());
     ort_values_ptrs.push_back(ort_values[i]);
   }
-  ThrowOnError(GetApi().ProvideExternalInitializersData(p_, names_ptr.data(), ort_values_ptrs.data(), inputs_num));
+  ThrowOnError(GetApi().AddExternalInitializers(p_, names_ptr.data(), ort_values_ptrs.data(), inputs_num));
   return *this;
 }
 

@@ -1779,8 +1779,8 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
   OrtValue ort_value;
   Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), data_shape, tensor_data.data(),
                        OrtMemoryInfo(onnxruntime::CPU, OrtAllocatorType::OrtDeviceAllocator), ort_value);
-  const InlinedHashMap<std::string, const OrtValue*> injection_initializers = {
-      {initializer_name, &ort_value}
+  const InlinedHashMap<std::string, OrtValue> injection_initializers = {
+      {initializer_name, ort_value}
   };
 
   // We do not need actual files there since we are not going to load it.

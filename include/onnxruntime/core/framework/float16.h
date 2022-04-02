@@ -109,6 +109,19 @@ struct BFloat16 {
 #endif
 };
 
+// User defined suffixes to make it easier to declare
+// initializers with MLFloat16 and BFloat16 from unsigned short
+// E.g 10_f16 or 10_b16
+#if !defined(__CUDACC__) && !defined(__HIPCC__)
+inline constexpr MLFloat16 operator"" _f16(unsigned long long int v) {
+  return MLFloat16(static_cast<uint16_t>(v));
+}
+
+inline constexpr BFloat16 operator"" _b16(unsigned long long int v) {
+  return BFloat16(static_cast<uint16_t>(v), BFloat16::FromBits());
+}
+#endif
+
 inline void BFloat16ToFloat(const BFloat16* blf, float* flt, size_t size) {
   auto src = blf;
   auto d = flt;

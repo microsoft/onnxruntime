@@ -3,6 +3,7 @@
 
 #include "core/graph/onnx_protobuf.h"
 #include "core/common/gsl_suppress.h"
+#include "core/common/inlined_containers.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 #include "core/framework/error_code_helper.h"
@@ -186,25 +187,34 @@ ORT_API_STATUS_IMPL(OrtApis::AddInitializer, _Inout_ OrtSessionOptions* options,
   API_IMPL_END
 }
 
-#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
-ORT_API_STATUS_IMPL(OrtApis::ProvideExternalInitializersData, _In_ OrtSessionOptions* options,
+ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializers, _In_ OrtSessionOptions* options,
                     _In_reads_(input_len) const char* const* input_names,
                     _In_reads_(input_len) const OrtValue* const* inputs, size_t input_len) {
 
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
   API_IMPL_BEGIN
-  auto st = options->value.AddExternalInitializers(input_names, inputs, input_len);
+  onnxruntime::InlinedVector<std::string> names;
+  onnxruntime::InlinedVector<OrtValue> values;
+  names.reserve(input_len);
+  values.reserve(input_len);
+  for (size_t i = 0; i < input_len; ++i) {
+    names.emplace_back(input_names[i]);
+    values.emplace_back(*inputs[i]);
+  }
+
+  auto st = options->value.AddExternalInitializers(names, values);
   if (!st.IsOK()) {
     return onnxruntime::ToOrtStatus(st);
   }
   return nullptr;
   API_IMPL_END
-}
 #else
-ORT_API_STATUS_IMPL(OrtApis::ProvideExternalInitializersData, _In_ OrtSessionOptions*,
-                    _In_reads_(input_len) const char* const*,
-                    _In_reads_(input_len) const OrtValue* const*, size_t input_len) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(input_names);
+  ORT_UNUSED_PARAMETER(inputs);
   ORT_UNUSED_PARAMETER(input_len);
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "External initializers are not supported in this build");
-}
 #endif
+}
+
 

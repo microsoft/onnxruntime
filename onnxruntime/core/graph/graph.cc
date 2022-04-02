@@ -2930,12 +2930,13 @@ Status Graph::ReplaceInitializedTensor(ONNX_NAMESPACE::TensorProto new_initializ
 }
 
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS)
-Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string, const OrtValue*>& external_initializers) {
+Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers) {
   for (const auto& e : external_initializers) {
     const auto& name = e.first;
-    const OrtValue* ort_value = e.second;
-    auto tensor_proto = utils::TensorToTensorProto(ort_value->Get<Tensor>(), name);
+    const OrtValue& ort_value = e.second;
+    auto tensor_proto = utils::TensorToTensorProto(ort_value.Get<Tensor>(), name);
     ORT_RETURN_IF_ERROR(ReplaceInitializedTensorImpl(std::move(tensor_proto), true));
+    LOGS(logger_, INFO) << "Replaced external initializer: " << name;
   }
   return Status::OK();
 }

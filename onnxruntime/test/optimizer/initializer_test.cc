@@ -133,10 +133,6 @@ std::vector<T> GetInitializerData() {
   return data;
 }
 
-MLFloat16 operator"" _f16(unsigned long long int v) {
-  return MLFloat16(static_cast<uint16_t>(v));
-}
-
 template <>
 std::vector<MLFloat16> GetInitializerData<MLFloat16>() {
   std::vector<MLFloat16> data{

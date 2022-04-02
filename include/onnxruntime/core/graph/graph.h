@@ -682,7 +682,7 @@ class Graph {
   /** This function takes externally provided data for initializers with external data
   *    and replaces graph initializers with its content.
   */
-  common::Status InjectExternalInitializedTensors(const InlinedHashMap<std::string, const OrtValue*>& external_initializers);
+  common::Status InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers);
 #endif  // !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
 #endif  // !defined(ORT_MINIMAL_BUILD)

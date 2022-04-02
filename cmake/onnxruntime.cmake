@@ -174,9 +174,9 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${PROVIDERS_VITISAI}
   ${PROVIDERS_INTERNAL_TESTING}
   ${onnxruntime_winml}
+  onnxruntime_optimizer
   onnxruntime_providers
   ${onnxruntime_tvm_libs}
-  onnxruntime_optimizer
   onnxruntime_framework
   onnxruntime_graph
   onnxruntime_util

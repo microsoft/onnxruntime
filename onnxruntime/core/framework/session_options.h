@@ -124,10 +124,9 @@ struct SessionOptions {
 
 #if !defined(ORT_MINIMAL_BUILD)  && !defined(DISABLE_EXTERNAL_INITIALIZERS)
   // Customer supplied pre-processed data for external initializers
-  InlinedHashMap<std::string, const OrtValue*> external_initializers;
+  InlinedHashMap<std::string, OrtValue> external_initializers;
+  Status AddExternalInitializers(gsl::span<const std::string> names, gsl::span<const OrtValue> values);
 #endif
-
-  Status AddExternalInitializers(const char* const* names, const OrtValue* const* values, size_t init_num);
 
   // custom function callback to create a thread
   OrtCustomCreateThreadFn custom_create_thread_fn = nullptr;

@@ -85,7 +85,7 @@ TEST(CApiTest, TestExternalInitializersInjection) {
   initializer_data.push_back(std::move(init_tensor));
 
   Ort::SessionOptions so;
-  so.ProvideExternalInitializersData(init_names, initializer_data);
+  so.AddExternalInitializers(init_names, initializer_data);
   EXPECT_NO_THROW(Ort::Session(*ort_env, model_path, so));
 }
 
