@@ -520,7 +520,7 @@ export class OpTestContext {
   inferenceHandler: InferenceHandler;
 
   constructor(protected opTest: Test.OperatorTest) {
-    this.backendHint = opTest.backend === 'webgl' ? 'webgl' : 'cpu';
+    this.backendHint = opTest.backend ?? 'cpu';
   }
   createOperator(): Operator {
     return initializeOperator(
@@ -559,6 +559,14 @@ async function runOpTestcase(
       testcase.inputs.map(input => createTensor(input.dims, input.type as Tensor.DataType, input.data));
 
   const results = await operator.impl(inferenceHandler, inputTensors, operator.context);
+
+  // try async data read.
+  for (const result of results) {
+    try {
+      await result.getData();
+    } catch {
+    }
+  }
 
   results.forEach((output, i) => {
     Logger.verbose('TestOpRunner', `  Result'${i}': ${output.type}[${output.dims.join(',')}]`);

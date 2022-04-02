@@ -128,8 +128,11 @@ export const elu = async(handler: WebGpuInferenceHandler, inputs: Tensor[], attr
 export const parseEluAttributes = (node: Graph.Node): EluAttributes =>
     createAttributeWithCacheKey({alpha: node.attributes.getFloat('alpha', 1.0)});
 
-// export const exp = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-//     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslExp()), inputs)];
+export const exp = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
+    handler.run(createElementwiseProgramInfoLoader(inputs[0], 'exp'), inputs);
+
+export const floor = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
+    handler.run(createElementwiseProgramInfoLoader(inputs[0], 'floor'), inputs);
 
 // export const floor = (handler: WebGLInferenceHandler, inputs: Tensor[]):
 //     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslFloor()), inputs)];
