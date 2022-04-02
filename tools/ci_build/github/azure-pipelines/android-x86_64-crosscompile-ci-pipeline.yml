@@ -27,6 +27,33 @@ jobs:
   - script: set PATH="%VCToolsInstallDir%\bin\Hostx64\x64";%PATH%
     displayName: Set VS PATH
 
+  - script: 'pip install wget'
+    displayName: 'Command Line Script'
+
+  - task: PythonScript@0
+    displayName: 'Run a Python script'
+    inputs:
+      scriptSource: inline
+      script: |
+       import wget
+       import zipfile
+       import os
+     
+       print('Beginning file download with wget module')
+     
+       url = 'https://github.com/intel/haxm/releases/download/v7.7.1/haxm-windows_v7_7_1.zip'
+       os.mkdir("c:\haxm")
+       path = "c:\haxm\haxm.zip"
+       wget.download(url, path)
+       with zipfile.ZipFile(path, 'r') as zip_ref:
+            zip_ref.extractall("c:\haxm")
+
+  - script: c:\haxm\silent_install.bat
+    displayName: 'Command Line Script'
+
+  - script: ''
+    displayName: 'install intelHAXM'
+
   # Start switching to jdk 11 after the Android Emulator is started since Android SDK manager requires java 8
   - task: JavaToolInstaller@0
     displayName: Use jdk 8
