@@ -1,7 +1,7 @@
 jobs:
 - job: Build_CPU_EP
   pool: onnxruntime-win-cpu-2022
-  timeoutInMinutes: 60
+  timeoutInMinutes: 120
   steps:
   # Onnx has no 3.9 python package available yet, need to use python 3.8
   # to avoid build onnx package
