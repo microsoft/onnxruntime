@@ -147,6 +147,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         # PyTorch custom Autograd function support
         self._enable_custom_autograd_function = custom_autograd_function_enabler.state
 
+        self._use_tensorrt_backend = True
+
         self._input_info = None
         self._module_output_schema = None
         self._device = _utils.get_device_from_module(module)
@@ -257,21 +259,33 @@ class GraphExecutionManager(GraphExecutionInterface):
         providers = None
         provider_options = None
         if self._device.type == 'cuda':
+            providers = []
+            provider_options = []
+
             # Configure the InferenceSessions to use the specific GPU on which the model is placed.
-            providers = (["ROCMExecutionProvider"] if self.is_rocm_pytorch else [
-                         "CUDAExecutionProvider"])
-            providers.append("CPUExecutionProvider")
-            provider_option_map = {"device_id": str(self._device.index)}
-            if not self.is_rocm_pytorch:
-                # Set Conv algo search mode to HEURISTIC, which is same as PyTorch's default setting.
-                provider_option_map["cudnn_conv_algo_search"] = "HEURISTIC"
-                provider_option_map["cudnn_conv_use_max_workspace"] = "1"
-                provider_option_map["cudnn_conv1d_pad_to_nc1d"] = "1"
+            cuda_or_rocm_provider_option_map = {"device_id": str(self._device.index)}
             if self._use_external_gpu_allocator:
-                provider_option_map["gpu_external_alloc"] = str(self._torch_alloc)
-                provider_option_map["gpu_external_free"] = str(self._torch_free)
-                provider_option_map["gpu_external_empty_cache"] = str(self._torch_empty_cache)
-            provider_options = [provider_option_map, {}]
+                cuda_or_rocm_provider_option_map["gpu_external_alloc"] = str(self._torch_alloc)
+                cuda_or_rocm_provider_option_map["gpu_external_free"] = str(self._torch_free)
+                cuda_or_rocm_provider_option_map["gpu_external_empty_cache"] = str(self._torch_empty_cache)
+
+            if self.is_rocm_pytorch:
+                providers.append("ROCMExecutionProvider")
+                provider_options.append(cuda_or_rocm_provider_option_map)
+            else:
+                if self._use_tensorrt_backend:
+                    providers.append("TensorrtExecutionProvider")
+                    provider_options.append({})
+
+                providers.append("CUDAExecutionProvider")
+                # Set Conv algo search mode to HEURISTIC, which is same as PyTorch's default setting.
+                cuda_or_rocm_provider_option_map["cudnn_conv_algo_search"] = "HEURISTIC"
+                cuda_or_rocm_provider_option_map["cudnn_conv_use_max_workspace"] = "1"
+                cuda_or_rocm_provider_option_map["cudnn_conv1d_pad_to_nc1d"] = "1"
+                provider_options.append(cuda_or_rocm_provider_option_map)
+
+            providers.append("CPUExecutionProvider")
+            provider_options.append({})
         elif self._device.type == 'cpu':
             providers = ["CPUExecutionProvider"]
             provider_options = [{}]
