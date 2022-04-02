@@ -66,3 +66,5 @@ jobs:
               --parallel \
               --build_eager_mode --enable_training --build_wheel --test"
       workingDirectory: $(Build.SourcesDirectory)
+
+  - template: templates/clean-agent-build-directory-step.yml
