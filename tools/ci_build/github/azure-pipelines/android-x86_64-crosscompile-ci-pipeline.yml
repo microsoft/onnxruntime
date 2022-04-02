@@ -35,13 +35,16 @@ jobs:
       jdkArchitectureOption: 'x64'
       jdkSourceOption: 'PreInstalled'
 
-  - script: |
-      python3 tools/python/run_android_emulator.py ^
-        --android-sdk-root %ANDROID_SDK_ROOT% ^
-        --create-avd --system-image "system-images;android-29;google_apis;x86_64" ^
-        --start --emulator-extra-args="-partition-size 2047" ^
-        --emulator-pid-file %Build.BinariesDirectory%/emulator.pid
-    displayName: Start Android emulator
+  - script: java -version
+    displayName: check java
+
+  #- script: |
+  #    python3 tools/python/run_android_emulator.py ^
+  #     --android-sdk-root %ANDROID_SDK_ROOT% ^
+  #     --create-avd --system-image "system-images;android-29;google_apis;x86_64" ^
+  #     --start --emulator-extra-args="-partition-size 2047" ^
+  #      --emulator-pid-file %Build.BinariesDirectory%/emulator.pid
+  #  displayName: Start Android emulator
 
   # without it, it hangs at 'Linking CXX executable onnxruntime_test_all'
   - script: bash tools/ci_build/github/android/setup_gradle_wrapper.sh %cd%
@@ -66,4 +69,5 @@ jobs:
         --parallel ^
         --cmake_generator=Ninja ^
         --build_java ^
+        --skip_tests
     displayName: CPU EP, Build, Test
