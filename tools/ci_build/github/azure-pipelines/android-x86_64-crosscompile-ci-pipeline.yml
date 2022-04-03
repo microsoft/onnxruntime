@@ -48,12 +48,15 @@ jobs:
        with zipfile.ZipFile(path, 'r') as zip_ref:
             zip_ref.extractall("c:\haxm")
 
-  - script: c:\haxm\silent_install.bat
+  - task: BatchScript@1
+    inputs:
+      filename: "c:/haxm/silent_install.bat"
+      modifyEnvironment: true
+    displayName: install haxm
+
+  - script: sc query intelhaxm
     displayName: 'Command Line Script'
-
-  - script: ''
-    displayName: 'install intelHAXM'
-
+    
   # Start switching to jdk 11 after the Android Emulator is started since Android SDK manager requires java 8
   - task: JavaToolInstaller@0
     displayName: Use jdk 8
@@ -62,6 +65,9 @@ jobs:
       jdkArchitectureOption: 'x64'
       jdkSourceOption: 'PreInstalled'
 
+  - script: java -version && echo %Build.BinariesDirectory%
+    displayName: 'Command Line Script'
+    
   - script: |
       python3 tools/python/run_android_emulator.py ^
         --android-sdk-root %ANDROID_SDK_ROOT% ^
@@ -85,12 +91,20 @@ jobs:
   - script: |
       python3 tools/ci_build/build.py ^
         --android ^
-        --build_dir build ^
+        --build_dir build\Windows ^
         --android_sdk_path %ANDROID_HOME% ^
         --android_ndk_path %ANDROID_NDK_HOME% ^
         --android_abi=x86_64 ^
         --android_api=30 ^
         --parallel ^
         --cmake_generator=Ninja ^
-        --build_java ^
+        --build_java
     displayName: CPU EP, Build, Test
+
+  - script: |
+      python3 tools/python/run_android_emulator.py ^
+        --android-sdk-root ${ANDROID_SDK_ROOT} ^
+        --stop ^
+        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+    displayName: Stop Android emulator
+    condition: always()
