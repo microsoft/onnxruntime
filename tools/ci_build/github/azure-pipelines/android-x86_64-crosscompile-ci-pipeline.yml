@@ -88,6 +88,9 @@ jobs:
       jdkArchitectureOption: 'x64'
       jdkSourceOption: 'PreInstalled'
 
+  - powershell: Add-MpPreference -ExclusionPath %ANDROID_HOME%
+    displayName: Add Firewall Exclustion
+
   - script: |
       python3 tools/ci_build/build.py ^
         --android ^
