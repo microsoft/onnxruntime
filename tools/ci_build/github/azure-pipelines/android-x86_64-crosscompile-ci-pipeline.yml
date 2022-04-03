@@ -73,7 +73,7 @@ jobs:
         --android-sdk-root %ANDROID_SDK_ROOT% ^
         --create-avd --system-image "system-images;android-29;google_apis;x86_64" ^
         --start --emulator-extra-args="-partition-size 2047" ^
-        --emulator-pid-file %Build.BinariesDirectory%/emulator.pid
+        --emulator-pid-file c:/dev/emulator.pid
     displayName: Start Android emulator
 
   # without it, it hangs at 'Linking CXX executable onnxruntime_test_all'
