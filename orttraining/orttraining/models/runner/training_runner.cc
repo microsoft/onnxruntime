@@ -55,6 +55,7 @@ static SessionOptions SESSION_OPTION = {
     false,                             //use_deterministic_compute
     {},                                //config_options
     {},                                // initializers_to_share_map
+    {},                                // external_initializers
 };
 
 TrainingRunner::TrainingRunner(Parameters params, const Environment& env)

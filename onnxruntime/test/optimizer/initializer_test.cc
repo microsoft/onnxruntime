@@ -183,12 +183,11 @@ void AddData<MLFloat16>(const std::vector<MLFloat16>& data, size_t idx, ONNX_NAM
 template <typename T>
 void TestInitializerDataField() {
   constexpr auto dt = GetTensorProtoDataType<T>();
-  if (!(dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8 ||
-        dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
-        dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32 ||
-        dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16)) {
-    ASSERT_TRUE(false) << "tensor type " << dt << " is not supported";
-  }
+  static_assert((dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8 ||
+                 dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
+                 dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32 ||
+                 dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16),
+                "tensor type is not supported");
 
   std::vector<T> data = GetInitializerData<T>();
 
