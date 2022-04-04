@@ -291,19 +291,15 @@ std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapabilit
                                                                                   const std::vector<const KernelRegistry*>& kernel_registries) const {
   return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_registries);
 }
-//TODO: Nuphar is out of maintain. Temporary keep this legacy api
-  //We will deprecate it soon.
-#ifdef USE_NUPHAR
+// !!! This API will be deprecated soon.
 common::Status IExecutionProvider::Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                            std::vector<NodeComputeInfo>& node_compute_funcs) {
   return g_host->IExecutionProvider__Compile(this, fused_nodes, node_compute_funcs);
 }
-#else
 common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                            std::vector<NodeComputeInfo>& node_compute_funcs) {
   return g_host->IExecutionProvider__Compile(this, fused_nodes_and_graphs, node_compute_funcs);
 }
-#endif
 
 int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const {
   return g_host->IExecutionProvider__GenerateMetaDefId(this, graph_viewer, model_hash);

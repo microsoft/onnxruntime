@@ -203,16 +203,40 @@ class IExecutionProvider {
     const std::reference_wrapper<GraphViewer> filtered_graph;
   };
 
+  // Fusion approach that is suppported
+  // !!! The "Function" FusionStyle will be deprecated soon.
+  // !!! If your EP is using thi fusion style, please migrate it to "FilteredGraphViewer" style.
+  enum class FusionStyle {
+    // The node fusion will create an onnxruntime::Function based Node that contains a completely new Graph instance
+    // in the Node body. The original nodes and initializers are copied to the new Graph instance in Function::Body().
+    // A GraphProto can be produced from the Node body.
+    Function,
+
+    // The node fusion will create a new Node that defines the inputs and outputs using the IndexedSubGraph
+    // that GetCapability returned. The Node will not be onnxruntime::Function based so will have no Body().
+    // Instead a GraphViewer that filters the full Graph to the fused Nodes will be created.
+    // This is significantly cheaper as it doesn't incur the cost of creating a new Graph instance,
+    // and can be supported in a minimal build.
+    FilteredGraphViewer
+  };
+
+  virtual FusionStyle GetFusionStyle() const {
+    // existing EPs use this mode so default to it.
+    // newer EPs that can use the cheaper approach, or need to run in a minimal build, should override to return
+    // FilteredGraphViewer
+    return FusionStyle::FilteredGraphViewer;
+  }
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-#ifdef USE_NUPHAR
-  //TODO: Nuphar is out of maintain. keep the old API here for nuphar temporarily.
-  // we will deprecate it soon.
+
   /**
+  * !!!! This API will be deprecate soon, if your execution provider override this api
+  * !!!! Please migrate it to the "Compile" API with FusedNodeAndGraph type.
   Given a list of fused_node, return create_state/compute/release_state func for each node.
   */
   virtual common::Status Compile(const std::vector<onnxruntime::Node*>& fused_nodes,
                                  std::vector<NodeComputeInfo>& node_compute_funcs);
-#else
+
   /**
   Given a collection of fused Nodes and the respective GraphViewer instance for the nodes that were fused,
   return create_state/compute/release_state func for each node.
@@ -224,7 +248,7 @@ class IExecutionProvider {
   */
   virtual common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                  std::vector<NodeComputeInfo>& node_compute_funcs);
-#endif // use_nuphar
+
 #endif
 
   void SetLogger(const logging::Logger* logger) {
