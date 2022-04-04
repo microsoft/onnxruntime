@@ -8,6 +8,8 @@
 //#define DEBUG_BEAM_SEARCH 1  // uncomment it for debugging beam search
 #endif
 
+#define DEBUG_BEAM_SEARCH 1
+
 namespace onnxruntime {
 
 namespace concurrency {

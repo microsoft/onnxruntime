@@ -88,9 +88,11 @@ bool BeamHypotheses::IsEcsBetterThanLastIteration(ISequences* sequences,
         generated_net = generated_ecs - generated_cost;
       }
 
+      std::cout<<"Generated net for beam:" << i <<", index:"<<j<<generated_net<<std::endl;
       // beam_generated_length is less than min_chars, it will always default to the first index, topK are sorted
       // so that is OK. may be a better way to make sure it will find the maximum
       if (generated_net > max_generated_net) {
+        std::cout<<"generated_net:"<<generated_net<<", greater than max_generated_net:"<<max_generated_net<<std::endl;
         max_generated_net = generated_net;
         max_index = beam_idx;
       }
@@ -98,6 +100,7 @@ bool BeamHypotheses::IsEcsBetterThanLastIteration(ISequences* sequences,
   }
 
   if (max_generated_net >= best_net_ && next_scores[max_index] >= log_prob_threshold) {
+    std::cout<<"Updating best_net_ with:"<<max_generated_net<<std::endl;
     best_net_ = max_generated_net;
     return false;
   }
