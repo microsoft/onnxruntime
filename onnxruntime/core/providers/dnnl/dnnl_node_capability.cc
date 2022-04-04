@@ -849,5 +849,75 @@ bool DnnlQAttentionNodeCapability::IsDimensionSupported(const Node* node) const 
   return true;
 }
 
+// DnnlCastNodeCapability class
+//-------------------------------------
+DnnlCastNodeCapability::DnnlCastNodeCapability(std::vector<ORT_DataType> validTypes) 
+                        : DnnlDefaultNodeCapability(validTypes) {
+  for (ORT_DataType datatype : validTypes)
+    validTypes_.push_back(datatype);
+}
+
+bool DnnlCastNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
+  if (!IsTypeSupported(node) || !IsCastSupported(node)) return false;
+  return true;
+}
+
+bool DnnlCastNodeCapability::IsCastSupported(const Node* node) const {
+  // Get input and attributes
+  const NodeAttributes& node_attr = node->GetAttributes();
+  auto node_input = node->InputDefs();
+  auto attr_to = node_attr.find("to");
+
+  // If we have valid results
+  if (!node_input.empty() && 
+      node_input[0]->TypeAsProto() != nullptr && 
+      attr_to != node_attr.end()) {
+    
+    // Get the input and cast target type
+    auto input_type = node_input[0]->TypeAsProto()->tensor_type().elem_type();
+    auto cast_type = attr_to->second().i();
+
+    // Some FP16 operations are not supported yet on CPU
+#if defined(DNNL_CPU_RUNTIME)
+    // From uint8 and int8 => To Float16
+    if ((input_type == type_uint8 ||
+         input_type == type_int8) &&
+         cast_type == type_float16) {
+      return false;
+    }
+    // From uint32 => To Float16 and BFloat16
+    if (input_type == type_int32    &&
+       (cast_type == type_float16   ||
+        cast_type == type_bfloat16)) {
+      return false;
+    }
+    // From Float16 => To int(uint8, int8 and int32) and BFloat16
+    if (input_type == type_float16  &&
+        (cast_type == type_uint8    ||
+         cast_type == type_int8     ||
+         cast_type == type_int32    ||
+         cast_type == type_bfloat16)) {
+      return false;
+    }
+    // From BFloat16 => To int32 and BFloat16
+    if (input_type == type_bfloat16 &&
+        (cast_type == type_int32    ||
+         cast_type == type_float16)) {
+      return false;
+    }
+#endif  // defined(DNNL_CPU_RUNTIME)
+
+    // Check if the cast type is supported
+    for (auto validType : validTypes_) {
+      if (validType == cast_type) {
+        return true;
+      }
+    }
+ 
+  }
+
+  return false;
+}
 
 }  // namespace onnxruntime

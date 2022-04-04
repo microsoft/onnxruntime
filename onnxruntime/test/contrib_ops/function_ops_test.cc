@@ -49,7 +49,7 @@ TEST_F(ContribFunExpansionTest, LayerNorm) {
   // Test expand-and-run
   CheckLayerNorm<float, float, true>();
   // Test expand-and-check-only
-  CheckLayerNorm<MLFloat16, BFloat16, false>();
+  CheckLayerNorm<MLFloat16, double, false>();
 }
 
 TEST_F(ContribFunExpansionTest, LayerNorm_OptionalOutputs) {
