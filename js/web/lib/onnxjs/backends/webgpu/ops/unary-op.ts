@@ -157,8 +157,8 @@ export const leakyRelu = async(handler: WebGpuInferenceHandler, inputs: Tensor[]
 export const parseLeakyReluAttributes = (node: Graph.Node): LeakyReluAttributes =>
     createAttributeWithCacheKey({alpha: node.attributes.getFloat('alpha', 0.01)});
 
-// export const log = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-//     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslLog()), inputs)];
+export const log = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
+    handler.run(createElementwiseProgramInfoLoader(inputs[0], 'log'), inputs);
 
 // export const neg = (handler: WebGLInferenceHandler, inputs: Tensor[]):
 //     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslNeg()), inputs)];
@@ -166,20 +166,32 @@ export const parseLeakyReluAttributes = (node: Graph.Node): LeakyReluAttributes 
 // export const not = (handler: WebGLInferenceHandler, inputs: Tensor[]):
 //     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslNot()), inputs)];
 
-// export const relu = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-//     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslRelu()), inputs)];
+export const relu = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[] >=>handler.run(
+    createElementwiseProgramInfoLoader(inputs[0], 'relu', `
+    let relu_zero_: vec4<f32> = vec4(0.0, 0.0, 0.0, 0.0);
 
-// export const sigmoid = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-//     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslSigmoid()), inputs)];
+    fn relu(v: vec4<f32>) -> vec4<f32> {
+      return max( v, relu_zero_ );
+    }`),
+    inputs);
 
-// export const sin = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-//     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslSin()), inputs)];
+export const sigmoid = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[] >=>handler.run(
+    createElementwiseProgramInfoLoader(inputs[0], 'sigmoid', `
+    let sigmoid_one_: vec4<f32> = vec4(1.0, 1.0, 1.0, 1.0);
 
-// export const sqrt = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-//     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslSqrt()), inputs)];
+    fn sigmoid(v: vec4<f32>) -> vec4<f32> {
+      return sigmoid_one_ / (sigmoid_one_ + exp(-v));
+    }`),
+    inputs);
 
-// export const tan = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-//     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslTan()), inputs)];
+export const sin = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
+    handler.run(createElementwiseProgramInfoLoader(inputs[0], 'sin'), inputs);
 
-// export const tanh = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-//     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslTanh()), inputs)];
+export const sqrt = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
+    handler.run(createElementwiseProgramInfoLoader(inputs[0], 'sqrt'), inputs);
+
+export const tan = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
+    handler.run(createElementwiseProgramInfoLoader(inputs[0], 'tan'), inputs);
+
+export const tanh = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
+    handler.run(createElementwiseProgramInfoLoader(inputs[0], 'tanh'), inputs);

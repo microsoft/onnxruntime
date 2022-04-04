@@ -40,7 +40,7 @@ export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   // ['InstanceNormalization', '', '6+', instanceNormalization, parseInstanceNormalizationAttributes],
   ['LeakyRelu', '', '6+', unaryOps.leakyRelu, unaryOps.parseLeakyReluAttributes],
   // ['Less', '', '7+', binaryOps.less],
-  // ['Log', '', '6+', unaryOps.log],
+  ['Log', '', '6+', unaryOps.log],
   // ['MatMul', '', '1+', matMul, parseMatMulAttributes],
   // // TODO: support new attributes for MaxPool-8 and MaxPool-10
   // ['MaxPool', '', '1+', maxPool, parseMaxPoolAttributes],
@@ -59,13 +59,11 @@ export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   // ['ReduceProd', '', '1+', reduceProd, parseReduceAttributes],
   // ['ReduceSum', '', '1-12', reduceSum, parseReduceAttributes],
   // ['ReduceSumSquare', '', '1+', reduceLogSumSquare, parseReduceAttributes],
-  // ['Relu', '', '6+', unaryOps.relu],
-  ['Reshape', '', '5+', reshape],
+  ['Relu', '', '6+', unaryOps.relu], ['Reshape', '', '5+', reshape],
   // ['Resize', '', '10', resize, parseResizeAttributesV10],
   // ['Resize', '', '11+', resize, parseResizeAttributesV11],
   // ['Shape', '', '1+', shape],
-  // ['Sigmoid', '', '6+', unaryOps.sigmoid],
-  // ['Sin', '', '7+', unaryOps.sin],
+  ['Sigmoid', '', '6+', unaryOps.sigmoid], ['Sin', '', '7+', unaryOps.sin],
   // ['Slice', '', '10+', sliceV10],  // TODO: support 'steps' for Slice-10
   // ['Slice', '', '1-9', slice, parseSliceAttributes],
   // // The "semantic" meaning of axis has changed in opset-13.
@@ -76,13 +74,12 @@ export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   // // When the attribute is missing, we need the count of number of outputs
   // // so that we can determine the 'split' attribute from the runtime input to the Operator
   // ['Split', '', '2-12', split, parseSplitAttributes],
-  // ['Sqrt', '', '6+', unaryOps.sqrt],
+  ['Sqrt', '', '6+', unaryOps.sqrt],
   // ['Squeeze', '', '1-12', squeeze, parseSqueezeAttributes],
   // ['Squeeze', '', '13+', squeezeV13],
   // ['Sub', '', '7+', binaryOps.sub],
   // ['Sum', '', '6+', sum],
-  // ['Tan', '', '7+', unaryOps.tan],
-  // ['Tanh', '', '6+', unaryOps.tanh],
+  ['Tan', '', '7+', unaryOps.tan], ['Tanh', '', '6+', unaryOps.tanh],
   // ['Tile', '', '6+', tile],
   // ['Transpose', '', '1+', transpose, parseTransposeAttributes],
   // ['Upsample', '', '7-8', upsample, parseUpsampleAttributesV7],
