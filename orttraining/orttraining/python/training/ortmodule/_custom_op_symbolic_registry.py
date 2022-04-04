@@ -81,8 +81,28 @@ def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
         output.setType(output_type)
     return output
 
+@register_symbolic('embedding_bag')
+def embedding_bag(g, 
+                  embedding_matrix,
+                  indices,
+                  offsets,
+                  scale_grad_by_freq,
+                  mode,
+                  sparse,
+                  per_sample_weights,
+                  include_last_offset,
+                  padding_idx):
+    output,_,_,_ = g.op("org.pytorch.aten::ATen", embedding_matrix, indices, offsets, scale_grad_by_freq,
+                  mode, sparse, per_sample_weights, include_last_offset, padding_idx,
+                  operator_s='aten::embedding_bag', outputs=4)
+    indices_shape = _get_tensor_sizes(indices)
+    if indices_shape is not None and hasattr(embedding_matrix.type(), 'with_sizes'):
+        output_type = embedding_matrix.type().with_sizes(
+            indices_shape + [_get_tensor_dim_size(embedding_matrix, 1)])
+        output.setType(output_type)
+    return output
 
-@register_symbolic("bitwise_or")
+@register_symbolic('bitwise_or')
 def bitwise_or(g, self, other):
     return g.op("org.pytorch.aten::ATen", self, other, operator_s="aten::bitwise_or", overload_name_s="Tensor")
 

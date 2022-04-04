@@ -99,8 +99,29 @@ def embedding_gradient():
         ),
     ]
 
+# For ATen op, we need to provide op_name and overload name.
+@register_gradient('org.pytorch.aten', 'ATen', 'aten::_embedding_bag_backward', '')
+def embedding_bag_gradient():
+    # name: _embedding_bag(Tensor weight, Tensor indices, Tensor offsets, bool scale_grad_by_freq=False, 
+    #                      int mode=0, bool sparse=False, Tensor? per_sample_weights=None, 
+    #                      bool include_last_offset=False, int padding_idx=-1) -> (Tensor, Tensor, Tensor, Tensor)
+    # indices: non_differentiable
+    # offsets: non_differentiable
+    # weight: _embedding_bag_backward(grad, indices, offsets, result1, result2, result3, weight.size(0), 
+    #                                 scale_grad_by_freq, mode, sparse, per_sample_weights, padding_idx)
+    # per_sample_weights: _embedding_bag_per_sample_weights_backward(grad, weight, indices, offsets, result1, mode,
+    #                                                                padding_idx)
 
-@register_gradient("org.pytorch.aten", "ATen", "aten::diagonal", "")
+    return [
+        ('Constant', [], ['Const_0'], {'value': {'value': 0, 'dtype': 'int', 'is_tensor': True}}),
+        ('Shape', ['I(0)'], ['Shape_X']),
+        ('Gather', ['Shape_X', 'Const_0'], ['Gather_X_0'], {'axis': {'value': 0, 'dtype': 'int'}}),
+        (('ATen', 'org.pytorch.aten'), ['GO(0)', 'I(1)','I(2)','O(1)', 'O(2)', 'O(3)','Gather_X_0', 
+         'I(3)', 'I(4)', 'I(5)','I(6)','I(8)'], ['GI(0)'], 
+         {'operator': {'value': 'aten::_embedding_bag_backward', 'dtype': 'string'}})
+    ]
+
+@register_gradient('org.pytorch.aten', 'ATen', 'aten::diagonal', '')
 def diagonal_gradient():
     return [
         ("Shape", ["I(0)"], ["Shape_X"]),

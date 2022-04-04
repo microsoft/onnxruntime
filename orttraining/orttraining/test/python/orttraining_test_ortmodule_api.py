@@ -977,6 +977,41 @@ def test_gradient_correctness_embedding(device, padding_idx):
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-5)
 
+@pytest.mark.parametrize("device", ['cuda', 'cpu'])
+@pytest.mark.parametrize("padding_idx", [None, 1])
+@pytest.mark.parametrize("input_rank", [2, 1])
+def test_gradient_correctness_embedding_bag(device, padding_idx, input_rank):
+    class NeuralNetEmbeddingBag(torch.nn.Module):
+        def __init__(self, num_embeddings, embedding_dim, hidden_size):
+            super(NeuralNetEmbeddingBag, self).__init__()
+            self.embedding = torch.nn.EmbeddingBag(num_embeddings, embedding_dim, padding_idx=padding_idx)
+            self.linear = torch.nn.Linear(embedding_dim, hidden_size)
+
+        def forward(self, input):
+            return self.linear(self.embedding(input))
+
+    N, num_embeddings, embedding_dim, hidden_size = 64, 32, 128, 128
+    pt_model = NeuralNetEmbeddingBag(num_embeddings, embedding_dim, hidden_size).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input, offset):
+        prediction = model(input, offset)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    for _ in range(10):
+        input = torch.randint(high=num_embeddings, size=(N,), dtype=torch.int64, device=device)
+        offset = None
+        if input_rank == 1:
+            offset = torch.tensor([0,N//2], dtype=torch.int64)
+        else:
+            input = input.reshape(2,N//2)
+        pt_prediction = run_step(pt_model, input, offset)
+        ort_prediction = run_step(ort_model, input, offset)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-5)
 
 @pytest.mark.parametrize("use_fp16", [False, True])
 def test_gradient_correctness_cross_entropy_loss(use_fp16):
