@@ -145,8 +145,7 @@ else
     RUNTIME="--gpus all"
 fi
 
-DOCKER_RUN_PARAMETER="--name onnxruntime-$BUILD_DEVICE \
-                      --volume $SOURCE_ROOT:/onnxruntime_src \
+DOCKER_RUN_PARAMETER="--volume $SOURCE_ROOT:/onnxruntime_src \
                       --volume $BUILD_DIR:/build \
                       --volume /data/models:/build/models:ro \
                       --volume /data/onnx:/data/onnx:ro \
@@ -155,17 +154,10 @@ DOCKER_RUN_PARAMETER="--name onnxruntime-$BUILD_DEVICE \
 if [ $BUILD_DEVICE = "openvino" ] && [[ $BUILD_EXTR_PAR == *"--use_openvino GPU_FP"* ]]; then
     DOCKER_RUN_PARAMETER="$DOCKER_RUN_PARAMETER --device /dev/dri:/dev/dri"
 fi
-
-$DOCKER_CMD rm -f "onnxruntime-$BUILD_DEVICE" || true
-$DOCKER_CMD run $RUNTIME -h $HOSTNAME $DOCKER_RUN_PARAMETER \
+# Though this command has a yocto version argument, none of our ci build pipelines use yocto.
+$DOCKER_CMD run $RUNTIME --rm $DOCKER_RUN_PARAMETER \
     -e NIGHTLY_BUILD \
     -e $ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV \
     "onnxruntime-$IMAGE" \
     /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
-    -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" -o $BUILD_OS -y $YOCTO_VERSION &
-wait $!
-
-EXIT_CODE=$?
-
-set -e
-exit $EXIT_CODE
+    -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" -o $BUILD_OS -y $YOCTO_VERSION

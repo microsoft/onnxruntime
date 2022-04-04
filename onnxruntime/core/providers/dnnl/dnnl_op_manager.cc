@@ -19,6 +19,7 @@ DnnlOpManager::DnnlOpManager() {
   dnnl_ops_map_.emplace(std::make_pair("Erf", std::unique_ptr<DnnlNodeCapability>(new DnnlErfNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Exp", std::unique_ptr<DnnlNodeCapability>(new DnnlElementwiseCapability())));
   dnnl_ops_map_.emplace(std::make_pair("FastGelu", std::unique_ptr<DnnlNodeCapability>(new DnnlDefaultNodeCapability())));
+  dnnl_ops_map_.emplace(std::make_pair("FusedMatMul", std::unique_ptr<DnnlNodeCapability>(new DnnlMatMulNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Gelu", std::unique_ptr<DnnlNodeCapability>(new DnnlDefaultNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Gemm", std::unique_ptr<DnnlNodeCapability>(new DnnlGemmNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("GlobalAveragePool", std::unique_ptr<DnnlNodeCapability>(new DnnlPoolNodeCapability())));

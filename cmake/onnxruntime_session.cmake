@@ -50,3 +50,11 @@ endif()
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   onnxruntime_add_include_to_target(onnxruntime_session Python::Module) 
 endif()
+
+if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_session
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
