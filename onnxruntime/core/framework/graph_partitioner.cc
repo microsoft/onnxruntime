@@ -374,6 +374,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       std::vector<std::unique_ptr<GraphViewer>> viewers;
       viewers.reserve(nodes_to_compile.size());
       std::vector<IExecutionProvider::FusedNodeAndGraph> nodes_and_viewers;
+      nodes_and_viewers.reserve(nodes_to_compile.size());
 
       for (size_t j = 0, end = nodes_to_compile.size(); j < end; j++) {
         auto* node = nodes_to_compile[j];
@@ -414,7 +415,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   }
 
   // TODO: The DML currently use some legacy approach.
-  // The fuse is done at line 209
+  // The fuse is done in FuseSubGraph function.
   // Need to remove it later when DML migrate to Compile approach
   if (!nodes_to_complete_fuse.empty() && type != kDmlExecutionProvider) {
     for (size_t j = 0, end = nodes_to_complete_fuse.size(); j < end; j++) {
