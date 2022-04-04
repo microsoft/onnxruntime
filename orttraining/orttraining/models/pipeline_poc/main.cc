@@ -108,7 +108,8 @@ int main(int argc, char* argv[]) {
       true,                              //thread_pool_allow_spinning
       false,                             //use_deterministic_compute
       {},                                //session_configurations
-      {}                                 //initializers_to_share_map
+      {},                                //initializers_to_share_map
+      {}                                 // external_initializers
   };
 
   InferenceSession session_object{so, *env};

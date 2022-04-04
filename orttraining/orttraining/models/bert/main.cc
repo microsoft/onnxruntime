@@ -58,7 +58,8 @@ static SessionOptions session_options = {
     true,                              //thread_pool_allow_spinning
     false,                             //use_deterministic_compute
     {},                                //config_options
-    {},                                // initializers_to_share_map
+    {},                                //initializers_to_share_map
+    {},                                // external_initializers
 };
 
 struct BertParameters : public TrainingRunner::Parameters {
