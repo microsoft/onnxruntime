@@ -37,6 +37,9 @@
 #include "core/framework/TensorSeq.h"
 #include "core/platform/ort_mutex.h"
 
+//Shalva - Added the mem profiling for WASM
+#include "core/util/MemProfile.h"
+
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
@@ -615,10 +618,11 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
                                                 std::unique_ptr<onnxruntime::InferenceSession>& sess) {
   // quick check here to decide load path. InferenceSession will provide error message for invalid values.
   // TODO: Could move to a helper
+  checkMemory("CreateSessionAndLoadModel - Line 621 - start");  
   const Env& os_env = Env::Default();  // OS environment (!= ORT environment)
   bool load_config_from_model =
       os_env.GetEnvironmentVar(inference_session_utils::kOrtLoadConfigFromModelEnvVar) == "1";
-
+  checkMemory("CreateSessionAndLoadModel - Line 625");  
   if (load_config_from_model) {
 #if !defined(ORT_MINIMAL_BUILD)
     if (model_path != nullptr) {
@@ -640,7 +644,7 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
         env->GetEnvironment());
   }
-
+  checkMemory("CreateSessionAndLoadModel - Line 647");  
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // Add custom domains
   if (options && !options->custom_op_domains_.empty()) {
@@ -660,7 +664,7 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
       ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(model_data, static_cast<int>(model_data_length)));
     }
   }
-
+  checkMemory("CreateSessionAndLoadModel - Line 667 - end");  
   return nullptr;
 }
 

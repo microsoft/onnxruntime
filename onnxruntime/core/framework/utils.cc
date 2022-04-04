@@ -24,6 +24,9 @@
 #include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
 
+//Shalva - Added the mem profiling for WASM
+#include "core/util/MemProfile.h"
+
 namespace ONNX_NAMESPACE {
 std::ostream& operator<<(std::ostream& out, const TensorShapeProto& shape_proto) {
   std::string result;

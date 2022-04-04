@@ -15,6 +15,9 @@
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/utils.h"
 
+//Shalva - Added the mem profiling for WASM
+#include "core/util/MemProfile.h"
+
 #if defined DEBUG_NODE_INPUTS_OUTPUTS
 #include "core/framework/debug_node_inputs_outputs_utils.h"
 #endif

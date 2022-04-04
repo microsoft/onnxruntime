@@ -16,6 +16,9 @@
 #include "core/framework/utils.h"
 #include "core/platform/threadpool.h"
 
+//Shalva - Added the mem profiling for WASM
+#include "core/util/MemProfile.h"
+
 namespace onnxruntime {
 
 ParallelExecutor::ParallelExecutor(const SessionState& session_state, const bool& terminate_flag)

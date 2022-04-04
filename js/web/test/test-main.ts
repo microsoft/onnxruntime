@@ -111,12 +111,14 @@ for (const group of ORT_WEB_TEST_CONFIG.model) {
             context.release();
           }
         });
-
-        for (const testCase of test.cases) {
-          it(testCase.name, async () => {
-            await runModelTestSet(context, testCase, test.name);
-          });
-        }
+        //Shlava checking mem leak
+        //for(let i = 0; i < 20; i++) {
+          for (const testCase of test.cases) {
+            it(testCase.name, async () => {
+              await runModelTestSet(context, testCase, test.name);
+            });
+          }
+        //}
       });
     }
   });

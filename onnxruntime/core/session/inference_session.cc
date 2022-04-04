@@ -64,6 +64,9 @@
 #include "core/session/custom_ops.h"
 #endif
 
+//Shalva - Added the mem profiling for WASM
+#include "core/util/MemProfile.h"
+
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 
@@ -732,12 +735,14 @@ common::Status InferenceSession::Load(const std::wstring& model_uri) {
 #endif
 
 common::Status InferenceSession::Load(const void* model_data, int model_data_len) {
+  checkMemory("InferenceSession::Load - Line 735 - start");
   std::string model_type = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigLoadModelFormat, "");
   bool has_explicit_type = !model_type.empty();
-
+  checkMemory("InferenceSession::Load - Line 738");
   if ((has_explicit_type && model_type == "ORT") ||
       (!has_explicit_type &&
        fbs::utils::IsOrtFormatModelBytes(model_data, model_data_len))) {
+    checkMemory("InferenceSession::Load - Line 742 - before calling LoadORTModel");
     return LoadOrtModel(model_data, model_data_len);
   }
 
@@ -747,7 +752,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
                            "ModelProto corresponding to the model to be loaded has already been parsed. "
                            "Invoke Load().");
   }
-
+  checkMemory("InferenceSession::Load - Line 752");
   auto loader = [this, model_data, model_data_len](std::shared_ptr<onnxruntime::Model>& model) {
     ModelProto model_proto;
 
@@ -766,7 +771,7 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
     return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_);
   };
-
+  checkMemory("InferenceSession::Load - Line 771 - End");
   return Load(loader, "model_loading_array");
 #else
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ONNX format model is not supported in this build.");
@@ -988,6 +993,7 @@ Status InferenceSession::LoadOrtModel(const std::wstring& model_uri) {
 
 Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len) {
   return LoadOrtModel([&]() {
+    checkMemory("InferenceSession::LoadOrtModel - Line 996 - start");  
     const auto use_ort_model_bytes_directly =
         GetSessionOptions().config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseORTModelBytesDirectly, "0");
     if (use_ort_model_bytes_directly != "1") {
@@ -1001,6 +1007,7 @@ Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len
       // This will require the model_data to be alive until the InferenceSession is initialized
       ort_format_model_bytes_ = gsl::span<const uint8_t>(reinterpret_cast<const uint8_t*>(model_data), model_data_len);
     }
+    checkMemory("InferenceSession::LoadOrtModel - Line 1007 - end");  
     return Status::OK();
   });
 }
@@ -1186,6 +1193,7 @@ static void ResolveMemoryPatternFlags(SessionState& session_state) {
 common::Status InferenceSession::Initialize() {
   Status status = Status::OK();
   TimePoint tp;
+  checkMemory("InferenceSession::Initialize - Line 1196 - start");  
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
   }
@@ -1194,7 +1202,7 @@ common::Status InferenceSession::Initialize() {
     LOGS(*session_logger_, INFO) << "Initializing session.";
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogSessionCreationStart();
-
+    checkMemory("InferenceSession::Initialize - Line 1205");  
     bool have_cpu_ep = false;
 
     {
@@ -1212,7 +1220,7 @@ common::Status InferenceSession::Initialize() {
 
       have_cpu_ep = execution_providers_.Get(onnxruntime::kCpuExecutionProvider) != nullptr;
     }
-
+    checkMemory("InferenceSession::Initialize - Line 1223");  
     // Verify that there are no external initializers in the graph if external data is disabled.
     onnxruntime::Graph& graph = model_->MainGraph();
 #ifdef DISABLE_EXTERNAL_INITIALIZERS
@@ -1249,8 +1257,8 @@ common::Status InferenceSession::Initialize() {
     // since we've to take into account the per-thread cuda allocators.
     // TODO (contd.) We could also possibly absorb the per-thread logic in a new allocator decorator that derives
     // from IAllocator to keep things clean.
-    std::string use_env_allocators = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators,
-                                                                                        "0");
+    std::string use_env_allocators = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators,"0");
+    checkMemory("InferenceSession::Initialize - Line 1261");  
     if (use_env_allocators == "1") {
       LOGS(*session_logger_, INFO) << "This session will use the allocator registered with the environment.";
       UpdateProvidersWithSharedAllocators();
@@ -1468,7 +1476,7 @@ common::Status InferenceSession::Initialize() {
       }
     }
   }
-
+  checkMemory("InferenceSession::Initialize - Line 1479 - end");  
   return status;
 }
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -1763,6 +1771,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds,
                              const std::vector<std::string>& output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
+  checkMemory("InferenceSession::Run - Line 1774 - start");  
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
@@ -1784,6 +1793,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
     ++current_num_runs_;
     ORT_RETURN_IF_ERROR_SESSIONID_(cached_execution_provider_for_graph_replay_.ReplayGraph());
   } else {
+    checkMemory("InferenceSession::Run - Line 1796 - not a CUDA graph");  
     std::vector<IExecutionProvider*> exec_providers_to_stop;
     exec_providers_to_stop.reserve(execution_providers_.NumProviders());
 
@@ -1847,7 +1857,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
         ORT_CHECK_AND_SET_RETVAL(start_func());
       }
-
+      checkMemory("InferenceSession::Run - Line 1860");  
 #if !defined(ORT_MINIMAL_BUILD)
       if (run_options.only_execute_path_to_fetches) {
         session_state_->UpdateToBeExecutedNodes(feeds_fetches_manager.GetFeedsFetchesInfo().fetches_mlvalue_idxs);
@@ -1920,6 +1930,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
                                     "The second one is for capturing the graph.";
     ORT_RETURN_IF_ERROR(Run(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info));
   }
+  checkMemory("InferenceSession::Run - Line 1933 - end");  
   return retval;
 }
 
