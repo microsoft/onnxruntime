@@ -37,8 +37,9 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
     excluded_providers.insert(kNnapiExecutionProvider);
   }
 
-  // TODO: ORT and ONNX disagree about the behavior when step < 0 and end = INT_MAX.
-  // One of them has to be wrong, we should fix it.
+  // TODO: ORT behavior when step < 0 and end = INT_MAX is wrong. Fix it and
+  // remove the onnx_shape_disagreement code below.
+  // https://github.com/microsoft/onnxruntime/issues/11107
   const bool onnx_shape_disagreement = (!steps.empty() && steps[0] < 0 && !ends.empty() &&
                                         (ends[0] == std::numeric_limits<int64_t>::max() ||
                                          ends[0] == std::numeric_limits<int32_t>::max()));

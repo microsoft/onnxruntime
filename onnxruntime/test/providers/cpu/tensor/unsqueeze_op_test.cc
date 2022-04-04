@@ -61,7 +61,8 @@ TEST(TensorOpTest, Unsqueeze_scalar) {
     test.AddInput<float>("input", {}, std::vector<float>{1.0f});
     test.AddOutput<float>("output", {1}, std::vector<float>{1.0f});
     // TODO: ONNX shape inference thinks the output should be rank 0.
-    // Either ONNX or ORT is wrong. They should agree.
+    // ONNX spec is ambiguous: https://github.com/onnx/onnx/issues/2428.
+    // Once spec clarified, remove strict_shape_type_inference override.
     SessionOptions so;
     so.strict_shape_type_inference = false;
     test.Run(so);

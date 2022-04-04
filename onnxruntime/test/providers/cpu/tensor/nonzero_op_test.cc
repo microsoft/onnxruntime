@@ -68,8 +68,9 @@ TEST(NonZeroOpTest, ThreeDims) {
 }
 
 TEST(NonZeroOpTest, Scalar) {
-  // TODO: ORT and ONNX disagree about the correct output shape.
-  // One of them has to be wrong, we should fix it, but for now ignore it.
+  // TODO: ONNX shape inference disagrees about the output shape.
+  // ONNX spec is ambiguous: https://github.com/onnx/onnx/issues/2428.
+  // Once spec clarified, remove strict_shape_type_inference override.
   SessionOptions so;
   so.strict_shape_type_inference = false;
   {
