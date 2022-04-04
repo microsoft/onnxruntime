@@ -88,7 +88,7 @@ jobs:
 
   steps:
 
-  ${{ if eq(parameters.BuildORT, false) }}:
+  - ${{ if eq(parameters.BuildORT, false) }}:
     - task: DownloadPipelineArtifact@2
       inputs:
         buildType: 'specific'
