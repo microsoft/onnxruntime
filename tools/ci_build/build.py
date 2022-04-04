@@ -322,9 +322,10 @@ def parse_arguments():
     parser.add_argument("--android_run_emulator", action="store_true",
                         help="Start up an Android emulator if needed.")
 
-    parser.add_argument("--gdk", action='store_true', help="build with GDK")
+    parser.add_argument("--use_gdk", action='store_true', help="Build with the GDK toolchain.")
     parser.add_argument("--gdk_edition", default=os.path.normpath(os.environ.get("GameDKLatest","")).split(os.sep)[-1], 
-                        help="build with specific GDK edition")
+                        help="Build with a specific GDK edition. Defaults to the latest installed.")
+    parser.add_argument("--gdk_platform", default="Scarlett", help="Sets the GDK target platform.")
 
     parser.add_argument("--ios", action='store_true', help="build for ios")
     parser.add_argument(
@@ -480,6 +481,9 @@ def parse_arguments():
         help="Test with multi-device. Mostly used for multi-device GPU")
     parser.add_argument(
         "--use_dml", action='store_true', help="Build with DirectML.")
+    parser.add_argument(
+        "--dml_path", type=str, default="",
+        help="Path to a custom DirectML installation (must have bin/, lib/, and include/ subdirectories).")
     parser.add_argument(
         "--use_winml", action='store_true', help="Build with WinML.")
     parser.add_argument(
@@ -967,13 +971,20 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         if args.android_cpp_shared:
             cmake_args += ["-DANDROID_STL=c++_shared"]
 
-    if args.gdk:
+    if args.dml_path:
+        cmake_args += ["-Ddml_INCLUDE_DIR=" + os.path.join(args.dml_path, "include")]
+
+    if args.use_gdk:
         cmake_args += [
             "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, 'cmake', 'gdk_toolchain.cmake'),
             "-DGDK_EDITION=" + args.gdk_edition,
+            "-DGDK_PLATFORM=" + args.gdk_platform,
             "-Donnxruntime_BUILD_UNIT_TESTS=OFF" # gtest doesn't build for GDK
-            "-Donnxruntime_USE_CUSTOM_DIRECTML=ON"
         ]
+        if args.use_dml:
+            if not args.dml_path:
+                raise BuildError("You must set dml_path when building with the GDK.")
+            cmake_args += ["-Donnxruntime_USE_CUSTOM_DIRECTML=ON"]
 
     if is_macOS() and not args.android:
         cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch]
@@ -1284,7 +1295,17 @@ def setup_migraphx_vars(args):
 
 
 def setup_dml_build(args, cmake_path, build_dir, configs):
-    if args.use_dml and not args.gdk:
+    if not args.use_dml:
+        return
+
+    if args.dml_path:
+        for expected_file in ["bin/DirectML.dll", "lib/DirectML.lib", "include/DirectML.h"]:
+            file_path = os.path.join(args.dml_path, expected_file)
+            if not os.path.exists(file_path):
+                raise BuildError("dml_path is invalid.",
+                                "dml_path='{}' expected_file='{}'."
+                                .format(args.dml_path, file_path))
+    else:
         for config in configs:
             # Run the RESTORE_PACKAGES target to perform the initial
             # NuGet setup.

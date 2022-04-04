@@ -14,11 +14,10 @@ $pythonArgs = @(
     "--skip_submodule_sync",
     "--target", "install",
     "--use_dml",
-    "--gdk",
+    "--use_gdk",
     "--gdk_edition", "210602",
-    "--cmake_extra_defines", 
-        "CMAKE_INSTALL_PREFIX=$PSScriptRoot\build\install", 
-        "dml_INCLUDE_DIR=`"$DmlInstallPath/include`""
+    "--dml_path", "s:/dml_gdk210602"
+    "--cmake_extra_defines", "CMAKE_INSTALL_PREFIX=$PSScriptRoot\build\install"
 )
 
 python $PSScriptRoot\tools\ci_build\build.py $pythonArgs
