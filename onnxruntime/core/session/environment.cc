@@ -12,6 +12,7 @@
 #include "onnx/defs/operator_sets_ml.h"
 #include "core/graph/contrib_ops/ms_opset.h"
 #include "core/graph/contrib_ops/onnx_deprecated_opset.h"
+#include "core/framework/provider_shutdown.h"
 #if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
 #include "onnx/defs/operator_sets_training.h"
 #endif
@@ -48,6 +49,13 @@ using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
 
 std::once_flag schemaRegistrationOnceFlag;
+
+Environment::~Environment() {
+// We don't support any shared providers in the minimal build yet
+#if !defined(ORT_MINIMAL_BUILD)
+  UnloadSharedProviders();
+#endif
+}
 
 Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_manager,
                            std::unique_ptr<Environment>& environment,
