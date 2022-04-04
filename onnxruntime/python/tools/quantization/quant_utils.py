@@ -1,11 +1,14 @@
 import logging
 import numpy
 import onnx
+import tempfile
 
 from enum import Enum
 from onnx import onnx_pb as onnx_proto
 from onnx import external_data_helper
 from pathlib import Path
+
+from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
 __producer__ = "onnx.quantize"
 __version__ = "0.1.0"
@@ -455,3 +458,59 @@ def model_has_external_data(model_path : Path):
         if external_data_helper.uses_external_data(intializer):
             return True
     return False
+
+def optimize_model(model_path : Path, opt_model_path : Path):
+    '''
+        Generate model that applies graph optimization (constant folding, etc.)
+        parameter model_path: path to the original onnx model
+        parameter opt_model_path: path to the optimized onnx model
+    :return: optimized onnx model
+    '''
+    sess_option = SessionOptions()
+    sess_option.optimized_model_filepath = opt_model_path.as_posix()
+    sess_option.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
+    _ = InferenceSession(model_path.as_posix(), sess_option, providers=['CPUExecutionProvider'])
+
+def add_infer_metadata(model):
+    metadata_props = {"onnx.infer": "onnxruntime.quant"}
+    if model.metadata_props:
+        for p in model.metadata_props:
+            metadata_props.update({p.key : p.value})
+    onnx.helper.set_model_props(model, metadata_props)
+
+def model_has_infer_metadata(model):
+    if model.metadata_props:
+        for p in model.metadata_props:
+            if p.key == "onnx.infer" and p.value == "onnxruntime.quant":
+                return True
+
+    return False
+
+def load_model_with_shape_infer(model_path : Path):
+    inferred_model_path = generate_identified_filename(model_path, "-inferred")
+    onnx.shape_inference.infer_shapes_path(str(model_path), str(inferred_model_path))
+    model = onnx.load(inferred_model_path.as_posix())
+    inferred_model_path.unlink(missing_ok=True)
+
+    return model
+
+
+def load_model(model_path : Path):
+    with tempfile.TemporaryDirectory(prefix='ort.quant.') as quant_tmp_dir:
+        if not model_has_external_data(model_path):
+            opt_model_path = Path(quant_tmp_dir).joinpath("model.onnx")
+            optimize_model(model_path, opt_model_path)
+            model_path = opt_model_path
+
+        model = load_model_with_shape_infer(model_path)
+        add_infer_metadata(model)
+        return model
+
+def save_and_reload_model(model):
+    with tempfile.TemporaryDirectory(prefix='ort.quant.') as quant_tmp_dir:
+        model_path = Path(quant_tmp_dir).joinpath("model.onnx")
+        onnx.external_data_helper.convert_model_to_external_data(model,
+                                                                 all_tensors_to_one_file=True,
+                                                                 location=Path(quant_tmp_dir).joinpath("model.data").as_posix())
+        onnx.save_model(model, model_path)
+        return load_model(model_path)

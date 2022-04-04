@@ -14,11 +14,11 @@ import tempfile
 from pathlib import Path
 
 from onnx import onnx_pb as onnx_proto
-from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
 from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue
-from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg, model_has_external_data
+from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg
 from .quant_utils import QuantType, QuantFormat
+from .quant_utils import load_model
 
 from .registry import QLinearOpsRegistry, IntegerOpsRegistry
 
@@ -26,39 +26,6 @@ from .onnx_model import ONNXModel
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
 from .calibrate import CalibrationDataReader, create_calibrator, CalibrationMethod 
-
-
-def optimize_model(model_path : Path, opt_model_path : Path):
-    '''
-        Generate model that applies graph optimization (constant folding, etc.)
-        parameter model_path: path to the original onnx model
-        parameter opt_model_path: path to the optimized onnx model
-    :return: optimized onnx model
-    '''
-    sess_option = SessionOptions()
-    sess_option.optimized_model_filepath = opt_model_path.as_posix()
-    sess_option.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
-    _ = InferenceSession(model_path.as_posix(), sess_option, providers=['CPUExecutionProvider'])
-
-
-def load_model(model_path : Path, optimize=True, handle_gemm_with_matmul=True):
-    with tempfile.TemporaryDirectory(prefix='ort.quant') as quant_tmp_dir:
-        if optimize and not model_has_external_data(model_path):
-            opt_model_path = Path(quant_tmp_dir).joinpath("model.onnx")
-            optimize_model(model_path, opt_model_path)
-            model_path = opt_model_path
-
-        inferred_model_path = generate_identified_filename(model_path, "-inferred")
-        onnx.shape_inference.infer_shapes_path(str(model_path), str(inferred_model_path))
-        model = onnx.load(inferred_model_path.as_posix())
-        inferred_model_path.unlink(missing_ok=True)
-
-    if handle_gemm_with_matmul:
-        onnx_model = ONNXModel(model)
-        onnx_model.replace_gemm_with_matmul()
-        return onnx_model.model
-
-    return model
 
 
 def check_static_quant_arguments(quant_format : QuantFormat,
@@ -165,7 +132,6 @@ def quantize_static(model_input,
                     weight_type=QuantType.QInt8,
                     nodes_to_quantize=[],
                     nodes_to_exclude=[],
-                    optimize_model=True,
                     use_external_data_format=False,
                     calibrate_method=CalibrationMethod.MinMax,
                     extra_options = {}):
@@ -200,7 +166,6 @@ def quantize_static(model_input,
     :param nodes_to_exclude:
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
-    :param optimize_model: optimize model before quantization.
     :param use_external_data_format: option used for large size (>2GB) model. Set to False by default. 
     :param calibrate_method: 
         Current calibration methods supported are MinMax and Entropy. 
@@ -241,7 +206,7 @@ def quantize_static(model_input,
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(QLinearOpsRegistry.keys())
 
-    model = load_model(Path(model_input), optimize_model, False)
+    model = load_model(Path(model_input))
 
     calib_extra_options_keys = [
         ('CalibTensorRangeSymmetric', 'symmetric'),
@@ -302,7 +267,6 @@ def quantize_dynamic(model_input: Path,
                      weight_type=QuantType.QInt8,
                      nodes_to_quantize=[],
                      nodes_to_exclude=[],
-                     optimize_model=True,
                      use_external_data_format=False,
                      extra_options = { }):
     '''
@@ -324,7 +288,6 @@ def quantize_dynamic(model_input: Path,
     :param nodes_to_exclude:
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
-    :param optimize_model: optimize model before quantization.
     :param use_external_data_format: option used for large size (>2GB) model. Set to False by default.
     :param extra_options:
         key value pair dictionary for various options in different case. Current used:
@@ -345,7 +308,7 @@ def quantize_dynamic(model_input: Path,
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(IntegerOpsRegistry.keys())
 
-    model = load_model(Path(model_input), optimize_model)
+    model = load_model(Path(model_input))
 
     if 'MatMulConstBOnly' not in extra_options:
         extra_options['MatMulConstBOnly'] = True
