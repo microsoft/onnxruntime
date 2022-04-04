@@ -294,8 +294,9 @@ GetQDQTestCaseFn BuildQDQConcatTestCaseUnsupportedInputScaleZp();
 template <typename Input1Type, typename Input2Type, typename OutputType, typename BiasType = int32_t>
 GetQDQTestCaseFn BuildQDQGemmTestCase(const std::vector<int64_t>& input1_shape,
                                       const std::vector<int64_t>& input2_shape,
-                                      bool has_bias) {
-  return [input1_shape, input2_shape, has_bias](ModelTestBuilder& builder) {
+                                      bool has_bias,
+                                      const int64_t& transB) {
+  return [input1_shape, input2_shape, has_bias, transB](ModelTestBuilder& builder) {
     auto* input1_arg = builder.MakeInput<Input1Type>(input1_shape,
                                                      std::numeric_limits<Input1Type>::min(),
                                                      std::numeric_limits<Input1Type>::max());
@@ -338,6 +339,8 @@ GetQDQTestCaseFn BuildQDQGemmTestCase(const std::vector<int64_t>& input1_shape,
 
     auto* gemm_op_output = builder.MakeIntermediate();
     gemm_node = &builder.AddNode("Gemm", input_args, {gemm_op_output});
+
+    gemm_node->AddAttribute("transB", transB);
 
     // add Q
     builder.AddQuantizeLinearNode<OutputType>(gemm_op_output,
