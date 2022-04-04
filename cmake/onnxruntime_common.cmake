@@ -219,3 +219,11 @@ if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo clog)
   endif()
 endif()
+
+if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_common
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
