@@ -954,8 +954,8 @@ void OpTester::Run(
 
     fetches_.clear();
     bool cache_enabled = cached_model_ != nullptr;
-    const ModelOptions model_options{.allow_released_opsets_only = allow_released_onnx_opset_only,
-                                     .strict_shape_type_inference = so.strict_shape_type_inference};
+    const ModelOptions model_options(allow_released_onnx_opset_only,
+                                     so.strict_shape_type_inference);
     auto p_model = !cache_enabled ? BuildGraph({}, model_options) : cached_model_;
     auto& graph = p_model->MainGraph();
 
