@@ -972,6 +972,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, 'cmake', 'gdk_toolchain.cmake'),
             "-DGDK_EDITION=" + args.gdk_edition,
             "-Donnxruntime_BUILD_UNIT_TESTS=OFF" # gtest doesn't build for GDK
+            "-Donnxruntime_USE_CUSTOM_DIRECTML=ON"
         ]
 
     if is_macOS() and not args.android:

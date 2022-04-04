@@ -1,3 +1,5 @@
+# This file won't get merged upstream. It's for convenience only.
+
 param
 (
     [string]$DmlInstallPath = 'S:/dml_gdk210602'
@@ -16,7 +18,6 @@ $pythonArgs = @(
     "--gdk_edition", "210602",
     "--cmake_extra_defines", 
         "CMAKE_INSTALL_PREFIX=$PSScriptRoot\build\install", 
-        "onnxruntime_USE_CUSTOM_DIRECTML=ON", 
         "dml_INCLUDE_DIR=`"$DmlInstallPath/include`""
 )
 

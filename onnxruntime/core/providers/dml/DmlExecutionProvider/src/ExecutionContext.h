@@ -79,11 +79,6 @@ namespace Dml
         // Adds a reference which will be released when queued GPU work is completed
         void QueueReference(IUnknown* object);
 
-#ifdef _GAMING_XBOX
-        // Adds a reference which will be released when queued GPU work is completed
-        void QueueReference(IGraphicsUnknown* object);
-#endif
-
         // Release any accumulated references who corresponding GPU fence values have
         // been reached.  
         void ReleaseCompletedReferences();

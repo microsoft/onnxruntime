@@ -701,14 +701,12 @@ namespace Dml
         }
         else
         {
-#ifdef _GAMING_XBOX
             ComPtr<ID3D12GraphicsCommandList> commandList;
             m_context->GetCommandListForRecording(commandList.GetAddressOf());
+#ifdef _GAMING_XBOX
             ComPtr<GraphicsUnknownWrapper> wrappedCommandList = Microsoft::WRL::Make<GraphicsUnknownWrapper>(commandList.Get());
             *abiExecutionObject = wrappedCommandList.Detach();
 #else
-            ComPtr<ID3D12GraphicsCommandList> commandList;
-            m_context->GetCommandListForRecording(commandList.GetAddressOf());
             *abiExecutionObject = commandList.Detach();
 #endif
         }  
