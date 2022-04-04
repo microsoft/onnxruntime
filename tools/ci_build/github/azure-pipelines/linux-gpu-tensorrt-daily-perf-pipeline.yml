@@ -88,17 +88,20 @@ jobs:
 
   steps:
 
+  ${{ if eq(parameters.BuildORT, false) }}:
     - task: DownloadPipelineArtifact@2
       inputs:
         buildType: 'specific'
         project: 'Lotus'
         preferTriggeringPipeline: true 
+        pipeline: '841'
         runBranch: 'ref/heads/master'
         buildVersionToDownload: 'latest'
         allowPartiallySucceededBuilds: false
-        pipeline: '841'
         artifact: 'onnxruntime_gpu'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
+        targetPath: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+
+    - script: 'docker pull nvcr.io/nvidia/tensorrt:$(trtContainer)-py3'
 
     - ${{ if eq(parameters.BuildORT, true) }}:
 
@@ -111,9 +114,6 @@ jobs:
         - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/ort_build_latest.py -b $(branch) -c /usr/local/cuda -o ~/repos/onnxruntime/ -t ${{ parameters.TrtVersion }}'
           displayName: 'Build latest ORT'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
-
-    - ${{ if ne(parameters.BuildORT, true) }}:
-      - script: 'docker pull nvcr.io/nvidia/tensorrt:$(trtContainer)-py3'
 
     - ${{ each option in parameters.ModelGroups }}:
       - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $(${{option}})'
