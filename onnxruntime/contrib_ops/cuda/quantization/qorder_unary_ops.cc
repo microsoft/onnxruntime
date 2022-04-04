@@ -25,7 +25,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status
 QOrderedGelu::ComputeInternal(OpKernelContext* context) const {
-  DUBUG_PERF_CUDA_SYNC();
+  LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
 
   const Tensor& input = *context->Input<Tensor>(0);
   const float* scale_input = context->Input<Tensor>(1)->Data<float>();
@@ -35,7 +35,7 @@ QOrderedGelu::ComputeInternal(OpKernelContext* context) const {
   cudaStream_t stream = Stream();
   QOrderUnary_Gelu(stream, input.Data<int8_t>(), scale_input, output->MutableData<int8_t>(), scale_output, (size_t)(shape.Size()));
 
-  DUBUG_PERF_CUDA_SYNC();
+  LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
   return Status::OK();
 }
 

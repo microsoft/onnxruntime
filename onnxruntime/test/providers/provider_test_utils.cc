@@ -140,6 +140,47 @@ struct TensorCheck<uint8_t> {
 };
 
 template <>
+struct TensorCheck<int8_t> {
+  void operator()(const Tensor& expected_tensor,
+                  const Tensor& output_tensor,
+                  const std::string& provider_type, const CheckParams& params) const {
+    Tensor expected_sorted, output_sorted;
+    const int8_t* expected;
+    const int8_t* output;
+    const auto size = output_tensor.Shape().Size();
+    if (params.sort_output_) {
+      // if order can be jumbled in the output of an operator, sort both the
+      // expected and output buffers prior to
+      // comparison this is a "best-effort" algo and should satisfy the
+      // requirement for the few ops that do require this
+      // support without investing in a more sophisticated infrastructure for the
+      // same
+      sort_expected_and_actual_buffers<int8_t>(expected_tensor, expected_sorted, output_tensor, output_sorted);
+      expected = expected_sorted.Data<int8_t>();
+      output = output_sorted.Data<int8_t>();
+    } else {
+      expected = expected_tensor.template Data<int8_t>();
+      output = output_tensor.template Data<int8_t>();
+    }
+
+    const bool has_abs_err = params.absolute_error_.has_value();
+    if (has_abs_err) {
+      double threshold = *(params.absolute_error_);
+
+      for (int i = 0; i < size; ++i) {
+        EXPECT_NEAR(expected[i], output[i], threshold)
+            << "i:" << i << ", provider_type: " << provider_type;
+      }
+    } else {
+      for (int i = 0; i < size; ++i) {
+        EXPECT_EQ(expected[i], output[i])
+            << "i:" << i << ", provider_type: " << provider_type;
+      }
+    }
+  }
+};
+
+template <>
 struct TensorCheck<double> {
   void operator()(const Tensor& expected_tensor,
                   const Tensor& output_tensor,
@@ -330,7 +371,7 @@ struct TensorCheck<BFloat16> {
     /// XXX: May need to adjust threshold as BFloat is coarse
     float threshold = 0.001f;
 #if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM)
-    threshold = 0.05f; // expect at least 95% close
+    threshold = 0.05f;  // expect at least 95% close
 #endif
     for (int i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
@@ -653,7 +694,7 @@ void OpTester::AddSparseCsrTensorData(std::vector<Data>& data,
 
 void OpTester::AddSparseCsrTensorStrings(std::vector<Data>& data,
                                          const char* name,
-                                         gsl::span<const  int64_t> dims,
+                                         gsl::span<const int64_t> dims,
                                          gsl::span<const std::string> values,
                                          gsl::span<const int64_t> inner_indices,
                                          gsl::span<const int64_t> outer_indices,

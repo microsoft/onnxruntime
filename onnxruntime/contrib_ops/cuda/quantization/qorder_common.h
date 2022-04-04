@@ -87,27 +87,25 @@ Status Reorder(cublasLtHandle_t cublasLt, cudaStream_t stream, const cudaDeviceP
 
 Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream, const cudaDeviceProp& device_prop,
                        int32_t batchCount, int64_t m, int64_t n, int64_t k,
-                       const float* alpha,
-                       const int8_t* A, const int8_t* B, bool isSingleBatchB,
-                       const float* bias,
-                       const float* beta,
-                       const int8_t* C, bool isSingleBatchC,
+                       const float* alpha, const int8_t* A, const int8_t* B, int batchB,
+                       const float* bias, const float* beta,
+                       const int8_t* C, int batchC,
                        int8_t* D,
                        cublasLtOrder_t order_weight);
 
 inline Status QOrdered_MatMul(cublasLtHandle_t cublasLt_handle, cudaStream_t stream, const cudaDeviceProp& device_prop,
                               int32_t batchCount, int64_t m, int64_t n, int64_t k,
                               const float* alpha, const int8_t* A, const int8_t* B,
-                              const float* bias, int8_t* C,
+                              const float* bias, int8_t* D,
                               cublasLtOrder_t order_weight) {
   return QOrdered_MatMul(cublasLt_handle, stream, device_prop, batchCount, m, n, k,
-                         alpha, A, B, true, bias, (const float*)nullptr, nullptr, false,
-                         C, order_weight);
+                         alpha, A, B, 1, bias, (const float*)nullptr, nullptr, 1,
+                         D, order_weight);
 }
 
 // using the following issue to locate error by reporting errors in the operator with error.
-// #define DUBUG_PERF_CUDA_SYNC() CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize())
-#define DUBUG_PERF_CUDA_SYNC()
+#define LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC() CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize())
+// #define LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC()
 
 // #endif
 

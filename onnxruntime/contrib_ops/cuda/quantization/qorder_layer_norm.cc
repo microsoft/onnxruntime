@@ -33,13 +33,16 @@ QOrderedLayerNormalization::QOrderedLayerNormalization(const OpKernelInfo& op_ke
   float tmp_epsilon;
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &tmp_epsilon).IsOK());
   epsilon_ = tmp_epsilon;
-  const cublasLtOrder_t COL32 = CUBLASLT_ORDER_COL32;
-  GetCublasLtOrderAttr(op_kernel_info, "order_X", 1, &COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_Y");
-  GetCublasLtOrderAttr(op_kernel_info, "order_Y", 1, &COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_Y");
+  const cublasLtOrder_t COL32orROW[] = {CUBLASLT_ORDER_COL32, CUBLASLT_ORDER_ROW};
+  order_X_ = GetCublasLtOrderAttr(op_kernel_info, "order_X", 2, COL32orROW,
+                                  "Only CUBLASLT_ORDER_COL32 or CUBLASLT_ORDER_ROW is supported for order_Y");
+  order_Y_ = GetCublasLtOrderAttr(op_kernel_info, "order_Y", 2, COL32orROW,
+                                "Only CUBLASLT_ORDER_COL32 or CUBLASLT_ORDER_ROW is supported for order_Y");
+  ORT_ENFORCE(order_X_ == order_Y_);
 }
 
 Status QOrderedLayerNormalization::ComputeInternal(OpKernelContext* ctx) const {
-  DUBUG_PERF_CUDA_SYNC();
+  LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
 
   typedef typename ToCudaType<int8_t>::MappedType CudaQ;
   typedef typename ToCudaType<MLFloat16>::MappedType CudaF;
@@ -73,11 +76,11 @@ Status QOrderedLayerNormalization::ComputeInternal(OpKernelContext* ctx) const {
   const float* scale_x = ctx->Input<Tensor>(1)->Data<float>();
   const float* scale_y = ctx->Input<Tensor>(4)->Data<float>();
 
-  QOrderLayerNorm(Stream(), GetDeviceProp(),
+  QOrderLayerNorm(Stream(), GetDeviceProp(), (cublasLtOrder_t)order_X_,
                   X_data, *scale_x, Y_data, *scale_y, scale_data, bias_data, epsilon_,
                   batch, rows, cols);
 
-  DUBUG_PERF_CUDA_SYNC();
+  LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
   return Status::OK();
 }
 

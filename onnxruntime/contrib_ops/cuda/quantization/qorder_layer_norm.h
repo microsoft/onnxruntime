@@ -19,6 +19,8 @@ class QOrderedLayerNormalization final : public CudaKernel {
  private:
   int64_t axis_;
   double epsilon_;
+  int order_X_;
+  int order_Y_;
 };
 
 }  // namespace cuda
