@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(ORT_MINIMAL_BUILD)
 #include "core/optimizer/initializer.h"
 
 #include "gsl/gsl"
@@ -318,5 +317,3 @@ void Initializer::scale_by_axis(const Initializer& scalers, int axis) {
 }
 
 }  // namespace onnxruntime
-
-#endif  // !(ORT_MINIMAL_BUILD)
