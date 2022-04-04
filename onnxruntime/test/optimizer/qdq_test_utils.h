@@ -328,7 +328,7 @@ GetQDQTestCaseFn BuildQDQGemmTestCase(const std::vector<int64_t>& input1_shape,
 
     if (has_bias) {
       auto* dq_bias_output = builder.MakeIntermediate();
-      auto* bias = builder.MakeInitializer<BiasType>({input2_shape[1]}, static_cast<BiasType>(0), static_cast<BiasType>(127));
+      auto* bias = builder.MakeInitializer<BiasType>({input2_shape[0]}, static_cast<BiasType>(0), static_cast<BiasType>(127));
       builder.AddDequantizeLinearNode<BiasType>(bias, 0.00156f,
                                                 0,
                                                 dq_bias_output);
