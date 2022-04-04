@@ -212,8 +212,6 @@ def quantize_static(model_input,
             WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
             EnableSubgraph = True/False : Default is False. If enabled, subgraph will be quantized.
                                           Dyanmic mode currently is supported. Will support more in future.
-            DisableShapeInference = True/False : in dynamic quantize mode, shape inference is not must have
-                                                 and if it cause some issue, you could disable it.
             ForceQuantizeNoInputCheck = True/False : By default, some latent operators like maxpool, transpose, do not quantize
                                                      if their input is not quantized already. Setting to True to force such operator
                                                      always quantize input and so generate quantized output. Also the True behavior
@@ -335,8 +333,6 @@ def quantize_dynamic(model_input: Path,
             WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
             EnableSubgraph = True/False : Default is False. If enabled, subgraph will be quantized.
                                           Dyanmic mode currently is supported. Will support more in future.
-            DisableShapeInference = True/False : in dynamic quantize mode, shape inference is not must have
-                                                 and if it cause some issue, you could disable it.
             ForceQuantizeNoInputCheck = True/False : By default, some latent operators like maxpool, transpose, do not quantize
                                                      if their input is not quantized already. Setting to True to force such operator
                                                      always quantize input and so generate quantized output. Also the True behavior
