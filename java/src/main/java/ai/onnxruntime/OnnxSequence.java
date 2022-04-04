@@ -69,7 +69,7 @@ public class OnnxSequence implements OnnxValue {
       for (int i = 0; i < info.length; i++) {
         Object[] keys = getMapKeys(i);
         Object[] values = getMapValues(i);
-        HashMap<Object, Object> map = new HashMap<>(keys.length);
+        HashMap<Object, Object> map = new HashMap<>(MapUtil.capacityFromSize(keys.length));
         for (int j = 0; j < keys.length; j++) {
           map.put(keys[j], values[j]);
         }

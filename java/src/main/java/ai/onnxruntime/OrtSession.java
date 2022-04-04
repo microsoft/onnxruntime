@@ -371,7 +371,7 @@ public class OrtSession implements AutoCloseable {
    * @return A Map from String to NodeInfo.
    */
   private static Map<String, NodeInfo> wrapInMap(NodeInfo[] infos) {
-    Map<String, NodeInfo> output = new LinkedHashMap<>(infos.length);
+    Map<String, NodeInfo> output = new LinkedHashMap<>(MapUtil.capacityFromSize(infos.length));
 
     for (NodeInfo info : infos) {
       output.put(info.getName(), info);
@@ -1267,7 +1267,7 @@ public class OrtSession implements AutoCloseable {
                 + values.length);
       }
 
-      map = new LinkedHashMap<>(names.length);
+      map = new LinkedHashMap<>(MapUtil.capacityFromSize(names.length));
       list = new ArrayList<>(names.length);
 
       for (int i = 0; i < names.length; i++) {
