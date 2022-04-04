@@ -42,7 +42,7 @@ NonCudaOps non_cuda;
 
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
-
+#if !defined(ORT_MINIMAL_BUILD)
 static void BuildFusedKernelDef(KernelDefBuilder& builder, const onnxruntime::Node& node) {
   auto schema = node.Op();
   builder.SetName(schema->Name())
@@ -50,6 +50,7 @@ static void BuildFusedKernelDef(KernelDefBuilder& builder, const onnxruntime::No
       .SinceVersion(schema->SinceVersion())
       .Provider(node.GetExecutionProviderType());
 }
+#endif
 
 // minimal KernelDef based on MetaDef instead of a Function based node
 static void BuildFusedKernelDef(KernelDefBuilder& builder, const IndexedSubGraph::MetaDef& metadef,
