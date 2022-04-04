@@ -43,6 +43,12 @@ class OrtOpTests(unittest.TestCase):
     assert torch.allclose(
       torch.mul(cpu_ones, cpu_ones),
       torch.mul(ort_ones, ort_ones).cpu())
+  
+  def test_equal(self):
+    device = self.get_device()
+    cpu_x = torch.ones(3,3, dtype=torch.float32)
+    cpu_y = torch.ones(3,3, dtype=torch.float32)
+    assert torch.equal(cpu_x.to(device), cpu_y.to(device))
 
   # TODO: Add BFloat16 test coverage
   def test_add_(self):

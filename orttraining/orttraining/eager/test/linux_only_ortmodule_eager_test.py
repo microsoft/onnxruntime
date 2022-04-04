@@ -43,6 +43,21 @@ class OrtModuleEagerTest(unittest.TestCase):
         input = torch.ones(2,2).to(torch.float16)
         y = model(input.to(device))
         assert(y.dtype == torch.float16)
+    
+    def test_ortmodule_inference(self):
+        input_size = 784
+        hidden_size = 500
+        num_classes = 10
+        batch_size = 128
+        model = NeuralNet(input_size, hidden_size, num_classes)
+        device = torch.device('ort')
+        model.to(device)
+        model = ORTModule(model)
+        
+        with torch.no_grad():
+            data = torch.rand(batch_size, input_size)
+            y = model(data.to(device))
+        print('Done')
 
     def test_ort_module_and_eager_mode(self):
         input_size = 784
