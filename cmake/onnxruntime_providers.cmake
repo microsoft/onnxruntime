@@ -332,6 +332,12 @@ if (onnxruntime_USE_CUDA)
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
   )
+  # Remove pch files
+  list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
+  )
+  
   # The shared_library files are in a separate list since they use precompiled headers, and the above files have them disabled.
   file(GLOB_RECURSE onnxruntime_providers_cuda_shared_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
@@ -465,22 +471,11 @@ if (onnxruntime_USE_CUDA)
 
   if (WIN32)
     # *.cu cannot use PCH
-    foreach(src_file ${onnxruntime_providers_cuda_cc_srcs})
-      set_source_files_properties(${src_file}
-        PROPERTIES
-        COMPILE_FLAGS "/Yucuda_pch.h /FIcuda_pch.h")
-    endforeach()
-    if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
-      foreach(src_file ${onnxruntime_cuda_contrib_ops_cc_srcs})
-        set_source_files_properties(${src_file}
-          PROPERTIES
-          COMPILE_FLAGS "/Yucuda_pch.h /FIcuda_pch.h")
-      endforeach()
-    endif()
-    set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
-      PROPERTIES
-      COMPILE_FLAGS "/Yccuda_pch.h"
+    target_precompile_headers(onnxruntime_providers_cuda PUBLIC
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
     )
+
     # disable a warning from the CUDA headers about unreferenced local functions
     #target_compile_options(onnxruntime_providers_cuda PRIVATE /wd4505)
     if (onnxruntime_USE_NUPHAR_TVM)
