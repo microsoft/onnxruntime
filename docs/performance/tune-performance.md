@@ -300,7 +300,7 @@ Refer to https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Micros
 
 ### Convolution heavy models and the CUDA EP
 
-ORT leverages CuDNN for convolution operations and the first step in this process is to determine which "optimal" convolution algorithm to use while performing the convolution operation for the given input configuration (input shape, filter shape, etc.) in each `Conv` node . This sub-step involves querying CuDNN for a "workspace" memory size and have this allocated so that CuDNN can use this auxiliary memory while determining the "optimal" convolution algorithm to use. By default, ORT clamps the workspace size to 32 MB which may lead to a sub-optimal convolution algorithm getting picked by CuDNN. To allow ORT to allocate the maximum possible workspace as determined by CuDNN, a provider option needs to get set (as shown below). Keep in mind that using this flag may increase the peak memory usage by a factor (sometimes a few GBs) but this does help CuDNN pick the best convolution algorithm for the given input. We have found that this is an important flag to use while using an fp16 model as this allows CuDNN to pick tensor core algorithms for the convolution operations (if the hardware supports tensor core operations). This flag may or may not result in performance gains for other data types (`float` and `double`).
+ORT leverages CuDNN for convolution operations and the first step in this process is to determine which "optimal" convolution algorithm to use while performing the convolution operation for the given input configuration (input shape, filter shape, etc.) in each `Conv` node. This sub-step involves querying CuDNN for a "workspace" memory size and have this allocated so that CuDNN can use this auxiliary memory while determining the "optimal" convolution algorithm to use. By default, ORT clamps the workspace size to 32 MB which may lead to a sub-optimal convolution algorithm getting picked by CuDNN. To allow ORT to allocate the maximum possible workspace as determined by CuDNN, a provider option named `cudnn_conv_use_max_workspace` needs to get set (as shown below). Keep in mind that using this flag may increase the peak memory usage by a factor (sometimes a few GBs) but this does help CuDNN pick the best convolution algorithm for the given input. We have found that this is an important flag to use while using an fp16 model as this allows CuDNN to pick tensor core algorithms for the convolution operations (if the hardware supports tensor core operations). This flag may or may not result in performance gains for other data types (`float` and `double`).
 
 * Python
 
@@ -335,6 +335,49 @@ var cudaProviderOptions = new OrtCUDAProviderOptions(); // Dispose this finally
 
 var providerOptionsDict = new Dictionary<string, string>();
 providerOptionsDict["cudnn_conv_use_max_workspace"] = "1";
+
+cudaProviderOptions.UpdateOptions(providerOptionsDict);
+
+SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
+```
+
+### Convolution Input Padding in the CUDA EP
+
+ORT leverages CuDNN for convolution operations. While CuDNN only takes 4-D or 5-D tensor as input for convolution operations, dimension padding is needed if the input is 3-D tensor. Given an input tensor of shape [N, C, D], it can be padded to [N, C, D, 1] or [N, C, 1, D]. While both of these two padding ways produce same output, the performance may be a lot different because different convolution algorithms are selected, especially on some devices such as A100. By default the input is padded to [N, C, D, 1]. A provider option named `cudnn_conv1d_pad_to_nc1d` needs to get set (as shown below) if [N, C, 1, D] is preferred.
+
+* Python
+
+```python
+providers = [("CUDAExecutionProvider", {"cudnn_conv1d_pad_to_nc1d": '1'})]
+sess_options = ort.SessionOptions()
+sess = ort.InferenceSession("my_conv_model.onnx",  sess_options = sess_options, providers=providers)
+```
+
+* C/C++
+
+```c++
+OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+CreateCUDAProviderOptions(&cuda_options);
+
+std::vector<const char*> keys{"cudnn_conv1d_pad_to_nc1d"};
+std::vector<const char*> values{"1"};
+
+UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 1);
+
+OrtSessionOptions* session_options = /* ... */;
+SessionOptionsAppendExecutionProvider_CUDA_V2(session_options, cuda_options);
+
+// Finally, don't forget to release the provider options
+ReleaseCUDAProviderOptions(cuda_options);
+```
+
+* C#
+
+```csharp
+var cudaProviderOptions = new OrtCUDAProviderOptions(); // Dispose this finally
+
+var providerOptionsDict = new Dictionary<string, string>();
+providerOptionsDict["cudnn_conv1d_pad_to_nc1d"] = "1";
 
 cudaProviderOptions.UpdateOptions(providerOptionsDict);
 
