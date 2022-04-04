@@ -115,8 +115,9 @@ bool BeamHypotheses::IsDone(float best_sum_logprobs, int current_length) {
   if (early_stopping_)
     return true;
 
-  float current_score = best_sum_logprobs / pow(static_cast<float>(current_length), length_penalty_);
-  return worst_score_ >= current_score;
+  // TODO Add is changed so is this
+  // float current_score = best_sum_logprobs / pow(static_cast<float>(current_length), length_penalty_);
+  return worst_score_ >= best_sum_logprobs;
 }
 
 void BeamHypotheses::Output(
