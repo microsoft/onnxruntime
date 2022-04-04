@@ -52,7 +52,7 @@ setup() {
     apt update
     apt-get install -y --no-install-recommends libprotobuf-dev protobuf-compiler pciutils
     pip install -r requirements.txt    
-    ls dist | xargs -n 1 pip install
+    ls Release/dist | xargs -n 1 pip install
     cleanup_files
     download_files
 }
