@@ -114,8 +114,7 @@ common::Status TvmExecutionProvider::Compile(const std::vector<FusedNodeAndGraph
                              std::vector<ONNX_NAMESPACE::FunctionProto>(), *GetLogger());
     ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
     //TVM EP is using static lib approach, so invoke serializer directly.
-    GraphProtoSerializer serializer(&graph_body_viewer);
-    serializer.ToProto(*model_proto.mutable_graph(), true);
+    GraphViewerToProto(graph_body_viewer, *model_proto.mutable_graph(), true);
     auto opset = model_proto.add_opset_import();
     opset->set_domain(kOnnxDomain);
     opset->set_version(graph_body_viewer.DomainToVersionMap().at(kOnnxDomain));
