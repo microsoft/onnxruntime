@@ -17,6 +17,38 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
+OrtValue ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator) {
+  // Input shape (batch_size, sequence_length)
+  // Output shape (batch_size * num_beams, sequence_length)
+  if (num_beams == 1)
+    return input;
+
+  const TensorShape& input_shape = input.Get<Tensor>().Shape();
+  const int64_t& batch_size = input_shape[0];
+  const int64_t& sequence_length = input_shape[1];
+
+  int64_t dims[] = {batch_size * num_beams, sequence_length};
+  TensorShape expanded_shape(&dims[0], 2);
+
+  OrtValue expanded;
+  MLDataType element_type = input.Get<Tensor>().DataType();
+  ORT_ENFORCE(element_type == DataTypeImpl::GetType<int32_t>(), "input_ids, position_ids and attention_mask is required to be int32 data type");
+
+  Tensor::InitOrtValue(element_type, expanded_shape, allocator, expanded);
+
+  const int32_t* input_data = input.Get<Tensor>().Data<int32_t>();
+  int32_t* expanded_data = expanded.GetMutable<Tensor>()->MutableData<int32_t>();
+  int32_t* target = expanded_data;
+  for (int i = 0; i < batch_size; i++) {
+    for (int j = 0; j < num_beams; j++) {
+      memcpy(target, input_data + i * sequence_length, sizeof(int32_t) * sequence_length);
+      target += sequence_length;
+    }
+  }
+
+  return expanded;
+}
+
 // bugbug: refactor. create subgraph class as interface
 EncoderSubgraph::EncoderSubgraph(
     const onnxruntime::Node& node_in,
@@ -161,7 +193,7 @@ Status EncoderSubgraph::CreateInitialFeeds(
 
   // Subgraph inputs:
   //   input_ids: shape (B, S) wher B is batch size, and S is sequence length
-  //   attention_mask: shape (B, S), all 1
+  //   attention_mask: shape (B, S)
 
   // Allocate subgraph inputs to be same device as input_ids
   AllocatorPtr cpu_alloactor = session_state_->GetAllocator(input_ids.Location());
@@ -169,7 +201,7 @@ Status EncoderSubgraph::CreateInitialFeeds(
   // Store allocator, which will be used in remaining feeds
   auto default_allocator = provider->GetAllocator(0, OrtMemTypeDefault);
   allocator_ = default_allocator;
-
+  const OrtMemoryInfo& location = cpu_alloactor->Info();
 
   // The ordering is the same as used in Setup
   feeds.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
@@ -179,7 +211,7 @@ Status EncoderSubgraph::CreateInitialFeeds(
   Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(input_ids)->MutableData<int32_t>(), location, encoder_input_ids);
 
   OrtValue attention_mask;
-  Tensor::InitOrtValue(element_type, input_ids_shape, alloactor, attention_mask);
+  Tensor::InitOrtValue(element_type, input_ids_shape, cpu_alloactor, attention_mask);
 
   // def _prepare_attention_mask_for_generation(
   //     self, input_ids: torch.Tensor, pad_token_id: int, eos_token_id: int
@@ -206,6 +238,12 @@ Status EncoderSubgraph::CreateInitialFeeds(
 
   feeds.push_back(encoder_input_ids);
   feeds.push_back(attention_mask);
+
+  // bugbug: what's this for
+  // pass in implicit inputs
+  for (const auto* entry : implicit_inputs) {
+    feeds.push_back(*entry);
+  }
 
   return Status::OK();
 }
@@ -352,57 +390,68 @@ const IExecutionProvider* DecoderSubgraph::GetProvider() const {
 }
 
 Status DecoderSubgraph::CreateInitialFeeds(
-    const Tensor& input_ids,
+    const Tensor& encoder_input_ids,
     const std::vector<const OrtValue*>& implicit_inputs,
     int num_beams,
-    int pad_token_id,
-    gsl::span<int32_t>& sequence_lengths,
+    int decoder_start_token_id,
     OrtValue& expanded_input_ids,
-    std::vector<OrtValue>& feeds,
-    const BeamSearchDeviceHelper::CreateInputsFunc& create_inputs_func,
-    const BeamSearchDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
+    std::vector<OrtValue>& decoder_feeds,
+    const std::vector<OrtValue>& encoder_feeds,
+    const std::vector<OrtValue>& encoder_fetches,
     IAllocatorUniquePtr<char>& buffer) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
   const IExecutionProvider* provider = GetProvider();
 
-  const TensorShape& input_ids_shape = input_ids.Shape();
-  ORT_ENFORCE(input_ids_shape.NumDimensions() == 2);
-  const int64_t& batch_size = input_ids_shape[0];
+  const TensorShape& encoder_input_ids_shape = encoder_input_ids.Shape();
+  ORT_ENFORCE(encoder_input_ids_shape.NumDimensions() == 2);
+  const int64_t& batch_size = encoder_input_ids_shape[0];
 
-  // Subgraph inputs:
-  //   input_ids: shape (B, S) wher B is batch size, and S is sequence length
-  //   position_ids: shape (B, S)
-  //   attention_mask: shape (B, P+S), where past_sequence_length (P) is 0
-  // After expansion, their shapes will become (B, M*S), where M is num_beams.
+  // Decoder Subgraph inputs:
+  //   input_ids: shape (B, 1) wher B is batch size
+  //   attention_mask: shape (B, S), where S is the sequence length
+  //   encoder_outputs: shape (B, S, NH), where NH is the hidden size
+  // After expansion, their shapes will become (B*M, ...), where M is num_beams.
 
   // Allocate subgraph inputs to be same device as input_ids
-  AllocatorPtr cpu_alloactor = session_state_->GetAllocator(input_ids.Location());
+  AllocatorPtr cpu_alloactor = session_state_->GetAllocator(encoder_input_ids.Location());
 
   // Store allocator, which will be used in remaining feeds
   auto default_allocator = provider->GetAllocator(0, OrtMemTypeDefault);
   allocator_ = default_allocator;
-
-  // Initialize empty past state
-  auto past_type = IsOutputFloat16() ? DataTypeImpl::GetType<MLFloat16>() : DataTypeImpl::GetType<float>();
-  int64_t past_state_dims[] = {2, batch_size * num_beams, num_heads, 0, head_size};
-  TensorShape past_shape(&past_state_dims[0], 5);
-  OrtValue empty_past;
-  Tensor::InitOrtValue(past_type, past_shape, default_allocator, empty_past);
+  const OrtMemoryInfo& location = cpu_alloactor->Info();
 
   // The ordering is the same as used in Setup
   feeds.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
 
-  OrtValue expanded_position_ids;
-  OrtValue expanded_attention_mask;
-  ORT_RETURN_IF_ERROR(create_inputs_func(&input_ids, num_beams, pad_token_id, sequence_lengths, cpu_alloactor, expanded_input_ids, expanded_position_ids, expanded_attention_mask));
+  auto element_type = DataTypeImpl::GetType<int32_t>();
 
-  ORT_RETURN_IF_ERROR(add_to_feeds_func(provider, expanded_input_ids, expanded_position_ids, expanded_attention_mask, feeds, buffer));
-
-  // The remaing inputs are past state.
-  for (int i = 3; i < num_subgraph_inputs; ++i) {
-    feeds.push_back(empty_past);
+  OrtValue decoder_input_ids;
+  TensorShape decoder_input_ids_shape({batch_size, 1})
+  Tensor::InitOrtValue(element_type, decoder_input_ids_shape, cpu_alloactor, decoder_input_ids);
+  int32_t* decoder_input_ids_data = decoder_input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+  const int32_t* word_id = input_ids->Data<int32_t>();
+  for (int i = 0; i < batch_size; i++) {
+    *decoder_input_ids_data = decoder_start_token_id;
+    decoder_input_ids_data++;
   }
+
+  OrtValue decoder_attention_masks;
+  const Tensor* encoder_attention_masks = &encoder_feeds[1].Get<Tensor>();
+  Tensor::InitOrtValue(element_type, encoder_attention_masks->Shape(), const_cast<Tensor*>(encoder_attention_masks)->MutableData<int32_t>(), location, decoder_attention_masks);
+
+  // bugbug: handle fp16 later
+  OrtValue encoder_output;
+  const Tensor* encoder_outputs = &encoder_fetches[0].Get<Tensor>();
+  Tensor::InitOrtValue(element_type, encoder_outputs->Shape(), const_cast<Tensor*>(encoder_outputs)->MutableData<float>(), location, encoder_output);
+
+  expanded_decoder_input_ids = ExpandInputs(decoder_input_ids, num_beams, cpu_alloactor);
+  expanded_decoder_attention_masks = ExpandInputs(decoder_attention_masks, num_beams, cpu_alloactor);
+  expanded_encoder_output = ExpandInputs(encoder_output, num_beams, cpu_alloactor);
+
+  feeds.push_back(expanded_decoder_input_ids);
+  feeds.push_back(expanded_decoder_attention_masks);
+  feeds.push_back(expanded_encoder_output);
 
   // pass in implicit inputs
   for (const auto* entry : implicit_inputs) {

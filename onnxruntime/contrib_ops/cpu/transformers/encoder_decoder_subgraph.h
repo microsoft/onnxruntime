@@ -15,6 +15,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
+
 // bugbug: refactor/interface class
 class EncoderSubgraph {
  public:
