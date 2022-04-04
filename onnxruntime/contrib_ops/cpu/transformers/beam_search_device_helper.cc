@@ -368,6 +368,80 @@ void PickPastState(const std::vector<OrtValue>& last_outputs,
   }
 }
 
+// template <typename T>
+// Status UpdateFeeds(
+//     AllocatorPtr allocator,
+//     void* stream,
+//     const std::vector<OrtValue>& last_outputs,
+//     std::vector<OrtValue>& next_inputs,
+//     int current_length,
+//     OrtValue& position_ids,
+//     gsl::span<const int32_t> beam_next_tokens,
+//     gsl::span<const int32_t> beam_indices,
+//     int num_beams,
+//     const transformers::IConsoleDumper* dumper) {
+//   // last_outputs: logits, present_0, present_1, ...
+//   // next_inputs: input_ids, position_id, attention_mask, past_0, past_1
+
+//   // The following updates inputs for subgraph
+
+//   // Update input_ids with next tokens.
+//   int batch_beam_size = static_cast<int>(beam_next_tokens.length());
+//   int64_t dims[] = {batch_beam_size, 1};
+//   TensorShape input_ids_shape(&dims[0], 2);
+//   auto int32_type = DataTypeImpl::GetType<int32_t>();
+//   OrtValue input_ids;
+//   // TODO: Reuse buffer for input_ids to reduce memory allocation.
+//   Tensor::InitOrtValue(int32_type, input_ids_shape, allocator, input_ids);
+//   int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+//   for (int i = 0; i < batch_beam_size; i++) {
+//     input_ids_data[i] = beam_next_tokens[i];
+//   }
+//   next_inputs[0] = input_ids;
+
+//   // Update position IDs
+//   int32_t* position_data = position_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+//   for (int i = 0; i < batch_beam_size; i++) {
+//     position_data[i]++;
+//   }
+//   next_inputs[1] = position_ids;
+
+//   // Update attention mask
+//   const OrtValue& old_mask = next_inputs[2];
+//   const int32_t* old_mask_data = old_mask.Get<Tensor>().Data<int32_t>();
+//   int64_t mask_dims[] = {batch_beam_size, current_length};
+//   TensorShape mask_shape(&mask_dims[0], 2);
+//   OrtValue attention_mask;
+//   Tensor::InitOrtValue(int32_type, mask_shape, allocator, attention_mask);
+//   int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
+//   for (int i = 0; i < batch_beam_size; i++) {
+//     for (int j = 0; j < current_length - 1; j++) {
+//       mask_data[i * current_length + j] = old_mask_data[i * (current_length - 1) + j];
+//     }
+//     mask_data[i * current_length + current_length - 1] = 1;
+//   }
+//   next_inputs[2] = attention_mask;
+
+// #ifdef DEBUG_BEAM_SEARCH
+//   dumper->Print("input_ids", input_ids);
+//   dumper->Print("position_ids", position_ids);
+//   dumper->Print("attention_mask", attention_mask);
+// #else
+//   ORT_UNUSED_PARAMETER(dumper);
+// #endif
+
+//   // Update past state
+//   if (num_beams == 1) {
+//     // feed present_* output to past_* inputs one by one
+//     for (size_t i = 1; i < last_outputs.size(); ++i) {
+//       next_inputs[i + 2] = last_outputs[i];
+//     }
+//   } else {
+//     PickPastState<T>(last_outputs, next_inputs, beam_indices, allocator, stream);
+//   }
+//   return Status::OK();
+// }
+
 template <typename T>
 Status UpdateFeeds(
     AllocatorPtr allocator,
@@ -375,70 +449,43 @@ Status UpdateFeeds(
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int current_length,
-    OrtValue& position_ids,
     gsl::span<const int32_t> beam_next_tokens,
-    gsl::span<const int32_t> beam_indices,
-    int num_beams,
+    //gsl::span<const int32_t> beam_indices,
+    //int num_beams,
     const transformers::IConsoleDumper* dumper) {
-  // last_outputs: logits, present_0, present_1, ...
-  // next_inputs: input_ids, position_id, attention_mask, past_0, past_1
+  // last_outputs: logits
+  // next_inputs: input_ids, attention_mask, encoder_output
 
   // The following updates inputs for subgraph
 
   // Update input_ids with next tokens.
   int batch_beam_size = static_cast<int>(beam_next_tokens.length());
   int64_t dims[] = {batch_beam_size, 1};
-  TensorShape input_ids_shape(&dims[0], 2);
+  TensorShape input_ids_shape(&dims[0], current_length);
   auto int32_type = DataTypeImpl::GetType<int32_t>();
   OrtValue input_ids;
-  // TODO: Reuse buffer for input_ids to reduce memory allocation.
   Tensor::InitOrtValue(int32_type, input_ids_shape, allocator, input_ids);
   int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+  const OrtValue& past_input_id = next_inputs[0];
+  const int32_t* past_input_id_data = past_input_id.Get<Tensor>().Data<int32_t>();
+  int last_length = current_length - 1;
+
   for (int i = 0; i < batch_beam_size; i++) {
-    input_ids_data[i] = beam_next_tokens[i];
+    for (int j = 0; j < last_length; j++) {
+      input_ids_data[i * current_length + j] = past_input_id_data[i * last_length + j];
+    }
+    input_ids_data[i * current_length + last_length] = beam_next_tokens[i];
   }
   next_inputs[0] = input_ids;
 
-  // Update position IDs
-  int32_t* position_data = position_ids.GetMutable<Tensor>()->MutableData<int32_t>();
-  for (int i = 0; i < batch_beam_size; i++) {
-    position_data[i]++;
-  }
-  next_inputs[1] = position_ids;
-
-  // Update attention mask
-  const OrtValue& old_mask = next_inputs[2];
-  const int32_t* old_mask_data = old_mask.Get<Tensor>().Data<int32_t>();
-  int64_t mask_dims[] = {batch_beam_size, current_length};
-  TensorShape mask_shape(&mask_dims[0], 2);
-  OrtValue attention_mask;
-  Tensor::InitOrtValue(int32_type, mask_shape, allocator, attention_mask);
-  int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
-  for (int i = 0; i < batch_beam_size; i++) {
-    for (int j = 0; j < current_length - 1; j++) {
-      mask_data[i * current_length + j] = old_mask_data[i * (current_length - 1) + j];
-    }
-    mask_data[i * current_length + current_length - 1] = 1;
-  }
-  next_inputs[2] = attention_mask;
 
 #ifdef DEBUG_BEAM_SEARCH
   dumper->Print("input_ids", input_ids);
-  dumper->Print("position_ids", position_ids);
   dumper->Print("attention_mask", attention_mask);
 #else
   ORT_UNUSED_PARAMETER(dumper);
 #endif
 
-  // Update past state
-  if (num_beams == 1) {
-    // feed present_* output to past_* inputs one by one
-    for (size_t i = 1; i < last_outputs.size(); ++i) {
-      next_inputs[i + 2] = last_outputs[i];
-    }
-  } else {
-    PickPastState<T>(last_outputs, next_inputs, beam_indices, allocator, stream);
-  }
   return Status::OK();
 }
 

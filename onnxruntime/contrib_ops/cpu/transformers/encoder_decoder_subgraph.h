@@ -101,16 +101,15 @@ class DecoderSubgraph {
 
   // Create inputs for first inference of subgraph.
   Status CreateInitialFeeds(
-      const Tensor& input_ids,
-      const std::vector<const OrtValue*>& implicit_inputs,
-      int num_beams,
-      int pad_token_id,
-      gsl::span<int32_t>& sequence_lengths,
-      OrtValue& expanded_input_ids,
-      std::vector<OrtValue>& feeds,
-      const BeamSearchDeviceHelper::CreateInputsFunc& create_inputs_func,
-      const BeamSearchDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
-      IAllocatorUniquePtr<char>& buffer);
+    const Tensor& encoder_input_ids,
+    const std::vector<const OrtValue*>& implicit_inputs,
+    int num_beams,
+    int decoder_start_token_id,
+    OrtValue& expanded_input_ids,
+    std::vector<OrtValue>& decoder_feeds,
+    const std::vector<OrtValue>& encoder_feeds,
+    const std::vector<OrtValue>& encoder_fetches,
+    IAllocatorUniquePtr<char>& buffer);
 
   FeedsFetchesManager* GetFeedsFetchesManager() const { return feeds_fetches_manager_.get(); }
 

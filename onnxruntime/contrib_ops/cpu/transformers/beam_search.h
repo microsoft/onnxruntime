@@ -82,8 +82,10 @@ class BeamSearch : public IControlFlowKernel {
   BeamSearchDeviceHelper::UpdateFeedsFunc<MLFloat16> update_feeds_fp16_func_;
 
   // Subgraph and FeedsFetchesManager re-used for each subgraph execution.
-  std::unique_ptr<GptSubgraph> gpt_subgraph_;
-  FeedsFetchesManager* feeds_fetches_manager_;
+  std::unique_ptr<GptSubgraph> encoder_subgraph_;
+  std::unique_ptr<GptSubgraph> decoder_subgraph_;
+  FeedsFetchesManager* encoder_feeds_fetches_manager_;
+  FeedsFetchesManager* decoder_feeds_fetches_manager_;
 
   void* cuda_stream_;
 
