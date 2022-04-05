@@ -48,16 +48,15 @@ jobs:
   pool: 'Onnxruntime-Linux-GPU-TensorRT-Perf'
   
   variables:
-
-    ${{ if eq(parameters.RunNvidiaContainer, true)}}:
     - name: trtContainerVersion
-      ${{ if eq($(trtContainer), '')}}:
-        ${{ if eq(parameters.TrtVersion, '8.2.1.8') }}:
-          value: 21.12
-        ${{ if eq(parameters.TrtVersion, '8.0.1.6') }}:
-          value: 21.07
-        ${{ if eq(parameters.TrtVersion, '7.2.3.4') }}:
-          value: 20.12
+      ${{ if eq(parameters.RunNvidiaContainer, true)}}:
+        ${{ if eq($(trtContainer), '')}}:
+          ${{ if eq(parameters.TrtVersion, '8.2.1.8') }}:
+            value: 21.12
+          ${{ if eq(parameters.TrtVersion, '8.0.1.6') }}:
+            value: 21.07
+          ${{ if eq(parameters.TrtVersion, '7.2.3.4') }}:
+            value: 20.12
 
     - name: dockerfile
       ${{ if eq(parameters.RunNvidiaContainer, true)}}:
