@@ -61,7 +61,7 @@ python -m onnxruntime.tools.update_onnx_opset --opset 15 model.onnx model.opset1
 
 If the model can potentially be used with NNAPI or CoreML it may require the input shapes to be made 'fixed' by setting any dynamic dimension sizes to specific values. 
 
-See the documentation on [onnxruntime.tools.make_dynamic_shape_fixed](./make-dynamic-shape-fixed.md) for information on how to do this.
+See [here](./make-dynamic-shape-fixed.md) for more details.
 
 
 ## QDQ format model helpers
