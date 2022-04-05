@@ -26,6 +26,14 @@ jobs:
       Repository: onnxruntimecpubuild
 
   - task: CmdLine@2
+    displayName: 'Get the latest ONNX for integration check'
+    inputs:
+      script: |
+        cd $(Build.SourcesDirectory)/cmake/external/onnx
+        git checkout main
+        git pull
+
+  - task: CmdLine@2
     displayName: 'build'
     inputs:
       script: |
