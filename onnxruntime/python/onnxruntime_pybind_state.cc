@@ -125,6 +125,17 @@ static py::object AddNonTensor(const OrtValue& val,
   return py::cast(val.Get<T>());
 }
 
+struct DeleterWrap {
+  AllocatorPtr deleter;
+};
+
+void capsule_cleanup(PyObject* capsule) {
+  auto packet = std::unique_ptr<DeleterWrap>(reinterpret_cast<DeleterWrap*>(PyCapsule_GetContext(capsule)));
+  if (packet->deleter) {
+      packet->deleter->Free(PyCapsule_GetPointer(capsule, NULL));
+  }
+}
+
 // In all cases, we may not have access to a DataTransferManager, hence the user may specify functions that
 // pretty much does what a DataTransferManager does - copy data from device(s) to the host
 void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj,
@@ -139,13 +150,13 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj,
 
   MLDataType dtype = rtensor.DataType();
   const int numpy_type = OnnxRuntimeTensorToNumpyType(dtype);
-  obj = py::reinterpret_steal<py::object>(PyArray_SimpleNew(
-      shape.NumDimensions(), npy_dims.data(), numpy_type));
-
-  void* out_ptr = static_cast<void*>(
-      PyArray_DATA(reinterpret_cast<PyArrayObject*>(obj.ptr())));
 
   if (numpy_type != NPY_OBJECT) {
+    obj = py::reinterpret_steal<py::object>(PyArray_SimpleNew(
+      shape.NumDimensions(), npy_dims.data(), numpy_type));
+
+    void* out_ptr = static_cast<void*>(
+      PyArray_DATA(reinterpret_cast<PyArrayObject*>(obj.ptr())));
     // if it is not cpu tensor, need to copy to host
     auto device_type = rtensor.Location().device.Type();
     if (device_type != OrtDevice::CPU) {
@@ -172,9 +183,22 @@ void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj,
         mem_cpy_to_host->second(out_ptr, rtensor.DataRaw(), dtype->Size() * shape.Size());
       }
 
-    } else
-      memcpy(out_ptr, rtensor.DataRaw(dtype), dtype->Size() * shape.Size());
+    } else {
+      Tensor& mutable_rtensor = const_cast<Tensor&>(rtensor);
+      obj = py::reinterpret_steal<py::object>(PyArray_SimpleNewFromData(
+        shape.NumDimensions(), npy_dims.data(), numpy_type, mutable_rtensor.MutableDataRaw(dtype)));
+      PyObject* capsule = PyCapsule_New(mutable_rtensor.MutableDataRawWithoutOffset(), NULL, capsule_cleanup);
+      DeleterWrap* del_wrapper = new DeleterWrap;
+      del_wrapper->deleter = mutable_rtensor.OwnsBuffer() ? mutable_rtensor.StealDeleter() : nullptr;
+      ORT_ENFORCE(PyCapsule_SetContext(capsule, reinterpret_cast<void*>(del_wrapper)) == 0, "Context was not set to capsule");
+      ORT_ENFORCE(PyArray_SetBaseObject(reinterpret_cast<PyArrayObject*>(obj.ptr()), capsule) >= 0, "Fail to create py::capsule");
+    }
   } else {
+    obj = py::reinterpret_steal<py::object>(PyArray_SimpleNew(
+      shape.NumDimensions(), npy_dims.data(), numpy_type));
+
+    void* out_ptr = static_cast<void*>(
+      PyArray_DATA(reinterpret_cast<PyArrayObject*>(obj.ptr())));
     // Handle string type.
     // Copying strings to cpu from device is currently not supported
     ORT_ENFORCE(rtensor.Location().device.Type() == OrtDevice::CPU,

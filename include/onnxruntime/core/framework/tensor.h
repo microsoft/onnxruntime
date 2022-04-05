@@ -211,12 +211,20 @@ class Tensor final {
     return static_cast<char*>(p_data_) + byte_offset_;
   }
 
+  void* MutableDataRawWithoutOffset() noexcept {
+    return static_cast<char*>(p_data_);
+  }
+
   const void* DataRaw() const noexcept {
     return static_cast<char*>(p_data_) + byte_offset_;
   }
 
   bool OwnsBuffer() const noexcept {
     return buffer_deleter_ != nullptr;
+  }
+
+  AllocatorPtr StealDeleter() {
+    return std::move(buffer_deleter_);
   }
 
   /**
