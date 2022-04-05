@@ -45,7 +45,7 @@ export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   // // TODO: support new attributes for MaxPool-8 and MaxPool-10
   // ['MaxPool', '', '1+', maxPool, parseMaxPoolAttributes],
   // ['Mul', '', '7+', binaryOps.mul],
-  // ['Neg', '', '6+', unaryOps.neg],
+  ['Neg', '', '6+', unaryOps.neg],
   // ['Not', '', '1+', unaryOps.not],
   // ['Or', '', '7+', binaryOps.or],
   // ['Pad', '', '2-10', padV2, parsePadAttributesV2],
