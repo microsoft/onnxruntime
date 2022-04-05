@@ -472,7 +472,8 @@ def generate_files(list, args):
                 dll_list_path = os.path.join(openvino_path, 'runtime\\bin\\intel64\\Release\\')
                 tbb_list_path = os.path.join(openvino_path, 'runtime\\3rdparty\\tbb\\bin\\')
             else:
-                dll_list_path = os.path.join(openvino_path, 'deployment_tools\\inference_engine\\bin\\intel64\\Release\\')
+                dll_list_path = os.path.join(
+                    openvino_path, 'deployment_tools\\inference_engine\\bin\\intel64\\Release\\')
                 tbb_list_path = os.path.join(openvino_path, 'deployment_tools\\inference_engine\\external\\tbb\\bin\\')
                 ngraph_list_path = os.path.join(openvino_path, 'deployment_tools\\ngraph\\lib\\')
                 for ngraph_element in os.listdir(ngraph_list_path):
