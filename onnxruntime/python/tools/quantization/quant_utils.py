@@ -508,9 +508,8 @@ def save_and_reload_model(model):
     with tempfile.TemporaryDirectory(prefix='ort.quant.') as quant_tmp_dir:
         model_path = Path(quant_tmp_dir).joinpath("model.onnx")
         onnx.external_data_helper.convert_model_to_external_data(model,
-                                                                 all_tensors_to_one_file=True,
-                                                                 location=Path(quant_tmp_dir).joinpath("model.data").as_posix())
-        onnx.save_model(model, model_path)
+                                                                 all_tensors_to_one_file=True)
+        onnx.save_model(model, model_path.as_posix())
         return load_model(model_path, False)
 
 def clone_model_with_shape_infer(model):
