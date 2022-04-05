@@ -90,7 +90,8 @@ OrtValue create_ort_value(
 
 onnx::AttributeProto create_ort_attribute(
   const char* name,
-  at::Scalar value);
+  at::Scalar value,
+  const bool isTensor=false);
 
 onnx::AttributeProto create_ort_attribute(
   const char* name,
