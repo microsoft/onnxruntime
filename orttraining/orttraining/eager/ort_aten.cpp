@@ -166,12 +166,18 @@ onnx::AttributeProto create_ort_attribute(
     constant_attribute_tensor_proto->mutable_dims()->Clear(); 
     switch (type) {
     case at::ScalarType::Float:
+      constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      *constant_attribute_tensor_proto->mutable_float_data()->Add() = value.to<float>();
+      break;
     case at::ScalarType::Double:
       constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE);
       *constant_attribute_tensor_proto->mutable_float_data()->Add() = value.to<double>();
       break;
     case at::ScalarType::Bool:
     case at::ScalarType::Int:
+      constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+      *constant_attribute_tensor_proto->mutable_float_data()->Add() = value.to<int>();
+      break;
     case at::ScalarType::Long:
       constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
       *constant_attribute_tensor_proto->mutable_float_data()->Add() = value.to<int64_t>();
