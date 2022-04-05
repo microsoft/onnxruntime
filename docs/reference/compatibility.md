@@ -68,6 +68,8 @@ ONNX Runtime supports all opsets from the latest released version of the [ONNX](
 
 | ONNX Runtime version | [ONNX version](https://github.com/onnx/onnx/blob/master/docs/Versioning.md) | ONNX opset version | ONNX ML opset version | ONNX IR version | [Windows ML Availability](https://docs.microsoft.com/en-us/windows/ai/windows-ml/release-notes/)|
 |------------------------------|--------------------|--------------------|----------------------|------------------|------------------|
+| 1.11 | **1.11** | 16 | 2 | 8 | Windows AI 1.11+ |
+| 1.10 | **1.10** | 15 | 2 | 8 | Windows AI 1.10+ |
 | 1.9 | **1.10** | 15 | 2 | 8 | Windows AI 1.9+ |
 | 1.8 | **1.9** | 14 | 2 | 7 | Windows AI 1.8+ |
 | 1.7 | **1.8** | 13 | 2 | 7 | Windows AI 1.7+ |
