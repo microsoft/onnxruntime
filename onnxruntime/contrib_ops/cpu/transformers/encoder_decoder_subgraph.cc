@@ -190,6 +190,7 @@ Status EncoderSubgraph::CreateInitialFeeds(
   const TensorShape& input_ids_shape = input_ids.Shape();
   ORT_ENFORCE(input_ids_shape.NumDimensions() == 2);
   const int64_t& batch_size = input_ids_shape[0];
+  const int64_t& sequence_length = input_ids_shape[1];
 
   // Subgraph inputs:
   //   input_ids: shape (B, S) wher B is batch size, and S is sequence length
@@ -208,7 +209,7 @@ Status EncoderSubgraph::CreateInitialFeeds(
 
   auto element_type = DataTypeImpl::GetType<int32_t>();
   OrtValue encoder_input_ids;
-  Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(input_ids)->MutableData<int32_t>(), location, encoder_input_ids);
+  Tensor::InitOrtValue(element_type, input_ids_shape, const_cast<Tensor*>(&input_ids)->MutableData<int32_t>(), location, encoder_input_ids);
 
   OrtValue attention_mask;
   Tensor::InitOrtValue(element_type, input_ids_shape, cpu_alloactor, attention_mask);
@@ -224,7 +225,7 @@ Status EncoderSubgraph::CreateInitialFeeds(
   //         return input_ids.ne(pad_token_id).long()
   //     return input_ids.new_ones(input_ids.shape)
   int32_t* mask_data = attention_mask.GetMutable<Tensor>()->MutableData<int32_t>();
-  const int32_t* word_id = input_ids->Data<int32_t>();
+  const int32_t* word_id = encoder_input_ids.GetMutable<Tensor>()->Data<int32_t>();
   int32_t* mask = mask_data;
   for (int i = 0; i < batch_size; i++) {
     for (int j = 0; j < sequence_length; j++, word_id++, mask++) {
@@ -421,15 +422,14 @@ Status DecoderSubgraph::CreateInitialFeeds(
   const OrtMemoryInfo& location = cpu_alloactor->Info();
 
   // The ordering is the same as used in Setup
-  feeds.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
+  decoder_feeds.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
 
   auto element_type = DataTypeImpl::GetType<int32_t>();
 
   OrtValue decoder_input_ids;
-  TensorShape decoder_input_ids_shape({batch_size, 1})
+  TensorShape decoder_input_ids_shape({batch_size, 1});
   Tensor::InitOrtValue(element_type, decoder_input_ids_shape, cpu_alloactor, decoder_input_ids);
   int32_t* decoder_input_ids_data = decoder_input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
-  const int32_t* word_id = input_ids->Data<int32_t>();
   for (int i = 0; i < batch_size; i++) {
     *decoder_input_ids_data = decoder_start_token_id;
     decoder_input_ids_data++;
@@ -444,9 +444,9 @@ Status DecoderSubgraph::CreateInitialFeeds(
   const Tensor* encoder_outputs = &encoder_fetches[0].Get<Tensor>();
   Tensor::InitOrtValue(element_type, encoder_outputs->Shape(), const_cast<Tensor*>(encoder_outputs)->MutableData<float>(), location, encoder_output);
 
-  OrtValue& expanded_decoder_input_ids = ExpandInputs(decoder_input_ids, num_beams, cpu_alloactor);
-  OrtValue& expanded_decoder_attention_masks = ExpandInputs(decoder_attention_masks, num_beams, cpu_alloactor);
-  OrtValue& expanded_encoder_output = ExpandInputs(encoder_output, num_beams, cpu_alloactor);
+  OrtValue expanded_decoder_input_ids = ExpandInputs(decoder_input_ids, num_beams, cpu_alloactor);
+  OrtValue expanded_decoder_attention_masks = ExpandInputs(decoder_attention_masks, num_beams, cpu_alloactor);
+  OrtValue expanded_encoder_output = ExpandInputs(encoder_output, num_beams, cpu_alloactor);
 
   decoder_feeds.push_back(expanded_decoder_input_ids);
   decoder_feeds.push_back(expanded_decoder_attention_masks);

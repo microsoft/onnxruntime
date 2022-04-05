@@ -89,21 +89,21 @@ using DeviceCopyFunc = std::function<Status(
     void* stream,
     int copyDirection)>;
 
-// template <typename T>
-// using UpdateFeedsFunc = std::function<Status(
-//     AllocatorPtr allocator,
-//     void* stream,
-//     const std::vector<OrtValue>& last_outputs,
-//     std::vector<OrtValue>& next_inputs,
-//     int current_length,
-//     OrtValue& position_ids,
-//     gsl::span<const int32_t> beam_next_tokens,
-//     gsl::span<const int32_t> beam_indices,
-//     int num_beams,
-//     const transformers::IConsoleDumper* dumper)>;
-
 template <typename T>
 using UpdateFeedsFunc = std::function<Status(
+    AllocatorPtr allocator,
+    void* stream,
+    const std::vector<OrtValue>& last_outputs,
+    std::vector<OrtValue>& next_inputs,
+    int current_length,
+    OrtValue& position_ids,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
+    int num_beams,
+    const transformers::IConsoleDumper* dumper)>;
+
+template <typename T>
+using UpdateFeedsFunc2 = std::function<Status(
     AllocatorPtr allocator,
     void* stream,
     const std::vector<OrtValue>& last_outputs,
@@ -173,21 +173,21 @@ Status DeviceCopy(gsl::span<T> target,
                   void* stream,
                   int copyDirectionn);
 
-// template <typename T>
-// Status UpdateFeeds(
-//     AllocatorPtr allocator,
-//     void* stream,
-//     const std::vector<OrtValue>& last_outputs,
-//     std::vector<OrtValue>& next_inputs,
-//     int current_length,
-//     OrtValue& position_ids,
-//     gsl::span<const int32_t> beam_next_tokens,
-//     gsl::span<const int32_t> beam_indices,
-//     int num_beams,
-//     const transformers::IConsoleDumper* dumper);
-
 template <typename T>
 Status UpdateFeeds(
+    AllocatorPtr allocator,
+    void* stream,
+    const std::vector<OrtValue>& last_outputs,
+    std::vector<OrtValue>& next_inputs,
+    int current_length,
+    OrtValue& position_ids,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
+    int num_beams,
+    const transformers::IConsoleDumper* dumper);
+
+template <typename T>
+Status UpdateFeeds2(
     AllocatorPtr allocator,
     void* stream,
     const std::vector<OrtValue>& last_outputs,

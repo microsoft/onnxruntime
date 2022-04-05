@@ -22,7 +22,7 @@ class BeamSearch : public IControlFlowKernel {
  public:
   BeamSearch(const OpKernelInfo& info)
       : IControlFlowKernel(info), encoder_feeds_fetches_manager_(nullptr),
-      encoder_feeds_fetches_manager_(nullptr), cuda_stream_(nullptr), dumper_(nullptr) {
+      decoder_feeds_fetches_manager_(nullptr), cuda_stream_(nullptr), dumper_(nullptr) {
     Init(info);
   }
 
@@ -78,14 +78,15 @@ class BeamSearch : public IControlFlowKernel {
   BeamSearchDeviceHelper::InitBeamStateFunc<float> init_beam_state_func_;
   BeamSearchDeviceHelper::DeviceCopyFunc<float> device_copy_func_;
   BeamSearchDeviceHelper::UpdateFeedsFunc<float> update_feeds_func_;
+  BeamSearchDeviceHelper::UpdateFeedsFunc2<float> update_feeds_func2_;
 
   BeamSearchDeviceHelper::ProcessLogitsFunc<MLFloat16> process_logits_fp16_func_;
   BeamSearchDeviceHelper::InitBeamStateFunc<MLFloat16> init_beam_state_fp16_func_;
   BeamSearchDeviceHelper::UpdateFeedsFunc<MLFloat16> update_feeds_fp16_func_;
 
   // Subgraph and FeedsFetchesManager re-used for each subgraph execution.
-  std::unique_ptr<GptSubgraph> encoder_subgraph_;
-  std::unique_ptr<GptSubgraph> decoder_subgraph_;
+  std::unique_ptr<EncoderSubgraph> encoder_subgraph_;
+  std::unique_ptr<DecoderSubgraph> decoder_subgraph_;
   FeedsFetchesManager* encoder_feeds_fetches_manager_;
   FeedsFetchesManager* decoder_feeds_fetches_manager_;
 
