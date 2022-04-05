@@ -55,17 +55,12 @@ TEST(TensorOpTest, Unsqueeze_scalar) {
     test.Run();
   }
   {
-    OpTester test("Unsqueeze");
+    OpTester test("Unsqueeze", 11);  // Negative axes added in version 11
 
     test.AddAttribute("axes", std::vector<int64_t>{-1});
     test.AddInput<float>("input", {}, std::vector<float>{1.0f});
     test.AddOutput<float>("output", {1}, std::vector<float>{1.0f});
-    // TODO: ONNX shape inference thinks the output should be rank 0.
-    // ONNX spec is ambiguous: https://github.com/onnx/onnx/issues/2428.
-    // Once spec clarified, remove strict_shape_type_inference override.
-    SessionOptions so;
-    so.strict_shape_type_inference = false;
-    test.Run(so);
+    test.Run();
   }
 
   auto run_test = [](bool axes_is_initializer) {
