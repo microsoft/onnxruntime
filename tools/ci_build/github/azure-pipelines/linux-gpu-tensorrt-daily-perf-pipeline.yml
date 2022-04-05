@@ -79,7 +79,7 @@ jobs:
       value: -a "-a -g $(optimizeGraph) -b $(bindInputs) -n $(enableCache)"
         
   steps:
-
+  
   - ${{ if eq(parameters.BuildORT, false) }}:
     - task: DownloadPipelineArtifact@2
       inputs:
@@ -94,69 +94,69 @@ jobs:
         targetPath: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
     - script: 'docker pull $(dockerfile)'
 
-    - ${{ if eq(parameters.BuildORT, true) }}:
+  - ${{ if eq(parameters.BuildORT, true) }}:
 
-      - ${{ if eq(parameters.RunNvidiaContainer, true) }}: 
-        - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt -b $(branch) -t $(trtContainerVersion) -i ort-$(branch) -c 75 '
-          displayName: 'Build latest ORT Image in Nvidia Container'
-          workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+    - ${{ if eq(parameters.RunNvidiaContainer, true) }}: 
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt -b $(branch) -t $(trtContainerVersion) -i ort-$(branch) -c 75 '
+        displayName: 'Build latest ORT Image in Nvidia Container'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
-      - ${{ if eq(parameters.RunNvidiaContainer, false) }}: 
-        - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -o $(dockerfile) -b $(branch) -t $(trtContainerVersion) -i ort-$(branch) -c 75 '
-          displayName: 'Build latest ORT Image'
-          workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+    - ${{ if eq(parameters.RunNvidiaContainer, false) }}: 
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -o $(dockerfile) -b $(branch) -t $(trtContainerVersion) -i ort-$(branch) -c 75 '
+        displayName: 'Build latest ORT Image'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
-    - ${{ each option in parameters.ModelGroups }}:
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf -v $(modelVolume) -o ${{option}} -m $(${{option}}) -e "$(epList)" $(optional_arguments)'
-        displayName: '${{option}} perf'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-        
-    - ${{ if eq(parameters.MemTest, true) }}:
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/ -w /code/ -l false'
-        displayName: 'Run Memory Test'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
-
-    # Prepare and Publish Artifacts 
-    
-    - script: 'mkdir $(Build.SourcesDirectory)/Artifact'
-      displayName: 'Prepare Artifacts Directory'
+  - ${{ each option in parameters.ModelGroups }}:
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf -v $(modelVolume) -o ${{option}} -m $(${{option}}) -e "$(epList)" $(optional_arguments)'
+      displayName: '${{option}} perf'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-      condition: always() 
+      
+  - ${{ if eq(parameters.MemTest, true) }}:
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/ -w /code/ -l false'
+      displayName: 'Run Memory Test'
+      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
 
-    - ${{ if not(eq(length(parameters.ModelGroups), 0)) }}:
-      - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
-        displayName: 'Copy Artifacts'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+  # Prepare and Publish Artifacts 
+  
+  - script: 'mkdir $(Build.SourcesDirectory)/Artifact'
+    displayName: 'Prepare Artifacts Directory'
+    workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+    condition: always() 
 
-    - ${{ if eq(parameters.MemTest, true) }}:
-      - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/build/result $(Build.SourcesDirectory)/Artifact/result_mem_test'
-        displayName: 'Copy Artifacts'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-        condition: always()
+  - ${{ if not(eq(length(parameters.ModelGroups), 0)) }}:
+    - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
+      displayName: 'Copy Artifacts'
+      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    - task: PublishBuildArtifacts@1
+  - ${{ if eq(parameters.MemTest, true) }}:
+    - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/build/result $(Build.SourcesDirectory)/Artifact/result_mem_test'
+      displayName: 'Copy Artifacts'
+      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+      condition: always()
+
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
+      artifactName: 'result-$(Build.BuildNumber)'
+      
+  - ${{ if eq(parameters.PostToDashboard, true) }}:
+
+    - script: 'python3 -m pip install pandas azure-kusto-data[pandas] azure-kusto-ingest[pandas] coloredlogs'
+      displayName: 'Install dashboard dependencies'
+
+    - task: AzureCLI@2
+      displayName: 'Azure CLI Post to Dashboard'
       inputs:
-        pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
-        artifactName: 'result-$(Build.BuildNumber)'
-        
-    - ${{ if eq(parameters.PostToDashboard, true) }}:
-
-      - script: 'python3 -m pip install pandas azure-kusto-data[pandas] azure-kusto-ingest[pandas] coloredlogs'
-        displayName: 'Install dashboard dependencies'
-
-      - task: AzureCLI@2
-        displayName: 'Azure CLI Post to Dashboard'
-        inputs:
-          azureSubscription: AIInfraBuildOnnxRuntimeOSS
-          scriptLocation: inlineScript
-          scriptType: bash
-          inlineScript: |
-            short_hash=$(git rev-parse --short HEAD^) &&
-            commit_date=$(git log -1 --date=short --pretty=format:%cd) &&
-            python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch)
-    
-    - template: templates/component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
-        
-    - template: templates/clean-agent-build-directory-step.yml
+        azureSubscription: AIInfraBuildOnnxRuntimeOSS
+        scriptLocation: inlineScript
+        scriptType: bash
+        inlineScript: |
+          short_hash=$(git rev-parse --short HEAD^) &&
+          commit_date=$(git log -1 --date=short --pretty=format:%cd) &&
+          python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/Artifact/result -c $short_hash -d $commit_date -u "$(reportUrl)?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }} -b $(branch)
+  
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
+      
+  - template: templates/clean-agent-build-directory-step.yml
