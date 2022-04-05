@@ -101,7 +101,7 @@ jobs:
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
     - ${{ if eq(parameters.RunNvidiaContainer, false) }}: 
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -o $(dockerfile) -b $(branch) -t $(trtContainerVersion) -i ort-$(branch) -c 75 '
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -o $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/$(dockerfile) -b $(branch) -t $(trtContainerVersion) -i ort-$(branch) -c 75 '
         displayName: 'Build latest ORT Image'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
