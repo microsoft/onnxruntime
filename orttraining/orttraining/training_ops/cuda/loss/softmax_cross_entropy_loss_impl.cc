@@ -28,7 +28,7 @@ OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& 
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create())                                                        \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                           \
-          .TypeConstraint("Tin", DataTypeImpl::GetTensorType<Tin>()),                      \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>()),                      \
       Class<T, Tin>);
 
 #define REGISTER_KERNEL_TYPED_TWO_TYPES(Class, T, Tin, domain, version) \
@@ -40,7 +40,7 @@ OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& 
       kCudaExecutionProvider,                                           \
       (*KernelDefBuilder::Create())                                     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("Tin", DataTypeImpl::GetTensorType<Tin>()),   \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>()),   \
       Class<T, Tin>);
 
 template <typename T, typename Tin>
@@ -318,7 +318,7 @@ INSTANTIATE_COMPUTE_SPARSE(SoftmaxCrossEntropyLossGrad, BFloat16, int64_t, kMSDo
                                     (*KernelDefBuilder::Create())                                     \
                                         .InputMemoryType(OrtMemTypeCPUInput, CpuInputIndex)           \
                                         .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-                                        .TypeConstraint("Tin", DataTypeImpl::GetTensorType<Tin>())    \
+                                        .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>())    \
                                         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
                                     ClassName<T, Tin>);
 
