@@ -16,7 +16,7 @@ opsets = [onnxdomain, msdomain]
 scale_value = 3.0
 
 
-def save(model_path, nodes, inputs, outputs, initializers):
+def save(model_path, nodes, inputs, outputs, initializers, opsets=opsets):
     graph = helper.make_graph(
         nodes,
         "MatMulScaleTest",
@@ -218,3 +218,40 @@ def gen_int32(model_path):
 
 
 gen_int32("matmul_scale_int32.onnx")
+
+
+def gen_scale_input(model_path):
+
+    nodes = [
+        helper.make_node(
+            "Mul", ["input_0", "scale"], ["scaled_input_0"],
+            "scale input_0"),
+        helper.make_node(
+            "MatMul", ["scaled_input_0", "input_1"], ["output_0"],
+            "MatMul input_0 and input_1"),
+    ]
+
+    initializers = [
+        helper.make_tensor("scale", TensorProto.FLOAT, [1], [1.0])
+    ]
+
+    inputs = [
+        helper.make_tensor_value_info(
+            "input_0", TensorProto.FLOAT, []),
+        helper.make_tensor_value_info(
+            "input_1", TensorProto.FLOAT, [1, 'K']),
+    ]
+
+    outputs = [
+        helper.make_tensor_value_info(
+            "output_0", TensorProto.FLOAT, ['K']),
+    ]
+
+    onnxdomain = OperatorSetIdProto()
+    onnxdomain.version = 14
+    onnxdomain.domain = ""
+    opsets = [onnxdomain, msdomain]
+    save(model_path, nodes, inputs, outputs, initializers, opsets)
+
+
+gen_scale_input("matmul_scale_with_scale_input.onnx")

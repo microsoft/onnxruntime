@@ -228,8 +228,44 @@ Status ProcessNode(
   auto fused_node_inputs = node.MutableInputDefs();
   for (const auto& input_node_merge : input_node_merges) {
     Node& input_node = get_mutable_node_to_merge(input_node_merge);
-    fused_node_inputs[input_node_merge.fused_node_def_index] =
-        input_node.MutableInputDefs()[input_node_merge.node_to_merge_def_index];
+
+    // check if we need Unsqueeze node for the input_node's non-scale input
+    auto scale_node_inputs = input_node.MutableInputDefs();
+    NodeArg& non_scale_node_arg = *scale_node_inputs[input_node_merge.node_to_merge_def_index];
+    auto* shape = non_scale_node_arg.Shape();
+    bool should_unsqueeze_input = graph_utils::IsGraphInput(graph, &non_scale_node_arg) && shape->dim_size() == 0;
+    if (should_unsqueeze_input) {
+      // create output arg with the same type
+      auto type_info = *non_scale_node_arg.TypeAsProto();  
+      type_info.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+      auto& unsqueeze_arg = graph.GetOrCreateNodeArg("unsqueeze_output", &type_info);
+
+      // support newer opset (13+) for now, i.e., axes as input, not attr
+      // add axes as initializer/second input for the Unsqueeze node
+      ONNX_NAMESPACE::TensorProto axes_tensor;
+      axes_tensor.add_dims(1);
+      axes_tensor.add_int64_data(0);
+      axes_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+      std::string name = graph.GenerateNodeArgName("axes");
+      axes_tensor.set_name(name);
+      graph.AddInitializedTensor(axes_tensor);
+      auto& axes_arg = graph.GetOrCreateNodeArg(name, nullptr);
+
+      auto& unsqueeze_node = graph.AddNode(
+          graph.GenerateNodeName("Unsqueeze"),
+          "Unsqueeze",
+          "Unsqueeze input to tensor of single dim",
+          {&non_scale_node_arg, &axes_arg},
+          {&unsqueeze_arg});
+
+      unsqueeze_node.SetExecutionProviderType(input_node.GetExecutionProviderType());
+
+      fused_node_inputs[input_node_merge.fused_node_def_index] =
+          unsqueeze_node.MutableOutputDefs()[0];
+    } else {
+      fused_node_inputs[input_node_merge.fused_node_def_index] =
+          input_node.MutableInputDefs()[input_node_merge.node_to_merge_def_index];
+    }
   }
 
   auto fused_node_outputs = node.MutableOutputDefs();

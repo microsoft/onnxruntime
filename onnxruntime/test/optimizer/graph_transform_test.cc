@@ -4727,6 +4727,19 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionUnsupportedInputType) {
       {kCpuExecutionProvider});
 }
 
+TEST_F(GraphTransformationTests, MatMulScaleFusionWithScaleInput) {
+  TestMatMulScaleFusion(
+      MODEL_FOLDER "fusion/matmul_scale_with_scale_input.onnx", *logger_,
+      [](const Graph&,
+         const std::map<std::string, int>&,
+         std::map<std::string, int> transformed_op_counts) {
+        EXPECT_EQ(transformed_op_counts["Mul"], 0);
+        EXPECT_EQ(transformed_op_counts["MatMul"], 0);
+        EXPECT_EQ(transformed_op_counts["Unsqueeze"], 1);
+        EXPECT_EQ(transformed_op_counts["com.microsoft.FusedMatMul"], 1);
+      });
+}
+
 #if defined(USE_CUDA) || defined(USE_ROCM)
 TEST_F(GraphTransformationTests, IsInfReduceSum_Test) {
   auto model_uri = MODEL_FOLDER "fusion/isinf_reducesum.onnx";
