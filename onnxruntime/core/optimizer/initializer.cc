@@ -308,7 +308,7 @@ struct ScaleByAxis {
 }  // namespace
 
 void Initializer::scale_by_axis(const Initializer& scalers, int axis) {
-  ORT_ENFORCE(axis >= 0 && static_cast<size_t>(axis) < data_.Shape().NumDimensions(), "Invalid axis argument");
+  ORT_ENFORCE(axis >= 0, "Axis must be non-negative");
   const int64_t block_size = data_.Shape().SizeFromDimension(gsl::narrow_cast<size_t>(axis));
   const int64_t num_blocks = size() / block_size;
   ORT_ENFORCE(scalers.size() == 1 || scalers.size() == num_blocks, "Invalid other(scalers) size");

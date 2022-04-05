@@ -3317,6 +3317,8 @@ struct OrtApi {
   * \param[in] input_len Number of elements in the input_names and inputs arrays
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
+  * 
+  * * \since Version 1.12.
   */
   ORT_API2_STATUS(AddExternalInitializers, _In_ OrtSessionOptions* options,
                   _In_reads_(input_len) const char* const* input_names,

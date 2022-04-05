@@ -54,8 +54,6 @@ def GenerateModel(model_name):
     print('The ir_version in model: {}\n'.format(model_def.ir_version))
     print('The producer_name in model: {}\n'.format(model_def.producer_name))
     print('The graph in model:\n{}'.format(model_def.graph))
-    #onnx.checker.check_model(model_def)
-    print('The model is checked!')
     with open(model_name, "wb") as model_file:
         model_file.write(model_def.SerializeToString())
 

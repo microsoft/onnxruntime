@@ -198,6 +198,10 @@ ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializers, _In_ OrtSessionOptions* op
   names.reserve(input_len);
   values.reserve(input_len);
   for (size_t i = 0; i < input_len; ++i) {
+    if (input_names[i] == nullptr || inputs[i] == nullptr) {
+      auto message = onnxruntime::MakeString("Input index: ", i, " contains null pointers");
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, message.c_str());
+    }
     names.emplace_back(input_names[i]);
     values.emplace_back(*inputs[i]);
   }
