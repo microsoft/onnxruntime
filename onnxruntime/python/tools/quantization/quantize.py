@@ -3,16 +3,8 @@
 # Licensed under the MIT License. See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
-import os
-import onnx
-import onnx.numpy_helper
-import struct
 import logging
-import numpy as np
-import tempfile
-
 from pathlib import Path
-
 from onnx import onnx_pb as onnx_proto
 
 from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue
@@ -132,6 +124,7 @@ def quantize_static(model_input,
                     weight_type=QuantType.QInt8,
                     nodes_to_quantize=[],
                     nodes_to_exclude=[],
+                    optimize_model=True,
                     use_external_data_format=False,
                     calibrate_method=CalibrationMethod.MinMax,
                     extra_options = {}):
@@ -166,6 +159,7 @@ def quantize_static(model_input,
     :param nodes_to_exclude:
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
+    :param optimize_model: optimize model before quantization.
     :param use_external_data_format: option used for large size (>2GB) model. Set to False by default. 
     :param calibrate_method: 
         Current calibration methods supported are MinMax and Entropy. 
@@ -206,7 +200,7 @@ def quantize_static(model_input,
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(QLinearOpsRegistry.keys())
 
-    model = load_model(Path(model_input))
+    model = load_model(Path(model_input), optimize_model)
 
     calib_extra_options_keys = [
         ('CalibTensorRangeSymmetric', 'symmetric'),
@@ -267,6 +261,7 @@ def quantize_dynamic(model_input: Path,
                      weight_type=QuantType.QInt8,
                      nodes_to_quantize=[],
                      nodes_to_exclude=[],
+                     optimize_model=True,
                      use_external_data_format=False,
                      extra_options = { }):
     '''
@@ -288,6 +283,7 @@ def quantize_dynamic(model_input: Path,
     :param nodes_to_exclude:
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
+    :param optimize_model: optimize model before quantization.
     :param use_external_data_format: option used for large size (>2GB) model. Set to False by default.
     :param extra_options:
         key value pair dictionary for various options in different case. Current used:
@@ -308,7 +304,7 @@ def quantize_dynamic(model_input: Path,
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(IntegerOpsRegistry.keys())
 
-    model = load_model(Path(model_input))
+    model = load_model(Path(model_input), optimize_model)
 
     if 'MatMulConstBOnly' not in extra_options:
         extra_options['MatMulConstBOnly'] = True

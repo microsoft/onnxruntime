@@ -17,7 +17,7 @@ from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue
 from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg, type_to_name
 from .quant_utils import quantize_nparray, quantize_data, compute_scale_zp, get_qrange_for_qType, get_qmin_qmax_for_qType
-from .quant_utils import save_and_reload_model, model_has_infer_metadata
+from .quant_utils import save_and_reload_model, model_has_infer_metadata, add_infer_metadata
 from .quant_utils import QuantType, onnx_domain, __producer__, __version__
 
 from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer
@@ -108,6 +108,7 @@ class ONNXQuantizer:
         '''
         warped_model = onnx.helper.make_model(subgraph, producer_name='onnx-quantizer',
                                               opset_imports=self.model.model.opset_import)
+        add_infer_metadata(warped_model)
         sub_quanitzer = ONNXQuantizer(warped_model,
                                       self.per_channel,
                                       self.reduce_range,

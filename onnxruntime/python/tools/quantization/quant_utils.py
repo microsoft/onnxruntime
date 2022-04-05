@@ -483,21 +483,19 @@ def model_has_infer_metadata(model):
         for p in model.metadata_props:
             if p.key == "onnx.infer" and p.value == "onnxruntime.quant":
                 return True
-
     return False
 
 def load_model_with_shape_infer(model_path : Path):
     inferred_model_path = generate_identified_filename(model_path, "-inferred")
     onnx.shape_inference.infer_shapes_path(str(model_path), str(inferred_model_path))
     model = onnx.load(inferred_model_path.as_posix())
-    inferred_model_path.unlink(missing_ok=True)
-
+    inferred_model_path.unlink()
     return model
 
 
-def load_model(model_path : Path):
+def load_model(model_path : Path, need_optimize : bool):
     with tempfile.TemporaryDirectory(prefix='ort.quant.') as quant_tmp_dir:
-        if not model_has_external_data(model_path):
+        if need_optimize and not model_has_external_data(model_path):
             opt_model_path = Path(quant_tmp_dir).joinpath("model.onnx")
             optimize_model(model_path, opt_model_path)
             model_path = opt_model_path
@@ -513,4 +511,12 @@ def save_and_reload_model(model):
                                                                  all_tensors_to_one_file=True,
                                                                  location=Path(quant_tmp_dir).joinpath("model.data").as_posix())
         onnx.save_model(model, model_path)
-        return load_model(model_path)
+        return load_model(model_path, False)
+
+def clone_model_with_shape_infer(model):
+    if model_has_infer_metadata(model):
+        cloned_model = onnx_proto.ModelProto()
+        cloned_model.CopyFrom(model)
+    else:
+        cloned_model = save_and_reload_model(model)
+    return cloned_model

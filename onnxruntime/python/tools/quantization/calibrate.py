@@ -5,21 +5,19 @@
 # Licensed under the MIT License. See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
-
-import os
+import abc
+import itertools
 import numpy as np
-import onnx
 import onnxruntime
+
+import onnx
 from onnx import helper, TensorProto, ModelProto
 from onnx import onnx_pb as onnx_proto
 from enum import Enum
+from pathlib import Path
 
-from .quant_utils import QuantType, smooth_distribution, apply_plot
+from .quant_utils import QuantType, model_has_infer_metadata, smooth_distribution, apply_plot, load_model, clone_model_with_shape_infer
 from .registry import QLinearOpsRegistry
-
-import abc
-import itertools
-
 
 class CalibrationMethod(Enum):
     MinMax = 0
@@ -47,7 +45,9 @@ class CalibraterBase:
         :param use_external_data_format: use external data format to store model which size is >= 2Gb
         '''
         if isinstance(model, str):
-            self.model = onnx.load(model)
+            self.model = load_model(Path(model), False)
+        elif isinstance(model, Path):
+            self.model = load_model(model, False)
         elif isinstance(model, ModelProto):
             self.model = model
         else:
@@ -172,9 +172,7 @@ class MinMaxCalibrater(CalibraterBase):
         model and ensures their outputs are stored as part of the graph output
         :return: augmented ONNX model
         '''
-        model = onnx_proto.ModelProto()
-        model.CopyFrom(self.model)
-        model = onnx.shape_inference.infer_shapes(model)
+        model = clone_model_with_shape_infer(self.model)
 
         added_nodes = []
         added_outputs = []
@@ -338,9 +336,7 @@ class HistogramCalibrater(CalibraterBase):
         make all quantization_candidates op type nodes as part of the graph output.
         :return: augmented ONNX model
         '''
-        model = onnx_proto.ModelProto()
-        model.CopyFrom(self.model)
-        model = onnx.shape_inference.infer_shapes(model)
+        model = clone_model_with_shape_infer(self.model)
 
         added_nodes = []
         added_outputs = []
