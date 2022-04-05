@@ -31,7 +31,7 @@ jobs:
         versionSpec: 3.8
     - task: NodeTool@0
       inputs:
-        versionSpec: '12.x'
+        versionSpec: '16.x'
     - script: |
         set -e
         pushd .

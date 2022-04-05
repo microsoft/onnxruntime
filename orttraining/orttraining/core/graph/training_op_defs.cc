@@ -2179,22 +2179,26 @@ Example 4:
             "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).",
             AttributeProto::INT, static_cast<int64_t>(-1))
       .AllowUncheckedAttributes()
-      .Input(0, "Y_grad", "The gradient tensor from output.", "T")
+      .Input(0, "Y_grad", "The gradient tensor from output.", "V")
       .Input(1, "X", "Input data tensor from the forward path", "T")
-      .Input(2, "scale", "Scale tensor.", "T")
+      .Input(2, "scale", "Scale tensor.", "V")
       .Input(3, "mean", "mean of X.", "U")
       .Input(4, "inv_std_dev", "inverse std deviation of X.", "U")
       .Output(0, "X_grad", "Gradient of the input.", "T")
-      .Output(1, "scale_grad", "Gradient of the scale.", "T")
-      .Output(2, "bias_grad", "Gradient of the bias.", "T")
+      .Output(1, "scale_grad", "Gradient of the scale.", "V")
+      .Output(2, "bias_grad", "Gradient of the bias.", "V")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+          "Constrain input X and its gradient's type to float tensors.")
       .TypeConstraint(
           "U",
-          {"tensor(float)", "tensor(bfloat16)"},
+          {"tensor(float)", "tensor(double)"},
           "Constrain mean and inv_std_var to float tensors.")
+      .TypeConstraint(
+          "V",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain output Y, scale, bias and their gradients' type to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateElemTypeFromInputToOutput(ctx, 1, 0);
         propagateShapeFromInputToOutput(ctx, 1, 0);
@@ -2208,40 +2212,53 @@ Example 4:
           [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
             FunctionBuilder builder(functionProto);
 
-            auto* tp = ctx.getInputType(0);
-            if ((tp == nullptr) || (!tp->has_tensor_type()))
+            auto* tp0 = ctx.getInputType(0);
+            if ((tp0 == nullptr) || (!tp0->has_tensor_type()))
               return false;
-            int64_t T = tp->tensor_type().elem_type();
+            int64_t V = tp0->tensor_type().elem_type();
+
+            auto* tp1 = ctx.getInputType(1);
+            if (!tp1 || !tp1->has_tensor_type()) {
+              return false;
+            }
+            int64_t T = tp1->tensor_type().elem_type();
+
+            auto* tp3 = ctx.getInputType(3);
+            if (!tp3 || !tp3->has_tensor_type()) {
+              return false;
+            }
+            int64_t U = tp3->tensor_type().elem_type();
 
             // Requirements/assumptions:
-            // Inputs Y_grad and X are of shape [d[0], ..., d[axis-1], d[axis], ..., d[rank-1]] and type T
-            // Input scale is of shape [d[axis], ..., d[rank-1]] and type U
-            // Inputs mean and inv_std_dev are of shape [d[0], ..., d[axis-1], 1, ..., 1] (same rank as X)
-            // and type U.
+            // Inputs Y_grad and X are of shape [d[0], ..., d[axis-1], d[axis], ..., d[rank-1]]
+            // Input scale is of shape [d[axis], ..., d[rank-1]]
+            // Inputs mean and inv_std_dev are of shape [d[0], ..., d[axis-1], 1, ..., 1] (same rank as X).
+            // Cast to type U for calculation for better precision.
             //
             auto axis_ref_attr = MakeRefAttribute("axis", AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
             builder
                 .AddOpset("", 15)
-                .Add("cast_mean = Cast (mean)", "to", T)
-                .Add("cast_inv_std_dev = Cast(inv_std_dev)", "to", T)
-                .Add("x_2d = Flatten (X)", axis_ref_attr)
-                .Add("Y_grad_2d = Flatten (Y_grad)", axis_ref_attr)
-                .Add("mean_2d = Flatten (cast_mean)", axis_ref_attr)
-                .Add("inv_std_dev_2d = Flatten (cast_inv_std_dev)", axis_ref_attr)
+                .Add("cast_x = Cast (X)", "to", U)
+                .Add("x_2d = Flatten (cast_x)", axis_ref_attr)
+                .Add("cast_y_grad = Cast (Y_grad)", "to", U)
+                .Add("Y_grad_2d = Flatten (cast_y_grad)", axis_ref_attr)
+                .Add("mean_2d = Flatten (mean)", axis_ref_attr)
+                .Add("inv_std_dev_2d = Flatten (inv_std_dev)", axis_ref_attr)
+                .Add("cast_scale = Cast (scale)", "to", U)
                 .Add(R"ONNX(
                   shape_x = Shape (X)
                   bias_scale_shape = Shape (scale)
-                  scale_2d = Flatten <axis = 0> (scale)
+                  scale_2d = Flatten <axis = 0> (cast_scale)
 
                   axis_0 = Constant <value = int64[1] {0}> ()
                   bias_grad_2d = ReduceSum (Y_grad_2d, axis_0)
-                  bias_grad = Reshape (bias_grad_2d, bias_scale_shape)
+                  bias_grad_u = Reshape (bias_grad_2d, bias_scale_shape)
 
                   deviation = Sub (x_2d, mean_2d)
                   normalized_deviation = Mul(deviation, inv_std_dev_2d)
                   scale_grad_rows = Mul (Y_grad_2d, normalized_deviation)
                   scale_grad_2d = ReduceSum (scale_grad_rows, axis_0)
-                  scale_grad = Reshape (scale_grad_2d, bias_scale_shape)
+                  scale_grad_u = Reshape (scale_grad_2d, bias_scale_shape)
                   normalized_layer_grad = Mul (Y_grad_2d, scale_2d)
 
                   B = Mul (normalized_layer_grad, inv_std_dev_2d)
@@ -2251,8 +2268,11 @@ Example 4:
                   nd_mean_C = Mul (normalized_deviation, mean_C)
                   mean_diff_B = Sub (B, mean_B)
                   X_grad_2D = Sub (mean_diff_B, nd_mean_C)
-                  X_grad = Reshape (X_grad_2D, shape_x)
-                )ONNX");
+                  X_grad_u = Reshape (X_grad_2D, shape_x)
+                )ONNX")
+                .Add("bias_grad = Cast (bias_grad_u)", "to", V)
+                .Add("scale_grad = Cast (scale_grad_u)", "to", V)
+                .Add("X_grad = Cast (X_grad_u)", "to", T);
             schema.BuildFunction(functionProto);
             return true;
           });
@@ -2266,20 +2286,24 @@ Example 4:
             "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).",
             AttributeProto::INT, static_cast<int64_t>(-1))
       .AllowUncheckedAttributes()
-      .Input(0, "Y_grad", "The gradient tensor from output.", "T")
+      .Input(0, "Y_grad", "The gradient tensor from output.", "V")
       .Input(1, "X", "Input data tensor from the forward path", "T")
-      .Input(2, "scale", "Scale tensor.", "T")
+      .Input(2, "scale", "Scale tensor.", "V")
       .Input(3, "inv_std_var", "inverse std variance of X.", "U")
       .Output(0, "X_grad", "Gradient of the input.", "T")
-      .Output(1, "scale_grad", "Gradient of the scale.", "T")
+      .Output(1, "scale_grad", "Gradient of the scale.", "V")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+          "Constrain input X and its gradient's type to float tensors.")
       .TypeConstraint(
           "U",
-          {"tensor(float)"},
-          "Constrain mean and inv_std_var to float tensors.");
+          {"tensor(float)", "tensor(double)"},
+          "Constrain mean and inv_std_var to float tensors.")
+      .TypeConstraint(
+          "V",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain output Y, scale and their gradients' type to float tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(InvertibleLayerNormalizationGrad)
       .SetDomain(kMSDomain)
@@ -2290,22 +2314,26 @@ Example 4:
             "The first normalization dimension: normalization will be performed along dimensions axis : rank(inputs).",
             AttributeProto::INT, static_cast<int64_t>(-1))
       .AllowUncheckedAttributes()
-      .Input(0, "Y_grad", "The gradient tensor from output.", "T")
-      .Input(1, "Y", "Output data tensor from the forward path", "T")
-      .Input(2, "scale", "Scale tensor.", "T")
-      .Input(3, "bias", "Bias tensor.", "T")
+      .Input(0, "Y_grad", "The gradient tensor from output.", "V")
+      .Input(1, "Y", "Output data tensor from the forward path", "V")
+      .Input(2, "scale", "Scale tensor.", "V")
+      .Input(3, "bias", "Bias tensor.", "V")
       .Input(4, "inv_std_var", "inverse std variance of X.", "U")
       .Output(0, "X_grad", "Gradient of the input.", "T")
-      .Output(1, "scale_grad", "Gradient of the scale.", "T")
-      .Output(2, "bias_grad", "Gradient of the bias.", "T")
+      .Output(1, "scale_grad", "Gradient of the scale.", "V")
+      .Output(2, "bias_grad", "Gradient of the bias.", "V")
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input X and its gradient's type to float tensors.")
       .TypeConstraint(
           "U",
-          {"tensor(float)"},
-          "Constrain mean and inv_std_var to float tensors.");
+          {"tensor(float)", "tensor(double)"},
+          "Constrain mean and inv_std_var to float tensors.")
+      .TypeConstraint(
+          "V",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain output Y, scale, bias and their gradients' type to float tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BatchNormalizationGrad)
       .SetDomain(kMSDomain)

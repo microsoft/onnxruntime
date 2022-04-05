@@ -178,6 +178,8 @@ option(onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH "Path to external transformer s
 
 option(onnxruntime_ENABLE_CUDA_PROFILING "Enable CUDA kernel profiling" OFF)
 
+option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
+
 if (onnxruntime_USE_CUDA)
   set(onnxruntime_DISABLE_RTTI OFF)
 endif()
@@ -854,39 +856,43 @@ if (NOT TARGET re2::re2)
   set(RE2_INCLUDE_DIR ${REPO_ROOT}/cmake/external/re2)
 endif()
 
-
-# Adding pytorch CPU info library
-# TODO!! need a better way to find out the supported architectures
-list(LENGTH CMAKE_OSX_ARCHITECTURES CMAKE_OSX_ARCHITECTURES_LEN)
-if (APPLE)
+if (onnxruntime_ENABLE_CPUINFO)
+  # Adding pytorch CPU info library
+  # TODO!! need a better way to find out the supported architectures
+  list(LENGTH CMAKE_OSX_ARCHITECTURES CMAKE_OSX_ARCHITECTURES_LEN)
+  if (APPLE)
     if (CMAKE_OSX_ARCHITECTURES_LEN LESS_EQUAL 1)
-        set(CPUINFO_SUPPORTED TRUE)
-    elseif (onnxruntime_BUILD_APPLE_FRAMEWORK)
-        # We stitch multiple static libraries together when onnxruntime_BUILD_APPLE_FRAMEWORK is true,
-        # but that would not work for universal static libraries
-        message(FATAL_ERROR "universal binary is not supported for apple framework")
-    endif()
-else()
-    if (onnxruntime_BUILD_WEBASSEMBLY)
-      set(CPUINFO_SUPPORTED FALSE)
-    else()
       set(CPUINFO_SUPPORTED TRUE)
+    elseif (onnxruntime_BUILD_APPLE_FRAMEWORK)
+      # We stitch multiple static libraries together when onnxruntime_BUILD_APPLE_FRAMEWORK is true,
+      # but that would not work for universal static libraries
+      message(FATAL_ERROR "universal binary is not supported for apple framework")
+    endif()
+  else()
+    if (onnxruntime_BUILD_WEBASSEMBLY)
+    set(CPUINFO_SUPPORTED FALSE)
+    else()
+    set(CPUINFO_SUPPORTED TRUE)
     endif()
     if (WIN32)
-        # Exclude Windows ARM build and Windows Store
-        if (${onnxruntime_target_platform} MATCHES "^(ARM.*|arm.*)$" )
-            message(WARNING "Cpuinfo not included for compilation problems with Windows ARM.")
-            set(CPUINFO_SUPPORTED FALSE)
-        elseif (WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
-            message(WARNING "Cpuinfo not included non-Desktop builds")
-            set(CPUINFO_SUPPORTED FALSE)
-        endif()
-    elseif (NOT ${onnxruntime_target_platform} MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64)$")
-        message(WARNING
-        "Target processor architecture \"${onnxruntime_target_platform}\" is not supported in cpuinfo. "
-        "cpuinfo not included.")
+      # Exclude Windows ARM build and Windows Store
+      if (${onnxruntime_target_platform} MATCHES "^(ARM.*|arm.*)$" )
+        message(WARNING "Cpuinfo not included for compilation problems with Windows ARM.")
         set(CPUINFO_SUPPORTED FALSE)
+      elseif (WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
+        message(WARNING "Cpuinfo not included non-Desktop builds")
+        set(CPUINFO_SUPPORTED FALSE)
+      endif()
+    elseif (NOT ${onnxruntime_target_platform} MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64|arm64)$")
+      message(WARNING
+        "Target processor architecture \"${onnxruntime_target_platform}\" is not supported in cpuinfo. "
+        "cpuinfo not included."
+      )
+      set(CPUINFO_SUPPORTED FALSE)
     endif()
+  endif()
+else()
+  set(CPUINFO_SUPPORTED FALSE)
 endif()
 
 # TODO  do we have to add target_include_directories to each project that uses this?

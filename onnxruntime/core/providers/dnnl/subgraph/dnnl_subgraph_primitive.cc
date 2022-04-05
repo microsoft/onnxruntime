@@ -5,6 +5,7 @@
 
 #include "dnnl_batchnorm.h"
 #include "dnnl_binary.h"
+#include "dnnl_cast.h"
 #include "dnnl_conv.h"
 #include "dnnl_dynamicquantizelinear.h"
 #include "dnnl_elementwise.h"
@@ -73,7 +74,7 @@ void DnnlSubgraphPrimitive::PrintMemory(const dnnl::memory& mem) {
     }
 
     for (auto& data : data_vec) {
-      printf("%.6f \n", data);
+      printf("%.6f ", data);
     }
     printf("\n");
   }
@@ -135,6 +136,8 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlBatchNorm().CreatePrimitive(*this, node);
     } else if (binary_ops.count(node.OpType())) {
       DnnlBinary().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Cast") {
+      DnnlCast().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Conv" || node.OpType() == "ConvRelu") {
       DnnlConv().CreatePrimitive(*this, node);
     } else if (node.OpType() == "DynamicQuantizeLinear") {
@@ -149,7 +152,7 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlGemm().CreatePrimitive(*this, node);
     } else if (node.OpType() == "LRN") {
       DnnlLrn().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "MatMul" || node.OpType() == "MatMulAdd") {
+    } else if (node.OpType() == "MatMul" || node.OpType() == "MatMulAdd" || node.OpType() == "FusedMatMul") {
       DnnlMatMul().CreatePrimitive(*this, node);
     } else if (node.OpType() == "MatMulInteger") {
       DnnlMatMulInteger().CreatePrimitive(*this, node);
