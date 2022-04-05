@@ -105,7 +105,7 @@ bool BeamHypotheses::IsEcsBetterThanLastIteration(ISequences* sequences,
   return true;
 }
 
-bool BeamHypotheses::IsDone(float best_sum_logprobs, int current_length) {
+bool BeamHypotheses::IsDone(float best_sum_logprobs) {
   // If there are enough hypotheses and that none of the hypotheses being generated can become better
   // than the worst one in the heap, then we are done with this sentence.
 
@@ -320,7 +320,7 @@ void BeamSearchScorer::Process(ISequences* sequences,
     if (!done_[batch]) {
       gsl::span<const float> topk_scores = next_scores.subspan(batch * num_beams_, top_k);
       const float* best_sum_logprobs = std::max_element(topk_scores.begin(), topk_scores.end());
-      if (beam_hyp.IsDone(*best_sum_logprobs, sequence_length)) {
+      if (beam_hyp.IsDone(*best_sum_logprobs)) {
         done_[batch] = true;
       }
     }
