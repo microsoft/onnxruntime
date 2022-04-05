@@ -50,7 +50,7 @@ jobs:
   variables:
     - name: trtContainerVersion
       ${{ if eq(parameters.RunNvidiaContainer, true)}}:
-        ${{ if eq(${{ variables.trtContainer }}, '')}}:
+        ${{ if eq(${{ variable.trtContainer }}, '')}}:
           ${{ if eq(parameters.TrtVersion, '8.2.1.8') }}:
             value: 21.12
           ${{ if eq(parameters.TrtVersion, '8.0.1.6') }}:
