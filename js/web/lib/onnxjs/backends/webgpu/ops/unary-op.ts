@@ -18,7 +18,7 @@ type ElementwiseFunctionImplementation =
   [string, (variableName: string) => string, string?];
 
 const createElementwiseProgramShader =
-    (functionImplementation: ElementwiseFunctionImplementation): (datasize: number) => string => (datasize) => {
+    (functionImplementation: ElementwiseFunctionImplementation, datasize: number): string => {
       const vecSize = Math.ceil(datasize / 4);
       let funcImpl: string;
       let funcCall = functionImplementation[1];
@@ -54,7 +54,7 @@ const createElementwiseProgramInfo =
     (metadata: ProgramMetadata, input: Tensor, functionImplementation: ElementwiseFunctionImplementation):
         ProgramInfo => ({
           ...metadata,
-          shaderSource: createElementwiseProgramShader(functionImplementation)(input.size),
+          shaderSource: createElementwiseProgramShader(functionImplementation, input.size),
           outputs: [{dims: input.dims, type: input.type, gpuDataType: GpuDataType.default}],
           dispatchGroup: (inputTensors) =>
               ({x: Math.ceil(inputTensors[0].size / 64 /* workgroup size */ / 4 /* vec size */)})
