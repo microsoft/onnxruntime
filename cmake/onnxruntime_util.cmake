@@ -20,3 +20,11 @@ add_dependencies(onnxruntime_util ${onnxruntime_EXTERNAL_DEPENDENCIES})
 if (WIN32)
     target_compile_definitions(onnxruntime_util PRIVATE _SCL_SECURE_NO_WARNINGS)
 endif()
+
+if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_util
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
