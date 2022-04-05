@@ -7,6 +7,7 @@
 #include "core/providers/cpu/controlflow/utils.h"
 #include "beam_search_parameters.h"
 #include "gpt_subgraph.h"
+#include "encoder_decoder_subgraph.h"
 #include "beam_search_device_helper.h"
 
 namespace onnxruntime {
@@ -20,7 +21,8 @@ using namespace onnxruntime::controlflow;  // namespace of IControlFlowKernel
 class BeamSearch : public IControlFlowKernel {
  public:
   BeamSearch(const OpKernelInfo& info)
-      : IControlFlowKernel(info), feeds_fetches_manager_(nullptr), cuda_stream_(nullptr), dumper_(nullptr) {
+      : IControlFlowKernel(info), encoder_feeds_fetches_manager_(nullptr),
+      encoder_feeds_fetches_manager_(nullptr), cuda_stream_(nullptr), dumper_(nullptr) {
     Init(info);
   }
 

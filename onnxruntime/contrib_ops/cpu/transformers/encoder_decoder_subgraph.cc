@@ -7,7 +7,7 @@
 #include "core/framework/utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "gsl/gsl"
-#include "gpt_subgraph.h"
+#include "encoder_decoder_subgraph.h"
 #include "dump_tensor.h"
 
 using namespace ONNX_NAMESPACE;
