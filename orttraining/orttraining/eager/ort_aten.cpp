@@ -155,8 +155,44 @@ std::vector<OrtValue> create_ort_value(
 
 onnx::AttributeProto create_ort_attribute(
   const char* name,
-  at::Scalar value) {
-  return create_ort_attribute(name, value, value.type());
+  at::Scalar value,
+  const bool isTensor) {
+  if (isTensor){
+    onnx::AttributeProto attr;
+    attr.set_name(name);
+    at::ScalarType type = value.type();
+    attr.set_type(onnx::AttributeProto_AttributeType::AttributeProto_AttributeType_TENSOR);
+    auto* constant_attribute_tensor_proto = attr.mutable_t();
+    constant_attribute_tensor_proto->mutable_dims()->Clear(); 
+    switch (type) {
+    case at::ScalarType::Float:
+      constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      *constant_attribute_tensor_proto->mutable_float_data()->Add() = value.to<float>();
+      break;
+    case at::ScalarType::Double:
+      constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE);
+      *constant_attribute_tensor_proto->mutable_float_data()->Add() = value.to<double>();
+      break;
+    case at::ScalarType::Bool:
+    case at::ScalarType::Int:
+      constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+      *constant_attribute_tensor_proto->mutable_float_data()->Add() = value.to<int>();
+      break;
+    case at::ScalarType::Long:
+      constant_attribute_tensor_proto->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+      *constant_attribute_tensor_proto->mutable_float_data()->Add() = value.to<int64_t>();
+      break;
+    default:
+      // For most at::ScalarType, it should be safe to just call value.to<>
+      // on it, but for now we want to explicitly know when we've encountered
+      // a new scalar type while bringing up ORT eager mode.
+      ORT_THROW("Unsupported: at::ScalarType::", value.type());
+    }
+    return attr;
+  }
+  else{
+    return create_ort_attribute(name, value, value.type());
+  }
 }
 
 onnx::AttributeProto create_ort_attribute(
