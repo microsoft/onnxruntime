@@ -394,11 +394,10 @@ Status DecoderSubgraph::CreateInitialFeeds(
     const std::vector<const OrtValue*>& implicit_inputs,
     int num_beams,
     int decoder_start_token_id,
-    OrtValue& expanded_input_ids,
     std::vector<OrtValue>& decoder_feeds,
     const std::vector<OrtValue>& encoder_feeds,
     const std::vector<OrtValue>& encoder_fetches,
-    IAllocatorUniquePtr<char>& buffer) {
+    IAllocatorUniquePtr<char>& ) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
   const IExecutionProvider* provider = GetProvider();
@@ -445,17 +444,17 @@ Status DecoderSubgraph::CreateInitialFeeds(
   const Tensor* encoder_outputs = &encoder_fetches[0].Get<Tensor>();
   Tensor::InitOrtValue(element_type, encoder_outputs->Shape(), const_cast<Tensor*>(encoder_outputs)->MutableData<float>(), location, encoder_output);
 
-  expanded_decoder_input_ids = ExpandInputs(decoder_input_ids, num_beams, cpu_alloactor);
-  expanded_decoder_attention_masks = ExpandInputs(decoder_attention_masks, num_beams, cpu_alloactor);
-  expanded_encoder_output = ExpandInputs(encoder_output, num_beams, cpu_alloactor);
+  OrtValue& expanded_decoder_input_ids = ExpandInputs(decoder_input_ids, num_beams, cpu_alloactor);
+  OrtValue& expanded_decoder_attention_masks = ExpandInputs(decoder_attention_masks, num_beams, cpu_alloactor);
+  OrtValue& expanded_encoder_output = ExpandInputs(encoder_output, num_beams, cpu_alloactor);
 
-  feeds.push_back(expanded_decoder_input_ids);
-  feeds.push_back(expanded_decoder_attention_masks);
-  feeds.push_back(expanded_encoder_output);
+  decoder_feeds.push_back(expanded_decoder_input_ids);
+  decoder_feeds.push_back(expanded_decoder_attention_masks);
+  decoder_feeds.push_back(expanded_encoder_output);
 
   // pass in implicit inputs
   for (const auto* entry : implicit_inputs) {
-    feeds.push_back(*entry);
+    decoder_feeds.push_back(*entry);
   }
 
   return Status::OK();
