@@ -16,20 +16,22 @@ namespace onnxruntime {
 
 Initializer::Initializer(ONNX_NAMESPACE::TensorProto_DataType data_type,
                          std::string_view name,
-                         gsl::span<const int64_t> dims) : name_(name) {
-  Tensor w(DataTypeImpl::TensorTypeFromONNXEnum(data_type)->GetElementType(), dims, std::make_shared<CPUAllocator>());
-  if (!w.IsDataTypeString()) {
-    memset(w.MutableDataRaw(), 0, w.SizeInBytes());
-  }
-  data_ = std::move(w);
+                         gsl::span<const int64_t> dims)
+    : name_(name),
+      data_([&]() {
+        Tensor w(DataTypeImpl::TensorTypeFromONNXEnum(data_type)->GetElementType(), dims, std::make_shared<CPUAllocator>());
+        if (!w.IsDataTypeString()) {
+          memset(w.MutableDataRaw(), 0, w.SizeInBytes());
+        }
+        return w;
+      }()) {
 }
 
 Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const Path& model_path) {
-
   ORT_ENFORCE(utils::HasDataType(tensor_proto), "Initializer must have a datatype");
   if (utils::HasExternalData(tensor_proto)) {
     ORT_ENFORCE(!model_path.IsEmpty(),
-        "model_path must not be empty. Ensure that a path is provided when the model is created or loaded.");
+                "model_path must not be empty. Ensure that a path is provided when the model is created or loaded.");
   }
 
   auto proto_data_type = tensor_proto.data_type();
@@ -296,12 +298,13 @@ struct ScaleByAxis {
       for (int64_t block_offset = 0, limit = block_size * num_blocks; block_offset < limit; ++block_offset) {
         dst[block_offset] = T(to_numeric(dst[block_offset]) * numeric_scaler);
       }
-    } else for (int64_t block_offset = 0, i = 0; i < num_blocks; i++) {
-      const auto numeric_scaler = to_numeric(scalers_data[i]);
-      for (int64_t j = 0; j < block_size; ++j, ++block_offset) {
-        dst[block_offset] = T(to_numeric(dst[block_offset]) * numeric_scaler);
+    } else
+      for (int64_t block_offset = 0, i = 0; i < num_blocks; i++) {
+        const auto numeric_scaler = to_numeric(scalers_data[i]);
+        for (int64_t j = 0; j < block_size; ++j, ++block_offset) {
+          dst[block_offset] = T(to_numeric(dst[block_offset]) * numeric_scaler);
+        }
       }
-    }
   }
 };
 
