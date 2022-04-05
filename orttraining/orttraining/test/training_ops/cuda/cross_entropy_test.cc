@@ -624,7 +624,7 @@ static void TestSoftmaxCrossEntropyLossInternalGrad(const std::vector<int64_t>& 
   std::vector<float> log_prob_data = random.Uniform<float>(log_prob_dims, -10.0f, 10.0f);
   std::vector<int64_t> index_data = random.Uniform<int64_t>(index_dims, 0, dX_dims[1]);
   // Add one data point that has ignore_index.
-  if (index_data.size() > 0) {
+  if ((ignore_index != -1) && (index_data.size() > 0)) {
     index_data[0] = ignore_index;
   }
   std::vector<float> weight_data = random.Uniform<float>(weight_dims, 0.0f, 1.0f);
