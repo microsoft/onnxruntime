@@ -59,7 +59,7 @@ jobs:
 
     - name: dockerfile
       ${{ if eq(parameters.RunNvidiaContainer, true)}}:
-        value: nvcr.io/nvidia/tensorrt:$(trtContainer)-py3
+        value: nvcr.io/nvidia/tensorrt:$(trtContainerVersion)-py3
       ${{ if eq(parameters.RunNvidiaContainer, false)}}:
         ${{ if eq(parameters.TrtVersion, '8.2.1.8') }}:
           value: Dockerfile.ubuntu_cuda11_4_tensorrt8_2
