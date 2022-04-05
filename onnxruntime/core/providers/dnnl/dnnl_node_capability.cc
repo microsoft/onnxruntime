@@ -79,6 +79,63 @@ bool DnnlDefaultMultiInputNodeCapability::IsTypeSupported(const Node* node) cons
   return all_inputs_supported;
 }
 
+// DnnlDefaultOptionalMultiInputNodeCapability
+//-------------------------------------
+DnnlDefaultOptionalMultiInputNodeCapability::DnnlDefaultOptionalMultiInputNodeCapability(rule_map op_rules) {
+  for (const auto& rule : op_rules) {
+    // Get the rules into our map and count the number of mandatory inputs
+    op_rules_[rule.first] = rule.second;
+
+    // Check if the input is mandatory
+    if (rule.second.first) {
+      ++num_mandatory;
+    }
+  }
+}
+
+bool DnnlDefaultOptionalMultiInputNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
+  if (!IsTypeSupported(node)) return false;
+  return true;
+}
+
+unsigned int DnnlDefaultOptionalMultiInputNodeCapability::GetNumMandatoryInputs() {
+  return num_mandatory;
+}
+
+bool DnnlDefaultOptionalMultiInputNodeCapability::IsTypeSupported(const Node* node) const {
+  // Get the node list its size
+  auto node_inputs = node->InputDefs();
+  auto num_nodes = node_inputs.size();
+
+  // We need to make sure that we have at least the mandatory inputs
+  if (num_mandatory <= num_nodes) {
+    // Iterate over each entry to check if the input is available, optional and supported
+    for (const auto& rule : op_rules_) {
+      if (rule.first < num_nodes) {
+        // Get the target node
+        auto node_input = node_inputs[rule.first];
+
+        // If we found the node we want and it is valid
+        if (node_input->TypeAsProto() != nullptr) {
+          // Get its datatype
+          ORT_DataType node_datatype = static_cast<ORT_DataType>(node_input->TypeAsProto()->tensor_type().elem_type());
+
+          // If the datatype is NOT on the supported list, we dont support the op
+          if (rule.second.second.find(node_datatype) == rule.second.second.end()) {
+            return false;
+          }
+        }
+      }
+    }
+    // If the node doesn't have the minimum mandatory inputs
+  } else {
+    return false;
+  }
+
+  return true;
+}
+
 // DnnlPoolNodeCapability class
 //-------------------------------------
 bool DnnlPoolNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
@@ -918,6 +975,12 @@ bool DnnlCastNodeCapability::IsCastSupported(const Node* node) const {
   }
 
   return false;
+}
+
+bool DnnlDequantizeLinearNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
+  if (!IsTypeSupported(node)) return false;
+  return true;
 }
 
 }  // namespace onnxruntime

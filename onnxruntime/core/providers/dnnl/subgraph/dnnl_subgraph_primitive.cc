@@ -7,6 +7,7 @@
 #include "dnnl_binary.h"
 #include "dnnl_cast.h"
 #include "dnnl_conv.h"
+#include "dnnl_dequantizelinear.h"
 #include "dnnl_dynamicquantizelinear.h"
 #include "dnnl_elementwise.h"
 #include "dnnl_gelu.h"
@@ -140,6 +141,8 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlCast().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Conv" || node.OpType() == "ConvRelu") {
       DnnlConv().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "DequantizeLinear") {
+      DnnlDequantizeLinear().CreatePrimitive(*this, node);
     } else if (node.OpType() == "DynamicQuantizeLinear") {
       DnnlDynamicQuantizeLinear().CreatePrimitive(*this, node);
     } else if (elementwise_ops.count(node.OpType())) {
