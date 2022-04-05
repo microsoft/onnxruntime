@@ -48,7 +48,7 @@ jobs:
   pool: 'Onnxruntime-Linux-GPU-TensorRT-Perf'
   
   variables:
-    # Resolve dockerfile
+
     ${{ if eq(parameters.RunNvidiaContainer, true)}}:
     - name: trtContainerVersion
       ${{ if eq($(trtContainer), '')}}:
@@ -70,29 +70,12 @@ jobs:
         ${{ if eq(parameters.TrtVersion, '7.2.3.4') }}:
           value: Dockerfile.ubuntu_cuda11_4_tensorrt7_2
         
-    # Resolve Environment 
     - name: image
       ${{ if eq(parameters.BuildORT, true) }}:
         value: ort-$(branch)
       ${{ if eq(parameters.BuildORT, false) }}:
         value: $(dockerfile)
         
-    - name: build_args
-      ${{ if eq(parameters.RunNvidiaContainer, true) }}:
-        value: Dockerfile.tensorrt-perf -t $(trtContainer) -o $(Build.SourcesDirectory)/dockerfiles/Dockerfile.tensorrt
-      ${{ if ne(parameters.RunNvidiaContainer, true) }}:
-        value: Dockerfile.custom-trt-perf -t ${{ parameters.TrtVersion }} -o $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/$(trt_dockerfile)
-
-    - name: environment
-      ${{ if eq(parameters.RunDocker, true) }}:
-        value: docker.sh -d nvcr.io/nvidia/tensorrt:$(trtContainer)-py3 -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf -v $(modelVolume)
-
-      ${{ if ne(parameters.RunDocker, true) }}:
-        value: machine.sh
-        
-    - name: with_arguments
-      value: $(environment) -e "$(epList)"
-
   steps:
 
   - ${{ if eq(parameters.BuildORT, false) }}:
@@ -122,7 +105,7 @@ jobs:
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
     - ${{ each option in parameters.ModelGroups }}:
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $(${{option}})'
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf -v $(modelVolume) -o ${{option}} -m $(${{option}}) -e "$(epList)"'
         displayName: '${{option}} perf'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         
