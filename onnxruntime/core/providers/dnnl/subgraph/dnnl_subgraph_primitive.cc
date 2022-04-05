@@ -74,7 +74,7 @@ void DnnlSubgraphPrimitive::PrintMemory(const dnnl::memory& mem) {
     }
 
     for (auto& data : data_vec) {
-      printf("%.6f \n", data);
+      printf("%.6f ", data);
     }
     printf("\n");
   }
@@ -152,7 +152,7 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlGemm().CreatePrimitive(*this, node);
     } else if (node.OpType() == "LRN") {
       DnnlLrn().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "MatMul" || node.OpType() == "MatMulAdd") {
+    } else if (node.OpType() == "MatMul" || node.OpType() == "MatMulAdd" || node.OpType() == "FusedMatMul") {
       DnnlMatMul().CreatePrimitive(*this, node);
     } else if (node.OpType() == "MatMulInteger") {
       DnnlMatMulInteger().CreatePrimitive(*this, node);
