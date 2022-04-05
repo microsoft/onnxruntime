@@ -162,10 +162,9 @@ TrainingSession::TrainingConfiguration MakeBasicTrainingConfig() {
 std::unique_ptr<TrainingSession> BuildAndRunTrainingSessionWithChecks(
     const SessionOptions& so, const PathString& forward_model_file,
     const TrainingSession::TrainingConfiguration& config) {
-  std::unique_ptr<Environment> env;
-  ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
+  const Environment& env = onnxruntime::test::GetEnvironment();
 
-  std::unique_ptr<TrainingSession> training_session = std::make_unique<TrainingSession>(so, *env);
+  std::unique_ptr<TrainingSession> training_session = std::make_unique<TrainingSession>(so, env);
 
   std::cout << "Loading source model file = " << ToUTF8String(forward_model_file) << "\n";
 
