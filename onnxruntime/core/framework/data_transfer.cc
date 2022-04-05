@@ -62,7 +62,14 @@ common::Status CPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int /
 #endif
     // Copying only happens between two same size tensors.
     ORT_ENFORCE(src.SizeInBytes() == dst.SizeInBytes());
-    memcpy(dst_data, src_data, src.SizeInBytes());
+    if (!src.IsDataTypeString()) {
+      memcpy(dst_data, src_data, src.SizeInBytes());
+    } else {
+      const auto* src_strings = src.Data<std::string>();
+      auto* dst_strings = dst.MutableData<std::string>();
+      std::copy(src_strings, src_strings + src.Shape().Size(), dst_strings);
+    }
+
     return Status::OK();
 #ifdef ENABLE_TRAINING
   }
