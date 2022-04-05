@@ -31,8 +31,7 @@ TEST(ConstantOpTest, MultiValueConstant_strings) {
   test.Run();
 }
 
-// regression test
-// https://github.com/microsoft/onnxruntime/issues/11091
+// regression test - https://github.com/microsoft/onnxruntime/issues/11091
 TEST(ConstantOpTest, GH11091) {
   auto model_uri = ORT_TSTR("testdata/constant_floats.onnx");
   SessionOptions so;

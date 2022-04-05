@@ -816,7 +816,8 @@ class OpTester {
            /*out*/ size_t* number_of_pre_packed_weights_counter = nullptr,
            /*out*/ size_t* number_of_shared_pre_packed_weights_counter = nullptr);
 
-  const std::vector<OrtValue>& GetFetches() { return fetches_; }
+  std::vector<OrtValue>
+  GetFetches() { return fetches_; }
 
   std::unique_ptr<onnxruntime::Model> BuildGraph(const std::unordered_map<std::string, int>& extra_domain_to_version = {},
                                                  bool allow_released_onnx_opset_only = true);
