@@ -993,7 +993,7 @@ static ProviderSharedLibrary s_library_shared;
 bool InitProvidersSharedLibrary() try {
   s_library_shared.Ensure();
   return true;
-} catch(...)
+} catch(const std::exception &)
 {
   return false;
 }
@@ -1027,6 +1027,8 @@ struct ProviderLibrary {
   }
 
   void Unload() {
+    std::lock_guard<std::mutex> lock{mutex_};
+
     if (handle_) {
       if (provider_)
         provider_->Shutdown();
@@ -1191,7 +1193,7 @@ ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO() {
 
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA() try {
   return reinterpret_cast<ProviderInfo_CUDA*>(s_library_cuda.Get().GetInfo());
-} catch (...) {
+} catch (const std::exception &) {
   return nullptr;
 }
 
@@ -1204,7 +1206,7 @@ ProviderInfo_CUDA& GetProviderInfo_CUDA() {
 
 ProviderInfo_ROCM* TryGetProviderInfo_ROCM() try {
   return reinterpret_cast<ProviderInfo_ROCM*>(s_library_rocm.Get().GetInfo());
-} catch (...) {
+} catch (const std::exception &) {
   return nullptr;
 }
 
