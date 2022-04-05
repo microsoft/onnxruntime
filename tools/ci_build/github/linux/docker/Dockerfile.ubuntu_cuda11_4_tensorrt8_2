@@ -8,6 +8,13 @@ ARG OS_VERSION=20.04
 FROM nvidia/cuda:11.4.2-cudnn8-devel-ubuntu${OS_VERSION}
 
 ENV DEBIAN_FRONTEND=noninteractive
+ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
+ARG ONNXRUNTIME_BRANCH=master
+ARG TRT_VERSION=8.2.1.8
+ARG CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80
+
+ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/code/cmake-3.21.0-linux-x86_64/bin:/opt/miniconda/bin:${PATH}
+ENV LD_LIBRARY_PATH /usr/local/cuda-11.4/targets/x86_64-linux/lib/:/opt/miniconda/lib:$LD_LIBRARY_PATH
 
 RUN apt-get update &&\
     apt-get install -y sudo git bash unattended-upgrades wget
@@ -33,3 +40,18 @@ RUN v="8.2.1-1+cuda11.4" &&\
     sudo apt-get install -y libnvinfer8=${v} libnvonnxparsers8=${v} libnvparsers8=${v} libnvinfer-plugin8=${v} \
         libnvinfer-dev=${v} libnvonnxparsers-dev=${v} libnvparsers-dev=${v} libnvinfer-plugin-dev=${v} \
         python3-libnvinfer=${v}
+
+# Prepare onnxruntime repository & build onnxruntime with TensorRT
+RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
+    /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh &&\
+    cp onnxruntime/docs/Privacy.md /code/Privacy.md &&\
+    cp onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt &&\
+    cp onnxruntime/ThirdPartyNotices.txt /code/ThirdPartyNotices.txt
+
+# Checkout appropriate TRT_VERSION and build
+RUN cd onnxruntime &&\
+    trt_v=${TRT_VERSION%.*.*} &&\
+    ./onnxruntime/python/tools/tensorrt/perf/build/checkout_trt.sh ${trt_v} &&\
+    /bin/sh build.sh --parallel --build_shared_lib --skip_submodule_sync --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests --skip_submodule_sync --cmake_extra_defines '"CMAKE_CUDA_ARCHITECTURES='${CMAKE_CUDA_ARCHITECTURES}'"' &&\
+    pip install /code/onnxruntime/build/Linux/Release/dist/*.whl &&\
+    cd .. 

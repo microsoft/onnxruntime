@@ -1,6 +1,6 @@
 #!/bin/bash
 
-while getopts o:b:i:t:v:c: parameter
+while getopts o:b:i:t:c: parameter
 do case "${parameter}"
 in 
 o) TRT_DOCKERFILE_PATH=${OPTARG};;
