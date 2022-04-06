@@ -10,13 +10,12 @@ $pythonArgs = @(
     "--config", "Debug",
     "--build_shared_lib",
     "--parallel",
-    "--skip_tests",
-    "--skip_submodule_sync",
+    # "--skip_submodule_sync",
     "--target", "install",
     "--use_dml",
+    "--dml_path", "s:/dml_gdk210602"
     "--use_gdk",
     "--gdk_edition", "210602",
-    "--dml_path", "s:/dml_gdk210602"
     "--cmake_extra_defines", "CMAKE_INSTALL_PREFIX=$PSScriptRoot\build\install"
 )
 

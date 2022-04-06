@@ -203,7 +203,11 @@ namespace Dml
         else
         {
             // Free the underlying allocation once queued work has completed.
+#ifdef _GAMING_XBOX
+            m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetResource()).Get());
+#else
             m_context->QueueReference(allocInfo->GetResource());
+#endif
             allocInfo->DetachResource();
         }
 

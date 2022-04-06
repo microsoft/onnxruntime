@@ -2148,6 +2148,10 @@ def main():
     if args.use_openvino != "CPU_FP32" and args.build_nuget:
         args.test = False
 
+    # GDK builds don't support testing
+    if args.use_gdk:
+        args.test = False
+
     configs = set(args.config)
 
     # setup paths and directories
