@@ -1165,6 +1165,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "-Donnxruntime_ENABLE_MEMLEAK_CHECKER=" +
                 ("ON" if config.lower() == 'debug' and not (args.use_nuphar or args.use_tvm) and not
                  args.use_openvino and not
+                 args.use_gdk and not
                  args.enable_msvc_static_runtime and not
                  args.disable_memleak_checker
                  else "OFF"), "-DCMAKE_BUILD_TYPE={}".format(config)],

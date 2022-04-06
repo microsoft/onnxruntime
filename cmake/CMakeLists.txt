@@ -1912,6 +1912,8 @@ if (WIN32)
     get_filename_component(msvc_path "${CMAKE_C_COMPILER}/../../../.." ABSOLUTE)
     link_directories("${msvc_path}/lib/${onnxruntime_target_platform}/store")
     add_link_options(/APPCONTAINER)
+  elseif(GDK_PLATFORM)
+    # WINAPI_FAMILY is defined in gdk_toolchain.cmake.
   else()
     add_compile_definitions(WINAPI_FAMILY=100) # Desktop app
     if (onnxruntime_USE_WINML)

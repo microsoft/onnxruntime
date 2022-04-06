@@ -33,15 +33,6 @@ foreach(lang C CXX)
     set(CMAKE_${lang}_STANDARD_LIBRARIES "onecoreuap_apiset.lib" CACHE STRING "" FORCE)
 endforeach()
 
-# Workaround for std::getenv only being defined under _CRT_USE_WINAPI_FAMILY_DESKTOP_APP.
-set(gdk_workaround_h ${CMAKE_BINARY_DIR}/gdk_workarounds.h)
-file(WRITE ${gdk_workaround_h} [[
-#pragma once
-#include <cstdlib>
-namespace std { using ::getenv; }
-]])
-string(APPEND CMAKE_CXX_FLAGS_INIT " /FI${gdk_workaround_h}")
-
 # It's best to avoid inadvertently linking with any libraries not present in the OS.
 set(nodefault_libs "")
 list(APPEND nodefault_libs advapi32.lib)

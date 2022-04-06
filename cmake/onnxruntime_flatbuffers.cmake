@@ -22,7 +22,7 @@ if (FLATBUFFERS_BUILD_FLATC)
   add_dependencies(onnxruntime_flatbuffers flatc)
 endif()
 
-if (WINDOWS_STORE)
+if (WINDOWS_STORE OR GDK_PLATFORM)
   function(target_force_include target scope file)
     if (MSVC)
         target_compile_options(${target} ${scope} "/FI${file}")
