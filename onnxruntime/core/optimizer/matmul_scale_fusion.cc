@@ -233,14 +233,16 @@ Status ProcessNode(
     auto scale_node_inputs = input_node.MutableInputDefs();
     NodeArg& non_scale_node_arg = *scale_node_inputs[input_node_merge.node_to_merge_def_index];
     auto* shape = non_scale_node_arg.Shape();
-    bool should_unsqueeze_input = graph_utils::IsGraphInput(graph, &non_scale_node_arg) && shape->dim_size() == 0;
+
+    // support newer opset (13+), i.e., axes as input, not attr
+    bool should_unsqueeze_input = graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {13}) &&
+        graph_utils::IsGraphInput(graph, &non_scale_node_arg) && shape->dim_size() == 0;
     if (should_unsqueeze_input) {
       // create output arg with the same type
       auto type_info = *non_scale_node_arg.TypeAsProto();  
       type_info.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
       auto& unsqueeze_arg = graph.GetOrCreateNodeArg("unsqueeze_output", &type_info);
 
-      // support newer opset (13+) for now, i.e., axes as input, not attr
       // add axes as initializer/second input for the Unsqueeze node
       ONNX_NAMESPACE::TensorProto axes_tensor;
       axes_tensor.add_dims(1);
