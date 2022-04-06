@@ -18,7 +18,6 @@ foreach(lang C CXX)
     string(APPEND CMAKE_${lang}_FLAGS_INIT " /D__WRL_CLASSIC_COM_STRICT__")
     string(APPEND CMAKE_${lang}_FLAGS_INIT " /D_CRT_USE_WINAPI_PARTITION_APP")
     string(APPEND CMAKE_${lang}_FLAGS_INIT " /DWIN32_LEAN_AND_MEAN")
-    string(APPEND CMAKE_${lang}_FLAGS_INIT " /DUSE_PATHCCH_LIB")
     string(APPEND CMAKE_${lang}_FLAGS_INIT " /favor:AMD64")
 
     if(GDK_PLATFORM STREQUAL Scarlett)
@@ -33,6 +32,15 @@ foreach(lang C CXX)
 
     set(CMAKE_${lang}_STANDARD_LIBRARIES "onecoreuap_apiset.lib" CACHE STRING "" FORCE)
 endforeach()
+
+# Workaround for std::getenv only being defined under _CRT_USE_WINAPI_FAMILY_DESKTOP_APP.
+set(gdk_workaround_h ${CMAKE_BINARY_DIR}/gdk_workarounds.h)
+file(WRITE ${gdk_workaround_h} [[
+#pragma once
+#include <cstdlib>
+namespace std { using ::getenv; }
+]])
+string(APPEND CMAKE_CXX_FLAGS_INIT " /FI${gdk_workaround_h}")
 
 # It's best to avoid inadvertently linking with any libraries not present in the OS.
 set(nodefault_libs "")
