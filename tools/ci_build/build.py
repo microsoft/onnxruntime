@@ -972,7 +972,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             cmake_args += ["-DANDROID_STL=c++_shared"]
 
     if args.dml_path:
-        cmake_args += ["-Ddml_INCLUDE_DIR=" + os.path.join(args.dml_path, "include")]
+        cmake_args += [
+            "-Donnxruntime_USE_CUSTOM_DIRECTML=ON",
+            "-Ddml_INCLUDE_DIR=" + os.path.join(args.dml_path, "include"),
+            "-Ddml_LIB_DIR=" + os.path.join(args.dml_path, "lib"),
+        ]
 
     if args.use_gdk:
         cmake_args += [
@@ -981,10 +985,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-DGDK_PLATFORM=" + args.gdk_platform,
             "-Donnxruntime_BUILD_UNIT_TESTS=OFF" # gtest doesn't build for GDK
         ]
-        if args.use_dml:
-            if not args.dml_path:
-                raise BuildError("You must set dml_path when building with the GDK.")
-            cmake_args += ["-Donnxruntime_USE_CUSTOM_DIRECTML=ON"]
+        if args.use_dml and not args.dml_path:
+            raise BuildError("You must set dml_path when building with the GDK.")
 
     if is_macOS() and not args.android:
         cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch]
