@@ -604,6 +604,14 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             ORT_THROW("Invalid value passed for use_compiled_network: ", option.second);
           }
 
+        } else if (option.first == "enable_opencl_throttling") {
+          if (option.second == "True") {
+            params.use_compiled_network = true;
+          } else if (option.second == "False") {
+            params.use_compiled_network = false;
+          } else {
+            ORT_THROW("Invalid value passed for enable_opencl_throttling: ", option.second);
+          }
         } else if (option.first == "device_id") {
           params.device_id = option.second.c_str();
         } else if (option.first == "num_of_threads") {
