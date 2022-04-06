@@ -1,0 +1,17 @@
+syntax = "proto2";
+
+package onnxflow;
+
+import "google/protobuf/any.proto";
+
+message OnnxFlowParameter {
+    required google.protobuf.Any data = 1;
+    required bool requires_grad = 2;
+    required bool is_parameter = 3;
+}
+
+message OnnxFlowParameters {
+    repeated OnnxFlowParameter parameters = 1;
+}
+
+option optimize_for = LITE_RUNTIME;

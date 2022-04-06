@@ -160,6 +160,9 @@ option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
 # build eager mode
 option(onnxruntime_ENABLE_EAGER_MODE "build ort eager mode")
 
+# build on device training mode
+option(onnxruntime_ENABLE_ON_DEVICE_TRAINING "build ort on device training")
+
 # build separate library of schemas of (custom) ops used by ORT (for ONNX to MLIR translation)
 option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
 
@@ -1934,6 +1937,15 @@ if (onnxruntime_ENABLE_EAGER_MODE)
   endif()
   add_compile_definitions(ENABLE_EAGER_MODE)
   list(APPEND ONNXRUNTIME_TARGETS onnxruntime_eager)
+endif()
+if (onnxruntime_ENABLE_ON_DEVICE_TRAINING)
+  if (NOT onnxruntime_ENABLE_TRAINING)
+    message(
+        FATAL_ERROR
+        "Option onnxruntime_ENABLE_ON_DEVICE_TRAINING can only be used when onnxruntime_ENABLE_TRAINING is enabled")
+  endif()
+  add_compile_definitions(ENABLE_ON_DEVICE_TRAINING)
+  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_on_device_training)
 endif()
 foreach(target_name ${ONNXRUNTIME_TARGETS})
   include(${target_name}.cmake)
