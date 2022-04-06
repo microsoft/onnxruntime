@@ -77,26 +77,15 @@ stages:
         inputs:
           ArtifactName: onnxruntime_training_cpu
 
-      - script: |
-          python3 -m pip install azure-storage-blob==2.1.0
-        displayName: 'python3 -m pip install azure-storage-blob==2.1.0'
-        timeoutInMinutes: 20
-
-      - task: AzureCLI@2
+      - task: CmdLine@2
+        condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+        displayName: 'Upload wheel'
         inputs:
-          azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
-          scriptType: 'bash'
-          scriptLocation: 'inlineScript'
-          inlineScript: |
+          script: |
             files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
             echo ${files[0]} && \
             tools/ci_build/upload_python_package_to_azure_storage.py \
-                --python_wheel_path ${files[0]} \
-                --account_name onnxruntimepackages \
-                --account_key $(orttrainingpackagestorageaccountkey) \
-                --container_name '$web'
-          condition: succeededOrFailed()
-          displayName: 
+                --python_wheel_path ${files[0]}
 
       - template: templates/component-governance-component-detection-steps.yml
         parameters:
