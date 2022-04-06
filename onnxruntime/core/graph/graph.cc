@@ -4033,7 +4033,11 @@ Status Graph::InlineFunction(Node& node) {
     } else {
       std::vector<NodeArg*> inputs, outputs;
       for (auto* input : subgraph_node.InputDefs()) {
-        if (func_input_output_names.find(input->Name()) != func_input_output_names.end()) {
+        if (input->Name().empty()) {
+          // This is a missing (optional) input. No need to rename.
+          auto& n_input = GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+          inputs.push_back(&n_input);
+        } else if (func_input_output_names.find(input->Name()) != func_input_output_names.end()) {
           auto it = remap_input_output.find(input->Name());
           if (it != remap_input_output.end()) {
             // This is a function input/output and needs to be remapped to node input for correctness
@@ -4051,7 +4055,11 @@ Status Graph::InlineFunction(Node& node) {
         }
       }
       for (auto* output : subgraph_node.OutputDefs()) {
-        if (func_input_output_names.find(output->Name()) != func_input_output_names.end()) {
+        if (output->Name().empty()) {
+          // Create empty arg (no renaming) for missing optional-outputs
+          auto& n_output = GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
+          outputs.push_back(&n_output);
+        } else if (func_input_output_names.find(output->Name()) != func_input_output_names.end()) {
           auto it = remap_input_output.find(output->Name());
           if (it != remap_input_output.end()) {
             outputs.push_back(it->second);
