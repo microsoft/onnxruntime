@@ -470,6 +470,9 @@ PyObject* ToDlpack(OrtValue ort_value);
 // create a OrtValue. This function calls DlpackToOrtValue(...) to do the conversion.
 OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor);
 
+// Destructor for Capsule object holding a DLPack structure.
+void DlpackCapsuleDestructor(PyObject* data);
+
 #endif
 
 }  // namespace python

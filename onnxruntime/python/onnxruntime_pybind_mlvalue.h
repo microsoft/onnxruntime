@@ -54,6 +54,8 @@ pybind11::object AddNonTensorAsPyObj(const OrtValue& val,
 
 OrtMemoryInfo GetMemoryInfoPerDeviceType(const OrtDevice& ort_device);
 
+int32_t GetTensorProtoType(const OrtValue& ort_value);
+
 #ifdef USE_CUDA
 
 void CpuToCudaMemCpy(void* dst, const void* src, size_t num_bytes);
