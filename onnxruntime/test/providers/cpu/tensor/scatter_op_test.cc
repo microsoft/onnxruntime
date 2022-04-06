@@ -224,7 +224,7 @@ static void scatter_valid_negative_index(const char* op_name, int op_version) {
   test.AddInput<int64_t>("indices", {1, 1, 1}, {-1});
   test.AddInput<float>("updates", {1, 1, 1}, {5.0f});
   test.AddOutput<float>("y", {4, 2, 1}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 5.0f, 0.0f});
-  #if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M) //TBD temporarily disabling for openvino
+  #if defined(OPENVINO_CONFIG_CPU_FP32) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M) //TBD temporarily disabling for openvino
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
   #else
     test.Run();
