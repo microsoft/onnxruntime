@@ -397,7 +397,7 @@ static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
   const auto& inputs = node_unit.Inputs();
   const auto& weight_tensor = *initializers.at(inputs[1].node_arg.Name());
 
-  // We are done here is this is u8u8 QLinearConv
+  // We are done here if this is u8u8 QLinearConv
   if (weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8)
     return Status::OK();
 
@@ -448,7 +448,7 @@ static Status IsValidInputQuantizedType(const ModelBuilder& model_builder,
   if (input_operand_type.operandType.zeroPoint != zero_point) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input [", input_name,
-                           "] NNNAPI input zero point: ", input_operand_type.operandType.zeroPoint,
+                           "] NNAPI input zero point: ", input_operand_type.operandType.zeroPoint,
                            ", ONNX input zero point: ", zero_point);
   }
 
@@ -1616,15 +1616,17 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
     }
     if (node_unit.OpType() == "Gemm") {                                                            // QDQGemm
       AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[0].quant_param);               // x_scale, x_zp
-      AddInputToSkip(model_builder, inputs[1]);                                                    // w, w_scale, w_zp
-      AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
-      if (inputs.size() > 2) {
-        AddInputToSkip(model_builder, inputs[2]);  // B, B_scale, B_zp
-      }
+      AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[1].quant_param);               // w_scale, w_zp
       NodeAttrHelper helper(node_unit);
       const auto transB = helper.Get("transB", 0);
       if (transB == 0)
-        model_builder.AddInitializerToSkip(node_unit.GetNode().InputDefs()[1]->Name());
+        model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());
+      if (inputs.size() > 2) {
+        model_builder.AddInitializerToSkip(inputs[2].node_arg.Name());                  // B
+        AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[2].quant_param);  // B_scale, B_zp
+      }
+    
+      AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
     }
   } else {
     const auto& op = node_unit.OpType();
@@ -1699,13 +1701,12 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input1, a_scale, a_zero_point));
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input2, b_scale, b_zero_point));
   }
-
+  
+  float x_scale = 0.0f,
+        w_scale = 0.0f;
+  int32_t x_zero_point = 0,
+          w_zero_point = 0;
   if (is_qdq_gemm) {
-    float x_scale = 0.0f,
-          w_scale = 0.0f;
-    int32_t x_zero_point = 0,
-            w_zero_point = 0;
-
     ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
         initializers, node_unit.Inputs()[0], node_unit.ModelPath(), x_scale, x_zero_point));
     ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
@@ -1744,6 +1745,10 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type));
     } else if (bias_type == Type::TENSOR_QUANT8_ASYMM) {
       std::vector<int32_t> buffer(bias_dimen[0], 0);
+      if (is_qdq_gemm) {
+        a_scale = x_scale;
+        b_scale = w_scale;
+      }
       OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, a_scale * b_scale, 0);
       ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(bias, buffer.data(), bias_operand_type));
     } else {

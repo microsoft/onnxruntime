@@ -451,9 +451,9 @@ TEST(NnapiExecutionProviderTest, TestQDQConcat_UnsupportedInputScalesAndZp) {
 
 TEST(NnapiExecutionProviderTest, TestQDQGemm) {
   RunQDQModelTest(BuildQDQGemmTestCase<uint8_t, uint8_t, uint8_t>(
-                      {32, 32} /* input_shape1 */,
-                      {32, 2} /* input_shape2 */,
-                      true /* has_bias */, 
+                      {2, 2} /* input_shape1 */,
+                      {2, 2} /* input_shape2 */,
+                      false /* has_bias */, 
                       1 /* transB */),
                   "nnapi_qdq_test_graph_gemm",
                   {ExpectedEPNodeAssignment::All});
