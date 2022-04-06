@@ -79,6 +79,7 @@ def _parse_build_settings(args):
 def _build_aar(args):
     build_settings = _parse_build_settings(args)
     build_dir = os.path.abspath(args.build_dir)
+    ops_config_path = os.path.abspath(args.include_ops_by_config) if args.include_ops_by_config else None
 
     # Setup temp environment for building
     temp_env = os.environ.copy()
@@ -104,8 +105,8 @@ def _build_aar(args):
             '--build_dir=' + abi_build_dir
         ]
 
-        if args.include_ops_by_config is not None:
-            abi_build_command += ['--include_ops_by_config=' + args.include_ops_by_config]
+        if ops_config_path is not None:
+            abi_build_command += ['--include_ops_by_config=' + ops_config_path]
 
         subprocess.run(abi_build_command, env=temp_env, shell=False, check=True, cwd=REPO_DIR)
 
