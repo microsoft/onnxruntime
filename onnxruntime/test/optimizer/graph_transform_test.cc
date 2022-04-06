@@ -2075,13 +2075,13 @@ TEST_F(GraphTransformationTests, ReluClip11Fusion) {
 
   // add initializer for min_input_1 so it's constant
   TensorProto const_min_1;
-  Initializer i1(TensorProto_DataType_FLOAT16, "min_input_1", {1});
+  Initializer i1(TensorProto_DataType_FLOAT16, "min_input_1", AsSpan<int64_t>({1}));
   i1.data<MLFloat16>()->val = math::floatToHalf(-1.f);
   i1.ToProto(const_min_1);
   graph.AddInitializedTensor(const_min_1);
 
   TensorProto const_min_2;
-  Initializer i2(TensorProto_DataType_FLOAT, "min_input_2", {1});
+  Initializer i2(TensorProto_DataType_FLOAT, "min_input_2", AsSpan<int64_t>({1}));
   *i2.data<float>() = 1.f;
   i2.ToProto(const_min_2);
   graph.AddInitializedTensor(const_min_2);
