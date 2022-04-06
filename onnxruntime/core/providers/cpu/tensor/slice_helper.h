@@ -136,20 +136,12 @@ inline Status PrepareForComputeHelper(const gsl::span<const int64_t>& raw_starts
 
     // process end
     auto end = raw_ends[axis_index];
-    // INT_MAX has a special meaning for end according to spec
-    // equivalent to 'None' in numpy
-    // it represent slicing to the end of the dimension
-    if (end == std::numeric_limits<int32_t>::max() ||
-        end == std::numeric_limits<int64_t>::max()) {
-      end = step < 0 ? -1 : dim_value;
-    } else {
-      if (end < 0)
-        end += dim_value;
-      if (step < 0)
-        end = std::clamp(end, int64_t{-1}, dim_value);
-      else
-        end = std::clamp(end, int64_t{0}, dim_value);
-    }
+    if (end < 0)
+      end += dim_value;
+    if (step < 0)
+      end = std::clamp(end, int64_t{-1}, dim_value);
+    else
+      end = std::clamp(end, int64_t{0}, dim_value);
 
     compute_metadata.ends_[axis] = end;
 
