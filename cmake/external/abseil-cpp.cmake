@@ -24,6 +24,12 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(abseil_cpp)
 FetchContent_GetProperties(abseil_cpp SOURCE_DIR)
 
-
+if (GDK_PLATFORM)
+  # Abseil considers any partition that is NOT in the WINAPI_PARTITION_APP a viable platform 
+  # for Win32 symbolize code (which depends on dbghelp.lib); this logic should really be flipped
+  # to only include partitions that are known to support it (e.g. DESKTOP). As a workaround we
+  # tell Abseil to pretend we're building an APP.
+  target_compile_definitions(absl_symbolize PRIVATE WINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP)
+endif()
 
 
