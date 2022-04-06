@@ -453,7 +453,7 @@ TEST(NnapiExecutionProviderTest, TestQDQGemm) {
   RunQDQModelTest(BuildQDQGemmTestCase<uint8_t, uint8_t, uint8_t>(
                       {2, 2} /* input_shape1 */,
                       {2, 2} /* input_shape2 */,
-                      false /* has_bias */, 
+                      true /* has_bias */, 
                       1 /* transB */),
                   "nnapi_qdq_test_graph_gemm",
                   {ExpectedEPNodeAssignment::All});
