@@ -301,7 +301,7 @@ stages:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_rocm4_3_1
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
-            --build-arg TORCH_VERSION=1.10.0
+            --build-arg TORCH_VERSION=1.11.0
             --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
             --build-arg BUILD_UID=$(id -u)
             --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
@@ -314,7 +314,7 @@ stages:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_rocm5_0_1
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
-            --build-arg TORCH_VERSION=1.10.0
+            --build-arg TORCH_VERSION=1.11.0
             --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
             --build-arg BUILD_UID=$(id -u)
             --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
