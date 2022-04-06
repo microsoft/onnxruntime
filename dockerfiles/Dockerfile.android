@@ -3,6 +3,7 @@ FROM ubuntu:18.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV ANDROID_HOME=/opt/android-sdk
 
+# install utilities
 RUN apt-get update && apt-get install --yes --no-install-recommends \
   aria2 \
   unzip
@@ -10,7 +11,7 @@ RUN apt-get update && apt-get install --yes --no-install-recommends \
 # install Java
 RUN apt-get install --yes --no-install-recommends openjdk-8-jdk-headless
 
-# download Android command line tools
+# install Android command line tools
 RUN aria2c -q -d /tmp -o cmdline-tools.zip \
   --checksum=sha-256=d71f75333d79c9c6ef5c39d3456c6c58c613de30e6a751ea0dbd433e8f8b9cbf \
   https://dl.google.com/android/repository/commandlinetools-linux-8092744_latest.zip && \
@@ -49,6 +50,7 @@ RUN aria2c -q -d /tmp -o gradle-6.8.3-bin.zip \
   unzip -d /opt/gradle /tmp/gradle-6.8.3-bin.zip && \
   ln -s /opt/gradle/gradle-6.8.3/bin/gradle /usr/bin
 
+# flatbuffers
 RUN python3 -m pip install flatbuffers==2.0
 
 WORKDIR /workspace
