@@ -40,7 +40,7 @@ For build instructions, please see the [BUILD page](../build/eps.md#openvino).
 **Announcement: OpenVINO-EP v4.0 Release with OpenVINO 2022.1 version**:
 * The new OpenVINO-EP v4.0 Release introduces a new version of OpenVINO API (API 2.0). For more information on the changes and transition steps, see the [transition guide](https://docs.openvino.ai/latest/openvino_2_0_transition_guide.html)
 
-* With this release, we have officialy stopped for centos. We will start supporting RHEL OS from
+* With this release, we have officially stopped supporting CentOS. We will start supporting RHEL OS from
 OpenVINO 2022.1.
 
 
@@ -58,7 +58,7 @@ OpenVINO Execution Provider enables thread-safe deep learning inference
 
 The heterogeneous execution enables computing for inference on one network on several devices. Purposes to execute networks in heterogeneous mode:
 
-* To utilize accelerators power and calculate heaviest parts of network on accelerator and execute not supported layers on fallback devices like CPU to utilize all available hardware more efficiently during one inference.
+* To utilize accelerator's power and calculate the heaviest parts of the network on the accelerator and execute unsupported layers on fallback devices like the CPU to utilize all available hardware more efficiently during one inference.
 
 For more information on Heterogeneous plugin of OpenVINO, please refer to the
 [Intel OpenVINO Heterogeneous Plugin](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Hetero_execution.html).
@@ -86,25 +86,25 @@ For more information on Auto-Device plugin of OpenVINO, please refer to the
 
 The model caching setting enables blobs with Myriadx(VPU) and as cl_cache files with iGPU.
 
-### OpenCL queue throttling for GPU device
+### OpenCL queue throttling for GPU devices
 
-Enables [OpenCL queue throttling](https://docs.openvino.ai/latest/groupov_runtime_ocl_gpu_prop_cpp_api.html?highlight=throttling) for GPU device. Reduces CPU Utilization when using GPU with OpenVINO EP.
+Enables [OpenCL queue throttling](https://docs.openvino.ai/latest/groupov_runtime_ocl_gpu_prop_cpp_api.html?highlight=throttling) for GPU devices. Reduces CPU utilization when using GPUs with OpenVINO EP.
 
 #### Save/Load blob capability for Myriadx(VPU) with OpenVINO 2021.3 version
 This feature enables users to save and load the blobs directly. These pre-compiled blobs can be directly loaded on to the specific hardware device target and inferencing can be done. This feature is only supported on MyriadX(VPU) hardware device target.
 
 #### Model caching
 
-Starting from version 2021.4 OpenVINO supports [model caching](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Model_caching_overview.html). With OpenVINO 2021.4, it is supported on Myriadx(VPU)
+Starting from version 2021.4, OpenVINO supports [model caching](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Model_caching_overview.html). With OpenVINO 2021.4, it is supported on Myriadx(VPU)
 and iGPU.
 
 From OpenVINO 2022.1 version, this feature is supported on Myriadx(VPU), iGPU and CPU.
 
 iGPU:
-This feature enables users to save and load the cl_cache files directly. These cl_cache files can be directly loaded on to igpu hardware device target and inferencing can be done.
+This feature enables users to save and load the cl_cache files directly. These cl_cache files can be loaded directly onto the iGPU hardware device target and inferencing can be performed.
 
 Myriadx(VPU) and CPU:
-This feature enables users to save and load the blob file directly. This file can be directly loaded on to hardware device target and inferencing can be done.
+This feature enables users to save and load the blob file directly. This file can be loaded directly on to the hardware device target and inferencing can be performed.
 
 There are two different methods of exercising this feature:
 
@@ -112,7 +112,7 @@ There are two different methods of exercising this feature:
 
 This flow can be enabled by setting the runtime config option 'use_compiled_network' to True while using the c++/python API'S. This config option acts like a switch to on and off the feature.
 
-The blobs are saved and loaded from a directory named 'ov_compiled_blobs' from the executable path by default. This path however can be overridden using another runtime config option 'blob_dump_path' which is used to explicitly specify the path where you would like to dump and load the blobs (VPU, CPU) or cl_cache(iGPU) files from when already using the use_compiled_network(model caching) setting.
+The blobs are saved and loaded from a directory named 'ov_compiled_blobs' relative to the executable path by default. This path however can be overridden using the runtime config option 'blob_dump_path' which is used to explicitly specify the path where you would like to dump and load the blobs (VPU, CPU) or cl_cache(iGPU) files from when already using the use_compiled_network(model caching) setting.
 
 Refer to [Configuration Options](#configuration-options) for more information about using these runtime options.
 
@@ -236,7 +236,7 @@ The following table lists all the available configuration options and the Key-Va
 | use_compiled_network | string | True/False | boolean | This option is only available for MYRIAD_FP16 VPU devices for both Linux and Windows and it enables save/load blob functionality. It can be used to directly import pre-compiled blobs if exists or dump a pre-compiled blob at the executable path. |
 | blob_dump_path | string | Any valid string path on the hardware target | string | Explicitly specify the path where you would like to dump and load the blobs for the save/load blob feature when use_compiled_network setting is enabled . This overrides the default path.|
 | context | string | OpenCL Context | void* | This option is only alvailable when OpenVINO EP is built with OpenCL flags enabled. It takes in the remote context i.e the cl_context address as a void pointer.|
-| enable_opencl_throttling | string | True/False | boolean | This option enables OpenCL queue throttling for GPU device (Reduces CPU Utilization when using GPU). |
+| enable_opencl_throttling | string | True/False | boolean | This option enables OpenCL queue throttling for GPU devices (reduces CPU utilization when using GPU). |
 
 Valid Hetero or Multi or Auto Device combinations:
 HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...
