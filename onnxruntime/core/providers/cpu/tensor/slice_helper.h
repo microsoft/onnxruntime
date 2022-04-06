@@ -139,7 +139,7 @@ inline Status PrepareForComputeHelper(const gsl::span<const int64_t>& raw_starts
     if (end < 0)
       end += dim_value;
     if (step < 0)
-      end = std::clamp(end, int64_t{-1}, dim_value);
+      end = std::clamp(end, int64_t{-1}, dim_value - 1);
     else
       end = std::clamp(end, int64_t{0}, dim_value);
 
