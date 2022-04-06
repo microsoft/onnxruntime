@@ -25,10 +25,9 @@ It is recommended to use Apple devices equipped with Apple Neural Engine to achi
 
 ## Install
 
-Pre-built binaries of ONNX Runtime Mobile with CoreML EP for iOS are published to CocoaPods.
+Pre-built binaries of ONNX Runtime with CoreML EP for iOS are published to CocoaPods.
 
-- C/C++: **onnxruntime-mobile-c**
-- Objective-C: **onnxruntime-mobile-objc**
+See [here](../install/index.md#install-on-ios) for installation instructions.
 
 ## Build
 
