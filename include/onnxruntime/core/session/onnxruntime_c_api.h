@@ -3304,30 +3304,30 @@ struct OrtApi {
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_MIGraphX,
                   _In_ OrtSessionOptions* options, _In_ const OrtMIGraphXProviderOptions* migraphx_options);
 
-  /** \brief Replace initialized Tensors with external data with the data provided in inputs.
+ /** \brief Replace initialized Tensors with external data with the data provided in initializers.
   *
-  * The function will find the initialized tensors with external in the graph and will replace
-  * them with the tensors provided with inputs. The API verifies that the tensor being replaced
-  * has external data reference(s), has the same name, dimensions and data type. The replacement
-  * will take place before any of the optimizations take place. The data will be copied into the graph
-  * since TensorProto cant refer to the user provided buffers.
-  * 
-  * Once the model has been loaded, the OrtValues added to SessionOptions instance will be removed
-  * from options copy to save memory, the user provided buffers can be freed and the SessionOptions instance
-  * that refers to it can be destroyed.
+  * The function will find the initialized TensorProtos with external data in the graph with the provided names and
+  * replace them with the provided tensors. The API verifies that the TensorProto being replaced
+  * has an external data reference and has the same name, dimensions and data type as its replacement. The replacement
+  * will occur before any of the optimizations take place. The data will be copied into the graph
+  * since TensorProto can't refer to the user provided buffers.
+  *
+  * Once the model has been loaded, the OrtValue(s) added to SessionOptions instance will be removed
+  * from the internal SessionOptions copy to save memory, the user provided buffers can then be deallocated
+  * and the SessionOptions instance that refers to them can be destroyed.
   *
   * \param[in] options
-  * \param[in] input_names Array of null terminated UTF8 encoded strings of the initializers names
-  * \param[in] inputs Array of ::OrtValue%s of the input values
-  * \param[in] input_len Number of elements in the input_names and inputs arrays
+  * \param[in] initializer_names Array of null terminated UTF-8 encoded strings of the initializers names.
+  * \param[in] initializers Array of ::OrtValue type
+  * \param[in] initializers_num Number of elements in the initializer_names and initializers
   *
   * \snippet{doc} snippets.dox OrtStatus Return Value
-  * 
-  * * \since Version 1.12.
+  *
+  * \since Version 1.12.
   */
   ORT_API2_STATUS(AddExternalInitializers, _In_ OrtSessionOptions* options,
-                  _In_reads_(input_len) const char* const* input_names,
-                  _In_reads_(input_len) const OrtValue* const* inputs, size_t input_len);
+                  _In_reads_(input_len) const char* const* initializer_names,
+                  _In_reads_(input_len) const OrtValue* const* initializers, size_t initializers_num);
 };
 
 /*

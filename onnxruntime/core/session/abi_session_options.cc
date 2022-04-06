@@ -188,22 +188,22 @@ ORT_API_STATUS_IMPL(OrtApis::AddInitializer, _Inout_ OrtSessionOptions* options,
 }
 
 ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializers, _In_ OrtSessionOptions* options,
-                    _In_reads_(input_len) const char* const* input_names,
-                    _In_reads_(input_len) const OrtValue* const* inputs, size_t input_len) {
+                    _In_reads_(input_len) const char* const* initializer_names,
+                    _In_reads_(input_len) const OrtValue* const* initializers, size_t initializers_num) {
 
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
   API_IMPL_BEGIN
   onnxruntime::InlinedVector<std::string> names;
   onnxruntime::InlinedVector<OrtValue> values;
-  names.reserve(input_len);
-  values.reserve(input_len);
-  for (size_t i = 0; i < input_len; ++i) {
-    if (input_names[i] == nullptr || inputs[i] == nullptr) {
+  names.reserve(initializers_num);
+  values.reserve(initializers_num);
+  for (size_t i = 0; i < initializers_num; ++i) {
+    if (initializer_names[i] == nullptr || initializers[i] == nullptr) {
       auto message = onnxruntime::MakeString("Input index: ", i, " contains null pointers");
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, message.c_str());
     }
-    names.emplace_back(input_names[i]);
-    values.emplace_back(*inputs[i]);
+    names.emplace_back(initializer_names[i]);
+    values.emplace_back(*initializers[i]);
   }
 
   auto st = options->value.AddExternalInitializers(names, values);
