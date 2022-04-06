@@ -3309,7 +3309,12 @@ struct OrtApi {
   * The function will find the initialized tensors with external in the graph and will replace
   * them with the tensors provided with inputs. The API verifies that the tensor being replaced
   * has external data reference(s), has the same name, dimensions and data type. The replacement
-  * will take place before any of the optimizations take place.
+  * will take place before any of the optimizations take place. The data will be copied into the graph
+  * since TensorProto cant refer to the user provided buffers.
+  * 
+  * Once the model has been loaded, the OrtValues added to SessionOptions instance will be removed
+  * from options copy to save memory, the user provided buffers can be freed and the SessionOptions instance
+  * that refers to it can be destroyed.
   *
   * \param[in] options
   * \param[in] input_names Array of null terminated UTF8 encoded strings of the initializers names

@@ -7,10 +7,6 @@
 #include "cuda_bf16.h"
 #endif
 
-#if !defined(__CUDACC__) && !defined(__HIPCC__)
-#include <gsl/gsl>
-#endif
-
 #include "core/common/common.h"
 
 namespace onnxruntime {
@@ -25,8 +21,8 @@ namespace onnxruntime {
 struct MLFloat16 {
   uint16_t val;
 
-  constexpr MLFloat16() : val(0) {}
-  explicit constexpr MLFloat16(uint16_t x) : val(x) {}
+  MLFloat16() : val(0) {}
+  explicit MLFloat16(uint16_t x) : val(x) {}
   explicit MLFloat16(float f);
 
   float ToFloat() const;
@@ -49,7 +45,7 @@ struct BFloat16 {
 
   struct FromBitsT {};
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
-  constexpr ORT_HOST_DEVICE BFloat16(unsigned short bits, FromBitsT) : val(bits) {}
+  constexpr ORT_HOST_DEVICE BFloat16(unsigned short bits, FromBitsT) : val(bits){};
 
   inline ORT_HOST_DEVICE BFloat16(float v) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
@@ -112,19 +108,6 @@ struct BFloat16 {
   explicit ORT_HOST_DEVICE operator __nv_bfloat16() const { return *reinterpret_cast<const __nv_bfloat16*>(&val); }
 #endif
 };
-
-// User defined suffixes to make it easier to declare
-// initializers with MLFloat16 and BFloat16 from unsigned short
-// E.g 10_f16 or 10_b16
-#if !defined(__CUDACC__) && !defined(__HIPCC__)
-inline MLFloat16 operator"" _f16(unsigned long long int v) {
-  return MLFloat16(gsl::narrow<uint16_t>(v));
-}
-
-inline BFloat16 operator"" _b16(unsigned long long int v) {
-  return BFloat16(gsl::narrow<uint16_t>(v), BFloat16::FromBits());
-}
-#endif
 
 inline void BFloat16ToFloat(const BFloat16* blf, float* flt, size_t size) {
   auto src = blf;
