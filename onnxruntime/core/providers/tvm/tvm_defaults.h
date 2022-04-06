@@ -11,7 +11,7 @@ constexpr const char* default_executor_type = "vm";
 constexpr const char* vm_executor_type = "vm";
 constexpr const char* graph_executor_type = "graph";
 
-constexpr const char* default_target_str = "cpu";
+constexpr const char* default_target_str = "llvm";
 constexpr const char* llvm_target_str = "llvm";
 
 constexpr const char* cpu_target_str = "cpu";

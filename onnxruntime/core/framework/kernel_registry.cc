@@ -309,6 +309,7 @@ Status KernelRegistry::TryFindKernel(const Node& node,
         << " kernel is not supported in " << expected_provider << "."
         << " Encountered following errors: (" << ToString(verify_kernel_def_error_strs) << ")";
 
+    VLOGS_DEFAULT(2) << "TryFindKernel failed, Reason: " << oss.str();
     return Status(common::ONNXRUNTIME, common::FAIL, oss.str());
   }
 

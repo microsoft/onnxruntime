@@ -84,6 +84,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   int GetCudnnConvAlgo() const { return info_.cudnn_conv_algo_search; }
   bool DoCopyOnDefaultStream() const { return info_.do_copy_in_default_stream; }
   bool GetCudnnConvUseMaxWorkspace() const { return info_.cudnn_conv_use_max_workspace; }
+  bool GetCudnnConv1dPadToNc1d() const { return info_.cudnn_conv1d_pad_to_nc1d; }
 
   ProviderOptions GetProviderOptions() const override {
     return CUDAExecutionProviderInfo::ToProviderOptions(info_);

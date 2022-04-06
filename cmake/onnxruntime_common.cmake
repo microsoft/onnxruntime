@@ -206,7 +206,7 @@ endif()
 
 
 if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
-  if(WINDOWS_STORE OR (WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib) OR ((ARM64 OR ARM) AND MSVC) OR GDK_PLATFORM)
+  if((WIN32 AND NOT CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib) OR ((ARM64 OR ARM) AND MSVC))
     # msvc compiler report syntax error with cpuinfo arm source files
     # and cpuinfo does not have code for getting arm uarch info under windows
   else()
@@ -218,4 +218,12 @@ if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
     target_link_libraries(onnxruntime_common cpuinfo)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo clog)
   endif()
+endif()
+
+if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_common
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()

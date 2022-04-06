@@ -317,7 +317,6 @@ class OpTester {
     AddData(input_data_, name, dims_var, p_values, size, is_initializer, false, dim_params);
   }
 
-
   template <typename T>
   void AddInput(const char* name, std::initializer_list<int64_t> dims, const TensorShapeVector& values,
                 bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr) {
@@ -500,7 +499,6 @@ class OpTester {
             values ? values->size() : 0, is_initializer, false, dim_params, 0.0f, 0.0f, true);
   }
 
-
   template <typename T>
   void AddOptionalTypeTensorOutput(const char* name, const DimsVariant& dims,
                                    const std::initializer_list<T>* expected_values = nullptr,
@@ -519,7 +517,6 @@ class OpTester {
             expected_values ? expected_values->size() : 0, false,
             sort_output, nullptr /* dim_params */, rel_error, abs_error, true);
   }
-
 
   template <typename T>
   void AddOptionalTypeSeqInput(const char* name,
@@ -546,12 +543,12 @@ class OpTester {
   }
 
   /*
-  * Use this API to add an input *edge* to the node/op being tested that won't 
-  * have any data passed into.
-  * Such an edge will have the qualifier OpSchema::Optional in the schema.
-  * This is exposed to ensure the op kernel implementations can be tested to handle 
-  * presence/absence of such optional input edges.
-  */
+   * Use this API to add an input *edge* to the node/op being tested that won't
+   * have any data passed into.
+   * Such an edge will have the qualifier OpSchema::Optional in the schema.
+   * This is exposed to ensure the op kernel implementations can be tested to handle
+   * presence/absence of such optional input edges.
+   */
   template <typename T>
   void AddOptionalInputEdge() {
     std::string name;  // empty == input doesn't exist
@@ -575,14 +572,13 @@ class OpTester {
             sort_output, nullptr /* dim_params */, rel_error, abs_error);
   }
 
-    template <typename T>
+  template <typename T>
   void AddOutput(const char* name, std::initializer_list<int64_t> dims, const T* p_values, const size_t size,
                  bool sort_output = false, float rel_error = 0.0f, float abs_error = 0.0f) {
     const DimsVariant dims_var = std::vector<int64_t>(dims);
     AddData(output_data_, name, dims, p_values, size, false,
             sort_output, nullptr /* dim_params */, rel_error, abs_error);
   }
-
 
   template <typename T>
   void AddOutput(const char* name, const DimsVariant& dims, std::initializer_list<T> expected_values,
@@ -712,12 +708,12 @@ class OpTester {
 #endif
 
   /*
-  * Use this API to add an output *edge* to the node/op being tested that shouldn't have any 
-  * data produced into.
-  * Such an edge will have the qualifier OpSchema::Optional in the schema.
-  * This is exposed to ensure the op kernel implementations can be tested to handle 
-  * presence/absence of such optional output edges.
-  */
+   * Use this API to add an output *edge* to the node/op being tested that shouldn't have any
+   * data produced into.
+   * Such an edge will have the qualifier OpSchema::Optional in the schema.
+   * This is exposed to ensure the op kernel implementations can be tested to handle
+   * presence/absence of such optional output edges.
+   */
   template <typename T>
   void AddOptionalOutputEdge() {
     std::string name;  // empty == output doesn't exist
@@ -784,6 +780,12 @@ class OpTester {
 
   void SetCustomOutputVerifier(CustomOutputVerifierFn custom_output_verifier) {
     custom_output_verifier_ = custom_output_verifier;
+  }
+
+  void AddAttributeProto(ONNX_NAMESPACE::AttributeProto attr) {
+    add_attribute_funcs_.emplace_back([attr = std::move(attr)](onnxruntime::Node& node) {
+      node.AddAttributeProto(attr);
+    });
   }
 
   template <typename T>

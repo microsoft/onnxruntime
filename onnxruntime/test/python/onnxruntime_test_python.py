@@ -1069,9 +1069,9 @@ class TestInferenceSession(unittest.TestCase):
         onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=so2, providers=onnxrt.get_available_providers())
 
     def testMemoryArenaShrinkage(self):
-        if platform.architecture()[0] == '32bit':
-            # on x86 builds, the CPU allocator does not use an arena
-            print("Skipping testMemoryArenaShrinkage in 32bit platform.")
+        if platform.architecture()[0] == '32bit' or 'ppc' in platform.machine() or 'powerpc' in platform.machine():
+            # on x86 or ppc builds, the CPU allocator does not use an arena
+            print("Skipping testMemoryArenaShrinkage in 32bit or powerpc platform.")
         else:
             x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
 

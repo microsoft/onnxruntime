@@ -65,6 +65,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 providerOptionsDict["cudnn_conv_algo_search"] = "DEFAULT";
                 providerOptionsDict["do_copy_in_default_stream"] = "1";
                 providerOptionsDict["cudnn_conv_use_max_workspace"] = "1";
+                providerOptionsDict["cudnn_conv1d_pad_to_nc1d"] = "1";
                 cudaProviderOptions.UpdateOptions(providerOptionsDict);
 
                 var resultProviderOptionsDict = new Dictionary<string, string>();
@@ -83,6 +84,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 value = resultProviderOptionsDict["do_copy_in_default_stream"];
                 Assert.Equal("1", value);
                 value = resultProviderOptionsDict["cudnn_conv_use_max_workspace"];
+                Assert.Equal("1", value);
+                value = resultProviderOptionsDict["cudnn_conv1d_pad_to_nc1d"];
                 Assert.Equal("1", value);
 
                 // test correctness of provider options
@@ -337,6 +340,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_optional_get_element_sequence", "not implemented yet"},
                 { "test_optional_has_element", "not implemented yet"},
                 { "test_optional_has_element_empty", "not implemented yet"},
+                { "test_identity_opt", "opset16 version not implemented yet"},
+                { "test_if_opt", "opset16 version not implemented yet"},
+                { "test_loop16_seq_none", "opset16 version not implemented yet"},
             };
 
             // The following models fails on nocontribops win CI

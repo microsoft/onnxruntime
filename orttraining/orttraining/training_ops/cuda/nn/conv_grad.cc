@@ -292,20 +292,32 @@ Status ConvGrad<T>::PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor&
       strides.resize(rank, 1);
     }
 
-    // cuDNN only takes 4D or 5D x tensor, so pad dimensions if needed.
-    if (rank < 2) {
-      x_dims.push_back(1);
-      dy_dims.push_back(1);
-      w_dims.push_back(1);
-      pads.insert(pads.begin() + rank, 0);
-      pads.insert(pads.end(), 0);
-      kernel_shape.push_back(1);
-      strides.push_back(1);
-      dilations.push_back(1);
-    }
-
     const CUDAExecutionProvider* cuda_ep =
         static_cast<const CUDAExecutionProvider*>(this->Info().GetExecutionProvider());
+
+    // cuDNN only takes 4D or 5D x tensor, so pad dimensions if needed.
+    if (rank < 2) {
+      if (cuda_ep->GetCudnnConv1dPadToNc1d()) {
+        x_dims.insert(x_dims.begin() + 2, 1);
+        dy_dims.insert(dy_dims.begin() + 2, 1);
+        w_dims.insert(w_dims.begin() + 2, 1);
+        pads.insert(pads.begin() + rank, 0);
+        pads.insert(pads.begin(), 0);
+        kernel_shape.insert(kernel_shape.begin(), 1);
+        strides.insert(strides.begin(), 1);
+        dilations.insert(dilations.begin(), 1);
+      } else {
+        x_dims.push_back(1);
+        dy_dims.push_back(1);
+        w_dims.push_back(1);
+        pads.insert(pads.begin() + rank, 0);
+        pads.insert(pads.end(), 0);
+        kernel_shape.push_back(1);
+        strides.push_back(1);
+        dilations.push_back(1);
+      }
+    }
+
     memset(&args_.params, 0, sizeof(ConvParams));
     args_.params.device_id = static_cast<int8_t>(cuda_ep->GetDeviceId());
     args_.params.data_type = CudnnTensor::GetDataType<CudaT>();

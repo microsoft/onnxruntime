@@ -330,11 +330,25 @@ jobs:
       targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-x64'
 
   - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact - Linux AARCH64'
+    inputs:
+      buildType: 'current'
+      artifactName: 'drop-onnxruntime-java-linux-aarch64'
+      targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-linux-aarch64'
+
+  - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - MacOS x64'
     inputs:
       buildType: 'current'
       artifactName: 'drop-onnxruntime-java-osx-x86_64'
       targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-x86_64'
+
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact - MacOS ARM64'
+    inputs:
+      buildType: 'current'
+      artifactName: 'drop-onnxruntime-java-osx-arm64'
+      targetPath: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-osx-arm64'
 
   - task: PowerShell@2
     displayName: 'PowerShell Script'
@@ -584,6 +598,16 @@ jobs:
   steps:
   - checkout: self
     submodules: true
+
+  - script: |
+     echo.>>.gitattributes
+     echo /js/** text=auto eol=lf>>.gitattributes
+     rd /s /q js
+     git checkout -- js/**
+     git checkout -- .gitattributes
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Testing: force EOL to lf on windows for /js/**' 
+
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet (Win x64)'
     inputs:
@@ -877,7 +901,7 @@ jobs:
             REM use a single .csv file to put the data
             echo os,arch,build_config,size > $(Build.BinariesDirectory)\binary_size_data.txt
             7z.exe l -slt %%~ni.zip runtimes\linux-x64\native\libonnxruntime.so | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo linux,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
-            7z.exe l -slt %%~ni.zip runtimes\linux-aarch64\native\libonnxruntime.so | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo linux,aarch64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
+            7z.exe l -slt %%~ni.zip runtimes\linux-arm64\native\libonnxruntime.so | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo linux,aarch64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
             7z.exe l -slt %%~ni.zip runtimes\osx.10.14-x64\native\libonnxruntime.dylib | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo osx,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
             7z.exe l -slt %%~ni.zip runtimes\win-x64\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x64,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
             7z.exe l -slt %%~ni.zip runtimes\win-x86\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x86,${{ parameters.buildVariant }},%%a >> $(Build.BinariesDirectory)\binary_size_data.txt

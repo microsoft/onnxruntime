@@ -21,16 +21,10 @@ set_target_properties(onnxruntime_flatbuffers PROPERTIES FOLDER "ONNXRuntime")
 if (FLATBUFFERS_BUILD_FLATC)
   add_dependencies(onnxruntime_flatbuffers flatc)
 endif()
-
-if (WINDOWS_STORE OR GDK_PLATFORM)
-  function(target_force_include target scope file)
-    if (MSVC)
-        target_compile_options(${target} ${scope} "/FI${file}")
-    else()
-        target_compile_options(${target} ${scope} -include "${file}")
-    endif()
-  endfunction()
-
-  target_force_include(flatbuffers PRIVATE uwp_stubs.h)
-  target_force_include(flatc PRIVATE uwp_stubs.h)
+if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_flatbuffers
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()

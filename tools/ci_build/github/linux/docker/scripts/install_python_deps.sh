@@ -42,6 +42,8 @@ elif [[ "$PYTHON_VER" = "3.8" && -d "/opt/python/cp38-cp38"  ]]; then
    PYTHON_EXE="/opt/python/cp38-cp38/bin/python3.8"
 elif [[ "$PYTHON_VER" = "3.9" && -d "/opt/python/cp39-cp39"  ]]; then
    PYTHON_EXE="/opt/python/cp39-cp39/bin/python3.9"
+elif [[ "$PYTHON_VER" = "3.10" && -d "/opt/python/cp310-cp310"  ]]; then
+   PYTHON_EXE="/opt/python/cp310-cp310/bin/python3.10"
 else
    PYTHON_EXE="/usr/bin/python${PYTHON_VER}"
 fi
@@ -55,20 +57,11 @@ if [ $DEVICE_TYPE = "gpu" ]; then
       ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/requirements.txt}
     else
       if [[ $TARGET_ROCM = false ]]; then
-        ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage1\/requirements_torch${TORCH_VERSION}_cu${CU_VER}.txt}
-        # Due to a [bug on DeepSpeed](https://github.com/microsoft/DeepSpeed/issues/663), we install it separately through ortmodule/stage2/requirements.txt
+        ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage1\/requirements_torch${TORCH_VERSION}_cu${CU_VER}\/requirements.txt}
         ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage2\/requirements.txt}
       else
-        ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage1\/requirements-torch${TORCH_VERSION}_rocm.txt}
+        ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage1\/requirements_torch${TORCH_VERSION}_rocm\/requirements.txt}
         ${PYTHON_EXE} -m pip install fairscale
-	# remove DeepSpeed until it's required for testing purposes
-	# remove triton requirement from getting triggered in requirements-sparse_attn.txt
-        # git clone https://github.com/ROCmSoftwarePlatform/DeepSpeed
-        # cd DeepSpeed &&\
-        #   rm requirements/requirements-sparse_attn.txt &&\
-        #   ${PYTHON_EXE} setup.py bdist_wheel &&\
-        #   ${PYTHON_EXE} -m pip install dist/deepspeed*.whl &&\
- 	#   cd .. && rm -fr DeepSpeed
       fi
     fi
   fi

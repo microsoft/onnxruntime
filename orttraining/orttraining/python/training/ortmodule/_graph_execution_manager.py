@@ -266,6 +266,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                 # Set Conv algo search mode to HEURISTIC, which is same as PyTorch's default setting.
                 provider_option_map["cudnn_conv_algo_search"] = "HEURISTIC"
                 provider_option_map["cudnn_conv_use_max_workspace"] = "1"
+                provider_option_map["cudnn_conv1d_pad_to_nc1d"] = "1"
             if self._use_external_gpu_allocator:
                 provider_option_map["gpu_external_alloc"] = str(self._torch_alloc)
                 provider_option_map["gpu_external_free"] = str(self._torch_free)
@@ -311,6 +312,10 @@ class GraphExecutionManager(GraphExecutionInterface):
         #       Model is not re-exported when the model parameters change. This can happen when the model is a stateful model,
         #       or the user explicitly changed model parameters after the onnx export.
 
+        # Record random states here and restore later in case any of them gets changed during the export,
+        # e.g., some sympy functions in symbolic_shape_infer will change Python's random state.
+        random_states = _utils.get_random_states()
+
         schema = _io._extract_schema(
             {'args': copy.copy(inputs), 'kwargs': copy.copy(kwargs)})
         if self._onnx_models.exported_model and schema == self._input_info.schema and not self._original_model_has_changed:
@@ -328,6 +333,9 @@ class GraphExecutionManager(GraphExecutionInterface):
         if self._run_symbolic_shape_infer:
             self._onnx_models.exported_model = SymbolicShapeInference.infer_shapes(self._onnx_models.exported_model,
                                                                                    auto_merge=True, guess_output_rank=True)
+
+        # Restore the recorded random states
+        _utils.set_random_states(random_states)
 
         return True
 

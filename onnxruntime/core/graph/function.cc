@@ -623,6 +623,11 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
 
     for (int idx = 0; idx < (*node).input_size(); ++idx) {
       const std::string& tensor_name = (*node).input().Get(idx);
+      if (tensor_name.empty()) {
+        auto& no_arg = function_body_graph.GetOrCreateNodeArg(tensor_name, nullptr);
+        inputs.push_back(&no_arg);
+        continue;        
+      }
       auto iter = input_name_idx_map.find(tensor_name);
       if (iter != input_name_idx_map.end()) {
         // If input is part of function inputs, preserve NodeArg and input/output names
@@ -671,6 +676,11 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
 
     for (int idx = 0; idx < (*node).output_size(); ++idx) {
       std::string tensor_name = (*node).output().Get(idx);
+      if (tensor_name.empty()) {
+        auto& no_arg = function_body_graph.GetOrCreateNodeArg(tensor_name, nullptr);
+        outputs.push_back(&no_arg);
+        continue;
+      }
       auto iter = output_name_idx_map.find(tensor_name);
       if (iter != output_name_idx_map.end()) {
         // Preserving NodeArg and input/output names
