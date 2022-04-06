@@ -132,6 +132,7 @@ bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type) {
          quant_op_type == QuantizedOpType::QLinearMul ||
          quant_op_type == QuantizedOpType::QDQAdd ||
          quant_op_type == QuantizedOpType::QDQMul ||
+         quant_op_type == QuantizedOpType::QDQGemm ||
          IsQuantizedConv(quant_op_type);
 }
 
@@ -149,17 +150,18 @@ bool HasValidBinaryOpQuantizedInputTypes(const NodeUnit& node_unit) {
   if (!GetType(inputs[1].node_arg, b_input_type))
     return false;
 
-  // QlinearConv/MatMul supports u8u8 or u8s8
+  // QlinearConv/MatMul/QDQGemm supports u8u8 or u8s8
   // QLinearAdd/QLinearMul only support u8u8
-  bool is_quant_conv_or_matmul = IsQuantizedConv(quant_op_type) || (quant_op_type == QuantizedOpType::QLinearMatMul);
+  bool is_quant_conv_or_gemm = IsQuantizedConv(quant_op_type) || (quant_op_type == QuantizedOpType::QLinearMatMul) ||
+                               (quant_op_type == QuantizedOpType::QDQGemm);
 
   bool has_valid_qlinear_conv_weight =
       (b_input_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
        b_input_type == ONNX_NAMESPACE::TensorProto_DataType_INT8);
 
   if (a_input_type != ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
-      (!is_quant_conv_or_matmul && a_input_type != b_input_type) ||
-      (is_quant_conv_or_matmul && !has_valid_qlinear_conv_weight)) {
+      (!is_quant_conv_or_gemm && a_input_type != b_input_type) ||
+      (is_quant_conv_or_gemm && !has_valid_qlinear_conv_weight)) {
     LOGS_DEFAULT(VERBOSE) << "[" << node_unit.OpType()
                           << "] A Input type: [" << a_input_type
                           << "] B Input type: [" << b_input_type

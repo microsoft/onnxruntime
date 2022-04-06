@@ -1280,13 +1280,10 @@ bool GemmOpSupportChecker::HasSupportedInputOutputsImpl(
     return BaseOpSupportChecker::HasSupportedInputOutputsImpl(initializers, node_unit, params);
   }
 
-  // QLinearMatMul
-  if (node_unit.OpType() == "QlinearMatMul") {
-    if (!HasValidBinaryOpQuantizedInputTypes(node_unit))
-      return false;
-  }
-  
-  // QlinearMatMul/QDQGemm
+  // QLinearMatMul/QDQGemm
+  if (!HasValidBinaryOpQuantizedInputTypes(node_unit))
+    return false;
+
   if (!IsQuantizedIOSupported(initializers, node_unit, {0, 1}, params, IOKind::Input))
     return false;
 

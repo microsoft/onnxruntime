@@ -1622,7 +1622,7 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
       if (transB == 0)
         model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());
       if (inputs.size() > 2) {
-        model_builder.AddInitializerToSkip(inputs[2].node_arg.Name());                  // B
+        //model_builder.AddInitializerToSkip(inputs[2].node_arg.Name());                  // B
         AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[2].quant_param);  // B_scale, B_zp
       }
     
