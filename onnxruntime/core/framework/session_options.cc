@@ -19,7 +19,7 @@ Status CheckInitializer(const char* name, const OrtValue* val) {
   }
 
   if (!val->IsTensor()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Received OrtValue is not a tensor. Only tensors are supported for shared initializers.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Received OrtValue is not a tensor. Only tensors are supported.");
   }
   if (val->Get<Tensor>().OwnsBuffer()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Buffer containing the initializer must be owned by the user.");
