@@ -79,37 +79,6 @@ DLDataType GetDlpackDataType(const OrtValue& ort_value) {
   return dtype;
 }
 
-DLDevice GetDlpackDevice(const OrtValue& ort_value, const int64_t& device_id) {
-  ORT_ENFORCE(ort_value.IsTensor(), "Only OrtValues that are Tensors are currently supported");
-  DLDevice device;
-  device.device_id = static_cast<int>(device_id);
-  const Tensor& tensor = ort_value.Get<Tensor>();
-  const auto& location = tensor.Location();
-  switch (location.device.Type()) {
-    case OrtDevice::CPU:
-      device.device_type = DLDeviceType::kDLCPU;
-      break;
-    case OrtDevice::GPU:
-#ifdef USE_ROCM
-      device.device_type = DLDeviceType::kDLROCM;
-#else
-      device.device_type = DLDeviceType::kDLCUDA;
-#endif
-      break;
-    default:
-      ORT_THROW("Cannot pack tensors on this device.");
-  }
-
-  return device;
-}
-
-struct OrtDLManagedTensor {
-  OrtValue handle;
-  DLManagedTensor tensor;
-};
-
-void DlpackDeleter(DLManagedTensor* arg) { delete static_cast<OrtDLManagedTensor*>(arg->manager_ctx); }
-
 OrtDevice GetOrtDevice(const DLDevice& device) {
   switch (device.device_type) {
     case DLDeviceType::kDLCPU:
@@ -208,6 +177,37 @@ bool IsContiguousTensor(const DLTensor& tensor) {
 
 }  // namespace
 
+DLDevice GetDlpackDevice(const OrtValue& ort_value, const int64_t& device_id) {
+  ORT_ENFORCE(ort_value.IsTensor(), "Only OrtValues that are Tensors are currently supported");
+  DLDevice device;
+  device.device_id = static_cast<int>(device_id);
+  const Tensor& tensor = ort_value.Get<Tensor>();
+  const auto& location = tensor.Location();
+  switch (location.device.Type()) {
+    case OrtDevice::CPU:
+      device.device_type = DLDeviceType::kDLCPU;
+      break;
+    case OrtDevice::GPU:
+#ifdef USE_ROCM
+      device.device_type = DLDeviceType::kDLROCM;
+#else
+      device.device_type = DLDeviceType::kDLCUDA;
+#endif
+      break;
+    default:
+      ORT_THROW("Cannot pack tensors on this device.");
+  }
+
+  return device;
+}
+
+struct OrtDLManagedTensor {
+  OrtValue handle;
+  DLManagedTensor tensor;
+};
+
+static void DlpackDeleter(DLManagedTensor* arg) { delete static_cast<OrtDLManagedTensor*>(arg->manager_ctx); }
+
 //This function should use smart pointers inside
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
@@ -220,6 +220,7 @@ bool IsContiguousTensor(const DLTensor& tensor) {
 DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
   ORT_ENFORCE(ort_value.IsTensor(), "Only tensor type OrtValues are supported");
   OrtDLManagedTensor* ort_dlmanaged_tensor(new OrtDLManagedTensor);
+
   Tensor& tensor = *ort_value.GetMutable<Tensor>();
   ort_dlmanaged_tensor->handle = ort_value;
   ort_dlmanaged_tensor->tensor.manager_ctx = ort_dlmanaged_tensor;
@@ -249,8 +250,11 @@ OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
 
   OrtValue ort_value;
   std::function<void(void*)> deleter = [dlpack](void* p) {
+    ORT_ENFORCE(dlpack->deleter != NULL, "A dlpack structure must have a deleter.");
     dlpack->deleter(dlpack);
-    DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()(p);
+    auto deleter = DataTypeImpl::GetType<Tensor>()->GetDeleteFunc();
+    if (deleter != NULL)
+      deleter(p);
   };
 
   ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), deleter);
