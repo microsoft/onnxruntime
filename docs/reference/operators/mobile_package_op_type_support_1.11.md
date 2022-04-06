@@ -1,12 +1,11 @@
 ---
-title: ORT 1.10 Mobile Package Operators
+title: ORT 1.11 Mobile Package Operators
 parent: Operators
 grand_parent: Reference
-nav_order: 5
+nav_order: 4
 ---
 
-
-# ONNX Runtime 1.10 Mobile Pre-Built Package Operator and Type Support
+# ONNX Runtime 1.11 Mobile Pre-Built Package Operator and Type Support
 
 ## Supported operators and types
 

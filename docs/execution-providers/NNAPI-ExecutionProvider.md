@@ -22,7 +22,9 @@ Accelerate ONNX models on Android devices with ONNX Runtime and the NNAPI execut
 The NNAPI Execution Provider (EP) requires Android devices with Android 8.1 or higher. It is recommended to use Android devices with Android 9 or higher to achieve optimal performance.
 
 ## Install
-Pre-built packages of ONNX Runtime Mobile with NNAPI EP for Android are published on Maven: [com.microsoft.onnxruntime:onnxruntime-mobile](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile).
+Pre-built packages of ONNX Runtime with NNAPI EP for Android are published on Maven.
+
+See [here](../install/index.md#install-on-android) for installation instructions.
 
 ## Build
 
@@ -136,6 +138,3 @@ Following ops are supported by the NNAPI Execution Provider,
 |com.microsoft:QLinearAdd|All quantization scales and zero points should be constant.|
 |com.microsoft:QLinearAveragePool|Only 2D Pool is supported.<br/>All quantization scales and zero points should be constant.|
 |com.microsoft:QLinearSigmoid|All quantization scales and zero points should be constant.|
-
-
-

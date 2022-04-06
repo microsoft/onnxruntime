@@ -88,6 +88,12 @@ This flag is only supported from the V2 version of the provider options struct w
 
 Default value: 0
 
+### cudnn_conv1d_pad_to_nc1d
+Check [convolution input padding in the CUDA EP](../performance/tune-performance.md#convolution-input-padding-in-the-cuda-ep) for details on what this flag does.
+This flag is only supported from the V2 version of the provider options struct when used using the C API. The V2 provider options struct can be created using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a0d29cbf555aa806c050748cf8d2dc172) and updated using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a4710fc51f75a4b9a75bde20acbfa0783). Please take a look at the sample below for an example.
+
+Default value: 0
+
 ### enable_cuda_graph
 Check [using CUDA Graphs in the CUDA EP](../performance/tune-performance.md#using-cuda-graphs-in-the-cuda-ep) for details on what this flag does.
 This flag is only supported from the V2 version of the provider options struct when used using the C API. The V2 provider options struct can be created using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a0d29cbf555aa806c050748cf8d2dc172) and updated using [this](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#a4710fc51f75a4b9a75bde20acbfa0783).
@@ -140,8 +146,8 @@ SessionOptionsAppendExecutionProvider_CUDA(session_options, &options);
 OrtCUDAProviderOptionsV2* cuda_options = nullptr;
 CreateCUDAProviderOptions(&cuda_options);
 
-std::vector<const char*> keys{"device_id", "gpu_mem_limit", "arena_extend_strategy", "cudnn_conv_algo_search", "do_copy_in_default_stream", "cudnn_conv_use_max_workspace"};
-std::vector<const char*> values{"0", "2147483648", "kSameAsRequested", "DEFAULT", "1", "1"};
+std::vector<const char*> keys{"device_id", "gpu_mem_limit", "arena_extend_strategy", "cudnn_conv_algo_search", "do_copy_in_default_stream", "cudnn_conv_use_max_workspace", "cudnn_conv1d_pad_to_nc1d"};
+std::vector<const char*> values{"0", "2147483648", "kSameAsRequested", "DEFAULT", "1", "1", "1"};
 
 UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 6);
 
@@ -164,6 +170,7 @@ providerOptionsDict["arena_extend_strategy"] = "kSameAsRequested";
 providerOptionsDict["cudnn_conv_algo_search"] = "DEFAULT";
 providerOptionsDict["do_copy_in_default_stream"] = "1";
 providerOptionsDict["cudnn_conv_use_max_workspace"] = "1";
+providerOptionsDict["cudnn_conv1d_pad_to_nc1d"] = "1";
 
 cudaProviderOptions.UpdateOptions(providerOptionsDict);
 

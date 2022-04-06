@@ -27,6 +27,7 @@ Pre-built packages and Docker images are available for Jetpack in the [Jetson Zo
 |ONNX Runtime|TensorRT|CUDA|
 |---|---|---|
 |master|8.2|11.4|
+|1.11|8.2|11.4|
 |1.10|8.0|11.4|
 |1.9|8.0|11.4|
 |1.7-1.8|7.2|11.0.3|
@@ -40,7 +41,7 @@ For more details on CUDA/cuDNN versions, please see [CUDA EP requirements](./CUD
 
 See [Build instructions](../build/eps.md#tensorrt).
 
-The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.0.3.4.
+The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.2.3.0.
 
 ## Usage
 ### C/C++
