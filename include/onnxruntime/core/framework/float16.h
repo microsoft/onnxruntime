@@ -51,7 +51,7 @@ struct BFloat16 {
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
   constexpr ORT_HOST_DEVICE BFloat16(unsigned short bits, FromBitsT) : val(bits) {}
 
-  inline ORT_HOST_DEVICE explicit BFloat16(float v) {
+  inline ORT_HOST_DEVICE BFloat16(float v) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     val = __bfloat16_as_ushort(__float2bfloat16(v));
 #elif defined(USE_ROCM)
