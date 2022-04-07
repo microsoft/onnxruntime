@@ -50,6 +50,10 @@ download_files() {
 }
 
 setup() {
+    apt update
+    apt-get install -y --no-install-recommends libprotobuf-dev protobuf-compiler pciutils
+    python3 -m pip install -r requirements.txt    
+    ls Release/dist/* | xargs -n 1 python3 -m pip install
     cleanup_files
     download_files
 }
