@@ -36,6 +36,8 @@ class XnnpackExecutionProvider : public IExecutionProvider {
 
   void RegisterAllocator(AllocatorManager& /*allocator_manager*/) override;
 
+  void LegalizeSessionOptions(SessionOptions& session_options, const logging::Logger& logger) override;
+
   DataLayout GetPreferredLayout() const override { return DataLayout::NHWC; }
 
   FusionStyle GetFusionStyle() const override { return FusionStyle::FilteredGraphViewer; }
@@ -48,6 +50,7 @@ class XnnpackExecutionProvider : public IExecutionProvider {
   }
 
  private:
+  XnnpackExecutionProviderInfo info_;
   pthreadpool* xnnpack_thread_pool_{nullptr};
 };
 
