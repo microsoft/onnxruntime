@@ -82,7 +82,7 @@ class VocabMaskLogitsProcessor : public ILogitsProcessor<T> {
 template <typename T>
 class PrefixVocabMaskLogitsProcessor : public ILogitsProcessor<T> {
  public:
-  PrefixVocabMaskLogitsProcessor(const gsl::span<const int32_t>& vocab_mask, int batch_size);
+  PrefixVocabMaskLogitsProcessor(const gsl::span<const int32_t>& vocab_mask, int batch_size, bool is_prefix_upper_case);
 
   void Process(const ISequences* sequences,
                NextTokenScores<T>& next_token_scores) override;
@@ -90,6 +90,8 @@ class PrefixVocabMaskLogitsProcessor : public ILogitsProcessor<T> {
  private:
   gsl::span<const int32_t> prefix_vocab_mask_;
   const int batch_size_;
+  int deep_write_spl_tokens_;
+  bool is_prefix_upper_case_;
 };
 
 class LogitsProcessorList : public ILogitsProcessorList {
@@ -101,6 +103,7 @@ class LogitsProcessorList : public ILogitsProcessorList {
  private:
   int batch_beam_size_;
   int vocab_size_;
+
   InlinedVector<ILogitsProcessor<float>*> processor_list_;
 
   std::unique_ptr<RepetitionPenaltyLogitsProcessor<float>> repetition_penalty_processor_;

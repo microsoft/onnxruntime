@@ -8,7 +8,7 @@
 //#define DEBUG_BEAM_SEARCH 1  // uncomment it for debugging beam search
 #endif
 
-#define DEBUG_BEAM_SEARCH 1
+//#define DEBUG_BEAM_SEARCH 1
 
 namespace onnxruntime {
 
@@ -101,6 +101,7 @@ struct IBeamSearchParameters {
   int ecs_min_chars;
   float ecs_log_prob_threshold;
   float ecs_cost;
+  bool is_prefix_upper_case;
 
   gsl::span<const int32_t> vocab_mask;
   gsl::span<const int32_t> prefix_vocab_mask;

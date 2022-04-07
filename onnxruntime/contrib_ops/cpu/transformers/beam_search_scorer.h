@@ -47,7 +47,7 @@ class BeamHypotheses {
   // Add a new hypothesis
   void Add(gsl::span<const int32_t>& hypothesis, float sum_logprobs);
 
-  bool IsDone(float best_sum_logprobs, int current_length);
+  bool IsDone(float best_sum_logprobs);
 
   bool IsEcsBetterThanLastIteration(ISequences* sequences,
                           int batch,

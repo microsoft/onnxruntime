@@ -941,6 +941,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
                                 .Input(12, "ecs_min_chars", "minimum number of characters needed for expected character savings. Shape is (1)", "I", OpSchema::Optional)
                                 .Input(13, "ecs_log_prob_threshold", "minimum score required to qualify for best candidate. Shape is (1)", "T", OpSchema::Optional)
                                 .Input(14, "ecs_cost", "cost of expected character savings. Shape is (1)", "T", OpSchema::Optional)
+                                .Input(15, "prefix_upper_case", "Is the prefix coming in upper case SHOULD BE CHANGED TO (b x 1) OR COMBINED WITH prefix_lens currently (1)", "I", OpSchema::Optional)
                                 .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, num_return_sequences, max_sequence_length)", "I")
                                 .Output(1, "sequences_scores", "Final beam score of the generated sequences. Shape is (batch_size, num_return_sequences)", "T", OpSchema::Optional)
                                 .Output(2, "scores",

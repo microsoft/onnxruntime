@@ -434,6 +434,11 @@ Status BeamSearchImpl<T>::CheckInputs(const OpKernelContextInternal& context) {
     parameters_->ecs_cost = static_cast<float>(*ecs_cost_tensor->Data<float>());
   }
 
+  auto* prefix_uppercase_tensor = context.Input<Tensor>(15);
+  if (prefix_uppercase_tensor != nullptr) {
+    parameters_->is_prefix_upper_case = static_cast<int>(*prefix_uppercase_tensor->Data<int>()) == 1 ? true : false;
+  }
+
   return Status::OK();
 }
 
