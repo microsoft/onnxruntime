@@ -37,7 +37,7 @@ if(onnxruntime_DEV_MODE)
         "$<$<COMPILE_LANGUAGE:OBJC,OBJCXX>:-Werror>")
 endif()
 
-set(OBJC_ROOT "${REPO_ROOT}/objectivec")
+set(OBJC_ROOT "${CMAKE_CURRENT_LIST_DIR}")
 
 # onnxruntime_objc target
 

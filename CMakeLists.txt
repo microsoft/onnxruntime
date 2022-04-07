@@ -1842,7 +1842,7 @@ endif()
 
 if (onnxruntime_BUILD_OBJC)
   message(STATUS "Objective-C Build is enabled")
-  include(onnxruntime_objectivec.cmake)
+  add_subdirectory(objectivec)
 endif()
 
 if (onnxruntime_BUILD_UNIT_TESTS)
