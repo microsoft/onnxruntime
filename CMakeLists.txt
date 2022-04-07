@@ -1243,7 +1243,6 @@ if (onnxruntime_USE_NUPHAR_TVM)
 
   add_definitions(-DUSE_NUPHAR_TVM)
 
-  add_subdirectory(onnxruntime/core/codegen)
   set(onnxruntime_tvm_libs onnxruntime_codegen_tvm)
 
   # needs to link with stdc++fs in Linux
@@ -1754,7 +1753,7 @@ endif()
 
 set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
 if (onnxruntime_USE_NUPHAR_TVM)
-  list(APPEND ONNXRUNTIME_TARGETS onnxruntime_codegen_tvm)  
+  add_subdirectory(onnxruntime/core/codegen)
 endif()
 if (onnxruntime_ENABLE_EAGER_MODE)
   if (NOT onnxruntime_ENABLE_TRAINING OR NOT onnxruntime_ENABLE_PYTHON)
