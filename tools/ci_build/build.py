@@ -323,7 +323,7 @@ def parse_arguments():
                         help="Start up an Android emulator if needed.")
 
     parser.add_argument("--use_gdk", action='store_true', help="Build with the GDK toolchain.")
-    parser.add_argument("--gdk_edition", default=os.path.normpath(os.environ.get("GameDKLatest","")).split(os.sep)[-1], 
+    parser.add_argument("--gdk_edition", default=os.path.normpath(os.environ.get("GameDKLatest", "")).split(os.sep)[-1],
                         help="Build with a specific GDK edition. Defaults to the latest installed.")
     parser.add_argument("--gdk_platform", default="Scarlett", help="Sets the GDK target platform.")
 
@@ -997,7 +997,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, 'cmake', 'gdk_toolchain.cmake'),
             "-DGDK_EDITION=" + args.gdk_edition,
             "-DGDK_PLATFORM=" + args.gdk_platform,
-            "-Donnxruntime_BUILD_UNIT_TESTS=OFF" # gtest doesn't build for GDK
+            "-Donnxruntime_BUILD_UNIT_TESTS=OFF"  # gtest doesn't build for GDK
         ]
         if args.use_dml and not args.dml_path:
             raise BuildError("You must set dml_path when building with the GDK.")
@@ -1331,8 +1331,8 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
             file_path = os.path.join(args.dml_path, expected_file)
             if not os.path.exists(file_path):
                 raise BuildError("dml_path is invalid.",
-                                "dml_path='{}' expected_file='{}'."
-                                .format(args.dml_path, file_path))
+                                 "dml_path='{}' expected_file='{}'."
+                                 .format(args.dml_path, file_path))
     else:
         for config in configs:
             # Run the RESTORE_PACKAGES target to perform the initial
