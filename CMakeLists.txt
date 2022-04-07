@@ -1833,7 +1833,7 @@ endif()
 
 if (onnxruntime_BUILD_NODEJS)
   message(STATUS "Node.js Build is enabled")
-  include(onnxruntime_nodejs.cmake)
+  add_subdirectory(js)
 endif()
 
 if (onnxruntime_ENABLE_PYTHON)

@@ -1,7 +1,7 @@
 # Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
 # Licensed under the MIT License.
 
-set(JS_ROOT ${REPO_ROOT}/js)
+set(JS_ROOT ${CMAKE_CURRENT_LIST_DIR})
 set(JS_COMMON_ROOT ${JS_ROOT}/common)
 set(JS_NODE_ROOT ${JS_ROOT}/node)
 if (WIN32)
