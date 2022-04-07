@@ -3,13 +3,13 @@
 
 import {OpSet} from '../../opset';
 
+import * as binaryOps from './ops/binary-op';
 import {reshape} from './ops/reshape';
 import * as unaryOps from './ops/unary-op';
 import {parseUnsqueezeAttributes, unsqueeze, unsqueezeV13} from './ops/unsqueeze';
 
 export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
-  ['Abs', '', '6+', unaryOps.abs], ['Acos', '', '7+', unaryOps.acos],
-  // ['Add', '', '7+', binaryOps.add],
+  ['Abs', '', '6+', unaryOps.abs], ['Acos', '', '7+', unaryOps.acos], ['Add', '', '7+', binaryOps.add],
   // ['And', '', '7+', binaryOps.and],
   ['Asin', '', '7+', unaryOps.asin], ['Atan', '', '7+', unaryOps.atan],
   // // TODO: support new attributes for AveragePool-10
