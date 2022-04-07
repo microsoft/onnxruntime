@@ -11,7 +11,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
     find_package(JNI REQUIRED)
 endif()
 
-set(JAVA_ROOT ${REPO_ROOT}/java)
+set(JAVA_ROOT ${CMAKE_CURRENT_LIST_DIR})
 set(JAVA_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/java)
 if (onnxruntime_RUN_ONNX_TESTS)
   set(JAVA_DEPENDS onnxruntime ${test_data_target})

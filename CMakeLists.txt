@@ -1828,7 +1828,7 @@ endif()
 
 if (onnxruntime_BUILD_JAVA)
   message(STATUS "Java Build is enabled")
-  include(onnxruntime_java.cmake)
+  add_subdirectory(java)
 endif()
 
 if (onnxruntime_BUILD_NODEJS)
