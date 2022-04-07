@@ -1171,6 +1171,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     // If engine cache enable is set,
     // load and deserialize TRT engine cache regardless of the graph has dynamic shape input or not
     tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine> trt_engine;
+    tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext> trt_context;
     if (engine_cache_enable_) {
       const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
       const std::string engine_cache_path = cache_path + ".engine";
@@ -1208,6 +1209,15 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         }
       }
 
+      if (trt_engine != nullptr) {
+        // Build context
+        trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
+        if (trt_context == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                 "TensorRT EP could not build execution context for fused node: " + fused_node->Name());
+        }
+      }
+
       // If graph has dynamic shape input,
       // load and deserialize TRT engine profile cache
       if (has_dynamic_shape) {
@@ -1227,9 +1237,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       */
     }
 
-    // Build TRT engine here if the graph doesn't have dynamic shape input. Otherwise engine will
+    // If (1) engine cache enable is not set or (2) first time enable engine cache and no engine cache is present,
+    // build TRT engine here if the graph doesn't have dynamic shape input. Otherwise engine will
     // be built at runtime
-    tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext> trt_context;
     if (!has_dynamic_shape) {
       if (trt_engine == nullptr) {
         // Set INT8 per tensor dynamic range
@@ -1255,13 +1265,13 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           //subgraph_info_[fused_node->Name()][trt_node_name_with_precision][1] = true; // engine cache needs to be saved
           update_engine_cache = true;
         }
-      }
 
-      // Build context
-      trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
-      if (trt_context == nullptr) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "TensorRT EP could not build execution context for fused node: " + fused_node->Name());
+        // Build context
+        trt_context = tensorrt_ptr::unique_pointer<nvinfer1::IExecutionContext>(trt_engine->createExecutionContext());
+        if (trt_context == nullptr) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                 "TensorRT EP could not build execution context for fused node: " + fused_node->Name());
+        }
       }
     }
 
