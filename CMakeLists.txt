@@ -1750,8 +1750,7 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
 endif()
 
-
-set(ONNXRUNTIME_TARGETS onnxruntime_common)
+add_subdirectory(onnxruntime/core/common)
 add_subdirectory(onnxruntime/core/graph)
 add_subdirectory(onnxruntime/core/framework)
 add_subdirectory(onnxruntime/core/util)
