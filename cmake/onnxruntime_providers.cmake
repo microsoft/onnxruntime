@@ -332,6 +332,12 @@ if (onnxruntime_USE_CUDA)
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
   )
+  # Remove pch files
+  list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
+  )
+  
   # The shared_library files are in a separate list since they use precompiled headers, and the above files have them disabled.
   file(GLOB_RECURSE onnxruntime_providers_cuda_shared_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
@@ -465,22 +471,11 @@ if (onnxruntime_USE_CUDA)
 
   if (WIN32)
     # *.cu cannot use PCH
-    foreach(src_file ${onnxruntime_providers_cuda_cc_srcs})
-      set_source_files_properties(${src_file}
-        PROPERTIES
-        COMPILE_FLAGS "/Yucuda_pch.h /FIcuda_pch.h")
-    endforeach()
-    if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
-      foreach(src_file ${onnxruntime_cuda_contrib_ops_cc_srcs})
-        set_source_files_properties(${src_file}
-          PROPERTIES
-          COMPILE_FLAGS "/Yucuda_pch.h /FIcuda_pch.h")
-      endforeach()
-    endif()
-    set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
-      PROPERTIES
-      COMPILE_FLAGS "/Yccuda_pch.h"
+    target_precompile_headers(onnxruntime_providers_cuda PUBLIC
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
     )
+
     # disable a warning from the CUDA headers about unreferenced local functions
     #target_compile_options(onnxruntime_providers_cuda PRIVATE /wd4505)
     if (onnxruntime_USE_NUPHAR_TVM)
@@ -754,16 +749,21 @@ if (onnxruntime_USE_OPENVINO)
   # Header paths
   find_package(InferenceEngine REQUIRED)
   find_package(ngraph REQUIRED)
-
+ 
+  if (OPENVINO_2022_1)
+  find_package(OpenVINO REQUIRED COMPONENTS Runtime ONNX)
+  list (OV_20_LIBS openvino::frontend::onnx openvino::runtime)
+  endif()
+ 
   if (WIN32)
     unset(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO)
   endif()
 
   if ((DEFINED ENV{OPENCL_LIBS}) AND (DEFINED ENV{OPENCL_INCS}))
     add_definitions(-DIO_BUFFER_ENABLED=1)
-    list(APPEND OPENVINO_LIB_LIST $ENV{OPENCL_LIBS} ${InferenceEngine_LIBRARIES} ${NGRAPH_LIBRARIES} ngraph::onnx_importer ${PYTHON_LIBRARIES})
+    list(APPEND OPENVINO_LIB_LIST $ENV{OPENCL_LIBS} ${OV_20_LIBS} ${InferenceEngine_LIBRARIES} ${NGRAPH_LIBRARIES} ngraph::onnx_importer ${PYTHON_LIBRARIES})
   else()
-    list(APPEND OPENVINO_LIB_LIST ${InferenceEngine_LIBRARIES} ${NGRAPH_LIBRARIES} ngraph::onnx_importer ${PYTHON_LIBRARIES})
+    list(APPEND OPENVINO_LIB_LIST ${OV_20_LIBS} ${InferenceEngine_LIBRARIES} ${NGRAPH_LIBRARIES} ngraph::onnx_importer ${PYTHON_LIBRARIES})
   endif()
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
@@ -776,7 +776,7 @@ if (onnxruntime_USE_OPENVINO)
     target_compile_options(onnxruntime_providers_openvino PRIVATE "-Wno-parentheses")
   endif()
   add_dependencies(onnxruntime_providers_openvino onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR_LIST} ${PYTHON_INCLUDE_DIRS} $ENV{OPENCL_INCS})
+  target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${OpenVINO_INCLUDE_DIR} ${OPENVINO_INCLUDE_DIR_LIST} ${PYTHON_INCLUDE_DIRS} $ENV{OPENCL_INCS})
   target_link_libraries(onnxruntime_providers_openvino ${ONNXRUNTIME_PROVIDERS_SHARED} ${OPENVINO_LIB_LIST} absl::raw_hash_set absl::hash)
 
   if(MSVC)
@@ -1070,7 +1070,11 @@ if (onnxruntime_USE_DML)
 
   function(target_add_dml target)
     if (onnxruntime_USE_CUSTOM_DIRECTML)
-      target_link_libraries(${target} PRIVATE DirectML)
+      if (dml_LIB_DIR)
+        target_link_libraries(${target} PRIVATE ${dml_LIB_DIR}/DirectML.lib)
+      else()
+        target_link_libraries(${target} PRIVATE DirectML)
+      endif()
     else()
       add_dependencies(${target} RESTORE_PACKAGES)
       target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/DirectML.lib")
@@ -1079,11 +1083,17 @@ if (onnxruntime_USE_DML)
   endfunction()
 
   target_add_dml(onnxruntime_providers_dml)
-  target_link_libraries(onnxruntime_providers_dml PRIVATE d3d12.lib dxgi.lib)
+  if (GDK_PLATFORM STREQUAL Scarlett)
+    target_link_libraries(onnxruntime_providers_dml PRIVATE ${gdk_dx_libs})
+  else()
+    target_link_libraries(onnxruntime_providers_dml PRIVATE d3d12.lib dxgi.lib)
+  endif()
 
   target_link_libraries(onnxruntime_providers_dml PRIVATE delayimp.lib)
 
-  set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:api-ms-win-core-com-l1-1-0.dll /DELAYLOAD:shlwapi.dll /DELAYLOAD:oleaut32.dll /ignore:4199")
+  if (NOT GDK_PLATFORM)
+    set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:api-ms-win-core-com-l1-1-0.dll /DELAYLOAD:shlwapi.dll /DELAYLOAD:oleaut32.dll /ignore:4199")
+  endif()
 
   target_compile_definitions(onnxruntime_providers_dml
     PRIVATE
