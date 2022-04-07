@@ -48,9 +48,9 @@ def my_longformer_attention(g, input, weight, bias, mask, global_weight, global_
 # namespace is onnxruntime which is registered in longformer_attention.cpp
 register_custom_op_symbolic('onnxruntime::LongformerAttention', my_longformer_attention, 9)
 
-# TODO: search the directory to find correct output filename of "python setup.py install" when python version is not 3.6
+# TODO: search the directory to find correct output filename of "python setup.py install" when python version is not 3.8
 torch.ops.load_library(
-    r'../torch_extensions/build/lib.linux-x86_64-3.6/longformer_attention.cpython-36m-x86_64-linux-gnu.so')
+    r'../torch_extensions/build/lib.linux-x86_64-3.8/longformer_attention.cpython-38-x86_64-linux-gnu.so')
 
 
 def parse_arguments():
