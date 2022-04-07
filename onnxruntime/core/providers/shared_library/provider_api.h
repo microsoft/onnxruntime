@@ -149,6 +149,7 @@ struct PrimitiveDataTypeBase;
 struct Tensor;
 struct SparseTensor;
 struct TensorSeq;
+struct SessionOptions;
 
 class If;
 class Loop;

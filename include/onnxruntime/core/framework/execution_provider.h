@@ -11,6 +11,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "core/framework/data_transfer.h"
+#include "core/framework/session_options.h"
 #include "core/framework/tensor.h"
 
 namespace onnxruntime {
@@ -297,6 +298,15 @@ class IExecutionProvider {
     // EPs which prefer a different layout should override to return their preferred layout.
     return static_cast<DataLayout>(0);
   }
+
+  /** Some session option values (default or user provided) may not work with some EPs.
+   * The EP should alter the SessionOptions object fit its implementation to avoid potential crash.
+   * Rather than put the onus on the user to know these, make the appropriate change while logging the change.
+   *
+   * @param session_options The SessionOptions object to be altered.
+   * @param logger The EP write the reason of the altering to it.
+   */
+  virtual void LegalizeSessionOptions(SessionOptions& /*session_options*/, const logging::Logger& /*logger*/) {}
 
  private:
   const std::string type_;
