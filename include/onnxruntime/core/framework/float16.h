@@ -51,7 +51,7 @@ struct BFloat16 {
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
   constexpr ORT_HOST_DEVICE BFloat16(unsigned short bits, FromBitsT) : val(bits) {}
 
-  inline ORT_HOST_DEVICE BFloat16(float v) {
+  inline ORT_HOST_DEVICE explicit BFloat16(float v) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     val = __bfloat16_as_ushort(__float2bfloat16(v));
 #elif defined(USE_ROCM)
@@ -113,6 +113,11 @@ struct BFloat16 {
 #endif
 };
 
+inline bool operator==(const BFloat16& left, const BFloat16& right) { return left.val == right.val; }
+inline bool operator!=(const BFloat16& left, const BFloat16& right) { return left.val != right.val; }
+inline bool operator<(const BFloat16& left, const BFloat16& right) { return left.val < right.val; }
+
+
 // User defined suffixes to make it easier to declare
 // initializers with MLFloat16 and BFloat16 from unsigned short
 // E.g 10_f16 or 10_b16
@@ -121,9 +126,18 @@ inline MLFloat16 operator"" _f16(unsigned long long int v) {
   return MLFloat16(gsl::narrow<uint16_t>(v));
 }
 
+inline MLFloat16 operator"" _fp16(long double v) {
+  return MLFloat16(static_cast<float>(v));
+}
+
 inline BFloat16 operator"" _b16(unsigned long long int v) {
   return BFloat16(gsl::narrow<uint16_t>(v), BFloat16::FromBits());
 }
+
+inline BFloat16 operator"" _bfp16(long double v) {
+  return BFloat16(static_cast<float>(v));
+}
+
 #endif
 
 inline void BFloat16ToFloat(const BFloat16* blf, float* flt, size_t size) {

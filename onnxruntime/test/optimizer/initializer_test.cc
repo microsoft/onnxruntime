@@ -121,6 +121,7 @@ CppTypeToTensorProto_DataType(uint8_t, TensorProto_DataType_UINT8);
 CppTypeToTensorProto_DataType(int32_t, TensorProto_DataType_INT32);
 CppTypeToTensorProto_DataType(int64_t, TensorProto_DataType_INT64);
 CppTypeToTensorProto_DataType(MLFloat16, TensorProto_DataType_FLOAT16);
+CppTypeToTensorProto_DataType(BFloat16, TensorProto_DataType_BFLOAT16);
 CppTypeToTensorProto_DataType(float, TensorProto_DataType_FLOAT);
 CppTypeToTensorProto_DataType(double, TensorProto_DataType_DOUBLE);
 
@@ -141,6 +142,16 @@ std::vector<MLFloat16> GetInitializerData<MLFloat16>() {
       8_f16, 9_f16, 10_f16, 11_f16};
   return data;
 }
+
+template <>
+std::vector<BFloat16> GetInitializerData<BFloat16>() {
+  std::vector<BFloat16> data{
+      0_b16, 1_b16, 2_b16, 3_b16,
+      4_b16, 5_b16, 6_b16, 7_b16,
+      8_b16, 9_b16, 10_b16, 11_b16};
+  return data;
+}
+
 
 template <typename T>
 void TestInitializerRawData() {
@@ -166,6 +177,7 @@ TEST(OptimizerInitializerTest, RawData) {
   TestInitializerRawData<int32_t>();
   TestInitializerRawData<int64_t>();
   TestInitializerRawData<MLFloat16>();
+  TestInitializerRawData<BFloat16>();
   TestInitializerRawData<float>();
   TestInitializerRawData<double>();
 }
@@ -180,16 +192,23 @@ void AddData<MLFloat16>(const std::vector<MLFloat16>& data, size_t idx, ONNX_NAM
   tensor_proto.add_int32_data(data[idx].val);
 }
 
+template <>
+void AddData<BFloat16>(const std::vector<BFloat16>& data, size_t idx, ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  tensor_proto.add_int32_data(data[idx].val);
+}
+
+
 template <typename T>
 void TestInitializerDataField() {
   constexpr auto dt = GetTensorProtoDataType<T>();
   static_assert((dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8 ||
                  dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
                  dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32 ||
-                 dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16),
+                 dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16 ||
+                 dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16),
                 "tensor type is not supported");
 
-  std::vector<T> data = GetInitializerData<T>();
+  const std::vector<T> data = GetInitializerData<T>();
 
   ONNX_NAMESPACE::TensorProto tensor_proto;
   tensor_proto.set_data_type(GetTensorProtoDataType<T>());
@@ -243,6 +262,7 @@ TEST(OptimizerInitializerTest, DataField) {
   TestInitializerDataField<int32_t>();
   TestInitializerDataField<int64_t>();
   TestInitializerDataField<MLFloat16>();
+  TestInitializerDataField<BFloat16>();
   TestInitializerDataField<float>();
   TestInitializerDataField<double>();
 }
