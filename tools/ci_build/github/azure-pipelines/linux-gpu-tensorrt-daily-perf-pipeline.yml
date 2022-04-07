@@ -15,11 +15,6 @@ parameters:
   type: boolean
   default: true
 
-- name: RunDocker
-  displayName: Run on Docker
-  type: boolean
-  default: true
-
 - name: TrtVersion
   displayName: TensorRT Version
   type: string
@@ -97,6 +92,7 @@ jobs:
           artifact: 'onnxruntime_gpu'
           targetPath: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
       - script: 'docker pull $(dockerfile)'
+        displayName: 'Pull Nvidia Dockerfile'
 
     - ${{ if eq(parameters.BuildORT, true) }}:
 
@@ -110,7 +106,7 @@ jobs:
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
     - ${{ each option in parameters.ModelGroups }}:
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $(${{option}}) $(optional_arguments)'
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf -v $(modelVolume) -o ${{option}} -m $(${{option}}) -e "$(epList)" $(optional_arguments)'
         displayName: '${{option}} perf'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         
