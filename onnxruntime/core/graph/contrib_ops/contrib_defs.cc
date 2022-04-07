@@ -2684,6 +2684,77 @@ Example 4:
         }
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(MaskFill)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("MaskFill")
+      .Attr("axis",
+            "The axis to apply mask, default set to 0, should be within range [-input_dim+1, input_dim-1] negative value means input_dim + axis",
+            AttributeProto::INT, static_cast<int64_t>(0))
+      .Input(0, "X1", "Input data tensor from the previous layer.", "T")
+      .Input(1, "X2", "Input data mask, should have same length with input[axis]", "tensor(int32)")
+      .Output(0, "Y", "Output data tensor.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // this operator should not change shape and element type
+        propagateShapeAndTypeFromFirstInput(ctx);
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(PackImageToSeqs)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("PackImageToSeqs")
+      .Attr("margin",
+            "The margin width between different images",
+            AttributeProto::INT, static_cast<int64_t>(1))
+      .Input(0, "X1", "Input data tensor from the previous layer.", "T")
+      .Input(1, "X2", "Input seq lens", "tensor(int32)")
+      .Output(0, "Y1", "Output data tensor.", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // this operator should not change element type
+        using namespace ONNX_NAMESPACE;
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        // Shape inference
+        if (hasInputShape(ctx, 0))
+        {
+          ONNX_NAMESPACE::TensorShapeProto output_shape;
+          const TensorShapeProto& input_shape =
+              ctx.getInputType(0)->tensor_type().shape();
+          const TensorShapeProto& input_seq_len_shape =
+              ctx.getInputType(1)->tensor_type().shape();
+          const int rank = static_cast<int>(input_shape.dim_size());
+          const int seq_len_rank = static_cast<int>(input_seq_len_shape.dim_size());
+
+          if (rank != 4)
+          {
+            fail_shape_inference("Currently only support 4 dim input NCHW")
+          }
+          if (seq_len_rank != 1)
+          {
+            fail_shape_inference("Input sequence lens should be 1-d array")
+          }
+
+          for (int i = 0;i < rank;i++)
+          {
+            output_shape.add_dim();
+          }
+
+          *output_shape.mutable_dim(0) = input_seq_len_shape.dim(0);
+          *output_shape.mutable_dim(1) = input_shape.dim(1);
+          *output_shape.mutable_dim(2) = input_shape.dim(2);
+          updateOutputShape(ctx, 0, output_shape);
+        }
+      });
+
   static const char* Gelu_ver1_doc =
       R"DOC(Gaussian Error Linear Unit.
 A high-performing neural network activation function.The GELU nonlinearity is
