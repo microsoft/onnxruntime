@@ -3,7 +3,7 @@
 
 # Schema library (for contrib ops and training ops)
 
-set (CONTRIB_OPS_DIR ${ONNXRUNTIME_ROOT}/core/graph/contrib_ops)
+set (CONTRIB_OPS_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set (TRAINING_OPS_DIR ${ORTTRAINING_ROOT}/orttraining/core/graph)
 
 file(GLOB_RECURSE contrib_ops_schema_src

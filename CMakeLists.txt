@@ -1883,11 +1883,6 @@ if (BUILD_PKGCONFIG_FILES)
     ${CMAKE_INSTALL_LIBDIR}/pkgconfig )
 endif()
 
-if (onnxruntime_BUILD_OPSCHEMA_LIB AND onnxruntime_ENABLE_TRAINING)
-  # opschema library requires training ops as well
-  include(onnxruntime_opschema_lib.cmake)
-endif()
-
 if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
   add_compile_definitions(DEBUG_NODE_INPUTS_OUTPUTS)
 endif()
