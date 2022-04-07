@@ -53,6 +53,14 @@ class OpenCLExecutionProvider : public IExecutionProvider {
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
   void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
 
+  Status Sync() const override;
+  Status OnRunStart() override;
+  Status OnRunEnd(bool sync_stream) override;
+  const void* GetExecutionHandle() const noexcept override {
+    // The OpenCL interface does not return anything interesting.
+    return nullptr;
+  }
+
   /// OpenCL object accessor, kernel developer might rarely use them.
   cl_device_id GetOpenCLDevice() const { return dev_; }
   cl_context GetOpenCLContext() const { return ctx_; }

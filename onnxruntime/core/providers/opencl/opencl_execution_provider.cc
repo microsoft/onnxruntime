@@ -227,6 +227,28 @@ void OpenCLExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager
       }}));
 }
 
+Status OpenCLExecutionProvider::Sync() const {
+  ORT_RETURN_IF_CL_ERROR(clFinish(cmd_queue_));
+  return Status::OK();
+}
+
+Status OpenCLExecutionProvider::OnRunStart() {
+  return Status::OK();
+}
+
+Status OpenCLExecutionProvider::OnRunEnd(bool sync_stream) {
+  ORT_RETURN_IF_CL_ERROR(clFlush(cmd_queue_));
+  if (sync_stream) {
+    ORT_RETURN_IF_ERROR(Sync());
+  }
+
+#ifdef TRACY_ENABLE
+  TracyCLCollect(tracy_cl_ctx_);
+#endif
+
+  return Status::OK();
+}
+
 IAllocatorUniquePtrToClMem OpenCLExecutionProvider::GetScratchBuffer(size_t nbytes) const {
   ZoneScopedN("OpenCLExecutionProvider::GetScratchBuffer");
   auto alloc = GetAllocator(0, (OrtMemType)opencl::CLMemType::OPENCL_BUFFER);
