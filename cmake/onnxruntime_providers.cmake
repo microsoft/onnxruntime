@@ -1070,7 +1070,11 @@ if (onnxruntime_USE_DML)
 
   function(target_add_dml target)
     if (onnxruntime_USE_CUSTOM_DIRECTML)
-      target_link_libraries(${target} PRIVATE DirectML)
+      if (dml_LIB_DIR)
+        target_link_libraries(${target} PRIVATE ${dml_LIB_DIR}/DirectML.lib)
+      else()
+        target_link_libraries(${target} PRIVATE DirectML)
+      endif()
     else()
       add_dependencies(${target} RESTORE_PACKAGES)
       target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/DirectML.lib")
@@ -1079,11 +1083,17 @@ if (onnxruntime_USE_DML)
   endfunction()
 
   target_add_dml(onnxruntime_providers_dml)
-  target_link_libraries(onnxruntime_providers_dml PRIVATE d3d12.lib dxgi.lib)
+  if (GDK_PLATFORM STREQUAL Scarlett)
+    target_link_libraries(onnxruntime_providers_dml PRIVATE ${gdk_dx_libs})
+  else()
+    target_link_libraries(onnxruntime_providers_dml PRIVATE d3d12.lib dxgi.lib)
+  endif()
 
   target_link_libraries(onnxruntime_providers_dml PRIVATE delayimp.lib)
 
-  set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:api-ms-win-core-com-l1-1-0.dll /DELAYLOAD:shlwapi.dll /DELAYLOAD:oleaut32.dll /ignore:4199")
+  if (NOT GDK_PLATFORM)
+    set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:api-ms-win-core-com-l1-1-0.dll /DELAYLOAD:shlwapi.dll /DELAYLOAD:oleaut32.dll /ignore:4199")
+  endif()
 
   target_compile_definitions(onnxruntime_providers_dml
     PRIVATE
