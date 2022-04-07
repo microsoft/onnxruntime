@@ -232,7 +232,16 @@ Status OpenCLExecutionProvider::Sync() const {
   return Status::OK();
 }
 
+#ifdef TRACY_ENABLE
+constexpr const char* kFrameMarkName = "OpenCL EP Run";
+#endif
+
+
 Status OpenCLExecutionProvider::OnRunStart() {
+#ifdef TRACY_ENABLE
+  FrameMarkStart(kFrameMarkName);
+#endif
+
   return Status::OK();
 }
 
@@ -243,6 +252,7 @@ Status OpenCLExecutionProvider::OnRunEnd(bool sync_stream) {
   }
 
 #ifdef TRACY_ENABLE
+  FrameMarkEnd(kFrameMarkName);
   TracyCLCollect(tracy_cl_ctx_);
 #endif
 
