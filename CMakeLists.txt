@@ -1859,7 +1859,7 @@ endif()
 if (onnxruntime_BUILD_CSHARP)
   message(STATUS "CSharp Build is enabled")
 #  set_property(GLOBAL PROPERTY VS_DOTNET_TARGET_FRAMEWORK_VERSION "netstandard2.0")
-  include(onnxruntime_csharp.cmake)
+  add_subdirectory(csharp)
 endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)

@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-set (CSHARP_ROOT ${PROJECT_SOURCE_DIR}/../csharp)
+set (CSHARP_ROOT ${CMAKE_CURRENT_LIST_DIR})
 set (CSHARP_MASTER_TARGET OnnxRuntime.CSharp)
 set (CSHARP_MASTER_PROJECT ${CSHARP_ROOT}/OnnxRuntime.CSharp.proj)
 if (onnxruntime_RUN_ONNX_TESTS)
