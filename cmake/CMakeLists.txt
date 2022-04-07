@@ -1145,12 +1145,6 @@ if (onnxruntime_USE_COREML)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES coreml)
 endif()
 
-add_subdirectory(external/tracy EXCLUDE_FROM_ALL)
-include_directories(external/tracy)
-if(onnxruntime_ENABLE_TRACY)
-    add_compile_definitions(TRACY_ENABLE)
-endif()
-
 function(onnxruntime_set_compile_flags target_name)
     target_compile_definitions(${target_name} PUBLIC EIGEN_USE_THREADS)
     if (MSVC)
