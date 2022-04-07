@@ -1,0 +1,17 @@
+add_subdirectory(common)
+add_subdirectory(graph)
+add_subdirectory(framework)
+add_subdirectory(util)
+add_subdirectory(providers)
+add_subdirectory(optimizer)
+add_subdirectory(session)
+add_subdirectory(mlas)
+add_subdirectory(flatbuffers)
+
+if (onnxruntime_USE_NUPHAR_TVM)
+  add_subdirectory(codegen)
+endif()
+
+if (onnxruntime_ENABLE_EAGER_MODE)
+  add_subdirectory(eager)
+endif()
