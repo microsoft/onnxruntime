@@ -1908,7 +1908,8 @@ else()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${CMAKE_DL_LIBS} Threads::Threads)
 endif()
 
-if (WIN32)
+# When GDK_PLATFORM is set then WINAPI_FAMILY is defined in gdk_toolchain.cmake (along with other relevant flags/definitions).
+if (WIN32 AND NOT GDK_PLATFORM)
   add_compile_definitions(WINAPI_FAMILY=100) # Desktop app
   if (onnxruntime_USE_WINML)
     add_compile_definitions(WINVER=0x0602 _WIN32_WINNT=0x0602 NTDDI_VERSION=0x06020000)  # Support Windows 8 and newer
