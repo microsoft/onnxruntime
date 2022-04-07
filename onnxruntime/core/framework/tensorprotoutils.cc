@@ -228,7 +228,7 @@ Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& /*tensor*
                                     /*out*/ std::string* /*p_data*/) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "External data type cannot be STRING.");
 }
-#endif  //!defined(ORT_MINIMAL_BUILD)
+#endif  //! defined(ORT_MINIMAL_BUILD)
 
 // implementation of type specific unpack of data contained within the TensorProto
 template <typename T>
@@ -637,10 +637,10 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
     raw_data = const_cast<char*>(tensor_proto.raw_data().data());
     // TODO The line above has const-correctness issues. Below is a possible fix which copies the tensor_proto data
     //      into a writeable buffer. However, it requires extra memory which may exceed the limit for certain tests.
-    //auto buffer = std::make_unique<char[]>(tensor_proto.raw_data().size());
-    //std::memcpy(buffer.get(), tensor_proto.raw_data().data(), tensor_proto.raw_data().size());
-    //deleter_for_file_data.d = OrtCallback{DeleteCharArray, buffer.get()};
-    //raw_data = buffer.release();
+    // auto buffer = std::make_unique<char[]>(tensor_proto.raw_data().size());
+    // std::memcpy(buffer.get(), tensor_proto.raw_data().data(), tensor_proto.raw_data().size());
+    // deleter_for_file_data.d = OrtCallback{DeleteCharArray, buffer.get()};
+    // raw_data = buffer.release();
     raw_data_len = tensor_proto.raw_data().size();
   }
 
@@ -807,6 +807,7 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
     case AttributeProto_AttributeType_FLOATS:
       tensor.set_data_type(TensorProto_DataType_FLOAT);
       *tensor.mutable_float_data() = constant_attribute.floats();
+      tensor.add_dims(constant_attribute.floats().size());
       break;
     case AttributeProto_AttributeType_INT:
       tensor.set_data_type(TensorProto_DataType_INT64);
@@ -815,6 +816,7 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
     case AttributeProto_AttributeType_INTS:
       tensor.set_data_type(TensorProto_DataType_INT64);
       *tensor.mutable_int64_data() = constant_attribute.ints();
+      tensor.add_dims(constant_attribute.ints().size());
       break;
     case AttributeProto_AttributeType_STRING:
       tensor.set_data_type(TensorProto_DataType_STRING);
@@ -823,6 +825,7 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
     case AttributeProto_AttributeType_STRINGS: {
       tensor.set_data_type(TensorProto_DataType_STRING);
       *tensor.mutable_string_data() = constant_attribute.strings();
+      tensor.add_dims(constant_attribute.strings().size());
       break;
     }
 #if !defined(DISABLE_SPARSE_TENSORS)
