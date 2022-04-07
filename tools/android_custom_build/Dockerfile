@@ -1,7 +1,12 @@
+# --------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------
+# Dockerfile for ONNX Runtime Android package build environment
+
 FROM ubuntu:18.04
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV ANDROID_HOME=/opt/android-sdk
 
 # install utilities
 RUN apt-get update && apt-get install --yes --no-install-recommends \
@@ -10,6 +15,10 @@ RUN apt-get update && apt-get install --yes --no-install-recommends \
 
 # install Java
 RUN apt-get install --yes --no-install-recommends openjdk-8-jdk-headless
+
+ENV ANDROID_HOME=/opt/android-sdk
+ENV NDK_VERSION=24.0.8215888
+ENV ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}
 
 # install Android command line tools
 RUN aria2c -q -d /tmp -o cmdline-tools.zip \
@@ -22,7 +31,7 @@ RUN aria2c -q -d /tmp -o cmdline-tools.zip \
 RUN yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses
 RUN ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --install \
   "platforms;android-32" \
-  "ndk;24.0.8215888"
+  "ndk;${NDK_VERSION}"
 
 # install ORT dependencies
 RUN apt-get install --yes --no-install-recommends \
@@ -37,18 +46,20 @@ RUN apt-get install --yes --no-install-recommends \
   python3-wheel
 
 # cmake
-RUN aria2c -q -d /tmp -o cmake-3.21.0-linux-x86_64.tar.gz \
+RUN CMAKE_VERSION=3.21.0 && \
+  aria2c -q -d /tmp -o cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz \
   --checksum=sha-256=d54ef6909f519740bc85cec07ff54574cd1e061f9f17357d9ace69f61c6291ce \
-  https://github.com/Kitware/CMake/releases/download/v3.21.0/cmake-3.21.0-linux-x86_64.tar.gz && \
-  tar -zxf /tmp/cmake-3.21.0-linux-x86_64.tar.gz --strip=1 -C /usr
+  https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz && \
+  tar -zxf /tmp/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz --strip=1 -C /usr
 
 # gradle
-RUN aria2c -q -d /tmp -o gradle-6.8.3-bin.zip \
+RUN GRADLE_VERSION=6.8.3 && \
+  aria2c -q -d /tmp -o gradle-${GRADLE_VERSION}-bin.zip \
   --checksum=sha-256=7faa7198769f872826c8ef4f1450f839ec27f0b4d5d1e51bade63667cbccd205 \
-  https://services.gradle.org/distributions/gradle-6.8.3-bin.zip && \
+  https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip && \
   mkdir /opt/gradle && \
-  unzip -d /opt/gradle /tmp/gradle-6.8.3-bin.zip && \
-  ln -s /opt/gradle/gradle-6.8.3/bin/gradle /usr/bin
+  unzip -d /opt/gradle /tmp/gradle-${GRADLE_VERSION}-bin.zip && \
+  ln -s /opt/gradle/gradle-${GRADLE_VERSION}/bin/gradle /usr/bin
 
 # flatbuffers
 RUN python3 -m pip install flatbuffers==2.0
@@ -58,13 +69,5 @@ WORKDIR /workspace
 # get ORT repo
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=master
-
-RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime
-
-# build ORT Android AAR
-RUN python3 ./onnxruntime/tools/ci_build/github/android/build_aar_package.py \
-  --android_sdk_path ${ANDROID_HOME} \
-  --android_ndk_path ${ANDROID_HOME}/ndk/24.0.8215888 \
-  --build_dir ./onnxruntime/build/aar \
-  --include_ops_by_config ./onnxruntime/tools/ci_build/github/android/mobile_package.required_operators.config \
-  ./onnxruntime/tools/ci_build/github/android/default_mobile_aar_build_settings.json
+RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recurse-submodules ${ONNXRUNTIME_REPO} \
+  /workspace/onnxruntime
