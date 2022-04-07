@@ -7,13 +7,13 @@
 # This script run benchmark of latency or peak memory usage of Longformer model inference.
 #
 # Please run convert_longformer_to_onnx.py to get onnx model before running this script.
-# Tested with python 3.6, onnxruntime-gpu 1.7.0, PyTorch 1.7.1, transformers 4.3.2, CUDA 10.2.
+# Tested with python 3.8, onnxruntime-gpu 1.11.0, PyTorch 1.11.0, transformers 4.18.0, CUDA 11.3.
 #
-# Example commands for exporting longformer base model in Linux or WSL:
-#   cd ../torch_extensions
+# Example commands for exporting longformer base model in Linux:
+#   cd ./torch_extensions
 #   python setup.py install
-#   cd ../longformer
-#   python convert_longformer_to_onnx.py --model longformer-base-4096 --precision fp16 --optimize_onnx
+#   cd ..
+#   python convert_to_onnx.py --model longformer-base-4096 --precision fp16 --optimize_onnx
 #
 # When there is no parameter, all avaiable tests (memory & latency) will run on the longformer-base-4096 pretrained model.
 #    python benchmark_longformer.py

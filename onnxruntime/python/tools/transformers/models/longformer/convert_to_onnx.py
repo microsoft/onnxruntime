@@ -7,10 +7,10 @@
 # This script converts Longformer model from huggingface transformers 4.0 or later to ONNX.
 # Unlike normal ONNX model exporting, it will directly translate LongformerSelfAttention to the LongformerAttention operator in ONNX Runtime.
 #
-# Before running this script, please run "python setup.py install" in ../torch_extensions under Linux with PyTorch installed.
+# Before running this script, please run "python setup.py install" in ./torch_extensions under Linux with PyTorch installed.
 # Then you can update the path of longformer_attention.cpython-*.so and run this script in same environment.
 #
-# It is tested in Ubuntu 18.04, python 3.6, PyTorch 1.7.1, transformers 4.3.0 or 4.3.2.
+# It is tested in Ubuntu 18.04 with python 3.8, onnxruntime-gpu 1.11.0, PyTorch 1.11.0 with CUDA 11.3, transformers 4.18.0.
 # GPU is not needed for this script. You can run it in CPU. For --optimize_onnx, you can use either onnxruntime or onnxruntime-gpu package.
 #
 # For inference of the onnx model, you will need onnxruntime-gpu 1.7.0 or above.
