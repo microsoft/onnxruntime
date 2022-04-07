@@ -468,23 +468,28 @@ def generate_files(list, args):
                           runtimes_target + args.target_architecture + '\\native" />')
 
         if is_windows():
-            dll_list_path = os.path.join(openvino_path, 'deployment_tools\\inference_engine\\bin\\intel64\\Release\\')
+            if "2022" in openvino_path:
+                dll_list_path = os.path.join(openvino_path, 'runtime\\bin\\intel64\\Release\\')
+                tbb_list_path = os.path.join(openvino_path, 'runtime\\3rdparty\\tbb\\bin\\')
+            else:
+                dll_list_path = os.path.join(
+                    openvino_path, 'deployment_tools\\inference_engine\\bin\\intel64\\Release\\')
+                tbb_list_path = os.path.join(openvino_path, 'deployment_tools\\inference_engine\\external\\tbb\\bin\\')
+                ngraph_list_path = os.path.join(openvino_path, 'deployment_tools\\ngraph\\lib\\')
+                for ngraph_element in os.listdir(ngraph_list_path):
+                    if ngraph_element.endswith('dll'):
+                        files_list.append('<file src=' + '"' + os.path.join(ngraph_list_path, ngraph_element) +
+                                          runtimes_target + args.target_architecture + '\\native" />')
             for dll_element in os.listdir(dll_list_path):
                 if dll_element.endswith('dll'):
                     files_list.append('<file src=' + '"' + os.path.join(dll_list_path, dll_element) + runtimes_target +
                                       args.target_architecture + '\\native" />')
-            ngraph_list_path = os.path.join(openvino_path, 'deployment_tools\\ngraph\\lib\\')
-            for ngraph_element in os.listdir(ngraph_list_path):
-                if ngraph_element.endswith('dll'):
-                    files_list.append('<file src=' + '"' + os.path.join(ngraph_list_path, ngraph_element) +
-                                      runtimes_target + args.target_architecture + '\\native" />')
             # plugins.xml
             files_list.append('<file src=' + '"' + os.path.join(dll_list_path, 'plugins.xml') +
                               runtimes_target + args.target_architecture + '\\native" />')
             # usb-ma2x8x.mvcmd
             files_list.append('<file src=' + '"' + os.path.join(dll_list_path, 'usb-ma2x8x.mvcmd') +
                               runtimes_target + args.target_architecture + '\\native" />')
-            tbb_list_path = os.path.join(openvino_path, 'deployment_tools\\inference_engine\\external\\tbb\\bin\\')
             for tbb_element in os.listdir(tbb_list_path):
                 if tbb_element.endswith('dll'):
                     files_list.append('<file src=' + '"' + os.path.join(tbb_list_path, tbb_element) +
