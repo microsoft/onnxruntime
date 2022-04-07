@@ -36,7 +36,7 @@ Status SessionOptions::AddInitializer(_In_z_ const char* name, _In_ const OrtVal
   bool result = initializers_to_share_map.emplace(name, val).second;
 
   if (!result) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "An OrtValue for this name has already been added.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "An OrtValue for this name has already been added: ", name);
   }
 
   return Status::OK();
@@ -51,10 +51,10 @@ Status SessionOptions::AddExternalInitializers(gsl::span<const std::string> name
     ORT_RETURN_IF_ERROR(CheckInitializer(names[i].c_str(), &values[i]));
     bool result = external_initializers.emplace(names[i], values[i]).second;
     if (!result) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, MakeString("An OrtValue for this name has already been added: ", names[i]));
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "An OrtValue for this name has already been added: ", names[i]);
     }
   }
   return Status::OK();
 }
-#endif  // ORT_MINIMAL_BUILD
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
 }  // namespace onnxruntime

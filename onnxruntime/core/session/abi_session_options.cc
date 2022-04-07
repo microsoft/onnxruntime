@@ -214,9 +214,9 @@ ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializers, _In_ OrtSessionOptions* op
   API_IMPL_END
 #else
   ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(input_names);
-  ORT_UNUSED_PARAMETER(inputs);
-  ORT_UNUSED_PARAMETER(input_len);
+  ORT_UNUSED_PARAMETER(initializer_names);
+  ORT_UNUSED_PARAMETER(initializers);
+  ORT_UNUSED_PARAMETER(initializers_num);
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "External initializers are not supported in this build");
 #endif
 }
