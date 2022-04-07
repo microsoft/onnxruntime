@@ -13,7 +13,7 @@ namespace Dml
         m_heapFlags(heap->GetDesc().Flags)
     {
         ComPtr<ID3D12Device> device;
-        ORT_THROW_IF_FAILED_NOT_GAMING_XBOX(heap->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
+        GRAPHICS_THROW_IF_FAILED(heap->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
         m_handleIncrementSize = device->GetDescriptorHandleIncrementSize(heap->GetDesc().Type);
     }
 

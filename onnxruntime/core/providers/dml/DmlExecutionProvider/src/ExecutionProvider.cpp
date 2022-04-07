@@ -73,7 +73,7 @@ namespace Dml
         }
 
         ComPtr<ID3D12Device> device;
-        ORT_THROW_IF_FAILED_NOT_GAMING_XBOX(commandQueue->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
+        GRAPHICS_THROW_IF_FAILED(commandQueue->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
 
         m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands);
 

@@ -18,6 +18,7 @@ using Microsoft::WRL::ComPtr;
 #include "core/session/ort_apis.h"
 #include "core/framework/error_code_helper.h"
 #include "DmlExecutionProvider/src/ErrorHandling.h"
+#include "DmlExecutionProvider/src/GraphicsUnknownHelper.h"
 #include "DmlExecutionProvider/inc/DmlExecutionProvider.h"
 #include "core/platform/env.h"
 

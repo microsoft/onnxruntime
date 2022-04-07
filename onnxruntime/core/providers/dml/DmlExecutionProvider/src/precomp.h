@@ -29,7 +29,7 @@
 #ifdef _GAMING_XBOX_SCARLETT
 #include <d3d12_xs.h>
 #include <d3dx12_xs.h>
-#elif _GAMING_XBOX_XBOXONE
+#elif defined(_GAMING_XBOX_XBOXONE)
 #include <d3d12_x.h>
 #include <d3dx12_x.h>
 #else // Desktop

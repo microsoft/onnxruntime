@@ -11,7 +11,7 @@ namespace Dml
 class GraphicsUnknownWrapper : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IUnknown>
 {
 public:
-    explicit GraphicsUnknownWrapper(const Microsoft::WRL::ComPtr<IGraphicsUnknown>& graphicsUnknown) : m_graphicsUnknown(graphicsUnknown.Get()) {}
+    explicit GraphicsUnknownWrapper(Microsoft::WRL::ComPtr<IGraphicsUnknown> graphicsUnknown) : m_graphicsUnknown(std::move(graphicsUnknown)) {}
     explicit GraphicsUnknownWrapper(IGraphicsUnknown* graphicsUnknown) : m_graphicsUnknown(graphicsUnknown) {}
 
     HRESULT __stdcall QueryInterface(const IID& iid, void** object) noexcept final
@@ -50,8 +50,8 @@ private:
 
 // APIs like ID3D12DeviceChild::GetDevice return void in D3D12.x, but return HRESULT in D3D12.
 #ifdef _GAMING_XBOX
-#define ORT_THROW_IF_FAILED_NOT_GAMING_XBOX(hr) (hr)
+#define GRAPHICS_THROW_IF_FAILED(hr) (hr)
 #else
-#define ORT_THROW_IF_FAILED_NOT_GAMING_XBOX(hr) ORT_THROW_IF_FAILED(hr)
+#define GRAPHICS_THROW_IF_FAILED(hr) ORT_THROW_IF_FAILED(hr)
 #endif
 } // namespace Dml

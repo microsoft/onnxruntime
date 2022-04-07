@@ -11,21 +11,21 @@ cmake_path(SET gdk_gxdk_path $ENV{GameDK}/${GDK_EDITION}/GXDK NORMALIZE)
 # Set C/C++ compile flags and additional include directories.
 foreach(lang C CXX)
     set(CMAKE_${lang}_FLAGS_INIT "")
-    string(APPEND CMAKE_${lang}_FLAGS_INIT " /D_GAMING_XBOX")
-    string(APPEND CMAKE_${lang}_FLAGS_INIT " /DWINAPI_FAMILY=WINAPI_FAMILY_GAMES")
-    string(APPEND CMAKE_${lang}_FLAGS_INIT " /D_ATL_NO_DEFAULT_LIBS")
-    string(APPEND CMAKE_${lang}_FLAGS_INIT " /D__WRL_NO_DEFAULT_LIB__")
-    string(APPEND CMAKE_${lang}_FLAGS_INIT " /D__WRL_CLASSIC_COM_STRICT__")
-    string(APPEND CMAKE_${lang}_FLAGS_INIT " /D_CRT_USE_WINAPI_PARTITION_APP")
-    string(APPEND CMAKE_${lang}_FLAGS_INIT " /DWIN32_LEAN_AND_MEAN")
-    string(APPEND CMAKE_${lang}_FLAGS_INIT " /favor:AMD64")
+    string(APPEND CMAKE_${lang}_FLAGS_INIT 
+        " /D_GAMING_XBOX"
+        " /DWINAPI_FAMILY=WINAPI_FAMILY_GAMES"
+        " /D_ATL_NO_DEFAULT_LIBS"
+        " /D__WRL_NO_DEFAULT_LIB__"
+        " /D__WRL_CLASSIC_COM_STRICT__"
+        " /D_CRT_USE_WINAPI_PARTITION_APP"
+        " /DWIN32_LEAN_AND_MEAN"
+        " /favor:AMD64"
+    )
 
     if(GDK_PLATFORM STREQUAL Scarlett)
-        string(APPEND CMAKE_${lang}_FLAGS_INIT " /D_GAMING_XBOX_SCARLETT")
-        string(APPEND CMAKE_${lang}_FLAGS_INIT " /arch:AVX2")
+        string(APPEND CMAKE_${lang}_FLAGS_INIT " /D_GAMING_XBOX_SCARLETT /arch:AVX2")
     elseif(GDK_PLATFORM STREQUAL XboxOne)
-        string(APPEND CMAKE_${lang}_FLAGS_INIT " /D_GAMING_XBOX_XBOXONE")
-        string(APPEND CMAKE_${lang}_FLAGS_INIT " /arch:AVX")
+        string(APPEND CMAKE_${lang}_FLAGS_INIT " /D_GAMING_XBOX_XBOXONE /arch:AVX")
     endif()
 
     set(CMAKE_${lang}_STANDARD_INCLUDE_DIRECTORIES ${gdk_gxdk_path}/gameKit/Include/${GDK_PLATFORM})
@@ -34,52 +34,51 @@ foreach(lang C CXX)
 endforeach()
 
 # It's best to avoid inadvertently linking with any libraries not present in the OS.
-set(nodefault_libs "")
-list(APPEND nodefault_libs advapi32.lib)
-list(APPEND nodefault_libs comctl32.lib)
-list(APPEND nodefault_libs comsupp.lib)
-list(APPEND nodefault_libs dbghelp.lib)
-list(APPEND nodefault_libs gdi32.lib)
-list(APPEND nodefault_libs gdiplus.lib)
-list(APPEND nodefault_libs guardcfw.lib)
-list(APPEND nodefault_libs kernel32.lib)
-list(APPEND nodefault_libs mmc.lib)
-list(APPEND nodefault_libs msimg32.lib)
-list(APPEND nodefault_libs msvcole.lib)
-list(APPEND nodefault_libs msvcoled.lib)
-list(APPEND nodefault_libs mswsock.lib)
-list(APPEND nodefault_libs ntstrsafe.lib)
-list(APPEND nodefault_libs ole2.lib)
-list(APPEND nodefault_libs ole2autd.lib)
-list(APPEND nodefault_libs ole2auto.lib)
-list(APPEND nodefault_libs ole2d.lib)
-list(APPEND nodefault_libs ole2ui.lib)
-list(APPEND nodefault_libs ole2uid.lib)
-list(APPEND nodefault_libs ole32.lib)
-list(APPEND nodefault_libs oleacc.lib)
-list(APPEND nodefault_libs oleaut32.lib)
-list(APPEND nodefault_libs oledlg.lib)
-list(APPEND nodefault_libs oledlgd.lib)
-list(APPEND nodefault_libs oldnames.lib)
-list(APPEND nodefault_libs runtimeobject.lib)
-list(APPEND nodefault_libs shell32.lib)
-list(APPEND nodefault_libs shlwapi.lib)
-list(APPEND nodefault_libs strsafe.lib)
-list(APPEND nodefault_libs urlmon.lib)
-list(APPEND nodefault_libs user32.lib)
-list(APPEND nodefault_libs userenv.lib)
-list(APPEND nodefault_libs wlmole.lib)
-list(APPEND nodefault_libs wlmoled.lib)
-list(APPEND nodefault_libs onecore.lib)
+list(APPEND nodefault_libs 
+    advapi32.lib
+    comctl32.lib
+    comsupp.lib
+    dbghelp.lib
+    gdi32.lib
+    gdiplus.lib
+    guardcfw.lib
+    kernel32.lib
+    mmc.lib
+    msimg32.lib
+    msvcole.lib
+    msvcoled.lib
+    mswsock.lib
+    ntstrsafe.lib
+    ole2.lib
+    ole2autd.lib
+    ole2auto.lib
+    ole2d.lib
+    ole2ui.lib
+    ole2uid.lib
+    ole32.lib
+    oleacc.lib
+    oleaut32.lib
+    oledlg.lib
+    oledlgd.lib
+    oldnames.lib
+    runtimeobject.lib
+    shell32.lib
+    shlwapi.lib
+    strsafe.lib
+    urlmon.lib
+    user32.lib
+    userenv.lib
+    wlmole.lib
+    wlmoled.lib
+    onecore.lib
+)
 
 foreach(link_type EXE SHARED MODULE)
     set(CMAKE_${link_type}_LINKER_FLAGS_INIT "")
     foreach(lib ${nodefault_libs})
         string(APPEND CMAKE_${link_type}_LINKER_FLAGS_INIT " /NODEFAULTLIB:${lib}")
     endforeach()
-    string(APPEND CMAKE_${link_type}_LINKER_FLAGS_INIT " /DYNAMICBASE")
-    string(APPEND CMAKE_${link_type}_LINKER_FLAGS_INIT " /NXCOMPAT")
-    string(APPEND CMAKE_${link_type}_LINKER_FLAGS_INIT " /MANIFEST:NO")
+    string(APPEND CMAKE_${link_type}_LINKER_FLAGS_INIT " /DYNAMICBASE /NXCOMPAT /MANIFEST:NO")
 endforeach()
 
 set(gdk_dx_libs ${gdk_gxdk_path}/gameKit/lib/amd64/PIXEvt.lib)
