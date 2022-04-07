@@ -1002,6 +1002,7 @@ struct ProviderLibrary {
   ProviderLibrary(const char* filename, bool unload = true) : filename_{filename}, unload_{unload} {}
   ~ProviderLibrary() {
     // assert(!handle_); // We should already be unloaded at this point (disabled until Python shuts down deterministically)
+      destroyed_=true;
   }
 
   Provider& Get() try {
@@ -1027,6 +1028,8 @@ struct ProviderLibrary {
   }
 
   void Unload() {
+    if (destroyed_)
+      ORT_THROW("Calling Unload() on destroyed ProviderLibrary!!");
     std::lock_guard<std::mutex> lock{mutex_};
 
     if (handle_) {
@@ -1051,6 +1054,8 @@ struct ProviderLibrary {
   bool unload_;
   Provider* provider_{};
   void* handle_{};
+
+  bool destroyed_{};
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ProviderLibrary);
 };
