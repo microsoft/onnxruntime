@@ -1243,6 +1243,7 @@ if (onnxruntime_USE_NUPHAR_TVM)
 
   add_definitions(-DUSE_NUPHAR_TVM)
 
+  add_subdirectory(onnxruntime/core/codegen)
   set(onnxruntime_tvm_libs onnxruntime_codegen_tvm)
 
   # needs to link with stdc++fs in Linux
