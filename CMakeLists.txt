@@ -1751,7 +1751,8 @@ if (onnxruntime_ENABLE_TRAINING)
 endif()
 
 
-set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
+set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas)
+add_subdirectory(onnxruntime/core/flatbuffers)
 if (onnxruntime_USE_NUPHAR_TVM)
   add_subdirectory(onnxruntime/core/codegen)
 endif()
