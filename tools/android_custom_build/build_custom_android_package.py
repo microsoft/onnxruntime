@@ -55,7 +55,7 @@ def parse_args():
     args = parser.parse_args()
 
     if args.docker_path is None:
-        raise ValueError("Unable to determine docker path. Please specify it with --docker_path.")
+        raise ValueError("Unable to determine docker path. Please provide it with --docker_path.")
 
     return args
 
