@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/util/math.h"
+#include "default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -184,7 +185,7 @@ TEST(MathOpTest, Sign_MLFloat16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
-TEST(MathOpTest, Sign_BFloat16) {
+TEST(MathOpTest, Sign_bfloat16) {
   using namespace test_sign_internal;
   OpTester test("Sign", 13);
 
@@ -197,7 +198,11 @@ TEST(MathOpTest, Sign_BFloat16) {
   std::vector<BFloat16> output;
   TestImpl<BFloat16>(input.cbegin(), input.cend(), std::back_inserter(output));
   test.AddOutput<BFloat16>("output", input_dims, output);
-  test.Run(OpTester::ExpectResult::kExpectSuccess);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  #if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+  #endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 }  // namespace test

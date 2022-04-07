@@ -104,7 +104,7 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
 }
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)
 TEST(GemmOpTest, GemmNoTrans_bfloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -133,11 +133,13 @@ TEST(GemmOpTest, GemmNoTrans_bfloat16) {
 
   execution_providers.clear();
   execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/false));
+#elif USE_DNNL
+  execution_providers.emplace_back(DefaultDnnlExecutionProvider());
 #endif
   test.ConfigEps(std::move(execution_providers))
       .RunWithConfig();
 }
-#endif
+#endif  // USE_CUDA USE_RCOM USE_DNNL
 
 template <typename T>
 void TestGemmBroadcast() {
@@ -403,6 +405,32 @@ TEST(GemmOpTest, GemmNaN) {
   TestGemmNaN<float>();
   TestGemmNaN<double>();
 }
+#if defined(USE_DNNL)
+TEST(GemmOpTest, GemmNaN_bfloat16) {
+  OpTester test("Gemm", 14);
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 0.0f);
+  test.AddInput<BFloat16>("A", {2, 4},
+                               MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f,
+                                             -1.0f, -2.0f, -3.0f, -4.0f}));
+  test.AddInput<BFloat16>("B", {4, 3}, 
+                               MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f,
+                                             1.0f, 1.0f, 1.0f, 1.0f, 
+                                             1.0f, 1.0f, 1.0f, 1.0f}));
+  test.AddInput<BFloat16>("C", {2, 3}, MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f}));
+  test.AddOutput<BFloat16>("Y", {2, 3},
+                               MakeBFloat16({10.0f, 10.0f, 10.0f,
+                                             -10.0f, -10.0f, -10.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);  // TensorRT: Seg fault in parser
+}
+#endif  //  USE_DNNL
 
 template <typename T>
 void TestGemmScalarBroadcast() {
@@ -430,6 +458,32 @@ TEST(GemmOpTest, GemmScalarBroadcast) {
   TestGemmScalarBroadcast<double>();
 }
 
+#if defined(USE_DNNL)
+TEST(GemmOpTest, GemmScalarBroadcast_bfloat16) {
+  OpTester test("Gemm", 14);
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddInput<BFloat16>("A", {2, 4},
+                          MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f,
+                                        -1.0f, -2.0f, -3.0f, -4.0f}));
+  test.AddInput<BFloat16>("B", {4, 3},
+                          MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f,
+                                        1.0f, 1.0f, 1.0f, 1.0f,
+                                        1.0f, 1.0f, 1.0f, 1.0f}));
+  test.AddInput<BFloat16>("C", {1}, MakeBFloat16({1.0f}));
+  test.AddOutput<BFloat16>("Y", {2, 3},
+                           MakeBFloat16({11.0f, 11.0f, 11.0f,
+                                         -9.0f, -9.0f, -9.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);  // TensorRT: Seg fault in parser
+}
+#endif  //  USE_DNNL
+
 template <typename T>
 void TestGemm2DBroadcast_1() {
   OpTester test("Gemm");
@@ -455,6 +509,31 @@ TEST(GemmOpTest, Gemm2DBroadcast_1) {
   TestGemm2DBroadcast_1<float>();
   TestGemm2DBroadcast_1<double>();
 }
+#if defined(USE_DNNL)
+TEST(GemmOpTest, Gemm2DBroadcast_1_bfloat16) {
+  OpTester test("Gemm", 14);
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddInput<BFloat16>("A", {2, 4},
+                          MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f,
+                                        -1.0f, -2.0f, -3.0f, -4.0f}));
+  test.AddInput<BFloat16>("B", {4, 3},
+                          MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f,
+                                        1.0f, 1.0f, 1.0f, 1.0f,
+                                        1.0f, 1.0f, 1.0f, 1.0f}));
+  test.AddInput<BFloat16>("C", {2, 1}, MakeBFloat16({1.0f, 2.0f}));
+  test.AddOutput<BFloat16>("Y", {2, 3},
+                           MakeBFloat16({11.0f, 11.0f, 11.0f,
+                                         -8.0f, -8.0f, -8.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);  // TensorRT: Seg fault in parser
+}
+#endif  //  USE_DNNL
 
 template <typename T>
 void TestGemm2DBroadcast_2() {
@@ -483,6 +562,32 @@ TEST(GemmOpTest, Gemm2DBroadcast_2) {
   TestGemm2DBroadcast_2<double>();
 }
 
+#if defined(USE_DNNL)
+TEST(GemmOpTest, Gemm2DBroadcast_2_bfloat16) {
+  OpTester test("Gemm", 14);
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddInput<BFloat16>("A", {2, 4},
+                          MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f,
+                                        -1.0f, -2.0f, -3.0f, -4.0f}));
+  test.AddInput<BFloat16>("B", {4, 3},
+                          MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f,
+                                        1.0f, 1.0f, 1.0f, 1.0f,
+                                        1.0f, 1.0f, 1.0f, 1.0f}));
+  test.AddInput<BFloat16>("C", {1, 3}, MakeBFloat16({1.0f, 2.0f, 3.0f}));
+  test.AddOutput<BFloat16>("Y", {2, 3},
+                           MakeBFloat16({11.0f, 12.0f, 13.0f,
+                                         -9.0f, -8.0f, -7.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);  // TensorRT: Seg fault in parser
+}
+#endif  //  USE_DNNL
+
 template <typename T>
 void TestGemmFalseBroadcast() {
   OpTester test("Gemm");
@@ -509,6 +614,31 @@ TEST(GemmOpTest, GemmFalseBroadcast) {
   TestGemmFalseBroadcast<double>();
 }
 
+#if defined(USE_DNNL)
+TEST(GemmOpTest, GemmFalseBroadcast_2_bfloat16) {
+  OpTester test("Gemm", 14);
+
+  test.AddAttribute("transA", (int64_t)0);
+  test.AddAttribute("transB", (int64_t)0);
+  test.AddAttribute("alpha", 1.0f);
+  test.AddInput<BFloat16>("A", {2, 4},
+                          MakeBFloat16({1.0f, 2.0f, 3.0f, 4.0f,
+                                        -1.0f, -2.0f, -3.0f, -4.0f}));
+  test.AddInput<BFloat16>("B", {4, 3},
+                          MakeBFloat16({1.0f, 1.0f, 1.0f, 1.0f,
+                                        1.0f, 1.0f, 1.0f, 1.0f,
+                                        1.0f, 1.0f, 1.0f, 1.0f}));
+  test.AddInput<BFloat16>("C", {2, 3}, MakeBFloat16({1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f}));
+  test.AddOutput<BFloat16>("Y", {2, 3},
+                           MakeBFloat16({11.0f, 11.0f, 11.0f,
+                                         -8.0f, -8.0f, -8.0f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif  //  USE_DNNL
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  //  USE_DNNL
 template <typename T>
 void TestGemmEmptyTensor() {
   OpTester test("Gemm");

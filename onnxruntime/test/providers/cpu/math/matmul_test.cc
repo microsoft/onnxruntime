@@ -247,8 +247,8 @@ TEST(MathOpTest, MatMul_Float16) {
 }
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
-TEST(MathOpTest, MatMul_BFloat16) {
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)
+TEST(MathOpTest, MatMul_bfloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
@@ -272,6 +272,8 @@ TEST(MathOpTest, MatMul_BFloat16) {
 
   execution_providers.clear();
   execution_providers.emplace_back(DefaultRocmExecutionProvider(/*test_tunable_op=*/false));
+#elif USE_DNNL
+  execution_providers.emplace_back(DefaultDnnlExecutionProvider());
 #endif
   test.ConfigEps(std::move(execution_providers))
       .RunWithConfig();
