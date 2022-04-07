@@ -18,13 +18,10 @@ Initializer::Initializer(ONNX_NAMESPACE::TensorProto_DataType data_type,
                          std::string_view name,
                          gsl::span<const int64_t> dims)
     : name_(name),
-      data_([&]() {
-        Tensor w(DataTypeImpl::TensorTypeFromONNXEnum(data_type)->GetElementType(), dims, std::make_shared<CPUAllocator>());
-        if (!w.IsDataTypeString()) {
-          memset(w.MutableDataRaw(), 0, w.SizeInBytes());
-        }
-        return w;
-      }()) {
+      data_(DataTypeImpl::TensorTypeFromONNXEnum(data_type)->GetElementType(), dims, std::make_shared<CPUAllocator>()) {
+  if (!data_.IsDataTypeString()) {
+    memset(data_.MutableDataRaw(), 0, data_.SizeInBytes());
+  }
 }
 
 Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const Path& model_path) {
@@ -69,6 +66,8 @@ struct ToFp16<float> {
 template <>
 struct ToFp16<double> {
   uint16_t operator()(double d) const {
+    // The same code as in Eigen. We assume the loss of precision will occur
+    // hence static_cast
     return MLFloat16(static_cast<float>(d)).val;
   }
 };
@@ -104,6 +103,8 @@ struct ToBFloat16<float> {
 template <>
 struct ToBFloat16<double> {
   uint16_t operator()(double d) const {
+    // The same code as in Eigen. We assume the loss of precision will occur
+    // hence static_cast
     return BFloat16(static_cast<float>(d)).val;
   }
 };

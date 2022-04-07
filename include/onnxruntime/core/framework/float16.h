@@ -23,9 +23,9 @@ namespace onnxruntime {
 
 // MLFloat16
 struct MLFloat16 {
-  uint16_t val;
+  uint16_t val{0};
 
-  constexpr MLFloat16() : val(0) {}
+  MLFloat16() = default;
   explicit constexpr MLFloat16(uint16_t x) : val(x) {}
   explicit MLFloat16(float f);
 
