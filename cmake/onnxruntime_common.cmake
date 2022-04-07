@@ -215,7 +215,6 @@ if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
     # Its functionality in detecting x86 cpu features are lacking, so is support for Windows.
 
     target_include_directories(onnxruntime_common PRIVATE ${PYTORCH_CPUINFO_INCLUDE_DIR})
-    target_link_libraries(onnxruntime_common cpuinfo)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo clog)
   endif()
 endif()
