@@ -50,7 +50,7 @@ register_custom_op_symbolic('onnxruntime::LongformerAttention', my_longformer_at
 
 # TODO: search the directory to find correct output filename of "python setup.py install" when python version is not 3.8
 torch.ops.load_library(
-    r'../torch_extensions/build/lib.linux-x86_64-3.8/longformer_attention.cpython-38-x86_64-linux-gnu.so')
+    r'./torch_extensions/build/lib.linux-x86_64-3.8/longformer_attention.cpython-38-x86_64-linux-gnu.so')
 
 
 def parse_arguments():
