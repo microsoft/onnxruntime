@@ -1828,10 +1828,6 @@ if (onnxruntime_BUILD_NODEJS)
   add_subdirectory(js)
 endif()
 
-if (onnxruntime_ENABLE_PYTHON)
-  include(onnxruntime_python.cmake)
-endif()
-
 if (onnxruntime_BUILD_OBJC)
   message(STATUS "Objective-C Build is enabled")
   add_subdirectory(objectivec)
