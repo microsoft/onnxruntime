@@ -1846,7 +1846,7 @@ if (onnxruntime_BUILD_OBJC)
 endif()
 
 if (onnxruntime_BUILD_UNIT_TESTS)
-  include(onnxruntime_unittests.cmake)
+  add_subdirectory(onnxruntime/test)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
