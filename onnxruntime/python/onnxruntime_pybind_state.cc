@@ -1561,6 +1561,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .export_values();
 }
 
+// static variable used to create inference session and training session.
+static std::unique_ptr<Environment> session_env;
+
 void CreateInferencePybindStateModule(py::module& m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
   RegisterExceptions(m);
@@ -1591,6 +1594,10 @@ void CreateInferencePybindStateModule(py::module& m) {
   addOpSchemaSubmodule(m);
   addOpKernelSubmodule(m);
 #endif
+  auto atexit = py::module_::import("atexit");
+  atexit.attr("register")(py::cpp_function([]() {
+    session_env = nullptr;
+  }));
 }
 
 void InitArray() {
@@ -1599,9 +1606,6 @@ void InitArray() {
     import_array1();
   })();
 }
-
-// static variable used to create inference session and training session.
-static std::unique_ptr<Environment> session_env;
 
 void InitializeEnv() {
   auto initialize = [&]() {
