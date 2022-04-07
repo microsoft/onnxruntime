@@ -67,7 +67,7 @@ RUN python3 -m pip install flatbuffers==2.0
 WORKDIR /workspace
 
 # get ORT repo
-ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
-ARG ONNXRUNTIME_BRANCH=master
-RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recurse-submodules ${ONNXRUNTIME_REPO} \
+ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime.git
+ARG ONNXRUNTIME_BRANCH_OR_TAG=master
+RUN git clone --single-branch --branch=${ONNXRUNTIME_BRANCH_OR_TAG} --recurse-submodules ${ONNXRUNTIME_REPO} \
   /workspace/onnxruntime

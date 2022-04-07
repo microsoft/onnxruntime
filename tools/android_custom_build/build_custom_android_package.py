@@ -7,43 +7,55 @@ import pathlib
 import shutil
 import subprocess
 
-
 SCRIPT_DIR = pathlib.Path(__file__).parent.resolve()
 DEFAULT_OPS_CONFIG_RELATIVE_PATH = "tools/ci_build/github/android/mobile_package.required_operators.config"
 DEFAULT_BUILD_SETTINGS_RELATIVE_PATH = "tools/ci_build/github/android/default_mobile_aar_build_settings.json"
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Builds a custom ONNX Runtime Android package.")
+    parser = argparse.ArgumentParser(
+        description="""Builds a custom ONNX Runtime Android package.
+                    This script first builds a Docker image with the ONNX Runtime Android build environment
+                    dependencies. Then, from a Docker container with that image, it calls the ONNX Runtime build
+                    scripts to build a custom Android package. The resulting package will be under
+                    <working_dir>/output/aar_out. See https://onnxruntime.ai/docs/build/custom.html for more
+                    information about custom builds.""")
 
-    parser.add_argument("--onnxruntime_branch",
-                        help="The specific ONNX Runtime branch to build. "
-                        "Supported for 1.11 (rel-1.11.0) and later.")
+    parser.add_argument("working_dir", type=pathlib.Path,
+                        help="The directory used to store intermediate and output files.")
+
+    parser.add_argument("--onnxruntime_branch_or_tag",
+                        help="The ONNX Runtime branch or tag to build. "
+                             "Supports branches and tags starting from 1.11 (branch rel-1.11.0 or tag v1.11.0). "
+                             "If unspecified, builds the latest.")
 
     parser.add_argument("--include_ops_by_config", type=pathlib.Path,
                         help="The configuration file specifying which ops to include. "
-                        f"The default is {DEFAULT_OPS_CONFIG_RELATIVE_PATH} in the ONNX Runtime repo.")
+                             "Such a configuration file is generated during ONNX to ORT format model conversion. "
+                             f"The default is {DEFAULT_OPS_CONFIG_RELATIVE_PATH} in the ONNX Runtime repo.")
 
     parser.add_argument("--build_settings", type=pathlib.Path,
                         help="The configuration file specifying the build.py options. "
-                        f"The default is {DEFAULT_BUILD_SETTINGS_RELATIVE_PATH} in the ONNX Runtime repo.")
+                             f"The default is {DEFAULT_BUILD_SETTINGS_RELATIVE_PATH} in the ONNX Runtime repo.")
 
-    parser.add_argument("--config", choices=["Debug", "MinSizeRel", "Release", "RelWithDebInfo"], default="Release",
-                        help="The build configuration.")
+    default_config = "Release"
+    parser.add_argument("--config", choices=["Debug", "MinSizeRel", "Release", "RelWithDebInfo"],
+                        default=default_config,
+                        help="The build configuration. "
+                             f"The default is {default_config}.")
 
-    parser.add_argument("--working_dir", type=pathlib.Path, required=True,
-                        help="The directory used to store intermediate and output files.")
-
-    parser.add_argument("--docker_image_tag", default="onnxruntime-android-custom-build:latest",
-                        help="The tag for the build Docker image.")
+    default_docker_image_tag = "onnxruntime-android-custom-build:latest"
+    parser.add_argument("--docker_image_tag", default=default_docker_image_tag,
+                        help="The tag for the Docker image. "
+                             f"The default is {default_docker_image_tag}.")
 
     parser.add_argument("--docker_path", default=shutil.which("docker"),
-                        help="The path to docker.")
+                        help="The path to docker. If unspecified, docker should be in PATH.")
 
     args = parser.parse_args()
 
     if args.docker_path is None:
-        raise ValueError("Unable to determine docker path. Please specify with --docker_path.")
+        raise ValueError("Unable to determine docker path. Please specify it with --docker_path.")
 
     return args
 
@@ -51,8 +63,8 @@ def parse_args():
 def main():
     args = parse_args()
 
-    docker_build_args = ["--build-arg", f"ONNXRUNTIME_BRANCH={args.onnxruntime_branch}"] \
-        if args.onnxruntime_branch else []
+    docker_build_args = ["--build-arg", f"ONNXRUNTIME_BRANCH_OR_TAG={args.onnxruntime_branch_or_tag}"] \
+        if args.onnxruntime_branch_or_tag else []
 
     docker_build_cmd = [args.docker_path, "build",
                         "--tag", args.docker_image_tag,
