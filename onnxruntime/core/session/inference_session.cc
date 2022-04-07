@@ -1237,6 +1237,13 @@ common::Status InferenceSession::Initialize() {
     // re-acquire mutex
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
 
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(ORT_MINIMAL_BUILD)
+    if (!session_options_.external_initializers.empty()) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(graph.InjectExternalInitializedTensors(session_options_.external_initializers));
+      InlinedHashMap<std::string, OrtValue>{}.swap(session_options_.external_initializers);
+    }
+#endif
+
     // At this time we know all the providers that will be part of this session.
     // Read shared allocators from the environment and update them in the respective providers.
     //
