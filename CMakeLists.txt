@@ -1751,7 +1751,8 @@ if (onnxruntime_ENABLE_TRAINING)
 endif()
 
 
-set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers)
+set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util)
+add_subdirectory(onnxruntime/core/providers)
 add_subdirectory(onnxruntime/core/optimizer)
 add_subdirectory(onnxruntime/core/session)
 add_subdirectory(onnxruntime/core/mlas)
