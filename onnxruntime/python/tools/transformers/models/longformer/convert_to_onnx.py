@@ -27,7 +27,7 @@ from packaging import version
 from pathlib import Path
 from longformer_helper import LongformerHelper, PRETRAINED_LONGFORMER_MODELS
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from torch_onnx_export_helper import torch_onnx_export
 
 
