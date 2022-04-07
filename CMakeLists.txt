@@ -1751,7 +1751,8 @@ if (onnxruntime_ENABLE_TRAINING)
 endif()
 
 
-set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session)
+set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer)
+add_subdirectory(onnxruntime/core/session)
 add_subdirectory(onnxruntime/core/mlas)
 add_subdirectory(onnxruntime/core/flatbuffers)
 if (onnxruntime_USE_NUPHAR_TVM)
