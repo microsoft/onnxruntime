@@ -1678,7 +1678,6 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   uint32_t input_2_idx;
   if (transB == 0) {
     Type onnx_mat_b_type;
-    // TODO: transB=0 case for GEMM not dealt with yet
     if (!is_qlinear_matmul)
       onnx_mat_b_type = Type::TENSOR_FLOAT32;
     else
