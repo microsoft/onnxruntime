@@ -10,6 +10,7 @@
 #include "ort_trt_int8_cal_table.fbs.h"
 #include "nlohmann/json.hpp"
 #include "NvInferVersion.h"
+#include "cuda.h"
 #include "cuda_runtime_api.h"
 
 namespace fs = std::experimental::filesystem;
