@@ -69,7 +69,7 @@ export const createIndicesHelper = (name: string, shape: readonly number[]) => {
 
   const i2oImpl = shape.length < 2 ? '' : `
   fn ih_i2o_${name}(indices: ptr<function, ${iType}>) -> u32 {
-    return ${offsets.length > 0 ? offsets.join('+') : '0u'}
+    return ${offsets.length > 0 ? offsets.join('+') : '0u'};
   }`;
 
   const i2oExpression = (varIndices: string) => shape.length < 2 ? varIndices : `ih_i2o_${name}(&${varIndices})`;

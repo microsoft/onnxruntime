@@ -4,6 +4,7 @@
 import {OpSet} from '../../opset';
 
 import * as binaryOps from './ops/binary-op';
+import {gather, parseGatherAttributes} from './ops/gather';
 import {reshape} from './ops/reshape';
 import * as unaryOps from './ops/unary-op';
 import {parseUnsqueezeAttributes, unsqueeze, unsqueezeV13} from './ops/unsqueeze';
@@ -28,7 +29,7 @@ export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   // ['Flatten', '', '1+', flatten, parseFlattenAttributes],
   ['Floor', '', '6+', unaryOps.floor],
   // ['FusedConv', 'com.microsoft', '1+', conv, parseConvAttributes],
-  // ['Gather', '', '1+', gather, parseGatherAttributes],
+  ['Gather', '', '1+', gather, parseGatherAttributes],
   // ['Gemm', '', '7-10', gemm, parseGemmAttributesV7],
   // ['Gemm', '', '11+', gemm, parseGemmAttributesV11],
   // ['GlobalAveragePool', '', '1+', globalAveragePool, parseGlobalAveragePoolAttributes],
