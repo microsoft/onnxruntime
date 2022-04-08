@@ -895,7 +895,6 @@ else()
   set(CPUINFO_SUPPORTED FALSE)
 endif()
 
-# TODO  do we have to add target_include_directories to each project that uses this?
 if (CPUINFO_SUPPORTED)
   set(PYTORCH_CPUINFO_DIR external/pytorch_cpuinfo)
   set(PYTORCH_CPUINFO_INCLUDE_DIR ${PYTORCH_CPUINFO_DIR}/include)
