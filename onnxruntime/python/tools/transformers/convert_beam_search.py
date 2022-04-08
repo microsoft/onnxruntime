@@ -336,7 +336,7 @@ def convert_model(args):
         inputs.append("prefix_vocab_mask")
 
     if args.enable_ecs:
-        inputs.extend(["vocab_ids2_len", "prefix_lens", "ecs_min_chars", "ecs_log_prob_threshold", "ecs_cost", "prefix_upper_case"])
+        inputs.extend(["vocab_ids2_len", "prefix_lens", "ecs_min_chars", "ecs_log_prob_threshold", "ecs_cost", "prefix_uppercase"])
 
     outputs = ["sequences"]
     if args.output_sequences_scores:
@@ -397,9 +397,9 @@ def convert_model(args):
         ecs_min_chars = helper.make_tensor_value_info('ecs_min_chars', TensorProto.INT32, [1])
         ecs_log_prob_threshold = helper.make_tensor_value_info('ecs_log_prob_threshold', TensorProto.FLOAT, [1])
         ecs_cost = helper.make_tensor_value_info('ecs_cost', TensorProto.FLOAT, [1])
-        prefix_upper_case = helper.make_tensor_value_info('prefix_upper_case', TensorProto.INT32, [1])
+        prefix_uppercase = helper.make_tensor_value_info('prefix_uppercase', TensorProto.BOOL, ['batch_size'])
 
-        graph_inputs.extend([ecs_min_chars, ecs_log_prob_threshold, ecs_cost, vocab_ids2_len, prefix_lens, prefix_upper_case])
+        graph_inputs.extend([ecs_min_chars, ecs_log_prob_threshold, ecs_cost, vocab_ids2_len, prefix_lens, prefix_uppercase])
 
     # graph outputs
     sequences = helper.make_tensor_value_info('sequences', TensorProto.INT32,

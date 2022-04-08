@@ -366,7 +366,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The id of the padding token</dd>
 </dl>
 
-#### Inputs (6 - 15)
+#### Inputs (6 - 16)
 
 <dl>
 <dt><tt>input_ids</tt> : I</dt>
@@ -399,6 +399,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>minimum score required to qualify for best candidate. Shape is (1)</dd>
 <dt><tt>ecs_cost</tt> (optional) : T</dt>
 <dd>cost of expected character savings. Shape is (1)</dd>
+<dt><tt>prefix_upper_case</tt> (optional) : N</dt>
+<dd>tensor to indicate if the prefix is starting with upper case. shape is (batch_size)</dd>
 </dl>
 
 #### Outputs (1 - 3)
@@ -421,6 +423,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain to integer types</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain mask to integer types</dd>
+<dt><tt>N</tt> : tensor(bool)</dt>
+<dd>Constrain output 'mask' types to boolean tensors.</dd>
 </dl>
 
 

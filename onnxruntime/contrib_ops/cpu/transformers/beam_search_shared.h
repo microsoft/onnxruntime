@@ -101,12 +101,14 @@ struct IBeamSearchParameters {
   int ecs_min_chars;
   float ecs_log_prob_threshold;
   float ecs_cost;
-  bool is_prefix_upper_case;
 
   gsl::span<const int32_t> vocab_mask;
   gsl::span<const int32_t> prefix_vocab_mask;
   gsl::span<const int32_t> vocab_id2_len;
   gsl::span<const int32_t> prefix_lens;
+
+  //Spl tokens parameters for models
+  gsl::span<const bool> prefix_uppercase;
 
   // Parameters from outputs.
   bool output_scores;  // whether scores existed in output

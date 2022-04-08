@@ -436,7 +436,7 @@ Status BeamSearchImpl<T>::CheckInputs(const OpKernelContextInternal& context) {
 
   auto* prefix_uppercase_tensor = context.Input<Tensor>(15);
   if (prefix_uppercase_tensor != nullptr) {
-    parameters_->is_prefix_upper_case = static_cast<int>(*prefix_uppercase_tensor->Data<int>()) == 1 ? true : false;
+    parameters_->prefix_uppercase = static_cast<bool>(*prefix_uppercase_tensor->Data<bool>());
   }
 
   return Status::OK();
