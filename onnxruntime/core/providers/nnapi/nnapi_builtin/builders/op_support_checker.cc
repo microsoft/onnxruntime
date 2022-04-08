@@ -1352,6 +1352,8 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
   const auto& op_type = node_unit.OpType();
   const auto& inputs = node_unit.Inputs();
   bool is_qlinear_matmul = op_type == "QLinearMatMul";
+  const auto quant_type = GetQuantizedOpType(node_unit);
+  bool is_quant_gemm = quant_type == QuantizedOpType::QDQGemm;
 
   Shape a_shape;
   {
@@ -1426,6 +1428,13 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
     }
   } else {
     LOGS_DEFAULT(VERBOSE) << "GemmOpSupportChecker, unknown op: " << op_type;
+  }
+
+  if (is_quant_gemm) {
+    if (inputs.size() > 2 && !Contains(initializers, inputs[2].node_arg.Name())) {
+      LOGS_DEFAULT(VERBOSE) << "Bias of QDQ Gemm must be known";
+      return false;
+    }
   }
 
   return true;

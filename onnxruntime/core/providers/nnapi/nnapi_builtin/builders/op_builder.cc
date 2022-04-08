@@ -1613,14 +1613,15 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
       AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[0].quant_param);               // a_scale, a_zp
       AddInputToSkip(model_builder, inputs[1]);                                                    // b, b_scale, b_zp
       AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
-    }
-    if (node_unit.OpType() == "Gemm") {                                               // QDQGemm
-      AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[0].quant_param);  // x_scale, x_zp
-      AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[1].quant_param);  // w_scale, w_zp
-      NodeAttrHelper helper(node_unit);
-      const auto transB = helper.Get("transB", 0);
-      if (transB == 0)
-        model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());
+    } else if (node_unit.OpType() == "Gemm") {                                                     // QDQGemm
+      AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[0].quant_param);               // x_scale, x_zp
+      AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[1].quant_param);               // w_scale, w_zp
+
+      const auto& b_name = inputs[1].node_arg.Name();
+      if (Contains(model_builder.GetInitializerTensors(), b_name)) {
+        model_builder.AddInitializerToSkip(b_name);
+      }
+
       if (inputs.size() > 2) {
         AddInputToSkip(model_builder, inputs[2]);  // B, B_scale, B_zp
       }
@@ -1719,24 +1720,22 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     } else {
       bias_idx = operand_indices.at(bias);
     }
+
     if (is_qdq_gemm) {
       const auto& bias_tensor = *model_builder.GetInitializerTensors().at(bias);
-      const auto& bias_type = operand_types.at(bias).type;
+      // TODO: Need to confirm, put int32 type here for now
+      ORT_RETURN_IF_NOT(bias_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32,
+                        "bias of QDQGemm should be int32, actual type: ", bias_tensor.data_type());
+
       Shape bias_dimen;
       for (auto dim : bias_tensor.dims())
         bias_dimen.push_back(SafeInt<uint32_t>(dim));
 
       std::vector<uint8_t> unpacked_tensor;
       ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(bias_tensor, unpacked_tensor));
-      if (bias_type == Type::TENSOR_QUANT8_ASYMM) {
-        OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, a_scale * b_scale);
-        ORT_RETURN_IF_ERROR(
-            model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.data(), bias_operand_type));
-      } else if (bias_type == Type::TENSOR_FLOAT32) {
-        OperandType bias_operand_type(Type::TENSOR_FLOAT32, bias_dimen, a_scale * b_scale);
-        ORT_RETURN_IF_ERROR(
-            model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.data(), bias_operand_type));
-      }
+      OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, a_scale * b_scale);
+      ORT_RETURN_IF_ERROR(
+          model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.data(), bias_operand_type));
     }
   } else {
     // No C supplied, we need a vector of 0
