@@ -1,3 +1,10 @@
+---
+title: Tune Mobile Performance (version 1.10 and earlier)
+parent: Performance
+nav_order: 3
+---
+{::options toc_levels="2" /}
+
 # **THIS INFORMATION ONLY APPLIES TO ONNX RUNTIME VERSION 1.10 AND EARLIER**
 
 # ONNX Runtime Mobile Performance Tuning
