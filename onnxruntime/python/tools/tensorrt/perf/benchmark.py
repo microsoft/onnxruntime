@@ -1680,7 +1680,7 @@ def parse_arguments():
 
     parser.add_argument("-r", "--running_mode", required=False, default="benchmark", choices=["validate", "benchmark"], help="Testing mode.")
 
-    parser.add_argument("-i", "--input_data", required=False, default="fix", choices=["fix", "random"], help="Type of input data.")
+    parser.add_argument("-i", "--input_data", required=False, default="random", choices=["fix", "random"], help="Type of input data.")
 
     parser.add_argument("-o", "--perf_result_path", required=False, default="result", help="Directory for perf result.")
     
