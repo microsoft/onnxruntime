@@ -74,7 +74,7 @@ class TestOpMaxPool(unittest.TestCase):
 
         # Verify QOperator mode
         data_reader.rewind()
-        quantize_static(model_fp32_path, model_q8_path, data_reader,
+        quantize_static(model_fp32_path, model_q8_path, data_reader, quant_format=QuantFormat.QOperator,
                         activation_type=activation_type, weight_type=weight_type, extra_options=extra_options)
         # make sure maxpool become xint8 operator, its input name could tell that
         check_op_nodes(self, model_q8_path, lambda node: (node.name != "maxpool_node" or node.input[0] != 'conv_output'))

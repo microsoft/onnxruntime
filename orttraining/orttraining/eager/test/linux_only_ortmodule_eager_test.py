@@ -68,6 +68,8 @@ class OrtModuleEagerTest(unittest.TestCase):
         #reload initial state
         model.load_state_dict(initial_state)
         #run on ort with ORTModule and eager mode
+        #use device_idx 1 to test non-zero device
+        torch_ort_eager.set_device(1, 'CPUExecutionProvider', {'dummy':'dummy'})
         device = torch.device('ort', index=0)
         model.to(device)
         model = ORTModule(model)

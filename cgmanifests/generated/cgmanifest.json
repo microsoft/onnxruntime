@@ -114,16 +114,6 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "523d5e03d86c26267ee6bdf17dd20f6ce6bdadd7",
-          "repositoryUrl": "https://github.com/apple/coremltools.git"
-        },
-        "comments": "git submodule at cmake/external/coremltools"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
           "commitHash": "c3cceac115c072fb63df1836ff46d8c60d9eb304",
           "repositoryUrl": "https://github.com/NVlabs/cub.git"
         },
@@ -174,7 +164,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "a3d65c80d32c3e584b7aab41d516a0043b2a5e84",
+          "commitHash": "3acac70a551c321574732e5bfd67930244bb7151",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -215,7 +205,7 @@
         "type": "git",
         "git": {
           "commitHash": "db78ac1d7716f56fc9f1b030b715f872f93964e4",
-          "repositoryUrl": "https://github.com/nlohmann/json"
+          "repositoryUrl": "https://github.com/nlohmann/json.git"
         },
         "comments": "git submodule at cmake/external/json"
       }
@@ -234,7 +224,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "2d54553b7a78c7c35620b827e7e5ab2228ecb495",
+          "commitHash": "f412df7a2b64421e1f1d61fde6055a6ea288e8f5",
           "repositoryUrl": "https://github.com/microsoft/mimalloc.git"
         },
         "comments": "git submodule at cmake/external/mimalloc"
@@ -255,7 +245,7 @@
         "type": "git",
         "git": {
           "commitHash": "436617053d0f39a1019a371c3a9aa599b3cb2cea",
-          "repositoryUrl": "https://github.com/google/nsync"
+          "repositoryUrl": "https://github.com/google/nsync.git"
         },
         "comments": "git submodule at cmake/external/nsync"
       }
@@ -264,8 +254,8 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "be76ca7148396176784ba8733133b9fb1186ea0d",
-          "repositoryUrl": "https://github.com/onnx/onnx"
+          "commitHash": "850a81b0b77786bf99ea90580242b084f86a6235",
+          "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
       }
@@ -294,7 +284,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "1f416bb462689f3ef9e3f1057a113d9c6aba6972",
+          "commitHash": "e9456d57605c883cdf985e634ab483e2c1500bb1",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt"
@@ -304,7 +294,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "553df22c67bee5f0fe6599cff60f1afc6748c635",
+          "commitHash": "994c6181247d7b419b28889fc57d5817e2089419",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt/third_party/onnx"
@@ -324,20 +314,10 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "09f082940113661256310e3f4811aa7261a9fa05",
+          "commitHash": "59a2ac2745d8a57ac94c6accced73620d59fb844",
           "repositoryUrl": "https://github.com/pybind/pybind11.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt/third_party/onnx/third_party/pybind11"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "6a00cbc4a9b8e68b71caf7f774b3f9c753ae84d5",
-          "repositoryUrl": "https://github.com/wjakob/clang-cindex-python3"
-        },
-        "comments": "git submodule at cmake/external/onnx-tensorrt/third_party/onnx/third_party/pybind11/tools/clang"
       }
     },
     {
@@ -354,7 +334,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "2dc747c574b68a808ea4699d26942c8132fe2b09",
+          "commitHash": "0dab03ba7bc438d7ba3eac2b2c1eb39ed520f928",
           "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
         },
         "comments": "git submodule at cmake/external/protobuf"
@@ -414,58 +394,8 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "9ec2b92d180dff8877e402018b97baa574031b8b",
-          "repositoryUrl": "https://github.com/microsoft/onnxruntime-tvm.git"
-        },
-        "comments": "git submodule at cmake/external/tvm"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "b257a9221ee1e5180d994b3488ddcc259b0ac157",
-          "repositoryUrl": "https://github.com/dmlc/HalideIR"
-        },
-        "comments": "git submodule at cmake/external/tvm/3rdparty/HalideIR"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "5c792cef3aee54ad8b7000111c9dc1797f327b59",
-          "repositoryUrl": "https://github.com/dmlc/dlpack"
-        },
-        "comments": "git submodule at cmake/external/tvm/3rdparty/dlpack"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "d07fb7a443b5db8a89d65a15a024af6a425615a5",
-          "repositoryUrl": "https://github.com/dmlc/dmlc-core"
-        },
-        "comments": "git submodule at cmake/external/tvm/3rdparty/dmlc-core"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "cabe04d6d6b05356fa8f9741704924788f0dd762",
-          "repositoryUrl": "https://github.com/agauniyal/rang"
-        },
-        "comments": "git submodule at cmake/external/tvm/3rdparty/rang"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
           "commitHash": "e8c599bca6c56c44b6730ad93f6abbc9ecd60fc1",
-          "repositoryUrl": "https://github.com/microsoft/wil"
+          "repositoryUrl": "https://github.com/microsoft/wil.git"
         },
         "comments": "git submodule at cmake/external/wil"
       }

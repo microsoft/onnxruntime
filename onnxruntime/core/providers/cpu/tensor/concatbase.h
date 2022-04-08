@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include "core/framework/inlined_containers.h"
+#include "core/common/inlined_containers.h"
 
 namespace onnxruntime {
 

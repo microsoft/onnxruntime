@@ -45,7 +45,7 @@ TEST(GemmOpTest, GemmNoTrans_double) {
   TestGemmNoTrans<double>();
 }
 
-// Only CUDA kernel has float 16 support
+// Only CUDA and ROCM kernel has float 16 support
 #if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(GemmOpTest, GemmNoTrans_f16) {
 #ifdef USE_CUDA
@@ -86,13 +86,15 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
 }
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(GemmOpTest, GemmNoTrans_bfloat16) {
+#ifdef USE_CUDA
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
-    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
     return;
   }
+#endif
   OpTester test("Gemm", 14);
   test.AddAttribute("transA", (int64_t)0);
   test.AddAttribute("transB", (int64_t)0);
@@ -103,7 +105,11 @@ TEST(GemmOpTest, GemmNoTrans_bfloat16) {
   test.AddInput<BFloat16>("C", {2, 3}, MakeBFloat16({1.f, 1.f, 1.f, 1.f, 1.f, 1.f}));
   test.AddOutput<BFloat16>("Y", {2, 3}, MakeBFloat16({11.0f, 11.0f, 11.0f, -9.0f, -9.0f, -9.0f}));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif

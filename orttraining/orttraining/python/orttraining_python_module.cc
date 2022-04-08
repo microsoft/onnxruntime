@@ -133,7 +133,7 @@ bool GetProviderInstanceHash(const std::string& type,
 
 ORTTrainingPythonEnv::ORTTrainingPythonEnv(){
   OrtPybindThrowIfError(Environment::Create(std::make_unique<LoggingManager>(
-                                                std::unique_ptr<ISink>{new CLogSink{}},
+                                                std::make_unique<CLogSink>(),
                                                 Severity::kWARNING, false, LoggingManager::InstanceType::Default,
                                                 &SessionObjectInitializer::default_logger_id),
                                             ort_env_));

@@ -17,6 +17,9 @@ Abstract:
 
 #include "mlasi.h"
 
+#include <thread>
+#include <mutex>
+
 #if defined(MLAS_TARGET_POWER) && defined(__linux__)
 #include <sys/auxv.h>
 #endif
@@ -352,8 +355,9 @@ Return Value:
 #if defined(MLAS_TARGET_ARM64)
 
     this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
-    this->ConvSymU8S8Dispatch = &MlasConvSymDispatchNeon;
     this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchNeon;
+    this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchNeon;
+    this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchNeon;
 
     //
     // Check if the processor supports ASIMD dot product instructions.
@@ -371,27 +375,50 @@ Return Value:
 
     if (HasDotProductInstructions) {
         this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchUdot;
-        this->ConvSymU8S8Dispatch = &MlasConvSymDispatchDot;
         this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchSdot;
+        this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchDot;
+        this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
     }
 
 #endif // MLAS_TARGET_ARM64
 #if defined(MLAS_TARGET_POWER)
     this->GemmFloatKernel = MlasSgemmKernel;
     this->GemmDoubleKernel = MlasDgemmKernel;
-#if defined(__linux__)  && defined(POWER10)
+    this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8Kernel;
+    this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernel;
+
+#if defined(__linux__)
+    unsigned long hwcap2 = getauxval(AT_HWCAP2);
+
+    bool HasP9Instructions = hwcap2 & PPC_FEATURE2_ARCH_3_00;
+    if (HasP9Instructions) {
+        this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelVSX;
+        this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelVSX;
+    }
+
+#if defined(POWER10)
 #if (defined(__GNUC__) && ((__GNUC__ > 10) || (__GNUC__== 10 && __GNUC_MINOR__ >= 2))) || \
     (defined(__clang__) && (__clang_major__ >= 12))
-    unsigned long hwcap2 = getauxval(AT_HWCAP2);
     bool HasP10Instructions = ((hwcap2 & PPC_FEATURE2_MMA) && (hwcap2 & PPC_FEATURE2_ARCH_3_1));
     if (HasP10Instructions) {
         this->GemmFloatKernel = MlasSgemmKernelPOWER10;
         this->GemmDoubleKernel = MlasDgemmKernelPOWER10;
+        this->GemmU8X8Dispatch = &MlasGemm8X8DispatchPOWER10;
     }
 #endif
 #endif
-#endif
 
+#endif // __linux__
+#endif // MLAS_TARGET_POWER
+
+    // Init the table describing the type (big or litte) of each core
+#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
+    // TODO!! implemente core uarch detection in Windows
+    auto tbl_size = std::thread::hardware_concurrency();
+    if (tbl_size > 0) {
+        mlas_coretype_tbl.resize(tbl_size, mlas_core_unknown);    
+    }
+#endif
 }
 
 size_t

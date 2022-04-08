@@ -1622,7 +1622,7 @@ Status ApplyPipelinePartitionToMainGraph(Graph& graph,
   GenerateSubgraph(graph, static_cast<int>(num_stages), op_to_stage, pipeline_stage_id,
                    send_nodes, recv_nodes, node_topology_list, visited_outputs);
 
-  graph.SetOutputs({visited_outputs.begin(), visited_outputs.end()});
+  graph.SetOutputs(InlinedVector<const NodeArg*>{visited_outputs.begin(), visited_outputs.end()});
   graph.SetGraphResolveNeeded();
   graph.SetGraphProtoSyncNeeded();
   ORT_RETURN_IF_ERROR(graph.Resolve());

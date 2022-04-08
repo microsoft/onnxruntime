@@ -15,6 +15,8 @@
 #
 # For inference of the onnx model, you will need onnxruntime-gpu 1.7.0 or above.
 
+import sys
+import os
 import torch
 import numpy as np
 import argparse
@@ -24,6 +26,9 @@ from torch.onnx.symbolic_helper import parse_args
 from packaging import version
 from pathlib import Path
 from longformer_helper import LongformerHelper, PRETRAINED_LONGFORMER_MODELS
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from torch_onnx_export_helper import torch_onnx_export
 
 
 @parse_args('v', 'v', 'v', 'v', 'v', 'v', 'v', 'i', 'i')
@@ -223,11 +228,10 @@ def export_longformer(model, onnx_model_path, export_padding):
 
     Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
-    torch.onnx.export(model,
+    torch_onnx_export(model,
                       example_inputs,
                       onnx_model_path,
                       opset_version=11,
-                      example_outputs=example_outputs,
                       input_names=["input_ids", "attention_mask", "global_attention_mask"],
                       output_names=["last_state", "pooler"],
                       dynamic_axes={

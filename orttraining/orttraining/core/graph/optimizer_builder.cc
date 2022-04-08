@@ -9,10 +9,6 @@
 namespace onnxruntime {
 namespace training {
 
-namespace training_internal {
-const int64_t single_span_element = 1;
-}
-
 // Register all optimizers here.
 void OptimizerBuilderRegistry::RegisterBuilders() {
   GetInstance().Register<AdamOptimizerBuilder>("AdamOptimizer");

@@ -25,6 +25,7 @@ WINML_CATCH_ALL
 
 LearningModelDevice::LearningModelDevice(winml::LearningModelDeviceKind const& deviceKind) try : m_deviceCache(std::make_unique<_winml::D3DDeviceCache>(deviceKind)) {
   m_deviceKind = deviceKind;
+  telemetry_helper.SetLearningModelDeviceKind(static_cast<int>(deviceKind));
   m_isCpuDevice = m_deviceKind == LearningModelDeviceKind::Cpu || m_deviceKind == LearningModelDeviceKind::Default;
   if (m_isCpuDevice) {
     assert(m_deviceCache->GetD3D12Device() == nullptr);

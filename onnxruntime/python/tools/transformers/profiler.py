@@ -86,8 +86,11 @@ def parse_arguments(argv=None):
     parser.add_argument('-g', '--use_gpu', required=False, action='store_true', help="use GPU")
     parser.set_defaults(use_gpu=False)
 
-    parser.add_argument('-d', '--use_dml', required=False, action='store_true', help="use DML")
-    parser.set_defaults(use_dml=False)
+    parser.add_argument('--provider',
+                        required=False,
+                        type=str,
+                        default='cuda',
+                        help="Execution provider to use")
 
     parser.add_argument(
         '--basic_optimization',
@@ -108,15 +111,15 @@ def parse_arguments(argv=None):
     return parser.parse_args(argv)
 
 
-def run_profile(onnx_model_path, use_gpu, basic_optimization, thread_num, all_inputs, use_dml):
+def run_profile(onnx_model_path, use_gpu, provider, basic_optimization, thread_num, all_inputs):
     from benchmark_helper import create_onnxruntime_session
 
     session = create_onnxruntime_session(onnx_model_path,
                                          use_gpu,
+                                         provider,
                                          enable_all_optimization=not basic_optimization,
                                          num_threads=thread_num,
-                                         enable_profiling=True,
-                                         use_dml=use_dml)
+                                         enable_profiling=True)
 
     for inputs in all_inputs:
         _ = session.run(None, inputs)
@@ -604,7 +607,7 @@ def run(args):
     else:  # default
         all_inputs = create_dummy_inputs(onnx_model, args.batch_size, args.sequence_length, args.samples)
 
-    profile_file = run_profile(args.model, args.use_gpu, args.basic_optimization, args.thread_num, all_inputs, args.use_dml)
+    profile_file = run_profile(args.model, args.use_gpu, args.provider, args.basic_optimization, args.thread_num, all_inputs)
 
     return profile_file
 

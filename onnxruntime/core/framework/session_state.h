@@ -11,6 +11,7 @@
 #include "gsl/gsl"
 
 #include "core/common/common.h"
+#include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/common/profiler.h"
 #include "core/framework/allocation_planner.h"
@@ -288,8 +289,8 @@ class SessionState {
   const NodeIndexInfo& GetNodeIndexInfo() const;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  void UpdateToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs);
-  const std::unordered_set<NodeIndex>* GetToBeExecutedNodes(const std::vector<int>& fetch_mlvalue_idxs) const;
+  void UpdateToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_idxs);
+  const InlinedHashSet<NodeIndex>* GetToBeExecutedNodes(gsl::span<int const> fetch_mlvalue_idxs) const;
   Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                          flatbuffers::Offset<onnxruntime::fbs::SessionState>& fbs_session_state) const;
 #endif
@@ -396,6 +397,9 @@ class SessionState {
   // KernelCreateInfo for each node so we do kernel lookup once
   KernelCreateInfoMap kernel_create_info_map_;
 
+  //fused_funcs_mgr_ must live longer than the session_kernels_, becaues a kernel could be created from this manager
+  FuncManager fused_funcs_mgr_;
+
   // If we compile kernels in a minimal build we need a way to find the kernel using the hash.
   // We populate this map when doing the kernel compilation in GraphPartitioner, and use it in LoadFromOrtFormat.
   std::unordered_map<std::string, HashValue> compiled_kernel_hashes_;
@@ -485,7 +489,6 @@ class SessionState {
   concurrency::ThreadPool* const inter_op_thread_pool_{};
 
   bool export_fused_dll_ = false;
-  FuncManager fused_funcs_mgr_;
   const DataTransferManager& data_transfer_mgr_;
 
   bool use_deterministic_compute_;
@@ -500,7 +503,7 @@ class SessionState {
   PrepackedWeightsContainer* const prepacked_weights_container_{};
 
 #if !defined(ORT_MINIMAL_BUILD)
-  std::map<std::vector<int>, std::unordered_set<NodeIndex>> to_be_executed_nodes_;
+  InlinedHashMap<InlinedVector<int>, InlinedHashSet<NodeIndex>> to_be_executed_nodes_;
 #endif
 
   SessionState* parent_ = nullptr;

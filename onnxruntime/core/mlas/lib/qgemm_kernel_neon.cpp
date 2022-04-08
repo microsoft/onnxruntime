@@ -1218,6 +1218,7 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmX8S8DispatchNeon = {
 
 const MLAS_SYMM_QGEMM_DISPATCH MlasSymmQgemmS8DispatchNeon = {
     MlasSymmQGemmPackedOperation<MLAS_GEMM_X8S8_KERNEL_NEON>,
+    MlasSymmQGemmPackedOperation<MLAS_GEMM_X8S8_KERNEL_NEON>,
     MlasGemmQuantCopyPackB<MLAS_GEMM_X8S8_KERNEL_NEON>,
     4,   // StrideM
     MLAS_GEMM_X8S8_KERNEL_NEON::PackedK

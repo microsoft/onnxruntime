@@ -15,6 +15,9 @@
 #include "core/framework/tensor.h"
 #include "core/framework/sparse_tensor.h"
 #include "core/framework/TensorSeq.h"
+#ifdef ENABLE_TRAINING 
+#include "core/dlpack/dlpack_converter.h"
+#endif
 
 namespace onnxruntime {
 namespace python {
@@ -72,7 +75,52 @@ void addOrtValueMethods(pybind11::module& m) {
 
         return ml_value;
       })
+      .def("update_inplace", [](OrtValue* ml_value, const py::array& py_values) {
+        if (!IsNumericNumpyArray(py_values)) {
+          throw std::runtime_error("Inplace update of OrtValues is currently only supported from non-string numpy arrays");
+        }
 
+        if (py_values.size() != ml_value->Get<Tensor>().Shape().Size()) {
+          throw std::runtime_error("The input size of numpy arrays does not match the size of the OrtValue.");
+        }
+
+        auto values_type = GetNumpyArrayType(py_values);
+        const auto device = ml_value->Get<Tensor>().Location().device;
+        if (device.Type() == OrtDevice::CPU) {
+          onnxruntime::python::CopyDataToTensor(
+            py_values,
+            values_type,
+            *(ml_value->GetMutable<Tensor>()),
+            CpuToCpuMemCpy);
+        } else if (device.Type() == OrtDevice::GPU) {
+#ifdef USE_CUDA
+          if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+            throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+          }
+
+          onnxruntime::python::CopyDataToTensor(
+            py_values,
+            values_type,
+            *(ml_value->GetMutable<Tensor>()),
+            CpuToCudaMemCpy);
+#elif USE_ROCM
+          if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+            throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+          }
+
+          onnxruntime::python::CopyDataToTensor(
+            py_values,
+            values_type,
+            *(ml_value->GetMutable<Tensor>()),
+            CpuToRocmMemCpy);
+#else
+        throw std::runtime_error(
+            "Unsupported GPU device: Cannot find the supported GPU device.");
+#endif
+        } else {
+          throw std::runtime_error("Unsupported device: Cannot update the OrtValue on this device");
+        }
+      })
       // Factory method to create an OrtValue (Tensor) from the given shape and element type with memory on the specified device
       // The memory is left uninitialized
       .def_static("ortvalue_from_shape_and_type", [](const std::vector<int64_t>& shape, py::object& element_type, const OrtDevice& device) {
@@ -107,7 +155,7 @@ void addOrtValueMethods(pybind11::module& m) {
         }
 
         auto ml_value = std::make_unique<OrtValue>();
-        auto ml_type = NumpyTypeToOnnxRuntimeType(type_num);
+        auto ml_type = NumpyTypeToOnnxRuntimeTensorType(type_num);
         Tensor::InitOrtValue(ml_type, gsl::make_span(shape), std::move(allocator), *ml_value);
         return ml_value;
       })
@@ -198,6 +246,12 @@ void addOrtValueMethods(pybind11::module& m) {
 
         return *ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto);
       })
+      .def("element_type", [](const OrtValue* ort_value) -> int32_t {
+        return GetTensorProtoType(*ort_value);
+      }, "Returns an integer equal to the ONNX tensor proto type of the tensor or sequence. "
+         "This integer is one type defined by ONNX TensorProto_DataType "
+         "(such as onnx.TensorProto.FLOAT)."
+         "Raises an exception in any other case.")
       .def("has_value", [](const OrtValue* ort_value) -> bool {
         return ort_value->IsAllocated();
       })
@@ -228,12 +282,39 @@ void addOrtValueMethods(pybind11::module& m) {
 #ifdef ENABLE_TRAINING
       .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
         return py::reinterpret_steal<py::object>(ToDlpack(*ort_value));
-      })
-      .def_static("from_dlpack", [](py::object data, bool is_bool_tensor = false) {
+      }, "Returns a DLPack representing the tensor. This method does not copy the pointer shape, "
+         "instead, it copies the pointer value. The OrtValue must be persist until the dlpack structure "
+         "is consumed.")
+      .def_static("from_dlpack", [](py::object data, bool is_bool_tensor) {
         return FromDlpack(data.ptr(), is_bool_tensor);
-      })
+      }, py::arg("data"), py::arg("is_bool_tensor")=false,
+        "Converts a tensor from a external library into an OrtValue by means of the __dlpack__ protocol.")
+      .def("__dlpack__", [](OrtValue* ort_value, py::object /* stream */) -> py::object {
+        return py::reinterpret_steal<py::object>(ToDlpack(*ort_value));
+       }, py::arg("stream")=py::none(),
+       "Returns a DLPack representing the tensor (part of __dlpack__ protocol). "
+       "This method does not copy the pointer shape, instead, it copies the pointer value. "
+       "The OrtValue must persist until the dlpack structure is consumed.")
+      .def("__dlpack_device__", [](const OrtValue* ort_value) -> py::tuple {
+        ORT_ENFORCE(ort_value->IsTensor(), "Only tensor type OrtValues are supported");
+        const onnxruntime::Tensor& tensor = ort_value->Get<Tensor>();
+        DLDevice device = onnxruntime::dlpack::GetDlpackDevice(*ort_value, tensor.Location().device.Id());
+        return py::make_tuple(static_cast<int>(device.device_type), device.device_id);
+       }, "Returns a tuple of integers, (device, device index) (part of __dlpack__ protocol).")
 #endif
       ;
+
+#ifdef ENABLE_TRAINING
+  m.def("is_dlpack_uint8_tensor", [](py::capsule cap) -> bool {
+    // case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+    // dtype.code = DLDataTypeCode::kDLUInt;
+    // dtype.bits = sizeof(bool);
+    DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)cap.get_pointer();
+    return dlmanaged_tensor->dl_tensor.dtype.code == DLDataTypeCode::kDLUInt && dlmanaged_tensor->dl_tensor.dtype.bits == 8;
+  }, "Tells if a DLPack structure is a uint8 tensor.\n"
+     ".. note::\n"
+     "    Boolean tensors are also uint8 tensor once converted with DLPack protocol.");
+#endif
 }
 
 }  // namespace python

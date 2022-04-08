@@ -36,7 +36,7 @@ symbols = sorted(symbols)
 symbol_index = 1
 with open(args.output, 'w') as file:
     if args.style == 'vc':
-        file.write('LIBRARY "onnxruntime.dll"\n')
+        file.write('LIBRARY\n')
         file.write('EXPORTS\n')
     elif args.style == 'xcode':
         pass    # xcode compile don't has any header.

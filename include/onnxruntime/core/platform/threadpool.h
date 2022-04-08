@@ -157,7 +157,8 @@ class ThreadPool {
              const ThreadOptions& thread_options,
              const NAME_CHAR_TYPE* name,
              int degree_of_parallelism,
-             bool low_latency_hint);
+             bool low_latency_hint,
+             bool force_hybrid = false);
 
   // Waits until all scheduled work has finished and then destroy the
   // set of threads.
@@ -424,6 +425,9 @@ class ThreadPool {
 
   // If used, underlying_threadpool_ is instantiated and owned by the ThreadPool.
   std::unique_ptr<ThreadPoolTempl<Env> > extended_eigen_threadpool_;
+
+  // Force the thread pool to run in hybrid mode on a normal cpu.
+  bool force_hybrid_ = false;
 };
 
 }  // namespace concurrency

@@ -30,7 +30,7 @@ class ScopedFileDeleter {
 
   void CleanUp() {
     if (!path_.empty()) {
-      std::remove(ToMBString(path_).c_str());
+      std::remove(ToUTF8String(path_).c_str());
       path_.clear();
     }
   }

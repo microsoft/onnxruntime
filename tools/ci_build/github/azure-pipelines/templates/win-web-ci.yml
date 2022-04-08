@@ -11,10 +11,21 @@ parameters:
   type: string
   default: 'dev'
 
+- name: PoolName
+  type: string
+  default: 'Win-CPU-2019'
+
+- name: PackageName
+  displayName: 'Package name'
+  type: string
+  default: 'NPM_packages'
+
 jobs:
 - job: build_onnxruntime_web
-  pool: 'Win-CPU-2019'
+  pool: ${{ parameters.PoolName }}
 
+  variables:
+    runCodesignValidationInjection: false
   timeoutInMinutes: 30
   workspace:
     clean: all
@@ -44,6 +55,14 @@ jobs:
      git submodule update --init -- cmake\external\onnx
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Checkout submodule onnx'
+  - script: |
+     echo.>>.gitattributes
+     echo /js/** text=auto eol=lf>>.gitattributes
+     rd /s /q js
+     git checkout -- js/**
+     git checkout -- .gitattributes
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Testing: force EOL to lf on windows for /js/**' 
   - task: NodeTool@0
     inputs:
       versionSpec: '16.x'
@@ -73,6 +92,10 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js'
     displayName: 'npm ci /js/'
   - script: |
+     npm run lint
+    workingDirectory: '$(Build.SourcesDirectory)\js'
+    displayName: 'run ESLint without TS type populated'
+  - script: |
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js\common'
     displayName: 'npm ci /js/common/'
@@ -83,13 +106,13 @@ jobs:
   - script: |
      npm run lint
     workingDirectory: '$(Build.SourcesDirectory)\js'
-    displayName: 'ESLint'
+    displayName: 'run ESLint'
   - script: |
      npm run format
     workingDirectory: '$(Build.SourcesDirectory)\js'
     displayName: 'Clang-format'
   - script: |
-     node -e "a=require('child_process').execSync('git ls-files -m').toString();if(a)throw new Error('Following source files are not formatted: (did you run \"npm run format\"?)\n'+a)"
+     node -e "a=require('child_process').execSync('git diff --name-only').toString();if(a)throw new Error('Following source files are not formatted: (did you run \"npm run format\"?)\n'+a)"
     workingDirectory: '$(Build.SourcesDirectory)\js'
     displayName: 'Check unformatted files'
   - script: |
@@ -97,7 +120,7 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Generating documents'
   - script: |
-     node -e "a=require('child_process').execSync('git ls-files -m').toString();if(a)throw new Error('Following documents are not up-to-date: (did you run \"npm run build:doc\"?)\n'+a)"
+     node -e "a=require('child_process').execSync('git diff --name-only').toString();if(a)throw new Error('Following documents are not up-to-date: (did you run \"npm run build:doc\"?)\n'+a)"
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Check out of dated documents'
   - task: PowerShell@2
@@ -140,7 +163,7 @@ jobs:
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
   - task: PublishPipelineArtifact@0
     inputs:
-      artifactName: 'NPM_packages'
+      artifactName: '${{ parameters.PackageName }}'
       targetPath: '$(Build.ArtifactStagingDirectory)'
     displayName: 'Publish Pipeline Artifact'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))

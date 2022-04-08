@@ -302,12 +302,12 @@ TEST(MatmulIntegerOpTest, MatMulInteger_PerColumn_ND) {
 }
 
 // [M x N] = [M x K] x [K x N] = [batch_seq x input_dim] x [input_dim x embed_dim]
-template <typename ScalarB>
+template <typename WeightType>
 void RunMatMulIntegerU8X8Test(const int M, const int N, const int K, bool non_zero_zp, bool B_is_initializer, bool per_column_zp = false) {
   OpTester test("MatMulInteger", 10);
   static std::default_random_engine e(123);
   static std::uniform_int_distribution<int> n_unsigned(0, 127);
-  static std::uniform_int_distribution<int> n_xint8(std::numeric_limits<ScalarB>::min(), std::numeric_limits<ScalarB>::max());
+  static std::uniform_int_distribution<int> n_xint8(std::numeric_limits<WeightType>::min(), std::numeric_limits<WeightType>::max());
 
   Eigen::MatrixXi matrix_a = Eigen::MatrixXi::Random(K, M)
                                  .unaryExpr([](int) { return n_unsigned(e); });
@@ -317,9 +317,9 @@ void RunMatMulIntegerU8X8Test(const int M, const int N, const int K, bool non_ze
 
   Eigen::MatrixXi matrix_b = Eigen::MatrixXi::Random(N, K)
                                  .unaryExpr([](int) { return n_xint8(e); });
-  std::vector<ScalarB> matrix_b_data = ToVector<ScalarB>(matrix_b.data(), N * K);
-  ScalarB b_zero_point = non_zero_zp ? GetMiddle(matrix_b_data) : 0;
-  std::vector<ScalarB> b_zp_per_column(N, b_zero_point);
+  std::vector<WeightType> matrix_b_data = ToVector<WeightType>(matrix_b.data(), N * K);
+  WeightType b_zero_point = non_zero_zp ? GetMiddle(matrix_b_data) : 0;
+  std::vector<WeightType> b_zp_per_column(N, b_zero_point);
   Eigen::MatrixXi b_zp_matrix = b_zero_point * Eigen::MatrixXi::Ones(N, K);
   if (non_zero_zp && per_column_zp) {
     for (int i = 0; i < N; i++) {
@@ -331,13 +331,13 @@ void RunMatMulIntegerU8X8Test(const int M, const int N, const int K, bool non_ze
   Eigen::MatrixXi matrix_c = ((matrix_b - b_zp_matrix) * matrix_a_offset).eval();
 
   test.AddInput<uint8_t>("T1", {M, K}, std::move(matrix_a_data));
-  test.AddInput<ScalarB>("T2", {K, N}, std::move(matrix_b_data), B_is_initializer);
+  test.AddInput<WeightType>("T2", {K, N}, std::move(matrix_b_data), B_is_initializer);
   if (non_zero_zp) {
     test.AddInput<uint8_t>("a_zero_point", {}, {a_zero_point});
     if (per_column_zp) {
-      test.AddInput<ScalarB>("b_zero_point", {N}, b_zp_per_column);
+      test.AddInput<WeightType>("b_zero_point", {N}, b_zp_per_column);
     } else {
-      test.AddInput<ScalarB>("b_zero_point", {}, {b_zero_point});
+      test.AddInput<WeightType>("b_zero_point", {}, {b_zero_point});
     }
   }
 

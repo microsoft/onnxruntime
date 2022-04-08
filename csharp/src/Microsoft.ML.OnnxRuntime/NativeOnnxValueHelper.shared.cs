@@ -108,19 +108,22 @@ namespace Microsoft.ML.OnnxRuntime
 
     internal static class TensorElementTypeConverter
     {
-        public static void GetTypeAndWidth(TensorElementType elemType, out Type type, out int width)
+        public static bool GetTypeAndWidth(TensorElementType elemType, out Type type, out int width)
         {
-            TensorElementTypeInfo result = TensorBase.GetElementTypeInfo(elemType);
-            if(result != null)
+            bool result = true;
+            TensorElementTypeInfo typeInfo = TensorBase.GetElementTypeInfo(elemType);
+            if(typeInfo != null)
             {
-                type = result.TensorType;
-                width = result.TypeSize;
+                type = typeInfo.TensorType;
+                width = typeInfo.TypeSize;
             }
             else
             {
                 type = null;
                 width = 0;
+                result = false;
             }
+            return result;
         }
     }
 }

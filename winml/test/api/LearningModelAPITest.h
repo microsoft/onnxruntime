@@ -11,7 +11,6 @@ struct LearningModelApiTestsApi
   VoidTest CreateModelFromIStorage;
   VoidTest CreateModelFromIStorageOutsideCwd;
   VoidTest CreateModelFromIStream;
-  VoidTest CreateModelFromIBuffer;
   VoidTest ModelGetAuthor;
   VoidTest ModelGetName;
   VoidTest ModelGetDomain;
@@ -37,7 +36,6 @@ WINML_TEST(LearningModelAPITests, CreateModelFileNotFound)
 WINML_TEST(LearningModelAPITests, CreateModelFromIStorage)
 WINML_TEST(LearningModelAPITests, CreateModelFromIStorageOutsideCwd)
 WINML_TEST(LearningModelAPITests, CreateModelFromIStream)
-WINML_TEST(LearningModelAPITests, CreateModelFromIBuffer)
 WINML_TEST(LearningModelAPITests, ModelGetAuthor)
 WINML_TEST(LearningModelAPITests, ModelGetName)
 WINML_TEST(LearningModelAPITests, ModelGetDomain)

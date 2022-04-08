@@ -84,7 +84,7 @@ Return Value:
     None.
 
 --*/
-        NESTED_ENTRY MlasConvSymKernelNeonDot
+        NESTED_ENTRY MlasConvSymU8KernelDot
 
         PROLOG_SAVE_REG_PAIR  d8,d9,#-64!
         PROLOG_NOP    ldr     x8,[sp,#ConvSymFrame_PostProcessParams]
@@ -626,6 +626,6 @@ LT2Store
         str     b0,[x2]
         b       ExitKernel
 
-        NESTED_END MlasConvSymKernelNeonDot
+        NESTED_END MlasConvSymU8KernelDot
 
         END

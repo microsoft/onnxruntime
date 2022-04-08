@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    ConvSymKernelNeon.s
+    ConvSymU8KernelNeon.S
 
 Abstract:
 
@@ -88,7 +88,7 @@ Return Value:
     None.
 
 --*/
-        FUNCTION_ENTRY MlasConvSymKernelNeon
+        FUNCTION_ENTRY MlasConvSymU8KernelNeon
 
         stp     d8,d9,[sp,#-64]!
         ldr     x8,[sp,#.LConvSymFrame_PostProcessParams]

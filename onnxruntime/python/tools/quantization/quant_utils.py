@@ -343,6 +343,21 @@ def generate_identified_filename(filename: Path, identifier: str) -> Path:
     '''
     return filename.parent.joinpath(filename.stem + identifier).with_suffix(filename.suffix)
 
+def apply_plot(hist, hist_edges):
+    import sys
+    import numpy
+    import matplotlib.pyplot as plt
+    numpy.set_printoptions(threshold=sys.maxsize)
+    print("Histogram:")
+    print(hist)
+    print("Histogram Edges:")
+    print(hist_edges)
+    plt.stairs(hist, hist_edges, fill=True)
+    plt.xlabel('Tensor value')
+    plt.ylabel('Counts')
+    plt.title('Tensor value V.S. Counts')
+    plt.show()
+
 def write_calibration_table(calibration_cache):
     '''
     Helper function to write calibration table to files.   
@@ -378,7 +393,7 @@ def write_calibration_table(calibration_cache):
     TrtTable.TrtTableStartDictVector(builder, len(key_value_list))
     for key_value in key_value_list:
         builder.PrependUOffsetTRelative(key_value)
-    main_dict = builder.EndVector(len(key_value_list))
+    main_dict = builder.EndVector()
 
     TrtTable.TrtTableStart(builder)
     TrtTable.TrtTableAddDict(builder, main_dict)

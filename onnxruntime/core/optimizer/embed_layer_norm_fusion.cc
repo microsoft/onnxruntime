@@ -32,17 +32,13 @@ static NodeArg* CastToInt32(Graph& graph, NodeArg* input, ProviderType provider_
   Node& node = graph.AddNode(graph.GenerateNodeName(input->Name() + "_Cast"),
                              "Cast",
                              "Cast Input from int64 to int32",
-                             {input},
-                             {&cast32},
+                             std::array{input},
+                             std::array{&cast32},
                              nullptr,
                              kOnnxDomain);
 
   // Add attribute: "to" = 6
-  ONNX_NAMESPACE::AttributeProto to;
-  to.set_name("to");
-  to.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
-  to.set_i(static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_INT32));
-  node.AddAttribute("to", to);
+  node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_INT32});
 
   node.SetExecutionProviderType(provider_type);
   return &cast32;
@@ -66,7 +62,7 @@ static bool CheckInput(NodeArg* input, const logging::Logger& logger) {
   return true;
 }
 
-static bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Node::NodeConstIterator end, const std::vector<std::string>& expected_types) {
+static bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Node::NodeConstIterator end, gsl::span<const std::string> expected_types) {
   for (const std::string& expected_type : expected_types) {
     if (start == end || (*start).OpType().compare(expected_type) != 0) {
       return false;
@@ -74,6 +70,10 @@ static bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Nod
     ++start;
   }
   return start == end;
+}
+
+static inline bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Node::NodeConstIterator end, std::initializer_list<std::string> expected_types) {
+  return IsNeighborNodeExpectedTypes(start, end, gsl::make_span(expected_types));
 }
 
 /** Match subgraph like the following:
@@ -316,7 +316,7 @@ static bool MatchPositionEmbeddingSubgraphsFromGather(
 
     // Match Shape --> Expand path.
     std::vector<const Node::EdgeEnd*> pg_edges_2;
-    if (!graph_utils::FindPath(expand_node, true, {{0, 1, "Shape", {1, 13}, kOnnxDomain}}, pg_edges_2, logger)) {
+    if (!graph_utils::FindPath(expand_node, true, {graph_utils::EdgeEndToMatch{0, 1, "Shape", {1, 13}, kOnnxDomain}}, pg_edges_2, logger)) {
       DEBUG_LOG("Failed to match Shape node. ");
       return false;
     }
@@ -378,7 +378,7 @@ static bool MatchPositionEmbeddingSubgraph(
   // Constant folding removes Shape and Expand nodes when input has static shape.
   // In that case just look for Gather --> Add.
   std::vector<const Node::EdgeEnd*> edges;
-  if (!graph_utils::FindPath(add_node, true, {{0, 1, "Gather", {1, 11, 13}, kOnnxDomain}}, edges, logger)) {
+  if (!graph_utils::FindPath(add_node, true, {graph_utils::EdgeEndToMatch{0, 1, "Gather", {1, 11, 13}, kOnnxDomain}}, edges, logger)) {
     return false;
   }
   Node& position_gather_node = *graph.GetNode(edges[0]->GetNode().Index());
@@ -394,7 +394,7 @@ static bool MatchPositionEmbeddingSubgraph(
   // (2) it is not initializer and matches subgraph 1 (for opset 10) or 2 (for opset 11).
   if (graph_utils::IsConstantInitializer(graph, position_gather_node.MutableInputDefs()[1]->Name())) {
     // Check that the tensor has shape (batch_size, sequence_length)
-    std::vector<int64_t> data;
+    InlinedVector<int64_t> data;
     auto expected_shape = input_ids->Shape();
     if (!optimizer_utils::AppendTensorFromInitializer(graph, *(position_gather_node.MutableInputDefs()[1]), data) ||
         !utils::HasDimValue(expected_shape->dim()[0]) ||
@@ -513,7 +513,7 @@ static void CreateEmbedLayernormNode(Graph& graph,
                                               "EmbedLayerNormalization",
                                               "fused EmbedLayerNorm subgraphs ",
                                               embed_layer_norm_input_defs,
-                                              {layer_norm_node.MutableOutputDefs()[0], &mask_index},
+                                              std::array{layer_norm_node.MutableOutputDefs()[0], &mask_index},
                                               {}, kMSDomain);
 
   // Get attribute "epsilon" from "LayerNormalization" node if available. Else, default value
@@ -521,7 +521,7 @@ static void CreateEmbedLayernormNode(Graph& graph,
   NodeAttributes ln_attrs = layer_norm_node.GetAttributes();
   NodeAttributes::const_iterator epsilon = ln_attrs.find("epsilon");
   if (epsilon != ln_attrs.end()) {
-    embed_layer_norm_node.AddAttribute("epsilon", epsilon->second);
+    embed_layer_norm_node.AddAttributeProto(epsilon->second);
   } else {
     embed_layer_norm_node.AddAttribute("epsilon", contrib::kDefaultEmbedLayerNormEpsilon);
   }
@@ -837,7 +837,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     std::vector<const Node::EdgeEnd*> edges;
 
     // Find Add --> LayerNormalization
-    if (!graph_utils::FindPath(layer_norm_node, true, {{0, 0, "Add", {7, 13}, kOnnxDomain}}, edges, logger)) {
+    if (!graph_utils::FindPath(layer_norm_node, true, {graph_utils::EdgeEndToMatch{0, 0, "Add", {7, 13}, kOnnxDomain}}, edges, logger)) {
       continue;
     }
     Node& layer_norm_add_node = *graph.GetNode(edges[0]->GetNode().Index());

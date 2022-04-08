@@ -99,7 +99,7 @@ if (WASM) {
     }
 
     fs.writeFileSync(WASM_BINDING_THREADED_MIN_JS_PATH, terser.stdout);
-    fs.writeFileSync(WASM_THREADED_JS_PATH, COPYRIGHT_BANNER + terser.stdout);
+    fs.writeFileSync(WASM_THREADED_JS_PATH, `${COPYRIGHT_BANNER}${terser.stdout}`);
 
     validateFile(WASM_BINDING_THREADED_MIN_JS_PATH);
     validateFile(WASM_THREADED_JS_PATH);
@@ -124,7 +124,7 @@ if (WASM) {
     }
 
     fs.writeFileSync(WASM_BINDING_THREADED_MIN_WORKER_JS_PATH, terser.stdout);
-    fs.writeFileSync(WASM_THREADED_WORKER_JS_PATH, COPYRIGHT_BANNER + terser.stdout);
+    fs.writeFileSync(WASM_THREADED_WORKER_JS_PATH, `${COPYRIGHT_BANNER}${terser.stdout}`);
 
     validateFile(WASM_BINDING_THREADED_MIN_WORKER_JS_PATH);
     validateFile(WASM_THREADED_WORKER_JS_PATH);

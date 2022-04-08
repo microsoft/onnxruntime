@@ -27,19 +27,34 @@ void Selectors::RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops
 }
 
 /* static methods to return different operator's OpVersionMap */
-static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() { return {{"Gather", {}},
-                                                                                   {"Reshape", {}},
-                                                                                   {"Transpose", {}},
-                                                                                   {"MaxPool", {12}},
-                                                                                   {"Resize", {}}}; }
+static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() {
+  return {{"Gather", {}},
+          {"Reshape", {}},
+          {"Transpose", {}},
+          {"MaxPool", {12}},
+          {"Resize", {}},
+          {"Squeeze", {}},
+          {"Unsqueeze", {}}};
+}
 
-static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() { return {{"AveragePool", {}},
-                                                                                    {"LeakyRelu", {}}}; }
-static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() { return {{"Add", {}},
-                                                                                     {"Mul", {}}}; }
-static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() { return {{"Concat", {}}}; }
-static const OpVersionsAndSelector::OpVersionsMap GetConvOpVersionsMap() { return {{"Conv", {}}}; }
-static const OpVersionsAndSelector::OpVersionsMap GetMatMulOpVersionsMap() { return {{"MatMul", {}}}; }
+static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
+  return {{"AveragePool", {}},
+          {"Softmax", {}},
+          {"LeakyRelu", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
+  return {{"Add", {}},
+          {"Mul", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() {
+  return {{"Concat", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetConvOpVersionsMap() {
+  return {{"Conv", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetMatMulOpVersionsMap() {
+  return {{"MatMul", {}}};
+}
 
 /* Selector rules registration related */
 void RegisterMiscSelectors(Selectors& qdq_selectors) {
@@ -111,7 +126,9 @@ std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& grap
   std::vector<NodeGroup> qdq_selections;
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     const auto* node = graph_viewer.GetNode(index);
-    if (node->Domain() != kOnnxDomain) {
+    // post layout transformation all the layout sensitive nodes are converted to domain
+    // kMSInternalNHWCDomain. Therefore need to allow this domain as well.
+    if (node->Domain() != kOnnxDomain && node->Domain() != kMSInternalNHWCDomain) {
       continue;
     }
 

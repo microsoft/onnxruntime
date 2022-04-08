@@ -84,7 +84,7 @@ Return Value:
     None.
 
 --*/
-        FUNCTION_ENTRY MlasConvSymKernelNeonDot
+        FUNCTION_ENTRY MlasConvSymU8KernelDot
 
         stp     d8,d9,[sp,#-.LConvSymFrame_SavedRegisters]!
         ldr     x8,[sp,#.LConvSymFrame_PostProcessParams]

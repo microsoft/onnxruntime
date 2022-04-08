@@ -16,9 +16,10 @@
 
 #pragma once
 
+#include <cassert>
+
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
-#include "core/framework/tensor.h"
 #endif
 
 #ifndef CBLAS_ENUM_DEFINED_H
@@ -89,8 +90,7 @@ void RowwiseSum(int N, int D, const T* x, T* y,
 
 // Sum of vector x, and writes the result to a single value y.
 template <typename T, class Provider>
-void Sum(int N, const T* x, T* y, Provider* provider,
-         Tensor* scratch_ptr = nullptr);
+void Sum(int N, const T* x, T* y, Provider* provider);
 
 template <typename T, class Provider>
 void Scale(int N, float alpha, const T* x, T* y, Provider* provider);

@@ -50,6 +50,20 @@ struct BFloat16 {
   inline ORT_HOST_DEVICE BFloat16(float v) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     val = __bfloat16_as_ushort(__float2bfloat16(v));
+#elif defined(USE_ROCM)
+    // We should be using memcpy in order to respect the strict aliasing rule but it fails in the HIP environment.
+    if (v != v) {  // isnan
+      val = UINT16_C(0x7FC0);
+    } else {
+      union {
+        uint32_t U32;
+        float F32;
+      };
+
+      F32 = v;
+      uint32_t rounding_bias = ((U32 >> 16) & 1) + UINT32_C(0x7FFF);
+      val = static_cast<uint16_t>((U32 + rounding_bias) >> 16);
+    }
 #else
     ORT_IF_CONSTEXPR(endian::native == endian::little) {
       std::memcpy(&val, reinterpret_cast<char*>(&v) + sizeof(uint16_t), sizeof(uint16_t));
@@ -63,6 +77,14 @@ struct BFloat16 {
   inline ORT_HOST_DEVICE float ToFloat() const {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
     return __bfloat162float(*reinterpret_cast<const __nv_bfloat16*>(&val));
+#elif defined(USE_ROCM)
+    // We should be using memcpy in order to respect the strict aliasing rule but it fails in the HIP environment.
+    float result = 0;
+    uint32_t tmp = val;
+    tmp <<= 16;
+    float* tempRes = reinterpret_cast<float*>(&tmp);
+    result = *tempRes;
+    return result;
 #else
     float result;
     char* const first = reinterpret_cast<char*>(&result);

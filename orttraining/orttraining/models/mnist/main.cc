@@ -273,7 +273,7 @@ void setup_training_params(MnistParameters& params) {
 int main(int argc, char* args[]) {
   // setup logger
   string default_logger_id{"Default"};
-  logging::LoggingManager default_logging_manager{unique_ptr<logging::ISink>{new logging::CLogSink{}},
+  logging::LoggingManager default_logging_manager{std::make_unique<logging::CLogSink>(),
                                                   logging::Severity::kWARNING,
                                                   false,
                                                   logging::LoggingManager::InstanceType::Default,
@@ -293,7 +293,7 @@ int main(int argc, char* args[]) {
   std::vector<string> feeds{"X", "labels"};
   auto trainingData = std::make_shared<DataSet>(feeds);
   auto testData = std::make_shared<DataSet>(feeds);
-  std::string mnist_data_path = ToMBString(params.train_data_dir);
+  std::string mnist_data_path = ToUTF8String(params.train_data_dir);
   if (params.model_type == "conv") {
     PrepareMNISTData(mnist_data_path, IMAGE_DIMS_CONV, LABEL_DIMS, *trainingData, *testData, MPIContext::GetInstance().GetWorldRank() /* shard_to_load */, device_count /* total_shards */);
   } else /* gemm */ {

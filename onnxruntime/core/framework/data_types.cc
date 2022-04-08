@@ -532,9 +532,18 @@ NonTensorTypeBase::NonTensorTypeBase(size_t size)
       impl_(new Impl()) {
 }
 
+//The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
+//However, we do not allocate this type on heap.
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26436)
+#endif
 NonTensorTypeBase::~NonTensorTypeBase() {
   delete impl_;
 }
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 
 ONNX_NAMESPACE::TypeProto& NonTensorTypeBase::MutableTypeProto() {
   return impl_->MutableTypeProto();

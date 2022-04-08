@@ -37,6 +37,7 @@
 #include "core/common/status.h"
 #include "core/common/gsl_suppress.h"
 
+
 namespace onnxruntime {
 
 using TimePoint = std::chrono::high_resolution_clock::time_point;
@@ -264,13 +265,12 @@ inline long long TimeDiffMicroSeconds(TimePoint start_time, TimePoint end_time) 
 }
 
 struct null_type {};
-inline std::string ToMBString(const std::string& s) { return s; }
+inline std::string ToUTF8String(const std::string& s) { return s; }
 #ifdef _WIN32
 /**
- * Convert a wide character string into a narrow one, with local ANSI code page(like CP936)
- * DO NOT assume the result string is encoded in UTF-8
+ * Convert a wide character string to a UTF-8 string
  */
-std::string ToMBString(const std::wstring& s);
+std::string ToUTF8String(const std::wstring& s);
 
 std::wstring ToWideString(const std::string& s);
 inline std::wstring ToWideString(const std::wstring& s) { return s; }

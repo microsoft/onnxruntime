@@ -9,7 +9,7 @@
 #include "core/util/math.h"
 #endif
 
-#include "core/framework/inlined_containers.h"
+#include "core/common/inlined_containers.h"
 #include "core/framework/op_node_proto_helper.h"
 
 namespace onnxruntime {

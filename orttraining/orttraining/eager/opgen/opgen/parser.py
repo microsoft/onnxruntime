@@ -219,15 +219,18 @@ class TorchParser(ParserBase):
     else:
       raise UnexpectedTokenError("expression", self._peek_token())
 
-  def parse_type(self) -> Type:
-    parsed_type, alias_info = self._parse_type_and_alias()
-    if not alias_info:
-      return parsed_type
+  def _create_alias_info_type(self, parsed_type: Type, alias_info: AliasInfo) -> AliasInfoType:
     if isinstance(parsed_type, ModifiedType):
       parsed_type.base_type = AliasInfoType(parsed_type.base_type, alias_info)
     else:
       parsed_type = AliasInfoType(parsed_type, alias_info)
     return parsed_type
+
+  def parse_type(self) -> Type:
+    parsed_type, alias_info = self._parse_type_and_alias()
+    if not alias_info:
+      return parsed_type
+    return self._create_alias_info_type(parsed_type, alias_info)
 
   def _parse_type_and_alias(self) -> Tuple[Type, AliasInfo]:
     parsed_type: Type = None
@@ -239,8 +242,9 @@ class TorchParser(ParserBase):
     if self._peek_token(TokenKind.OPEN_PAREN):
       def parse_tuple_element():
         element_type, element_alias_info = self._parse_type_and_alias()
-        if alias_info and element_alias_info:
-          alias_info.add_contained_type(element_alias_info)
+        if element_alias_info:
+          element_type = self._create_alias_info_type(element_type, element_alias_info)
+    
         return TupleMemberType(
           element_type,
           self._read_token() \

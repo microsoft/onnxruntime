@@ -118,4 +118,21 @@ CPUIDInfo::CPUIDInfo() {
 
 }
 
+int32_t CPUIDInfo::GetCurrentUarch() const {
+#if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED)
+  if (!pytorch_cpuinfo_init_) {
+    return -1;
+  }
+  const auto uarchIdx = cpuinfo_get_current_uarch_index();
+  const struct cpuinfo_uarch_info* uarch_info = cpuinfo_get_uarch(uarchIdx);
+  if (uarch_info == NULL) {
+    return -1;
+  }
+  return uarch_info->uarch;
+
+#else
+  return -1;
+#endif
+}
+
 }  // namespace onnxruntime

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/rocm/math/softmax_grad.h"
+#include "orttraining/training_ops/rocm/math/softmax_grad_impl.h"
 
 #include "core/providers/common.h"
 #include "core/providers/rocm/miopen_common.h"
@@ -181,6 +182,7 @@ Status SoftmaxGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
 SPECIALIZED_GRADIENT(float)
 // SPECIALIZED_GRADIENT(double)
 SPECIALIZED_GRADIENT(MLFloat16)
+SPECIALIZED_GRADIENT(BFloat16)
 
 }  // namespace rocm
 }  // namespace onnxruntime

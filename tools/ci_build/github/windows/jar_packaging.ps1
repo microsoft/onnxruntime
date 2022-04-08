@@ -15,3 +15,9 @@ pushd onnxruntime-java-osx-x86_64
 Remove-Item -Path libcustom_op_library.dylib
 7z a $Env:BUILD_BINARIESDIRECTORY\java-artifact\onnxruntime-java-win-x64\onnxruntime-$Env:ONNXRUNTIMEVERSION.jar .
 popd
+pushd onnxruntime-java-linux-aarch64
+7z a $Env:BUILD_BINARIESDIRECTORY\java-artifact\onnxruntime-java-win-x64\onnxruntime-$Env:ONNXRUNTIMEVERSION.jar .
+popd
+pushd onnxruntime-java-osx-arm64
+7z a $Env:BUILD_BINARIESDIRECTORY\java-artifact\onnxruntime-java-win-x64\onnxruntime-$Env:ONNXRUNTIMEVERSION.jar .
+popd

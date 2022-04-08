@@ -58,7 +58,8 @@ static SessionOptions session_options = {
     true,                              //thread_pool_allow_spinning
     false,                             //use_deterministic_compute
     {},                                //config_options
-    {},                                // initializers_to_share_map
+    {},                                //initializers_to_share_map
+    {},                                // external_initializers
 };
 
 struct BertParameters : public TrainingRunner::Parameters {
@@ -853,7 +854,7 @@ int main(int argc, char* argv[]) {
 
   // setup logger, be noted: LOGS_DEFAULT must be after logging manager initialization.
   string default_logger_id{"Default"};
-  logging::LoggingManager default_logging_manager{unique_ptr<logging::ISink>{new logging::CLogSink{}},
+  logging::LoggingManager default_logging_manager{std::make_unique<logging::CLogSink>(),
                                                   ort_params.log_severity,
                                                   false,
                                                   logging::LoggingManager::InstanceType::Default,
@@ -874,7 +875,7 @@ int main(int argc, char* argv[]) {
   if (!params.convergence_test_output_file.empty()) {
     std::ofstream output_file(params.convergence_test_output_file);
     LOGS_DEFAULT_IF(!output_file, WARNING)
-        << "Failed to open convergence test output file: " << ToMBString(params.convergence_test_output_file);
+        << "Failed to open convergence test output file: " << ToUTF8String(params.convergence_test_output_file);
     output_file << ConvergenceTestDataRecord::GetCsvHeaderLine();
   }
 

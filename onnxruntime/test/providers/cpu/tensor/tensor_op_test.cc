@@ -101,7 +101,7 @@ TEST(TensorOpTest, Reshape_WithAllowZero) {
            {kNupharExecutionProvider, kTensorrtExecutionProvider});
 }
 
-TEST(TensorOpTest, Reshape_EmptyInputWihtoutAllowZero) {
+TEST(TensorOpTest, Reshape_EmptyInputWithoutAllowZero) {
   OpTester test("Reshape");
 
   test.AddInput<float>("data", {0, 3, 4}, std::vector<float>());
@@ -114,7 +114,7 @@ TEST(TensorOpTest, Reshape_EmptyInputWihtoutAllowZero) {
            {kNupharExecutionProvider, kTensorrtExecutionProvider});
 }
 
-TEST(TensorOpTest, Reshape_EmptyInputWihtAllowZero) {
+TEST(TensorOpTest, Reshape_EmptyInputWithAllowZero) {
   OpTester test("Reshape", 14);
 
   test.AddInput<float>("data", {0, 3, 4}, std::vector<float>());
@@ -125,6 +125,25 @@ TEST(TensorOpTest, Reshape_EmptyInputWihtAllowZero) {
   // TensorRT doesn't support dynamic shape tensor for now
   // Nuphar only supports reshape shape from initializer
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider, kTensorrtExecutionProvider});
+}
+
+TEST(TensorOpTest, Reshape_UnknownDimWithoutAllowZero) {
+  OpTester test("Reshape");
+
+  test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
+  test.AddInput<int64_t>("shape", {2}, {-1, 6});
+  test.AddOutput<float>("reshaped", {1, 6}, std::vector<float>(6, 1.0f));
+  test.Run();
+}
+
+TEST(TensorOpTest, Reshape_UnknownDimWithAllowZero) {
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
+  test.AddInput<int64_t>("shape", {2}, {-1, 6});
+  test.AddAttribute<int64_t>("allowzero", 1);
+  test.AddOutput<float>("reshaped", {1, 6}, std::vector<float>(6, 1.0f));
+  test.Run();
 }
 
 TEST(TensorOpTest, ShapeTest2D) {
@@ -205,7 +224,11 @@ void MeanVarianceNormalizationFunctionDefaultPerChannel() {
   OpTester test("MeanVarianceNormalization", 9);
   test.AddInput<float>("input", {N, C, H, W}, X);
   test.AddOutput<float>("output", {N, C, H, W}, result);
+#if defined(OPENVINO_CONFIG_MYRIAD)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Unsupported combination of indices in layer "output"
+#else
   test.Run();
+#endif
 }
 
 void MeanVarianceNormalizationFunctionAcrossChannels(std::vector<int64_t> axes) {
@@ -228,7 +251,11 @@ void MeanVarianceNormalizationFunctionAcrossChannels(std::vector<int64_t> axes) 
   test.AddAttribute("axes", axes);
   test.AddInput<float>("input", {N, C, H, W}, X);
   test.AddOutput<float>("output", {N, C, H, W}, result);
+#if defined(OPENVINO_CONFIG_MYRIAD)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});  // OpenVINO: Unsupported combination of indices in layer "output"
+#else
   test.Run();
+#endif
 }
 
 TEST(TensorOpTest, MeanVarianceNormalizationCPUTest) {

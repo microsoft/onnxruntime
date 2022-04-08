@@ -61,9 +61,9 @@ float GeluGrad(float dy, float x) {
 }
 
 float GeluApproximationGrad(float dy, float x) {
-  static const float kAlpha = static_cast<float>(M_2_SQRTPI * M_SQRT1_2);
-  static const float kGamma = 0.044715f;
-  static const float kBeta = kAlpha * kGamma * 3.0f;
+  static constexpr float kAlpha = static_cast<float>(M_2_SQRTPI * M_SQRT1_2);
+  static constexpr float kGamma = 0.044715f;
+  static constexpr float kBeta = kAlpha * kGamma * 3.0f;
 
   float x_cube = x * x * x;
   float tanh_value = std::tanh(kAlpha * (x + kGamma * x_cube));
@@ -72,15 +72,15 @@ float GeluApproximationGrad(float dy, float x) {
   return result;
 }
 
-float ReluGrad(float dy, float x) {
+constexpr float ReluGrad(float dy, float x) {
   return x > 0 ? dy : 0;
 }
 
-float SigmoidGrad(float dy, float y) {
+constexpr float SigmoidGrad(float dy, float y) {
   return dy * y * (1 - y);
 }
 
-float TanhGrad(float dy, float y) {
+constexpr float TanhGrad(float dy, float y) {
   return dy * (1 - y * y);
 }
 }  // namespace

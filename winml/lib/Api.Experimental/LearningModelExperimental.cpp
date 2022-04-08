@@ -29,4 +29,9 @@ void LearningModelExperimental::Save(hstring const& file_name) {
     modelp->SaveToFile(file_name);
 }
 
+void LearningModelExperimental::SetName(hstring const& model_name) {
+  auto modelp = model_.as<winmlp::LearningModel>();
+  modelp->SetName(model_name);
+}
+
 }

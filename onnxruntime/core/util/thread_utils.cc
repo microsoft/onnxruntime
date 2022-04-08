@@ -1,4 +1,8 @@
-#include "thread_utils.h"
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "core/util/thread_utils.h"
+
 #include <algorithm>
 
 #ifdef _WIN32

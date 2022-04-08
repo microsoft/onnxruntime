@@ -9,7 +9,7 @@
 #include <type_traits>
 #include <map>
 #include <unordered_map>
-
+#include "core/common/gsl_suppress.h"
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
 #include "core/framework/endian.h"
@@ -445,6 +445,12 @@ void AssignOpaqueDomainName(const char* domain, const char* name,
 
 }  // namespace data_types_internal
 
+//The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
+//However, we do not allocate this type on heap.
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26436)
+#endif
 /// All tensors base
 class TensorTypeBase : public DataTypeImpl {
  public:
@@ -859,7 +865,9 @@ class SequenceTensorTypeBase : public DataTypeImpl {
   struct Impl;
   Impl* impl_;
 };
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 /**
  * \brief SequenceTensorType. Use to register sequence for non-tensor types.
  *

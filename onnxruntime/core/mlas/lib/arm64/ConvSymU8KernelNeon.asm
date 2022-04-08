@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    ConvSymKernelNeon.s
+    ConvSymU8KernelNeon.asm
 
 Abstract:
 
@@ -88,7 +88,7 @@ Return Value:
     None.
 
 --*/
-        NESTED_ENTRY MlasConvSymKernelNeon
+        NESTED_ENTRY MlasConvSymU8KernelNeon
 
         PROLOG_SAVE_REG_PAIR  d8,d9,#-64!
         PROLOG_NOP    ldr     x8,[sp,#ConvSymFrame_PostProcessParams]
@@ -431,6 +431,6 @@ InputChannel8
         b.hi    KernelSizeLoop
         b       Requantize
 
-        NESTED_END MlasConvSymKernelNeon
+        NESTED_END MlasConvSymU8KernelNeon
 
         END

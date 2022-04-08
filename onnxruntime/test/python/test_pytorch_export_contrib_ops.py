@@ -72,7 +72,6 @@ class ONNXExporterTest(unittest.TestCase):
             f = io.BytesIO()
             torch.onnx.export(model, input_copy, f,
                               opset_version=self.opset_version,
-                              example_outputs=output,
                               do_constant_folding=do_constant_folding,
                               keep_initializers_as_inputs=self.keep_initializers_as_inputs,
                               dynamic_axes=dynamic_axes,

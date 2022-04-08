@@ -2,6 +2,9 @@
 #include "sequences.h"
 #include "beam_search_parameters.h"
 
+#include "core/common/inlined_containers.h"
+#include "beam_search_shared.h"
+
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {
@@ -77,21 +80,34 @@ class VocabMaskLogitsProcessor : public ILogitsProcessor<T> {
 };
 
 template <typename T>
-class LogitsProcessorList {
-public:
-    LogitsProcessorList() = default ;
-    void Init(const BeamSearchParameters& parameters);
-    void Process(const ISequences* sequences, gsl::span<T>& next_token_scores);
+class PrefixVocabMaskLogitsProcessor : public ILogitsProcessor<T> {
+ public:
+  PrefixVocabMaskLogitsProcessor(const gsl::span<const int32_t>& vocab_mask, int batch_size);
 
-private:
-    int batch_beam_size_;
-    int vocab_size_;
-    std::vector<ILogitsProcessor<T>*> processor_list_;
+  void Process(const ISequences* sequences,
+               NextTokenScores<T>& next_token_scores) override;
 
-    std::unique_ptr<RepetitionPenaltyLogitsProcessor<T>> repetition_penalty_processor_;
-    std::unique_ptr<NoRepeatNGramLogitsProcessor<T>> no_repeat_ngram_processor_;
-    std::unique_ptr<VocabMaskLogitsProcessor<T>> vocab_mask_processor_;
-    std::unique_ptr<MinLengthLogitsProcessor<T>> min_length_processor_;
+ private:
+  gsl::span<const int32_t> prefix_vocab_mask_;
+  const int batch_size_;
+};
+
+class LogitsProcessorList : public ILogitsProcessorList {
+ public:
+  LogitsProcessorList() = default;
+  void Init(const BeamSearchParameters& parameters);
+  void Process(const ISequences* sequences, gsl::span<float>& next_token_scores, int step);
+
+ private:
+  int batch_beam_size_;
+  int vocab_size_;
+  InlinedVector<ILogitsProcessor<float>*> processor_list_;
+
+  std::unique_ptr<RepetitionPenaltyLogitsProcessor<float>> repetition_penalty_processor_;
+  std::unique_ptr<NoRepeatNGramLogitsProcessor<float>> no_repeat_ngram_processor_;
+  std::unique_ptr<VocabMaskLogitsProcessor<float>> vocab_mask_processor_;
+  std::unique_ptr<PrefixVocabMaskLogitsProcessor<float>> prefix_vocab_mask_processor_;
+  std::unique_ptr<MinLengthLogitsProcessor<float>> min_length_processor_;
 };
 
 }  // namespace transformers

@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -55,9 +56,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Bind a piece of pre-allocated native memory as a OrtValue Tensor with a given shape
         /// to an input with a given name. The model will read the specified input from that memory
         /// possibly avoiding the need to copy between devices. OrtMemoryAllocation continues to own
-        /// the chunk of native memory and should be alive until the end of execution.
-        /// The size of the allocation can not be less than required.
-        /// by the Tensor of the given size.
+        /// the chunk of native memory, and the allocation should be alive until the end of execution.
         /// </summary>
         /// <param name="name">of the input</param>
         /// <param name="elementType">Tensor element type</param>
@@ -65,11 +64,20 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="allocation">native memory allocation</param>
         public void BindInput(string name, Tensors.TensorElementType elementType, long[] shape, OrtMemoryAllocation allocation)
         {
-            using (var ortValue = OrtValue.CreateTensorValueWithData(allocation.Info,
-                                                                    elementType,
-                                                                    shape,
-                                                                    allocation.Pointer, allocation.Size))
-                BindInputOrOutput(name, ortValue.Handle, true);
+            BindOrtAllocation(name, elementType, shape, allocation, true);
+        }
+
+        /// <summary>
+        /// Bind externally (not from OrtAllocator) allocated memory as input.
+        /// The model will read the specified input from that memory
+        /// possibly avoiding the need to copy between devices. The user code continues to own
+        /// the chunk of externally allocated memory, and the allocation should be alive until the end of execution.
+        /// </summary>
+        /// <param name="name">name</param>
+        /// <param name="allocation">non ort allocated memory</param>
+        public void BindInput(string name, OrtExternalAllocation allocation)
+        {
+            BindExternalAllocation(name, allocation, true);
         }
 
         /// <summary>
@@ -80,7 +88,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="fixedValue"></param>
         public void BindInput(string name, FixedBufferOnnxValue fixedValue)
         {
-            if(fixedValue.OnnxValueType != OnnxValueType.ONNX_TYPE_TENSOR)
+            if (fixedValue.OnnxValueType != OnnxValueType.ONNX_TYPE_TENSOR)
             {
                 throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Binding works only with Tensors");
             }
@@ -93,13 +101,12 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void SynchronizeBoundInputs()
         {
-            NativeMethods.OrtSynchronizeBoundInputs(handle);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSynchronizeBoundInputs(handle));
         }
 
         /// <summary>
         /// Bind model output to an OrtValue as Tensor with a given type and shape. An instance of OrtMemoryAllocaiton
-        /// owns the memory and should be alive for the time of execution.The size of the allocation can not be less than required
-        /// by the Tensor of the given size.
+        /// owns the memory and should be alive for the time of execution.
         /// </summary>
         /// <param name="name">of the output</param>
         /// <param name="elementType">tensor element type</param>
@@ -107,11 +114,20 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="allocation">allocated memory</param>
         public void BindOutput(string name, Tensors.TensorElementType elementType, long[] shape, OrtMemoryAllocation allocation)
         {
-            using (var ortValue = OrtValue.CreateTensorValueWithData(allocation.Info,
-                                                                    elementType,
-                                                                    shape,
-                                                                    allocation.Pointer, allocation.Size))
-                BindInputOrOutput(name, ortValue.Handle, false);
+            BindOrtAllocation(name, elementType, shape, allocation, false);
+        }
+
+        /// <summary>
+        /// Bind externally (not from OrtAllocator) allocated memory as output.
+        /// The model will read the specified input from that memory
+        /// possibly avoiding the need to copy between devices. The user code continues to own
+        /// the chunk of externally allocated memory, and the allocation should be alive until the end of execution.
+        /// </summary>
+        /// <param name="name">name</param>
+        /// <param name="allocation">non ort allocated memory</param>
+        public void BindOutput(string name, OrtExternalAllocation allocation)
+        {
+            BindExternalAllocation(name, allocation, false);
         }
 
         /// <summary>
@@ -139,7 +155,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var utf8NamePinned = GCHandle.Alloc(NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name), GCHandleType.Pinned);
             using (var pinnedName = new PinnedGCHandle(utf8NamePinned))
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtBindOutputToDevice(handle, pinnedName.Pointer, memInfo.Pointer));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtBindOutputToDevice(handle, pinnedName.Pointer, memInfo.Pointer));
         }
 
         /// <summary>
@@ -148,8 +164,45 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         public void SynchronizeBoundOutputs()
         {
-            NativeMethods.OrtSynchronizeBoundOutputs(handle);
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSynchronizeBoundOutputs(handle));
         }
+
+        /// <summary>
+        /// Bind allocation obtained from an Ort allocator
+        /// </summary>
+        /// <param name="name">name </param>
+        /// <param name="elementType">data type</param>
+        /// <param name="shape">tensor shape</param>
+        /// <param name="allocation">ort allocation</param>
+        /// <param name="isInput">whether this is input or output</param>
+        private void BindOrtAllocation(string name, Tensors.TensorElementType elementType, long[] shape,
+            OrtMemoryAllocation allocation, bool isInput)
+        {
+            using (var ortValue = OrtValue.CreateTensorValueWithData(allocation.Info,
+                                                                    elementType,
+                                                                    shape,
+                                                                    allocation.Pointer, allocation.Size))
+                BindInputOrOutput(name, ortValue.Handle, isInput);
+        }
+
+
+        /// <summary>
+        /// Bind external allocation as input or output.
+        /// The allocation is owned by the user code.
+        /// </summary>
+        /// <param name="name">name </param>
+        /// <param name="allocation">non ort allocated memory</param>
+        /// <param name="isInput">whether this is an input or output</param>
+        private void BindExternalAllocation(string name, OrtExternalAllocation allocation, bool isInput)
+        {
+            using (var ortValue = OrtValue.CreateTensorValueWithData(allocation.Info,
+                                                        allocation.ElementType,
+                                                        allocation.Shape,
+                                                        allocation.Pointer,
+                                                        allocation.Size))
+                BindInputOrOutput(name, ortValue.Handle, isInput);
+        }
+
 
         /// <summary>
         /// Internal helper
@@ -185,7 +238,7 @@ namespace Microsoft.ML.OnnxRuntime
             var allocator = OrtAllocator.DefaultInstance;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetBoundOutputNames(handle, allocator.Pointer, out buffer, out lengths, out count));
 
-            if(count.Equals(UIntPtr.Zero))
+            if (count.Equals(UIntPtr.Zero))
             {
                 return new string[0];
             }
@@ -196,9 +249,9 @@ namespace Microsoft.ML.OnnxRuntime
                 int outputCount = (int)count;
                 var lens = new int[outputCount];
                 int totalLength = 0;
-                for(int i = 0; i < outputCount; ++i)
+                for (int i = 0; i < outputCount; ++i)
                 {
-                    var len =(int)Marshal.ReadIntPtr(lengths, IntPtr.Size * i);
+                    var len = (int)Marshal.ReadIntPtr(lengths, IntPtr.Size * i);
                     lens[i] = len;
                     totalLength += len;
                 }
@@ -208,7 +261,7 @@ namespace Microsoft.ML.OnnxRuntime
 
                 string[] result = new string[outputCount];
                 int readOffset = 0;
-                for(int i = 0; i < outputCount; ++i)
+                for (int i = 0; i < outputCount; ++i)
                 {
                     var strLen = lens[i];
                     result[i] = Encoding.UTF8.GetString(stringData, readOffset, strLen);
@@ -229,23 +282,24 @@ namespace Microsoft.ML.OnnxRuntime
             var allocator = OrtAllocator.DefaultInstance;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetBoundOutputValues(handle, allocator.Pointer, out ortValues, out count));
 
-            if(count.Equals(UIntPtr.Zero))
+            if (count.Equals(UIntPtr.Zero))
             {
                 return new DisposableList<OrtValue>();
             }
 
-            using(var ortValuesAllocation = new OrtMemoryAllocation(allocator, ortValues, 0))
+            using (var ortValuesAllocation = new OrtMemoryAllocation(allocator, ortValues, 0))
             {
                 int outputCount = (int)count;
                 var ortList = new DisposableList<OrtValue>(outputCount);
                 try
                 {
-                    for(int i = 0; i < outputCount; ++i)
+                    for (int i = 0; i < outputCount; ++i)
                     {
                         IntPtr ortValue = Marshal.ReadIntPtr(ortValues, IntPtr.Size * i);
                         ortList.Add(new OrtValue(ortValue));
                     }
-                } catch(Exception)
+                }
+                catch (Exception)
                 {
                     ortList.Dispose();
                     throw;

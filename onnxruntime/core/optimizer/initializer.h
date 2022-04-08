@@ -145,8 +145,13 @@ class Initializer final {
         }
       }
     } else {  // tensor_proto.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL
+#if !defined(ORT_MINIMAL_BUILD)
       const auto status = ReadExternalRawData(tensor_proto, model_path, raw_data_);
       ORT_ENFORCE(status.IsOK(), "ReadExternalRawData() failed: ", status.ErrorMessage());
+#else
+      ORT_UNUSED_PARAMETER(model_path);
+      ORT_THROW("External data is not supported in an ORT formal model.");
+#endif
     }
   }
 
@@ -794,8 +799,10 @@ class Initializer final {
   }
 
  private:
+#if !defined(ORT_MINIMAL_BUILD)
   static Status ReadExternalRawData(
       const ONNX_NAMESPACE::TensorProto& tensor_proto, const Path& model_path, std::vector<char>& raw_data);
+#endif
 
   int data_type_;
   std::string name_;
