@@ -9,6 +9,7 @@
 #include <list>
 #include <functional>
 #include <variant>
+#include "core/providers/opencl/opencl_execution_provider.h"
 #include "opencl_utils.h"
 
 namespace onnxruntime {
@@ -26,7 +27,7 @@ class CachingPolicy {
 
  public:
   virtual ~CachingPolicy() = default;
-  virtual void* CreateOrGetFromCache(cl_context ctx, InfoType info) = 0;
+  virtual void* CreateOrGetFromCache(OpenCLExecutionProvider* ctx, InfoType info) = 0;
   virtual void DestroyOrReturnToCache(void*) = 0;
   virtual void EvictAllCache() = 0;
 };
@@ -36,19 +37,21 @@ struct Image2DCreator;
 
 class OpenCLBufferAllocator : public IAllocator {
  public:
-  explicit OpenCLBufferAllocator(cl_context ctx);
+  explicit OpenCLBufferAllocator(OpenCLExecutionProvider& exec);
+  ~OpenCLBufferAllocator() = default;
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
 
  private:
-  cl_context ctx_;
+  OpenCLExecutionProvider* exec_;
   std::unique_ptr<CachingPolicy<size_t, BufferCreator>> caching_;
 };
 
 class OpenCLImage2DAllocator : public IAllocator {
  public:
-  explicit OpenCLImage2DAllocator(cl_context ctx, bool use_fp16);
+  explicit OpenCLImage2DAllocator(OpenCLExecutionProvider& exec);
+  ~OpenCLImage2DAllocator() = default;
 
   void* Alloc(size_t size) override;
   void* Alloc(const TensorShape& shape) override;
@@ -56,9 +59,7 @@ class OpenCLImage2DAllocator : public IAllocator {
   void Free(void* p) override;
 
  private:
-  cl_context ctx_;
-  bool use_fp16_;
-
+  OpenCLExecutionProvider* exec_;
   std::unique_ptr<CachingPolicy<Image2DDesc, Image2DCreator>> caching_;
 };
 

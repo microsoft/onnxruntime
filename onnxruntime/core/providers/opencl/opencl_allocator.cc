@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/graph/constants.h"
+#include "core/providers/opencl/opencl_execution_provider.h"
 #include "opencl_allocator.h"
 #include "opencl_utils.h"
 
@@ -11,16 +12,16 @@ namespace onnxruntime {
 namespace opencl {
 
 // TODO: making them configurible
-#define BUFFER_CACHING_POLICY 2
+int BUFFER_CACHING_POLICY = 2;
 #define BUFFER_ALLOWED_WASTING 0.75
-#define IMAGE2D_CACHING_POLICY 4
+int IMAGE2D_CACHING_POLICY = 4;
 #define IMAGE2D_ALLOWED_WASTING 0.9
 
 struct BufferCreator {
-  static void* Create(cl_context ctx, size_t size) {
+  static void* Create(OpenCLExecutionProvider* exec, size_t size) {
     ZoneScopedN("BufferCreator::Create");
     cl_int err{};
-    auto* ptr = clCreateBuffer(ctx, CL_MEM_READ_WRITE, size, nullptr, &err);
+    auto* ptr = clCreateBuffer(exec->GetOpenCLContext(), CL_MEM_READ_WRITE, size, nullptr, &err);
     ORT_THROW_IF_CL_ERROR(err);
     VLOGF_DEFAULT(V_ALLOC, "Allocated Buffer(%p){size=%zu}", ptr, BufferCreator::GetSizeCost(size));
     TracyAlloc(ptr, size);
@@ -44,7 +45,7 @@ struct BufferCreator {
 };
 
 struct Image2DCreator {
-  static void* Create(cl_context ctx, const Image2DDesc& desc) {
+  static void* Create(OpenCLExecutionProvider* exec, const Image2DDesc& desc) {
     ZoneScopedN("Image2DCreator::Create");
     cl_int err{};
     cl_image_format image_format;
@@ -63,10 +64,10 @@ struct Image2DCreator {
       image_desc.num_samples = 0;        // must be 0
       image_desc.buffer = nullptr;
     }
-    auto* ptr = clCreateImage(ctx, CL_MEM_READ_WRITE, &image_format, &image_desc, nullptr, &err);
+    auto* ptr = clCreateImage(exec->GetOpenCLContext(), CL_MEM_READ_WRITE, &image_format, &image_desc, nullptr, &err);
     ORT_THROW_IF_CL_ERROR(err);
     TracyAlloc(ptr, Image2DCreator::GetSizeCost(desc));
-    VLOGF_DEFAULT(V_ALLOC, "Allocated Image2D(%p){w=%ld, h=%ld})", ptr, desc.Width(), desc.Height());
+    VLOGF_DEFAULT(V_ALLOC, "Allocated Image2D(%p){w=%lld, h=%lld})", ptr, desc.Width(), desc.Height());
     return ptr;
   }
 
@@ -116,8 +117,8 @@ class CacheNone : public CachingPolicy<InfoT, CreatorT> {
  public:
   ~CacheNone() override {}
 
-  void* CreateOrGetFromCache(cl_context ctx, InfoType info) override final {
-    return CreatorType::Create(ctx, info);
+  void* CreateOrGetFromCache(OpenCLExecutionProvider* exec, InfoType info) override final {
+    return CreatorType::Create(exec, info);
   }
 
   void DestroyOrReturnToCache(void* ptr) override final {
@@ -137,11 +138,11 @@ class CacheAll : public CachingPolicy<InfoT, CreatorT> {
  public:
   ~CacheAll() override { EvictAllCache(); }
 
-  void* CreateOrGetFromCache(cl_context ctx, InfoType info) override final {
+  void* CreateOrGetFromCache(OpenCLExecutionProvider* exec, InfoType info) override final {
     auto it = cache_.find(info);
 
     if (it == cache_.end() || it->second.empty()) {
-      void* ptr = CreatorType::Create(ctx, info);
+      void* ptr = CreatorType::Create(exec, info);
       meta_.emplace(ptr, info);
       return ptr;
     }
@@ -187,7 +188,7 @@ class CacheLRU : public CachingPolicy<InfoT, CreatorT> {
   CacheLRU(uint8_t size_limit) : lru_limit_{size_limit} {}
   ~CacheLRU() override { EvictAllCache(); }
 
-  void* CreateOrGetFromCache(cl_context ctx, InfoType info) override final {
+  void* CreateOrGetFromCache(OpenCLExecutionProvider* exec, InfoType info) override final {
     auto best_it = lru_.end();
     auto best_cost = std::numeric_limits<size_t>::max();
     for (auto it = lru_.begin(); it != lru_.end(); it++) {
@@ -199,12 +200,13 @@ class CacheLRU : public CachingPolicy<InfoT, CreatorT> {
     }
     if (best_it != lru_.end()) {
       ZoneScopedN("LRU Hit");
+      auto ptr = best_it->first;
       lru_.erase(best_it);
-      return best_it->first;
+      return ptr;
     }
 
     ZoneScopedN("LRU Miss");
-    auto ptr = CreatorType::Create(ctx, info);
+    auto ptr = CreatorType::Create(exec, info);
     meta_.emplace(ptr, info);
     return ptr;
   }
@@ -239,7 +241,7 @@ class CacheLRU : public CachingPolicy<InfoT, CreatorT> {
   uint8_t lru_limit_;
 };
 
-OpenCLBufferAllocator::OpenCLBufferAllocator(cl_context ctx)
+OpenCLBufferAllocator::OpenCLBufferAllocator(OpenCLExecutionProvider& exec)
     : IAllocator(
           OrtMemoryInfo(
               BufferAllocatorName,
@@ -251,9 +253,9 @@ OpenCLBufferAllocator::OpenCLBufferAllocator(cl_context ctx)
                  We manage allocator fully by at EP level so it does not go through AllocatorManager, thus we don't
                  need to worry about the magic value collide with existing value. */
               /*mem_type_=*/static_cast<OrtMemType>(CLMemType::OPENCL_BUFFER))),
-      ctx_(ctx) {
+      exec_(&exec) {
   if (BUFFER_CACHING_POLICY > 0) {
-    caching_ = std::make_unique<CacheLRU<size_t, BufferCreator>>(BUFFER_CACHING_POLICY);
+    caching_ = std::make_unique<CacheLRU<size_t, BufferCreator>>(static_cast<uint8_t>(BUFFER_CACHING_POLICY));
   } else if (BUFFER_CACHING_POLICY == 0) {
     caching_ = std::make_unique<CacheAll<size_t, BufferCreator>>();
   } else {
@@ -263,7 +265,7 @@ OpenCLBufferAllocator::OpenCLBufferAllocator(cl_context ctx)
 
 void* OpenCLBufferAllocator::Alloc(size_t size) {
   ZoneScopedN("OpenCLBufferAllocator::Alloc");
-  return caching_->CreateOrGetFromCache(ctx_, size);
+  return caching_->CreateOrGetFromCache(exec_, size);
 }
 
 void OpenCLBufferAllocator::Free(void* ptr) {
@@ -271,13 +273,12 @@ void OpenCLBufferAllocator::Free(void* ptr) {
   return caching_->DestroyOrReturnToCache(ptr);
 }
 
-OpenCLImage2DAllocator::OpenCLImage2DAllocator(cl_context ctx, bool use_fp16)
+OpenCLImage2DAllocator::OpenCLImage2DAllocator(OpenCLExecutionProvider& exec)
     : IAllocator(OrtMemoryInfo(Image2DAllocatorName, OrtAllocatorType::OrtDeviceAllocator,
                                OrtDevice(OrtDevice::GPU, CLMemType::OPENCL_IMAGE_2D, /*device_id_=*/0))),
-      ctx_(ctx),
-      use_fp16_{use_fp16} {
+      exec_(&exec) {
   if (IMAGE2D_CACHING_POLICY > 0) {
-    caching_ = std::make_unique<CacheLRU<Image2DDesc, Image2DCreator>>(IMAGE2D_CACHING_POLICY);
+    caching_ = std::make_unique<CacheLRU<Image2DDesc, Image2DCreator>>(static_cast<uint8_t>(IMAGE2D_CACHING_POLICY));
   } else if (IMAGE2D_CACHING_POLICY == 0) {
     caching_ = std::make_unique<CacheAll<Image2DDesc, Image2DCreator>>();
   } else {
@@ -298,10 +299,10 @@ void* OpenCLImage2DAllocator::Alloc(const TensorShape& shape) {
 void* OpenCLImage2DAllocator::Alloc(Image2DDesc desc) {
   ZoneScopedN("OpenCLImage2DAllocator::Alloc");
   if (desc.DType() == Image2DDesc::FpAuto) {
-    desc.DType() = use_fp16_ ? Image2DDesc::Fp16 : Image2DDesc::Fp32;
+    desc.DType() = exec_->UseFp16() ? Image2DDesc::Fp16 : Image2DDesc::Fp32;
   }
 
-  return caching_->CreateOrGetFromCache(ctx_, desc);
+  return caching_->CreateOrGetFromCache(exec_, desc);
 }
 
 void OpenCLImage2DAllocator::Free(void* ptr) {

@@ -127,6 +127,13 @@ std::shared_ptr<KernelRegistry> OpenCLExecutionProvider::GetKernelRegistry() con
   static std::shared_ptr<KernelRegistry> kernel_registry = opencl::GetOpenCLKernelRegistry();
   return kernel_registry;
 }
+template <class T>
+static void GetCLDevInfo(cl_device_id  device ,
+                  cl_device_info param_name, T* param) {
+  static_assert(std::is_same<T, size_t>::value || std::is_same<T, uint64_t>::value 
+      || std::is_same<T, uint32_t>::value || std::is_same<T, size_t[3]>::value);
+  ORT_THROW_IF_CL_ERROR(clGetDeviceInfo(device, param_name, sizeof(T), param, nullptr));
+}
 
 Status OpenCLExecutionProvider::InitOpenCLContext() {
   cl_uint num_platforms;
@@ -170,20 +177,30 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   ORT_RETURN_IF(devices.empty(), "Cannot find OpenCL device.");
   dev_ = devices[0];
 
-  device_name_ = opencl::GetDeviceInfo(dev_, CL_DEVICE_NAME);
-  LOGS_DEFAULT(INFO) << "[CL] device name: " << device_name_;
+  dev_info_.device_name = opencl::GetDeviceInfo(dev_, CL_DEVICE_NAME);
+  LOGS_DEFAULT(INFO) << "[CL] device name: " << dev_info_.device_name;
   LOGS_DEFAULT(VERBOSE) << "[CL] device vendor: " << opencl::GetDeviceInfo(dev_, CL_DEVICE_VENDOR);
   LOGS_DEFAULT(VERBOSE) << "[CL] device version: " << opencl::GetDeviceInfo(dev_, CL_DEVICE_VERSION);
   auto exts = opencl::GetDeviceInfo(dev_, CL_DEVICE_EXTENSIONS);
   LOGS_DEFAULT(VERBOSE) << "[CL] device extensions: " << exts << std::endl;
-  bool has_fp16 = exts.find("cl_khr_fp16") != std::string::npos;
-  if (!has_fp16 && UseFp16()) {
+  dev_info_.has_fp16 = exts.find("cl_khr_fp16") != std::string::npos;
+  if (!dev_info_.has_fp16 && UseFp16()) {
     LOGS_DEFAULT(WARNING) << "[CL] FP16 is requested, but is not supported by the device!";
     DisableFp16();
   }
-  flush_after_launch_ = opencl::ShouldFlushAfterLaunch(device_name_);
+  flush_after_launch_ = opencl::ShouldFlushAfterLaunch(dev_info_.device_name);
   LOGS_DEFAULT(INFO) << "[CL] FP16: " << UseFp16();
   LOGS_DEFAULT(INFO) << "[CL] clFlush after launch: " << flush_after_launch_;
+
+  GetCLDevInfo(dev_, CL_DEVICE_GLOBAL_MEM_CACHE_SIZE, &dev_info_.global_memery_cachesize_);
+  GetCLDevInfo(dev_, CL_DEVICE_MAX_COMPUTE_UNITS, &dev_info_.compute_units_);
+  GetCLDevInfo(dev_, CL_DEVICE_MAX_CLOCK_FREQUENCY, &dev_info_.max_freq_);
+  GetCLDevInfo(dev_, CL_DEVICE_LOCAL_MEM_SIZE, &dev_info_.local_memory_size_);
+  GetCLDevInfo(dev_, CL_DEVICE_MAX_WORK_GROUP_SIZE, &dev_info_.max_work_group_size);
+  GetCLDevInfo(dev_, CL_DEVICE_MAX_WORK_ITEM_SIZES, &dev_info_.max_work_item_size);
+  GetCLDevInfo(dev_, CL_DEVICE_IMAGE2D_MAX_WIDTH, &dev_info_.image_2d_max_size[0]);
+  GetCLDevInfo(dev_, CL_DEVICE_IMAGE2D_MAX_HEIGHT, &dev_info_.image_2d_max_size[1]);
+
 
 #ifdef TRACY_ENABLE
   cmd_queue_ = clCreateCommandQueue(ctx_, dev_, CL_QUEUE_PROFILING_ENABLE, &err);
@@ -197,7 +214,7 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
 
 Status OpenCLExecutionProvider::InitCompileOptions() {
   compile_options_.reserve(2048);
-  if (device_name_ == "Mali-G51") {
+  if (dev_info_.device_name == "Mali-G51") {
     compile_options_.append(" -D CONFORMANCE_WORKAROUND_could_not_emit_constant_value_abstractly");
   }
   return Status::OK();
@@ -213,7 +230,7 @@ void OpenCLExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager
   // See https://stackoverflow.com/a/40951614
   InsertAllocator(CreateAllocator(AllocatorCreationInfo{
       [this](int) {
-        return std::make_unique<opencl::OpenCLBufferAllocator>(ctx_);
+        return std::make_unique<opencl::OpenCLBufferAllocator>(*this);
       },
       0,
       /*use_arena=*/false,
@@ -221,7 +238,7 @@ void OpenCLExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager
 
   InsertAllocator(CreateAllocator(AllocatorCreationInfo{
       [this](int) {
-        return std::make_unique<opencl::OpenCLImage2DAllocator>(ctx_, UseFp16());
+        return std::make_unique<opencl::OpenCLImage2DAllocator>(*this);
       },
       0,
       /*use_arena=*/false,
