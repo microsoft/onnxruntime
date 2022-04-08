@@ -1,7 +1,7 @@
 ---
 title: Create Float16 and Mixed Precision Models
 parent: How to
-nav_order: 6
+nav_order: 5
 ---
 # Create Float16 and Mixed Precision Models
 {: .no_toc }

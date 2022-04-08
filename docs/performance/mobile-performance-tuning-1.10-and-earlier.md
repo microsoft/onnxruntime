@@ -1,7 +1,7 @@
 ---
 title: Tune Mobile Performance (version 1.10 and earlier)
 parent: Performance
-nav_order: 3
+nav_exclude: true
 ---
 {::options toc_levels="2" /}
 
