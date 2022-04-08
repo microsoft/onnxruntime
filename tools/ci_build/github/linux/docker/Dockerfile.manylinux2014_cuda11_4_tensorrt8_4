@@ -183,18 +183,19 @@ CMD ["/bin/bash"]
 
 #Build manylinux2014 docker image end
 
-#Install TensorRT 8.2.2.1
-RUN yum install -y wget
+#Install TensorRT 8.4.0.1
+#RUN yum install -y wget
 #RUN v="8.2.2-1.cuda11.4" &&\
 #    yum-config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-rhel7.repo &&\
 #    yum -y install libnvinfer8-${v} libnvparsers8-${v} libnvonnxparsers8-${v} libnvinfer-plugin8-${v} \
 #        libnvinfer-devel-${v} libnvparsers-devel-${v} libnvonnxparsers-devel-${v} libnvinfer-plugin-devel-${v}
-#RUN yum -y install https://developer.download.nvidia.com/compute/machine-learning/tensorrt/8.4.0/local_repos/nv-tensorrt-repo-rhel8-cuda11.6-trt8.4.0.6-ea-20220212-1-1.x86_64.rpm -v --debuglevel=10
-RUN wget https://developer.download.nvidia.com/compute/machine-learning/tensorrt/8.4.0/local_repos/nv-tensorrt-repo-rhel8-cuda11.6-trt8.4.0.6-ea-20220212-1-1.x86_64.rpm
-RUN rpm -qipl nv-tensorrt-repo-rhel8-cuda11.6-trt8.4.0.6-ea-20220212-1-1.x86_64.rpm
-RUN yum -y localinstall nv-tensorrt-repo-rhel8-cuda11.6-trt8.4.0.6-ea-20220212-1-1.x86_64.rpm
-#RUN rpm -i nv-tensorrt-repo-rhel8-cuda11.6-trt8.4.0.6-ea-20220212-1-1.x86_64.rpm
-#RUN rpm -qi nv-tensorrt-repo-rhel8-cuda11.6-trt8.4.0.6-ea-20220212-1-1.x86_64.rpm
+RUN yum -y install https://developer.download.nvidia.com/compute/machine-learning/tensorrt/8.4.0/local_repos/nv-tensorrt-repo-rhel8-cuda11.6-trt8.4.0.6-ea-20220212-1-1.x86_64.rpm
+#RUN wget https://developer.download.nvidia.com/compute/machine-learning/tensorrt/8.4.0/local_repos/nv-tensorrt-repo-rhel8-cuda11.6-trt8.4.0.6-ea-20220212-1-1.x86_64.rpm
+#RUN rpm -qipl nv-tensorrt-repo-rhel8-cuda11.6-trt8.4.0.6-ea-20220212-1-1.x86_64.rpm
+#RUN yum -y localinstall nv-tensorrt-repo-rhel8-cuda11.6-trt8.4.0.6-ea-20220212-1-1.x86_64.rpm
+RUN v="8.4.0-1.cuda11.6" &&\
+    yum -y install libnvinfer8-${v} libnvparsers8-${v} libnvonnxparsers8-${v} libnvinfer-plugin8-${v} \
+        libnvinfer-devel-${v} libnvparsers-devel-${v} libnvonnxparsers-devel-${v} libnvinfer-plugin-devel-${v}
 RUN ls -l /usr/lib64
 
 #Add our own dependencies
