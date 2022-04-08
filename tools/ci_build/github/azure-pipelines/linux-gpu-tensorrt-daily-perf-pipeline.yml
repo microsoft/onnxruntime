@@ -78,7 +78,8 @@ jobs:
       value: -a "-a -g $(optimizeGraph) -b $(bindInputs) -n $(enableCache)"
 
   steps:
-  
+    - script: echo "$!${{parameters.BuildORT}}"
+
     - ${{ if eq(parameters.BuildORT, false) }}:
       - task: DownloadPipelineArtifact@2
         inputs:
