@@ -630,7 +630,7 @@ static std::string_view TransposeOutput(api::GraphRef& graph, api::NodeRef& node
   // Make transpose without input initially, then add it to avoid cyclic reference.
 
   // X -> Node -> Y,   Transpose
-  auto transpose = MakeTranspose(graph, "", perm);
+  auto transpose = MakeTranspose(graph, node.Outputs()[i], perm);
 
   // X -> Node -> *Y',   Transpose -> Y      *shape/dtype not set
   graph.MoveOutput(node, i, *transpose, 0);
@@ -1953,13 +1953,39 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
       if (!HandleQuantizeDequantizeScale(ctx.graph, *perm, *dq_node, ctx.opset)) {
         continue;
       }
-      TransposeFirstInput(ctx, *dq_node, *perm);
+      auto q_node = ctx.graph.GetNodeProducingOutput(dq_node->Inputs()[0]);
+      if (q_node || q_node->OpType() != "QuantizeLinear") {
+        auto transpose_out = transpose_node.Outputs()[0];
+        std::unique_ptr<api::NodeRef> new_q_node = ctx.graph.AddNode("QuantizeLinear",
+                                                                     {transpose_out,
+                                                                      q_node->Inputs()[1],
+                                                                      q_node->Inputs()[2]},
+                                                                     /*num_outputs = */ 1);
 
-      // remove existing transpose node
-      transpose_node.SetInput(0, "");
-      ctx.graph.MoveOutput(transpose_node, 0, *dq_node, 0);
-      ctx.graph.RemoveNode(transpose_node);
-      changed = true;
+        auto q_out = q_node->Outputs()[0];
+        auto new_q_out = new_q_node->Outputs()[0];
+        ctx.graph.CopyValueInfo(q_out, new_q_out);
+        ctx.graph.GetValueInfo(new_q_out)->PermuteDims(*perm);
+
+        std::unique_ptr<api::NodeRef> new_dq_node = ctx.graph.AddNode("DequantizeLinear",
+                                                                      {new_q_node->Outputs()[0],
+                                                                       dq_node->Inputs()[1],
+                                                                       dq_node->Inputs()[2]},
+                                                                      /*num_output = */ 1);
+        auto dq_out = dq_node->Outputs()[0];
+        auto new_dq_out = new_dq_node->Outputs()[0];
+        ctx.graph.CopyValueInfo(dq_out, new_dq_out);
+        ctx.graph.GetValueInfo(new_q_out)->PermuteDims(*perm);
+
+        ctx.graph.MoveOutput(transpose_node, 0, *new_dq_node, 0);
+        std::string_view new_transpose_out = transpose_node.Outputs()[0];
+        ctx.graph.CopyValueInfo(transpose_out, new_transpose_out);
+        ctx.graph.GetValueInfo(new_transpose_out)->PermuteDims(*perm);
+
+        new_q_node->SetInput(0, new_transpose_out);
+        ctx.graph.CopyValueInfo(new_dq_out, new_dq_node->Outputs()[0]);
+        changed = true;
+      }
     }
   }
 
