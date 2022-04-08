@@ -399,7 +399,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>minimum score required to qualify for best candidate. Shape is (1)</dd>
 <dt><tt>ecs_cost</tt> (optional) : T</dt>
 <dd>cost of expected character savings. Shape is (1)</dd>
-<dt><tt>prefix_upper_case</tt> (optional) : N</dt>
+<dt><tt>prefix_uppercase</tt> (optional) : N</dt>
 <dd>tensor to indicate if the prefix is starting with upper case. shape is (batch_size)</dd>
 </dl>
 
