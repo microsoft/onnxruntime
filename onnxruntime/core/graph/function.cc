@@ -226,7 +226,7 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto
           // the requested types.
           auto& dest_types = type_constraint_map[type_str];
           if (node_op_schema) {
-            const auto& types = node_op_schema->inputs().at(i).GetTypes();
+            const auto& types = node_op_schema->outputs().at(i).GetTypes();
             dest_types.reserve(dest_types.size() + types.size());
             for (auto* data_type : types) {
               dest_types.emplace_back(*data_type);
