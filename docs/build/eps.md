@@ -99,7 +99,7 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter.
  * Install [TensorRT](https://developer.nvidia.com/tensorrt)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.0.3.4.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.2.3.0.
    * To use different versions of TensorRT, prior to building, change the onnx-tensorrt submodule to a branch corresponding to the TensorRT version. e.g. To use TensorRT 7.2.x,
      * cd cmake/external/onnx-tensorrt
      * git remote update
@@ -136,7 +136,7 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 ### Build Instructions
 {: .no_toc }
 
-These instructions are for JetPack SDK 4.6.
+These instructions are for JetPack SDK 4.6.1.
 
 1. Clone the ONNX Runtime repo on the Jetson host
 
@@ -159,7 +159,7 @@ These instructions are for JetPack SDK 4.6.
     export PATH="/usr/local/cuda/bin:${PATH}"
     ```
 
-3. Install the ONNX Runtime build dependencies on the Jetpack 4.6 host:
+3. Install the ONNX Runtime build dependencies on the Jetpack 4.6.1 host:
 
     ```bash
     sudo apt install -y --no-install-recommends \
@@ -169,7 +169,7 @@ These instructions are for JetPack SDK 4.6.
 
 4. Cmake is needed to build ONNX Runtime. Because the minimum required version is 3.18,
    it is necessary to build CMake from source. Download Unix/Linux sources from https://cmake.org/download/
-   and follow https://cmake.org/install/ to build from source. Version 3.21.1 has been tested on Jetson.
+   and follow https://cmake.org/install/ to build from source. Version 3.23.0 has been tested on Jetson.
 
 5. Build the ONNX Runtime Python wheel:
 
@@ -178,7 +178,7 @@ These instructions are for JetPack SDK 4.6.
     --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/aarch64-linux-gnu
     ```
 
-    Note: You may optionally build with experimental TensorRT support.
+    Note: You may optionally build with TensorRT support.
 
     ```bash
     ./build.sh --config Release --update --build --parallel --build_wheel \
@@ -229,31 +229,39 @@ See more information on the OpenVINO Execution Provider [here](../execution-prov
 ### Prerequisites
 {: .no_toc }
 
-1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2021.4** for the appropriate OS and target hardware:
+1. Install the Intel<sup>®</sup> Distribution of OpenVINO<sup>TM</sup> Toolkit **Release 2022.1** for the appropriate OS and target hardware:
    * [Linux - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux)
-   * [Linux - FPGA](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux-fpga)
    * [Windows - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-windows).
 
-   Follow [documentation](https://docs.openvinotoolkit.org/2021.4/index.html) for detailed instructions.
+   Follow [documentation](https://docs.openvino.ai/latest/index.html) for detailed instructions.
 
-  *2021.4 is the recommended OpenVINO version. [OpenVINO 2021.2](https://docs.openvinotoolkit.org/2021.2/index.html) is minimal OpenVINO version requirement.*
-  *The minimum ubuntu version to support 2021.4 is 18.04.*
+  *2022.1 is the recommended OpenVINO version. [OpenVINO 2021.3](https://docs.openvinotoolkit.org/2021.3/index.html) is minimal OpenVINO version requirement.*
+  *The minimum ubuntu version to support 2022.1 is 18.04.*
 
 2. Configure the target hardware with specific follow on instructions:
-   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvinotoolkit.org/2021.4/openvino_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvinotoolkit.org/2021.4/openvino_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
-   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvinotoolkit.org/2021.4/openvino_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvinotoolkit.org/2021.4/openvino_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvinotoolkit.org/2021.4/openvino_docs_install_guides_installing_openvino_linux.html#install-VPU). Follow steps 3 and 4 to complete the configuration.
-   * To configure Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA, please follow this configuration guide: [Linux](https://docs.openvinotoolkit.org/2021.4/openvino_docs_install_guides_installing_openvino_linux_fpga.html)
+   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvino.ai/latest/openvino_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvino.ai/latest/openvino_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
+   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvino.ai/latest/openvino_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
+   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvino.ai/latest/openvino_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvino.ai/2021.4/openvino_docs_install_guides_installing_openvino_linux.html#install-VPU). Follow steps 3 and 4 to complete the configuration.
 
 3. Initialize the OpenVINO environment by running the setupvars script as shown below:
-   * For Linux run:
+   * For Linux run till OpenVINO 2021.4 version:
    ```
       $ source <openvino_install_directory>/bin/setupvars.sh
    ```
-   * For Windows run:
+   * For Linux run from OpenVINO 2022.1 version:
+   ```
+      $ source <openvino_install_directory>/setupvars.sh
+   ```
+   * For Windows run till OpenVINO 2021.4 version:
    ```
       C:\ <openvino_install_directory>\bin\setupvars.bat
    ```
+   * For Windows run from OpenVINO 2022.1 version:
+   ```
+      C:\ <openvino_install_directory>\setupvars.bat
+   ```
+   **Note:** If you are using a dockerfile to use OpenVINO-EP, sourcing OpenVINO won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO libraries location. Refer our [dockerfile].(https://github.com/microsoft/onnxruntime/blob/master/dockerfiles/Dockerfile.openvino)
+
 
 4. Extra configuration step for Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs:
    * After setting the environment using setupvars script, follow these steps to change the default scheduler of VAD-M to Bypass:

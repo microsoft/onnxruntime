@@ -300,7 +300,7 @@ Refer to https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Micros
 
 ### Convolution heavy models and the CUDA EP
 
-ORT leverages CuDNN for convolution operations and the first step in this process is to determine which "optimal" convolution algorithm to use while performing the convolution operation for the given input configuration (input shape, filter shape, etc.) in each `Conv` node . This sub-step involves querying CuDNN for a "workspace" memory size and have this allocated so that CuDNN can use this auxiliary memory while determining the "optimal" convolution algorithm to use. By default, ORT clamps the workspace size to 32 MB which may lead to a sub-optimal convolution algorithm getting picked by CuDNN. To allow ORT to allocate the maximum possible workspace as determined by CuDNN, a provider option needs to get set (as shown below). Keep in mind that using this flag may increase the peak memory usage by a factor (sometimes a few GBs) but this does help CuDNN pick the best convolution algorithm for the given input. We have found that this is an important flag to use while using an fp16 model as this allows CuDNN to pick tensor core algorithms for the convolution operations (if the hardware supports tensor core operations). This flag may or may not result in performance gains for other data types (`float` and `double`).
+ORT leverages CuDNN for convolution operations and the first step in this process is to determine which "optimal" convolution algorithm to use while performing the convolution operation for the given input configuration (input shape, filter shape, etc.) in each `Conv` node. This sub-step involves querying CuDNN for a "workspace" memory size and have this allocated so that CuDNN can use this auxiliary memory while determining the "optimal" convolution algorithm to use. By default, ORT clamps the workspace size to 32 MB which may lead to a sub-optimal convolution algorithm getting picked by CuDNN. To allow ORT to allocate the maximum possible workspace as determined by CuDNN, a provider option named `cudnn_conv_use_max_workspace` needs to get set (as shown below). Keep in mind that using this flag may increase the peak memory usage by a factor (sometimes a few GBs) but this does help CuDNN pick the best convolution algorithm for the given input. We have found that this is an important flag to use while using an fp16 model as this allows CuDNN to pick tensor core algorithms for the convolution operations (if the hardware supports tensor core operations). This flag may or may not result in performance gains for other data types (`float` and `double`).
 
 * Python
 
@@ -341,6 +341,49 @@ cudaProviderOptions.UpdateOptions(providerOptionsDict);
 SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
 ```
 
+### Convolution Input Padding in the CUDA EP
+
+ORT leverages CuDNN for convolution operations. While CuDNN only takes 4-D or 5-D tensor as input for convolution operations, dimension padding is needed if the input is 3-D tensor. Given an input tensor of shape [N, C, D], it can be padded to [N, C, D, 1] or [N, C, 1, D]. While both of these two padding ways produce same output, the performance may be a lot different because different convolution algorithms are selected, especially on some devices such as A100. By default the input is padded to [N, C, D, 1]. A provider option named `cudnn_conv1d_pad_to_nc1d` needs to get set (as shown below) if [N, C, 1, D] is preferred.
+
+* Python
+
+```python
+providers = [("CUDAExecutionProvider", {"cudnn_conv1d_pad_to_nc1d": '1'})]
+sess_options = ort.SessionOptions()
+sess = ort.InferenceSession("my_conv_model.onnx",  sess_options = sess_options, providers=providers)
+```
+
+* C/C++
+
+```c++
+OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+CreateCUDAProviderOptions(&cuda_options);
+
+std::vector<const char*> keys{"cudnn_conv1d_pad_to_nc1d"};
+std::vector<const char*> values{"1"};
+
+UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 1);
+
+OrtSessionOptions* session_options = /* ... */;
+SessionOptionsAppendExecutionProvider_CUDA_V2(session_options, cuda_options);
+
+// Finally, don't forget to release the provider options
+ReleaseCUDAProviderOptions(cuda_options);
+```
+
+* C#
+
+```csharp
+var cudaProviderOptions = new OrtCUDAProviderOptions(); // Dispose this finally
+
+var providerOptionsDict = new Dictionary<string, string>();
+providerOptionsDict["cudnn_conv1d_pad_to_nc1d"] = "1";
+
+cudaProviderOptions.UpdateOptions(providerOptionsDict);
+
+SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
+```
+
 ### Using CUDA Graphs in the CUDA EP
 
 NOTE: Please note that this feature is currently being offered in "preview" mode.
@@ -349,17 +392,24 @@ While using the CUDA EP, ORT supports the usage of [CUDA Graphs](https://develop
 Currently, there are some constraints with regards to using the CUDA Graphs feature which are listed below:
 
 1) Models with control-flow ops (i.e.) models with `If`, `Loop`, and `Scan` ops are not supported
+
 2) Usage of CUDA Graphs is limited to models where-in all the model ops (graph nodes) can be partitioned to the CUDA EP
-3) The input/output types of models need to be tensors 
+
+3) The input/output types of models need to be tensors
+
 4) Shapes of inputs/outputs cannot change across inference calls. Dynamic shape models are supported - the only constraint is that the input/output shapes should be the same across all inference calls
+
 5) By design, [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) is designed to read from/write to the same CUDA virtual memory addresses during the graph replaying step as it does during the graph capturing step. Due to this requirement, usage of this feature requires using IOBinding so as to bind memory which will be used as input(s)/output(s) for the CUDA Graph machinery to read from/write to(please see samples below)
+
 6) While updating the input(s) for subsequent inference calls, the fresh input(s) need to be copied over to the corresponding CUDA memory location(s) of the bound `OrtValue` input(s) (please see samples below to see how this can be achieved). This is due to the fact that the "graph replay" will require reading inputs from the same CUDA virtual memory addresses
+
 7) Multi-threaded usage is not supported currently (i.e.) `Run()` MAY NOT be invoked on the same `InferenceSession` object from multiple threads while using CUDA Graphs
 
 NOTE: The very first `Run()` performs a variety of tasks under the hood like making CUDA memory allocations, capturing the CUDA graph for the model, and then performing a graph replay to ensure that the graph runs. Due to this, the latency associated with the first `Run()` is bound to be high. The subsequent `Run()`s only perform graph replays of the graph captured and cached in the first `Run()`. 
 
 * Python
-```
+
+```python
 providers = [("CUDAExecutionProvider", {"enable_cuda_graph": '1'})]
 sess_options = ort.SessionOptions()
 sess = ort.InferenceSession("my_model.onnx",  sess_options = sess_options, providers=providers)
@@ -373,26 +423,27 @@ y_ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(y, 'cuda', 0)
 session = onnxrt.InferenceSession("matmul_2.onnx", providers=providers)
 io_binding = session.io_binding()
 
-'''Bind the input and output'''
+# Bind the input and output
 io_binding.bind_ortvalue_input('X', x_ortvalue)
 io_binding.bind_ortvalue_output('Y', y_ortvalue)
 
-'''One regular run for the necessary memory allocation and cuda graph capturing'''
+# One regular run for the necessary memory allocation and cuda graph capturing
 session.run_with_iobinding(io_binding)
 expected_y = np.array([[5.0], [11.0], [17.0]], dtype=np.float32)
 np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
 
-'''After capturing, CUDA graph replay happens from this Run onwards'''
+# After capturing, CUDA graph replay happens from this Run onwards
 session.run_with_iobinding(io_binding)
 np.testing.assert_allclose(expected_y, y_ortvalue.numpy(), rtol=1e-05, atol=1e-05)
 
-'''Update input and then replay CUDA graph with the updated input'''
+# Update input and then replay CUDA graph with the updated input
 x_ortvalue.update_inplace(np.array([[10.0, 20.0], [30.0, 40.0], [50.0, 60.0]], dtype=np.float32))
 session.run_with_iobinding(io_binding)
 ```
 
 * C/C++
-```
+
+```c++
 const auto& api = Ort::GetApi();
 
 struct CudaMemoryDeleter {
