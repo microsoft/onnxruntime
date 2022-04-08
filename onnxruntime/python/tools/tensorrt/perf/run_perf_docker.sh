@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Parse Arguments
-while getopts d:o:m:p:e:v:n:a: parameter
+while getopts d:o:m:p:e:v:b:a: parameter
 do case "${parameter}"
 in 
 d) DOCKER_IMAGE=${OPTARG};;
@@ -10,7 +10,7 @@ m) MODEL_PATH=${OPTARG};;
 p) PERF_DIR=${OPTARG};;
 e) EP_LIST=${OPTARG};;
 v) MODEL_VOLUME=${OPTARG};;
-n) PULL_NIGHTLY=${OPTARG};;
+b) BUILD_ORT=${OPTARG};;
 a) BENCHMARK_ARGS=${OPTARG};;
 esac
 done 
@@ -18,4 +18,4 @@ done
 # Variables
 DOCKER_PERF_DIR='/perf/'
 
-docker run --gpus all -v $PERF_DIR:$DOCKER_PERF_DIR -v $MODEL_VOLUME/$OPTION:$DOCKER_PERF_DIR$OPTION $DOCKER_IMAGE /bin/bash $DOCKER_PERF_DIR'perf.sh' -d $DOCKER_PERF_DIR -o $OPTION -m $MODEL_PATH -p $PULL_NIGHTLY -e "$EP_LIST" "$BENCHMARK_ARGS"
+docker run --gpus all -v $PERF_DIR:$DOCKER_PERF_DIR -v $MODEL_VOLUME/$OPTION:$DOCKER_PERF_DIR$OPTION $DOCKER_IMAGE /bin/bash $DOCKER_PERF_DIR'perf.sh' -d $DOCKER_PERF_DIR -o $OPTION -m $MODEL_PATH -b $BUILD_ORT -e "$EP_LIST" "$BENCHMARK_ARGS"

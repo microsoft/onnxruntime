@@ -1,13 +1,13 @@
 #!/bin/bash
 
-while getopts d:o:m:e:p:a: parameter
+while getopts d:o:m:e:b:a: parameter
 do case "${parameter}"
 in
 d) PERF_DIR=${OPTARG};;
 o) OPTION=${OPTARG};;
 m) MODEL_PATH=${OPTARG};;
 e) EP_LIST=${OPTARG};;
-p) PULL_NIGHTLY=${OPTARG};;
+b) BUILD_ORT=${OPTARG};;
 a) OPTIONAL_ARGS=${OPTARG};;
 esac
 done 
@@ -55,7 +55,7 @@ setup() {
     apt-get install -y --no-install-recommends pciutils
     pip install --upgrade pip 
     pip install -r requirements.txt    
-    if [ "$PULL_NIGHTLY" = "true" ]
+    if [ "$BUILD_ORT" = "false" ]
     then
         ls Release/dist/* | xargs -n 1 pip install
     fi
