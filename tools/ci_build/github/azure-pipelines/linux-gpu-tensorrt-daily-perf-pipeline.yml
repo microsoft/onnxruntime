@@ -78,7 +78,7 @@ jobs:
       value: -a "-a -g $(optimizeGraph) -b $(bindInputs) -n $(enableCache)"
 
   steps:
-    - script: echo "$!${{parameters.BuildORT}}"
+    - script: echo (${{parameters.BuildORT}})
 
     - ${{ if eq(parameters.BuildORT, false) }}:
       - task: DownloadPipelineArtifact@2
@@ -107,7 +107,7 @@ jobs:
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
 
     - ${{ each option in parameters.ModelGroups }}:
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf -v $(modelVolume) -n !${{ parameters.BuildORT }} -o ${{option}} -m $(${{option}}) -e "$(epList)" $(optional_arguments)'
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d $(image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf -v $(modelVolume) -n $(${{ parameters.BuildORT }}) -o ${{option}} -m $(${{option}}) -e "$(epList)" $(optional_arguments)'
         displayName: '${{option}} perf'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         
