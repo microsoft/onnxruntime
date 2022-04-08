@@ -6,7 +6,7 @@ redirect_from: /docs/how-to/mobile-performance-tuning
 ---
 {::options toc_levels="2" /}
 
-**The information on this page applies to ONNX Runtime version 1.11 and later. See [here](./mobile-performance-tuning-1.10-and-earlier.md) for older versions.**
+**The information on this page applies to ONNX Runtime version 1.11 and later. See the documentation for older versions [here](./mobile-performance-tuning-1.10-and-earlier.md).**
 
 # ONNX Runtime Mobile Performance Tuning
 

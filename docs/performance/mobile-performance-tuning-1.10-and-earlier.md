@@ -5,7 +5,9 @@ nav_order: 3
 ---
 {::options toc_levels="2" /}
 
-# **THIS INFORMATION ONLY APPLIES TO ONNX RUNTIME VERSION 1.10 AND EARLIER**
+# **IMPORTANT: THIS INFORMATION ONLY APPLIES TO ONNX RUNTIME VERSION 1.10 AND EARLIER**
+
+Please use a newer version and see the updated documentation [here](./mobile-performance-tuning.md).
 
 # ONNX Runtime Mobile Performance Tuning
 
