@@ -190,6 +190,7 @@ CMD ["/bin/bash"]
 #    yum -y install libnvinfer8-${v} libnvparsers8-${v} libnvonnxparsers8-${v} libnvinfer-plugin8-${v} \
 #        libnvinfer-devel-${v} libnvparsers-devel-${v} libnvonnxparsers-devel-${v} libnvinfer-plugin-devel-${v}
 RUN yum -y install https://developer.download.nvidia.com/compute/machine-learning/tensorrt/8.4.0/local_repos/nv-tensorrt-repo-rhel8-cuda11.6-trt8.4.0.6-ea-20220212-1-1.x86_64.rpm
+RUN ls -l /usr/lib64
 
 #Add our own dependencies
 ADD scripts /tmp/scripts
