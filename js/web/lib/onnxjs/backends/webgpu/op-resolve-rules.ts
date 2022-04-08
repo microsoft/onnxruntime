@@ -4,6 +4,7 @@
 import {OpSet} from '../../opset';
 
 import * as binaryOps from './ops/binary-op';
+import {concat, parseConcatAttributes} from './ops/concat';
 import {gather, parseGatherAttributes} from './ops/gather';
 import {reshape} from './ops/reshape';
 import * as unaryOps from './ops/unary-op';
@@ -18,8 +19,7 @@ export const WEBGPU_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   // ['BatchNormalization', '', '7+', batchNormalization, parseBatchNormalizationAttributes],
   // ['Cast', '', '6+', cast, parseCastAttributes],
   ['Ceil', '', '6+', unaryOps.ceil], ['Clip', '', '6-10', unaryOps.clip, unaryOps.parseClipAttributes],
-  ['Clip', '', '11+', unaryOps.clipV11],
-  // ['Concat', '', '4+', concat, parseConcatAttributes],
+  ['Clip', '', '11+', unaryOps.clipV11], ['Concat', '', '4+', concat, parseConcatAttributes],
   // ['Conv', '', '1+', conv, parseConvAttributes],
   ['Cos', '', '7+', unaryOps.cos], ['Div', '', '7+', binaryOps.div],
   // ['Dropout', '', '7+', unaryOps.identity],

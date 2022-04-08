@@ -30,12 +30,18 @@ export interface IndicesHelper {
   i2oImpl: string;
   /**
    * WGSL code of function implementation for indices-to-offset
+   *
+   * @param isPtr - whether the variable is a pointer. default is false.
    */
-  i2oExpression: (varIndices: string) => string;
+  i2oExpression: (varIndices: string, isPtr?: boolean) => string;
   /**
    * WGSL code of indices variable declaration
    */
   indicesVariableDeclaration: (v: string) => string;
+  /**
+   * data type of indices
+   */
+  iType: string;
 }
 
 export const createIndicesHelper = (name: string, shape: readonly number[]) => {
@@ -72,9 +78,10 @@ export const createIndicesHelper = (name: string, shape: readonly number[]) => {
     return ${offsets.length > 0 ? offsets.join('+') : '0u'};
   }`;
 
-  const i2oExpression = (varIndices: string) => shape.length < 2 ? varIndices : `ih_i2o_${name}(&${varIndices})`;
+  const i2oExpression = (varIndices: string, isPtr?: boolean) =>
+      shape.length < 2 ? `(${isPtr ? '*' : ''}${varIndices})` : `ih_i2o_${name}(${isPtr ? '' : '&'}${varIndices})`;
 
   const indicesVariableDeclaration = (v: string) => `var ${v}:${iType};`;
 
-  return {o2iImpl, o2iCall, i2oImpl, i2oExpression, indicesVariableDeclaration};
+  return {o2iImpl, o2iCall, i2oImpl, i2oExpression, indicesVariableDeclaration, iType};
 };
