@@ -90,7 +90,10 @@ jobs:
         value: machine.sh
         
     - name: with_arguments
-      value: $(environment) -e "$(epList)"
+      value: $(environment) -e "$(epList)" 
+    
+    - name: optional_arguments
+      value: -a "-a -g $(optimizeGraph) -b $(bindInputs) -n $(enableCache)"
 
   steps:
 
@@ -127,7 +130,7 @@ jobs:
         displayName: 'Start Anubis Job'
 
     - ${{ each option in parameters.ModelGroups }}:
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $(${{option}})'
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $(${{option}}) $(optional_arguments)'
         displayName: '${{option}} perf'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         
