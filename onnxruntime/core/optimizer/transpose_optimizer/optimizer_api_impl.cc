@@ -596,7 +596,7 @@ static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_typ
 
   output_args.reserve(num_outputs);
   for (size_t i = 0; i < num_outputs; ++i) {
-    std::string output = graph.GenerateNodeArgName(name + "_out" + std::to_string(i));
+    std::string output = graph.GenerateNodeArgName(inputs.empty() ? "" : std::string(inputs.front()) + name + "_out" + std::to_string(i));
     NodeArg* arg = &graph.GetOrCreateNodeArg(output, nullptr);
     output_args.push_back(arg);
   }
@@ -640,6 +640,8 @@ static const std::unordered_map<std::string, std::vector<int>> onnx_ops_availabl
     {"Gather", {1, 11, 13}},
     {"Transpose", {1, 13}},
     {"Identity", {1, 13, 14, 16}},
+    {"QuantizeLinear", {1, 13}},
+    {"DequantizeLinear", {1, 13}},
 };
 
 // Based on the opset version imported for this model, returns the since version for the node.
@@ -741,7 +743,7 @@ void ApiGraph::MoveOutput(api::NodeRef& src_node, size_t src_idx, api::NodeRef& 
 
   graph_utils::GraphEdge::RemoveGraphEdges(graph_, output_edges);
 
-  std::string new_name = graph_.GenerateNodeArgName(src_ort_node.Name());
+  std::string new_name = graph_.GenerateNodeArgName(node_arg->Name());
   src_output_defs[src_idx] = &graph_.GetOrCreateNodeArg(new_name, nullptr);
   graph_.UpdateProducerNode(new_name, src_node_idx);
 }
