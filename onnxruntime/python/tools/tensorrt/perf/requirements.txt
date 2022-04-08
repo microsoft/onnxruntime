@@ -1,11 +1,3 @@
-flatbuffers 
-pandas 
-coloredlogs 
-numpy 
-flake8 
-onnx 
-Cython 
-onnxmltools 
-sympy 
-packaging 
-psutil
+onnxmltools
+pandas
+coloredlogs
