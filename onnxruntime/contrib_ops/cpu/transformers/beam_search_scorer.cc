@@ -39,6 +39,11 @@ void BeamHypotheses::Add(gsl::span<const int32_t>& hypothesis, float sum_logprob
   */
   float score = sum_logprobs;
 
+  // TODO decide if length_penalty really needed
+  if (length_penalty_ > 1.0) {
+    //Noop
+  }
+
   if (this->Size() < num_beams_ || score > worst_score_) {
     HypothesisScore item(hypothesis, score);
     beams_.push(item);
