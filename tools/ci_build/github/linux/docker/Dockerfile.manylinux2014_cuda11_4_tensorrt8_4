@@ -191,7 +191,9 @@ RUN yum install -y wget
 #        libnvinfer-devel-${v} libnvparsers-devel-${v} libnvonnxparsers-devel-${v} libnvinfer-plugin-devel-${v}
 #RUN yum -y install https://developer.download.nvidia.com/compute/machine-learning/tensorrt/8.4.0/local_repos/nv-tensorrt-repo-rhel8-cuda11.6-trt8.4.0.6-ea-20220212-1-1.x86_64.rpm -v --debuglevel=10
 RUN wget https://developer.download.nvidia.com/compute/machine-learning/tensorrt/8.4.0/local_repos/nv-tensorrt-repo-rhel8-cuda11.6-trt8.4.0.6-ea-20220212-1-1.x86_64.rpm
+RUN rpm -qipl nv-tensorrt-repo-rhel8-cuda11.6-trt8.4.0.6-ea-20220212-1-1.x86_64.rpm
 RUN rpm -i nv-tensorrt-repo-rhel8-cuda11.6-trt8.4.0.6-ea-20220212-1-1.x86_64.rpm
+RUN rpm -qi nv-tensorrt-repo-rhel8-cuda11.6-trt8.4.0.6-ea-20220212-1-1.x86_64.rpm
 RUN ls -l /usr/lib64
 
 #Add our own dependencies
