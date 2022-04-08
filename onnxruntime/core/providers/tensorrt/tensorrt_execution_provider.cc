@@ -445,23 +445,28 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
   if (!external_stream_ && stream_) {
     CUDA_CALL(cudaStreamDestroy(stream_));
   }
-  
-  json old_metadata_json = GetMetadata(metadata_path_);
-  json new_metadata_json;
- 
-  new_metadata_json["engine_cache"] = metadata_->engine_cache_list;
-  new_metadata_json["profile_cache"] = metadata_->profile_cache_list;
 
-  old_metadata_json.merge_patch(new_metadata_json);
+  // tensorrt ep metadata
+  json metadata_json = GetMetadata(metadata_path_);
 
-  SaveMetadata(new_metadata_json, metadata_path_);
-
-  for (auto element : subgraph_info_) {
-    std::unordered_map<std::string, std::vector<bool>> trt_engine_to_subgraph_status = element.second;
-    for (auto engine_to_subgraph_status : trt_engine_to_subgraph_status) {
-      std::string trt_node_name = engine_to_subgraph_status.first;
-      std::vector<bool> subgraph_status = engine_to_subgraph_status.second;
-    }
+  // Only save metadata to file when there is no metadata file there
+  if (metadata_json == nullptr) {
+    metadata_->ort_version = ORT_VERSION;
+    metadata_->trt_version = GetTensorRTVersion();
+    metadata_->cuda_version = GetCudaVersion();
+    std::string model_path;
+    model_path += model_path_;
+    metadata_->model_path = model_path;
+    metadata_->gpu_info = GetGPUInfo();
+    
+    metadata_json["gpu_info"] = metadata_->gpu_info;
+    metadata_json["model_path"] = metadata_->model_path;
+    metadata_json["ort_version"] = metadata_->ort_version;
+    metadata_json["cuda_version"] = metadata_->cuda_version;
+    metadata_json["trt_version"] = metadata_->trt_version;
+    metadata_json["engine_cache"] = metadata_->engine_cache_list;
+    metadata_json["profile_cache"] = metadata_->profile_cache_list;
+    SaveMetadata(metadata_json, metadata_path_);
   }
 }
 
@@ -1227,14 +1232,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           input_shape_ranges = DeserializeProfile(profile_file);
         }
       }
-
-      /*
-      // Update sub-graph info
-      subgraph_status.push_back(has_dynamic_shape); // record input shape
-      subgraph_status.push_back(false);             // record engine cache needs to be updated or not
-      trt_engine_to_subgraph_status[trt_node_name_with_precision] = subgraph_status;
-      subgraph_info_[fused_node->Name()] = trt_engine_to_subgraph_status;
-      */
     }
 
     // If (1) engine cache enable is not set or (2) first time enable engine cache and no engine cache is present,
@@ -1262,7 +1259,6 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         }
 
         if (engine_cache_enable_) {
-          //subgraph_info_[fused_node->Name()][trt_node_name_with_precision][1] = true; // engine cache needs to be saved
           update_engine_cache = true;
         }
 

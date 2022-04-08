@@ -9,6 +9,8 @@
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
 #include "nlohmann/json.hpp"
+#include "NvInferVersion.h"
+#include "cuda_runtime_api.h"
 
 namespace fs = std::experimental::filesystem;
 using json = nlohmann::json;
@@ -195,6 +197,29 @@ void RemoveCachesByType(const std::string& root, std::string file_extension) {
   for (const auto & entry : cache_files) {
     fs::remove(entry);
   }
+}
+
+std::string GetTensorRTVersion() {
+  return std::to_string(NV_TENSORRT_MAJOR) + "." + std::to_string(NV_TENSORRT_MINOR) + "." + std::to_string(NV_TENSORRT_PATCH) + "." + std::to_string(NV_TENSORRT_BUILD);
+}
+
+std::string GetCudaVersion() {
+  return std::to_string(CUDA_VERSION);
+}
+
+std::string GetGPUInfo() {
+  int nDevices;
+  std::string s;
+
+  cudaGetDeviceCount(&nDevices);
+  for (int i = 0; i < nDevices; i++) {
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, i);
+    s = s + "Device Number: " + std::to_string(i) + "\n";
+    s = s + "  Device name: " + prop.name + "\n";
+  }
+
+  return s;
 }
 
 json GetMetadata(std::string metadata_file) {

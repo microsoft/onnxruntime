@@ -77,10 +77,15 @@ template <typename T>
 using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 };  // namespace tensorrt_ptr
 
-// Important trt ep information that will be saved as a file after inference
+// Important trt ep information that will be saved to file at the very beginning.
 struct TensorrtMetadata {
   std::vector<std::string> engine_cache_list;
   std::vector<std::string> profile_cache_list;
+  std::string trt_version;
+  std::string ort_version;
+  std::string cuda_version;
+  std::string model_path;
+  std::string gpu_info;
 };
 
 // Information to construct kernel function state.
@@ -187,8 +192,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> input_info_;
   std::unordered_map<std::string, std::vector<std::unordered_map<std::string, size_t>>> output_info_;
   std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, int64_t>>>> input_shape_ranges_;
-  // {key: sub-graph name  value: {key: trt_node_name_with_precision  value: <has dynamic shape input, engine cache needs to be updated or not>}}  
-  std::unordered_map<std::string, std::unordered_map<std::string, std::vector<bool>>> subgraph_info_;
 
   // metadata
   std::unique_ptr<TensorrtMetadata> metadata_ = std::make_unique<TensorrtMetadata>();
