@@ -474,7 +474,7 @@ Status UpdateFeeds2(
     }
     input_ids_data[i * current_length + last_length] = beam_next_tokens[i];
   }
-  next_inputs[0] = input_ids;
+  next_inputs[1] = input_ids;
 
 
 #ifdef DEBUG_BEAM_SEARCH

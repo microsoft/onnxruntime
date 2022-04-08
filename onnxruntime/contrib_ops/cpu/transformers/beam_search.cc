@@ -285,12 +285,10 @@ void BeamSearch::Init(const OpKernelInfo& info) {
 Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
                                               const std::string& attribute_name,
                                               const SessionState& subgraph_session_state) {
-  // bugbug: move assertions to if clause
-  ORT_ENFORCE(encoder_subgraph_ == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
-  ORT_ENFORCE(decoder_subgraph_ == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
 
   // bugbug: refactor
   if (attribute_name == "encoder") {
+    ORT_ENFORCE(encoder_subgraph_ == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
     const auto& node = Node();
     encoder_subgraph_ = std::make_unique<EncoderSubgraph>(node, attribute_name, subgraph_session_state.GetGraphViewer());
     ORT_RETURN_IF_ERROR(encoder_subgraph_->Setup(session_state, subgraph_session_state));
@@ -298,6 +296,7 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
   }
 
   if (attribute_name == "decoder") {
+    ORT_ENFORCE(decoder_subgraph_ == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
     const auto& node = Node();
     decoder_subgraph_ = std::make_unique<DecoderSubgraph>(node, attribute_name, subgraph_session_state.GetGraphViewer());
     ORT_RETURN_IF_ERROR(decoder_subgraph_->Setup(session_state, subgraph_session_state));
