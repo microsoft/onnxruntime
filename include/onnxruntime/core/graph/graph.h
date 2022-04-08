@@ -182,7 +182,6 @@ class Node {
 
   /** Gets the function body if applicable otherwise nullptr. */
   const Function* GetFunctionBody() const noexcept { return func_body_; }
-
 #endif
 
   /**
@@ -1122,6 +1121,8 @@ class Graph {
 
   /** Initialize function body for the given node */
   void InitFunctionBodyForNode(Node& node);
+
+  std::vector<std::unique_ptr<onnxruntime::Function>>* GetMutableLocalFunctions();
 
   /** Gets Model local functions from the root/parent graph.*/
   const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& GetModelLocalFunctions() const;

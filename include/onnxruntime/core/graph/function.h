@@ -31,6 +31,8 @@ class Function {
 
   /** Gets the Mutable Graph instance for the Function body subgraph. */
   virtual onnxruntime::Graph& MutableBody() = 0;
+
+  virtual void Instantiated()= 0;
 };
 
 /** 

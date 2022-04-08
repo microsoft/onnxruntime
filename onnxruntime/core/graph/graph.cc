@@ -3969,6 +3969,10 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
 #endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
+std::vector<std::unique_ptr<onnxruntime::Function>>* Graph::GetMutableLocalFunctions() {
+  return &function_container_;
+}
+
 Node& Graph::FuseSubGraph(const IndexedSubGraph& sub_graph,
                           const std::string& fused_node_name) {
   Node& fused_node = CreateFusedSubGraphNode(sub_graph, fused_node_name);
@@ -3986,7 +3990,9 @@ Node& Graph::FuseSubGraph(const IndexedSubGraph& sub_graph,
 Status Graph::InlineFunction(Node& node) {
   // Remove the function node, add the nodes in function's subgraph into the
   // main graph.
-  const Graph& subgraph = node.GetFunctionBody()->Body();
+  auto* function_ptr = node.GetMutableFunctionBody();
+  function_ptr->Instantiated();
+  const Graph& subgraph = node.GetMutableFunctionBody()->Body();
   auto output_edges = node.GetRelationships().output_edges;
   for (const auto& output_edge : output_edges) {
     RemoveEdge(node.Index(), output_edge.GetNode().Index(), output_edge.GetSrcArgIndex(), output_edge.GetDstArgIndex());

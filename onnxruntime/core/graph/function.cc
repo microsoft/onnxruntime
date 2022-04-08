@@ -417,10 +417,14 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
                            const IndexedSubGraph& nodes_to_fuse,
                            const logging::Logger& logger)
     : parent_graph_(&graph),
+      node_in_parent_graph_(nullptr),
+      model_function_container_(nullptr),
+      logger_(logger),
       body_("fused_function_subgraph", false, onnxruntime::ModelMetaData(),
             graph.ModelPath().ToPathString(),
             IOnnxRuntimeOpSchemaRegistryList({graph.GetSchemaRegistry()}),
-            graph.DomainToVersionMap(), {}, logger) {
+            graph.DomainToVersionMap(), {}, logger),
+      is_instantiated_(true){
   auto& function_body_graph = body_.MainGraph();
 
   auto* meta_def = nodes_to_fuse.GetMetaDef();
@@ -499,36 +503,36 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
                            const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
                            std::vector<std::unique_ptr<onnxruntime::Function>>& function_container,
                            const logging::Logger& logger,
-                           bool is_nested_function)
+                           bool /*is_nested_function*/)
     : parent_graph_(&graph),
+      logger_(logger),
       body_(onnx_func_proto.name(), false, onnxruntime::ModelMetaData(),
             graph.ModelPath().ToPathString(), IOnnxRuntimeOpSchemaRegistryList(),
             onnx_func_proto.opset_import_size() != 0 ? GetFunctionOpsetImports(onnx_func_proto, graph.DomainToVersionMap()) : graph.DomainToVersionMap(),
             {}, logger),
-      onnx_func_proto_(onnx_func_proto) {
+      onnx_func_proto_(onnx_func_proto),
+      is_instantiated_(false){
   // Make a copy of the FunctionProto.
   // All FunctionBody ops with the same op type seem to share the same FunctionProto struct within a model.
   // Hence, we make a copy prior to generating the graph representation of the function,
   // as we might make some modifications to the FunctionProto along the way
 
-  const auto* node_in_parent_graph = parent_graph_->GetNode(node_index);
+  node_in_parent_graph_ = parent_graph_->GetNode(node_index);
+  model_function_container_ = &function_container;
 
   // For schema defined functions get the version from the node in parent graph.
   // For the functions which do not have schema defined (model local functions)
   // get the since version from the version in opset imports using the domain.
-  auto since_version = node_in_parent_graph->SinceVersion() == -1
-                           ? GetVersionForDomain(node_in_parent_graph->Domain(), body_.MainGraph().DomainToVersionMap())
-                           : node_in_parent_graph->SinceVersion();
+  auto since_version = node_in_parent_graph_->SinceVersion() == -1
+                           ? GetVersionForDomain(node_in_parent_graph_->Domain(), body_.MainGraph().DomainToVersionMap())
+                           : node_in_parent_graph_->SinceVersion();
   op_schema_ = std::make_unique<ONNX_NAMESPACE::OpSchema>();
   op_schema_->SetName(onnx_func_proto_.name());
-  op_schema_->SetDomain(node_in_parent_graph->Domain());
+  op_schema_->SetDomain(node_in_parent_graph_->Domain());
   op_schema_->SetDoc(onnx_func_proto_.doc_string());
   op_schema_->SinceVersion(static_cast<ONNX_NAMESPACE::OperatorSetVersion>(since_version));
   std::unordered_map<std::string, int> input_name_idx_map;
   std::unordered_map<std::string, int> output_name_idx_map;
-  std::unordered_map<std::string, std::string> internal_input_output_updates;
-
-  auto& function_body_graph = body_.MainGraph();
 
   for (int i = 0; i < onnx_func_proto_.input_size(); ++i) {
     input_name_idx_map[onnx_func_proto_.input().Get(i)] = i;
@@ -537,7 +541,7 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
     output_name_idx_map[onnx_func_proto_.output().Get(i)] = i;
   }
 
-  auto cached_op_schema = node_in_parent_graph->Op();
+  auto cached_op_schema = node_in_parent_graph_->Op();
   if (!cached_op_schema) {
     // Infer a op_schema for stand-alone functions.
     IOTypeConstraintHelper(onnx_func_proto_, op_schema_, input_name_idx_map, output_name_idx_map);
@@ -577,21 +581,30 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
   }
 
   op_schema_->Finalize();
+  
+}  // namespace onnxruntime
+
+FunctionImpl::~FunctionImpl() = default;
+
+void FunctionImpl::Instantiated() {
+  if (is_instantiated_)
+    return;
+  ORT_ENFORCE(node_in_parent_graph_ && parent_graph_ && model_function_container_);
   //construct body
-  std::vector<const NodeArg*> graph_inputs(node_in_parent_graph->InputDefs().size(), nullptr),
-      graph_outputs(node_in_parent_graph->OutputDefs().size(), nullptr);
+  std::vector<const NodeArg*> graph_inputs(node_in_parent_graph_->InputDefs().size(), nullptr),
+      graph_outputs(node_in_parent_graph_->OutputDefs().size(), nullptr);
 
   // Add node and node args into subgraph
   // The subgraph preserved the input/output tensor names
   // in the parent graph for later inlining purpose
-  const auto& attr_map = node_in_parent_graph->GetAttributes();
+  const auto& attr_map = node_in_parent_graph_->GetAttributes();
 
   ONNX_NAMESPACE::NodeProto function_op_node_proto;  // NodeProto pertaining to the op with a FunctionBody
-  node_in_parent_graph->ToProto(function_op_node_proto);
+  node_in_parent_graph_->ToProto(function_op_node_proto);
 
   InlinedHashSet<std::string_view> node_input_outputs;
-  auto parent_input_defs = node_in_parent_graph->InputDefs();
-  auto parent_output_defs = node_in_parent_graph->OutputDefs();
+  auto parent_input_defs = node_in_parent_graph_->InputDefs();
+  auto parent_output_defs = node_in_parent_graph_->OutputDefs();
   node_input_outputs.reserve(parent_input_defs.size() + parent_output_defs.size());
 
   for (const auto* input_def : parent_input_defs) {
@@ -610,6 +623,17 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
   tensor_int32.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
   tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
 
+  auto& function_body_graph = body_.MainGraph();
+  std::unordered_map<std::string, int> input_name_idx_map;
+  std::unordered_map<std::string, int> output_name_idx_map;
+  std::unordered_map<std::string, std::string> internal_input_output_updates;
+
+  for (int i = 0; i < onnx_func_proto_.input_size(); ++i) {
+    input_name_idx_map[onnx_func_proto_.input().Get(i)] = i;
+  }
+  for (int i = 0; i < onnx_func_proto_.output_size(); ++i) {
+    output_name_idx_map[onnx_func_proto_.output().Get(i)] = i;
+  }
   // iterate over each node in the FunctionProto and fix inputs/outputs
   for (auto node = onnx_func_proto_.mutable_node()->begin(); node != onnx_func_proto_.mutable_node()->end(); ++node) {
     InlinedVector<onnxruntime::NodeArg*> inputs;
@@ -626,7 +650,7 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
       if (tensor_name.empty()) {
         auto& no_arg = function_body_graph.GetOrCreateNodeArg(tensor_name, nullptr);
         inputs.push_back(&no_arg);
-        continue;        
+        continue;
       }
       auto iter = input_name_idx_map.find(tensor_name);
       if (iter != input_name_idx_map.end()) {
@@ -772,6 +796,7 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
   // Such a top down approach is required to successfully carry out type inference for schema less functions.
   // Schema defined functions are treated a bit different from model local aka schema less functions. These are initialized
   // during graph resolve of parent functions.
+  auto& model_local_functions = parent_graph_->GetModelLocalFunctions();
   if (model_local_functions.size() > 0) {
     for (auto node = function_body_graph.Nodes().begin(); node != function_body_graph.Nodes().end(); ++node) {
       // Init nested functions
@@ -783,40 +808,42 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
 
       // This node has a model local function proto.
       auto onnx_function_proto = *(iter->second);
-      InitNestedModelLocalFunction(function_body_graph, node->Index(), onnx_function_proto, model_local_functions, function_container, logger, true);
+      InitNestedModelLocalFunction(function_body_graph, node->Index(), onnx_function_proto, model_local_functions, *model_function_container_, logger_, true);
     }
   }
 
   // Graph resolve should be called on the parent functions only. Skip resolve if this is a nested function.
   // Nested function bodies will be resolved along with parent function body as we set traverse_function_body to true.
   // This is only applicable for model local functions which are schema less.
-  if (!is_nested_function) {
+  //if (!is_nested_function) {
     onnxruntime::Graph::ResolveOptions options;
     options.traverse_function_body = true;
     auto status = function_body_graph.Resolve(options);
 
     ORT_ENFORCE(status.IsOK(), "Resolve subgraph failed:", status.ErrorMessage());
 
-    ORT_ENFORCE(node_in_parent_graph->InputDefs().size() == function_body_graph.GetInputsIncludingInitializers().size(),
-                "Node " + node_in_parent_graph->Name() + "'s number of inputs is different from function body graph's number of input.");
+    ORT_ENFORCE(node_in_parent_graph_->InputDefs().size() == function_body_graph.GetInputsIncludingInitializers().size(),
+                "Node " + node_in_parent_graph_->Name() + "'s number of inputs is different from function body graph's number of input.");
 
-    ORT_ENFORCE(node_in_parent_graph->OutputDefs().size() == function_body_graph.GetOutputs().size(),
-                "Node ", node_in_parent_graph->Name(), "'s number of outputs is different from function body graph's number of outputs.");
-  }
-
-}  // namespace onnxruntime
-
-FunctionImpl::~FunctionImpl() = default;
+    ORT_ENFORCE(node_in_parent_graph_->OutputDefs().size() == function_body_graph.GetOutputs().size(),
+                "Node ", node_in_parent_graph_->Name(), "'s number of outputs is different from function body graph's number of outputs.");
+  //}
+    is_instantiated_ = true;
+}
 
 const ONNX_NAMESPACE::OpSchema& FunctionImpl::OpSchema() const {
   return *op_schema_;
 }
 
 const onnxruntime::Graph& FunctionImpl::Body() const {
+  if (!is_instantiated_)
+    ORT_THROW("Please instantiate the function before access the body.");
   return body_.MainGraph();
 }
 
 onnxruntime::Graph& FunctionImpl::MutableBody() {
+  if (!is_instantiated_)
+    Instantiated();
   return body_.MainGraph();
 }
 
