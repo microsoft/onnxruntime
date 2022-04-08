@@ -1002,7 +1002,6 @@ struct ProviderLibrary {
   ProviderLibrary(const char* filename, bool unload = true) : filename_{filename}, unload_{unload} {}
   ~ProviderLibrary() {
     // assert(!handle_); // We should already be unloaded at this point (disabled until Python shuts down deterministically)
-      destroyed_=true;
   }
 
   Provider& Get() try {
@@ -1028,9 +1027,9 @@ struct ProviderLibrary {
   }
 
   void Unload() {
-    if (destroyed_)
-      ORT_THROW("Calling Unload() on destroyed ProviderLibrary!!");
-    std::lock_guard<std::mutex> lock{mutex_};
+    // This will crash in the Mac unit test due to the ProviderLibrary global variable being destroyed before Unload() is called
+    // Something has a global 'Environment or OrtEnv' variable that is being destroyed after other global variables have already been destroyed
+    // std::lock_guard<std::mutex> lock{mutex_};
 
     if (handle_) {
       if (provider_)
@@ -1054,8 +1053,6 @@ struct ProviderLibrary {
   bool unload_;
   Provider* provider_{};
   void* handle_{};
-
-  bool destroyed_{};
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ProviderLibrary);
 };
