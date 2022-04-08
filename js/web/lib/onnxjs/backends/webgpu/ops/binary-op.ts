@@ -6,7 +6,7 @@ import {Tensor} from '../../../tensor';
 import {BroadcastUtil, ShapeUtil} from '../../../util';
 import {WebGpuInferenceHandler} from '../inference-handler';
 import {GpuDataType, ProgramInfo, ProgramInfoLoader, ProgramMetadata} from '../types';
-import {WORKGROUP_SIZE} from './common';
+import {createIndicesHelper, WORKGROUP_SIZE} from './common';
 
 type BuiltinFunctionName = string;
 type BinaryCustomExpression = (expressionA: string, expressionB: string) => string;
@@ -34,42 +34,25 @@ const createBinaryOpProgramShader =
       }
 
       let broadcastImpl = '';
-      let broadcastVars = '';
+      const outputIndicesHelper = createIndicesHelper('output', dimsOutput);
       if (doBroadcast) {
-        broadcastVars = `var outputDims: array<u32, ${dimsOutput.length}>;`;
-
-        let calcDimsOutputImpl = '';
-        const outputStrides = ShapeUtil.computeStrides(dimsOutput);
-        for (let i = 0; i < dimsOutput.length - 1; i++) {
-          calcDimsOutputImpl += `
-    let dim${i} = current / ${outputStrides[i]}u;
-    let rest${i} = current % ${outputStrides[i]}u;
-    (*outputDims)[${i}] = dim${i};
-    current = rest${i};
-          `;
-        }
-        calcDimsOutputImpl += `(*outputDims)[${dimsOutput.length - 1}] = current;`;
-
         const calcOffsetImpl = (dims: readonly number[]) => {
           const strides = ShapeUtil.computeStrides(dims);
           const offsets: string[] = [];
           for (let i = dims.length - 1; i >= 0; i--) {
-            offsets.push(`${strides[i]}u * ((*outputDims)[${i + dimsOutput.length - dims.length}] % ${dims[i]}u)`);
+            offsets.push(`${strides[i]}u * ((*outputIndices)[${i + dimsOutput.length - dims.length}] % ${dims[i]}u)`);
           }
           return offsets.length > 0 ? offsets.join('+') : '0u';
         };
 
         broadcastImpl = `
-  fn calcDimsOutput(outputOffset: u32, outputDims: ptr<function, array<u32, ${dimsOutput.length}>>) {
-    var current = outputOffset;
-    ${calcDimsOutputImpl}
-  }
+  ${outputIndicesHelper.o2iImpl}
 
-  fn calcOffsetA(outputDims: ptr<function, array<u32, ${dimsOutput.length}>>) -> u32 {
+  fn calcOffsetA(outputIndices: ptr<function, array<u32, ${dimsOutput.length}>>) -> u32 {
     return ${calcOffsetImpl(dimsA)};
   }
 
-  fn calcOffsetB(outputDims: ptr<function, array<u32, ${dimsOutput.length}>>) -> u32 {
+  fn calcOffsetB(outputIndices: ptr<function, array<u32, ${dimsOutput.length}>>) -> u32 {
     return ${calcOffsetImpl(dimsB)};
   }
   `;
@@ -79,10 +62,10 @@ const createBinaryOpProgramShader =
       if (vectorize) {
         if (doBroadcast) {
           assignment = `
-      ${broadcastVars}
-      calcDimsOutput(global_id.x * 4u, &outputDims);
-      let offsetA = calcOffsetA(&outputDims);
-      let offsetB = calcOffsetB(&outputDims);
+      ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
+      ${outputIndicesHelper.o2iCall('global_id.x * 4u', 'outputIndices')}
+      let offsetA = calcOffsetA(&outputIndices);
+      let offsetB = calcOffsetB(&outputIndices);
       outputData[global_id.x] = ${expressionVector('aData[offsetA / 4u]', 'bData[offsetB / 4u]')};`;
         } else {
           assignment = `outputData[global_id.x] = ${expressionVector('aData[global_id.x]', 'bData[global_id.x]')};`;
@@ -95,9 +78,9 @@ const createBinaryOpProgramShader =
           const expressionA = `aData[indexA${x}][componentA${x}]`;
           const expressionB = `bData[indexB${x}][componentB${x}]`;
           return `
-      calcDimsOutput(global_id.x * 4u + ${x}u, &outputDims);
-      let offsetA${x} = calcOffsetA(&outputDims);
-      let offsetB${x} = calcOffsetB(&outputDims);
+      ${outputIndicesHelper.o2iCall(`global_id.x * 4u + ${x}u`, 'outputIndices')}
+      let offsetA${x} = calcOffsetA(&outputIndices);
+      let offsetB${x} = calcOffsetB(&outputIndices);
       let indexA${x} = offsetA${x} / 4u;
       let indexB${x} = offsetB${x} / 4u;
       let componentA${x} = offsetA${x} % 4u;
@@ -106,7 +89,7 @@ const createBinaryOpProgramShader =
         };
 
         assignment = `
-      ${broadcastVars}
+      ${outputIndicesHelper.indicesVariableDeclaration('outputIndices')}
       ${singleAssignment(0)}
       ${singleAssignment(1)}
       ${singleAssignment(2)}
@@ -198,3 +181,36 @@ const createBinaryOpProgramInfoLoader =
 
 export const add = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
     handler.run(createBinaryOpProgramInfoLoader(inputs, 'Add', (a, b) => `${a}+${b}`), inputs);
+
+// export const and = (handler: WebGLInferenceHandler, inputs: Tensor[]):
+//     Tensor[] => [handler.run(createBinaryProgramInfoLoader(handler, inputs, glslAnd(), 'bool'), inputs)];
+
+export const div = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
+    handler.run(createBinaryOpProgramInfoLoader(inputs, 'Div', (a, b) => `${a}/${b}`), inputs);
+
+// export const equal = (handler: WebGLInferenceHandler, inputs: Tensor[]):
+//     Tensor[] => [handler.run(createBinaryProgramInfoLoader(handler, inputs, glslEqual(), 'bool'), inputs)];
+
+// export const greater = (handler: WebGLInferenceHandler, inputs: Tensor[]):
+//     Tensor[] => [handler.run(createBinaryProgramInfoLoader(handler, inputs, glslGreater(), 'bool'), inputs)];
+
+// export const less = (handler: WebGLInferenceHandler, inputs: Tensor[]):
+//     Tensor[] => [handler.run(createBinaryProgramInfoLoader(handler, inputs, glslLess(), 'bool'), inputs)];
+
+export const mul = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
+    handler.run(createBinaryOpProgramInfoLoader(inputs, 'Mul', (a, b) => `${a}*${b}`), inputs);
+
+// export const or = (handler: WebGLInferenceHandler, inputs: Tensor[]):
+//     Tensor[] => [handler.run(createBinaryProgramInfoLoader(handler, inputs, glslOr(), 'bool'), inputs)];
+
+export const pow = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
+    handler.run(createBinaryOpProgramInfoLoader(inputs, 'Pow', 'pow'), inputs);
+
+// export const pRelu = (handler: WebGLInferenceHandler, inputs: Tensor[]):
+//     Tensor[] => [handler.run(createBinaryProgramInfoLoader(handler, inputs, glslPRelu()), inputs)];
+
+export const sub = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[]> =>
+    handler.run(createBinaryOpProgramInfoLoader(inputs, 'Sub', (a, b) => `${a}-${b}`), inputs);
+
+// export const xor = (handler: WebGLInferenceHandler, inputs: Tensor[]):
+//     Tensor[] => [handler.run(createBinaryProgramInfoLoader(handler, inputs, glslXor(), 'bool'), inputs)];
