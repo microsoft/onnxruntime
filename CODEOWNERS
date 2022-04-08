@@ -1,5 +1,5 @@
 # Mobile
-/onnxruntime/test/testdata/kernel_def_hashes/ @onnxruntime-mobile
+/onnxruntime/test/testdata/kernel_def_hashes/ @microsoft/onnxruntime-mobile
 /onnxruntime/core/framework/kernel_def_hash_helpers.* @microsoft/onnxruntime-mobile
 
 # Contrib Ops
