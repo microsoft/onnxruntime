@@ -98,6 +98,14 @@ Model::Model(const std::string& graph_name,
   GSL_SUPPRESS(r .11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry,
                          model_functions, logger));
+
+  std::vector<FunctionTemplate*> model_local_func_templates;
+  for (auto& func : model_local_functions) {
+    auto func_template_ptr = std::make_unique<FunctionTemplate>(func.domain(), func.name(), graph_->GetModelLocalFunctions(), graph_->DomainToVersionMap());
+    model_local_function_templates_.push_back(std::move(func_template_ptr));
+    model_local_func_templates.push_back(model_local_function_templates_.back().get());
+  }
+  graph_->InitModelLocalFunctionTemplatesMap(model_local_func_templates);
 }
 
 Model::Model(const ModelProto& model_proto, const PathString& model_path,
@@ -202,6 +210,14 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
   // create instance. need to call private ctor so can't use make_unique
   GSL_SUPPRESS(r .11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry, model_local_functions, logger));
+
+  std::vector<FunctionTemplate*> model_local_func_templates;
+  for (auto& func : model_proto_.functions()) {
+    auto func_template_ptr = std::make_unique<FunctionTemplate>(func.domain(), func.name(), graph_->GetModelLocalFunctions(), graph_->DomainToVersionMap());
+    model_local_function_templates_.push_back(std::move(func_template_ptr));
+    model_local_func_templates.push_back(model_local_function_templates_.back().get());
+  }
+  graph_->InitModelLocalFunctionTemplatesMap(model_local_func_templates);
 }
 
 Version Model::IrVersion() const {

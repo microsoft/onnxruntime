@@ -10,6 +10,7 @@
 #include "core/common/path.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/graph/function_template.h"
 #include "gsl/gsl"
 
 namespace flatbuffers {
@@ -278,6 +279,8 @@ class Model {
   // Model data.
 #if !defined(ORT_MINIMAL_BUILD)
   ONNX_NAMESPACE::ModelProto model_proto_;
+
+  std::vector<std::unique_ptr<FunctionTemplate>> model_local_function_templates_;
 #else
   // properties that would normally come from ModelProto
   std::string producer_version_;

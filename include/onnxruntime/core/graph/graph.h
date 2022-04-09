@@ -38,6 +38,7 @@
 #include "core/graph/basic_types.h"
 #include "core/graph/constants.h"
 #include "core/graph/function.h"
+#include "core/graph/function_template.h"
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
 
@@ -164,24 +165,12 @@ class Node {
   @remarks The graph containing this node must be resolved, otherwise nullptr will be returned. */
   const ONNX_NAMESPACE::OpSchema* Op() const noexcept { return op_; }
 
-  /**
-  Gets the function body if applicable otherwise nullptr
-  @param try_init_func_body If not already initialized, initialize the function body
-  (This is not applicable for primitive operators.)
-  Function body can be initialized in 3 cases :
-  1. For nodes of type "Fused"
-  2. For nodes which are defined as functions in the spec (example: DynamicQuantizeLinear)
-  3. For nodes which reference a model local function. These functions are defined in the model itself and
-  do not have any schema associated with them.
-  For all other cases this will always return nullptr.
-  Nodes of type "Fused" are created during partitioning and the function body
-  initialization for such nodes also happens during node creation. Therefore,
-  initialization of function body will happen via this method only in cases 2 and 3 mentioned above.
-  */
-  Function* GetMutableFunctionBody(bool try_init_func_body = true);
+  void InstantiateFunctionBody(const logging::Logger& logger);
+
+  bool CanBeInlined() const;
 
   /** Gets the function body if applicable otherwise nullptr. */
-  const Function* GetFunctionBody() const noexcept { return func_body_; }
+  const Function* GetFunctionBody() const noexcept { return func_body_.get(); }
 #endif
 
   /**
@@ -444,10 +433,7 @@ class Node {
     execution_provider_type_ = execution_provider_type;
   }
 
-  /** Sets initialized function body for node. This is called right after function body initialization for a node.
-   * or during function inlining when a nested function is encountered.
-   */
-  void SetFunctionBody(Function& func);
+  void SetFunctionTemplate(const FunctionTemplate& func_template);
 
   /** Call the provided function for all explicit inputs, implicit inputs, and outputs of this Node.
       If the NodeArg is an explicit or implicit input, is_input will be true when func is called.
@@ -608,7 +594,10 @@ class Node {
   Node::Type node_type_ = Node::Type::Primitive;
 
   // The function body is owned by graph_
-  Function* func_body_ = nullptr;
+  std::unique_ptr<Function> func_body_ = nullptr;
+
+  // Reference to the function template defined in the model.
+  const FunctionTemplate* func_template_ = nullptr;
 
   // Node doc string.
   std::string description_;
@@ -1119,13 +1108,12 @@ class Graph {
   */
   Status InlineFunction(Node& node);
 
-  /** Initialize function body for the given node */
-  void InitFunctionBodyForNode(Node& node);
-
-  std::vector<std::unique_ptr<onnxruntime::Function>>* GetMutableLocalFunctions();
-
   /** Gets Model local functions from the root/parent graph.*/
   const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& GetModelLocalFunctions() const;
+
+  const std::unordered_map<std::string, FunctionTemplate*>& GetModelLocalFunctionTemplates() const;
+
+  void InitModelLocalFunctionTemplatesMap(const std::vector<FunctionTemplate*>& model_function_templates);
 
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
   be used as a GraphProto attribute in another Node..
@@ -1553,10 +1541,14 @@ class Graph {
 #if !defined(ORT_MINIMAL_BUILD)
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
 
-  // Container to hold initialized function bodies
-  std::vector<std::unique_ptr<onnxruntime::Function>> function_container_;
-
   std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions_;
+
+  std::unordered_map<std::string, FunctionTemplate*> model_local_function_templates_;
+
+  //Currently to make the ORT in-memory graph work, we have to create a temporary op schema
+  //for the fused kernel. I really don't like it. but for short-term solution, let's host 
+  //those schemas here.
+  std::vector<std::unique_ptr<ONNX_NAMESPACE::OpSchema>> fused_schemas_containers_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   // Graph nodes.

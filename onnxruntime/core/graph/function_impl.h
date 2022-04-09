@@ -29,58 +29,19 @@ class FunctionImpl final : public Function {
   // phase.
   // model_local_functions contains domain:optype to model_local_functions map. This is
   // used to resolve and initialize nested functions.
-  FunctionImpl(onnxruntime::Graph& graph,
-               const onnxruntime::NodeIndex& node_index,
+  FunctionImpl(const onnxruntime::Graph& graph,
                const ONNX_NAMESPACE::FunctionProto& onnx_func,
-               const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& in_model_function_protos,
-               std::vector<std::unique_ptr<onnxruntime::Function>>& function_container,
-               const logging::Logger& logger,
-               bool is_nested_function = false);
+               const logging::Logger& logger);
+
 
   ~FunctionImpl() override;
-
-  const ONNX_NAMESPACE::OpSchema& OpSchema() const override;
 
   const onnxruntime::Graph& Body() const override;
 
   onnxruntime::Graph& MutableBody() override;
 
-  bool IsInstantiated() const { return is_instantiated_; }
-
-  void Instantiated() override;
-
  private:
-
-  const onnxruntime::Graph* const parent_graph_;
-  const Node* node_in_parent_graph_;
-  std::vector<std::unique_ptr<onnxruntime::Function>>* model_function_container_;
-  const logging::Logger& logger_;
-  std::unique_ptr<ONNX_NAMESPACE::OpSchema> op_schema_;
   onnxruntime::Model body_;
-  ONNX_NAMESPACE::FunctionProto onnx_func_proto_;
-  bool is_instantiated_;
-};
-
-// Function that uses a GraphViewer so does not need to build a new Model. We still need the OpSchema to be available
-// though so we just create that.
-class ViewerFunctionImpl final : public Function {
- public:
-  ViewerFunctionImpl(const onnxruntime::Graph& graph,
-                     const IndexedSubGraph& nodes_to_fuse,
-                     const logging::Logger& logger);
-
-  ~ViewerFunctionImpl() override;
-
-  const ONNX_NAMESPACE::OpSchema& OpSchema() const override { return *op_schema_; }
-
-  const onnxruntime::Graph& Body() const override { ORT_THROW("Not supported"); }
-
-  onnxruntime::Graph& MutableBody() override { ORT_THROW("Not supported"); }
-
-  void Instantiated() override { ORT_THROW("Not supported"); }
-
- private:
-  std::unique_ptr<ONNX_NAMESPACE::OpSchema> op_schema_;
 };
 
 namespace function_utils {

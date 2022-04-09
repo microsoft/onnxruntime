@@ -481,9 +481,7 @@ TEST_F(GraphTest, FunctionOpsetImportTest) {
       ASSERT_TRUE(!schema->HasFunction() && !schema->HasContextDependentFunction());
       continue;
     }
-    const auto& function_op_schema = func_ptr->OpSchema();
-    ASSERT_TRUE(function_op_schema.domain() == node.Domain());
-
+    
     const auto& domain_version_map = func_ptr->Body().DomainToVersionMap();
     // validate schema for each node in the function body can be found
     for (auto& n : func_ptr->Body().Nodes()) {
