@@ -13,6 +13,7 @@
 
 using namespace onnxruntime;
 
+template <typename T>
 static void BM_NhwcUpsampleBilinear(benchmark::State& state) {
   const int64_t output_height = static_cast<int64_t>(state.range(0));
   const int64_t output_width = static_cast<int64_t>(state.range(1));
@@ -26,9 +27,9 @@ static void BM_NhwcUpsampleBilinear(benchmark::State& state) {
   constexpr bool use_extrapolation = false;
   constexpr float extrapolation_value = 0;
   constexpr size_t XdataBaseSize = batch_size * num_channels * input_height * input_width;
-  const float* const XdataBase = GenerateArrayWithRandomValue<float>(XdataBaseSize, std::numeric_limits<float>::min(), std::numeric_limits<float>::max());
+  const T* const XdataBase = GenerateArrayWithRandomValue<T>(XdataBaseSize, std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
   const size_t YdataBaseSize = batch_size * num_channels * output_height * output_width;
-  float* const YdataBase = (float*)aligned_alloc(sizeof(float) * YdataBaseSize, 64);
+  T* const YdataBase = (T*)aligned_alloc(sizeof(T) * YdataBaseSize, 64);
   AllocatorPtr alloc = std::make_shared<CPUAllocator>();
   const GetOriginalCoordinateFunc& get_original_coordinate =
       [](float x_resized, float x_scale, float, float, float, float) {
@@ -48,7 +49,29 @@ static void BM_NhwcUpsampleBilinear(benchmark::State& state) {
   }
 }
 
-BENCHMARK(BM_NhwcUpsampleBilinear)
+BENCHMARK_TEMPLATE(BM_NhwcUpsampleBilinear, uint8_t)
+    ->MeasureProcessCPUTime()
+    ->UseRealTime()
+    ->Unit(benchmark::TimeUnit::kNanosecond)
+    ->Args({32, 32})
+    ->Args({64, 64})
+    ->Args({96, 96})
+    ->Args({128, 128})
+    ->Args({160, 160})
+    ->Args({1, 1000000});
+
+BENCHMARK_TEMPLATE(BM_NhwcUpsampleBilinear, int8_t)
+    ->MeasureProcessCPUTime()
+    ->UseRealTime()
+    ->Unit(benchmark::TimeUnit::kNanosecond)
+    ->Args({32, 32})
+    ->Args({64, 64})
+    ->Args({96, 96})
+    ->Args({128, 128})
+    ->Args({160, 160})
+    ->Args({1, 1000000});
+
+BENCHMARK_TEMPLATE(BM_NhwcUpsampleBilinear, float)
     ->MeasureProcessCPUTime()
     ->UseRealTime()
     ->Unit(benchmark::TimeUnit::kNanosecond)
