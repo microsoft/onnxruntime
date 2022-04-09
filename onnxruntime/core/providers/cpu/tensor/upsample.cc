@@ -509,58 +509,6 @@ BilinearParams SetupUpsampleBilinear(const int64_t input_height,
   return p;
 }
 
-template <typename T>
-void UpsampleBilinear(const int64_t batch_size,
-                      const int64_t num_channels,
-                      const int64_t input_height,
-                      const int64_t input_width,
-                      const int64_t output_height,
-                      const int64_t output_width,
-                      const float height_scale,
-                      const float width_scale,
-                      const std::vector<float>& roi,
-                      const bool use_extrapolation,
-                      const float extrapolation_value,
-                      const T* const XdataBase,
-                      T* const YdataBase,
-                      AllocatorPtr& alloc,
-                      const GetOriginalCoordinateFunc& get_original_coordinate,
-                      concurrency::ThreadPool* tp) {
-  BilinearParams p = SetupUpsampleBilinear(input_height, input_width, output_height, output_width,
-                                           height_scale, width_scale, roi,
-                                           alloc, get_original_coordinate, true);
-  for (int64_t n = 0; n < batch_size; ++n) {
-    concurrency::ThreadPool::TrySimpleParallelFor(
-        tp, num_channels,
-        [&](std::ptrdiff_t c) {
-          const T* Xdata = XdataBase + (n * num_channels + c) * (input_height * input_width);
-          T* Ydata = YdataBase + (n * num_channels + c) * (output_height * output_width);
-          for (int64_t y = 0; y < output_height; ++y) {
-            for (int64_t x = 0; x < output_width; ++x) {
-              // when use_extrapolation is set and original index of x or y is out of the dim range
-              // then use extrapolation_value as the output value.
-              if (use_extrapolation &&
-                  ((p.y_original[y] < 0 || p.y_original[y] > static_cast<float>(input_height - 1)) ||
-                   (p.x_original[x] < 0 || p.x_original[x] > static_cast<float>(input_width - 1)))) {
-                Ydata[output_width * y + x] = static_cast<T>(extrapolation_value);
-                continue;
-              }
-
-              T X11 = Xdata[p.input_width_mul_y1[y] + p.in_x1[x]];
-              T X21 = Xdata[p.input_width_mul_y1[y] + p.in_x2[x]];
-              T X12 = Xdata[p.input_width_mul_y2[y] + p.in_x1[x]];
-              T X22 = Xdata[p.input_width_mul_y2[y] + p.in_x2[x]];
-
-              Ydata[output_width * y + x] = static_cast<T>(p.dx2[x] * p.dy2[y] * X11 +
-                                                           p.dx1[x] * p.dy2[y] * X21 +
-                                                           p.dx2[x] * p.dy1[y] * X12 +
-                                                           p.dx1[x] * p.dy1[y] * X22);
-            }
-          }
-        });
-  }
-}
-
 struct TrilinearParams {
   std::vector<float> x_original;
   std::vector<float> y_original;
