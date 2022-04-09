@@ -88,6 +88,8 @@ QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit) {
       return QuantizedOpType::QDQConcat;
     else if (op_type == "Gemm")
       return QuantizedOpType::QDQGemm;
+    else if (op_type == "MatMul")
+      return QuantizedOpType::QDQMatMul;
   } else {
     // throw?
   }
@@ -133,6 +135,7 @@ bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type) {
          quant_op_type == QuantizedOpType::QDQAdd ||
          quant_op_type == QuantizedOpType::QDQMul ||
          quant_op_type == QuantizedOpType::QDQGemm ||
+         quant_op_type == QuantizedOpType::QDQMatMul ||
          IsQuantizedConv(quant_op_type);
 }
 

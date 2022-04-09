@@ -291,6 +291,8 @@ GetQDQTestCaseFn BuildQDQConcatTestCase(const std::vector<std::vector<int64_t>>&
 
 GetQDQTestCaseFn BuildQDQConcatTestCaseUnsupportedInputScaleZp();
 
+GetQDQTestCaseFn BuildQDQMatMulTestCase(const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& input2_shape);
+
 template <typename Input1Type, typename Input2Type, typename OutputType, typename BiasType = int32_t>
 GetQDQTestCaseFn BuildQDQGemmTestCase(const std::vector<int64_t>& input1_shape,
                                       const std::vector<int64_t>& input2_shape,

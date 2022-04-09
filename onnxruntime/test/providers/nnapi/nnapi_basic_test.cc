@@ -459,6 +459,14 @@ TEST(NnapiExecutionProviderTest, TestQDQGemm) {
                   {ExpectedEPNodeAssignment::All});
 }
 
+TEST(NnapiExecutionProviderTest, TestQDQMatMul) {
+  RunQDQModelTest(BuildQDQMatMulTestCase(
+                      {2, 2} /* input_shape1 */,
+                      {2, 2} /* input_shape2 */),
+                  "nnapi_qdq_test_graph_matmul",
+                  {ExpectedEPNodeAssignment::All});
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {

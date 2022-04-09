@@ -1609,7 +1609,7 @@ bool GemmOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
 void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& inputs = node_unit.Inputs();
   if (IsQuantizedOp(node_unit)) {
-    if (node_unit.OpType() == "QlinearMatMul") {
+    if (node_unit.OpType() == "QlinearMatMul" || node_unit.OpType() == "MatMul") {                 // QlinearMatMul/QDQMatMul
       AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[0].quant_param);               // a_scale, a_zp
       AddInputToSkip(model_builder, inputs[1]);                                                    // b, b_scale, b_zp
       AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
@@ -1649,10 +1649,10 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto& op = node_unit.OpType();
   const auto& inputs = node_unit.Inputs();
   NodeAttrHelper helper(node_unit);
-  bool is_qlinear_matmul = op == "QLinearMatMul";
 
   const auto quant_type = GetQuantizedOpType(node_unit);
-  bool is_qdq_gemm = quant_type == QuantizedOpType::QDQGemm;
+  bool is_quant_matmul = (quant_type == QuantizedOpType::QDQMatMul || quant_type == QuantizedOpType::QLinearMatMul);
+  bool is_quant_gemm = quant_type == QuantizedOpType::QDQGemm;
 
   const auto& input1 = inputs[0].node_arg.Name();
   const auto& input2 = inputs[1].node_arg.Name();
@@ -1667,7 +1667,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
           y_zero_point = 0;
 
   bool is_per_tensor_u8s8 = false;
-  if (is_qlinear_matmul || is_qdq_gemm) {
+  if (is_quant_matmul || is_quant_gemm) {
     optional<std::vector<float>> w_scales;
     ORT_RETURN_IF_ERROR(
         GetConvMatMulOpQuantizationScaleAndZeroPoint(model_builder, node_unit,
@@ -1679,7 +1679,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   uint32_t input_2_idx;
   if (transB == 0) {
     Type onnx_mat_b_type;
-    if (!is_qlinear_matmul)
+    if (!is_quant_matmul)
       onnx_mat_b_type = Type::TENSOR_FLOAT32;
     else
       onnx_mat_b_type = Type::TENSOR_QUANT8_ASYMM;
@@ -1696,7 +1696,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   input_2_idx = operand_indices.at(input2);
 
   // Verify if the scale and zero point matchs from onnx input and nnapi input
-  if (is_qlinear_matmul || is_qdq_gemm) {
+  if (is_quant_matmul || is_quant_gemm) {
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input1, a_scale, a_zero_point));
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input2, b_scale, b_zero_point));
   }
@@ -1721,7 +1721,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       bias_idx = operand_indices.at(bias);
     }
 
-    if (is_qdq_gemm) {
+    if (is_quant_gemm) {
       const auto& bias_tensor = *model_builder.GetInitializerTensors().at(bias);
       // TODO: Need to confirm, put int32 type here for now
       ORT_RETURN_IF_NOT(bias_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32,
