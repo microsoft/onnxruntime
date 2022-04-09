@@ -57,7 +57,7 @@ setup() {
     pip install -r requirements.txt    
     if [ "$BUILD_ORT" = "False" ]
     then
-        echo 
+        echo 'installing the nightly wheel file'
         ls Release/dist/* | xargs -n 1 pip install
     fi
     cleanup_files
