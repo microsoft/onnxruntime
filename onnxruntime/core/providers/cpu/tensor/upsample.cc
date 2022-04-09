@@ -456,8 +456,9 @@ BilinearParams SetupUpsampleBilinear(const int64_t input_height,
   p.dx2 = p.dx1 + output_width;
 
   // Start processing
-  auto roi_y_start = is_nchw ? roi.size() / 2 - 2 : roi.size() / 2 - 3;
-  auto roi_y_end = is_nchw ? roi.size() - 2 : roi.size() - 3;
+  const size_t height_rindex = is_nchw ? 1 : 2;
+  auto roi_y_start = roi.size() / 2 - (height_rindex + 1);
+  auto roi_y_end = roi.size() - (height_rindex + 1);
   for (int64_t y = 0; y < output_height; ++y) {
     float in_y = height_scale == 1 ? static_cast<float>(y)
                                    : get_original_coordinate(static_cast<float>(y), height_scale,
@@ -481,8 +482,9 @@ BilinearParams SetupUpsampleBilinear(const int64_t input_height,
     p.input_width_mul_y2[y] = input_width * in_y2;
   }
 
-  auto roi_x_start = is_nchw ? roi.size() / 2 - 1 : roi.size() / 2 - 2;
-  auto roi_x_end = is_nchw ? roi.size() - 1 : roi.size() - 2;
+  const size_t width_rindex = is_nchw ? 0 : 1;
+  auto roi_x_start = roi.size() / 2 - (width_rindex + 1);
+  auto roi_x_end = roi.size() - (width_rindex + 1);
   for (int64_t x = 0; x < output_width; ++x) {
     float in_x = width_scale == 1 ? static_cast<float>(x)
                                   : get_original_coordinate(static_cast<float>(x),
