@@ -43,12 +43,24 @@ ONNX_OPERATOR_KERNEL_EX(
 
 QOrderedLongformerAttention::QOrderedLongformerAttention(const OpKernelInfo& info) : CudaKernel(info), LongformerAttentionBase(info) {
   use_compact_memory_ = ParseEnvironmentVariableWithDefault<bool>(longformer::kUseCompactMemory, false);
-  const cublasLtOrder_t COL32 = CUBLASLT_ORDER_COL32;
-  const cublasLtOrder_t weight_tiles[2] = {CUBLASLT_ORDER_COL4_4R2_8C, CUBLASLT_ORDER_COL32_2R_4R4};
-  order_input_ = GetCublasLtOrderAttr(info, "order_input", 1, &COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_input");
-  order_weight_ = GetCublasLtOrderAttr(info, "order_weight", 2, weight_tiles, "Only COL4_4R2_8C and COL32_2R_4R4 are supported for order_weght");
-  order_global_weight_ = GetCublasLtOrderAttr(info, "order_global_weight", 2, weight_tiles, "Only COL4_4R2_8C and COL32_2R_4R4 are supported for order_global_weight");
-  order_output_ = GetCublasLtOrderAttr(info, "order_output", 1, &COL32, "Only CUBLASLT_ORDER_COL32 is supported for order_output");
+  const cublasLtOrder_t InputOrders[2] = {CUBLASLT_ORDER_ROW, CUBLASLT_ORDER_COL32};
+  const cublasLtOrder_t weight_tiles_for_input_col32[2] = {CUBLASLT_ORDER_COL4_4R2_8C, CUBLASLT_ORDER_COL32_2R_4R4};
+  const cublasLtOrder_t weight_tiles_for_input_row[1] = {CUBLASLT_ORDER_COL};
+  int num_allowed_weight_orders = 2;
+  const cublasLtOrder_t* allowed_weight_orders = weight_tiles_for_input_col32;
+
+  order_input_ = GetCublasLtOrderAttr(info, "order_input", 2, InputOrders,
+                                      "QOrderedLongformerAttention: Only ORDER_ROW or ORDER_COL32 is supported for order_input");
+  if (order_input_ == CUBLASLT_ORDER_ROW) {
+    num_allowed_weight_orders = 1;
+    allowed_weight_orders = weight_tiles_for_input_row;
+  }
+  order_weight_ = GetCublasLtOrderAttr(info, "order_weight", num_allowed_weight_orders, allowed_weight_orders,
+                                       "QOrderedLongformerAttention: un-supported order for order_weght");
+  order_global_weight_ = GetCublasLtOrderAttr(info, "order_global_weight", num_allowed_weight_orders, allowed_weight_orders,
+                                              "QOrderedLongformerAttention: un-supported order for order_global_weight");
+  order_output_ = GetCublasLtOrderAttr(info, "order_output", 1, (const cublasLtOrder_t*)&order_input_,
+                                       "QOrderedLongformerAttention: oder_output must be same as order_input");
 }
 
 Status
