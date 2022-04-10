@@ -7,13 +7,21 @@
 # This script converts Longformer model from huggingface transformers 4.0 or later to ONNX.
 # Unlike normal ONNX model exporting, it will directly translate LongformerSelfAttention to the LongformerAttention operator in ONNX Runtime.
 #
-# Before running this script, please run "python setup.py install" in ../torch_extensions under Linux with PyTorch installed.
+# Before running this script, please run "python setup.py install" in ./torch_extensions under Linux with PyTorch installed.
 # Then you can update the path of longformer_attention.cpython-*.so and run this script in same environment.
 #
-# It is tested in Ubuntu 18.04, python 3.6, PyTorch 1.7.1, transformers 4.3.0 or 4.3.2.
+# It is tested in Ubuntu 18.04 with python 3.8, onnxruntime-gpu 1.11.0, PyTorch 1.9.0, transformers 4.18.0.
+# Warning: Using newer version (1.10 or 1.11) of PyTorch might encounter issue in exporting, but they are fine for benchmarking.
+# 
+# Example commands for exporting longformer base model in Linux:
+#   cd ./torch_extensions
+#   python setup.py install
+#   cd ..
+#   python convert_to_onnx.py --model longformer-base-4096 --precision fp16 --optimize_onnx
+#
 # GPU is not needed for this script. You can run it in CPU. For --optimize_onnx, you can use either onnxruntime or onnxruntime-gpu package.
 #
-# For inference of the onnx model, you will need onnxruntime-gpu 1.7.0 or above.
+# For inference of the onnx model, you will need onnxruntime-gpu 1.7.0 or newer version.
 
 import sys
 import os
@@ -27,7 +35,7 @@ from packaging import version
 from pathlib import Path
 from longformer_helper import LongformerHelper, PRETRAINED_LONGFORMER_MODELS
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from torch_onnx_export_helper import torch_onnx_export
 
 
@@ -48,9 +56,9 @@ def my_longformer_attention(g, input, weight, bias, mask, global_weight, global_
 # namespace is onnxruntime which is registered in longformer_attention.cpp
 register_custom_op_symbolic('onnxruntime::LongformerAttention', my_longformer_attention, 9)
 
-# TODO: search the directory to find correct output filename of "python setup.py install" when python version is not 3.6
+# TODO: search the directory to find correct output filename of "python setup.py install" when python version is not 3.8
 torch.ops.load_library(
-    r'../torch_extensions/build/lib.linux-x86_64-3.6/longformer_attention.cpython-36m-x86_64-linux-gnu.so')
+    r'./torch_extensions/build/lib.linux-x86_64-3.8/longformer_attention.cpython-38-x86_64-linux-gnu.so')
 
 
 def parse_arguments():
@@ -231,7 +239,7 @@ def export_longformer(model, onnx_model_path, export_padding):
     torch_onnx_export(model,
                       example_inputs,
                       onnx_model_path,
-                      opset_version=11,
+                      opset_version=12,
                       input_names=["input_ids", "attention_mask", "global_attention_mask"],
                       output_names=["last_state", "pooler"],
                       dynamic_axes={
