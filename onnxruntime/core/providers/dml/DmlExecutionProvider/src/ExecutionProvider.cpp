@@ -25,7 +25,9 @@
 
 #include "core/session/onnxruntime_c_api.h"
 #include <wil/wrl.h>
+#ifndef _GAMING_XBOX
 #include <dxgi1_6.h>
+#endif
 
 #define ENABLE_GRAPH_COMPILATION
 
@@ -71,7 +73,7 @@ namespace Dml
         }
 
         ComPtr<ID3D12Device> device;
-        ORT_THROW_IF_FAILED(commandQueue->GetDevice(IID_PPV_ARGS(&device)));
+        GRAPHICS_THROW_IF_FAILED(commandQueue->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
 
         m_impl = wil::MakeOrThrow<ExecutionProviderImpl>(dmlDevice, device.Get(), commandQueue, enableMetacommands);
 
@@ -668,8 +670,13 @@ namespace Dml
         }
         else
         {         
+#ifdef _GAMING_XBOX
+            ComPtr<GraphicsUnknownWrapper> wrappedResource = Microsoft::WRL::Make<GraphicsUnknownWrapper>(m_allocator->DecodeDataHandle(data)->GetResource());
+            *abiData = wrappedResource.Detach();
+#else
             ComPtr<ID3D12Resource> resource = m_allocator->DecodeDataHandle(data)->GetResource();
             *abiData = resource.Detach();
+#endif
         } 
     }
 
@@ -696,7 +703,12 @@ namespace Dml
         {
             ComPtr<ID3D12GraphicsCommandList> commandList;
             m_context->GetCommandListForRecording(commandList.GetAddressOf());
+#ifdef _GAMING_XBOX
+            ComPtr<GraphicsUnknownWrapper> wrappedCommandList = Microsoft::WRL::Make<GraphicsUnknownWrapper>(commandList.Get());
+            *abiExecutionObject = wrappedCommandList.Detach();
+#else
             *abiExecutionObject = commandList.Detach();
+#endif
         }  
     }
     

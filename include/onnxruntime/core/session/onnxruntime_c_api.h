@@ -30,7 +30,7 @@
 *
 * This value is used by some API functions to behave as this version of the header expects.
 */
-#define ORT_API_VERSION 12 
+#define ORT_API_VERSION 12
 
 #ifdef __cplusplus
 extern "C" {
@@ -483,7 +483,7 @@ typedef struct OrtTensorRTProviderOptions {
   const char* trt_engine_decryption_lib_path;   // specify engine decryption library path
   int trt_force_sequential_engine_build;        // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
   // This is the legacy struct and don't add new fields here.
-  // For new field that can be represented by string, please add it in include/onnxruntime/core/providers/tensorrt/tensorrt_provider_options.h   
+  // For new field that can be represented by string, please add it in include/onnxruntime/core/providers/tensorrt/tensorrt_provider_options.h
   // For non-string field, need to create a new separate api to handle it.
 } OrtTensorRTProviderOptions;
 
@@ -492,9 +492,9 @@ typedef struct OrtTensorRTProviderOptions {
 * \see OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
 */
 typedef struct OrtMIGraphXProviderOptions {
-  int device_id;                                // hip device id.
-  int migraphx_fp16_enable;                     // enable MIGraphX FP16 precision. Default 0 = false, nonzero = true
-  int migraphx_int8_enable;                     // enable MIGraphX INT8 precision. Default 0 = false, nonzero = true
+  int device_id;             // hip device id.
+  int migraphx_fp16_enable;  // enable MIGraphX FP16 precision. Default 0 = false, nonzero = true
+  int migraphx_int8_enable;  // enable MIGraphX INT8 precision. Default 0 = false, nonzero = true
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options
@@ -3304,6 +3304,31 @@ struct OrtApi {
   */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_MIGraphX,
                   _In_ OrtSessionOptions* options, _In_ const OrtMIGraphXProviderOptions* migraphx_options);
+
+ /** \brief Replace initialized Tensors with external data with the data provided in initializers.
+  *
+  * The function will find the initialized TensorProtos with external data in the graph with the provided names and
+  * replace them with the provided tensors. The API verifies that the TensorProto being replaced
+  * has an external data reference and has the same name, dimensions and data type as its replacement. The replacement
+  * will occur before any of the optimizations take place. The data will be copied into the graph
+  * since TensorProto can't refer to the user provided buffers.
+  *
+  * Once the model has been loaded, the OrtValue(s) added to SessionOptions instance will be removed
+  * from the internal SessionOptions copy to save memory, the user provided buffers can then be deallocated
+  * and the SessionOptions instance that refers to them can be destroyed.
+  *
+  * \param[in] options
+  * \param[in] initializer_names Array of null terminated UTF-8 encoded strings of the initializers names.
+  * \param[in] initializers Array of ::OrtValue type
+  * \param[in] initializers_num Number of elements in the initializer_names and initializers
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.12.
+  */
+  ORT_API2_STATUS(AddExternalInitializers, _In_ OrtSessionOptions* options,
+                  _In_reads_(input_len) const char* const* initializer_names,
+                  _In_reads_(input_len) const OrtValue* const* initializers, size_t initializers_num);
 };
 
 /*
@@ -3373,8 +3398,6 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOpt
  * \param device_id HIP device id, starts from zero.
 */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, int device_id);
-
-
 #ifdef __cplusplus
 }
 #endif

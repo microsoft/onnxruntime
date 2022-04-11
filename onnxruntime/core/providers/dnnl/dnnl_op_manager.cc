@@ -25,6 +25,7 @@ DnnlOpManager::DnnlOpManager() {
   dnnl_ops_map_.emplace(std::make_pair("Gemm", std::unique_ptr<DnnlNodeCapability>(new DnnlGemmNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("GlobalAveragePool", std::unique_ptr<DnnlNodeCapability>(new DnnlPoolNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("GlobalMaxPool", std::unique_ptr<DnnlNodeCapability>(new DnnlPoolNodeCapability())));
+  dnnl_ops_map_.emplace(std::make_pair("LayerNormalization", std::unique_ptr<DnnlNodeCapability>(new DnnlLayerNormalizationNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("LeakyRelu", std::unique_ptr<DnnlNodeCapability>(new DnnlElementwiseCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Log", std::unique_ptr<DnnlNodeCapability>(new DnnlElementwiseCapability())));
   dnnl_ops_map_.emplace(std::make_pair("LRN", std::unique_ptr<DnnlNodeCapability>(new DnnlDefaultNodeCapability())));
@@ -48,6 +49,7 @@ DnnlOpManager::DnnlOpManager() {
   dnnl_ops_map_.emplace(std::make_pair("Reshape", std::unique_ptr<DnnlNodeCapability>(new DnnlReshapeNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Round", std::unique_ptr<DnnlNodeCapability>(new DnnlElementwiseCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Sigmoid", std::unique_ptr<DnnlNodeCapability>(new DnnlElementwiseCapability())));
+  dnnl_ops_map_.emplace(std::make_pair("SkipLayerNormalization", std::unique_ptr<DnnlNodeCapability>(new DnnlSkipLayerNormalizationNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Softmax", std::unique_ptr<DnnlNodeCapability>(new DnnlSoftmaxNodeCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Softplus", std::unique_ptr<DnnlNodeCapability>(new DnnlElementwiseCapability())));
   dnnl_ops_map_.emplace(std::make_pair("Squeeze", std::unique_ptr<DnnlNodeCapability>(new DnnlSqueezeNodeCapability())));

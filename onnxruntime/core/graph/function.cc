@@ -8,7 +8,6 @@
 #include "core/graph/model.h"
 
 namespace onnxruntime {
-
 // Creates domain to version map for onnx function
 static std::unordered_map<std::string, int> GetFunctionOpsetImports(const ONNX_NAMESPACE::FunctionProto& func_proto, const std::unordered_map<std::string, int>& graph_imports) {
   std::unordered_map<std::string, int> function_opset_imports{graph_imports};

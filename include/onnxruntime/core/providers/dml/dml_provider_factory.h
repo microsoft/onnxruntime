@@ -5,7 +5,13 @@
 
 #pragma warning(push)
 #pragma warning(disable : 4201) // nonstandard extension used: nameless struct/union
+#ifdef _GAMING_XBOX_SCARLETT
+#include <d3d12_xs.h>
+#elif defined(_GAMING_XBOX_XBOXONE)
+#include <d3d12_x.h>
+#else
 #include <d3d12.h>
+#endif
 #pragma warning(pop)
 
 #ifdef __cplusplus

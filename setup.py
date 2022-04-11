@@ -319,7 +319,8 @@ packages = [
     'onnxruntime.quantization.operators',
     'onnxruntime.quantization.CalTableFlatBuffers',
     'onnxruntime.transformers',
-    'onnxruntime.transformers.longformer',
+    'onnxruntime.transformers.models.t5',
+    'onnxruntime.transformers.models.longformer',
 ]
 
 requirements_file = "requirements.txt"
