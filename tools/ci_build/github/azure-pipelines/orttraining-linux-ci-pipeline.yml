@@ -32,12 +32,8 @@ jobs:
         cd $(Build.SourcesDirectory)/cmake/external/onnx
         git remote update
         git checkout main
-        git log
         git pull
-        git log
-        git fetch
-        git pull
-        git log
+    condition: eq(variables['ONNX_INTEGRATION_NIGHTLY_BUILD'], 1))
 
   - task: CmdLine@2
     displayName: 'build'
