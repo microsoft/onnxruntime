@@ -79,7 +79,6 @@ else()
     target_link_libraries(DirectML INTERFACE ${directml_install_path}/lib/DirectML.lib)
     add_dependencies(DirectML directml_repo-install)
   else()
-    # If onnxruntime_USE_CUSTOM_DIRECTML=ON 
     include_directories(${dml_INCLUDE_DIR})
   endif()
 endif()
