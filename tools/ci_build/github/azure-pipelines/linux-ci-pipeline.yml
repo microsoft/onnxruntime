@@ -129,6 +129,18 @@ jobs:
       scriptPath: $(Build.BinariesDirectory)/Release/onnxruntime_test_python_symbolic_shape_infer.py
       workingDirectory: $(Build.BinariesDirectory)/Release
 
+  - task: PythonScript@0
+    displayName: 'onnx script function tests in release build'
+    inputs:
+      scriptPath: $(Build.BinariesDirectory)/Release/onnxruntime_test_onnx_function.py
+      workingDirectory: $(Build.BinariesDirectory)/Release
+
+  - task: PythonScript@0
+    displayName: 'onnx script function tests in debug build'
+    inputs:
+      scriptPath: $(Build.BinariesDirectory)/Debug/onnxruntime_test_onnx_function.py
+      workingDirectory: $(Build.BinariesDirectory)/Debug
+
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
     inputs:
