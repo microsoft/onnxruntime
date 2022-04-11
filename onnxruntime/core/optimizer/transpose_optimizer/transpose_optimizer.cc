@@ -1953,20 +1953,16 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
       if (!HandleQuantizeDequantizeScale(ctx.graph, *perm, *dq_node, ctx.opset)) {
         continue;
       }
-      auto q_node = ctx.graph.GetNodeProducingOutput(dq_node->Inputs()[0]);
-      if (!q_node) {
-        continue;
-      }
       auto transpose_out = transpose_node.Outputs()[0];
       std::unique_ptr<api::NodeRef> new_q_node = ctx.graph.AddNode("QuantizeLinear",
                                                                    {transpose_out,
-                                                                    q_node->Inputs()[1],
-                                                                    q_node->Inputs()[2]},
+                                                                    dq_node->Inputs()[1],
+                                                                    dq_node->Inputs()[2]},
                                                                    /*num_outputs = */ 1);
 
-      auto q_out = q_node->Outputs()[0];
+      auto dq_in = dq_node->Inputs()[0];
       auto new_q_out = new_q_node->Outputs()[0];
-      ctx.graph.CopyValueInfo(q_out, new_q_out);
+      ctx.graph.CopyValueInfo(dq_in, new_q_out);
       ctx.graph.GetValueInfo(new_q_out)->PermuteDims(*perm);
 
       std::unique_ptr<api::NodeRef> new_dq_node = ctx.graph.AddNode("DequantizeLinear",
