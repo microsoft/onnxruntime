@@ -845,9 +845,9 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 }
 
 // Detect and remove cycles from supported node list
-void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph) const {
+bool TensorrtExecutionProvider::DetectRemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph) const {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
-  bool trt_cycle = true;
+  bool trt_cycle = true, cycle_detected = false;
   while (trt_cycle) {
     trt_cycle = false;
     std::unordered_map<std::string, size_t> node_to_index_map;
@@ -931,6 +931,7 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
     for (size_t i = 0; i < graph_size; ++i) {
       if (FindCycleHelper(i, adjacency_map, visited, st, cycles)) {
         has_cycle = true;
+        cycle_detected = true;
         break;
       }
     }
@@ -951,6 +952,7 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
     delete[] visited;
     delete[] st;
   }
+  return cycle_detected;
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
@@ -984,7 +986,21 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   }
 
   // Detect and remove cycles from supported node list
-  RemoveTensorRTGraphCycles(supported_nodes_vector, graph);
+  DetectRemoveTensorRTGraphCycles(supported_nodes_vector, graph);
+
+  // Try to consolidate the supported node list
+  nodes_vector.clear();
+  for (const auto& group : supported_nodes_vector) {
+    if (!group.first.empty()) {
+      nodes_vector.insert(nodes_vector.end(), group.first.begin(), group.first.end());
+    }
+  }  
+  SubGraphCollection_t consolidated_supported_nodes_vector = {{nodes_vector, true}};
+  if (DetectRemoveTensorRTGraphCycles(consolidated_supported_nodes_vector, graph)) {
+    LOGS_DEFAULT(INFO) << "[TensorRT EP] TensorRT node list is not consolidated because the graph will have cycles after consolidation";
+  } else {
+    supported_nodes_vector = consolidated_supported_nodes_vector;
+  }
 
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
