@@ -149,6 +149,18 @@ def numpy_T(g, self):
         # output a permute so use ATen instead
         return g.op("com.microsoft::ATenOp", self, name_s='aten::numpy_T')
 
+
+@register_symbolic('squeeze')
+def squeeze(g, self, dim=None):
+    # Current _infer_If does not correctly infer shapes from its then- and else- branches, and will
+    # cause error in shape inference of following nodes, here we choose to export it as `Squeeze.`
+    from torch.onnx.symbolic_opset11 import squeeze as squeeze_with_if
+    if dim is None:
+        return squeeze_with_if(g, self, dim)
+    squeeze_dim = sym_help._get_const(dim, 'i', 'dim')
+    return sym_help._squeeze_helper(g, self, axes_i=[squeeze_dim])
+
+
 # For torch.einsum.
 def parse_equation(equation):
     pos_comma = equation.find(',')
@@ -257,22 +269,28 @@ def permute_and_reshape_tensor(g, tensor, is_lhs, rank, perm, matmul_output_axes
             remaining_axes = [axis for axis in range(rank) if axis not in axes_to_remove]
             # Calculate the new shape, use 0 or -1 if possible.
             shape_tensors = []
-            all_zeros = True
+            before_contiguous_axes = True
+            last_zero_dim = -1
+            has_neg_one_dim = False
             for axis in remaining_axes:
                 if axis == first_matmul_output_axis:
                     shape_tensors.append(matmul_output_numel_tensor)
-                    all_zeros = False
+                    before_contiguous_axes = False
                 elif axis == first_contraction_axis:
                     shape_tensors.append(contraction_numel_tensor)
-                    all_zeros = False
-                elif all_zeros:
+                    before_contiguous_axes = False
+                elif before_contiguous_axes:
                     shape_tensors.append(g.op("Constant", value_t=torch.tensor([0], dtype=torch.int64)))
+                    last_zero_dim = len(shape_tensors) - 1
                 elif axis == remaining_axes[-1]:
                     shape_tensors.append(g.op("Constant", value_t=torch.tensor([-1], dtype=torch.int64)))
+                    has_neg_one_dim = True
                 else:
                     single_axis_shape_tensor, _, shape_tensor = get_shape_tensor_by_axes(
                         g, tensor, shape_tensor, [axis], False)
                     shape_tensors.append(single_axis_shape_tensor)
+            if not has_neg_one_dim and last_zero_dim >= 0:
+                shape_tensors[last_zero_dim] = g.op("Constant", value_t=torch.tensor([-1], dtype=torch.int64))
             # Adjust the perm.
             perm = [axis for axis in perm if axis not in axes_to_remove]
             new_axis = 0
@@ -458,16 +476,22 @@ def einsum(g, equation, tensor_list):
     # Need to Reshape the result for the example, the new shape is [size(s), size(m)].
     if len(lhs_matmul_output_axes) != 1 or len(rhs_matmul_output_axes) != 1:
         shape_tensors = [g.op("Constant", value_t=torch.tensor([0], dtype=torch.int64))] * len(batched_axes)
+        last_zero_dim = len(shape_tensors) - 1
+        has_neg_one_dim = False
         if lhs_matmul_output_axes:
             if len(lhs_matmul_output_axes) == 1:
                 shape_tensors.append(g.op("Constant", value_t=torch.tensor([0], dtype=torch.int64)))
+                last_zero_dim = len(shape_tensors) - 1
             else:
                 shape_tensors.append(lhs_matmul_output_shape_tensor)
         if rhs_matmul_output_axes:
             if len(rhs_matmul_output_axes) == 1:
                 shape_tensors.append(g.op("Constant", value_t=torch.tensor([-1], dtype=torch.int64)))
+                has_neg_one_dim = True
             else:
                 shape_tensors.append(rhs_matmul_output_shape_tensor)
+        if not has_neg_one_dim and last_zero_dim >= 0:
+            shape_tensors[last_zero_dim] = g.op("Constant", value_t=torch.tensor([-1], dtype=torch.int64))
         result = reshape_tensor(g, result, shape_tensors)
 
     # Now output axes is ordered by [batched_axes, lhs_matmul_output_axes, rhs_matmut_output_axes],

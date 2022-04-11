@@ -188,10 +188,10 @@ void RegisterSignalSchemas() {
           "the real-to-complex Fourier transform satisfies the conjugate symmetry, i.e., X[m, w] = X[m,w]=X[m,n_fft-w]*. "
           "Note if the input or window tensors are complex, then onesided output is not possible. "
           "Enabling onesided with real inputs performs a Real-valued fast Fourier transform (RFFT)."
-          "When invoked with real or complex valued input, the default value is 0. "
+          "When invoked with real or complex valued input, the default value is 1. "
           "Values can be 0 or 1.",
           AttributeProto::INT,
-          static_cast<int64_t>(0))
+          static_cast<int64_t>(1))
       .Input(0,
              "signal",
              "Input tensor representing a real or complex valued signal. "

@@ -545,7 +545,6 @@ class ORTTrainer(object):
                            output_names=[output.name for output in self.model_desc.outputs],
                            opset_version=self.options._internal_use.onnx_opset_version,
                            dynamic_axes=dynamic_axes,
-                           example_outputs=tuple(sample_outputs),
                            do_constant_folding=False,
                            training=torch.onnx.TrainingMode.TRAINING)
         onnx_model = onnx.load_model_from_string(f.getvalue())
@@ -969,13 +968,24 @@ class ORTTrainer(object):
         state_dict[_utils.state_dict_trainer_options_key()][D_size] = self.options.distributed.data_parallel_size
         state_dict[_utils.state_dict_trainer_options_key()][H_size] = self.options.distributed.horizontal_parallel_size
 
+    def _extract_train_step_info(self, state_dict):
+        """Extract train step info settings and save it into the state_dict"""
+
+        optimization_step = _utils.state_dict_train_step_info_optimization_step_key()
+        step = _utils.state_dict_train_step_info_step_key()
+
+        state_dict[_utils.state_dict_train_step_info_key()] = {}
+        state_dict[_utils.state_dict_train_step_info_key()][optimization_step] = self._train_step_info.optimization_step
+        state_dict[_utils.state_dict_train_step_info_key()][step] = self._train_step_info.step
+
     def state_dict(self, pytorch_format=False):
-        """Returns a dictionary with model, and optionally, optimizer states
+        """Returns a dictionary with model, train step info and optionally, optimizer states
 
         The returned dictionary contains the following information:
         - Model and optimizer states
         - Required ORTTrainerOptions settings
         - Distributed training information, such as but not limited to ZeRO
+        - Train step info settings
 
         Structure of the returned dictionary:
         - When `pytorch_format = False`
@@ -1095,6 +1105,21 @@ class ORTTrainer(object):
                         }
                     }
                 }
+            },
+            "train_step_info":
+            {
+                type: dict,
+                schema:
+                {
+                    "optimization_step":
+                    {
+                        type: int
+                    },
+                    "step":
+                    {
+                        type: int
+                    }
+                }
             }
         }
         - When `pytorch_format = True`
@@ -1136,6 +1161,9 @@ class ORTTrainer(object):
 
         # extract the relevant training configuration from the trainer and load them into the state_dict
         self._extract_trainer_options(state_dict)
+
+        # Extract train step info settings and load it into the state_dict
+        self._extract_train_step_info(state_dict)
 
         # add partition information in case of a distributed run
         if self.options.distributed.deepspeed_zero_optimization.stage > 0 or self.options.distributed.horizontal_parallel_size > 1:
@@ -1295,6 +1323,19 @@ class ORTTrainer(object):
         return current_state_dict[_utils.state_dict_optimizer_key()] if \
             _utils.state_dict_optimizer_key() in current_state_dict else {}
 
+    def _load_train_step_info(self, state_dict):
+        """Load the train step info settings from state dict"""
+
+        if _utils.state_dict_train_step_info_key() not in state_dict:
+            warnings.warn("Missing key: train_step_info in state_dict", UserWarning)
+            return
+
+        optimization_step = _utils.state_dict_train_step_info_optimization_step_key()
+        step = _utils.state_dict_train_step_info_step_key()
+
+        self._train_step_info.optimization_step = state_dict[_utils.state_dict_train_step_info_key()][optimization_step]
+        self._train_step_info.step = state_dict[_utils.state_dict_train_step_info_key()][step]
+
     def load_state_dict(self, state_dict, strict=True):
         """Loads state_dict containing model/optimizer states into ORTTrainer
 
@@ -1315,6 +1356,9 @@ class ORTTrainer(object):
         if not self._training_session:
             self._load_state_dict = partial(self._load_state_dict_impl, state_dict, strict=strict)
             return
+
+        # load the train step info settings
+        self._load_train_step_info(state_dict)
 
         # load states onto the frontend onnx graph
         optimizer_state_dict = self._load_state_dict_impl(state_dict, strict=strict)

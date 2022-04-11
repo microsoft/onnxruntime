@@ -44,7 +44,7 @@ jobs:
 
   - task: NodeTool@0
     inputs:
-      versionSpec: '14.x'
+      versionSpec: '16.x'
 
   - task: UsePythonVersion@0
     inputs: 

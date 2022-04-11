@@ -48,6 +48,9 @@ struct Exception : std::exception {
 };
 
 #ifdef ORT_NO_EXCEPTIONS
+// The #ifndef is for the very special case where the user of this library wants to define their own way of handling errors.
+// NOTE: This header expects control flow to not continue after calling ORT_CXX_API_THROW
+#ifndef ORT_CXX_API_THROW
 #define ORT_CXX_API_THROW(string, code)       \
   do {                                        \
     std::cerr << Ort::Exception(string, code) \
@@ -55,13 +58,10 @@ struct Exception : std::exception {
               << std::endl;                   \
     abort();                                  \
   } while (false)
+#endif
 #else
-// The #ifndef is for the very special case where the user of this library wants to define their own way of handling errors.
-// NOTE: This header expects control flow to not continue after calling ORT_CXX_API_THROW
-#ifndef ORT_CXX_API_THROW
 #define ORT_CXX_API_THROW(string, code) \
   throw Ort::Exception(string, code)
-#endif
 #endif
 
 // This is used internally by the C++ API. This class holds the global variable that points to the OrtApi, it's in a template so that we can define a global variable in a header and make
@@ -359,6 +359,7 @@ struct SessionOptions : Base<OrtSessionOptions> {
 
   SessionOptions& AddConfigEntry(const char* config_key, const char* config_value);  ///< Wraps OrtApi::AddSessionConfigEntry
   SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);         ///< Wraps OrtApi::AddInitializer
+  SessionOptions& AddExternalInitializers(const std::vector<std::string>& names, const std::vector<Value>& ort_values);  ///< Wraps OrtApi::AddExternalInitializers
 
   SessionOptions& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA
   SessionOptions& AppendExecutionProvider_ROCM(const OrtROCMProviderOptions& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_ROCM

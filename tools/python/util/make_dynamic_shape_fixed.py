@@ -18,11 +18,11 @@ def make_dynamic_shape_fixed_helper():
                                      Provide either dim_param and dim_value or input_name and input_shape.''')
 
     parser.add_argument('--dim_param', type=str, required=False,
-                        help="Symbolic parameter name. Provider dim_value if specified.")
+                        help="Symbolic parameter name. Provide dim_value if specified.")
     parser.add_argument('--dim_value', type=int, required=False,
                         help="Value to replace dim_param with in the model. Must be > 0.")
     parser.add_argument('--input_name', type=str, required=False,
-                        help="Model input name to replace shape of. Provider input_shape if specified.")
+                        help="Model input name to replace shape of. Provide input_shape if specified.")
     parser.add_argument('--input_shape', type=lambda x: [int(i) for i in x.split(',')], required=False,
                         help="Shape to use for input_shape. Provide comma separated list for the shape. "
                              "All values must be > 0. e.g. --input_shape 1,3,256,256")

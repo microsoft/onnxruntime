@@ -93,7 +93,9 @@ def optimize_by_onnxruntime(onnx_model_path: str,
                                                providers=['CPUExecutionProvider'],
                                                **kwargs)
     else:
-        session = onnxruntime.InferenceSession(onnx_model_path, sess_options, **kwargs)
+        session = onnxruntime.InferenceSession(onnx_model_path, sess_options,
+                                               providers=['CUDAExecutionProvider'],
+                                               **kwargs)
         assert 'CUDAExecutionProvider' in session.get_providers()  # Make sure there is GPU
 
     assert os.path.exists(optimized_model_path) and os.path.isfile(optimized_model_path)

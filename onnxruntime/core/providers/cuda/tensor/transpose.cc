@@ -202,7 +202,7 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
 
   // Transpose021 has a specialized Transpose3DImpl kernel
   dim3 grid_size, block_size;
-  if (CanDoTranspose3D(prop, new_rank, new_input_dims, new_permutations, grid_size, block_size)) {
+  if (CanDoTranspose3D(prop, static_cast<size_t>(new_rank), new_input_dims, new_permutations, grid_size, block_size)) {
     TensorPitches new_input_strides(new_input_dims);
     return Transpose3DImpl(stream, element_size, ToConstSpan(new_input_dims), ToConstSpan(new_input_strides),
                            input.DataRaw(), output.MutableDataRaw(), output.Shape().Size(), grid_size, block_size);

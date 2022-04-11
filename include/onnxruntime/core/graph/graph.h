@@ -32,6 +32,7 @@
 
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
+#include "core/common/inlined_containers_fwd.h"
 #include "core/common/path.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
@@ -126,7 +127,9 @@ class Node {
   /** Gets the Node's operator type. */
   const std::string& OpType() const noexcept { return op_type_; }
 
-  /** Gets the domain of the OperatorSet that specifies the operator returned by #OpType. */
+  /** Gets the domain of the OperatorSet that specifies the operator returned by #OpType.
+   * @remarks If this is an ONNX operator the value will be kOnnxDomain not kOnnxDomainAlias
+   */
   const std::string& Domain() const noexcept { return domain_; }
 
   /** Gets the path of the owning model if any. */
@@ -153,7 +156,7 @@ class Node {
   int SinceVersion() const noexcept { return since_version_; }
 
   /** Sets the since version (opset version that the Node's operator was first defined in.) for this node.
-  @remarks Used during layout transformation for setting since vesion for layout transformed nodes with 
+  @remarks Used during layout transformation for setting since vesion for layout transformed nodes with
   domain kMSNHWC.
   */
   void SetSinceVersion(int since_version) noexcept { since_version_ = since_version; }
@@ -674,7 +677,15 @@ class Graph {
   Note: This currently has linear time complexity. There is room for improvement but it would likely require changes to
   how initializer tensors are stored and tracked.
   */
-  common::Status ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer);
+  common::Status ReplaceInitializedTensor(ONNX_NAMESPACE::TensorProto new_initializer);
+
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  /** This function takes externally provided data for initializers with external data
+  *    and replaces graph initializers with its content.
+  */
+  common::Status InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers);
+#endif  // !defined(DISABLE_EXTERNAL_INITIALIZERS)
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -826,7 +837,7 @@ class Graph {
   /** Gets the maximum NodeIndex value used in the Graph.
   WARNING: This actually returns the max index value used + 1.
   */
-  int MaxNodeIndex() const noexcept { return static_cast<int>(nodes_.size()); }  //assume the casting won't overflow
+  int MaxNodeIndex() const noexcept { return static_cast<int>(nodes_.size()); }  // assume the casting won't overflow
 
   /** Gets the number of valid Nodes in the Graph.
   @remarks This may be smaller than MaxNodeIndex(), as Nodes may be removed during optimization.
@@ -901,7 +912,7 @@ class Graph {
                 gsl::span<NodeArg* const> input_args,
                 gsl::span<NodeArg* const> output_args,
                 const NodeAttributes* attributes = nullptr,
-                const std::string& domain = std::string());
+                const std::string& domain = kOnnxDomain);
 
   Node& AddNode(const std::string& name,
                 const std::string& op_type,
@@ -909,7 +920,7 @@ class Graph {
                 std::initializer_list<NodeArg*> input_args,
                 std::initializer_list<NodeArg*> output_args,
                 const NodeAttributes* attributes = nullptr,
-                const std::string& domain = std::string()) {
+                const std::string& domain = kOnnxDomain) {
     return AddNode(name, op_type, description,
                    gsl::make_span(input_args.begin(), input_args.end()),
                    gsl::make_span(output_args.begin(), output_args.end()),
@@ -922,7 +933,7 @@ class Graph {
                 gsl::span<NodeArg* const> input_args,
                 std::initializer_list<NodeArg*> output_args,
                 const NodeAttributes* attributes = nullptr,
-                const std::string& domain = std::string()) {
+                const std::string& domain = kOnnxDomain) {
     return AddNode(name, op_type, description,
                    input_args,
                    gsl::make_span(output_args.begin(), output_args.end()),
@@ -935,7 +946,7 @@ class Graph {
                 std::initializer_list<NodeArg*> input_args,
                 gsl::span<NodeArg* const> output_args,
                 const NodeAttributes* attributes = nullptr,
-                const std::string& domain = std::string()) {
+                const std::string& domain = kOnnxDomain) {
     return AddNode(name, op_type, description,
                    gsl::make_span(input_args.begin(), input_args.end()),
                    output_args,
@@ -1463,6 +1474,9 @@ class Graph {
   // recursively accumulate and set the outer scope node args in the resolve context for all subgraphs
   // so they can be used to resolve outer scope dependencies when running BuildConnections for the subgraphs.
   common::Status SetOuterScopeNodeArgs(const std::unordered_set<std::string>& outer_scope_node_args);
+
+  // Implementation for initializer replacement
+  Status ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initializer, bool is_external);
 
   // Clear all unused initializers and NodeArgs
   void CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);

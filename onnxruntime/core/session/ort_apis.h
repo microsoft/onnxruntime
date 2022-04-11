@@ -340,6 +340,10 @@ ORT_API_STATUS_IMPL(UpdateCUDAProviderOptions, _Inout_ OrtCUDAProviderOptionsV2*
 ORT_API_STATUS_IMPL(GetCUDAProviderOptionsAsString, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 ORT_API(void, ReleaseCUDAProviderOptions, _Frees_ptr_opt_ OrtCUDAProviderOptionsV2*);
 
+ORT_API_STATUS_IMPL(AddExternalInitializers, _In_ OrtSessionOptions* options,
+                    _In_reads_(input_len) const char* const* input_names,
+                    _In_reads_(input_len) const OrtValue* const* inputs, size_t input_len);
+
 ORT_API_STATUS_IMPL(CreateAttribute,
                     _In_ const char* name,
                     _In_ const void* data,

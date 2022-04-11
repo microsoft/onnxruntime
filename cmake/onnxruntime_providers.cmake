@@ -323,7 +323,8 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   install(TARGETS onnxruntime_providers_shared
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
+          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR}
+  )
 endif()
 
 if (onnxruntime_USE_CUDA)
@@ -331,6 +332,12 @@ if (onnxruntime_USE_CUDA)
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
   )
+  # Remove pch files
+  list(REMOVE_ITEM onnxruntime_providers_cuda_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
+  )
+  
   # The shared_library files are in a separate list since they use precompiled headers, and the above files have them disabled.
   file(GLOB_RECURSE onnxruntime_providers_cuda_shared_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
@@ -464,22 +471,11 @@ if (onnxruntime_USE_CUDA)
 
   if (WIN32)
     # *.cu cannot use PCH
-    foreach(src_file ${onnxruntime_providers_cuda_cc_srcs})
-      set_source_files_properties(${src_file}
-        PROPERTIES
-        COMPILE_FLAGS "/Yucuda_pch.h /FIcuda_pch.h")
-    endforeach()
-    if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
-      foreach(src_file ${onnxruntime_cuda_contrib_ops_cc_srcs})
-        set_source_files_properties(${src_file}
-          PROPERTIES
-          COMPILE_FLAGS "/Yucuda_pch.h /FIcuda_pch.h")
-      endforeach()
-    endif()
-    set_source_files_properties("${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
-      PROPERTIES
-      COMPILE_FLAGS "/Yccuda_pch.h"
+    target_precompile_headers(onnxruntime_providers_cuda PUBLIC
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_pch.cc"
     )
+
     # disable a warning from the CUDA headers about unreferenced local functions
     #target_compile_options(onnxruntime_providers_cuda PRIVATE /wd4505)
     if (onnxruntime_USE_NUPHAR_TVM)
@@ -632,6 +628,9 @@ if (onnxruntime_USE_TENSORRT)
   # Needed for the provider interface, as it includes training headers when training is enabled
   if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
     target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ORTTRAINING_ROOT})
+    if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+      onnxruntime_add_include_to_target(onnxruntime_providers_tensorrt Python::Module)
+    endif()
   endif()
 
   if(APPLE)
@@ -681,13 +680,26 @@ if (onnxruntime_USE_NUPHAR)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nuphar_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_nuphar ${onnxruntime_providers_nuphar_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_nuphar onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_providers_nuphar
+    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers
+  )
   set_target_properties(onnxruntime_providers_nuphar PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_nuphar PRIVATE ${ONNXRUNTIME_ROOT} ${TVM_INCLUDES} ${eigen_INCLUDE_DIRS})
   set_target_properties(onnxruntime_providers_nuphar PROPERTIES LINKER_LANGUAGE CXX)
   target_compile_options(onnxruntime_providers_nuphar PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
   add_dependencies(onnxruntime_providers_nuphar ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/nuphar  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/nuphar
+    DESTINATION
+    ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers
+  )
+
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_providers_nuphar
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
 endif()
 
 if (onnxruntime_USE_VITISAI)
@@ -698,12 +710,24 @@ if (onnxruntime_USE_VITISAI)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_vitisai_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_vitisai ${onnxruntime_providers_vitisai_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_vitisai onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_providers_vitisai
+    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers
+  )
   add_dependencies(onnxruntime_providers_vitisai ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_vitisai PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_vitisai PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${VITISAI_INCLUDE_DIR})
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/vitisai  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/vitisai
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers
+  )
   set_target_properties(onnxruntime_providers_vitisai PROPERTIES LINKER_LANGUAGE CXX)
+
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_providers_vitisai
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
 endif()
 
 if (onnxruntime_USE_OPENVINO)
@@ -725,16 +749,21 @@ if (onnxruntime_USE_OPENVINO)
   # Header paths
   find_package(InferenceEngine REQUIRED)
   find_package(ngraph REQUIRED)
-
+ 
+  if (OPENVINO_2022_1)
+  find_package(OpenVINO REQUIRED COMPONENTS Runtime ONNX)
+  list (OV_20_LIBS openvino::frontend::onnx openvino::runtime)
+  endif()
+ 
   if (WIN32)
     unset(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO)
   endif()
 
   if ((DEFINED ENV{OPENCL_LIBS}) AND (DEFINED ENV{OPENCL_INCS}))
     add_definitions(-DIO_BUFFER_ENABLED=1)
-    list(APPEND OPENVINO_LIB_LIST $ENV{OPENCL_LIBS} ${InferenceEngine_LIBRARIES} ${NGRAPH_LIBRARIES} ngraph::onnx_importer ${PYTHON_LIBRARIES})
+    list(APPEND OPENVINO_LIB_LIST $ENV{OPENCL_LIBS} ${OV_20_LIBS} ${InferenceEngine_LIBRARIES} ${NGRAPH_LIBRARIES} ngraph::onnx_importer ${PYTHON_LIBRARIES})
   else()
-    list(APPEND OPENVINO_LIB_LIST ${InferenceEngine_LIBRARIES} ${NGRAPH_LIBRARIES} ngraph::onnx_importer ${PYTHON_LIBRARIES})
+    list(APPEND OPENVINO_LIB_LIST ${OV_20_LIBS} ${InferenceEngine_LIBRARIES} ${NGRAPH_LIBRARIES} ngraph::onnx_importer ${PYTHON_LIBRARIES})
   endif()
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
@@ -747,7 +776,7 @@ if (onnxruntime_USE_OPENVINO)
     target_compile_options(onnxruntime_providers_openvino PRIVATE "-Wno-parentheses")
   endif()
   add_dependencies(onnxruntime_providers_openvino onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${OPENVINO_INCLUDE_DIR_LIST} ${PYTHON_INCLUDE_DIRS} $ENV{OPENCL_INCS})
+  target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${OpenVINO_INCLUDE_DIR} ${OPENVINO_INCLUDE_DIR_LIST} ${PYTHON_INCLUDE_DIRS} $ENV{OPENCL_INCS})
   target_link_libraries(onnxruntime_providers_openvino ${ONNXRUNTIME_PROVIDERS_SHARED} ${OPENVINO_LIB_LIST} absl::raw_hash_set absl::hash)
 
   if(MSVC)
@@ -798,7 +827,17 @@ if (onnxruntime_USE_COREML)
       APPEND_PATH
       GEN_SRC_SUB_DIR ${_src_sub_dir}
       IMPORT_DIRS ${COREML_PROTO_ROOT}
-      TARGET onnxruntime_coreml_proto)
+      TARGET onnxruntime_coreml_proto
+    )
+
+    if (NOT onnxruntime_BUILD_SHARED_LIB)
+      install(TARGETS onnxruntime_coreml_proto
+              ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+              LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+              RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+              FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR}
+      )
+    endif()
   endif()
 
   # These are shared utils,
@@ -845,8 +884,12 @@ if (onnxruntime_USE_COREML)
   )
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_coreml_cc_srcs})
-  onnxruntime_add_static_library(onnxruntime_providers_coreml ${onnxruntime_providers_coreml_cc_srcs} ${onnxruntime_providers_coreml_objcc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_coreml onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+  onnxruntime_add_static_library(onnxruntime_providers_coreml
+    ${onnxruntime_providers_coreml_cc_srcs} ${onnxruntime_providers_coreml_objcc_srcs}
+  )
+  onnxruntime_add_include_to_target(onnxruntime_providers_coreml
+    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers
+  )
   if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
     onnxruntime_add_include_to_target(onnxruntime_providers_coreml onnxruntime_coreml_proto)
     target_link_libraries(onnxruntime_providers_coreml PRIVATE onnxruntime_coreml_proto "-framework Foundation" "-framework CoreML")
@@ -857,6 +900,14 @@ if (onnxruntime_USE_COREML)
   set_target_properties(onnxruntime_providers_coreml PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_coreml PRIVATE ${ONNXRUNTIME_ROOT} ${coreml_INCLUDE_DIRS})
   set_target_properties(onnxruntime_providers_coreml PROPERTIES LINKER_LANGUAGE CXX)
+
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_providers_coreml
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
 endif()
 
 if (onnxruntime_USE_NNAPI_BUILTIN)
@@ -923,7 +974,9 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nnapi_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_nnapi ${onnxruntime_providers_nnapi_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_nnapi onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_providers_nnapi
+    onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite flatbuffers
+  )
   target_link_libraries(onnxruntime_providers_nnapi)
   add_dependencies(onnxruntime_providers_nnapi onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_nnapi PROPERTIES CXX_STANDARD_REQUIRED ON)
@@ -933,6 +986,14 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
   # ignore the warning unknown-pragmas on "pragma region"
   if(NOT MSVC)
     target_compile_options(onnxruntime_providers_nnapi PRIVATE "-Wno-unknown-pragmas")
+  endif()
+
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_providers_nnapi
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
   endif()
 endif()
 
@@ -959,13 +1020,25 @@ if (onnxruntime_USE_RKNPU)
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_rknpu_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_rknpu ${onnxruntime_providers_rknpu_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_rknpu onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_providers_rknpu
+    onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite flatbuffers
+  )
   target_link_libraries(onnxruntime_providers_rknpu PRIVATE -lrknpu_ddk)
   add_dependencies(onnxruntime_providers_rknpu onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_rknpu PROPERTIES FOLDER "ONNXRuntime")
-  target_include_directories(onnxruntime_providers_rknpu PRIVATE ${ONNXRUNTIME_ROOT} ${rknpu_INCLUDE_DIRS} ${RKNPU_DDK_INCLUDE_DIR})
+  target_include_directories(onnxruntime_providers_rknpu PRIVATE
+    ${ONNXRUNTIME_ROOT} ${rknpu_INCLUDE_DIRS} ${RKNPU_DDK_INCLUDE_DIR}
+  )
   link_directories(onnxruntime_providers_rknpu ${RKNPU_DDK_LIB_DIR})
   set_target_properties(onnxruntime_providers_rknpu PROPERTIES LINKER_LANGUAGE CXX)
+
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_providers_rknpu
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
 endif()
 
 if (onnxruntime_USE_DML)
@@ -976,9 +1049,13 @@ if (onnxruntime_USE_DML)
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dml_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_dml ${onnxruntime_providers_dml_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_dml onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_providers_dml
+    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers
+  )
   add_dependencies(onnxruntime_providers_dml ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_include_directories(onnxruntime_providers_dml PRIVATE ${ONNXRUNTIME_ROOT} ${ONNXRUNTIME_ROOT}/../cmake/external/wil/include)
+  target_include_directories(onnxruntime_providers_dml PRIVATE
+    ${ONNXRUNTIME_ROOT} ${ONNXRUNTIME_ROOT}/../cmake/external/wil/include
+  )
 
   add_definitions(-DDML_TARGET_VERSION_USE_LATEST=1)
 
@@ -993,7 +1070,11 @@ if (onnxruntime_USE_DML)
 
   function(target_add_dml target)
     if (onnxruntime_USE_CUSTOM_DIRECTML)
-      target_link_libraries(${target} PRIVATE DirectML)
+      if (dml_LIB_DIR)
+        target_link_libraries(${target} PRIVATE ${dml_LIB_DIR}/DirectML.lib)
+      else()
+        target_link_libraries(${target} PRIVATE DirectML)
+      endif()
     else()
       add_dependencies(${target} RESTORE_PACKAGES)
       target_link_libraries(${target} PRIVATE "${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/DirectML.lib")
@@ -1002,27 +1083,42 @@ if (onnxruntime_USE_DML)
   endfunction()
 
   target_add_dml(onnxruntime_providers_dml)
-  target_link_libraries(onnxruntime_providers_dml PRIVATE d3d12.lib dxgi.lib)
-
-  if (WINDOWS_STORE)
-    target_link_libraries(onnxruntime_providers_dml PRIVATE dloadhelper.lib)
+  if (GDK_PLATFORM STREQUAL Scarlett)
+    target_link_libraries(onnxruntime_providers_dml PRIVATE ${gdk_dx_libs})
   else()
-    target_link_libraries(onnxruntime_providers_dml PRIVATE delayimp.lib)
+    target_link_libraries(onnxruntime_providers_dml PRIVATE d3d12.lib dxgi.lib)
   endif()
 
-  set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:api-ms-win-core-com-l1-1-0.dll /DELAYLOAD:shlwapi.dll /DELAYLOAD:oleaut32.dll /ignore:4199")
+  target_link_libraries(onnxruntime_providers_dml PRIVATE delayimp.lib)
 
-  target_compile_definitions(onnxruntime_providers_dml PRIVATE ONNX_NAMESPACE=onnx ONNX_ML LOTUS_LOG_THRESHOLD=2 LOTUS_ENABLE_STDERR_LOGGING PLATFORM_WINDOWS)
+  if (NOT GDK_PLATFORM)
+    set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /DELAYLOAD:api-ms-win-core-com-l1-1-0.dll /DELAYLOAD:shlwapi.dll /DELAYLOAD:oleaut32.dll /ignore:4199")
+  endif()
+
+  target_compile_definitions(onnxruntime_providers_dml
+    PRIVATE
+    ONNX_NAMESPACE=onnx ONNX_ML LOTUS_LOG_THRESHOLD=2 LOTUS_ENABLE_STDERR_LOGGING PLATFORM_WINDOWS
+  )
   target_compile_definitions(onnxruntime_providers_dml PRIVATE UNICODE _UNICODE NOMINMAX)
   if (MSVC)
     target_compile_definitions(onnxruntime_providers_dml PRIVATE _SILENCE_CXX17_ITERATOR_BASE_CLASS_DEPRECATION_WARNING)
     target_compile_options(onnxruntime_providers_dml PRIVATE "/W3")
   endif()
 
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/dml  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/dml
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers
+  )
 
   set_target_properties(onnxruntime_providers_dml PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_dml PROPERTIES FOLDER "ONNXRuntime")
+
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_providers_dml
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
 endif()
 
 if (onnxruntime_USE_MIGRAPHX)
@@ -1075,7 +1171,8 @@ if (onnxruntime_USE_MIGRAPHX)
   install(TARGETS onnxruntime_providers_migraphx
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
+          RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR}
+  )
 endif()
 
 if (onnxruntime_USE_ACL)
@@ -1087,13 +1184,28 @@ if (onnxruntime_USE_ACL)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_acl_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_acl ${onnxruntime_providers_acl_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_acl onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_providers_acl
+    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers
+  )
   target_link_libraries(onnxruntime_providers_acl -L$ENV{LD_LIBRARY_PATH})
   add_dependencies(onnxruntime_providers_acl ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_acl PROPERTIES FOLDER "ONNXRuntime")
-  target_include_directories(onnxruntime_providers_acl PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${onnxruntime_ACL_HOME} ${onnxruntime_ACL_HOME}/include)
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/acl  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  target_include_directories(onnxruntime_providers_acl
+    PRIVATE
+    ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${onnxruntime_ACL_HOME} ${onnxruntime_ACL_HOME}/include
+  )
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/acl
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers
+  )
   set_target_properties(onnxruntime_providers_acl PROPERTIES LINKER_LANGUAGE CXX)
+
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_providers_acl
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
 endif()
 
 if (onnxruntime_USE_ARMNN)
@@ -1105,12 +1217,27 @@ if (onnxruntime_USE_ARMNN)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_armnn_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_armnn ${onnxruntime_providers_armnn_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_armnn onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_providers_armnn
+    onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers
+  )
   add_dependencies(onnxruntime_providers_armnn ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_armnn PROPERTIES FOLDER "ONNXRuntime")
-  target_include_directories(onnxruntime_providers_armnn PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${onnxruntime_ARMNN_HOME} ${onnxruntime_ARMNN_HOME}/include ${onnxruntime_ACL_HOME} ${onnxruntime_ACL_HOME}/include)
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/armnn  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+  target_include_directories(onnxruntime_providers_armnn PRIVATE
+    ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${onnxruntime_ARMNN_HOME} ${onnxruntime_ARMNN_HOME}/include
+    ${onnxruntime_ACL_HOME} ${onnxruntime_ACL_HOME}/include
+  )
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/armnn
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers
+  )
   set_target_properties(onnxruntime_providers_armnn PROPERTIES LINKER_LANGUAGE CXX)
+
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_providers_armnn
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
 endif()
 
 if (onnxruntime_USE_ROCM)
@@ -1309,4 +1436,21 @@ if (onnxruntime_USE_TVM)
   target_compile_definitions(onnxruntime_providers_tvm PUBLIC DMLC_USE_LOGGING_LIBRARY=<tvm/runtime/logging.h>)
 
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/tvm  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
+
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS onnxruntime_providers_tvm
+            ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
 endif()
+
+if (NOT onnxruntime_BUILD_SHARED_LIB)
+  install(TARGETS onnxruntime_providers
+          ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+          FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+

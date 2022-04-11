@@ -325,22 +325,50 @@ def test_load_state_dict_holds_when_training_session_not_initialized():
 
 @pytest.mark.parametrize("state_dict, input_state_dict, error_key", [
     ({
-        'optimizer':{},
+        'model':{},
+        'optimizer':{}
     },
     {
+        'model':{},
         'optimizer':{},
         'trainer_options': {
             'optimizer_name': 'LambOptimizer'
         }
     },
+    'train_step_info'),
+    ({
+        'optimizer':{},
+        'train_step_info': {
+            'optimization_step': 0,
+            'step': 0
+        }
+    },
+    {
+        'optimizer':{},
+        'trainer_options': {
+            'optimizer_name': 'LambOptimizer'
+        },
+        'train_step_info': {
+            'optimization_step': 0,
+            'step': 0
+        }
+    },
     'model'),
     ({
-        'model':{}
+        'model':{},
+        'train_step_info': {
+            'optimization_step': 0,
+            'step': 0
+        }
     },
     {
         'model':{},
         'trainer_options': {
             'optimizer_name': 'LambOptimizer'
+        },
+        'train_step_info': {
+            'optimization_step': 0,
+            'step': 0
         }
     },
     'optimizer')])

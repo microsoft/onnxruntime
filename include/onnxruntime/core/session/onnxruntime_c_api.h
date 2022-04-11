@@ -30,7 +30,7 @@
 *
 * This value is used by some API functions to behave as this version of the header expects.
 */
-#define ORT_API_VERSION 11
+#define ORT_API_VERSION 12
 
 #ifdef __cplusplus
 extern "C" {
@@ -505,7 +505,7 @@ typedef struct OrtMIGraphXProviderOptions {
 */
 typedef struct OrtOpenVINOProviderOptions {
 #ifdef __cplusplus
-  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{}, num_of_threads{}, use_compiled_network{}, blob_dump_path{}, context{} {}
+  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{}, num_of_threads{}, use_compiled_network{}, blob_dump_path{}, context{}, enable_opencl_throttling{} {}
 #endif
   /** \brief Device type string
   *
@@ -518,6 +518,7 @@ typedef struct OrtOpenVINOProviderOptions {
   unsigned char use_compiled_network;  ///< 0 = disabled, nonzero = enabled
   const char* blob_dump_path;          // path is set to empty by default
   void* context;
+  unsigned char enable_opencl_throttling; ///< 0 = disabled, nonzero = enabled
 } OrtOpenVINOProviderOptions;
 
 struct OrtApi;
@@ -3305,6 +3306,31 @@ struct OrtApi {
   */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_MIGraphX,
                   _In_ OrtSessionOptions* options, _In_ const OrtMIGraphXProviderOptions* migraphx_options);
+
+ /** \brief Replace initialized Tensors with external data with the data provided in initializers.
+  *
+  * The function will find the initialized TensorProtos with external data in the graph with the provided names and
+  * replace them with the provided tensors. The API verifies that the TensorProto being replaced
+  * has an external data reference and has the same name, dimensions and data type as its replacement. The replacement
+  * will occur before any of the optimizations take place. The data will be copied into the graph
+  * since TensorProto can't refer to the user provided buffers.
+  *
+  * Once the model has been loaded, the OrtValue(s) added to SessionOptions instance will be removed
+  * from the internal SessionOptions copy to save memory, the user provided buffers can then be deallocated
+  * and the SessionOptions instance that refers to them can be destroyed.
+  *
+  * \param[in] options
+  * \param[in] initializer_names Array of null terminated UTF-8 encoded strings of the initializers names.
+  * \param[in] initializers Array of ::OrtValue type
+  * \param[in] initializers_num Number of elements in the initializer_names and initializers
+  *
+  * \snippet{doc} snippets.dox OrtStatus Return Value
+  *
+  * \since Version 1.12.
+  */
+  ORT_API2_STATUS(AddExternalInitializers, _In_ OrtSessionOptions* options,
+                  _In_reads_(input_len) const char* const* initializer_names,
+                  _In_reads_(input_len) const OrtValue* const* initializers, size_t initializers_num);
 
   ORT_API2_STATUS(CreateAttribute,
                   _In_ const char* name,
