@@ -10,7 +10,9 @@
 #include "core/common/path.h"
 #include "core/graph/graph_viewer.h"
 #include "core/session/onnxruntime_c_api.h"
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/function_template.h"
+#endif
 #include "gsl/gsl"
 
 namespace flatbuffers {

@@ -39,7 +39,9 @@
 #include "core/graph/basic_types.h"
 #include "core/graph/constants.h"
 #include "core/graph/function.h"
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/function_template.h"
+#endif
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
 
@@ -434,8 +436,6 @@ class Node {
     execution_provider_type_ = execution_provider_type;
   }
 
-  void SetFunctionTemplate(const FunctionTemplate& func_template);
-
   /** Call the provided function for all explicit inputs, implicit inputs, and outputs of this Node.
       If the NodeArg is an explicit or implicit input, is_input will be true when func is called.
       @param include_missing_optional_defs Include NodeArgs that are optional and were not provided
@@ -463,6 +463,7 @@ class Node {
   flatbuffers::Offset<onnxruntime::fbs::NodeEdge>
   SaveEdgesToOrtFormat(flatbuffers::FlatBufferBuilder& builder) const;
 
+  void SetFunctionTemplate(const FunctionTemplate& func_template);
 #endif
 
   static Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, Graph& graph,
@@ -584,6 +585,9 @@ class Node {
 #if !defined(ORT_MINIMAL_BUILD)
   // OperatorSchema that <*this> node refers to.
   const ONNX_NAMESPACE::OpSchema* op_ = nullptr;
+
+  // Reference to the function template defined in the model.
+  const FunctionTemplate* func_template_ = nullptr;
 #endif
 
   // Execution priority, lower value for higher priority
@@ -596,9 +600,6 @@ class Node {
 
   // The function body is owned by graph_
   std::unique_ptr<Function> func_body_ = nullptr;
-
-  // Reference to the function template defined in the model.
-  const FunctionTemplate* func_template_ = nullptr;
 
   // Node doc string.
   std::string description_;
