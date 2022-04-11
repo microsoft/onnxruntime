@@ -92,32 +92,6 @@ def _ortvalues_to_torch_tensor(ortvalues, device):
     return tuple(res)
 
 
-def _ortvalues_to_torch_tensor_list(ortvalues, device, c_class=False):
-    if len(ortvalues) == 0:
-        return tuple()
-
-    if 'ort' == device.type:
-        if not hasattr(C, 'to_aten_ort_device_tensor'):
-            raise AttributeError("onnxruntime is missing to_aten_ort_device_tensor needed to support device == 'ort'.")
-        return tuple(C.to_aten_ort_device_tensor(ov) for ov in ortvalues)
-
-    if not isinstance(ortvalues, list):
-        raise TypeError("ortvalues must be a list not %r." % type(ortvalues))
-
-    if c_class:
-        res = [_from_dlpack(ov.to_dlpack()) for ov in ortvalues]
-        for i in range(0, len(res)):
-            if ortvalues[i].element_type() == TensorProto.BOOL:
-                res[i] = res[i].to(torch.bool)
-    else:
-        res = [_from_dlpack(ov._ortvalue.to_dlpack()) for ov in ortvalues]
-        for i in range(0, len(res)):
-            if ortvalues[i]._ortvalue.element_type() == TensorProto.BOOL:
-                res[i] = res[i].to(torch.bool)
-
-    return tuple(res)
-
-
 def _torch_tensor_to_dlpack(tensor):
     # TODO: Current DLPack doesn't support bool and PyTorch disables converting bool tensor to DLPack in recent commit.
     # https://github.com/pytorch/pytorch/blob/7e7be526c9d9179f35084e9cca5b5c5ad5172100/aten/src/ATen/DLConvertor.cpp#L41

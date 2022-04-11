@@ -5,7 +5,8 @@ from onnx.defs import onnx_opset_version
 from onnx import helper
 import onnxruntime as onnxrt
 from onnxruntime.capi._pybind_state import (  # pylint: disable=E0611
-    OrtDevice as C_OrtDevice, OrtValue as C_OrtValue, SessionIOBinding)
+    OrtDevice as C_OrtDevice, OrtValue as C_OrtValue, SessionIOBinding,
+    OrtValueVector)
 import unittest
 
 from helper import get_name
@@ -90,6 +91,8 @@ class TestIOBinding(unittest.TestCase):
                     bind.bind_ortvalue_input('X', ort_value)
                     bind.bind_output('Y', device)
                     sess._sess.run_with_iobinding(bind, None)
+                    ortvaluevector = bind.get_outputs()
+                    self.assertIsInstance(ortvaluevector, OrtValueVector)
                     ortvalue = bind.get_outputs()[0]
                     y = ortvalue.numpy()
                     assert_almost_equal(x, y)

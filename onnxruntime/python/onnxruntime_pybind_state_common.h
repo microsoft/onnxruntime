@@ -10,10 +10,7 @@
 #include "core/framework/session_options.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
-
-#ifdef ENABLE_TRAINING
 #include "core/dlpack/dlpack_converter.h"
-#endif
 
 #include "onnxruntime_pybind.h"  // must use this for the include of <pybind11/pybind11.h>
 
