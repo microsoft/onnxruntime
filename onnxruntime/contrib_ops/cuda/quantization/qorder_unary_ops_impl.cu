@@ -104,10 +104,10 @@ __global__ void QOrderUnaryElementWiseShareMemoryKernel(
 
   __shared__ char table[256];
 
-  const int calc_id = (int)blockIdx.x - 128;
+  const int calc_id = (int)threadIdx.x - 128;
   float gelu_value = inverse_output_scale * functor(input_scale * calc_id);
   gelu_value = fmaxf(-128.0f, fmin(127.0f, gelu_value));
-  table[calc_id] = static_cast<char>(__float2int_rn(gelu_value));
+  table[threadIdx.x] = static_cast<char>(__float2int_rn(gelu_value));
   __syncthreads();
 
 
