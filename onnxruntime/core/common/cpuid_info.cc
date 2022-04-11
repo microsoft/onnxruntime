@@ -36,8 +36,6 @@
 #define PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE 43
 #endif
 
-#define MAX_VALUE_NAME 4096
-
 #endif // _WIN32
 
 #if defined(CPUINFO_SUPPORTED)
@@ -162,6 +160,8 @@ void CPUIDInfo::ArmWindowsInit() {
   // Read MIDR from windows registry
   // TODO!! Don't support multiple processor group yet!!
   constexpr int MAX_CORES = 64;
+  constexpr int MAX_VALUE_NAME = 4096;
+
   TCHAR midrKey[MAX_VALUE_NAME] = "";  // buffer for processor registry name
   uint32_t lastUarch = cpuinfo_uarch_unknown;
   for (int i = 0; i < MAX_CORES - 1; i++) {
