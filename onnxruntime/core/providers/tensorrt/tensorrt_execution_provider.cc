@@ -988,7 +988,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   // Detect and remove cycles from supported node list
   DetectRemoveTensorRTGraphCycles(supported_nodes_vector, graph);
 
-  // Try to consolidate the supported node list
+  // Consolidate supported node list
   nodes_vector.clear();
   for (const auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {
@@ -997,8 +997,9 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   }  
   SubGraphCollection_t consolidated_supported_nodes_vector = {{nodes_vector, true}};
   if (DetectRemoveTensorRTGraphCycles(consolidated_supported_nodes_vector, graph)) {
-    LOGS_DEFAULT(INFO) << "[TensorRT EP] TensorRT node list is not consolidated because the graph will have cycles after consolidation";
+    LOGS_DEFAULT(INFO) << "[TensorRT EP] TensorRT nodes is not consolidated because graph will have cycles after consolidation";
   } else {
+    LOGS_DEFAULT(INFO) << "[TensorRT EP] TensorRT nodes is consolidated into one subgraph";
     supported_nodes_vector = consolidated_supported_nodes_vector;
   }
 
