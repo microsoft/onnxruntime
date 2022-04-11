@@ -51,7 +51,7 @@ Then we keep the order of {ai} fixed and try to match it with {bj}.
 We first choose b1, then choose an arg in {bj | j != 1, j <= n} as next arg and the recurse it.
 "visited" is used to record visited args to avoid duplicated conditions.
 */
-bool FindMatchForArgs(const Graph& graph, PatternGraph& pattern_graph, const std::unordered_map<std::string, const IArg*>& name_pargs_mapping,
+bool FindMatchForArgs(const Graph& graph, PatternGraph& pattern_graph, const std::unordered_map<std::string, const PGraphInput*>& name_pargs_mapping,
                       ConstPointerContainer<std::vector<NodeArg*>>& p_args, ConstPointerContainer<std::vector<NodeArg*>>& t_args,
                       const std::unordered_map<std::string, std::unique_ptr<ArgCompareFunc>>& arg_constraints, const std::unique_ptr<ArgCompareFunc>& arg_default_constraint,
                       size_t p_arg_idx, std::unordered_set<const NodeArg*>& visited) {
@@ -62,7 +62,7 @@ bool FindMatchForArgs(const Graph& graph, PatternGraph& pattern_graph, const std
   auto p_arg_name = p_arg->Name();
   auto find_defined_arg = name_pargs_mapping.find(p_arg_name);
   if (find_defined_arg == name_pargs_mapping.end()) return FindMatchForArgs(graph, pattern_graph, name_pargs_mapping, p_args, t_args, arg_constraints, arg_default_constraint, p_arg_idx + 1, visited);
-  const IArg* p_arg_define = find_defined_arg->second;
+  const PGraphInput* p_arg_define = find_defined_arg->second;
   auto func = arg_constraints.count(p_arg_name) > 0 ? arg_constraints.find(p_arg_name)->second.get() : arg_default_constraint.get();
   for (auto t_arg : t_args) {
     if (!visited.count(t_arg)) {
@@ -84,7 +84,7 @@ This function searches in the graph for a match with two given nodes as start.
 "g" is the node we want to start from in target graph and "p" is that of pattern graph.
 "graph_path", "pattern_path" are two set to record the visited nodes in target graph and pattern graph respectively. They are used to avoid duplicated
 match.
-"path_map" is a mapping from nodes in graph_path and its corresponding matched node in pattern graph. It's used to look ahead when the match encounters 
+"path_map" is a mapping from nodes in graph_path and its corresponding matched node in pattern graph. It's used to look ahead when the match encounters
 visited nodes to avoid wrong match. We give a simple example below to indicate the condition and effect of "look ahead".
 
 C <----------- B
@@ -100,7 +100,7 @@ F
 
 We start search from A, then B, C and D and all these nodes find a match. Then we want to find match for E1 and E2, which are all the same except the position.
 If we do not look ahead, we find E1 reach the end of recursion (A has been visited) and return true. Then We may actually match E1 with a node which should match E2.
-So we need to look ahead to make sure that the visited node (A) E1 finds is exactly the matched nodes for that of target graph. In this way, we can make sure that 
+So we need to look ahead to make sure that the visited node (A) E1 finds is exactly the matched nodes for that of target graph. In this way, we can make sure that
 E1 and E2 are correctly matched.
 
 "target" is the target graph which should be passed by the user.
@@ -118,7 +118,7 @@ bool PatternGraph::FindMatchRecursively(const Node* g, const Node* p,
   PARSER_LOG << "jump in. g: " << g->Name() << "  p: " << p->Name();
 
   const std::string pnode_name = p->Name();
-  const PNode* pnode = name_pnode_mapping_[pnode_name];
+  const PGraphNode* pnode = name_pnode_mapping_[pnode_name];
   // Load customized function if there is one for the current node.
   auto func = custom_node_constraints_.count(pnode_name) > 0 ? custom_node_constraints_[pnode_name].get() : default_node_compare_func_.get();
   // Ensure that the two nodes have same properties.
@@ -243,26 +243,23 @@ bool PatternGraph::FindMatchRecursively(const Node* g, const Node* p,
   return true;
 }
 
-bool DefaultNodeCompareFunc::operator()(const Node* g, const PNode* p, const Graph& /*target*/, const PatternGraph& pattern) const {
+bool DefaultNodeCompareFunc::operator()(const Node* g, const PGraphNode* p, const Graph& /*target*/, const PatternGraph& pattern) const {
   if (!g && !p)
     return true;
   if (!g && p || !p && g)
     return false;
-  if (!skip_optype_ && !p->OpTypeEquals(g->OpType())) {
+  if (!skip_op_type_ && !p->MatchesOpType(g->OpType())) {
     PARSER_LOG << "OpType mismatch, "
                << "g is: " << g->OpType();
     return false;
   }
-  if (!skip_domain_ && !p->DomainsContain(g->Domain())) {
-    PARSER_LOG << "Domain mismatch, "
-               << "g is: " << g->Domain();
+  if (!skip_domain_and_version_ && !p->MatchesDomainVersion(g->Domain(), g->SinceVersion())) {
+    PARSER_LOG << "Domain or Version mismatch, "
+               << "g's domain is: " << g->Domain()
+               << "g's version is: " << g->SinceVersion();
     return false;
   }
-  if (!skip_version_ && !p->VersionsContain(g->SinceVersion())) {
-    PARSER_LOG << "Version mismatch, "
-               << "g is: " << g->SinceVersion();
-    return false;
-  }
+
   if (p->output_edges_count_ == 0 && g->GetOutputEdgesCount() != pattern.GetPatternGraphNode(p->node_name_)->GetOutputEdgesCount()) {
     PARSER_LOG << "Output edges count mismatch, "
                << "g is: " << g->SinceVersion();

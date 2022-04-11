@@ -15,14 +15,14 @@
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
 
 using onnxruntime::test::CountOpsInGraph;
-using PatternTypeCategory = onnxruntime::training::PatternType::PatternTypeCategory;
+using TypesCategory = onnxruntime::training::PGraphInputTypes::TypesCategory;
 
 namespace onnxruntime {
 namespace training {
 namespace test {
 
 // TODO: move this into pattern_graph?
-Status TryReplace(Graph& graph, PatternGraph& pattern, const PNode& alternative,
+Status TryReplace(Graph& graph, PatternGraph& pattern, const PGraphNode& alternative,
                   std::vector<std::pair<std::string, int>> fusion_inputs,
                   std::vector<std::pair<std::string, int>> fusion_outputs,
                   const std::string& start_node_name, const std::string& end_node_name) {
@@ -202,26 +202,26 @@ static void CreateEmbedLayernormNode(Graph& graph,
 }
 
 TEST(GraphParser, SimpleMatch1) {
-  PatternType float_type(PatternTypeCategory::Float);
+  PGraphInputTypes float_type(TypesCategory::AllFloatTensorTypes);
   PatternGraph target(
-      {IArg("C1", float_type),
-       IArg("C2", float_type),
-       IArg("X", float_type)},
-      {PNode("Exp", {"X"}, {"Y"}, "Exp"),
-       PNode("Add", {"Y", "C1"}, {"Z1"}, "gAdd"),
-       PNode("Add", {"Y", "C2"}, {"Z2"}, "customize"),
-       PNode("Sub", {"Z1", "Z2"}, {"W"}, "Sub")});
+      {PGraphInput("C1", float_type),
+       PGraphInput("C2", float_type),
+       PGraphInput("X", float_type)},
+      {PGraphNode("Exp", {"X"}, {"Y"}, "Exp"),
+       PGraphNode("Add", {"Y", "C1"}, {"Z1"}, "gAdd"),
+       PGraphNode("Add", {"Y", "C2"}, {"Z2"}, "customize"),
+       PGraphNode("Sub", {"Z1", "Z2"}, {"W"}, "Sub")});
   PatternGraph pattern(
-      {IArg("C1", float_type),
-       IArg("C2", float_type),
-       IArg("X", float_type)},
-      {PNode("Exp", {"X"}, {"Y"}, "Exp"),
-       PNode("Add", {"Y", "C1"}, {"Z"}, "customize"),
-       PNode("Sub", {"Z", "C2"}, {"W"}, "Sub")});
+      {PGraphInput("C1", float_type),
+       PGraphInput("C2", float_type),
+       PGraphInput("X", float_type)},
+      {PGraphNode("Exp", {"X"}, {"Y"}, "Exp"),
+       PGraphNode("Add", {"Y", "C1"}, {"Z"}, "customize"),
+       PGraphNode("Sub", {"Z", "C2"}, {"W"}, "Sub")});
 
   class CustomNodeCompareFunc : public NodeCompareFunc {
    public:
-    bool operator()(const Node* g, const PNode* p, const Graph& /*target*/,
+    bool operator()(const Node* g, const PGraphNode* p, const Graph& /*target*/,
                     const PatternGraph& /*pattern*/) const override {
       return p->NameEquals(g->Name());
     }
@@ -235,54 +235,54 @@ TEST(GraphParser, SimpleMatch1) {
 }
 
 TEST(GraphParser, SimpleMatch2) {
-  PatternType float_type(PatternTypeCategory::Float);
+  PGraphInputTypes float_type(TypesCategory::AllFloatTensorTypes);
   PatternGraph target(
-      {IArg("C0", float_type),
-       IArg("C1", float_type),
-       IArg("C2", float_type),
-       IArg("C3", float_type),
-       IArg("C4", float_type),
-       IArg("X", float_type)},
-      {PNode("ReduceMean", {"X"}, {"W1"}, "ex_rm1"),
-       PNode("Sub", {"W1", "C4"}, {"W2"}, "ex_sub1"),
+      {PGraphInput("C0", float_type),
+       PGraphInput("C1", float_type),
+       PGraphInput("C2", float_type),
+       PGraphInput("C3", float_type),
+       PGraphInput("C4", float_type),
+       PGraphInput("X", float_type)},
+      {PGraphNode("ReduceMean", {"X"}, {"W1"}, "ex_rm1"),
+       PGraphNode("Sub", {"W1", "C4"}, {"W2"}, "ex_sub1"),
 
-       PNode("ReduceMean", {"W2"}, {"Y"}, "g_rm1"),
-       PNode("Sub", {"X", "Y"}, {"Sub1"}, "g_sub1"),
-       PNode("Sub", {"X", "Y"}, {"Sub2"}, "g_sub2"),
-       PNode("Pow", {"Sub2", "C0"}, {"Pow"}, "g_pow"),
+       PGraphNode("ReduceMean", {"W2"}, {"Y"}, "g_rm1"),
+       PGraphNode("Sub", {"X", "Y"}, {"Sub1"}, "g_sub1"),
+       PGraphNode("Sub", {"X", "Y"}, {"Sub2"}, "g_sub2"),
+       PGraphNode("Pow", {"Sub2", "C0"}, {"Pow"}, "g_pow"),
 
-       PNode("Exp", {"Pow"}, {"ex_exp"}, "ex_exp"),
-       PNode("Sqrt", {"ex_exp"}, {"ex_sqrt1"}, "ex_sqrt1"),
+       PGraphNode("Exp", {"Pow"}, {"ex_exp"}, "ex_exp"),
+       PGraphNode("Sqrt", {"ex_exp"}, {"ex_sqrt1"}, "ex_sqrt1"),
 
-       PNode("ReduceMean", {"Pow"}, {"Z"}, "g_rm2"),
-       PNode("Add", {"C1", "Z"}, {"Add1"}, "g_add1"),
-       PNode("Sqrt", {"Add1"}, {"Sqrt"}, "g_sqrt"),
+       PGraphNode("ReduceMean", {"Pow"}, {"Z"}, "g_rm2"),
+       PGraphNode("Add", {"C1", "Z"}, {"Add1"}, "g_add1"),
+       PGraphNode("Sqrt", {"Add1"}, {"Sqrt"}, "g_sqrt"),
 
-       PNode("Sqrt", {"Sqrt"}, {"ex_sqrt2"}, "ex_sqrt2"),
-       PNode("Add", {"ex_sqrt2", "ex_sqrt1"}, {"ex_add1"}, "ex_add1"),
-       PNode("Sub", {"ex_add1", "ex_exp"}, {"ex_sub2"}, "ex_sub2"),
+       PGraphNode("Sqrt", {"Sqrt"}, {"ex_sqrt2"}, "ex_sqrt2"),
+       PGraphNode("Add", {"ex_sqrt2", "ex_sqrt1"}, {"ex_add1"}, "ex_add1"),
+       PGraphNode("Sub", {"ex_add1", "ex_exp"}, {"ex_sub2"}, "ex_sub2"),
 
-       PNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "g_div"),
-       PNode("Mul", {"Div", "C2"}, {"Mul"}, "g_mul"),
-       PNode("Add", {"Mul", "C3"}, {"Final"}, "g_final")});
+       PGraphNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "g_div"),
+       PGraphNode("Mul", {"Div", "C2"}, {"Mul"}, "g_mul"),
+       PGraphNode("Add", {"Mul", "C3"}, {"Final"}, "g_final")});
 
   // The second pattern of layer norm fusion
   PatternGraph pattern(
-      {IArg("C0", float_type),
-       IArg("C1", float_type),
-       IArg("C2", float_type),
-       IArg("C3", float_type),
-       IArg("X", float_type)},
-      {PNode("ReduceMean", {"X"}, {"Y"}, "p_rm1", {}, {}, {}, -1),
-       PNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1", {}, {}, {}, -1),
-       PNode("Sub", {"X", "Y"}, {"Sub2"}, "p_sub2", {}, {}, {}, -1),
-       PNode("Pow", {"Sub2", "C0"}, {"Pow"}, "p_pow", {}, {}, {}, -1),
-       PNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2", {}, {}, {}, -1),
-       PNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1", {}, {}, {}, -1),
-       PNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt", {}, {}, {}, -1),
-       PNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div", {}, {}, {}, -1),
-       PNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul", {}, {}, {}, -1),
-       PNode("Add", {"Mul", "C3"}, {"Final"}, "p_final", {}, {}, {}, -1)});
+      {PGraphInput("C0", float_type),
+       PGraphInput("C1", float_type),
+       PGraphInput("C2", float_type),
+       PGraphInput("C3", float_type),
+       PGraphInput("X", float_type)},
+      {PGraphNode("ReduceMean", {"X"}, {"Y"}, "p_rm1", {}, {}, -1),
+       PGraphNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1", {}, {}, -1),
+       PGraphNode("Sub", {"X", "Y"}, {"Sub2"}, "p_sub2", {}, {}, -1),
+       PGraphNode("Pow", {"Sub2", "C0"}, {"Pow"}, "p_pow", {}, {}, -1),
+       PGraphNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2", {}, {}, -1),
+       PGraphNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1", {}, {}, -1),
+       PGraphNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt", {}, {}, -1),
+       PGraphNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div", {}, {}, -1),
+       PGraphNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul", {}, {}, -1),
+       PGraphNode("Add", {"Mul", "C3"}, {"Final"}, "p_final", {}, {}, -1)});
 
   auto& target_graph = target.GetGraph();
   PatternMatchResult res(target_graph);
@@ -290,41 +290,42 @@ TEST(GraphParser, SimpleMatch2) {
 }
 
 TEST(GraphParser, SimpleMatch3) {
-  PatternType float_type(PatternTypeCategory::Float);
-  PatternType integer_type(PatternTypeCategory::Integer);
+  PGraphInputTypes float_type(TypesCategory::AllFloatTensorTypes);
+  PGraphInputTypes integer_type(TypesCategory::AllIntegerTensorTypes);
   PatternGraph target(
-      {IArg("C0", float_type),
-       IArg("C1", float_type),
-       IArg("C2", float_type),
-       IArg("C3", integer_type),
-       IArg("C4", integer_type),
-       IArg("X", float_type)},
-      {PNode("Shape", {"X"}, {"Y1"}, "g_shape"),
-       PNode("Exp", {"X"}, {"P1"}, "ex_p1"),
-       PNode("Sqrt", {"P1"}, {"P2"}, "ex_p2"),
-       PNode("Log", {"P2"}, {"P3"}, "ex_p3"),
-       PNode("Add", {"P2", "P3"}, {"P4"}, "ex_p4"),
-       PNode("Gather", {"Y1", "C3"}, {"Y2"}, "g_gather"),
-       PNode("Unsqueeze", {"Y2", "C4"}, {"Y3"}, "g_unsqueeze"),
-       PNode("Concat", {"Y3"}, {"Y4"}, "g_concat", {""}, {}, {ONNX_NAMESPACE::MakeAttribute("axis", int64_t(0))}),
-       PNode("MatMul", {"X", "C0"}, {"Z1"}, "g_matmul"),
-       PNode("Add", {"Z1", "C1"}, {"Z2"}, "g_add"),
-       PNode("Reshape", {"Z2", "Y4"}, {"oup"}, "g_reshape")});
+      {PGraphInput("C0", float_type),
+       PGraphInput("C1", float_type),
+       PGraphInput("C2", float_type),
+       PGraphInput("C3", integer_type),
+       PGraphInput("C4", integer_type),
+       PGraphInput("X", float_type)},
+      {PGraphNode("Shape", {"X"}, {"Y1"}, "g_shape"),
+       PGraphNode("Exp", {"X"}, {"P1"}, "ex_p1"),
+       PGraphNode("Sqrt", {"P1"}, {"P2"}, "ex_p2"),
+       PGraphNode("Log", {"P2"}, {"P3"}, "ex_p3"),
+       PGraphNode("Add", {"P2", "P3"}, {"P4"}, "ex_p4"),
+       PGraphNode("Gather", {"Y1", "C3"}, {"Y2"}, "g_gather"),
+       PGraphNode("Unsqueeze", {"Y2", "C4"}, {"Y3"}, "g_unsqueeze"),
+       PGraphNode("Concat", {"Y3"}, {"Y4"}, "g_concat", {{kOnnxDomain, {1, 4, 11, 13}}},
+                  {ONNX_NAMESPACE::MakeAttribute("axis", int64_t(0))}),
+       PGraphNode("MatMul", {"X", "C0"}, {"Z1"}, "g_matmul"),
+       PGraphNode("Add", {"Z1", "C1"}, {"Z2"}, "g_add"),
+       PGraphNode("Reshape", {"Z2", "Y4"}, {"oup"}, "g_reshape")});
 
   // The second pattern of layer norm fusion
   PatternGraph pattern(
-      {IArg("C0", float_type),
-       IArg("C1", float_type),
-       IArg("C2", integer_type),
-       IArg("C3", integer_type),
-       IArg("X", float_type)},
-      {PNode("Shape", {"X"}, {"Y1"}, "p_shape"),
-       PNode("Gather", {"Y1", "C2"}, {"Y2"}, "p_gather"),
-       PNode("Unsqueeze", {"Y2", "C3"}, {"Y3"}, "p_unsqueeze"),
-       PNode("Concat", {"Y3"}, {"Y4"}, "p_concat", {""}, {}, {ONNX_NAMESPACE::MakeAttribute("axis", int64_t(0))}),
-       PNode("MatMul", {"X", "C0"}, {"Z1"}, "p_matmul"),
-       PNode("Add", {"Z1", "C1"}, {"Z2"}, "p_add"),
-       PNode("Reshape", {"Z2", "Y4"}, {"oup"}, "p_reshape")});
+      {PGraphInput("C0", float_type),
+       PGraphInput("C1", float_type),
+       PGraphInput("C2", integer_type),
+       PGraphInput("C3", integer_type),
+       PGraphInput("X", float_type)},
+      {PGraphNode("Shape", {"X"}, {"Y1"}, "p_shape"),
+       PGraphNode("Gather", {"Y1", "C2"}, {"Y2"}, "p_gather"),
+       PGraphNode("Unsqueeze", {"Y2", "C3"}, {"Y3"}, "p_unsqueeze"),
+       PGraphNode("Concat", {"Y3"}, {"Y4"}, "p_concat", {{kOnnxDomain, {1, 4, 11, 13}}}, {ONNX_NAMESPACE::MakeAttribute("axis", int64_t(0))}),
+       PGraphNode("MatMul", {"X", "C0"}, {"Z1"}, "p_matmul"),
+       PGraphNode("Add", {"Z1", "C1"}, {"Z2"}, "p_add"),
+       PGraphNode("Reshape", {"Z2", "Y4"}, {"oup"}, "p_reshape")});
 
   auto& target_graph = target.GetGraph();
   PatternMatchResult res(target_graph);
@@ -332,80 +333,80 @@ TEST(GraphParser, SimpleMatch3) {
 }
 
 TEST(GraphParser, SimpleReplace1) {
-  PatternType float_type(PatternTypeCategory::Float);
+  PGraphInputTypes float_type(TypesCategory::AllFloatTensorTypes);
   PatternGraph target(
-      {IArg("C1", float_type),
-       IArg("C2", float_type),
-       IArg("X", float_type)},
-      {PNode("Exp", {"X"}, {"Y"}, "gExp"),
-       PNode("Add", {"Y", "C1"}, {"Z1"}, "gAdd"),
-       PNode("Mul", {"Y", "C2"}, {"Z2"}, "gMul"),
-       PNode("Sub", {"Z1", "Z2"}, {"W"}, "gSub")});
+      {PGraphInput("C1", float_type),
+       PGraphInput("C2", float_type),
+       PGraphInput("X", float_type)},
+      {PGraphNode("Exp", {"X"}, {"Y"}, "gExp"),
+       PGraphNode("Add", {"Y", "C1"}, {"Z1"}, "gAdd"),
+       PGraphNode("Mul", {"Y", "C2"}, {"Z2"}, "gMul"),
+       PGraphNode("Sub", {"Z1", "Z2"}, {"W"}, "gSub")});
   PatternGraph pattern(
-      {IArg("C0", float_type),
-       IArg("C1", float_type),
-       IArg("X2", float_type),
-       IArg("X1", float_type)},
-      {PNode("Mul", {"X1", "C0"}, {"Y1"}, "pMul"),
-       PNode("Add", {"X2", "C1"}, {"Y2"}, "pAdd"),
-       PNode("Sub", {"Y1", "Y2"}, {"Z"}, "pSub")});
+      {PGraphInput("C0", float_type),
+       PGraphInput("C1", float_type),
+       PGraphInput("X2", float_type),
+       PGraphInput("X1", float_type)},
+      {PGraphNode("Mul", {"X1", "C0"}, {"Y1"}, "pMul"),
+       PGraphNode("Add", {"X2", "C1"}, {"Y2"}, "pAdd"),
+       PGraphNode("Sub", {"Y1", "Y2"}, {"Z"}, "pSub")});
 
   Graph& graph = target.GetGraph();
-  ASSERT_TRUE(TryReplace(graph, pattern, PNode("Sqrt", {}, {}, "test123"), {{"pAdd", 0}}, {}, "pMul", "pSub").IsOK());
+  ASSERT_TRUE(TryReplace(graph, pattern, PGraphNode("Sqrt", {}, {}, "test123"), {{"pAdd", 0}}, {}, "pMul", "pSub").IsOK());
 }
 
 TEST(GraphParser, SimpleReplace2) {
-  PatternType float_type(PatternTypeCategory::Float);
+  PGraphInputTypes float_type(TypesCategory::AllFloatTensorTypes);
   PatternGraph target(
-      {IArg("C0", float_type),
-       IArg("C1", float_type),
-       IArg("C2", float_type),
-       IArg("C3", float_type),
-       IArg("C4", float_type),
-       IArg("X", float_type)},
-      {PNode("ReduceMean", {"X"}, {"W1"}, "ex_rm1"),
-       PNode("Sub", {"W1", "C4"}, {"W2"}, "ex_sub1"),
+      {PGraphInput("C0", float_type),
+       PGraphInput("C1", float_type),
+       PGraphInput("C2", float_type),
+       PGraphInput("C3", float_type),
+       PGraphInput("C4", float_type),
+       PGraphInput("X", float_type)},
+      {PGraphNode("ReduceMean", {"X"}, {"W1"}, "ex_rm1"),
+       PGraphNode("Sub", {"W1", "C4"}, {"W2"}, "ex_sub1"),
 
-       PNode("ReduceMean", {"W2"}, {"Y"}, "g_rm1"),
-       PNode("Sub", {"X", "Y"}, {"Sub1"}, "g_sub1"),
-       PNode("Sub", {"X", "Y"}, {"Sub2"}, "g_sub2"),
-       PNode("Pow", {"Sub2", "C0"}, {"Pow"}, "g_pow"),
+       PGraphNode("ReduceMean", {"W2"}, {"Y"}, "g_rm1"),
+       PGraphNode("Sub", {"X", "Y"}, {"Sub1"}, "g_sub1"),
+       PGraphNode("Sub", {"X", "Y"}, {"Sub2"}, "g_sub2"),
+       PGraphNode("Pow", {"Sub2", "C0"}, {"Pow"}, "g_pow"),
 
-       PNode("Exp", {"Pow"}, {"ex_exp"}, "ex_exp"),
-       PNode("Sqrt", {"ex_exp"}, {"ex_sqrt1"}, "ex_sqrt1"),
+       PGraphNode("Exp", {"Pow"}, {"ex_exp"}, "ex_exp"),
+       PGraphNode("Sqrt", {"ex_exp"}, {"ex_sqrt1"}, "ex_sqrt1"),
 
-       PNode("ReduceMean", {"Pow"}, {"Z"}, "g_rm2"),
-       PNode("Add", {"C1", "Z"}, {"Add1"}, "g_add1"),
-       PNode("Sqrt", {"Add1"}, {"Sqrt"}, "g_sqrt"),
+       PGraphNode("ReduceMean", {"Pow"}, {"Z"}, "g_rm2"),
+       PGraphNode("Add", {"C1", "Z"}, {"Add1"}, "g_add1"),
+       PGraphNode("Sqrt", {"Add1"}, {"Sqrt"}, "g_sqrt"),
 
-       PNode("Sqrt", {"Sqrt"}, {"ex_sqrt2"}, "ex_sqrt2"),
-       PNode("Add", {"ex_sqrt2", "ex_sqrt1"}, {"ex_add1"}, "ex_add1"),
-       PNode("Sub", {"ex_add1", "ex_exp"}, {"ex_sub2"}, "ex_sub2"),
+       PGraphNode("Sqrt", {"Sqrt"}, {"ex_sqrt2"}, "ex_sqrt2"),
+       PGraphNode("Add", {"ex_sqrt2", "ex_sqrt1"}, {"ex_add1"}, "ex_add1"),
+       PGraphNode("Sub", {"ex_add1", "ex_exp"}, {"ex_sub2"}, "ex_sub2"),
 
-       PNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "g_div"),
-       PNode("Mul", {"Div", "C2"}, {"Mul"}, "g_mul"),
-       PNode("Add", {"Mul", "C3"}, {"Final"}, "g_final")});
+       PGraphNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "g_div"),
+       PGraphNode("Mul", {"Div", "C2"}, {"Mul"}, "g_mul"),
+       PGraphNode("Add", {"Mul", "C3"}, {"Final"}, "g_final")});
 
   // The second pattern of layer norm fusion
   PatternGraph pattern(
-      {IArg("C0", float_type),
-       IArg("C1", float_type),
-       IArg("C2", float_type),
-       IArg("C3", float_type),
-       IArg("X", float_type)},
-      {PNode("ReduceMean", {"X"}, {"Y"}, "p_rm1", {}, {}, {}, -1),
-       PNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1", {}, {}, {}, -1),
-       PNode("Sub", {"X", "Y"}, {"Sub2"}, "p_sub2", {}, {}, {}, -1),
-       PNode("Pow", {"Sub2", "C0"}, {"Pow"}, "p_pow", {}, {}, {}, -1),
-       PNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2", {}, {}, {}, -1),
-       PNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1", {}, {}, {}, -1),
-       PNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt", {}, {}, {}, -1),
-       PNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div", {}, {}, {}, -1),
-       PNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul", {}, {}, {}, -1),
-       PNode("Add", {"Mul", "C3"}, {"Final"}, "p_final", {}, {}, {}, -1)});
+      {PGraphInput("C0", float_type),
+       PGraphInput("C1", float_type),
+       PGraphInput("C2", float_type),
+       PGraphInput("C3", float_type),
+       PGraphInput("X", float_type)},
+      {PGraphNode("ReduceMean", {"X"}, {"Y"}, "p_rm1", {}, {}, -1),
+       PGraphNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1", {}, {}, -1),
+       PGraphNode("Sub", {"X", "Y"}, {"Sub2"}, "p_sub2", {}, {}, -1),
+       PGraphNode("Pow", {"Sub2", "C0"}, {"Pow"}, "p_pow", {}, {}, -1),
+       PGraphNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2", {}, {}, -1),
+       PGraphNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1", {}, {}, -1),
+       PGraphNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt", {}, {}, -1),
+       PGraphNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div", {}, {}, -1),
+       PGraphNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul", {}, {}, -1),
+       PGraphNode("Add", {"Mul", "C3"}, {"Final"}, "p_final", {}, {}, -1)});
 
   auto& target_graph = target.GetGraph();
-  ASSERT_TRUE(TryReplace(target_graph, pattern, PNode("Sqrt", {}, {}, "test123"), {{"p_rm1", 0}}, {}, "p_rm1", "p_final").IsOK());
+  ASSERT_TRUE(TryReplace(target_graph, pattern, PGraphNode("Sqrt", {}, {}, "test123"), {{"p_rm1", 0}}, {}, "p_rm1", "p_final").IsOK());
 }
 
 TEST(GraphParser, LayerNormFusionTest) {
@@ -414,77 +415,77 @@ TEST(GraphParser, LayerNormFusionTest) {
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, logging::LoggingManager::DefaultLogger()));
   Graph& graph = p_model->MainGraph();
 
-  PatternType float_type({ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE});
+  PGraphInputTypes float_type({ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE});
   PatternGraph pattern1(
-      {IArg("C0", float_type),
-       IArg("C1", float_type),
-       IArg("C2", float_type),
-       IArg("C3", float_type),
-       IArg("X", float_type)},
-      {PNode("ReduceMean", {"X"}, {"Y"}, "p_rm1"),
-       PNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1"),
-       PNode("Sub", {"X", "Y"}, {"Sub2"}, "p_sub2"),
-       PNode("Pow", {"Sub2", "C0"}, {"Pow"}, "p_pow"),
-       PNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2"),
-       PNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1"),
-       PNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt"),
-       PNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div"),
-       PNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul"),
-       PNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")});
+      {PGraphInput("C0", float_type),
+       PGraphInput("C1", float_type),
+       PGraphInput("C2", float_type),
+       PGraphInput("C3", float_type),
+       PGraphInput("X", float_type)},
+      {PGraphNode("ReduceMean", {"X"}, {"Y"}, "p_rm1"),
+       PGraphNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1"),
+       PGraphNode("Sub", {"X", "Y"}, {"Sub2"}, "p_sub2"),
+       PGraphNode("Pow", {"Sub2", "C0"}, {"Pow"}, "p_pow"),
+       PGraphNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2"),
+       PGraphNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1"),
+       PGraphNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt"),
+       PGraphNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div"),
+       PGraphNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul"),
+       PGraphNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")});
 
   PatternGraph pattern2(
-      {IArg("C0", float_type),
-       IArg("C1", float_type),
-       IArg("C2", float_type),
-       IArg("C3", float_type),
-       IArg("X", float_type)},
-      {PNode("ReduceMean", {"X"}, {"Y"}, "p_rm1"),
-       PNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1"),
-       PNode("Pow", {"Sub1", "C0"}, {"Pow"}, "p_pow"),
-       PNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2"),
-       PNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1"),
-       PNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt"),
-       PNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div"),
-       PNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul"),
-       PNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")});
+      {PGraphInput("C0", float_type),
+       PGraphInput("C1", float_type),
+       PGraphInput("C2", float_type),
+       PGraphInput("C3", float_type),
+       PGraphInput("X", float_type)},
+      {PGraphNode("ReduceMean", {"X"}, {"Y"}, "p_rm1"),
+       PGraphNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1"),
+       PGraphNode("Pow", {"Sub1", "C0"}, {"Pow"}, "p_pow"),
+       PGraphNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2"),
+       PGraphNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1"),
+       PGraphNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt"),
+       PGraphNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div"),
+       PGraphNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul"),
+       PGraphNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")});
 
   PatternGraph pattern3(
-      {IArg("C0", float_type),
-       IArg("C1", float_type),
-       IArg("C2", float_type),
-       IArg("C3", float_type),
-       IArg("X", float_type)},
-      {PNode("ReduceMean", {"X"}, {"Y"}, "p_rm1"),
-       PNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1"),
-       PNode("Cast", {"Sub1"}, {"Cast"}, "p_cast", {""}, {}, {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE})}),
-       PNode("Pow", {"Cast", "C0"}, {"Pow"}, "p_pow"),
-       PNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2"),
-       PNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1"),
-       PNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt"),
-       PNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div"),
-       PNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul"),
-       PNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")});
+      {PGraphInput("C0", float_type),
+       PGraphInput("C1", float_type),
+       PGraphInput("C2", float_type),
+       PGraphInput("C3", float_type),
+       PGraphInput("X", float_type)},
+      {PGraphNode("ReduceMean", {"X"}, {"Y"}, "p_rm1"),
+       PGraphNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1"),
+       PGraphNode("Cast", {"Sub1"}, {"Cast"}, "p_cast", {}, {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE})}),
+       PGraphNode("Pow", {"Cast", "C0"}, {"Pow"}, "p_pow"),
+       PGraphNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2"),
+       PGraphNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1"),
+       PGraphNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt"),
+       PGraphNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div"),
+       PGraphNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul"),
+       PGraphNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")});
 
   PatternGraph pattern4(
-      {IArg("C0", float_type),
-       IArg("C1", float_type),
-       IArg("C2", float_type, 1, false),
-       IArg("C3", float_type, 1, false),
-       IArg("X", float_type)},
-      {PNode("ReduceMean", {"X"}, {"Y"}, "p_rm1"),
-       PNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1"),
-       PNode("Cast", {"C0"}, {"Cast"}, "p_cast", {""}, {}, {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE})}),
-       PNode("Pow", {"Cast", "Sub1"}, {"Pow"}, "p_pow"),
-       PNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2"),
-       PNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1"),
-       PNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt"),
-       PNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div"),
-       PNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul"),
-       PNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")});
+      {PGraphInput("C0", float_type),
+       PGraphInput("C1", float_type),
+       PGraphInput("C2", float_type, 1, false),
+       PGraphInput("C3", float_type, 1, false),
+       PGraphInput("X", float_type)},
+      {PGraphNode("ReduceMean", {"X"}, {"Y"}, "p_rm1"),
+       PGraphNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1"),
+       PGraphNode("Cast", {"C0"}, {"Cast"}, "p_cast", {}, {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE})}),
+       PGraphNode("Pow", {"Cast", "Sub1"}, {"Pow"}, "p_pow"),
+       PGraphNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2"),
+       PGraphNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1"),
+       PGraphNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt"),
+       PGraphNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div"),
+       PGraphNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul"),
+       PGraphNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")});
 
   class CustomArgCompareFunc : public ArgCompareFunc {
    public:
-    bool operator()(const NodeArg* g, const IArg*, const Graph& target,
+    bool operator()(const NodeArg* g, const PGraphInput*, const Graph& target,
                     const PatternGraph& /*pattern*/) const override {
       return graph_utils::NodeArgIsConstant(target, *g) || graph_utils::IsGraphInput(target, g);
     }
@@ -493,16 +494,16 @@ TEST(GraphParser, LayerNormFusionTest) {
   pattern2.SetCustomConstraint(std::make_unique<CustomArgCompareFunc>(), "C2").SetCustomConstraint(std::make_unique<CustomArgCompareFunc>(), "C3");
   bool match = false;
   if (!match) {
-    match = TryReplace(graph, pattern1, PNode("LayerNormalization", {}, {}, "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}, "p_rm1", "p_final").IsOK();
+    match = TryReplace(graph, pattern1, PGraphNode("LayerNormalization", {}, {}, "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}, "p_rm1", "p_final").IsOK();
   }
   if (!match) {
-    match = TryReplace(graph, pattern2, PNode("LayerNormalization", {}, {}, "replaced_node"), {{"p_rm1", 0}, {"p_mul", 0}, {"p_final", 1}}, {}, "p_rm1", "p_final").IsOK();
+    match = TryReplace(graph, pattern2, PGraphNode("LayerNormalization", {}, {}, "replaced_node"), {{"p_rm1", 0}, {"p_mul", 0}, {"p_final", 1}}, {}, "p_rm1", "p_final").IsOK();
   }
   if (!match) {
-    match = TryReplace(graph, pattern3, PNode("LayerNormalization", {}, {}, "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}, "p_rm1", "p_final").IsOK();
+    match = TryReplace(graph, pattern3, PGraphNode("LayerNormalization", {}, {}, "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}, "p_rm1", "p_final").IsOK();
   }
   if (!match) {
-    match = TryReplace(graph, pattern4, PNode("LayerNormalization", {}, {}, "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}, "p_rm1", "p_final").IsOK();
+    match = TryReplace(graph, pattern4, PGraphNode("LayerNormalization", {}, {}, "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}, "p_rm1", "p_final").IsOK();
   }
   ASSERT_TRUE(match);
 
@@ -537,50 +538,52 @@ TEST(GraphParser, LayerNormWithCastFusionTest) {
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, logging::LoggingManager::DefaultLogger()));
   Graph& graph = p_model->MainGraph();
 
-  PatternType float_type({ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE});
+  PGraphInputTypes float_type({ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE});
   PatternGraph pattern1(
-      {IArg("C0", float_type),
-       IArg("C1", float_type),
-       IArg("C2", float_type),
-       IArg("C3", float_type),
-       IArg("X", float_type)},
-      {PNode("ReduceMean", {"X"}, {"Y"}, "p_rm1"),
-       PNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1"),
-       PNode("Cast", {"Sub1"}, {"Cast"}, "p_cast", {""}, {}, {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE})}),
-       PNode("Pow", {"Cast", "C0"}, {"Pow"}, "p_pow"),
-       PNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2"),
-       PNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1"),
-       PNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt"),
-       PNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div"),
-       PNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul"),
-       PNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")});
+      {PGraphInput("C0", float_type),
+       PGraphInput("C1", float_type),
+       PGraphInput("C2", float_type),
+       PGraphInput("C3", float_type),
+       PGraphInput("X", float_type)},
+      {PGraphNode("ReduceMean", {"X"}, {"Y"}, "p_rm1"),
+       PGraphNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1"),
+       PGraphNode("Cast", {"Sub1"}, {"Cast"}, "p_cast", {},
+                  {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE})}),
+       PGraphNode("Pow", {"Cast", "C0"}, {"Pow"}, "p_pow"),
+       PGraphNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2"),
+       PGraphNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1"),
+       PGraphNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt"),
+       PGraphNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div"),
+       PGraphNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul"),
+       PGraphNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")});
 
   PatternGraph pattern2(
-      {IArg("C0", float_type),
-       IArg("C1", float_type),
-       IArg("C2", float_type),
-       IArg("C3", float_type),
-       IArg("C4", float_type),
-       IArg("X", float_type)},
-      {PNode("ReduceMean", {"X"}, {"Y"}, "p_rm1"),
-       PNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1"),
-       PNode("Cast", {"C4"}, {"Cast"}, "p_cast", {""}, {}, {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE})}),
-       PNode("Pow", {"Cast", "Sub1"}, {"Pow"}, "p_pow"),
-       PNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2"),
-       PNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1"),
-       PNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt"),
-       PNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div"),
-       PNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul"),
-       PNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")});
+      {PGraphInput("C0", float_type),
+       PGraphInput("C1", float_type),
+       PGraphInput("C2", float_type),
+       PGraphInput("C3", float_type),
+       PGraphInput("C4", float_type),
+       PGraphInput("X", float_type)},
+      {PGraphNode("ReduceMean", {"X"}, {"Y"}, "p_rm1"),
+       PGraphNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1"),
+       PGraphNode("Cast", {"C4"}, {"Cast"}, "p_cast", {},
+                  {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE})}),
+       PGraphNode("Pow", {"Cast", "Sub1"}, {"Pow"}, "p_pow"),
+       PGraphNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2"),
+       PGraphNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1"),
+       PGraphNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt"),
+       PGraphNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div"),
+       PGraphNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul"),
+       PGraphNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")});
 
   bool match = false;
   if (!match) {
     std::vector<PatternMatchPair> res;
-    match = TryReplace(graph, pattern1, PNode("LayerNormalization", {}, {}, "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}, "p_rm1", "p_final").IsOK();
+    match = TryReplace(graph, pattern1, PGraphNode("LayerNormalization", {}, {}, "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}, "p_rm1", "p_final").IsOK();
   }
   if (!match) {
     std::vector<PatternMatchPair> res;
-    match = TryReplace(graph, pattern2, PNode("LayerNormalization", {}, {}, "replaced_node"), {{"p_rm1", 0}, {"p_mul", 0}, {"p_final", 1}}, {}, "p_rm1", "p_final").IsOK();
+    match = TryReplace(graph, pattern2, PGraphNode("LayerNormalization", {}, {}, "replaced_node"), {{"p_rm1", 0}, {"p_mul", 0}, {"p_final", 1}}, {}, "p_rm1", "p_final").IsOK();
   }
   ASSERT_TRUE(match);
 
@@ -595,15 +598,15 @@ TEST(GraphParser, NoopEliminationTest) {
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, logging::LoggingManager::DefaultLogger()));
   Graph& graph = p_model->MainGraph();
 
-  PatternType float_type(PatternTypeCategory::Float);
+  PGraphInputTypes float_type(TypesCategory::AllFloatTensorTypes);
   PatternGraph pattern1(
-      {IArg("C0", float_type),
-       IArg("X", float_type)},
-      {PNode("Add", {"X", "C0"}, {"Y"}, "p_add")});
+      {PGraphInput("C0", float_type),
+       PGraphInput("X", float_type)},
+      {PGraphNode("Add", {"X", "C0"}, {"Y"}, "p_add")});
 
   class CustomNodeCompareFunc : public NodeCompareFunc {
    public:
-    bool operator()(const Node* g, const PNode*, const Graph& target,
+    bool operator()(const Node* g, const PGraphNode*, const Graph& target,
                     const PatternGraph& /*pattern*/) const override {
       if (g->OpType() != "Add") return false;
       bool input0_is_initializer = graph_utils::IsConstantInitializer(target, g->InputDefs()[0]->Name());
@@ -691,6 +694,7 @@ TEST(GraphParser, NoopEliminationTest) {
   }
 
   op_to_count = CountOpsInGraph(graph);
+  /* there is one Add that should not be eliminated. */
   ASSERT_TRUE(op_to_count["Add"] == 1);
 }
 
@@ -700,27 +704,27 @@ TEST(GraphParser, ReshapeFusionTest) {
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, logging::LoggingManager::DefaultLogger()));
   Graph& graph = p_model->MainGraph();
 
-  PatternType float_type(PatternTypeCategory::Float);
-  PatternType integer_type(PatternTypeCategory::Integer);
+  PGraphInputTypes float_type(TypesCategory::AllFloatTensorTypes);
+  PGraphInputTypes integer_type(TypesCategory::AllIntegerTensorTypes);
   PatternGraph pattern(
-      {IArg("X", float_type),
-       IArg("C0", integer_type),
-       IArg("C1", float_type),
-       IArg("C2", integer_type),
-       IArg("C3", integer_type),
-       IArg("C4", integer_type)},
-      {PNode("Shape", {"X"}, {"Shape1"}, "p_shape1"),
-       PNode("Gather", {"Shape1", "C0"}, {"Gather1"}, "p_gather1"),
-       PNode("Unsqueeze", {"Gather1", "C3"}, {"Unsqueeze1"}, "p_unsqueeze1"),
-       PNode("Shape", {"C1"}, {"Shape2"}, "p_shape2"),
-       PNode("Gather", {"Shape2", "C2"}, {"Gather2"}, "p_gather2"),
-       PNode("Unsqueeze", {"Gather2", "C4"}, {"Unsqueeze2"}, "p_unsqueeze2"),
-       PNode("Concat", {"Unsqueeze1", "Unsqueeze2"}, {"Concat"}, "p_concat", {""}, {}, {ONNX_NAMESPACE::MakeAttribute("axis", int64_t(0))}),
-       PNode("Reshape", {"X", "Concat"}, {"Y"}, "p_reshape")});
+      {PGraphInput("X", float_type),
+       PGraphInput("C0", integer_type),
+       PGraphInput("C1", float_type),
+       PGraphInput("C2", integer_type),
+       PGraphInput("C3", integer_type),
+       PGraphInput("C4", integer_type)},
+      {PGraphNode("Shape", {"X"}, {"Shape1"}, "p_shape1"),
+       PGraphNode("Gather", {"Shape1", "C0"}, {"Gather1"}, "p_gather1"),
+       PGraphNode("Unsqueeze", {"Gather1", "C3"}, {"Unsqueeze1"}, "p_unsqueeze1"),
+       PGraphNode("Shape", {"C1"}, {"Shape2"}, "p_shape2"),
+       PGraphNode("Gather", {"Shape2", "C2"}, {"Gather2"}, "p_gather2"),
+       PGraphNode("Unsqueeze", {"Gather2", "C4"}, {"Unsqueeze2"}, "p_unsqueeze2"),
+       PGraphNode("Concat", {"Unsqueeze1", "Unsqueeze2"}, {"Concat"}, "p_concat", {}, {ONNX_NAMESPACE::MakeAttribute("axis", int64_t(0))}),
+       PGraphNode("Reshape", {"X", "Concat"}, {"Y"}, "p_reshape")});
 
   class CustomNodeCompareFunc : public NodeCompareFunc {
    public:
-    bool operator()(const Node* g, const PNode* p, const Graph& target,
+    bool operator()(const Node* g, const PGraphNode* p, const Graph& target,
                     const PatternGraph& /*pattern*/) const override {
       auto GetConstantInitializerCount = [](const Graph& graph, const Node* node) {
         int res = 0;
@@ -730,14 +734,14 @@ TEST(GraphParser, ReshapeFusionTest) {
         return res;
       };
 
-      if (!p->OpTypeEquals(g->OpType())) return false;
+      if (!p->MatchesOpType(g->OpType())) return false;
       if (p->NameEquals("p_concat")) {
         return GetConstantInitializerCount(target, g) == 2;
       } else if (p->NameEquals("p_gather1") && !optimizer_utils::IsInitializerWithExpectedValue(target, *(g->InputDefs()[1]), int64_t(0), false)) {
         return false;
       } else if (p->NameEquals("p_gather2") && !optimizer_utils::IsInitializerWithExpectedValue(target, *(g->InputDefs()[1]), int64_t(1), false)) {
         return false;
-      } else if (p->OpTypeEquals("Unqueeze")) {
+      } else if (p->MatchesOpType("Unqueeze")) {
         InlinedVector<int64_t> axes;
         if (!(graph_utils::GetRepeatedNodeAttributeValues(*g, "axes", axes) && axes.size() == 1 && axes[0] == 0)) {
           return false;
@@ -839,17 +843,17 @@ TEST(GraphParser, GemmActivationFusionTest1) {
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, logging::LoggingManager::DefaultLogger()));
   Graph& graph = p_model->MainGraph();
 
-  PatternType float_type(PatternTypeCategory::Float);
+  PGraphInputTypes float_type(TypesCategory::AllFloatTensorTypes);
   PatternGraph pattern(
-      {IArg("X", float_type, {1, 1}),
-       IArg("C0", float_type, {1, 1}),
-       IArg("C1", float_type, {1, 1})},
-      {PNode("Gemm", {"X", "C0", "C1"}, {"Y"}, "p_gemm"),
-       PNode("Sqrt", {"Y"}, {"Z"}, "p_active")});
+      {PGraphInput("X", float_type, {1, 1}),
+       PGraphInput("C0", float_type, {1, 1}),
+       PGraphInput("C1", float_type, {1, 1})},
+      {PGraphNode("Gemm", {"X", "C0", "C1"}, {"Y"}, "p_gemm"),
+       PGraphNode("Sqrt", {"Y"}, {"Z"}, "p_active")});
 
   class CustomNodeCompareFunc : public NodeCompareFunc {
    public:
-    bool operator()(const Node* g, const PNode*, const Graph& /*terget*/,
+    bool operator()(const Node* g, const PGraphNode*, const Graph& /*terget*/,
                     const PatternGraph& /*pattern*/) const override {
       return IsFusableActivation(*g);
     }
@@ -860,7 +864,7 @@ TEST(GraphParser, GemmActivationFusionTest1) {
   ASSERT_TRUE(pattern.TryMatch(graph, res).IsOK());
 
   // replace
-  ASSERT_EQ(TryReplace(graph, pattern, PNode("FusedGemm", {}, {}, "replaced_node"), {{"p_gemm", 0}, {"p_gemm", 1}, {"p_gemm", 2}}, {}, "p_gemm", "p_active").ToString(), "OK");
+  ASSERT_EQ(TryReplace(graph, pattern, PGraphNode("FusedGemm", {}, {}, "replaced_node"), {{"p_gemm", 0}, {"p_gemm", 1}, {"p_gemm", 2}}, {}, "p_gemm", "p_active").ToString(), "OK");
 
   // verify
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -873,17 +877,17 @@ TEST(GraphParser, GemmActivationFusionTest2) {
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, logging::LoggingManager::DefaultLogger()));
   Graph& graph = p_model->MainGraph();
 
-  PatternType float_type(PatternTypeCategory::Float);
+  PGraphInputTypes float_type(TypesCategory::AllFloatTensorTypes);
   PatternGraph pattern(
-      {IArg("X", float_type, {1, 1}),
-       IArg("C0", float_type, {1, 1}),
-       IArg("C1", float_type, {1, 1})},
-      {PNode("Gemm", {"X", "C0", "C1"}, {"Y"}, "p_gemm"),
-       PNode("Sqrt", {"Y"}, {"Z"}, "p_active")});
+      {PGraphInput("X", float_type, {1, 1}),
+       PGraphInput("C0", float_type, {1, 1}),
+       PGraphInput("C1", float_type, {1, 1})},
+      {PGraphNode("Gemm", {"X", "C0", "C1"}, {"Y"}, "p_gemm"),
+       PGraphNode("Sqrt", {"Y"}, {"Z"}, "p_active")});
 
   class CustomNodeCompareFunc : public NodeCompareFunc {
    public:
-    bool operator()(const Node* g, const PNode*, const Graph& /*target*/,
+    bool operator()(const Node* g, const PGraphNode*, const Graph& /*target*/,
                     const PatternGraph& /*pattern*/) const override {
       return IsFusableActivation(*g);
     }
@@ -894,7 +898,7 @@ TEST(GraphParser, GemmActivationFusionTest2) {
   ASSERT_TRUE(pattern.TryMatch(graph, res).IsOK());
 
   // replace
-  ASSERT_EQ(TryReplace(graph, pattern, PNode("FusedGemm", {}, {}, "replaced_node", {"com.microsoft"}), {{"p_gemm", 0}, {"p_gemm", 1}, {"p_gemm", 2}}, {}, "p_gemm", "p_active").ToString(), "OK");
+  ASSERT_EQ(TryReplace(graph, pattern, PGraphNode("FusedGemm", {}, {}, "replaced_node", {{"com.microsoft", {1}}}), {{"p_gemm", 0}, {"p_gemm", 1}, {"p_gemm", 2}}, {}, "p_gemm", "p_active").ToString(), "OK");
 
   // verify
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -909,24 +913,25 @@ TEST(GraphParser, EmbedLayerNormFusionTest1) {
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, logging::LoggingManager::DefaultLogger()));
   Graph& graph = p_model->MainGraph();
 
-  PatternType float_type(PatternTypeCategory::Float);
-  PatternType integer_type(PatternTypeCategory::Integer);
+  PGraphInputTypes float_type(TypesCategory::AllFloatTensorTypes);
+  PGraphInputTypes integer_type(TypesCategory::AllIntegerTensorTypes);
   PatternGraph pattern(
-      {IArg("X", float_type, 3),
-       IArg("C0", integer_type),
-       IArg("C1", integer_type),
-       IArg("C2", integer_type),
-       IArg("C3", float_type),
-       IArg("C4", integer_type),
-       IArg("C5", float_type)},
-      {PNode("Gather", {"X", "C0"}, {"Gather1"}, "p_gather1"),
-       PNode("Gather", {"X", "C1"}, {"Gather2"}, "p_gather2"),
-       PNode("Add", {"Gather1", "Gather2"}, {"Add1"}, "p_add1"),
-       PNode("Gather", {"X", "C2"}, {"Gather3"}, "p_gather3"),
-       PNode("Add", {"Add1", "Gather3"}, {"Add2"}, "p_add2"),
-       PNode("LayerNormalization", {"Add2", "C3"}, {"LayerNorm"}, "p_layernorm"),
-       PNode("ReduceSum", {"X"}, {"ReduceSum"}, "p_reducesum"),
-       PNode("Attention", {"ReduceSum", "LayerNorm", "C5"}, {"Y"}, "p_attention", {"com.microsoft"}, {1}, {ONNX_NAMESPACE::MakeAttribute("num_heads", int64_t{1})})});
+      {PGraphInput("X", float_type, 3),
+       PGraphInput("C0", integer_type),
+       PGraphInput("C1", integer_type),
+       PGraphInput("C2", integer_type),
+       PGraphInput("C3", float_type),
+       PGraphInput("C4", integer_type),
+       PGraphInput("C5", float_type)},
+      {PGraphNode("Gather", {"X", "C0"}, {"Gather1"}, "p_gather1"),
+       PGraphNode("Gather", {"X", "C1"}, {"Gather2"}, "p_gather2"),
+       PGraphNode("Add", {"Gather1", "Gather2"}, {"Add1"}, "p_add1"),
+       PGraphNode("Gather", {"X", "C2"}, {"Gather3"}, "p_gather3"),
+       PGraphNode("Add", {"Add1", "Gather3"}, {"Add2"}, "p_add2"),
+       PGraphNode("LayerNormalization", {"Add2", "C3"}, {"LayerNorm"}, "p_layernorm"),
+       PGraphNode("ReduceSum", {"X"}, {"ReduceSum"}, "p_reducesum"),
+       PGraphNode("Attention", {"ReduceSum", "LayerNorm", "C5"}, {"Y"}, "p_attention", {{"com.microsoft", {1}}},
+                  {ONNX_NAMESPACE::MakeAttribute("num_heads", int64_t{1})})});
   PatternMatchResult res(graph);
   ASSERT_TRUE(pattern.TryMatch(graph, res).IsOK());
 
@@ -1000,35 +1005,37 @@ TEST(GraphParser, EmbedLayerNormFusionTest2) {
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, logging::LoggingManager::DefaultLogger()));
   Graph& graph = p_model->MainGraph();
 
-  PatternType float_type(PatternTypeCategory::Float);
-  PatternType integer_type(PatternTypeCategory::Integer);
+  PGraphInputTypes float_type(TypesCategory::AllFloatTensorTypes);
+  PGraphInputTypes integer_type(TypesCategory::AllIntegerTensorTypes);
   PatternGraph pattern(
-      {IArg("X", float_type, 3),
-       IArg("C0", integer_type),
-       IArg("C1", float_type)},
-      {PNode("Shape", {"X"}, {"Shape1"}, "p_shape1", {}, {1}),
-       PNode("Gather", {"Shape1", "C0"}, {"Gather1"}, "p_gather1"),
-       PNode("Unsqueeze", {"Gather1", "C0"}, {"Unsqueeze1"}, "p_unsqueeze1", {}, {1}),
-       PNode("Shape", {"Unsqueeze1"}, {"COS"}, "p_cos"),
-       PNode("NonZero", {"COS"}, {"NonZero"}, "p_nonzero"),
-       PNode("Transpose", {"NonZero"}, {"Transpose"}, "p_transpose", {}, {1}),
-       PNode("Squeeze", {"Transpose", "C0"}, {"Squeeze"}, "p_squeeze", {}, {1}),
-       PNode("Cast", {"Squeeze"}, {"Cast1"}, "p_cast1", {""}, {}, {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT})}),
-       PNode("Unsqueeze", {"Cast1", "C0"}, {"Unsqueeze2"}, "p_unsqueeze2", {}, {1}),
-       PNode("Shape", {"X"}, {"Shape2"}, "p_shape2", {}, {1}),
-       PNode("Expand", {"Unsqueeze2", "Shape2"}, {"Expand"}, "p_expand", {}, {8}),
-       PNode("Gather", {"Expand", "C0"}, {"Gather2"}, "p_gather2"),
-       PNode("Gather", {"X", "C0"}, {"Gather3"}, "p_gather3"),
-       PNode("Add", {"Gather2", "Gather3"}, {"Add1"}, "p_add1"),
-       PNode("Gather", {"X", "C0"}, {"Gather4"}, "p_gather4"),
-       PNode("Add", {"Add1", "Gather4"}, {"Add2"}, "p_add2"),
-       PNode("LayerNormalization", {"Add2", "C1"}, {"LayerNorm"}, "p_layernorm"),
-       PNode("ReduceSum", {"X"}, {"ReduceSum"}, "p_reducesum", {}, {1}),
-       PNode("Attention", {"ReduceSum", "LayerNorm", "C1"}, {"Y"}, "p_attention", {"com.microsoft"}, {1}, {ONNX_NAMESPACE::MakeAttribute("num_heads", int64_t{1})})});
+      {PGraphInput("X", float_type, 3),
+       PGraphInput("C0", integer_type),
+       PGraphInput("C1", float_type)},
+      {PGraphNode("Shape", {"X"}, {"Shape1"}, "p_shape1", {{kOnnxDomain, {1}}}),
+       PGraphNode("Gather", {"Shape1", "C0"}, {"Gather1"}, "p_gather1"),
+       PGraphNode("Unsqueeze", {"Gather1", "C0"}, {"Unsqueeze1"}, "p_unsqueeze1", {{kOnnxDomain, {1}}}),
+       PGraphNode("Shape", {"Unsqueeze1"}, {"COS"}, "p_cos"),
+       PGraphNode("NonZero", {"COS"}, {"NonZero"}, "p_nonzero"),
+       PGraphNode("Transpose", {"NonZero"}, {"Transpose"}, "p_transpose", {{kOnnxDomain, {1}}}),
+       PGraphNode("Squeeze", {"Transpose", "C0"}, {"Squeeze"}, "p_squeeze", {{kOnnxDomain, {1}}}),
+       PGraphNode("Cast", {"Squeeze"}, {"Cast1"}, "p_cast1", {{kOnnxDomain, {7}}},
+                  {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT})}),
+       PGraphNode("Unsqueeze", {"Cast1", "C0"}, {"Unsqueeze2"}, "p_unsqueeze2", {{kOnnxDomain, {1}}}),
+       PGraphNode("Shape", {"X"}, {"Shape2"}, "p_shape2", {{kOnnxDomain, {1}}}),
+       PGraphNode("Expand", {"Unsqueeze2", "Shape2"}, {"Expand"}, "p_expand", {{kOnnxDomain, {8}}}),
+       PGraphNode("Gather", {"Expand", "C0"}, {"Gather2"}, "p_gather2"),
+       PGraphNode("Gather", {"X", "C0"}, {"Gather3"}, "p_gather3"),
+       PGraphNode("Add", {"Gather2", "Gather3"}, {"Add1"}, "p_add1"),
+       PGraphNode("Gather", {"X", "C0"}, {"Gather4"}, "p_gather4"),
+       PGraphNode("Add", {"Add1", "Gather4"}, {"Add2"}, "p_add2"),
+       PGraphNode("LayerNormalization", {"Add2", "C1"}, {"LayerNorm"}, "p_layernorm"),
+       PGraphNode("ReduceSum", {"X"}, {"ReduceSum"}, "p_reducesum", {{kOnnxDomain, {1}}}),
+       PGraphNode("Attention", {"ReduceSum", "LayerNorm", "C1"}, {"Y"}, "p_attention", {{"com.microsoft", {1}}},
+                  {ONNX_NAMESPACE::MakeAttribute("num_heads", int64_t{1})})});
 
   class CustomNodeCompareFunc : public NodeCompareFunc {
    public:
-    bool operator()(const Node* g, const PNode*, const Graph& /*target*/,
+    bool operator()(const Node* g, const PGraphNode*, const Graph& /*target*/,
                     const PatternGraph& /*pattern*/) const override {
       return g->OpType() == "ConstantOfShape";
     }
@@ -1109,32 +1116,32 @@ TEST(GraphParser, EmbedLayerNormFusionTest3) {
   Graph& graph = p_model->MainGraph();
 
   PatternGraph pattern(
-      {IArg("X", PatternType(PatternTypeCategory::Float), 3),
-       IArg("C0", PatternType(PatternTypeCategory::Integer)),
-       IArg("C1", PatternType(PatternTypeCategory::Float))},
-      {PNode("Shape", {"X"}, {"Shape1"}, "p_shape1", {}, {}, {}, -1),
-       PNode("Gather", {"Shape1", "C0"}, {"Gather1"}, "p_gather1", {}, {}, {}, -1),
-       PNode("Cast", {"Gather1"}, {"Cast1"}, "p_cast1", {""}, {}, {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT})}, -1),
-       PNode("Range", {"Cast1", "Cast1", "Cast1"}, {"Range"}, "p_range", {}, {}, {}, -1),
-       PNode("Unsqueeze", {"Range", "C0"}, {"Unsqueeze1"}, "p_unsqueeze1", {}, {}, {}, -1),
-       PNode("Add", {"Gather1", "C0"}, {"Unsqueeze2"}, "p_unsqueeze2", {}, {}, {}, -1),
-       PNode("Shape", {"X"}, {"Shape2"}, "p_shape2", {}, {}, {}, -1),
-       PNode("Gather", {"Shape2", "C0"}, {"Gather2"}, "p_gather2", {}, {}, {}, -1),
-       PNode("Add", {"Gather2", "C0"}, {"Unsqueeze3"}, "p_unsqueeze3", {}, {}, {}, -1),
-       PNode("Concat", {"Unsqueeze2", "Unsqueeze3"}, {"Concat"}, "p_concat", {}, {}, {ONNX_NAMESPACE::MakeAttribute("axis", int64_t(0))}, -1),
-       PNode("Expand", {"Unsqueeze1", "Concat"}, {"Expand"}, "p_expand", {}, {}, {}, -1),
-       PNode("Gather", {"Expand", "C0"}, {"Gather3"}, "p_gather3", {}, {}, {}, -1),
-       PNode("Gather", {"X", "C0"}, {"Gather4"}, "p_gather4", {}, {}, {}, -1),
-       PNode("Add", {"Gather3", "Gather4"}, {"Add1"}, "p_add1", {}, {}, {}, -1),
-       PNode("Gather", {"X", "C0"}, {"Gather5"}, "p_gather5", {}, {}, {}, -1),
-       PNode("Add", {"Add1", "Gather5"}, {"Add2"}, "p_add2", {}, {}, {}, -1),
-       PNode("LayerNormalization", {"Add2", "C1"}, {"LayerNorm"}, "p_layernorm", {}, {}, {}, -1),
-       PNode("ReduceSum", {"X"}, {"ReduceSum"}, "p_reducesum", {}, {}, {}, -1),
-       PNode("Attention", {"ReduceSum", "LayerNorm", "C1"}, {"Attention"}, "p_attention", {"com.microsoft"}, {}, {ONNX_NAMESPACE::MakeAttribute("num_heads", int64_t{1})}, -1)});
+      {PGraphInput("X", PGraphInputTypes(TypesCategory::AllFloatTensorTypes), 3),
+       PGraphInput("C0", PGraphInputTypes(TypesCategory::AllIntegerTensorTypes)),
+       PGraphInput("C1", PGraphInputTypes(TypesCategory::AllFloatTensorTypes))},
+      {PGraphNode("Shape", {"X"}, {"Shape1"}, "p_shape1", {}, {}, -1),
+       PGraphNode("Gather", {"Shape1", "C0"}, {"Gather1"}, "p_gather1", {}, {}, -1),
+       PGraphNode("Cast", {"Gather1"}, {"Cast1"}, "p_cast1", {{kOnnxDomain, {7}}}, {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT})}, -1),
+       PGraphNode("Range", {"Cast1", "Cast1", "Cast1"}, {"Range"}, "p_range", {}, {}, -1),
+       PGraphNode("Unsqueeze", {"Range", "C0"}, {"Unsqueeze1"}, "p_unsqueeze1", {}, {}, -1),
+       PGraphNode("Add", {"Gather1", "C0"}, {"Unsqueeze2"}, "p_unsqueeze2", {}, {}, -1),
+       PGraphNode("Shape", {"X"}, {"Shape2"}, "p_shape2", {}, {}, -1),
+       PGraphNode("Gather", {"Shape2", "C0"}, {"Gather2"}, "p_gather2", {}, {}, -1),
+       PGraphNode("Add", {"Gather2", "C0"}, {"Unsqueeze3"}, "p_unsqueeze3", {}, {}, -1),
+       PGraphNode("Concat", {"Unsqueeze2", "Unsqueeze3"}, {"Concat"}, "p_concat", {}, {ONNX_NAMESPACE::MakeAttribute("axis", int64_t(0))}, -1),
+       PGraphNode("Expand", {"Unsqueeze1", "Concat"}, {"Expand"}, "p_expand", {}, {}, -1),
+       PGraphNode("Gather", {"Expand", "C0"}, {"Gather3"}, "p_gather3", {}, {}, -1),
+       PGraphNode("Gather", {"X", "C0"}, {"Gather4"}, "p_gather4", {}, {}, -1),
+       PGraphNode("Add", {"Gather3", "Gather4"}, {"Add1"}, "p_add1", {}, {}, -1),
+       PGraphNode("Gather", {"X", "C0"}, {"Gather5"}, "p_gather5", {}, {}, -1),
+       PGraphNode("Add", {"Add1", "Gather5"}, {"Add2"}, "p_add2", {}, {}, -1),
+       PGraphNode("LayerNormalization", {"Add2", "C1"}, {"LayerNorm"}, "p_layernorm", {}, {}, -1),
+       PGraphNode("ReduceSum", {"X"}, {"ReduceSum"}, "p_reducesum", {}, {}, -1),
+       PGraphNode("Attention", {"ReduceSum", "LayerNorm", "C1"}, {"Attention"}, "p_attention", {{"com.microsoft", {1}}}, {ONNX_NAMESPACE::MakeAttribute("num_heads", int64_t{1})}, -1)});
 
   class CustomNodeCompareFunc : public NodeCompareFunc {
    public:
-    bool operator()(const Node* g, const PNode*, const Graph& /*target*/,
+    bool operator()(const Node* g, const PGraphNode*, const Graph& /*target*/,
                     const PatternGraph& /*pattern*/) const override {
       return g->OpType() == "Unsqueeze";
     }
@@ -1153,32 +1160,32 @@ TEST(GraphParser, AttentionFusionInt32Test) {
   Graph& graph = p_model->MainGraph();
 
   PatternGraph pattern(
-      {IArg("X", PatternType(PatternTypeCategory::Float)),
-       IArg("C0", PatternType(PatternTypeCategory::Integer)),
-       IArg("C1", PatternType(PatternTypeCategory::Float))},
-      {PNode("LayerNormalization", {"X", "C1", "C1"}, {"LayerNorm"}, "p_layernorm"),
-       PNode("MatMul", {"LayerNorm", "C1"}, {"Matmul_q"}, "p_matmul_q"),
-       PNode("MatMul", {"LayerNorm", "C1"}, {"Matmul_k"}, "p_matmul_k"),
-       PNode("MatMul", {"LayerNorm", "C1"}, {"Matmul_v"}, "p_matmul_v"),
-       PNode("Add", {"Matmul_q", "C1"}, {"Add_q"}, "p_add_q"),
-       PNode("Add", {"Matmul_k", "C1"}, {"Add_k"}, "p_add_k"),
-       PNode("Add", {"Matmul_v", "C1"}, {"Add_v"}, "p_add_v"),
-       PNode("Reshape", {"Add_q", "C0"}, {"Reshape_q"}, "p_reshape_q"),
-       PNode("Reshape", {"Add_k", "C0"}, {"Reshape_k"}, "p_reshape_k"),
-       PNode("Reshape", {"Add_v", "C0"}, {"Reshape_v"}, "p_reshape_v"),
-       PNode("Transpose", {"Reshape_q"}, {"Transpose_q"}, "p_transpose_q"),
-       PNode("Transpose", {"Reshape_k"}, {"Transpose_k"}, "p_transpose_k"),
-       PNode("Transpose", {"Reshape_v"}, {"Transpose_v"}, "p_transpose_v"),
-       PNode("MatMul", {"Transpose_q", "Transpose_k"}, {"Matmul_qk"}, "p_matmul_qk"),
-       PNode("Div", {"Matmul_qk", "C1"}, {"Div_qk"}, "p_div_qk"),
-       PNode("Add", {"Div_qk", "C1"}, {"Mask_add"}, "p_mask_add"),
-       PNode("Softmax", {"Mask_add"}, {"Softmax"}, "p_softmax"),
-       PNode("MatMul", {"Softmax", "Transpose_v"}, {"Matmul_qkv"}, "p_matmul_qkv"),
-       PNode("Transpose", {"Matmul_qkv"}, {"Transpsoe"}, "p_transpose"),
-       PNode("Reshape", {"Transpsoe", "C0"}, {"Reshape"}, "p_reshape"),
-       PNode("MatMul", {"Reshape", "C1"}, {"Matmul"}, "p_matmul"),
-       PNode("Add", {"Matmul", "C1"}, {"Add1"}, "p_add1"),
-       PNode("Add", {"Add1", "LayerNorm"}, {"final"}, "p_add2")});
+      {PGraphInput("X", PGraphInputTypes(TypesCategory::AllFloatTensorTypes)),
+       PGraphInput("C0", PGraphInputTypes(TypesCategory::AllIntegerTensorTypes)),
+       PGraphInput("C1", PGraphInputTypes(TypesCategory::AllFloatTensorTypes))},
+      {PGraphNode("LayerNormalization", {"X", "C1", "C1"}, {"LayerNorm"}, "p_layernorm"),
+       PGraphNode("MatMul", {"LayerNorm", "C1"}, {"Matmul_q"}, "p_matmul_q"),
+       PGraphNode("MatMul", {"LayerNorm", "C1"}, {"Matmul_k"}, "p_matmul_k"),
+       PGraphNode("MatMul", {"LayerNorm", "C1"}, {"Matmul_v"}, "p_matmul_v"),
+       PGraphNode("Add", {"Matmul_q", "C1"}, {"Add_q"}, "p_add_q"),
+       PGraphNode("Add", {"Matmul_k", "C1"}, {"Add_k"}, "p_add_k"),
+       PGraphNode("Add", {"Matmul_v", "C1"}, {"Add_v"}, "p_add_v"),
+       PGraphNode("Reshape", {"Add_q", "C0"}, {"Reshape_q"}, "p_reshape_q"),
+       PGraphNode("Reshape", {"Add_k", "C0"}, {"Reshape_k"}, "p_reshape_k"),
+       PGraphNode("Reshape", {"Add_v", "C0"}, {"Reshape_v"}, "p_reshape_v"),
+       PGraphNode("Transpose", {"Reshape_q"}, {"Transpose_q"}, "p_transpose_q"),
+       PGraphNode("Transpose", {"Reshape_k"}, {"Transpose_k"}, "p_transpose_k"),
+       PGraphNode("Transpose", {"Reshape_v"}, {"Transpose_v"}, "p_transpose_v"),
+       PGraphNode("MatMul", {"Transpose_q", "Transpose_k"}, {"Matmul_qk"}, "p_matmul_qk"),
+       PGraphNode("Div", {"Matmul_qk", "C1"}, {"Div_qk"}, "p_div_qk"),
+       PGraphNode("Add", {"Div_qk", "C1"}, {"Mask_add"}, "p_mask_add"),
+       PGraphNode("Softmax", {"Mask_add"}, {"Softmax"}, "p_softmax"),
+       PGraphNode("MatMul", {"Softmax", "Transpose_v"}, {"Matmul_qkv"}, "p_matmul_qkv"),
+       PGraphNode("Transpose", {"Matmul_qkv"}, {"Transpsoe"}, "p_transpose"),
+       PGraphNode("Reshape", {"Transpsoe", "C0"}, {"Reshape"}, "p_reshape"),
+       PGraphNode("MatMul", {"Reshape", "C1"}, {"Matmul"}, "p_matmul"),
+       PGraphNode("Add", {"Matmul", "C1"}, {"Add1"}, "p_add1"),
+       PGraphNode("Add", {"Add1", "LayerNorm"}, {"final"}, "p_add2")});
 
   PatternMatchResult res(graph);
   ASSERT_TRUE(pattern.TryMatch(graph, res).IsOK());
@@ -1191,21 +1198,21 @@ TEST(GraphParser, FastGeluWithBiasFusionTest) {
   Graph& graph = p_model->MainGraph();
 
   PatternGraph pattern(
-      {IArg("X", PatternType(PatternTypeCategory::Float)),
-       IArg("C0", PatternType(PatternTypeCategory::Integer)),
-       IArg("C1", PatternType(PatternTypeCategory::Float))},
-      {PNode("Identity", {"X"}, {"Identity1"}, "p_identity1"),
-       PNode("Add", {"Identity1", "C1"}, {"Add1"}, "p_add1"),
-       PNode("Mul", {"Add1", "C1"}, {"Mul1"}, "p_mul1"),
-       PNode("Mul", {"Add1", "Mul1"}, {"Mul2"}, "p_mul2"),
-       PNode("Add", {"Mul2", "C1"}, {"Add2"}, "p_add2"),
-       PNode("Mul", {"Add1", "C1"}, {"Mul3"}, "p_mul3"),
-       PNode("Mul", {"Add2", "Mul3"}, {"Mul4"}, "p_mul4"),
-       PNode("Tanh", {"Mul4"}, {"Tanh"}, "p_tanh"),
-       PNode("Add", {"Tanh", "C1"}, {"Add3"}, "p_add3"),
-       PNode("Mul", {"Add1", "C1"}, {"Mul5"}, "p_mul5"),
-       PNode("Mul", {"Mul5", "Add3"}, {"Mul6"}, "p_mul6"),
-       PNode("Identity", {"Mul6"}, {"Identity2"}, "p_identity2")});
+      {PGraphInput("X", PGraphInputTypes(TypesCategory::AllFloatTensorTypes)),
+       PGraphInput("C0", PGraphInputTypes(TypesCategory::AllIntegerTensorTypes)),
+       PGraphInput("C1", PGraphInputTypes(TypesCategory::AllFloatTensorTypes))},
+      {PGraphNode("Identity", {"X"}, {"Identity1"}, "p_identity1"),
+       PGraphNode("Add", {"Identity1", "C1"}, {"Add1"}, "p_add1"),
+       PGraphNode("Mul", {"Add1", "C1"}, {"Mul1"}, "p_mul1"),
+       PGraphNode("Mul", {"Add1", "Mul1"}, {"Mul2"}, "p_mul2"),
+       PGraphNode("Add", {"Mul2", "C1"}, {"Add2"}, "p_add2"),
+       PGraphNode("Mul", {"Add1", "C1"}, {"Mul3"}, "p_mul3"),
+       PGraphNode("Mul", {"Add2", "Mul3"}, {"Mul4"}, "p_mul4"),
+       PGraphNode("Tanh", {"Mul4"}, {"Tanh"}, "p_tanh"),
+       PGraphNode("Add", {"Tanh", "C1"}, {"Add3"}, "p_add3"),
+       PGraphNode("Mul", {"Add1", "C1"}, {"Mul5"}, "p_mul5"),
+       PGraphNode("Mul", {"Mul5", "Add3"}, {"Mul6"}, "p_mul6"),
+       PGraphNode("Identity", {"Mul6"}, {"Identity2"}, "p_identity2")});
 
   PatternMatchResult res(graph);
   ASSERT_TRUE(pattern.TryMatch(graph, res).IsOK());
@@ -1218,18 +1225,18 @@ TEST(GraphParser, FastGeluWithBiasFusionTestPart1) {
   Graph& graph = p_model->MainGraph();
 
   PatternGraph pattern(
-      {IArg("X", PatternType(PatternTypeCategory::Float)),
-       IArg("C0", PatternType(PatternTypeCategory::Integer)),
-       IArg("C1", PatternType(PatternTypeCategory::Float))},
-      {PNode("Add", {"C1", "C1"}, {"Add1"}, "p_add1", {}, {}, {}, -1),
-       PNode("Mul", {"Add1", "C1"}, {"Mul1"}, "p_mul1"),
-       PNode("Mul", {"Add1", "Mul1"}, {"Mul2"}, "p_mul2"),
-       PNode("Add", {"Mul2", "C1"}, {"Add2"}, "p_add2"),
-       PNode("Mul", {"Add2", "C1"}, {"Mul4"}, "p_mul4"),
-       PNode("Tanh", {"Mul4"}, {"Tanh"}, "p_tanh"),
-       PNode("Add", {"Tanh", "C1"}, {"Add3"}, "p_add3"),
-       PNode("Mul", {"Add1", "C1"}, {"Mul5"}, "p_mul5"),
-       PNode("Mul", {"Mul5", "Add3"}, {"Mul6"}, "p_mul6", {}, {}, {}, -1)});
+      {PGraphInput("X", PGraphInputTypes(TypesCategory::AllFloatTensorTypes)),
+       PGraphInput("C0", PGraphInputTypes(TypesCategory::AllIntegerTensorTypes)),
+       PGraphInput("C1", PGraphInputTypes(TypesCategory::AllFloatTensorTypes))},
+      {PGraphNode("Add", {"C1", "C1"}, {"Add1"}, "p_add1", {}, {}, -1),
+       PGraphNode("Mul", {"Add1", "C1"}, {"Mul1"}, "p_mul1"),
+       PGraphNode("Mul", {"Add1", "Mul1"}, {"Mul2"}, "p_mul2"),
+       PGraphNode("Add", {"Mul2", "C1"}, {"Add2"}, "p_add2"),
+       PGraphNode("Mul", {"Add2", "C1"}, {"Mul4"}, "p_mul4"),
+       PGraphNode("Tanh", {"Mul4"}, {"Tanh"}, "p_tanh"),
+       PGraphNode("Add", {"Tanh", "C1"}, {"Add3"}, "p_add3"),
+       PGraphNode("Mul", {"Add1", "C1"}, {"Mul5"}, "p_mul5"),
+       PGraphNode("Mul", {"Mul5", "Add3"}, {"Mul6"}, "p_mul6", {}, {}, -1)});
 
   PatternMatchResult res(graph);
   ASSERT_TRUE(pattern.TryMatch(graph, res).IsOK());
