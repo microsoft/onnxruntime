@@ -17,11 +17,11 @@ namespace onnxruntime {
 namespace training {
 
 /**
- * @brief Matched Node Groups.
+ * @brief Matched Node Group.
  *
  *  Each group contains
  *  > matched node (of type Node*) in target graph.
- *  > graph node in pattern graph..
+ *  > graph node in pattern graph.
  */
 struct MatchedNodeGroup {
  public:
@@ -34,7 +34,7 @@ struct MatchedNodeGroup {
 };
 
 /**
- * @brief Matched Input Args Groups.
+ * @brief Matched Input Args Group.
  *
  *  Each group contains
  *  > matched input arg (of type NodeArg*) in target graph.
@@ -165,7 +165,7 @@ struct PatternGraph {
   }
 
   /**
-   * @brief Set the CustomConstraint By node name.
+   * @brief Set the CustomConstraint by node name.
    *
    * This is used to define customized constraint on PatternGraph's nodes.
    * @param func unique pointer of an constraint instance inheriting from NodeCompareFunc.
@@ -176,7 +176,7 @@ struct PatternGraph {
   PatternGraph& SetCustomConstraint(std::unique_ptr<NodeCompareFunc> func, std::string node_name = "");
 
   /**
-   * @brief Set the CustomConstraint By node arg name.
+   * @brief Set the CustomConstraint by node arg name.
    *
    * This is used to define customized constraint on PatternGraph's inputs (e.g. node args).
    * @param func unique pointer of an constraint instance inheriting from ArgCompareFunc.
