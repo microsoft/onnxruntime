@@ -123,29 +123,33 @@ class QLinearConv : public OpKernel {
     return output_scales;
   }
 
-  static int32_t ComputeTaskCount(int64_t output_image_size, int64_t group_output_channels, int64_t kernel_dim) {
-    // Replicate the logic from MlasGemmU8X8Schedule to control the number of
-    // worker threads used for the convolution.
-    int32_t maximum_thread_count;
+  static int32_t ComputeTaskCount(int32_t degree_of_parallelism,
+                                  int64_t output_image_size,
+                                  int64_t group_output_channels,
+                                  int64_t kernel_dim) {
+
+    int32_t task_count = degree_of_parallelism;
+
     if (CPUIDInfo::GetCPUIDInfo().IsHybrid()) {
-      maximum_thread_count = 64;
-    } else {
-      maximum_thread_count = 16;
+      // Use even finer granularity to account for perf difference between big and little cores
+      task_count *= 2;
     }
+
     constexpr double thread_complexity = static_cast<double>(64 * 1024);
 
     const double complexity = static_cast<double>(output_image_size) *
                               static_cast<double>(group_output_channels) *
                               static_cast<double>(kernel_dim);
 
-    int32_t task_count = maximum_thread_count;
-    if (complexity < thread_complexity * maximum_thread_count) {
+    if (complexity < thread_complexity * task_count) {
       task_count = static_cast<int32_t>(complexity / thread_complexity) + 1;
     }
-    if (task_count > output_image_size) {
-      // Ensure that every thread produces at least one output.
-      task_count = static_cast<int32_t>(output_image_size);
-    }
+
+    // Avoid many tasks with the output count smaller than a kernel can provide per call
+    const int32_t output_count = MlasConvSymGetKernelOutputCount(std::is_signed<ActType>::value);
+    task_count = std::min(task_count, static_cast<int32_t>(output_image_size) / output_count);
+    if (task_count == 0)
+      task_count = 1;
 
     return task_count;
   }
@@ -658,8 +662,8 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
 #if defined(_M_ARM64) || defined(__aarch64__)
   int32_t task_count = (output_image_size + (GEMM_KERNEL_STRIDE_M - 1)) / GEMM_KERNEL_STRIDE_M;
 #else
-  int32_t task_count = ComputeTaskCount(output_image_size, group_output_channels, kernel_dim);
-  task_count = std::min(task_count, concurrency::ThreadPool::DegreeOfParallelism(thread_pool));
+  int32_t task_count = ComputeTaskCount(concurrency::ThreadPool::DegreeOfParallelism(thread_pool),
+      output_image_size, group_output_channels, kernel_dim);
 #endif
 
   for (int64_t image_id = 0; image_id < N; ++image_id) {
