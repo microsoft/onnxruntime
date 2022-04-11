@@ -11,7 +11,7 @@ class TestOnnxFunctions(unittest.TestCase):
             ir_version: 8,
             opset_import: [ "" : 10, "local" : 1 ]
             >
-            agraph (float[N, 128] X, float[128,10] W, float[10] B) => (float[N] C)
+            agraph (float[N, 128] X, float[128,10] W, float[10] B) => (float[N,10] C)
             {
             T = local.foo (X, W, B)
             C = local.square(T)
