@@ -120,23 +120,25 @@ class CPUIDInfo {
   // 128b vectore registers.
   std::vector<bool> is_armv8_narrow_ld_;
 
-
-#if (defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)) && defined(CPUINFO_SUPPORTED)
-  bool pytorch_cpuinfo_init_{false};
-#endif
+  bool has_arm_neon_dot_{false};
 
 #ifdef CPUIDINFO_ARCH_X86
+
   void X86Init();
+
 #elif defined(CPUIDINFO_ARCH_ARM)
 #ifdef __linux__
+
+  bool pytorch_cpuinfo_init_{false};
   void ArmLinuxInit();
+
 #elif defined(_WIN32)
+
   void ArmWindowsInit();
+
 #endif /* (arm or arm64) and windows */
 #endif
 
-
-  bool has_arm_neon_dot_{false};
 };
 
 }  // namespace onnxruntime
