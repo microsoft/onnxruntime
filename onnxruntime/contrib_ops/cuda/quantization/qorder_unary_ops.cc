@@ -33,7 +33,7 @@ QOrderedGelu::ComputeInternal(OpKernelContext* context) const {
   const auto& shape = input.Shape();
   Tensor* output = context->Output(0, shape);
   cudaStream_t stream = Stream();
-  QOrderUnary_Gelu(stream, input.Data<int8_t>(), scale_input, output->MutableData<int8_t>(), scale_output, (size_t)(shape.Size()));
+  QOrderUnaryShareMemory_Gelu(stream, input.Data<int8_t>(), scale_input, output->MutableData<int8_t>(), scale_output, (size_t)(shape.Size()));
 
   LOCATE_ERROR_IF_ENABLED_USING_CUDA_SYNC();
   return Status::OK();
