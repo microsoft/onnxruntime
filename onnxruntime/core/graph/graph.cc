@@ -584,7 +584,7 @@ void Node::InstantiateFunctionBody(const logging::Logger& logger) {
 
   // Initialize function body
   if (func_template_) {
-    func_body_ = func_template_->Instantiate(*graph_, index_, logger);
+    func_body_ = function_utils::Instantiate(*graph_, index_, *func_template_->onnx_func_proto_, logger);
   } else if (op_ && (op_->HasFunction() || op_->HasContextDependentFunction())) {
     // This node has a schema defined function proto. If it is a context dependent function
     // then build it otherwise fetch the FunctionProto from schema.
@@ -604,16 +604,16 @@ void Node::InstantiateFunctionBody(const logging::Logger& logger) {
       ONNX_NAMESPACE::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
       if (!op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto)) {
         return;
-      } else {
-        onnx_function_proto = *(op_->GetFunction());
-      }
-      func_body_ = FunctionTemplate::Instantiate(*graph_, index_, onnx_function_proto, logger);
+      } 
+    } else {
+      onnx_function_proto = *(op_->GetFunction());
     }
+    func_body_ = function_utils::Instantiate(*graph_, index_, onnx_function_proto, logger);
   }
 }
 
 void Node::SetFunctionTemplate(const FunctionTemplate& func_template) {
-  op_ = &func_template.OpSchema();
+  op_ = func_template.op_schema_.get();
   since_version_ = op_->since_version();
   func_template_ = &func_template;
 }
@@ -2525,9 +2525,6 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
 
       SetOpSchemaFromRegistryForNode(node);
 
-      /*if (!node.op_ || (node.op_ && (node.op_->HasFunction() || node.op_->HasContextDependentFunction()))) {
-        InitFunctionBodyForNode(node);
-      }*/
       if (!node.op_) {
         // check whether it refer to a function.
         std::string func_identifier = function_utils::GetFunctionIdentifier(node.Domain(), node.OpType());
@@ -2549,15 +2546,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         node.since_version_ = node.op_->since_version();
       }
     } 
-    //else {
-    //  // This is only applicable for model local functions.
-    //  // In case of nested model local functions, graph resolve is called during resolve for parent
-    //  // function body graph otherwise type inference for nest function cannot happen.
-    //  if (options.traverse_function_body && node.GetFunctionBody() != nullptr) {
-    //    ORT_RETURN_IF_ERROR(node.GetMutableFunctionBody()->MutableBody().Resolve(options));
-    //  }
-    //}
-
+   
     ORT_RETURN_IF_ERROR(node.UpdateInputArgCount());
 
     // currently an Op is required by ValidateVersion, so we use gsl::not_null to validate that.
@@ -2626,7 +2615,7 @@ const std::unordered_map<std::string, FunctionTemplate*>& Graph::GetModelLocalFu
 
 void Graph::InitModelLocalFunctionTemplatesMap(const std::vector<FunctionTemplate*>& model_function_templates) {
   for (auto* func : model_function_templates) {
-    model_local_function_templates_[function_utils::GetFunctionIdentifier(func->Domain(), func->Name())] = func;
+    model_local_function_templates_[function_utils::GetFunctionIdentifier(func->op_schema_->domain(), func->op_schema_->Name())] = func;
   }
 }
 
@@ -3854,6 +3843,7 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
   auto temp_schema_ptr = function_utils::CreateSchema(*this, sub_graph);
   fused_schemas_containers_.push_back(std::move(temp_schema_ptr));
   fused_node.op_ = fused_schemas_containers_.back().get();
+  fused_node.SetSinceVersion(fused_node.op_->SinceVersion());
 #endif
   return fused_node;
 }
@@ -4015,8 +4005,6 @@ Status Graph::InlineFunction(Node& node) {
   ss << static_cast<const void*>(&node);
   auto uniq_identifier = ss.str();
 
-  RemoveNode(node.Index());
-
   const auto& model_path = ModelPath();
   for (const auto& subgraph_node : subgraph.Nodes()) {
     if (subgraph_node.OpType() == kConstant) {
@@ -4074,13 +4062,10 @@ Status Graph::InlineFunction(Node& node) {
                                outputs,
                                &subgraph_node.GetAttributes(),
                                subgraph_node.Domain());
-
-      //// If this node has an initialized function body add it to the new node so that reinitialization is not required.
-      //if (subgraph_node.GetFunctionBody() != nullptr) {
-      //  new_node.SetFunctionBody(*(const_cast<onnxruntime::Function*>(subgraph_node.GetFunctionBody())));
-      //}
     }
   }
+
+  RemoveNode(node.Index());
 
   ORT_RETURN_IF_ERROR(this->Resolve());
   return Status::OK();

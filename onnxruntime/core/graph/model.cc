@@ -26,6 +26,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/schema_registry.h"
+#include "core/graph/function_utils.h"
 #endif
 
 using namespace ONNX_NAMESPACE;
@@ -101,7 +102,16 @@ Model::Model(const std::string& graph_name,
 
   std::vector<FunctionTemplate*> model_local_func_templates;
   for (auto& func : model_local_functions) {
-    auto func_template_ptr = std::make_unique<FunctionTemplate>(func.domain(), func.name(), graph_->GetModelLocalFunctions(), graph_->DomainToVersionMap());
+    auto func_schema_ptr = function_utils::CreateSchema(func.domain(), 
+        func.name(), 
+        graph_->GetModelLocalFunctions(), 
+        graph_->DomainToVersionMap(),
+        *schema_registry,
+        logger,
+        allow_released_opsets_only);
+    auto func_template_ptr = std::make_unique<FunctionTemplate>();
+    func_template_ptr->op_schema_ = std::move(func_schema_ptr);
+    func_template_ptr->onnx_func_proto_ = &func;
     model_local_function_templates_.push_back(std::move(func_template_ptr));
     model_local_func_templates.push_back(model_local_function_templates_.back().get());
   }
@@ -213,7 +223,16 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
 
   std::vector<FunctionTemplate*> model_local_func_templates;
   for (auto& func : model_proto_.functions()) {
-    auto func_template_ptr = std::make_unique<FunctionTemplate>(func.domain(), func.name(), graph_->GetModelLocalFunctions(), graph_->DomainToVersionMap());
+    auto func_schema_ptr = function_utils::CreateSchema(func.domain(), 
+        func.name(), 
+        graph_->GetModelLocalFunctions(), 
+        graph_->DomainToVersionMap(),
+        *schema_registry,
+        logger,
+        allow_released_opsets_only);
+    auto func_template_ptr = std::make_unique<FunctionTemplate>();
+    func_template_ptr->op_schema_ = std::move(func_schema_ptr);
+    func_template_ptr->onnx_func_proto_ = &func;
     model_local_function_templates_.push_back(std::move(func_template_ptr));
     model_local_func_templates.push_back(model_local_function_templates_.back().get());
   }
