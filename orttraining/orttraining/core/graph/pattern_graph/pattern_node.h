@@ -117,6 +117,11 @@ struct PGraphInput {
   }
 
  private:
+  /**
+   * @brief Get the NodeDef object, which will be used by GraphAugmenter.
+   *
+   * @return NodeDef
+   */
   NodeDef GetNodeDef() const {
     /**
      * We used a trick here:
@@ -146,19 +151,6 @@ struct PGraphInput {
   bool is_dangling_;
   TensorProto t_proto_;
   std::vector<ONNX_NAMESPACE::TensorProto_DataType> allowed_types_;
-};
-
-struct PatternGraph;
-
-struct ArgCompareFunc {
-  virtual bool operator()(const NodeArg* g_arg, const PGraphInput* p_arg, const Graph& /*target*/, const PatternGraph& /*pattern*/) const = 0;
-};
-
-class DefaultArgCompareFunc : public ArgCompareFunc {
- public:
-  bool operator()(const NodeArg* g_arg, const PGraphInput* p_arg, const Graph& target, const PatternGraph& /*pattern*/) const override {
-    return p_arg->IsDangling() || p_arg->MatchesDataType(target, *g_arg);
-  }
 };
 
 /**
@@ -226,6 +218,11 @@ struct PGraphNode {
 
   const std::unordered_map<std::string, std::vector<int>>& GetDomainVersionMap() const { return domain_version_maps_; }
 
+  /**
+   * @brief Get the NodeDef object, which will be used by GraphAugmenter.
+   *
+   * @return NodeDef
+   */
   NodeDef GetNodeDef() const;
 
  private:
@@ -238,25 +235,6 @@ struct PGraphNode {
   int output_edges_count_;
   std::unordered_map<std::string, std::vector<int>> domain_version_maps_;
   std::vector<AttributeProto> attributes;
-};
-
-struct NodeCompareFunc {
-  virtual bool operator()(const Node* g, const PGraphNode* p, const Graph& /*target*/, const PatternGraph& /*pattern*/) const = 0;
-};
-
-struct DefaultNodeCompareFunc : public NodeCompareFunc {
- public:
-  DefaultNodeCompareFunc(bool skip_op_type,
-                         bool skip_domain_and_version,
-                         bool skip_path)
-      : skip_op_type_(skip_op_type),
-        skip_domain_and_version_(skip_domain_and_version),
-        skip_path_(skip_path) {}
-
-  bool operator()(const Node* g, const PGraphNode* p, const Graph& /*target*/, const PatternGraph& pattern) const override;
-
- private:
-  bool skip_op_type_, skip_domain_and_version_, skip_path_;
 };
 
 }  // namespace training
