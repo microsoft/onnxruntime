@@ -169,16 +169,16 @@ pip install -U .\build\Windows\MinSizeRel\MinSizeRel\dist\onnxruntime-1.7.0-cp37
 
 Unless there is a specific feature you need, do not use the unreleased `master` branch.
 
-Once you have cloned the ONNX Runtime repo, checkout one of the release branches to build from.
+Once you have cloned the ONNX Runtime repo, checkout one of the release tags to build from.
 
 ```bash
 git clone --recursive https://github.com/microsoft/onnxruntime
 cd onnxruntime
-git checkout <release branch>
+git checkout <release tag>
 ```
 
-Release branch names follow the pattern `rel-<version>`. For example, `rel-1.11.0`.
-Find them [here](https://github.com/microsoft/onnxruntime/branches/all?query=rel-).
+Release tag names follow the pattern `v<release version>`. For example, `v1.11.0`.
+Find them [here](https://github.com/microsoft/onnxruntime/tags).
 
 ## Example build commands
 

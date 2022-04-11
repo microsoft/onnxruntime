@@ -1,10 +1,11 @@
 ---
 title: Tune Mobile Performance
 parent: Performance
-nav_order: 2
-redirect_from: /docs/how-to/mobile-performance-tuning
+nav_exclude: true
 ---
 {::options toc_levels="2" /}
+
+# **IMPORTANT: THIS INFORMATION ONLY APPLIES TO ONNX RUNTIME VERSION 1.10 AND EARLIER. PLEASE USE A NEWER VERSION.**
 
 # ONNX Runtime Mobile Performance Tuning
 

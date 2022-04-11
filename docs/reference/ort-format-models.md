@@ -22,26 +22,6 @@ The ORT format is the format supported by reduced size ONNX Runtime builds. Redu
 
 Both ORT format models and ONNX models are supported by a full ONNX Runtime build.
 
-### Saved runtime optimizations
-
-**Since ONNX Runtime 1.11**
-
-An ORT format model may contain extra information about potential graph optimizations that may be applied at runtime. These are known as saved runtime optimizations.
-
-Saved runtime optimizations are only applied at runtime if they are still applicable.
-For example, a CPU Execution Provider (EP)-specific optimization for some nodes is only be applicable if those nodes are assigned to the CPU EP at runtime.
-
-In a reduced size ONNX Runtime build, many of the graph optimizers are not supported the way they are in a full build because their complete implementations have significant binary size.
-Consequently, the graph optimizers do not run the same way at runtime for ORT format models as they do for ONNX format models.
-
-To allow for dynamic graph optimization at runtime, some graph optimizers support additional modes to save and load saved runtime optimizations to and from the ORT format model.
-When converting from ONNX to ORT format, the potential optimizations are identified (1) and their effects are saved alongside the graph (without those optimizations applied) in the ORT format model.
-Later, when loading the ORT format model with saved runtime optimizations, the effects of potential optimizations are applied (2) if the potential optimizations are still applicable.
-
-In a reduced size build (an [extended minimal build](../build/custom.md#minimal-build)), only enough implementation to support (2) is included, reducing the graph optimizers' binary size.
-
-Note that saving runtime optimizations is optional. Alternatively, it is possible to save a fully optimized ORT format model, but the graph's optimizations may be hardware-dependent and less flexible at runtime.
-
 ## Convert ONNX models to ORT format
 
 ONNX models are converted to ORT format using the `convert_onnx_models_to_ort` script.
@@ -158,12 +138,7 @@ optional arguments:
 
 **Since ONNX Runtime 1.11**
 
-Style of optimization to perform on the ORT format model. Multiple values may be provided. The conversion will run once for each value. The general guidance is to use models optimized with 'Runtime' style when using NNAPI or CoreML and 'Fixed' style otherwise.
-- 'Fixed': Run optimizations directly before saving the ORT format model. This bakes in any platform-specific optimizations.
-- 'Runtime': Run basic optimizations directly and save certain other optimizations to be applied at runtime if possible. This is useful when using a compiling EP like NNAPI or CoreML that may run an unknown (at model conversion time) number of nodes. The saved optimizations can further optimize nodes not assigned to the compiling EP at runtime.
-  See the documentation on [saved runtime optimizations](#saved-runtime-optimizations).
-
-See the documentation on [performance tuning mobile scenarios](../performance/mobile-performance-tuning.md) for more information.
+Specify whether the converted model will be fully optimized ("Fixed") or have saved runtime optimizations ("Runtime"). Both types of models are produced by default. See [here](./mobile/ort-format-model-runtime-optimization.md) for more information.
 
 This replaces the [optimization level](#optimization-level) option from earlier ONNX Runtime versions.
 
