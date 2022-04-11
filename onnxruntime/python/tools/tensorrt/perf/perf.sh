@@ -1,13 +1,13 @@
 #!/bin/bash
 
-while getopts d:o:m:e:a: parameter
+while getopts d:o:m:w:e: parameter
 do case "${parameter}"
 in
 d) PERF_DIR=${OPTARG};;
 o) OPTION=${OPTARG};;
 m) MODEL_PATH=${OPTARG};;
+w) WORKSPACE=${OPTARG};;
 e) EP_LIST=${OPTARG};;
-a) OPTIONAL_ARGS=${OPTARG};;
 esac
 done 
 
@@ -15,8 +15,7 @@ done
 RUN_EPS=""
 if [ ! -z "$EP_LIST" ]
 then 
-    RUN_EPS=" -e $EP_LIST"
-    OPTIONAL_ARGS=$OPTIONAL_ARGS$RUN_EPS
+    RUN_EPS="--ep_list $EP_LIST"
 fi
 
 # change dir if docker
@@ -55,5 +54,5 @@ setup() {
 }
 
 setup
-python3 benchmark_wrapper.py -r validate -m $MODEL_PATH -o result/$OPTION $OPTIONAL_ARGS 
-python3 benchmark_wrapper.py -r benchmark -t 1200 -m $MODEL_PATH -o result/$OPTION $OPTIONAL_ARGS
+python3 benchmark_wrapper.py -r validate -m $MODEL_PATH -o result/$OPTION -w $WORKSPACE $RUN_EPS
+python3 benchmark_wrapper.py -r benchmark -t 1200 -m $MODEL_PATH -o result/$OPTION -w $WORKSPACE $RUN_EPS
