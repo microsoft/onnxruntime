@@ -470,6 +470,15 @@ MlasConvSymFixupInputZeroPoint(
     return zero_point_value;
 }
 
+int32_t
+MlasConvSymGetKernelOutputCount(
+    bool InputIsSigned
+    )
+{
+    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = GetConvSymDispatch(InputIsSigned);
+    return (ConvSymDispatch != nullptr) ? ConvSymDispatch->KernelOutputCount : 1;
+}
+
 
 void
 MlasConvSym(

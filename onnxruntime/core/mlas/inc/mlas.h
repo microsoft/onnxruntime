@@ -829,6 +829,11 @@ MlasConvSymFixupInputZeroPoint(
     bool InputIsSigned
     );
 
+int32_t
+MlasConvSymGetKernelOutputCount(
+    bool InputIsSigned
+    );
+
 struct MLAS_CONV_SYM_PARAMS {
     const void* InputDirect;
     const void* const* InputIndirection;
