@@ -58,7 +58,7 @@ Status ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_
   dlpacks.emplace_back(dlpack::OrtValueToDlpack(axes_tensor));
   dlpacks.emplace_back(dlpack::OrtValueToDlpack(keepdims_tensor));
   dlpacks.emplace_back(nullptr);
-  auto result = aten_ops::ATenOperatorExecutor::Instance()("aten::sum", "dim_IntList", dlpacks);
+  auto result = aten_ops::ATenOperatorExecutor::Instance()("sum", "dim_IntList", dlpacks);
   ORT_RETURN_IF_ERROR(p_ctx_internal->SetOutputMLValue(0, dlpack::DlpackToOrtValue(result[0])));
   return Status::OK();
 }

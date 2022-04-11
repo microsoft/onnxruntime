@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <vector>
 
+const std::string ATEN_DOMAIN = "aten::";
+
 template <typename T>
 c10::IValue ToIValue(const DLManagedTensor* dlpack, bool is_optional) {
   TORCH_INTERNAL_ASSERT((dlpack->dl_tensor.ndim == 0 && dlpack->dl_tensor.shape == nullptr) ||
@@ -121,7 +123,7 @@ class ATenOperatorCache {
   const ATenOperator& GetOperator(const std::string& op_name, const std::string& overload_name) {
     auto key = std::make_pair(op_name, overload_name);
     if (ops_.find(key) == ops_.end()) {
-      c10::OperatorName full_name(op_name, overload_name);
+      c10::OperatorName full_name(ATEN_DOMAIN + op_name, overload_name);
       auto op = torch::jit::findOperatorFor(full_name);
       TORCH_INTERNAL_ASSERT(op);
       ATenOperator aten_op;
