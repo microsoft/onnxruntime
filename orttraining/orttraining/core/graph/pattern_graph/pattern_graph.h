@@ -135,98 +135,130 @@ struct DefaultNodeCompareFunc : public NodeCompareFunc {
   bool skip_op_type_, skip_domain_and_version_;
 };
 
+/**
+ * @brief PatternGraph class.
+ * Class representing a pattern to match in target Graph.
+ *
+ * Under the hood, this PatternGraph will be transformed into ORT Graph structure
+ * leveraging GraphAugmenter.
+ */
 struct PatternGraph {
+  friend struct DefaultNodeCompareFunc;
+
  public:
+  /**
+   * @brief Construct a new PatternGraph object.
+   *
+   * @param pgraph_inputs graph inputs (node args) informations given to do input match.
+   * @param pgraph_nodes graph nodes informations given to do node match.
+   * @param pattern_graph_name [optional] graph name for this pattern.
+   */
   PatternGraph(const std::vector<PGraphInput>& pgraph_inputs,
                const std::vector<PGraphNode>& pgraph_nodes,
-               const std::string& pattern_graph_name = "")
-      : pattern_graph_name_(pattern_graph_name),
-        pgraph_inputs_(pgraph_inputs),
-        pgraph_nodes_(pgraph_nodes) {
-    ort_model_ptr_ = std::make_unique<Model>("PatternModel", false, logging::LoggingManager::DefaultLogger());
-    for (size_t i = 0; i < pgraph_nodes.size(); i++) {
-      name_pnode_mapping_[pgraph_nodes[i].GetNodeName()] = &(pgraph_nodes_[i]);
-    }
-    for (size_t i = 0; i < pgraph_inputs.size(); i++) {
-      name_parg_mapping_[pgraph_inputs[i].GetArgName()] = &(pgraph_inputs_[i]);
-    }
+               const std::string& pattern_graph_name = "");
 
-    ORT_ENFORCE(ToGraphInternal().IsOK());
-    auto& graph = GetGraph();
-    GraphViewer viewer(graph);
-    for (auto node_idx : viewer.GetNodesInTopologicalOrder()) {
-      auto node = graph.GetNode(node_idx);
-      name_patten_graph_node_mapping_[node->Name()] = node;
-    }
-
-    default_node_compare_func_ = std::make_unique<DefaultNodeCompareFunc>(false, false);
-    default_arg_compare_func_ = std::make_unique<DefaultArgCompareFunc>();
-  }
-
-  const std::string& Name() const {
-    return pattern_graph_name_;
-  }
-
-  PatternGraph& SetCustomConstraint(std::unique_ptr<NodeCompareFunc> func, std::string node_name = "") {
-    if (node_name.empty()) {
-      default_node_compare_func_ = std::move(func);
-      custom_node_constraints_.clear();
-    } else {
-      custom_node_constraints_[node_name] = std::move(func);
-    }
-    return *this;
-  }
-
-  PatternGraph& SetCustomConstraint(std::unique_ptr<ArgCompareFunc> func, std::string arg_name = "") {
-    if (arg_name.empty()) {
-      default_arg_compare_func_ = std::move(func);
-      custom_arg_constraints_.clear();
-    } else {
-      custom_arg_constraints_[arg_name] = std::move(func);
-    }
-    return *this;
-  }
-
+  /**
+   * @brief Get the Graph object created with given graph inputs/nodes descriptions.
+   */
   Graph& GetGraph() {
     return ort_model_ptr_->MainGraph();
   }
 
-  const Node* GetPatternGraphNode(const std::string& name) const {
-    auto res = name_patten_graph_node_mapping_.find(name);
-    ORT_ENFORCE(res != name_patten_graph_node_mapping_.end(), "No pattern node named %s", name);
-    return res->second;
-  }
+  /**
+   * @brief Set the CustomConstraint By node name.
+   *
+   * This is used to define customized constraint on PatternGraph's nodes.
+   * @param func unique pointer of an constraint instance inheriting from NodeCompareFunc.
+   * @param node_name node name that applied this constraint.
+   *    If not specified, all nodes will use the func for node comparison.
+   * @return PatternGraph&
+   */
+  PatternGraph& SetCustomConstraint(std::unique_ptr<NodeCompareFunc> func, std::string node_name = "");
 
+  /**
+   * @brief Set the CustomConstraint By node arg name.
+   *
+   * This is used to define customized constraint on PatternGraph's inputs (e.g. node args).
+   * @param func unique pointer of an constraint instance inheriting from ArgCompareFunc.
+   * @param arg_name graph input name that applied this constraint.
+   *    If not specified, all graph inputs will use the func for arg comparison.
+   * @return PatternGraph&
+   */
+  PatternGraph& SetCustomConstraint(std::unique_ptr<ArgCompareFunc> func, std::string arg_name = "");
+
+  /**
+   * @brief Core pattern match function.
+   *
+   * @param target_graph The target graph we do pattern match on.
+   * @param res data structure storing the matched results.
+   * @param root_node [optional] an starting entry point to do matching. If not specified, default using
+   *    the first node defined in PatternGraph. Using this could help make the graph matching faster
+   *    if a good starting_node is chosen.
+   * @return Status
+   */
   Status TryMatch(Graph& target_graph, PatternMatchResult& res, const std::string& root_node = "");
 
  private:
-  Status GetNodeDefs() {
-    for (size_t i = 0; i < pgraph_nodes_.size(); i++) {
-      node_defs_.push_back(pgraph_nodes_[i].GetNodeDef());
-    }
-    for (size_t i = 0; i < pgraph_inputs_.size(); i++) {
-      node_defs_.push_back(pgraph_inputs_[i].GetNodeDef());
-    }
-    return Status::OK();
-  }
+  /**
+   * @brief Get the NodeDefs from given node descriptions.
+   * Be noted, all graph inputs (e.g. pgraph_inputs) are defined as Constant nodes.
+   */
+  Status GetNodeDefs();
 
-  Status ToGraphInternal() {
-    ORT_ENFORCE(GetNodeDefs().IsOK());
-    /** Todo: p_initializer_names_to_preserve should contains all initializer names in the pattern graphs.
-     * to avoid constant folding by any opportunaties.
-     */
-    const std::unordered_set<std::string>* p_initializer_names_to_preserve = nullptr;
-    GraphAugmenter::GraphDefs graph_defs;
-    graph_defs.AddNodeDefs(node_defs_);
-    auto status = GraphAugmenter::AugmentGraph(ort_model_ptr_->MainGraph(), graph_defs, p_initializer_names_to_preserve);
-    ORT_ENFORCE(status.IsOK());
-    return Status::OK();
-  }
+  /**
+   * @brief Create ORT Graph object using GraphAugmenter.
+   */
+  Status ToGraphInternal();
 
+  /**
+   * @brief Search in the graph for a match with two given nodes as start.
+   *
+   * This function searches in the graph for a match with two given nodes as start.
+   * @param g is the node we want to start from in target graph.
+   * @param p is that of pattern graph.
+   * @param graph_path  a set to record the visited nodes in target graph, used to avoid duplicated match.
+   * @param pattern_path a set to record the visited nodes in pattern graph, used to avoid duplicated match.
+   * @param path_map is a mapping from nodes in graph_path and its corresponding matched node in pattern graph.
+   *    It's used to look ahead when the match encounters visited nodes to avoid wrong match.
+   *    We give a simple example below to indicate the condition and effect of "look ahead".
+   *    C <----------- B
+   *    |              ^
+   *    v              |
+   *    D ---> E1 <--- A
+   *    |
+   *    v
+   *    E2
+   *    |
+   *    v
+   *    F
+   *    We start search from A, then B, C and D and all these nodes find a match.
+   *    Then we want to find match for E1 and E2, which are all the same except the position.
+   *    If we do not look ahead, we find E1 reach the end of recursion (A has been visited) and return true.
+   *    Then We may actually match E1 with a node which should match E2.
+   *    So we need to look ahead to make sure that the visited node (A) E1 finds is exactly the matched nodes
+   *    for that of target graph. In this way, we can make sure that E1 and E2 are correctly matched.
+   * @param matched
+   * @param target is the target graph which should be passed by the user.
+   *
+   * The main idea of the algorithm is that if we regard node T (of target graph) and node P (of pattern graph) as a match,
+   * they must satisfy two requiments.
+   * > T and P have same properties, including optype, version, domain and so on.
+   * > All the neighbor nodes of P could find a match among neighbor nodes of T.
+   *
+   * @return true when g and p matches.
+   * @return false when g and p does not match.
+   */
   bool FindMatchRecursively(const Node* g, const Node* p,
-                            std::unordered_set<const Node*>& graph_path, std::unordered_set<const Node*>& pattern_path,
+                            std::unordered_set<const Node*>& graph_path,
+                            std::unordered_set<const Node*>& pattern_path,
                             std::unordered_map<const Node*, const Node*>& path_map,
                             PatternMatchResult& matched, Graph& target);
+
+  const Node* GetPatternGraphNode(const std::string& node_name) const {
+    auto res = name_to_patten_node_mapping_.find(node_name);
+    ORT_ENFORCE(res != name_to_patten_node_mapping_.end(), "No pattern node named %s", node_name);
+    return res->second;
+  }
 
   std::string pattern_graph_name_;  // name of the graph
 
@@ -237,7 +269,7 @@ struct PatternGraph {
 
   std::vector<NodeDef> node_defs_;  // node definitions
   std::unique_ptr<Model> ort_model_ptr_;
-  std::unordered_map<std::string, const Node*> name_patten_graph_node_mapping_;
+  std::unordered_map<std::string, const Node*> name_to_patten_node_mapping_;
 
   std::unique_ptr<NodeCompareFunc> default_node_compare_func_;
   std::unordered_map<std::string, std::unique_ptr<NodeCompareFunc>> custom_node_constraints_;
