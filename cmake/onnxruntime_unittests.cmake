@@ -873,6 +873,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       ${BENCHMARK_DIR}/main.cc
       ${BENCHMARK_DIR}/modeltest.cc
       ${BENCHMARK_DIR}/pooling.cc
+      ${BENCHMARK_DIR}/resize.cc
       ${BENCHMARK_DIR}/batchnorm.cc
       ${BENCHMARK_DIR}/batchnorm2.cc
       ${BENCHMARK_DIR}/tptest.cc
