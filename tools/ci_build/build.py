@@ -492,6 +492,8 @@ def parse_arguments():
         "--dml_path", type=str, default="",
         help="Path to a custom DirectML installation (must have bin/, lib/, and include/ subdirectories).")
     parser.add_argument(
+        "--dml_external_project", action='store_true', help="Build with DirectML as an external project.")
+    parser.add_argument(
         "--use_winml", action='store_true', help="Build with WinML.")
     parser.add_argument(
         "--winml_root_namespace_override", type=str,
@@ -992,6 +994,12 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-Ddml_LIB_DIR=" + os.path.join(args.dml_path, "lib"),
         ]
 
+    if args.dml_external_project:
+        cmake_args += [
+            "-Donnxruntime_USE_CUSTOM_DIRECTML=ON",
+            "-Ddml_EXTERNAL_PROJECT=ON",
+        ]
+
     if args.use_gdk:
         cmake_args += [
             "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, 'cmake', 'gdk_toolchain.cmake'),
@@ -999,8 +1007,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-DGDK_PLATFORM=" + args.gdk_platform,
             "-Donnxruntime_BUILD_UNIT_TESTS=OFF"  # gtest doesn't build for GDK
         ]
-        if args.use_dml and not args.dml_path:
-            raise BuildError("You must set dml_path when building with the GDK.")
+        if args.use_dml and not (args.dml_path or args.dml_external_project):
+            raise BuildError("You must set dml_path or dml_external_project when building with the GDK.")
 
     if is_macOS() and not args.android:
         cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch]
@@ -1333,7 +1341,7 @@ def setup_dml_build(args, cmake_path, build_dir, configs):
                 raise BuildError("dml_path is invalid.",
                                  "dml_path='{}' expected_file='{}'."
                                  .format(args.dml_path, file_path))
-    else:
+    elif not args.dml_external_project:
         for config in configs:
             # Run the RESTORE_PACKAGES target to perform the initial
             # NuGet setup.
