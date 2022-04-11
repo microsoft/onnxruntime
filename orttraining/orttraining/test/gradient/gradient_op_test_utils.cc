@@ -202,10 +202,10 @@ void GradientOpTester::Run(
           const KernelCreateInfo* kci;
           auto st = reg->TryFindKernel(node, execution_provider->Type(), &kci);
           if (!st.IsOK()) {
-            auto* node_func = node.GetFunctionBody();
-            if (!node_func) {
+            if (!node.CanBeInlined()) {
               valid = false;
             } else {
+              auto node_func = node.GetInstantiateFunctionBody(logging::LoggingManager::DefaultLogger());
               for (auto& sub_node : node_func->Body().Nodes()) {
                 if (sub_node.OpType() != "Constant") {
                   auto sub_reg = execution_provider->GetKernelRegistry();

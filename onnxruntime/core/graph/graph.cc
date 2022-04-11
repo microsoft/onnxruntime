@@ -577,15 +577,10 @@ bool Node::CanBeInlined() const {
   return func_body_ || func_template_ || op_ && (op_->HasFunction() || op_->HasContextDependentFunction());
 }
 
-void Node::InstantiateFunctionBody(const logging::Logger& logger) {
-  if (nullptr != func_body_) {
-    //already instantiated.
-    return;
-  }
-
+std::unique_ptr<Function> Node::GetInstantiateFunctionBody(const logging::Logger& logger) const {
   // Initialize function body
   if (func_template_) {
-    func_body_ = function_utils::Instantiate(*graph_, index_, *func_template_->onnx_func_proto_, logger);
+    return function_utils::Instantiate(*graph_, index_, *func_template_->onnx_func_proto_, logger);
   } else if (op_ && (op_->HasFunction() || op_->HasContextDependentFunction())) {
     // This node has a schema defined function proto. If it is a context dependent function
     // then build it otherwise fetch the FunctionProto from schema.
@@ -604,13 +599,24 @@ void Node::InstantiateFunctionBody(const logging::Logger& logger) {
       }
       ONNX_NAMESPACE::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
       if (!op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto)) {
-        return;
-      } 
+        return nullptr;
+      }
     } else {
       onnx_function_proto = *(op_->GetFunction());
     }
-    func_body_ = function_utils::Instantiate(*graph_, index_, onnx_function_proto, logger);
+    return function_utils::Instantiate(*graph_, index_, onnx_function_proto, logger);
+  } else {
+    return nullptr;
   }
+}
+
+void Node::InstantiateFunctionBody(const logging::Logger& logger) {
+  if (nullptr != func_body_) {
+    //already instantiated.
+    return;
+  }
+
+  func_body_ = GetInstantiateFunctionBody(logger);
 }
 
 void Node::SetFunctionTemplate(const FunctionTemplate& func_template) {

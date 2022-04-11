@@ -170,6 +170,8 @@ class Node {
 
   void InstantiateFunctionBody(const logging::Logger& logger);
 
+  std::unique_ptr<Function> GetInstantiateFunctionBody(const logging::Logger& logger) const;
+
   bool CanBeInlined() const;
 
   /** Gets the function body if applicable otherwise nullptr. */
