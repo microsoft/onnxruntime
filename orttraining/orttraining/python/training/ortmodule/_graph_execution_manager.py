@@ -421,9 +421,9 @@ class GraphExecutionManager(GraphExecutionInterface):
                                              'training': self._export_mode,
                                              'dynamic_axes': self._input_info.dynamic_axes,
                                              'verbose': self._debug_options.logging.log_level < LogLevel.WARNING,
-                                             'operator_export_type': OperatorExportTypes.ONNX_FALLTHROUGH,
+                                             'operator_export_type': OperatorExportTypes.ONNX_ATEN_FALLBACK,
                                              'export_params': True,
-                                             'keep_initializers_as_inputs': False}
+                                             'keep_initializers_as_inputs': True}
 
                    invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys()
                    assert len(invalid_args) == 0,\
