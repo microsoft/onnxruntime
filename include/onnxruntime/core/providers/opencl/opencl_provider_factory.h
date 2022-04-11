@@ -10,7 +10,7 @@ extern "C" {
 /**
  * \param use_fp16 zero: false. non-zero: true.
  */
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_OpenCL, _In_ OrtSessionOptions* options, int use_fp16)
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_OpenCL, _In_ OrtSessionOptions* options, int use_fp16, int enable_auto_tune)
 ORT_ALL_ARGS_NONNULL;
 
 #ifdef __cplusplus

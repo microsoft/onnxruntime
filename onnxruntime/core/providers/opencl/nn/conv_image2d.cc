@@ -49,17 +49,6 @@ struct KernelUnitParam {
   std::vector<uint32_t> local_work_size = {};
 };
 
-// local size 2d calculate, special for conv default.
-std::vector<uint32_t> Conv2dCommonLocalWS2D(std::vector<uint32_t>& gws,
-                                            const uint32_t max_workgroup_size,
-                                            const uint32_t subgroup_size) {
-  // TODO: impl
-  ORT_UNUSED_PARAMETER(gws);
-  ORT_UNUSED_PARAMETER(max_workgroup_size);
-  ORT_UNUSED_PARAMETER(subgroup_size);
-  return {};
-}
-
 Status CalWGSizeForWino(const Tensor* X, const Tensor* Y, std::vector<KernelUnitParam>& winokernel) {
   const auto& input_dims = X->Shape();
   const auto& output_dims = Y->Shape();
@@ -80,16 +69,12 @@ Status CalWGSizeForWino(const Tensor* X, const Tensor* Y, std::vector<KernelUnit
 
   winokernel[0].global_work_size = {static_cast<uint32_t>(input_channel_blocks * round_up_ouptut_width),
                                     static_cast<uint32_t>(batch_round_h)};
-  winokernel[0].local_work_size = Conv2dCommonLocalWS2D(
-      winokernel[0].global_work_size, 0, 0);
 
   winokernel[1].global_work_size = {static_cast<uint32_t>(output_channel_blocks * round_up_4x4_ouptut_width),
                                     static_cast<uint32_t>(16 * batch_round_h)};
 
   winokernel[2].global_work_size = {static_cast<uint32_t>(output_channel_blocks * round_up_ouptut_width),
                                     static_cast<uint32_t>(batch_round_h)};
-  winokernel[2].local_work_size = Conv2dCommonLocalWS2D(
-      winokernel[2].global_work_size, 0, 0);
   return Status::OK();
 }
 

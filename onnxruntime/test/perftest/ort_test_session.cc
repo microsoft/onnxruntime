@@ -60,6 +60,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   } else if (provider_name == onnxruntime::kOpenCLExecutionProvider) {
 #ifdef USE_OPENCL
     int use_fp16 = 0;
+    int auto_tuning_level = 0;
 
     #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -88,10 +89,17 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW("[ERROR] [OpenCL] The value for the key 'use_fp16' should be a boolean i.e. true or false. Default value is false.\n");
         }
       }
+      else if (key == "auto_tune") {
+        if (value .size()== 1 && '0' <= value[0] && value[0] <= '9') {
+          auto_tuning_level = std::stol(value);
+        } else {
+          ORT_THROW("[ERROR] [OpenCL] The value for the key 'enable_auto_tune' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      }
 
     }
 
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenCL(session_options, use_fp16));
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenCL(session_options, use_fp16, auto_tuning_level));
 #else
     ORT_THROW("OpenCL is not supported in this build\n");
 #endif

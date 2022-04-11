@@ -650,6 +650,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
   } else if (type == kOpenCLExecutionProvider) {
 #if USE_OPENCL
     bool use_fp16 = false;
+    int auto_tuning_level = 1;
     const auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
       const auto& options = it->second;
@@ -660,7 +661,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       }
     }
 
-    auto p = onnxruntime::CreateExecutionProviderFactory_OpenCL(use_fp16)->CreateProvider();
+    auto p = onnxruntime::CreateExecutionProviderFactory_OpenCL(use_fp16, auto_tuning_level)->CreateProvider();
     return p;
 #endif
   } else if (type == kTvmExecutionProvider) {

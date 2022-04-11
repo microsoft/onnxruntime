@@ -18,5 +18,8 @@ __constant sampler_t SAMPLER = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP |
 #define FLOAT4 half4
 #define CONVERT_FLOAT convert_half
 #define CONVERT_FLOAT4 convert_half4
+#define NATIVE_DIVIDE(x,y) ((x)/(y))
+#define NATIVE_EXP native_exp
+#define NATIVE_RECIP(x) (1/(x))
 #define RI_F(image, coord) read_imageh((image), (SAMPLER), (coord))
 #define WI_F(image, coord, value) write_imageh((image), (coord), (value))

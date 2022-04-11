@@ -92,6 +92,6 @@ __kernel void DepthwiseConv2D(
   const int remain = output_wh.x - out_wb_idx4;
   int output_w_idx = mad24(out_channel_block_idx, output_wh.x, out_wb_idx4);
   AddSumFusedInplace(sum, out0, out1, out2, out3, output_w_idx, output_bh_idx, remain, has_sum);
-  ActivationInPlaceFloat4Vec4(out0, out1, out2, out3, act_type, act_param0, act_param1);
+  ActivationInPlaceFloat4Vec4(out0, out1, out2, out3, act_type, CONVERT_FLOAT(act_param0), CONVERT_FLOAT(act_param1));
   SafeWriteOutput(output, out0, out1, out2, out3, output_w_idx, output_bh_idx, remain);
 }

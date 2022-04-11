@@ -22,7 +22,6 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
 #include "opencl_forward_decl.h"
-#include "opencl_execution_provider.h"
 
 // predefined verbosity log level
 #define V_GENERIC 5
@@ -116,17 +115,37 @@
   VLOGS_DEFAULT(V_TENSOR) << std::setfill(' ') << std::setw(9) << (desc) \
                           << " shape " << (shape)                        \
                           << " PrePack(" << ptr << ")";
+#define ROUND_UP(x, y) (((x) + (y) - (1)) / (y) * (y))
 
 namespace onnxruntime {
 namespace opencl {
 
+enum class GpuType {
+  OTHER = 0,
+  ADRENO = 1,
+  MALI = 2,
+};
+
 class NDRange {
+ private:
+  constexpr static size_t kMaxWorkItemDim = 3;
  public:
+  using ValueType = absl::InlinedVector<size_t, kMaxWorkItemDim>;
+  using IVCReference = ValueType::const_reference;
   // NOLINTNEXTLINE(readability-redundant-member-init), otherwise, segfault
   NDRange() : values_{} {}
+  NDRange(const NDRange& other) = default;
+  NDRange& operator=(const NDRange& other) = default;
 
   template <typename T>
   explicit NDRange(T x) : values_{static_cast<size_t>(x)} {}
+
+  template <typename T>
+  explicit NDRange(const std::vector<T>& vx) {
+    for (auto v : vx) {
+      values_.push_back(static_cast<size_t>(v));
+    }
+  }
 
   template <typename T1, typename T2>
   NDRange(T1 x, T2 y) : values_{static_cast<size_t>(x), static_cast<size_t>(y)} {}
@@ -134,8 +153,11 @@ class NDRange {
   template <typename T1, typename T2, typename T3>
   NDRange(T1 x, T2 y, T3 z) : values_{static_cast<size_t>(x), static_cast<size_t>(y), static_cast<size_t>(z)} {}
 
-  uint32_t Size() const { return static_cast<uint32_t>(values_.size()); }
+  [[nodiscard]] uint32_t Size() const { return static_cast<uint32_t>(values_.size()); }
 
+  IVCReference operator[](size_t i) const {
+    return values_[i];
+  }
   const size_t* Data() const {
     if (values_.empty()) {
       return nullptr;
@@ -159,10 +181,20 @@ class NDRange {
     return result;
   }
 
+ public:
+  // used for hash key
+  template <typename H>
+  friend H AbslHashValue(H h, const NDRange& a) {
+    auto size = a.Size();
+    return H::combine(H::combine_contiguous(std::move(h), a.Data(), size), size);
+ }
+  friend bool operator==(const NDRange& lhs, const NDRange& rhs) {
+   return lhs.values_ == rhs.values_;
+  }
  private:
-  constexpr static size_t kMaxWorkItemDim = 3;
-  absl::InlinedVector<size_t, kMaxWorkItemDim> values_;
+  ValueType values_;
 };
+typedef std::function<double(const opencl::NDRange& lws, const opencl::NDRange& gws)> TuneKernelWithTimeFunc;
 
 const char* GetErrorString(cl_int error_code);
 

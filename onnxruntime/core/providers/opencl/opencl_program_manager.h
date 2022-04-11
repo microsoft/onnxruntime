@@ -9,6 +9,7 @@
 #include "opencl_forward_decl.h"
 #include "opencl_utils.h"
 #include "opencl_execution_provider.h"
+#include "absl/hash/hash.h"
 
 #include <string_view>
 
@@ -110,6 +111,8 @@ class OpenCLProgramManager {
   void ReleaseProgram(cl_program program);
   cl_kernel GetKernel(cl_program program, std::string_view kernel_name);
   void ReleaseKernel(cl_kernel kernel);
+  void SetLocalSizeToCache(const cl_kernel kernel, const NDRange& global, NDRange local);
+  std::optional<const NDRange> GetLocalSizeFromCache(const cl_kernel kernel, const NDRange& global);
 
  private:
   struct ProgramMeta {
@@ -137,6 +140,8 @@ class OpenCLProgramManager {
   std::unordered_map<cl_program, ProgramMeta> program_meta_;
   std::unordered_map<KernelKey, cl_kernel> kernel_registry_;
   std::unordered_map<cl_kernel, KernelMeta> kernel_meta_;
+
+  std::unordered_map<KernelKey, std::unordered_map<NDRange, NDRange, absl::Hash<NDRange>>> local_size_cache_;
 };
 
 }  // namespace opencl

@@ -170,6 +170,18 @@ void OpenCLProgramManager::ReleaseKernel(cl_kernel kernel) {
   }
 }
 
+void OpenCLProgramManager::SetLocalSizeToCache(const cl_kernel kernel, const NDRange& global, NDRange local) {
+  local_size_cache_[kernel_meta_[kernel].key][global] = local;
+}
+
+std::optional<const NDRange> OpenCLProgramManager::GetLocalSizeFromCache(const cl_kernel kernel, const NDRange& global) {
+  auto& f_key = kernel_meta_[kernel].key;
+  if (!local_size_cache_.count(f_key) || !local_size_cache_[f_key].count(global)) {
+    return std::nullopt;
+  }
+  return local_size_cache_[f_key][global];
+}
+
 void OpenCLProgramManager::TakeinProgram(ProgramKey key, cl_program program) {
   program_registry_[key] = program;
   ProgramMeta meta{};

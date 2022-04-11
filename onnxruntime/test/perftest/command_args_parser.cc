@@ -85,12 +85,18 @@ namespace perftest {
       "\t    [NNAPI only] [NNAPI_FLAG_CPU_ONLY]: Using CPU only in NNAPI EP.\n"
       "\t [Usage]: -e <provider_name> -i '<key1> <key2>'\n\n"
       "\t [Example] [For NNAPI EP] -e nnapi -i \" NNAPI_FLAG_USE_FP16 NNAPI_FLAG_USE_NCHW NNAPI_FLAG_CPU_DISABLED \"\n"
+      "\t    [OPENCL only] [use_fp16]: Use fp16 relaxation in opencl EP..\n"
+      "\t    [OPENCL only] [auto_tune]: auto tuning local-size in OPENCL EP.\n"
+      "\t [Usage]: -e <provider_name> -i '<key1> <key2>'\n\n"
+      "\t [Example] [For OPENCL EP] -e opencl -i \" use_fp16 use_fp16  \"\n"
       "\t-h: help\n");
 }
 #ifdef _WIN32
 static const ORTCHAR_T* overrideDelimiter = L":";
+static const ORTCHAR_T* extraDelimiter = L" ";
 #else
 static const ORTCHAR_T* overrideDelimiter = ":";
+static const ORTCHAR_T* extraDelimiter = " ";
 #endif
 static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier, int64_t& override_val) {
   std::basic_string<ORTCHAR_T> free_dim_str(optarg);
@@ -271,7 +277,7 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
         test_config.run_config.set_denormal_as_zero = true;
         break;
       case 'i':
-        test_config.run_config.ep_runtime_config_string = optarg;
+        test_config.run_config.ep_runtime_config_string.append(std::basic_string<ORTCHAR_T>(extraDelimiter) + optarg);
         break;
       case '?':
       case 'h':

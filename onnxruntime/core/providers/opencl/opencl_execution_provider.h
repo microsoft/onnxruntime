@@ -38,12 +38,17 @@ namespace onnxruntime {
 // Information needed to construct OpenCL execution providers.
 struct OpenCLExecutionProviderInfo {
   bool use_fp16;
+  int32_t auto_runing_level;
 };
-
+namespace opencl {
+enum class GpuType;
 struct OpenCLDeviceInfo {
   // get cache size, compute units and frequency. used to tune kernel performance
   std::string device_name;
-  bool has_fp16=false;
+  bool has_fp16 = false;
+  int32_t gpu_model = 0;
+  GpuType gpu_type;
+  uint32_t sub_group_size=0;
   uint64_t global_memery_cachesize_ = 0;
   uint32_t compute_units_ = 0;
   uint32_t max_freq_ = 0;
@@ -52,6 +57,7 @@ struct OpenCLDeviceInfo {
   size_t max_work_item_size[3] = {0};
   size_t image_2d_max_size[2] = {0};
 };
+}  // namespace opencl
 
 using IAllocatorUniquePtrToClMem = IAllocatorUniquePtr<std::remove_pointer_t<cl_mem>>;
 
@@ -78,6 +84,7 @@ class OpenCLExecutionProvider : public IExecutionProvider {
   cl_device_id GetOpenCLDevice() const { return dev_; }
   cl_context GetOpenCLContext() const { return ctx_; }
   cl_command_queue GetCommandQueue() const { return cmd_queue_; }
+  cl_command_queue GetCommandQueueForTune() const { return cmd_tune_queue_; }
 
   /// Get an OpenCL Buffer for temporary usage from Buffer allocator.
   IAllocatorUniquePtrToClMem GetScratchBuffer(size_t nbytes) const;
@@ -91,7 +98,7 @@ class OpenCLExecutionProvider : public IExecutionProvider {
   /// Whether fp16 is enabled. Used by Image2D allocator to decide the datatype
   /// and OpenCLProgramManager to build kernels.
   bool UseFp16() const { return use_fp16_; }
-
+  int32_t TuneEnabledLevel() const { return auto_runing_level_; }
   /// OpenCL after kernel launch performance heuristic. This is called in
   /// KernelLauncher
   Status AfterCLLaunch() const;
@@ -102,6 +109,8 @@ class OpenCLExecutionProvider : public IExecutionProvider {
   const opencl::OpenCLProgramManager& GetProgramManager() const;
   opencl::OpenCLProgramManager& GetProgramManager();
 
+  opencl::NDRange DefaultLocalWG2DOrTune(const opencl::NDRange& gws, const opencl::TuneKernelWithTimeFunc& func) const;
+
  private:
   Status InitCompileOptions();
   Status InitOpenCLContext();
@@ -110,10 +119,12 @@ class OpenCLExecutionProvider : public IExecutionProvider {
   cl_device_id dev_;
   cl_context ctx_;
   cl_command_queue cmd_queue_;
+  cl_command_queue cmd_tune_queue_;
+  int32_t auto_runing_level_;
   bool use_fp16_;
   bool flush_after_launch_;
   std::string compile_options_;
-  OpenCLDeviceInfo dev_info_;
+  opencl::OpenCLDeviceInfo dev_info_;
 
  private:
   std::unique_ptr<opencl::OpenCLProgramManager> program_manager_;

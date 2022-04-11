@@ -21,14 +21,15 @@ std::unique_ptr<IExecutionProvider> OpenCLExecutionProviderFactory::CreateProvid
   return std::make_unique<OpenCLExecutionProvider>(info);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenCL(bool use_fp16) {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenCL(bool use_fp16, int auto_runing_level) {
   auto factory = std::make_shared<onnxruntime::OpenCLExecutionProviderFactory>();
   factory->info.use_fp16 = use_fp16;
+  factory->info.auto_runing_level = auto_runing_level;
   return factory;
 }
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenCL, _In_ OrtSessionOptions* options, int use_fp16) {
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_OpenCL(bool(use_fp16)));
+ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenCL, _In_ OrtSessionOptions* options, int use_fp16, int auto_runing_level) {
+  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_OpenCL(bool(use_fp16), auto_runing_level));
   return nullptr;
 }

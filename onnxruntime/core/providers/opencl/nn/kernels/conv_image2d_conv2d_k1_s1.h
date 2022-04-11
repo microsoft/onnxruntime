@@ -82,6 +82,6 @@ __kernel void Conv2DK1S1(
   const int remain = input_wh.x - out_x_idx;
   int output_w_idx = out_x_base + out_x_idx;
   AddSumFusedInplace(sum, out0, out1, out2, out3, output_w_idx, bh_idx, remain, has_sum);
-  ActivationInPlaceFloat4Vec4(out0, out1, out2, out3, act_type, act_param0, act_param1);
+  ActivationInPlaceFloat4Vec4(out0, out1, out2, out3, act_type, CONVERT_FLOAT(act_param0), CONVERT_FLOAT(act_param1));
   SafeWriteOutput(output, out0, out1, out2, out3, output_w_idx, bh_idx, remain);
 }

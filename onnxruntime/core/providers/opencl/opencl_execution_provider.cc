@@ -5,6 +5,7 @@
 #include "opencl_allocator.h"
 #include "opencl_program_manager.h"
 #include "opencl_data_transfer.h"
+#include "opencl_tunning_utils.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
@@ -93,7 +94,7 @@ bool ShouldFlushAfterLaunch(const std::string& device_name) {
 }  // namespace opencl
 
 OpenCLExecutionProvider::OpenCLExecutionProvider(const OpenCLExecutionProviderInfo& info)
-    : IExecutionProvider(kOpenCLExecutionProvider), use_fp16_(info.use_fp16) {
+    : IExecutionProvider(kOpenCLExecutionProvider), auto_runing_level_(info.auto_runing_level), use_fp16_(info.use_fp16) {
   Status status;
 #ifdef CL3W_ENABLE
   if (cl3wInit() != CL3W_OK) {
@@ -119,6 +120,7 @@ OpenCLExecutionProvider::~OpenCLExecutionProvider() {
 #endif
 
   clReleaseCommandQueue(cmd_queue_);
+  clReleaseCommandQueue(cmd_tune_queue_);
   clReleaseDevice(dev_);
   clReleaseContext(ctx_);
 }
@@ -134,7 +136,23 @@ static void GetCLDevInfo(cl_device_id  device ,
       || std::is_same<T, uint32_t>::value || std::is_same<T, size_t[3]>::value);
   ORT_THROW_IF_CL_ERROR(clGetDeviceInfo(device, param_name, sizeof(T), param, nullptr));
 }
-
+// Gpu SubGroup, referenced to TNN, GPU-model->a exprienced magic number, as CL_KERNEL_MAX_SUB_GROUP_SIZE_FOR_NDRANGE is not implemented util opencl 2.1
+static std::map<int, int> AdrenoSubGroup{
+    {640, 128},
+    {630, 128},
+    {616, 128},
+    {612, 64},
+    {610, 64},
+    {540, 32},
+    {530, 32},
+    {512, 32},
+    {510, 32},
+    {509, 32},
+    {506, 32},
+    {505, 32},
+    {405, 32},
+    {330, 16},
+};
 Status OpenCLExecutionProvider::InitOpenCLContext() {
   cl_uint num_platforms;
   ORT_RETURN_IF_CL_ERROR(clGetPlatformIDs(0, nullptr, &num_platforms));
@@ -178,8 +196,9 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   dev_ = devices[0];
 
   dev_info_.device_name = opencl::GetDeviceInfo(dev_, CL_DEVICE_NAME);
+  auto device_version = opencl::GetDeviceInfo(dev_, CL_DEVICE_VERSION);
   LOGS_DEFAULT(INFO) << "[CL] device name: " << dev_info_.device_name;
-  LOGS_DEFAULT(VERBOSE) << "[CL] device vendor: " << opencl::GetDeviceInfo(dev_, CL_DEVICE_VENDOR);
+  LOGS_DEFAULT(VERBOSE) << "[CL] device vendor: " << device_version;
   LOGS_DEFAULT(VERBOSE) << "[CL] device version: " << opencl::GetDeviceInfo(dev_, CL_DEVICE_VERSION);
   auto exts = opencl::GetDeviceInfo(dev_, CL_DEVICE_EXTENSIONS);
   LOGS_DEFAULT(VERBOSE) << "[CL] device extensions: " << exts << std::endl;
@@ -191,17 +210,35 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   flush_after_launch_ = opencl::ShouldFlushAfterLaunch(dev_info_.device_name);
   LOGS_DEFAULT(INFO) << "[CL] FP16: " << UseFp16();
   LOGS_DEFAULT(INFO) << "[CL] clFlush after launch: " << flush_after_launch_;
-
+  if (dev_info_.device_name == "QUALCOMM Adreno(TM)") {
+    dev_info_.gpu_type = opencl::GpuType::ADRENO;
+    //windows will report a warning os sscanf_s
+#if !(defined(WIN32) || defined(_WIN32) || defined(_WIN32_) || \
+    defined(WIN64) || defined(_WIN64) || defined(_WIN64_))
+    sscanf(device_version.c_str(), "%*s%*f%*s%d", &dev_info_.gpu_model);
+#endif
+#if CL_HPP_TARGET_OPENCL_VERSION >= 200 && CL_TARGET_OPENCL_VERSION >= 210 && defined(CL_HPP_USE_CL_SUB_GROUPS_KHR)
+    cl_int cl_ret;
+    sub_group_size = kernel.getSubGroupInfo<CL_KERNEL_MAX_SUB_GROUP_SIZE_FOR_NDRANGE>(*device_, range, &cl_ret);
+    if (cl_ret != CL_SUCCESS) {
+      CHECK_CL_SUCCESS(cl_ret)
+      sub_group_size = 0;
+    }
+#else
+    dev_info_.sub_group_size = AdrenoSubGroup.count(dev_info_.gpu_model) ?
+        AdrenoSubGroup[dev_info_.gpu_model] : 0;
+#endif
+  }
   GetCLDevInfo(dev_, CL_DEVICE_GLOBAL_MEM_CACHE_SIZE, &dev_info_.global_memery_cachesize_);
   GetCLDevInfo(dev_, CL_DEVICE_MAX_COMPUTE_UNITS, &dev_info_.compute_units_);
   GetCLDevInfo(dev_, CL_DEVICE_MAX_CLOCK_FREQUENCY, &dev_info_.max_freq_);
   GetCLDevInfo(dev_, CL_DEVICE_LOCAL_MEM_SIZE, &dev_info_.local_memory_size_);
   GetCLDevInfo(dev_, CL_DEVICE_MAX_WORK_GROUP_SIZE, &dev_info_.max_work_group_size);
-  GetCLDevInfo(dev_, CL_DEVICE_MAX_WORK_ITEM_SIZES, &dev_info_.max_work_item_size);
+  GetCLDevInfo(dev_, CL_DEVICE_MAX_WORK_ITEM_SIZES, &(dev_info_.max_work_item_size));
   GetCLDevInfo(dev_, CL_DEVICE_IMAGE2D_MAX_WIDTH, &dev_info_.image_2d_max_size[0]);
   GetCLDevInfo(dev_, CL_DEVICE_IMAGE2D_MAX_HEIGHT, &dev_info_.image_2d_max_size[1]);
 
-
+  cmd_tune_queue_ = clCreateCommandQueue(ctx_, dev_, /*properties=*/CL_QUEUE_PROFILING_ENABLE, &err);
 #ifdef TRACY_ENABLE
   cmd_queue_ = clCreateCommandQueue(ctx_, dev_, CL_QUEUE_PROFILING_ENABLE, &err);
 #else
@@ -218,6 +255,34 @@ Status OpenCLExecutionProvider::InitCompileOptions() {
     compile_options_.append(" -D CONFORMANCE_WORKAROUND_could_not_emit_constant_value_abstractly");
   }
   return Status::OK();
+}
+
+opencl::NDRange OpenCLExecutionProvider::DefaultLocalWG2DOrTune(const opencl::NDRange& gws, const opencl::TuneKernelWithTimeFunc& func) const {
+  /*
+  //read well-tuned local_size from cache
+  auto& tunedLws = runtime->tunedLwsMap();
+  std::pair<std::string, std::vector<uint32_t>> info = std::make_pair(kernelName, gws);
+  if (tunedLws.find(info) != tunedLws.end()) {
+    return tunedLws[info];
+  }
+  */
+  if (TuneEnabledLevel()) {
+    return RunTuneLWS2D(gws, dev_info_, func, TuneEnabledLevel());
+  }
+
+  if (dev_info_.gpu_type != opencl::GpuType::ADRENO) {
+    return opencl::NDRange();
+  }
+  std::vector<size_t> lwgs(2);
+  if (dev_info_.max_work_group_size == 0) {
+    lwgs[0] = lwgs[1] = 1;
+  } else {
+    lwgs = AdrenoLocalSize2D(gws, dev_info_);
+  }
+  if (lwgs.size() == 0) {
+    return opencl::NDRange();
+  }
+  return opencl::NDRange(lwgs[0], lwgs[1]);
 }
 
 void OpenCLExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> /*allocator_manager*/) {
