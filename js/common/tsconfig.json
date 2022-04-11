@@ -3,7 +3,7 @@
   "compilerOptions": {
     "outDir": "dist/lib",
     "esModuleInterop": false,
-    "noUnusedParameters": true,
+    "noUnusedParameters": true
   },
   "include": ["lib"]
 }

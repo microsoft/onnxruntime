@@ -13,7 +13,7 @@
 #include "core/platform/env.h"
 #include "core/platform/path_lib.h"
 #ifdef ENABLE_NVTX_PROFILE
-#include "core/profile/context.h"
+#include "core/providers/cuda/nvtx_profile_context.h"
 #endif
 #include "core/session/environment.h"
 #include "orttraining/core/framework/checkpointing.h"
@@ -55,6 +55,7 @@ static SessionOptions SESSION_OPTION = {
     false,                             //use_deterministic_compute
     {},                                //config_options
     {},                                // initializers_to_share_map
+    {},                                // external_initializers
 };
 
 TrainingRunner::TrainingRunner(Parameters params, const Environment& env)

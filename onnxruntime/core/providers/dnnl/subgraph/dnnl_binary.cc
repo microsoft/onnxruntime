@@ -65,7 +65,11 @@ void DnnlBinary::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
                                 {DNNL_ARG_SRC_1, binary_src1_mem},
                                 {DNNL_ARG_DST, binary_dst_mem}});
 
-  sp.SetMemory(node.Output(OUT_Y), binary_dst_mem);
+  if (sp.IsScalar(node.Input(IN_A)) && sp.IsScalar(node.Input(IN_B))) {
+    sp.SetMemory(node.Output(OUT_Y), binary_dst_mem, false, true);
+  } else {
+    sp.SetMemory(node.Output(OUT_Y), binary_dst_mem);
+  }
 }
 
 }  // namespace ort_dnnl

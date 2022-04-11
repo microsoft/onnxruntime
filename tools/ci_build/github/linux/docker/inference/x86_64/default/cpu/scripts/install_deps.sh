@@ -73,8 +73,8 @@ elif [[ "$CPU_ARCH" = "aarch64" ]]; then
 else
   NODEJS_ARCH=$CPU_ARCH
 fi
-GetFile https://nodejs.org/dist/v14.18.1/node-v14.18.1-linux-${NODEJS_ARCH}.tar.gz /tmp/src/node-v14.18.1-linux-${NODEJS_ARCH}.tar.gz
-tar --strip 1 -xf /tmp/src/node-v14.18.1-linux-${NODEJS_ARCH}.tar.gz -C /usr
+GetFile https://nodejs.org/dist/v16.14.2/node-v16.14.2-linux-${NODEJS_ARCH}.tar.gz /tmp/src/node-v16.14.2-linux-${NODEJS_ARCH}.tar.gz
+tar --strip 1 -xf /tmp/src/node-v16.14.2-linux-${NODEJS_ARCH}.tar.gz -C /usr
 
 cd /tmp/src
 GetFile https://downloads.gradle-dn.com/distributions/gradle-6.3-bin.zip /tmp/src/gradle-6.3-bin.zip
@@ -82,9 +82,9 @@ unzip /tmp/src/gradle-6.3-bin.zip
 mv /tmp/src/gradle-6.3 /usr/local/gradle
 
 if ! [ -x "$(command -v protoc)" ]; then
-  GetFile https://github.com/protocolbuffers/protobuf/archive/v3.16.0.tar.gz /tmp/src/v3.16.0.tar.gz
-  tar -xf /tmp/src/v3.16.0.tar.gz -C /tmp/src
-  cd /tmp/src/protobuf-3.16.0
+  GetFile https://github.com/protocolbuffers/protobuf/archive/v3.18.1.tar.gz /tmp/src/v3.18.1.tar.gz
+  tar -xf /tmp/src/v3.18.1.tar.gz -C /tmp/src
+  cd /tmp/src/protobuf-3.18.1
   cmake ./cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_SYSCONFDIR=/etc -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo -DCMAKE_INSTALL_LIBDIR=lib64
   make -j$(getconf _NPROCESSORS_ONLN)
   make install

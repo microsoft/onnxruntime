@@ -333,7 +333,7 @@ def _create_operator_type_usage_processors():
     #    ai.onnx: NonMaxSuppression
     #    com.microsoft: FusedConv, FusedGemm, FusedMatMul
     # - Implementation does not have any significant type specific code:
-    #    ai.onnx: Concat, Flatten, Not, QLinearConv, Reshape, Shape, Squeeze, Unsqueeze
+    #    ai.onnx: Concat, Flatten, Not, Reshape, Shape, Squeeze, Unsqueeze
     #
     default_processor_onnx_ops = ['Abs', 'ArgMax', 'ArgMin', 'AveragePool',
                                   'BatchNormalization', 'BitShift',
@@ -346,6 +346,7 @@ def _create_operator_type_usage_processors():
                                   'MatMul', 'Max', 'MaxPool', 'Mean', 'Min',
                                   'NonZero',
                                   'Pad',
+                                  'QLinearConv', 'QLinearMatMul',
                                   'Range', 'Reciprocal', 'ReduceL1', 'ReduceL2', 'ReduceLogSum', 'ReduceLogSumExp',
                                   'ReduceMax', 'ReduceMean', 'ReduceMin', 'ReduceProd', 'ReduceSum', 'ReduceSumSquare',
                                   'Relu', 'Resize', 'ReverseSequence', 'RoiAlign', 'Round',
@@ -365,7 +366,8 @@ def _create_operator_type_usage_processors():
                                                              'Neg',  # used in tflite TransposeConv conversion
                                                              'Sub']
 
-    internal_ops = ['QLinearAdd', 'QLinearMul']
+    # NOTE: QLinearConv has ONNX and internal implementations
+    internal_ops = ['QLinearAdd', 'QLinearMul', 'QLinearConv']
 
     # TODO - review and add ML ops as needed
     # ML Op notes.

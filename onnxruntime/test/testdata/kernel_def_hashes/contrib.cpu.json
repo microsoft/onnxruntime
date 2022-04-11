@@ -21,11 +21,11 @@
     ],
     [
         "LayerNormalization ai.onnx CPUExecutionProvider",
-        4058615579523172864
+        4827261308628792072
     ],
     [
         "LayerNormalization ai.onnx CPUExecutionProvider",
-        8466416990072218056
+        18418354579469131656
     ],
     [
         "MeanVarianceNormalization ai.onnx CPUExecutionProvider",
@@ -49,11 +49,11 @@
     ],
     [
         "SimplifiedLayerNormalization ai.onnx CPUExecutionProvider",
-        16349480652468900704
+        4809288790945391544
     ],
     [
-      "SimplifiedLayerNormalization ai.onnx CPUExecutionProvider",
-      418129161279605176
+        "SimplifiedLayerNormalization ai.onnx CPUExecutionProvider",
+        13556035637124174064
     ],
     [
         "SparseToDenseMatMul com.microsoft CPUExecutionProvider",
@@ -93,7 +93,7 @@
     ],
     [
         "CropAndResize com.microsoft CPUExecutionProvider",
-        7642430665819070720
+        8620498355864235632
     ],
     [
         "DequantizeLinear com.microsoft CPUExecutionProvider",
@@ -142,6 +142,10 @@
     [
         "Gelu com.microsoft CPUExecutionProvider",
         4658746266161736328
+    ],
+    [
+        "GridSample com.microsoft CPUExecutionProvider",
+        11924582339825775592
     ],
     [
         "Inverse com.microsoft CPUExecutionProvider",
@@ -285,10 +289,10 @@
     ],
     [
       "QGemm com.microsoft CPUExecutionProvider",
-      13737193491843065240
+      13009794669709617232
     ],
     [
-      "GridSample com.microsoft CPUExecutionProvider",
-      15019666093341768288
+      "QGemm com.microsoft CPUExecutionProvider",
+      13737193491843065240
     ]
 ]

@@ -5,8 +5,8 @@
 #include "core/providers/cpu/tensor/gather.h"
 #include "core/common/common.h"
 #include "core/platform/threadpool.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 
 namespace onnxruntime {
 

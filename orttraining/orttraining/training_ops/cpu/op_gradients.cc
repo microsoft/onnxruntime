@@ -143,7 +143,7 @@ Status SoftmaxGrad<T>::Compute(OpKernelContext* context) const {
     math::Exp<float, CPUMathUtil>(nd, Ydata, eYdata, nullptr);
     for (size_t i = 0; i < N; ++i) {
       float sdY;
-      math::Sum<float, CPUMathUtil>(d, dYdata + i * d, &sdY, nullptr, nullptr);
+      math::Sum<float, CPUMathUtil>(d, dYdata + i * d, &sdY, nullptr);
       math::Axpy<float, CPUMathUtil>(d, -sdY, eYdata + i * d, dXdata + i * d, nullptr);
     }
   } else {

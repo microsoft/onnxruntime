@@ -3,9 +3,9 @@
 
 #include "core/providers/cpu/tensor/pad.h"
 
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 #include "core/util/math.h"
 
 // there's no way to use a raw pointer as the copy destination with std::copy_n

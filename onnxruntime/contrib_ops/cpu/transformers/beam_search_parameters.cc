@@ -7,6 +7,7 @@ namespace contrib {
 namespace transformers {
 
 constexpr int kMaxSequenceLength = 4096;
+constexpr int kMaxNumBeams = 128;
 
 Status BeamSearchParameters::Validate() const {
   ORT_RETURN_IF(eos_token_id < 0, "eos_token_id is invalid");
@@ -16,6 +17,7 @@ Status BeamSearchParameters::Validate() const {
 }
 
 void BeamSearchParameters::ParseFromAttributes(const OpKernelInfo& info) {
+  model_type = static_cast<int>(info.GetAttrOrDefault<int64_t>("model_type", 0));
   early_stopping = info.GetAttrOrDefault<int64_t>("early_stopping", 0) == 1;
   eos_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("eos_token_id", -1));
   pad_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("pad_token_id", -1));
@@ -41,7 +43,7 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   auto* num_beams_tensor = context->Input<Tensor>(3);
   num_beams = num_beams_tensor ? static_cast<int>(*num_beams_tensor->Data<int32_t>()) : 1;
   // TODO: limit num_beams > 1 when we can have another operator for greedy search.
-  ORT_ENFORCE(num_beams >= 1, "num_beams shall be a positive integer, got ", num_beams);
+  ORT_ENFORCE(num_beams >= 1 && num_beams <= kMaxNumBeams, "num_beams shall be a positive integer no more than ", kMaxNumBeams, ", got ", num_beams);
 
   auto* num_return_sequences_tensor = context->Input<Tensor>(4);
   num_return_sequences = num_return_sequences_tensor ? static_cast<int>(*num_return_sequences_tensor->Data<int32_t>()) : 1;

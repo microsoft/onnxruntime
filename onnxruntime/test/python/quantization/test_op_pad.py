@@ -10,7 +10,7 @@ import unittest
 import onnx
 import numpy as np
 from onnx import helper, TensorProto
-from onnxruntime.quantization import quantize_static, quantize_dynamic, QuantType
+from onnxruntime.quantization import quantize_static, quantize_dynamic, QuantType, QuantFormat
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
 
@@ -97,11 +97,11 @@ class TestOpQuatizerPad(unittest.TestCase):
     def quantize_model(self, model_fp32_path, model_i8_path, data_reader=None,
                        activation_type=QuantType.QUInt8, weight_type=QuantType.QUInt8, extra_options={}):
         if data_reader is not None:
-            quantize_static(model_fp32_path, model_i8_path, data_reader, reduce_range=True,
+            quantize_static(model_fp32_path, model_i8_path, data_reader, reduce_range=True, quant_format=QuantFormat.QOperator,
                             activation_type=activation_type, weight_type=weight_type, extra_options=extra_options)
         else:
             quantize_dynamic(model_fp32_path, model_i8_path, reduce_range=True,
-                             activation_type=activation_type, weight_type=weight_type, extra_options=extra_options)
+                             weight_type=weight_type, extra_options=extra_options)
 
     def verify_should_not_trigger(self, quantize_mode='static'):
         np.random.seed(108)

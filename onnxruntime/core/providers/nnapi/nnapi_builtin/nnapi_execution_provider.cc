@@ -110,13 +110,6 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     return result;
   }
 
-  // Disable NNAPI if the graph has any unsupported inputs
-  for (const auto* input : graph_viewer.GetInputs()) {
-    if (!nnapi::IsInputSupported(*input, "graph")) {
-      return result;
-    }
-  }
-
   // Get all the NodeUnits in the graph_viewer
   std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
   std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
@@ -183,14 +176,13 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   };
 
   result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed,
-                                            gen_metadef_name, NNAPI);
+                                            gen_metadef_name, NNAPI, kNnapiExecutionProvider);
 
   const auto num_of_partitions = result.size();
-  const auto num_of_supported_nodes = std::transform_reduce(
-      result.begin(), result.end(),
-      size_t{0}, std::plus<>{},
-      [](const auto& partition) -> size_t {
-        return partition && partition->sub_graph ? partition->sub_graph->nodes.size() : 0;
+  const auto num_of_supported_nodes = std::accumulate(
+      result.begin(), result.end(), size_t{0},
+      [](const auto& acc, const auto& partition) -> size_t {
+        return acc + (partition && partition->sub_graph ? partition->sub_graph->nodes.size() : 0);
       });
 
   const auto summary_msg = MakeString(
@@ -208,6 +200,10 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   }
 
   return result;
+}
+
+DataLayout NnapiExecutionProvider::GetPreferredLayout() const {
+  return nnapi_flags_ & NNAPI_FLAG_USE_NCHW ? DataLayout::NCHW : DataLayout::NHWC;
 }
 
 #ifdef __ANDROID__

@@ -606,9 +606,11 @@ TEST(GradientCheckerTest, GemmGrad) {
 
 TEST(GradientCheckerTest, ReduceMeanGrad) {
   // Attribute axes supports negative values from opset 11.
-  OpDef op_def{"ReduceMean", kOnnxDomain, 11};
+  OpDef op_def_opset11{"ReduceMean", kOnnxDomain, 11};
+  RunReductionTests(op_def_opset11);
 
-  RunReductionTests(op_def);
+  OpDef op_def_opset13{"ReduceMean", kOnnxDomain, 13};
+  RunReductionTests(op_def_opset13);
 }
 
 TEST(GradientCheckerTest, ReduceSumGrad) {
@@ -2756,6 +2758,60 @@ TEST(GradientCheckerTest, ScatterNDGrad) {
 
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indices_info, updates_info},
                                                            {output_info}, &max_error, input_datas));
+    EXPECT_IS_TINY(max_error);
+  }
+}
+
+TEST(GradientCheckerTest, ScatterElementsGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"ScatterElements", kOnnxDomain, 13};
+
+  {  // without axis
+    TensorInfo data_info({3, 3}, true);
+    TensorInfo indices_info({2, 3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo updates_info({2, 3}, true);
+    std::vector<std::vector<float>> input_datas = {{ 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                                     0.0f, 0.0f, 0.0f, 0.0f},
+                                                   {1, 0, 2, 0, 2, 1},
+                                                   {1.0f, 1.1f, 1.2f, 2.0f, 2.1f, 2.2f}};
+
+    TensorInfo output_info({3, 3}, true);
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indices_info, updates_info},
+                                                           {output_info}, &max_error, input_datas));
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {  // with axis
+    TensorInfo data_info({1, 5}, true);
+    TensorInfo indices_info({1, 2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo updates_info({1, 2}, true);
+    std::vector<std::vector<float>> input_datas = {{1.0f, 2.0f, 3.0f, 4.0f, 5.0f},
+                                                   {1, 3},
+                                                   {1.1f, 2.1f}};
+
+    TensorInfo output_info({1, 5}, true);
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indices_info, updates_info},
+                                                           {output_info}, &max_error, input_datas,
+                                                           {MakeAttribute("axis", static_cast<int64_t>(1))}));
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {  // with -ve axis
+    TensorInfo data_info({1, 5}, true);
+    TensorInfo indices_info({1, 2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo updates_info({1, 2}, true);
+    std::vector<std::vector<float>> input_datas = {{1.0f, 2.0f, 3.0f, 4.0f, 5.0f},
+                                                   {1, 3},
+                                                   {1.1f, 2.1f}};
+
+    TensorInfo output_info({1, 5}, true);
+
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {data_info, indices_info, updates_info},
+                                                           {output_info}, &max_error, input_datas,
+                                                           {MakeAttribute("axis", static_cast<int64_t>(-1))}));
     EXPECT_IS_TINY(max_error);
   }
 }

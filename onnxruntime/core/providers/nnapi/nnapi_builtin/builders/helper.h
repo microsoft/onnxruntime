@@ -82,10 +82,18 @@ enum class QuantizedOpType : uint8_t {
   QLinearAdd,
   QLinearSigmoid,
   QLinearAveragePool,
+  QLinearMul,
   // Not yet supported
-  // QLinearMul,
   // QLinearReduceMean,
   QDQConv,
+  QDQResize,
+  QDQAveragePool,
+  QDQAdd,
+  QDQMul,
+  QDQTranspose,
+  QDQReshape,
+  QDQSoftmax,
+  QDQConcat,
   // TODO, add other QDQ NodeUnit types
 };
 
@@ -93,6 +101,11 @@ enum class ConvType : uint8_t {
   Regular,
   Depthwise,
   Grouped,
+};
+
+enum class IOKind : uint8_t {
+  Input,
+  Output,
 };
 
 QuantizedOpType GetQuantizedOpType(const NodeUnit& node_unit);
@@ -104,22 +117,15 @@ ConvType GetConvType(const NodeUnit& node_unit, const InitializedTensorSet& init
 // If this is a quantized Conv (QLinearConv or QDQConv)
 bool IsQuantizedConv(QuantizedOpType quant_op_type);
 
+// If this is a quantized Pool (QLinearAveragePool or QDQAveragePool)
+bool IsQuantizedPool(QuantizedOpType quant_op_type);
+
 // This quantized op is an operator or qdq node unit takes 2 inputs and produces 1 output
 // Such as QLinearConv, QLinearMatMul, QLinearAdd, QDQConv,...
 bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type);
 
-// Check if a qlinear unary op has valid inputs, Qlinear[Sigmoid/AveragePool]
-bool HasValidUnaryOpQuantizedInputs(const NodeUnit& node_unit);
 // Check if a qlinear binary op has valid inputs, Qlinear[Conv/MatMul/Add]
-bool HasValidBinaryOpQuantizedInputs(const NodeUnit& node_unit);
-
-// Check if a qlinear op has valid scales for given indices
-bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                const std::vector<size_t>& indices, const OpSupportCheckParams& params, bool is_input);
-
-// Check if a qlinear op has valid zero points for given indices
-bool HasValidQuantizationZeroPoints(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-                                    const std::vector<size_t>& indices, bool is_input);
+bool HasValidBinaryOpQuantizedInputTypes(const NodeUnit& node_unit);
 
 common::Status GetQuantizationScaleAndZeroPoint(
     const InitializedTensorSet& initializers, const NodeUnitIODef& io_def, const Path& model_path,
@@ -127,7 +133,7 @@ common::Status GetQuantizationScaleAndZeroPoint(
 
 common::Status GetQuantizationScaleAndZeroPoint(
     const InitializedTensorSet& initializers, const NodeUnit& node_unit, const std::string& name,
-    float& scale, int32_t& zero_point, bool is_input = true);
+    float& scale, int32_t& zero_point, IOKind io_kind = IOKind::Input);
 
 // Get Shape/Type of a NodeArg
 // TODO, move to shared_utils
@@ -145,9 +151,6 @@ bool IsNodeSupported(const NodeUnit& node_unit, const GraphViewer& graph_viewer,
 bool IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_viewer,
                             const OpSupportCheckParams& params,
                             const std::unordered_set<std::string>& node_outputs_in_group);
-
-// If a graph input is supported by NNAPI
-bool IsInputSupported(const NodeArg& input, const std::string& parent_name);
 
 // If an NNAPI partition node group is valid
 bool IsValidSupportedNodeGroup(const std::vector<const Node*>& supported_node_group);

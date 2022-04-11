@@ -74,7 +74,7 @@ class TestOpAveragePool(unittest.TestCase):
 
         # Verify QOperator mode
         data_reader.rewind()
-        quantize_static(model_fp32_path, model_q8_path, data_reader,
+        quantize_static(model_fp32_path, model_q8_path, data_reader, quant_format=QuantFormat.QOperator,
                         activation_type = activation_type, weight_type = weight_type, extra_options = extra_options)
         qnode_counts = {'QLinearConv': 1, 'QuantizeLinear': 1, 'DequantizeLinear': 2, 'QLinearAveragePool': 1}
         check_op_type_count(self, model_q8_path, **qnode_counts)

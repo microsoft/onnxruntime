@@ -3,10 +3,18 @@
 # Licensed under the MIT License.
 
 import argparse
-import os
 import onnx
 import pathlib
 import sys
+import typing
+
+from util.file_utils import files_from_file_or_dir, path_match_suffix_ignore_case
+
+
+def _get_suffix_match_predicate(suffix: str):
+    def predicate(file_path: pathlib.Path):
+        return path_match_suffix_ignore_case(file_path, suffix)
+    return predicate
 
 
 def _extract_ops_from_onnx_graph(graph, operators, domain_opset_map):
@@ -51,39 +59,29 @@ def _process_onnx_model(model_path, required_ops):
         _extract_ops_from_onnx_graph(model.graph, required_ops, domain_opset_map)
 
 
-def _extract_ops_from_onnx_model(model_path_or_dir):
-    '''Extract ops from a single ONNX model, or all ONNX models found by recursing model_path_or_dir'''
-
-    if not os.path.exists(model_path_or_dir):
-        raise ValueError('Path to model/s does not exist: {}'.format(model_path_or_dir))
+def _extract_ops_from_onnx_model(model_files: typing.Iterable[pathlib.Path]):
+    '''Extract ops from ONNX models'''
 
     required_ops = {}
 
-    if os.path.isfile(model_path_or_dir):
-        _process_onnx_model(model_path_or_dir, required_ops)
-    else:
-        for root, _, files in os.walk(model_path_or_dir):
-            for file in files:
-                if file.lower().endswith('.onnx'):
-                    model_path = os.path.join(root, file)
-                    _process_onnx_model(model_path, required_ops)
+    for model_file in model_files:
+        if not model_file.is_file():
+            raise ValueError(f"Path is not a file: '{model_file}'")
+        _process_onnx_model(model_file, required_ops)
 
     return required_ops
 
 
-def create_config_from_onnx_models(model_path_or_dir: str, output_file: str):
+def create_config_from_onnx_models(model_files: typing.Iterable[pathlib.Path], output_file: pathlib.Path):
 
-    required_ops = _extract_ops_from_onnx_model(model_path_or_dir)
+    required_ops = _extract_ops_from_onnx_model(model_files)
 
-    directory, filename = os.path.split(output_file)
-    if not filename:
-        raise RuntimeError("Invalid output path for configuation: {}".format(output_file))
-
-    if not os.path.exists(directory):
-        os.makedirs(directory)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_file, 'w') as out:
-        out.write("# Generated from ONNX models path of {}\n".format(model_path_or_dir))
+        out.write("# Generated from ONNX model/s:\n")
+        for model_file in sorted(model_files):
+            out.write(f"# - {model_file}\n")
 
         for domain in sorted(required_ops.keys()):
             for opset in sorted(required_ops[domain].keys()):
@@ -129,10 +127,13 @@ def main():
         config_path = config_path.joinpath(filename)
 
     if args.format == 'ONNX':
-        create_config_from_onnx_models(model_path_or_dir, config_path)
+        model_files = files_from_file_or_dir(model_path_or_dir, _get_suffix_match_predicate(".onnx"))
+        create_config_from_onnx_models(model_files, config_path)
     else:
         from util.ort_format_model import create_config_from_models as create_config_from_ort_models
-        create_config_from_ort_models(model_path_or_dir, config_path, args.enable_type_reduction)
+
+        model_files = files_from_file_or_dir(model_path_or_dir, _get_suffix_match_predicate(".ort"))
+        create_config_from_ort_models(model_files, config_path, args.enable_type_reduction)
 
         # Debug code to validate that the config parsing matches
         # from util import parse_config

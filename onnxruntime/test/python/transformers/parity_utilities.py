@@ -41,7 +41,6 @@ def export_onnx(model, onnx_model_path, float16, hidden_size, device):
                       input_names=['input'],
                       output_names=["output"],
                       dynamic_axes=dynamic_axes,
-                      example_outputs=outputs,
                       opset_version=11,
                       do_constant_folding=True)
     print("exported:", onnx_model_path)

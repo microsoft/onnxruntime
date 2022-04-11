@@ -5,7 +5,10 @@
 import os
 import argparse
 import warnings
-from azure.storage.blob import BlockBlobService, ContentSettings
+import subprocess
+import logging
+
+log = logging.getLogger("Build")
 
 
 def parse_nightly_and_local_version_from_whl_name(blob_name):
@@ -21,14 +24,14 @@ def parse_nightly_and_local_version_from_whl_name(blob_name):
     return night_build, blob_name[start:end]
 
 
-def upload_whl(python_wheel_path, account_name, account_key, container_name):
-    block_blob_service = BlockBlobService(
-        account_name=account_name,
-        account_key=account_key
-    )
+def run_subprocess(args, cwd=None):
+    log.debug("Running subprocess in '{0}'\n{1}".format(cwd or os.getcwd(), args))
+    return subprocess.run(args, cwd=cwd, check=True)
 
+
+def upload_whl(python_wheel_path):
     blob_name = os.path.basename(python_wheel_path)
-    block_blob_service.create_blob_from_path(container_name, blob_name, python_wheel_path)
+    run_subprocess(['azcopy', 'cp', python_wheel_path, 'https://onnxruntimepackages.blob.core.windows.net/$web/'])
 
     nightly_build, local_version = parse_nightly_and_local_version_from_whl_name(blob_name)
     if local_version:
@@ -38,7 +41,8 @@ def upload_whl(python_wheel_path, account_name, account_key, container_name):
 
     download_path_to_html = "./onnxruntime_{}.html".format(nightly_build)
 
-    block_blob_service.get_blob_to_path(container_name, html_blob_name, download_path_to_html)
+    run_subprocess(['azcopy', 'cp', 'https://onnxruntimepackages.blob.core.windows.net/$web/'+html_blob_name,
+                    download_path_to_html])
 
     blob_name_plus_replaced = blob_name.replace('+', '%2B')
     with open(download_path_to_html) as f:
@@ -54,25 +58,16 @@ def upload_whl(python_wheel_path, account_name, account_key, container_name):
                 f.write("%s\n" % item)
     else:
         warnings.warn("'{}' exists in {}. The html file is not updated.".format(new_line, download_path_to_html))
-
-    content_settings = ContentSettings(content_type='text/html')
-    block_blob_service.create_blob_from_path(
-        container_name,
-        html_blob_name,
-        download_path_to_html,
-        content_settings=content_settings)
+    run_subprocess(['azcopy', 'cp', download_path_to_html,
+                    'https://onnxruntimepackages.blob.core.windows.net/$web/'+html_blob_name,
+                    '--content-type', 'text/html', '--overwrite', 'true'])
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Upload python whl to azure storage.")
 
     parser.add_argument("--python_wheel_path", type=str, help="path to python wheel")
-    parser.add_argument("--account_name", type=str, help="account name")
-    parser.add_argument("--account_key", type=str, help="account key")
-    parser.add_argument("--container_name", type=str, help="container name")
 
-    # TODO: figure out a way to secure args.account_key to prevent later code changes
-    # that may accidentally print out it to the console.
     args = parser.parse_args()
 
-    upload_whl(args.python_wheel_path, args.account_name, args.account_key, args.container_name)
+    upload_whl(args.python_wheel_path)

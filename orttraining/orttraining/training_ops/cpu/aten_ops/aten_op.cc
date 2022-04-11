@@ -10,11 +10,11 @@
 namespace onnxruntime {
 namespace contrib {
 
-ONNX_OPERATOR_KERNEL_EX(ATenOp, kMSDomain, 1, kCpuExecutionProvider,
+ONNX_OPERATOR_KERNEL_EX(ATen, kPytorchAtenDomain, 1, kCpuExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
-                        ATenOp);
+                        ATen);
 
-Status ATenOp::Compute(OpKernelContext* p_ctx) const {
+Status ATen::Compute(OpKernelContext* p_ctx) const {
   auto* p_ctx_internal = static_cast<OpKernelContextInternal*>(p_ctx);
   std::vector<DLManagedTensor*> dlpacks;
   for (int i = 0; i < p_ctx_internal->InputCount(); i++) {
@@ -39,7 +39,7 @@ bool IsATenOperatorExecutorInitialized() {
   return aten_ops::ATenOperatorExecutor::Instance().IsInitialized();
 }
 
-Status ExecuteReduceSumATenOp(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) {
+Status ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) {
   ORT_ENFORCE(aten_ops::ATenOperatorExecutor::Instance().IsInitialized() && !axes.empty());
   std::vector<DLManagedTensor*> dlpacks;
   auto* p_ctx_internal = static_cast<OpKernelContextInternal*>(p_ctx);

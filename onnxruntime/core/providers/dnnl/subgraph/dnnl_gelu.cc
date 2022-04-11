@@ -89,7 +89,11 @@ void DnnlGelu::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   sp.AddPrimitive(gelu_op, {{DNNL_ARG_SRC, gelu_src_mem},
                             {DNNL_ARG_DST, dst_mem}});
 
-  sp.SetMemory(node.Output(OUT_Y), dst_mem);
+  if (sp.IsScalar(node.Input(IN_X))) {
+    sp.SetMemory(node.Output(OUT_Y), dst_mem, false, true);
+  } else {
+    sp.SetMemory(node.Output(OUT_Y), dst_mem);
+  }
 }
 
 }  // namespace ort_dnnl

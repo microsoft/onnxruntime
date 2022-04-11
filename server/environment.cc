@@ -17,9 +17,9 @@
 
 #endif
 
-#ifdef USE_STVM
+#ifdef USE_TVM
 
-#include "core/providers/stvm/stvm_provider_factory.h"
+#include "core/providers/tvm/tvm_provider_factory.h"
 
 #endif
 
@@ -75,8 +75,8 @@ void ServerEnvironment::RegisterExecutionProviders(){
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Nuphar(options_, 1, ""));
   #endif
 
-  #ifdef USE_STVM
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Stvm(options_, ""));
+  #ifdef USE_TVM
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tvm(options_, ""));
   #endif
   
   #ifdef USE_OPENVINO

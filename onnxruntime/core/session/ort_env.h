@@ -74,7 +74,6 @@ struct OrtEnv {
    */
   onnxruntime::common::Status UnregisterAllocator(const OrtMemoryInfo& mem_info);
   OrtEnv(std::unique_ptr<onnxruntime::Environment> value);
-  ~OrtEnv();
 
  private:
   static std::unique_ptr<OrtEnv> p_instance_;

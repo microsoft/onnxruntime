@@ -94,16 +94,25 @@ namespace Microsoft.ML.OnnxRuntime
         {
             Type type;
             int width;
-            TensorElementTypeConverter.GetTypeAndWidth(elementType, out type, out width);
-            if(width < 1)
+            if (!TensorElementTypeConverter.GetTypeAndWidth(elementType, out type, out width))
             {
-                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Unsupported data type (such as string)");
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
+                    "Unable to query type information for data type: " + elementType.ToString());
+            }
+
+            if (elementType == TensorElementType.String)
+            {
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
+                    "Cannot map managed strings buffer to native OrtValue");
             }
 
             var shapeSize = ArrayUtilities.GetSizeForShape(shape);
-            if((shapeSize * width) > bufferLength)
+            var requiredBufferSize = shapeSize * width;
+            if (requiredBufferSize > bufferLength)
             {
-                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Can not bind the shape to smaller buffer");
+                var message = String.Format("Shape of: {0} elements requires a buffer of at least {1} bytes. Provided: {2} bytes",
+                    shapeSize, requiredBufferSize, bufferLength);
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, message);
             }
 
             IntPtr ortValueHandle = IntPtr.Zero;

@@ -210,7 +210,7 @@ static Status GetInputDataType(
       // TODO, verify the scale and zero point match if there are multiple op using same input
       const auto* node_unit = all_quantized_op_inputs.at(name)[0];
       ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-          initializers, *node_unit, name, scale, zero_point, true /* is_input */));
+          initializers, *node_unit, name, scale, zero_point, IOKind::Input));
       break;
     }
       // case ONNX_NAMESPACE::TensorProto_DataType_INT8:
@@ -262,7 +262,7 @@ Status ModelBuilder::RegisterInitializers() {
     shaper_.AddShape(name, operand_type.dimensions);
 
     uint32_t index = 0;
-    ORT_RETURN_IF_ERROR(AddNewOperand(name, operand_type, false /* is_nhwc */, index));
+    ORT_RETURN_IF_ERROR(AddNewOperand(name, operand_type, index));
     const size_t size = operand_type.GetOperandBlobByteSize();
     const size_t padded_size = GetPaddedByteSize(size);
     sizeAll += padded_size;
@@ -352,7 +352,7 @@ Status ModelBuilder::RegisterModelInputs() {
     shaper_.AddShape(input_name, operand_type.dimensions);
 
     uint32_t index = 0;
-    ORT_RETURN_IF_ERROR(AddNewOperand(input_name, operand_type, false /* is_nhwc */, index));
+    ORT_RETURN_IF_ERROR(AddNewOperand(input_name, operand_type, index));
     input_index_vec_.push_back(index);
     nnapi_model_->AddInput(input_name, operand_type);
   }
@@ -386,11 +386,6 @@ Status ModelBuilder::RegisterModelOutputs() {
     }
 
     std::string nnapi_output_name = output_name;
-    if (IsOperandNHWC(output_name)) {
-      // We need to transpose the output still in nhwc back to nchw
-      nnapi_output_name = GetUniqueName(output_name + "_nhwc_to_nchw");
-      ORT_RETURN_IF_ERROR(TransposeNHWCToNCHW(*this, output_name, nnapi_output_name));
-    }
 
     output_index_vec_.push_back(operand_indices_[nnapi_output_name]);
     nnapi_model_->AddOutput(output_name, nnapi_output_name, operand_types_.at(nnapi_output_name));
@@ -405,10 +400,10 @@ void ModelBuilder::RegisterModelShaper() {
 
 Status ModelBuilder::AddNewOperand(const std::string& name,
                                    const OperandType& operand_type,
-                                   bool is_nhwc, uint32_t& index) {
+                                   uint32_t& index) {
   LOGS_DEFAULT(VERBOSE) << "operand name: " << name;
   ORT_RETURN_IF_ERROR(AddNewNNAPIOperand(operand_type, index));
-  RegisterOperand(name, index, operand_type, is_nhwc);
+  RegisterOperand(name, index, operand_type);
   return Status::OK();
 }
 
@@ -432,13 +427,10 @@ Status ModelBuilder::AddNewNNAPIOperand(const OperandType& operand_type, uint32_
 }
 
 void ModelBuilder::RegisterOperand(const std::string& name, uint32_t index,
-                                   const OperandType& operand_type, bool is_nhwc) {
+                                   const OperandType& operand_type) {
   operand_indices_[name] = index;
   operand_types_.emplace(name, operand_type);
   operands_.insert(name);
-
-  if (is_nhwc)
-    RegisterNHWCOperand(name);
 }
 
 Status ModelBuilder::SetOperandValue(uint32_t index,
@@ -466,7 +458,7 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
     const android::nn::wrapper::OperandType& operand_type) {
   shaper_.AddShape(name, operand_type.dimensions);
   uint32_t index = 0;
-  ORT_RETURN_IF_ERROR(AddNewOperand(name, operand_type, false /* is_nhwc */, index));
+  ORT_RETURN_IF_ERROR(AddNewOperand(name, operand_type, index));
   const size_t size = operand_type.GetOperandBlobByteSize();
 
   // for small size operand, the value will be copied
@@ -528,12 +520,11 @@ Status ModelBuilder::AddOperations() {
 
 Status ModelBuilder::AddOperation(int op, const std::vector<uint32_t>& input_indices,
                                   const std::vector<std::string>& output_names,
-                                  const std::vector<OperandType>& types,
-                                  const std::vector<bool>& is_nhwc_vec) {
+                                  const std::vector<OperandType>& types) {
   std::vector<uint32_t> output_indices;
   for (size_t i = 0; i < types.size(); i++) {
     uint32_t index = 0;
-    ORT_RETURN_IF_ERROR(AddNewOperand(output_names[i], types[i], is_nhwc_vec[i], index));
+    ORT_RETURN_IF_ERROR(AddNewOperand(output_names[i], types[i], index));
     output_indices.push_back(index);
   }
 
@@ -693,7 +684,6 @@ int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
   const auto& op_type = node_unit.GetNode().OpType();
   if (!Contains(op_builders, op_type))
     return nullptr;
-
   return op_builders.at(op_type);
 }
 
@@ -708,46 +698,12 @@ std::string ModelBuilder::GetUniqueName(const std::string& base_name) {
   return unique_name;
 }
 
+DataLayout ModelBuilder::GetPreferredLayout() const {
+  return use_nchw_ ? DataLayout::NCHW : DataLayout::NHWC;
+}
+
 const InitializedTensorSet& ModelBuilder::GetInitializerTensors() const {
   return graph_viewer_.GetAllInitializedTensors();
-}
-
-void ModelBuilder::RegisterNHWCOperand(const std::string& name) {
-  nhwc_operands_.insert(name);
-}
-
-bool ModelBuilder::IsOperandNHWC(const std::string& name) const {
-  return Contains(nhwc_operands_, name);
-}
-
-bool ModelBuilder::GetNCHWOperand(const std::string& nhwc_name, std::string& nchw_name) {
-  if (Contains(nhwc_to_nchw_map_, nhwc_name)) {
-    nchw_name = nhwc_to_nchw_map_[nhwc_name];
-    return true;
-  }
-  return false;
-}
-
-bool ModelBuilder::GetNHWCOperand(const std::string& nchw_name, std::string& nhwc_name) {
-  if (Contains(nchw_to_nhwc_map_, nchw_name)) {
-    nhwc_name = nchw_to_nhwc_map_[nchw_name];
-    return true;
-  }
-  return false;
-}
-
-Status ModelBuilder::SetNHWCToNCHWOperandMap(const std::string& nhwc_name,
-                                             const std::string& nchw_name) {
-  ORT_RETURN_IF_NOT(!Contains(nhwc_to_nchw_map_, nhwc_name), "A previous nchw to nhwc map exists");
-  nhwc_to_nchw_map_[nhwc_name] = nchw_name;
-  return Status::OK();
-}
-
-Status ModelBuilder::SetNCHWToNHWCOperandMap(const std::string& nchw_name,
-                                             const std::string& nhwc_name) {
-  ORT_RETURN_IF_NOT(!Contains(nchw_to_nhwc_map_, nchw_name), "A previous nchw to nhwc map exists");
-  nchw_to_nhwc_map_[nchw_name] = nhwc_name;
-  return Status::OK();
 }
 
 }  // namespace nnapi

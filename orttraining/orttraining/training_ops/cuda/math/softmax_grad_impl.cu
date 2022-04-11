@@ -18,7 +18,7 @@
 
 // The code below is mostly copied from Pytorch PersistentSoftmax.cuh
 
-#include "orttraining/training_ops/cuda/math/softmax_grad.h"
+#include "orttraining/training_ops/cuda/math/softmax_grad_impl.h"
 
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/math/softmax_warpwise_impl.cuh"

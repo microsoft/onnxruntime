@@ -95,7 +95,7 @@ class SelectorActionRegistry {
 
 #if !defined(ORT_MINIMAL_BUILD)
   // return registered Entry or nullptr if not found
-  const Entry* LookUpByOpType(const std::string& op_type) const;
+  auto LookUpByOpType(const std::string& op_type) const -> std::vector<gsl::not_null<const Entry*>>;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
  private:
@@ -103,7 +103,7 @@ class SelectorActionRegistry {
 
 #if !defined(ORT_MINIMAL_BUILD)
   // auxiliary mapping to enable lookup by op type
-  std::unordered_map<std::string, const Entry*> op_type_to_entry_;
+  std::unordered_multimap<std::string, const Entry*> op_type_to_entry_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 };
 
@@ -114,7 +114,8 @@ This setup allows optimizations to be captured and applied at runtime in a minim
 class SelectorActionTransformer : public GraphTransformer {
  protected:
   SelectorActionTransformer(const std::string& name, SelectorActionRegistry&& selector_action_registry,
-                            const SatApplyContextVariant& apply_context);
+                            const SatApplyContextVariant& apply_context,
+                            const InlinedHashSet<std::string_view>& compatible_execution_providers);
 
   // can't copy/assign selector_action_registry_
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(SelectorActionTransformer);
@@ -130,11 +131,11 @@ class SelectorActionTransformer : public GraphTransformer {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // apply optimizations by replaying saved runtime optimizations
   Status ApplySavedRuntimeOptimizations(Graph& graph, bool& modified, int graph_level,
                                         const logging::Logger& logger) const;
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   SelectorActionRegistry selector_action_registry_;
 

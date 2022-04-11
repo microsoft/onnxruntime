@@ -199,7 +199,7 @@ TEST(MathOpTest, MatMul_BFloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
-    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
     return;
   }
 #endif

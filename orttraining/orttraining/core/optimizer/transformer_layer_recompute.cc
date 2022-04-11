@@ -13,9 +13,9 @@ Status TransformerLayerRecompute::IdentifyTransformerLayerEdges(
     const Graph& graph,
     std::vector<std::pair<const NodeArg*, const NodeArg*>>& start_end_edges,
     const logging::Logger& logger) const {
-  const std::unordered_set<std::string> gelu_ops{"Gelu", "BiasGelu", "FastGelu"};
-  const std::unordered_set<std::string> dropout_ops{"Dropout", "BiasDropout"};
-  const std::unordered_set<std::string> layernorm_ops{"LayerNormalization", "SkipLayerNormalization"};
+  const InlinedHashSet<std::string_view> gelu_ops{"Gelu", "BiasGelu", "FastGelu"};
+  const InlinedHashSet<std::string_view> dropout_ops{"Dropout", "BiasDropout"};
+  const InlinedHashSet<std::string_view> layernorm_ops{"LayerNormalization", "SkipLayerNormalization"};
 
   std::vector<const NodeArg*> layer_start_edges, layer_end_edges;
   GraphViewer graph_viewer(graph);

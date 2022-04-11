@@ -3,7 +3,7 @@
 
 #include "precomp.h"
 #include "OperatorUtility.h"
-#include "core/providers/dml/OperatorAuthorHelper/OperatorRegistration.h"
+#include "core/providers/dml/OperatorAuthorHelper/OperatorVersions.h"
 
 namespace Dml
 {

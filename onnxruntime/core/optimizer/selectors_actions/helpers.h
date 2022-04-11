@@ -160,18 +160,24 @@ struct ValueMoveInfo {
   }
 
   // append single value (may be variadic) from source to destination
-  ValueMoveInfo(InOutDefSlot src_slot_in, ArgType dest_slot_type, bool is_optional = false)
+  ValueMoveInfo(InOutDefSlot src_slot_in,
+                ArgType dest_slot_type,
+                bool is_optional = false,
+                bool fill_optional_with_empty = false)
       : src_slot(src_slot_in),
         dest_slot{dest_slot_type, -1},
         copy_all{false},
         append{true},
-        optional{is_optional} {}
+        optional{is_optional},
+        fill_optional_with_empty{fill_optional_with_empty} {}
 
   InOutDefSlot src_slot;
   InOutDefSlot dest_slot;
-  bool copy_all{false};  // ignore src_slot.idx and copy all values
-  bool append{false};    // ignore dest_slot.idx and append to existing values
-  bool optional{false};  // optional copy that can be skipped if source node is missing
+  bool copy_all{false};           // ignore src_slot.idx and copy all values
+  bool append{false};             // ignore dest_slot.idx and append to existing values
+  bool optional{false};           // optional copy that can be skipped if source node is missing
+  bool fill_optional_with_empty;  // fill optional NodeArg by NodeArg with empty name.
+                                  // Only support in 'append single value' mode.
 
  private:
   ValueMoveInfo() = default;
@@ -213,10 +219,12 @@ inline NodeAndMoveInfo MoveToSlot(const NodesToOptimize::NodeLocation& src_node,
 inline NodeAndMoveInfo MoveAndAppend(const NodesToOptimize::NodeLocation& src_node,
                                      ArgType src_direction, int src_slot,
                                      ArgType dest_direction,
-                                     bool optional = false) {
+                                     bool optional = false,
+                                     bool fill_optional_with_empty = false) {
   return NodeAndMoveInfo{src_node, ValueMoveInfo{
                                        InOutDefSlot{src_direction, src_slot},  // move from this slot
-                                       dest_direction, optional}};             // append here
+                                       dest_direction, optional,
+                                       fill_optional_with_empty}};  // append here
 }
 
 // move all inputs/outputs from the source node to the target/replacement node

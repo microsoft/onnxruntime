@@ -5,9 +5,9 @@
 
 #include "core/framework/element_type_lists.h"
 #include "core/framework/utils.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 #include "utils.h"
 
 namespace onnxruntime {
@@ -247,7 +247,7 @@ static Status DoUntypedTranspose(const gsl::span<const size_t>& permutations, co
   const auto element_size = input.DataType()->Size();
   const bool is_string_type = input.IsDataTypeString();
 
-  InlinedShapeVector<size_t> stride(rank);
+  InlinedVector<size_t> stride(rank);
   for (size_t i = 0; i < rank; i++) {
     size_t inpdim = permutations[i];
     if (inpdim + 1 < rank)
@@ -709,8 +709,8 @@ Status Transpose::Compute(OpKernelContext* ctx) const {
   size_t rank = input_dims.size();
 
   TensorShapeVector output_dims(rank);
-  const InlinedShapeVector<size_t>* p_perm;
-  InlinedShapeVector<size_t> default_perm(rank);
+  const InlinedVector<size_t>* p_perm;
+  InlinedVector<size_t> default_perm(rank);
   Status status = ComputeOutputShape(X, output_dims, default_perm, p_perm);
   if (!status.IsOK())
     return status;

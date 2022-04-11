@@ -8,9 +8,9 @@
 namespace onnxruntime {
 namespace cuda {
 
-ONNX_OPERATOR_KERNEL_EX(ATenOp, kMSDomain, 1, kCudaExecutionProvider,
+ONNX_OPERATOR_KERNEL_EX(ATen, kPytorchAtenDomain, 1, kCudaExecutionProvider,
                         (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
-                        onnxruntime::contrib::ATenOp);
+                        onnxruntime::contrib::ATen);
 
 }  // namespace cuda
 }  // namespace onnxruntime

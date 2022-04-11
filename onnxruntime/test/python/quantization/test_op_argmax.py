@@ -84,7 +84,7 @@ class TestOpArgMax(unittest.TestCase):
 
         # Verify QOperator mode
         data_reader = self.input_feeds(1, {'input': [1, 256, 128, 128]})
-        quantize_static(model_fp32_path, model_uint8_path, data_reader,
+        quantize_static(model_fp32_path, model_uint8_path, data_reader, quant_format=QuantFormat.QOperator,
                         activation_type = activation_type, weight_type = weight_type, extra_options = extra_options)
         # make sure argmax become xint8 operator, its input name could tell that
         check_op_nodes(self, model_uint8_path, lambda node: not(node.name == "argmax_node" and node.input[0] == 'conv_output'))

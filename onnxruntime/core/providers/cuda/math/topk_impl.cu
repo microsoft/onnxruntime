@@ -435,9 +435,8 @@ __global__ void ExcludeOutput(int64_t* output_i, int64_t K, int64_t dimension) {
 }
 
 template <typename T>
-Status TopKImpl(const CudaKernel* kernel, const T* input_x, T* output_v, int64_t* output_i, const TArray<int64_t>& elem_nums, size_t size, int32_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension) {
+Status TopKImpl(const CudaKernel* kernel, cudaStream_t stream, const T* input_x, T* output_v, int64_t* output_i, const TArray<int64_t>& elem_nums, size_t size, int32_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension) {
   typedef typename ToCudaType<T>::MappedType CudaT;
-  cudaStream_t stream = kernel->Stream();
   const CudaT* input_x_ptr = reinterpret_cast<const CudaT*>(input_x);
   CudaT* output_v_ptr = reinterpret_cast<CudaT*>(output_v);
 
@@ -488,6 +487,7 @@ Status TopKImpl(const CudaKernel* kernel, const T* input_x, T* output_v, int64_t
 }
 
 #define TOPKIMPLE(T) template Status TopKImpl<T>(const CudaKernel* kernel, \
+                                                 cudaStream_t stream,      \
                                                  const T* input_x,         \
                                                  T* output_v,              \
                                                  int64_t* output_i,        \

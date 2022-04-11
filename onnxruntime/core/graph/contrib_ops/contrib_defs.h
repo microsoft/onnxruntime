@@ -5,12 +5,32 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
+#include "core/graph/contrib_ops/ms_schema.h"
 #else
 #include "onnx/defs/data_type_utils.h"
 #endif
 
+#define ONNX_MS_OPERATOR_SET_SCHEMA(name, ver, impl) \
+  ONNX_OPERATOR_SET_SCHEMA_EX(name, Microsoft, ::onnxruntime::kMSDomain, ver, true, impl)
+
+//They are in ONNX domain but they are in our source code
+#define ONNX_CONTRIB_OPERATOR_SET_SCHEMA(name, ver, impl) \
+  ONNX_OPERATOR_SET_SCHEMA_EX(name, Onnx, ::ONNX_NAMESPACE::ONNX_DOMAIN, ver, true, impl)
+
 namespace onnxruntime {
 namespace contrib {
+namespace utils {
+inline bool HasDimValue(const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim) {
+  return dim.value_case() == ONNX_NAMESPACE::TensorShapeProto_Dimension::kDimValue;
+}
+inline bool HasRawData(const ONNX_NAMESPACE::TensorProto& ten_proto) {
+  // Can not be UNDEFINED and can not be STRING but test for STRING is usually performed separately
+  // to return an error
+  return ten_proto.data_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED &&
+         ten_proto.has_raw_data();  // XXX: Figure out how to do in proto3
+}
+}
+
 #define ONNX_CONTRIB_OPERATOR_SCHEMA(name) \
   ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_HELPER(__COUNTER__, name)
 #define ONNX_CONTRIB_OPERATOR_SCHEMA_UNIQ_HELPER(Counter, name) \
@@ -31,7 +51,6 @@ namespace contrib {
 
 void RegisterContribSchemas();
 void RegisterNchwcSchemas();
-void RegisterNhwcSchemas();
 void RegisterQuantizationSchemas();
 
 constexpr const float kDefaultSkipLayerNormEpsilon = 1e-12f;

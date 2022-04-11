@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -268,6 +269,100 @@ TEST(FusedMatMulOpTest, FloatTypeTransposeBatch) {
   RunFusedMatMulTest<float>("FusedMatMul", 1, true, true, false, true);
   RunFusedMatMulTest<float>("FusedMatMul", 1, true, true, true, true);
 }
+
+#if defined(USE_CUDA) || defined(USE_ROCM)  
+TEST(FusedMatMulOpTest, Float16_NoTranspose) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
+#endif
+  std::vector<float> common_input_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  for (auto t : GenerateSimpleTestCases<float>()) {
+
+    OpTester test("FusedMatMul", 1, onnxruntime::kMSDomain);
+
+    std::vector<int64_t> input0_dims(t.input0_dims);
+    std::vector<float> input0_vals;
+    ProcessInputs(t.input0_dims, common_input_vals, false, false, input0_dims, input0_vals);
+
+    std::vector<int64_t> input1_dims(t.input1_dims);
+    std::vector<float> input1_vals;
+    ProcessInputs(t.input1_dims, common_input_vals, false, false, input1_dims, input1_vals);
+
+    std::vector<MLFloat16> f_A(input0_vals.size());
+    std::vector<MLFloat16> f_B(input1_vals.size());
+    std::vector<MLFloat16> f_Y(t.expected_vals.size());
+    ConvertFloatToMLFloat16(input0_vals.data(), f_A.data(), (int)input0_vals.size());
+    ConvertFloatToMLFloat16(input1_vals.data(), f_B.data(), (int)input1_vals.size());
+    ConvertFloatToMLFloat16(t.expected_vals.data(), f_Y.data(), (int)t.expected_vals.size());
+
+    test.AddInput<MLFloat16>("A", input0_dims, f_A);
+    test.AddInput<MLFloat16>("B", input1_dims, f_B, false);
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("transBatchA", (int64_t)0);
+    test.AddAttribute("transBatchB", (int64_t)0);
+    test.AddAttribute("alpha", 1.0f);
+
+    test.AddOutput<MLFloat16>("Y", t.expected_dims, f_Y);
+
+    // Disable TensorRT because of unsupported data type
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  }
+}
+#endif
+
+#if defined(USE_CUDA) || defined(USE_ROCM)  
+TEST(FusedMatMulOpTest, BFloat16_NoTranspose) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
+#endif
+  std::vector<float> common_input_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  for (auto t : GenerateSimpleTestCases<float>()) {
+
+    OpTester test("FusedMatMul", 1, onnxruntime::kMSDomain);
+
+    std::vector<int64_t> input0_dims(t.input0_dims);
+    std::vector<float> input0_vals;
+    ProcessInputs(t.input0_dims, common_input_vals, false, false, input0_dims, input0_vals);
+
+    std::vector<int64_t> input1_dims(t.input1_dims);
+    std::vector<float> input1_vals;
+    ProcessInputs(t.input1_dims, common_input_vals, false, false, input1_dims, input1_vals);
+
+    std::vector<BFloat16> f_A = FloatsToBFloat16s(input0_vals);
+    std::vector<BFloat16> f_B = FloatsToBFloat16s(input1_vals);
+    std::vector<BFloat16> f_Y = FloatsToBFloat16s(t.expected_vals);
+
+    test.AddInput<BFloat16>("A", input0_dims, f_A);
+    test.AddInput<BFloat16>("B", input1_dims, f_B, false);
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("transBatchA", (int64_t)0);
+    test.AddAttribute("transBatchB", (int64_t)0);
+    test.AddAttribute("alpha", 1.0f);
+
+    test.AddOutput<BFloat16>("Y", t.expected_dims, f_Y);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+    execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+#endif
 
 }  // namespace transpose_matmul
 }  // namespace test

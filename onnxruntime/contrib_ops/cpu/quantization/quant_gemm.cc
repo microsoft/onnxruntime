@@ -44,8 +44,10 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
+    bool a_is_signed = a->IsDataType<int8_t>();
+    const uint8_t* a_data = static_cast<const uint8_t*>(a->DataRaw());
+
     BufferUniquePtr a_trans_buffer;
-    const uint8_t* a_data = a->template Data<uint8_t>();
     if (trans_A_ == CblasTrans) {
       a_data = quantization::TransPoseInputData(a_data, a_trans_buffer, allocator, K, M);
     }
@@ -82,12 +84,12 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
       GemmBroadcastBias(M, N, 1.f, c->template Data<int32_t>(), &(c->Shape()), gemm_output_data);
     }
 
-    MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape{M, N, K, false /*AIsSigned*/, b_is_signed, c != nullptr};
+    MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape{M, N, K, a_is_signed, b_is_signed, c != nullptr};
     MLAS_GEMM_QUANT_DATA_PARAMS gemm_param;
 
     gemm_param.A = a_data;
     gemm_param.lda = gemm_shape.K;
-    gemm_param.ZeroPointA = *(a_zp->template Data<uint8_t>());
+    gemm_param.ZeroPointA = *(static_cast<const uint8_t*>(a_zp->DataRaw()));
 
     gemm_param.B = b_data;
     gemm_param.ldb = gemm_shape.N;
@@ -218,6 +220,21 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("TC", DataTypeImpl::GetTensorType<int32_t>())
         .TypeConstraint("TYZ", DataTypeImpl::GetTensorType<uint8_t>())
         .TypeConstraint("TY", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<uint8_t>()}),
+    QGemm);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    QGemm,
+    kMSDomain,
+    1,
+    int8_t,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("TA", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("TB", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("TC", DataTypeImpl::GetTensorType<int32_t>())
+        .TypeConstraint("TYZ", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("TY", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<int8_t>()}),
     QGemm);
 
 }  // namespace contrib

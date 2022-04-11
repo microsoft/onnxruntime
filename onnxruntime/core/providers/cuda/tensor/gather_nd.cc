@@ -92,24 +92,24 @@ Status GatherNDBase::PrepareCompute(
   return Status::OK();
 }
 
-#define REGISTER_KERNEL_VERSIONED_TYPED_GATHER_ND(TIndex, startver, endver) \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                  \
-      GatherND,                                                             \
-      kOnnxDomain,                                                          \
-      startver,                                                             \
-      endver,                                                               \
-      TIndex,                                                               \
-      kCudaExecutionProvider,                                               \
-      (*KernelDefBuilder::Create())                                         \
-          .TypeConstraint("T",                                              \
-                          std::vector<MLDataType>{                          \
-                              DataTypeImpl::GetTensorType<float>(),         \
-                              DataTypeImpl::GetTensorType<double>(),        \
-                              DataTypeImpl::GetTensorType<MLFloat16>(),     \
-                              DataTypeImpl::GetTensorType<int64_t>(),       \
-                              DataTypeImpl::GetTensorType<bool>(),          \
-                          })                                                \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()),   \
+#define REGISTER_KERNEL_VERSIONED_TYPED_GATHER_ND(TIndex, startver, endver)  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                   \
+      GatherND,                                                              \
+      kOnnxDomain,                                                           \
+      startver,                                                              \
+      endver,                                                                \
+      TIndex,                                                                \
+      kCudaExecutionProvider,                                                \
+      (*KernelDefBuilder::Create())                                          \
+          .TypeConstraint("T",                                               \
+                          std::vector<MLDataType>{                           \
+                              DataTypeImpl::GetTensorType<float>(),          \
+                              DataTypeImpl::GetTensorType<double>(),         \
+                              DataTypeImpl::GetTensorType<MLFloat16>(),      \
+                              DataTypeImpl::GetTensorType<int64_t>(),        \
+                              DataTypeImpl::GetTensorType<bool>(),           \
+                          })                                                 \
+          .TypeConstraint("indices", DataTypeImpl::GetTensorType<TIndex>()), \
       GatherND<TIndex>);
 
 #define REGISTER_KERNEL_TYPED_GATHER_ND(TIndex, ver)                                                           \
@@ -117,15 +117,12 @@ Status GatherNDBase::PrepareCompute(
       GatherND, kOnnxDomain, ver, TIndex, kCudaExecutionProvider,                                              \
       (*KernelDefBuilder::Create())                                                                            \
           .TypeConstraint("T", BuildKernelDefConstraints<float, MLFloat16, double, int64_t, BFloat16, bool>()) \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()),                                      \
+          .TypeConstraint("indices", DataTypeImpl::GetTensorType<TIndex>()),                                   \
       GatherND<TIndex>);
 
-// TODO: decprecate GatherND-1 after updating training models to opset-12
-#ifdef ENABLE_TRAINING
-REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 1)
-#endif
 REGISTER_KERNEL_TYPED_GATHER_ND(int64_t, 13)
 REGISTER_KERNEL_VERSIONED_TYPED_GATHER_ND(int64_t, 12, 12)
+REGISTER_KERNEL_VERSIONED_TYPED_GATHER_ND(int64_t, 11, 11)
 
 template <typename T>
 struct GatherNDComputeImpl {

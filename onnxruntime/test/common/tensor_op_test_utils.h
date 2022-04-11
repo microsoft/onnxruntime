@@ -6,11 +6,14 @@
 #include <random>
 #include <type_traits>
 
+#include <gsl/gsl>
+
 #include "gtest/gtest.h"
 
 #include "core/common/common.h"
 #include "core/common/optional.h"
 #include "core/common/type_utils.h"
+#include "core/framework/tensor.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {

@@ -49,7 +49,7 @@
     <PackageProjectUrl>https://github.com/Microsoft/onnxruntime</PackageProjectUrl>
     <Copyright>© Microsoft Corporation. All rights reserved.</Copyright>
     <PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
-    <PackageIconUrl>https://go.microsoft.com/fwlink/?linkid=2049168</PackageIconUrl>
+    <PackageIcon>ORT_icon_for_light_bg.png</PackageIcon>
     <PackageReleaseNotes>
       Release Def:
         Branch: $(BUILD_SOURCEBRANCH)
@@ -178,7 +178,7 @@
           CopyToOutputDirectory="PreserveNewest"
           Visible="false"
     />
-    <None Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE.txt;$(OnnxRuntimeCsharpRoot)\..\ThirdPartyNotices.txt;$(OnnxRuntimeCsharpRoot)\..\docs\Privacy.md"
+    <None Include="$(OnnxRuntimeCsharpRoot)\..\LICENSE.txt;$(OnnxRuntimeCsharpRoot)\..\ThirdPartyNotices.txt;$(OnnxRuntimeCsharpRoot)\..\ORT_icon_for_light_bg.png;$(OnnxRuntimeCsharpRoot)\..\docs\Privacy.md"
           PackagePath="\"
           Pack="true"
           Visible="false"

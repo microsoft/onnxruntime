@@ -69,7 +69,8 @@ int64_t ORTTensorImpl::numel() const {
 }
 
 bool ORTTensorImpl::is_contiguous(at::MemoryFormat memory_format) const {
-  return true;
+  auto& tensor = tensor_.Get<onnxruntime::Tensor>();
+  return tensor.IsContiguous();
 }
 
 int64_t ORTTensorImpl::size(int64_t d) const {
@@ -82,7 +83,7 @@ void ORTTensorImpl::cacheSizeMetadata() {
   auto& tensor = tensor_.Get<onnxruntime::Tensor>();
   const auto& shape = tensor.Shape();
   const auto dims = shape.GetDims();
-  auto strides = GetStrides(dims);
+  auto strides = tensor.Strides();
 
   numel_ = shape.Size();
 

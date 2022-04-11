@@ -11,7 +11,7 @@
 # 4. Build minimal ORT with type reduction from a globally allowed types list.
 #    This step uses a hard-coded list of types which may not include the types needed by the models
 #    in <repo root>/onnxruntime/test/testdata/, so the tests for those models are skipped.
-# 5. Build extended minimal ORT with runtime optimization replay enabled.
+# 5. Build extended minimal ORT and run tests.
 # 6. Build with all optional features disabled and no kernels.
 #    6a: regular build with python enabled checks that the exclusions don't break code paths in a full build.
 #    6b: minimal build with exceptions and python disabled checks that the exclusions don't break code paths in a
@@ -154,7 +154,7 @@ jobs:
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
-    displayName: 5. Build extended minimal onnxruntime with runtime optimization replay enabled
+    displayName: 5. Build extended minimal onnxruntime and run tests
     inputs:
       script: |
         docker run --rm \
@@ -170,8 +170,7 @@ jobs:
               --skip_submodule_sync \
               --build_shared_lib \
               --parallel \
-              --minimal_build extended \
-              --cmake_extra_defines onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD=ON
+              --minimal_build extended
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -251,7 +250,7 @@ jobs:
               --skip_submodule_sync \
               --build_shared_lib \
               --parallel \
-              --minimal_build extended\
+              --minimal_build extended \
               --disable_exceptions \
               --disable_ml_ops \
               --skip_tests \
@@ -259,7 +258,6 @@ jobs:
               --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config \
               --cmake_extra_defines onnxruntime_DISABLE_SPARSE_TENSORS=ON \
                                     onnxruntime_DISABLE_OPTIONAL_TYPE=ON \
-                                    onnxruntime_ENABLE_RUNTIME_OPTIMIZATION_IN_MINIMAL_BUILD=OFF \
                                     onnxruntime_BUILD_UNIT_TESTS=OFF
       workingDirectory: $(Build.SourcesDirectory)
 
@@ -295,18 +293,4 @@ jobs:
               --skip_tests
       workingDirectory: $(Build.SourcesDirectory)
 
-  - task: PublishTestResults@2
-    displayName: 'Publish unit test results'
-    inputs:
-      testResultsFiles: '**/*.results.xml'
-      searchFolder: '$(Build.BinariesDirectory)'
-      testRunTitle: 'Unit Test Run'
-    condition: succeededOrFailed()
-
-  - template: templates/component-governance-component-detection-steps.yml
-    parameters:
-      condition: 'succeeded'
-
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
+  - template: templates/clean-agent-build-directory-step.yml

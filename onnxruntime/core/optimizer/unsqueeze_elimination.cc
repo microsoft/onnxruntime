@@ -21,7 +21,7 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
     return Status::OK();
   }
 
-  std::vector<int64_t> axes;
+  InlinedVector<int64_t> axes;
   if (!graph_utils::GetRepeatedNodeAttributeValues(node, "axes", axes)) {
     // missing 'axes'. should have failed at model load but just in case...
     return Status::OK();
@@ -38,7 +38,7 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
   }
 
   // Generate new dims.
-  std::vector<int64_t> new_dims(output_rank, 0);
+  InlinedVector<int64_t> new_dims(output_rank, 0);
   for (int64_t axis : axes) {
     new_dims[static_cast<size_t>(axis)] = 1;
   }

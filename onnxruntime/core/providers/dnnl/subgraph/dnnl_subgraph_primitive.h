@@ -132,9 +132,5 @@ inline std::ostream& operator<<(std::ostream& os, const gsl::span<int64_t>& span
   return os;
 }
 
-inline std::ostream& operator<<(std::ostream& os, const TensorShape& shape) {
-  return os << shape.GetDims();
-}
-
 }  // namespace onnxruntime
 

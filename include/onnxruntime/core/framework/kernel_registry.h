@@ -85,6 +85,7 @@ class KernelRegistry {
 
   static std::string GetMapKey(const std::string& op_name, const std::string& domain, const std::string& provider) {
     std::string key(op_name);
+    // use the kOnnxDomainAlias of 'ai.onnx' instead of kOnnxDomain's empty string
     key.append(1, ' ').append(domain.empty() ? kOnnxDomainAlias : domain).append(1, ' ').append(provider);
     return key;
   }

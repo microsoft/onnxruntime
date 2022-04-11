@@ -23,7 +23,10 @@ Other
 * When adding a new class, disable copy/assignment/move until you have a proven need for these capabilities. If a need arises, enable copy/assignment/move selectively, and when doing so validate that the implementation of the class supports what is being enabled.
   * Use ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE initially
   * See the other ORT_DISALLOW_* macros in https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/common.h
-* Consider using 'const gsl::span<const T>&' (or 'std::span' when supported) as input arguments when passing const references to containers with contiguous storage (like 'std::vector'). This allows to make the function container independent, represent arbitrary memory spans or pass sub-spans as an argument.
+* Prefer passing 'gsl::span<const T>' by value (or 'std::span' when supported) as input arguments when passing const references to containers with contiguous storage (like 'std::vector'). This allows to make the function container independent, represent arbitrary memory spans or pass sub-spans as an argument.
+* Use 'AsSpan({1, 2, 3})' to convert std::initializer_list<T> to a span. You can also use 'std::array'.
+* Prefer passing 'std::string_view' by value instead of 'const std::string&'
+* Prefer returning 'gsl::span<const T>' or 'gsl::span<T>' by value instead of a const reference or reference to a contiguous member container.
 * The use of the following container typedefs to reduce memory allocations is preferred:
   * Use 'TensorShapeVector' typedef to build or modify shapes from core/framework/tensor_shape.h. It is based on a vector implementation that features small buffer optimization. Its small buffer size is the same to that of in TensorShape. Use 'InlinedShapeVector<T>'    for shape related operations, but of different type.
   * Use 'InlinedVector<T>' typedef instead of std::vector. By default, it provides 64 bytes of inlined storage. You can customize inlined size with the second template non-type parameter N.

@@ -83,11 +83,11 @@ class QDQQuantizer(ONNXQuantizer):
                     tensor_name))
             self.quantize_tensor(tensor_name)
 
-    def quantize_bias_tensor(self, bias_name, input_name, weight_name):
+    def quantize_bias_tensor(self, bias_name, input_name, weight_name, beta = 1.0):
         weight = find_by_name(bias_name, self.model.initializer())
         if weight is not None:
             if weight.data_type == onnx_proto.TensorProto.FLOAT:
-                self.bias_to_quantize.append((bias_name, input_name, weight_name))
+                self.bias_to_quantize.append((bias_name, input_name, weight_name, beta))
         else:
             logging.warning("Expected {} to be a weight".format(bias_name))
 
@@ -126,7 +126,7 @@ class QDQQuantizer(ONNXQuantizer):
     def try_replacing_upstream_output(self, upstream_output_name, output_name):
         if output_name in self.quantization_params.keys() and \
            len(self.model.input_name_to_nodes()[upstream_output_name]) == 1 and \
-           not self.model.is_graph_output(output_name):
+           not self.model.is_graph_output(upstream_output_name):
             self.model.replace_output_of_all_nodes(upstream_output_name, output_name)
             self.tensors_to_quantize.remove(upstream_output_name)
             return True
@@ -222,11 +222,11 @@ class QDQQuantizer(ONNXQuantizer):
                     self.quantized_value_map[tensor_name] = quantized_value
 
     def quantize_bias_tensors(self):
-        for bias_name, input_name, weight_name in self.bias_to_quantize:
+        for bias_name, input_name, weight_name, beta in self.bias_to_quantize:
             if bias_name in self.quantized_value_map.keys():
                 continue
             # Quantize the input
-            self.quantize_bias_static(bias_name, input_name, weight_name)
+            self.quantize_bias_static(bias_name, input_name, weight_name, beta)
             self.model.remove_initializer(find_by_name(bias_name, self.model.initializer()))
             quant_value = self.quantized_value_map[bias_name]
             inputs = [quant_value.q_name, quant_value.scale_name, quant_value.zp_name]
