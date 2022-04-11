@@ -208,6 +208,12 @@ class WindowsEnv : public Env {
     }
     if (ret.empty())
       return generate_vector_of_n(std::thread::hardware_concurrency());
+
+    /* move first affinity to the tail */
+    size_t first = ret[0];
+    ret.erase(ret.begin());
+    ret.push_back(first);
+
     return ret;
   }
 
