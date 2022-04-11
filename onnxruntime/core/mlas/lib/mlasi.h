@@ -121,6 +121,8 @@ class MLASCPUIDInfo
     // ARM
     bool HasArmNeonDot() const { return has_arm_neon_dot_; }
 
+    uint32_t GetCurrentCoreIdx() const { return 0xFFFFFFFF; }
+
     int32_t GetCurrentUarch() const { return -1; }
 
     int32_t GetCoreUarch(uint32_t coreId) const { return -1; }
