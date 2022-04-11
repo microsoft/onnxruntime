@@ -665,7 +665,7 @@ std::unique_ptr<Function> Instantiate(const onnxruntime::Graph& graph,
 
   ORT_ENFORCE(node_in_parent_graph->OutputDefs().size() == function_body_graph.GetOutputs().size(),
               "Node ", node_in_parent_graph->Name(), "'s number of outputs is different from function body graph's number of outputs.");
-  return std::move(result);
+  return result;
 }
 
 }
