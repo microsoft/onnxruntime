@@ -275,7 +275,10 @@ class GraphExecutionManager(GraphExecutionInterface):
             else:
                 if self._use_tensorrt_backend:
                     providers.append("TensorrtExecutionProvider")
-                    provider_options.append({})
+                    trt_provider_option_map = {
+                        "device_id": str(self._device.index)
+                    }
+                    provider_options.append(trt_provider_option_map)
 
                 providers.append("CUDAExecutionProvider")
                 # Set Conv algo search mode to HEURISTIC, which is same as PyTorch's default setting.
