@@ -997,9 +997,9 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   }  
   SubGraphCollection_t consolidated_supported_nodes_vector = {{nodes_vector, true}};
   if (DetectRemoveTensorRTGraphCycles(consolidated_supported_nodes_vector, graph)) {
-    LOGS_DEFAULT(INFO) << "[TensorRT EP] TensorRT nodes is not consolidated because graph will have cycles after consolidation";
+    LOGS_DEFAULT(INFO) << "[TensorRT EP] TensorRT nodes are not consolidated because graph will have cycles after consolidation";
   } else {
-    LOGS_DEFAULT(INFO) << "[TensorRT EP] TensorRT nodes is consolidated into one subgraph";
+    LOGS_DEFAULT(INFO) << "[TensorRT EP] TensorRT nodes are consolidated into one subgraph";
     supported_nodes_vector = consolidated_supported_nodes_vector;
   }
 
