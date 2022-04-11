@@ -17,7 +17,7 @@ constexpr int kNumElementsPerBlock = sizeof(char4) * kNumLinePerThread * kNumThr
 
 // Half2 kernel
 template <typename FuncT>
-__global__ void _QOrderUnaryElementWiseKernel(
+__global__ void QOrderUnaryElementWiseKernel(
     const int8_t* input_data, half2 input_scale, int8_t* output_data, half2 inverse_output_scale, const FuncT functor, CUDA_LONG N) {
   CUDA_LONG id = kNumElementsPerBlock * blockIdx.x + threadIdx.x * (CUDA_LONG)sizeof(char4);
   union U1S2 { unsigned u1; short2 s2; char4 c4; } u1s2;
@@ -64,15 +64,15 @@ void QOrderUnaryElementWiseImpl(
   }
 
   if (count > 0) {
-    int blocksPerGrid = static_cast<int>(CeilDiv(count, kNumElementsPerBlock));
     half2 half_input_scale = __float2half2_rn(*input_scale);
     half2 half_inverse_output_scale = __float2half2_rn(1.0f / *output_scale);
-    _QOrderUnaryElementWiseKernel<FuncT><<<blocksPerGrid, kNumThreadsPerBlock, 0, stream>>>(
+    int blocksPerGrid = static_cast<int>(CeilDiv(count, kNumElementsPerBlock));
+    QOrderUnaryElementWiseKernel<FuncT><<<blocksPerGrid, kNumThreadsPerBlock, 0, stream>>>(
         input_data, half_input_scale, output_data, half_inverse_output_scale, func, static_cast<CUDA_LONG>(count));
   }
 }
 
-struct QOrderUnaryOpFastGeluHalf2 {
+struct QOrderUnaryOpComputeFastGelu {
   static constexpr float A = 0.5f;
   static constexpr float B = 0.7978845608028654f;  // sqrt(2.0/M_PI)
   static constexpr float C = 0.035677408136300125f;  // 0.044715 * sqrt(2.0/M_PI)
@@ -84,13 +84,72 @@ struct QOrderUnaryOpFastGeluHalf2 {
   __device__ __inline__ half2 operator()(const half2& x) const {
     return x * (A2 + A2 * _Tanh(x * (C2 * x * x + B2)));
   }
+
+  __device__ __inline__ float operator()(const float& x) const {
+    return x * (A + A * _Tanh(x * (C * x * x + B)));
+  }
 };
 
 
 QORDER_UNARY_OP_DECLARATION(Gelu) {
-  QOrderUnaryElementWiseImpl<QOrderUnaryOpFastGeluHalf2>(
-    stream, input_data, input_scale, output_data, output_scale, QOrderUnaryOpFastGeluHalf2(), count);
+  QOrderUnaryElementWiseImpl<QOrderUnaryOpComputeFastGelu>(
+    stream, input_data, input_scale, output_data, output_scale, QOrderUnaryOpComputeFastGelu(), count);
 }
+
+
+
+template <typename FuncT>
+__global__ void QOrderUnaryElementWiseShareMemoryKernel(
+    const int8_t* input_data, float input_scale, int8_t* output_data, float inverse_output_scale, const FuncT functor, CUDA_LONG N) {
+
+  __shared__ char table[256];
+
+  const int calc_id = (int)blockIdx.x - 128;
+  float gelu_value = inverse_output_scale * functor(input_scale * calc_id);
+  gelu_value = fmaxf(-128.0f, fmin(127.0f, gelu_value));
+  table[calc_id] = static_cast<char>(__float2int_rn(gelu_value));
+  __syncthreads();
+
+
+  CUDA_LONG id = kNumElementsPerBlock * blockIdx.x + threadIdx.x * (CUDA_LONG)sizeof(char4);
+
+  #pragma unroll
+  for (int line = 0; line < kNumLinePerThread; line++) {
+    if (id < N) {
+      char4 i4 = *(const char4*)(input_data + id);
+      i4.x = table[128 + i4.x];
+      i4.y = table[128 + i4.y];
+      i4.z = table[128 + i4.z];
+      i4.w = table[128 + i4.w];
+      *(char4*)(output_data + id) = i4;
+      id += kNumElementsPerBlockLine;
+    }
+  }
+}
+
+
+template <typename FuncT>
+void QOrderUnaryElementWiseShareMemoryImpl(
+    cudaStream_t stream,
+    const int8_t* input_data,
+    const float* input_scale,
+    int8_t* output_data,
+    const float* output_scale,
+    const FuncT& func,
+    size_t count) {
+  if (count > 0) {
+    float inverse_output_scale = 1.0f / *output_scale;
+    int blocksPerGrid = static_cast<int>(CeilDiv(count, kNumElementsPerBlock));
+    QOrderUnaryElementWiseShareMemoryKernel<FuncT><<<blocksPerGrid, kNumThreadsPerBlock, 0, stream>>>(
+        input_data, *input_scale, output_data, inverse_output_scale, func, static_cast<CUDA_LONG>(count));
+  }
+}
+
+QORDER_UNARY_OP_SHAREMEMORY_DECLARATION(Gelu) {
+  QOrderUnaryElementWiseShareMemoryImpl<QOrderUnaryOpComputeFastGelu>(
+    stream, input_data, input_scale, output_data, output_scale, QOrderUnaryOpComputeFastGelu(), count);
+}
+
 
 /*
 #define LIST_OF_QORDER_UNARY_OPS()          \
