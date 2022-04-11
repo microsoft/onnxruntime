@@ -685,15 +685,19 @@ CPUIDInfo::CPUIDInfo() {
       uint64_t midrVal;
       unsigned long midrSize = sizeof(uint64_t);
 
-      // ARM lists for each coprocessor register 5 fields: op0/op1/CRn/CRm/op2. You need to put those numbers through the ARM64_SYSREG macro:
-      //  #define ARM64_SYSREG(op0, op1, crn, crm, op2) \
-      //    (((op0 & 1) << 14) |                        \
-      //     ((op1 & 7) << 11) |                        \
-      //     ((crn & 15) << 7) |                        \
-      //     ((crm & 15) << 3) |                        \
-      //     ((op2 & 7) << 0))
-      //
-      // For the CP value of MIDR, op0 = 3 and the others are all = 0, so we come up with 0x4000,
+      /*
+       * ARM lists for each coprocessor register 5 fields: op0/op1/CRn/CRm/op2. 
+       * You need to put those numbers through the ARM64_SYSREG macro:
+       * 
+       * #define ARM64_SYSREG(op0, op1, crn, crm, op2) \
+       *    (((op0 & 1) << 14) |                        \
+       *     ((op1 & 7) << 11) |                        \
+       *     ((crn & 15) << 7) |                        \
+       *     ((crm & 15) << 3) |                        \
+       *     ((op2 & 7) << 0))
+       *
+       * For the CP value of MIDR, op0 = 3 and the others are all = 0, so we come up with 0x4000,
+       */
       auto retCode = ::RegGetValue(HKEY_LOCAL_MACHINE, midrKey, "CP 4000", RRF_RT_REG_QWORD, nullptr, &midrVal, &midrSize);
       if (retCode != ERROR_SUCCESS) {
         break;
