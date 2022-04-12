@@ -39,12 +39,14 @@ ONNX Runtime gives you a variety of options to add machine learning to your mobi
    To give an idea of the binary size difference between mobile and full packages:
 
    ONNX Runtime 1.11.0 Android package `jni/arm64-v8a/libonnxruntime.so` dynamic library file size:
+
    |Package|Size|
    |-|-|
    |onnxruntime-mobile|3.3 MB|
    |onnxruntime-android|12 MB|
 
    ONNX Runtime 1.11.0 iOS package `onnxruntime.xcframework/ios-arm64/onnxruntime.framework/onnxruntime` static library file size:
+
    |Package|Size|
    |-|-|
    |onnxruntime-mobile-c|22 MB|
@@ -67,15 +69,13 @@ ONNX Runtime gives you a variety of options to add machine learning to your mobi
    If you are starting from scratch, bootstrap your mobile application according in your mobile framework XCode or Android Development Kit. TODO check this.
 
    a. Add the ONNX Runtime dependency
+  
    b. Consume the onnxruntime API in your application
+   
    c. Add pre and post processing appropriate to your application and model
 
 4. How do I optimize my application?
 
-   To reduce binary size:
+   **To reduce binary size:**  Use the ONNX Runtime mobile package or a custom build to reduce the binary size. The mobile package requires use of an ORT format model.
 
-   Use the ONNX Runtime mobile package or a custom build to reduce the binary size. The mobile package requires use of an ORT format model.
-
-   To reduce memory usage:
-
-   Use an ORT format model as that uses less memory.
+   **To reduce memory usage:** Use an ORT format model as that uses less memory.
