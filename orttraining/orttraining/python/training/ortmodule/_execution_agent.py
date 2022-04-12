@@ -11,6 +11,9 @@ from onnxruntime.capi._pybind_state import TrainingAgent as C_TrainingAgent
 
 class ExecutionAgentOutput(object):
     def __init__(self, ortvalues, run_id=None):
+        if isinstance(ortvalues, list):
+            raise TypeError(
+                "ortvalues must be of type 'OrtValueVector'.")
         self.ortvalues = ortvalues
         self.run_id = run_id
 

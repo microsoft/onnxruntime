@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "python/onnxruntime_pybind_exceptions.h"
+#include "python/onnxruntime_pybind_mlvalue.h"
 #include "python/onnxruntime_pybind_state_common.h"
 
 // pybind11/stl.h is needed to support std::unordered_set, etc.
@@ -20,10 +21,7 @@
 #include "orttraining/core/framework/gradient_graph_builder.h"
 #include "orttraining/core/framework/ortmodule_graph_builder.h"
 #include "orttraining/core/graph/gradient_definition_registry.h"
-#include "python/onnxruntime_pybind_mlvalue.h"
-
 #include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
-
 #include "orttraining/python/orttraining_pybind_common.h"
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
