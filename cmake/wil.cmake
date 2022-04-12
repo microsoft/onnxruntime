@@ -2,4 +2,4 @@
 # Licensed under the MIT License.
 
 add_library(wil INTERFACE)
-target_include_directories(wil INTERFACE external/wil/include/)
+target_include_directories(wil INTERFACE cmake/external/wil/include/)
