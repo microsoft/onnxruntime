@@ -6,5 +6,5 @@
 from . import (
     gpt2,
     longformer,
-    t5
+    t5,
 )

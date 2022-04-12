@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
-
 from .gpt2_helper import (
     PRETRAINED_GPT2_MODELS,
     GPT2ModelNoPastState,

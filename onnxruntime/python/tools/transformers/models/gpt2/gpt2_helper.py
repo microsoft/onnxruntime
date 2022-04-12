@@ -17,6 +17,7 @@ from transformers import GPT2Model, GPT2LMHeadModel, GPT2Config, TFGPT2Model
 
 import sys
 import os
+
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from float16 import float_to_float16_max_diff

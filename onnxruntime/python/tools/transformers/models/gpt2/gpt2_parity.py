@@ -24,6 +24,7 @@ from convert_to_onnx import main, get_latency_name
 
 import sys
 import os
+
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from benchmark_helper import setup_logger
@@ -74,6 +75,7 @@ def parse_arguments(argv=None):
 
 
 class ParityTask:
+
     def __init__(self, test_cases, total_runs, csv_path):
         self.total_runs = total_runs
         self.test_cases = test_cases

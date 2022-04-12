@@ -16,6 +16,7 @@ from gpt2_helper import Gpt2Helper, Gpt2Inputs, MyGPT2Model, MyGPT2LMHeadModel, 
 
 import sys
 import os
+
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from torch_onnx_export_helper import torch_onnx_export
@@ -26,6 +27,7 @@ BIG_NEG = -1e4
 
 
 class Gpt2HelperFactory:
+
     @staticmethod
     def create_helper(helper_type="default"):
         helpers = {
@@ -40,6 +42,7 @@ class Gpt2HelperFactory:
 class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
     """Here we wrap a class for Onnx model conversion for GPT2LMHeadModel with past state and one
     step beam search."""
+
     def __init__(self, config, batch_size, beam_size):
         super().__init__(config)
         self.config.batch_size = batch_size
@@ -124,6 +127,7 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
 class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
     """Here we wrap a class for Onnx model conversion for GPT2LMHeadModel with past state and one
     step beam search with configuration support."""
+
     def __init__(self,
                  config,
                  batch_size,
@@ -311,6 +315,7 @@ MODEL_CLASSES = {
 
 
 class Gpt2BeamSearchInputs(Gpt2Inputs):
+
     def __init__(
         self,
         input_ids,
@@ -363,6 +368,7 @@ class Gpt2BeamSearchInputs(Gpt2Inputs):
 
 class Gpt2BeamSearchHelper(Gpt2Helper):
     """A helper class for Gpt2 model conversion, inference and verification."""
+
     @staticmethod
     def get_dummy_inputs(batch_size: int,
                          past_sequence_length: int,

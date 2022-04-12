@@ -29,6 +29,7 @@ from gpt2_beamsearch_tester import Gpt2TesterFactory
 
 import sys
 import os
+
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from quantize_helper import QuantizeHelper
