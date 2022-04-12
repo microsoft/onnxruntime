@@ -157,6 +157,9 @@ void CPUIDInfo::ArmLinuxInit() {
 #elif defined(_WIN32)
 
 void CPUIDInfo::ArmWindowsInit() {
+
+#pragma region Application Family or OneCore Family
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP | WINAPI_PARTITION_SYSTEM)
   // Read MIDR from windows registry
   // TODO!! Don't support multiple processor group yet!!
   constexpr int MAX_CORES = 64;
@@ -203,6 +206,7 @@ void CPUIDInfo::ArmWindowsInit() {
       lastUarch = uarch;
     }
   }
+#endif /* Application Family or OneCore Family */
 
   has_arm_neon_dot_ = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
 }
