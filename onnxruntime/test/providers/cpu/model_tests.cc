@@ -55,7 +55,9 @@ struct BrokenTest {
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ModelTest);
 #endif
 
-// 
+// Besides the disabled tests we already set,
+// there are some situations where we want to skip the test, for example,
+// we only run latest onnx opset models to save CI time or we know some specific opsets will fail for some test cases.
 bool CheckAndSkipTest(std::basic_string<PATH_CHAR_TYPE> model_path, std::basic_string<PATH_CHAR_TYPE> ep) {
   std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
   std::string provider_name = ToUTF8String(ep);
