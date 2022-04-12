@@ -261,11 +261,11 @@ struct PatternGraph {
     return res->second;
   }
 
-  ArgCompareFunc* GetCustomArgConstraint(std::string const& arg_name) {
+  ArgCompareFunc* GetArgConstraint(std::string const& arg_name) {
     return custom_arg_constraints_.count(arg_name) > 0 ? custom_arg_constraints_.find(arg_name)->second.get() : default_arg_compare_func_.get();
   }
 
-  NodeCompareFunc* GetCustomNodeConstraint(std::string const& node_name) {
+  NodeCompareFunc* GetNodeConstraint(std::string const& node_name) {
     return custom_node_constraints_.count(node_name) > 0 ? custom_node_constraints_.find(node_name)->second.get() : default_node_compare_func_.get();
   }
 
@@ -284,7 +284,7 @@ struct PatternGraph {
    * @return true
    * @return false
    */
-  bool ExactlyMatchNodeArgs(
+  bool ExactlyMatchGraphInputArgs(
       const Graph& target_graph,
       PatternGraph& pattern_graph,
       ConstPointerContainer<std::vector<NodeArg*>>& p_args,
@@ -300,7 +300,7 @@ struct PatternGraph {
   /**
    *
    */
-  bool FuzzyMatchNodeArgs(
+  bool FuzzyMatchGraphInputArgs(
       const Graph& target_graph,
       PatternGraph& pattern_graph,
       ConstPointerContainer<std::vector<NodeArg*>>& p_args,

@@ -53,6 +53,22 @@ struct PGraphInputTypes {
   std::vector<ONNX_NAMESPACE::TensorProto_DataType> allowed_types_;
 };
 
+struct PGraphInputShape {
+  friend class PGraphInput;
+
+ public:
+  PGraphInputShape(const std::vector<std::vector<std::string>>& allowed_shapes)
+      : allowed_symbolic_shapes_(allowed_shapes) {
+  }
+
+  bool CanBeAnyShape() const {
+    return allowed_symbolic_shapes_.empty();
+  }
+
+ private:
+  std::vector<std::vector<std::string>> allowed_symbolic_shapes_;
+};
+
 /**
  * @brief Pattern graph input description.
  * Class representing a graph input to a pattern graph. Two kinds of graph inputs are supported:
@@ -73,7 +89,7 @@ struct PGraphInput {
    */
   PGraphInput(const std::string& output_arg_name,
               const PGraphInputTypes& type,
-              std::vector<int> shape,
+              const PGraphInputShape& shape,
               bool is_dangling = true,
               bool is_constant = true)
       : output_arg_name_(output_arg_name),
@@ -81,8 +97,13 @@ struct PGraphInput {
         is_dangling_(is_dangling),
         allowed_types_(type.allowed_types_) {
     SetTensorProto(type.GetDefaultType());
-    for (auto dim : shape) {
-      t_proto_.add_dims(dim);
+    if (shape.CanBeAnyShape()) {
+      t_proto_.add_dims(1);
+    } else {
+      // for (auto dim : shape.allowed_symbolic_shapes_[0]) {
+      //   t_proto_.add_dims(dim);
+      //   set_dim_param
+      // }
     }
   }
 
@@ -158,7 +179,7 @@ struct PGraphInput {
  * Class representing a graph node to a pattern graph.
  *
  * During node matching, by default, all user given fields will be checked, compared with
- * the target graph.
+ * the target node.
  */
 struct PGraphNode {
   friend class DefaultNodeCompareFunc;
@@ -190,7 +211,7 @@ struct PGraphNode {
              const std::unordered_map<std::string, std::vector<int>>& domain_version_maps = {},
              const std::vector<AttributeProto>& attributes = {},
              int output_edges_count = 0,
-             bool ignore_input_node_arg_orders = true)
+             bool ignore_input_arg_orders = false)
       : op_type_(op_type),
         input_args_names_(input_args_names),
         output_args_names_(output_args_names),
@@ -198,7 +219,7 @@ struct PGraphNode {
         output_edges_count_(output_edges_count),
         domain_version_maps_(domain_version_maps),
         attributes(attributes),
-        ignore_order_(ignore_input_node_arg_orders) {
+        ignore_order_(ignore_input_arg_orders) {
     if (node_name.empty()) {
       CreateNodeName();
     }

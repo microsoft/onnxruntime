@@ -41,13 +41,28 @@ PatternGraph::PatternGraph(
     : pattern_graph_name_(pattern_graph_name),
       pgraph_inputs_(pgraph_inputs),
       pgraph_nodes_(pgraph_nodes) {
-  ort_model_ptr_ = std::make_unique<Model>("PatternModel", false, logging::LoggingManager::DefaultLogger());
+  // Figure out what domain to version should be set for the model.
+  std::unordered_map<std::string, int> domain_to_version;
   for (size_t i = 0; i < pgraph_nodes.size(); i++) {
     name_to_pnode_mapping_[pgraph_nodes[i].GetNodeName()] = &(pgraph_nodes_[i]);
+    const std::unordered_map<std::string, std::vector<int>>& node_domain_version_mapping = pgraph_nodes[i].GetDomainVersionMap();
+    for (auto it = node_domain_version_mapping.begin(); it != node_domain_version_mapping.end(); ++it) {
+      int max_version = *std::max_element(it->second.begin(), it->second.end());
+      if (domain_to_version.count(it->first)) {
+        domain_to_version[it->first] = std::max(domain_to_version[it->first], max_version);
+      } else {
+        domain_to_version[it->first] = max_version;
+      }
+    }
   }
   for (size_t i = 0; i < pgraph_inputs.size(); i++) {
     name_to_parg_mapping_[pgraph_inputs[i].GetArgName()] = &(pgraph_inputs_[i]);
   }
+  std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
+  ort_model_ptr_ = std::make_unique<Model>(
+      "PatternModel", false /*is_onnx_domain_only*/, ModelMetaData(), PathString(),
+      IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+      model_specific_functions, logging::LoggingManager::DefaultLogger());
 
   ORT_ENFORCE(ToGraphInternal().IsOK());
   auto& graph = GetGraph();
@@ -116,6 +131,8 @@ Status PatternGraph::TryMatch(
   for (auto node_index : graph_topology_list) {
     auto* target_node_ptr = target_graph.GetNode(node_index);
 
+    PARSER_LOG << ">> start over with a new entry node called [" << target_node_ptr->Name() << ", " << target_node_ptr->OutputDefs()[0]->Name() << "]";
+
     // Clear up previous matching results.
     match_result.Clear();
 
@@ -154,19 +171,20 @@ Status PatternGraph::GetNodeDefs() {
 }
 
 Status PatternGraph::ToGraphInternal() {
-  ORT_ENFORCE(GetNodeDefs().IsOK());
+  auto status = GetNodeDefs();
+  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   /** Todo: p_initializer_names_to_preserve should contains all initializer names in the pattern graphs.
    * to avoid constant folding by any opportunaties.
    */
   const std::unordered_set<std::string>* p_initializer_names_to_preserve = nullptr;
   GraphAugmenter::GraphDefs graph_defs;
   graph_defs.AddNodeDefs(node_defs_);
-  auto status = GraphAugmenter::AugmentGraph(ort_model_ptr_->MainGraph(), graph_defs, p_initializer_names_to_preserve);
-  ORT_ENFORCE(status.IsOK());
+  status = GraphAugmenter::AugmentGraph(ort_model_ptr_->MainGraph(), graph_defs, p_initializer_names_to_preserve);
+  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   return Status::OK();
 }
 
-bool PatternGraph::ExactlyMatchNodeArgs(
+bool PatternGraph::ExactlyMatchGraphInputArgs(
     const Graph& target_graph,
     PatternGraph& pattern_graph,
     ConstPointerContainer<std::vector<NodeArg*>>& p_args,
@@ -184,7 +202,7 @@ bool PatternGraph::ExactlyMatchNodeArgs(
     const PGraphInput* p_arg_define = GetPGraphInputFromPatternNodeInputName(p_arg_name);
     if (p_arg_define) {
       // If this input arg is pattern graph input.
-      auto func = GetCustomArgConstraint(p_arg_name);
+      auto func = GetArgConstraint(p_arg_name);
       if (!(*func)(target_graph, t_arg, pattern_graph, p_arg_define)) {
         is_match = false;
         break;
@@ -197,7 +215,7 @@ bool PatternGraph::ExactlyMatchNodeArgs(
   return is_match;
 }
 
-bool PatternGraph::FuzzyMatchNodeArgs(
+bool PatternGraph::FuzzyMatchGraphInputArgs(
     const Graph& target_graph,
     PatternGraph& pattern_graph,
     ConstPointerContainer<std::vector<NodeArg*>>& p_args,
@@ -207,23 +225,25 @@ bool PatternGraph::FuzzyMatchNodeArgs(
   if (p_arg_idx >= p_args.size()) return true;
 
   auto p_arg = p_args[p_arg_idx];
-  PARSER_LOG << "Try to find match for arg " << p_arg->Name();
+
+  PARSER_LOG << "Try to find fuzzy match for arg " << p_arg->Name();
+
   auto p_arg_name = p_arg->Name();
   const PGraphInput* p_arg_define = GetPGraphInputFromPatternNodeInputName(p_arg_name);
   if (!p_arg_define) {
     // If the input arg is not pattern graph input, skip current arg checks.
-    return FuzzyMatchNodeArgs(
+    return FuzzyMatchGraphInputArgs(
         target_graph, pattern_graph,
         p_args, t_args,
         p_arg_idx + 1, visited);
   }
 
-  auto func = GetCustomArgConstraint(p_arg_name);
+  auto func = GetArgConstraint(p_arg_name);
   for (auto t_arg : t_args) {
     if (!visited.count(t_arg)) {
       visited.insert(t_arg);
       if ((*func)(target_graph, t_arg, pattern_graph, p_arg_define) &&
-          FuzzyMatchNodeArgs(target_graph, pattern_graph, p_args, t_args, p_arg_idx + 1, visited)) {
+          FuzzyMatchGraphInputArgs(target_graph, pattern_graph, p_args, t_args, p_arg_idx + 1, visited)) {
         return true;
       } else {
         visited.erase(t_arg);
@@ -239,25 +259,26 @@ bool PatternGraph::MatchNodeAndNodeInputArgs(Graph& target_graph, const Node* ta
   //    Load customized comparision function if specified, otherwise, use default one.
   const std::string pnode_name = pattern_node->Name();
   const PGraphNode* pnode = name_to_pnode_mapping_[pnode_name];
-  auto func = GetCustomNodeConstraint(pnode_name);
+  auto func = GetNodeConstraint(pnode_name);
   if (!(*func)(target_graph, target_node, *this, pnode)) {
     PARSER_LOG << "stop matching due to node properties mismatch.";
     return false;
   }
 
-  // 2. Compare node's input defs using ArgComparisionFunc functor.
+  // 2. Compare node's input args using ArgComparisionFunc functor.
+  //    Be noted, we only do the compare when the input arg is pattern graph input, otherwise, we will just skip.
   //    Call different node args matching paths according to nodes' ignore node arg order attribute.
   //    Load customized comparision function if specified, otherwise, use default one.
   auto p_args = pattern_node->InputDefs();
   auto t_args = target_node->InputDefs();
   if (pnode->IgnoreNodeArgOrder()) {
     std::unordered_set<const NodeArg*> visited_args;
-    if (!FuzzyMatchNodeArgs(target_graph, *this, p_args, t_args, 0, visited_args)) {
+    if (!FuzzyMatchGraphInputArgs(target_graph, *this, p_args, t_args, 0, visited_args)) {
       PARSER_LOG << "stop matching due to node input defs mis-fuzzymatch.";
       return false;
     }
   } else {
-    if (!ExactlyMatchNodeArgs(target_graph, *this, p_args, t_args)) {
+    if (!ExactlyMatchGraphInputArgs(target_graph, *this, p_args, t_args)) {
       PARSER_LOG << "stop matching due to node input defs mismatch.";
       return false;
     }
@@ -271,14 +292,12 @@ bool PatternGraph::FindMatchRecursively(
     std::unordered_set<const Node*>& pattern_graph_matched_path,
     std::unordered_map<const Node*, const Node*>& matched_path_pattern_node_to_target_node_map,
     PatternMatchResult& matched) {
-  PARSER_LOG << "matching node for target: [" << target_node->Name() << "]  pattern : [" << pattern_node->Name() << "]";
+  PARSER_LOG << "matching node for target: [" << target_node->Name() << ", " << target_node->OutputDefs()[0]->Name() << "]  pattern : [" << pattern_node->Name() << "]";
 
   if (!MatchNodeAndNodeInputArgs(target_graph, target_node, pattern_node)) {
-    PARSER_LOG << "stop matching due to MatchNodeAndNodeInputArgs mismatch.";
     return false;
   }
 
-  // So far, node and node input args are compared equally.
   // Record nodes into matched paths in the recursion to avoid repeated visit of a node.
   target_graph_matched_path.insert(target_node);
   pattern_graph_matched_path.insert(pattern_node);
@@ -308,15 +327,16 @@ bool PatternGraph::FindMatchRecursively(
   std::unordered_set<const Node*> visited_graph_nodes;
   std::unordered_set<const Node*> visited_pattern_nodes;
 
-  // try to find a full match for all the input nodes of the current node p in pattern graph
   // TODO: constraint the order of the input nodes?
+  // Iterate all input nodes of pattern_node, try to find a full match for each input node.
   for (auto pin_iter = pattern_node->InputNodesBegin(); pin_iter != pattern_node->InputNodesEnd(); ++pin_iter) {
-    const Node& cur = *pin_iter;  // one of the input node of p
-    if (visited_pattern_nodes.count(&cur))
+    const Node& pattern_node_prior = *pin_iter;
+    if (visited_pattern_nodes.count(&pattern_node_prior))
       continue;
-    if (pattern_graph_matched_path.count(&cur)) {
+
+    if (pattern_graph_matched_path.count(&pattern_node_prior)) {
       // look ahead when encounter a visited node
-      if (look_ahead(target_node, &cur, true)) {
+      if (look_ahead(target_node, &pattern_node_prior, true)) {
         continue;
       }
       pattern_graph_matched_path.erase(pattern_node);
@@ -324,28 +344,33 @@ bool PatternGraph::FindMatchRecursively(
       matched_path_pattern_node_to_target_node_map.erase(pattern_node);
       return false;
     }
+
     bool has_matched_branch = false;
-    // iterate all input nodes of g to find a match for cur
+
+    // Iterate all input nodes of target_node to find a match for pattern_node_prior.
     for (auto gin_iter = target_node->InputNodesBegin(); gin_iter != target_node->InputNodesEnd(); ++gin_iter) {
       const Node& tar = *gin_iter;
       if (!target_graph_matched_path.count(&tar) && !visited_graph_nodes.count(&tar) &&
-          FindMatchRecursively(target_graph, &tar, &cur, target_graph_matched_path, pattern_graph_matched_path, matched_path_pattern_node_to_target_node_map, matched)) {
+          FindMatchRecursively(target_graph, &tar, &pattern_node_prior,
+                               target_graph_matched_path, pattern_graph_matched_path,
+                               matched_path_pattern_node_to_target_node_map, matched)) {
         has_matched_branch = true;
-        matches_if_success.emplace(cur.Name(), MatchedNodeGroup(target_graph.GetNode(tar.Index()), name_to_pnode_mapping_[cur.Name()]));
+        matches_if_success.emplace(pattern_node_prior.Name(), MatchedNodeGroup(target_graph.GetNode(tar.Index()), name_to_pnode_mapping_[pattern_node_prior.Name()]));
         visited_graph_nodes.insert(&tar);
-        visited_pattern_nodes.insert(&cur);
+        visited_pattern_nodes.insert(&pattern_node_prior);
         break;
       }
     }
     // If we cannot find match for every input nodes of p, we need to restore the scene
     if (!has_matched_branch) {
-      PARSER_LOG << "return false because of no match input node match for " << cur.Name();
+      PARSER_LOG << "return false because of no match input node match for " << pattern_node_prior.Name();
       pattern_graph_matched_path.erase(pattern_node);
       target_graph_matched_path.erase(target_node);
       matched_path_pattern_node_to_target_node_map.erase(pattern_node);
       return false;
     }
   }
+
   // try to find a full match for all the input nodes of the current node p in pattern graph, which is like a mirror symmetry of inputs matching.
   for (auto pout_iter = pattern_node->OutputNodesBegin(); pout_iter != pattern_node->OutputNodesEnd(); ++pout_iter) {
     const Node& cur = *pout_iter;
@@ -382,7 +407,7 @@ bool PatternGraph::FindMatchRecursively(
     }
   }
 
-  // Reaching here means it has been matched successfully, the nodes will be collcted into result.
+  // Reaching here means it has been matched successfully, the nodes will be collected into result.
   matched.AppendToNodeGroups(matches_if_success);
 
   PARSER_LOG << "return true.";

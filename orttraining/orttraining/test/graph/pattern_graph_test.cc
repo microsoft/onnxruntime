@@ -296,7 +296,6 @@ TEST(GraphParser, SimpleMatch3) {
        PGraphInput("C1", float_type),
        PGraphInput("C2", float_type),
        PGraphInput("C3", integer_type),
-       PGraphInput("C4", integer_type),
        PGraphInput("X", float_type)},
       {PGraphNode("Shape", {"X"}, {"Y1"}, "g_shape"),
        PGraphNode("Exp", {"X"}, {"P1"}, "ex_p1"),
@@ -304,8 +303,9 @@ TEST(GraphParser, SimpleMatch3) {
        PGraphNode("Log", {"P2"}, {"P3"}, "ex_p3"),
        PGraphNode("Add", {"P2", "P3"}, {"P4"}, "ex_p4"),
        PGraphNode("Gather", {"Y1", "C3"}, {"Y2"}, "g_gather"),
-       PGraphNode("Unsqueeze", {"Y2", "C4"}, {"Y3"}, "g_unsqueeze"),
-       PGraphNode("Concat", {"Y3"}, {"Y4"}, "g_concat", {{kOnnxDomain, {1, 4, 11, 13}}},
+       PGraphNode("Unsqueeze", {"Y2"}, {"Y3"}, "g_unsqueeze", {{kOnnxDomain, {1, 11}}},
+                  {ONNX_NAMESPACE::MakeAttribute("axes", std::vector<int64_t>{static_cast<int64_t>(0)})}),
+       PGraphNode("Concat", {"Y3"}, {"Y4"}, "g_concat", {{kOnnxDomain, {1, 4, 11}}},
                   {ONNX_NAMESPACE::MakeAttribute("axis", int64_t(0))}),
        PGraphNode("MatMul", {"X", "C0"}, {"Z1"}, "g_matmul"),
        PGraphNode("Add", {"Z1", "C1"}, {"Z2"}, "g_add"),
@@ -316,12 +316,12 @@ TEST(GraphParser, SimpleMatch3) {
       {PGraphInput("C0", float_type),
        PGraphInput("C1", float_type),
        PGraphInput("C2", integer_type),
-       PGraphInput("C3", integer_type),
        PGraphInput("X", float_type)},
       {PGraphNode("Shape", {"X"}, {"Y1"}, "p_shape"),
        PGraphNode("Gather", {"Y1", "C2"}, {"Y2"}, "p_gather"),
-       PGraphNode("Unsqueeze", {"Y2", "C3"}, {"Y3"}, "p_unsqueeze"),
-       PGraphNode("Concat", {"Y3"}, {"Y4"}, "p_concat", {{kOnnxDomain, {1, 4, 11, 13}}}, {ONNX_NAMESPACE::MakeAttribute("axis", int64_t(0))}),
+       PGraphNode("Unsqueeze", {"Y2"}, {"Y3"}, "p_unsqueeze", {{kOnnxDomain, {1, 11}}},
+                  {ONNX_NAMESPACE::MakeAttribute("axes", std::vector<int64_t>{static_cast<int64_t>(0)})}),
+       PGraphNode("Concat", {"Y3"}, {"Y4"}, "p_concat", {{kOnnxDomain, {1, 4, 11}}}, {ONNX_NAMESPACE::MakeAttribute("axis", int64_t(0))}),
        PGraphNode("MatMul", {"X", "C0"}, {"Z1"}, "p_matmul"),
        PGraphNode("Add", {"Z1", "C1"}, {"Z2"}, "p_add"),
        PGraphNode("Reshape", {"Z2", "Y4"}, {"oup"}, "p_reshape")});
@@ -442,10 +442,10 @@ TEST(GraphParser, LayerNormFusionTest) {
        PGraphNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1"),
        PGraphNode("Pow", {"Sub1", "C0"}, {"Pow"}, "p_pow"),
        PGraphNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2"),
-       PGraphNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1"),
+       PGraphNode("Add", {"Z", "C1"}, {"Add1"}, "p_add1"),
        PGraphNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt"),
        PGraphNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div"),
-       PGraphNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul"),
+       PGraphNode("Mul", {"C2", "Div"}, {"Mul"}, "p_mul"),
        PGraphNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")});
 
   PatternGraph pattern3(
@@ -503,6 +503,74 @@ TEST(GraphParser, LayerNormFusionTest) {
   }
   if (!match) {
     match = TryReplace(graph, pattern4, PGraphNode("LayerNormalization", {}, {}, "replaced_node"), {{"p_rm1", 0}, {"p_mul", 1}, {"p_final", 1}}, {}, "p_rm1", "p_final").IsOK();
+  }
+  ASSERT_TRUE(match);
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Div"], 0);
+  ASSERT_EQ(op_to_count["Add"], 0);
+  ASSERT_EQ(op_to_count["Sub"], 0);
+  ASSERT_EQ(op_to_count["ReduceMean"], 0);
+  ASSERT_EQ(op_to_count["Pow"], 0);
+  ASSERT_EQ(op_to_count["Sqrt"], 0);
+  ASSERT_EQ(op_to_count["LayerNormalization"], 1);
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "LayerNormalization") {
+      // LayerNormalization should have three inputs.
+      EXPECT_EQ(node.InputDefs().size(), 3u) << "LayerNormalization number of inputs does not equal to 3. Got:" << node.InputDefs().size();
+      // LayerNormalization input "scale" and "bias" should have the same dimension.
+      const ONNX_NAMESPACE::TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
+      const ONNX_NAMESPACE::TensorShapeProto* bias_shape = node.InputDefs()[2]->Shape();
+      EXPECT_EQ(scale_shape->dim_size(), 1) << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
+      EXPECT_EQ(bias_shape->dim_size(), 1) << "LayerNormalization bias should be 1D. Got: " << bias_shape->dim_size();
+      EXPECT_EQ(scale_shape->dim(0).dim_value(), bias_shape->dim(0).dim_value());
+    } else {
+      EXPECT_TRUE(false) << "Unexpected node " << node.Name();
+    }
+  }
+}
+
+TEST(GraphParser, LayerNormFusionIgnoreInputArgOrderTest) {
+  auto model_uri = MODEL_FOLDER "fusion/layer_norm.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, logging::LoggingManager::DefaultLogger()));
+  Graph& graph = p_model->MainGraph();
+
+  PGraphInputTypes float_type({ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE});
+  /**
+   * In the layer_norm.onnx, there are two places where compuation order differ from below pattern graph.
+   * > Z + C1 -> Add1
+   * > C2 x Div -> Mul
+   */
+  PatternGraph pattern2(
+      {PGraphInput("C0", float_type),
+       PGraphInput("C1", float_type),
+       PGraphInput("C2", float_type),
+       PGraphInput("C3", float_type),
+       PGraphInput("X", float_type)},
+      {PGraphNode("ReduceMean", {"X"}, {"Y"}, "p_rm1"),
+       PGraphNode("Sub", {"X", "Y"}, {"Sub1"}, "p_sub1"),
+       PGraphNode("Pow", {"Sub1", "C0"}, {"Pow"}, "p_pow"),
+       PGraphNode("ReduceMean", {"Pow"}, {"Z"}, "p_rm2"),
+       PGraphNode("Add", {"C1", "Z"}, {"Add1"}, "p_add1", {}, {}, 0, true),
+       PGraphNode("Sqrt", {"Add1"}, {"Sqrt"}, "p_sqrt"),
+       PGraphNode("Div", {"Sub1", "Sqrt"}, {"Div"}, "p_div"),
+       PGraphNode("Mul", {"Div", "C2"}, {"Mul"}, "p_mul", {}, {}, 0, true),
+       PGraphNode("Add", {"Mul", "C3"}, {"Final"}, "p_final")});
+
+  class CustomArgCompareFunc : public ArgCompareFunc {
+   public:
+    bool operator()(const Graph& target_graph, const NodeArg* target_node_arg,
+                    const PatternGraph&, const PGraphInput*) const override {
+      return graph_utils::NodeArgIsConstant(target_graph, *target_node_arg) || graph_utils::IsGraphInput(target_graph, target_node_arg);
+    }
+  };
+
+  pattern2.SetCustomConstraint(std::make_unique<CustomArgCompareFunc>(), "C2").SetCustomConstraint(std::make_unique<CustomArgCompareFunc>(), "C3");
+  bool match = false;
+  if (!match) {
+    match = TryReplace(graph, pattern2, PGraphNode("LayerNormalization", {}, {}, "replaced_node"), {{"p_rm1", 0}, {"p_mul", 0}, {"p_final", 1}}, {}, "p_rm1", "p_final").IsOK();
   }
   ASSERT_TRUE(match);
 
@@ -707,20 +775,23 @@ TEST(GraphParser, ReshapeFusionTest) {
 
   PGraphInputTypes float_type(TypesCategory::AllFloatTensorTypes);
   PGraphInputTypes integer_type(TypesCategory::AllIntegerTensorTypes);
+
   PatternGraph pattern(
       {PGraphInput("X", float_type),
        PGraphInput("C0", integer_type),
-       PGraphInput("C1", float_type),
        PGraphInput("C2", integer_type),
        PGraphInput("C3", integer_type),
        PGraphInput("C4", integer_type)},
       {PGraphNode("Shape", {"X"}, {"Shape1"}, "p_shape1"),
        PGraphNode("Gather", {"Shape1", "C0"}, {"Gather1"}, "p_gather1"),
-       PGraphNode("Unsqueeze", {"Gather1", "C3"}, {"Unsqueeze1"}, "p_unsqueeze1"),
-       PGraphNode("Shape", {"C1"}, {"Shape2"}, "p_shape2"),
+       // Todo: Unsqueeze opset 13 have two inputs, so this pattern is not compataible any more.
+       PGraphNode("Unsqueeze", {"Gather1"}, {"Unsqueeze1"}, "p_unsqueeze1", {{kOnnxDomain, {1, 11}}},
+                  {ONNX_NAMESPACE::MakeAttribute("axes", std::vector<int64_t>{static_cast<int64_t>(0)})}),
+       PGraphNode("Shape", {"X"}, {"Shape2"}, "p_shape2"),
        PGraphNode("Gather", {"Shape2", "C2"}, {"Gather2"}, "p_gather2"),
-       PGraphNode("Unsqueeze", {"Gather2", "C4"}, {"Unsqueeze2"}, "p_unsqueeze2"),
-       PGraphNode("Concat", {"Unsqueeze1", "Unsqueeze2"}, {"Concat"}, "p_concat", {}, {ONNX_NAMESPACE::MakeAttribute("axis", int64_t(0))}),
+       PGraphNode("Unsqueeze", {"Gather2"}, {"Unsqueeze2"}, "p_unsqueeze2", {{kOnnxDomain, {1, 11}}},
+                  {ONNX_NAMESPACE::MakeAttribute("axes", std::vector<int64_t>{static_cast<int64_t>(0)})}),
+       PGraphNode("Concat", {"Unsqueeze1", "Unsqueeze2", "C3", "C4"}, {"Concat"}, "p_concat", {}, {ONNX_NAMESPACE::MakeAttribute("axis", int64_t(0))}),
        PGraphNode("Reshape", {"X", "Concat"}, {"Y"}, "p_reshape")});
 
   class CustomNodeCompareFunc : public NodeCompareFunc {
@@ -736,6 +807,7 @@ TEST(GraphParser, ReshapeFusionTest) {
       };
 
       if (!p->MatchesOpType(g->OpType())) return false;
+
       if (p->NameEquals("p_concat")) {
         return GetConstantInitializerCount(target, g) == 2;
       } else if (p->NameEquals("p_gather1") && !optimizer_utils::IsInitializerWithExpectedValue(target, *(g->InputDefs()[1]), int64_t(0), false)) {
@@ -771,6 +843,7 @@ TEST(GraphParser, ReshapeFusionTest) {
       shape_value.push_back(0);
     }
   }
+
   ONNX_NAMESPACE::TensorProto shape_initializer_proto;
   shape_initializer_proto.set_name(shape_def->Name());
   shape_initializer_proto.add_dims(static_cast<int64_t>(shape_value.size()));
@@ -1015,14 +1088,16 @@ TEST(GraphParser, EmbedLayerNormFusionTest2) {
        PGraphInput("C1", float_type)},
       {PGraphNode("Shape", {"X"}, {"Shape1"}, "p_shape1", {{kOnnxDomain, {1}}}),
        PGraphNode("Gather", {"Shape1", "C0"}, {"Gather1"}, "p_gather1"),
-       PGraphNode("Unsqueeze", {"Gather1", "C0"}, {"Unsqueeze1"}, "p_unsqueeze1", {{kOnnxDomain, {1}}}),
+       PGraphNode("Unsqueeze", {"Gather1"}, {"Unsqueeze1"}, "p_unsqueeze1", {{kOnnxDomain, {1, 11}}},
+                  {ONNX_NAMESPACE::MakeAttribute("axes", std::vector<int64_t>{static_cast<int64_t>(0)})}),
        PGraphNode("Shape", {"Unsqueeze1"}, {"COS"}, "p_cos"),
        PGraphNode("NonZero", {"COS"}, {"NonZero"}, "p_nonzero"),
        PGraphNode("Transpose", {"NonZero"}, {"Transpose"}, "p_transpose", {{kOnnxDomain, {1}}}),
        PGraphNode("Squeeze", {"Transpose", "C0"}, {"Squeeze"}, "p_squeeze", {{kOnnxDomain, {1}}}),
        PGraphNode("Cast", {"Squeeze"}, {"Cast1"}, "p_cast1", {},
                   {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT})}),
-       PGraphNode("Unsqueeze", {"Cast1", "C0"}, {"Unsqueeze2"}, "p_unsqueeze2", {{kOnnxDomain, {1}}}),
+       PGraphNode("Unsqueeze", {"Cast1"}, {"Unsqueeze2"}, "p_unsqueeze2", {{kOnnxDomain, {1, 11}}},
+                  {ONNX_NAMESPACE::MakeAttribute("axes", std::vector<int64_t>{static_cast<int64_t>(0)})}),
        PGraphNode("Shape", {"X"}, {"Shape2"}, "p_shape2", {{kOnnxDomain, {1}}}),
        PGraphNode("Expand", {"Unsqueeze2", "Shape2"}, {"Expand"}, "p_expand", {{kOnnxDomain, {8}}}),
        PGraphNode("Gather", {"Expand", "C0"}, {"Gather2"}, "p_gather2"),
@@ -1126,7 +1201,8 @@ TEST(GraphParser, EmbedLayerNormFusionTest3) {
        PGraphNode("Cast", {"Gather1"}, {"Cast1"}, "p_cast1", {},
                   {ONNX_NAMESPACE::MakeAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT})}, -1),
        PGraphNode("Range", {"Cast1", "Cast1", "Cast1"}, {"Range"}, "p_range", {}, {}, -1),
-       PGraphNode("Unsqueeze", {"Range", "C0"}, {"Unsqueeze1"}, "p_unsqueeze1", {}, {}, -1),
+       PGraphNode("Unsqueeze", {"Range"}, {"Unsqueeze1"}, "p_unsqueeze1", {{kOnnxDomain, {1, 11}}},
+                  {ONNX_NAMESPACE::MakeAttribute("axes", std::vector<int64_t>{static_cast<int64_t>(0)})}, -1),
        PGraphNode("Add", {"Gather1", "C0"}, {"Unsqueeze2"}, "p_unsqueeze2", {}, {}, -1),
        PGraphNode("Shape", {"X"}, {"Shape2"}, "p_shape2", {}, {}, -1),
        PGraphNode("Gather", {"Shape2", "C0"}, {"Gather2"}, "p_gather2", {}, {}, -1),
