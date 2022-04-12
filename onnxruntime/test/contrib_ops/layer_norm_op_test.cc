@@ -18,8 +18,16 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 
-TEST(LayerNormTest, BERTLayerNorm) {
-  OpTester tester("LayerNormalization", 1 /*opset_version*/);
+void BERTLayerNormCore(const int opset_version) {
+  // LayerNormalization was wrongly registered 
+  // in ai.onnx domain since version 1. To maintain BC,
+  // we keep the wrong operator as is and officially
+  // propose a new one in opset 16 to hide the old one
+  // for future opset.  This function should test
+  // the old (since opset 1) LayerNormalization
+  // and the new (since opset 16) LayerNormalization
+  // because they have the same definition.
+  OpTester tester("LayerNormalization", opset_version);
   tester.AddAttribute<int64_t>("axis", -1);
   tester.AddAttribute<float>("epsilon", 1e-12f);
 
@@ -43,8 +51,13 @@ TEST(LayerNormTest, BERTLayerNorm) {
   tester.Run();
 }
 
-TEST(LayerNormTest, BERTLayerNorm_NoBias) {
-  OpTester tester("LayerNormalization", 1 /*opset_version*/);
+TEST(LayerNormTest, BERTLayerNorm) {
+  BERTLayerNormCore(1);
+  BERTLayerNormCore(16);
+}
+
+void BERTLayerNormNoBiasCoreCore(const int opset_version) {
+  OpTester tester("LayerNormalization", opset_version);
   tester.AddAttribute<int64_t>("axis", -1);
   tester.AddAttribute<float>("epsilon", 1e-12f);
 
@@ -66,8 +79,13 @@ TEST(LayerNormTest, BERTLayerNorm_NoBias) {
   tester.Run();
 }
 
-TEST(LayerNormTest, LayerNorm) {
-  OpTester test("LayerNormalization");
+TEST(LayerNormTest, BERTLayerNorm_NoBias) {
+  BERTLayerNormNoBiasCoreCore(1);
+  BERTLayerNormNoBiasCoreCore(16);
+}
+
+void LayerNormCore(const int opset_version) {
+  OpTester test("LayerNormalization", opset_version);
   test.AddAttribute<float>("epsilon", 1e-05f);
 
   std::vector<int64_t> dims{1, 2, 3};
@@ -77,8 +95,13 @@ TEST(LayerNormTest, LayerNorm) {
   test.Run();
 }
 
-TEST(LayerNormTest, LayerNorm_Scale) {
-  OpTester test("LayerNormalization");
+TEST(LayerNormTest, LayerNorm) {
+  LayerNormCore(1);
+  LayerNormCore(16);
+}
+
+void LayerNormScaleCore(const int opset_version) {
+  OpTester test("LayerNormalization", opset_version);
   test.AddAttribute<float>("epsilon", 1e-05f);
 
   std::vector<int64_t> dims{2, 2, 2};
@@ -88,8 +111,13 @@ TEST(LayerNormTest, LayerNorm_Scale) {
   test.Run();
 }
 
-TEST(LayerNormTest, LayerNorm_Scale_Bias) {
-  OpTester test("LayerNormalization");
+TEST(LayerNormTest, LayerNorm_Scale) {
+  LayerNormScaleCore(1);
+  LayerNormScaleCore(16);
+}
+
+void LayerNormScaleBiasCore(const int opset_version) {
+  OpTester test("LayerNormalization", opset_version);
   test.AddAttribute<float>("epsilon", 1e-05f);
 
   std::vector<int64_t> dims{1, 3, 2};
@@ -98,6 +126,11 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias) {
   test.AddInput<float>("bias", {2}, {0.6435f, -0.3964f});
   test.AddOutput<float>("output", dims, {-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f});
   test.Run();
+}
+
+TEST(LayerNormTest, LayerNorm_Scale_Bias) {
+  LayerNormScaleBiasCore(1);
+  LayerNormScaleBiasCore(16);
 }
 
 }  // namespace test
