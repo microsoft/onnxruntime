@@ -136,7 +136,7 @@ A collection of properties to be set for configuring the OnnxRuntime session
 ```cs
 SessionOptions();
 ```
-Constructs a SessionOptions will all options at default/unset values.
+Constructs a SessionOptions with all options at default/unset values.
 
 #### Properties
 ```cs
@@ -148,7 +148,7 @@ Accessor to the default static option object
 ```cs
 SetSessionGraphOptimizationLevel(GraphOptimizationLevel graph_transformer_level);
 ```
-See [ONNX_Runtime_Graph_Optimizations.md] for more details.
+See [Graph Optimizations in ONNX Runtime](../performance/graph-optimizations.md) for more details.
 
 ```cs
 SetSessionExecutionMode(ExecutionMode execution_mode);

@@ -10,7 +10,7 @@ redirect_from: /docs/how-to/tune-performance
 
 ONNX Runtime provides high performance across a range of hardware options through its [Execution Providers interface](../execution-providers) for different execution environments.
 
-Along with this flexibility comes decisions for tuning and usage. For each model running with each execution provider, there are settings that can be tuned (e.g. thread number, wait policy, etc) to improve performance.
+Along with this flexibility come decisions for tuning and usage. For each model running with each execution provider, there are settings that can be tuned (e.g. thread number, wait policy, etc) to improve performance.
 
 This document covers basic tools and knobs that can be leveraged to find the best performance for your model and hardware.
 
@@ -24,7 +24,7 @@ This document covers basic tools and knobs that can be leveraged to find the bes
 
 ### ONNX GO Live Tool
 
-The [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) is a Python package that automates the process of accelerating models with ONNX Runtime(ORT). It contains two parts: (1) model conversion to ONNX with correctness checking (2) auto performance tuning with ORT. Users can run these two together through a single pipeline or run them independently as needed.
+The [ONNX Go Live "OLive" tool](https://github.com/microsoft/OLive) is a Python package that automates the process of accelerating models with ONNX Runtime (ORT). It contains two parts: (1) model conversion to ONNX with correctness checking (2) auto performance tuning with ORT. Users can run these two together through a single pipeline or run them independently as needed.
 
 As a quickstart, please see the [notebook tutorials](https://github.com/microsoft/OLive/tree/master/notebook-tutorial) and [command line examples](https://github.com/microsoft/OLive/tree/master/cmd-example) 
 
@@ -43,21 +43,21 @@ sess_options.enable_profiling = True
 
 If you are using the onnxruntime_perf_test.exe tool, you can add `-p [profile_file]` to enable performance profiling.
 
-In both cases, you will get a JSON file which contains the detailed performance data (threading, latency of each operator, etc). This file is a standard performance tracing file, and to view it in a user friendly way, you can open it by using chrome://tracing:
+In both cases, you will get a JSON file which contains the detailed performance data (threading, latency of each operator, etc). This file is a standard performance tracing file, and to view it in a user-friendly way, you can open it by using chrome://tracing:
 
-* Open chrome browser
+* Open Chrome browser
 * Type chrome://tracing in the address bar
 * Load the generated JSON file
 
-To profile CUDA kernels, please add cupti library to PATH and use onnxruntime binary built from source with `--enable_cuda_profiling`, performance numbers from device will then be attached to those from host. For example:
+To profile CUDA kernels, please add the cupti library to your PATH and use the onnxruntime binary built from source with `--enable_cuda_profiling`. Performance numbers from the device will then be attached to those from the host. For example:
 
 ```json
 {"cat":"Node", "name":"Add_1234", "dur":17, ...}
 {"cat":"Kernel", "name":"ort_add_cuda_kernel", dur:33, ...}
 ```
 
-Here, "Add" operator from host initiated a CUDA kernel on device named "ort_add_cuda_kernel" which lasted for 33 microseconds.
-If an operator called multiple kernels during execution, the performance numbers of those kernels will all be listed following the calling sequence:
+Here, the "Add" operator from the host initiated a CUDA kernel on device named "ort_add_cuda_kernel" which lasted for 33 microseconds.
+If an operator called multiple kernels during execution, the performance numbers of those kernels will all be listed following the call sequence:
 
 ```json
 {"cat":"Node", "name":<name of the node>, ...}
@@ -75,13 +75,13 @@ To learn more about different Execution Providers, see [Reference: Execution Pro
 
 **Python**
 
-Official Python packages on Pypi only support the default CPU (MLAS) and default GPU (CUDA) execution providers. For other execution providers, you need to [build from source](../build/eps.md). The recommended instructions build the wheel with debug info in parallel.
+Official Python packages on PyPI only support the default CPU (MLAS) and default GPU (CUDA) execution providers. For other execution providers, you need to [build from source](../build/eps.md). The recommended instructions build the wheel with debug info in parallel.
 
 For example:
 
-`DNNL:		 ./build.sh --config RelWithDebInfo --use_dnnl --build_wheel --parallel`
+`DNNL: ./build.sh --config RelWithDebInfo --use_dnnl --build_wheel --parallel`
 
-`CUDA:	     ./build.sh --config RelWithDebInfo --use_cuda  --build_wheel --parallel`
+`CUDA: ./build.sh --config RelWithDebInfo --use_cuda --build_wheel --parallel`
 
 **C and C#**
 
@@ -89,13 +89,13 @@ Official releases on Nuget support default (MLAS) for CPU, and CUDA for GPU. For
 
 For example:
 
-`DNNL:		 ./build.sh --config RelWithDebInfo --use_dnnl --build_csharp --parallel`
+`DNNL: ./build.sh --config RelWithDebInfo --use_dnnl --build_csharp --parallel`
 
-`CUDA:	     ./build.sh --config RelWithDebInfo --use_cuda  --build_csharp --parallel`
+`CUDA: ./build.sh --config RelWithDebInfo --use_cuda --build_csharp --parallel`
 
 ### Register the EP
 
-In order to use DNNL, CUDA, or TensorRT execution provider, you need to call the C API OrtSessionOptionsAppendExecutionProvider.
+In order to use the DNNL, CUDA, or TensorRT execution providers, you need to call the C API `OrtSessionOptionsAppendExecutionProvider`.
 
 C API Example:
 
@@ -149,25 +149,24 @@ DirectML is the hardware-accelerated DirectX 12 library for machine learning on 
 
 ## Tips for tuning performance
 
-Below are some suggestions for things to try for various EPs for tuning performance. 
+Below are some suggestions to try for tuning the performance of various EPs.
 
 ### Shared arena based allocator
 
 Memory consumption can be reduced between multiple sessions by configuring the shared arena based allocation. See the `Share allocator(s) between sessions` section in the [C API documentation](../get-started/with-c.md).
 
-### MiMalloc allocator usage
+### mimalloc allocator usage
 
-Onnxruntime supports overriding memory allocations using Mimalloc allocator.
-MiMalloc allocator is a general-purpose fast allocator. See [mimalloc github](https://github.com/microsoft/mimalloc).
+ONNX Runtime supports overriding memory allocations using [mimalloc](https://github.com/microsoft/mimalloc), a fast, general-purpose allocator.
 
-Depending on your model and usage it can deliver single- or double-digits improvements. The GitHub README page describes various scenarios on how mimalloc can be leveraged to support your scenarios.
+Depending on your model and usage, it can deliver single- or double-digit improvements in performance. The GitHub README page describes various scenarios on how mimalloc can be leveraged for performance tuning.
 
-Mimalloc is a submodule in the Onnxruntime source tree. On Windows one can employ `--use_mimalloc` build flag which would build a static version of mimalloc and link it to Onnxruntime. This would redirect Onnxruntime allocators and all new/delete calls to mimalloc.
-Currently, there are no special provisions to employ Mimalloc on Linux. This can be done via LD_PRELAOD mechanism using pre-built binaries that you can build/obtain separately.
+mimalloc is a submodule in the ONNX Runtime source tree. On Windows, one can employ the `--use_mimalloc` build flag which builds a static version of mimalloc and links it to ONNX Runtime. This redirects ONNX Runtime allocators and all new/delete calls to mimalloc.
+Currently, there are no special provisions to employ mimalloc on Linux. It is recommended to use the LD_PRELOAD mechanism using pre-built binaries of mimalloc that you can build/obtain separately.
 
 ### Thread management
 
-* If ORT is built with OpenMP, use the OpenMP env variable to control the number of intra op num threads.
+* If ORT is built with OpenMP, use the OpenMP environment variable to control the number of intra op num threads.
 * If ORT is not built with OpenMP, use the appropriate ORT API to control intra op num threads.
 * Inter op num threads (used only when parallel execution is enabled) is not affected by OpenMP settings and should
 always be set using the ORT APIs.
@@ -175,7 +174,7 @@ always be set using the ORT APIs.
 ### Custom threading callbacks
 
 Occasionally, customers might prefer to use their own fine-tuned threads for multithreading,
-hence ORT offers thread creation and joining callbacks by [C++ API](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_cxx_api.h):
+hence ORT offers thread creation and joining callbacks in the [C++ API](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_cxx_api.h):
 
 ```c++
   std::vector<std::thread> threads;
@@ -226,13 +225,11 @@ For global thread pool:
   }
 ```
 
-Note that CreateThreadCustomized and JoinThreadCustomized, once being set, will be applied to both ORT intra op and inter op thread pools uniformly.
+Note that `CreateThreadCustomized` and `JoinThreadCustomized`, once being set, will be applied to both ORT intra op and inter op thread pools uniformly.
 
 ### Default CPU Execution Provider (MLAS)
 
-The default execution provider uses different knobs to control the thread number.
-
-For the default CPU execution provider, you can try following knobs in the Python API:
+For the default CPU execution provider, you can try the following knobs in the Python API to control the thread number:
 
 ```python
 import onnxruntime as rt
@@ -245,17 +242,17 @@ sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
 ```
 
 * Thread Count
-  * `sess_options.intra_op_num_threads = 2` controls the number of threads to use to run the model
+  * `sess_options.intra_op_num_threads = 2` controls the number of threads to use to run the model.
 * Sequential vs Parallel Execution
-  * `sess_options.execution_mode = rt.ExecutionMode.ORT_SEQUENTIAL` controls whether the operators in the graph run sequentially or in parallel. Usually when a model has many branches, setting this option to false will provide better performance.
+  * `sess_options.execution_mode = rt.ExecutionMode.ORT_SEQUENTIAL` controls whether the operators in the graph run sequentially or in parallel. Usually when a model has many branches, setting this option to `ORT_PARALLEL` will provide better performance.
   * When `sess_options.execution_mode = rt.ExecutionMode.ORT_PARALLEL`, you can set `sess_options.inter_op_num_threads` to control the
 number of threads used to parallelize the execution of the graph (across nodes).
-
-* sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL. Default is already ORT_ENABLE_ALL(99). Please see [onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/tree/master/include/onnxruntime/core/session/onnxruntime_c_api.h#L286)  (enum GraphOptimizationLevel) for the full list of all optimization levels. For details regarding available optimizations and usage please refer to the [Graph Optimizations Doc](graph-optimizations.md).
+* Graph Optimization Level
+  * `sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL` enables all optimizations which is the default. Please see [onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/tree/master/include/onnxruntime/core/session/onnxruntime_c_api.h#L286) (enum `GraphOptimizationLevel`) for the full list of all optimization levels. For details regarding available optimizations and usage, please refer to the [Graph Optimizations](graph-optimizations.md) documentation.
 
 ### MKL_DNN/nGraph Execution Provider
 
-MKL_DNN and nGraph depend on openmp for parallelization. For those execution providers, we need to use the openmp environment variable to tune the performance.
+MKL_DNN and nGraph depend on OpenMP for parallelization. For those execution providers, we need to use OpenMP environment variables to tune the performance.
 
 The most widely used environment variables are:
 
@@ -270,7 +267,7 @@ The most widely used environment variables are:
 
 ### IOBinding
 
-When working with non-CPU execution providers it's most efficient to have inputs (and/or outputs) arranged on the target device (abstracted by the execution provider used) prior to executing the graph (calling Run). When the input is not copied to the target device, ORT copies it from the CPU as part of the Run() call. Similarly if the output is not pre-allocated on the device, ORT assumes that the output is requested on the CPU and copies it from the device as the last step of the Run() call. This obviously eats into the execution time of the graph misleading users into thinking ORT is slow when the majority of the time is spent in these copies. To address this we've introduced the notion of IOBinding. The key idea is to arrange for inputs to be copied to the device and for outputs to be pre-allocated on the device prior to calling Run(). IOBinding is available in all our language bindings. Following are code snippets in various languages demonstrating the usage of this feature.
+When working with non-CPU execution providers, it's most efficient to have inputs (and/or outputs) arranged on the target device (abstracted by the execution provider used) prior to executing the graph (calling `Run()`). When the input is not copied to the target device, ORT copies it from the CPU as part of the `Run()` call. Similarly, if the output is not pre-allocated on the device, ORT assumes that the output is requested on the CPU and copies it from the device as the last step of the `Run()` call. This obviously eats into the execution time of the graph, misleading users into thinking ORT is slow when the majority of the time is spent in these copies. To address this, we've introduced the notion of IOBinding. The key idea is to arrange for inputs to be copied to the device and for outputs to be pre-allocated on the device prior to calling `Run()`. IOBinding is available in all our language bindings. Following are code snippets in various languages demonstrating the usage of this feature.
 
 * C++
 
@@ -292,13 +289,13 @@ When working with non-CPU execution providers it's most efficient to have inputs
 
 * Python
 
-Refer to the [Python API docs](https://onnxruntime.ai/docs/api/python)
+Refer to the [Python API docs](https://onnxruntime.ai/docs/api/python).
 
 * C#
 
-Refer to https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.Tests/OrtIoBindingAllocationTest.cs 
+Refer to [OrtIoBindingAllocationTest.cs](https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.Tests/OrtIoBindingAllocationTest.cs).
 
-### Convolution heavy models and the CUDA EP
+### Convolution-heavy models and the CUDA EP
 
 ORT leverages CuDNN for convolution operations and the first step in this process is to determine which "optimal" convolution algorithm to use while performing the convolution operation for the given input configuration (input shape, filter shape, etc.) in each `Conv` node. This sub-step involves querying CuDNN for a "workspace" memory size and have this allocated so that CuDNN can use this auxiliary memory while determining the "optimal" convolution algorithm to use. By default, ORT clamps the workspace size to 32 MB which may lead to a sub-optimal convolution algorithm getting picked by CuDNN. To allow ORT to allocate the maximum possible workspace as determined by CuDNN, a provider option named `cudnn_conv_use_max_workspace` needs to get set (as shown below). Keep in mind that using this flag may increase the peak memory usage by a factor (sometimes a few GBs) but this does help CuDNN pick the best convolution algorithm for the given input. We have found that this is an important flag to use while using an fp16 model as this allows CuDNN to pick tensor core algorithms for the convolution operations (if the hardware supports tensor core operations). This flag may or may not result in performance gains for other data types (`float` and `double`).
 
@@ -307,7 +304,7 @@ ORT leverages CuDNN for convolution operations and the first step in this proces
 ```python
 providers = [("CUDAExecutionProvider", {"cudnn_conv_use_max_workspace": '1'})]
 sess_options = ort.SessionOptions()
-sess = ort.InferenceSession("my_conv_heavy_fp16_model.onnx",  sess_options = sess_options, providers=providers)
+sess = ort.InferenceSession("my_conv_heavy_fp16_model.onnx", sess_options=sess_options, providers=providers)
 ```
 
 * C/C++
@@ -350,7 +347,7 @@ ORT leverages CuDNN for convolution operations. While CuDNN only takes 4-D or 5-
 ```python
 providers = [("CUDAExecutionProvider", {"cudnn_conv1d_pad_to_nc1d": '1'})]
 sess_options = ort.SessionOptions()
-sess = ort.InferenceSession("my_conv_model.onnx",  sess_options = sess_options, providers=providers)
+sess = ort.InferenceSession("my_conv_model.onnx", sess_options=sess_options, providers=providers)
 ```
 
 * C/C++
@@ -389,30 +386,30 @@ SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaPr
 NOTE: Please note that this feature is currently being offered in "preview" mode.
 
 While using the CUDA EP, ORT supports the usage of [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) to remove CPU overhead associated with launching CUDA kernels sequentially. To enable the usage of CUDA Graphs, use the provider option as shown in the samples below.
-Currently, there are some constraints with regards to using the CUDA Graphs feature which are listed below:
+Currently, there are some constraints with regards to using the CUDA Graphs feature:
 
-1) Models with control-flow ops (i.e.) models with `If`, `Loop`, and `Scan` ops are not supported
+* Models with control-flow ops (i.e. `If`, `Loop` and `Scan` ops) are not supported.
 
-2) Usage of CUDA Graphs is limited to models where-in all the model ops (graph nodes) can be partitioned to the CUDA EP
+* Usage of CUDA Graphs is limited to models where-in all the model ops (graph nodes) can be partitioned to the CUDA EP.
 
-3) The input/output types of models need to be tensors
+* The input/output types of models need to be tensors.
 
-4) Shapes of inputs/outputs cannot change across inference calls. Dynamic shape models are supported - the only constraint is that the input/output shapes should be the same across all inference calls
+* Shapes of inputs/outputs cannot change across inference calls. Dynamic shape models are supported - the only constraint is that the input/output shapes should be the same across all inference calls.
 
-5) By design, [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) is designed to read from/write to the same CUDA virtual memory addresses during the graph replaying step as it does during the graph capturing step. Due to this requirement, usage of this feature requires using IOBinding so as to bind memory which will be used as input(s)/output(s) for the CUDA Graph machinery to read from/write to(please see samples below)
+* By design, [CUDA Graphs](https://developer.nvidia.com/blog/cuda-10-features-revealed/) is designed to read from/write to the same CUDA virtual memory addresses during the graph replaying step as it does during the graph capturing step. Due to this requirement, usage of this feature requires using IOBinding so as to bind memory which will be used as input(s)/output(s) for the CUDA Graph machinery to read from/write to (please see samples below).
 
-6) While updating the input(s) for subsequent inference calls, the fresh input(s) need to be copied over to the corresponding CUDA memory location(s) of the bound `OrtValue` input(s) (please see samples below to see how this can be achieved). This is due to the fact that the "graph replay" will require reading inputs from the same CUDA virtual memory addresses
+* While updating the input(s) for subsequent inference calls, the fresh input(s) need to be copied over to the corresponding CUDA memory location(s) of the bound `OrtValue` input(s) (please see samples below to see how this can be achieved). This is due to the fact that the "graph replay" will require reading inputs from the same CUDA virtual memory addresses.
 
-7) Multi-threaded usage is not supported currently (i.e.) `Run()` MAY NOT be invoked on the same `InferenceSession` object from multiple threads while using CUDA Graphs
+* Multi-threaded usage is currently not supported, i.e. `Run()` MAY NOT be invoked on the same `InferenceSession` object from multiple threads while using CUDA Graphs.
 
-NOTE: The very first `Run()` performs a variety of tasks under the hood like making CUDA memory allocations, capturing the CUDA graph for the model, and then performing a graph replay to ensure that the graph runs. Due to this, the latency associated with the first `Run()` is bound to be high. The subsequent `Run()`s only perform graph replays of the graph captured and cached in the first `Run()`. 
+NOTE: The very first `Run()` performs a variety of tasks under the hood like making CUDA memory allocations, capturing the CUDA graph for the model, and then performing a graph replay to ensure that the graph runs. Due to this, the latency associated with the first `Run()` is bound to be high. Subsequent `Run()`s only perform graph replays of the graph captured and cached in the first `Run()`. 
 
 * Python
 
 ```python
 providers = [("CUDAExecutionProvider", {"enable_cuda_graph": '1'})]
 sess_options = ort.SessionOptions()
-sess = ort.InferenceSession("my_model.onnx",  sess_options = sess_options, providers=providers)
+sess = ort.InferenceSession("my_model.onnx", sess_options=sess_options, providers=providers)
 
 providers = [("CUDAExecutionProvider", {'enable_cuda_graph': True})]
 x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
@@ -447,14 +444,15 @@ session.run_with_iobinding(io_binding)
 const auto& api = Ort::GetApi();
 
 struct CudaMemoryDeleter {
-explicit CudaMemoryDeleter(const Ort::Allocator* alloc) {
-  alloc_ = alloc;
-}
-void operator()(void* ptr) const {
-  alloc_->Free(ptr);
-}
+  explicit CudaMemoryDeleter(const Ort::Allocator* alloc) {
+    alloc_ = alloc;
+  }
 
-const Ort::Allocator* alloc_;
+  void operator()(void* ptr) const {
+    alloc_->Free(ptr);
+  }
+  
+  const Ort::Allocator* alloc_;
 };
   
 // Enable cuda graph in cuda provider option.
@@ -477,7 +475,7 @@ Ort::Allocator cuda_allocator(session, info_cuda);
 const std::array<int64_t, 2> x_shape = {3, 2};
 std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
 auto input_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(x_values.size() * sizeof(float)),
-                                                             CudaMemoryDeleter(&cuda_allocator));
+                                                           CudaMemoryDeleter(&cuda_allocator));
 cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
 
 // Create an OrtValue tensor backed by data on CUDA memory
@@ -487,11 +485,11 @@ Ort::Value bound_x = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*
 const std::array<int64_t, 2> expected_y_shape = {3, 2};
 std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
 auto output_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(expected_y.size() * sizeof(float)),
-                                                              CudaMemoryDeleter(&cuda_allocator));
+                                                            CudaMemoryDeleter(&cuda_allocator));
 
 // Create an OrtValue tensor backed by data on CUDA memory
 Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()),
-                                                expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
+                                              expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
 
 Ort::IoBinding binding(session);
 binding.BindInput("X", bound_x);
@@ -520,49 +518,49 @@ The answers below are troubleshooting suggestions based on common previous user-
 
 ### Performance Troubleshooting Checklist
 
-Here is a list of things to check through when assessing performance issues.
+Here is a list of things to check when assessing performance issues.
 
 * Are you using OpenMP? OpenMP will parallelize some of the code for potential performance improvements. This is not recommended for running on single threads.
-* Have you enabled all [graph optimizations](graph-optimizations.md)? The official published packages do enable all by default, but when building from source, check that these are enabled in your build.
-* Have you searched through prior filed [Github issues](https://github.com/microsoft/onnxruntime/issues) to see if your problem has been discussed previously? Please do this before filing new issues.
+* Have you enabled all [graph optimizations](graph-optimizations.md)? The official published packages do enable all by default but when building from source, check that these are enabled in your build.
+* Have you searched through prior-filed [GitHub issues](https://github.com/microsoft/onnxruntime/issues) to see if your problem has been discussed previously? Please do this before filing new issues.
 * If using CUDA or TensorRT, do you have the right versions of the dependent libraries installed? 
 
 ### I need help performance tuning for BERT models
 
-For BERT models, sometimes ONNX Runtime cannot apply the best optimization due to reasons such as framework version updates. We recommend trying out the [BERT optimization tool](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers), which reflects the latest changes in graph pattern matching and model conversions, and a set of [notebooks](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/notebooks) to help get started.
+For BERT models, sometimes ONNX Runtime cannot apply the best optimizations due to reasons such as framework version updates. We recommend trying out the [BERT optimization tool](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers), which reflects the latest changes in graph pattern matching and model conversions, and a set of [notebooks](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/notebooks) to help get started.
 
 ### Why is the model graph not optimized even with graph_optimization_level set to ORT_ENABLE_ALL?
 
-The ONNX model from IR_VERSION 4 only treats initializers that appear in graph input as non-constant. This may fail some of the graph optimizations, like const folding, operator fusion and etc. Move initializers out of graph inputs if there is no need to override them, by either re-generating the model with latest exporter/converter or with the tool [remove_initializer_from_input.py](https://github.com/microsoft/onnxruntime/tree/master/tools/python/remove_initializer_from_input.py).
+The ONNX model from IR_VERSION 4 only treats initializers that appear in graph input as non-constant. This may prevent some of the graph optimizations like const folding, operator fusion etc. Move initializers out of graph inputs if there is no need to override them, by either re-generating the model with the latest exporter/converter or with the tool [remove_initializer_from_input.py](https://github.com/microsoft/onnxruntime/tree/master/tools/python/remove_initializer_from_input.py).
 
-### Why is my model running slower on GPU than CPU?
+### Why is my model running slower on GPU than on CPU?
 
-Depending on which execution provider you're using, it may not have full support for all the operators in your model. Fallback to CPU ops can cause hits in performance speed. Moreover even if an op is implemented by the CUDA execution provider, it may not necessarily assign/place the op to the CUDA EP due to performance reasons. To see the placement decided by ORT, turn on verbose logging and look at the console output.
+Depending on which execution provider you're using, it may not have full support for all the operators in your model. Fallback to CPU ops can cause hits in performance speed. Moreover, even if an op is implemented by the CUDA execution provider, it may not necessarily assign/place the op to the CUDA EP due to performance reasons. To see the placement decided by ORT, turn on verbose logging and look at the console output.
 
-### My converted Tensorflow model is slow - why?
+### My converted TensorFlow model is slow - why?
 
 NCHW and NHWC are two different memory layout for 4-D tensors.
 
-Most TensorFlow operations used by a CNN support both NHWC and NCHW data format. The Tensorflow team suggests that on GPU NCHW is faster but on CPU NHWC is sometimes faster in Tensorflow. However, ONNX only supports NCHW. As a result, if the original model is in NHWC format, when the model is converted extra transposes may be added. The [tensorflow-onnx](https://github.com/onnx/tensorflow-onnx) converter does remove many of these transposes, but if this doesn't help sufficiently, consider retraining the model using NCHW.
+Most TensorFlow operations used by a CNN support both NHWC and NCHW data format. The TensorFlow team suggests that on GPUs NCHW is faster but on CPUs NHWC is sometimes faster in TensorFlow. However, ONNX only supports NCHW. As a result, if the original model is in NHWC format, extra transposes may be added when the model is converted. The [tensorflow-onnx](https://github.com/onnx/tensorflow-onnx) converter does remove many of these transposes, but if this doesn't help sufficiently, consider retraining the model in the NCHW format.
 
 ### Mitigate high latency variance
 
 On some platforms, onnxruntime may exhibit high latency variance during inferencing. This is caused by the constant cost model that onnxruntime uses to parallelize tasks in the thread pool.
 For each task, the constant cost model will calculate a granularity for parallelization among threads, which stays constant to the end of the task execution. This approach can bring imbalanced load sometimes, causing high latency variance.
-To mitigate this, onnxruntime provides a dynamic cost model which could be enbabled by session option:
+To mitigate this, onnxruntime provides a dynamic cost model which can be enabled as a session option:
 
 ```python
 sess_options.add_session_config_entry('session.dynamic_block_base', '4')
 ```
 
-Whenever set with a positive value, onnxruntime thread pool will parallelize internal tasks with a decreasing granularity.
-Specifically, assume there is a function expected to run N number of times by the thread pool, with the dynamic cost model enabled, each thread in the pool will claim
+Whenever set with a positive value, the onnxruntime thread pool will parallelize internal tasks with a decreasing granularity.
+Specifically, assuming there is a function expected to run N number of times by the thread pool, with the dynamic cost model enabled, each thread in the pool will claim
 
 ```python
 residual_of_N / (dynamic_block_base * num_of_threads)
 ```
 
-Whenever it is ready to run. So over a period of time, threads in the pool are likely to be better load balanced, thereby lowering the latency variance.
+whenever it is ready to run. So over a period of time, threads in the pool are likely to be better load balanced, thereby lowering the latency variance.
 
-Due to the same reason, the dynamic cost model may also better the performance for cases when threads are more likely be preempted.
-Per our tests, by far the best configuration for dynamic_block_base is 4, which lowers the variance while keeping the performance as good.
+Due to the same reason, the dynamic cost model may also improve the performance for cases when threads are more likely be preempted.
+Per our tests, by far the best configuration for dynamic_block_base is 4, which lowers the variance while keeping good performance.
