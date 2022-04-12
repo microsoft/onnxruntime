@@ -1590,9 +1590,7 @@ class GemmOpBuilder : public BaseOpBuilder {
 };
 
 bool GemmOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
-  // TODO, add support for QDQ NodeUnit (for Matmul)
-  const auto quant_type = GetQuantizedOpType(node_unit);
-  return quant_type == QuantizedOpType::QDQGemm || quant_type == QuantizedOpType::QLinearMatMul;
+  return IsQuantizedGemm(GetQuantizedOpType(node_unit));
 }
 
 /* static */ void GemmOpBuilder::CreateSharedOpBuilder(

@@ -128,6 +128,12 @@ bool IsQuantizedPool(QuantizedOpType quant_op_type) {
          (quant_op_type == QuantizedOpType::QDQAveragePool);
 }
 
+bool IsQuantizedGemm(QuantizedOpType quant_op_type) {
+  return (quant_op_type == QuantizedOpType::QLinearMatMul) ||
+         (quant_op_type == QuantizedOpType::QDQGemm) ||
+         (quant_op_type == QuantizedOpType::QDQMatMul);
+}
+
 bool IsQuantizedBinaryOp(QuantizedOpType quant_op_type) {
   return quant_op_type == QuantizedOpType::QLinearMatMul ||
          quant_op_type == QuantizedOpType::QLinearAdd ||
@@ -153,10 +159,9 @@ bool HasValidBinaryOpQuantizedInputTypes(const NodeUnit& node_unit) {
   if (!GetType(inputs[1].node_arg, b_input_type))
     return false;
 
-  // QlinearConv/MatMul/QDQGemm supports u8u8 or u8s8
+  // QlinearConv/MatMul/QDQGemm/QDQMatMul supports u8u8 or u8s8
   // QLinearAdd/QLinearMul only support u8u8
-  bool is_quant_conv_or_gemm = IsQuantizedConv(quant_op_type) || (quant_op_type == QuantizedOpType::QLinearMatMul) ||
-                               (quant_op_type == QuantizedOpType::QDQGemm);
+  bool is_quant_conv_or_gemm = IsQuantizedConv(quant_op_type) || IsQuantizedGemm(quant_op_type);
 
   bool has_valid_qlinear_conv_weight =
       (b_input_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||

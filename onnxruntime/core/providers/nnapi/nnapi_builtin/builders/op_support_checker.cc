@@ -1269,8 +1269,7 @@ class GemmOpSupportChecker : public BaseOpSupportChecker {
 };
 
 bool GemmOpSupportChecker::IsQuantizedOp(const NodeUnit& node_unit) const {
-  const auto quant_type = GetQuantizedOpType(node_unit);
-  return quant_type == QuantizedOpType::QDQGemm || quant_type == QuantizedOpType::QLinearMatMul || quant_type == QuantizedOpType::QDQMatMul;
+  return IsQuantizedGemm(GetQuantizedOpType(node_unit));
 }
 
 bool GemmOpSupportChecker::HasSupportedInputOutputsImpl(
