@@ -149,6 +149,18 @@ def numpy_T(g, self):
         # output a permute so use ATen instead
         return g.op("com.microsoft::ATenOp", self, name_s='aten::numpy_T')
 
+
+@register_symbolic('squeeze')
+def squeeze(g, self, dim=None):
+    # Current _infer_If does not correctly infer shapes from its then- and else- branches, and will
+    # cause error in shape inference of following nodes, here we choose to export it as `Squeeze.`
+    from torch.onnx.symbolic_opset11 import squeeze as squeeze_with_if
+    if dim is None:
+        return squeeze_with_if(g, self, dim)
+    squeeze_dim = sym_help._get_const(dim, 'i', 'dim')
+    return sym_help._squeeze_helper(g, self, axes_i=[squeeze_dim])
+
+
 # For torch.einsum.
 def parse_equation(equation):
     pos_comma = equation.find(',')

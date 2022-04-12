@@ -16,6 +16,7 @@ namespace onnxruntime {
 
 namespace migraphx_env_vars {
 static const std::string kFP16Enable = "ORT_MIGRAPHX_FP16_ENABLE";
+static const std::string dumpModelOps = "ORT_MIGRAPHX_DUMP_MODEL_OPS";
 };
 
 // Information to construct kernel function state.
@@ -31,6 +32,7 @@ struct MIGraphXFuncState {
   OrtMutex* mgx_mu_ptr = nullptr;
   bool no_input_shape = false;
   bool fp16_enable = false;
+  bool dump_model_ops = false;
 };
 
 // Logical device representation.
@@ -58,6 +60,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
 
 private:
   bool fp16_enable_ = false;
+  bool dump_model_ops_ = false;
   int device_id_;
   migraphx::target t_; 
   OrtMutex mgx_mu_;

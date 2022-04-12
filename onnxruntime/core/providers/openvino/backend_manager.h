@@ -1,10 +1,9 @@
-// Copyright(C) 2019 Intel Corporation
+// Copyright (C) 2019-2022 Intel Corporation
 // Licensed under the MIT License
 
 #pragma once
 
-#include <inference_engine.hpp>
-
+#include "ov_interface.h"
 #include "contexts.h"
 #include "ibackend.h"
 

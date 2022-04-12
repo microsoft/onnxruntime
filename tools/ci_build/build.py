@@ -276,7 +276,7 @@ def parse_arguments():
 
     # Build options
     parser.add_argument(
-        "--cmake_extra_defines", nargs="+",
+        "--cmake_extra_defines", nargs="+", action='append',
         help="Extra definitions to pass to CMake during build system "
         "generation. These are just CMake -D options without the leading -D.")
     parser.add_argument(
@@ -322,6 +322,11 @@ def parse_arguments():
     parser.add_argument("--android_run_emulator", action="store_true",
                         help="Start up an Android emulator if needed.")
 
+    parser.add_argument("--use_gdk", action='store_true', help="Build with the GDK toolchain.")
+    parser.add_argument("--gdk_edition", default=os.path.normpath(os.environ.get("GameDKLatest", "")).split(os.sep)[-1],
+                        help="Build with a specific GDK edition. Defaults to the latest installed.")
+    parser.add_argument("--gdk_platform", default="Scarlett", help="Sets the GDK target platform.")
+
     parser.add_argument("--ios", action='store_true', help="build for ios")
     parser.add_argument(
         "--ios_sysroot", default="",
@@ -356,7 +361,14 @@ def parse_arguments():
     # WebAssembly build
     parser.add_argument("--build_wasm", action='store_true', help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action='store_true', help="Build for WebAssembly static library")
+    parser.add_argument(
+        "--emsdk_version", default="3.1.3", help="Specify version of emsdk")
+
     parser.add_argument("--enable_wasm_simd", action='store_true', help="Enable WebAssembly SIMD")
+    parser.add_argument(
+        "--enable_wasm_threads", action='store_true',
+        help="Enable WebAssembly multi-threads support")
+
     parser.add_argument(
         "--disable_wasm_exception_catching", action='store_true',
         help="Disable exception catching in WebAssembly.")
@@ -364,19 +376,19 @@ def parse_arguments():
         "--enable_wasm_exception_throwing_override", action='store_true',
         help="Enable exception throwing in WebAssembly, this will override default disabling exception throwing "
         "behavior when disable exceptions.")
-    parser.add_argument(
-        "--enable_wasm_threads", action='store_true',
-        help="Enable WebAssembly multi-threads support")
+
     parser.add_argument(
         "--enable_wasm_profiling", action='store_true',
         help="Enable WebAsselby profiling and preserve function names")
     parser.add_argument(
         "--enable_wasm_debug_info", action='store_true',
         help="Build WebAssembly with DWARF format debug info")
+
+    parser.add_argument("--wasm_malloc", help="Specify memory allocator for WebAssembly")
+
     parser.add_argument(
-        "--wasm_malloc", default="dlmalloc", help="Specify memory allocator for WebAssembly")
-    parser.add_argument(
-        "--emsdk_version", default="3.1.3", help="Specify version of emsdk")
+        "--emscripten_settings", nargs="+", action='append',
+        help="Extra emscripten settings to pass to emcc using '-s <key>=<value>' during build.")
 
     # Enable onnxruntime-extensions
     parser.add_argument(
@@ -476,6 +488,9 @@ def parse_arguments():
         help="Test with multi-device. Mostly used for multi-device GPU")
     parser.add_argument(
         "--use_dml", action='store_true', help="Build with DirectML.")
+    parser.add_argument(
+        "--dml_path", type=str, default="",
+        help="Path to a custom DirectML installation (must have bin/, lib/, and include/ subdirectories).")
     parser.add_argument(
         "--use_winml", action='store_true', help="Build with WinML.")
     parser.add_argument(
@@ -584,7 +599,13 @@ def parse_arguments():
         "--enable_cuda_profiling", action='store_true', help="enable cuda kernel profiling, \
         cupti library must be added to PATH beforehand.")
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.android_sdk_path:
+        args.android_sdk_path = os.path.normpath(args.android_sdk_path)
+    if args.android_ndk_path:
+        args.android_ndk_path = os.path.normpath(args.android_ndk_path)
+
+    return args
 
 
 def is_reduced_ops_build(args):
@@ -718,11 +739,16 @@ def use_dev_mode(args):
     return 'ON'
 
 
-def add_cmake_define_without_override(cmake_extra_defines, key, value):
-    for x in cmake_extra_defines:
+def add_default_definition(definition_list, key, default_value):
+    for x in definition_list:
         if x.startswith(key + "="):
-            return cmake_extra_defines
-    cmake_extra_defines.append(key + "=" + value)
+            return definition_list
+    definition_list.append(key + "=" + default_value)
+
+
+def normalize_arg_list(nested_list):
+    return ([i for j in nested_list for i in j]
+            if nested_list else [])
 
 
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home,
@@ -830,7 +856,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_PROFILING=" + ("ON" if args.enable_wasm_profiling else "OFF"),
-        "-Donnxruntime_WEBASSEMBLY_MALLOC=" + args.wasm_malloc,
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
         "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS=" + ("ON" if args.enable_external_custom_op_schemas
                                                               else "OFF"),
@@ -841,26 +866,26 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
     # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
     # And OFF for the people who are not actively developing onnx runtime.
-    add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_DEV_MODE", use_dev_mode(args))
+    add_default_definition(cmake_extra_defines, "onnxruntime_DEV_MODE", use_dev_mode(args))
     if args.use_cuda:
-        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_USE_CUDA", "ON")
-        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_CUDA_VERSION", args.cuda_version)
+        add_default_definition(cmake_extra_defines, "onnxruntime_USE_CUDA", "ON")
+        add_default_definition(cmake_extra_defines, "onnxruntime_CUDA_VERSION", args.cuda_version)
         # TODO: this variable is not really needed
-        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_CUDA_HOME", cuda_home)
-        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_CUDNN_HOME", cudnn_home)
+        add_default_definition(cmake_extra_defines, "onnxruntime_CUDA_HOME", cuda_home)
+        add_default_definition(cmake_extra_defines, "onnxruntime_CUDNN_HOME", cudnn_home)
 
     if is_windows():
         if args.enable_msvc_static_runtime:
-            add_cmake_define_without_override(cmake_extra_defines, "CMAKE_MSVC_RUNTIME_LIBRARY",
-                                              "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-            add_cmake_define_without_override(cmake_extra_defines, "ONNX_USE_MSVC_STATIC_RUNTIME", "ON")
-            add_cmake_define_without_override(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "ON")
-            add_cmake_define_without_override(cmake_extra_defines, "gtest_force_shared_crt", "OFF")
+            add_default_definition(cmake_extra_defines, "CMAKE_MSVC_RUNTIME_LIBRARY",
+                                   "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+            add_default_definition(cmake_extra_defines, "ONNX_USE_MSVC_STATIC_RUNTIME", "ON")
+            add_default_definition(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "ON")
+            add_default_definition(cmake_extra_defines, "gtest_force_shared_crt", "OFF")
         else:
             # CMAKE_MSVC_RUNTIME_LIBRARY is default to MultiThreaded$<$<CONFIG:Debug>:Debug>DLL
-            add_cmake_define_without_override(cmake_extra_defines, "ONNX_USE_MSVC_STATIC_RUNTIME", "OFF")
-            add_cmake_define_without_override(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "OFF")
-            add_cmake_define_without_override(cmake_extra_defines, "gtest_force_shared_crt", "ON")
+            add_default_definition(cmake_extra_defines, "ONNX_USE_MSVC_STATIC_RUNTIME", "OFF")
+            add_default_definition(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "OFF")
+            add_default_definition(cmake_extra_defines, "gtest_force_shared_crt", "ON")
 
     if acl_home and os.path.exists(acl_home):
         cmake_args += ["-Donnxruntime_ACL_HOME=" + acl_home]
@@ -960,6 +985,23 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         if args.android_cpp_shared:
             cmake_args += ["-DANDROID_STL=c++_shared"]
 
+    if args.dml_path:
+        cmake_args += [
+            "-Donnxruntime_USE_CUSTOM_DIRECTML=ON",
+            "-Ddml_INCLUDE_DIR=" + os.path.join(args.dml_path, "include"),
+            "-Ddml_LIB_DIR=" + os.path.join(args.dml_path, "lib"),
+        ]
+
+    if args.use_gdk:
+        cmake_args += [
+            "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, 'cmake', 'gdk_toolchain.cmake'),
+            "-DGDK_EDITION=" + args.gdk_edition,
+            "-DGDK_PLATFORM=" + args.gdk_platform,
+            "-Donnxruntime_BUILD_UNIT_TESTS=OFF"  # gtest doesn't build for GDK
+        ]
+        if args.use_dml and not args.dml_path:
+            raise BuildError("You must set dml_path when building with the GDK.")
+
     if is_macOS() and not args.android:
         cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch]
         if args.use_xcode:
@@ -1032,6 +1074,17 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "-Donnxruntime_BUILD_UNIT_TESTS=OFF",
             ]
 
+        # add default emscripten settings
+        emscripten_settings = normalize_arg_list(args.emscripten_settings)
+
+        # set -s MALLOC
+        if args.wasm_malloc is not None:
+            add_default_definition(emscripten_settings, 'MALLOC', args.wasm_malloc)
+        add_default_definition(emscripten_settings, 'MALLOC', 'dlmalloc')
+
+        if (emscripten_settings):
+            cmake_args += [f"-Donnxruntime_EMSCRIPTEN_SETTINGS={';'.join(emscripten_settings)}"]
+
     # Append onnxruntime-extensions cmake options
     if args.use_extensions:
         cmake_args += ["-Donnxruntime_USE_EXTENSIONS=ON"]
@@ -1071,9 +1124,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-Donnxruntime_USE_FULL_PROTOBUF=ON"]
 
     if args.gen_doc:
-        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "ON")
+        add_default_definition(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "ON")
     else:
-        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "OFF")
+        add_default_definition(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "OFF")
 
     if args.build_eager_mode:
         import torch
@@ -1137,6 +1190,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "-Donnxruntime_ENABLE_MEMLEAK_CHECKER=" +
                 ("ON" if config.lower() == 'debug' and not (args.use_nuphar or args.use_tvm) and not
                  args.use_openvino and not
+                 args.use_gdk and not
                  args.enable_msvc_static_runtime and not
                  args.disable_memleak_checker
                  else "OFF"), "-DCMAKE_BUILD_TYPE={}".format(config)],
@@ -1269,7 +1323,17 @@ def setup_migraphx_vars(args):
 
 
 def setup_dml_build(args, cmake_path, build_dir, configs):
-    if args.use_dml:
+    if not args.use_dml:
+        return
+
+    if args.dml_path:
+        for expected_file in ["bin/DirectML.dll", "lib/DirectML.lib", "include/DirectML.h"]:
+            file_path = os.path.join(args.dml_path, expected_file)
+            if not os.path.exists(file_path):
+                raise BuildError("dml_path is invalid.",
+                                 "dml_path='{}' expected_file='{}'."
+                                 .format(args.dml_path, file_path))
+    else:
         for config in configs:
             # Run the RESTORE_PACKAGES target to perform the initial
             # NuGet setup.
@@ -2037,8 +2101,7 @@ def main():
     log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))
 
     args = parse_arguments()
-    cmake_extra_defines = (args.cmake_extra_defines
-                           if args.cmake_extra_defines else [])
+    cmake_extra_defines = normalize_arg_list(args.cmake_extra_defines)
     cross_compiling = args.arm or args.arm64 or args.arm64ec or args.android
 
     # If there was no explicit argument saying what to do, default
@@ -2097,6 +2160,12 @@ def main():
             # To debug ONNX Runtime WebAssembly, use ONNX Runtime Web to debug ort-wasm.wasm in browsers.
             raise BuildError("WebAssembly tests cannot be enabled with flag --enable_wasm_debug_info")
 
+        if args.wasm_malloc is not None:
+            # mark --wasm_malloc as deprecated
+            log.warning(
+                "Flag '--wasm_malloc=<Value>' is deprecated. "
+                "Please use '--emscripten_settings MALLOC=<Value>'.")
+
     if args.code_coverage and not args.android:
         raise BuildError("Using --code_coverage requires --android")
 
@@ -2110,6 +2179,10 @@ def main():
 
     # Disabling unit tests for GPU and MYRIAD on nuget creation
     if args.use_openvino != "CPU_FP32" and args.build_nuget:
+        args.test = False
+
+    # GDK builds don't support testing
+    if args.use_gdk:
         args.test = False
 
     configs = set(args.config)

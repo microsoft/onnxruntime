@@ -73,8 +73,8 @@ elif [[ "$CPU_ARCH" = "aarch64" ]]; then
 else
   NODEJS_ARCH=$CPU_ARCH
 fi
-GetFile https://nodejs.org/dist/v14.18.1/node-v14.18.1-linux-${NODEJS_ARCH}.tar.gz /tmp/src/node-v14.18.1-linux-${NODEJS_ARCH}.tar.gz
-tar --strip 1 -xf /tmp/src/node-v14.18.1-linux-${NODEJS_ARCH}.tar.gz -C /usr
+GetFile https://nodejs.org/dist/v16.14.2/node-v16.14.2-linux-${NODEJS_ARCH}.tar.gz /tmp/src/node-v16.14.2-linux-${NODEJS_ARCH}.tar.gz
+tar --strip 1 -xf /tmp/src/node-v16.14.2-linux-${NODEJS_ARCH}.tar.gz -C /usr
 
 cd /tmp/src
 GetFile https://downloads.gradle-dn.com/distributions/gradle-6.3-bin.zip /tmp/src/gradle-6.3-bin.zip

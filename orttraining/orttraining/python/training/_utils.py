@@ -299,3 +299,18 @@ def state_dict_trainer_options_optimizer_name_key():
     """Returns the trainer options optimizer_name key name in the state dictionary"""
 
     return 'optimizer_name'
+
+def state_dict_train_step_info_key():
+    """Returns the train step info key name in the state dictionary"""
+
+    return 'train_step_info'
+
+def state_dict_train_step_info_optimization_step_key():
+    """Returns the train step info optimization step key name in the state dictionary"""
+
+    return 'optimization_step'
+
+def state_dict_train_step_info_step_key():
+    """Returns the train step info step key name in the state dictionary"""
+
+    return 'step'

@@ -185,22 +185,39 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       s_.y_data = reinterpret_cast<CudaT*>(s_.Y->template MutableData<T>());
     }
 
+    const CUDAExecutionProvider* cuda_ep =
+        static_cast<const CUDAExecutionProvider*>(this->Info().GetExecutionProvider());
+
     TensorShapeVector x_dims_cudnn{x_dims.begin(), x_dims.end()};
     TensorShapeVector y_dims_cudnn = !post_slicing_required ? y_dims : y_dims_with_adjusted_pads;
     if (rank < 2) {
       // TODO: Explore padding the provided input shape [N, C, D] to [N, C, 1, D]
       // especially for EXHAUSTIVE algo search which may result in a better algo selection.
-      // Currently, we are padding it to [N, C, D, 1] as this seems to be the sweet spot
-      // for all algo search options: EXHAUSTIVE, HEURISTIC, and DEFAULT.
-      // See PR #7348 for more context.
-      x_dims_cudnn.push_back(1);
-      y_dims_cudnn.push_back(1);
-      w_dims.push_back(1);
-      pads.insert(pads.begin() + rank, 0);
-      pads.insert(pads.end(), 0);
-      kernel_shape.push_back(1);
-      strides.push_back(1);
-      dilations.push_back(1);
+      // ORTModule uses different algo search options (HEURISTIC, and use max workspace size) compared to
+      // inference build (EXHAUSTIVE, 32M workspace size). We observed better perf when we pad input shape
+      // [N,C,D] to [N,C,1,D], expecially on A100, and especially for ConvGrad.
+      // PyTorch also pads to [N,C,1,D]. For inference build, we still pad it to [N, C, D, 1] as this seems
+      // to be the sweet spot for all algo search options: EXHAUSTIVE, HEURISTIC, and DEFAULT.
+      // See PR #7348 and #7702 for more context.
+      if (cuda_ep->GetCudnnConv1dPadToNc1d()) {
+        x_dims_cudnn.insert(x_dims_cudnn.begin() + 2, 1);
+        y_dims_cudnn.insert(y_dims_cudnn.begin() + 2, 1);
+        w_dims.insert(w_dims.begin() + 2, 1);
+        pads.insert(pads.begin() + rank, 0);
+        pads.insert(pads.begin(), 0);
+        kernel_shape.insert(kernel_shape.begin(), 1);
+        strides.insert(strides.begin(), 1);
+        dilations.insert(dilations.begin(), 1);
+      } else {
+        x_dims_cudnn.push_back(1);
+        y_dims_cudnn.push_back(1);
+        w_dims.push_back(1);
+        pads.insert(pads.begin() + rank, 0);
+        pads.insert(pads.end(), 0);
+        kernel_shape.push_back(1);
+        strides.push_back(1);
+        dilations.push_back(1);
+      }
     }
 
     if (w_dims_changed)
@@ -245,7 +262,6 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
 
       cudnnConvolutionFwdAlgoPerf_t perf;
       int algo_count = 1;
-      const CUDAExecutionProvider* cuda_ep = static_cast<const CUDAExecutionProvider*>(this->Info().GetExecutionProvider());
       int cudnn_conv_algo = cuda_ep->GetCudnnConvAlgo();
       ORT_ENFORCE(cudnn_conv_algo > -1 && cudnn_conv_algo < 3, "cudnn_conv_algo should be 0, 1 or 2, but got ", cudnn_conv_algo);
       switch (cudnn_conv_algo) {

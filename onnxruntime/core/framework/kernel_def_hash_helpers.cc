@@ -84,7 +84,11 @@ void UpdateHashForBackwardsCompatibility(HashValue& hash) {
       {14259324427750852648ULL, 7767393334034626736ULL},    // kOnnxDomain, StringNormalizer, 10
                                                             // contrib ops
       {7642430665819070720ULL, 8620498355864235632ULL},     // kMSDomain, CropAndResize, 1
-      {15019666093341768288ULL, 11924582339825775592ULL}};  // kMSDomain, GridSample, 1
+      {15019666093341768288ULL, 11924582339825775592ULL},   // kMSDomain, GridSample, 1
+      {8466416990072218056ULL, 18418354579469131656ULL},    // kOnnxDomain, LayerNormalization, 1, float
+      {4058615579523172864ULL, 4827261308628792072ULL},     // kOnnxDomain, LayerNormalization, 1, double
+      {16349480652468900704ULL, 4809288790945391544ULL},    // kOnnxDomain, SimplifiedLayerNormalization, 1, float
+      {418129161279605176ULL, 13556035637124174064ULL}};    // kOnnxDomain, SimplifiedLayerNormalization, 1, double
 
   auto iter = hashes.find(hash);
   if (iter != hashes.cend()) {

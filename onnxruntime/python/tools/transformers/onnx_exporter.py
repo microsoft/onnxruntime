@@ -392,7 +392,6 @@ def export_onnx_model_from_pt(model_name, opset_version, use_external_data_forma
                           f=onnx_model_path,
                           input_names=list(example_inputs.keys()),
                           output_names=output_names,
-                          example_outputs=example_outputs,
                           dynamic_axes=dynamic_axes,
                           do_constant_folding=True,
                           opset_version=opset_version,

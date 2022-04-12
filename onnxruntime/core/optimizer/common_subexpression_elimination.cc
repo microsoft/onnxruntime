@@ -318,7 +318,13 @@ struct NodeArgPtrEquality {
 };
 
 bool IsNodeSupported(const Node& node) {
-  return !node.ContainsSubgraph() && optimizer_utils::IsOperationDeterministic(node.Domain(), node.OpType());
+  // skip control flow nodes, nodes that produce non-deterministic output, and DequantizeLinear (DQ) nodes.
+  // the reason for skipping DQ is that the QDQ handling looks for QDQ node groups (DQ -> fp32 node -> Q node)
+  // and does not allow for a DQ node to be used in multiple groups. coalescing multiple DQ nodes into one
+  // would result in it having multiple consumers for its output, and it being used in multiple QDQ node groups.
+  return !node.ContainsSubgraph() &&
+         optimizer_utils::IsOperationDeterministic(node.Domain(), node.OpType()) &&
+         !(node.Domain() == kOnnxDomain && node.OpType() == "DequantizeLinear");
 }
 }  // namespace
 
