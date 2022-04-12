@@ -27,13 +27,14 @@ jobs:
 
   - task: CmdLine@2
     displayName: 'Get the latest ONNX for integration check'
+    condition: eq(variables['ONNX_INTEGRATION_NIGHTLY_BUILD'], '1')
     inputs:
       script: |
         cd $(Build.SourcesDirectory)/cmake/external/onnx
         git remote update
         git checkout main
         git pull
-    condition: eq(variables['ONNX_INTEGRATION_NIGHTLY_BUILD'], '1')
+        git log -n 1
 
   - task: CmdLine@2
     displayName: 'build'
