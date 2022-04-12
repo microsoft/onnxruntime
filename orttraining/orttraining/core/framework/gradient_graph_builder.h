@@ -77,12 +77,7 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
 
 static std::unordered_set<std::string> INVERTIBLE_OPS{"LayerNormalization",
                                                       "Relu"};
-static std::unordered_set<int64_t> CAST_GRAD_ALLOWED_TYPES{
-    ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-    ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-    ONNX_NAMESPACE::TensorProto_DataType_DOUBLE,
-    ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16,
-};
+
 static const std::unordered_set<size_t> CAST_STOP_EDGE{0};
 
 class GradientGraphBuilder {
@@ -145,6 +140,12 @@ class GradientGraphBuilder {
   // Tracks tensors that are stashed in the forward pass for later use in backward pass.
   std::unordered_set<std::string> stashed_tensors_;
 
+  const std::unordered_set<int64_t> GRAD_ALLOWED_TYPES{
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+      ONNX_NAMESPACE::TensorProto_DataType_DOUBLE,
+      ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16,
+  };
   const std::unordered_set<size_t>* GetStopGradientEdges(const Node& node) const;
 
   /**
