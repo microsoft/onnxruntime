@@ -99,7 +99,7 @@ endif()
 
 set_target_properties(onnxruntime_graph PROPERTIES FOLDER "ONNXRuntime")
 set_target_properties(onnxruntime_graph PROPERTIES LINKER_LANGUAGE CXX)
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/graph  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/onnxruntime/core/graph  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_graph_src} ${onnxruntime_ir_defs_src})
 if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
     source_group(TREE ${ORTTRAINING_ROOT} FILES ${orttraining_graph_src})

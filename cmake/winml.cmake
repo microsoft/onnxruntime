@@ -31,7 +31,7 @@ set(winml_lib_telemetry_dir ${REPO_ROOT}/winml/lib/telemetry)
 package_version(
   Microsoft.Windows.CppWinRT
   CppWinRT_version
-  ${PROJECT_SOURCE_DIR}/../packages.config
+  ${PROJECT_SOURCE_DIR}/packages.config
 )
 
 # Override and use the the cppwinrt from NuGet package as opposed to the one in the SDK.

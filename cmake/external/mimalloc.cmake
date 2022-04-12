@@ -1,4 +1,4 @@
-set(mimalloc_root_dir ${PROJECT_SOURCE_DIR}/external/mimalloc)
+set(mimalloc_root_dir ${PROJECT_SOURCE_DIR}/cmake/external/mimalloc)
 
 add_definitions(-DUSE_MIMALLOC)
 include_directories(${mimalloc_root_dir}/include)

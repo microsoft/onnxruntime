@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-set (CXXOPTS ${PROJECT_SOURCE_DIR}/external/cxxopts/include)
+set (CXXOPTS ${PROJECT_SOURCE_DIR}/cmake/external/cxxopts/include)
 
 # training lib
 file(GLOB_RECURSE onnxruntime_training_srcs

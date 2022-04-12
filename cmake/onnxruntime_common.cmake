@@ -125,7 +125,7 @@ endif()
 
 add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/common  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/onnxruntime/core/common  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
 set_target_properties(onnxruntime_common PROPERTIES LINKER_LANGUAGE CXX)
 set_target_properties(onnxruntime_common PROPERTIES FOLDER "ONNXRuntime")
 

@@ -927,9 +927,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
   if (NOT onnxruntime_REDUCED_OPS_BUILD AND NOT onnxruntime_BUILD_WEBASSEMBLY)
     add_test(NAME onnx_test_pytorch_converted
-      COMMAND onnx_test_runner ${PROJECT_SOURCE_DIR}/external/onnx/onnx/backend/test/data/pytorch-converted)
+      COMMAND onnx_test_runner ${PROJECT_SOURCE_DIR}/cmake/external/onnx/onnx/backend/test/data/pytorch-converted)
     add_test(NAME onnx_test_pytorch_operator
-      COMMAND onnx_test_runner ${PROJECT_SOURCE_DIR}/external/onnx/onnx/backend/test/data/pytorch-operator)
+      COMMAND onnx_test_runner ${PROJECT_SOURCE_DIR}/cmake/external/onnx/onnx/backend/test/data/pytorch-operator)
   endif()
 
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")

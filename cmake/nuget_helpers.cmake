@@ -41,8 +41,8 @@ function(
     UPDATE_COMMAND ""
     INSTALL_COMMAND "")
 
-    set(NUGET_CONFIG ${PROJECT_SOURCE_DIR}/../NuGet.config)
-    set(PACKAGES_CONFIG ${PROJECT_SOURCE_DIR}/../packages.config)
+    set(NUGET_CONFIG ${PROJECT_SOURCE_DIR}/NuGet.config)
+    set(PACKAGES_CONFIG ${PROJECT_SOURCE_DIR}/packages.config)
     get_filename_component(PACKAGES_DIR ${CMAKE_CURRENT_BINARY_DIR}/../packages ABSOLUTE)
 
     # Restore nuget packages
