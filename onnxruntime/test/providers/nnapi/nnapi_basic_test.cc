@@ -459,6 +459,8 @@ TEST(NnapiExecutionProviderTest, TestQDQGemm) {
                   {ExpectedEPNodeAssignment::All});
 }
 
+//TODO: add more test param settings for QDQGemm
+
 TEST(NnapiExecutionProviderTest, TestQDQMatMul) {
   RunQDQModelTest(BuildQDQMatMulTestCase(
                       {2, 2} /* input_shape1 */,

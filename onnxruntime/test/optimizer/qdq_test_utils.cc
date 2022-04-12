@@ -131,32 +131,41 @@ GetQDQTestCaseFn BuildQDQConcatTestCaseUnsupportedInputScaleZp() {
 
 GetQDQTestCaseFn BuildQDQMatMulTestCase(const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& input2_shape) {
   return [input1_shape, input2_shape](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>(input1_shape, -1.f, 1.f);
     auto* output_arg = builder.MakeOutput();
 
-    typedef std::numeric_limits<uint8_t> Input1Limits;
-    typedef std::numeric_limits<uint8_t> Input2Limits;
+    typedef std::numeric_limits<uint8_t> InputLimits;
     typedef std::numeric_limits<uint8_t> OutputTypeLimits;
 
-    // 2DQ + MatMul + Q
-    auto* dq_a_output = builder.MakeIntermediate();
-    auto* input_a = builder.MakeInitializer<uint8_t>(input1_shape, Input1Limits::min(), Input1Limits::max());
-    builder.AddDequantizeLinearNode<uint8_t>(input_a, 0.039f,
-                                             (Input1Limits::max() + Input1Limits::min()) / 2 + 1,
-                                             dq_a_output);
+    // add QDQ input
+    auto* q1_output = builder.MakeIntermediate();
+    auto* dq1_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(input_arg,
+                                           .039f,
+                                           (InputLimits::max() + InputLimits::min()) / 2 + 1,
+                                           q1_output);
+    builder.AddDequantizeLinearNode<uint8_t>(q1_output,
+                                             .039f,
+                                             (InputLimits::max() + InputLimits::min()) / 2 + 1,
+                                             dq1_output);
 
-    auto* dq_b_output = builder.MakeIntermediate();
-    auto* input_b = builder.MakeInitializer<uint8_t>(input2_shape, Input2Limits::min(), Input2Limits::max());
-    builder.AddDequantizeLinearNode<uint8_t>(input_b, 0.04f,
-                                             (Input2Limits::max() + Input2Limits::min()) / 2 + 1,
-                                             dq_b_output);
+    // add input b initializer (NNAPI only supports case of MatMul A*B - B is an initializer)
+    auto* input_b = builder.MakeInitializer<float>(input2_shape, -1.f, 1.f);
 
+    // add MatMul operator
     auto* matmul_op_output = builder.MakeIntermediate();
-    builder.AddNode("MatMul", {dq_a_output, dq_b_output}, {matmul_op_output});
+    builder.AddNode("MatMul", {dq1_output, input_b}, {matmul_op_output});
 
+    // add QDQ output
+    auto* q3_output = builder.MakeIntermediate();
     builder.AddQuantizeLinearNode<uint8_t>(matmul_op_output,
                                            .039f,
                                            (OutputTypeLimits::max() + OutputTypeLimits::min()) / 2 + 1,
-                                           output_arg);
+                                           q3_output);
+    builder.AddDequantizeLinearNode<uint8_t>(q3_output,
+                                             .039f,
+                                             (OutputTypeLimits::max() + OutputTypeLimits::min()) / 2 + 1,
+                                             output_arg);
   };
 }
 

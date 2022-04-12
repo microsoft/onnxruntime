@@ -218,7 +218,7 @@ static bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, con
   bool is_quant_conv = IsQuantizedConv(quant_op_type);
   bool is_quant_matmul = (quant_op_type == QuantizedOpType::QLinearMatMul);
   bool is_quant_gemm = (quant_op_type == QuantizedOpType::QDQGemm);
-  bool is_quant_matmul_or_gemm = (quant_op_type == QuantizedOpType::QLinearMatMul || quant_op_type == QuantizedOpType::QDQGemm);
+  bool is_quant_matmul_or_gemm = is_quant_gemm || is_quant_matmul;
   const auto& io_defs = is_input ? node_unit.Inputs() : node_unit.Outputs();
 
   for (const auto idx : indices) {
