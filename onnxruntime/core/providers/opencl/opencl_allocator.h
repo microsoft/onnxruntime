@@ -19,46 +19,47 @@ constexpr auto Image2DAllocatorName = "OpenCL_Image2D";
 constexpr auto CPUAllocatorName = "OpenCL_CPU";
 constexpr auto CPUInputAllocatorName = "OpenCL_CPU_Input";
 
-class OpenCLBufferAllocator : public IAllocator {
-  struct Metadata {
-    size_t size;
-  };
+template <typename InfoT, typename CreatorT>
+class CachingPolicy {
+  using InfoType = InfoT;
+  using CreatorType = CreatorT;
 
  public:
+  virtual ~CachingPolicy() = default;
+  virtual void* CreateOrGetFromCache(cl_context ctx, InfoType info) = 0;
+  virtual void DestroyOrReturnToCache(void*) = 0;
+  virtual void EvictAllCache() = 0;
+};
+
+struct BufferCreator;
+struct Image2DCreator;
+
+class OpenCLBufferAllocator : public IAllocator {
+ public:
   explicit OpenCLBufferAllocator(cl_context ctx);
-  ~OpenCLBufferAllocator() override;
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
 
  private:
   cl_context ctx_;
-  // FIXME: better caching, cache for kernel benchmark at the moment
-  std::unordered_map<void*, Metadata> meta_;
-  std::unordered_map<size_t, std::list<void*>> cache_;
+  std::unique_ptr<CachingPolicy<size_t, BufferCreator>> caching_;
 };
 
 class OpenCLImage2DAllocator : public IAllocator {
-  struct Metadata {
-    Image2DDesc desc;
-  };
-
  public:
   explicit OpenCLImage2DAllocator(cl_context ctx, bool use_fp16);
-  ~OpenCLImage2DAllocator() override;
 
   void* Alloc(size_t size) override;
   void* Alloc(const TensorShape& shape) override;
-  void* Alloc(const Image2DDesc& desc);
+  void* Alloc(Image2DDesc desc);
   void Free(void* p) override;
 
  private:
   cl_context ctx_;
   bool use_fp16_;
 
-  // FIXME: better caching, cache for kernel benchmark at the moment
-  std::unordered_map<void*, Metadata> meta_;
-  std::unordered_map<Image2DDesc, std::list<void*>> cache_;
+  std::unique_ptr<CachingPolicy<Image2DDesc, Image2DCreator>> caching_;
 };
 
 }  // namespace opencl

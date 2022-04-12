@@ -181,10 +181,24 @@ T1 RoundToMultiple(T1 a, T2 m) {
   return CeilDiv(a, m) * m;
 }
 
-class Image2DDesc : private std::pair<int64_t, int64_t> {
+class Image2DDesc {
  public:
-  friend struct ::std::hash<Image2DDesc>;
-  using pair::pair;
+  enum DataType {
+    FpAuto = 0,
+    Fp32 = CL_FLOAT,
+    Fp16 = CL_HALF_FLOAT,
+  };
+
+ private:
+  int64_t width_;
+  int64_t height_;
+  DataType dtype_;
+
+ public:
+  Image2DDesc(int64_t w, int64_t h, DataType dtype) : width_{w}, height_{h}, dtype_{dtype} {}
+  Image2DDesc(int64_t w, int64_t h) : Image2DDesc(w, h, FpAuto) {}
+  // Image2DDesc(const Image2DDesc& other) = default;
+  // Image2DDesc& operator=(const Image2DDesc& other) = default;
 
   static Image2DDesc PackFromTensor(const TensorShape& shape) {
     switch (shape.NumDimensions()) {
@@ -263,19 +277,27 @@ class Image2DDesc : private std::pair<int64_t, int64_t> {
   }
 
   auto Height() const {
-    return second;
+    return height_;
   }
 
   auto Width() const {
-    return first;
+    return width_;
   }
 
   size_t UHeight() const {
-    return static_cast<size_t>(second);
+    return static_cast<size_t>(height_);
   }
 
   size_t UWidth() const {
-    return static_cast<size_t>(first);
+    return static_cast<size_t>(width_);
+  }
+
+  const DataType& DType() const {
+    return dtype_;
+  }
+
+  DataType& DType() {
+    return dtype_;
   }
 
   NDRange AsNDRange() const {
