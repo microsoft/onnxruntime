@@ -1057,7 +1057,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
             "-DCMAKE_TOOLCHAIN_FILE=" + (
                 args.ios_toolchain_file if args.ios_toolchain_file
-                else "../cmake/onnxruntime_ios.toolchain.cmake")
+                else "cmake/onnxruntime_ios.toolchain.cmake")
         ]
 
     if args.build_wasm:
