@@ -45,6 +45,13 @@ parameters:
   type: boolean
   default: true
 
+variables:
+  - name: finalStorage
+    $[eq(variables['Build.SourceBranch'], 'refs/heads/main')]:
+      value: '--final_storage'
+    $[nq(variables['Build.SourceBranch'], 'refs/heads/main')]:
+      value: ~
+
 stages:
 - stage: Python_Packaging
 
@@ -746,6 +753,14 @@ stages:
         displayName: 'Publish Artifact: ONNXRuntime python wheel'
         inputs:
           ArtifactName: onnxruntime
+
+      - script: |
+          files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
+          echo ${files[0]} && \
+          python3 tools/ci_build/upload_python_package_to_azure_storage.py \
+              --python_wheel_path ${files[0]} $[variables['finalStorage']]
+        condition: and(succeeded(), eq(variables['DRY_RUN'], '0'))
+        displayName: 'Upload Mac wheel to release repository'
 
       - template: component-governance-component-detection-steps.yml
         parameters:
