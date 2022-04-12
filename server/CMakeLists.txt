@@ -43,7 +43,7 @@ set(CMAKE_CXX_STANDARD 14)
 
 find_package(Threads)
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
-include(protobuf_function.cmake)
+include(protobuf_function)
 find_package(gRPC REQUIRED)
 
 set(SERVER_APP_NAME "onnxruntime_server")

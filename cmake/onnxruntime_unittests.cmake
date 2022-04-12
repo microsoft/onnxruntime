@@ -591,7 +591,7 @@ if(MSVC)
 else()
   target_compile_definitions(onnxruntime_test_utils PUBLIC -DNSYNC_ATOMIC_CPP11)
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
-          "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
+          "${PROJECT_SOURCE_DIR}/cmake/external/nsync/public")
 endif()
 if (onnxruntime_USE_NCCL)
   target_include_directories(onnxruntime_test_utils PRIVATE ${NCCL_INCLUDE_DIRS})
@@ -624,7 +624,7 @@ if(MSVC)
 else()
   target_compile_definitions(onnx_test_runner_common PUBLIC -DNSYNC_ATOMIC_CPP11)
   target_include_directories(onnx_test_runner_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
-          "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
+          "${PROJECT_SOURCE_DIR}/cmake/external/nsync/public")
 endif()
 if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   #TODO: fix the warnings, they are dangerous
@@ -1246,7 +1246,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
           -DBIN_DIR=${CMAKE_CURRENT_BINARY_DIR}
           -DREPO_ROOT=${REPO_ROOT}
           ${ORT_PROVIDER_FLAGS}
-          -P ${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_java_unittests.cmake)
+          -P ${PROJECT_SOURCE_DIR}/cmake/onnxruntime_java_unittests.cmake)
       else()
         add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:custom_op_library>
                         ${JAVA_NATIVE_TEST_DIR}/$<TARGET_LINKER_FILE_NAME:custom_op_library>)

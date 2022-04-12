@@ -107,7 +107,7 @@ function(onnxruntime_protobuf_generate)
         endif()
       endforeach()
     else()
-      set(_protobuf_include_path -I ${CMAKE_CURRENT_SOURCE_DIR})
+      set(_protobuf_include_path -I ${PROJECT_SOURCE_DIR}/cmake)
     endif()
   endif()
 

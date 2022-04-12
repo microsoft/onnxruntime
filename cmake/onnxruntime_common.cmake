@@ -120,7 +120,7 @@ target_include_directories(onnxruntime_common
 target_link_libraries(onnxruntime_common safeint_interface Boost::mp11)
 
 if(NOT WIN32)
-  target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
+  target_include_directories(onnxruntime_common PUBLIC "${PROJECT_SOURCE_DIR}/cmake/external/nsync/public")
 endif()
 
 add_dependencies(onnxruntime_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
