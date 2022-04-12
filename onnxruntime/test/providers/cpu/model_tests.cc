@@ -27,6 +27,8 @@ extern std::unique_ptr<Ort::Env> ort_env;
 
 using namespace onnxruntime::common;
 
+#define LATEST_ONNX_OPSET 16
+
 namespace onnxruntime {
 namespace test {
 // parameter is provider_name + "_" + model_path
@@ -52,39 +54,33 @@ struct BrokenTest {
 #ifdef GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ModelTest);
 #endif
-TEST_P(ModelTest, Run) {
-  std::basic_string<ORTCHAR_T> param = GetParam();
-  size_t pos = param.find(ORT_TSTR("_"));
-  ASSERT_NE(pos, std::string::npos);
-  std::string provider_name = ToUTF8String(param.substr(0, pos));
-  std::basic_string<ORTCHAR_T> model_path = param.substr(pos + 1);
-  double per_sample_tolerance = 1e-3;
-  // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
-  // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
-  double relative_per_sample_tolerance = 1e-3;
-  if (provider_name == "openvino") {
-    relative_per_sample_tolerance = 0.009;
-  }
 
+// 
+bool CheckAndSkipTest(std::basic_string<PATH_CHAR_TYPE> model_path, std::basic_string<PATH_CHAR_TYPE> ep) {
   std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
-  if (model_info->GetONNXOpSetVersion() != 14 && model_info->GetONNXOpSetVersion() != 15 && provider_name == "tensorrt") {
+  std::string provider_name = ToUTF8String(ep);
+
+  if (model_info->GetONNXOpSetVersion() != LATEST_ONNX_OPSET && model_info->GetONNXOpSetVersion() != (LATEST_ONNX_OPSET-1) && provider_name == "tensorrt") {
     // TensorRT can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
     // Besides saving CI build time, TRT isn’t able to support full ONNX ops spec and therefore some testcases will fail.
     // That's one of reasons we skip those testcases and only test latest ONNX opsets.
-    return;
+    return true;
   }
+
   if (model_info->GetONNXOpSetVersion() == 10 && provider_name == "dnnl") {
     // DNNL can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
-    return;
+    return true;
   }
+
 #ifndef ENABLE_TRAINING
   if (model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
       model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
-    return;
+    return true;
   }
 #endif
+
   // TODO: filter model based on opset
   std::set<BrokenTest> broken_tests = {
       {"slice_neg_steps", "Type parameter (Tind) bound to different types (tensor(int64) and tensor(int32) in node ()."},
@@ -396,7 +392,6 @@ TEST_P(ModelTest, Run) {
 
     // TensorRT EP CI uses Nvidia Tesla M60 which doesn't support fp16.
     broken_tests_keyword_set.insert({"FLOAT16"});
-
   }
 
   if (provider_name == "dml") {
@@ -547,16 +542,42 @@ TEST_P(ModelTest, Run) {
     if (iter != broken_tests.end() &&
         (model_version == TestModelInfo::unknown_version || iter->broken_versions_.empty() ||
          iter->broken_versions_.find(model_version) != iter->broken_versions_.end())) {
-      return;
+      return true;
     }
 
     for (auto iter2 = broken_tests_keyword_set.begin(); iter2 != broken_tests_keyword_set.end(); ++iter2) {
         std::string keyword = *iter2;
         if (ToUTF8String(test_case_name).find(keyword) != std::string::npos) {
-          return;
+          return true;
         }
     }
   }
+
+  return false;
+}
+
+TEST_P(ModelTest, Run) {
+  std::basic_string<ORTCHAR_T> param = GetParam();
+  size_t pos = param.find(ORT_TSTR("_"));
+  ASSERT_NE(pos, std::string::npos);
+  std::string provider_name = ToUTF8String(param.substr(0, pos));
+  std::basic_string<ORTCHAR_T> model_path = param.substr(pos + 1);
+  double per_sample_tolerance = 1e-3;
+  // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
+  // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
+  double relative_per_sample_tolerance = 1e-3;
+  if (provider_name == "openvino") {
+    relative_per_sample_tolerance = 0.009;
+  }
+
+  std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
+
+  std::basic_string<ORTCHAR_T> model_dir;
+  (void)GetDirNameFromFilePath(model_path, model_dir);
+  std::basic_string<PATH_CHAR_TYPE> test_case_name = GetLastComponent(model_dir);
+  if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0)
+    test_case_name = test_case_name.substr(5);
+
   bool is_single_node = !model_info->GetNodeName().empty();
   std::vector<ExecutionMode> execution_modes = {ExecutionMode::ORT_SEQUENTIAL};
   if (provider_name == "cpu" && !is_single_node)
@@ -981,8 +1002,14 @@ TEST_P(ModelTest, Run) {
             return true;
           }
 #endif
+
           std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(node_data_root_path, filename_str);
           std::basic_string<PATH_CHAR_TYPE> r = provider_name;
+          
+          if (CheckAndSkipTest(p, r)) {
+            return true;
+          }
+
           r.append(ORT_TSTR("_")).append(p);
           v.emplace_back(r);
           return true;
