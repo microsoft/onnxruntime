@@ -161,13 +161,26 @@ NodeSet GradientGraphBuilder::ReverseBFSWithStopGradient(const NodeSet& nodes) c
   while (!queue.empty()) {
     const Node* n = queue.front();
     queue.pop_front();
-
-    for (auto edge_it = n->InputEdgesBegin(); edge_it != n->InputEdgesEnd(); ++edge_it) {
-      const std::unordered_set<size_t>* edges = GetStopGradientEdges(*n);
+    const std::unordered_set<size_t>* edges = GetStopGradientEdges(*n);
+    for (auto edge_it = n->InputEdgesBegin(); edge_it != n->InputEdgesEnd(); ++edge_it) {      
       if (edges != nullptr && edges->count(edge_it->GetDstArgIndex())) {
         LOGS(logger_, INFO) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
                             << " of node: " << n->Name();
         continue;
+      }
+      const NodeArg* node_arg = n->InputDefs()[edge_it->GetDstArgIndex()];
+      const auto* type_proto = node_arg->TypeAsProto();
+      if (nullptr != type_proto && type_proto->value_case() == ONNX_NAMESPACE::TypeProto::kTensorType) {
+        const int32_t type = type_proto->tensor_type().elem_type();
+        if (GRAD_ALLOWED_TYPES.find(type) == GRAD_ALLOWED_TYPES.end()) {
+          LOGS(logger_, INFO) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
+                              << " of node: " << n->Name() << "because element type is: "<< type;
+          continue;
+        }
+      } else {
+        LOGS(logger_, INFO) << "Skip building gradient for input_" << edge_it->GetDstArgIndex()
+                              << " of node: " << n->Name() << "because it is not a Tensor type";
+          continue;
       }
 
       const Node& node = edge_it->GetNode();
@@ -201,11 +214,26 @@ Status GradientGraphBuilder::CheckNodeArgsReachable() const {
 }
 
 const std::unordered_set<size_t>* GradientGraphBuilder::GetStopGradientEdges(const Node& node) const {
-  std::string op_type = node.OpType();
+  const auto& op_type = node.OpType();
 
   if (op_type == "ATen") {
-    std::string key = GetGradientDefinitionKeyByNode(node);
+    const auto& key = GetGradientDefinitionKeyByNode(node);
     return GradientDefinitionRegistry::Instance().GetStopGradientEdgesForNode(key);
+  } else if (op_type == "Cast") {
+    // Stop gradient edge for Cast if the cast is to non-differentiable type
+    const auto& attrs = node.GetAttributes();
+    const auto iter = attrs.find("to");
+    const auto* attr_proto = iter == attrs.end() ? nullptr : &iter->second;
+    if ((nullptr != attr_proto) && attr_proto->has_i()) {
+      const int64_t to_val = attr_proto->i();
+      if (GRAD_ALLOWED_TYPES.find(to_val) == GRAD_ALLOWED_TYPES.end()) {
+        return &CAST_STOP_EDGE;
+      } else {
+        return nullptr;
+      }
+    } else {
+      ORT_THROW("Cast node ", node.Name(), " missing required attribute 'to'.");;
+    }
   } else {
     auto it = STOP_GRADIENT_EDGES.find(op_type);
     if (it == STOP_GRADIENT_EDGES.end()) {
