@@ -4733,10 +4733,9 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionWithScaleInput) {
       [](const Graph&,
          const std::map<std::string, int>&,
          std::map<std::string, int> transformed_op_counts) {
-        EXPECT_EQ(transformed_op_counts["Mul"], 0);
-        EXPECT_EQ(transformed_op_counts["MatMul"], 0);
-        EXPECT_EQ(transformed_op_counts["Unsqueeze"], 1);
-        EXPECT_EQ(transformed_op_counts["com.microsoft.FusedMatMul"], 1);
+        EXPECT_EQ(transformed_op_counts["Mul"], 1);
+        EXPECT_EQ(transformed_op_counts["MatMul"], 1);
+        EXPECT_EQ(transformed_op_counts["com.microsoft.FusedMatMul"], 0);
       });
 }
 
