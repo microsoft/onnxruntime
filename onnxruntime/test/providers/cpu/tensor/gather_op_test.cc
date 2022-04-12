@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -79,7 +80,7 @@ TEST(GatherOpTest, Gather_invalid_index_cpu) {
 
   SessionOptions so;
   // Ignore the shape inference error so that we can hit the invalid index error.
-  so.strict_shape_type_inference = false;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
   test.Run(so, OpTester::ExpectResult::kExpectFailure, "indices element out of data bounds, idx=1000 must be within the inclusive range [-3,2]",
            // On Cuda it is impossible to dereference indices memory on CPU so the check can not run
            {kCudaExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider, kNupharExecutionProvider, kTensorrtExecutionProvider});

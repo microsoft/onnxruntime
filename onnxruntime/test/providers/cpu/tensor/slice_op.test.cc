@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -45,7 +46,7 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
                                          ends[0] == std::numeric_limits<int32_t>::max()));
   // ignore the above-mentioned disagreement.
   SessionOptions so;
-  so.strict_shape_type_inference = false;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
 
   if (!v10_only) {
     OpTester testv9("Slice", 9);

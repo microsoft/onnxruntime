@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -168,7 +169,7 @@ TEST(ReverseSequenceTest, BadLength) {
     eps.push_back(DefaultCpuExecutionProvider());
     SessionOptions so;
     // Don't fail early on shape inference so that we can test the op's error handling.
-    so.strict_shape_type_inference = false;
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
     test.Run(so, OpTester::ExpectResult::kExpectFailure, "Invalid sequence length", {}, nullptr, &eps);
   };
 

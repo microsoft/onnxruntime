@@ -129,12 +129,6 @@ struct SessionOptions {
 
   // custom function callback to join a thread
   OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
-
-  // if true, all inconsistencies encountered during shape and type inference
-  // will result in failures. If false, in some cases warnings will be logged
-  // but processing will continue.
-  // may be useful to expose bugs in models.
-  bool strict_shape_type_inference = false;
 };
 
 }  // namespace onnxruntime

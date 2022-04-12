@@ -8,6 +8,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/data_types_internal.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/graph/model_load_utils.h"
 #include "gmock/gmock.h"
 #include "test/providers/provider_test_utils.h"
@@ -905,7 +906,6 @@ void OpTester::Run(
   so.execution_mode = execution_mode;
   so.use_deterministic_compute = use_determinism_;
   so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
-  so.strict_shape_type_inference = true;
   Run(so, expect_result, expected_failure_string, excluded_provider_types,
       run_options, execution_providers, options);
 }
@@ -954,8 +954,10 @@ void OpTester::Run(
 
     fetches_.clear();
     bool cache_enabled = cached_model_ != nullptr;
+    const bool strict_shape_type_inference = so.config_options.GetConfigOrDefault(
+                                                 kOrtSessionOptionsConfigStrictShapeTypeInference, "1") == "1";
     const ModelOptions model_options(allow_released_onnx_opset_only,
-                                     so.strict_shape_type_inference);
+                                     strict_shape_type_inference);
     auto p_model = !cache_enabled ? BuildGraph({}, model_options) : cached_model_;
     auto& graph = p_model->MainGraph();
 

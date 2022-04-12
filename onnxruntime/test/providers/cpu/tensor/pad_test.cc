@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -38,7 +39,9 @@ static void RunOnnxOpsetTypedTest(
   }
   SessionOptions so;
   // Don't fail early on shape inference so that we can test the op's error handling.
-  so.strict_shape_type_inference = (expect == OpTester::ExpectResult::kExpectSuccess);
+  if (expect != OpTester::ExpectResult::kExpectSuccess) {
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
+  }
   if constexpr (opset >= 11) {
     test.Run(so, expect, error_msg, provider_types);
   } else {
