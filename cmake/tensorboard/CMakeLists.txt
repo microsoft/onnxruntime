@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-set(TENSORBOARD_ROOT ${PROJECT_SOURCE_DIR}/external/tensorboard)
+set(TENSORBOARD_ROOT ${PROJECT_SOURCE_DIR}/cmake/external/tensorboard)
 
 # tensorboard protos
 file(GLOB_RECURSE tensorboard_proto_srcs CONFIGURE_DEPENDS
