@@ -350,7 +350,7 @@ TEST(GraphRuntimeOptimizationTest, TestNhwcTransformerDirectlyUpdatesQLinearConv
       // - set environment variable ORT_CONVERT_ONNX_MODELS_TO_ORT_OPTIMIZATION_LEVEL=extended
       // - run:
       //     python -m onnxruntime.tools.convert_onnx_models_to_ort
-      //       --optimization_style Fixed
+      //       --optimization_style=Fixed
       //       testdata/transform/runtime_optimization/qdq_convs.onnx
       ORT_TSTR("testdata/transform/runtime_optimization/qdq_convs.extended.ort"),
       [](const OpCountMap& loaded_ops, const OpCountMap& initialized_ops) {

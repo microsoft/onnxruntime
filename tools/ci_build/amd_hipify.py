@@ -25,7 +25,7 @@ contrib_ops_excluded_files = [
                     'bert/embed_layer_norm_impl.cu',
                     'bert/embed_layer_norm_impl.h',
                     'bert/fast_gelu_impl.cu',
-                    'bert/layer_norm.cuh',
+                    # 'bert/layer_norm.cuh',
                     'bert/longformer_attention.cc',
                     'bert/longformer_attention.h',
                     'bert/longformer_attention_softmax.cu',

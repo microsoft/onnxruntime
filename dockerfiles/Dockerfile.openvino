@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 #--------------------------------------------------------------------------
 
-ARG OPENVINO_VERSION=2021.4.2
+ARG OPENVINO_VERSION=2022.1.0
 
 
 # Build stage
@@ -17,8 +17,7 @@ ARG DEVICE=CPU_FP32
 ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime.git
 ARG ONNXRUNTIME_BRANCH=master
 
-ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/share
-ENV ngraph_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/ngraph/cmake
+ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/runtime/cmake
 
 USER root
 RUN apt update; apt install -y git protobuf-compiler libprotobuf-dev
@@ -52,10 +51,11 @@ RUN apt update; apt install -y unattended-upgrades && \
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
 RUN adduser --uid $BUILD_UID $BUILD_USER
+RUN usermod -a -G video,users ${BUILD_USER}
 ENV WORKDIR_PATH /home/${BUILD_USER}
 WORKDIR ${WORKDIR_PATH}
 
 USER ${BUILD_USER}
 ENV PATH=${WORKDIR_PATH}/miniconda/bin:${WORKDIR_PATH}/cmake-dir/bin:$PATH
-ENV IE_PLUGINS_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64
-ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INTEL_OPENVINO_DIR}/inference_engine/external/gna/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib:$INTEL_OPENVINO_DIR/deployment_tools/ngraph/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/omp/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}
+ENV IE_PLUGINS_PATH=${INTEL_OPENVINO_DIR}/runtime/lib/intel64
+ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INTEL_OPENVINO_DIR}/runtime/3rdparty/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}

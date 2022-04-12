@@ -61,3 +61,39 @@ index 0d6c1ec..75fd935 100644
              # The decorated name was longer than the compiler limit
              "/wd4503",
              # forcing value to bool 'true' or 'false' (performance warning)
+
+diff --git a/absl/base/internal/unscaledcycleclock.h b/absl/base/internal/unscaledcycleclock.h
+index 07f867a6..a4351406 100644
+--- a/absl/base/internal/unscaledcycleclock.h
++++ b/absl/base/internal/unscaledcycleclock.h
+@@ -47,7 +47,7 @@
+ // The following platforms have an implementation of a hardware counter.
+ #if defined(__i386__) || defined(__x86_64__) || defined(__aarch64__) || \
+     defined(__powerpc__) || defined(__ppc__) || defined(__riscv) ||     \
+-    defined(_M_IX86) || defined(_M_X64)
++    defined(_M_IX86) || (defined(_M_X64) && !defined(_M_ARM64EC))
+ #define ABSL_HAVE_UNSCALED_CYCLECLOCK_IMPLEMENTATION 1
+ #else
+ #define ABSL_HAVE_UNSCALED_CYCLECLOCK_IMPLEMENTATION 0
+diff --git a/absl/numeric/int128.h b/absl/numeric/int128.h
+index c7ad96be..7a899eec 100644
+--- a/absl/numeric/int128.h
++++ b/absl/numeric/int128.h
+@@ -44,7 +44,7 @@
+ // builtin type.  We need to make sure not to define operator wchar_t()
+ // alongside operator unsigned short() in these instances.
+ #define ABSL_INTERNAL_WCHAR_T __wchar_t
+-#if defined(_M_X64)
++#if defined(_M_X64) && !defined(_M_ARM64EC)
+ #include <intrin.h>
+ #pragma intrinsic(_umul128)
+ #endif  // defined(_M_X64)
+@@ -980,7 +980,7 @@ inline uint128 operator*(uint128 lhs, uint128 rhs) {
+   // can be used for uint128 storage.
+   return static_cast<unsigned __int128>(lhs) *
+          static_cast<unsigned __int128>(rhs);
+-#elif defined(_MSC_VER) && defined(_M_X64)
++#elif defined(_MSC_VER) && defined(_M_X64) && !defined(_M_ARM64EC)
+   uint64_t carry;
+   uint64_t low = _umul128(Uint128Low64(lhs), Uint128Low64(rhs), &carry);
+   return MakeUint128(Uint128Low64(lhs) * Uint128High64(rhs) +

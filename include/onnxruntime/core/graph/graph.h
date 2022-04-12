@@ -32,6 +32,7 @@
 
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
+#include "core/common/inlined_containers_fwd.h"
 #include "core/common/path.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
@@ -675,7 +676,15 @@ class Graph {
   Note: This currently has linear time complexity. There is room for improvement but it would likely require changes to
   how initializer tensors are stored and tracked.
   */
-  common::Status ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer);
+  common::Status ReplaceInitializedTensor(ONNX_NAMESPACE::TensorProto new_initializer);
+
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+  /** This function takes externally provided data for initializers with external data
+  *    and replaces graph initializers with its content.
+  */
+  common::Status InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers);
+#endif  // !defined(DISABLE_EXTERNAL_INITIALIZERS)
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1464,6 +1473,9 @@ class Graph {
   // recursively accumulate and set the outer scope node args in the resolve context for all subgraphs
   // so they can be used to resolve outer scope dependencies when running BuildConnections for the subgraphs.
   common::Status SetOuterScopeNodeArgs(const std::unordered_set<std::string>& outer_scope_node_args);
+
+  // Implementation for initializer replacement
+  Status ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initializer, bool is_external);
 
   // Clear all unused initializers and NodeArgs
   void CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
