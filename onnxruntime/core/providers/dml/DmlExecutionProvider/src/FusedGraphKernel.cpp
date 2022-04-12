@@ -164,7 +164,7 @@ namespace Dml
             std::for_each(
                 initializeResourceRefs.begin(), 
                 initializeResourceRefs.end(), 
-                [&](ComPtr<ID3D12Resource>& resource){ m_winmlProvider->QueueReference(resource.Get()); }
+                [&](ComPtr<ID3D12Resource>& resource){ m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(resource).Get()); }
             );  
 
             if (graphDesc.reuseCommandList)
@@ -312,7 +312,7 @@ namespace Dml
             ComPtr<ID3D12Device> d3dDevice;
             ORT_THROW_IF_FAILED(m_provider->GetD3DDevice(d3dDevice.GetAddressOf()));
 
-            ORT_THROW_IF_FAILED(d3dDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_heap)));
+            ORT_THROW_IF_FAILED(d3dDevice->CreateDescriptorHeap(&desc, IID_GRAPHICS_PPV_ARGS(m_heap.ReleaseAndGetAddressOf())));
 
             // Create a binding table for execution.
             DML_BINDING_TABLE_DESC bindingTableDesc = {};
@@ -326,7 +326,7 @@ namespace Dml
             ComPtr<ID3D12CommandAllocator> allocator;
             ORT_THROW_IF_FAILED(d3dDevice->CreateCommandAllocator(
                 m_provider->GetCommandListTypeForQueue(),
-                IID_PPV_ARGS(&allocator)));
+                IID_GRAPHICS_PPV_ARGS(allocator.ReleaseAndGetAddressOf())));
 
             ComPtr<ID3D12CommandList> commandList;
             ORT_THROW_IF_FAILED(d3dDevice->CreateCommandList(
@@ -334,7 +334,7 @@ namespace Dml
                 m_provider->GetCommandListTypeForQueue(),
                 allocator.Get(),
                 nullptr,
-                IID_PPV_ARGS(&commandList)));
+                IID_GRAPHICS_PPV_ARGS(commandList.ReleaseAndGetAddressOf())));
             
             ORT_THROW_IF_FAILED(commandList.As(&m_graphicsCommandList));
 
@@ -473,8 +473,8 @@ namespace Dml
             m_completionValue = completionValue;
 
             // Queue references to objects which must be kept alive until resulting GPU work completes
-            m_winmlProvider->QueueReference(m_graphicsCommandList.Get());
-            m_winmlProvider->QueueReference(m_heap.Get());
+            m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(m_graphicsCommandList).Get());
+            m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(m_heap).Get());
             m_winmlProvider->QueueReference(m_bindingTable.Get());
             m_winmlProvider->QueueReference(m_persistentResourceAllocatorUnk.Get());
         }
