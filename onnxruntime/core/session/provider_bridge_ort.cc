@@ -993,8 +993,7 @@ static ProviderSharedLibrary s_library_shared;
 bool InitProvidersSharedLibrary() try {
   s_library_shared.Ensure();
   return true;
-} catch(const std::exception &)
-{
+} catch (const std::exception&) {
   return false;
 }
 
@@ -1004,26 +1003,26 @@ struct ProviderLibrary {
     // assert(!handle_); // We should already be unloaded at this point (disabled until Python shuts down deterministically)
   }
 
-  Provider& Get() try {
+  Provider& Get() {
     std::lock_guard<std::mutex> lock{mutex_};
+    try {
+      if (!provider_) {
+        s_library_shared.Ensure();
 
-    if (!provider_) {
-      s_library_shared.Ensure();
+        std::string full_path = Env::Default().GetRuntimePath() + std::string(filename_);
+        ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
 
-      std::string full_path = Env::Default().GetRuntimePath() + std::string(filename_);
-      ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
+        Provider* (*PGetProvider)();
+        ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
 
-      Provider* (*PGetProvider)();
-      ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
-
-      provider_ = PGetProvider();
-      provider_->Initialize();
+        provider_ = PGetProvider();
+        provider_->Initialize();
+      }
+      return *provider_;
+    } catch (...) {
+      Unload();  // If anything fails we unload the library and rethrow
+      throw;
     }
-    return *provider_;
-  }
-  catch(...) {
-    Unload(); // If anything fails we unload the library and rethrow
-    throw;
   }
 
   void Unload() {
@@ -1195,7 +1194,8 @@ ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO() {
 
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA() try {
   return reinterpret_cast<ProviderInfo_CUDA*>(s_library_cuda.Get().GetInfo());
-} catch (const std::exception &) {
+} catch (const std::exception& exception) {
+  LOGS_DEFAULT(ERROR) << exception.what();
   return nullptr;
 }
 
@@ -1208,7 +1208,8 @@ ProviderInfo_CUDA& GetProviderInfo_CUDA() {
 
 ProviderInfo_ROCM* TryGetProviderInfo_ROCM() try {
   return reinterpret_cast<ProviderInfo_ROCM*>(s_library_rocm.Get().GetInfo());
-} catch (const std::exception &) {
+} catch (const std::exception& exception) {
+  LOGS_DEFAULT(ERROR) << exception.what();
   return nullptr;
 }
 
