@@ -777,5 +777,5 @@ endif()
 
 endif()
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  include(onnxruntime_language_interop_ops.cmake)
+  include(onnxruntime_language_interop_ops)
 endif()

@@ -5,11 +5,11 @@ if (CMAKE_CXX_STANDARD_LIBRARIES MATCHES kernel32.lib)
   message(FATAL_ERROR "WinML is only supported on WCOS")
 endif()
 
-include(precompiled_header.cmake)
-include(target_delayload.cmake)
-include(winml_sdk_helpers.cmake)
-include(winml_cppwinrt.cmake)
-include(nuget_helpers.cmake)
+include(precompiled_header)
+include(target_delayload)
+include(winml_sdk_helpers)
+include(winml_cppwinrt)
+include(nuget_helpers)
 
 # get the current nuget sdk kit directory
 get_sdk(sdk_folder sdk_version)
@@ -837,7 +837,7 @@ endif("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
 
 option(onnxruntime_BUILD_WINML_TESTS "Build WinML tests" ON)
 if (onnxruntime_BUILD_WINML_TESTS)
-  include(winml_unittests.cmake)
+  include(winml_unittests)
 endif()
 
 # This is needed to suppress warnings that complain that no imports are found for the delayloaded library cublas64*.lib

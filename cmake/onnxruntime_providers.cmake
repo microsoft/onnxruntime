@@ -663,7 +663,7 @@ if (onnxruntime_USE_NUPHAR)
     message(FATAL_ERROR "onnxruntime_USE_LLVM required for onnxruntime_USE_NUPHAR")
   endif()
 
-  include(onnxruntime_nuphar_extern.cmake)
+  include(onnxruntime_nuphar_extern)
 
   file(GLOB_RECURSE onnxruntime_providers_nuphar_cc_srcs
     "${ONNXRUNTIME_ROOT}/core/providers/nuphar/*.h"

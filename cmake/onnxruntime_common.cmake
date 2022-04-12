@@ -98,7 +98,7 @@ if (onnxruntime_USE_MIMALLOC)
     if(onnxruntime_USE_CUDA OR onnxruntime_USE_OPENVINO)
         message(WARNING "Currently do not support MIMALLOC in GPU builds")
     else()
-        include(external/mimalloc.cmake)
+        include(mimalloc)
         list(APPEND onnxruntime_EXTERNAL_LIBRARIES mimalloc-static)
         list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES mimalloc-static)
         set(onnxruntime_mimalloc_shim_src "${ONNXRUNTIME_ROOT}/core/platform/windows/mimalloc/mimalloc_overloads.cc")
@@ -108,7 +108,7 @@ if (onnxruntime_USE_MIMALLOC)
     endif()
 endif()
 
-include(external/abseil-cpp.cmake)
+include(abseil-cpp)
 
 onnxruntime_add_include_to_target(onnxruntime_common date_interface wil)
 target_include_directories(onnxruntime_common
