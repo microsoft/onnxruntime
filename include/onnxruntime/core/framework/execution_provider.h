@@ -205,7 +205,7 @@ class IExecutionProvider {
 
   // Fusion approach that is suppported
   // !!! The "Function" FusionStyle will be deprecated soon.
-  // !!! If your EP is using thi fusion style, please migrate it to "FilteredGraphViewer" style.
+  // !!! If your EP is using this fusion style, please migrate it to "FilteredGraphViewer" style.
   enum class FusionStyle {
     // The node fusion will create an onnxruntime::Function based Node that contains a completely new Graph instance
     // in the Node body. The original nodes and initializers are copied to the new Graph instance in Function::Body().
@@ -230,7 +230,7 @@ class IExecutionProvider {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   /**
-  * !!!! This API will be deprecate soon, if your execution provider override this api
+  * !!!! This API will be deprecated soon. If your execution provider overrides this API
   * !!!! Please migrate it to the "Compile" API with FusedNodeAndGraph type.
   Given a list of fused_node, return create_state/compute/release_state func for each node.
   */
