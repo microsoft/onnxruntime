@@ -39,8 +39,8 @@ struct FreeDimensionOverride {
 };
 
 /**
- * Configuration information for a session.
- */
+  * Configuration information for a session.
+  */
 struct SessionOptions {
   ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL;
 
