@@ -6,20 +6,21 @@
 # This script benchmarks gpt2 model with past state.
 # For gpt2 model without past state, use benchmark.py to measure performance.
 
-import os
-import sys
-import numpy
 import csv
 from datetime import datetime
 import psutil
 import argparse
 import logging
 import torch
-import onnx
 from packaging import version
 from transformers import AutoConfig
 from gpt2_helper import Gpt2Helper, DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
 from gpt2_beamsearch_helper import Gpt2HelperFactory, MODEL_CLASSES
+
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+
 from quantize_helper import QuantizeHelper
 from benchmark_helper import create_onnxruntime_session, setup_logger, prepare_environment, Precision
 

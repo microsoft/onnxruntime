@@ -4,18 +4,21 @@
 # license information.
 # --------------------------------------------------------------------------
 # This script helps onnx conversion and validation for GPT2 model with past state.
-import os
 import logging
 import torch
 import shutil
 import random
 import numpy
 import time
-import re
 import pickle
 from pathlib import Path
 from typing import List, Dict, Tuple, Union
 from transformers import GPT2Model, GPT2LMHeadModel, GPT2Config, TFGPT2Model
+
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+
 from float16 import float_to_float16_max_diff
 from onnx_model import OnnxModel
 from fusion_utils import FusionUtils

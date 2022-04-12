@@ -14,11 +14,15 @@ import torch
 from pathlib import Path
 from onnx import numpy_helper, TensorProto
 from gpt2_helper import Gpt2Helper
+
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+
 from benchmark_helper import create_onnxruntime_session
 
 NON_ZERO_VALUE = str(1)
 ZERO_VALUE = str(0)
-
 
 def environ_setting_nodes(node_name_filter=None, node_type_filter=None):
     # Set I/O data as default

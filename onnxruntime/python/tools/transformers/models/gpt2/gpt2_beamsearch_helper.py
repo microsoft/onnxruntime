@@ -4,19 +4,20 @@
 # license information.
 # --------------------------------------------------------------------------
 # This script helps onnx conversion and validation for GPT2 model with past state.
-import os
 import logging
 import torch
-import onnx
 import random
 import numpy
 import time
-import re
 from pathlib import Path
-from typing import List, Dict, Tuple, Union
+from typing import List, Dict, Union
 from transformers import GPT2LMHeadModel, GPT2Config
-from benchmark_helper import Precision
-from gpt2_helper import Gpt2Helper, Gpt2Inputs, GPT2ModelNoPastState, MyGPT2Model, MyGPT2LMHeadModel, MyGPT2LMHeadModel_NoPadding
+from gpt2_helper import Gpt2Helper, Gpt2Inputs, MyGPT2Model, MyGPT2LMHeadModel, MyGPT2LMHeadModel_NoPadding
+
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+
 from torch_onnx_export_helper import torch_onnx_export
 
 logger = logging.getLogger(__name__)
