@@ -214,11 +214,12 @@ struct PatternGraph {
    * @brief Search in the graph for a match with two given nodes as start.
    *
    * This function searches in the graph for a match with two given nodes as start.
-   * @param g is the node we want to start from in target graph.
-   * @param p is that of pattern graph.
-   * @param graph_path  a set to record the visited nodes in target graph, used to avoid duplicated match.
-   * @param pattern_path a set to record the visited nodes in pattern graph, used to avoid duplicated match.
-   * @param path_map is a mapping from nodes in graph_path and its corresponding matched node in pattern graph.
+   * @param target_graph is the target graph which should be passed by the user.
+   * @param target_node is the node we want to start from in target graph.
+   * @param pattern_node is that of pattern graph.
+   * @param target_graph_matched_path  a set to record the visited nodes in target graph, used to avoid duplicated match.
+   * @param pattern_graph_matched_path a set to record the visited nodes in pattern graph, used to avoid duplicated match.
+   * @param matched_path_pattern_node_to_target_node_map is a mapping from nodes in graph_path and its corresponding matched node in pattern graph.
    *    It's used to look ahead when the match encounters visited nodes to avoid wrong match.
    *    We give a simple example below to indicate the condition and effect of "look ahead".
    *    C <----------- B
@@ -237,22 +238,22 @@ struct PatternGraph {
    *    Then We may actually match E1 with a node which should match E2.
    *    So we need to look ahead to make sure that the visited node (A) E1 finds is exactly the matched nodes
    *    for that of target graph. In this way, we can make sure that E1 and E2 are correctly matched.
-   * @param matched
-   * @param target is the target graph which should be passed by the user.
+   * @param matched_result
    *
-   * The main idea of the algorithm is that if we regard node T (of target graph) and node P (of pattern graph) as a match,
+   * The main idea of the algorithm is that if we regard target node (of target graph) and pattern node (of pattern graph) as a match,
    * they must satisfy two requiments.
-   * > T and P have same properties, including optype, version, domain and so on.
-   * > All the neighbor nodes of P could find a match among neighbor nodes of T.
+   * > Target node and pattern node have same properties, including optype, version, domain and so on.
+   * > All the neighbor nodes of pattern node could find a match among neighbor nodes of target node.
    *
    * @return true when g and p matches.
    * @return false when g and p does not match.
    */
-  bool FindMatchRecursively(const Node* g, const Node* p,
-                            std::unordered_set<const Node*>& graph_path,
-                            std::unordered_set<const Node*>& pattern_path,
-                            std::unordered_map<const Node*, const Node*>& path_map,
-                            PatternMatchResult& matched, Graph& target);
+  bool FindMatchRecursively(Graph& target_graph,
+                            const Node* g, const Node* p,
+                            std::unordered_set<const Node*>& target_graph_matched_path,
+                            std::unordered_set<const Node*>& pattern_graph_matched_path,
+                            std::unordered_map<const Node*, const Node*>& matched_path_pattern_node_to_target_node_map,
+                            PatternMatchResult& matched_result);
 
   const Node* GetPatternGraphNode(const std::string& node_name) const {
     auto res = name_to_patten_node_mapping_.find(node_name);
@@ -260,12 +261,74 @@ struct PatternGraph {
     return res->second;
   }
 
+  ArgCompareFunc* GetCustomArgConstraint(std::string const& arg_name) {
+    return custom_arg_constraints_.count(arg_name) > 0 ? custom_arg_constraints_.find(arg_name)->second.get() : default_arg_compare_func_.get();
+  }
+
+  NodeCompareFunc* GetCustomNodeConstraint(std::string const& node_name) {
+    return custom_node_constraints_.count(node_name) > 0 ? custom_node_constraints_.find(node_name)->second.get() : default_node_compare_func_.get();
+  }
+
+  bool MatchNodeAndNodeInputArgs(Graph& target_graph, const Node* target_node, const Node* pattern_node);
+
+  /**
+   * @brief Strictly node args comparision, considering the order of node arg.
+   *
+   * @param target_graph
+   * @param pattern_graph
+   * @param name_to_pargs_mapping
+   * @param p_args
+   * @param t_args
+   * @param arg_constraints
+   * @param arg_default_constraint
+   * @return true
+   * @return false
+   */
+  bool ExactlyMatchNodeArgs(
+      const Graph& target_graph,
+      PatternGraph& pattern_graph,
+      ConstPointerContainer<std::vector<NodeArg*>>& p_args,
+      ConstPointerContainer<std::vector<NodeArg*>>& t_args);
+
+  /**
+   * Try to find a match for all the args of a node. We just use brute force here to iterate all the possible cases.
+   * Let's assume that args of the node in pattern graph are a1, a2, ..., ai, ... an and that of target graph is b1, b2, ..., bj, ... bn
+   * Then we keep the order of {ai} fixed and try to match it with {bj}.
+   * We first choose b1, then choose an arg in {bj | j != 1, j <= n} as next arg and the recurse it.
+   * "visited" is used to record visited args to avoid duplicated conditions.
+   */
+  /**
+   *
+   */
+  bool FuzzyMatchNodeArgs(
+      const Graph& target_graph,
+      PatternGraph& pattern_graph,
+      ConstPointerContainer<std::vector<NodeArg*>>& p_args,
+      ConstPointerContainer<std::vector<NodeArg*>>& t_args,
+      size_t p_arg_idx,
+      std::unordered_set<const NodeArg*>& visited);
+
+  const PGraphInput* GetPGraphInputFromPatternNodeInputName(std::string const& p_arg_name) {
+    auto find_defined_arg = name_to_parg_mapping_.find(p_arg_name);
+    if (find_defined_arg != name_to_parg_mapping_.end())
+      return find_defined_arg->second;
+    return nullptr;
+  }
+
+  const PGraphNode* GetPGraphNodeFromPatternNodeInputName(std::string const& p_node_name) {
+    auto find_defined_pnode = name_to_pnode_mapping_.find(p_node_name);
+    if (find_defined_pnode != name_to_pnode_mapping_.end())
+      return find_defined_pnode->second;
+
+    return nullptr;
+  }
+
   std::string pattern_graph_name_;  // name of the graph
 
   std::vector<PGraphInput> pgraph_inputs_;  // arg definitions
   std::vector<PGraphNode> pgraph_nodes_;    // node definitions
-  std::unordered_map<std::string, const PGraphNode*> name_pnode_mapping_;
-  std::unordered_map<std::string, const PGraphInput*> name_parg_mapping_;
+  std::unordered_map<std::string, const PGraphNode*> name_to_pnode_mapping_;
+  std::unordered_map<std::string, const PGraphInput*> name_to_parg_mapping_;
 
   std::vector<NodeDef> node_defs_;  // node definitions
   std::unique_ptr<Model> ort_model_ptr_;

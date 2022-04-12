@@ -189,14 +189,16 @@ struct PGraphNode {
              const std::string& node_name = "",
              const std::unordered_map<std::string, std::vector<int>>& domain_version_maps = {},
              const std::vector<AttributeProto>& attributes = {},
-             int output_edges_count = 0)
+             int output_edges_count = 0,
+             bool ignore_input_node_arg_orders = true)
       : op_type_(op_type),
         input_args_names_(input_args_names),
         output_args_names_(output_args_names),
         node_name_(node_name),
         output_edges_count_(output_edges_count),
         domain_version_maps_(domain_version_maps),
-        attributes(attributes) {
+        attributes(attributes),
+        ignore_order_(ignore_input_node_arg_orders) {
     if (node_name.empty()) {
       CreateNodeName();
     }
@@ -215,6 +217,10 @@ struct PGraphNode {
   }
 
   bool MatchesDomainVersion(const std::string& domain, const int version) const;
+
+  bool IgnoreNodeArgOrder() const {
+    return ignore_order_;
+  }
 
   const std::unordered_map<std::string, std::vector<int>>& GetDomainVersionMap() const { return domain_version_maps_; }
 
@@ -235,6 +241,7 @@ struct PGraphNode {
   int output_edges_count_;
   std::unordered_map<std::string, std::vector<int>> domain_version_maps_;
   std::vector<AttributeProto> attributes;
+  bool ignore_order_;
 };
 
 }  // namespace training
