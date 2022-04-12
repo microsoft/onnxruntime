@@ -28,7 +28,7 @@ std::vector<MLFloat16> InputData<MLFloat16>(size_t size) {
 template <typename T>
 void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& repeats) {
   size_t input_size =
-      static_cast<size_t>(std::accumulate(input_dims.begin(), input_dims.end(), 1, std::multiplies<int64_t>()));
+      static_cast<size_t>(std::accumulate(input_dims.begin(), input_dims.end(), 1LL, std::multiplies<int64_t>()));
   std::vector<T> input_data = InputData<T>(input_size);
   size_t rank = input_dims.size();
   std::vector<int64_t> repeats_dims(1);
@@ -38,7 +38,7 @@ void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>&
     output_dims[i] = input_dims[i] * repeats[i];
   }
   size_t output_size =
-      static_cast<size_t>(std::accumulate(output_dims.begin(), output_dims.end(), 1, std::multiplies<int64_t>()));
+      static_cast<size_t>(std::accumulate(output_dims.begin(), output_dims.end(), 1LL, std::multiplies<int64_t>()));
   std::vector<T> output_data(output_size);
   std::vector<int64_t> input_strides(rank);
   std::vector<int64_t> output_strides(rank);
