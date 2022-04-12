@@ -60,6 +60,9 @@ struct OpenVINO_Provider : Provider {
     return std::make_shared<OpenVINOProviderFactory>(params.device_type, params.enable_vpu_fast_compile, params.device_id, params.num_of_threads, params.use_compiled_network, params.blob_dump_path, params.context, params.enable_opencl_throttling);
   }
 
+  void Initialize() override {
+  }
+
   void Shutdown() override {
     openvino_ep::BackendManager::ReleaseGlobalContext();
   }
