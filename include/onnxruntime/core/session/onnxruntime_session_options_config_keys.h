@@ -116,6 +116,6 @@ static const char* const kOrtSessionOptionsConfigDynamicBlockBase = "session.dyn
 
 // "1": all inconsistencies encountered during shape and type inference
 // will result in failures.
-// "0": in some cases warnings will be logged but processing will continue.
+// "0": in some cases warnings will be logged but processing will continue. The default.
 // May be useful to expose bugs in models.
 static const char* const kOrtSessionOptionsConfigStrictShapeTypeInference = "session.strict_shape_type_inference";
