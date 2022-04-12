@@ -309,9 +309,12 @@ void addOrtValueMethods(pybind11::module& m) {
       .def("push_back", [](std::vector<OrtValue>* v, const OrtValue& ortvalue) {
         v->push_back(ortvalue);
       })
+#ifdef ENABLE_TRAINING
       .def("push_back", [](std::vector<OrtValue>* v, py::object dlpack_tensor, const bool is_bool_tensor) {
         v->push_back(FromDlpack(dlpack_tensor.ptr(), is_bool_tensor));
-      })
+      }, "Add a new OrtValue after being ownership was transfered from the DLPack structure.",
+      py::arg("dlpack_tensor"), py::arg("is_bool_tensor") = false)
+#endif
       .def("reserve", [](std::vector<OrtValue>* v, const size_t len) { v->reserve(len); })
       .def("shrink_to_fit", [](std::vector<OrtValue>* v) { v->shrink_to_fit(); })
       .def("__len__", [](const std::vector<OrtValue>& v) { return v.size(); })
@@ -349,7 +352,8 @@ void addOrtValueMethods(pybind11::module& m) {
           "Returns an integer equal to the ONNX proto type of the tensor at position i. "
           "This integer is one type defined by ONNX TensorProto_DataType "
           "(such as onnx.TensorProto.FLOAT)."
-          "Raises an exception in any other case.")
+          "Raises an exception in any other case.",
+          py::arg("idx"))
 #ifdef ENABLE_TRAINING
       .def(
           "to_dlpacks", [](const std::vector<OrtValue>& v, py::object to_tensor) -> py::list {
@@ -417,7 +421,7 @@ is difficult to parallelize as it goes through the GIL many times.
 It creates many tensors acquiring ownership of existing OrtValue.
 This method saves one object creation and an C++ allocation
 for every transfered tensor.
-)pbdoc")
+)pbdoc", py::arg("to_tensor"))
 #endif
 ;
 
