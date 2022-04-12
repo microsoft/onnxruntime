@@ -140,7 +140,7 @@ Find them [here](https://github.com/microsoft/onnxruntime/tags).
 
 ## Custom build packages
 
-In this section, `ops.config` is a [configuration file](../reference/reduced-operator-config-file.md) that specifies the opsets, op kernels, and types to include.
+In this section, `ops.config` is a [configuration file](../reference/reduced-operator-config-file.md) that specifies the opsets, op kernels, and types to include. See the configuration file used by the pre-built mobile packages at [tools/ci_build/github/android/mobile_package.required_operators.config](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/android/mobile_package.required_operators.config).
 
 ### Web
 
@@ -167,7 +167,9 @@ To produce pods for an iOS build, use the [build_and_assemble_ios_pods.py](https
 
     The build options are specified with the file provided to the `--build-settings-file` option. See the options used by the pre-built mobile package at [tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json). You can use this file directly.
 
-3. Update the Podfile to use the local pods.
+3. Use the local pods.
+
+    For example, update the Podfile to use the local onnxruntime-mobile-objc pod instead of the released one:
 
     ```diff
     -  pod 'onnxruntime-mobile-objc'
@@ -201,7 +203,7 @@ The script can be used from within the repo or outside of it. Copy its [containi
 
     The build options are specified with the file provided to the `--build_settings` option. See the options used by the pre-built mobile package at [tools/ci_build/github/android/default_mobile_aar_build_settings.json](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/android/default_mobile_aar_build_settings.json). You can use this file directly.
 
-2. Refer to the local custom Android AAR package.
+2. Use the local custom Android AAR package.
 
     For example, update the build.gradle file implementation section:
 
