@@ -30,7 +30,7 @@ def run_subprocess(args, cwd=None):
 
 
 def upload_whl(python_wheel_path, final_storage=False):
-    storage_account_name = "onnxruntimepackages" if final_storage else "onnxruntimepackagesint" 
+    storage_account_name = "onnxruntimepackages" if final_storage else "onnxruntimepackagesint"
     blob_name = os.path.basename(python_wheel_path)
     run_subprocess(['azcopy', 'cp', python_wheel_path, f'https://{storage_account_name}.blob.core.windows.net/$web/'])
 
