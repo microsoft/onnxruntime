@@ -451,7 +451,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                                              'verbose': self._debug_options.logging.log_level < LogLevel.WARNING,
                                              'operator_export_type': OperatorExportTypes.ONNX_ATEN_FALLBACK,
                                              'export_params': True,
-                                             'keep_initializers_as_inputs': True}
+                                             'keep_initializers_as_inputs': False}
 
                    invalid_args = self._export_extra_kwargs.keys() & required_export_kwargs.keys()
                    assert len(invalid_args) == 0,\
