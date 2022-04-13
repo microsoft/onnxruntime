@@ -205,10 +205,15 @@ The script can be used from within the repo or outside of it. Copy its [containi
 
 2. Use the local custom Android AAR package.
 
-    For example, update the build.gradle file implementation section:
+    For example, in an Android Studio project:
+
+    a. Copy the AAR file from `/path/to/working/dir/output/aar_out/<build config, e.g., Release>/com/microsoft/onnxruntime/onnxruntime-mobile/1.11.0/onnxruntime-mobile-1.11.0.aar` to the project's `<module name, e.g., app>/libs` directory.
+
+    b. Update the project's `<module name>/build.gradle` file dependencies section:
 
     ```diff
-    TODO ...
+    -    implementation 'com.microsoft.onnxruntime:onnxruntime-mobile:latest.release'
+    +    implementation files('libs/onnxruntime-mobile-1.11.0.aar')
     ```
 
 ### Python
