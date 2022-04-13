@@ -173,6 +173,7 @@ static constexpr PATH_TYPE SEQUENCE_MODEL_URI_2 = TSTR("testdata/optional_sequen
 #endif
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/custom_op_library/custom_op_test.onnx");
+static constexpr PATH_TYPE BEAMSEARCH_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/beamsearch_op_library/beamsearch_op.onnx")
 static constexpr PATH_TYPE OVERRIDABLE_INITIALIZER_MODEL_URI = TSTR("testdata/overridable_initializer.onnx");
 static constexpr PATH_TYPE NAMED_AND_ANON_DIM_PARAM_URI = TSTR("testdata/capi_symbolic_dims.onnx");
 static constexpr PATH_TYPE MODEL_WITH_CUSTOM_MODEL_METADATA = TSTR("testdata/model_with_valid_ort_config_json.onnx");
@@ -798,6 +799,41 @@ TEST(CApiTest, test_custom_op_library) {
 #else
   int retval = dlclose(library_handle);
   ORT_ENFORCE(retval == 0, "Error while closing custom op shared library");
+#endif
+}
+
+TEST(CApiTest, test_beamsearch_op_library) {
+  std::cout << "Running inference using beamsearch op shared library" << std::endl;
+
+  std::vector<Input> inputs(2);
+  inputs[0].name = "input_ids";
+  inputs[0].dims = {3, 5};
+  inputs[0].values = {1, 2, 3, 4, 5,
+                      6, 7, 8, 9, 10,
+                      11, 12, 13, 14, 15};
+  inputs[1].name = "nums_beams";
+  inputs[1].dims = {1};
+  inputs[1].values = {1};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 5};
+  std::vector<int32_t> expected_values_y =
+      {2, 3, 4, 5, 6,
+       7, 8, 9, 10, 11,
+       12, 13, 14, 15, 16};
+
+  std::string lib_name;
+#if defined(_WIN32)
+  lib_name = "beamsearch_op_library.dll";
+#endif
+
+void* library_handle = nullptr;
+TestInference<int32_t>(*ort_env, BEAMSEARCH_OP_LIBRARY_TEST_MODEL_URI, inputs, "logits", expected_dims_y,
+                         expected_values_y, 0, nullptr, lib_name.c_str(), &library_handle);
+
+#ifdef _WIN32
+  bool success = ::FreeLibrary(reinterpret_cast<HMODULE>(library_handle));
+  ORT_ENFORCE(success, "Error while closing beamsearch op shared library");
 #endif
 }
 

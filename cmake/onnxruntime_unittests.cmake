@@ -1208,8 +1208,11 @@ if (onnxruntime_USE_CUDA)
   endif()
 else()
   onnxruntime_add_shared_library_module(custom_op_library ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
+  onnxruntime_add_shared_library_module(beamsearch_op_library ${TEST_SRC_DIR}/testdata/beamsearch_op_library/beamsearch_op_library.cc})
 endif()
 target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
+target_include_directories(beamsearch_op_library PRIVATE ${REPO_ROOT}/include)
+
 if(UNIX)
   if (APPLE)
     set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker -dead_strip")
@@ -1218,12 +1221,21 @@ if(UNIX)
   endif()
 else()
   set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-DEF:${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.def")
+  set(ONNXRUNTIME_BEAMSEARCH_OP_LIB_LINK_FLAG "-DEF:${TEST_SRC_DIR}/testdata/beamsearch_op_library/beamsearch_op_library.def")
+  #[[ TODO Vish, custom_op_library has cuda files and when onnxruntime_USE_CUDA is False
+      -Xcompiler is used to compile them, don't have that use case for beamsearch_op, directly adding /wd26409
+  ]]
+  if (NOT onnxruntime_USE_CUDA)
+    target_compile_options(beamsearch_op_library PRIVATE /wd26409)
+  endif()
   if (NOT onnxruntime_USE_CUDA)
     target_compile_options(custom_op_library PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd26409>"
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26409>")
   endif()
+
 endif()
 set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG})
+set_property(TARGET beamsearch_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_BEAMSEARCH_OP_LIB_LINK_FLAG})
 
 if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   if (onnxruntime_BUILD_JAVA AND NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
