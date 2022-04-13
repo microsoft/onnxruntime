@@ -845,7 +845,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 }
 
 // Detect and remove cycles from supported node list
-bool TensorrtExecutionProvider::DetectRemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph) const {
+bool TensorrtExecutionProvider::DetectRemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, bool detect_only) const {
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
   bool trt_cycle = true, cycle_detected = false;
   while (trt_cycle) {
@@ -937,7 +937,7 @@ bool TensorrtExecutionProvider::DetectRemoveTensorRTGraphCycles(SubGraphCollecti
     }
 
     // Remove TensorRT subgraph from the supported node list if it's part of the cycle
-    if (has_cycle) {
+    if (has_cycle && !detect_only) {
       for (size_t i = 0; i < cycles.size(); ++i) {
         auto loc = index_to_node_map.find(cycles[i]);
         if (loc != index_to_node_map.end() && loc->second.find("TRTKernel") != std::string::npos) {
@@ -996,7 +996,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     }
   }  
   SubGraphCollection_t consolidated_supported_nodes_vector = {{nodes_vector, true}};
-  if (DetectRemoveTensorRTGraphCycles(consolidated_supported_nodes_vector, graph)) {
+  if (DetectRemoveTensorRTGraphCycles(consolidated_supported_nodes_vector, graph, true)) {
     LOGS_DEFAULT(INFO) << "[TensorRT EP] TensorRT nodes are not consolidated because graph will have cycles after consolidation";
   } else {
     LOGS_DEFAULT(INFO) << "[TensorRT EP] TensorRT nodes are consolidated into one subgraph";
