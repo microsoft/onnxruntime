@@ -555,7 +555,6 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
   status = utils::ExecuteSubgraph(encoder_session_state_, encoder_feeds_fetches_manager, encoder_feeds, encoder_fetches, {},
                                   ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger());
   ORT_RETURN_IF_ERROR(status);
-
   int64_t sequences_dims[] = {parameters_->batch_size, parameters_->num_return_sequences, parameters_->max_length};
   TensorShape sequences_shape(&sequences_dims[0], sizeof(sequences_dims) / sizeof(sequences_dims[0]));
   Tensor* output_sequences = context_.Output(0, sequences_shape);
@@ -594,7 +593,6 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
 
   BeamSearchCpuState cpu_state;
   cpu_state.Init(cpu_allocator_, static_cast<size_t>(parameters_->BatchBeamSize()), parameters_->max_length, IsCuda());
-
   IAllocatorUniquePtr<char> buffer;
   ORT_RETURN_IF_ERROR(
     decoder_subgraph_.CreateInitialFeeds(
@@ -622,7 +620,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
                            parameters_->sequence_length,
                            parameters_->max_length);
 
-  OrtValue expanded_decoder_input_ids_in_cpu = decoder_feeds[0];
+  OrtValue expanded_decoder_input_ids_in_cpu = decoder_feeds[1];
   gsl::span<const int32_t> decoder_input_ids = expanded_decoder_input_ids_in_cpu.Get<Tensor>().DataAsSpan<int32_t>();
   init_beam_state_func_(&beam_state,
                         &cpu_state,
@@ -679,6 +677,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
       ORT_RETURN_IF_ERROR(UpdateFeeds2(decoder_fetches, decoder_feeds, current_length,
                                       beam_next_tokens.as_span<const int32_t>()));
     }
+
     decoder_fetches.clear();
   }
 

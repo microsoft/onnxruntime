@@ -42,6 +42,7 @@ class T5EncoderDecoderInit(torch.nn.Module):
                 encoder_attention_mask: torch.Tensor,
                 decoder_input_ids: torch.Tensor = None):
         encoder_hidden_states: torch.FloatTensor = self.t5_encoder(encoder_input_ids, encoder_attention_mask)
+        # bugbug: input expansion
         lm_logits, past_self, past_cross = self.t5_decoder_init(decoder_input_ids, encoder_attention_mask,
                                                                 encoder_hidden_states)
         return lm_logits, encoder_hidden_states, past_self, past_cross

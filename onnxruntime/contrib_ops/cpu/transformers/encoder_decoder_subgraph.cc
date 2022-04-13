@@ -32,7 +32,7 @@ OrtValue ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocat
 
   OrtValue expanded;
   MLDataType element_type = input.Get<Tensor>().DataType();
-  ORT_ENFORCE(element_type == DataTypeImpl::GetType<int32_t>(), "input_ids, position_ids and attention_mask is required to be int32 data type");
+  ORT_ENFORCE(element_type == DataTypeImpl::GetType<int32_t>(), "input_ids, attention_mask is required to be int32 data type");
 
   Tensor::InitOrtValue(element_type, expanded_shape, allocator, expanded);
 
@@ -43,6 +43,39 @@ OrtValue ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocat
     for (int j = 0; j < num_beams; j++) {
       memcpy(target, input_data + i * sequence_length, sizeof(int32_t) * sequence_length);
       target += sequence_length;
+    }
+  }
+
+  return expanded;
+}
+
+OrtValue ExpandInputs2(const OrtValue& input, int num_beams, AllocatorPtr allocator) {
+  // Input shape (batch_size, sequence_length)
+  // Output shape (batch_size * num_beams, sequence_length)
+  if (num_beams == 1)
+    return input;
+
+  const TensorShape& input_shape = input.Get<Tensor>().Shape();
+  const int64_t& batch_size = input_shape[0];
+  const int64_t& sequence_length = input_shape[1];
+  const int64_t& hidden_size = input_shape[2];
+
+  int64_t dims[] = {batch_size * num_beams, sequence_length, hidden_size};
+  TensorShape expanded_shape(&dims[0], 3);
+
+  OrtValue expanded;
+  MLDataType element_type = input.Get<Tensor>().DataType();
+  ORT_ENFORCE(element_type == DataTypeImpl::GetType<float>(), "bugbug");
+
+  Tensor::InitOrtValue(element_type, expanded_shape, allocator, expanded);
+
+  const float* input_data = input.Get<Tensor>().Data<float>();
+  float* expanded_data = expanded.GetMutable<Tensor>()->MutableData<float>();
+  float* target = expanded_data;
+  for (int i = 0; i < batch_size; i++) {
+    for (int j = 0; j < num_beams; j++) {
+      memcpy(target, input_data + i * sequence_length * hidden_size, sizeof(float) * sequence_length * hidden_size);
+      target += sequence_length * hidden_size;
     }
   }
 
@@ -79,8 +112,7 @@ EncoderSubgraph::EncoderSubgraph(
 
 Status EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                              const std::vector<const NodeArg*>& subgraph_outputs) {
-  std::cout << "num_subgraph_outputs " << num_subgraph_outputs << std::endl;
-  std::cout << "num_subgraph_inputs " << num_subgraph_inputs << std::endl;
+
   ORT_RETURN_IF(num_subgraph_outputs != 1, "num_subgraph_outputs is not 1");
 
   ORT_RETURN_IF(num_subgraph_inputs != 2, "num_subgraph_inputs is not 2");
@@ -101,9 +133,9 @@ Status EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inp
   //vocab_size = static_cast<int>(logits_shape->dim(2).dim_value());
   //num_layers = static_cast<int>(subgraph_outputs.size()) - 1;
 
-  ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
+  ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
                 "subgraph input 0 (input_ids) shall have int32 type");
-  ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
+  ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
                 "subgraph input 1 (position_ids) shall have int32 type");
 
   auto output_type = subgraph_outputs[0]->TypeAsProto()->tensor_type().elem_type();
@@ -310,9 +342,9 @@ Status DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inp
   vocab_size = static_cast<int>(logits_shape->dim(2).dim_value());
   //num_layers = static_cast<int>(subgraph_outputs.size()) - 1;
 
-  ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
+  ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
                 "subgraph input 1 (input_ids) shall have int32 type");
-  ORT_RETURN_IF(subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64,
+  ORT_RETURN_IF(subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
                 "subgraph input 3 (attention_masks) shall have int32 type");
   ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT &&
                 subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16,
@@ -444,11 +476,11 @@ Status DecoderSubgraph::CreateInitialFeeds(
   // bugbug: handle fp16 later
   OrtValue encoder_output;
   const Tensor* encoder_outputs = &encoder_fetches[0].Get<Tensor>();
-  Tensor::InitOrtValue(element_type, encoder_outputs->Shape(), const_cast<Tensor*>(encoder_outputs)->MutableData<float>(), location, encoder_output);
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), encoder_outputs->Shape(), const_cast<Tensor*>(encoder_outputs)->MutableData<float>(), location, encoder_output);
 
   OrtValue expanded_decoder_input_ids = ExpandInputs(decoder_input_ids, num_beams, cpu_alloactor);
   OrtValue expanded_decoder_attention_masks = ExpandInputs(decoder_attention_masks, num_beams, cpu_alloactor);
-  OrtValue expanded_encoder_output = ExpandInputs(encoder_output, num_beams, cpu_alloactor);
+  OrtValue expanded_encoder_output = ExpandInputs2(encoder_output, num_beams, cpu_alloactor);
 
   decoder_feeds.push_back(expanded_encoder_output);
   decoder_feeds.push_back(expanded_decoder_input_ids);

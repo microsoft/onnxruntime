@@ -459,12 +459,12 @@ Status UpdateFeeds2(
   // Update input_ids with next tokens.
   int batch_beam_size = static_cast<int>(beam_next_tokens.length());
   int64_t dims[] = {batch_beam_size, 1};
-  TensorShape input_ids_shape(&dims[0], current_length);
+  TensorShape input_ids_shape(&dims[0], 2);
   auto int32_type = DataTypeImpl::GetType<int32_t>();
   OrtValue input_ids;
   Tensor::InitOrtValue(int32_type, input_ids_shape, allocator, input_ids);
   int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
-  const OrtValue& past_input_id = next_inputs[0];
+  const OrtValue& past_input_id = next_inputs[1];
   const int32_t* past_input_id_data = past_input_id.Get<Tensor>().Data<int32_t>();
   int last_length = current_length - 1;
 
