@@ -62,7 +62,7 @@ class GradientAccumulationManager(object):
                     self._cached_node_arg_names[i-self._cache_start], forward_outputs[i])
             self._update_cache = False
         ort_value_vector = C.OrtValueVector()
-        ort_value_vector.reserve(len(self._cache_start))
+        ort_value_vector.reserve(self._cache_start)
         for i in range(self._cache_start):
             ort_value_vector.push_back(forward_outputs[i])
         return _utils._ortvalues_to_torch_tensor(ort_value_vector, device, c_class=True)
