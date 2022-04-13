@@ -5,9 +5,8 @@
 
 #include <string>
 #include <unordered_map>
-#include "core/common/common.h"
+#include "core/common/status.h"
 #include "core/common/optional.h"
-#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 
@@ -32,7 +31,7 @@ struct ConfigOptions {
   std::string GetConfigOrDefault(const std::string& config_key, const std::string& default_value) const noexcept;
 
   // Add a config pair (config_key, config_value) to this instance of ConfigOptions
-  Status AddConfigEntry(const char* config_key, const char* config_value) noexcept;
+  common::Status AddConfigEntry(const char* config_key, const char* config_value) noexcept;
 };
 
 }  // namespace onnxruntime
