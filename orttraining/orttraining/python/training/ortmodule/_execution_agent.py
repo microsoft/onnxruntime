@@ -71,7 +71,9 @@ class InferenceAgent(object):
         """
 
         self._inference_session.run_with_iobinding(iobinding, run_options)
-        ortvalues = iobinding.get_outputs()
+        # iobinding.get_outputs() wraps every C OrtValue into Python OrtValue
+        # but ExecutionAgentOutput only accepts OrtValueVector.
+        ortvalues = iobinding._iobinding.get_outputs()
         return ExecutionAgentOutput(ortvalues)
 
 
