@@ -42,7 +42,7 @@ PatternGraph::PatternGraph(
       pgraph_inputs_(pgraph_inputs),
       pgraph_nodes_(pgraph_nodes) {
   // Figure out what domain to version should be set for the model.
-  std::unordered_map<std::string, int> domain_to_version;
+  std::unordered_map<std::string, int> domain_to_version = {{kOnnxDomain, 7}};
   for (size_t i = 0; i < pgraph_nodes.size(); i++) {
     name_to_pnode_mapping_[pgraph_nodes[i].GetNodeName()] = &(pgraph_nodes_[i]);
     const std::unordered_map<std::string, std::vector<int>>& node_domain_version_mapping = pgraph_nodes[i].GetDomainVersionMap();
@@ -55,9 +55,11 @@ PatternGraph::PatternGraph(
       }
     }
   }
+
   for (size_t i = 0; i < pgraph_inputs.size(); i++) {
     name_to_parg_mapping_[pgraph_inputs[i].GetArgName()] = &(pgraph_inputs_[i]);
   }
+
   std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
   ort_model_ptr_ = std::make_unique<Model>(
       "PatternModel", false /*is_onnx_domain_only*/, ModelMetaData(), PathString(),
@@ -65,6 +67,7 @@ PatternGraph::PatternGraph(
       model_specific_functions, logging::LoggingManager::DefaultLogger());
 
   ORT_ENFORCE(ToGraphInternal().IsOK());
+
   auto& graph = GetGraph();
   GraphViewer viewer(graph);
   for (auto node_idx : viewer.GetNodesInTopologicalOrder()) {
@@ -131,7 +134,7 @@ Status PatternGraph::TryMatch(
   for (auto node_index : graph_topology_list) {
     auto* target_node_ptr = target_graph.GetNode(node_index);
 
-    PARSER_LOG << ">> start over with a new entry node called [" << target_node_ptr->Name() << ", " << target_node_ptr->OutputDefs()[0]->Name() << "]";
+    PARSER_LOG << "Pattern graph [" << pattern_graph_name_ << "] start over matching with a new entry node called [" << target_node_ptr->Name() << ", " << target_node_ptr->OutputDefs()[0]->Name() << "]";
 
     // Clear up previous matching results.
     match_result.Clear();
@@ -160,26 +163,69 @@ Status PatternGraph::TryMatch(
   return Status(common::ONNXRUNTIME, common::FAIL, "No match for the target graph.");
 }
 
-Status PatternGraph::GetNodeDefs() {
-  for (size_t i = 0; i < pgraph_nodes_.size(); ++i) {
-    node_defs_.push_back(pgraph_nodes_[i].GetNodeDef());
-  }
-  for (size_t i = 0; i < pgraph_inputs_.size(); ++i) {
-    node_defs_.push_back(pgraph_inputs_[i].GetNodeDef());
-  }
-  return Status::OK();
-}
-
 Status PatternGraph::ToGraphInternal() {
-  auto status = GetNodeDefs();
-  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   /** Todo: p_initializer_names_to_preserve should contains all initializer names in the pattern graphs.
    * to avoid constant folding by any opportunaties.
    */
   const std::unordered_set<std::string>* p_initializer_names_to_preserve = nullptr;
   GraphAugmenter::GraphDefs graph_defs;
-  graph_defs.AddNodeDefs(node_defs_);
-  status = GraphAugmenter::AugmentGraph(ort_model_ptr_->MainGraph(), graph_defs, p_initializer_names_to_preserve);
+
+  std::unordered_map<std::string, ArgDef> arg_name_to_arg_def_mapping;
+  for (size_t i = 0; i < pgraph_inputs_.size(); ++i) {
+    // Use the first allowed data type when building graph.
+    TypeProto* type_proto = graph_defs.CreateTypeProto();
+
+    type_proto->mutable_tensor_type()->set_elem_type(pgraph_inputs_[i].allowed_data_types_[0]);
+    auto shape = type_proto->mutable_tensor_type()->mutable_shape();
+    if (pgraph_inputs_[i].CanBeAnyRank()) {
+      // Can use any data shapes, so we use {"dim_0"} here.
+      shape->add_dim()->set_dim_param(pgraph_inputs_[i].GetArgName() + "dim_0");
+    } else {
+      // Use the first allowed rank when building graph.
+      for (auto i = 0; i < pgraph_inputs_[i].allowed_ranks_[0]; ++i) {
+        shape->add_dim()->set_dim_param(pgraph_inputs_[i].GetArgName() + "dim_" + std::to_string(i));
+      }
+    }
+    auto arg_def = ArgDef(pgraph_inputs_[i].GetArgName(), type_proto);
+
+    arg_name_to_arg_def_mapping[pgraph_inputs_[i].GetArgName()] = arg_def;
+  }
+
+  std::vector<NodeDef> node_defs;  // node definitions
+  for (size_t i = 0; i < pgraph_nodes_.size(); ++i) {
+    std::string domain = "";
+    int version = 9;
+    if (!pgraph_nodes_[i].domain_version_maps_.empty()) {
+      auto first_pair = pgraph_nodes_[i].domain_version_maps_.begin();
+      domain = first_pair->first;
+      version = *first_pair->second.begin();
+    }
+
+    std::vector<ArgDef> input_args(pgraph_nodes_[i].input_args_names_.size());
+    std::vector<ArgDef> output_args(pgraph_nodes_[i].output_args_names_.size());
+    for (size_t j = 0; j < pgraph_nodes_[i].input_args_names_.size(); j++) {
+      // For graph input args, we don't need explicitly pass the ArgDef created above.
+      // Passing the name in enough, during graph argument, it will parse the corresponding
+      // TypeProto.
+      std::string temporary_name = pgraph_nodes_[i].input_args_names_[j];
+      if (arg_name_to_arg_def_mapping.count(temporary_name))
+        input_args[j] = arg_name_to_arg_def_mapping[temporary_name];
+      else
+        input_args[j] = ArgDef(temporary_name);
+    }
+
+    for (size_t j = 0; j < pgraph_nodes_[i].output_args_names_.size(); j++) {
+      output_args[j] = ArgDef(pgraph_nodes_[i].output_args_names_[j]);
+    }
+
+    auto node_def = NodeDef(OpDef(pgraph_nodes_[i].op_type_, domain, version),
+                            input_args, output_args, pgraph_nodes_[i].attributes,
+                            pgraph_nodes_[i].GetNodeName());
+    node_defs.push_back(node_def);
+  }
+
+  graph_defs.AddNodeDefs(node_defs);
+  Status status = GraphAugmenter::AugmentGraph(ort_model_ptr_->MainGraph(), graph_defs, p_initializer_names_to_preserve);
   ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
   return Status::OK();
 }

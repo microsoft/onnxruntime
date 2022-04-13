@@ -25,6 +25,7 @@ struct PGraphInputTypes {
   enum class TypesCategory {
     AllIntegerTensorTypes,
     AllFloatTensorTypes,
+    AllIntegerAndFloatTensorTypes,
   };
 
  public:
@@ -34,7 +35,6 @@ struct PGraphInputTypes {
   PGraphInputTypes(const std::vector<ONNX_NAMESPACE::TensorProto_DataType>& allowed_types)
       : allowed_types_(allowed_types) {}
 
- private:
   /**
    * We need a valid data type for the input when building the pattern graph.
    * Here we choose the first data type in the allowed list. For user of this class,
@@ -46,6 +46,7 @@ struct PGraphInputTypes {
     return allowed_types_.at(0);
   }
 
+ private:
   void Init(const std::vector<ONNX_NAMESPACE::TensorProto_DataType>& types) {
     allowed_types_ = types;
   }
@@ -53,27 +54,29 @@ struct PGraphInputTypes {
   std::vector<ONNX_NAMESPACE::TensorProto_DataType> allowed_types_;
 };
 
-struct PGraphInputShape {
+/**
+ * @brief Pattern graph input data shapes.
+ * Currently majorly maintain a list of ranks.
+ */
+struct PGraphInputShapes {
   friend class PGraphInput;
 
  public:
-  PGraphInputShape(const std::vector<std::vector<std::string>>& allowed_shapes)
-      : allowed_symbolic_shapes_(allowed_shapes) {
+  PGraphInputShapes(const std::vector<int>& allowed_ranks)
+      : allowed_ranks_(allowed_ranks) {
   }
 
-  bool CanBeAnyShape() const {
-    return allowed_symbolic_shapes_.empty();
+  bool CanBeAnyRank() const {
+    return allowed_ranks_.empty();
   }
 
  private:
-  std::vector<std::vector<std::string>> allowed_symbolic_shapes_;
+  std::vector<int> allowed_ranks_;
 };
 
 /**
  * @brief Pattern graph input description.
- * Class representing a graph input to a pattern graph. Two kinds of graph inputs are supported:
- * > Graph inputs, which is generated from other subgraphs.
- * > Constant node, which consume no else, but generate a constant value.
+ * Class representing a graph input to a pattern graph.
  *
  * During node matching, by default, all user given fields will be checked, compared with
  * the target graph.
@@ -82,96 +85,32 @@ struct PGraphInput {
   friend class PatternGraph;
 
  public:
-  /*
-   * is_dangling: if it's set to false, this arg would not be required  to match an arg in target graph
-   * is_constant: it indicates if the arg is a constant.
-   * Since we reuse Augumenter to implement the pattern graph, we cannot get real constant but only use a flag.
-   */
-  PGraphInput(const std::string& output_arg_name,
-              const PGraphInputTypes& type,
-              const PGraphInputShape& shape,
-              bool is_dangling = true,
-              bool is_constant = true)
-      : output_arg_name_(output_arg_name),
-        is_constant_(is_constant),
-        is_dangling_(is_dangling),
-        allowed_types_(type.allowed_types_) {
-    SetTensorProto(type.GetDefaultType());
-    if (shape.CanBeAnyShape()) {
-      t_proto_.add_dims(1);
-    } else {
-      // for (auto dim : shape.allowed_symbolic_shapes_[0]) {
-      //   t_proto_.add_dims(dim);
-      //   set_dim_param
-      // }
-    }
+  PGraphInput(const std::string& node_arg_name,
+              const PGraphInputTypes& type)
+      : node_arg_name_(node_arg_name),
+        allowed_data_types_(type.allowed_types_) {
+    allowed_ranks_ = {};
   }
 
-  PGraphInput(const std::string& output_arg_name,
+  PGraphInput(const std::string& node_arg_name,
               const PGraphInputTypes& type,
-              int rank = 1,
-              bool is_dangling = true,
-              bool is_constant = true)
-      : output_arg_name_(output_arg_name),
-        is_constant_(is_constant),
-        is_dangling_(is_dangling),
-        allowed_types_(type.allowed_types_) {
-    SetTensorProto(type.GetDefaultType());
-    while (rank--) {
-      t_proto_.add_dims(1);
-    }
-  }
+              const PGraphInputShapes& shape)
+      : node_arg_name_(node_arg_name),
+        allowed_data_types_(type.allowed_types_),
+        allowed_ranks_(shape.allowed_ranks_) {}
 
   bool MatchesDataType(const Graph& graph, const NodeArg& input_arg) const;
   bool MatchesShape(const Graph& graph, const NodeArg& input_arg) const;
 
   std::string GetArgName() const {
-    return output_arg_name_;
-  }
-
-  bool IsConstant() const {
-    return is_constant_;
-  }
-
-  bool IsDangling() const {
-    return is_dangling_;
+    return node_arg_name_;
   }
 
  private:
-  /**
-   * @brief Get the NodeDef object, which will be used by GraphAugmenter.
-   *
-   * @return NodeDef
-   */
-  NodeDef GetNodeDef() const {
-    /**
-     * We used a trick here:
-     * For graph inputs, no matter where it is specified as a Constant Node or not in the constructor,
-     * we create Constant node here. This is a simpler way to define such data type and shape,
-     * then the underlying GraphArgument can take it as graph inputs, and build graphs successfully.
-     *
-     * Be noted, though we give the concrete data for those Constant node, but we won't use it during
-     * node matching.
-     */
-    return NodeDef(
-        "Constant",
-        {},
-        {ArgDef(output_arg_name_, nullptr)},
-        {ONNX_NAMESPACE::MakeAttribute("value", t_proto_)});
-  }
+  std::string node_arg_name_;
 
-  /**
-   * We need to set the value to help to build the graph but the value would not be used in matching.
-   * So we assign 0 to the tensor value here.
-   */
-  void SetTensorProto(ONNX_NAMESPACE::TensorProto_DataType type);
-
- private:
-  std::string output_arg_name_;
-  bool is_constant_;
-  bool is_dangling_;
-  TensorProto t_proto_;
-  std::vector<ONNX_NAMESPACE::TensorProto_DataType> allowed_types_;
+  std::vector<ONNX_NAMESPACE::TensorProto_DataType> allowed_data_types_;
+  std::vector<int> allowed_ranks_;
 };
 
 /**
@@ -225,6 +164,10 @@ struct PGraphNode {
     }
   }
 
+  const std::string& GetOpType() const {
+    return op_type_;
+  }
+
   const std::string& GetNodeName() const {
     return node_name_;
   }
@@ -244,13 +187,6 @@ struct PGraphNode {
   }
 
   const std::unordered_map<std::string, std::vector<int>>& GetDomainVersionMap() const { return domain_version_maps_; }
-
-  /**
-   * @brief Get the NodeDef object, which will be used by GraphAugmenter.
-   *
-   * @return NodeDef
-   */
-  NodeDef GetNodeDef() const;
 
  private:
   void CreateNodeName();

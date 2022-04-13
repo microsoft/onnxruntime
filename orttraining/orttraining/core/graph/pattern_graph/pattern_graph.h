@@ -99,7 +99,8 @@ class DefaultArgCompareFunc : public ArgCompareFunc {
  public:
   bool operator()(const Graph& target_graph, const NodeArg* target_node_arg,
                   const PatternGraph&, const PGraphInput* pattern_node_arg) const override {
-    return pattern_node_arg->IsDangling() || pattern_node_arg->MatchesDataType(target_graph, *target_node_arg);
+    return pattern_node_arg->MatchesDataType(target_graph, *target_node_arg) &&
+           pattern_node_arg->MatchesShape(target_graph, *target_node_arg);
   }
 };
 
@@ -330,7 +331,6 @@ struct PatternGraph {
   std::unordered_map<std::string, const PGraphNode*> name_to_pnode_mapping_;
   std::unordered_map<std::string, const PGraphInput*> name_to_parg_mapping_;
 
-  std::vector<NodeDef> node_defs_;  // node definitions
   std::unique_ptr<Model> ort_model_ptr_;
   std::unordered_map<std::string, const Node*> name_to_patten_node_mapping_;
 
