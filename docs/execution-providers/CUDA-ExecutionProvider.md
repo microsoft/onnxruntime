@@ -149,7 +149,7 @@ CreateCUDAProviderOptions(&cuda_options);
 std::vector<const char*> keys{"device_id", "gpu_mem_limit", "arena_extend_strategy", "cudnn_conv_algo_search", "do_copy_in_default_stream", "cudnn_conv_use_max_workspace", "cudnn_conv1d_pad_to_nc1d"};
 std::vector<const char*> values{"0", "2147483648", "kSameAsRequested", "DEFAULT", "1", "1", "1"};
 
-UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 6);
+UpdateCUDAProviderOptions(cuda_options, keys.data(), values.data(), 7);
 
 OrtSessionOptions* session_options = /* ... */;
 SessionOptionsAppendExecutionProvider_CUDA_V2(session_options, cuda_options);
