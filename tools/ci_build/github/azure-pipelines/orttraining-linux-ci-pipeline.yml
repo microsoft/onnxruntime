@@ -118,8 +118,8 @@ jobs:
     inputs:
       script: |
         python3 -m pip uninstall -y onnx
-        python3 -m pip install -i https://test.pypi.org/simple/ onnx-weekly
-        python3 -m pip show onnx-weekly
+        cd $(Build.SourcesDirectory)/cmake/external/onnx
+        python setup.py --quiet install
 
   - task: PythonScript@0
     displayName: 'Symbolic shape infer'
