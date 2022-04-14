@@ -99,8 +99,7 @@ def embedding_gradient():
         ),
     ]
 
-# For ATen op, we need to provide op_name and overload name.
-@register_gradient('org.pytorch.aten', 'ATen', 'aten::embedding_bag', 'padding_idx')
+@register_gradient('org.pytorch.aten', 'ATen', 'aten::_embedding_bag', '')
 def embedding_bag_gradient():
     # name: _embedding_bag(Tensor weight, Tensor indices, Tensor offsets, bool scale_grad_by_freq=False, 
     #                      int mode=0, bool sparse=False, Tensor? per_sample_weights=None, 
@@ -109,8 +108,6 @@ def embedding_bag_gradient():
     # offsets: non_differentiable
     # weight: _embedding_bag_backward(grad, indices, offsets, result1, result2, result3, weight.size(0), 
     #                                 scale_grad_by_freq, mode, sparse, per_sample_weights, padding_idx)
-    # per_sample_weights: _embedding_bag_per_sample_weights_backward(grad, weight, indices, offsets, result1, mode,
-    #                                                                padding_idx)
 
     return [
         ('Constant', [], ['Const_0'], {'value': {'value': 0, 'dtype': 'int', 'is_tensor': True}}),

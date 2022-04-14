@@ -44,6 +44,31 @@ c10::IValue Int64ToBoolIValue(const DLManagedTensor* dlpack, bool is_list, bool 
   return is_optional ? c10::IValue(c10::optional<bool>(value)) : c10::IValue(value);
 }
 
+// function from pytorch/aten/src/ATen/DLConvertor.cpp
+static at::Device getATenDevice(const DLDevice& ctx) {
+  switch (ctx.device_type) {
+    case DLDeviceType::kDLCPU:
+      return at::Device(at::DeviceType::CPU);
+#ifndef USE_ROCM
+    // if we are compiled under HIP, we cannot do cuda
+    case DLDeviceType::kDLCUDA:
+      return at::Device(at::DeviceType::CUDA, ctx.device_id);
+#endif
+    case DLDeviceType::kDLOpenCL:
+      return at::Device(at::DeviceType::OPENCL, ctx.device_id);
+    case DLDeviceType::kDLROCM:
+#ifdef USE_ROCM
+      // this looks funny, we need to return CUDA here to masquerade
+      return at::Device(at::DeviceType::CUDA, ctx.device_id);
+#else
+      return at::Device(at::DeviceType::HIP, ctx.device_id);
+#endif
+    default:
+      TORCH_CHECK(
+          false, "Unsupported device_type: " + c10::to_string(ctx.device_type));
+  }
+}
+
 struct ATenOperator {
   std::shared_ptr<torch::jit::Operator> op;
   size_t argument_size;
@@ -70,7 +95,20 @@ struct ATenOperator {
     c10::IValue i_value;
     // Create the torch tensor from this DLPack no matter we need it or not below,
     // so that the dlpack's deleter will be triggered when torch tensor is out of scope.
-    at::Tensor tensor = at::fromDLPack(dlpack);
+    at::Tensor tensor;
+    if (dlpack->dl_tensor.data){
+      tensor = at::fromDLPack(dlpack);
+    } else {
+      // sometimes the tensor does not contain any data. eg: the maxindices output 
+      // for embedding_bag_backward cuda kernel. In such cases, fromDLPack() errors out
+      // while trying to make a tensor while trying to match the data's device with 
+      // the device specified in dlpack.
+      // so skipping using fromDLPack in such cases to create empty tensor.
+      at::Device device = getATenDevice(dlpack->dl_tensor.device);
+      at::ScalarType stype = at::toScalarType(dlpack->dl_tensor.dtype);
+      tensor = at::empty(at::IntArrayRef(dlpack->dl_tensor.shape, dlpack->dl_tensor.ndim), 
+                         at::device(device).dtype(stype));
+    }
     switch (elem_kinds[index]) {
       case c10::TypeKind::TensorType: {
         i_value = is_optional ? c10::IValue(c10::optional<at::Tensor>(tensor)) : c10::IValue(tensor);

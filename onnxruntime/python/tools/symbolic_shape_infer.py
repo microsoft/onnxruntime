@@ -192,19 +192,18 @@ class SymbolicShapeInference:
             "SkipLayerNormalization": self._infer_SkipLayerNormalization,
         }
         self.aten_op_dispatcher_ = {
-            "aten::embedding": self._infer_Gather,
-            "aten::bitwise_or": self._infer_aten_bitwise_or,
-            "aten::diagonal": self._infer_aten_diagonal,
-            "aten::max_pool2d_with_indices": self._infer_aten_pool2d,
-            "aten::max": self._infer_aten_minmax,
-            "aten::min": self._infer_aten_minmax,
-            "aten::multinomial": self._infer_aten_multinomial,
-            "aten::unfold": self._infer_aten_unfold,
-            "aten::argmax": self._infer_aten_argmax,
-            "aten::avg_pool2d": self._infer_aten_pool2d,
-            "aten::_adaptive_avg_pool2d": self._infer_aten_pool2d,
-            "aten::binary_cross_entropy_with_logits": self._infer_aten_bce,
-            "aten::numpy_T": self._infer_Transpose,
+            'aten::embedding': self._infer_Gather,
+            'aten::_embedding_bag': self._infer_aten_embed_bag,
+            'aten::bitwise_or': self._infer_aten_bitwise_or,
+            'aten::diagonal': self._infer_aten_diagonal,
+            'aten::max_pool2d_with_indices': self._infer_aten_pool2d,
+            'aten::multinomial': self._infer_aten_multinomial,
+            'aten::unfold': self._infer_aten_unfold,
+            'aten::argmax': self._infer_aten_argmax,
+            'aten::avg_pool2d': self._infer_aten_pool2d,
+            'aten::_adaptive_avg_pool2d': self._infer_aten_pool2d,
+            'aten::binary_cross_entropy_with_logits': self._infer_aten_bce,
+            'aten::numpy_T': self._infer_Transpose,
         }
         self.run_ = True
         self.suggested_merge_ = {}
@@ -1192,6 +1191,43 @@ class SymbolicShapeInference:
                     get_shape_from_sympy_shape(sympy_shape),
                 )
             )
+
+    def _infer_aten_embed_bag(self, node):
+        weightshape = self._get_shape(node, 0)
+        inputshape = self._get_shape(node, 1)
+
+        if len(inputshape) == 2:
+            B = inputshape[0]
+        elif len(inputshape) == 1:
+            offsetshape = self._get_shape(node, 2)
+            B = offsetshape[0]
+        new_shape = [B,weightshape[1]]
+        t0 = self.known_vi_[node.input[0]]
+        vi0 = self.known_vi_[node.output[0]]
+        vi0.CopyFrom(
+            helper.make_tensor_value_info(node.output[0], t0.type.tensor_type.elem_type,
+                                            new_shape))
+        # offset2bag
+        vi1 = self.known_vi_[node.output[1]]
+        vi1.CopyFrom(
+            helper.make_tensor_value_info(node.output[1], onnx.TensorProto.INT64,
+                                            [inputshape[0]]))
+        # bagsize
+        vi2 = self.known_vi_[node.output[2]]
+        vi2.CopyFrom(
+            helper.make_tensor_value_info(node.output[2], onnx.TensorProto.INT64,
+                                            [B]))
+        
+        # maxindices
+        mode = self._get_value(node,4)
+        if mode == 2: # sum=0, mean=1, max=2
+            new_shape = [B,weightshape[1]]
+        else:
+            new_shape = [B]
+        vi3 = self.known_vi_[node.output[3]]
+        vi3.CopyFrom(
+            helper.make_tensor_value_info(node.output[3], onnx.TensorProto.INT64,
+                                            new_shape))
 
     def _infer_aten_bitwise_or(self, node):
         shape0 = self._get_shape(node, 0)
