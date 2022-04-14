@@ -205,7 +205,6 @@ static Status GetInputDataType(
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "The input/initializer of graph has unsupported quantized type, name: ", name,
                                " type: ", data_type);
-        throw;
       }
 
       // TODO, verify the scale and zero point match if there are multiple op using same input
