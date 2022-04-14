@@ -33,9 +33,9 @@ __global__ void _UnRolledTileKernel(const size_t shape_rank, const TArray<fast_d
           break;
         }
 
-        int q, r;
-        fdm_output_strides[dim].divmod(offset, q, r);
-        int in_coord = fdm_input_shape[dim].mod(q);
+        int out_coord, r;
+        fdm_output_strides[dim].divmod(offset, out_coord, r);
+        int in_coord = fdm_input_shape[dim].mod(out_coord);
         input_index += input_strides[dim] * in_coord;
         offset = r;
       }
@@ -163,9 +163,9 @@ __global__ void _TileBatchedMemcpyKernelFromOutput(const T* input_data, T* outpu
 #pragma unroll
   for (int i = 0; i < num_elements_per_thread; ++i) {
     if (id < N) {
-      int q, r;
-      divmod_size_output_row.divmod(id, q, r);
-      value[i] = input_data[divmod_batch.mod(q) * size_input_row + divmod_size_input_row.mod(r)];
+      int batch_idx, element_idx;
+      divmod_size_output_row.divmod(id, batch_idx, element_idx);
+      value[i] = input_data[divmod_batch.mod(batch_idx) * size_input_row + divmod_size_input_row.mod(element_idx)];
       id += num_threads_per_block;
     }
   }
