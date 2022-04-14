@@ -2342,7 +2342,7 @@ void RegisterContribSchemas() {
   static const char* DisentangledAttention_TRT_ver1_doc =
       R"DOC(Disentangled Attention TensorRT Plugin.)DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(DisentangledAttention_TRT)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DisentangledAttentionPlugin)
       .SetDomain(kOnnxDomain)
       .SinceVersion(1)
       .SetDoc(DisentangledAttention_TRT_ver1_doc)
@@ -2391,4 +2391,3 @@ void RegisterContribSchemas() {
 
 }  // namespace contrib
 }  // namespace onnxruntime
-                                                                   
