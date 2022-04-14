@@ -31,8 +31,8 @@ def make_custombeamsearchop(args):
     node = helper.make_node(model_type, inputs=inputs, outputs=outputs, name=f'BeamSearch_{model_type}')
     node.domain = domain
 
-    input_ids = helper.make_tensor_value_info('input_ids', TensorProto.INT32, ['batch_size', 'sequence_length'])
-    num_beams = helper.make_tensor_value_info('num_beams', TensorProto.INT32, [1])
+    input_ids = helper.make_tensor_value_info('input_ids', TensorProto.FLOAT, ['batch_size', 'sequence_length'])
+    num_beams = helper.make_tensor_value_info('num_beams', TensorProto.FLOAT, [1])
 
     graph_inputs = [input_ids, num_beams]
 

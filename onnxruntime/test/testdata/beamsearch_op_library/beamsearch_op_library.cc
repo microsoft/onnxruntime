@@ -49,8 +49,8 @@ struct CustomBearmsearchKernel {
     // Setup inputs
     const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
     const OrtValue* input_Y = ort_.KernelContext_GetInput(context, 1);
-    const int* X = ort_.GetTensorData<int>(input_X);
-    const int* Y = ort_.GetTensorData<int>(input_Y);
+    const float* X = ort_.GetTensorData<float>(input_X);
+    const float* Y = ort_.GetTensorData<float>(input_Y);
 
     // Setup output
     OrtTensorDimensions dimensions(ort_, input_X);
@@ -63,7 +63,7 @@ struct CustomBearmsearchKernel {
     ort_.ReleaseTensorTypeAndShapeInfo(output_info);
 
     for (int64_t i = 0; i < size; i++) {
-      out[i] = X[i] + (*Y);
+      out[i] = static_cast<int>(X[i] + (*Y));
     }
   }
 
@@ -83,28 +83,28 @@ struct CustomBeamSearchOP : Ort::CustomOpBase<CustomBeamSearchOP, CustomBearmsea
   size_t GetInputTypeCount() const {
     // TODO Vish, how to count these?
     // There are many optional inputs
-    return 3; };
+    return 2; };
 
   ONNXTensorElementDataType GetInputType(size_t /*index*/) const {
     // TODO vish each index has a different type
     // There are some optional inputs as well, how to verify that node actually has these inputs? 
     // Is it up to the caller
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; 
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
   };
 
   size_t GetOutputTypeCount() const {
     //TODO vish
     // what is the reason for this. Might change in the future.
-    return 2; };
+    return 1; };
   
   ONNXTensorElementDataType GetOutputType(size_t /*index*/) const {
     // TODO vish, same as GetInputType.
     // Optional outputs exist, how to verify that output actually exists. 
-    return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32; };
 
 } c_CustomBeamSearchOP;
 
-OrtStatus* ORT_API_CALL RegisterCustomBeamsearchOp(OrtSessionOptions* options, const OrtApiBase* api) {
+OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api) {
   OrtCustomOpDomain* domain = nullptr;
   const OrtApi* ortApi = api->GetApi(ORT_API_VERSION);
 
@@ -114,7 +114,7 @@ OrtStatus* ORT_API_CALL RegisterCustomBeamsearchOp(OrtSessionOptions* options, c
 
   AddOrtCustomOpDomainToContainer(domain, ortApi);
 
-  if (auto status = ortApi->CustomOpDomain_Add(domain, &CustomBeamSearchOP)) {
+  if (auto status = ortApi->CustomOpDomain_Add(domain, &c_CustomBeamSearchOP)) {
     return status;
   }
 
