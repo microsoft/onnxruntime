@@ -28,6 +28,8 @@ extern std::unique_ptr<Ort::Env> ort_env;
 using namespace onnxruntime::common;
 
 #define LATEST_ONNX_OPSET 16
+#define LATEST_ONNX_OPSET_SUPPORTED_BY_TENSORRT 13
+std::unordered_map<std::string, std::unique_ptr<OnnxModelInfo>> model_info_map;
 
 namespace onnxruntime {
 namespace test {
@@ -62,7 +64,7 @@ bool CheckAndSkipTest(std::basic_string<PATH_CHAR_TYPE> model_path, std::basic_s
   std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
   std::string provider_name = ToUTF8String(ep);
 
-  if (model_info->GetONNXOpSetVersion() != LATEST_ONNX_OPSET && model_info->GetONNXOpSetVersion() != (LATEST_ONNX_OPSET-1) && provider_name == "tensorrt") {
+  if (model_info->GetONNXOpSetVersion() != LATEST_ONNX_OPSET_SUPPORTED_BY_TENSORRT && model_info->GetONNXOpSetVersion() != (LATEST_ONNX_OPSET_SUPPORTED_BY_TENSORRT - 1) && provider_name == "tensorrt") {
     // TensorRT can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
     // Besides saving CI build time, TRT isn’t able to support full ONNX ops spec and therefore some testcases will fail.
@@ -555,6 +557,9 @@ bool CheckAndSkipTest(std::basic_string<PATH_CHAR_TYPE> model_path, std::basic_s
     }
   }
 
+  std::string key = provider_name + "_" + ToUTF8String(model_path); 
+  model_info_map[key] = std::move(model_info);
+
   return false;
 }
 
@@ -572,7 +577,13 @@ TEST_P(ModelTest, Run) {
     relative_per_sample_tolerance = 0.009;
   }
 
-  std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
+  std::unique_ptr<OnnxModelInfo> model_info;
+  auto iter = model_info_map.find(ToUTF8String(param));
+  if (iter != model_info_map.end()) {
+    model_info = std::move(iter->second);
+  } else {
+    model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
+  }
 
   std::basic_string<ORTCHAR_T> model_dir;
   (void)GetDirNameFromFilePath(model_path, model_dir);
