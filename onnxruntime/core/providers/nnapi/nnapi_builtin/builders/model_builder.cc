@@ -202,9 +202,9 @@ static Status GetInputDataType(
       type = Type::TENSOR_QUANT8_ASYMM;
       if (!Contains(all_quantized_op_inputs, name)) {
         // We current do not support uint8 input if it is not a quantized input
-        // return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-        //                        "The input/initializer of graph has unsupported quantized type, name: ", name,
-        //                        " type: ", data_type);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "The input/initializer of graph has unsupported quantized type, name: ", name,
+                               " type: ", data_type);
         throw;
       }
 
