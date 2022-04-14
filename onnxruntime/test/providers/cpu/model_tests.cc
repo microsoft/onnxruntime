@@ -81,16 +81,19 @@ TEST_P(ModelTest, Run) {
     // Besides saving CI build time, TRT isn’t able to support full ONNX ops spec and therefore some testcases will fail.
     // That's one of reasons we skip those testcases and only test latest ONNX opsets.
     SkipTest();
+    return;
   }
   if (model_info->GetONNXOpSetVersion() == 10 && provider_name == "dnnl") {
     // DNNL can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
     SkipTest();
+    return;
   }
 #ifndef ENABLE_TRAINING
   if (model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
       model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
     SkipTest();
+    return;
   }
 #endif
   // TODO: filter model based on opset
@@ -555,12 +558,14 @@ TEST_P(ModelTest, Run) {
         (model_version == TestModelInfo::unknown_version || iter->broken_versions_.empty() ||
          iter->broken_versions_.find(model_version) != iter->broken_versions_.end())) {
       SkipTest();
+      return;
     }
 
     for (auto iter2 = broken_tests_keyword_set.begin(); iter2 != broken_tests_keyword_set.end(); ++iter2) {
       std::string keyword = *iter2;
       if (ToUTF8String(test_case_name).find(keyword) != std::string::npos) {
         SkipTest();
+        return;
       }
     }
   }
