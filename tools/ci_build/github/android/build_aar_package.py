@@ -79,6 +79,7 @@ def _parse_build_settings(args):
 def _build_aar(args):
     build_settings = _parse_build_settings(args)
     build_dir = os.path.abspath(args.build_dir)
+    ops_config_path = os.path.abspath(args.include_ops_by_config) if args.include_ops_by_config else None
 
     # Setup temp environment for building
     temp_env = os.environ.copy()
@@ -91,9 +92,7 @@ def _build_aar(args):
     aar_dir = os.path.join(intermediates_dir, 'aar', build_config)
     jnilibs_dir = os.path.join(intermediates_dir, 'jnilibs', build_config)
     exe_dir = os.path.join(intermediates_dir, 'executables', build_config)
-    base_build_command = [
-        sys.executable, BUILD_PY, '--config=' + build_config
-    ] + build_settings['build_params']
+    base_build_command = [sys.executable, BUILD_PY] + build_settings['build_params'] + ['--config=' + build_config]
     header_files_path = ''
 
     # Build binary for each ABI, one by one
@@ -104,8 +103,8 @@ def _build_aar(args):
             '--build_dir=' + abi_build_dir
         ]
 
-        if args.include_ops_by_config is not None:
-            abi_build_command += ['--include_ops_by_config=' + args.include_ops_by_config]
+        if ops_config_path is not None:
+            abi_build_command += ['--include_ops_by_config=' + ops_config_path]
 
         subprocess.run(abi_build_command, env=temp_env, shell=False, check=True, cwd=REPO_DIR)
 
