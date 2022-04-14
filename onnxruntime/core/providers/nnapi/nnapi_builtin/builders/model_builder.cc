@@ -145,10 +145,11 @@ void ModelBuilder::PreprocessActivations() {
   }
 }
 
-const NodeUnit& ModelBuilder::GetNodeUnit(const Node* node) const {
-  // In theory, if node_unit_map_ is generated correctly, see PreprocessNodeUnits(), a NodeUnit can be
-  // found for any single node in the graph_viewer_, unless the given node is not from graph_viewer_
-  return *node_unit_map_.at(node);
+const NodeUnit* ModelBuilder::GetNodeUnit(const Node* node) const {
+  if (auto node_unit_it = node_unit_map_.find(node); node_unit_it != node_unit_map_.end()) {
+    return node_unit_it->second;
+  }
+  return nullptr;
 }
 
 void ModelBuilder::PreprocessNodeUnits() {
@@ -485,7 +486,9 @@ Status ModelBuilder::AddOperations() {
   for (const auto node_idx : node_indices) {
     LOGS_DEFAULT(VERBOSE) << "Adding node [" << node_idx << "]";
     const auto* node(graph_viewer_.GetNode(node_idx));
-    const NodeUnit& node_unit = GetNodeUnit(node);
+    const NodeUnit* node_unit_ptr = GetNodeUnit(node);
+    ORT_RETURN_IF(node_unit_ptr == nullptr, "Node from graph viewer does not have corresponding NodeUnit.");
+    const NodeUnit& node_unit = *node_unit_ptr;
 
     // Since we may have NodeUnit with multiple nodes, insert NodeUnit with the first occurrence of
     // its node(s) in topological order may cause the incorrect topological order while inserting
@@ -650,10 +653,15 @@ int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
   for (auto it = output_node.OutputEdgesBegin(), end = output_node.OutputEdgesEnd(); it != end; ++it) {
     const auto& dst_node = it->GetNode();
     const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];
-    const auto& dst_node_unit = GetNodeUnit(&dst_node);
-    if (Contains(activation_node_units_, &dst_node_unit)) {
+    const auto* dst_node_unit = GetNodeUnit(&dst_node);
+    if (!dst_node_unit) {
+      return ANEURALNETWORKS_FUSED_NONE;
+    }
+
+    if (auto activation_it = activation_node_units_.find(dst_node_unit);
+        activation_it != activation_node_units_.end()) {
       if (&output == dst_input) {
-        fuse_code = activation_node_units_.at(&dst_node_unit);
+        fuse_code = activation_it->second;
       }
     } else {
       // if there is any other non-relu node using the output
