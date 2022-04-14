@@ -11,6 +11,7 @@
 #include "core/common/parse_string.h"
 #include "core/graph/model.h"
 #include "core/session/environment.h"
+#include "core/dlpack/dlpack_converter.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/agent/training_agent.h"
 #include "orttraining/core/graph/gradient_config.h"
@@ -44,20 +45,20 @@ ORTTrainingPythonEnv& GetTrainingEnv();
 
 void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
                                  const ProviderOptionsVector& original_provider_options_vector,
-                                 ProviderOptionsVector& merged_options){
+                                 ProviderOptionsVector& merged_options) {
   auto& training_env = GetTrainingEnv();
   std::size_t j = 0;  // index for provider_options_vector
   for (const std::string& type : provider_types) {
     auto it = training_env.ext_execution_provider_info_map_.find(type);
-    if (it == training_env.ext_execution_provider_info_map_.end()){
+    if (it == training_env.ext_execution_provider_info_map_.end()) {
       if (j < original_provider_options_vector.size() && !original_provider_options_vector[j].empty()) {
         merged_options.push_back(original_provider_options_vector[j]);
       }
-    }else{
+    } else {
       ProviderOptions options = it->second.second;
       options.insert({kExecutionProviderSharedLibraryPath, it->second.first});
       if (j < original_provider_options_vector.size() && !original_provider_options_vector[j].empty()) {
-        for (auto [k, v] : original_provider_options_vector[j]){
+        for (auto [k, v] : original_provider_options_vector[j]) {
           options.insert({k, v});
         }
       }
@@ -371,14 +372,98 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       .def("__len__", [](const std::vector<OrtValue>& v) { return v.size(); })
       .def("__iter__", [](const std::vector<OrtValue>& v) {
         return py::make_iterator(v.cbegin(), v.cend());
-      },
-           py::keep_alive<0, 1>())
+       }, py::keep_alive<0, 1>())
       .def("__getitem__", [](const std::vector<OrtValue>& v, const size_t idx) {
         return v.at(idx);
       })
+      .def("bool_tensor_indices", [](std::vector<OrtValue>* v) -> std::vector<int64_t> {
+         std::vector<int64_t> indices;
+         for (size_t i = 0; i < v->size(); ++i) {
+           if (GetTensorProtoType((*v)[i]) == ONNX_NAMESPACE::TensorProto_DataType_BOOL) {
+             indices.push_back(static_cast<int64_t>(i));
+           }
+         }
+         return indices;
+      }, "Returns the indices of every boolean tensor in this vector of OrtValue. "
+         "In case of a boolean tensor, method to_dlpacks returns a uint8 tensor instead of a boolean tensor. "
+         "If torch consumes the dlpack structure, `.to(torch.bool)` must be applied to the torch tensor "
+         "to get a boolean tensor.")
       .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) {
         return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx)));
-      });
+      })
+      .def("element_type_at", [](std::vector<OrtValue>* v, const size_t idx) -> int32_t {
+        return GetTensorProtoType(v->at(idx));
+      }, "Returns an integer equal to the ONNX proto type of the tensor at position i. "
+         "This integer is one type defined by ONNX TensorProto_DataType "
+         "(such as onnx.TensorProto.FLOAT)."
+          "Raises an exception in any other case.")
+      .def("to_dlpacks", [](const std::vector<OrtValue>& v, py::object to_tensor) -> py::list {
+
+        if (v.size() == 0)
+          return py::list();
+
+        py::list list_dlpacks;
+        PyObject* obj;
+
+        py::gil_scoped_acquire acquire;
+
+        if (to_tensor.is_none()) {
+          DLManagedTensor* dlmanaged_tensor;
+
+          for (auto it : v) {
+            dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
+            py::capsule capsule(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
+            list_dlpacks.append(capsule);
+          }
+        } else {
+          DLManagedTensor* dlmanaged_tensor;
+          PyObject* capsule = NULL;
+          PyObject* handle = to_tensor.ptr();
+
+          for (auto it : v) {
+            // A new instance of dlpack needs to be created. The object which consumes it
+            // is responsible for its deletion.
+            dlmanaged_tensor = dlpack::OrtValueToDlpack(it);
+            if (capsule == NULL) {
+              capsule = PyCapsule_New(dlmanaged_tensor, "dltensor", NULL);
+              if (capsule == NULL)
+                throw std::runtime_error("Unexpected error: empty capsule returned.");
+            } else {
+              // The same capsule is reused but FromDLPack rename the capsule into used_dltensor.
+              PyCapsule_SetName(capsule, "dltensor");
+              PyCapsule_SetPointer(capsule, dlmanaged_tensor);
+            }
+            obj = PyObject_CallFunctionObjArgs(handle, capsule, NULL);
+            if (obj == NULL)
+              throw std::runtime_error("to_tensor returned a null pointer. This is usually caused by an error during the conversion.");
+            list_dlpacks.append(obj);
+            Py_DECREF(obj);
+          }
+          if (capsule != NULL) {
+            // This test is never wrong because v is not empty if the execution goes through that path.
+            // If not present, Guardian detects a potential failure.
+            Py_DECREF(capsule);
+          }
+        }
+        return list_dlpacks;
+       },
+       R"pbdoc(Converts all OrtValue into tensors through DLPack protocol, the method creates
+a DLPack structure for every tensors, then calls python function `to_tensor` to a new object
+consuming the DLPack structure or return a list of capsule if this function is None.
+
+:param to_tensor: this function takes a capsule holding a pointer onto a DLPack structure and returns
+    a new tensor which becomes the new owner of the data. This function takes one python object and
+    returns a new python object. It fits the same signature as `torch.utils.from_dlpack`,
+    if None, the method returns a capsule for every new DLPack structure.
+:return: a list containing the new tensors or a the new capsules if *to_tensor* is None
+
+This method is used to replace `tuple(torch._C._from_dlpack(ov.to_dlpack()) for ov in ort_values)`
+by a faster instruction `tuple(ort_values.to_dlpack(torch._C._from_dlpack))`. This loop
+is difficult to parallelize as it goes through the GIL many times.
+It creates many tensors acquiring ownership of existing OrtValue.
+This method saves one object creation and an C++ allocation
+for every transfered tensor.
+)pbdoc");
 
   py::class_<OrtValueCache, OrtValueCachePtr>(m, "OrtValueCache")
       .def(py::init<>())
@@ -387,7 +472,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
       })
       .def("keys", [](const OrtValueCachePtr& cache_ptr) {
         py::list keys;
-        for(auto kv : *cache_ptr.get()) {
+        for (auto kv : *cache_ptr.get()) {
           keys.append(kv.first);
         }
         return keys;
@@ -838,7 +923,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         [](const std::string& key, const std::vector<GradientNodeDefinition>& gradient_def) -> void {
           GradientDefinitionRegistry::Instance().Register(key, gradient_def);
         });
-  
+
   m.def("register_custom_stop_gradient_edges",
         [](const std::string& key, const std::unordered_set<size_t> edges) -> void {
           GradientDefinitionRegistry::Instance().SetStopGradientEdgesForNode(key, edges);

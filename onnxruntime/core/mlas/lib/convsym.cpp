@@ -482,7 +482,7 @@ MlasConvSym(
     // s8s8 under ARM64
 #if defined(MLAS_TARGET_ARM64)
     const auto Kernel =
-        (Params.InputIsSigned && (GetMlasPlatform().GetCoreType() == mlas_core_little))
+        (Params.InputIsSigned && MLAS_CPUIDINFO::GetCPUIDInfo().IsCurrentCoreArmv8NarrowLd())
             ? ConvSymDispatch->KernelLittle
             : ConvSymDispatch->Kernel;
 #else

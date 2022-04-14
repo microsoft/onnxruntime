@@ -191,7 +191,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int max_iterations,
                                         const GraphViewer& graph, bool* early_termination) const;
 
-  void RemoveTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph) const;
+  bool DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const GraphViewer& graph, bool remove_cycles = true) const;
 
   /** 
   Get a unique_lock object to control the concurrency behavior. 

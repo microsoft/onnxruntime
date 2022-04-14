@@ -80,6 +80,7 @@ class Environment {
   Status UnregisterAllocator(const OrtMemoryInfo& mem_info);
 
   Environment() = default;
+  ~Environment();
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);

@@ -827,6 +827,16 @@ class TestInferenceSession(unittest.TestCase):
         res = sess.run(["Y"], {"X": np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)})
         self.assertTrue(np.array_equal(res[0], np.array([[2.0, 2.0], [12.0, 12.0], [30.0, 30.0]], dtype=np.float32)))
 
+    def testSessionOptionsAddExternalInitializers(self):
+        # Create an external initializer data in OrtValue
+        # This initializer will replace the initializer with external data reference in the graph
+        ortvalue_initializer = onnxrt.OrtValue.ortvalue_from_numpy(np.array([0, 0, 1, 1]).astype(np.int64))
+        so = onnxrt.SessionOptions()
+        so.add_external_initializers(["Pads_not_on_disk"], [ortvalue_initializer])
+        # This should not throw
+        onnxrt.InferenceSession(get_name("model_with_external_initializer_come_from_user.onnx"), sess_options=so, providers=['CPUExecutionProvider'])
+
+
     def testRegisterCustomOpsLibrary(self):
         if sys.platform.startswith("win"):
             shared_library = 'custom_op_library.dll'

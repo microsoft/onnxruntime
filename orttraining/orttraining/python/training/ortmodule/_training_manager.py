@@ -164,34 +164,11 @@ class TrainingManager(GraphExecutionManager):
                 # Destroy the state immediately (as opposed to be at the mercy of garbage collector) so it does not
                 # affect peak memory usage in a subsequent graph run.
                 del ctx.run_info.state
-                # Return input and initializer gradients
-                num_user_input_grads = len(self._input_info.require_grad_names)
-                results = []
-                require_grad_names_set = set(self._input_info.require_grad_names)
-                require_grad_names_index = 0
-                for input_name in self._graph_info.user_input_names:
-                    # Append to the results the backward output for each input that required grad
-                    if input_name in require_grad_names_set:
-                        results.append(_utils._ortvalue_to_torch_tensor(
-                            backward_outputs[require_grad_names_index], self._device))
-                        require_grad_names_index += 1
-                    else:
-                        # input_name is not found in the self._input_info.require_grad_names list
-                        # Append None to results for each input that did not require grad
-                        results.append(None)
 
-                # Append gradients of initializer to results
-                # Go over each initializer, check if it required grad and append to results accordingly
-                initializer_index = num_user_input_grads
-                for initializer_name in self._graph_info.initializer_names:
-                    if initializer_name in self._graph_initializer_names_to_train:
-                        results.append(_utils._ortvalue_to_torch_tensor(
-                            backward_outputs[initializer_index], self._device))
-                        initializer_index += 1
-                    else:
-                        results.append(None)
-
-                return tuple(results)
+                # Fast version: all backward_outputs are converted first.
+                # This version only works if backward_outputs is an OrtValueVector.
+                transfered_backward_outputs = _utils._ortvalues_to_torch_tensor(backward_outputs, self._device)
+                return tuple(transfered_backward_outputs[idx] if idx != -1 else None for idx in self._gradient_map)
 
         return _ORTModuleFunction
 
