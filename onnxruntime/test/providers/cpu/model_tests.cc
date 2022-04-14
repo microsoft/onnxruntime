@@ -29,7 +29,6 @@ using namespace onnxruntime::common;
 
 #define LATEST_ONNX_OPSET 16
 #define LATEST_ONNX_OPSET_SUPPORTED_BY_TENSORRT 13
-std::unordered_map<std::string, std::unique_ptr<OnnxModelInfo>> model_info_map;
 
 namespace onnxruntime {
 namespace test {
@@ -57,34 +56,43 @@ struct BrokenTest {
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ModelTest);
 #endif
 
-// Besides the disabled tests we already set,
-// there are some situations where we want to skip the test, for example,
-// we only run latest onnx opset models to save CI time or we know some specific opsets will fail for some test cases.
-bool CheckAndSkipTest(std::basic_string<PATH_CHAR_TYPE> model_path, std::basic_string<PATH_CHAR_TYPE> ep) {
-  std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
-  std::string provider_name = ToUTF8String(ep);
+void SkipTest() {
+  GTEST_SKIP() << "Skipping single test";
+}
 
+TEST_P(ModelTest, Run) {
+  std::basic_string<ORTCHAR_T> param = GetParam();
+  size_t pos = param.find(ORT_TSTR("_"));
+  ASSERT_NE(pos, std::string::npos);
+  std::string provider_name = ToUTF8String(param.substr(0, pos));
+  std::basic_string<ORTCHAR_T> model_path = param.substr(pos + 1);
+  double per_sample_tolerance = 1e-3;
+  // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
+  // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
+  double relative_per_sample_tolerance = 1e-3;
+  if (provider_name == "openvino") {
+    relative_per_sample_tolerance = 0.009;
+  }
+
+  std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
   if (model_info->GetONNXOpSetVersion() != LATEST_ONNX_OPSET_SUPPORTED_BY_TENSORRT && model_info->GetONNXOpSetVersion() != (LATEST_ONNX_OPSET_SUPPORTED_BY_TENSORRT - 1) && provider_name == "tensorrt") {
     // TensorRT can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
     // Besides saving CI build time, TRT isn’t able to support full ONNX ops spec and therefore some testcases will fail.
     // That's one of reasons we skip those testcases and only test latest ONNX opsets.
-    return true;
+    SkipTest();
   }
-
   if (model_info->GetONNXOpSetVersion() == 10 && provider_name == "dnnl") {
     // DNNL can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
-    return true;
+    SkipTest();
   }
-
 #ifndef ENABLE_TRAINING
   if (model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
       model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
-    return true;
+    SkipTest();
   }
 #endif
-
   // TODO: filter model based on opset
   std::set<BrokenTest> broken_tests = {
       {"slice_neg_steps", "Type parameter (Tind) bound to different types (tensor(int64) and tensor(int32) in node ()."},
@@ -546,51 +554,16 @@ bool CheckAndSkipTest(std::basic_string<PATH_CHAR_TYPE> model_path, std::basic_s
     if (iter != broken_tests.end() &&
         (model_version == TestModelInfo::unknown_version || iter->broken_versions_.empty() ||
          iter->broken_versions_.find(model_version) != iter->broken_versions_.end())) {
-      return true;
+      SkipTest();
     }
 
     for (auto iter2 = broken_tests_keyword_set.begin(); iter2 != broken_tests_keyword_set.end(); ++iter2) {
-        std::string keyword = *iter2;
-        if (ToUTF8String(test_case_name).find(keyword) != std::string::npos) {
-          return true;
-        }
+      std::string keyword = *iter2;
+      if (ToUTF8String(test_case_name).find(keyword) != std::string::npos) {
+        SkipTest();
+      }
     }
   }
-
-  std::string key = provider_name + "_" + ToUTF8String(model_path); 
-  model_info_map[key] = std::move(model_info);
-
-  return false;
-}
-
-TEST_P(ModelTest, Run) {
-  std::basic_string<ORTCHAR_T> param = GetParam();
-  size_t pos = param.find(ORT_TSTR("_"));
-  ASSERT_NE(pos, std::string::npos);
-  std::string provider_name = ToUTF8String(param.substr(0, pos));
-  std::basic_string<ORTCHAR_T> model_path = param.substr(pos + 1);
-  double per_sample_tolerance = 1e-3;
-  // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
-  // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
-  double relative_per_sample_tolerance = 1e-3;
-  if (provider_name == "openvino") {
-    relative_per_sample_tolerance = 0.009;
-  }
-
-  std::unique_ptr<OnnxModelInfo> model_info;
-  auto iter = model_info_map.find(ToUTF8String(param));
-  if (iter != model_info_map.end()) {
-    model_info = std::move(iter->second);
-  } else {
-    model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
-  }
-
-  std::basic_string<ORTCHAR_T> model_dir;
-  (void)GetDirNameFromFilePath(model_path, model_dir);
-  std::basic_string<PATH_CHAR_TYPE> test_case_name = GetLastComponent(model_dir);
-  if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0)
-    test_case_name = test_case_name.substr(5);
-
   bool is_single_node = !model_info->GetNodeName().empty();
   std::vector<ExecutionMode> execution_modes = {ExecutionMode::ORT_SEQUENTIAL};
   if (provider_name == "cpu" && !is_single_node)
@@ -600,7 +573,6 @@ TEST_P(ModelTest, Run) {
   // Test the model with intra op threadpool disabled
   if (provider_name == "cpu" && is_single_node)
     use_single_thread.push_back(true);
-
 
   std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToUTF8String(test_case_name), std::move(model_info),
                                                     per_sample_tolerance, relative_per_sample_tolerance);
@@ -633,7 +605,7 @@ TEST_P(ModelTest, Run) {
               1000,
               1,
               1 << 30,
-              1, // enable fp16
+              1,  // enable fp16
               0,
               nullptr,
               0,
@@ -1015,14 +987,8 @@ TEST_P(ModelTest, Run) {
             return true;
           }
 #endif
-
           std::basic_string<PATH_CHAR_TYPE> p = ConcatPathComponent<PATH_CHAR_TYPE>(node_data_root_path, filename_str);
           std::basic_string<PATH_CHAR_TYPE> r = provider_name;
-          
-          if (CheckAndSkipTest(p, r)) {
-            return true;
-          }
-
           r.append(ORT_TSTR("_")).append(p);
           v.emplace_back(r);
           return true;
@@ -1035,7 +1001,7 @@ TEST_P(ModelTest, Run) {
   return v;
 }
 
-auto ExpandModelName  = [](const ::testing::TestParamInfo<ModelTest::ParamType>& info) {
+auto ExpandModelName = [](const ::testing::TestParamInfo<ModelTest::ParamType>& info) {
   // use info.param here to generate the test suffix
   std::basic_string<ORTCHAR_T> name = info.param;
 
