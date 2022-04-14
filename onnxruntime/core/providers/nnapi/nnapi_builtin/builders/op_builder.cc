@@ -228,10 +228,10 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
   return model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operand_type);
 }
 
-// This is primarily used for adding the input B (an initializer) of MatMul/QlinearMatMul/Gemm (not transposed)
+// This is primarily used for adding the input B (an initializer) of MatMul/QLinearMatMul/Gemm (not transposed)
 // and transpose it, since for NNAPI only supports A*B'
 //
-// If is_per_tensor_u8s8 is true, the QlinearMatMul is per-tensor u8s8 (input A is unsigned int8
+// If is_per_tensor_u8s8 is true, the QLinearMatMul is per-tensor u8s8 (input A is unsigned int8
 // and input B is signed int8), in this case, since NNAPI requires A and B to be same type,
 // the initializer tensor B will be converted from int8 to uint8 by flip each byte by XOR 0x80
 // byte ^ 0x80 == byte + 128
@@ -372,8 +372,8 @@ static Status GetBinaryOpQuantizationScaleAndZeroPoint(
 }
 
 // Get scale and zero point for
-// [QlinearConv] input, weight, output
-// [QlinearMatMul] A, B, Y
+// [QLinearConv] input, weight, output
+// [QLinearMatMul] A, B, Y
 //
 // In case of u8s8 (input/A is uint8 and weight/B is int8)
 // If the QlinearConv is using per-channel u8s8, return the scales vector
@@ -1607,7 +1607,7 @@ bool GemmOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
 void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   const auto& inputs = node_unit.Inputs();
   if (IsQuantizedOp(node_unit)) {
-    if (node_unit.OpType() == "QlinearMatMul" || node_unit.OpType() == "MatMul") {                 // QlinearMatMul/QDQMatMul
+    if (node_unit.OpType() == "QLinearMatMul" || node_unit.OpType() == "MatMul") {                 // QLinearMatMul/QDQMatMul
       AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[0].quant_param);               // a_scale, a_zp
       AddInputToSkip(model_builder, inputs[1]);                                                    // b, b_scale, b_zp
       AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp

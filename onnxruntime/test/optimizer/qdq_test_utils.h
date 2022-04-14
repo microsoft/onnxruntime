@@ -326,7 +326,7 @@ GetQDQTestCaseFn BuildQDQGemmTestCase(const std::vector<int64_t>& input1_shape,
     auto* dq2_output = builder.MakeIntermediate();
     auto* input_b = builder.MakeInitializer<Input2Type>(input2_shape, Input2Limits::min(), Input2Limits::max());
     builder.AddDequantizeLinearNode<Input2Type>(input_b, 0.04f,
-                                                (Input1Limits::max() + Input1Limits::min()) / 2 + 1,
+                                                (Input2Limits::max() + Input2Limits::min()) / 2 + 1,
                                                 dq2_output);
     input_args.push_back(dq2_output);
 
