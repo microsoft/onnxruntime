@@ -1,3 +1,6 @@
+#pragma warning(push)
+#pragma warning(disable : 4305)
+
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -234,7 +237,7 @@ static void RunQOrdered_Dequantize_Test(
   OpTester test_qorder("DequantizeWithOrder", 1, onnxruntime::kMSDomain);
   test_qorder.AddAttribute("order_input", (int64_t)order_q);
   test_qorder.AddAttribute("order_output", (int64_t)ORDER_ROW);
-  test_qorder.template AddInput("input", shape, qvec);
+  test_qorder.AddInput<int8_t>("input", shape, qvec);
   test_qorder.AddInput<T>("scale_input", {}, {scale});
   test_qorder.AddOutput("output", shape, fvec);
   test_qorder.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
@@ -631,7 +634,7 @@ TEST(QOrderedTest, LayerNorm_OrderCol32_NoBias_3x11x96) {
 
 static void
 RunQOrdered_Gelu_Test(std::vector<int64_t> const& shape, float scale_X, float scale_Y, OrderCublasLt order) {
-  constexpr float sqrt_of_2 = std::sqrt(2.0f);
+  float sqrt_of_2 = std::sqrt(2.0f);
 
   int64_t N = std::accumulate(shape.begin(), shape.end(), int64_t{1LL}, std::multiplies<int64_t>());
   std::vector<int8_t> vecX = GenData<int8_t>(shape, 1.0f);
@@ -639,7 +642,7 @@ RunQOrdered_Gelu_Test(std::vector<int64_t> const& shape, float scale_X, float sc
   for (int64_t i = 0; i < N; i++) {
     float x = scale_X * (float)vecX[i];
     float r = (x * (0.5f * (1.0f + std::erff(x / sqrt_of_2)))) / scale_Y;
-    int8_t q = static_cast<int8_t>((int)std::nearbyintf(std::min(127.0f, std::max(-128.0f, r)))); 
+    int8_t q = static_cast<int8_t>((int)std::nearbyintf(std::min(127.0f, std::max(-128.0f, r))));
     vecY[i] = q;
   }
 
@@ -657,11 +660,13 @@ RunQOrdered_Gelu_Test(std::vector<int64_t> const& shape, float scale_X, float sc
 }
 
 TEST(QOrderedTest, Gelu_3x11x12) {
-  RunQOrdered_Gelu_Test({3, 11, 12}, 1.0f / 32.0f, 1.0f/128.0f, ORDER_COL32);
-  RunQOrdered_Gelu_Test({3, 11, 12}, 1.0f / 32.0f, 1.0f/128.0f, ORDER_ROW);
+  RunQOrdered_Gelu_Test({3, 11, 12}, 1.0f / 32.0f, 1.0f / 128.0f, ORDER_COL32);
+  RunQOrdered_Gelu_Test({3, 11, 12}, 1.0f / 32.0f, 1.0f / 128.0f, ORDER_ROW);
 }
 
 }  // namespace test
 }  // namespace onnxruntime
 
 // #endif
+
+#pragma warning(pop)

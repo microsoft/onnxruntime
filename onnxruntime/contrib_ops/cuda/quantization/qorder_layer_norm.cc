@@ -1,3 +1,6 @@
+#pragma warning(push)
+#pragma warning(disable : 4244)
+
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -37,7 +40,7 @@ QOrderedLayerNormalization::QOrderedLayerNormalization(const OpKernelInfo& op_ke
   order_X_ = GetCublasLtOrderAttr(op_kernel_info, "order_X", 2, COL32orROW,
                                   "Only CUBLASLT_ORDER_COL32 or CUBLASLT_ORDER_ROW is supported for order_Y");
   order_Y_ = GetCublasLtOrderAttr(op_kernel_info, "order_Y", 2, COL32orROW,
-                                "Only CUBLASLT_ORDER_COL32 or CUBLASLT_ORDER_ROW is supported for order_Y");
+                                  "Only CUBLASLT_ORDER_COL32 or CUBLASLT_ORDER_ROW is supported for order_Y");
   ORT_ENFORCE(order_X_ == order_Y_);
 }
 
@@ -87,3 +90,5 @@ Status QOrderedLayerNormalization::ComputeInternal(OpKernelContext* ctx) const {
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#pragma warning(pop)

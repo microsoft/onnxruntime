@@ -1,4 +1,7 @@
 
+#pragma warning(push)
+#pragma warning(disable : 4244)
+
 #include "qorder_common.h"
 
 // #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
@@ -523,3 +526,5 @@ Status QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
 }  // namespace onnxruntime
 
 // #endif
+
+#pragma warning(pop)

@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cuda_runtime.h>
+#include <stdint.h>
 
 namespace onnxruntime {
 namespace contrib {
@@ -22,5 +23,5 @@ namespace cuda {
 QORDER_UNARY_OP_DECLARATION(Gelu);
 
 }  // namespace cuda
-}  // namespace conrtib
+}  // namespace contrib
 }  // namespace onnxruntime
