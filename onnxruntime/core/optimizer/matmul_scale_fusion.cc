@@ -134,7 +134,7 @@ std::vector<ScaleMergeInfo> GetInputNodeMerges(
     // check if the non-scale input is graph input and scalar 
     const auto non_scale_node_arg = input_node.InputDefs()[to_scale_index];
     const auto* shape = non_scale_node_arg->Shape();
-    if (graph_utils::IsGraphInput(graph, non_scale_node_arg) && shape->dim_size() == 0) continue;
+    if (shape == nullptr || shape->dim_size() == 0) continue;
 
     input_node_merges.push_back(
         {input_edge,
