@@ -265,8 +265,9 @@ class Gpt2Helper:
             return numpy.amax(diff)
 
     @staticmethod
-    def compare_outputs(torch_outputs, ort_outputs, rtol=1e-03, atol=1e-03):
+    def compare_outputs(torch_outputs, ort_outputs, rtol=1e-03, atol=1e-03, **kwargs):
         """ Returns True if torch and ORT outputs are close for given thresholds, and False otherwise.
+            Note: need kwargs since Gpt2BeamSearchHelper.compare_outputs has an extra parameter model_class
         """
         is_close = numpy.allclose(ort_outputs[0], torch_outputs[0].cpu().numpy(), rtol=rtol, atol=atol)
         logger.debug(f'PyTorch and OnnxRuntime output 0 (last_state) are close: {is_close}')

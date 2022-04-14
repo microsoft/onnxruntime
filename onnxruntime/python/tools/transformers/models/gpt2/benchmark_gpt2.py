@@ -14,6 +14,7 @@ import logging
 import torch
 from packaging import version
 from transformers import AutoConfig
+
 from gpt2_helper import Gpt2Helper, DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
 from gpt2_beamsearch_helper import Gpt2HelperFactory, MODEL_CLASSES
 
@@ -329,7 +330,7 @@ def main(args):
                         if args.validate_onnx:
                             if gpt2helper.compare_outputs(outputs,
                                                           ort_outputs,
-                                                          model_class,
+                                                          model_class=args.model_class,
                                                           rtol=DEFAULT_TOLERANCE[args.precision],
                                                           atol=DEFAULT_TOLERANCE[args.precision]):
                                 logger.info(
@@ -343,7 +344,7 @@ def main(args):
 
                             if gpt2helper.compare_outputs(outputs,
                                                           copy_outputs,
-                                                          model_class,
+                                                          model_class=args.model_class,
                                                           rtol=DEFAULT_TOLERANCE[args.precision],
                                                           atol=DEFAULT_TOLERANCE[args.precision]):
                                 logger.info(
