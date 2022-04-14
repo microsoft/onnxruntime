@@ -147,7 +147,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         # PyTorch custom Autograd function support
         self._enable_custom_autograd_function = custom_autograd_function_enabler.state
 
-        self._use_tensorrt_backend = True
+        self._use_tensorrt_backend = ortmodule._defined_from_envvar(
+            'ORTMODULE_USE_TENSORRT_BACKEND', False, warn=True)
 
         self._input_info = None
         self._module_output_schema = None
