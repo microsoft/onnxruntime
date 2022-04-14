@@ -232,7 +232,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
 
   # Training API Tests
   # Currently disable it for internval development usage.
-  if (onnxruntime_ENABLE_TRAINING_API)
+  if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
     file(GLOB_RECURSE training_api_test_runner_src
         "${ORTTRAINING_SOURCE_DIR}/test/training_api/*.h"
         "${ORTTRAINING_SOURCE_DIR}/test/training_api/*.cc"
@@ -247,11 +247,6 @@ if (onnxruntime_BUILD_UNIT_TESTS)
 
     onnxruntime_add_include_to_target(onnxruntime_training_api_test_runner onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} onnxruntime_training flatbuffers)
     target_include_directories(onnxruntime_training_api_test_runner PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_CXX_INCLUDE_DIRS} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
-
-    # ROCM provider sources are generated, need to add include directory for generated headers
-    if (onnxruntime_USE_ROCM)
-      target_include_directories(onnxruntime_training_api_test_runner PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime)
-    endif()
 
     target_link_libraries(onnxruntime_training_api_test_runner PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
     set_target_properties(onnxruntime_training_api_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")

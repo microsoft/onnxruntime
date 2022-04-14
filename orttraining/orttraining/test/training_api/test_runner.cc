@@ -57,8 +57,12 @@ namespace onnxruntime {
 namespace training {
 namespace api_test {
 
-struct Parameters {
-  PathString model_with_training_graph_path;
+struct TestRunnerParameters {
+  PathString model_training_graph_path;
+  PathString model_evaluation_graph_path;
+
+  PathString optimizer_training_graph_path;
+
   // path to checkpoint to load
   PathString checkpoint_to_load_path;
   PathString train_data_dir;
@@ -66,29 +70,32 @@ struct Parameters {
   PathString output_dir;  // Output of training, e.g., trained model files.
 
   size_t train_batch_size;
+  size_t num_train_epochs;
   size_t eval_batch_size;
-  size_t num_train_steps;
+  size_t eval_interval;
+  size_t checkpoint_interval;
   int gradient_accumulation_steps = 1;
-
-  // Enable gradient clipping.
-  bool enable_grad_norm_clip = true;
 
   // Allocator to use for allocating inputs from the dataset (optional).
   AllocatorPtr input_allocator;
   std::unique_ptr<IExecutionProvider> provider;
 };
 
-struct OrtParameters {
+struct OrtTestRunnerParameters {
   logging::Severity log_severity{logging::Severity::kWARNING};
   int vlog_level{-1};
 };
 
-Status ParseArguments(int argc, char* argv[], Parameters& params, OrtParameters& ort_params) {
+Status ParseArguments(int argc, char* argv[], TestRunnerParameters& params, OrtTestRunnerParameters& ort_params) {
   cxxopts::Options options("Training API Test", "Main Program to test training C++ APIs.");
   // clang-format off
   options
     .add_options()
-      ("model_with_training_graph_path", "The path to the model to load. ",
+      ("model_training_graph_path", "The path to the training model to load. ",
+        cxxopts::value<std::string>()->default_value(""))
+      ("model_evaluation_graph_path", "The path to the evaluation model to load. ",
+        cxxopts::value<std::string>()->default_value(""))
+      ("optimizer_training_graph_path", "The path to the optimizer graph to load. ",
         cxxopts::value<std::string>()->default_value(""))
       ("checkpoint_to_load_path",
        "The path to the checkpoint to load. If not provided, the latest "
@@ -104,12 +111,11 @@ Status ParseArguments(int argc, char* argv[], Parameters& params, OrtParameters&
 
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>())
       ("eval_batch_size", "Total batch size for eval.", cxxopts::value<int>())
-      ("num_train_steps", "Total number of training steps to perform.", cxxopts::value<int>()->default_value("100000"))
+      ("num_train_epochs", "Total number of training epochs to perform.", cxxopts::value<int>()->default_value("100"))
+      ("eval_interval", "Number of training steps before doing evaluation.", cxxopts::value<int>()->default_value("1000"))
+      ("checkpoint_interval", "Number of training steps before saving checkpoint.", cxxopts::value<int>()->default_value("1000"))
       ("gradient_accumulation_steps", "The number of gradient accumulation steps before performing a backward/update pass.",
         cxxopts::value<int>()->default_value("1"))
-
-      ("enable_grad_norm_clip", "Specify whether to enable gradient clipping for optimizers.",
-        cxxopts::value<bool>()->default_value("true"));
 
   options
     .add_options("ORT configuration")
@@ -122,17 +128,25 @@ Status ParseArguments(int argc, char* argv[], Parameters& params, OrtParameters&
   try {
     auto flags = options.parse(argc, argv);
 
-    params.num_train_steps = flags["num_train_steps"].as<int>();
+    params.model_training_graph_path = ToPathString(flags["model_training_graph_path"].as<std::string>());
+    params.model_evaluation_graph_path = ToPathString(flags["model_evaluation_graph_path"].as<std::string>());
+    params.optimizer_training_graph_path = ToPathString(flags["optimizer_training_graph_path"].as<std::string>());
+    params.checkpoint_to_load_path = ToPathString(flags["checkpoint_to_load_path"].as<std::string>());
+
     params.train_batch_size = flags["train_batch_size"].as<int>();
     if (flags.count("eval_batch_size")) {
       params.eval_batch_size = flags["eval_batch_size"].as<int>();
     } else {
       params.eval_batch_size = params.train_batch_size;
     }
+    params.num_train_epochs = flags["num_train_epochs"].as<int>();
+    params.eval_interval = flags["eval_interval"].as<int>();
+    params.checkpoint_interval = flags["checkpoint_interval"].as<int>();
 
     params.gradient_accumulation_steps = flags["gradient_accumulation_steps"].as<int>();
     if (params.gradient_accumulation_steps < 1) {
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid gradient_accumulation_steps parameter: should be >= 1");
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT,
+                    "Invalid gradient_accumulation_steps parameter: should be >= 1");
     }
 
     params.train_data_dir = ToPathString(flags["train_data_dir"].as<std::string>());
@@ -141,15 +155,12 @@ Status ParseArguments(int argc, char* argv[], Parameters& params, OrtParameters&
     if (params.output_dir.empty()) {
       printf("No output directory specified. Trained model files will not be saved.\n");
     }
-    params.checkpoint_to_load_path = ToPathString(flags["checkpoint_to_load_path"].as<std::string>());
 
-    params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
     session_options.use_deterministic_compute = flags["use_deterministic_compute"].as<bool>();
 
     ort_params.log_severity = static_cast<logging::Severity>(flags["ort_log_severity"].as<int>());
     ORT_RETURN_IF_NOT(
-        logging::Severity::kVERBOSE <= ort_params.log_severity &&
-            ort_params.log_severity <= logging::Severity::kFATAL,
+        logging::Severity::kVERBOSE <= ort_params.log_severity && ort_params.log_severity <= logging::Severity::kFATAL,
         "Log severity must be in the range [", static_cast<int>(logging::Severity::kVERBOSE),
         ", ", static_cast<int>(logging::Severity::kFATAL), "].");
     ort_params.vlog_level = flags["ort_vlog_level"].as<int>();
@@ -205,28 +216,31 @@ float GetLossValue(const Tensor& loss_tensor) {
   return loss;
 }
 
-Status RunTraining(const Parameters& params) {
+Status RunTraining(const TestRunnerParameters& params) {
   std::string tensorboard_file = params.output_dir + "/tb.event";
   std::shared_ptr<EventWriter> tensorboard = std::make_shared<EventWriter>(tensorboard_file);
 
   utils::CheckpointStates state_dicts;
-  ORT_ENFORCE(utils::Ort_Load("resnet50_0.ckpt", state_dicts).IsOK());
+  ORT_ENFORCE(utils::Ort_Load(params.checkpoint_to_load_path, state_dicts).IsOK());
 
-  Module module("train_resnet50.onnx", state_dicts.named_parameters, "eval_resnet50.onnx");
-  Optimizer optimizer("adam_resnet50.onnx", state_dicts.named_parameters);
+  Module module(params.model_training_graph_path,
+                state_dict.named_parameters,
+                params.model_evaluation_graph_path);
+
+  Optimizer optimizer(params.optimizer_training_graph_path,
+                      state_dicts.optimizer_states);
 
 #ifdef USE_CUDA
   utils::SetExecutionProvider(module, optimizer, params.provider.get());
 #endif
 
   auto scheduler = std::make_unique<LinearScheduler>(optimizer, 0.3333f, 1.0f, 5);
-
   std::vector<std::vector<OrtValue>> data_loader = CreateTestDataLoader(params.input_allocator);
 
-  size_t NUM_EPOCHS = 10;
-  size_t GRAD_ACC_STEPS = 2;
-  size_t EVAL_STEPS = 20;
-  size_t SAVE_STEPS = 20;
+  size_t NUM_EPOCHS = params.num_train_epochs;
+  size_t GRAD_ACC_STEPS = params.gradient_accumulation_steps;
+  size_t EVAL_STEPS = params.eval_interval;
+  size_t SAVE_STEPS = params.checkpoint_interval;
   std::string tag("train");
 
   for (size_t epoch = 0, batch_idx = 0; epoch < NUM_EPOCHS; ++epoch) {
@@ -236,8 +250,8 @@ Status RunTraining(const Parameters& params) {
       ORT_ENFORCE(module.TrainStep(inputs, fetches).IsOK());
 
       const Tensor& loss_tensor = fetches[3].Get<Tensor>();
-      tensorboard->AddSummary(*(loss_tensor.template Data<std::string>()), batch_idx, tag);
 
+      tensorboard->AddSummary(*(loss_tensor.template Data<std::string>()), batch_idx, tag);
       std::cout << "Batch # : " << batch_idx << " Loss: " << GetLossValue(loss_tensor) << std::endl;
 
       if (batch_idx % GRAD_ACC_STEPS == 0) {
@@ -256,9 +270,10 @@ Status RunTraining(const Parameters& params) {
       if (batch_idx % SAVE_STEPS == 0) {
         // save trained weights
         utils::CheckpointStates state_dicts_to_save;
-        ORT_ENFORCE(module.GetStateDict(state_dicts_to_save.named_parameters).IsOK());
+        ORT_ENFORCE(module.GetStateDict(state_dicts_to_save.named_TestRunnerParameters).IsOK());
         ORT_ENFORCE(optimizer.GetStateDict(state_dicts_to_save.optimizer_states).IsOK());
-        ORT_ENFORCE(utils::Ort_Save(state_dicts_to_save, "resnet50_2000.ckpt").IsOK());
+        std::string ckpt_file = params.output_dir + "/resnet50_" + std::string(batch_idx) + ".ckpt";
+        ORT_ENFORCE(utils::Ort_Save(state_dicts_to_save, ckpt_file).IsOK());
       }
 
       batch_idx++;
@@ -278,8 +293,8 @@ Status RunTraining(const Parameters& params) {
   } while (0);
 
 int main(int argc, char* argv[]) {
-  Parameters params;
-  OrtParameters ort_params{};
+  TestRunnerParameters params;
+  OrtTestRunnerParameters ort_params{};
   RETURN_IF_FAIL(ParseArguments(argc, argv, params, ort_params));
 
   // setup logger, be noted: LOGS_DEFAULT must be after logging manager initialization.

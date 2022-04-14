@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_API)
+#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_ON_DEVICE)
 
 namespace onnxruntime {
 namespace training {
