@@ -458,7 +458,7 @@ Status UpdateFeeds2(
 
   // Update input_ids with next tokens.
   int batch_beam_size = static_cast<int>(beam_next_tokens.length());
-  int64_t dims[] = {batch_beam_size, 1};
+  int64_t dims[] = {batch_beam_size, current_length};
   TensorShape input_ids_shape(&dims[0], 2);
   auto int32_type = DataTypeImpl::GetType<int32_t>();
   OrtValue input_ids;
@@ -478,8 +478,8 @@ Status UpdateFeeds2(
 
 
 #ifdef DEBUG_BEAM_SEARCH
-  dumper->Print("input_ids", input_ids);
-  dumper->Print("attention_mask", attention_mask);
+  dumper->Print("input_ids_new_round", input_ids);
+  //dumper->Print("attention_mask", attention_mask);
 #else
   ORT_UNUSED_PARAMETER(dumper);
 #endif

@@ -634,9 +634,9 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
 
 #ifdef DEBUG_BEAM_SEARCH
   const IConsoleDumper* dumper = GetConsoleDumper();
-  dumper->Print("input_ids", feeds[0]);
+  dumper->Print("input_ids", decoder_feeds[1]);
   //dumper->Print("position_ids", feeds[1]);
-  dumper->Print("attention_mask", feeds[2]);
+  dumper->Print("attention_mask", decoder_feeds[2]);
 #endif
 
   // position ids for all iterations except the first. It uses memory buffer owned by next_positions.
