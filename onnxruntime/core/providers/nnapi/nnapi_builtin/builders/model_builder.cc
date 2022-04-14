@@ -653,21 +653,21 @@ int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
   for (auto it = output_node.OutputEdgesBegin(), end = output_node.OutputEdgesEnd(); it != end; ++it) {
     const auto& dst_node = it->GetNode();
     const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];
-    const auto* dst_node_unit = GetNodeUnit(&dst_node);
-    if (!dst_node_unit) {
-      return ANEURALNETWORKS_FUSED_NONE;
-    }
 
-    if (auto activation_it = activation_node_units_.find(dst_node_unit);
-        activation_it != activation_node_units_.end()) {
-      if (&output == dst_input) {
-        fuse_code = activation_it->second;
-      }
-    } else {
-      // if there is any other non-relu node using the output
-      // will add relu separately
-      if (&output == dst_input)
+    if (&output == dst_input) {
+      const auto* dst_node_unit = GetNodeUnit(&dst_node);
+      if (!dst_node_unit) {
         return ANEURALNETWORKS_FUSED_NONE;
+      }
+
+      if (auto activation_it = activation_node_units_.find(dst_node_unit);
+          activation_it != activation_node_units_.end()) {
+        fuse_code = activation_it->second;
+      } else {
+        // if there is any other non-relu node using the output
+        // will add relu separately
+        return ANEURALNETWORKS_FUSED_NONE;
+      }
     }
   }
 
