@@ -261,12 +261,12 @@ static bool IsQuantizedIOSupported(const InitializedTensorSet& initializers, con
 
     // Check scale and zero point
     if (!IsQuantizationScaleSupported(initializers, io_def, params, op_type,
-                                      is_quant_matmul_or_gemm, is_conv_matmul_u8s8_weight)) {
+                                      is_quant_matmul, is_conv_matmul_u8s8_weight)) {
       return false;
     }
 
     if (!IsQuantizationZeroPointSupported(initializers, io_def, op_type, node_unit.ModelPath(),
-                                          is_quant_matmul_or_gemm, is_conv_matmul_u8s8_weight)) {
+                                          is_quant_matmul, is_conv_matmul_u8s8_weight)) {
       return false;
     }
   }

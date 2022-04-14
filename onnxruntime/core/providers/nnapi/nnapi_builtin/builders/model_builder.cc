@@ -509,6 +509,7 @@ Status ModelBuilder::AddOperations() {
 
     if (const auto* op_builder = GetOpBuilder(node_unit)) {
       ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, node_unit));
+      LOGS_DEFAULT(VERBOSE) << "Entering GetOpBuilder:" << node_unit.Name();
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Node [", node_unit.Name(), "], type [", node_unit.OpType(), "] is not supported");

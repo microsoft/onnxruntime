@@ -300,7 +300,6 @@ GetQDQTestCaseFn BuildQDQGemmTestCase(const std::vector<int64_t>& input1_shape,
                                       const int64_t& transB) {
   return [input1_shape, input2_shape, has_bias, transB](ModelTestBuilder& builder) {
     auto* input1_arg = builder.MakeInput<float>(input1_shape, -1.f, 1.f);
-    auto* input2_arg = builder.MakeInput<float>(input2_shape, -1.f, 1.f);
     auto* output_arg = builder.MakeOutput();
 
     typedef std::numeric_limits<Input1Type> Input1Limits;
@@ -318,21 +317,16 @@ GetQDQTestCaseFn BuildQDQGemmTestCase(const std::vector<int64_t>& input1_shape,
                                               q1_output);
     builder.AddDequantizeLinearNode<Input1Type>(q1_output,
                                                 .039f,
-                                                (Input2Limits::max() + Input1Limits::min()) / 2 + 1,
+                                                (Input1Limits::max() + Input1Limits::min()) / 2 + 1,
                                                 dq1_output);
 
     input_args.push_back(dq1_output);
 
     // add QDQ B
-    auto* q2_output = builder.MakeIntermediate();
     auto* dq2_output = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<Input2Type>(input2_arg,
-                                              .04f,
-                                              (Input2Limits::max() + Input2Limits::min()) / 2 + 1,
-                                              q2_output);
-    builder.AddDequantizeLinearNode<Input2Type>(q2_output,
-                                                .04f,
-                                                (Input2Limits::max() + Input2Limits::min()) / 2 + 1,
+    auto* input_b = builder.MakeInitializer<Input2Type>(input2_shape, Input2Limits::min(), Input2Limits::max());
+    builder.AddDequantizeLinearNode<Input2Type>(input_b, 0.04f,
+                                                (Input1Limits::max() + Input1Limits::min()) / 2 + 1,
                                                 dq2_output);
     input_args.push_back(dq2_output);
 
