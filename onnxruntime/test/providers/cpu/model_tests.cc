@@ -27,9 +27,6 @@ extern std::unique_ptr<Ort::Env> ort_env;
 
 using namespace onnxruntime::common;
 
-#define LATEST_ONNX_OPSET 16
-#define LATEST_ONNX_OPSET_SUPPORTED_BY_TENSORRT 13
-
 namespace onnxruntime {
 namespace test {
 // parameter is provider_name + "_" + model_path
@@ -75,7 +72,7 @@ TEST_P(ModelTest, Run) {
   }
 
   std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
-  if (model_info->GetONNXOpSetVersion() != LATEST_ONNX_OPSET_SUPPORTED_BY_TENSORRT && model_info->GetONNXOpSetVersion() != (LATEST_ONNX_OPSET_SUPPORTED_BY_TENSORRT - 1) && provider_name == "tensorrt") {
+  if (model_info->GetONNXOpSetVersion() != 14 && model_info->GetONNXOpSetVersion() != 15 && provider_name == "tensorrt") {
     // TensorRT can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
     // Besides saving CI build time, TRT isn’t able to support full ONNX ops spec and therefore some testcases will fail.
