@@ -905,18 +905,23 @@ def run_symbolic_shape_inference(model_path, new_model_path):
         logger.error(e)
         return False, "Symbolic shape inference error"
 
-def time_and_create_session(model_path, providers, session_options):
+# TODO: trt_provider_options should come from script args
+def get_provider_options(providers, trt_provider_options):
+    return [trt_provider_options if ep == trt_ep else {} for ep in providers]
+
+def time_and_create_session(model_path, providers, provider_options, session_options):
     start = datetime.now()
-    session = onnxruntime.InferenceSession(model_path, providers=providers, sess_options=session_options)
+    session = onnxruntime.InferenceSession(model_path, providers=providers, provider_options=provider_options,
+                                           sess_options=session_options)
     end = datetime.now()
     creation_time = (end - start).total_seconds()
     return session, creation_time
 
-def create_session(model_path, providers, session_options):
+def create_session(model_path, providers, provider_options, session_options):
     logger.info(model_path)
 
     try:
-        return time_and_create_session(model_path, providers, session_options)
+        return time_and_create_session(model_path, providers, provider_options, session_options)
     except Exception as e:
         # shape inference required on model
         if "shape inference" in str(e):
@@ -927,7 +932,7 @@ def create_session(model_path, providers, session_options):
                 if not status[0]: # symbolic shape inference error
                     e = status[1]
                     raise Exception(e)            
-            return time_and_create_session(new_model_path, providers, session_options)
+            return time_and_create_session(new_model_path, providers, provider_options, session_options)
         else:
             raise Exception(e) 
 
@@ -996,11 +1001,12 @@ def run_onnxruntime(args, models):
             logger.info("[Initialize]  model = {}, ep = {} ...".format(name, ep))
 
             # Set environment variables for ort-trt benchmarking 
+            trt_provider_options = {}
             if "ORT-TRT" in ep:
-                os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1" if "Fp16" in ep else "0"
-                os.environ["ORT_TENSORRT_MAX_WORKSPACE_SIZE"] = "4294967296"
+                trt_provider_options["trt_fp16_enable"] = "True" if "Fp16" in ep else "False"
+                trt_provider_options["trt_max_workspace_size"] = "4294967296"
                 if args.enable_cache:
-                    os.environ["ORT_TENSORRT_ENGINE_CACHE_ENABLE"] = "1"
+                    trt_provider_options["trt_engine_cache_enable"] = "True"
             fp16 = False
             
             # use float16.py for cuda fp16 only            
@@ -1056,6 +1062,7 @@ def run_onnxruntime(args, models):
                 else:         
                     # resolve providers to create session
                     providers = ep_to_provider_list[ep] 
+                    provider_options = get_provider_options(providers, trt_provider_options)
                     options = onnxruntime.SessionOptions()
                     
                     enablement = args.graph_enablement
@@ -1070,7 +1077,7 @@ def run_onnxruntime(args, models):
                     
                     # create onnxruntime inference session
                     try:
-                        sess, second_creation_time = create_session(model_path, providers, options)
+                        sess, second_creation_time = create_session(model_path, providers, provider_options, options)
 
                     except Exception as e:
                         logger.error(e)
@@ -1147,9 +1154,12 @@ def run_onnxruntime(args, models):
                 options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
                 time.sleep(1) # avoid to generate same profile file name
 
+                providers = ep_to_provider_list[ep]
+                provider_options = get_provider_options(providers, trt_provider_options)
+
                 # create onnxruntime inference session
                 try:
-                    sess, creation_time = create_session(model_path, ep_to_provider_list[ep], options)
+                    sess, creation_time = create_session(model_path, providers, provider_options, options)
 
                 except Exception as e:
                     logger.error(e)
