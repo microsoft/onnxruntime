@@ -65,7 +65,7 @@ class GradientAccumulationManager(object):
         ort_value_vector.reserve(self._cache_start)
         for i in range(self._cache_start):
             ort_value_vector.push_back(forward_outputs[i])
-        return _utils._ortvalues_to_torch_tensor(ort_value_vector, device, c_class=True)
+        return _utils._ortvalues_to_torch_tensor(ort_value_vector, device)
 
     def maybe_update_cache_before_run(self):
         """Update cache when model parameters are modified and optimization is enabled.
