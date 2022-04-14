@@ -279,6 +279,10 @@ class GraphExecutionManager(GraphExecutionInterface):
                     trt_provider_option_map = {
                         "device_id": str(self._device.index)
                     }
+                    if self._use_external_gpu_allocator:
+                        trt_provider_option_map["gpu_external_alloc"] = str(self._torch_alloc)
+                        trt_provider_option_map["gpu_external_free"] = str(self._torch_free)
+                        trt_provider_option_map["gpu_external_empty_cache"] = str(self._torch_empty_cache)
                     provider_options.append(trt_provider_option_map)
 
                 providers.append("CUDAExecutionProvider")

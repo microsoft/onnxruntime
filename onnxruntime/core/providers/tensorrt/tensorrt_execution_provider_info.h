@@ -10,6 +10,29 @@
 #include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
+
+struct TensorRTExecutionProviderExternalAllocatorInfo {
+  void* alloc{nullptr};
+  void* free{nullptr};
+  void* empty_cache{nullptr};
+
+  TensorRTExecutionProviderExternalAllocatorInfo() {
+    alloc = nullptr;
+    free = nullptr;
+    empty_cache = nullptr;
+  }
+
+  TensorRTExecutionProviderExternalAllocatorInfo(void* a, void* f, void* e) {
+    alloc = a;
+    free = f;
+    empty_cache = e;
+  }
+
+  bool UseExternalAllocator() const {
+    return (alloc != nullptr) && (free != nullptr);
+  }
+};
+
 // Information needed to construct trt execution providers.
 struct TensorrtExecutionProviderInfo {
   int device_id{0};
@@ -17,10 +40,10 @@ struct TensorrtExecutionProviderInfo {
   void* user_compute_stream{nullptr};
   bool has_trt_options{false};
   int max_partition_iterations{1000};
-  int min_subgraph_size{1};  
+  int min_subgraph_size{1};
   size_t max_workspace_size{1 << 30};
   bool fp16_enable{false};
-  bool int8_enable{false}; 
+  bool int8_enable{false};
   std::string int8_calibration_table_name{""};
   bool int8_use_native_calibration_table{false};
   bool dla_enable{false};
@@ -31,6 +54,8 @@ struct TensorrtExecutionProviderInfo {
   bool engine_decryption_enable{false};
   std::string engine_decryption_lib_path{""};
   bool force_sequential_engine_build{false};
+
+  TensorRTExecutionProviderExternalAllocatorInfo external_allocator_info{};
 
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);

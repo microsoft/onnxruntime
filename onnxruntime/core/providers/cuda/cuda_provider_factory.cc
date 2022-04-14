@@ -84,6 +84,9 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     return std::make_unique<CUDAAllocator>(device_id, name);
   }
 
+  std::unique_ptr<IAllocator> CreateCUDAExternalAllocator(int16_t device_id, const char* name, void* alloc, void* free, void* empty_cache) override {
+    return std::make_unique<CUDAExternalAllocator>(device_id, name, alloc, free, empty_cache);
+  }
   std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override {
     return std::make_unique<CUDAPinnedAllocator>(device_id, name);
   }
@@ -188,7 +191,6 @@ struct CUDA_Provider : Provider {
   void* GetInfo() override { return &g_info; }
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
-
     // Calling a function like ::cudaDeviceSynchronize will cause CUDA to ensure there is binary code for the current GPU architecture
     // Ideally this will be already part of the binary, but if not, CUDA will JIT it during this call. This can take a very long time
     // (minutes even), so we want to detect when this happens and let the user know why so they can report it properly or even fix it.
@@ -197,7 +199,7 @@ struct CUDA_Provider : Provider {
       auto start_time = std::chrono::steady_clock::now();
       // Do a trivial cuda operation that will cause JIT to occur
       {
-        void** cuda_memory {};
+        void** cuda_memory{};
         ::cudaMalloc(&cuda_memory, 1);
         ::cudaFree(cuda_memory);
       }

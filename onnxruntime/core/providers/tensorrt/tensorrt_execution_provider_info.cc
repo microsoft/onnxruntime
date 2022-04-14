@@ -27,12 +27,18 @@ constexpr const char* kCachePath = "trt_engine_cache_path";
 constexpr const char* kDecryptionEnable = "trt_engine_decryption_enable";
 constexpr const char* kDecryptionLibPath = "trt_engine_decryption_lib_path";
 constexpr const char* kForceSequentialEngineBuild = "trt_force_sequential_engine_build";
-// add new provider option name here. 
+constexpr const char* kGpuExternalAlloc = "trt_external_alloc";
+constexpr const char* kGpuExternalFree = "trt_external_free";
+constexpr const char* kGpuExternalEmptyCache = "trt_external_empty_cache";
+// add new provider option name here.
 }  // namespace provider_option_names
-}  // namespace tensorrt 
+}  // namespace tensorrt
 
 TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   TensorrtExecutionProviderInfo info{};
+  void* alloc = nullptr;
+  void* free = nullptr;
+  void* empty_cache = nullptr;
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddValueParser(
@@ -49,6 +55,30 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
                     ", must be between 0 (inclusive) and ", num_devices, " (exclusive).");
                 return Status::OK();
               })
+          .AddValueParser(
+              tensorrt::provider_option_names::kGpuExternalAlloc,
+              [&alloc](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                alloc = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
+          .AddValueParser(
+              tensorrt::provider_option_names::kGpuExternalFree,
+              [&free](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                free = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
+          .AddValueParser(
+              tensorrt::provider_option_names::kGpuExternalEmptyCache,
+              [&empty_cache](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                empty_cache = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
           .AddAssignmentToReference(tensorrt::provider_option_names::kMaxPartitionIterations, info.max_partition_iterations)
           .AddAssignmentToReference(tensorrt::provider_option_names::kMinSubgraphSize, info.min_subgraph_size)
           .AddAssignmentToReference(tensorrt::provider_option_names::kMaxWorkspaceSize, info.max_workspace_size)
@@ -57,20 +87,20 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kInt8CalibTable, info.int8_calibration_table_name)
           .AddAssignmentToReference(tensorrt::provider_option_names::kInt8UseNativeCalibTable, info.int8_use_native_calibration_table)
           .AddAssignmentToReference(tensorrt::provider_option_names::kDLAEnable, info.dla_enable)
-          .AddAssignmentToReference(tensorrt::provider_option_names::kDLACore, info.dla_core)		  
+          .AddAssignmentToReference(tensorrt::provider_option_names::kDLACore, info.dla_core)
           .AddAssignmentToReference(tensorrt::provider_option_names::kDumpSubgraphs, info.dump_subgraphs)
           .AddAssignmentToReference(tensorrt::provider_option_names::kEngineCacheEnable, info.engine_cache_enable)
           .AddAssignmentToReference(tensorrt::provider_option_names::kCachePath, info.engine_cache_path)
           .AddAssignmentToReference(tensorrt::provider_option_names::kDecryptionEnable, info.engine_decryption_enable)
-          .AddAssignmentToReference(tensorrt::provider_option_names::kDecryptionLibPath, info.engine_decryption_lib_path) 
+          .AddAssignmentToReference(tensorrt::provider_option_names::kDecryptionLibPath, info.engine_decryption_lib_path)
           .AddAssignmentToReference(tensorrt::provider_option_names::kForceSequentialEngineBuild, info.force_sequential_engine_build)
-          .Parse(options)); // add new provider option here.
-
+          .Parse(options));  // add new provider option here.
+  TensorRTExecutionProviderExternalAllocatorInfo alloc_info{alloc, free, empty_cache};
+  info.external_allocator_info = alloc_info;
   return info;
 }
 
 ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtExecutionProviderInfo& info) {
-
   const ProviderOptions options{
       {tensorrt::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {tensorrt::provider_option_names::kMaxPartitionIterations, MakeStringWithClassicLocale(info.max_partition_iterations)},
@@ -88,13 +118,16 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kDecryptionEnable, MakeStringWithClassicLocale(info.engine_decryption_enable)},
       {tensorrt::provider_option_names::kDecryptionLibPath, MakeStringWithClassicLocale(info.engine_decryption_lib_path)},
       {tensorrt::provider_option_names::kForceSequentialEngineBuild, MakeStringWithClassicLocale(info.force_sequential_engine_build)},
+      {tensorrt::provider_option_names::kGpuExternalAlloc, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.alloc))},
+      {tensorrt::provider_option_names::kGpuExternalFree, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.free))},
+      {tensorrt::provider_option_names::kGpuExternalEmptyCache, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.external_allocator_info.empty_cache))},
+
       // add new provider option here.
   };
   return options;
 }
 
 ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensorRTProviderOptions& info) {
-
   auto empty_if_null = [](const char* s) { return s != nullptr ? std::string{s} : std::string{}; };
   const std::string kInt8CalibTable_ = empty_if_null(info.trt_int8_calibration_table_name);
   const std::string kCachePath_ = empty_if_null(info.trt_engine_cache_path);

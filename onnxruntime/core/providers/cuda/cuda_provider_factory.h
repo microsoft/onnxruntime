@@ -16,7 +16,7 @@ namespace cuda {
 class INcclService;
 }
 namespace profile {
-  class NvtxRangeCreator;
+class NvtxRangeCreator;
 }
 
 struct ProviderInfo_CUDA {
@@ -24,6 +24,7 @@ struct ProviderInfo_CUDA {
   virtual OrtStatus* GetCurrentGpuDeviceId(_In_ int* device_id) = 0;
 
   virtual std::unique_ptr<onnxruntime::IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<onnxruntime::IAllocator> CreateCUDAExternalAllocator(int16_t device_id, const char* name, void* alloc, void* free, void* empty_cache) = 0;
   virtual std::unique_ptr<onnxruntime::IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<onnxruntime::IDataTransfer> CreateGPUDataTransfer(void* stream) = 0;
 
@@ -46,7 +47,7 @@ struct ProviderInfo_CUDA {
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
-  virtual void NvtxRangeCreator__BeginImpl(profile::NvtxRangeCreator *p) = 0;
+  virtual void NvtxRangeCreator__BeginImpl(profile::NvtxRangeCreator* p) = 0;
   virtual void NvtxRangeCreator__EndImpl(profile::NvtxRangeCreator* p) = 0;
 #endif
 

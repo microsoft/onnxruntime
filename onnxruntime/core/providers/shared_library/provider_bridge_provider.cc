@@ -241,7 +241,7 @@ void TensorShape::Allocate(size_t size) {
 
 int64_t TensorShape::Size() const {
   int64_t size = SizeHelper(0, values_.size());
-  //should we cache the size? as multiple operation may be expensive.
+  // should we cache the size? as multiple operation may be expensive.
   return size;
 }
 
@@ -318,6 +318,10 @@ void IExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> all
 #ifdef USE_TENSORRT
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAAllocator(device_id, name);
+}
+
+std::unique_ptr<IAllocator> CreateCUDAExternalAllocator(int16_t device_id, const char* name, void* alloc, void* free, void* empty_cache) {
+  return g_host->CreateCUDAExternalAllocator(device_id, name, alloc, free, empty_cache);
 }
 
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
@@ -510,8 +514,8 @@ Status SplitBase::PrepareForCompute(const TensorShape& input_shape, int num_outp
 Status Size::Compute(OpKernelContext* context) const { return g_host_cpu.Size__Compute(this, context); }
 
 Status ScatterND::ValidateShapes(const TensorShape& input_shape,
-                                     const TensorShape& indice_shape,
-                                     const TensorShape& update_shape) { return g_host_cpu.ScatterNDBase__ValidateShapes(input_shape, indice_shape, update_shape); }
+                                 const TensorShape& indice_shape,
+                                 const TensorShape& update_shape) { return g_host_cpu.ScatterNDBase__ValidateShapes(input_shape, indice_shape, update_shape); }
 
 Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) { return g_host_cpu.PadBase__HandleDimValueZero(mode, input_shape, output_shape); }
 

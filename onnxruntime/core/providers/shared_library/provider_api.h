@@ -244,6 +244,7 @@ inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept
 
 std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info);
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
+std::unique_ptr<IAllocator> CreateCUDAExternalAllocator(int16_t device_id, const char* name, void* alloc, void* free, void* empty_cache);
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
 
 std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name);

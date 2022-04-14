@@ -114,9 +114,9 @@ struct Node__EdgeIterator {
 // a specific implementation of a virtual class member. Trying to get a pointer to member of a virtual function will return a thunk that
 // calls the virtual function (which will lead to infinite recursion in the bridge). There is no known way to get the non virtual member
 // function pointer implementation in this case.
-//The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
-//However, we do not allocate this type on heap.
-//Please do not new or delete this type(and subtypes).
+// The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
+// However, we do not allocate this type on heap.
+// Please do not new or delete this type(and subtypes).
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26436)
@@ -147,6 +147,7 @@ struct ProviderHost {
 
 #ifdef USE_CUDA
   virtual std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
+  virtual std::unique_ptr<IAllocator> CreateCUDAExternalAllocator(int16_t device_id, const char* name, void* alloc, void* free, void* empty_cache) = 0;
   virtual std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) = 0;
 

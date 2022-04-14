@@ -460,9 +460,24 @@ void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManag
   // Used to allocate CUDA device memory
   allocator_ = allocator_manager->GetAllocator(device_id_, OrtMemTypeDefault);
   if (nullptr == allocator_) {
-    AllocatorCreationInfo default_memory_info(
-        [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); }, device_id_);
-    allocator_ = CreateAllocator(default_memory_info);
+    const TensorRTExecutionProviderExternalAllocatorInfo& external_allocator_info = info_.external_allocator_info;
+    if (external_allocator_info.UseExternalAllocator()) {
+      AllocatorCreationInfo default_memory_info(
+          [external_allocator_info](OrtDevice::DeviceId device_id) {
+            return CreateCUDAExternalAllocator(device_id, onnxruntime::CUDA,
+                                               external_allocator_info.alloc,
+                                               external_allocator_info.free,
+                                               external_allocator_info.empty_cache);
+          },
+          device_id_,
+          false /*use_arena*/);
+
+      allocator_ = CreateAllocator(default_memory_info);
+    } else {
+      AllocatorCreationInfo default_memory_info(
+          [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); }, device_id_);
+      allocator_ = CreateAllocator(default_memory_info);
+    }
     allocator_manager->InsertAllocator(allocator_);
   }
   TryInsertAllocator(allocator_);
@@ -1128,7 +1143,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
 
     // Set DLA
     if (fp16_enable_ || int8_enable_) {
-      if (dla_enable_ && dla_core_ >= 0) {  //DLA can only run with FP16 and INT8
+      if (dla_enable_ && dla_core_ >= 0) {  // DLA can only run with FP16 and INT8
         int number_of_dla_core = trt_builder->getNbDLACores();
         if (number_of_dla_core == 0) {
           LOGS_DEFAULT(WARNING) << "[TensorRT EP] Try to use DLA core, but platform doesn't have any DLA core";
