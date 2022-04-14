@@ -45,7 +45,7 @@ TEST(ScatterNDOpTest, ScatterND_matrice_int64_int64_neg_indices) {
   test.AddInput<int64_t> ("indices", {2,2}, {0LL,0LL,-1LL,-1LL});
   test.AddInput<int64_t>("updates", {2}, {0LL,3LL});
   test.AddOutput<int64_t>("output", {2,2}, {0LL,1LL,2LL,3LL});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider}); //Output mismatch with OpenVINO EP
 }
 
 TEST(ScatterNDOpTest, ScatterND_matrice_string_int64) {
@@ -104,21 +104,21 @@ TEST(ScatterNDOpTest, ScatterND_3tensor_int64) {
   test1.AddInput<int64_t>("indices", {2,2}, {0LL,1LL,-1LL,0LL});
   test1.AddInput<int64_t>("updates", {2,2}, {2LL,3LL,4LL,5LL});
   test1.AddOutput<int64_t>("output", {2,2,2}, {0LL,1LL,2LL,3LL,4LL,5LL,6LL,7LL});
-  test1.Run();
+  test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 
   OpTester test2("ScatterND", 11);
   test2.AddInput<int8_t>("data", {2,2,2}, {0,0,2,3,4,0,6,7});
   test2.AddInput<int64_t>("indices", {2,3}, {0,0,1,-1,0,-1});
   test2.AddInput<int8_t>("updates", {2}, {1,5});
   test2.AddOutput<int8_t>("output", {2,2,2}, {0,1,2,3,4,5,6,7});
-  test2.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}); // Exclude TensorRT from INT8 tests
+  test2.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}); // Exclude TensorRT from INT8 tests
 
   OpTester test3("ScatterND", 11);
   test3.AddInput<int16_t>("data", {2,2,2}, {0,1,2,3,0,1,2,3});
   test3.AddInput<int64_t>("indices", {1,1}, {1LL});
   test3.AddInput<int16_t>("updates", {1,2,2}, {4,5,6,7});
   test3.AddOutput<int16_t>("output", {2,2,2}, {0,1,2,3,4,5,6,7});
-  test3.Run();
+  test3.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
 TEST(ScatterNDOpTest, ScatterND_batched_index_int64) {

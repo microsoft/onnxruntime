@@ -246,6 +246,26 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         self._graph_info = self._graph_builder.get_graph_info()
 
+        # Map each input/initializer to its gradient index in the graph output, or -1 is gradient is not required.
+        self._gradient_map = []
+        num_user_input_grads = len(self._input_info.require_grad_names)
+        require_grad_names_set = set(self._input_info.require_grad_names)
+        require_grad_names_index = 0
+        for input_name in self._graph_info.user_input_names:
+            if input_name in require_grad_names_set:
+                self._gradient_map.append(require_grad_names_index)
+                require_grad_names_index += 1
+            else:
+                self._gradient_map.append(-1)
+
+        initializer_index = num_user_input_grads
+        for initializer_name in self._graph_info.initializer_names:
+            if initializer_name in self._graph_initializer_names_to_train:
+                self._gradient_map.append(initializer_index)
+                initializer_index += 1
+            else:
+                self._gradient_map.append(-1)
+
     def _get_session_config(self):
         """Creates and returns the session configuration to be used for the ExecutionAgent"""
 
@@ -266,6 +286,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                 # Set Conv algo search mode to HEURISTIC, which is same as PyTorch's default setting.
                 provider_option_map["cudnn_conv_algo_search"] = "HEURISTIC"
                 provider_option_map["cudnn_conv_use_max_workspace"] = "1"
+                provider_option_map["cudnn_conv1d_pad_to_nc1d"] = "1"
             if self._use_external_gpu_allocator:
                 provider_option_map["gpu_external_alloc"] = str(self._torch_alloc)
                 provider_option_map["gpu_external_free"] = str(self._torch_free)

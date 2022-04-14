@@ -23,7 +23,7 @@ Please follow the steps described below to setup development environment.
 
 ### Prerequisites
 
-- Node.js (14.0+): https://nodejs.org/ - (Optional) Use nvm ([Windows](https://github.com/coreybutler/nvm-windows) / [Mac/Linux](https://github.com/creationix/nvm)) to install Node.js
+- Node.js (16.0+): https://nodejs.org/ - (Optional) Use nvm ([Windows](https://github.com/coreybutler/nvm-windows) / [Mac/Linux](https://github.com/creationix/nvm)) to install Node.js
 
 - Python (2.7 or 3.6+): https://www.python.org/downloads/
 

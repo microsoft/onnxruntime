@@ -21,16 +21,18 @@ class OptimizationStyle(enum.Enum):
     Runtime = 1
 
 
-def _optimization_suffix(optimization_style: OptimizationStyle, suffix: str):
-    return "{}{}".format(".with_runtime_opt" if optimization_style == OptimizationStyle.Runtime else "",
-                         suffix)
+def _optimization_suffix(optimization_level_str: str, optimization_style: OptimizationStyle, suffix: str):
+    return "{}{}{}".format(f".{optimization_level_str}" if optimization_level_str != "all" else "",
+                           ".with_runtime_opt" if optimization_style == OptimizationStyle.Runtime else "",
+                           suffix)
 
 
 def _create_config_file_path(model_path_or_dir: pathlib.Path,
+                             optimization_level_str: str,
                              optimization_style: OptimizationStyle,
                              enable_type_reduction: bool):
     config_name = "{}{}".format('required_operators_and_types' if enable_type_reduction else 'required_operators',
-                                _optimization_suffix(optimization_style, ".config"))
+                                _optimization_suffix(optimization_level_str, optimization_style, ".config"))
     if model_path_or_dir.is_dir():
         return model_path_or_dir / config_name
     return model_path_or_dir.with_suffix(f".{config_name}")
@@ -99,14 +101,15 @@ def _convert(model_path_or_dir: pathlib.Path, output_dir: typing.Optional[pathli
             (output_dir / relative_model_path).parent.mkdir(parents=True, exist_ok=True)
 
             ort_target_path = (output_dir / relative_model_path).with_suffix(
-                _optimization_suffix(optimization_style, ".ort"))
+                _optimization_suffix(optimization_level_str, optimization_style, ".ort"))
 
             if create_optimized_onnx_model:
                 # Create an ONNX file with the same optimization level that will be used for the ORT format file.
                 # This allows the ONNX equivalent of the ORT format model to be easily viewed in Netron.
                 # If runtime optimizations are saved in the ORT format model, there may be some difference in the
                 # graphs at runtime between the ORT format model and this saved ONNX model.
-                optimized_target_path = (output_dir / relative_model_path).with_suffix(".optimized.onnx")
+                optimized_target_path = (output_dir / relative_model_path).with_suffix(
+                    _optimization_suffix(optimization_level_str, optimization_style, ".optimized.onnx"))
                 so = _create_session_options(optimization_level, optimized_target_path, custom_op_library,
                                              session_options_config_entries)
                 if optimization_style == OptimizationStyle.Runtime:
@@ -186,11 +189,6 @@ def parse_args():
     parser.add_argument('--allow_conversion_failures', action='store_true',
                         help='Whether to proceed after encountering model conversion failures.')
 
-    parser.add_argument('--nnapi_partitioning_stop_ops',
-                        help='Specify the list of NNAPI EP partitioning stop ops. '
-                             'In particular, specify the value of the "ep.nnapi.partitioning_stop_ops" session '
-                             'options config entry.')
-
     parser.add_argument('--target_platform', type=str, default=None, choices=['arm', 'amd64'],
                         help='Specify the target platform where the exported model will be used. '
                              'This parameter can be used to choose between platform-specific options, '
@@ -209,7 +207,9 @@ def convert_onnx_models_to_ort():
     args = parse_args()
 
     optimization_styles = [OptimizationStyle[style_str] for style_str in args.optimization_style]
-    optimization_level_str = 'all'
+    # setting optimization level is not expected to be needed by typical users, but it can be set with this
+    # environment variable
+    optimization_level_str = os.getenv("ORT_CONVERT_ONNX_MODELS_TO_ORT_OPTIMIZATION_LEVEL", "all")
     model_path_or_dir = args.model_path_or_dir.resolve()
     custom_op_library = args.custom_op_library.resolve() if args.custom_op_library else None
 
@@ -220,9 +220,6 @@ def convert_onnx_models_to_ort():
         raise FileNotFoundError("Unable to find custom operator library '{}'".format(custom_op_library))
 
     session_options_config_entries = {}
-
-    if args.nnapi_partitioning_stop_ops is not None:
-        session_options_config_entries["ep.nnapi.partitioning_stop_ops"] = args.nnapi_partitioning_stop_ops
 
     if args.target_platform == 'arm':
         session_options_config_entries["session.qdqisint8allowed"] = "1"
@@ -269,7 +266,8 @@ def convert_onnx_models_to_ort():
             print("Generating config file from ORT format models with optimization style '{}' and level '{}'".format(
                 optimization_style.name, optimization_level_str))
 
-            config_file = _create_config_file_path(model_path_or_dir, optimization_style, args.enable_type_reduction)
+            config_file = _create_config_file_path(model_path_or_dir, optimization_level_str, optimization_style,
+                                                   args.enable_type_reduction)
 
             create_config_from_models(converted_models, config_file, args.enable_type_reduction)
 

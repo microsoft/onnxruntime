@@ -105,7 +105,7 @@ namespace Dml
             &buffer,
             D3D12_RESOURCE_STATE_GENERIC_READ,
             nullptr,
-            IID_PPV_ARGS(&uploadBuffer)));
+            IID_GRAPHICS_PPV_ARGS(uploadBuffer.ReleaseAndGetAddressOf())));
 
         return Chunk{ sizeInBytes, std::move(uploadBuffer) };
     }

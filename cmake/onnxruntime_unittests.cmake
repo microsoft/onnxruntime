@@ -562,15 +562,6 @@ if(onnxruntime_USE_COREML)
   endif()
 endif()
 
-if (onnxruntime_USE_TVM)
-  file (GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
-    "${TEST_SRC_DIR}/tvm/*.h"
-    "${TEST_SRC_DIR}/tvm/*.cc"
-  )
-
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tvm)
-endif()
-
 if(WIN32)
   if (onnxruntime_USE_NUPHAR_TVM)
     list(APPEND disabled_warnings ${DISABLED_WARNINGS_FOR_TVM})
@@ -873,6 +864,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       ${BENCHMARK_DIR}/main.cc
       ${BENCHMARK_DIR}/modeltest.cc
       ${BENCHMARK_DIR}/pooling.cc
+      ${BENCHMARK_DIR}/resize.cc
       ${BENCHMARK_DIR}/batchnorm.cc
       ${BENCHMARK_DIR}/batchnorm2.cc
       ${BENCHMARK_DIR}/tptest.cc

@@ -322,6 +322,11 @@ def parse_arguments():
     parser.add_argument("--android_run_emulator", action="store_true",
                         help="Start up an Android emulator if needed.")
 
+    parser.add_argument("--use_gdk", action='store_true', help="Build with the GDK toolchain.")
+    parser.add_argument("--gdk_edition", default=os.path.normpath(os.environ.get("GameDKLatest", "")).split(os.sep)[-1],
+                        help="Build with a specific GDK edition. Defaults to the latest installed.")
+    parser.add_argument("--gdk_platform", default="Scarlett", help="Sets the GDK target platform.")
+
     parser.add_argument("--ios", action='store_true', help="build for ios")
     parser.add_argument(
         "--ios_sysroot", default="",
@@ -484,6 +489,9 @@ def parse_arguments():
     parser.add_argument(
         "--use_dml", action='store_true', help="Build with DirectML.")
     parser.add_argument(
+        "--dml_path", type=str, default="",
+        help="Path to a custom DirectML installation (must have bin/, lib/, and include/ subdirectories).")
+    parser.add_argument(
         "--use_winml", action='store_true', help="Build with WinML.")
     parser.add_argument(
         "--winml_root_namespace_override", type=str,
@@ -591,7 +599,13 @@ def parse_arguments():
         "--enable_cuda_profiling", action='store_true', help="enable cuda kernel profiling, \
         cupti library must be added to PATH beforehand.")
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.android_sdk_path:
+        args.android_sdk_path = os.path.normpath(args.android_sdk_path)
+    if args.android_ndk_path:
+        args.android_ndk_path = os.path.normpath(args.android_ndk_path)
+
+    return args
 
 
 def is_reduced_ops_build(args):
@@ -971,6 +985,23 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         if args.android_cpp_shared:
             cmake_args += ["-DANDROID_STL=c++_shared"]
 
+    if args.dml_path:
+        cmake_args += [
+            "-Donnxruntime_USE_CUSTOM_DIRECTML=ON",
+            "-Ddml_INCLUDE_DIR=" + os.path.join(args.dml_path, "include"),
+            "-Ddml_LIB_DIR=" + os.path.join(args.dml_path, "lib"),
+        ]
+
+    if args.use_gdk:
+        cmake_args += [
+            "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, 'cmake', 'gdk_toolchain.cmake'),
+            "-DGDK_EDITION=" + args.gdk_edition,
+            "-DGDK_PLATFORM=" + args.gdk_platform,
+            "-Donnxruntime_BUILD_UNIT_TESTS=OFF"  # gtest doesn't build for GDK
+        ]
+        if args.use_dml and not args.dml_path:
+            raise BuildError("You must set dml_path when building with the GDK.")
+
     if is_macOS() and not args.android:
         cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch]
         if args.use_xcode:
@@ -1159,6 +1190,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "-Donnxruntime_ENABLE_MEMLEAK_CHECKER=" +
                 ("ON" if config.lower() == 'debug' and not (args.use_nuphar or args.use_tvm) and not
                  args.use_openvino and not
+                 args.use_gdk and not
                  args.enable_msvc_static_runtime and not
                  args.disable_memleak_checker
                  else "OFF"), "-DCMAKE_BUILD_TYPE={}".format(config)],
@@ -1291,7 +1323,17 @@ def setup_migraphx_vars(args):
 
 
 def setup_dml_build(args, cmake_path, build_dir, configs):
-    if args.use_dml:
+    if not args.use_dml:
+        return
+
+    if args.dml_path:
+        for expected_file in ["bin/DirectML.dll", "lib/DirectML.lib", "include/DirectML.h"]:
+            file_path = os.path.join(args.dml_path, expected_file)
+            if not os.path.exists(file_path):
+                raise BuildError("dml_path is invalid.",
+                                 "dml_path='{}' expected_file='{}'."
+                                 .format(args.dml_path, file_path))
+    else:
         for config in configs:
             # Run the RESTORE_PACKAGES target to perform the initial
             # NuGet setup.
@@ -2137,6 +2179,10 @@ def main():
 
     # Disabling unit tests for GPU and MYRIAD on nuget creation
     if args.use_openvino != "CPU_FP32" and args.build_nuget:
+        args.test = False
+
+    # GDK builds don't support testing
+    if args.use_gdk:
         args.test = False
 
     configs = set(args.config)
