@@ -476,7 +476,16 @@ MlasConvSymGetKernelOutputCount(
     )
 {
     const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = GetConvSymDispatch(InputIsSigned);
-    return (ConvSymDispatch != nullptr) ? ConvSymDispatch->KernelOutputCount : 1;
+    return ConvSymDispatch->KernelOutputCount;
+}
+
+int32_t
+MlasConvSymDepthwiseGetKernelOutputCnt(
+    bool InputIsSigned
+    )
+{
+    const MLAS_CONV_SYM_DISPATCH* ConvSymDispatch = GetConvSymDispatch(InputIsSigned);
+    return ConvSymDispatch->KernelDepthwiseOutputCount;
 }
 
 

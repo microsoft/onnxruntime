@@ -220,4 +220,5 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchDefault = {
     nullptr,
     MLAS_GEMM_QUANT_KERNEL_DEFAULT::PackedK,
     0,
+    MLAS_GEMM_QUANT_KERNEL_DEFAULT::Strides.M
 };
