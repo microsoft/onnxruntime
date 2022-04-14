@@ -113,12 +113,14 @@ jobs:
       workingDirectory: $(Build.BinariesDirectory)/Debug
 
   - task: CmdLine@2
-    displayName: 'Get the latest ONNX weekly package for integration check'
+    displayName: 'Build and install latest ONNX from source'
     condition: eq(variables['ONNX_INTEGRATION_WEEKLY_BUILD'], '1')
     inputs:
       script: |
         python3 -m pip uninstall -y onnx
         cd $(Build.SourcesDirectory)/cmake/external/onnx
+        source workflow_scripts/protobuf/build_protobuf_unix.sh $(nproc)
+        export CMAKE_ARGS="-DONNXIFI_DUMMY_BACKEND=ON -DONNX_WERROR=ON"
         python setup.py --quiet install
 
   - task: PythonScript@0
