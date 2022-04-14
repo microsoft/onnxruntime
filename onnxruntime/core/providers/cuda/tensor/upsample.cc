@@ -50,7 +50,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
   if (rank == 0)
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                   is_resize_ ? "Resize: input tensor cannot be scalar." : "Upsample: input tensor cannot be scalar.");
-  if (rank != scales.size())
+  if (rank != static_cast<int32_t>(scales.size()))
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                   is_resize_ ? "Resize: input tensor's dimension does not match the scales." : "Upsample: input tensor's dimension does not match the scales.");
   if (roi.size() != 2 * X->Shape().GetDims().size())
