@@ -350,7 +350,7 @@ class BertOnnxModel(OnnxModel):
         if add_dynamic_axes:
             self.use_dynamic_axes()
 
-        logger.info(f"opset verion: {self.get_opset_version()}")
+        logger.info(f"opset version: {self.get_opset_version()}")
 
     def get_fused_operator_statistics(self):
         """
