@@ -137,6 +137,10 @@ struct ATenOperator {
       default:  // TODO: will add more type support if needed.
         TORCH_INTERNAL_ASSERT(false);
     }
+    if(!dlpack->dl_tensor.data){
+      // dlpack was not used to create the tensor, so explicitely calling the deleter
+      dlpack->deleter(const_cast<DLManagedTensor*>(dlpack));
+    }
 
     return i_value;
   }
