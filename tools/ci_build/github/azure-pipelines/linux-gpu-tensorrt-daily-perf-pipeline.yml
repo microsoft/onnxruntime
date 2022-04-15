@@ -40,6 +40,13 @@ parameters:
   type: boolean
   default: false
 
+- name: TrtEPOptions
+  displayName: TensorRT EP options
+  type: object
+  default:
+    - trt_max_workspace_size=4294967296
+    - trt_engine_cache_enable=$(enableCache)
+
 jobs:
 - job: 'Onnxruntime_Linux_GPU_TensorRT_Perf'
   workspace:
@@ -74,8 +81,14 @@ jobs:
       ${{ if eq(parameters.BuildORT, false) }}:
         value: $(dockerfile)
 
+    - name: trtEpOptionsKVPairs
+      value: ${{ join(',',parameters.TrtEPOptions) }}
+
     - name: optional_arguments
-      value: -a "-a -g $(optimizeGraph) -b $(bindInputs) -n $(enableCache)"
+      ${{ if not(eq(length(parameters.TrtEPOptions), 0)) }}:
+        value: -a "-a -g $(optimizeGraph) -b $(bindInputs) --trt_ep_options $(trtEpOptionsKVPairs)"
+      ${{ if eq(length(parameters.TrtEPOptions), 0) }}:
+        value: -a "-a -g $(optimizeGraph) -b $(bindInputs)"
 
   steps:
     - ${{ if eq(parameters.BuildORT, false) }}:
