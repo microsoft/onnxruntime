@@ -1120,12 +1120,8 @@ class Graph {
   */
   Status InlineFunction(Node& node);
 
-  /** Gets Model local functions from the root/parent graph.*/
-  const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& GetModelLocalFunctions() const;
-
+  /** Gets Model local function templates from the root/parent graph.*/
   const std::unordered_map<std::string, FunctionTemplate*>& GetModelLocalFunctionTemplates() const;
-
-  void InitModelLocalFunctionTemplatesMap(const std::vector<FunctionTemplate*>& model_function_templates);
 
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
   be used as a GraphProto attribute in another Node..
@@ -1145,6 +1141,10 @@ class Graph {
 
   void SetInputs(std::initializer_list<const NodeArg*> inputs) {
     SetInputs(gsl::make_span(inputs));
+  }
+
+  const Model& GetModel() {
+    return owning_model_;
   }
 
   /** Explicitly set graph outputs.
@@ -1232,9 +1232,6 @@ class Graph {
     // Whether to set that no proto sync is required after resolving.
     // Useful for resolving right after loading from a GraphProto.
     bool no_proto_sync_required = false;
-    // When set to true, graph resolve will be called for initialized function bodies as well. This is used
-    // in case of nested model local functions.
-    bool traverse_function_body = false;
   };
 
   /**
@@ -1282,6 +1279,12 @@ class Graph {
   @param subgraph_proto The GraphProto from the Node attribute.
   */
   Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::GraphProto& subgraph_proto);
+
+  Graph(const Model& owning_model, 
+      IOnnxRuntimeOpSchemaCollectionPtr schema_registry, 
+      ONNX_NAMESPACE::GraphProto& subgraph_proto, 
+      const std::unordered_map<std::string, int>& domain_version_map,
+      const logging::Logger& logger);
 #endif
 
   virtual ~Graph();
@@ -1349,7 +1352,6 @@ class Graph {
         const std::unordered_map<std::string, int>& domain_to_version,
         Version ir_version,
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
-        const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
         const logging::Logger& logger);
 
   // internal use by the Graph class only
@@ -1360,7 +1362,6 @@ class Graph {
         IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
         Graph* parent_graph,
         const Node* parent_node,
-        const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
         const logging::Logger& logger);
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
@@ -1555,10 +1556,6 @@ class Graph {
 
 #if !defined(ORT_MINIMAL_BUILD)
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
-
-  std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions_;
-
-  std::unordered_map<std::string, FunctionTemplate*> model_local_function_templates_;
 
   //Currently to make the ORT in-memory graph work, we have to create a temporary op schema
   //for the fused kernel. I really don't like it. but for short-term solution, let's host 

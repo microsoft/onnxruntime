@@ -439,7 +439,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
   return op_schema;
 }
 
-std::unique_ptr<Function> Instantiate(const onnxruntime::Graph& graph,
+std::unique_ptr<Function> Instantiate(onnxruntime::Graph& graph,
     const onnxruntime::NodeIndex& node_index,
     const ONNX_NAMESPACE::FunctionProto& onnx_func_proto,
     const logging::Logger& logger) {
@@ -644,18 +644,7 @@ std::unique_ptr<Function> Instantiate(const onnxruntime::Graph& graph,
   function_body_graph.SetInputs(graph_inputs);
   function_body_graph.SetOutputs(graph_outputs);
 
-  std::vector<FunctionTemplate*> local_function_templates;
-  for (auto kv : graph.GetModelLocalFunctionTemplates()) {
-    local_function_templates.push_back(kv.second);
-  }
-  function_body_graph.InitModelLocalFunctionTemplatesMap(local_function_templates);
-
-  // Graph resolve should be called on the parent functions only. Skip resolve if this is a nested function.
-  // Nested function bodies will be resolved along with parent function body as we set traverse_function_body to true.
-  // This is only applicable for model local functions which are schema less.
-  //if (!is_nested_function) {
   onnxruntime::Graph::ResolveOptions options;
-  options.traverse_function_body = true;
   auto status = function_body_graph.Resolve(options);
 
   ORT_ENFORCE(status.IsOK(), "Resolve subgraph failed:", status.ErrorMessage());

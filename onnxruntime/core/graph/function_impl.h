@@ -4,7 +4,7 @@
 #pragma once
 #include "core/common/logging/logging.h"
 #include "core/graph/function.h"
-#include "core/graph/model.h"
+#include "core/graph/graph.h"
 
 namespace onnxruntime {
 class Graph;
@@ -19,7 +19,7 @@ class FunctionImpl final : public Function {
   // This constructor is used during subgraph fusion in
   // graph partitioning phase. This constructor takes the nodes
   // which need to be fused and creates a function body for the fused node.
-  FunctionImpl(const onnxruntime::Graph& graph,
+  FunctionImpl(onnxruntime::Graph& graph,
                const IndexedSubGraph& nodes_to_fuse,
                const logging::Logger& logger);
 
@@ -29,7 +29,7 @@ class FunctionImpl final : public Function {
   // phase.
   // model_local_functions contains domain:optype to model_local_functions map. This is
   // used to resolve and initialize nested functions.
-  FunctionImpl(const onnxruntime::Graph& graph,
+  FunctionImpl(onnxruntime::Graph& graph,
                const ONNX_NAMESPACE::FunctionProto& onnx_func,
                const logging::Logger& logger);
 
@@ -41,7 +41,9 @@ class FunctionImpl final : public Function {
   onnxruntime::Graph& MutableBody() override;
 
  private:
-  onnxruntime::Model body_;
+  //onnxruntime::Model body_;
+  ONNX_NAMESPACE::GraphProto function_storage_proto_;
+  onnxruntime::Graph function_body_graph_;
 };
 
 namespace function_utils {

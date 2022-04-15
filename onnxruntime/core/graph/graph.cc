@@ -1109,14 +1109,12 @@ Graph::Graph(const Model& owning_model,
              const std::unordered_map<std::string, int>& domain_to_version,
              Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
-             const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
              const logging::Logger& logger)
-    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, model_functions, logger) {}
+    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, logger) {}
 
 Graph::Graph(const Model& owning_model,
              GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry, Graph* parent_graph, const Node* parent_node,
-             const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
              const logging::Logger& logger)
     : owning_model_(owning_model),
       graph_proto_(graph_proto),
@@ -1136,10 +1134,6 @@ Graph::Graph(const Model& owning_model,
   ORT_ENFORCE(graph_proto != nullptr, "graph_proto cannot be null");
   ArgNameToTypeMap name_to_type_map;
   const auto& model_path = ModelPath();
-
-  for (auto func : model_functions) {
-    model_local_functions_[function_utils::GetFunctionIdentifier(func->domain(), func->name())] = func;
-  }
 
   // Process 'Constant' nodes
   // Put the 'TensorProto' stored in the 'Constant' nodes attribute into the graphs initializer list
@@ -1289,8 +1283,23 @@ Graph::Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::Graph
             &subgraph_proto,
             parent_graph.DomainToVersionMap(), parent_graph.IrVersion(), parent_graph.schema_registry_,
             &parent_graph,
-            &parent_node, {},
+            &parent_node,
             parent_graph.logger_) {
+}
+
+Graph::Graph(const Model& owning_model, 
+    IOnnxRuntimeOpSchemaCollectionPtr schema_registry, 
+    ONNX_NAMESPACE::GraphProto& subgraph_proto, 
+    const std::unordered_map<std::string, int>& domain_version_map,
+    const logging::Logger& logger)
+    : Graph(owning_model,
+            &subgraph_proto,
+            domain_version_map, 
+            owning_model.IrVersion(), 
+            schema_registry,
+            nullptr,
+            nullptr,
+            logger) {
 }
 
 void Graph::InitializeStateFromModelFileGraphProto() {
@@ -2535,7 +2544,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       if (!node.op_) {
         // check whether it refer to a function.
         std::string func_identifier = function_utils::GetFunctionIdentifier(node.Domain(), node.OpType());
-        const auto& model_local_func_templates = GetModelLocalFunctionTemplates();
+        const auto& model_local_func_templates = owning_model_.GetModelLocalFunctionTemplates();
         auto iter = model_local_func_templates.find(func_identifier);
         if (iter != model_local_func_templates.end()) {
           // This node has a model local function proto.
@@ -2604,26 +2613,6 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   }
 
   return Status::OK();
-}
-
-const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& Graph::GetModelLocalFunctions() const {
-  if (parent_graph_ == nullptr) {
-    return model_local_functions_;
-  }
-  return parent_graph_->GetModelLocalFunctions();
-}
-
-const std::unordered_map<std::string, FunctionTemplate*>& Graph::GetModelLocalFunctionTemplates() const {
-  if (parent_graph_ == nullptr) {
-    return model_local_function_templates_;
-  }
-  return parent_graph_->GetModelLocalFunctionTemplates();
-}
-
-void Graph::InitModelLocalFunctionTemplatesMap(const std::vector<FunctionTemplate*>& model_function_templates) {
-  for (auto* func : model_function_templates) {
-    model_local_function_templates_[function_utils::GetFunctionIdentifier(func->op_schema_->domain(), func->op_schema_->Name())] = func;
-  }
 }
 
 Status Graph::VerifyInputAndInitializerNames() {

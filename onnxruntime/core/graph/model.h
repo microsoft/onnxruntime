@@ -125,6 +125,8 @@ class Model {
   // Returns empty string if not specified.
   const std::string GraphDocString() const;
 
+  const std::unordered_map<std::string, FunctionTemplate*>& GetModelLocalFunctionTemplates() const;
+
 #else
   // Get model's IR version.
   // Return <kNoVersion> if not specified.
@@ -281,8 +283,16 @@ class Model {
   // Model data.
 #if !defined(ORT_MINIMAL_BUILD)
   ONNX_NAMESPACE::ModelProto model_proto_;
-
+  // map from function id to pointer of model local function proto
+  // FunctionProto is hosted in ModelProto.
+  std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions_;
+  // this is the container that host the generated schemas for model local functions.
+  // the generated schemare will be used for graph resolving and type/shape inference.
+  // those schemas' type/shape inference will reference to the model_local_functions_ as context,
+  // so need to keep them with same lifetime.
   std::vector<std::unique_ptr<FunctionTemplate>> model_local_function_templates_;
+
+  std::unordered_map<std::string, FunctionTemplate*> model_local_function_templates_maps_;
 #else
   // properties that would normally come from ModelProto
   std::string producer_version_;

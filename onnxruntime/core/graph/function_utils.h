@@ -32,7 +32,7 @@ inline std::string GetFunctionIdentifier(const std::string& function_domain, con
   return function_domain + ":" + function_name;
 }
 
-std::unique_ptr<Function> Instantiate(const onnxruntime::Graph& graph,
+std::unique_ptr<Function> Instantiate(onnxruntime::Graph& graph,
                                       const onnxruntime::NodeIndex& node_index,
                                       const ONNX_NAMESPACE::FunctionProto& onnx_func_proto,
                                       const logging::Logger& logger);

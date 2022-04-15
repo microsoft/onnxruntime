@@ -88,34 +88,31 @@ Model::Model(const std::string& graph_name,
     opset_id_proto->set_version(domain.second);
   }
 
-  std::vector<const ONNX_NAMESPACE::FunctionProto*> model_functions;
   for (auto& func : model_local_functions) {
     auto func_ptr = model_proto_.add_functions();
     func_ptr->CopyFrom(func);
-    model_functions.emplace_back(func_ptr);
+    model_local_functions_[function_utils::GetFunctionIdentifier(func_ptr->domain(), func_ptr->name())] = func_ptr;
+  }
+
+  for (auto& func : model_proto_.functions()) {
+    auto func_schema_ptr = function_utils::CreateSchema(func.domain(),
+                                                        func.name(),
+                                                        model_local_functions_,
+                                                        *p_domain_to_version,
+                                                        *schema_registry,
+                                                        logger,
+                                                        allow_released_opsets_only);
+    auto func_template_ptr = std::make_unique<FunctionTemplate>();
+    func_template_ptr->op_schema_ = std::move(func_schema_ptr);
+    func_template_ptr->onnx_func_proto_ = &func;
+    model_local_function_templates_.push_back(std::move(func_template_ptr));
+    model_local_function_templates_maps_[function_utils::GetFunctionIdentifier(func.domain(), func.name())] = model_local_function_templates_.back().get();
   }
 
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry,
-                         model_functions, logger));
-
-  std::vector<FunctionTemplate*> model_local_func_templates;
-  for (auto& func : model_local_functions) {
-    auto func_schema_ptr = function_utils::CreateSchema(func.domain(), 
-        func.name(), 
-        graph_->GetModelLocalFunctions(), 
-        graph_->DomainToVersionMap(),
-        *schema_registry,
-        logger,
-        allow_released_opsets_only);
-    auto func_template_ptr = std::make_unique<FunctionTemplate>();
-    func_template_ptr->op_schema_ = std::move(func_schema_ptr);
-    func_template_ptr->onnx_func_proto_ = &func;
-    model_local_function_templates_.push_back(std::move(func_template_ptr));
-    model_local_func_templates.push_back(model_local_function_templates_.back().get());
-  }
-  graph_->InitModelLocalFunctionTemplatesMap(model_local_func_templates);
+                         logger));
 }
 
 Model::Model(const ModelProto& model_proto, const PathString& model_path,
@@ -214,29 +211,31 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
 
   std::vector<const ONNX_NAMESPACE::FunctionProto*> model_local_functions;
   for (auto& func : model_proto_.functions()) {
-    model_local_functions.emplace_back(&func);
+    model_local_functions_[function_utils::GetFunctionIdentifier(func.domain(), func.name())] = &func;
   }
 
-  // create instance. need to call private ctor so can't use make_unique
-  GSL_SUPPRESS(r .11)
-  graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry, model_local_functions, logger));
-
-  std::vector<FunctionTemplate*> model_local_func_templates;
   for (auto& func : model_proto_.functions()) {
-    auto func_schema_ptr = function_utils::CreateSchema(func.domain(), 
-        func.name(), 
-        graph_->GetModelLocalFunctions(), 
-        graph_->DomainToVersionMap(),
-        *schema_registry,
-        logger,
-        allow_released_opsets_only);
+    auto func_schema_ptr = function_utils::CreateSchema(func.domain(),
+                                                        func.name(),
+                                                        model_local_functions_,
+                                                        domain_to_version,
+                                                        *schema_registry,
+                                                        logger,
+                                                        allow_released_opsets_only);
     auto func_template_ptr = std::make_unique<FunctionTemplate>();
     func_template_ptr->op_schema_ = std::move(func_schema_ptr);
     func_template_ptr->onnx_func_proto_ = &func;
     model_local_function_templates_.push_back(std::move(func_template_ptr));
-    model_local_func_templates.push_back(model_local_function_templates_.back().get());
+    model_local_function_templates_maps_[function_utils::GetFunctionIdentifier(func.domain(), func.name())] = model_local_function_templates_.back().get();
   }
-  graph_->InitModelLocalFunctionTemplatesMap(model_local_func_templates);
+
+  // create instance. need to call private ctor so can't use make_unique
+  GSL_SUPPRESS(r .11)
+  graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry, logger));
+}
+
+const std::unordered_map<std::string, FunctionTemplate*>& Model::GetModelLocalFunctionTemplates() const {
+  return model_local_function_templates_maps_;
 }
 
 Version Model::IrVersion() const {
