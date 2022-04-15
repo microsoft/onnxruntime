@@ -163,8 +163,8 @@ static int GetVersionForDomain(const std::string& domain, const M<std::string, i
 static void UpdateSubgraphsWithinFunctionBody(ONNX_NAMESPACE::GraphProto& subgraph_proto,
                                               const Graph& parent_graph,
                                               const ONNX_NAMESPACE::NodeProto& function_node_in_parent_graph,
-                                              const std::unordered_map<std::string, int>& input_name_idx_map,
-                                              const std::unordered_map<std::string, int>& output_name_idx_map) {
+                                              const InlinedHashMap<std::string, int>& input_name_idx_map,
+                                              const InlinedHashMap<std::string, int>& output_name_idx_map) {
   // Iterate through all the nodes in the subgraph
   for (auto subgraph_node = subgraph_proto.mutable_node()->begin();
        subgraph_node != subgraph_proto.mutable_node()->end(); ++subgraph_node) {
@@ -485,9 +485,9 @@ Status Instantiate(onnxruntime::Graph& graph,
   output = std::make_unique<FunctionImpl>(graph, onnx_func_proto);
 
   auto& function_body_graph = output->MutableBody();
-  std::unordered_map<std::string, int> input_name_idx_map;
-  std::unordered_map<std::string, int> output_name_idx_map;
-  std::unordered_map<std::string, std::string> internal_input_output_updates;
+  InlinedHashMap<std::string, int> input_name_idx_map;
+  InlinedHashMap<std::string, int> output_name_idx_map;
+  InlinedHashMap<std::string, std::string> internal_input_output_updates;
 
   for (int i = 0; i < onnx_func_proto.input_size(); ++i) {
     input_name_idx_map[onnx_func_proto.input().Get(i)] = i;
