@@ -623,13 +623,12 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
 }
 
 int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
-  int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
   const auto& output_nodes = node_unit.GetOutputNodes();
   if (node_unit.GetOutputNodes().size() != 1) {
     LOGS_DEFAULT(VERBOSE) << "FindActivation does not support, NodeUnit [" << node_unit.Name()
                           << "] type [" << node_unit.OpType()
                           << "], with " << output_nodes.size() << " output nodes";
-    return fuse_code;
+    return ANEURALNETWORKS_FUSED_NONE;
   }
 
   const auto& outputs = node_unit.Outputs();
@@ -637,47 +636,58 @@ int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
     LOGS_DEFAULT(VERBOSE) << "FindActivation does not support, NodeUnit [" << node_unit.Name()
                           << "] type [" << node_unit.OpType()
                           << "], with " << outputs.size() << " outputs";
-    return fuse_code;
+    return ANEURALNETWORKS_FUSED_NONE;
   }
 
   const NodeArg& output = outputs[0].node_arg;
-  const auto& output_node = *output_nodes[0];
+
+  // if output is a graph output, will add activation separately
+  if (const auto& graph_outputs = graph_viewer_.GetOutputs();
+      std::find(graph_outputs.cbegin(), graph_outputs.cend(), &output) != graph_outputs.cend()) {
+    return ANEURALNETWORKS_FUSED_NONE;
+  }
 
   // TODO, add support of activation fusion for quantized node group (qdq or qlinear)
   // We do not support activation fusion for quantized operators for now
   // (usually the activations are fused already in the quantization)
-  auto quant_op_type = GetQuantizedOpType(node_unit);
-  if (quant_op_type != QuantizedOpType::Unknown)
-    return fuse_code;
+  if (auto quant_op_type = GetQuantizedOpType(node_unit);
+      quant_op_type != QuantizedOpType::Unknown) {
+    return ANEURALNETWORKS_FUSED_NONE;
+  }
 
+  const auto& output_node = *output_nodes[0];
+  int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+  bool fuse_code_assigned_from_activation = false;
   for (auto it = output_node.OutputEdgesBegin(), end = output_node.OutputEdgesEnd(); it != end; ++it) {
     const auto& dst_node = it->GetNode();
     const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];
 
-    if (&output == dst_input) {
-      const auto* dst_node_unit = GetNodeUnit(&dst_node);
-      if (!dst_node_unit) {
-        return ANEURALNETWORKS_FUSED_NONE;
-      }
-
-      if (auto activation_it = activation_node_units_.find(dst_node_unit);
-          activation_it != activation_node_units_.end()) {
-        fuse_code = activation_it->second;
-      } else {
-        // if there is any other non-relu node using the output
-        // will add relu separately
-        return ANEURALNETWORKS_FUSED_NONE;
-      }
+    if (&output != dst_input) {
+      continue;
     }
-  }
 
-  // if output is a graph output, will add activation separately
-  if (fuse_code != ANEURALNETWORKS_FUSED_NONE) {
-    const auto& graph_outputs = graph_viewer_.GetOutputs();
-    if (std::find(graph_outputs.cbegin(), graph_outputs.cend(), &output) != graph_outputs.cend()) {
+    const auto* dst_node_unit = GetNodeUnit(&dst_node);
+    if (!dst_node_unit) {
+      // output node is outside of this partition
       return ANEURALNETWORKS_FUSED_NONE;
     }
 
+    auto activation_it = activation_node_units_.find(dst_node_unit);
+    if (activation_it == activation_node_units_.end()) {
+      // output node is not a fusable activation
+      return ANEURALNETWORKS_FUSED_NONE;
+    }
+
+    if (fuse_code_assigned_from_activation) {
+      // don't overwrite an previously assigned fuse code, just don't fuse
+      return ANEURALNETWORKS_FUSED_NONE;
+    }
+
+    fuse_code = activation_it->second;
+    fuse_code_assigned_from_activation = true;
+  }
+
+  if (fuse_code != ANEURALNETWORKS_FUSED_NONE) {
     LOGS_DEFAULT(VERBOSE) << "Node [" << node_unit.Name() << "] type [" << node_unit.OpType()
                           << "], fused the output [" << output.Name() << "]";
 
