@@ -76,11 +76,11 @@ Status CreateProgramWithSource(cl_context ctx, cl_device_id dev, std::string_vie
     std::string log(ret_size + 1, '\0');
     clGetProgramBuildInfo(*program, dev, CL_PROGRAM_BUILD_LOG, log.size(), log.data(), nullptr);
     LOGS_DEFAULT(ERROR) << "\nKernel Source:>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n"
-                        << src
-                        << "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
+                        << src;
+    LOGS_DEFAULT(ERROR) << "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
                         << "\nBuild Log:\n"
                         << log
-                        << "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n";
+                        << "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^";
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "\nOpenCL Error Code  : ", static_cast<int>(err),
                            "\n       Error String: ", onnxruntime::opencl::GetErrorString(err));
