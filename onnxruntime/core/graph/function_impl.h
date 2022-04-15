@@ -20,8 +20,7 @@ class FunctionImpl final : public Function {
   // graph partitioning phase. This constructor takes the nodes
   // which need to be fused and creates a function body for the fused node.
   FunctionImpl(onnxruntime::Graph& graph,
-               const IndexedSubGraph& nodes_to_fuse,
-               const logging::Logger& logger);
+               const IndexedSubGraph& nodes_to_fuse);
 
   // This constructor is used during function body initialization for
   // a Function Op. This takes in a FunctionProto and constructs function body
@@ -30,8 +29,7 @@ class FunctionImpl final : public Function {
   // model_local_functions contains domain:optype to model_local_functions map. This is
   // used to resolve and initialize nested functions.
   FunctionImpl(onnxruntime::Graph& graph,
-               const ONNX_NAMESPACE::FunctionProto& onnx_func,
-               const logging::Logger& logger);
+               const ONNX_NAMESPACE::FunctionProto& onnx_func);
 
 
   ~FunctionImpl() override;

@@ -168,9 +168,9 @@ class Node {
   @remarks The graph containing this node must be resolved, otherwise nullptr will be returned. */
   const ONNX_NAMESPACE::OpSchema* Op() const noexcept { return op_; }
 
-  void InstantiateFunctionBody(const logging::Logger& logger);
+  Status InstantiateFunctionBody();
 
-  std::unique_ptr<Function> GetInstantiateFunctionBody(const logging::Logger& logger) const;
+  Status GetInstantiateFunctionBody(std::unique_ptr<Function>& output) const;
 
   bool CanBeInlined() const;
 
@@ -1143,8 +1143,12 @@ class Graph {
     SetInputs(gsl::make_span(inputs));
   }
 
-  const Model& GetModel() {
+  const Model& GetModel() const {
     return owning_model_;
+  }
+
+  const logging::Logger& GetLogger() const {
+    return logger_;
   }
 
   /** Explicitly set graph outputs.

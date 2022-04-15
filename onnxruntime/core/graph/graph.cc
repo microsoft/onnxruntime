@@ -577,10 +577,10 @@ bool Node::CanBeInlined() const {
   return func_body_ || func_template_ || op_ && (op_->HasFunction() || op_->HasContextDependentFunction());
 }
 
-std::unique_ptr<Function> Node::GetInstantiateFunctionBody(const logging::Logger& logger) const {
+Status Node::GetInstantiateFunctionBody(std::unique_ptr<Function>& output) const {
   // Initialize function body
   if (func_template_) {
-    return function_utils::Instantiate(*graph_, index_, *func_template_->onnx_func_proto_, logger);
+    return function_utils::Instantiate(*graph_, index_, *func_template_->onnx_func_proto_, output);
   } else if (op_ && (op_->HasFunction() || op_->HasContextDependentFunction())) {
     // This node has a schema defined function proto. If it is a context dependent function
     // then build it otherwise fetch the FunctionProto from schema.
@@ -599,24 +599,26 @@ std::unique_ptr<Function> Node::GetInstantiateFunctionBody(const logging::Logger
       }
       ONNX_NAMESPACE::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
       if (!op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto)) {
-        return nullptr;
+        // I don't know why but the existing behavior is ignore the failure here.
+        // keep the same.
+        return Status::OK();
       }
     } else {
       onnx_function_proto = *(op_->GetFunction());
     }
-    return function_utils::Instantiate(*graph_, index_, onnx_function_proto, logger);
+    return function_utils::Instantiate(*graph_, index_, onnx_function_proto, output);
   } else {
-    return nullptr;
+    return Status::OK();
   }
 }
 
-void Node::InstantiateFunctionBody(const logging::Logger& logger) {
+Status Node::InstantiateFunctionBody() {
   if (nullptr != func_body_) {
     //already instantiated.
-    return;
+    return Status::OK();
   }
 
-  func_body_ = GetInstantiateFunctionBody(logger);
+  return GetInstantiateFunctionBody(func_body_);
 }
 
 void Node::SetFunctionTemplate(const FunctionTemplate& func_template) {
@@ -3976,7 +3978,7 @@ Node& Graph::FuseSubGraph(const IndexedSubGraph& sub_graph,
   Node& fused_node = CreateFusedSubGraphNode(sub_graph, fused_node_name);
 
   // create Function before we remove nodes
-  fused_node.func_body_ = std::make_unique<FunctionImpl>(*this, sub_graph, logger_);
+  fused_node.func_body_ = std::make_unique<FunctionImpl>(*this, sub_graph);
   // remove nodes and update edges
   FinalizeFuseSubGraph(sub_graph, fused_node);
 
@@ -3987,7 +3989,7 @@ Status Graph::InlineFunction(Node& node) {
   // Remove the function node, add the nodes in function's subgraph into the
   // main graph.
   if (!node.GetFunctionBody())
-    node.InstantiateFunctionBody(logger_);
+    ORT_RETURN_IF_ERROR(node.InstantiateFunctionBody());
   const Graph& subgraph = node.GetFunctionBody()->Body();
   auto output_edges = node.GetRelationships().output_edges;
   for (const auto& output_edge : output_edges) {

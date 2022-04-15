@@ -20,13 +20,12 @@ static std::unordered_map<std::string, int> GetFunctionOpsetImports(const ONNX_N
 }
 // Construct it with fused index graph, instantiate the function directly
 FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
-                           const IndexedSubGraph& nodes_to_fuse,
-                           const logging::Logger& logger)
+                           const IndexedSubGraph& nodes_to_fuse)
     : function_body_graph_(graph.GetModel(), 
         graph.GetSchemaRegistry(), 
         function_storage_proto_,
         graph.DomainToVersionMap(),
-        logger) {
+        graph.GetLogger()) {
   auto* meta_def = nodes_to_fuse.GetMetaDef();
 
   int i = 0;
@@ -97,13 +96,12 @@ FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
 }
 
 FunctionImpl::FunctionImpl(onnxruntime::Graph& graph,
-                           const ONNX_NAMESPACE::FunctionProto& onnx_func,
-                           const logging::Logger& logger)
+                           const ONNX_NAMESPACE::FunctionProto& onnx_func)
     : function_body_graph_(graph.GetModel(),
                            graph.GetSchemaRegistry(),
                            function_storage_proto_,
                            onnx_func.opset_import_size() != 0 ? GetFunctionOpsetImports(onnx_func, graph.DomainToVersionMap()) : graph.DomainToVersionMap(),
-                           logger){
+                           graph.GetLogger()) {
 }
 
 FunctionImpl::~FunctionImpl() = default;

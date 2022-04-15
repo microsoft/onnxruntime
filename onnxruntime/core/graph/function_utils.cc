@@ -439,10 +439,10 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
   return op_schema;
 }
 
-std::unique_ptr<Function> Instantiate(onnxruntime::Graph& graph,
-    const onnxruntime::NodeIndex& node_index,
+Status Instantiate(onnxruntime::Graph& graph,
+    const onnxruntime::NodeIndex node_index,
     const ONNX_NAMESPACE::FunctionProto& onnx_func_proto,
-    const logging::Logger& logger) {
+    std::unique_ptr<Function>& output) {
   auto* node_in_parent_graph = graph.GetNode(node_index);
   ORT_ENFORCE(node_in_parent_graph);
   std::vector<const NodeArg*> graph_inputs(node_in_parent_graph->InputDefs().size(), nullptr),
@@ -477,9 +477,9 @@ std::unique_ptr<Function> Instantiate(onnxruntime::Graph& graph,
   tensor_int32.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
   tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
 
-  std::unique_ptr<Function> result = std::make_unique<FunctionImpl>(graph, onnx_func_proto, logger);
+  output = std::make_unique<FunctionImpl>(graph, onnx_func_proto);
 
-  auto& function_body_graph = result->MutableBody();
+  auto& function_body_graph = output->MutableBody();
   std::unordered_map<std::string, int> input_name_idx_map;
   std::unordered_map<std::string, int> output_name_idx_map;
   std::unordered_map<std::string, std::string> internal_input_output_updates;
@@ -637,24 +637,22 @@ std::unique_ptr<Function> Instantiate(onnxruntime::Graph& graph,
         new_attr_map[(*node_attr).name()] = std::move(attr_copy);
       }
     }
-    function_body_graph.AddNode(uniq_identifier, (*node).op_type(),
-                                (*node).doc_string(), inputs, outputs, &new_attr_map, (*node).domain());
+    function_body_graph.AddNode(uniq_identifier, node->op_type(),
+                                node->doc_string(), inputs, outputs, &new_attr_map, node->domain());
   }
 
   function_body_graph.SetInputs(graph_inputs);
   function_body_graph.SetOutputs(graph_outputs);
 
   onnxruntime::Graph::ResolveOptions options;
-  auto status = function_body_graph.Resolve(options);
+  ORT_RETURN_IF_ERROR(function_body_graph.Resolve(options));
 
-  ORT_ENFORCE(status.IsOK(), "Resolve subgraph failed:", status.ErrorMessage());
+  ORT_RETURN_IF(node_in_parent_graph->InputDefs().size() != function_body_graph.GetInputsIncludingInitializers().size(),
+    "Node " + node_in_parent_graph->Name() + "'s number of inputs is different from function body graph's number of input.");
 
-  ORT_ENFORCE(node_in_parent_graph->InputDefs().size() == function_body_graph.GetInputsIncludingInitializers().size(),
-              "Node " + node_in_parent_graph->Name() + "'s number of inputs is different from function body graph's number of input.");
-
-  ORT_ENFORCE(node_in_parent_graph->OutputDefs().size() == function_body_graph.GetOutputs().size(),
+  ORT_RETURN_IF(node_in_parent_graph->OutputDefs().size() != function_body_graph.GetOutputs().size(),
               "Node ", node_in_parent_graph->Name(), "'s number of outputs is different from function body graph's number of outputs.");
-  return result;
+  return Status::OK();
 }
 
 }

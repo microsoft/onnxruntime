@@ -12,9 +12,24 @@
 namespace onnxruntime {
 namespace function_utils {
 
+/** Create a OpSchema given a subgraph EP whant to fuse.
+* This is used when EP return fusion in GetCapability implementation.
+* @param graph The graph which host the subgraph.
+* @param nodes_to_fuse The metadata for the subgraph that EP want to fuse.
+*/
 std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph,
                                                        const IndexedSubGraph& nodes_to_fuse);
 
+/** Create a OpSchema given from a local function in onnx model.
+* @param function_domain The domain of the function.
+* @param function_name The name of the function.
+* @param model_local_functions The map of local functions in the same onnx model.
+*                              This will be used as context for the function's type/shape inference.
+* @param domain_version_map Domain to version map used in current onnx model.
+* @param schema_registry The schema registry current model is using.
+* @param logger The logger current model is using.
+* @param allow_released_opsets_only The flag whether we only enable released opset.
+*/
 std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& function_domain,
                                                        const std::string& function_name,
                                                        const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
@@ -28,14 +43,14 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
 * @param function_domain Domain for the function.
 * @param function_name Name of the function. Name should match the OpType of the node which references the function.
 */
-inline std::string GetFunctionIdentifier(const std::string& function_domain, const std::string& function_name) {
-  return function_domain + ":" + function_name;
+inline std::string GetFunctionIdentifier(const std::string_view function_domain, const std::string_view function_name) {
+  return function_domain.data() + std::string(":") + function_name.data();
 }
 
-std::unique_ptr<Function> Instantiate(onnxruntime::Graph& graph,
-                                      const onnxruntime::NodeIndex& node_index,
-                                      const ONNX_NAMESPACE::FunctionProto& onnx_func_proto,
-                                      const logging::Logger& logger);
+Status Instantiate(onnxruntime::Graph& graph,
+       const onnxruntime::NodeIndex node_index,
+       const ONNX_NAMESPACE::FunctionProto& onnx_func_proto,
+       std::unique_ptr<Function>& output);
 
 }
 
