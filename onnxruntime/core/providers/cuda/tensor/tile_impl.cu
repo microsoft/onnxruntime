@@ -107,7 +107,7 @@ size_t GetVectorizedSize(size_t num_input_elements, size_t num_elements_per_batc
   constexpr int vec2_alignment = std::alignment_of<aligned_vector<T, 2>>::value;
   N = static_cast<CUDA_LONG>(num_input_elements);
   size_t vectorized_size = 1;
-  if (num_elements_per_batch % 4 == 0 & address_input % vec4_alignment == 0 && address_output % vec4_alignment == 0) {
+  if (num_elements_per_batch % 4 == 0 && address_input % vec4_alignment == 0 && address_output % vec4_alignment == 0) {
     N /= 4;
     vectorized_size = 4;
   } else if (num_elements_per_batch % 2 == 0 && address_input % vec2_alignment == 0 &&
@@ -123,7 +123,7 @@ template <typename T>
 void TileMemcpyImpl(cudaStream_t stream, const T* input_data, T* output_data, const size_t num_input_elements,
                     const size_t repeats) {
   // If the block number from input size is too small to fill all streaming multiprocessors,
-  // it won't have perf gain to launch from inputs.
+  // it won't have perf gain to launch from inputs. In this case we will use the output based kernel.
   CUDA_LONG N;
   int blocksPerGrid;
   size_t vectorized_size =
@@ -211,7 +211,7 @@ void TileBatchedMemcpyImpl(cudaStream_t stream, const T* input_data, T* output_d
                            const size_t num_input_elements, const size_t batch_repeats,
                            const size_t repeats_per_batch) {
   // If the block number from input size is too small to fill all streaming multiprocessors,
-  // it won't have perf gain to launch from inputs.
+  // it won't have perf gain to launch from inputs. In this case we will use the output based kernel.
   CUDA_LONG N;
   int blocksPerGrid;
   size_t vectorized_size =
