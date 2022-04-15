@@ -150,11 +150,13 @@ GetQDQTestCaseFn BuildQDQMatMulTestCase(const std::vector<int64_t>& input1_shape
                                              dq1_output);
 
     // add input b initializer (NNAPI only supports case of MatMul A*B - B is an initializer)
-    auto* input_b = builder.MakeInitializer<float>(input2_shape, -1.f, 1.f);
+    auto* dq_2_output = builder.MakeIntermediate();
+    auto* input_b = builder.MakeInitializer<uint8_t>(input2_shape, InputLimits::min(), InputLimits::max());
+    builder.AddDequantizeLinearNode<uint8_t>(input_b, .04f, 0, dq_2_output);
 
     // add MatMul operator
     auto* matmul_op_output = builder.MakeIntermediate();
-    builder.AddNode("MatMul", {dq1_output, input_b}, {matmul_op_output});
+    builder.AddNode("MatMul", {dq1_output, dq_2_output}, {matmul_op_output});
 
     // add QDQ output
     auto* q3_output = builder.MakeIntermediate();
