@@ -115,7 +115,7 @@ Status ParseArguments(int argc, char* argv[], TestRunnerParameters& params, OrtT
       ("eval_interval", "Number of training steps before doing evaluation.", cxxopts::value<int>()->default_value("1000"))
       ("checkpoint_interval", "Number of training steps before saving checkpoint.", cxxopts::value<int>()->default_value("1000"))
       ("gradient_accumulation_steps", "The number of gradient accumulation steps before performing a backward/update pass.",
-        cxxopts::value<int>()->default_value("1"))
+        cxxopts::value<int>()->default_value("1"));
 
   options
     .add_options("ORT configuration")
@@ -224,11 +224,11 @@ Status RunTraining(const TestRunnerParameters& params) {
   ORT_ENFORCE(utils::Ort_Load(params.checkpoint_to_load_path, state_dicts).IsOK());
 
   Module module(params.model_training_graph_path,
-                state_dict.named_parameters,
+                state_dicts.named_parameters,
                 params.model_evaluation_graph_path);
 
   Optimizer optimizer(params.optimizer_training_graph_path,
-                      state_dicts.optimizer_states);
+                      state_dicts.named_parameters);
 
 #ifdef USE_CUDA
   utils::SetExecutionProvider(module, optimizer, params.provider.get());
@@ -270,9 +270,9 @@ Status RunTraining(const TestRunnerParameters& params) {
       if (batch_idx % SAVE_STEPS == 0) {
         // save trained weights
         utils::CheckpointStates state_dicts_to_save;
-        ORT_ENFORCE(module.GetStateDict(state_dicts_to_save.named_TestRunnerParameters).IsOK());
+        ORT_ENFORCE(module.GetStateDict(state_dicts_to_save.named_parameters).IsOK());
         ORT_ENFORCE(optimizer.GetStateDict(state_dicts_to_save.optimizer_states).IsOK());
-        std::string ckpt_file = params.output_dir + "/resnet50_" + std::string(batch_idx) + ".ckpt";
+        std::string ckpt_file = params.output_dir + "/resnet50_" + std::to_string(batch_idx) + ".ckpt";
         ORT_ENFORCE(utils::Ort_Save(state_dicts_to_save, ckpt_file).IsOK());
       }
 
