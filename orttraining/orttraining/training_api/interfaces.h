@@ -50,29 +50,35 @@ class Module {
   // training ONNX model and load parameters
   Module(const std::string& /*train_model_path_or_bytes*/,
          std::unordered_map<std::string, std::shared_ptr<Parameter>>& /*parameters*/,
-         const std::optional<std::string>& /*eval_model_path_or_bytes*/) {}
+         const std::optional<std::string>& /*eval_model_path_or_bytes*/) {
+    ORT_NOT_IMPLEMENTED("Not implemented.");
+  }
 
   // Return the trainable/nontrainable parameters
   std::vector<std::shared_ptr<Parameter>> parameters() const {
     return parameters_;
   }
   std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters() const {
+    ORT_NOT_IMPLEMENTED("Not implemented.");
     return {};
   }
 
   // Train Step – does forward and backward computation. The outputs will be the forward’s outputs. Gradients will be accumulated within the Parameter object
   Status TrainStep(const std::vector<OrtValue>& /*inputs*/, std::vector<OrtValue>& /*outputs*/) {
+    ORT_NOT_IMPLEMENTED("Not implemented.");
     return Status::OK();
   }
 
   // Eval Step – does forward computation. This will use a separate inference session
   // and take in a separate inference graph, while sharing the parameters
   Status EvalStep(const std::vector<OrtValue>& /*inputs*/, std::vector<OrtValue>& /*outputs*/) {
+    ORT_NOT_IMPLEMENTED("Not implemented.");
     return Status::OK();
   }
 
   // Return the states of the module as a map.
   Status GetStateDict(const std::unordered_map<std::string, std::shared_ptr<Parameter>>& /*module_state_dict*/) {
+    ORT_NOT_IMPLEMENTED("Not implemented.");
     return Status::OK();
   }
 
