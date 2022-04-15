@@ -264,7 +264,8 @@ Status EncoderSubgraph::CreateInitialFeeds(
   for (int i = 0; i < batch_size; i++) {
     for (int j = 0; j < sequence_length; j++, word_id++, mask++) {
       if (*word_id == pad_token_id) {
-        *mask = 0;
+        // bugbug
+        *mask = 1;
       } else {
         *mask = 1;
       }

@@ -29,6 +29,10 @@ int Sequences::GetSequenceLength() const {
   return current_length_;
 }
 
+int Sequences::GetBatchBeamSize() const {
+  return batch_beam_size_;
+}
+
 #ifdef DEBUG_BEAM_SEARCH
 void Sequences::PrintSequences(const IConsoleDumper* dumper) const {
   for (int i = 0; i < batch_beam_size_; i++) {

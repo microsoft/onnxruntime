@@ -21,6 +21,8 @@ class Sequences : public ISequences {
   // Returns current sequence length.
   int GetSequenceLength() const override;
 
+  int GetBatchBeamSize() const override;
+
 #ifdef DEBUG_BEAM_SEARCH
   // Print the sequences to StdOut in debug mode
   void PrintSequences(const IConsoleDumper* dumper) const;

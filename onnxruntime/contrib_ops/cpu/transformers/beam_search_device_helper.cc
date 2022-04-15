@@ -449,7 +449,7 @@ Status UpdateFeeds2(
     const std::vector<OrtValue>&,
     std::vector<OrtValue>& next_inputs,
     int current_length,
-    gsl::span<const int32_t> beam_next_tokens,
+    transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper) {
   // last_outputs: logits
   // next_inputs: input_ids, attention_mask, encoder_output
@@ -457,22 +457,20 @@ Status UpdateFeeds2(
   // The following updates inputs for subgraph
 
   // Update input_ids with next tokens.
-  int batch_beam_size = static_cast<int>(beam_next_tokens.length());
+  int batch_beam_size = static_cast<int>(sequences.GetBatchBeamSize());
   int64_t dims[] = {batch_beam_size, current_length};
   TensorShape input_ids_shape(&dims[0], 2);
   auto int32_type = DataTypeImpl::GetType<int32_t>();
   OrtValue input_ids;
   Tensor::InitOrtValue(int32_type, input_ids_shape, allocator, input_ids);
   int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
-  const OrtValue& past_input_id = next_inputs[1];
-  const int32_t* past_input_id_data = past_input_id.Get<Tensor>().Data<int32_t>();
-  int last_length = current_length - 1;
 
   for (int i = 0; i < batch_beam_size; i++) {
-    for (int j = 0; j < last_length; j++) {
-      input_ids_data[i * current_length + j] = past_input_id_data[i * last_length + j];
+    gsl::span<const int32_t> sequence = sequences.GetSequence(i);
+    const int32_t* sequence_data = sequence.data();
+    for (int j = 0; j < current_length; j++) {
+      input_ids_data[i * current_length + j] = sequence_data[j];
     }
-    input_ids_data[i * current_length + last_length] = beam_next_tokens[i];
   }
   next_inputs[1] = input_ids;
 
@@ -537,7 +535,7 @@ template Status UpdateFeeds2<float>(
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int current_length,
-    gsl::span<const int32_t> beam_next_tokens,
+    transformers::Sequences& sequence,
     const transformers::IConsoleDumper* dumper);
 
 }  // namespace BeamSearchCpuDeviceHelper

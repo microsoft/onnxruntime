@@ -216,7 +216,7 @@ class BeamSearchImpl {
       const std::vector<OrtValue>& last_outputs,
       std::vector<OrtValue>& next_inputs,
       int current_length,
-      gsl::span<const int32_t> beam_next_tokens);
+      Sequences& sequence);
 
   // Process logits and append next tokens to sequences.
   Status GenerateNextToken(const OrtValue& logits,
@@ -534,9 +534,9 @@ Status BeamSearchImpl<T>::UpdateFeeds2(
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int current_length,
-    gsl::span<const int32_t> beam_next_tokens) {
+    Sequences& sequences) {
   return update_feeds_func2_(temp_space_allocator_, cuda_stream_, last_outputs, next_inputs, current_length,
-                            beam_next_tokens, GetConsoleDumper());
+                             sequences, GetConsoleDumper());
 }
 
 template <typename T>
@@ -555,6 +555,14 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
   status = utils::ExecuteSubgraph(encoder_session_state_, encoder_feeds_fetches_manager, encoder_feeds, encoder_fetches, {},
                                   ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger());
   ORT_RETURN_IF_ERROR(status);
+
+  #ifdef DEBUG_BEAM_SEARCH
+    const IConsoleDumper* dumper = GetConsoleDumper();
+    dumper->Print("encoder_input_ids", encoder_feeds[0]);
+    dumper->Print("attention_mask", encoder_feeds[1]);
+    dumper->Print("encoder_outputs", encoder_fetches[0]);
+  #endif
+
   int64_t sequences_dims[] = {parameters_->batch_size, parameters_->num_return_sequences, parameters_->max_length};
   TensorShape sequences_shape(&sequences_dims[0], sizeof(sequences_dims) / sizeof(sequences_dims[0]));
   Tensor* output_sequences = context_.Output(0, sequences_shape);
@@ -633,9 +641,9 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
                         cuda_stream_);
 
 #ifdef DEBUG_BEAM_SEARCH
-  const IConsoleDumper* dumper = GetConsoleDumper();
-  dumper->Print("input_ids", decoder_feeds[1]);
-  //dumper->Print("position_ids", feeds[1]);
+  //const IConsoleDumper* dumper = GetConsoleDumper();
+  dumper->Print("encoder_outputs", decoder_feeds[0]);
+  dumper->Print("decoder_input_ids", decoder_feeds[1]);
   dumper->Print("attention_mask", decoder_feeds[2]);
 #endif
 
@@ -659,6 +667,11 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
 
     ORT_RETURN_IF_ERROR(status);
 
+    #ifdef DEBUG_BEAM_SEARCH
+      //const IConsoleDumper* dumper = GetConsoleDumper();
+      dumper->Print("logits", decoder_fetches[0]);
+    #endif
+
     const OrtValue& logits = decoder_fetches[0];
     gsl::span<int32_t> beam_next_tokens;
     gsl::span<int32_t> beam_indices;
@@ -674,8 +687,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
 
     // Prepare inputs for next round of subgraph call.
     if (current_length < parameters_->max_length) {
-      ORT_RETURN_IF_ERROR(UpdateFeeds2(decoder_fetches, decoder_feeds, current_length,
-                                      beam_next_tokens.as_span<const int32_t>()));
+      ORT_RETURN_IF_ERROR(UpdateFeeds2(decoder_fetches, decoder_feeds, current_length, cpu_state.sequences));
     }
 
     decoder_fetches.clear();

@@ -45,6 +45,7 @@ class ISequences {
   virtual ~ISequences() {}
   virtual gsl::span<const int32_t> GetSequence(int beam_index) const = 0;
   virtual int GetSequenceLength() const = 0;
+  virtual int GetBatchBeamSize() const = 0;
 };
 
 class ILogitsProcessorList {

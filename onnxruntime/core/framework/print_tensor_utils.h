@@ -8,7 +8,7 @@
 namespace onnxruntime {
 namespace utils {
 
-constexpr int64_t kDefaultSnippetEdgeItems = 3;
+constexpr int64_t kDefaultSnippetEdgeItems = 15;
 constexpr int64_t kDefaultSnippetThreshold = 200;
 
 // Skip non edge items in last dimension

@@ -9,6 +9,7 @@
 #include "gsl/gsl"
 #include "logits_processor.h"
 #include "beam_search_shared.h"
+#include "sequences.h"
 
 namespace onnxruntime {
 class IExecutionProvider;
@@ -109,7 +110,7 @@ using UpdateFeedsFunc2 = std::function<Status(
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int current_length,
-    gsl::span<const int32_t> beam_next_tokens,
+    transformers::Sequences& sequences,
     const transformers::IConsoleDumper* dumper)>;
 
 }  // namespace BeamSearchDeviceHelper
@@ -193,7 +194,7 @@ Status UpdateFeeds2(
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int current_length,
-    gsl::span<const int32_t> beam_next_tokens,
+    transformers::Sequences& sequence,
     const transformers::IConsoleDumper* dumper);
 
 }  // namespace BeamSearchCpuDeviceHelper

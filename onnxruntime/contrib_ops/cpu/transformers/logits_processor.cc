@@ -181,26 +181,31 @@ void LogitsProcessorList::Init(const BeamSearchParameters& parameters) {
   processor_list_.clear();
 
   if (parameters.repetition_penalty != 1.0f) {  // 1.0 means no penalty
+    //std::cout << "RepetitionPenaltyLogitsProcessor" << std::endl;
     repetition_penalty_processor_ = std::make_unique<RepetitionPenaltyLogitsProcessor<float>>(parameters.repetition_penalty);
     processor_list_.push_back(repetition_penalty_processor_.get());
   }
 
   if (parameters.no_repeat_ngram_size > 0) {
+    //std::cout << "NoRepeatNGramLogitsProcessor!" << std::endl;
     no_repeat_ngram_processor_ = std::make_unique<NoRepeatNGramLogitsProcessor<float>>(parameters.no_repeat_ngram_size);
     processor_list_.push_back(no_repeat_ngram_processor_.get());
   }
 
   if (!parameters.vocab_mask.empty()) {
+    //std::cout << "VocabMaskLogitsProcessor" << std::endl;
     vocab_mask_processor_ = std::make_unique<VocabMaskLogitsProcessor<float>>(parameters.vocab_mask);
     processor_list_.push_back(vocab_mask_processor_.get());
   }
 
   if (!parameters.prefix_vocab_mask.empty()) {
+    //std::cout << "PrefixVocabMaskLogitsProcessor" << std::endl;
     prefix_vocab_mask_processor_ = std::make_unique<PrefixVocabMaskLogitsProcessor<float>>(parameters.prefix_vocab_mask, parameters.batch_size);
     processor_list_.push_back(prefix_vocab_mask_processor_.get());
   }
 
   if (parameters.min_length > 0) {
+    //std::cout << "MinLengthLogitsProcessor!" << std::endl;
     min_length_processor_ = std::make_unique<MinLengthLogitsProcessor<float>>(parameters.min_length, parameters.eos_token_id);
     processor_list_.push_back(min_length_processor_.get());
   }
