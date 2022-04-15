@@ -12,6 +12,7 @@
 
 #include "gsl/gsl"
 #include "core/common/logging/logging.h"
+#include "core/common/inlined_containers.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/tensor_shape.h"
@@ -22,6 +23,7 @@
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/model.h"
 #include "core/graph/model_load_utils.h"
+#include "core/graph/node_attr_utils.h"
 #include "core/graph/op.h"
 #include "core/graph/runtime_optimization_record_container.h"
 
@@ -762,7 +764,7 @@ Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, const log
         subgraphs_.push_back(std::move(subgraph));
       }
 
-      AddAttribute(attr_proto.name(), std::move(attr_proto));
+      AddAttributeProto(std::move(attr_proto));
     }
   }
 
@@ -872,106 +874,52 @@ void Node::CreateSubgraph(const std::string& attr_name) {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-void Node::AddAttribute(std::string attr_name, const ONNX_NAMESPACE::AttributeProto& value) {
+void Node::AddAttributeProto(AttributeProto value) {
+  utils::SetNodeAttribute(std::move(value), attributes_);
+
   graph_->SetGraphResolveNeeded();
   graph_->SetGraphProtoSyncNeeded();
-  attributes_[std::move(attr_name)] = value;
 }
 
-void Node::AddAttribute(std::string attr_name, ONNX_NAMESPACE::AttributeProto&& value) {
-  graph_->SetGraphResolveNeeded();
-  graph_->SetGraphProtoSyncNeeded();
-  attributes_[std::move(attr_name)] = std::move(value);
-}
-
-static void AddAttributeHelper(Node& node, std::string attr_name,
-                               AttributeProto_AttributeType attr_type, AttributeProto&& a) {
-  a.set_name(attr_name);
-  a.set_type(attr_type);
-  node.AddAttribute(std::move(attr_name), std::move(a));
-}
-
-void Node::AddAttribute(std::string attr_name, std::string value) {
-  AttributeProto a;
-  *(a.mutable_s()) = std::move(value);
-  AddAttributeHelper(*this, std::move(attr_name),
-                     AttributeProto_AttributeType::AttributeProto_AttributeType_STRING,
-                     std::move(a));
-};
-
-#define ADD_BASIC_ATTR_IMPL(type, enumType, field)                           \
-  void Node::AddAttribute(std::string attr_name, const type& value) {        \
-    AttributeProto a;                                                        \
-    a.set_##field(value);                                                    \
-    AddAttributeHelper(*this, std::move(attr_name), enumType, std::move(a)); \
-  };
-
-#define ADD_ATTR_IMPL(type, enumType, field)                                 \
-  void Node::AddAttribute(std::string attr_name, const type& value) {        \
-    AttributeProto a;                                                        \
-    *(a.mutable_##field()) = value;                                          \
-    AddAttributeHelper(*this, std::move(attr_name), enumType, std::move(a)); \
+#define ADD_ATTR_SINGLE_IMPL(Type)                                                   \
+  void Node::AddAttribute(std::string attr_name, Type value) {                       \
+    AttributeProto a = utils::MakeAttribute(std::move(attr_name), std::move(value)); \
+    AddAttributeProto(std::move(a));                                                 \
   }
 
-#define ADD_ATTR_MOVE_IMPL(type, enumType, field)                            \
-  void Node::AddAttribute(std::string attr_name, type&& value) {             \
-    AttributeProto a;                                                        \
-    *(a.mutable_##field()) = std::move(value);                               \
-    AddAttributeHelper(*this, std::move(attr_name), enumType, std::move(a)); \
+#define ADD_ATTR_LIST_IMPL(Type)                                                 \
+  void Node::AddAttribute(std::string attr_name, gsl::span<const Type> values) { \
+    AttributeProto a = utils::MakeAttribute(std::move(attr_name), values);       \
+    AddAttributeProto(std::move(a));                                             \
   }
 
-#define ADD_LIST_ATTR_IMPL(type, enumType, field)                            \
-  void Node::AddAttribute(std::string attr_name,                             \
-                          gsl::span<type const> values) {                    \
-    AttributeProto a;                                                        \
-    auto* mutable_field = a.mutable_##field();                               \
-    for (const auto& val : values) {                                         \
-      *(mutable_field->Add()) = val;                                         \
-    }                                                                        \
-    AddAttributeHelper(*this, std::move(attr_name), enumType, std::move(a)); \
-  }
+#define ADD_ATTR_IMPLS(Type) \
+  ADD_ATTR_SINGLE_IMPL(Type) \
+  ADD_ATTR_LIST_IMPL(Type)
 
-void Node::AddAttribute(std::string attr_name, const GraphProto& value) {
-  AttributeProto a;
-  *a.mutable_g() = value;
-  // Do not move attr_name as it is needed below
-  AddAttributeHelper(*this, attr_name, AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH, std::move(a));
-
-#if !defined(ORT_MINIMAL_BUILD)
-  // subgraph is created via deserialization and not here in a minimal build
-  CreateSubgraph(attr_name);
-#endif
-};
-
-void Node::AddAttribute(std::string attr_name, GraphProto&& value) {
-  AttributeProto a;
-  *a.mutable_g() = std::move(value);
-  // Do not move attr_name as it is needed below
-  AddAttributeHelper(*this, attr_name, AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH, std::move(a));
-
-#if !defined(ORT_MINIMAL_BUILD)
-  // subgraph is created via deserialization and not here in a minimal build
-  CreateSubgraph(attr_name);
-#endif
-};
-
-ADD_BASIC_ATTR_IMPL(float, AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT, f)
-ADD_BASIC_ATTR_IMPL(int64_t, AttributeProto_AttributeType::AttributeProto_AttributeType_INT, i)
-ADD_ATTR_IMPL(TensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TENSOR, t)
-ADD_ATTR_MOVE_IMPL(TensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TENSOR, t)
-ADD_ATTR_IMPL(TypeProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TYPE_PROTO, tp)
-ADD_ATTR_MOVE_IMPL(TypeProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TYPE_PROTO, tp)
-
-ADD_LIST_ATTR_IMPL(float, AttributeProto_AttributeType::AttributeProto_AttributeType_FLOATS, floats)
-ADD_LIST_ATTR_IMPL(int64_t, AttributeProto_AttributeType::AttributeProto_AttributeType_INTS, ints)
-ADD_LIST_ATTR_IMPL(std::string, AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS, strings)
-ADD_LIST_ATTR_IMPL(TensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS, tensors)
-ADD_LIST_ATTR_IMPL(TypeProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TYPE_PROTOS, type_protos)
+ADD_ATTR_IMPLS(int64_t)
+ADD_ATTR_IMPLS(float)
+ADD_ATTR_IMPLS(std::string)
+ADD_ATTR_IMPLS(TensorProto)
 #if !defined(DISABLE_SPARSE_TENSORS)
-ADD_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSOR, sparse_tensor)
-ADD_ATTR_MOVE_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSOR, sparse_tensor)
-ADD_LIST_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSORS, sparse_tensors)
+ADD_ATTR_IMPLS(SparseTensorProto)
 #endif
+ADD_ATTR_IMPLS(TypeProto)
+
+#undef ADD_ATTR_SINGLE_IMPL
+#undef ADD_ATTR_LIST_IMPL
+#undef ADD_ATTR_IMPLS
+
+void Node::AddAttribute(std::string attr_name, GraphProto value) {
+  // Do not move attr_name as it is needed below
+  AttributeProto a = utils::MakeAttribute(attr_name, std::move(value));
+  AddAttributeProto(std::move(a));
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // subgraph is created via deserialization and not here in a minimal build
+  CreateSubgraph(attr_name);
+#endif
+};
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 bool Node::ClearAttribute(const std::string& attr_name) {
@@ -2588,8 +2536,9 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         // The attribute was not specified in the node.
         if (!attr_def.second.required) {
           if (utils::HasName(attr_def.second.default_value)) {
+            assert(attr_def.first == attr_def.second.default_value.name());
             // Set default value to the node attributes.
-            node.AddAttribute(attr_def.first, attr_def.second.default_value);
+            node.AddAttributeProto(attr_def.second.default_value);
           }
           // TODO: Handle optional attribute but no default value specified in op definition.
         } else {
@@ -2937,7 +2886,7 @@ void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer) {
+Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initializer, bool is_external) {
   // name_to_initial_tensor_ maps from name to const TensorProto*, so we first
   // look up the const pointer by name, then find and modify the mutable
   // pointed-to TensorProto in graph_proto_.
@@ -2956,6 +2905,8 @@ Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_in
     return true;
   };
 
+  ORT_RETURN_IF_NOT(!is_external || utils::HasExternalData(old_initializer), "Trying to replace non-external initializer with external data");
+
   ORT_RETURN_IF_NOT(dims_eq(), "Replacement tensor's dimensions do not match.");
   ORT_RETURN_IF_NOT(old_initializer.data_type() == new_initializer.data_type(),
                     "Replacement tensor's data type does not match.");
@@ -2969,10 +2920,28 @@ Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_in
   ORT_ENFORCE(existing_entry != mutable_initializers.pointer_end(),
               "graph_proto_ is not in sync with name_to_initial_tensor_");
 
-  **existing_entry = new_initializer;
+  **existing_entry = std::move(new_initializer);
 
   return Status::OK();
 }
+
+Status Graph::ReplaceInitializedTensor(ONNX_NAMESPACE::TensorProto new_initializer) {
+  return ReplaceInitializedTensorImpl(std::move(new_initializer), false);
+}
+
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers) {
+  for (const auto& e : external_initializers) {
+    const auto& name = e.first;
+    const OrtValue& ort_value = e.second;
+    auto tensor_proto = utils::TensorToTensorProto(ort_value.Get<Tensor>(), name);
+    ORT_RETURN_IF_ERROR(ReplaceInitializedTensorImpl(std::move(tensor_proto), true));
+    LOGS(logger_, INFO) << "Replaced external initializer: " << name;
+  }
+  return Status::OK();
+}
+#endif // DISABLE_EXTERNAL_INITIALIZERS
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 bool Graph::GetInitializedTensor(const std::string& tensor_name, const TensorProto*& value) const {
@@ -4085,7 +4054,11 @@ Status Graph::InlineFunction(Node& node) {
     } else {
       std::vector<NodeArg*> inputs, outputs;
       for (auto* input : subgraph_node.InputDefs()) {
-        if (func_input_output_names.find(input->Name()) != func_input_output_names.end()) {
+        if (input->Name().empty()) {
+          // This is a missing (optional) input. No need to rename.
+          auto& n_input = GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+          inputs.push_back(&n_input);
+        } else if (func_input_output_names.find(input->Name()) != func_input_output_names.end()) {
           auto it = remap_input_output.find(input->Name());
           if (it != remap_input_output.end()) {
             // This is a function input/output and needs to be remapped to node input for correctness
@@ -4103,7 +4076,11 @@ Status Graph::InlineFunction(Node& node) {
         }
       }
       for (auto* output : subgraph_node.OutputDefs()) {
-        if (func_input_output_names.find(output->Name()) != func_input_output_names.end()) {
+        if (output->Name().empty()) {
+          // Create empty arg (no renaming) for missing optional-outputs
+          auto& n_output = GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
+          outputs.push_back(&n_output);
+        } else if (func_input_output_names.find(output->Name()) != func_input_output_names.end()) {
           auto it = remap_input_output.find(output->Name());
           if (it != remap_input_output.end()) {
             outputs.push_back(it->second);

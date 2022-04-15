@@ -1455,7 +1455,7 @@ public class InferenceTest {
   }
 
   /** Carrier tuple for the squeeze net model. */
-  private static class SqueezeNetTuple {
+  public static class SqueezeNetTuple {
     public final OrtSession session;
     public final float[] inputData;
     public final float[] outputData;

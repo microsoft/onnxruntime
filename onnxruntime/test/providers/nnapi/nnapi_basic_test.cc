@@ -4,7 +4,10 @@
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 #include "core/common/logging/logging.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
+#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
+#include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "core/session/inference_session.h"
+#include "core/framework/tensorprotoutils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
@@ -271,9 +274,10 @@ TEST(NnapiExecutionProviderTest, TestNoShapeInputModel) {
       << "No node should be taken by the NNAPI EP";
 }
 
-static void RunQDQModelTest(const GetQDQTestCaseFn& build_test_case,
-                            const char* test_description,
-                            const EPVerificationParams& params = EPVerificationParams()) {
+static void RunQDQModelTest(
+    const GetQDQTestCaseFn& build_test_case,
+    const char* test_description,
+    const EPVerificationParams& params = EPVerificationParams()) {
   onnxruntime::Model model(test_description, false, DefaultLoggingManager().DefaultLogger());
   Graph& graph = model.MainGraph();
   ModelTestBuilder helper(graph);
@@ -290,15 +294,22 @@ static void RunQDQModelTest(const GetQDQTestCaseFn& build_test_case,
                             std::make_unique<NnapiExecutionProvider>(0),
                             helper.feeds_, params);
 #else
-  ORT_UNUSED_PARAMETER(params);
   // test load only
   SessionOptions so;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
   ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
   ASSERT_STATUS_OK(session_object.Initialize());
-  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
-      << "Some nodes should have been taken by the NNAPI EP";
+  if (params.ep_node_assignment == ExpectedEPNodeAssignment::None) {
+    ASSERT_EQ(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
+        << "No node should have been taken by the NNAPI EP";
+  } else if (params.ep_node_assignment == ExpectedEPNodeAssignment::All) {
+    ASSERT_EQ(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), session_object.GetGraph().NumberOfNodes())
+        << "All nodes should have been taken by the NNAPI EP";
+  } else {
+    ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
+        << "Some nodes should have been taken by the NNAPI EP";
+  }
 #endif
 }
 
@@ -310,7 +321,7 @@ TEST(NnapiExecutionProviderTest, TestQDQConv) {
                       {1, 1, 5, 5} /* input_shape */,
                       {1, 1, 3, 3} /* weights_shape */),
                   "nnapi_qdq_test_graph_conv",
-                  {true /* verify_entire_graph_use_ep */});
+                  {ExpectedEPNodeAssignment::All});
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQResize) {
@@ -326,7 +337,14 @@ TEST(NnapiExecutionProviderTest, TestQDQResize) {
                                          "linear" /* mode */,
                                          "asymmetric" /* coordinate_transformation_mode */),
                   "nnapi_qdq_test_graph_resize",
-                  {false /* verify_entire_graph_use_ep */});
+                  {ExpectedEPNodeAssignment::Some});
+}
+
+TEST(NnapiExecutionProviderTest, TestQDQResize_UnsupportedDefaultSetting) {
+  RunQDQModelTest(BuildQDQResizeTestCase({1, 3, 64, 64} /* input_shape */,
+                                         {1, 3, 32, 32} /* sizes_data */),
+                  "nnapi_qdq_test_graph_resize_unsupported",
+                  {ExpectedEPNodeAssignment::None});
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQAveragePool) {
@@ -336,7 +354,7 @@ TEST(NnapiExecutionProviderTest, TestQDQAveragePool) {
                       {1, 3, 32, 32} /* input_shape */),
                   "nnapi_qdq_test_graph_averagepool",
                   {
-                      true /* verify_entire_graph_use_ep */,
+                      ExpectedEPNodeAssignment::All,
                       1e-2f /* fp32_abs_err */,
                   });
 }
@@ -348,7 +366,7 @@ TEST(NnapiExecutionProviderTest, TestQDQAdd) {
                       {1, 23, 13, 13} /* input_shape */,
                       "Add" /* op_type */),
                   "nnapi_qdq_test_graph_add",
-                  {true /* verify_entire_graph_use_ep */});
+                  {ExpectedEPNodeAssignment::All});
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQMul) {
@@ -360,8 +378,8 @@ TEST(NnapiExecutionProviderTest, TestQDQMul) {
                       "Mul" /* op_type */),
                   "nnapi_qdq_test_graph_mul",
                   {
-                      true /* verify_entire_graph_use_ep */,
-                      1e-2f /* fp32_abs_err */,
+                      ExpectedEPNodeAssignment::All,
+                      1e-2f /* fp32_abs_err */
                   });
 }
 
@@ -371,28 +389,36 @@ TEST(NnapiExecutionProviderTest, TestQDQTranspose) {
                       {1, 3, 32, 32} /* input_shape */,
                       {0, 3, 1, 2} /* perms */),
                   "nnapi_qdq_test_graph_transpose",
-                  {
-                      true /* verify_entire_graph_use_ep */
-                  });
+                  {ExpectedEPNodeAssignment::All});
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQReshape) {
   RunQDQModelTest(BuildQDQReshapeTestCase({1, 3, 64, 64} /* input_shape */,
                                           {1, 64, 64, 3} /* reshape_shape */),
                   "nnapi_qdq_test_graph_reshape",
-                  {
-                      true /* verify_entire_graph_use_ep */
-                  });
+                  {ExpectedEPNodeAssignment::All});
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQSoftMax) {
   RunQDQModelTest(BuildQDQSoftMaxTestCase<uint8_t, uint8_t>(
                       {1, 32} /* input_shape */,
-                      static_cast<int64_t>(1) /* axis */),
+                      static_cast<int64_t>(1) /* axis */,
+                      1.f / 256 /* output_scales */,
+                      0 /* output_zp */),
                   "nnapi_qdq_test_graph_softmax",
-                  {
-                      true /* verify_entire_graph_use_ep */
-                  });
+                  {ExpectedEPNodeAssignment::All});
+}
+
+// This is to verify when Nnapi required scale and zero point are not satisfied
+// the model can work as expected. (no nodes should be handled by Nnapi)
+TEST(NnapiExecutionProviderTest, TestQDQSoftMax_UnsupportedOutputScaleAndZp) {
+  RunQDQModelTest(BuildQDQSoftMaxTestCase<uint8_t, uint8_t>(
+                      {1, 32} /* input_shape */,
+                      static_cast<int64_t>(1) /* axis */,
+                      0.002f /* output_scales */,
+                      1 /* output_zp */),
+                  "nnapi_qdq_test_graph_softmax_unsupported",
+                  {ExpectedEPNodeAssignment::None});
 }
 
 TEST(NnapiExecutionProviderTest, TestQDQConcat) {
@@ -403,10 +429,25 @@ TEST(NnapiExecutionProviderTest, TestQDQConcat) {
                           {1, 6, 2},
                       } /* input_shapes */,
                       2 /* axis */),
-                  "nnapi_qdq_test_graph_concat", {
-                                                     true /* verify_entire_graph_use_ep */
-                                                 });
+                  "nnapi_qdq_test_graph_concat",
+                  {ExpectedEPNodeAssignment::All});
 }
+
+#if defined(__ANDROID__)
+TEST(NnapiExecutionProviderTest, TestQDQConcat_UnsupportedInputScalesAndZp) {
+  // This is to verify all the inputs have the same scale and zp as input 0 for API 28-
+  // Currently, this test can only be run locally with a android emulator with API < 29
+  // See https://developer.android.com/studio/run/emulator-commandline for some info on
+  // starting a testing android emulator in command line. (Run an android build with emulator started)
+  // TODO: consider to configure this and enable it to run in Android CI.
+  const auto* nnapi = NnApiImplementation();
+  if (nnapi->nnapi_runtime_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
+    RunQDQModelTest(BuildQDQConcatTestCaseUnsupportedInputScaleZp(),
+                    "nnapi_qdq_test_graph_concat_unsupported",
+                    {ExpectedEPNodeAssignment::None});
+  }
+}
+#endif
 
 #endif  // !(ORT_MINIMAL_BUILD)
 

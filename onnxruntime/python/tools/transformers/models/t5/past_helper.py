@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 class PastKeyValuesHelper:
     """ Helper functions to process past key values for encoder-decoder model"""
-
     @staticmethod
     def get_past_names(num_layers, present: bool = False):
         past_self_names = []

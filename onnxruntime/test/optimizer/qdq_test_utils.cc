@@ -98,5 +98,36 @@ GetQDQTestCaseFn BuildQDQConcatTestCase(const std::vector<std::vector<int64_t>>&
   };
 }
 
+GetQDQTestCaseFn BuildQDQConcatTestCaseUnsupportedInputScaleZp() {
+  return [](ModelTestBuilder& builder) {
+    const std::vector<std::vector<int64_t>> input_shapes = {
+        {1, 6, 36},
+        {1, 6, 8},
+        {1, 6, 2},
+    };
+    int64_t axis = 2;
+
+    std::vector<NodeArg*> input_args;
+    std::vector<NodeArg*> q_input_args;
+
+    // set unmatched input scales/zp for test purpose
+    input_args.push_back(builder.MakeInput<float>(input_shapes[0], -1.f, 1.f));
+    q_input_args.push_back(AddQDQNodePair<uint8_t>(builder, input_args.back(), 0.05f, 128));
+    input_args.push_back(builder.MakeInput<float>(input_shapes[1], -1.f, 1.f));
+    q_input_args.push_back(AddQDQNodePair<uint8_t>(builder, input_args.back(), 0.04f, 127));
+    input_args.push_back(builder.MakeInput<float>(input_shapes[2], -1.f, 1.f));
+    q_input_args.push_back(AddQDQNodePair<uint8_t>(builder, input_args.back(), 0.03f, 126));
+
+    auto* concat_output = builder.MakeIntermediate();
+    Node& concat_node = builder.AddNode("Concat", q_input_args, {concat_output});
+    concat_node.AddAttribute("axis", axis);
+
+    auto* q_concat_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(concat_output, 0.05f, 128, q_concat_output);
+    auto* output_arg = builder.MakeOutput();
+    builder.AddDequantizeLinearNode<uint8_t>(q_concat_output, 0.05f, 128, output_arg);
+  };
+}
+
 }  // namespace test
 }  // namespace onnxruntime

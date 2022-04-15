@@ -754,10 +754,13 @@ void TrainingSession::AddPreTrainingTransformers(const IExecutionProvider& execu
 }
 
 // Registers all the predefined transformers with transformer manager
-Status TrainingSession::AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                                  TransformerLevel graph_optimization_level,
-                                                  bool saving_runtime_optimizations) const {
-  ORT_RETURN_IF(saving_runtime_optimizations, "Saving runtime optimizations is not supported by TrainingSession.");
+Status TrainingSession::AddPredefinedTransformers(
+    GraphTransformerManager& transformer_manager,
+    TransformerLevel graph_optimization_level,
+    MinimalBuildOptimizationHandling minimal_build_optimization_handling) const {
+  ORT_RETURN_IF_NOT(
+      minimal_build_optimization_handling == MinimalBuildOptimizationHandling::ApplyFullBuildOptimizations,
+      "Only applying full build optimizations is supported by TrainingSession.");
 
   ORT_RETURN_IF_NOT(graph_optimization_level <= TransformerLevel::MaxLevel,
                     "Exceeded max transformer level. Current level is set to " +

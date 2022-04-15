@@ -323,7 +323,7 @@ void DmlCommandRecorder::Open()
             m_queue->GetType(),
             m_commandAllocatorRing.GetCurrentAllocator(),
             nullptr,
-            IID_PPV_ARGS(&m_currentCommandList)));   
+            IID_GRAPHICS_PPV_ARGS(m_currentCommandList.ReleaseAndGetAddressOf())));   
     }
     else
     {

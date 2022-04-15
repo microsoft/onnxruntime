@@ -37,7 +37,7 @@ namespace GraphKernelHelper
             &resourceDesc,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
             nullptr,
-            IID_PPV_ARGS(buffer.GetAddressOf())));
+            IID_GRAPHICS_PPV_ARGS(buffer.GetAddressOf())));
 
         ORT_THROW_IF_FAILED(provider->UploadToResource(buffer.Get(), tensorPtr, tensorByteSize));
 
@@ -75,7 +75,7 @@ namespace GraphKernelHelper
             &resourceDesc,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
             nullptr,
-            IID_PPV_ARGS(buffer.GetAddressOf())));
+            IID_GRAPHICS_PPV_ARGS(buffer.GetAddressOf())));
 
         // Map the buffer and copy the data
         void* bufferData = nullptr;

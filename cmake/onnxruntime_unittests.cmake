@@ -528,6 +528,13 @@ if(onnxruntime_USE_TENSORRT)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tensorrt onnxruntime_providers_shared)
 endif()
 
+if(onnxruntime_USE_MIGRAPHX)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/migraphx/*)
+  list(APPEND onnxruntime_test_framework_src_patterns  "${ONNXRUNTIME_ROOT}/core/providers/migraphx/migraphx_execution_provider_utils.h")
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_migraphx)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx onnxruntime_providers_shared)
+endif()
+
 if(onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/nnapi/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nnapi)
@@ -553,15 +560,6 @@ if(onnxruntime_USE_COREML)
     list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_coreml)
     list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_coreml)
   endif()
-endif()
-
-if (onnxruntime_USE_TVM)
-  file (GLOB_RECURSE onnxruntime_test_tvm_src CONFIGURE_DEPENDS
-    "${TEST_SRC_DIR}/tvm/*.h"
-    "${TEST_SRC_DIR}/tvm/*.cc"
-  )
-
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_tvm)
 endif()
 
 if(WIN32)
@@ -866,6 +864,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       ${BENCHMARK_DIR}/main.cc
       ${BENCHMARK_DIR}/modeltest.cc
       ${BENCHMARK_DIR}/pooling.cc
+      ${BENCHMARK_DIR}/resize.cc
       ${BENCHMARK_DIR}/batchnorm.cc
       ${BENCHMARK_DIR}/batchnorm2.cc
       ${BENCHMARK_DIR}/tptest.cc

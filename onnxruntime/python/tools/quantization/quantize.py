@@ -29,9 +29,9 @@ from .calibrate import CalibrationDataReader, create_calibrator, CalibrationMeth
 
 def optimize_model(model_path : Path):
     '''
-        Generate model that applies graph optimization (constant folding,etc.)
+        Generate model that applies graph optimization (constant folding, etc.)
         parameter model_path: path to the original onnx model
-        return: optimized onnx model
+    :return: optimized onnx model
     '''
     opt_model_path = generate_identified_filename(model_path, "-opt")
     sess_option = SessionOptions()
@@ -73,7 +73,6 @@ def quantize(model,
              nbits=8,
              quantization_mode=QuantizationMode.IntegerOps,
              static=False,
-             force_fusions=False,
              symmetric_activation=False,
              symmetric_weight=False,
              quantization_params=None,
@@ -179,7 +178,6 @@ def quantize_static(model_input,
         QOperator format quantizes the model with quantized operators directly.
         QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
     :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default.
-    :param op_types: operators to quantize
     :param per_channel: quantize weights per channel
     :param reduce_range: quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode
     :param activation_type: quantization data type of activation. Please refer to https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
@@ -309,8 +307,6 @@ def quantize_dynamic(model_input: Path,
     :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default
     :param per_channel: quantize weights per channel
     :param reduce_range: quantize weights with 7-bits. It may improve the accuracy for some models running on non-VNNI machine, especially for per-channel mode
-    :param nbits: number of bits to represent quantized data. Currently only supporting 8-bit types
-    :param activation_type: quantization data type of activation. Please refer to https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
     :param weight_type: quantization data type of weight. Please refer to https://onnxruntime.ai/docs/performance/quantization.html for more details on data type selection
     :param nodes_to_quantize:
         List of nodes names to quantize. When this list is not None only the nodes in this list
@@ -323,8 +319,9 @@ def quantize_dynamic(model_input: Path,
     :param nodes_to_exclude:
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
-    :parma use_external_data_format: option used for large size (>2GB) model. Set to False by default.
-        :param extra_options:
+    :param optimize_model: optimize model before quantization.
+    :param use_external_data_format: option used for large size (>2GB) model. Set to False by default.
+    :param extra_options:
         key value pair dictionary for various options in different case. Current used:
             extra.Sigmoid.nnapi = True/False  (Default is False)
             ActivationSymmetric = True/False: symmetrize calibration data for activations (default is False).

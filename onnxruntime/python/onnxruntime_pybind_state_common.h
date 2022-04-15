@@ -157,7 +157,7 @@ extern std::string nuphar_settings;
 }  // namespace onnxruntime
 #endif
 #ifdef USE_TVM
-#include "core/providers/tvm/tvm_execution_provider_info.h"
+#include "core/providers/tvm/tvm_ep_options.h"
 #endif
 #ifdef USE_VITISAI
 #include "core/providers/vitisai/vitisai_provider_factory.h"
@@ -470,6 +470,9 @@ PyObject* ToDlpack(OrtValue ort_value);
 // create a OrtValue. This function calls DlpackToOrtValue(...) to do the conversion.
 OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor);
 
+// Destructor for Capsule object holding a DLPack structure.
+void DlpackCapsuleDestructor(PyObject* data);
+
 #endif
 
 }  // namespace python
@@ -484,7 +487,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(i
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 #ifdef USE_TVM
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const TvmExecutionProviderInfo& info);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const tvm::TvmEPOptions& info);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const char* params);
 #endif
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id,

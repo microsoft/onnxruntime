@@ -94,16 +94,6 @@ void FunctionTestCase::AssertEqual(const std::vector<OrtValue>& results1, const 
   }
 }
 
-void FunctionTestCase::AddInput(std::string input_name, std::vector<int64_t> shape, std::vector<float> data, std::vector<std::string> symshape) {
-  auto arg_type = (symshape.size() > 0) ? TensorType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, symshape) : TensorType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, shape);
-  input_args.emplace_back(input_name, &arg_type);
-
-  OrtValue ort_value;
-  CreateMLValue<float>(provider->GetAllocator(0, OrtMemTypeDefault), shape, data, &ort_value);
-  input_values.push_back(std::make_pair(input_name, ort_value));
-  input_value_map.insert(std::make_pair(input_name, ort_value));
-}
-
 void FunctionTestCase::AddOutput(std::string output_name) {
   if (!output_name.empty()) output_names.emplace_back(output_name);
   output_args.emplace_back(output_name, nullptr);
@@ -114,6 +104,14 @@ void FunctionTestCase::AddAttribute(const char* attr_name, int64_t attr_val) {
   axis_attr.set_name(attr_name);
   axis_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT);
   axis_attr.set_i(attr_val);
+  attributes[attr_name] = axis_attr;
+}
+
+void FunctionTestCase::AddAttribute(const char* attr_name, const char* attr_val) {
+  ONNX_NAMESPACE::AttributeProto axis_attr;
+  axis_attr.set_name(attr_name);
+  axis_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING);
+  axis_attr.set_s(attr_val);
   attributes[attr_name] = axis_attr;
 }
 
