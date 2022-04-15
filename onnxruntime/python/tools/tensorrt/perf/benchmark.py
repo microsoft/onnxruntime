@@ -1104,7 +1104,7 @@ def run_onnxruntime(args, models):
                         "fp16": fp16,
                         "io_binding": args.io_binding,
                         "graph_optimizations": args.graph_enablement,
-                        "enable_cache": args.enable_cache,
+                        "enable_cache": eval_bool_str(args.trt_ep_options.get(enable_cache_key)),
                         "model_name": name,
                         "inputs": len(sess.get_inputs()),
                         "batch_size": batch_size,
@@ -1720,9 +1720,6 @@ def parse_arguments():
     parser.add_argument("-b", "--io_binding", required=False, default=False, help="Bind Inputs")
     
     parser.add_argument("-g", "--graph_enablement", required=False, default=enable_all, choices=[disable, basic, extended, enable_all], help="Choose graph optimization enablement.")
-
-    # TODO: Remove this argument (set with --trt_ep_options)
-    parser.add_argument("-n", "--enable_cache", required=False, default=True, help="Enable ORT-TRT Caching")
 
     parser.add_argument("--ep", required=False, default=None, help="Specify ORT Execution Provider.") 
 

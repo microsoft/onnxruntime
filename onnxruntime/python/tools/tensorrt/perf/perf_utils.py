@@ -59,7 +59,17 @@ extended = 'extended'
 enable_all = 'all'
 
 # default TRT EP options
-default_trt_ep_options = {"trt_max_workspace_size": "4294967296", "trt_engine_cache_enable": "True"}
+enable_cache_key = "trt_engine_cache_enable"
+max_workspace_key = "trt_max_workspace_size"
+default_trt_ep_options = {max_workspace_key: "4294967296", enable_cache_key: "True"}
+
+def eval_bool_str(val):
+    if val in ('True', 'true', '1'):
+        return True
+    elif val in ('False', 'false', '0', None):
+        return False
+    else:
+        raise ValueError("Invalid bool value {}".format(repr(val)))
 
 def is_standalone(ep):
     return ep == standalone_trt or ep == standalone_trt_fp16
