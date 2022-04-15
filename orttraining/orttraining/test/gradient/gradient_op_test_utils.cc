@@ -205,15 +205,20 @@ void GradientOpTester::Run(
             if (!node.CanBeInlined()) {
               valid = false;
             } else {
-              auto node_func = node.GetInstantiateFunctionBody(logging::LoggingManager::DefaultLogger());
-              for (auto& sub_node : node_func->Body().Nodes()) {
-                if (sub_node.OpType() != "Constant") {
-                  auto sub_reg = execution_provider->GetKernelRegistry();
-                  const KernelCreateInfo* sub_kci;
-                  st = sub_reg->TryFindKernel(sub_node, execution_provider->Type(), &sub_kci);
-                  if (!st.IsOK()) {
-                    valid = false;
-                    break;
+              std::unique_ptr<Function> node_func;
+              st = node.GetInstantiateFunctionBody(node_func);
+              if (!st.IsOK()) {
+                valid = false;
+              } else {
+                for (auto& sub_node : node_func->Body().Nodes()) {
+                  if (sub_node.OpType() != "Constant") {
+                    auto sub_reg = execution_provider->GetKernelRegistry();
+                    const KernelCreateInfo* sub_kci;
+                    st = sub_reg->TryFindKernel(sub_node, execution_provider->Type(), &sub_kci);
+                    if (!st.IsOK()) {
+                      valid = false;
+                      break;
+                    }
                   }
                 }
               }
