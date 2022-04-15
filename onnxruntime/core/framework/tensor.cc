@@ -60,8 +60,21 @@ void Tensor::InitOrtValue(MLDataType p_type, const TensorShape& shape, void* p_d
 }
 
 size_t Tensor::SizeInBytes() const {
+  int64_t size = shape_.Size();
+#ifdef ENABLE_TRAINING
+  if (!IsContiguous()) {
+    size = 1;
+    for (size_t dim = 0; dim < shape_.NumDimensions(); ++dim) {
+      if (shape_[dim] == 0) {
+        size = 0;
+        break;
+      }
+      size += strides_[dim] * (shape_[dim] - 1);
+    }
+  }
+#endif
   size_t ret;
-  if (!IAllocator::CalcMemSizeForArray(SafeInt<size_t>(shape_.Size()), dtype_->Size(), &ret)) {
+  if (!IAllocator::CalcMemSizeForArray(SafeInt<size_t>(size), dtype_->Size(), &ret)) {
     ORT_THROW("tensor size overflow");
   }
   return ret;
