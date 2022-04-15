@@ -679,7 +679,7 @@ int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
     }
 
     if (fuse_code_assigned_from_activation) {
-      // don't overwrite an previously assigned fuse code, just don't fuse
+      // don't overwrite a previously assigned fuse code, just don't fuse
       return ANEURALNETWORKS_FUSED_NONE;
     }
 
