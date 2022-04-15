@@ -1120,9 +1120,6 @@ class Graph {
   */
   Status InlineFunction(Node& node);
 
-  /** Gets Model local function templates from the root/parent graph.*/
-  const std::unordered_map<std::string, FunctionTemplate*>& GetModelLocalFunctionTemplates() const;
-
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
   be used as a GraphProto attribute in another Node..
   e.g. when creating a Graph instance that will be used as a subgraph in a control flow operator, it is necessary to
@@ -1564,7 +1561,7 @@ class Graph {
   //Currently to make the ORT in-memory graph work, we have to create a temporary op schema
   //for the fused kernel. I really don't like it. but for short-term solution, let's host 
   //those schemas here.
-  std::vector<std::unique_ptr<ONNX_NAMESPACE::OpSchema>> fused_schemas_containers_;
+  InlinedVector<std::unique_ptr<ONNX_NAMESPACE::OpSchema>> fused_schemas_containers_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   // Graph nodes.

@@ -234,7 +234,7 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry, logger));
 }
 
-const std::unordered_map<std::string, FunctionTemplate*>& Model::GetModelLocalFunctionTemplates() const {
+const InlinedHashMap<std::string, FunctionTemplate*>& Model::GetModelLocalFunctionTemplates() const {
   return model_local_function_templates_maps_;
 }
 

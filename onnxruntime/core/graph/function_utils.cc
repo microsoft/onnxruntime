@@ -14,18 +14,19 @@ namespace ONNX_NAMESPACE {
 void InferShapeForFunctionNode(
     InferenceContext& ctx,
     const FunctionProto& func_proto,
-    const std::unordered_map<std::string, int>& func_opset_imports,
+    const onnxruntime::InlinedHashMap<std::string, int>& func_opset_imports,
     const ShapeInferenceOptions& options,
     const ISchemaRegistry* schema_registry,
-    const std::unordered_map<std::string, const FunctionProto*>& in_model_functions,
+    const onnxruntime::InlinedHashMap<std::string, const FunctionProto*>& in_model_functions,
     std::function<std::string(const std::string& function_domain, const std::string& function_name)> get_func_id) {
   GraphProto g;
   // Get a temporary tensor-shape map
   const auto num_func_inputs = func_proto.input_size();
   std::unordered_map<std::string, TypeProto*> value_types_by_name;
-  std::vector<TypeProto> types_cache(func_proto.input_size());
+  onnxruntime::InlinedVector<TypeProto> types_cache;
+  types_cache.reserve(func_proto.input_size());
   for (int i = 0; i < num_func_inputs; ++i) {
-    types_cache[i] = *ctx.getInputType(i);
+    types_cache.push_back(*ctx.getInputType(i));
     value_types_by_name[func_proto.input().Get(i)] = &types_cache[i];
   }
 
@@ -84,7 +85,7 @@ void InferShapeForFunctionNode(
         return;
       }
 
-      std::unordered_map<std::string, int> func_node_opset_imports;
+      onnxruntime::InlinedHashMap<std::string, int> func_node_opset_imports;
       for (const auto& opset_import : iter->second->opset_import()) {
         // If graph imports does not contain opset_import then insert it otherwise the one in graph imports overrides.
         // If the opset imports are not compatible then this will be caught during function body inline.
@@ -136,7 +137,8 @@ namespace function_utils {
 
 // Utilify function to get the imported version of domain from opset imports
 // Returns -1 if requested domain is not found in the opset_imports
-static int GetVersionForDomain(const std::string& domain, const std::unordered_map<std::string, int>& opset_imports) {
+template <template <typename, typename> class M>
+static int GetVersionForDomain(const std::string& domain, const M<std::string, int>& opset_imports) {
   auto it = opset_imports.find(domain);
   if (it == opset_imports.end()) {
     return -1;
@@ -243,8 +245,8 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph,
 // TODO: revisit to see if we can eliminate typeconstraint step
 static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto,
                                    std::unique_ptr<ONNX_NAMESPACE::OpSchema>& op_schema,
-                                   const std::unordered_map<std::string, int>& input_name_idx_map,
-                                   const std::unordered_map<std::string, int>& output_name_idx_map) {
+                                   const InlinedHashMap<std::string, int>& input_name_idx_map,
+                                   const InlinedHashMap<std::string, int>& output_name_idx_map) {
   std::vector<std::pair<std::string, std::string>> input_types_list(onnx_func_proto.input_size());
   std::vector<std::pair<std::string, std::string>> output_types_list(onnx_func_proto.output_size());
 
@@ -271,12 +273,14 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
                    ONNX_NAMESPACE::OpSchema::all_tensor_sequence_types().cend());
 
   auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
-  std::unordered_map<std::string, int> opset_imports;
+  InlinedHashMap<std::string, int> opset_imports;
   for (const auto& relied_opset : onnx_func_proto.opset_import()) {
     opset_imports[relied_opset.domain()] = static_cast<int>(relied_opset.version());
   }
   for (const auto& node : onnx_func_proto.node()) {
-    int domain_version = GetVersionForDomain(node.domain(), opset_imports);
+    auto it = opset_imports.find(node.domain());
+    ORT_ENFORCE(it != opset_imports.end(), "No opset registered for domain " + node.domain() + " in function opset imports.");
+    int domain_version = it->second;
     ORT_ENFORCE(domain_version != -1, "No opset registered for domain " + node.domain() + " in function opset imports.");
     const auto node_op_schema =
         schema_registry->GetSchema(node.op_type(), domain_version, node.domain());
@@ -369,7 +373,7 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
 
 std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& function_domain,
     const std::string& function_name,
-    const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
+    const InlinedHashMap<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
     const std::unordered_map<std::string, int>& domain_version_map,
     const SchemaRegistryManager& schema_registry,
     const logging::Logger& logger,
@@ -386,14 +390,15 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
   // For schema defined functions get the version from the node in parent graph.
   // For the functions which do not have schema defined (model local functions)
   // get the since version from the version in opset imports using the domain.
-  auto since_version = GetVersionForDomain(function_domain, domain_version_map);
+  auto it = domain_version_map.find(function_domain);
+  auto since_version = it == domain_version_map.end() ? -1 : it->second;
   auto op_schema = std::make_unique<ONNX_NAMESPACE::OpSchema>();
   op_schema->SetName(function_name);
   op_schema->SetDomain(function_domain);
   op_schema->SetDoc(onnx_func_proto->doc_string());
   op_schema->SinceVersion(static_cast<ONNX_NAMESPACE::OperatorSetVersion>(since_version));
-  std::unordered_map<std::string, int> input_name_idx_map;
-  std::unordered_map<std::string, int> output_name_idx_map;
+  InlinedHashMap<std::string, int> input_name_idx_map;
+  InlinedHashMap<std::string, int> output_name_idx_map;
 
   for (int i = 0; i < onnx_func_proto->input_size(); ++i) {
     input_name_idx_map[onnx_func_proto->input().Get(i)] = i;
@@ -410,7 +415,7 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
   const auto onnx_released_versions =
       schema_registry.GetLastReleasedOpsetVersions(false);
 
-  std::unordered_map<std::string, int> func_domain_to_version;
+  InlinedHashMap<std::string, int> func_domain_to_version;
   for (auto& opSet : onnx_func_proto->opset_import()) {
     const auto& domain = opSet.domain();
     const auto version = gsl::narrow_cast<int>(opSet.version());
