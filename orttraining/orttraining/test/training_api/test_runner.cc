@@ -29,29 +29,7 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
 }  // namespace onnxruntime
 #endif
 
-static SessionOptions session_options = {
-    ExecutionMode::ORT_SEQUENTIAL,     // execution_mode
-    ExecutionOrder::PRIORITY_BASED,    // execution_order
-    false,                             // enable_profiling
-    ORT_TSTR(""),                      // optimized_model_filepath
-    true,                              // enable_mem_pattern
-    true,                              // enable_mem_reuse
-    true,                              // enable_cpu_mem_arena
-    ORT_TSTR("onnxruntime_profile_"),  // profile_file_prefix
-    "",                                // session_logid
-    -1,                                // session_log_severity_level
-    0,                                 // session_log_verbosity_level
-    5,                                 // max_num_graph_transformation_steps
-    TransformerLevel::Level1,          // graph_optimization_level
-    {},                                // intra_op_param
-    {},                                // inter_op_param
-    {},                                // free_dimension_overrides
-    true,                              // use_per_session_threads
-    true,                              // thread_pool_allow_spinning
-    false,                             // use_deterministic_compute
-    {},                                // config_options
-    {},                                // initializers_to_share_map
-};
+static SessionOptions session_options;
 
 namespace onnxruntime {
 namespace training {
@@ -60,11 +38,11 @@ namespace api_test {
 struct TestRunnerParameters {
   PathString model_training_graph_path;
   PathString model_evaluation_graph_path;
-
   PathString optimizer_training_graph_path;
-
   // path to checkpoint to load
   PathString checkpoint_to_load_path;
+  std::string model_name;
+
   PathString train_data_dir;
   PathString test_data_dir;
   PathString output_dir;  // Output of training, e.g., trained model files.
@@ -101,6 +79,9 @@ Status ParseArguments(int argc, char* argv[], TestRunnerParameters& params, OrtT
        "The path to the checkpoint to load. If not provided, the latest "
        "checkpoint in checkpoints_dir, if any, is used.",
         cxxopts::value<std::string>()->default_value(""))
+      ("model_name",
+       "The name of the model.",
+        cxxopts::value<std::string>()->default_value("model_test"))
 
       ("train_data_dir", "Input ONNX example files (can be a glob or comma separated).",
         cxxopts::value<std::string>()->default_value("bert_data/128/books_wiki_en_corpus/train"))
@@ -132,6 +113,7 @@ Status ParseArguments(int argc, char* argv[], TestRunnerParameters& params, OrtT
     params.model_evaluation_graph_path = ToPathString(flags["model_evaluation_graph_path"].as<std::string>());
     params.optimizer_training_graph_path = ToPathString(flags["optimizer_training_graph_path"].as<std::string>());
     params.checkpoint_to_load_path = ToPathString(flags["checkpoint_to_load_path"].as<std::string>());
+    params.model_name = flags["model_name"].as<std::string>();
 
     params.train_batch_size = flags["train_batch_size"].as<int>();
     if (flags.count("eval_batch_size")) {
@@ -198,20 +180,23 @@ static void CreateInputOrtValue(gsl::span<const int64_t> dims,
                    DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
 }
 
-std::vector<std::vector<OrtValue>> CreateTestDataLoader(AllocatorPtr alloc = nullptr) {
+std::vector<std::vector<OrtValue>> CreateSyntheticDataLoader(size_t batch_size,
+                                                             AllocatorPtr alloc = nullptr) {
   OrtValue input, positions;
-  // hard code batch size = 4.
+  // hard coded each sample to have 4 elements so far.
+  // todo: we can make it support more generic once we are clear what our offline process graph needed.
   CreateInputOrtValue(std::array<int64_t, 4>{4}, std::vector<int64_t>{1, 2, 3, 4}, &input, alloc = alloc);
   CreateInputOrtValue(std::array<int64_t, 4>{4}, std::vector<int64_t>{1, 2, 3, 3}, &positions, alloc = alloc);
-  return std::vector<std::vector<OrtValue>>(20, std::vector<OrtValue>{input, positions});
+  return std::vector<std::vector<OrtValue>>(batch_size, std::vector<OrtValue>{input, positions});
 }
 
-float GetLossValue(const Tensor& loss_tensor) {
+float GetLossValue(OrtValue& ort_value) {
+  const Tensor& loss_tensor = ort_value.Get<Tensor>();
   float loss = 0;
   if (DataTypeImpl::GetType<float>() == loss_tensor.DataType()) {
     loss = *(loss_tensor.template Data<float>());
-  } else if (DataTypeImpl::GetType<MLFloat16>() == loss_tensor.DataType()) {
-    loss = math::halfToFloat(loss_tensor.template Data<MLFloat16>()->val);
+  } else {
+    ORT_THROW("loss data type not supported.");
   }
   return loss;
 }
@@ -235,7 +220,9 @@ Status RunTraining(const TestRunnerParameters& params) {
 #endif
 
   auto scheduler = std::make_unique<LinearScheduler>(optimizer, 0.3333f, 1.0f, 5);
-  std::vector<std::vector<OrtValue>> data_loader = CreateTestDataLoader(params.input_allocator);
+  std::vector<std::vector<OrtValue>>
+      data_loader = CreateSyntheticDataLoader(params.train_batch_size,
+                                              params.input_allocator);
 
   size_t NUM_EPOCHS = params.num_train_epochs;
   size_t GRAD_ACC_STEPS = params.gradient_accumulation_steps;
@@ -249,10 +236,9 @@ Status RunTraining(const TestRunnerParameters& params) {
       std::vector<OrtValue> fetches;
       ORT_ENFORCE(module.TrainStep(inputs, fetches).IsOK());
 
-      const Tensor& loss_tensor = fetches[3].Get<Tensor>();
-
-      tensorboard->AddSummary(*(loss_tensor.template Data<std::string>()), batch_idx, tag);
-      std::cout << "Batch # : " << batch_idx << " Loss: " << GetLossValue(loss_tensor) << std::endl;
+      float loss = GetLossValue(fetches[3]);
+      tensorboard->AddSummary(std::to_string(loss), batch_idx, tag);
+      std::cout << "Batch # : " << batch_idx << " Loss: " << loss << std::endl;
 
       if (batch_idx % GRAD_ACC_STEPS == 0) {
         // gradient accumulation steps completed
@@ -272,7 +258,7 @@ Status RunTraining(const TestRunnerParameters& params) {
         utils::CheckpointStates state_dicts_to_save;
         ORT_ENFORCE(module.GetStateDict(state_dicts_to_save.named_parameters).IsOK());
         ORT_ENFORCE(optimizer.GetStateDict(state_dicts_to_save.optimizer_states).IsOK());
-        std::string ckpt_file = params.output_dir + "/resnet50_" + std::to_string(batch_idx) + ".ckpt";
+        std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx);
         ORT_ENFORCE(utils::Ort_Save(state_dicts_to_save, ckpt_file).IsOK());
       }
 
@@ -307,7 +293,6 @@ int main(int argc, char* argv[]) {
                                                   ort_params.vlog_level};
 #ifdef USE_CUDA
   OrtCUDAProviderOptions provider_options{};
-  provider_options.do_copy_in_default_stream = true;
   if (auto factory = CreateExecutionProviderFactory_Cuda(&provider_options))
     params.provider = std::move(factory->CreateProvider());
 
