@@ -9,7 +9,6 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
-#include "core/framework/bfc_arena.h"
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/training_api/interfaces.h"
@@ -18,6 +17,7 @@ using namespace onnxruntime;
 using namespace onnxruntime::common;
 using namespace onnxruntime::training;
 using namespace onnxruntime::training::tensorboard;
+using namespace onnxruntime::training::api_test;
 using namespace std;
 
 #ifdef USE_CUDA
@@ -30,10 +30,6 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
 #endif
 
 static SessionOptions session_options;
-
-namespace onnxruntime {
-namespace training {
-namespace api_test {
 
 struct TestRunnerParameters {
   PathString model_training_graph_path;
@@ -205,8 +201,8 @@ Status RunTraining(const TestRunnerParameters& params) {
   std::string tensorboard_file = params.output_dir + "/tb.event";
   std::shared_ptr<EventWriter> tensorboard = std::make_shared<EventWriter>(tensorboard_file);
 
-  utils::CheckpointStates state_dicts;
-  ORT_ENFORCE(utils::Ort_Load(params.checkpoint_to_load_path, state_dicts).IsOK());
+  api_test::utils::CheckpointStates state_dicts;
+  ORT_ENFORCE(api_test::utils::Ort_Load(params.checkpoint_to_load_path, state_dicts).IsOK());
 
   Module module(params.model_training_graph_path,
                 state_dicts.named_parameters,
@@ -216,7 +212,7 @@ Status RunTraining(const TestRunnerParameters& params) {
                       state_dicts.named_parameters);
 
 #ifdef USE_CUDA
-  utils::SetExecutionProvider(module, optimizer, params.provider.get());
+  api_test::utils::SetExecutionProvider(module, optimizer, params.provider.get());
 #endif
 
   auto scheduler = std::make_unique<LinearScheduler>(optimizer, 0.3333f, 1.0f, 5);
@@ -255,11 +251,11 @@ Status RunTraining(const TestRunnerParameters& params) {
 
       if (batch_idx % SAVE_STEPS == 0) {
         // save trained weights
-        utils::CheckpointStates state_dicts_to_save;
+        api_test::utils::CheckpointStates state_dicts_to_save;
         ORT_ENFORCE(module.GetStateDict(state_dicts_to_save.named_parameters).IsOK());
         ORT_ENFORCE(optimizer.GetStateDict(state_dicts_to_save.optimizer_states).IsOK());
         std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx);
-        ORT_ENFORCE(utils::Ort_Save(state_dicts_to_save, ckpt_file).IsOK());
+        ORT_ENFORCE(api_test::utils::Ort_Save(state_dicts_to_save, ckpt_file).IsOK());
       }
 
       batch_idx++;
@@ -303,6 +299,3 @@ int main(int argc, char* argv[]) {
   RETURN_IF_FAIL(RunTraining(params));
   return 0;
 }
-}  // namespace api_test
-}  // namespace training
-}  // namespace onnxruntime
