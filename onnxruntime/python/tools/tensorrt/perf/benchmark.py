@@ -905,9 +905,8 @@ def run_symbolic_shape_inference(model_path, new_model_path):
         logger.error(e)
         return False, "Symbolic shape inference error"
 
-# TODO: trt_provider_options should come from script args
-def get_provider_options(providers, trt_provider_options):
-    return [trt_provider_options if ep == trt_ep else {} for ep in providers]
+def get_provider_options(providers, trt_ep_options):
+    return [trt_ep_options if ep == trt_ep else {} for ep in providers]
 
 def time_and_create_session(model_path, providers, provider_options, session_options):
     start = datetime.now()
@@ -1001,12 +1000,10 @@ def run_onnxruntime(args, models):
             logger.info("[Initialize]  model = {}, ep = {} ...".format(name, ep))
 
             # Set environment variables for ort-trt benchmarking 
-            trt_provider_options = {}
+            trt_ep_options = copy.deepcopy(args.trt_ep_options)
             if "ORT-TRT" in ep:
-                trt_provider_options["trt_fp16_enable"] = "True" if "Fp16" in ep else "False"
-                trt_provider_options["trt_max_workspace_size"] = "4294967296"
-                if args.enable_cache:
-                    trt_provider_options["trt_engine_cache_enable"] = "True"
+                trt_ep_options["trt_fp16_enable"] = "True" if "Fp16" in ep else "False"
+
             fp16 = False
             
             # use float16.py for cuda fp16 only            
@@ -1062,7 +1059,7 @@ def run_onnxruntime(args, models):
                 else:         
                     # resolve providers to create session
                     providers = ep_to_provider_list[ep] 
-                    provider_options = get_provider_options(providers, trt_provider_options)
+                    provider_options = get_provider_options(providers, trt_ep_options)
                     options = onnxruntime.SessionOptions()
                     
                     enablement = args.graph_enablement
@@ -1089,6 +1086,7 @@ def run_onnxruntime(args, models):
                     
                     logger.info("start to inference {} with {} ...".format(name, ep))
                     logger.info(sess.get_providers())
+                    logger.info(sess.get_provider_options())
 
                     if sess:
                         logger.info("Model inputs nodes:")
@@ -1155,7 +1153,7 @@ def run_onnxruntime(args, models):
                 time.sleep(1) # avoid to generate same profile file name
 
                 providers = ep_to_provider_list[ep]
-                provider_options = get_provider_options(providers, trt_provider_options)
+                provider_options = get_provider_options(providers, trt_ep_options)
 
                 # create onnxruntime inference session
                 try:
@@ -1173,6 +1171,7 @@ def run_onnxruntime(args, models):
 
                 logger.info("start to inference {} with {} ...".format(name, ep))
                 logger.info(sess.get_providers())
+                logger.info(sess.get_provider_options())
 
                 if sess:
                     logger.info("Model inputs nodes:")
@@ -1681,6 +1680,21 @@ def str2bool(v):
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
+class ParseDictArgAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string):
+        dict_arg = {}
+
+        for kv in values.split(","):
+            try:
+                k, v = kv.split("=")
+            except ValueError:
+                # Terminates the program.
+                parser.error("argument {opt_str}: Expected '=' between key and value".format(opt_str=option_string))
+
+            dict_arg[k] = v
+
+        setattr(namespace, self.dest, dict_arg)
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
     
@@ -1697,6 +1711,9 @@ def parse_arguments():
     parser.add_argument("-w", "--workspace", required=False, default="/", help="Workspace to find tensorrt and perf script (with models if parsing with model file)")
     
     parser.add_argument("-e", "--ep_list", nargs="+", required=False, default=None, help="Specify ORT Execution Providers list.")
+
+    parser.add_argument("--trt_ep_options", required=False, default=default_trt_ep_options, action=ParseDictArgAction, metavar="Opt1=Val1,Opt2=Val2...",
+                        help="Specify options for the ORT TensorRT Execution Provider")
     
     parser.add_argument("-z", "--track_memory", required=False, default=True, help="Track CUDA and TRT Memory Usage")
 
@@ -1704,6 +1721,7 @@ def parse_arguments():
     
     parser.add_argument("-g", "--graph_enablement", required=False, default=enable_all, choices=[disable, basic, extended, enable_all], help="Choose graph optimization enablement.")
 
+    # TODO: Remove this argument (set with --trt_ep_options)
     parser.add_argument("-n", "--enable_cache", required=False, default=True, help="Enable ORT-TRT Caching")
 
     parser.add_argument("--ep", required=False, default=None, help="Specify ORT Execution Provider.") 
@@ -1732,6 +1750,7 @@ def parse_arguments():
     parser.add_argument("--system_info_csv", required=False, default=None, help="")
 
     args = parser.parse_args()
+
     return args
 
 def setup_logger(verbose):

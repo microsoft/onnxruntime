@@ -58,6 +58,9 @@ basic = 'basic'
 extended = 'extended'
 enable_all = 'all'
 
+# default TRT EP options
+default_trt_ep_options = {"trt_max_workspace_size": "4294967296", "trt_engine_cache_enable": "True"}
+
 def is_standalone(ep):
     return ep == standalone_trt or ep == standalone_trt_fp16
 
