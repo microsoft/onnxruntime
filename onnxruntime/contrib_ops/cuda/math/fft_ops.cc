@@ -19,7 +19,7 @@ void SetFFTState(FFTState* state,
                  cudaDataType exec_type) {
   memset(state, 0, sizeof(FFTState));
   state->signal_ndim = signal_ndim;
-  for (auto i = 0; i < static_cast<int64_t>(signal_dims.size()); ++i) {
+  for (int64_t i = 0; i < static_cast<int64_t>(signal_dims.size()); ++i) {
     state->signal_dims[i] = signal_dims[i];
   }
   state->itype = itype;
