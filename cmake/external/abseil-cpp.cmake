@@ -13,16 +13,27 @@ else()
   set(ABSL_PATCH_COMMAND "")
 endif()
 
-# NB! Advancing Abseil version changes its internal namespace,
-# currently absl::lts_20211102 which affects abseil-cpp.natvis debugger
-# visualization file, that must be adjusted accordingly, unless we eliminate
-# that namespace at build time.
-FetchContent_Declare(
-    abseil_cpp
-    URL ${DEP_URL_abseil_cpp}
-    URL_HASH SHA1=${DEP_SHA1_abseil_cpp}
-    PATCH_COMMAND ${ABSL_PATCH_COMMAND}
-)
+# CMake prior to 3.18.2 may over-patch during rebuild.
+# https://gitlab.kitware.com/cmake/cmake/-/issues/21086
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.18.2)
+  FetchContent_Declare(
+      abseil_cpp
+      GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git
+      GIT_TAG 20220623.1
+      PATCH_COMMAND ${ABSL_PATCH_COMMAND}
+  )
+else()
+  # NB! Advancing Abseil version changes its internal namespace,
+  # currently absl::lts_20211102 which affects abseil-cpp.natvis debugger
+  # visualization file, that must be adjusted accordingly, unless we eliminate
+  # that namespace at build time.
+  FetchContent_Declare(
+      abseil_cpp
+      URL ${DEP_URL_abseil_cpp}
+      URL_HASH SHA1=${DEP_SHA1_abseil_cpp}
+      PATCH_COMMAND ${ABSL_PATCH_COMMAND}
+  )
+endif()
 
 onnxruntime_fetchcontent_makeavailable(abseil_cpp)
 FetchContent_GetProperties(abseil_cpp)
