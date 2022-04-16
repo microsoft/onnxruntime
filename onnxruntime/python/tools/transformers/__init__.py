@@ -3,6 +3,4 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
-from . import (
-    models,
-)
+from .models.gpt2 import gpt2_helper

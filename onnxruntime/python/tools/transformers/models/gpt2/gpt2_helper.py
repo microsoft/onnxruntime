@@ -449,6 +449,8 @@ class Gpt2Helper:
             if auto_mixed_precision:
                 Gpt2Helper.auto_mixed_precision(m)
             else:
+                if "keep_io_types" not in kwargs:
+                    kwargs["keep_io_types"] = False
                 m.convert_float_to_float16(use_symbolic_shape_infer=True, **kwargs)
 
         m.save_model_to_file(optimized_model_path, use_external_data_format)
@@ -495,10 +497,9 @@ class Gpt2Helper:
         else:
             logger.warning(f"Failed to find MatMul node for logits. Found {node.op_type} of node {node.name}")
 
-        if is_weight_fp16_precision:
-            keep_io_types = []
-            node_block_list = []
-        else:
+        keep_io_types = []
+        node_block_list = []
+        if (not is_weight_fp16_precision) and (last_matmul_node is not None):
             # When original weight is float32 precision, keep logits and last MatMul in float32 could get better precision.
             keep_io_types = [logits_output_name]
             node_block_list = [last_matmul_node.name]
