@@ -810,14 +810,7 @@ bool ReshapeOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
 
   // We will go through all the output edges
   for (auto it = output_node.OutputEdgesBegin(), end = output_node.OutputEdgesEnd(); it != end; ++it) {
-    const auto* dest_node_unit_ptr = model_builder.GetNodeUnit(&it->GetNode());
-    if (!dest_node_unit_ptr) {
-      LOGS_DEFAULT(VERBOSE) << "Reshape/Flatten can not be skipped when an output node is not in the partition"
-                            << ", output name, " << output_name
-                            << ", to external " << it->GetNode().OpType() << " node";
-      return false;
-    }
-    const auto& dest_node_unit = *dest_node_unit_ptr;
+    const auto& dest_node_unit = model_builder.GetNodeUnit(&it->GetNode());
     const auto& op_type = dest_node_unit.OpType();
     // TODO add quantized matmul when reshape support quantized input
     if (op_type != "Gemm" && op_type != "MatMul") {

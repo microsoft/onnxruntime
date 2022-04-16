@@ -109,8 +109,8 @@ class ModelBuilder {
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
 
   // Get the NodeUnit which contains the given node
-  // Returns nullptr if `node` is not in the graph viewer
-  const NodeUnit* GetNodeUnit(const Node* node) const;
+  // the given node must be in the underlying graph_viewer
+  const NodeUnit& GetNodeUnit(const Node* node) const;
 
  private:
   const NnApi* nnapi_{nullptr};

@@ -145,11 +145,10 @@ void ModelBuilder::PreprocessActivations() {
   }
 }
 
-const NodeUnit* ModelBuilder::GetNodeUnit(const Node* node) const {
-  if (auto node_unit_it = node_unit_map_.find(node); node_unit_it != node_unit_map_.end()) {
-    return node_unit_it->second;
-  }
-  return nullptr;
+const NodeUnit& ModelBuilder::GetNodeUnit(const Node* node) const {
+  const auto node_unit_it = node_unit_map_.find(node);
+  ORT_ENFORCE(node_unit_it != node_unit_map_.end(), "Node does not have corresponding NodeUnit.");
+  return *node_unit_it->second;
 }
 
 void ModelBuilder::PreprocessNodeUnits() {
@@ -486,9 +485,7 @@ Status ModelBuilder::AddOperations() {
   for (const auto node_idx : node_indices) {
     LOGS_DEFAULT(VERBOSE) << "Adding node [" << node_idx << "]";
     const auto* node(graph_viewer_.GetNode(node_idx));
-    const NodeUnit* node_unit_ptr = GetNodeUnit(node);
-    ORT_RETURN_IF(node_unit_ptr == nullptr, "Node from graph viewer does not have corresponding NodeUnit.");
-    const NodeUnit& node_unit = *node_unit_ptr;
+    const NodeUnit& node_unit = GetNodeUnit(node);
 
     // Since we may have NodeUnit with multiple nodes, insert NodeUnit with the first occurrence of
     // its node(s) in topological order may cause the incorrect topological order while inserting
@@ -666,13 +663,8 @@ int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
       continue;
     }
 
-    const auto* dst_node_unit = GetNodeUnit(&dst_node);
-    if (!dst_node_unit) {
-      // output node is outside of this partition
-      return ANEURALNETWORKS_FUSED_NONE;
-    }
-
-    auto activation_it = activation_node_units_.find(dst_node_unit);
+    const auto& dst_node_unit = GetNodeUnit(&dst_node);
+    auto activation_it = activation_node_units_.find(&dst_node_unit);
     if (activation_it == activation_node_units_.end()) {
       // output node is not a fusable activation
       return ANEURALNETWORKS_FUSED_NONE;
