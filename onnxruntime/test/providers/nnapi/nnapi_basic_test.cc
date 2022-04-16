@@ -504,6 +504,7 @@ TEST(NnapiExecutionProviderTest, ActivationOutsideOfPartition) {
       std::make_unique<NnapiExecutionProvider>(0, nnapi_partitioning_stop_ops)));
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
   ASSERT_STATUS_OK(session_object.Initialize());
+  // expect one NNAPI partition
   ASSERT_EQ(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 1);
 }
 
