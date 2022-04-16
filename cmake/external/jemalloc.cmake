@@ -1,6 +1,7 @@
 include (ExternalProject)
 
-set(JEMALLOC_URL https://github.com/jemalloc/jemalloc/releases/download/4.1.1/jemalloc-4.1.1.tar.bz2)
+set(JEMALLOC_URL https://github.com/jemalloc/jemalloc.git)
+set(JEMALLOC_TAG 4.1.1)
 set(JEMALLOC_BUILD ${CMAKE_CURRENT_BINARY_DIR}/jemalloc/src/jemalloc)
 set(JEMALLOC_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/jemalloc/install)
 
@@ -12,9 +13,9 @@ endif()
 
 ExternalProject_Add(jemalloc
       PREFIX jemalloc
-      URL ${JEMALLOC_URL}
+      GIT_REPOSITORY ${JEMALLOC_URL}
+      GIT_TAG ${JEMALLOC_TAG}
       INSTALL_DIR ${JEMALLOC_INSTALL}
-      DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
       BUILD_COMMAND $(MAKE)
       BUILD_IN_SOURCE 1
       INSTALL_COMMAND $(MAKE) install
