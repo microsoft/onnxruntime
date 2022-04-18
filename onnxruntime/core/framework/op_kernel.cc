@@ -236,6 +236,7 @@ InstantKernelContext::InstantKernelContext(const OrtValue* const* input_values,
                                                                             allocator_(allocator) {}
 
 int InstantKernelContext::NumVariadicInputs(size_t arg_num) const {
+  ORT_ENFORCE(arg_num < input_count_, "invalid arg_num.");
   auto ort_value = input_values_[arg_num];
   if (ort_value->IsTensor()) {
     return static_cast<int>(ort_value->Get<Tensor>().Shape().Size());

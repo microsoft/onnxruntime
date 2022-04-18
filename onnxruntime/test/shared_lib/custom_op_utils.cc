@@ -13,8 +13,6 @@ template <typename T>
 void cuda_slice(const T*, int64_t, int64_t, T*, cudaStream_t compute_stream);
 #endif
 
-#include <iostream>
-
 void MyCustomKernel::Compute(OrtKernelContext* context) {
   // Setup inputs
   const OrtValue* input_X = ort_.KernelContext_GetInput(context, 0);
@@ -216,8 +214,11 @@ InstantCustomKernel::InstantCustomKernel(Ort::CustomOpApi ort, const OrtKernelIn
                (const char**)add_type_constrait_names,
                (const ONNXTensorElementDataType*)add_type_constrait_values,
                1, nullptr, 0, &op_add);
+  ORT_ENFORCE(op_add, "op_add not initialzied");
   InitTopK(ort, info);
+  ORT_ENFORCE(op_topk, "op_add not initialzied");
   InitGru(ort, info);
+  ORT_ENFORCE(op_gru, "op_add not initialzied");
 }
 
 void InstantCustomKernel::InitTopK(Ort::CustomOpApi ort, const OrtKernelInfo* info) {
@@ -252,11 +253,6 @@ void InstantCustomKernel::InitTopK(Ort::CustomOpApi ort, const OrtKernelInfo* in
 }
 
 void InstantCustomKernel::InvokeTopK(OrtKernelContext* context) {
-  if (!op_topk) {
-    std::cout << "warning: TopK invoking skipped." << std::endl;
-    return;
-  }
-
   auto mem_info = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemType::OrtMemTypeCPU);
 
   float raw_x[10] = {6., 3., 4., 8., 7., 1., 9., 0., 5., 2.};
@@ -334,11 +330,6 @@ void InstantCustomKernel::InitGru(Ort::CustomOpApi ort, const OrtKernelInfo* inf
 }
 
 void InstantCustomKernel::InvokeGru(OrtKernelContext* context) {
-  if (!op_gru) {
-    std::cout << "warning: Gru invoking skipped." << std::endl;
-    return;
-  }
-
   auto mem_info = Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtArenaAllocator, OrtMemType::OrtMemTypeCPU);
 
   float raw_x[2] = {1.0f, 2.0f};

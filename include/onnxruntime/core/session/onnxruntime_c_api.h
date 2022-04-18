@@ -3416,7 +3416,7 @@ struct OrtApi {
                   _Inout_ OrtValue* const* output_values,
                   _In_ int output_count);
 
-  /* \brief: Release a onnxruntime operator
+  /* \brief: Release an onnxruntime operator
   *
   * \param[in] operator created by OrtApi::CreateOp
   * 

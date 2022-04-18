@@ -21,10 +21,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOpAttr,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::ReleaseOpAttr, _Frees_ptr_opt_ OrtOpAttr*) {
-  API_IMPL_BEGIN
+ORT_API(void, OrtApis::ReleaseOpAttr, _Frees_ptr_opt_ OrtOpAttr*) {
   ORT_THROW("ReleaseOpAttr is not implemented for minimal build.");
-  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateOp,
@@ -35,7 +33,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOp,
                     _In_ const char**,
                     _In_ const ONNXTensorElementDataType*,
                     _In_ int,
-                    _In_ const OrtOpAttr*,
+                    _In_ const OrtOpAttr* const*,
                     _In_ int,
                     _Out_ OrtOp**) {
   API_IMPL_BEGIN
@@ -45,7 +43,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOp,
 
 ORT_API_STATUS_IMPL(OrtApis::InvokeOp,
                     _In_ const OrtKernelContext*,
-                    _In_ const OrtOp,
+                    _In_ const OrtOp*,
                     _In_ const OrtValue* const*,
                     _In_ int,
                     _Inout_ OrtValue* const*,
@@ -55,10 +53,8 @@ ORT_API_STATUS_IMPL(OrtApis::InvokeOp,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::ReleaseOp, _Frees_ptr_opt_ OrtOp*) {
-  API_IMPL_BEGIN
+ORT_API(void, OrtApis::ReleaseOp, _Frees_ptr_opt_ OrtOp*) {
   ORT_THROW("ReleaseOp is not implemented for minimal build.");
-  API_IMPL_END
 }
 
 #else
@@ -217,15 +213,15 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOp,
                     _Outptr_ OrtOp** ort_op) {
   API_IMPL_BEGIN
   auto status = onnxruntime::instant::CreateOp(info,
-                                                     op_name,
-                                                     domain,
-                                                     version,
-                                                     type_constraint_names,
-                                                     type_constraint_values,
-                                                     type_constraint_count,
-                                                     attr_values,
-                                                     attr_count,
-                                                     ort_op);
+                                               op_name,
+                                               domain,
+                                               version,
+                                               type_constraint_names,
+                                               type_constraint_values,
+                                               type_constraint_count,
+                                               attr_values,
+                                               attr_count,
+                                               ort_op);
   if (status.IsOK()) {
     return nullptr;
   } else {
