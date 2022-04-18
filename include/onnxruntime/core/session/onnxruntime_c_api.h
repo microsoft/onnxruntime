@@ -227,6 +227,16 @@ typedef enum OrtErrorCode {
   ORT_EP_FAIL,
 } OrtErrorCode;
 
+typedef enum OrtOpAttrType {
+  ORT_OP_ATTR_UNDEFINED = 0,
+  ORT_OP_ATTR_INT,
+  ORT_OP_ATTR_INTS,
+  ORT_OP_ATTR_FLOAT,
+  ORT_OP_ATTR_FLOATS,
+  ORT_OP_ATTR_STRING,
+  ORT_OP_ATTR_STRINGS,
+} OrtOpAttrType;
+
 //! @}
 #define ORT_RUNTIME_CLASS(X) \
   struct Ort##X;             \
@@ -257,6 +267,8 @@ ORT_RUNTIME_CLASS(ArenaCfg);
 ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
 ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
 ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
+ORT_RUNTIME_CLASS(Op);
+ORT_RUNTIME_CLASS(OpAttr);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -317,8 +329,8 @@ struct OrtKernelContext;
 typedef struct OrtKernelContext OrtKernelContext;
 struct OrtCustomOp;
 typedef struct OrtCustomOp OrtCustomOp;
-typedef void* OrtOp;
-typedef void* OrtOpAttr;
+//typedef void* OrtOp;
+//typedef void* OrtOpAttr;
 
 typedef enum OrtAllocatorType {
   OrtInvalidAllocator = -1,
@@ -3332,17 +3344,47 @@ struct OrtApi {
                   _In_reads_(input_len) const char* const* initializer_names,
                   _In_reads_(input_len) const OrtValue* const* initializers, size_t initializers_num);
 
-  ORT_API2_STATUS(CreateAttribute,
+  /** \brief: Create attribute of onnxruntime operator
+  * 
+  * \param[in] name of the attribute
+  * \param[in] data of the attribute
+  * \param[in] data length
+  * \param[in] data type
+  * \param[out] attribute that has been created, which must be released by OrtApi::ReleaseOpAttr
+  * 
+  * \since Version 1.12.
+  */
+  ORT_API2_STATUS(CreateOpAttr,
                   _In_ const char* name,
                   _In_ const void* data,
                   _In_ int len,
-                  _In_ ONNXTensorElementDataType type,
-                  _In_opt_ int is_array,
-                  _Outptr_ OrtOpAttr* op_attr);
+                  _In_ OrtOpAttrType type,
+                  _Outptr_ OrtOpAttr** op_attr);
 
-  ORT_API2_STATUS(ReleaseAttribute, _Inout_ OrtOpAttr* op_attr);
+  /* \brief: Release op attribute
+  *
+  * \param[in] attribute created by OrtApi::CreateOpAttr
+  * 
+  * \since Version 1.12.
+  */
+  ORT_CLASS_RELEASE(OpAttr);
 
-  ORT_API2_STATUS(CreateOperator,
+  /** \brief: Create onnxruntime native operator
+  * 
+  * \param[in] kernel info 
+  * \param[in] operator name
+  * \param[in] operator domain
+  * \param[in] operator opset
+  * \param[in] name of the type contraints, such as "T" or "T1"
+  * \param[in] type of each contraints
+  * \param[in] number of contraints
+  * \param[in] attributes used to initialize the operator
+  * \param[in] number of the attributes
+  * \param[out] operator that has been created
+  * 
+  * \since Version 1.12.
+  */
+  ORT_API2_STATUS(CreateOp,
                   _In_ const OrtKernelInfo* info,
                   _In_ const char* op_name,
                   _In_ const char* domain,
@@ -3350,19 +3392,37 @@ struct OrtApi {
                   _In_opt_ const char** type_constraint_names,
                   _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
                   _In_opt_ int type_constraint_count,
-                  _In_opt_ const OrtOpAttr* attr_values,
+                  _In_opt_ const OrtOpAttr* const* attr_values,
                   _In_opt_ int attr_count,
-                  _Outptr_ OrtOp* ort_op);
+                  _Outptr_ OrtOp** ort_op);
 
-  ORT_API2_STATUS(InvokeOperator,
+  /** \brief: Invoke the operator created by OrtApi::CreateOp
+  * The inputs must follow the order as specified in onnx specification
+  * 
+  * \param[in] kernel context
+  * \param[in] operator that has been created
+  * \param[in] inputs
+  * \param[in] number of inputs
+  * \param[in] outputs
+  * \param[in] number of outputs
+  * 
+  * \since Version 1.12.
+  */
+  ORT_API2_STATUS(InvokeOp,
                   _In_ const OrtKernelContext* context,
-                  _In_ const OrtOp ort_op,
+                  _In_ const OrtOp* ort_op,
                   _In_ const OrtValue* const* input_values,
                   _In_ int input_count,
                   _Inout_ OrtValue* const* output_values,
                   _In_ int output_count);
 
-  ORT_API2_STATUS(ReleaseOperator, _Inout_ OrtOp* op);
+  /* \brief: Release a onnxruntime operator
+  *
+  * \param[in] operator created by OrtApi::CreateOp
+  * 
+  * \since Version 1.12.
+  */
+  ORT_CLASS_RELEASE(Op);
 };
 
 /*

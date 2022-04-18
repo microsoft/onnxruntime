@@ -45,7 +45,7 @@ class KernelRegistry {
   Status TryFindKernel(const Node& node, ProviderType exec_provider,
                        const KernelCreateInfo** out) const;
 
-  // Find KernelCreateInfo in eager mode
+  // Find KernelCreateInfo in instant mode
   Status TryFindKernel(const std::string& op_name, const std::string& domain, const int& version,
                        const std::unordered_map<std::string, MLDataType>& type_constraints,
                        ProviderType exec_provider, const KernelCreateInfo** out) const;

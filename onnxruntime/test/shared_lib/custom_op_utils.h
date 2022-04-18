@@ -222,9 +222,9 @@ struct InstantCustomKernel {
   void InvokeGru(OrtKernelContext* context);
 
   Ort::CustomOpApi ort_;
-  OrtOp op_add{};
-  OrtOp op_topk{};
-  OrtOp op_gru{};
+  OrtOp* op_add{};
+  OrtOp* op_topk{};
+  OrtOp* op_gru{};
 };
 
 struct InstantCustomOp : Ort::CustomOpBase<InstantCustomOp, InstantCustomKernel> {

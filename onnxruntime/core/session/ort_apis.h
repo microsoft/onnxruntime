@@ -344,17 +344,16 @@ ORT_API_STATUS_IMPL(AddExternalInitializers, _In_ OrtSessionOptions* options,
                     _In_reads_(input_len) const char* const* input_names,
                     _In_reads_(input_len) const OrtValue* const* inputs, size_t input_len);
 
-ORT_API_STATUS_IMPL(CreateAttribute,
+ORT_API_STATUS_IMPL(CreateOpAttr,
                     _In_ const char* name,
                     _In_ const void* data,
                     _In_ int len,
-                    _In_ ONNXTensorElementDataType type,
-                    _In_opt_ int is_array,
-                    _Outptr_ OrtOpAttr* op_attr);
+                    _In_ OrtOpAttrType type,
+                    _Outptr_ OrtOpAttr** op_attr);
 
-ORT_API_STATUS_IMPL(ReleaseAttribute, _Inout_ OrtOpAttr* op_attr);
+ORT_API(void, ReleaseOpAttr, _Frees_ptr_opt_ OrtOpAttr* op_attr);
 
-ORT_API_STATUS_IMPL(CreateOperator,
+ORT_API_STATUS_IMPL(CreateOp,
                     _In_ const OrtKernelInfo* info,
                     _In_ const char* op_name,
                     _In_ const char* domain,
@@ -362,18 +361,18 @@ ORT_API_STATUS_IMPL(CreateOperator,
                     _In_opt_ const char** type_constraint_names,
                     _In_opt_ const ONNXTensorElementDataType* type_constraint_values,
                     _In_opt_ int type_constraint_count,
-                    _In_opt_ const OrtOpAttr* attr_values,
+                    _In_opt_ const OrtOpAttr* const* attr_values,
                     _In_opt_ int attr_count,
-                    _Outptr_ OrtOp* ort_op);
+                    _Outptr_ OrtOp** ort_op);
 
-ORT_API_STATUS_IMPL(InvokeOperator,
+ORT_API_STATUS_IMPL(InvokeOp,
                     _In_ const OrtKernelContext* context,
-                    _In_ const OrtOp ort_op,
+                    _In_ const OrtOp* ort_op,
                     _In_ const OrtValue* const* input_values,
                     _In_ int input_count,
                     _Inout_ OrtValue* const* output_values,
                     _In_ int output_count);
 
-ORT_API_STATUS_IMPL(ReleaseOperator, _Inout_ OrtOp* op);
+ORT_API(void, ReleaseOp, _Frees_ptr_opt_ OrtOp* op);
 
 }  // namespace OrtApis

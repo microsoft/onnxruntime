@@ -212,10 +212,10 @@ void SliceCustomOpKernel::Compute(OrtKernelContext* context) {
 InstantCustomKernel::InstantCustomKernel(Ort::CustomOpApi ort, const OrtKernelInfo* info, void*) : ort_(ort) {
   const char* add_type_constrait_names[1] = {"T"};
   int add_type_constrait_values[1] = {1};
-  ort.CreateOperator(info, "Add", "", 14,
-                     (const char**)add_type_constrait_names,
-                     (const ONNXTensorElementDataType*)add_type_constrait_values,
-                     1, nullptr, 0, &op_add);
+  ort.CreateOp(info, "Add", "", 14,
+               (const char**)add_type_constrait_names,
+               (const ONNXTensorElementDataType*)add_type_constrait_values,
+               1, nullptr, 0, &op_add);
   InitTopK(ort, info);
   InitGru(ort, info);
 }
@@ -225,30 +225,30 @@ void InstantCustomKernel::InitTopK(Ort::CustomOpApi ort, const OrtKernelInfo* in
   int type_constrait_values[2] = {1, 7};
 
   int axis_value = -1;
-  OrtOpAttr axis{};
-  ort.CreateAttribute("axis", &axis_value, 1, ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, 0, &axis);
+  OrtOpAttr* axis{};
+  ort.CreateOpAttr("axis", &axis_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT, &axis);
 
   int largest_value = 0;  // return in ascending order
-  OrtOpAttr largest{};
-  ort.CreateAttribute("largest", &largest_value, 1, ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, 0, &largest);
+  OrtOpAttr* largest{};
+  ort.CreateOpAttr("largest", &largest_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT, &largest);
 
   int sorted_value = 1;
-  OrtOpAttr sorted{};
-  ort.CreateAttribute("sorted", &sorted_value, 1, ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, 0, &sorted);
+  OrtOpAttr* sorted{};
+  ort.CreateOpAttr("sorted", &sorted_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT, &sorted);
 
   if (!axis || !largest || !sorted) {
     ORT_THROW("Failed to create attributes for topk.");
   }
 
-  OrtOpAttr top_attrs[3] = {axis, largest, sorted};
-  ort.CreateOperator(info, "TopK", "", 14,
+  OrtOpAttr* top_attrs[3] = {axis, largest, sorted};
+  ort.CreateOp(info, "TopK", "", 14,
                      (const char**)type_constrait_names,
                      (const ONNXTensorElementDataType*)type_constrait_values,
                      2, top_attrs, 3, &op_topk);
 
-  ort.ReleaseAttribute(&axis);
-  ort.ReleaseAttribute(&largest);
-  ort.ReleaseAttribute(&sorted);
+  ort.ReleaseOpAttr(axis);
+  ort.ReleaseOpAttr(largest);
+  ort.ReleaseOpAttr(sorted);
 }
 
 void InstantCustomKernel::InvokeTopK(OrtKernelContext* context) {
@@ -277,7 +277,7 @@ void InstantCustomKernel::InvokeTopK(OrtKernelContext* context) {
 
   const OrtValue* topk_inputs[2] = {(OrtValue*)topk_x, (OrtValue*)topk_k};
   OrtValue* topk_outputs[2] = {(OrtValue*)topk_values, (OrtValue*)topk_indices};
-  ort_.InvokeOperator(context, op_topk, topk_inputs, 2, topk_outputs, 2);
+  ort_.InvokeOp(context, op_topk, topk_inputs, 2, topk_outputs, 2);
 
   if (std::abs(raw_values[0] - 0.) > 1e-6 || std::abs(raw_values[1] - 1.) > 1e-6) {
     ORT_THROW("topk instant operator returns wrong values");
@@ -292,45 +292,45 @@ void InstantCustomKernel::InitGru(Ort::CustomOpApi ort, const OrtKernelInfo* inf
   int type_constrait_values[2] = {1, 6};
 
   const char* activition_names[4] = {"LeakyRelu", "Tanh", "Sigmoid", "ScaledTanh"};
-  OrtOpAttr activations{};
-  ort.CreateAttribute("activations", activition_names, 4, ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING, 1, &activations);
+  OrtOpAttr* activations{};
+  ort.CreateOpAttr("activations", activition_names, 4, OrtOpAttrType::ORT_OP_ATTR_STRINGS, &activations);
 
   float alphas[2] = {0.5f, 2.f};
-  OrtOpAttr activation_alpha{};
-  ort.CreateAttribute("activation_alpha ", alphas, 2, ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, 1, &activation_alpha);
+  OrtOpAttr* activation_alpha{};
+  ort.CreateOpAttr("activation_alpha ", alphas, 2, OrtOpAttrType::ORT_OP_ATTR_FLOATS, &activation_alpha);
 
   float betas[1] = {2.f};
-  OrtOpAttr activation_beta{};
-  ort.CreateAttribute("activation_beta ", betas, 1, ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, 1, &activation_beta);
+  OrtOpAttr* activation_beta{};
+  ort.CreateOpAttr("activation_beta ", betas, 1, OrtOpAttrType::ORT_OP_ATTR_FLOATS, &activation_beta);
 
   const char* direction_string = "bidirectional";
-  OrtOpAttr direction{};
-  ort.CreateAttribute("direction", direction_string, 1, ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING, 0, &direction);
+  OrtOpAttr* direction{};
+  ort.CreateOpAttr("direction", direction_string, 1, OrtOpAttrType::ORT_OP_ATTR_STRING, &direction);
 
   int linear_before_reset_value = 0;
-  OrtOpAttr linear_before_reset{};
-  ort.CreateAttribute("linear_before_reset", &linear_before_reset_value, 1, ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, 0, &linear_before_reset);
+  OrtOpAttr* linear_before_reset{};
+  ort.CreateOpAttr("linear_before_reset", &linear_before_reset_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT, &linear_before_reset);
 
   int hidden_size_value = 2;
-  OrtOpAttr hidden_size{};
-  ort.CreateAttribute("hidden_size", &hidden_size_value, 1, ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, 0, &hidden_size);
+  OrtOpAttr* hidden_size{};
+  ort.CreateOpAttr("hidden_size", &hidden_size_value, 1, OrtOpAttrType::ORT_OP_ATTR_INT, &hidden_size);
 
   if (!activations || !activation_alpha || !activation_beta || !direction || !linear_before_reset || !hidden_size) {
     ORT_THROW("failed to create attributes for gru.");
   }
 
-  OrtOpAttr gru_attrs[6] = {activations, activation_alpha, activation_beta, direction, linear_before_reset, hidden_size};
-  ort.CreateOperator(info, "GRU", "", 14,
-                     (const char**)type_constrait_names,
-                     (const ONNXTensorElementDataType*)type_constrait_values,
-                     2, gru_attrs, 6, &op_gru);
+  OrtOpAttr* gru_attrs[6] = {activations, activation_alpha, activation_beta, direction, linear_before_reset, hidden_size};
+  ort.CreateOp(info, "GRU", "", 14,
+               (const char**)type_constrait_names,
+               (const ONNXTensorElementDataType*)type_constrait_values,
+               2, gru_attrs, 6, &op_gru);
 
-  ort.ReleaseAttribute(&activations);
-  ort.ReleaseAttribute(&activation_alpha);
-  ort.ReleaseAttribute(&activation_beta);
-  ort.ReleaseAttribute(&direction);
-  ort.ReleaseAttribute(&linear_before_reset);
-  ort.ReleaseAttribute(&hidden_size);
+  ort.ReleaseOpAttr(activations);
+  ort.ReleaseOpAttr(activation_alpha);
+  ort.ReleaseOpAttr(activation_beta);
+  ort.ReleaseOpAttr(direction);
+  ort.ReleaseOpAttr(linear_before_reset);
+  ort.ReleaseOpAttr(hidden_size);
 }
 
 void InstantCustomKernel::InvokeGru(OrtKernelContext* context) {
@@ -406,7 +406,7 @@ void InstantCustomKernel::InvokeGru(OrtKernelContext* context) {
                                0.124924f,
                                0.148701f};
 
-  ort_.InvokeOperator(context, op_gru, inputs, 6, outputs, 2);
+  ort_.InvokeOp(context, op_gru, inputs, 6, outputs, 2);
 
   for (int i = 0; i < 4; ++i) {
     if (std::abs(raw_y[i] - expected_y[i]) > 1e-6) {
@@ -422,13 +422,13 @@ void InstantCustomKernel::Compute(OrtKernelContext* context) {
   OrtValue* output = ort_.KernelContext_GetOutput(context, 0, dimensions.data(), dimensions.size());
   const OrtValue* inputs[2] = {input_X, input_Y};
   OrtValue* outputs[1] = {output};
-  ort_.InvokeOperator(context, op_add, inputs, 2, outputs, 1);
+  ort_.InvokeOp(context, op_add, inputs, 2, outputs, 1);
   InvokeTopK(context);
   InvokeGru(context);
 }
 
 InstantCustomKernel::~InstantCustomKernel() {
-  ort_.ReleaseOperator(&op_add);
-  ort_.ReleaseOperator(&op_topk);
-  ort_.ReleaseOperator(&op_gru);
+  ort_.ReleaseOp(op_add);
+  ort_.ReleaseOp(op_topk);
+  ort_.ReleaseOp(op_gru);
 }
