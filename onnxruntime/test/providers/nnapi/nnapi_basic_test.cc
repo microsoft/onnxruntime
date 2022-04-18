@@ -495,7 +495,7 @@ TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
 // test that NNAPI EP can process an activation node that is outside of its partition
 TEST(NnapiExecutionProviderTest, ActivationOutsideOfPartition) {
   // model starts with Conv -> Relu
-  constexpr auto* model_file_name = ORT_TSTR("testdata/mnist.level1_opt.onnx");
+  constexpr auto* model_file_name = ORT_TSTR("testdata/mnist.level1_opt.ort");
   // stop NNAPI partitioning at Relu so NNAPI EP only takes first Conv
   const auto nnapi_partitioning_stop_ops = "Relu";
   SessionOptions so;
