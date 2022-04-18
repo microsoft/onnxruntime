@@ -27,4 +27,7 @@ struct OrtCUDAProviderOptionsV2 {
   int cudnn_conv_use_max_workspace;                        // flag specifying if maximum workspace can be used in cudnn conv algo search.
   int enable_cuda_graph;                                   // flag specifying if the CUDA graph is to be captured for the model.
   int cudnn_conv1d_pad_to_nc1d;                            // flag specifying if pad Conv1D's input [N,C,D] to [N,C,1,D] or [N,C,D,1].
+  void* (*alloc)(size_t);                                  // External allocation function for GPU.
+  void (*free)(void*);                                     // Release memory allocated by external function.
+  void (*empty_cache)();                                   // Clean cached GPU memory. 
 };

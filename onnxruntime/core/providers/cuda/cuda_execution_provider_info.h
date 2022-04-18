@@ -16,21 +16,34 @@ struct CUDAExecutionProviderExternalAllocatorInfo {
   void* alloc{nullptr};
   void* free{nullptr};
   void* empty_cache{nullptr};
+  void* (*type_safe_alloc)(size_t);
+  void (*type_safe_free)(void*);
+  void (*type_safe_empty_cache)();
 
   CUDAExecutionProviderExternalAllocatorInfo() {
     alloc = nullptr;
     free = nullptr;
     empty_cache = nullptr;
+    type_safe_alloc = nullptr;
+    type_safe_free = nullptr;
+    type_safe_empty_cache = nullptr;
   }
 
   CUDAExecutionProviderExternalAllocatorInfo(void* a, void* f, void* e) {
     alloc = a;
     free = f;
     empty_cache = e;
+    type_safe_alloc = nullptr;
+    type_safe_free = nullptr;
+    type_safe_empty_cache = nullptr;
   }
 
   bool UseExternalAllocator() const {
     return (alloc != nullptr) && (free != nullptr);
+  }
+
+  bool UseTypeSafeExternalAllocator() const {
+    return type_safe_alloc && type_safe_free;
   }
 };
 

@@ -1126,6 +1126,9 @@ OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const 
   cuda_options_converted.cudnn_conv_use_max_workspace = 0;
   cuda_options_converted.enable_cuda_graph = 0;
   cuda_options_converted.cudnn_conv1d_pad_to_nc1d = 0;
+  cuda_options_converted.alloc = 0;
+  cuda_options_converted.free = 0;
+  cuda_options_converted.empty_cache = 0;
 
   return cuda_options_converted;
 }
