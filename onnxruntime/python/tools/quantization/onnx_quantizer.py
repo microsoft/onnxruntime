@@ -17,6 +17,7 @@ from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue
 from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg, type_to_name
 from .quant_utils import quantize_nparray, quantize_data, compute_scale_zp, get_qrange_for_qType, get_qmin_qmax_for_qType
+from .quant_utils import save_and_reload_model, model_has_infer_metadata, add_infer_metadata
 from .quant_utils import QuantType, onnx_domain, __producer__, __version__
 
 from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer
@@ -27,20 +28,22 @@ class ONNXQuantizer:
     def __init__(self, model, per_channel, reduce_range, mode, static, weight_qType, input_qType, tensors_range,
                  nodes_to_quantize, nodes_to_exclude, op_types_to_quantize, extra_options={}):
 
-        # run shape inference on the model (enabled by default)
-        self.extra_options = extra_options if extra_options is not None else {}
-        if not ('DisableShapeInference' in self.extra_options and self.extra_options['DisableShapeInference']):
-            model = onnx.shape_inference.infer_shapes(model)
+        if not model_has_infer_metadata(model):
+            model = save_and_reload_model(model)
         self.value_infos = {vi.name: vi for vi in model.graph.value_info}
         self.value_infos.update({ot.name: ot for ot in model.graph.output})
         self.value_infos.update({it.name: it for it in model.graph.input})
 
         self.model = ONNXModel(model)
+        if not static: self.model.replace_gemm_with_matmul()
+
         self.per_channel = per_channel  # weight-pack per channel
         self.reduce_range = reduce_range
         self.mode = mode  # QuantizationMode.Value
         self.static = static  # use static quantization for inputs.
         self.fuse_dynamic_quant = False
+
+        self.extra_options = extra_options if extra_options is not None else {}
         self.enable_subgraph_quantization = 'EnableSubgraph' in self.extra_options and self.extra_options['EnableSubgraph']
         self.force_quantize_no_input_check = 'ForceQuantizeNoInputCheck' in self.extra_options and self.extra_options['ForceQuantizeNoInputCheck']
         self.q_matmul_const_b_only = 'MatMulConstBOnly' in self.extra_options and self.extra_options['MatMulConstBOnly']
@@ -105,6 +108,7 @@ class ONNXQuantizer:
         '''
         warped_model = onnx.helper.make_model(subgraph, producer_name='onnx-quantizer',
                                               opset_imports=self.model.model.opset_import)
+        add_infer_metadata(warped_model)
         sub_quanitzer = ONNXQuantizer(warped_model,
                                       self.per_channel,
                                       self.reduce_range,
