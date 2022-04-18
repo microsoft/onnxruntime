@@ -60,10 +60,9 @@ void Tensor::InitOrtValue(MLDataType p_type, const TensorShape& shape, void* p_d
 }
 
 size_t Tensor::SizeInBytes() const {
-  int64_t size = shape_.Size();
 #ifdef ENABLE_TRAINING
+  int64_t size = 1;
   if (!IsContiguous()) {
-    size = 1;
     for (size_t dim = 0; dim < shape_.NumDimensions(); ++dim) {
       if (shape_[dim] == 0) {
         size = 0;
@@ -71,7 +70,11 @@ size_t Tensor::SizeInBytes() const {
       }
       size += strides_[dim] * (shape_[dim] - 1);
     }
+  } else {
+    size = shape_.Size();
   }
+#else
+  int64_t size = shape_.Size();
 #endif
   size_t ret;
   if (!IAllocator::CalcMemSizeForArray(SafeInt<size_t>(size), dtype_->Size(), &ret)) {
