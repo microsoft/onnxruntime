@@ -64,13 +64,20 @@ class OpenCLExecutionProvider : public IExecutionProvider {
   /// OpenCL object accessor, kernel developer might rarely use them.
   cl_device_id GetOpenCLDevice() const { return dev_; }
   cl_context GetOpenCLContext() const { return ctx_; }
-  cl_command_queue GetCommandQueue() const { return cmd_queue_; }
+  cl_command_queue GetCommandQueue(int queue_id = 0) const {
+    ORT_ENFORCE(queue_id == 0);
+    return cmd_queue_;
+  }
 
   /// Get an OpenCL Buffer for temporary usage from Buffer allocator.
   IAllocatorUniquePtrToClMem GetScratchBuffer(size_t nbytes) const;
 
   /// Get an OpenCL Buffer for temporary usage from Image2D allocator.
   IAllocatorUniquePtrToClMem GetScratchImage2D(const opencl::Image2DDesc& desc) const;
+
+  void EnqueueReleaseScratchBuffer(IAllocatorUniquePtrToClMem&& buffer) const;
+
+  void EnqueueReleaseScratchImage2D(IAllocatorUniquePtrToClMem&& image2d) const;
 
   // Utility for other classes, kernel developer should not call them directly.
   // They are left as public to avoid friending those classes.

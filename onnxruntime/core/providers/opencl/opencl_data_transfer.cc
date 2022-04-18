@@ -35,7 +35,9 @@ Status OpenCLDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int exec_q
     ORT_RETURN_IF_NOT(src.ByteOffset() == 0, "Copy with byte offset is not supported");
     if (dst_device.MemType() == CLMemType::OPENCL_BUFFER) {
       VLOGF_DEFAULT(V_COPY, "Copy    host(%p) ---> Buffer(%p)", src.DataRaw(), CL_BUFFER_FROM_TENSOR(dst));
-      ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), CL_BUFFER_FROM_TENSOR(dst), /*blocking_write=*/CL_TRUE, /*offset=*/0, src.SizeInBytes(), src.DataRaw(), 0, nullptr, nullptr));
+      ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), CL_BUFFER_FROM_TENSOR(dst),
+                                                  /*blocking_write=*/CL_FALSE, /*offset=*/0,
+                                                  src.SizeInBytes(), src.DataRaw(), 0, nullptr, nullptr));
       return Status::OK();
     }
 
@@ -61,7 +63,9 @@ Status OpenCLDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int exec_q
     ORT_RETURN_IF_NOT(dst.ByteOffset() == 0, "Copy with byte offset is not supported");
     if (src_device.MemType() == CLMemType::OPENCL_BUFFER) {
       VLOGF_DEFAULT(V_COPY, "Copy  Buffer(%p) -----> host(%p)", CL_BUFFER_FROM_TENSOR(src), dst.DataRaw());
-      ORT_RETURN_IF_CL_ERROR(clEnqueueReadBuffer(exec_->GetCommandQueue(), CL_BUFFER_FROM_TENSOR(src), /*blocking_read=*/CL_TRUE, /*offset=*/0, dst.SizeInBytes(), dst.MutableDataRaw(), 0, nullptr, nullptr));
+      ORT_RETURN_IF_CL_ERROR(clEnqueueReadBuffer(exec_->GetCommandQueue(), CL_BUFFER_FROM_TENSOR(src),
+                                                 /*blocking_read=*/CL_FALSE, /*offset=*/0,
+                                                 dst.SizeInBytes(), dst.MutableDataRaw(), 0, nullptr, nullptr));
       return Status::OK();
     }
 
@@ -143,9 +147,11 @@ Status OpenCLDataTransfer::CopyTensor1DToImage2D(const Tensor& src, const Image2
   // solution here...
   VLOGF_DEFAULT(V_COPY, "Copy    host(%p) --> Image2D(%p)", src.DataRaw(), dst);
   auto tmp = exec_->GetScratchBuffer(src.SizeInBytes());
-  ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), tmp.get(), /*blocking_write=*/CL_FALSE, /*offset=*/0, src.SizeInBytes(), src.DataRaw(), 0, nullptr, nullptr));
+  ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), tmp.get(),
+                                              /*blocking_write=*/CL_FALSE, /*offset=*/0,
+                                              src.SizeInBytes(), src.DataRaw(), 0, nullptr, nullptr));
   ORT_RETURN_IF_ERROR(CopyBuffer1DToImage2D(tmp.get(), src.Shape(), dst, desc));
-  ORT_RETURN_IF_CL_ERROR(clFinish(exec_->GetCommandQueue()));  // do sync copy, since we cannot extend the lifetime of src or tmp
+  exec_->EnqueueReleaseScratchBuffer(std::move(tmp));
   return Status::OK();
 }
 
@@ -161,9 +167,11 @@ Status OpenCLDataTransfer::CopyTensorNCHWToImage2D(const Tensor& src, const Imag
   ZoneScopedN("CopyTensorNCHWToImage2D");
   VLOGF_DEFAULT(V_COPY, "Copy    host(%p) --> Image2D(%p)", src.DataRaw(), dst);
   auto tmp = exec_->GetScratchBuffer(src.SizeInBytes());
-  ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), tmp.get(), /*blocking_write=*/CL_FALSE, /*offset=*/0, src.SizeInBytes(), src.DataRaw(), 0, nullptr, nullptr));
+  ORT_RETURN_IF_CL_ERROR(clEnqueueWriteBuffer(exec_->GetCommandQueue(), tmp.get(),
+                                              /*blocking_write=*/CL_FALSE, /*offset=*/0,
+                                              src.SizeInBytes(), src.DataRaw(), 0, nullptr, nullptr));
   ORT_RETURN_IF_ERROR(CopyBufferNCHWToImage2D(tmp.get(), src.Shape(), dst, desc));
-  ORT_RETURN_IF_CL_ERROR(clFinish(exec_->GetCommandQueue()));  // do sync copy, since we cannot extend the lifetime of src or tmp
+  exec_->EnqueueReleaseScratchBuffer(std::move(tmp));
   return Status::OK();
 }
 
@@ -181,8 +189,7 @@ Status OpenCLDataTransfer::CopyImage2DToTensor1D(const Image2D& src, const Image
   VLOGF_DEFAULT(V_COPY, "Copy Image2D(%p) -----> host(%p)", src, dst.DataRaw());
   auto tmp = exec_->GetScratchBuffer(dst.SizeInBytes());
   ORT_RETURN_IF_ERROR(CopyImage2DToBuffer1D(src, desc, tmp.get(), dst.Shape()));
-  // do sync copy, since we cannot extend the lifetime of src or tmp
-  ORT_RETURN_IF_CL_ERROR(clEnqueueReadBuffer(exec_->GetCommandQueue(), tmp.get(), /*blocking_read=*/CL_TRUE, /*offset=*/0, dst.SizeInBytes(), dst.MutableDataRaw(), 0, nullptr, nullptr));
+  exec_->EnqueueReleaseScratchBuffer(std::move(tmp));
   return Status::OK();
 }
 
@@ -201,6 +208,7 @@ Status OpenCLDataTransfer::CopyImage2DToTensorNCHW(const Image2D& src, const Ima
   ORT_RETURN_IF_ERROR(CopyImage2DToBufferNCHW(src, desc, tmp.get(), dst.Shape()));
   // do sync copy, since we cannot extend the lifetime of src or tmp
   ORT_RETURN_IF_CL_ERROR(clEnqueueReadBuffer(exec_->GetCommandQueue(), tmp.get(), /*blocking_read=*/CL_TRUE, /*offset=*/0, dst.SizeInBytes(), dst.MutableDataRaw(), 0, nullptr, nullptr));
+  exec_->EnqueueReleaseScratchBuffer(std::move(tmp));
   return Status::OK();
 }
 
@@ -216,7 +224,8 @@ Status OpenCLDataTransfer::CopyBuffer1DToImage2D(
     const Buffer& src,
     const TensorShape shape,
     const Image2D& dst,
-    const Image2DDesc& desc) const {
+    const Image2DDesc& desc,
+    cl_event* event) const {
   ZoneScopedN("CopyBuffer1DToImage2D (kernel launch)");
   VLOGF_DEFAULT(V_COPY, "Copy  Buffer(%p) --> Image2D(%p)", src, dst);
   ORT_RETURN_IF_ERROR(
@@ -226,7 +235,7 @@ Status OpenCLDataTransfer::CopyBuffer1DToImage2D(
           .SetBuffer(src)
           .SetArg<cl_int>(shape.Size())  // nelem
           .SetImage2D(dst)
-          .Launch(*exec_, desc.AsNDRange()));
+          .Launch(*exec_, desc.AsNDRange(), {}, event));
   return Status::OK();
 }
 
@@ -234,11 +243,13 @@ Status OpenCLDataTransfer::CopyBuffer2DToImage2D(
     const Buffer& src,
     const TensorShape /*shape*/,
     const Image2D& dst,
-    const Image2DDesc& /*desc*/) const {
+    const Image2DDesc& /*desc*/,
+    cl_event* event) const {
   ZoneScopedN("CopyBuffer2DToImage2D (kernel launch)");
   VLOGF_DEFAULT(V_COPY, "Copy  Buffer(%p) --> Image2D(%p)", src, dst);
   ORT_UNUSED_PARAMETER(src);
   ORT_UNUSED_PARAMETER(dst);
+  ORT_UNUSED_PARAMETER(event);
   ORT_NOT_IMPLEMENTED("CopyBuffer2DToImage2D");
 }
 
@@ -246,7 +257,8 @@ Status OpenCLDataTransfer::CopyBufferNCHWToImage2D(
     const Buffer& src,
     const TensorShape shape,
     const Image2D& dst,
-    const Image2DDesc& desc) const {
+    const Image2DDesc& desc,
+    cl_event* event) const {
   ZoneScopedN("CopyBufferNCHWToImage2D (kernel launch)");
   VLOGF_DEFAULT(V_COPY, "Copy  Buffer(%p) --> Image2D(%p)", src, dst);
   ORT_RETURN_IF_ERROR(
@@ -258,7 +270,7 @@ Status OpenCLDataTransfer::CopyBufferNCHWToImage2D(
           .SetArg<cl_int>(shape[2])  // H
           .SetArg<cl_int>(shape[3])  // W
           .SetImage2D(dst)
-          .Launch(*exec_, desc.AsNDRange()));
+          .Launch(*exec_, desc.AsNDRange(), {}, event));
   return Status::OK();
 }
 
@@ -266,11 +278,13 @@ Status OpenCLDataTransfer::CopyBufferNCHWcToImage2D(
     const Buffer& src,
     const TensorShape /*shape*/,
     const Image2D& dst,
-    const Image2DDesc& /*desc*/) const {
+    const Image2DDesc& /*desc*/,
+    cl_event* event) const {
   ZoneScopedN("CopyBufferNCHWcToImage2D (kernel launch)");
   VLOGF_DEFAULT(V_COPY, "Copy  Buffer(%p) --> Image2D(%p)", src, dst);
   ORT_UNUSED_PARAMETER(src);
   ORT_UNUSED_PARAMETER(dst);
+  ORT_UNUSED_PARAMETER(event);
   ORT_NOT_IMPLEMENTED("CopyBufferNCHWcToImage2D");
 }
 
@@ -278,7 +292,8 @@ Status OpenCLDataTransfer::CopyImage2DToBuffer1D(
     const Image2D& src,
     const Image2DDesc& desc,
     const Buffer& dst,
-    const TensorShape shape) const {
+    const TensorShape shape,
+    cl_event* event) const {
   ZoneScopedN("CopyImage2DToBuffer1D (kernel launch)");
   VLOGF_DEFAULT(V_COPY, "Copy Image2D(%p) ---> Buffer(%p)", src, dst);
   ORT_RETURN_IF_ERROR(
@@ -288,7 +303,7 @@ Status OpenCLDataTransfer::CopyImage2DToBuffer1D(
           .SetImage2D(src)
           .SetBuffer(dst)
           .SetArg<cl_int>(shape.Size())  // nelem
-          .Launch(*exec_, desc.AsNDRange()));
+          .Launch(*exec_, desc.AsNDRange(), {}, event));
   return Status::OK();
 }
 
@@ -296,11 +311,13 @@ Status OpenCLDataTransfer::CopyImage2DToBuffer2D(
     const Image2D& src,
     const Image2DDesc& /*desc*/,
     const Buffer& dst,
-    const TensorShape /*shape*/) const {
+    const TensorShape /*shape*/,
+    cl_event* event) const {
   ZoneScopedN("CopyImage2DToBuffer2D (kernel launch)");
   VLOGF_DEFAULT(V_COPY, "Copy Image2D(%p) ---> Buffer(%p)", src, dst);
   ORT_UNUSED_PARAMETER(src);
   ORT_UNUSED_PARAMETER(dst);
+  ORT_UNUSED_PARAMETER(event);
   ORT_NOT_IMPLEMENTED("CopyImage2DToBuffer2D");
 }
 
@@ -308,7 +325,8 @@ Status OpenCLDataTransfer::CopyImage2DToBufferNCHW(
     const Image2D& src,
     const Image2DDesc& desc,
     const Buffer& dst,
-    const TensorShape shape) const {
+    const TensorShape shape,
+    cl_event* event) const {
   ZoneScopedN("CopyImage2DToBufferNCHW (kernel launch)");
   VLOGF_DEFAULT(V_COPY, "Copy Image2D(%p) ---> Buffer(%p)", src, dst);
   ORT_RETURN_IF_ERROR(
@@ -320,7 +338,7 @@ Status OpenCLDataTransfer::CopyImage2DToBufferNCHW(
           .SetArg<cl_int>(shape[1])  // C
           .SetArg<cl_int>(shape[2])  // H
           .SetArg<cl_int>(shape[3])  // W
-          .Launch(*exec_, desc.AsNDRange()));
+          .Launch(*exec_, desc.AsNDRange(), {}, event));
   return Status::OK();
 }
 
@@ -328,11 +346,13 @@ Status OpenCLDataTransfer::CopyImage2DToBufferNCHWc(
     const Image2D& src,
     const Image2DDesc& /*desc*/,
     const Buffer& dst,
-    const TensorShape /*shape*/) const {
+    const TensorShape /*shape*/,
+    cl_event* event) const {
   ZoneScopedN("CopyImage2DToBufferNCHWc (kernel launch)");
   VLOGF_DEFAULT(V_COPY, "Copy Image2D(%p) ---> Buffer(%p)", src, dst);
   ORT_UNUSED_PARAMETER(src);
   ORT_UNUSED_PARAMETER(dst);
+  ORT_UNUSED_PARAMETER(event);
   ORT_NOT_IMPLEMENTED("CopyImage2DToBufferNCHWc");
 }
 

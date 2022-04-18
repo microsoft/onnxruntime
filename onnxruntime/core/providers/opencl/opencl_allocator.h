@@ -40,6 +40,7 @@ class OpenCLBufferAllocator : public IAllocator {
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
+  FencePtr CreateFence(const SessionState* sess_state) override;
 
  private:
   cl_context ctx_;
@@ -54,6 +55,7 @@ class OpenCLImage2DAllocator : public IAllocator {
   void* Alloc(const TensorShape& shape) override;
   void* Alloc(Image2DDesc desc);
   void Free(void* p) override;
+  FencePtr CreateFence(const SessionState* sess_state) override;
 
  private:
   cl_context ctx_;

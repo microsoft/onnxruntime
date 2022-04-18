@@ -38,15 +38,14 @@ class OpenCLDataTransfer : public IDataTransfer {
   Status CopyImage2DToTensorNCHW(const Image2D& src, const Image2DDesc& desc, Tensor& dst) const;
   Status CopyImage2DToTensorNCHWc(const Image2D& src, const Image2DDesc& desc, Tensor& dst) const;
 
-  // dev to dev copy are all async!
-  Status CopyBuffer1DToImage2D(const Buffer& src, const TensorShape shape, const Image2D& dst, const Image2DDesc& desc) const;
-  Status CopyBuffer2DToImage2D(const Buffer& src, const TensorShape shape, const Image2D& dst, const Image2DDesc& desc) const;
-  Status CopyBufferNCHWToImage2D(const Buffer& src, const TensorShape shape, const Image2D& dst, const Image2DDesc& desc) const;
-  Status CopyBufferNCHWcToImage2D(const Buffer& src, const TensorShape shape, const Image2D& dst, const Image2DDesc& desc) const;
-  Status CopyImage2DToBuffer1D(const Image2D& src, const Image2DDesc& desc, const Buffer& dst, const TensorShape shape) const;
-  Status CopyImage2DToBuffer2D(const Image2D& src, const Image2DDesc& desc, const Buffer& dst, const TensorShape shape) const;
-  Status CopyImage2DToBufferNCHW(const Image2D& src, const Image2DDesc& desc, const Buffer& dst, const TensorShape shape) const;
-  Status CopyImage2DToBufferNCHWc(const Image2D& src, const Image2DDesc& desc, const Buffer& dst, const TensorShape shape) const;
+  Status CopyBuffer1DToImage2D(const Buffer& src, const TensorShape shape, const Image2D& dst, const Image2DDesc& desc, cl_event* event = nullptr) const;
+  Status CopyBuffer2DToImage2D(const Buffer& src, const TensorShape shape, const Image2D& dst, const Image2DDesc& desc, cl_event* event = nullptr) const;
+  Status CopyBufferNCHWToImage2D(const Buffer& src, const TensorShape shape, const Image2D& dst, const Image2DDesc& desc, cl_event* event = nullptr) const;
+  Status CopyBufferNCHWcToImage2D(const Buffer& src, const TensorShape shape, const Image2D& dst, const Image2DDesc& desc, cl_event* event = nullptr) const;
+  Status CopyImage2DToBuffer1D(const Image2D& src, const Image2DDesc& desc, const Buffer& dst, const TensorShape shape, cl_event* event = nullptr) const;
+  Status CopyImage2DToBuffer2D(const Image2D& src, const Image2DDesc& desc, const Buffer& dst, const TensorShape shape, cl_event* event = nullptr) const;
+  Status CopyImage2DToBufferNCHW(const Image2D& src, const Image2DDesc& desc, const Buffer& dst, const TensorShape shape, cl_event* event = nullptr) const;
+  Status CopyImage2DToBufferNCHWc(const Image2D& src, const Image2DDesc& desc, const Buffer& dst, const TensorShape shape, cl_event* event = nullptr) const;
 
   Status UnimplementedCopy() const;
 

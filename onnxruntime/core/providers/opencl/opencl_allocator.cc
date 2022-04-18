@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 #include "core/graph/constants.h"
+#include "core/framework/session_state.h"
 #include "opencl_allocator.h"
 #include "opencl_utils.h"
+#include "opencl_fence.h"
 
 #include <iostream>
 
@@ -271,6 +273,13 @@ void OpenCLBufferAllocator::Free(void* ptr) {
   return caching_->DestroyOrReturnToCache(ptr);
 }
 
+FencePtr OpenCLBufferAllocator::CreateFence(const SessionState* sess_state) {
+  const OpenCLExecutionProvider* ep =
+      static_cast<const OpenCLExecutionProvider*>(sess_state->GetExecutionProviders().Get(kOpenCLExecutionProvider));
+  ORT_ENFORCE(ep);
+  return std::make_shared<OpenCLFence>(*ep);
+}
+
 OpenCLImage2DAllocator::OpenCLImage2DAllocator(cl_context ctx, bool use_fp16)
     : IAllocator(OrtMemoryInfo(Image2DAllocatorName, OrtAllocatorType::OrtDeviceAllocator,
                                OrtDevice(OrtDevice::GPU, CLMemType::OPENCL_IMAGE_2D, /*device_id_=*/0))),
@@ -307,6 +316,13 @@ void* OpenCLImage2DAllocator::Alloc(Image2DDesc desc) {
 void OpenCLImage2DAllocator::Free(void* ptr) {
   ZoneScopedN("OpenCLImage2DAllocator::Free");
   caching_->DestroyOrReturnToCache(ptr);
+}
+
+FencePtr OpenCLImage2DAllocator::CreateFence(const SessionState* sess_state) {
+  const OpenCLExecutionProvider* ep =
+      static_cast<const OpenCLExecutionProvider*>(sess_state->GetExecutionProviders().Get(kOpenCLExecutionProvider));
+  ORT_ENFORCE(ep);
+  return std::make_shared<OpenCLFence>(*ep);
 }
 
 }  // namespace opencl

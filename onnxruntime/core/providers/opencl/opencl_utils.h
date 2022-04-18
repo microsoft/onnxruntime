@@ -408,7 +408,8 @@ class KernelLauncher {
     return SetImage2Ds(std::forward<Ts>(args)...);
   }
 
-  Status Launch(const OpenCLExecutionProvider& exec, const NDRange& global, const NDRange& local = {});
+  Status Launch(const OpenCLExecutionProvider& exec, const NDRange& global, const NDRange& local = {},
+                cl_event* event = nullptr);
 
  private:
   inline std::string GetKernelFunctionName() {

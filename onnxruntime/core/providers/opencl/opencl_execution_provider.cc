@@ -236,7 +236,6 @@ Status OpenCLExecutionProvider::Sync() const {
 constexpr const char* kFrameMarkName = "OpenCL EP Run";
 #endif
 
-
 Status OpenCLExecutionProvider::OnRunStart() {
 #ifdef TRACY_ENABLE
   FrameMarkStart(kFrameMarkName);
@@ -278,6 +277,16 @@ IAllocatorUniquePtrToClMem OpenCLExecutionProvider::GetScratchImage2D(const open
       [=](void* ptr) {
         alloc->Free(ptr);
       }};
+}
+
+void OpenCLExecutionProvider::EnqueueReleaseScratchBuffer(IAllocatorUniquePtrToClMem&& buf) const {
+  // FIXME: dummy impl, just to see if async works correctly
+  buf.release();
+}
+
+void OpenCLExecutionProvider::EnqueueReleaseScratchImage2D(IAllocatorUniquePtrToClMem&& img) const {
+  // FIXME: dummy impl, just to see if async works correctly
+  img.release();
 }
 
 Status OpenCLExecutionProvider::AfterCLLaunch() const {
