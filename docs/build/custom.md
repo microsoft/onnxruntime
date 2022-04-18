@@ -132,11 +132,28 @@ Find them [here](https://github.com/microsoft/onnxruntime/tags).
 
 ### Build on windows, with reduced operator support, and support for ORT format models only
 
-`<ONNX Runtime repository root>.\build.bat --config=MinSizeRel --cmake_generator="Visual Studio 16 2019" --build_shared_lib --minimal_build --disable_ml_ops --disable_exceptions --include_ops_by_config <config file from model conversion> --skip_tests`
+```
+<ONNX Runtime repository root>\build.bat ^
+  --config=Release ^
+  --cmake_generator="Visual Studio 16 2019" ^
+  --build_shared_lib ^
+  --minimal_build ^
+  --disable_ml_ops --disable_exceptions --disable_rtti ^
+  --include_ops_by_config <config file from model conversion> --enable_reduced_operator_type_support ^
+  --skip_tests
+```
 
 ### Linux
 
-`<ONNX Runtime repository root>./build.sh --config=MinSizeRel --build_shared_lib --minimal_build --disable_ml_ops --disable_exceptions --include_ops_by_config <config file from model conversion> --skip_tests`
+```
+<ONNX Runtime repository root>/build.sh \
+  --config=Release \
+  --build_shared_lib \
+  --minimal_build \
+  --disable_ml_ops --disable_exceptions --disable_rtti \
+  --include_ops_by_config <config file from model conversion> --enable_reduced_operator_type_support \
+  --skip_tests
+```
 
 ## Custom build packages
 
@@ -224,11 +241,11 @@ Remove `--disable_exceptions` and add `--build_wheel` to the build command in or
 
 A .whl file will be produced in the build output directory under the `<config>/dist` folder.
 
-* The Python Wheel for a Windows MinSizeRel build using build.bat would be in `<ONNX Runtime repository root>\build\Windows\MinSizeRel\MinSizeRel\dist\`
-* The Python Wheel for a Linux MinSizeRel build using build.sh would be in `<ONNX Runtime repository root>/build/Linux/MinSizeRel/dist/`
+* The Python Wheel for a Windows Release build using build.bat would be in `<ONNX Runtime repository root>\build\Windows\Release\Release\dist\`
+* The Python Wheel for a Linux Release build using build.sh would be in `<ONNX Runtime repository root>/build/Linux/Release/dist/`
 
 The wheel can be installed using `pip`. Adjust the following command for your platform and the whl filename.
 
-```bash
-pip install -U .\build\Windows\MinSizeRel\MinSizeRel\dist\onnxruntime-1.7.0-cp37-cp37m-win_amd64.whl
+```
+pip install -U .\build\Windows\Release\Release\dist\onnxruntime-1.7.0-cp37-cp37m-win_amd64.whl
 ```
