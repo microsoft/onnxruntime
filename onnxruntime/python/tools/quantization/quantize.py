@@ -3,21 +3,14 @@
 # Licensed under the MIT License. See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
-import os
-import onnx
-import onnx.numpy_helper
-import struct
 import logging
-import numpy as np
-
 from pathlib import Path
-
 from onnx import onnx_pb as onnx_proto
-from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
 from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue
 from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg
 from .quant_utils import QuantType, QuantFormat
+from .quant_utils import load_model
 
 from .registry import QLinearOpsRegistry, IntegerOpsRegistry
 
@@ -25,33 +18,6 @@ from .onnx_model import ONNXModel
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
 from .calibrate import CalibrationDataReader, create_calibrator, CalibrationMethod 
-
-
-def optimize_model(model_path : Path):
-    '''
-        Generate model that applies graph optimization (constant folding, etc.)
-        parameter model_path: path to the original onnx model
-    :return: optimized onnx model
-    '''
-    opt_model_path = generate_identified_filename(model_path, "-opt")
-    sess_option = SessionOptions()
-    sess_option.optimized_model_filepath = opt_model_path.as_posix()
-    sess_option.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
-    _ = InferenceSession(model_path.as_posix(), sess_option, providers=['CPUExecutionProvider'])
-    optimized_model = onnx.load(opt_model_path.as_posix())
-    return optimized_model
-
-
-def load_model(model_path : Path, optimize=True, handle_gemm_with_matmul=True):
-
-    model = optimize_model(Path(model_path)) if optimize else onnx.load(Path(model_path))
-
-    if handle_gemm_with_matmul:
-        onnx_model = ONNXModel(model)
-        onnx_model.replace_gemm_with_matmul()
-        return onnx_model.model
-
-    return model
 
 
 def check_static_quant_arguments(quant_format : QuantFormat,
@@ -205,8 +171,6 @@ def quantize_static(model_input,
             WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
             EnableSubgraph = True/False : Default is False. If enabled, subgraph will be quantized.
                                           Dyanmic mode currently is supported. Will support more in future.
-            DisableShapeInference = True/False : in dynamic quantize mode, shape inference is not must have
-                                                 and if it cause some issue, you could disable it.
             ForceQuantizeNoInputCheck = True/False : By default, some latent operators like maxpool, transpose, do not quantize
                                                      if their input is not quantized already. Setting to True to force such operator
                                                      always quantize input and so generate quantized output. Also the True behavior
@@ -236,7 +200,7 @@ def quantize_static(model_input,
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(QLinearOpsRegistry.keys())
 
-    model = load_model(Path(model_input), optimize_model, False)
+    model = load_model(Path(model_input), optimize_model)
 
     calib_extra_options_keys = [
         ('CalibTensorRangeSymmetric', 'symmetric'),
@@ -328,8 +292,6 @@ def quantize_dynamic(model_input: Path,
             WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
             EnableSubgraph = True/False : Default is False. If enabled, subgraph will be quantized.
                                           Dyanmic mode currently is supported. Will support more in future.
-            DisableShapeInference = True/False : in dynamic quantize mode, shape inference is not must have
-                                                 and if it cause some issue, you could disable it.
             ForceQuantizeNoInputCheck = True/False : By default, some latent operators like maxpool, transpose, do not quantize
                                                      if their input is not quantized already. Setting to True to force such operator
                                                      always quantize input and so generate quantized output. Also the True behavior
