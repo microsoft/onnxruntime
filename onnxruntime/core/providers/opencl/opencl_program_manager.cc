@@ -55,7 +55,8 @@ std::string GetFullSource(std::string_view src_body, bool use_fp16) {
   return oss.str();
 }
 
-Status CreateProgramWithSource(cl_context ctx, cl_device_id dev, std::string_view src, cl_program* program) {
+Status CreateProgramWithSource(cl_context ctx, cl_device_id dev, std::string_view src,
+                               const std::string& options, cl_program* program) {
   cl_int err{};
   const auto* data = src.data();
   const auto size = src.size();
@@ -68,17 +69,20 @@ Status CreateProgramWithSource(cl_context ctx, cl_device_id dev, std::string_vie
   // Specially handle this error, we need compiler error message here.
   {
     ZoneScopedN("clBuildProgram");
-    err = clBuildProgram(*program, 1, &dev, "", nullptr, nullptr);
+    err = clBuildProgram(*program, 1, &dev, options.c_str(), nullptr, nullptr);
   }
   if (err != CL_SUCCESS) {
     size_t ret_size;
     clGetProgramBuildInfo(*program, dev, CL_PROGRAM_BUILD_LOG, 0, nullptr, &ret_size);
     std::string log(ret_size + 1, '\0');
     clGetProgramBuildInfo(*program, dev, CL_PROGRAM_BUILD_LOG, log.size(), log.data(), nullptr);
-    LOGS_DEFAULT(ERROR) << "\nKernel Source:>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n"
-                        << src;
-    LOGS_DEFAULT(ERROR) << "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^"
-                        << "\nBuild Log:\n"
+    LOGS_DEFAULT(ERROR) << "\nKernel Source:\n"
+                        << src
+                        << "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^";
+    LOGS_DEFAULT(ERROR) << "\nBuild Options:\n"
+                        << options
+                        << "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^";
+    LOGS_DEFAULT(ERROR) << "\nBuild Log:\n"
                         << log
                         << "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^";
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -123,7 +127,8 @@ cl_program OpenCLProgramManager::GetProgram(std::string_view src_body) {
   // TODO: try out clCreateProgramWithBinary with disk cache to see if it  will
   // be faster.
   cl_program program;
-  ORT_THROW_IF_ERROR(CreateProgramWithSource(exec_->GetOpenCLContext(), exec_->GetOpenCLDevice(), full_src, &program));
+  ORT_THROW_IF_ERROR(CreateProgramWithSource(exec_->GetOpenCLContext(), exec_->GetOpenCLDevice(), full_src,
+                                             exec_->GetCompileOptions(), &program));
   VLOGS_DEFAULT(V_GENERIC) << "Program " << program << " created from source";
   TakeinProgram(key, program);
   return program;

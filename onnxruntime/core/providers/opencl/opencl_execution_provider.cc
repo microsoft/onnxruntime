@@ -74,10 +74,22 @@ std::shared_ptr<KernelRegistry> GetOpenCLKernelRegistry() {
   return kernel_registry;
 }
 
+namespace {
+
+std::string GetDeviceInfo(cl_device_id dev, cl_device_info info_name) {
+  size_t ret_size;
+  ORT_THROW_IF_CL_ERROR(clGetDeviceInfo(dev, info_name, 0, nullptr, &ret_size));
+  std::string ret(ret_size, '\0');
+  ORT_THROW_IF_CL_ERROR(clGetDeviceInfo(dev, info_name, ret.size(), ret.data(), nullptr));
+  ret.resize(ret.size() - 1);  // get rid of the ending '\0'
+  return ret;
+};
+
 bool ShouldFlushAfterLaunch(const std::string& device_name) {
   return device_name.find("Mali") != std::string::npos;
 }
 
+}  // namespace
 }  // namespace opencl
 
 OpenCLExecutionProvider::OpenCLExecutionProvider(const OpenCLExecutionProviderInfo& info)
@@ -89,6 +101,7 @@ OpenCLExecutionProvider::OpenCLExecutionProvider(const OpenCLExecutionProviderIn
   }
 #endif
   ORT_THROW_IF_ERROR(InitOpenCLContext());
+  ORT_THROW_IF_ERROR(InitCompileOptions());
   program_manager_ = std::make_unique<opencl::OpenCLProgramManager>(*this);
   InitCopyKernels();
 
@@ -157,26 +170,18 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
   ORT_RETURN_IF(devices.empty(), "Cannot find OpenCL device.");
   dev_ = devices[0];
 
-  auto GetDeviceInfo = [](cl_device_id dev, cl_device_info info_name) -> std::string {
-    size_t ret_size;
-    ORT_THROW_IF_CL_ERROR(clGetDeviceInfo(dev, info_name, 0, nullptr, &ret_size));
-    std::string ret(ret_size, '\0');
-    ORT_THROW_IF_CL_ERROR(clGetDeviceInfo(dev, info_name, ret.size(), ret.data(), nullptr));
-    return ret;
-  };
-
-  auto device_name = GetDeviceInfo(dev_, CL_DEVICE_NAME);
-  LOGS_DEFAULT(INFO) << "[CL] device name: " << device_name;
-  LOGS_DEFAULT(VERBOSE) << "[CL] device vendor: " << GetDeviceInfo(dev_, CL_DEVICE_VENDOR);
-  LOGS_DEFAULT(VERBOSE) << "[CL] device version: " << GetDeviceInfo(dev_, CL_DEVICE_VERSION);
-  auto exts = GetDeviceInfo(dev_, CL_DEVICE_EXTENSIONS);
+  device_name_ = opencl::GetDeviceInfo(dev_, CL_DEVICE_NAME);
+  LOGS_DEFAULT(INFO) << "[CL] device name: " << device_name_;
+  LOGS_DEFAULT(VERBOSE) << "[CL] device vendor: " << opencl::GetDeviceInfo(dev_, CL_DEVICE_VENDOR);
+  LOGS_DEFAULT(VERBOSE) << "[CL] device version: " << opencl::GetDeviceInfo(dev_, CL_DEVICE_VERSION);
+  auto exts = opencl::GetDeviceInfo(dev_, CL_DEVICE_EXTENSIONS);
   LOGS_DEFAULT(VERBOSE) << "[CL] device extensions: " << exts << std::endl;
   bool has_fp16 = exts.find("cl_khr_fp16") != std::string::npos;
   if (!has_fp16 && UseFp16()) {
     LOGS_DEFAULT(WARNING) << "[CL] FP16 is requested, but is not supported by the device!";
     DisableFp16();
   }
-  flush_after_launch_ = opencl::ShouldFlushAfterLaunch(device_name);
+  flush_after_launch_ = opencl::ShouldFlushAfterLaunch(device_name_);
   LOGS_DEFAULT(INFO) << "[CL] FP16: " << UseFp16();
   LOGS_DEFAULT(INFO) << "[CL] clFlush after launch: " << flush_after_launch_;
 
@@ -187,6 +192,14 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
 #endif
   ORT_RETURN_IF_CL_ERROR(err);
 
+  return Status::OK();
+}
+
+Status OpenCLExecutionProvider::InitCompileOptions() {
+  compile_options_.reserve(2048);
+  if (device_name_ == "Mali-G51") {
+    compile_options_.append(" -D CONFORMANCE_WORKAROUND_could_not_emit_constant_value_abstractly");
+  }
   return Status::OK();
 }
 
@@ -235,7 +248,6 @@ Status OpenCLExecutionProvider::Sync() const {
 #ifdef TRACY_ENABLE
 constexpr const char* kFrameMarkName = "OpenCL EP Run";
 #endif
-
 
 Status OpenCLExecutionProvider::OnRunStart() {
 #ifdef TRACY_ENABLE

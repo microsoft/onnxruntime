@@ -83,11 +83,14 @@ class OpenCLExecutionProvider : public IExecutionProvider {
   /// KernelLauncher
   Status AfterCLLaunch() const;
 
+  const std::string GetCompileOptions() const { return compile_options_; };
+
   /// OpenCLKernel use it to initialize OpenCLKernelHolder
   const opencl::OpenCLProgramManager& GetProgramManager() const;
   opencl::OpenCLProgramManager& GetProgramManager();
 
  private:
+  Status InitCompileOptions();
   Status InitOpenCLContext();
   void DisableFp16() { use_fp16_ = false; }
 
@@ -96,8 +99,8 @@ class OpenCLExecutionProvider : public IExecutionProvider {
   cl_command_queue cmd_queue_;
   bool use_fp16_;
   bool flush_after_launch_;
-
- private:
+  std::string device_name_;
+  std::string compile_options_;
   std::unique_ptr<opencl::OpenCLProgramManager> program_manager_;
 
   // IDataTransfer is a lightweight interface with std::unique_ptr as its
