@@ -23,12 +23,12 @@ def parse_arguments(argv=None):
 
 def make_custombeamsearchop(args):
     model_type = "CustomBeamsearchOp"
-    domain = "test.beamsearchop"
+    domain = "com.microsoft"
     inputs = ["input_ids", "num_beams"]
     
     outputs = ["logits"]
 
-    node = helper.make_node(model_type, inputs=inputs, outputs=outputs, name=f'BeamSearch_{model_type}')
+    node = helper.make_node(model_type, inputs=inputs, outputs=outputs, name=f'{model_type}_0')
     node.domain = domain
 
     input_ids = helper.make_tensor_value_info('input_ids', TensorProto.FLOAT, ['batch_size', 'sequence_length'])
