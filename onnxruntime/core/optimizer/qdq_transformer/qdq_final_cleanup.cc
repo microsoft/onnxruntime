@@ -55,18 +55,19 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
   }
 
   // we have a node sequence to clean up
+
+  // we support a second_node that produces a graph output if it has no output edges, or a second_node with one output edge.
+  const bool produces_graph_output = graph.NodeProducesGraphOutput(second_node);
+  const auto output_edges_count = second_node.GetOutputEdgesCount();
+
+  if ((produces_graph_output && output_edges_count != 0) ||
+      (!produces_graph_output && output_edges_count != 1)) {
+    return false;
+  }
+
   LOGS(logger, VERBOSE) << "Cleaning up back-to-back nodes: "
                         << first_node.OpType() << " with name \"" << first_node.Name() << "\" and "
                         << second_node.OpType() << " with name \"" << second_node.Name() << "\"";
-
-  // we support a second_node that produces a graph output if it has no output edges, or a second_node with one output edge.
-  bool is_graph_output = graph.NodeProducesGraphOutput(second_node);
-  auto edges_count = second_node.GetOutputEdgesCount();
-
-  if ((is_graph_output && edges_count != 0) ||
-      (!is_graph_output && edges_count != 1)) {
-    return false;
-  }
 
   // src node or graph input/initializer -> first_node -> second_node -> downstream node or graph output
   NodeIndex src_node_idx = 0;
@@ -89,7 +90,7 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
   // both DQ and Q are single input single output so src idx and dest idx must be 0
   graph.RemoveEdge(first_node.Index(), second_node.Index(), 0, 0);
 
-  if (!is_graph_output) {
+  if (!produces_graph_output) {
     // remove edge to downstream node
     const Node::EdgeEnd& output_edge = *second_node.OutputEdgesBegin();
     downstream_node_idx = output_edge.GetNode().Index();
