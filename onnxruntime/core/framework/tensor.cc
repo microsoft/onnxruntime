@@ -27,8 +27,9 @@ Tensor::Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAll
     ORT_THROW("shape.Size() must >=0");
 
   void* p_data = nullptr;
+  // if tensor is not scalar, first try to allocate with datatype and shape aware interface.
   if (shape.NumDimensions() && shape_size) {
-    p_data = allocator->Alloc(shape);
+    p_data = allocator->Alloc({p_type, shape.AsShapeVector()});
   }
   if (!p_data && shape_size > 0) {
     SafeInt<size_t> len = 0;
