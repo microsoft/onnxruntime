@@ -46,11 +46,11 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
   auto X_dims = X->Shape().GetDims();
   int32_t rank = static_cast<int32_t>(X_dims.size());
 
-  ORT_ENFORCE(output_dims.size() == rank, "Rank of input and output tensor should be same.");
+  ORT_ENFORCE(static_cast<int32_t>(output_dims.size()) == rank, "Rank of input and output tensor should be same.");
   if (rank == 0)
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                   is_resize_ ? "Resize: input tensor cannot be scalar." : "Upsample: input tensor cannot be scalar.");
-  if (rank != scales.size())
+  if (rank != static_cast<int32_t>(scales.size()))
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                   is_resize_ ? "Resize: input tensor's dimension does not match the scales." : "Upsample: input tensor's dimension does not match the scales.");
   if (roi.size() != 2 * X->Shape().GetDims().size())
