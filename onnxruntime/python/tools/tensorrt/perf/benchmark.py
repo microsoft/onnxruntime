@@ -1688,8 +1688,10 @@ class ParseDictArgAction(argparse.Action):
             try:
                 k, v = kv.split("=")
             except ValueError:
-                # Terminates the program.
                 parser.error("argument {opt_str}: Expected '=' between key and value".format(opt_str=option_string))
+
+            if k in dict_arg:
+                parser.error("argument {opt_str}: Specified duplicate key '{dup_key}'".format(opt_str=option_string, dup_key=k))
 
             dict_arg[k] = v
 
