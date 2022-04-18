@@ -1,3 +1,7 @@
+# export AMD_OCL_WAIT_COMMAND=1
+# export AMD_LOG_LEVEL=3
+# export HIP_LAUNCH_BLOCKING=1
+
 TMP_DIR=/tmp/onnxruntime
 cd $TMP_DIR
 
