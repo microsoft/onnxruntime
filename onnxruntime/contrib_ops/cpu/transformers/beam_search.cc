@@ -656,6 +656,7 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
   int current_length = parameters_->sequence_length;
   int iteration_counter = 0;
   while (current_length < parameters_->max_length) {
+    //std::cout << "cur_len " << current_length << std::endl;
     iteration_counter++;
 #ifdef DEBUG_BEAM_SEARCH
     auto cur_len = std::to_string(current_length);
