@@ -54,32 +54,30 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
     }
   }
 
-  // we have a node sequence to clean up
+  // src node or graph input/initializer -> first_node -> second_node -> downstream node(s) or graph output
 
-  // we support a second_node that produces a graph output if it has no output edges, or a second_node with one output edge.
+  // we support these cases
+  // - second_node produces a graph output and has no output edges
+  // - second_node does not produce a graph output
   const bool produces_graph_output = graph.NodeProducesGraphOutput(second_node);
-  const auto output_edges_count = second_node.GetOutputEdgesCount();
-
-  if ((produces_graph_output && output_edges_count != 0) ||
-      (!produces_graph_output && output_edges_count != 1)) {
+  const bool has_output_edges = second_node.GetOutputEdgesCount() > 0;
+  if (produces_graph_output && has_output_edges) {
     return false;
   }
 
+  // we have a node sequence to clean up
   LOGS(logger, VERBOSE) << "Cleaning up back-to-back nodes: "
                         << first_node.OpType() << " with name \"" << first_node.Name() << "\" and "
                         << second_node.OpType() << " with name \"" << second_node.Name() << "\"";
 
-  // src node or graph input/initializer -> first_node -> second_node -> downstream node or graph output
+  const bool has_src_node = first_node.GetInputEdgesCount() == 1;
   NodeIndex src_node_idx = 0;
   int src_arg_idx = -1;
-  NodeIndex downstream_node_idx = 0;
-  int downstream_arg_idx = -1;
 
   // input could be node or initializer/graph input so need to handle both.
   // if it's a node we need to replace the edge, so need info on which output idx it was attached to on the src node.
-  const Node::EdgeEnd* input_edge = nullptr;
-  if (first_node.GetInputEdgesCount() == 1) {
-    input_edge = &*first_node.InputEdgesBegin();
+  if (has_src_node) {
+    const Node::EdgeEnd* input_edge = &*first_node.InputEdgesBegin();
     src_node_idx = input_edge->GetNode().Index();
     src_arg_idx = input_edge->GetSrcArgIndex();
     // remove edge from src to first_node. dest arg idx is 0 as first_node (Q or DQ) only has one input
@@ -91,25 +89,31 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
   graph.RemoveEdge(first_node.Index(), second_node.Index(), 0, 0);
 
   if (!produces_graph_output) {
-    // remove edge to downstream node
-    const Node::EdgeEnd& output_edge = *second_node.OutputEdgesBegin();
-    downstream_node_idx = output_edge.GetNode().Index();
-    downstream_arg_idx = output_edge.GetDstArgIndex();
+    if (has_output_edges) {
+      // make a copy of second_node's output EdgeEnds since we will remove them from second_node as we go
+      const auto copied_output_edges = InlinedVector<Node::EdgeEnd>(second_node.OutputEdgesBegin(),
+                                                                    second_node.OutputEdgesEnd());
+      for (const auto& output_edge : copied_output_edges) {
+        // remove edge to downstream node
+        const auto downstream_node_idx = output_edge.GetNode().Index();
+        const auto downstream_arg_idx = output_edge.GetDstArgIndex();
 
-    // source arg idx is 0 as Q/DQ only has one output
-    graph.RemoveEdge(second_node.Index(), downstream_node_idx, 0, downstream_arg_idx);
+        // source arg idx is 0 as Q/DQ only has one output
+        graph.RemoveEdge(second_node.Index(), downstream_node_idx, 0, downstream_arg_idx);
 
-    // replace input on downstream node
-    Node& downstream_node = *graph.GetNode(downstream_node_idx);
-    downstream_node.MutableInputDefs()[downstream_arg_idx] = first_node.MutableInputDefs()[0];
+        // replace input on downstream node
+        Node& downstream_node = *graph.GetNode(downstream_node_idx);
+        downstream_node.MutableInputDefs()[downstream_arg_idx] = first_node.MutableInputDefs()[0];
 
-    // create edge between src_node (if available) and downstream node
-    if (input_edge) {
-      graph.AddEdge(src_node_idx, downstream_node_idx, src_arg_idx, downstream_arg_idx);
+        // create edge between src_node (if available) and downstream node
+        if (has_src_node) {
+          graph.AddEdge(src_node_idx, downstream_node_idx, src_arg_idx, downstream_arg_idx);
+        }
+      }
     }
   } else {
     NodeArg* graph_output_nodearg = second_node.MutableOutputDefs()[0];
-    if (src_arg_idx >= 0) {
+    if (has_src_node) {
       // update the src node to produce the graph output that was being provided by second_node
       Node& src_node = *graph.GetNode(src_node_idx);
       src_node.MutableOutputDefs()[src_arg_idx] = graph_output_nodearg;
