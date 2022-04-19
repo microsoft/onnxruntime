@@ -42,10 +42,6 @@ struct ModelOptions {
   ModelOptions() : ModelOptions(true, false) {}
 };
 
-namespace {
-static ModelOptions default_model_options;
-}  // namespace
-
 // A machine learning model representation class.
 // Besides a main <Graph>, it also holds basic information, say,
 // model version, model domain, model author, license etc.
@@ -57,7 +53,7 @@ class Model {
   explicit Model(const std::string& graph_name,
                  bool is_onnx_domain_only,
                  const logging::Logger& logger,
-                 const ModelOptions& options = default_model_options)
+                 const ModelOptions& options = {})
       : Model(graph_name, is_onnx_domain_only, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {},
               {}, logger, options) {}
 
@@ -70,13 +66,13 @@ class Model {
                  const std::unordered_map<std::string, int>& domain_to_version,
                  const std::vector<ONNX_NAMESPACE::FunctionProto>& model_local_functions,
                  const logging::Logger& logger,
-                 const ModelOptions& options = default_model_options);
+                 const ModelOptions& options = {});
 
   // NOTE: after calling this constructor, <*this> model will
   // hold a copy of <model_proto>.
   explicit Model(const ONNX_NAMESPACE::ModelProto& model_proto,
                  const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                 const logging::Logger& logger, const ModelOptions& options = default_model_options)
+                 const logging::Logger& logger, const ModelOptions& options = {})
       : Model(model_proto, PathString(), local_registries, logger, options) {}
 
   // NOTE: after calling this constructor, <*this> model will
@@ -84,13 +80,13 @@ class Model {
   explicit Model(const ONNX_NAMESPACE::ModelProto& model_proto,
                  const PathString& model_path,
                  const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                 const logging::Logger& logger, const ModelOptions& options = default_model_options);
+                 const logging::Logger& logger, const ModelOptions& options = {});
 
   // NOTE: after calling this constructor, <*this> model will
   // own the <model_proto>.
   explicit Model(ONNX_NAMESPACE::ModelProto&& model_proto,
                  const IOnnxRuntimeOpSchemaRegistryList* local_registries,
-                 const logging::Logger& logger, const ModelOptions& options = default_model_options)
+                 const logging::Logger& logger, const ModelOptions& options = {})
       : Model(std::move(model_proto), PathString(), local_registries, logger, options) {}
 
   // NOTE: after calling this constructor, <*this> model will
@@ -99,7 +95,7 @@ class Model {
                  const PathString& model_path,
                  const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                  const logging::Logger& logger,
-                 const ModelOptions& options = default_model_options);
+                 const ModelOptions& options = {});
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -228,21 +224,21 @@ class Model {
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger,
-                             const ModelOptions& options = default_model_options);
+                             const ModelOptions& options = {});
 
   static common::Status Load(int fd, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto);
 
   static common::Status Load(int fd, /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger,
-                             const ModelOptions& options = default_model_options);
+                             const ModelOptions& options = {});
 
   static common::Status Load(int fd,
                              const PathString& model_path,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger,
-                             const ModelOptions& options = default_model_options);
+                             const ModelOptions& options = {});
 
   // 'int' rather than 'size_t' because of a protobuf design choice; let callers handle type checks
   static common::Status LoadFromBytes(int count, void* pBytes,
@@ -252,7 +248,7 @@ class Model {
   static common::Status LoadFromBytes(int count, void* pBytes, /*out*/ std::shared_ptr<Model>& p_model,
                                       const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                                       const logging::Logger& logger,
-                                      const ModelOptions& options = default_model_options);
+                                      const ModelOptions& options = {});
 
   // 'int' rather than 'size_t' because of a protobuf design choice; let callers handle type checks
   static common::Status LoadFromBytes(int count, void* pBytes,
@@ -260,32 +256,32 @@ class Model {
                                       /*out*/ std::shared_ptr<Model>& p_model,
                                       const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                                       const logging::Logger& logger,
-                                      const ModelOptions& options = default_model_options);
+                                      const ModelOptions& options = {});
 
   static common::Status Load(const ONNX_NAMESPACE::ModelProto& model_proto, /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger,
-                             const ModelOptions& options = default_model_options);
+                             const ModelOptions& options = {});
 
   static common::Status Load(const ONNX_NAMESPACE::ModelProto& model_proto,
                              const PathString& model_path,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger,
-                             const ModelOptions& options = default_model_options);
+                             const ModelOptions& options = {});
 
   static common::Status Load(ONNX_NAMESPACE::ModelProto&& model_proto,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger,
-                             const ModelOptions& options = default_model_options);
+                             const ModelOptions& options = {});
 
   static common::Status Load(ONNX_NAMESPACE::ModelProto&& model_proto,
                              const PathString& model_path,
                              /*out*/ std::shared_ptr<Model>& p_model,
                              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                              const logging::Logger& logger,
-                             const ModelOptions& options = default_model_options);
+                             const ModelOptions& options = {});
 
   common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                  flatbuffers::Offset<onnxruntime::fbs::Model>& model) const;

@@ -4201,7 +4201,7 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                   schema_registry,
 #endif
                                   nullptr, nullptr, logger,
-                                  // TODO: support true in this case maybe?
+                                  // Assume anything in ORT format has already been validated.
                                   false);
 
   ORT_RETURN_IF_ERROR(graph->LoadFromOrtFormat(fbs_graph));
@@ -4228,7 +4228,7 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
 #endif
                                   &parent_graph, &parent_node,
                                   logger,
-                                  // TODO: support true in this case maybe?
+                                  // Assume anything in ORT format has already been validated.
                                   false);
 
   return graph->LoadFromOrtFormat(fbs_graph);
