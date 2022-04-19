@@ -95,6 +95,15 @@ def get_session(session, model_group):
     session = adjust_columns(session, session_columns, session_db_columns, model_group)
     return session
 
+def get_op_metrics(op_metrics, model_group):
+    csv_columns, db_columns = [], []
+
+    for csv_col, db_col in op_metrics_columns:
+        csv_columns.append(csv_col)
+        db_columns.append(db_col)
+
+    return adjust_columns(op_metrics, csv_columns, db_columns, model_group)
+
 def write_table(ingest_client, table, table_name, commit_time, identifier):
     if table.empty:
         return
@@ -133,7 +142,7 @@ def main():
         folders = os.listdir(result_file)
         os.chdir(result_file)
 
-        tables = [fail_name, memory_name, latency_name, status_name, latency_over_time_name, specs_name, session_name]
+        tables = [fail_name, memory_name, latency_name, status_name, latency_over_time_name, specs_name, session_name, metrics_name]
         table_results = {}
         for table_name in tables:
             table_results[table_name] = pd.DataFrame()
@@ -155,6 +164,9 @@ def main():
                     table_results[latency_over_time_name] = table_results[latency_over_time_name].append(get_latency_over_time(args.commit_hash, args.report_url, args.branch, table_results[latency_name]), ignore_index=True)
                 if status_name in csv: 
                     table_results[status_name] = table_results[status_name].append(get_status(table, model_group), ignore_index=True)
+                if metrics_name in csv:
+                    table_results[metrics_name] = tabel_results[metrics_name].append(get_op_metrics(table, model_group), ignore_index=True)
+
             os.chdir(result_file)
         for table in tables: 
             print('writing ' + table + ' to database')
