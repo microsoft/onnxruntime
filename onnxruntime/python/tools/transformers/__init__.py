@@ -3,4 +3,10 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
-from .models.gpt2 import gpt2_helper
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), 'models', 'gpt2'))
+
+# added for backward compatible
+import gpt2_helper
+import convert_to_onnx
