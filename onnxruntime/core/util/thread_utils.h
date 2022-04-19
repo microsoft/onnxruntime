@@ -5,6 +5,7 @@
 #include "core/platform/threadpool.h"
 #include "core/session/onnxruntime_c_api.h"
 #include <memory>
+#include <optional>
 #include <string>
 
 struct OrtThreadPoolParams {
@@ -53,7 +54,12 @@ enum class ThreadPoolType : uint8_t {
   INTRA_OP,
   INTER_OP
 };
+
 std::unique_ptr<ThreadPool> CreateThreadPool(Env* env, OrtThreadPoolParams options,
+                                             ThreadPoolType tpool_type);
+
+std::unique_ptr<ThreadPool> CreateThreadPool(Env* env, OrtThreadPoolParams options,
+                                             std::function<bool()> is_session_run_in_progress_fn,
                                              ThreadPoolType tpool_type);
 }  // namespace concurrency
 }  // namespace onnxruntime

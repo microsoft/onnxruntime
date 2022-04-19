@@ -266,6 +266,11 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   use_per_session_threads_ = session_options.use_per_session_threads;
 
   if (use_per_session_threads_) {
+    auto is_session_run_in_progress = [&]() -> bool {
+      // invocation_refcounter_ cant be placed into the session state, which is created later than TPs
+      return invocation_refcounter_.load(std::memory_order_relaxed) > 0;
+    };
+
     LOGS(*session_logger_, INFO) << "Creating and using per session threadpools since use_per_session_threads_ is true";
     {
       bool allow_intra_op_spinning =
@@ -296,8 +301,9 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       if (to.custom_create_thread_fn) {
         ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set for intra op thread pool");
       }
+
       thread_pool_ =
-          concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
+          concurrency::CreateThreadPool(&Env::Default(), to, is_session_run_in_progress, concurrency::ThreadPoolType::INTRA_OP);
     }
     if (session_options_.execution_mode == ExecutionMode::ORT_PARALLEL) {
       bool allow_inter_op_spinning =
@@ -1865,6 +1871,18 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
       session_state_->IncrementGraphExecutionCounter();
 #endif
+
+      struct InvocationCounterGuard {
+        std::atomic_int32_t& counter_ref_;
+        explicit InvocationCounterGuard(std::atomic_int32_t& ref) noexcept : counter_ref_(ref) {
+          counter_ref_.fetch_add(1, std::memory_order_relaxed);
+        }
+        ~InvocationCounterGuard() {
+          counter_ref_.fetch_sub(1, std::memory_order_relaxed);
+        }
+      };
+
+      InvocationCounterGuard counter_guard(invocation_refcounter_);
       ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                                    session_options_.execution_mode, run_options.terminate, run_logger,
                                                    run_options.only_execute_path_to_fetches));

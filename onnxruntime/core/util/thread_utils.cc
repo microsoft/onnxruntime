@@ -8,15 +8,18 @@
 #ifdef _WIN32
 #include <Windows.h>
 #endif
+
 #include <thread>
 #include "core/session/ort_apis.h"
 
 namespace onnxruntime {
 namespace concurrency {
-static std::unique_ptr<ThreadPool>
-CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
-  if (options.thread_pool_size == 1)
-    return nullptr;
+
+static std::optional<ThreadOptions> ThreadPoolParamsToOptions(OrtThreadPoolParams& options) {
+  if (options.thread_pool_size == 1) {
+    return std::nullopt;
+  }
+
   std::vector<size_t> cpu_list;
   ThreadOptions to;
   if (options.affinity_vec_len != 0) {
@@ -25,7 +28,7 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   if (options.thread_pool_size <= 0) {  // default
     cpu_list = Env::Default().GetThreadAffinityMasks();
     if (cpu_list.empty() || cpu_list.size() == 1)
-      return nullptr;
+      return std::nullopt;
     options.thread_pool_size = static_cast<int>(cpu_list.size());
     if (options.auto_set_affinity)
       to.affinity = cpu_list;
@@ -40,18 +43,39 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   if (to.custom_create_thread_fn) {
     ORT_ENFORCE(to.custom_join_thread_fn, "custom join thread function not set");
   }
+  return to;
+}
 
-  return std::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
+static std::unique_ptr<ThreadPool>
+CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
+  auto to = ThreadPoolParamsToOptions(options);
+  if (!to.has_value()) {
+    return nullptr;
+  }
+  return std::make_unique<ThreadPool>(env, *to, options.name, options.thread_pool_size,
                                       options.allow_spinning);
 }
 
 std::unique_ptr<ThreadPool>
-CreateThreadPool(Env* env, OrtThreadPoolParams options, ThreadPoolType tpool_type) {
+CreateThreadPool(Env* env, OrtThreadPoolParams options, ThreadPoolType) {
   // If openmp is enabled we don't want to create any additional threadpools for sequential execution.
   // However, parallel execution relies on the existence of a separate threadpool. Hence we allow eigen threadpools
   // to be created for parallel execution.
-  ORT_UNUSED_PARAMETER(tpool_type);
   return CreateThreadPoolHelper(env, options);
+}
+
+std::unique_ptr<ThreadPool> CreateThreadPool(Env* env, OrtThreadPoolParams options,
+                                            std::function<bool()> is_session_run_in_progress_fn,
+                                            ThreadPoolType) {
+
+  auto to = ThreadPoolParamsToOptions(options);
+  if (!to.has_value()) {
+    return nullptr;
+  }
+
+  to->is_session_run_in_progress_fn = std::move(is_session_run_in_progress_fn);
+  return std::make_unique<ThreadPool>(env, *to, options.name, options.thread_pool_size,
+                                      options.allow_spinning);
 }
 
 }  // namespace concurrency
