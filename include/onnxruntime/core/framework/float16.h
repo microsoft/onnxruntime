@@ -155,19 +155,4 @@ inline void FloatToBFloat16(const float* flt, BFloat16* blf, size_t size) {
   }
 }
 
-<<<<<<< HEAD
-inline bool operator==(const BFloat16& left, const BFloat16& right) {
-  return left.val == right.val;
-}
-
-inline bool operator!=(const BFloat16& left, const BFloat16& right) {
-  return left.val != right.val;
-}
-
-inline bool operator<(const BFloat16& left, const BFloat16& right) {
-  return left.val < right.val;
-}
-
-== == == =
->>>>>>> origin/master
 }  // namespace onnxruntime
