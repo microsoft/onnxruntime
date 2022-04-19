@@ -23,7 +23,7 @@ def parse_arguments(argv=None):
 
 def make_custombeamsearchop(args):
     model_type = "CustomBeamsearchOp"
-    domain = "com.microsoft"
+    domain = "custom.com.microsoft"
     inputs = ["input_ids", "num_beams"]
     
     outputs = ["logits"]
