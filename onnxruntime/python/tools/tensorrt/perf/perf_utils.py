@@ -26,6 +26,7 @@ standalone_trt_fp16 = "TRTFp16"
 acl = "ORT-ACLFp32"
 
 # table names
+# TODO: Rename 'metrics_name' to 'op_metrics_name'
 metrics_name = 'metrics'
 success_name = 'success'
 fail_name = 'fail'
@@ -39,6 +40,19 @@ session_name = 'session'
 # column names 
 model_title = 'Model'
 group_title = 'Group'
+
+# List of column name tuples for operator metrics: (<csv_column>, <db_column)
+op_metrics_columns = [
+    ('Model', 'Model'),
+    ('Fp16', 'Fp16'),
+    ('% CUDA operators (not fallback to CPU)', 'CUDAOpPercent'),
+    ('Total TRT operators', 'TotalTRTOps'),
+    ('Total operators', 'TotalOps'),
+    ('% TRT operators', 'TRTOpPercent'),
+    ('Total TRT execution time', 'TotalTRTExecTime'),
+    ('Total execution time', 'TotalExecTime'),
+    ('% TRT execution time', 'TRTExecPercent')
+]
 
 # endings 
 second = "_second"

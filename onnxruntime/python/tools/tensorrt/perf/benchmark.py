@@ -1568,82 +1568,53 @@ def output_latency(results, csv_filename):
 
     logger.info(f"CUDA/TRT latency comparison are saved to csv file: {csv_filename}")
 
+def fill_model_trt_cuda_op_info(model_op_info, ep_info, cuda_key, trt_key):
+    model_op_info['ratio_of_ops_in_cuda_not_fallback_cpu'] = ep_info[cuda_key]['ratio_of_ops_in_cuda_not_fallback_cpu']
+
+    model_op_info['total_trt_execution_time'] = ep_info[trt_key]['total_trt_execution_time']
+    model_op_info['total_execution_time'] = ep_info[trt_key]['total_execution_time']
+    model_op_info['ratio_of_execution_time_in_trt'] = ep_info[trt_key]['ratio_of_execution_time_in_trt']
+
+    ########################################################################################
+    # equation of % TRT ops:
+    # (total ops in cuda json - cuda and cpu ops in trt json)/ total ops in cuda json
+    ########################################################################################
+    total_ops_in_cuda = ep_info[cuda_key]["total_ops"]
+    cuda_cpu_ops_in_trt = ep_info[trt_key]["total_ops"]
+
+    model_op_info['total_ops_in_trt'] = total_ops_in_cuda - cuda_cpu_ops_in_trt
+    model_op_info['total_ops'] = total_ops_in_cuda
+    model_op_info['ratio_of_ops_in_trt'] = (total_ops_in_cuda - cuda_cpu_ops_in_trt) / total_ops_in_cuda
+
 def output_metrics(model_to_metrics, csv_filename):
     with open(csv_filename, mode="w", newline='') as csv_file:
-        column_names = ["Model",
-                        "% CUDA operators (not fall back to CPU)",
-                        "Total TRT operators",
-                        "Total operators",
-                        "% TRT operator",
-                        "Total TRT execution time",
-                        "Total execution time",
-                        "% TRT execution time"]
+        column_names = [c[0] for c in op_metrics_columns]
         csv_writer = csv.writer(csv_file)
         csv_writer.writerow(column_names)
 
         results = []
         for model, ep_info in model_to_metrics.items():
+            if cuda in ep_info and trt in ep_info:
+                model_op_info = {'model_name': model, 'fp16': False}
+                fill_model_trt_cuda_op_info(model_op_info, ep_info, cuda, trt)
+                results.append(model_op_info)
 
-            result = {}
-            result_fp16 = {}
-            result["model_name"] = model
-            result_fp16["model_name"] = model + " (FP16)"
-
-            if cuda in ep_info:
-                result['ratio_of_ops_in_cuda_not_fallback_cpu'] = ep_info[cuda]['ratio_of_ops_in_cuda_not_fallback_cpu']
-
-            if trt in ep_info:
-                result['total_trt_execution_time'] = ep_info[trt]['total_trt_execution_time']
-                result['total_execution_time'] = ep_info[trt]['total_execution_time']
-                result['ratio_of_execution_time_in_trt'] = ep_info[trt]['ratio_of_execution_time_in_trt']
-
-            if cuda in ep_info and trt in ep_info: 
-                ########################################################################################
-                # equation of % TRT ops:
-                # (total ops in cuda json - cuda and cpu ops in trt json)/ total ops in cuda json
-                ########################################################################################
-                total_ops_in_cuda = ep_info[cuda]["total_ops"] 
-                cuda_cpu_ops_in_trt = ep_info[trt]["total_ops"]
-
-                result['total_ops_in_trt'] = total_ops_in_cuda - cuda_cpu_ops_in_trt
-                result['total_ops'] = total_ops_in_cuda
-                result['ratio_of_ops_in_trt'] = (total_ops_in_cuda - cuda_cpu_ops_in_trt) / total_ops_in_cuda
-
-            if cuda_fp16 in ep_info:
-                result_fp16['ratio_of_ops_in_cuda_not_fallback_cpu'] = ep_info[cuda_fp16]['ratio_of_ops_in_cuda_not_fallback_cpu']
-
-            if trt_fp16 in ep_info:
-                result_fp16['total_trt_execution_time'] = ep_info[trt_fp16]['total_trt_execution_time']
-                result_fp16['total_execution_time'] = ep_info[trt_fp16]['total_execution_time']
-                result_fp16['ratio_of_execution_time_in_trt'] = ep_info[trt_fp16]['ratio_of_execution_time_in_trt']
-
-            if cuda_fp16 in ep_info and trt_fp16 in ep_info: 
-                ########################################################################################
-                # equation of % TRT ops:
-                # (total ops in cuda json - cuda and cpu ops in trt json)/ total ops in cuda json
-                ########################################################################################
-                total_ops_in_cuda = ep_info[cuda_fp16]["total_ops"] 
-                cuda_cpu_ops_in_trt = ep_info[trt_fp16]["total_ops"]
-
-                result_fp16['total_ops_in_trt'] = total_ops_in_cuda - cuda_cpu_ops_in_trt
-                result_fp16['total_ops'] = total_ops_in_cuda
-                result_fp16['ratio_of_ops_in_trt'] = (total_ops_in_cuda - cuda_cpu_ops_in_trt) / total_ops_in_cuda
-
-            
-            results.append(result)
-            results.append(result_fp16)
-
+            if cuda_fp16 in ep_info and trt_fp16 in ep_info:
+                model_op_info = {'model_name': model, 'fp16': True}
+                fill_model_trt_cuda_op_info(model_op_info, ep_info, cuda_fp16, trt_fp16)
+                results.append(model_op_info)
 
         
         for value in results:
             row = [value['model_name'],
-                   value['ratio_of_ops_in_cuda_not_fallback_cpu'] if 'ratio_of_ops_in_cuda_not_fallback_cpu' in value else "  ",
-                   value['total_ops_in_trt'] if 'total_ops_in_trt' in value else "  ",
-                   value['total_ops'] if 'total_ops' in value else "  ",
-                   value['ratio_of_ops_in_trt'] if 'ratio_of_ops_in_trt' in value else "  ",
-                   value['total_trt_execution_time'] if 'total_trt_execution_time' in value else "  ",
-                   value['total_execution_time'] if 'total_execution_time' in value else "  ",
-                   value['ratio_of_execution_time_in_trt'] if 'ratio_of_execution_time_in_trt' in value else "  ",
+                   value['fp16'],
+                   value['ratio_of_ops_in_cuda_not_fallback_cpu'],
+                   value['total_ops_in_trt'],
+                   value['total_ops'],
+                   value['ratio_of_ops_in_trt'],
+                   value['total_trt_execution_time'],
+                   value['total_execution_time'],
+                   value['ratio_of_execution_time_in_trt'],
                    ]
             csv_writer.writerow(row)
 
