@@ -321,7 +321,7 @@ packages = [
     'onnxruntime.transformers',
     'onnxruntime.transformers.models.gpt2',
     'onnxruntime.transformers.models.longformer',
-    'onnxruntime.transformers.models.t5',    
+    'onnxruntime.transformers.models.t5',
 ]
 
 requirements_file = "requirements.txt"
