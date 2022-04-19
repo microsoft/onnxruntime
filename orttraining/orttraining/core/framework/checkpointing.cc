@@ -156,13 +156,7 @@ Status SaveRuntimeTensors(
         tensors_data_file, saved_tensor_protos.back()));
   }
 
-  ORT_RETURN_IF_ERROR(WithOpenFile(
-      tensors_path, false,
-      [&saved_tensor_protos](int fd) {
-        google::protobuf::io::FileOutputStream output{fd};
-        ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(saved_tensor_protos, output));
-        return Status::OK();
-      }));
+  ORT_RETURN_IF_ERROR(SaveTensorProtosToFile(tensors_path, saved_tensor_protos));
 
   return Status::OK();
 }
@@ -225,6 +219,19 @@ Status SaveModelCheckpoint(
       GetCheckpointPropertiesFilePath(checkpoint_path), properties));
 
   LOGS_DEFAULT(INFO) << "Model checkpoint saved successfully.";
+
+  return Status::OK();
+}
+
+Status SaveTensorProtosToFile(const PathString& proto_file_path,
+                              const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos_to_save) {
+  ORT_RETURN_IF_ERROR(WithOpenFile(
+      proto_file_path, false,
+      [&tensor_protos_to_save](int fd) {
+        google::protobuf::io::FileOutputStream output{fd};
+        ORT_RETURN_IF_ERROR(WriteProtoMessageSequence(tensor_protos_to_save, output));
+        return Status::OK();
+      }));
 
   return Status::OK();
 }

@@ -3,6 +3,8 @@
 
 #if defined(ENABLE_TRAINING) && defined(ENABLE_TRAINING_ON_DEVICE)
 
+#pragma once
+
 namespace onnxruntime {
 namespace training {
 namespace api_test {
@@ -49,7 +51,7 @@ class Module {
   // Initialize a module from an ORT inference session with loaded
   // training ONNX model and load parameters
   Module(const std::string& /*train_model_path_or_bytes*/,
-         std::unordered_map<std::string, std::shared_ptr<Parameter>>& /*parameters*/,
+         const std::unordered_map<std::string, std::shared_ptr<Parameter>>& /*parameters*/,
          const std::optional<std::string>& /*eval_model_path_or_bytes*/) {
     ORT_NOT_IMPLEMENTED("Not implemented.");
   }
@@ -77,8 +79,8 @@ class Module {
   }
 
   // Return the states of the module as a map.
-  Status GetStateDict(const std::unordered_map<std::string, std::shared_ptr<Parameter>>& /*module_state_dict*/) {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
+  Status GetStateDict(std::unordered_map<std::string, std::shared_ptr<Parameter>>& module_states) {
+    module_states = named_parameters();
     return Status::OK();
   }
 
@@ -90,20 +92,18 @@ class Module {
 
 // Internal state
 struct ParameterOptimizerState {
-  int64_t step_;
-  float learning_rate_;
   // Per param optimizer state. E.g. For Adam and param_0, this would contain
   // {“Moment_1_param_0”:<value>, …},
   // It should be noted that the names should only be maintained to correlate with
   // the graph inputs for the optimizer graph
-  std::map<std::string, OrtValue> states_;
+  std::unordered_map<std::string, std::shared_ptr<OrtValue>> states_;
 };
 
 struct OptimizerState {
   // overall state related to optimizer
   int64_t step_;
   float learning_rate_;
-  std::unordered_map<std::string, ParameterOptimizerState> optimizer_states_;
+  std::unordered_map<std::string, ParameterOptimizerState> param_optimizer_states_;
 };
 
 class Optimizer {
@@ -112,7 +112,7 @@ class Optimizer {
   // training ONNX model For each parameter, initialize the OptimizerState based
   // on the graph input’s ValueInfoProto if the parameter doesn’t have it already.
   Optimizer(const std::string& /*optim_path_or_bytes*/,
-            std::unordered_map<std::string, std::shared_ptr<Parameter>>& /*parameters*/) {
+            const std::unordered_map<std::string, std::shared_ptr<Parameter>>& /*parameters*/) {
     ORT_NOT_IMPLEMENTED("Not implemented.");
   }
 
@@ -129,8 +129,9 @@ class Optimizer {
   }
 
   // Return the states of the optimizer as a map.
-  Status GetStateDict(const OptimizerState& /*optimizer_state_dict*/) {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
+  Status GetStateDict(std::unordered_map<std::string, std::shared_ptr<OptimizerState>>& grouped_optimizer_states) {
+    const std::string group_zero_name = "group_0";
+    grouped_optimizer_states.insert({group_zero_name, std::make_shared<OptimizerState>(optimizer_state_)});
     return Status::OK();
   }
 
@@ -188,33 +189,6 @@ class LinearScheduler : public LearningRateScheduler {
 };
 
 namespace utils {
-
-struct CheckpointProperty {
-  int value;
-  // Support primitive types like int, float, string leveraging type trait.
-};
-
-struct CheckpointStates {
-  CheckpointStates() {
-    ORT_NOT_IMPLEMENTED("Not implemented.");
-  }
-  std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters;
-  OptimizerState optimizer_states;
-  std::unordered_map<std::string, CheckpointProperty> named_properties;
-};
-
-// Save properties into a checkpoint property file (with postfix .prop).
-Status Ort_Save(CheckpointStates& /*state_dicts*/, const PathString& /*checkpoint_path*/) {
-  ORT_NOT_IMPLEMENTED("Not implemented.");
-  return Status::OK();
-}
-
-// Load properties file having postfix being '.prop'.
-Status Ort_Load(const PathString& /*checkpoint_path*/, CheckpointStates& /*state_dicts*/) {
-  ORT_NOT_IMPLEMENTED("Not implemented.");
-  return Status::OK();
-}
-
 /*
   module.train_sess.RegisterExecutionProvider(provider);
   module.eval_sess.RegisterExecutionProvider(provider);

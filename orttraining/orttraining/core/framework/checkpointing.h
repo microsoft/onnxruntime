@@ -40,6 +40,17 @@ common::Status SaveModelCheckpoint(
     const std::unordered_map<std::string, std::string>& properties);
 
 /**
+ * @brief Saves list of tensor proto in the specified location.
+ *
+ * @param proto_file_path the file path where stores the tensor protos.
+ * @param tensor_protos_to_save tensor protos being saved.
+ * @return The status of the operation.
+ */
+common::Status SaveTensorProtosToFile(
+    const PathString& proto_file_path,
+    const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos_to_save);
+
+/**
  * Loads a model checkpoint from the specified location.
  *
  * @param checkpoint_path The checkpoint location.

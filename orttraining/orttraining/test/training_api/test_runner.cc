@@ -12,12 +12,14 @@
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
 #include "orttraining/training_api/interfaces.h"
+#include "orttraining/training_api/checkpoint.h"
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
 using namespace onnxruntime::training;
 using namespace onnxruntime::training::tensorboard;
 using namespace onnxruntime::training::api_test;
+using namespace onnxruntime::training::api;
 using namespace std;
 
 #ifdef USE_CUDA
@@ -201,8 +203,8 @@ Status RunTraining(const TestRunnerParameters& params) {
   std::string tensorboard_file = params.output_dir + "/tb.event";
   std::shared_ptr<EventWriter> tensorboard = std::make_shared<EventWriter>(tensorboard_file);
 
-  api_test::utils::CheckpointStates state_dicts;
-  ORT_ENFORCE(api_test::utils::Ort_Load(params.checkpoint_to_load_path, state_dicts).IsOK());
+  CheckpointStates state_dicts;
+  ORT_ENFORCE(CheckpointUtils::Ort_Load(params.checkpoint_to_load_path, state_dicts).IsOK());
 
   Module module(params.model_training_graph_path,
                 state_dicts.named_parameters,
@@ -251,11 +253,11 @@ Status RunTraining(const TestRunnerParameters& params) {
 
       if (batch_idx % SAVE_STEPS == 0) {
         // save trained weights
-        api_test::utils::CheckpointStates state_dicts_to_save;
+        CheckpointStates state_dicts_to_save;
         ORT_ENFORCE(module.GetStateDict(state_dicts_to_save.named_parameters).IsOK());
-        ORT_ENFORCE(optimizer.GetStateDict(state_dicts_to_save.optimizer_states).IsOK());
+        ORT_ENFORCE(optimizer.GetStateDict(state_dicts_to_save.grouped_optimizer_states).IsOK());
         std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx);
-        ORT_ENFORCE(api_test::utils::Ort_Save(state_dicts_to_save, ckpt_file).IsOK());
+        ORT_ENFORCE(CheckpointUtils::Ort_Save(state_dicts_to_save, ckpt_file).IsOK());
       }
 
       batch_idx++;
