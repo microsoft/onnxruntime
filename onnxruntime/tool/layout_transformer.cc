@@ -38,16 +38,9 @@ int wmain(int argc, char* argv[]) {
   setlocale(LC_ALL, "");
   auto& domainToVersionRangeInstance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
   if (domainToVersionRangeInstance.Map().find(onnxruntime::kMSDomain) == domainToVersionRangeInstance.Map().end()) {
-    // External shared providers may have already added kMSDomain
     domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
   }
-  auto iter = domainToVersionRangeInstance.Map().find(onnxruntime::kOnnxDomain);
-  if (iter == domainToVersionRangeInstance.Map().end()) return -1;
-  domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSInternalNHWCDomain, 1, iter->second.second);
-
-  domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
   domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);
-  domainToVersionRangeInstance.AddDomainToVersion("com.microsoft.xnnpack", 1, 1);
 
   ::ONNX_NAMESPACE::RegisterOnnxOperatorSetSchema();
   ::ONNX_NAMESPACE::RegisterOpSetSchema<contrib::OpSet_Microsoft_ver1>();
@@ -65,7 +58,7 @@ int wmain(int argc, char* argv[]) {
 
   const ORTCHAR_T* input_model_path = argv[1];
   const ORTCHAR_T* output_model_path = argv[2];
-  auto logger = lmgr->CreateLogger("default");
+  auto logger = lmgr->CreateLogger("xnnpack_converter");
   std::shared_ptr<onnxruntime::Model> m;
   ORT_RETURN_NEG_ONE_IF_ERROR(Model::Load(input_model_path, m, nullptr, *logger));
   std::shared_ptr<CPUAllocator> cpu_allocator = std::make_shared<CPUAllocator>();
@@ -77,17 +70,15 @@ int wmain(int argc, char* argv[]) {
     return 0;
   }
   auto model_proto = m->ToProto();
-#if 0
   try {
     ::ONNX_NAMESPACE::ShapeInferenceOptions options{true, 1, true};
     ::ONNX_NAMESPACE::shape_inference::InferShapes(model_proto,
                                                    ::ONNX_NAMESPACE::OpSchemaRegistry::Instance(),
                                                    options);
   } catch (const std::exception& ex) {
-    std::cout << ex.what() << std::endl;
+    LOGS_USER(*logger, ERROR) << ex.what();
     return -1;
   }
-#endif
   int fd = -1;
   ORT_RETURN_NEG_ONE_IF_ERROR(Env::Default().FileOpenWr(output_model_path, fd));
   if (!model_proto.SerializeToFileDescriptor(fd)) {
