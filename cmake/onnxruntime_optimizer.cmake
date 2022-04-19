@@ -3,6 +3,14 @@
 
 set(onnxruntime_optimizer_src_patterns)
 
+if (onnxruntime_USE_XNNPACK)
+  onnxruntime_add_static_library(onnxruntime_xnnpack_optimizer ${ONNXRUNTIME_ROOT}/core/xnnpack/optimizer/xnnpack_transformer.cc)
+  onnxruntime_add_include_to_target(onnxruntime_xnnpack_optimizer onnxruntime_xnnpack_schemas onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB})
+  set(ONNXRUNTIME_XNNPACK_OPTIMIZER_LIBRARY onnxruntime_xnnpack_optimizer)
+  add_dependencies(onnxruntime_xnnpack_optimizer ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_xnnpack_optimizer PROPERTIES FOLDER "ONNXRuntime")
+endif()
+
 if (onnxruntime_MINIMAL_BUILD)
   # we include a couple of files so a library is produced and we minimize other changes to the build setup.
   # if the transformer base class is unused it will be excluded from the final binary size

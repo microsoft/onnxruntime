@@ -172,6 +172,7 @@ endif()
 set(onnxruntime_INTERNAL_LIBRARIES
   onnxruntime_session
   ${onnxruntime_libs}
+  # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
   ${PROVIDERS_ACL}
   ${PROVIDERS_ARMNN}
   ${PROVIDERS_COREML}
@@ -184,12 +185,15 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${PROVIDERS_VITISAI}
   ${PROVIDERS_INTERNAL_TESTING}
   ${onnxruntime_winml}
+  ${ONNXRUNTIME_XNNPACK_OPTIMIZER_LIBRARY}
   onnxruntime_optimizer
+  ${ONNXRUNTIME_XNNPACK_PROVIDER_LIBRARY}
   onnxruntime_providers
   ${onnxruntime_tvm_libs}
   onnxruntime_framework
-  onnxruntime_graph
+  onnxruntime_graph  
   onnxruntime_util
+  ${ONNXRUNTIME_XNNPACK_SCHEMAS_LIBRARY}
   ${ONNXRUNTIME_MLAS_LIBS}
   onnxruntime_common
   onnxruntime_flatbuffers

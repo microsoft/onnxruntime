@@ -964,7 +964,7 @@ class Graph {
   */
   bool RemoveNode(NodeIndex node_index);
 
-  /** Add an edge between two Nodes.
+  /** Add an edge between two Nodes. The two node args at both ends of the edge must have the same type.
   @param src_node_index NodeIndex of source Node that is providing output to the destination Node.
   @param dst_node_index NodeIndex of destination Node that is receiving input from the source Node.
   @param src_arg_index node arg index of source node.

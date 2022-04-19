@@ -65,7 +65,7 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
   if (need_cpu_cast) {
     InsertCastTransformer transformer("Test");
     bool modified = false;
-    status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+    status = transformer.Apply(graph, modified, *logger_);
     ASSERT_TRUE(status.IsOK());
   }
 

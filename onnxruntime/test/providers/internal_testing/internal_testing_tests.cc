@@ -87,7 +87,12 @@ static void ExecuteMnist(InferenceSessionWrapper& session, bool custom_ep_enable
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 #if !defined(ORT_MINIMAL_BUILD)
+#ifdef USE_XNNPACK
+// XNNPack has a different set of optimizers so the NumberOfNodes is different
+TEST(InternalTestingEP, DISABLED_TestSaveAndLoadOrtModel) {
+#else
 TEST(InternalTestingEP, TestSaveAndLoadOrtModel) {
+#endif
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "mnist.internal_testing_ep.test_output.ort";
 
   //

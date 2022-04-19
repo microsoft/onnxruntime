@@ -11,6 +11,7 @@
 #include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include "asserts.h"
 #include <cmath>
 
 #include "gtest/gtest.h"
@@ -223,7 +224,7 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
   }
 }
 
-#ifndef DISABLE_CONTRIB_OPS
+#if !defined(DISABLE_CONTRIB_OPS) && !defined(USE_XNNPACK)
 
 TEST(NchwcOptimizerTests, ConvNchw) {
   auto test_case = [&](const std::string& activation_op_type) {

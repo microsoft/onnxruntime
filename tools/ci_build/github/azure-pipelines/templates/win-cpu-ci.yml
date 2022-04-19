@@ -25,6 +25,11 @@ parameters:
   type: boolean
   default: true
 
+- name: RunCSharpTests
+  displayName: Run CSharp Tests?
+  type: boolean
+  default: true
+
 - name: RunOnnxRuntimeTests
   displayName: Run Tests?
   type: boolean
@@ -161,7 +166,7 @@ jobs:
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
 
-  - ${{ if and(eq(parameters.BuildConfig, 'RelWithDebInfo'), eq(parameters.RunOnnxRuntimeTests, true)) }}:
+  - ${{ if and(eq(parameters.BuildConfig, 'RelWithDebInfo'), eq(parameters.RunOnnxRuntimeTests, true), eq(parameters.RunCSharpTests, true)) }}:
       - task: DotNetCoreCLI@2
         displayName: 'Test C#'
         inputs:

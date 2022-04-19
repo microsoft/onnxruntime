@@ -60,6 +60,10 @@
 #include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 
+#ifdef USE_XNNPACK
+#include "core/xnnpack/optimizer/xnnpack_transformer.h"
+#endif
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 namespace onnxruntime::optimizer_utils {
@@ -177,6 +181,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       // no filtering on execution provider for L1 optimizations as they only use official ONNX operators
       transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>());
+#ifdef USE_XNNPACK
+      auto default_cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
+      transformers.emplace_back(std::make_unique<NhwcTransformer>(default_cpu_allocator));
+      transformers.emplace_back(std::make_unique<XNNPackTransformer>(default_cpu_allocator));
+#endif
       transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq));
       transformers.emplace_back(std::make_unique<MatMulAddFusion>());
       transformers.emplace_back(std::make_unique<ReshapeFusion>());
@@ -264,6 +273,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         transformers.emplace_back(std::make_unique<NchwcTransformer>());
       }
       auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
+#ifndef USE_XNNPACK
       transformers.emplace_back(std::make_unique<NhwcTransformer>(std::move(cpu_allocator)));
       // NCHWCtransformer should have a higher priority versus this. Because NCHWCtransformer also do the similiar things
       // of fusion patterns and target on CPU. However, NCHWCtransformer will reorder the layout to nchwc which is only available for
@@ -271,6 +281,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // we will prefer NhwcTransformer once ort runs on x86-64 CPU, otherwise ConvAddActivationFusion is enabled.
       // this PR #6351 implemented similiar fusion-pattern but only for CUDA, and can only fuse conv-add-relu, while we can fuse more activation.
       transformers.emplace_back(std::make_unique<ConvAddActivationFusion>(cpu_ep));
+#endif
 #endif
     } break;
 

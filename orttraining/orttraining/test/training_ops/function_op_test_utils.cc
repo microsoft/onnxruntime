@@ -74,7 +74,6 @@ TwoDArray OpFunctionTester::RunFunctionBodyGraphOnCPU() {
   return run_results;
 }
 
-OpFunctionTester::~OpFunctionTester(){};
 
 template <class T>
 std::unique_ptr<T> CreateOpTester(const onnxruntime::training::OpDef& op_def,

@@ -10,6 +10,13 @@ file(GLOB_RECURSE onnxruntime_graph_src CONFIGURE_DEPENDS
 # create empty list for any excludes
 set(onnxruntime_graph_src_exclude_patterns)
 
+if (onnxruntime_USE_XNNPACK)
+  onnxruntime_add_static_library(onnxruntime_xnnpack_schemas ${ONNXRUNTIME_ROOT}/core/xnnpack/schema/xnnpack_onnx_defs.cc)
+  onnxruntime_add_include_to_target(onnxruntime_xnnpack_schemas onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB})
+  set(ONNXRUNTIME_XNNPACK_SCHEMAS_LIBRARY onnxruntime_xnnpack_schemas)
+  add_dependencies(onnxruntime_xnnpack_schemas ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_xnnpack_schemas PROPERTIES FOLDER "ONNXRuntime")
+endif()
 if (onnxruntime_MINIMAL_BUILD)
   # remove schema registration support
   list(APPEND onnxruntime_graph_src_exclude_patterns

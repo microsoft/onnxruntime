@@ -599,6 +599,8 @@ def parse_arguments():
         "--enable_cuda_profiling", action='store_true', help="enable cuda kernel profiling, \
         cupti library must be added to PATH beforehand.")
 
+    parser.add_argument("--use_xnnpack", action='store_true', help="Enable xnnpack EP.")
+    
     args = parser.parse_args()
     if args.android_sdk_path:
         args.android_sdk_path = os.path.normpath(args.android_sdk_path)
@@ -606,7 +608,6 @@ def parse_arguments():
         args.android_ndk_path = os.path.normpath(args.android_ndk_path)
 
     return args
-
 
 def is_reduced_ops_build(args):
     return args.include_ops_by_config is not None
@@ -857,6 +858,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_PROFILING=" + ("ON" if args.enable_wasm_profiling else "OFF"),
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
+        "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
         "-Donnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS=" + ("ON" if args.enable_external_custom_op_schemas
                                                               else "OFF"),
         "-Donnxruntime_NVCC_THREADS=" + str(args.parallel),
@@ -1720,7 +1722,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if onnx_test:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_backend.py'], cwd=cwd, dll_path=dll_path,
                                python_path=python_path)
-                if not args.disable_contrib_ops:
+                if not args.disable_contrib_ops and not args.use_xnnpack:
                     run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'quantization'],
                                    cwd=cwd, dll_path=dll_path)
                     if args.enable_transformers_tool_test:
