@@ -132,7 +132,7 @@ std::shared_ptr<KernelRegistry> OpenCLExecutionProvider::GetKernelRegistry() con
 template <class T>
 static void GetCLDevInfo(cl_device_id  device ,
                   cl_device_info param_name, T* param) {
-  static_assert(std::is_same<T, size_t>::value || std::is_same<T, uint64_t>::value 
+  static_assert(std::is_same<T, size_t>::value || std::is_same<T, uint64_t>::value
       || std::is_same<T, uint32_t>::value || std::is_same<T, size_t[3]>::value);
   ORT_THROW_IF_CL_ERROR(clGetDeviceInfo(device, param_name, sizeof(T), param, nullptr));
 }
@@ -252,7 +252,7 @@ Status OpenCLExecutionProvider::InitOpenCLContext() {
 Status OpenCLExecutionProvider::InitCompileOptions() {
   compile_options_.reserve(2048);
   if (dev_info_.device_name == "Mali-G51") {
-    compile_options_.append(" -D CONFORMANCE_WORKAROUND_could_not_emit_constant_value_abstractly");
+    compile_options_.append(" -D CONFORMANCE_could_not_emit_constant_value_abstractly");
   }
   return Status::OK();
 }

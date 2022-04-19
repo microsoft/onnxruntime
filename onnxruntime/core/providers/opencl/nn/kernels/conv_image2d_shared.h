@@ -33,17 +33,18 @@ typedef enum MLAS_ACTIVATION_KIND ActivationKind;
     } else if (activation_type == MlasClipActivation) {                 \
       out0 = clamp(out0, (FLOAT4)firstv, (FLOAT4)secondv);              \
     } else if (activation_type == MlasLeakyReluActivation) {            \
-      FLOAT f1 = 0.5 * (1.0f + firstv);                                 \
-      FLOAT f2 = 0.5 * (1.0f - firstv);                                 \
+      FLOAT f1 = (FLOAT)0.5f * ((FLOAT)1.0f + firstv);                  \
+      FLOAT f2 = (FLOAT)0.5f * ((FLOAT)1.0f - firstv);                  \
       out0 = (FLOAT4)f1 * out0 + (FLOAT4)f2 * fabs(out0);               \
     } else if (activation_type == MlasTanhActivation) {                 \
-      FLOAT4 v1 = NATIVE_EXP(out0);                                     \
-      FLOAT4 v2 = NATIVE_EXP(-out0);                                    \
-      out0 = NATIVE_DIVIDE(v1 - v2, v1 + v2);                           \
+      FLOAT4 v1 = EXP(out0);                                            \
+      FLOAT4 v2 = EXP(-out0);                                           \
+      out0 = DIV(v1 - v2, v1 + v2);                                     \
     } else if (activation_type == MlasLogisticActivation) {             \
-      out0 = NATIVE_RECIP((FLOAT4)1 + NATIVE_EXP(-out0));                 \
+      out0 = RECIP4((FLOAT4)1 + EXP(-out0));                            \
     } else if (activation_type == MlasHardSigmoidActivation) {          \
-      out0 = clamp(0.5f * out0 + 0.5f, 0.f, 1.0f);                      \
+      out0 = clamp((FLOAT4)0.5f * out0 + (FLOAT4)0.5f,                  \
+                   (FLOAT4)0.0f, (FLOAT4)1.0f);                         \
     }                                                                   \
   }
 
@@ -60,35 +61,35 @@ typedef enum MLAS_ACTIVATION_KIND ActivationKind;
       out2 = clamp(out2, (FLOAT4)firstv, (FLOAT4)secondv);                                    \
       out3 = clamp(out3, (FLOAT4)firstv, (FLOAT4)secondv);                                    \
     } else if (activation_type == MlasLeakyReluActivation) {                                  \
-      FLOAT f1 = 0.5 * (1.0f + firstv);                                                       \
-      FLOAT f2 = 0.5 * (1.0f - firstv);                                                       \
+      FLOAT f1 = (FLOAT)0.5f * ((FLOAT)1.0f + firstv);                                        \
+      FLOAT f2 = (FLOAT)0.5f * ((FLOAT)1.0f - firstv);                                        \
       out0 = (FLOAT4)f1 * out0 + (FLOAT4)f2 * fabs(out0);                                     \
       out1 = (FLOAT4)f1 * out1 + (FLOAT4)f2 * fabs(out1);                                     \
       out2 = (FLOAT4)f1 * out2 + (FLOAT4)f2 * fabs(out2);                                     \
       out3 = (FLOAT4)f1 * out3 + (FLOAT4)f2 * fabs(out3);                                     \
     } else if (activation_type == MlasTanhActivation) {                                       \
-      FLOAT4 v1 = NATIVE_EXP(out0), v2 = NATIVE_EXP(-out0);                                   \
-      out0 = NATIVE_DIVIDE(v1 - v2, v1 + v2);                                                 \
-      FLOAT4 v11 = NATIVE_EXP(out1), v12 = NATIVE_EXP(-out1);                                 \
-      out1 = NATIVE_DIVIDE(v11 - v12, v11 + v12);                                             \
-      FLOAT4 v21 = NATIVE_EXP(out2), v22 = NATIVE_EXP(-out2);                                 \
-      out2 = NATIVE_DIVIDE(v21 - v22, v21 + v22);                                             \
-      FLOAT4 v31 = NATIVE_EXP(out3), v32 = NATIVE_EXP(-out3);                                 \
-      out3 = NATIVE_DIVIDE(v31 - v32, v31 + v32);                                             \
+      FLOAT4 v1 = EXP(out0), v2 = EXP(-out0);                                                 \
+      out0 = DIV(v1 - v2, v1 + v2);                                                           \
+      FLOAT4 v11 = EXP(out1), v12 = EXP(-out1);                                               \
+      out1 = DIV(v11 - v12, v11 + v12);                                                       \
+      FLOAT4 v21 = EXP(out2), v22 = EXP(-out2);                                               \
+      out2 = DIV(v21 - v22, v21 + v22);                                                       \
+      FLOAT4 v31 = EXP(out3), v32 = EXP(-out3);                                               \
+      out3 = DIV(v31 - v32, v31 + v32);                                                       \
     } else if (activation_type == MlasLogisticActivation) {                                   \
-      out0 = NATIVE_RECIP((FLOAT4)1 + NATIVE_EXP(-out0));                                     \
-      out1 = NATIVE_RECIP((FLOAT4)1 + NATIVE_EXP(-out1));                                     \
-      out2 = NATIVE_RECIP((FLOAT4)1 + NATIVE_EXP(-out2));                                     \
-      out3 = NATIVE_RECIP((FLOAT4)1 + NATIVE_EXP(-out3));                                     \
+      out0 = RECIP4((FLOAT4)1 + EXP(-out0));                                                  \
+      out1 = RECIP4((FLOAT4)1 + EXP(-out1));                                                  \
+      out2 = RECIP4((FLOAT4)1 + EXP(-out2));                                                  \
+      out3 = RECIP4((FLOAT4)1 + EXP(-out3));                                                  \
     } else if (activation_type == MlasHardSigmoidActivation) {                                \
-      out0 = clamp(0.5f * out0 + 0.5f, 0.f, 1.0f);                                            \
-      out1 = clamp(0.5f * out1 + 0.5f, 0.f, 1.0f);                                            \
-      out2 = clamp(0.5f * out2 + 0.5f, 0.f, 1.0f);                                            \
-      out3 = clamp(0.5f * out3 + 0.5f, 0.f, 1.0f);                                            \
+      out0 = clamp((FLOAT4)0.5f * out0 + (FLOAT4)0.5f, (FLOAT4)0.f, (FLOAT4)1.0f);            \
+      out1 = clamp((FLOAT4)0.5f * out1 + (FLOAT4)0.5f, (FLOAT4)0.f, (FLOAT4)1.0f);            \
+      out2 = clamp((FLOAT4)0.5f * out2 + (FLOAT4)0.5f, (FLOAT4)0.f, (FLOAT4)1.0f);            \
+      out3 = clamp((FLOAT4)0.5f * out3 + (FLOAT4)0.5f, (FLOAT4)0.f, (FLOAT4)1.0f);            \
     }                                                                                         \
   }
 
-#define AddSumFusedInplace(sum, out0, out1, out2, out3, output_w_idx, output_h_idx, remain, has_sum)          \
+#define AddSumFusedInplace(sum, out0, out1, out2, out3, output_w_idx, output_h_idx, remain, has_sum)   \
   {                                                                                                    \
     out0 += (has_sum && (remain > 0)) ? RI_F(sum, (int2)(output_w_idx, output_h_idx)) : (FLOAT4)0;     \
     out1 += (has_sum && (remain > 1)) ? RI_F(sum, (int2)(output_w_idx + 1, output_h_idx)) : (FLOAT4)0; \
