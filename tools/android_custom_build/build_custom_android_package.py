@@ -29,6 +29,9 @@ def parse_args():
                              "Supports branches and tags starting from 1.11 (branch rel-1.11.0 or tag v1.11.0). "
                              "If unspecified, builds the latest.")
 
+    parser.add_argument("--onnxruntime_repo_url",
+                        help="The ONNX Runtime repo URL. If unspecified, uses the official repo.")
+
     parser.add_argument("--include_ops_by_config", type=pathlib.Path,
                         help="The configuration file specifying which ops to include. "
                              "Such a configuration file is generated during ONNX to ORT format model conversion. "
@@ -63,8 +66,11 @@ def parse_args():
 def main():
     args = parse_args()
 
-    docker_build_args = ["--build-arg", f"ONNXRUNTIME_BRANCH_OR_TAG={args.onnxruntime_branch_or_tag}"] \
-        if args.onnxruntime_branch_or_tag else []
+    docker_build_args = []
+    if args.onnxruntime_branch_or_tag:
+        docker_build_args += ["--build-arg", f"ONNXRUNTIME_BRANCH_OR_TAG={args.onnxruntime_branch_or_tag}"]
+    if args.onnxruntime_repo_url:
+        docker_build_args += ["--build-arg", f"ONNXRUNTIME_REPO={args.onnxruntime_repo_url}"]
 
     docker_build_cmd = [args.docker_path, "build",
                         "--tag", args.docker_image_tag,
