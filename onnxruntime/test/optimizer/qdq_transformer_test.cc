@@ -2270,30 +2270,25 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
 TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQCleanup) {
   auto test_case = [&](const std::vector<std::vector<int64_t>>& input_shapes,
                        bool block_removal_of_last_dq = false,
-                       bool block_removal_of_first_q = false) {
+                       bool block_removal_of_first_dq = false) {
     // create model with float input to multiple -> Q -> DQ -> Concat -> Q -> DQ -> output
     // If we enable cleanup and don't run the QDQ transformer we should drop all the Q->DQ pairs
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto input_count = input_shapes.size();
       std::vector<NodeArg*> input_args;
-      std::vector<NodeArg*> concat_input_args;
+      std::vector<NodeArg*> q_input_args;
       for (size_t i = 0; i < input_count; i++) {
         input_args.push_back(builder.MakeInput<float>(input_shapes[i], -1.f, 1.f));
+        q_input_args.push_back(AddQDQNodePair<uint8_t>(builder, input_args.back(), 0.05f, 128));
 
-        auto* q_output = builder.MakeIntermediate();
-        builder.AddQuantizeLinearNode<uint8_t>(input_args.back(), 0.05f, 128, q_output);
-        auto* dq_output = builder.MakeIntermediate();
-        builder.AddDequantizeLinearNode<uint8_t>(q_output, 0.05f, 128, dq_output);
-        concat_input_args.push_back(dq_output);
-
-        if (i == 0 && block_removal_of_first_q) {
-          // add another edge to the Q node
+        if (i == 0 && block_removal_of_first_dq) {
+          // add another edge to the DQ node
           auto* output = builder.MakeOutput();
-          builder.AddNode("Identity", {q_output}, {output});
+          builder.AddNode("Identity", {q_input_args.back()}, {output});
         }
       }
       auto* concat_output = builder.MakeIntermediate();
-      Node& concat_node = builder.AddNode("Concat", concat_input_args, {concat_output});
+      Node& concat_node = builder.AddNode("Concat", q_input_args, {concat_output});
       concat_node.AddAttribute("axis", int64_t(1));
 
       auto* q_concat_output = builder.MakeIntermediate();
@@ -2309,8 +2304,8 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQCleanup) {
       }
     };
 
-    // if we block removal of the Q or DQ node the other node in the pair will not be removed either
-    int expected_qdq_count = 0 + (block_removal_of_first_q ? 1 : 0) + (block_removal_of_last_dq ? 1 : 0);
+    // if we block removal of the DQ node the Q node in the pair will not be removed either
+    int expected_qdq_count = 0 + (block_removal_of_first_dq ? 1 : 0) + (block_removal_of_last_dq ? 1 : 0);
 
     auto check_graph = [expected_qdq_count](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
@@ -2337,9 +2332,9 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQCleanup) {
   };
 
   test_case({{1, 2, 4}, {1, 3, 4}});
-  test_case({{1, 2, 4}, {1, 3, 4}}, true);         // block removal of first q
+  test_case({{1, 2, 4}, {1, 3, 4}}, true);         // block removal of first dq
   test_case({{1, 2, 4}, {1, 3, 4}}, false, true);  // block removal of last dq
-  test_case({{1, 2, 4}, {1, 3, 4}}, true, true);   // block removal of first q and last dq
+  test_case({{1, 2, 4}, {1, 3, 4}}, true, true);   // block removal of first and last dq
 }
 
 TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicDQQCleanUp) {
@@ -2443,44 +2438,6 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_GraphInputToOutput) {
 
   test_case(true);
   test_case(false);
-}
-
-TEST(QDQTransformerTests, QDQFinalCleanupTransformer_MultipleOutputEdges) {
-  auto build_test_case = [](ModelTestBuilder& builder) {
-    const float scale = 0.05f;
-    const int8_t zp = 1;
-
-    auto* input = builder.MakeInput<int8_t>({1, 2, 4},
-                                            std::numeric_limits<int8_t>::min(),
-                                            std::numeric_limits<int8_t>::max());
-
-    auto* dq_out = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<int8_t>(input, scale, zp, dq_out);
-
-    auto* q_out = builder.MakeIntermediate();
-    builder.AddQuantizeLinearNode<int8_t>(dq_out, scale, zp, q_out);
-
-    auto* neg_output = builder.MakeOutput();
-    builder.AddNode("Neg", {q_out}, {neg_output});
-
-    auto* abs_out = builder.MakeOutput();
-    builder.AddNode("Abs", {q_out}, {abs_out});
-  };
-
-  auto check_graph = [](InferenceSessionWrapper& session) {
-    const auto op_to_count = CountOpsInGraph(session.GetGraph());
-    const auto expected_op_to_count = OpCountMap{{"Abs", 1}, {"Neg", 1}};
-    EXPECT_EQ(op_to_count, expected_op_to_count);
-  };
-
-  TransformerTester(build_test_case,
-                    check_graph,
-                    TransformerLevel::Level1,
-                    TransformerLevel::Level2,
-                    12 /*opset_version*/,
-                    0.0f /*per_sample_tolerance*/,
-                    0.0f /*relative_per_sample_tolerance*/,
-                    std::make_unique<QDQFinalCleanupTransformer>(false /*enable_q_dq_cleanup*/));
 }
 
 }  // namespace test
