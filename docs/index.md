@@ -3,12 +3,12 @@ title: ONNX Runtime (ORT)
 has_children: false
 nav_order: 0
 ---
-# Welcome to ONNX Runtime (ORT)
+# Welcome to ONNX Runtime
 {: .no_toc }
 
-ONNX Runtime is an accelerator for machine learning models with multi platform support and a flexible interface to integrate with hardware-specific libraries. ONNX Runtime can be used with models from PyTorch, Tensorflow/Keras, TFLite, scikit-learn, and other frameworks.
+ONNX Runtime is a cross-platform machine-learning model accelerator, with a flexible interface to integrate hardware-specific libraries. ONNX Runtime can be used with models from PyTorch, Tensorflow/Keras, TFLite, scikit-learn, and other frameworks.
 
-<iframe width="400" height="315" class="table-wrapper py px" src="https://www.youtube.com/embed/qy7X2JGLUC4" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+<iframe width="400" height="315" class="table-wrapper py px" src="https://www.youtube.com/embed/lRBsmnBE9ZA" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
 
 ## How to use ONNX Runtime (ORT)
 
