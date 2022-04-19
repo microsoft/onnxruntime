@@ -51,6 +51,7 @@ class EncoderSubgraph {
     const Tensor& input_ids,
     const std::vector<const OrtValue*>& implicit_inputs,
     int pad_token_id,
+    int decoder_start_token_id,
     std::vector<OrtValue>& feeds);
 
   FeedsFetchesManager* GetFeedsFetchesManager() const { return feeds_fetches_manager_.get(); }

@@ -544,25 +544,6 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
                                   const FeedsFetchesManager& decoder_feeds_fetches_manager) {
   auto status = Status::OK();
 
-  // encoder
-  std::vector<OrtValue> encoder_feeds;
-  std::vector<OrtValue> encoder_fetches;
-
-  const OrtValue* encoder_input_ids_value = context_.GetInputOrtValue(0);
-  const Tensor& encoder_input_ids = encoder_input_ids_value->Get<Tensor>();
-  ORT_RETURN_IF_ERROR(encoder_subgraph_.CreateInitialFeeds(encoder_input_ids, implicit_inputs_, parameters_->pad_token_id, encoder_feeds));
-
-  status = utils::ExecuteSubgraph(encoder_session_state_, encoder_feeds_fetches_manager, encoder_feeds, encoder_fetches, {},
-                                  ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger());
-  ORT_RETURN_IF_ERROR(status);
-
-  #ifdef DEBUG_BEAM_SEARCH
-    const IConsoleDumper* dumper = GetConsoleDumper();
-    dumper->Print("encoder_input_ids", encoder_feeds[0]);
-    dumper->Print("attention_mask", encoder_feeds[1]);
-    dumper->Print("encoder_outputs", encoder_fetches[0]);
-  #endif
-
   int64_t sequences_dims[] = {parameters_->batch_size, parameters_->num_return_sequences, parameters_->max_length};
   TensorShape sequences_shape(&sequences_dims[0], sizeof(sequences_dims) / sizeof(sequences_dims[0]));
   Tensor* output_sequences = context_.Output(0, sequences_shape);
@@ -601,18 +582,27 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
 
   BeamSearchCpuState cpu_state;
   cpu_state.Init(cpu_allocator_, static_cast<size_t>(parameters_->BatchBeamSize()), parameters_->max_length, IsCuda());
-  IAllocatorUniquePtr<char> buffer;
-  ORT_RETURN_IF_ERROR(
-    decoder_subgraph_.CreateInitialFeeds(
-      encoder_input_ids,
-      implicit_inputs_,
-      parameters_->num_beams,
-      parameters_->decoder_start_token_id,
-      decoder_feeds,
-      encoder_feeds,
-      encoder_fetches,
-      buffer)
-  );
+
+  // IAllocatorUniquePtr<char> buffer;
+  // ORT_RETURN_IF_ERROR(
+  //   decoder_subgraph_.CreateInitialFeeds(
+  //     encoder_input_ids,
+  //     implicit_inputs_,
+  //     parameters_->num_beams,
+  //     parameters_->decoder_start_token_id,
+  //     decoder_feeds,
+  //     encoder_feeds,
+  //     encoder_fetches,
+  //     buffer)
+  // );
+
+  // encoder decoderinit
+  std::vector<OrtValue> edinit_feeds;
+  std::vector<OrtValue> edinit_fetches;
+
+  const OrtValue* encoder_input_ids_value = context_.GetInputOrtValue(0);
+  const Tensor& encoder_input_ids = encoder_input_ids_value->Get<Tensor>();
+  ORT_RETURN_IF_ERROR(encoder_subgraph_.CreateInitialFeeds(encoder_input_ids, implicit_inputs_, parameters_->pad_token_id, parameters_->decoder_start_token_id, edinit_feeds));
 
   BeamSearchState<T> beam_state;
   beam_state.Init(temp_space_allocator_,
@@ -641,10 +631,10 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
                         cuda_stream_);
 
 #ifdef DEBUG_BEAM_SEARCH
-  //const IConsoleDumper* dumper = GetConsoleDumper();
-  dumper->Print("encoder_outputs", decoder_feeds[0]);
-  dumper->Print("decoder_input_ids", decoder_feeds[1]);
-  dumper->Print("attention_mask", decoder_feeds[2]);
+  const IConsoleDumper* dumper = GetConsoleDumper();
+  dumper->Print("encoder_outputs", decoder_feeds[1]);
+  //dumper->Print("decoder_input_ids", decoder_feeds[1]);
+  //dumper->Print("attention_mask", decoder_feeds[2]);
 #endif
 
   // position ids for all iterations except the first. It uses memory buffer owned by next_positions.
@@ -663,8 +653,13 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
     dumper->Print("***CurrentLength", cur_len, true);
 #endif
 
-    status = utils::ExecuteSubgraph(decoder_session_state_, decoder_feeds_fetches_manager, decoder_feeds, decoder_fetches, {},
+    if (iteration_counter == 1) {
+        status = utils::ExecuteSubgraph(encoder_session_state_, encoder_feeds_fetches_manager, edinit_feeds, edinit_fetches, {},
+                                  ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger());
+    } else {
+        status = utils::ExecuteSubgraph(decoder_session_state_, decoder_feeds_fetches_manager, decoder_feeds, decoder_fetches, {},
                                     ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger());
+    }
 
     ORT_RETURN_IF_ERROR(status);
 

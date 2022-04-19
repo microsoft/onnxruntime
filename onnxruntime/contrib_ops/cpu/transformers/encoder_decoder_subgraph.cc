@@ -113,30 +113,37 @@ EncoderSubgraph::EncoderSubgraph(
 Status EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                              const std::vector<const NodeArg*>& subgraph_outputs) {
 
-  ORT_RETURN_IF(num_subgraph_outputs != 1, "num_subgraph_outputs is not 1");
+  ORT_RETURN_IF(num_subgraph_outputs != 26, "num_subgraph_outputs is not 26");
 
-  ORT_RETURN_IF(num_subgraph_inputs != 2, "num_subgraph_inputs is not 2");
+  ORT_RETURN_IF(num_subgraph_inputs != 3, "num_subgraph_inputs is not 3");
 
   // bugbug 1,453
-  ORT_RETURN_IF(subgraph_inputs[0]->Name() != "input_ids", "subgraph input 0 shall be named as input_ids, got: ",
+  ORT_RETURN_IF(subgraph_inputs[0]->Name() != "encoder_input_ids", "subgraph input 0 shall be named as encoder_input_ids, got: ",
                 subgraph_inputs[0]->Name());
-  ORT_RETURN_IF(subgraph_inputs[1]->Name() != "attention_mask", "subgraph input 1 shall be named as attention_mask, got: ",
+  ORT_RETURN_IF(subgraph_inputs[1]->Name() != "encoder_attention_mask", "subgraph input 1 shall be named as encoder_attention_mask, got: ",
                 subgraph_inputs[1]->Name());
+  ORT_RETURN_IF(subgraph_inputs[2]->Name() != "decoder_input_ids", "subgraph input 2 shall be named as decoder_input_ids, got: ",
+                subgraph_inputs[2]->Name());
 
   // bugbug 1,453,1024
-  ORT_RETURN_IF(subgraph_outputs[0]->Name() != "encoder_outputs", "subgraph output 0 shall be named as encoder_outputs, got: ",
+  ORT_RETURN_IF(subgraph_outputs[0]->Name() != "logits", "subgraph output 0 shall be named as encoder_outputs, got: ",
                 subgraph_outputs[0]->Name());
+  ORT_RETURN_IF(subgraph_outputs[1]->Name() != "encoder_outputs", "subgraph output 0 shall be named as encoder_outputs, got: ",
+                subgraph_outputs[1]->Name());
 
-  // Cannot get the following data
-  //num_heads = static_cast<int>(past_shape->dim(2).dim_value());
-  //head_size = static_cast<int>(past_shape->dim(4).dim_value());
-  //vocab_size = static_cast<int>(logits_shape->dim(2).dim_value());
-  //num_layers = static_cast<int>(subgraph_outputs.size()) - 1;
+  const ONNX_NAMESPACE::TensorShapeProto* present_shape = subgraph_outputs[2]->Shape();
+  const ONNX_NAMESPACE::TensorShapeProto* logits_shape = subgraph_outputs[0]->Shape();
+
+  num_heads = static_cast<int>(present_shape->dim(1).dim_value());
+  head_size = static_cast<int>(present_shape->dim(3).dim_value());
+  vocab_size = static_cast<int>(logits_shape->dim(2).dim_value());
+  num_layers = static_cast<int>((subgraph_outputs.size() - 2) / 4);
 
   ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
                 "subgraph input 0 (input_ids) shall have int32 type");
   ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32,
                 "subgraph input 1 (position_ids) shall have int32 type");
+  //bugbug: more to check
 
   auto output_type = subgraph_outputs[0]->TypeAsProto()->tensor_type().elem_type();
   ORT_RETURN_IF(output_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT && output_type != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16,
@@ -216,6 +223,7 @@ Status EncoderSubgraph::CreateInitialFeeds(
     const Tensor& input_ids,
     const std::vector<const OrtValue*>& implicit_inputs,
     int pad_token_id,
+    int decoder_start_token_id,
     std::vector<OrtValue>& feeds) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
@@ -272,8 +280,18 @@ Status EncoderSubgraph::CreateInitialFeeds(
     }
   }
 
+  OrtValue decoder_input_ids;
+  TensorShape decoder_input_ids_shape({batch_size, 1});
+  Tensor::InitOrtValue(element_type, decoder_input_ids_shape, cpu_alloactor, decoder_input_ids);
+  int32_t* decoder_input_ids_data = decoder_input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+  for (int i = 0; i < batch_size; i++) {
+    *decoder_input_ids_data = decoder_start_token_id;
+    decoder_input_ids_data++;
+  }
+
   feeds.push_back(encoder_input_ids);
   feeds.push_back(attention_mask);
+  feeds.push_back(decoder_input_ids);
 
   // bugbug: what's this for
   // pass in implicit inputs
