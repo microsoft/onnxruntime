@@ -5,6 +5,7 @@
 #include "core/providers/opencl/opencl_execution_provider.h"
 #include "opencl_allocator.h"
 #include "opencl_utils.h"
+#include <cinttypes>
 
 #include <iostream>
 
@@ -67,7 +68,7 @@ struct Image2DCreator {
     auto* ptr = clCreateImage(exec->GetOpenCLContext(), CL_MEM_READ_WRITE, &image_format, &image_desc, nullptr, &err);
     ORT_THROW_IF_CL_ERROR(err);
     TracyAlloc(ptr, Image2DCreator::GetSizeCost(desc));
-    VLOGF_DEFAULT(V_ALLOC, "Allocated Image2D(%p){w=%lld, h=%lld})", ptr, desc.Width(), desc.Height());
+    VLOGF_DEFAULT(V_ALLOC, "Allocated Image2D(%p){w=%" PRId64 ", h=%" PRId64 "})", ptr, desc.Width(), desc.Height());
     return ptr;
   }
 
