@@ -34,8 +34,8 @@ struct RunOptions {
 
 static const ONNX_NAMESPACE::GraphProto CreateSubgraph(const RunOptions& options);
 
-static const float kOuterNodeAddValue = 3.f;
-static const float kSumMax = 8.f;
+static constexpr float kOuterNodeAddValue = 3.f;
+static constexpr float kSumMax = 8.f;
 
 class LoopOpTester : public OpTester {
  public:
@@ -371,7 +371,7 @@ void RunTest(int64_t max_iterations,
 // this should take 3 iterations as we add 3 each time.
 void ExitDueToCond(const RunOptions& options) {
   int64_t max_iterations = 5;
-  const int64_t expected_num_iterations = 3;
+  constexpr int64_t expected_num_iterations = 3;
 
   float loop_var_0_final = kOuterNodeAddValue * expected_num_iterations;
 
@@ -438,7 +438,7 @@ TEST(Loop, LoopSubgraphRankMismatch) {
 
 TEST(Loop, ExitDueToMaxIterations) {
   int64_t max_iterations = 2;
-  const int64_t expected_num_iterations = 2;
+  constexpr int64_t expected_num_iterations = 2;
 
   float loop_var_0_final = kOuterNodeAddValue * expected_num_iterations;
 
@@ -596,7 +596,7 @@ TEST(Loop, SubgraphTypeOverride) {
     std::vector<NodeArg*> inputs;
     std::vector<NodeArg*> outputs;
 
-    /* 
+    /*
             Inputs: iter_num, cond_in, fake_in, loop carried state variables.
 
          iter_num_in    cond_in      fake_in   [outer_scope_0]
@@ -671,7 +671,7 @@ TEST(Loop, SubgraphTypeOverride) {
   LoopOpTester test{{}, create_subgraph};
 
   test.AddInput<int64_t>("M", {1}, {1});
-  test.AddInput<bool>("cond", {1}, {true});
+  test.AddOptionalInputEdge<bool>();  // 'cond' is optional in this test so don't provide it
   test.AddInput<double>("fake", {1}, {0.f});
   test.AddInput<double>("outer_scope_0", {1}, {kOuterNodeAddValue});
 
@@ -799,10 +799,10 @@ TEST(Loop, Opset11WithNoVariadicInputsAndOutputs) {
 
       auto* constant_attribute_tensor_proto = attr_proto.mutable_t();
       constant_attribute_tensor_proto->mutable_dims()->Clear();                    // scalar
-      constant_attribute_tensor_proto->set_data_type(TensorProto_DataType_FLOAT);  //float scalar
-      *constant_attribute_tensor_proto->mutable_float_data()->Add() = 1.0f;        //float scalar with value 1.0f
+      constant_attribute_tensor_proto->set_data_type(TensorProto_DataType_FLOAT);  // float scalar
+      *constant_attribute_tensor_proto->mutable_float_data()->Add() = 1.0f;        // float scalar with value 1.0f
 
-      constant_node.AddAttribute("value", attr_proto);
+      constant_node.AddAttributeProto(std::move(attr_proto));
     }
 
     graph.SetInputs({&iter_num_in, &cond_in});
@@ -977,11 +977,11 @@ TEST(Loop, IterationCountAsOutput) {
 
     /* Inputs: iter_num, cond_in, loop carried state variables.
 
-         iter_num_in    cond_in     
-             |             |        
-         [Identity]   [Identity]   
-             |             |        
-     loop_var_0_out    cond_out    
+         iter_num_in    cond_in
+             |             |
+         [Identity]   [Identity]
+             |             |
+     loop_var_0_out    cond_out
     */
 
     // graph inputs types.
@@ -1061,12 +1061,12 @@ TEST(Loop, SequenceAsLoopCarriedDependency) {
 
     Inputs: iter_num, cond_in, loop_var_0_in
 
-          loop_var_0_in   inserted_tensor          cond_in            iter_num   
-                |             |                      |                (unused)   
-         [SequenceInsert]-----/                  [Identity] 
+          loop_var_0_in   inserted_tensor          cond_in            iter_num
+                |             |                      |                (unused)
+         [SequenceInsert]-----/                  [Identity]
                 |                                    |
-                |                                 cond_out   
-           loop_var_0_out 
+                |                                 cond_out
+           loop_var_0_out
    */
 
     // graph inputs types.
@@ -1184,12 +1184,12 @@ TEST(Loop, OptionalTypeAsLoopCarriedDependency) {
 
     Inputs: iter_num, cond_in, loop_var_0_in
 
-          loop_var_0_in                           cond_in            iter_num   
-                |                                    |                (unused)   
-           [Identity]                            [Identity] 
+          loop_var_0_in                           cond_in            iter_num
+                |                                    |                (unused)
+           [Identity]                            [Identity]
                 |                                    |
-                |                                 cond_out   
-           loop_var_0_out 
+                |                                 cond_out
+           loop_var_0_out
    */
 
     // graph inputs types.

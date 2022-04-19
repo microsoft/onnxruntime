@@ -27,7 +27,7 @@ jobs:
 
   - task: NodeTool@0
     inputs:
-      versionSpec: '12.x'
+      versionSpec: '16.x'
 
   - task: BatchScript@1
     displayName: 'setup env'

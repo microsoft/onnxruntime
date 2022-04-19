@@ -113,9 +113,7 @@ SPECIALIZED_IMPL(int64_t)
 #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600
 SPECIALIZED_IMPL(half)
 SPECIALIZED_IMPL(double)
-#endif
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-SPECIALIZED_IMPL(nv_bfloat16)
+SPECIALIZED_IMPL(BFloat16)
 #endif
 
 }  // namespace cuda

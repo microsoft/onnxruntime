@@ -108,24 +108,6 @@ namespace Windows::AI::MachineLearning::Adapter
         std::vector<uint32_t> requiredConstantCpuInputs;
         std::optional<GraphNodeFactoryRegistration> graphNodeFactoryRegistration;
         KernelSupportQuery supportQuery;
-
-        // Many ONNX operators use 64-bit tensors, but most DML operators only support
-        // 32-bit indices. This flag indicates to the graph whether it's okay to compute
-        // the result using 32-bit tensors (ignoring the upper bits) via doubled strides.
-        bool supportedWith64BitTensorsVia32BitStrides = false;
-
-        // When true, the input to the current operator may come from any execution
-        // provider. Otherwise it must have come from another DML node to assume it's safe
-        // to use 64-bit to 32-bit striding.
-        bool supportedWith64BitTensorsVia32BitStridesFromAnyEp = false;
-
-        // Operator supports true 64-bit tensors directly, no strides needed.
-        // So fallback to strided 32-bit only occurs when the device lacks 64-bit support.
-        bool prefer64BitTensorsDirectly = false;
-
-        // The operator supports emulation for uint64/int64 even if the hardware doesn't
-        // support native uint64/int64 data types.
-        bool support64BitTensorsViaEmulation = false;
     };
 
     using InternalRegistrationInfoMap = std::unordered_map<onnxruntime::KernelDef*, std::shared_ptr<InternalRegistrationInfo>>;

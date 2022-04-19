@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <sstream>
 #include "core/common/exceptions.h"
+#include "core/common/inlined_containers.h"
 #include "core/platform/env.h"
 #include "core/framework/data_types.h"
 #include "core/framework/kernel_def_builder.h"
@@ -307,9 +308,9 @@ class PlannerImpl {
       return false;
     }
 
-    const std::vector<std::pair<int, int>>& alias_map = ci.kernel_def->Alias();
+    const auto& alias_map = ci.kernel_def->Alias();
     auto input_args = node.InputDefs();
-    for (auto pair : alias_map) {
+    for (auto& pair : alias_map) {
       if (pair.second == output_arg_num) {
         // we _must_ reuse this input to satisfy aliasing requirement: (e.g., for reshape)
         if ((0 <= pair.first) && (static_cast<size_t>(pair.first) < input_args.size())) {
@@ -322,7 +323,7 @@ class PlannerImpl {
       }
     }
 
-    const optional<std::pair<int, int>>& variadic_alias_offsets = ci.kernel_def->VariadicAlias();
+    const auto& variadic_alias_offsets = ci.kernel_def->VariadicAlias();
     if (variadic_alias_offsets.has_value()) {
       int input_offset = variadic_alias_offsets->first;
       int output_offset = variadic_alias_offsets->second;
@@ -337,8 +338,8 @@ class PlannerImpl {
       }
     }
 
-    const std::vector<std::pair<int, int>>& inplace_map = ci.kernel_def->MayInplace();
-    for (auto pair : inplace_map) {
+    const auto& inplace_map = ci.kernel_def->MayInplace();
+    for (auto& pair : inplace_map) {
       if (pair.second == output_arg_num) {
         if ((0 <= pair.first) && (static_cast<size_t>(pair.first) < input_args.size())) {
           auto p_input_arg = input_args[pair.first];
@@ -356,6 +357,42 @@ class PlannerImpl {
         }
       }
     }
+
+#ifdef ENABLE_TRAINING
+    // If any output of the kernel can support strided tensor, and all its consumers' inputs also support
+    // strided tensors at the corresponding position, this output will generate a strided tensor
+    // and share the data from the corresponding input specified in MayStridedOutputsMap.
+    const auto& may_strided_outputs_map = ci.kernel_def->MayStridedOutput();
+    for (auto& pair : may_strided_outputs_map) {
+      if (pair.second == output_arg_num && pair.first >= 0 && static_cast<size_t>(pair.first) < input_args.size() &&
+          input_args[pair.first]->Exists()) {
+        bool can_strided = true;
+        for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
+          const KernelCreateInfo& output_node_ci = GetKernelCreateInfo(kernel_create_info_map_, it->Index());
+          if (!output_node_ci.kernel_def) {
+            can_strided = false;
+            break;
+          }
+          const auto& may_strided_inputs = output_node_ci.kernel_def->MayStridedInput();
+          for (size_t i = 0; i < it->InputDefs().size(); ++i) {
+            if (it->InputDefs()[i] == p_output_arg && std::find(may_strided_inputs.begin(), may_strided_inputs.end(),
+                                                                static_cast<int>(i)) == may_strided_inputs.end()) {
+              can_strided = false;
+              break;
+            }
+          }
+          if (!can_strided) {
+            break;
+          }
+        }
+        if (can_strided) {
+          *reusable_input = Index(input_args[pair.first]->Name());
+          return true;
+        }
+      }
+    }
+#endif
+
     return false;
   }
 
@@ -497,8 +534,11 @@ class PlannerImpl {
 
   Status ComputeUseCounts() {
     // Note: for every ml-value, its definition must appear before all its uses in a topological sort of a valid model
-    std::unordered_set<std::string> graph_inputs;
-    for (auto& graph_input : graph_viewer_.GetInputsIncludingInitializers()) {
+    using GraphInputsSet = InlinedHashSet<std::string_view>;
+    const auto& graph_inputs_nodes = graph_viewer_.GetInputsIncludingInitializers();
+    GraphInputsSet graph_inputs;
+    graph_inputs.reserve(graph_inputs_nodes.size());
+    for (auto& graph_input : graph_inputs_nodes) {
       graph_inputs.insert(graph_input->Name());
     }
 
@@ -522,7 +562,7 @@ class PlannerImpl {
       UseCount(initializer_name)++;
     }
 
-    std::unordered_set<OrtValueIndex> set_node_arg_has_explicit_consumer;
+    InlinedHashSet<OrtValueIndex> set_node_arg_has_explicit_consumer;
 
     for (SequentialExecutionPlan::NodeExecutionPlan& step : plan_.execution_plan) {
       auto pnode = graph_viewer_.GetNode(step.node_index);
@@ -662,6 +702,8 @@ class PlannerImpl {
                                     const std::string& subgraph_kernel_create_info_map_key_base,
                                     size_t graph_depth,
                                     /*out*/ std::vector<std::vector<OrtMemoryInfo>>& locations) {
+    // Iterate over nodes in current level firstly to record location of usages
+    // in current graph
     for (const auto& node : graph_viewer.Nodes()) {
       const auto& input_node_args = node.InputDefs();
       size_t num_node_inputs = input_node_args.size();
@@ -721,7 +763,10 @@ class PlannerImpl {
         locations[wt_index].emplace_back(
             GetLocationForNodeInput(node_input_index, node, kernel_create_info_map));
       }
+    }
 
+    // Iterate over nodes in current graph with subgraphs and recurse.
+    for (const auto& node : graph_viewer.Nodes()) {
       // If the node has subgraphs (i.e.) control flow nodes,
       // walk the nodes in those subgraphs as well to best determine
       // the location for the OrtValue corresponding to the weights
@@ -752,7 +797,8 @@ class PlannerImpl {
   Status GeneratePlanForWeights() {
     // TODO: Move away from usage of vector of `OrtMemoryInfo`s per weight (initializer)
     // We do not need to maintain a vector of locations that a weight is used in.
-    // We only need to know the location of its first usage because:
+    // We only need to know the location of its first usage according to the nodes
+    // iteration rule in GeneratePlanForWeightsHelper() because:
     // (1) If the initializer is used in the graph level it is introduced in, then it can
     // only be used on one device as the Memcpy transformer will duplicate the initializer
     // (with a different name) in case it is used on multiple devices.

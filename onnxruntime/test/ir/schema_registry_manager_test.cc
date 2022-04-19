@@ -102,7 +102,7 @@ TEST(SchemaRegistryManager, OpsetRegTest) {
   ASSERT_TRUE(manager.GetSchema("Op2", 1, "Domain1")->since_version() == 1);
   ASSERT_TRUE(manager.GetSchema("Op2", 2, "Domain1")->since_version() == 1);
 
-  // Add a new operator set which is verion 5, with a baseline of version 4, meaning that
+  // Add a new operator set which is version 5, with a baseline of version 4, meaning that
   // there is a gap at version 3.
   std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> registryV5 = std::make_shared<OnnxRuntimeOpSchemaRegistry>();
   manager.RegisterRegistry(registryV5);

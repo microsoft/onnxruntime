@@ -9,7 +9,7 @@ The [Jazzy](https://github.com/realm/jazzy) tool is used to generate documentati
 For example, to generate documentation for a release version, from the repo root, run:
 
 ```bash
-jazzy --config objectivec/docs/jazzy_config.yaml --output <output directory> --module-version $(cat VERSION_NUMBER)
+jazzy --config objectivec/docs/jazzy_config.yaml --output <output directory>
 ```
 
 The generated documentation website files will be in `<output directory>`.

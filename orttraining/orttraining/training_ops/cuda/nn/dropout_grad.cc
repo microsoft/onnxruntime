@@ -9,20 +9,13 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_GRADIENT_KERNEL(OpName)                             \
-  ONNX_OPERATOR_KERNEL_EX(                                           \
-      OpName,                                                        \
-      kMSDomain,                                                     \
-      1,                                                             \
-      kCudaExecutionProvider,                                        \
-      (*KernelDefBuilder::Create())                                  \
-          .TypeConstraint("T", ALL_IEEE_FLOAT_TENSOR_TYPES)          \
-          .TypeConstraint("T1", ALL_IEEE_FLOAT_TENSOR_TYPES)         \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>()) \
-          .InputMemoryType(OrtMemTypeCPUInput, 2),                   \
-      DropoutGrad);
-
-REGISTER_GRADIENT_KERNEL(DropoutGrad)
+ONNX_OPERATOR_KERNEL_EX(DropoutGrad, kMSDomain, 1, kCudaExecutionProvider,
+                        (*KernelDefBuilder::Create())
+                            .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
+                            .TypeConstraint("T1", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
+                            .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
+                            .InputMemoryType(OrtMemTypeCPUInput, 2),
+                        DropoutGrad);
 
 template <typename T>
 struct DropoutGradComputeImpl {
@@ -53,13 +46,13 @@ Status DropoutGrad::ComputeInternal(OpKernelContext* context) const {
   float ratio_data = default_ratio_;
   auto ratio = context->Input<Tensor>(2);
   if (ratio) {
-    utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(ratio->GetElementType());
+    utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(ratio->GetElementType());
     t_disp.Invoke<GetRatioDataImpl>(ratio, ratio_data);
   }
 
   auto dX = context->Output(0, shape);
 
-  utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(dY->GetElementType());
+  utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(dY->GetElementType());
   t_disp.Invoke<DropoutGradComputeImpl>(Stream(), N, *dY, mask_data, ratio_data, *dX);
 
   return Status::OK();

@@ -18,6 +18,7 @@
 #include <stddef.h>
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
+#include "core/common/inlined_containers_fwd.h"
 #include "core/common/type_list.h"
 #include "core/common/logging/severity.h"
 #include "core/framework/allocator.h"
@@ -135,6 +136,7 @@ struct KernelRegistry;
 struct Function;
 struct Graph;
 struct GraphViewer;
+enum class DataLayout;
 struct Model;
 struct Path;
 struct Node;
@@ -165,7 +167,7 @@ template <typename T>
 struct EinsumTypedComputeProcessor;
 
 namespace contrib {
-class ATenOp;
+class ATen;
 class Group;
 class PassThrough;
 class YieldOp;
@@ -194,8 +196,8 @@ using NameMLValMap = std::unordered_map<std::string, OrtValue>;
 #include "core/framework/op_kernel.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/common.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 #include "core/util/math.h"
 
 namespace onnxruntime {
@@ -226,12 +228,14 @@ struct DeleteOnUnloadPtr {
 
 constexpr const char* kOnnxDomain = "";
 constexpr const char* kMSDomain = "com.microsoft";
+constexpr const char* kPytorchAtenDomain = "org.pytorch.aten";
 constexpr const char* kNGraphDomain = "com.intel.ai";
 constexpr const char* kCudaExecutionProvider = "CUDAExecutionProvider";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
 constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
+constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
 
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)> >;
@@ -241,12 +245,16 @@ inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept
 std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info);
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
+
+std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name);
+std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name);
+
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream);
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const std::string& provider_type,
-                                                   const std::vector<const KernelRegistry*>& kernel_registries,
-                                                   const std::vector<NodeIndex>& tentative_nodes);
+                                                   gsl::span<const KernelRegistry* const> kernel_registries,
+                                                   gsl::span<const NodeIndex> tentative_nodes);
 
 std::string GetEnvironmentVar(const std::string& var_name);
 
@@ -308,4 +316,3 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() { r
 
 #define LOGS_DEFAULT(severity) \
   LOGS_DEFAULT_CATEGORY(severity, ::onnxruntime::logging::Category::onnxruntime)
-

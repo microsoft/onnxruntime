@@ -6,7 +6,7 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/utils.h"
-#include "core/optimizer/transpose_optimizer/api_impl.h"
+#include "core/optimizer/transpose_optimizer/optimizer_utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -15,13 +15,19 @@ using namespace onnx_layout_transformation;
 namespace onnxruntime {
 
 Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+#if defined(ORT_MINIMAL_BUILD)
+  // update the producer/consumer info as previous optimizations may have invalidated it.
+  // in a full build this will happen as part of Graph::Resolve.
+  ORT_RETURN_IF_ERROR(graph.PopulateNodeArgToProducerConsumerLookupsFromNodes());
+#endif
+
   GraphViewer graph_viewer(graph);
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     auto& node = *graph.GetNode(index);
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
   }
 
-  auto api_graph = MakeApiGraph(graph, cpu_allocator_, logger, kCpuExecutionProvider);
+  auto api_graph = MakeApiGraph(graph, cpu_allocator_, kCpuExecutionProvider);
 
   modified = false;
   for (std::unique_ptr<api::NodeRef>& node : api_graph->Nodes()) {
@@ -31,7 +37,7 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       auto domain = node->Domain();
 
       // Skip if domain is incorrect
-      if (domain != kOnnxDomain && domain != kOnnxDomainAlias && domain != kMSDomain) {
+      if (domain != kOnnxDomain && domain != kMSDomain) {
         continue;
       }
 
@@ -55,7 +61,7 @@ Status NhwcTransformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
 
       if (domain != kMSDomain) {
-        SwapNodeOpTypeAndDomain(*api_graph, *node, "QLinearConv", "com.microsoft");
+        SwapNodeOpTypeAndDomain(*api_graph, *node, "QLinearConv", kMSDomain);
       }
 
       modified = true;

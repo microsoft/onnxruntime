@@ -7,21 +7,20 @@
 
 namespace onnxruntime {
 namespace cuda {
-#define REGISTER_VERSIONED_TYPED_SLICE(TIND)                            \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                              \
-      Slice,                                                            \
-      kOnnxDomain,                                                      \
-      1, 9,                                                             \
-      TIND,                                                             \
-      kCudaExecutionProvider,                                           \
-      (*KernelDefBuilder::Create())                                     \
-          .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()) \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
+// this really doesn't need to be a typed registration as the indices come from attributes and can only be int64.
+// leaving as in maintain original incorrect registration setup (pre 02/2022).
+#define REGISTER_VERSIONED_TYPED_SLICE(TIND)                             \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                               \
+      Slice,                                                             \
+      kOnnxDomain,                                                       \
+      1, 9,                                                              \
+      TIND,                                                              \
+      kCudaExecutionProvider,                                            \
+      (*KernelDefBuilder::Create())                                      \
+          .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()), \
       Slice<false>);
 
-REGISTER_VERSIONED_TYPED_SLICE(int32_t)
 REGISTER_VERSIONED_TYPED_SLICE(int64_t)
-REGISTER_VERSIONED_TYPED_SLICE(float)
 
 #define REGISTER_V10_TYPED_SLICE(TIND)                                  \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                              \
@@ -41,7 +40,6 @@ REGISTER_VERSIONED_TYPED_SLICE(float)
 
 REGISTER_V10_TYPED_SLICE(int32_t)
 REGISTER_V10_TYPED_SLICE(int64_t)
-REGISTER_V10_TYPED_SLICE(float)
 
 #define REGISTER_V12_TYPED_SLICE(TIND)                                  \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                              \
@@ -61,7 +59,6 @@ REGISTER_V10_TYPED_SLICE(float)
 
 REGISTER_V12_TYPED_SLICE(int32_t)
 REGISTER_V12_TYPED_SLICE(int64_t)
-REGISTER_V12_TYPED_SLICE(float)
 
 #define REGISTER_V13_TYPED_SLICE(TIND)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
@@ -81,7 +78,6 @@ REGISTER_V12_TYPED_SLICE(float)
 
 REGISTER_V13_TYPED_SLICE(int32_t)
 REGISTER_V13_TYPED_SLICE(int64_t)
-REGISTER_V13_TYPED_SLICE(float)
 
 static Status SliceImpCore(cudaStream_t stream,
                            const void* input_data, void* output_data,
@@ -111,7 +107,7 @@ static Status ComputeSliceStrides(const TensorShape& input_shape,
                                   TArray<int64_t>& input_strides,
                                   TArray<fast_divmod>& output_strides,
                                   SliceOp::PrepareForComputeMetadata& compute_metadata) {
-  const auto& input_dimensions = input_shape.GetDims();
+  const auto input_dimensions = input_shape.GetDims();
   size_t dimension_count = input_dimensions.size();
   // if we are able to flatten the output dims we updated 'starts' and 'steps' to match the smaller number of dims.
   // update dimension_count to match.
@@ -130,7 +126,7 @@ static Status ComputeSliceStrides(const TensorShape& input_shape,
       aggregated_last_dim *= input_dimensions[i];
     }
 
-    std::vector<int64_t> flattened_input_dims(input_dimensions.begin(), input_dimensions.end());
+    TensorShapeVector flattened_input_dims(input_dimensions.begin(), input_dimensions.end());
     flattened_input_dims.resize(dimension_count);
     flattened_input_dims.back() = aggregated_last_dim;
     ORT_ENFORCE(TensorPitches::Calculate(input_strides_span, flattened_input_dims));
@@ -138,10 +134,12 @@ static Status ComputeSliceStrides(const TensorShape& input_shape,
     ORT_ENFORCE(TensorPitches::Calculate(input_strides_span, input_dimensions));
   }
 
-  TensorPitches original_output_strides(
-      compute_metadata.p_flattened_output_dims_ != nullptr ? compute_metadata.flattened_output_dims_ : compute_metadata.output_dims_);
+  const auto output_dims = gsl::make_span(compute_metadata.p_flattened_output_dims_ != nullptr
+                                              ? compute_metadata.flattened_output_dims_
+                                              : compute_metadata.output_dims_);
+  TensorPitches original_output_strides(output_dims);
   output_strides.SetSize(gsl::narrow_cast<int32_t>(original_output_strides.size()));
-  for (int32_t i = 0; i < static_cast<int32_t>(original_output_strides.size()); ++i) {
+  for (int32_t i = 0, limit = static_cast<int32_t>(original_output_strides.size()); i < limit; ++i) {
     output_strides[i] = fast_divmod(gsl::narrow_cast<int>(original_output_strides[i]));
   }
 
@@ -154,7 +152,7 @@ Status Impl(cudaStream_t stream,
             void* output_data,
             SliceOp::PrepareForComputeMetadata& compute_metadata,
             size_t element_size) {
-  const auto& input_dimensions = input_shape.GetDims();
+  const auto input_dimensions = input_shape.GetDims();
   size_t dimension_count = input_dimensions.size();
 
   TArray<int64_t> starts_buffer(compute_metadata.starts_);
@@ -186,13 +184,13 @@ Status Slice<dynamic>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* input_tensor = GetSlicedOrUnslicedTensor(ctx);
   ORT_ENFORCE(nullptr != input_tensor);
   const auto& input_shape = input_tensor->Shape();
-  const auto& input_dimensions = input_shape.GetDims();
+  const auto input_dimensions = input_shape.GetDims();
   if (input_dimensions.empty()) return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Cannot slice scalars");
 
   SliceOp::PrepareForComputeMetadata compute_metadata(input_dimensions);
 
   if (dynamic) {
-    std::vector<int64_t> input_starts, input_ends, input_axes, input_steps;
+    TensorShapeVector input_starts, input_ends, input_axes, input_steps;
     ORT_RETURN_IF_ERROR(FillInputVectors(ctx, input_starts, input_ends, input_axes, input_steps));
     ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));
 
@@ -226,9 +224,9 @@ const Tensor* Slice<dynamic>::GetSlicedOrUnslicedTensor(OpKernelContext* ctx) co
 }
 
 template <bool dynamic>
-Status Slice<dynamic>::FillInputVectors(OpKernelContext* ctx, std::vector<int64_t>& input_starts,
-                                        std::vector<int64_t>& input_ends, std::vector<int64_t>& input_axes,
-                                        std::vector<int64_t>& input_steps) const {
+Status Slice<dynamic>::FillInputVectors(OpKernelContext* ctx, TensorShapeVector& input_starts,
+                                        TensorShapeVector& input_ends, TensorShapeVector& input_axes,
+                                        TensorShapeVector& input_steps) const {
   return FillVectorsFromInput(*ctx->Input<Tensor>(1), *ctx->Input<Tensor>(2), ctx->Input<Tensor>(3),
                               ctx->Input<Tensor>(4), input_starts, input_ends, input_axes, input_steps);
 }

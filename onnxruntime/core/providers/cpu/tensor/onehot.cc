@@ -87,14 +87,14 @@ Status ValidateInputs(const Tensor* depth, const Tensor* values) {
 
 Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis,
                           int64_t& prefix_dim_size, int64_t& suffix_dim_size,
-                          std::vector<int64_t>& output_shape) {
+                          TensorShapeVector& output_shape) {
   const auto& indices_shape = indices->Shape();
   const auto indices_dims = indices_shape.GetDims();
   const auto indices_num_dims = indices_shape.NumDimensions();
-  output_shape = indices_shape.GetDimsAsVector();
+  output_shape = indices_shape.AsShapeVector();
 
   // output rank is always 1 more than the input rank as a new dimension is added to the input shape
-  const auto output_rank = static_cast<int64_t>(indices_num_dims + 1);
+  const auto output_rank = static_cast<int64_t>(indices_num_dims) + 1;
 
   auto true_axis = HandleNegativeAxis(axis, output_rank);
 
@@ -160,7 +160,7 @@ Status OneHotOp<in_type, out_type, depth_type>::Compute(OpKernelContext* p_op_ke
 
   // prepare output shape
   int64_t prefix_dim_size, suffix_dim_size;
-  std::vector<int64_t> output_shape;
+  TensorShapeVector output_shape;
   ORT_RETURN_IF_ERROR(PrepareOutputShape(indices, depth_val, axis_, prefix_dim_size, suffix_dim_size, output_shape));
 
   // allocate output

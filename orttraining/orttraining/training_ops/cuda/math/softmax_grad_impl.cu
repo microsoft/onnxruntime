@@ -18,7 +18,7 @@
 
 // The code below is mostly copied from Pytorch PersistentSoftmax.cuh
 
-#include "orttraining/training_ops/cuda/math/softmax_grad.h"
+#include "orttraining/training_ops/cuda/math/softmax_grad_impl.h"
 
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/math/softmax_warpwise_impl.cuh"
@@ -200,10 +200,7 @@ template void dispatch_softmax_backward<input_t, output_t, acc_t, true>(cudaStre
 SPECIALIZED_SOFTMAX_GRAD_IMPL(float, float, float)
 SPECIALIZED_SOFTMAX_GRAD_IMPL(half, half, float)
 SPECIALIZED_SOFTMAX_GRAD_IMPL(double, double, double)
-
-#if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
-SPECIALIZED_SOFTMAX_GRAD_IMPL(nv_bfloat16, nv_bfloat16, float)
-#endif
+SPECIALIZED_SOFTMAX_GRAD_IMPL(BFloat16, BFloat16, float)
 
 }
 }

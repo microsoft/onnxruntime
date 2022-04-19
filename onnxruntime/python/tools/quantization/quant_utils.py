@@ -1,10 +1,14 @@
 import logging
 import numpy
 import onnx
+import tempfile
 
 from enum import Enum
 from onnx import onnx_pb as onnx_proto
+from onnx import external_data_helper
 from pathlib import Path
+
+from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
 __producer__ = "onnx.quantize"
 __version__ = "0.1.0"
@@ -176,7 +180,7 @@ def quantize_data(data, qType, symmetric, reduce_range=False):
     if len(data):
         rmin = min(data)
         rmax = max(data)
-        qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range)
+        qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range, symmetric=symmetric)
 
         zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric)
 
@@ -184,7 +188,7 @@ def quantize_data(data, qType, symmetric, reduce_range=False):
 
     return rmin, rmax, zero_point, scale, quantized_data
 
-def get_qmin_qmax_for_qType(qType, reduce_range=False):
+def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):
     '''
     Return qmin and qmax, the minimum and maximum value representable by the given qType
     :parameter qType: onnx.onnx_pb.TensorProto.UINT8 or onnx.onnx_pb.TensorProto.UINT8
@@ -193,18 +197,21 @@ def get_qmin_qmax_for_qType(qType, reduce_range=False):
     if qType == onnx_proto.TensorProto.UINT8:
         (qmin, qmax) = (0,127) if reduce_range else (0,255)
     elif qType == onnx_proto.TensorProto.INT8:
-        (qmin, qmax) = (-64,64) if reduce_range else (-127,127)
+        if symmetric:
+            (qmin, qmax) = (-64,64) if reduce_range else (-127,127)
+        else:
+            (qmin, qmax) = (-64,64) if reduce_range else (-128,127)
     else:
         raise ValueError("Unexpected data type {} requested. Only INT8 and UINT8 are supported.".format(qType))
     return qmin, qmax
 
-def get_qrange_for_qType(qType, reduce_range=False):
+def get_qrange_for_qType(qType, reduce_range=False, symmetric=False):
     '''
     Helper function to get the quantization range for a type.
         parameter qType: quantization type.
         return: quantization range.
     '''
-    qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range)
+    qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range, symmetric=symmetric)
     return  qmax - qmin
 
 class QuantizedInitializer:
@@ -340,6 +347,21 @@ def generate_identified_filename(filename: Path, identifier: str) -> Path:
     '''
     return filename.parent.joinpath(filename.stem + identifier).with_suffix(filename.suffix)
 
+def apply_plot(hist, hist_edges):
+    import sys
+    import numpy
+    import matplotlib.pyplot as plt
+    numpy.set_printoptions(threshold=sys.maxsize)
+    print("Histogram:")
+    print(hist)
+    print("Histogram Edges:")
+    print(hist_edges)
+    plt.stairs(hist, hist_edges, fill=True)
+    plt.xlabel('Tensor value')
+    plt.ylabel('Counts')
+    plt.title('Tensor value V.S. Counts')
+    plt.show()
+
 def write_calibration_table(calibration_cache):
     '''
     Helper function to write calibration table to files.   
@@ -375,7 +397,7 @@ def write_calibration_table(calibration_cache):
     TrtTable.TrtTableStartDictVector(builder, len(key_value_list))
     for key_value in key_value_list:
         builder.PrependUOffsetTRelative(key_value)
-    main_dict = builder.EndVector(len(key_value_list))
+    main_dict = builder.EndVector()
 
     TrtTable.TrtTableStart(builder)
     TrtTable.TrtTableAddDict(builder, main_dict)
@@ -429,3 +451,71 @@ def smooth_distribution(p, eps=0.0001):
     assert (hist <= 0).sum() == 0
 
     return hist
+
+def model_has_external_data(model_path : Path):
+    model = onnx.load(model_path.as_posix(), load_external_data=False)
+    for intializer in model.graph.initializer:
+        if external_data_helper.uses_external_data(intializer):
+            return True
+    return False
+
+def optimize_model(model_path : Path, opt_model_path : Path):
+    '''
+        Generate model that applies graph optimization (constant folding, etc.)
+        parameter model_path: path to the original onnx model
+        parameter opt_model_path: path to the optimized onnx model
+    :return: optimized onnx model
+    '''
+    sess_option = SessionOptions()
+    sess_option.optimized_model_filepath = opt_model_path.as_posix()
+    sess_option.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
+    _ = InferenceSession(model_path.as_posix(), sess_option, providers=['CPUExecutionProvider'])
+
+def add_infer_metadata(model):
+    metadata_props = {"onnx.infer": "onnxruntime.quant"}
+    if model.metadata_props:
+        for p in model.metadata_props:
+            metadata_props.update({p.key : p.value})
+    onnx.helper.set_model_props(model, metadata_props)
+
+def model_has_infer_metadata(model):
+    if model.metadata_props:
+        for p in model.metadata_props:
+            if p.key == "onnx.infer" and p.value == "onnxruntime.quant":
+                return True
+    return False
+
+def load_model_with_shape_infer(model_path : Path):
+    inferred_model_path = generate_identified_filename(model_path, "-inferred")
+    onnx.shape_inference.infer_shapes_path(str(model_path), str(inferred_model_path))
+    model = onnx.load(inferred_model_path.as_posix())
+    inferred_model_path.unlink()
+    return model
+
+
+def load_model(model_path : Path, need_optimize : bool):
+    with tempfile.TemporaryDirectory(prefix='ort.quant.') as quant_tmp_dir:
+        if need_optimize and not model_has_external_data(model_path):
+            opt_model_path = Path(quant_tmp_dir).joinpath("model.onnx")
+            optimize_model(model_path, opt_model_path)
+            model_path = opt_model_path
+
+        model = load_model_with_shape_infer(model_path)
+        add_infer_metadata(model)
+        return model
+
+def save_and_reload_model(model):
+    with tempfile.TemporaryDirectory(prefix='ort.quant.') as quant_tmp_dir:
+        model_path = Path(quant_tmp_dir).joinpath("model.onnx")
+        onnx.external_data_helper.convert_model_to_external_data(model,
+                                                                 all_tensors_to_one_file=True)
+        onnx.save_model(model, model_path.as_posix())
+        return load_model(model_path, False)
+
+def clone_model_with_shape_infer(model):
+    if model_has_infer_metadata(model):
+        cloned_model = onnx_proto.ModelProto()
+        cloned_model.CopyFrom(model)
+    else:
+        cloned_model = save_and_reload_model(model)
+    return cloned_model

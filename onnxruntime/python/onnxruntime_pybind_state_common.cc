@@ -46,14 +46,13 @@ onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExten
 
 #ifdef ENABLE_TRAINING
 
-static void DlpackCapsuleDestructor(PyObject* data) {
-  DLManagedTensor* dlmanged_tensor = reinterpret_cast<DLManagedTensor*>(
-      PyCapsule_GetPointer(data, "dltensor"));
-  if (dlmanged_tensor) {
-    // The dlmanged_tensor has not been consumed, call deleter ourselves.
-    dlmanged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanged_tensor));
+void DlpackCapsuleDestructor(PyObject* data) {
+  DLManagedTensor* dlmanaged_tensor = reinterpret_cast<DLManagedTensor*>(PyCapsule_GetPointer(data, "dltensor"));
+  if (dlmanaged_tensor) {
+    // The dlmanaged_tensor has not been consumed, call deleter ourselves.
+    dlmanaged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanaged_tensor));
   } else {
-    // The dlmanged_tensor has been consumed,
+    // The dlmanaged_tensor has been consumed,
     // PyCapsule_GetPointer has set an error indicator.
     PyErr_Clear();
   }
@@ -80,6 +79,7 @@ OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor) {
 
 #endif
 
+#if !defined(DISABLE_SPARSE_TENSORS)
 std::unique_ptr<OrtValue> PySparseTensor::AsOrtValue() const {
   if (instance_) {
     auto ort_value = std::make_unique<OrtValue>();
@@ -108,6 +108,7 @@ PySparseTensor::~PySparseTensor() {
     }
   }
 }
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 }  // namespace python
 }  // namespace onnxruntime

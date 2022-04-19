@@ -8,8 +8,7 @@
 #include <core/platform/env.h>
 
 std::unique_ptr<TestModelInfo> TFModelInfo::Create(_In_ const PATH_CHAR_TYPE* model_url) {
-  auto* model_info = new TFModelInfo{};
-  std::unique_ptr<TestModelInfo> ret(model_info);
+  std::unique_ptr<TFModelInfo> model_info = std::make_unique<TFModelInfo>();
 
   model_info->model_url_ = model_url;
   std::basic_string<PATH_CHAR_TYPE> meta_file_path = model_url;
@@ -50,7 +49,7 @@ std::unique_ptr<TestModelInfo> TFModelInfo::Create(_In_ const PATH_CHAR_TYPE* mo
     }
   }
 
-  return ret;
+  return model_info;
 }
 
 int TFModelInfo::GetInputCount() const { return static_cast<int>(input_names_.size()); }

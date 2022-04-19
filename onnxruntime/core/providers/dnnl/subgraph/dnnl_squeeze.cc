@@ -44,7 +44,7 @@ void DnnlSqueeze::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     if ((j < axes_data.size() && axes_data[j] == static_cast<int64_t>(i)) ||
         (axes_data.size() == 0 && data_dims[i] == 1)) {
       ORT_ENFORCE(data_dims[i] == 1, "Dimension of input ", i, " must be 1 instead of ", data_dims[i],
-                  ". shape=", data_dims);
+                  ". shape=", TensorShape(data_dims));
       ++j;
       continue;
     }

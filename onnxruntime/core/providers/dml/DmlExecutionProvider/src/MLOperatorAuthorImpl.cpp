@@ -1507,7 +1507,7 @@ std::vector<IMLOperatorTensor*> OpKernelContextWrapper::GetOutputTensors(const E
   std::vector<IMLOperatorTensor*> ret;
   ret.reserve(m_outputTensors.size());
 
-  ORT_THROW_HR_IF(E_INVALIDARG, m_impl->OutputCount() != outputShapes.EdgeCount());
+  ORT_THROW_HR_IF(E_INVALIDARG, static_cast<size_t>(m_impl->OutputCount()) != outputShapes.EdgeCount());
 
   for (int i = 0; i < m_impl->OutputCount(); ++i) {
     ComPtr<IMLOperatorTensor> tensor;
@@ -1847,7 +1847,7 @@ void InferAndVerifyOutputSizes(
 
     if (tensorType.has_shape()) {
       const auto& shape = tensorType.shape();
-      ML_CHECK_BOOL(shape.dim_size() == outputShapes.GetShape(outputIndex).size());
+      ML_CHECK_BOOL(static_cast<size_t>(shape.dim_size()) == outputShapes.GetShape(outputIndex).size());
 
       for (uint32_t output_dim = 0; output_dim < outputShapes.GetShape(outputIndex).size(); ++output_dim) {
         if (shape.dim(output_dim).has_dim_value()) {

@@ -4,7 +4,7 @@
 #pragma once
 
 #include "OperatorHelper.h"
-#include "OperatorRegistration.h"
+#include "OperatorVersions.h"
 
 namespace SchemaInferenceOverrider
 {
@@ -61,7 +61,7 @@ namespace SchemaInferenceOverrider
         }
     }
 
-#pragma push_macro("REGISTER_FUSED_OP_SCHEMA")
+#pragma push_macro("OVERRIDE_SCHEMA")
 #define OVERRIDE_SCHEMA(version, isLatest, opName) \
 OverrideSchemaInferenceFunction<OperatorHelper::ShapeInferenceHelper_##opName>( \
     #opName, OperatorHelper::OnnxOperatorSet##version##::sc_sinceVer_##opName, isLatest, gsl::span<uint32_t>());
@@ -82,7 +82,7 @@ OverrideSchemaInferenceFunction<OperatorHelper::ShapeInferenceHelper_##shapeInfe
         OVERRIDE_SCHEMA_EX( 7,  false, Upsample, Upsample7);
         OVERRIDE_SCHEMA_EX( 9,  true,  Upsample, Upsample9, 1);
         OVERRIDE_SCHEMA_EX( 7,  true,  Slice, Slice7);
-        OVERRIDE_SCHEMA(    7,  true,  Split);
+        OVERRIDE_SCHEMA_EX( 7,  true,  Split, Split7);
         OVERRIDE_SCHEMA_EX( 7,  true,  Tile, Tile, 1);
         OVERRIDE_SCHEMA_EX( 8,  true,  Expand, Expand, 1);
         OVERRIDE_SCHEMA(    8,  true,  MaxPool);
@@ -91,6 +91,6 @@ OverrideSchemaInferenceFunction<OperatorHelper::ShapeInferenceHelper_##shapeInfe
 
     }
 #pragma pop_macro("OVERRIDE_SCHEMA_EX")
-#pragma pop_macro("REGISTER_FUSED_OP_SCHEMA")
+#pragma pop_macro("OVERRIDE_SCHEMA")
 
 }

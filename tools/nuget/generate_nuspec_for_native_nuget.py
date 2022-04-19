@@ -33,7 +33,8 @@ def get_package_name(os, cpu_arch, ep):
 
 
 # Currently we take onnxruntime_providers_cuda from CUDA build
-# And onnxruntime, onnxruntime_providers_shared and onnxruntime_providers_tensorrt from tensorrt build
+# And onnxruntime, onnxruntime_providers_shared and
+# onnxruntime_providers_tensorrt from tensorrt build
 def is_this_file_needed(ep, filename):
     return (ep != 'cuda' or 'cuda' in filename) and (ep != 'tensorrt' or 'cuda' not in filename)
 
@@ -42,7 +43,7 @@ def is_this_file_needed(ep, filename):
 # ep: cuda, tensorrt, None
 # files_list: a list of xml string pieces to append
 # This function has no return value. It updates files_list directly
-def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
+def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs):
     for child in nuget_artifacts_dir.iterdir():
         if not child.is_dir():
             continue
@@ -51,7 +52,8 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
             if child.name == get_package_name('win', cpu_arch, ep):
                 child = child / 'lib'
                 for child_file in child.iterdir():
-                    if child_file.suffix in ['.dll', '.pdb', '.lib'] and is_this_file_needed(ep, child_file.name):
+                    suffixes = ['.dll', '.lib', '.pdb'] if include_pdbs else ['.dll', '.lib']
+                    if child_file.suffix in suffixes and is_this_file_needed(ep, child_file.name):
                         files_list.append('<file src="' + str(child_file) +
                                           '" target="runtimes/win-%s/native"/>' % cpu_arch)
         for cpu_arch in ['x86_64', 'arm64']:
@@ -70,6 +72,8 @@ def generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list):
                 child = child / 'lib'
                 if cpu_arch == 'x86_64':
                     cpu_arch = 'x64'
+                elif cpu_arch == 'aarch64':
+                    cpu_arch = 'arm64'
                 for child_file in child.iterdir():
                     if not child_file.is_file():
                         continue
@@ -147,8 +151,8 @@ def generate_tags(list, tags):
     list.append('<tags>' + tags + '</tags>')
 
 
-def generate_icon_url(list, icon_url):
-    list.append('<iconUrl>' + icon_url + '</iconUrl>')
+def generate_icon(list, icon_file):
+    list.append('<icon>' + icon_file + '</icon>')
 
 
 def generate_license(list):
@@ -253,7 +257,7 @@ def generate_metadata(list, args):
     generate_description(metadata_list, args.package_name)
     generate_copyright(metadata_list, '\xc2\xa9 ' + 'Microsoft Corporation. All rights reserved.')
     generate_tags(metadata_list, 'ONNX ONNX Runtime Machine Learning')
-    generate_icon_url(metadata_list, 'https://go.microsoft.com/fwlink/?linkid=2049168')
+    generate_icon(metadata_list, 'ORT_icon_for_light_bg.png')
     generate_license(metadata_list)
     generate_project_url(metadata_list, 'https://github.com/Microsoft/onnxruntime')
     generate_repo_url(metadata_list, 'https://github.com/Microsoft/onnxruntime.git', args.commit_id)
@@ -394,6 +398,8 @@ def generate_files(list, args):
     # Process onnxruntime import lib, dll, and pdb
     if is_windows_build:
         nuget_artifacts_dir = Path(args.native_build_path) / 'nuget-artifacts'
+        # the winml package includes pdbs. for other packages exclude them.
+        include_pdbs = includes_winml
         if nuget_artifacts_dir.exists():
             # Code path for ADO build pipeline, the files under 'nuget-artifacts' are
             # downloaded from other build jobs
@@ -402,7 +408,7 @@ def generate_files(list, args):
             else:
                 ep_list = [None]
             for ep in ep_list:
-                generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list)
+                generate_file_list_for_ep(nuget_artifacts_dir, ep, files_list, include_pdbs)
             is_ado_packaging_build = True
         else:
             # Code path for local dev build
@@ -410,7 +416,7 @@ def generate_files(list, args):
                               runtimes + ' />')
             files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.dll') +
                               runtimes + ' />')
-            if os.path.exists(os.path.join(args.native_build_path, 'onnxruntime.pdb')):
+            if include_pdbs and os.path.exists(os.path.join(args.native_build_path, 'onnxruntime.pdb')):
                 files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, 'onnxruntime.pdb') +
                                   runtimes + ' />')
     else:
@@ -453,12 +459,41 @@ def generate_files(list, args):
                           runtimes_target + args.target_architecture + '\\native" />')
 
     if args.execution_provider == "openvino":
+        openvino_path = get_env_var('INTEL_OPENVINO_DIR')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['providers_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['openvino_ep_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
+
+        if is_windows():
+            if "2022" in openvino_path:
+                dll_list_path = os.path.join(openvino_path, 'runtime\\bin\\intel64\\Release\\')
+                tbb_list_path = os.path.join(openvino_path, 'runtime\\3rdparty\\tbb\\bin\\')
+            else:
+                dll_list_path = os.path.join(
+                    openvino_path, 'deployment_tools\\inference_engine\\bin\\intel64\\Release\\')
+                tbb_list_path = os.path.join(openvino_path, 'deployment_tools\\inference_engine\\external\\tbb\\bin\\')
+                ngraph_list_path = os.path.join(openvino_path, 'deployment_tools\\ngraph\\lib\\')
+                for ngraph_element in os.listdir(ngraph_list_path):
+                    if ngraph_element.endswith('dll'):
+                        files_list.append('<file src=' + '"' + os.path.join(ngraph_list_path, ngraph_element) +
+                                          runtimes_target + args.target_architecture + '\\native" />')
+            for dll_element in os.listdir(dll_list_path):
+                if dll_element.endswith('dll'):
+                    files_list.append('<file src=' + '"' + os.path.join(dll_list_path, dll_element) + runtimes_target +
+                                      args.target_architecture + '\\native" />')
+            # plugins.xml
+            files_list.append('<file src=' + '"' + os.path.join(dll_list_path, 'plugins.xml') +
+                              runtimes_target + args.target_architecture + '\\native" />')
+            # usb-ma2x8x.mvcmd
+            files_list.append('<file src=' + '"' + os.path.join(dll_list_path, 'usb-ma2x8x.mvcmd') +
+                              runtimes_target + args.target_architecture + '\\native" />')
+            for tbb_element in os.listdir(tbb_list_path):
+                if tbb_element.endswith('dll'):
+                    files_list.append('<file src=' + '"' + os.path.join(tbb_list_path, tbb_element) +
+                                      runtimes_target + args.target_architecture + '\\native" />')
 
     if args.execution_provider == "cuda" or is_cuda_gpu_package and not is_ado_packaging_build:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
@@ -583,6 +618,8 @@ def generate_files(list, args):
                       '" target="ThirdPartyNotices.txt" />')
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'docs', 'Privacy.md') +
                       '" target="Privacy.md" />')
+    files_list.append('<file src=' + '"' + os.path.join(args.sources_path, 'ORT_icon_for_light_bg.png') +
+                      '" target="ORT_icon_for_light_bg.png" />')
     files_list.append('</files>')
 
     list += files_list

@@ -169,7 +169,7 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   const bool trans_b = trans_b_attr_ && b_shape.NumDimensions() != 1;
 
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, trans_a, trans_b));
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, trans_a, trans_b, trans_batch_a_, trans_batch_b_));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
@@ -184,8 +184,8 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   const size_t M = static_cast<size_t>(helper.M());
   const size_t N = static_cast<size_t>(helper.N());
   const size_t K = static_cast<size_t>(helper.K());
-  const size_t lda = static_cast<int>(trans_a ? M : K);
-  const size_t ldb = static_cast<int>(trans_b ? K : N);
+  const size_t lda = helper.Lda(trans_a);
+  const size_t ldb = helper.Ldb(trans_b);
 
   std::vector<MLAS_SGEMM_DATA_PARAMS> data(max_len);
   for (size_t i = 0; i < max_len; i++) {

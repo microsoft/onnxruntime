@@ -18,7 +18,7 @@ class Upsample : public UpsampleBase, public CudaKernel {
 
   Status ComputeInternal(OpKernelContext* context) const override;
   Status BaseCompute(OpKernelContext* context, const std::vector<float>& roi, const std::vector<float>& scales,
-                     const std::vector<int64_t>& output_dims) const;
+                     const gsl::span<const int64_t>& output_dims) const;
 };
 
 }  // namespace cuda

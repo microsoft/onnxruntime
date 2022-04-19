@@ -199,7 +199,7 @@ static void TestOptimizerGraphBuilderWithInitialStates(OptimizerGraphConfig conf
   const ONNX_NAMESPACE::TensorProto* tensor{};
   for (auto& weight_item : opt_initializer_names_map) {
     for (auto& opt_item : weight_item.second) {
-      ASSERT_TRUE(graph.GetInitializedTensor(opt_item.second, tensor));
+      ORT_ENFORCE(graph.GetInitializedTensor(opt_item.second, tensor));
       ASSERT_TRUE(tensor->data_type() == ONNX_NAMESPACE::TensorProto::FLOAT || tensor->data_type() == ONNX_NAMESPACE::TensorProto::INT64);
       if (tensor->data_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
         VerifyTensorValue(tensor, values[0]);

@@ -5,6 +5,8 @@
 
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
+#include "core/common/inlined_containers.h"
+#include "core/framework/tensor_shape.h"
 #include "core/framework/op_kernel.h"
 #endif
 
@@ -17,11 +19,11 @@ namespace onnxruntime {
  empty dimensions can change place, not empty dimensions must be in
  the same order in the permuted tenosr.
 */
-bool IsTransposeReshape(const std::vector<size_t>& perm, gsl::span<const int64_t> input_dims);
+bool IsTransposeReshape(const gsl::span<const size_t>& perm, gsl::span<const int64_t> input_dims);
 
 // Public function for element-wise transpose, primarily to unit test any out of bounds access
 Status DoTransposeEltWise(int64_t num_axes, gsl::span<const int64_t> target_dims, size_t num_blocks,
-                          const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target,
+                          const gsl::span<const size_t>& stride, const uint8_t* source, uint8_t* target,
                           size_t element_size);
 
 class TransposeBase {
@@ -30,7 +32,7 @@ class TransposeBase {
   Transpose the input Tensor into the output Tensor using the provided permutations.
   Both Tensors must have the same data type. `input_shape_override` overrides the shape of `input` for compute purposes.
   */
-  static Status DoTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+  static Status DoTranspose(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
                             const TensorShape* input_shape_override = nullptr);
 
  protected:
@@ -58,8 +60,8 @@ class TransposeBase {
     }
   }
 
-  Status ComputeOutputShape(const Tensor& X, std::vector<int64_t>& output_dims, std::vector<size_t>& default_perm,
-                            const std::vector<size_t>*& p_perm) const {
+  Status ComputeOutputShape(const Tensor& X, TensorShapeVector& output_dims, InlinedVector<size_t>& default_perm,
+                            const InlinedVector<size_t>*& p_perm) const {
     size_t rank = X.Shape().NumDimensions();
     const auto& input_dims = X.Shape().GetDims();
 
@@ -93,7 +95,7 @@ class TransposeBase {
   }
 
   bool perm_specified_ = false;
-  std::vector<size_t> perm_;
+  InlinedVector<size_t> perm_;
 };
 
 class Transpose final : public OpKernel, public TransposeBase {

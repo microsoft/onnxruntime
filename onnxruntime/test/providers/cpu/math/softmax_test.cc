@@ -4,6 +4,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
 #include <cmath>
 
 namespace onnxruntime {
@@ -44,6 +45,61 @@ TEST(SoftmaxOperator, Simple) {
 
   RunTest(x_vals, expected_vals, dimensions);
 }
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST(SoftmaxOperator, Simple_fp16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
+#endif
+  OpTester test("Softmax", 14);
+
+  int64_t axis = 1;
+  test.AddAttribute("axis", axis);
+
+  std::vector<float> X = {-1.0f, 0.0f, 1.0f};
+  std::vector<float> Y = {0.09003058f, 0.24472848f, 0.66524094f};
+  std::vector<int64_t> dimensions = {1, 3};
+
+  std::vector<MLFloat16> f_X(3);
+  std::vector<MLFloat16> f_Y(3);
+  ConvertFloatToMLFloat16(X.data(), f_X.data(), 3);
+  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 3);
+
+  test.AddInput<MLFloat16>("X", dimensions, f_X);
+  test.AddOutput<MLFloat16>("Y", dimensions, f_Y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  
+}
+#endif
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST(SoftmaxOperator, Simple_bfloat16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
+    return;
+  }
+#endif
+  OpTester test("Softmax", 14);
+
+  int64_t axis = 1;
+  test.AddAttribute("axis", axis);
+
+  test.AddInput<BFloat16>("X", {1, 3}, MakeBFloat16({-1.0f, 0.0f, 1.0f}));
+  test.AddOutput<BFloat16>("Y", {1, 3}, MakeBFloat16({0.09003058f, 0.24472848f, 0.66524094f}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif 
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
 
 TEST(SoftmaxOperator, LargeNumber) {
   // x = np.array([[0, 1, 2, 3], [10000, 10001, 10002, 10003]]).astype(np.float32)

@@ -10,6 +10,11 @@ parameters:
     torch_version.
   type: string
 
+- name: opset_version
+  displayName: >
+    opset_version.
+  type: string
+
 - name: cuda_version
   displayName: >
     cuda_version.
@@ -44,6 +49,15 @@ parameters:
 stages:
 - stage: Python_Packaging
 
+  variables:
+    - name: isMain
+      value: ${{ eq(variables['Build.SourceBranch'], 'refs/heads/master') }}
+    - name: finalStorage
+      ${{ if eq(variables['isMain'], 'true') }}:
+        value: '--final_storage'
+      ${{ else }}:
+        value: ''
+
   jobs:
     - job: Linux_py_Training_Cuda_Wheels
       timeoutInMinutes: 180
@@ -52,16 +66,10 @@ stages:
       pool: ${{ parameters.agent_pool }}
       strategy:
         matrix:
-          Python36:
-            PythonVersion: '3.6'
-            TorchVersion: ${{ parameters.torch_version }}
-            CudaVersion: ${{ parameters.cuda_version }}
-            DockerFile: ${{ parameters.docker_file }}
-            GccVersion: ${{ parameters.gcc_version }}
-            UploadWheel: ${{ parameters.upload_wheel }}
           Python37:
             PythonVersion: '3.7'
             TorchVersion: ${{ parameters.torch_version }}
+            OpsetVersion: ${{ parameters.opset_version }}
             CudaVersion: ${{ parameters.cuda_version }}
             DockerFile: ${{ parameters.docker_file }}
             GccVersion: ${{ parameters.gcc_version }}
@@ -69,6 +77,7 @@ stages:
           Python38:
             PythonVersion: '3.8'
             TorchVersion: ${{ parameters.torch_version }}
+            OpsetVersion: ${{ parameters.opset_version }}
             CudaVersion: ${{ parameters.cuda_version }}
             DockerFile: ${{ parameters.docker_file }}
             GccVersion: ${{ parameters.gcc_version }}
@@ -76,12 +85,21 @@ stages:
           Python39:
             PythonVersion: '3.9'
             TorchVersion: ${{ parameters.torch_version }}
+            OpsetVersion: ${{ parameters.opset_version }}
             CudaVersion: ${{ parameters.cuda_version }}
             DockerFile: ${{ parameters.docker_file }}
             GccVersion: ${{ parameters.gcc_version }}
             UploadWheel: ${{ parameters.upload_wheel }}
 
       steps:
+      - task: CmdLine@2
+        displayName: 'check variables'
+        inputs:
+          script: |
+            echo "Branch is "${{ variables['Build.SourceBranch'] }} && \
+            echo "isMain is "${{ variables['isMain'] }} && \
+            echo "final_storage is "${{ variables['finalStorage'] }}
+     
       - checkout: self
         clean: true
         submodules: recursive
@@ -94,6 +112,7 @@ stages:
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
             --build-arg TORCH_VERSION=$(TorchVersion)
+            --build-arg OPSET_VERSION=$(OpsetVersion)
             --build-arg PYTHON_VERSION=$(PythonVersion)
             --build-arg INSTALL_DEPS_EXTRA_ARGS=-tu
             --build-arg BUILD_UID=$(id -u)
@@ -204,22 +223,16 @@ stages:
         inputs:
           ArtifactName: onnxruntime_gpu
 
-      - task: AzureCLI@2
+      - task: CmdLine@2
+        displayName: 'Upload wheel'
         condition: and(succeeded(), eq(variables['UploadWheel'], 'yes'))
         inputs:
-          azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
-          scriptType: 'bash'
-          scriptLocation: 'inlineScript'
-          inlineScript: |
-            python3 -m pip install azure-storage-blob==2.1.0
+          script: |
+            set -e -x
             files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
             echo ${files[0]} && \
             python3 tools/ci_build/upload_python_package_to_azure_storage.py \
-                --python_wheel_path ${files[0]} \
-                --account_name onnxruntimepackages \
-                --account_key $(orttrainingpackagestorageaccountkey) \
-                --container_name '$web'
-          displayName:
+                --python_wheel_path ${files[0]} ${{ variables['finalStorage'] }}
 
       - template: component-governance-component-detection-steps.yml
         parameters:

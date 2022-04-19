@@ -22,7 +22,7 @@
 #ifdef ENABLE_NVTX_PROFILE
 // This header is for profile using Nvidia's visual profilier.
 #include "core/providers/cuda/nvtx_profile.h"
-#include "core/profile/context.h"
+#include "core/providers/cuda/nvtx_profile_context.h"
 #endif
 
 // #define TRACE_EXECUTION
@@ -292,7 +292,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
       }
     }
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    dump_context.program_counter = program_counter; 
+    dump_context.program_counter = program_counter;
     utils::DumpNodeInputs(dump_context, op_kernel_context, p_op_kernel->Node(), session_state);
 #endif
 
@@ -484,21 +484,18 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
 #endif
 
   if (frame.HasMemoryPatternPlanner()) {
-    std::vector<std::reference_wrapper<const TensorShape>> input_shapes;
     bool all_tensors = true;
     for (const auto& feed : feeds) {
       if (!(feed.IsTensor())) {
         all_tensors = false;
         break;
       }
-      auto& tensor = feed.Get<Tensor>();
-      input_shapes.push_back(std::cref(tensor.Shape()));
     }
 
     if (all_tensors) {
       auto mem_patterns = std::make_unique<MemoryPatternGroup>();
       ORT_RETURN_IF_ERROR(frame.GeneratePatterns(mem_patterns.get()));
-      ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(input_shapes, std::move(mem_patterns)));
+      ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(feeds, std::move(mem_patterns)));
     }
   }
 

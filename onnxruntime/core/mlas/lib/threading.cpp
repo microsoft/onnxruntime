@@ -33,7 +33,7 @@ MlasExecuteThreaded(
         return;
     }
 
-#if defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
 
     //
@@ -43,9 +43,6 @@ MlasExecuteThreaded(
     //
     // Execute the routine for the specified number of iterations.
     //
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
     for (ptrdiff_t tid = 0; tid < Iterations; tid++) {
         ThreadedRoutine(Context, tid);
     }
@@ -75,7 +72,7 @@ MlasTrySimpleParallel(
         return;
     }
 
-#if defined(MLAS_NO_ONNXRUNTIME_THREADPOOL)
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
 
     //
@@ -85,10 +82,6 @@ MlasTrySimpleParallel(
     //
     // Execute the routine for the specified number of iterations.
     //
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
-
     for (ptrdiff_t tid = 0; tid < Iterations; tid++) {
         Work(tid);
     }

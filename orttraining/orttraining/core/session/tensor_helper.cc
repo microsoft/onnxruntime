@@ -11,7 +11,7 @@ void CopyGpuToCpu(void* dst_ptr, const void* src_ptr, const size_t size, const O
 namespace training {
 
 // Return the shape of a tensor slice.
-std::vector<int64_t> GetSliceShape(
+TensorShapeVector GetSliceShape(
     gsl::span<const int64_t> shape,  // before-slicing tensor shape
     const size_t slice_axis,            // axis to slice along
     const size_t num_slices) {          // number of slices along the slicing axis
@@ -22,7 +22,7 @@ std::vector<int64_t> GetSliceShape(
   ORT_ENFORCE(shape.at(slice_axis) % num_slices == 0);
 
   // Shape of slice along slice_axis.
-  std::vector<int64_t> slice_shape(shape.size());
+  TensorShapeVector slice_shape(shape.size());
   // Compute original slice's shape.
   std::copy(shape.begin(), shape.end(), slice_shape.begin());
   // Replace the sliced dimension.
@@ -103,7 +103,7 @@ void CopyToCpuTensor(Tensor& dst, const Tensor& src) {
 // For a tensor with shape [D1, D2, D3], the linear index of element at (x, y, z) is
 // i = x * (D2 * D3) + y * D3 + z. If we append one dimension to form a new shape [D1, D2, D3, D4],
 // the new linear index at (x, y, z, u) can be computed using i * D4 + u.
-size_t UpdateLinearIndex(const size_t linear_index, const size_t new_axis_index, const size_t new_axis_dim) {
+constexpr size_t UpdateLinearIndex(const size_t linear_index, const size_t new_axis_index, const size_t new_axis_dim) {
   return linear_index * new_axis_dim + new_axis_index;
 }
 
@@ -255,7 +255,7 @@ OrtValue ConcatenateTensors(
   // Concatenated tensors in CPU buffers.
   std::vector<OrtValue> cpu_values;
   // Result tensor's shape.
-  std::vector<int64_t> new_shape = orig_values.front().Get<Tensor>().Shape().GetDimsAsVector();
+  TensorShapeVector new_shape = orig_values.front().Get<Tensor>().Shape().AsShapeVector();
   // Tensor elements' type.
   MLDataType elem_type = orig_values.front().Get<Tensor>().DataType();
   int64_t new_dim = 0;

@@ -1,0 +1,54 @@
+parameters:
+- name: enable_linux_cpu
+  displayName: 'Whether Linux CPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_linux_gpu
+  displayName: 'Whether Linux GPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_windows_cpu
+  displayName: 'Whether Windows CPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_windows_gpu
+  displayName: 'Whether Windows GPU package is built.'
+  type: boolean
+  default: true
+
+- name: python_version
+  displayName: 'Python version used for build'
+  type: object
+  default: ["'3.7'", "'3.8'", "'3.9'"]
+
+- name: cpu_build_py_parameters
+  displayName: 'Extra parameters to pass to build.py for CPU package.'
+  type: string
+  default: '--use_openvino CPU_FP32'
+
+- name: gpu_build_py_parameters
+  displayName: 'Extra parameters to pass to build.py for GPU package.'
+  type: string
+  default: ' '
+
+- name: ubuntu_version_linux_cpu
+  displayName: 'Ubuntu Version for Linux CPU package.'
+  type: string
+  default: '20.04'
+
+trigger: none
+
+stages:
+- template: templates/py-packaging-selectable-stage.yml
+  parameters:
+    enable_linux_gpu: ${{ parameters.enable_linux_gpu }}
+    enable_linux_cpu: ${{ parameters.enable_linux_cpu }}
+    enable_windows_cpu: ${{ parameters.enable_windows_cpu }}
+    enable_windows_gpu: ${{ parameters.enable_windows_gpu }}
+    python_version: ${{ parameters.python_version }}
+    cpu_build_py_parameters: ${{ parameters.cpu_build_py_parameters }}
+    gpu_build_py_parameters: ${{ parameters.gpu_build_py_parameters }}
+    ubuntu_version_linux_cpu: ${{ parameters.ubuntu_version_linux_cpu }}

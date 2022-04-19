@@ -25,6 +25,7 @@ def enable_custom_autograd_support():
     from torch.onnx import register_custom_op_symbolic
     from ._custom_autograd_function_exporter import _export
     from ._custom_autograd_function_runner import call_python_forward_function, call_python_backward_function
+    from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils
     import atexit
 
     register_forward_runner(call_python_forward_function)
@@ -32,6 +33,9 @@ def enable_custom_autograd_support():
 
     # Unregister all python functions automatically upon normal interpreter termination.
     atexit.register(unregister_python_functions)
+    # Clear all gradient functions, to avoid a deadlock issue.
+    # Check the called function for more detailed comments.
+    atexit.register(torch_interop_utils.clear_all_grad_fns)
 
     try:
         # This is for the latest Pytorch nightly after this commit:

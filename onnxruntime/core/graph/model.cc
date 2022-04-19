@@ -347,7 +347,7 @@ Status Model::Load(const ModelProto& model_proto,
 
   auto status = Status::OK();
   ORT_TRY {
-    model.reset(new Model(model_proto, model_path, local_registries, logger));
+    model = std::make_unique<Model>(model_proto, model_path, local_registries, logger);
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -386,7 +386,7 @@ Status Model::Load(ModelProto&& model_proto,
   GSL_SUPPRESS(r .11)
   auto status = Status::OK();
   ORT_TRY {
-    model.reset(new Model(std::move(model_proto), model_path, local_registries, logger, allow_released_opsets_only));
+    model = std::make_unique<Model>(std::move(model_proto), model_path, local_registries, logger, allow_released_opsets_only);
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -410,10 +410,10 @@ static Status LoadModelHelper(const T& file_path, Loader loader) {
     if (status.Category() == common::SYSTEM) {
       switch (status.Code()) {
         case ENOENT:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model ", ToMBString(file_path),
+          return ORT_MAKE_STATUS(ONNXRUNTIME, NO_SUCHFILE, "Load model ", ToUTF8String(file_path),
                                  " failed. File doesn't exist");
         case EINVAL:
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Load model ", ToMBString(file_path), " failed");
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Load model ", ToUTF8String(file_path), " failed");
         default:
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "system error number ", status.Code());
       }
@@ -730,7 +730,7 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
 #endif
                                         const logging::Logger& logger,
                                         std::unique_ptr<Model>& model) {
-  model.reset(new Model());
+  model = std::make_unique<Model>();
 
   // Load the model metadata
   if (const auto* fbs_metadata_props = fbs_model.metadata_props()) {

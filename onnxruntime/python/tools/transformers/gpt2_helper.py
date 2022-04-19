@@ -16,7 +16,12 @@ import pickle
 from pathlib import Path
 from typing import List, Dict, Tuple, Union
 from transformers import GPT2Model, GPT2LMHeadModel, GPT2Config, TFGPT2Model
+from float16 import float_to_float16_max_diff
+from onnx_model import OnnxModel
+from fusion_utils import FusionUtils
 from benchmark_helper import Precision
+from io_binding_helper import IOBindingHelper
+from torch_onnx_export_helper import torch_onnx_export
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +33,7 @@ DEFAULT_TOLERANCE = {Precision.FLOAT32: 0.0005, Precision.FLOAT16: 0.2, Precisio
 class GPT2ModelNoPastState(GPT2Model):
     """ Here we wrap a class to disable past state output.
     """
+
     def __init__(self, config):
         super().__init__(config)
 
@@ -38,6 +44,7 @@ class GPT2ModelNoPastState(GPT2Model):
 class TFGPT2ModelNoPastState(TFGPT2Model):
     """ Here we wrap a class to disable past state output.
     """
+
     def __init__(self, config):
         config.use_cache = False
         super().__init__(config)
@@ -49,6 +56,7 @@ class TFGPT2ModelNoPastState(TFGPT2Model):
 class MyGPT2Model(GPT2Model):
     """ Here we wrap a class for Onnx model conversion for GPT2Model with past state.
     """
+
     def __init__(self, config):
         super().__init__(config)
 
@@ -78,6 +86,7 @@ class MyGPT2Model(GPT2Model):
 class MyGPT2LMHeadModel(GPT2LMHeadModel):
     """ Here we wrap a class for Onnx model conversion for GPT2LMHeadModel with past state.
     """
+
     def __init__(self, config):
         super().__init__(config)
 
@@ -96,6 +105,7 @@ class MyGPT2LMHeadModel_NoPadding(GPT2LMHeadModel):
         When you always use batch_size=1 in inference, there is no padding in inputs. In such case, position_ids
         and attention_mask need no be in inputs.
     """
+
     def __init__(self, config):
         super().__init__(config)
 
@@ -114,10 +124,11 @@ MODEL_CLASSES = {
 
 
 class Gpt2Inputs:
+
     def __init__(self, input_ids, position_ids, attention_mask, past):
         self.input_ids: torch.LongTensor = input_ids
         self.position_ids: torch.LongTensor = position_ids
-        self.attention_mask: Union[torch.FloatTensor, torch.HalfTensor] = attention_mask
+        self.attention_mask: Union[torch.LongTensor, torch.FloatTensor, torch.HalfTensor] = attention_mask
         self.past: Union[List[torch.FloatTensor], List[torch.HalfTensor]] = past
 
     def to_list(self) -> List:
@@ -131,7 +142,12 @@ class Gpt2Inputs:
         return tuple(v for v in [self.input_ids, self.position_ids, self.attention_mask, self.past] if v is not None)
 
     def to_fp32(self):
-        attention_mask = self.attention_mask.to(dtype=torch.float32) if self.attention_mask is not None else None
+        # For attention mask, only convert fp16 to fp32, and keep the original type if it is integer.
+        attention_mask = None
+        if self.attention_mask is not None:
+            attention_mask = self.attention_mask.to(
+                dtype=torch.float32) if (self.attention_mask.dtype == torch.float16) else self.attention_mask
+
         past = [p.to(dtype=torch.float32) for p in self.past]
         return Gpt2Inputs(self.input_ids, self.position_ids, attention_mask, past)
 
@@ -139,6 +155,7 @@ class Gpt2Inputs:
 class Gpt2Helper:
     """ A helper class for Gpt2 model conversion, inference and verification.
     """
+
     @staticmethod
     def get_dummy_inputs(batch_size: int,
                          past_sequence_length: int,
@@ -150,7 +167,10 @@ class Gpt2Helper:
                          device: torch.device,
                          float16: bool = False,
                          has_position_ids: bool = True,
-                         has_attention_mask: bool = True) -> Gpt2Inputs:
+                         has_attention_mask: bool = True,
+                         input_ids_dtype: torch.dtype = torch.int32,
+                         position_ids_dtype: torch.dtype = torch.int32,
+                         attention_mask_dtype: torch.dtype = torch.int32) -> Gpt2Inputs:
         """ Create random inputs for GPT2 model.
         Returns torch tensors of input_ids, position_ids, attention_mask and a list of past state tensors.
         """
@@ -161,13 +181,13 @@ class Gpt2Helper:
         input_ids = torch.randint(low=0,
                                   high=vocab_size - 1,
                                   size=(batch_size, sequence_length),
-                                  dtype=torch.int64,
+                                  dtype=input_ids_dtype,
                                   device=device)
 
         attention_mask = None
         if has_attention_mask:
             total_sequence_length = past_sequence_length + sequence_length
-            attention_mask = torch.ones([batch_size, total_sequence_length], dtype=float_type, device=device)
+            attention_mask = torch.ones([batch_size, total_sequence_length], dtype=attention_mask_dtype, device=device)
             if total_sequence_length >= 2:
                 padding_position = random.randint(0, total_sequence_length - 1)  # test input with padding.
                 attention_mask[:, padding_position] = 0
@@ -177,7 +197,7 @@ class Gpt2Helper:
         if has_position_ids:
             position_ids = (attention_mask.long().cumsum(-1) - 1)
             position_ids.masked_fill_(position_ids < 0, 0)
-            position_ids = position_ids[:, past_sequence_length:]
+            position_ids = position_ids[:, past_sequence_length:].to(position_ids_dtype)
 
         return Gpt2Inputs(input_ids, position_ids, attention_mask, past)
 
@@ -318,7 +338,10 @@ class Gpt2Helper:
                     verbose: bool = False,
                     use_external_data_format: bool = False,
                     has_position_ids: bool = True,
-                    has_attention_mask: bool = True):
+                    has_attention_mask: bool = True,
+                    input_ids_dtype: torch.dtype = torch.int32,
+                    position_ids_dtype: torch.dtype = torch.int32,
+                    attention_mask_dtype: torch.dtype = torch.int32):
         """ Export GPT-2 model with past state to ONNX model.
         """
         config: GPT2Config = model.config
@@ -333,7 +356,10 @@ class Gpt2Helper:
                                                    device=device,
                                                    float16=False,
                                                    has_position_ids=has_position_ids,
-                                                   has_attention_mask=has_attention_mask)
+                                                   has_attention_mask=has_attention_mask,
+                                                   input_ids_dtype=input_ids_dtype,
+                                                   position_ids_dtype=position_ids_dtype,
+                                                   attention_mask_dtype=attention_mask_dtype)
         input_list = dummy_inputs.to_list()
 
         with torch.no_grad():
@@ -377,12 +403,11 @@ class Gpt2Helper:
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
-        torch.onnx.export(model,
+        torch_onnx_export(model,
                           args=tuple(input_list),
                           f=onnx_model_path,
                           input_names=input_names,
                           output_names=output_names,
-                          example_outputs=outputs,
                           dynamic_axes=dynamic_axes,
                           opset_version=11,
                           do_constant_folding=True,
@@ -396,6 +421,7 @@ class Gpt2Helper:
                       num_attention_heads,
                       hidden_size,
                       use_external_data_format=False,
+                      auto_mixed_precision=False,
                       **kwargs):
         """ Optimize ONNX model with an option to convert it to use mixed precision.
         """
@@ -415,13 +441,78 @@ class Gpt2Helper:
                            use_gpu=False)
 
         if is_float16:
-            op_full_list = set([node.op_type for node in m.nodes()])
-            op_block_list = set(kwargs["op_block_list"]) if "op_block_list" in kwargs else set()
-            op_remain_list = op_full_list.difference(op_block_list)
-            logger.info(f"op_block_list={op_block_list} op_remain_list={op_remain_list}")
-            m.convert_float_to_float16(use_symbolic_shape_infer=True, **kwargs)
+            if auto_mixed_precision:
+                Gpt2Helper.auto_mixed_precision(m)
+            else:
+                m.convert_float_to_float16(use_symbolic_shape_infer=True, **kwargs)
 
         m.save_model_to_file(optimized_model_path, use_external_data_format)
+
+    @staticmethod
+    def auto_mixed_precision(onnx_model: OnnxModel,
+                             op_block_list: List[str] = ['Add', 'LayerNormalization', 'FastGelu']):
+        """Convert GPT-2 model to mixed precision.
+           It detects whether original model has fp16 precision weights, and set parameters for float16 conversion automatically.
+        Args:
+            onnx_model (OnnxModel): optimized ONNX model
+            op_block_list (List[str], optional): . Defaults to ['Add', 'LayerNormalization', 'FastGelu']
+        Returns:
+            parameters(dict): a dictionary of parameters used in float16 conversion
+        """
+        op_full_set = set([node.op_type for node in onnx_model.nodes()])
+        fp32_op_set = set(op_block_list)
+        fp16_op_set = op_full_set.difference(fp32_op_set)
+        logger.info(f"fp32 op: {fp32_op_set} fp16 op: {fp16_op_set}")
+
+        # logits is the first output
+        logits_output_name = onnx_model.graph().output[0].name
+
+        # We use the weight in last MatMul node to detect whether the model is stored with float16 weights from training.
+        is_weight_fp16_precision = False
+        output_name_to_node = onnx_model.output_name_to_node()
+        assert logits_output_name in output_name_to_node
+        node = output_name_to_node[logits_output_name]
+        last_matmul_node = None
+        if node.op_type == "MatMul":
+            last_matmul_node = node
+            logger.info(f"Found last MatMul node for logits: {node.name}")
+            initializer = None
+            for input in node.input:
+                initializer = onnx_model.get_initializer(input)
+                if initializer is not None:
+                    break
+
+            # when the max difference of value after converting float to float16 is lower than a threshold (1e-6),
+            # we can deduce that the weights are stored in float16 precision.
+            max_diff = float_to_float16_max_diff(initializer)
+            logger.debug(f"max diff of converting weights in last MatMul node {node.name}: {max_diff}")
+            is_weight_fp16_precision = (max_diff < 1E-6)
+        else:
+            logger.warning(f"Failed to find MatMul node for logits. Found {node.op_type} of node {node.name}")
+
+        if is_weight_fp16_precision:
+            keep_io_types = []
+            node_block_list = []
+        else:
+            # When original weight is float32 precision, keep logits and last MatMul in float32 could get better precision.
+            keep_io_types = [logits_output_name]
+            node_block_list = [last_matmul_node.name]
+
+        parameters = {
+            "keep_io_types": keep_io_types,
+            "op_block_list": op_block_list,
+            "node_block_list": node_block_list,
+            "force_fp16_initializers": is_weight_fp16_precision
+        }
+
+        logger.info(f"auto_mixed_precision parameters: {parameters}")
+        onnx_model.convert_float_to_float16(use_symbolic_shape_infer=True, **parameters)
+
+        fusion_utils = FusionUtils(onnx_model)
+        fusion_utils.remove_cascaded_cast_nodes()
+        fusion_utils.remove_useless_cast_nodes()
+
+        return parameters
 
     @staticmethod
     def pytorch_inference(model, inputs: Gpt2Inputs, total_runs: int = 0):
@@ -487,65 +578,15 @@ class Gpt2Helper:
     def prepare_io_binding(ort_session, input_ids, position_ids, attention_mask, past, output_buffers, output_shapes):
         """ Returnas IO binding object for a session.
         """
-
-        # Bind inputs and outputs to onnxruntime session
-        io_binding = ort_session.io_binding()
-
-        # Bind inputs
-        assert input_ids.is_contiguous()
-        io_binding.bind_input('input_ids', input_ids.device.type, 0, numpy.longlong, list(input_ids.size()),
-                              input_ids.data_ptr())
-
-        data_type = output_buffers[ort_session.get_outputs()[0].name].dtype
-        float_type = numpy.float16 if data_type == torch.float16 else numpy.float32
-
-        if past is not None:
-            for i, past_i in enumerate(past):
-                assert past_i.is_contiguous()
-
-                data_ptr = past_i.data_ptr()
-                if data_ptr == 0:
-                    # When past_sequence_length is 0, its data_ptr will be zero. IO Binding asserts that data_ptr shall not be zero.
-                    # Here we workaround and pass data pointer of input_ids. Actual data is not used for past so it does not matter.
-                    data_ptr = input_ids.data_ptr()
-
-                io_binding.bind_input(f'past_{i}', past_i.device.type, 0, float_type, list(past_i.size()), data_ptr)
-
-        if attention_mask is not None:
-            assert attention_mask.is_contiguous()
-            io_binding.bind_input('attention_mask', attention_mask.device.type, 0, float_type,
-                                  list(attention_mask.size()), attention_mask.data_ptr())
-
-        if position_ids is not None:
-            assert position_ids.is_contiguous()
-            io_binding.bind_input('position_ids', position_ids.device.type, 0, numpy.longlong,
-                                  list(position_ids.size()), position_ids.data_ptr())
-
-        # Bind outputs
-        for output in ort_session.get_outputs():
-            output_name = output.name
-            output_buffer = output_buffers[output_name]
-            logger.debug(f"{output_name} device type={output_buffer.device.type} shape={list(output_buffer.size())}")
-            io_binding.bind_output(output_name, output_buffer.device.type, 0, float_type, output_shapes[output_name],
-                                   output_buffer.data_ptr())
-
-        return io_binding
+        return IOBindingHelper.prepare_io_binding(ort_session, input_ids, position_ids, attention_mask, past,
+                                                  output_buffers, output_shapes)
 
     @staticmethod
     def get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes, return_numpy=True):
         """ Copy results to cpu. Returns a list of numpy array.
         """
-        ort_outputs = []
-        for output in ort_session.get_outputs():
-            output_name = output.name
-            buffer = output_buffers[output_name]
-            shape = output_shapes[output_name]
-            copy_tensor = buffer[0:numpy.prod(shape)].reshape(shape).clone().detach()
-            if return_numpy:
-                ort_outputs.append(copy_tensor.cpu().numpy())
-            else:
-                ort_outputs.append(copy_tensor)
-        return ort_outputs
+        return IOBindingHelper.get_outputs_from_io_binding_buffer(ort_session, output_buffers, output_shapes,
+                                                                  return_numpy)
 
     @staticmethod
     def onnxruntime_inference_with_binded_io(ort_session,
@@ -617,6 +658,9 @@ class Gpt2Helper:
                     model_class="GPT2LMHeadModel",
                     has_position_ids=True,
                     has_attention_mask=True,
+                    input_ids_dtype=torch.int32,
+                    position_ids_dtype=torch.int32,
+                    attention_mask_dtype=torch.int32,
                     verbose=False,
                     enable_pickle_output=False):
         """ Generate random inputs and compare the results of PyTorch and Onnx Runtime.
@@ -652,10 +696,20 @@ class Gpt2Helper:
 
             logger.debug(
                 f"Running parity test for batch_size={batch_size} past_sequence_length={past_sequence_length}...")
-            dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size, past_sequence_length, sequence_length,
-                                                       config.num_attention_heads, config.hidden_size, config.n_layer,
-                                                       config.vocab_size, device, is_float16, has_position_ids,
-                                                       has_attention_mask)
+            dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size,
+                                                       past_sequence_length,
+                                                       sequence_length,
+                                                       config.num_attention_heads,
+                                                       config.hidden_size,
+                                                       config.n_layer,
+                                                       config.vocab_size,
+                                                       device,
+                                                       is_float16,
+                                                       has_position_ids,
+                                                       has_attention_mask,
+                                                       input_ids_dtype=input_ids_dtype,
+                                                       position_ids_dtype=position_ids_dtype,
+                                                       attention_mask_dtype=attention_mask_dtype)
             outputs = Gpt2Helper.pytorch_inference(model, dummy_inputs)
             if use_io_binding:
                 ort_outputs = Gpt2Helper.onnxruntime_inference(ort_session, dummy_inputs)
@@ -719,6 +773,9 @@ class Gpt2Helper:
                          model_class="GPT2LMHeadModel",
                          has_position_ids=True,
                          has_attention_mask=True,
+                         input_ids_dtype=torch.int32,
+                         position_ids_dtype=torch.int32,
+                         attention_mask_dtype=torch.int32,
                          batch_size=8,
                          sequence_length=1,
                          past_sequence_length=32):
@@ -733,10 +790,20 @@ class Gpt2Helper:
                                                          model_class)
             output_buffers = Gpt2Helper.get_output_buffers(output_shapes, device, is_float16)
 
-        dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size, past_sequence_length, sequence_length,
-                                                   config.num_attention_heads, config.hidden_size, config.n_layer,
-                                                   config.vocab_size, device, is_float16, has_position_ids,
-                                                   has_attention_mask)
+        dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size,
+                                                   past_sequence_length,
+                                                   sequence_length,
+                                                   config.num_attention_heads,
+                                                   config.hidden_size,
+                                                   config.n_layer,
+                                                   config.vocab_size,
+                                                   device,
+                                                   is_float16,
+                                                   has_position_ids,
+                                                   has_attention_mask,
+                                                   input_ids_dtype=input_ids_dtype,
+                                                   position_ids_dtype=position_ids_dtype,
+                                                   attention_mask_dtype=attention_mask_dtype)
 
         if use_io_binding:
             _, latency = Gpt2Helper.onnxruntime_inference(ort_session, dummy_inputs, total_runs)
@@ -773,9 +840,10 @@ class Gpt2Helper:
         """ Build a  path name for given model based on given attributes.
         """
         model_name = model_name_or_path
-        if not re.match(r'^[\w_-]+$', model_name_or_path):  # It is not a name, shall be a path
-            assert os.path.isdir(model_name_or_path)
+        if os.path.isdir(model_name_or_path):
             model_name = Path(model_name_or_path).parts[-1]
+        else:
+            model_name.split('/')[-1]
 
         if model_class != 'GPT2LMHeadModel':
             model_name += "_" + model_class

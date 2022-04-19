@@ -7,8 +7,8 @@
 import unittest
 import numpy as np
 from onnx import helper, TensorProto, numpy_helper, save
-from onnxruntime.quantization import quantize_static, QuantFormat
-from op_test_utils import InputFeedsNegOneZeroOne, check_model_correctness, check_op_type_count
+from onnxruntime.quantization import quantize_static, QuantFormat, QuantType
+from op_test_utils import InputFeedsNegOneZeroOne, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
 
 class TestONNXModel(unittest.TestCase):
@@ -47,7 +47,7 @@ class TestONNXModel(unittest.TestCase):
         conv3_node = helper.make_node('Conv', ['input', 'conv3_weight'], ['conv3_output'], name='conv3_node')
 
         concat_node = helper.make_node('Concat', ['conv1_output', 'conv2_output', 'conv3_output'], [
-                                            'concat_output'], name='concat_node', axis=1)
+            'concat_output'], name='concat_node', axis=1)
 
         identity_node = helper.make_node('Identity', ['concat_output'], ['output'], name='identity_node')
 
@@ -57,31 +57,48 @@ class TestONNXModel(unittest.TestCase):
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
         save(model, model_path)
 
-    def test_quantize_concat(self):
+    def quantize_concat_test(self, activation_type, weight_type, extra_options={}):
         np.random.seed(1)
-
         model_fp32_path = 'concat_fp32.onnx'
-        model_uint8_path = 'concat_uint8.onnx'
-        model_uint8_qdq_path = 'concat_uint8_qdq.onnx'
-
         self.construct_model(model_fp32_path)
+        data_reader = InputFeedsNegOneZeroOne(1, {'input': [1, 3, 15, 15]})
+
+        activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
+        activation_type_str = 'u8' if (activation_type == QuantType.QUInt8) else 's8'
+        weight_type_str = 'u8' if (weight_type == QuantType.QUInt8) else 's8'
+        model_q8_path = 'concat_{}{}.onnx'.format(activation_type_str, weight_type_str)
+        model_q8_qdq_path = 'concat_{}{}_qdq.onnx'.format(activation_type_str, weight_type_str)
 
         # Verify QOperator mode
-        data_reader = InputFeedsNegOneZeroOne(1, {'input': [1, 3, 15, 15]})
-        quantize_static(model_fp32_path, model_uint8_path, data_reader)
+        data_reader.rewind()
+        quantize_static(model_fp32_path, model_q8_path, data_reader, quant_format=QuantFormat.QOperator,
+                        activation_type=activation_type, weight_type=weight_type, extra_options=extra_options)
 
         qnode_counts = {'QLinearConv': 3, 'QuantizeLinear': 1, 'DequantizeLinear': 1, 'QLinearConcat': 1}
-        check_op_type_count(self, model_uint8_path, **qnode_counts)
+        check_op_type_count(self, model_q8_path, **qnode_counts)
+        qnode_io_qtypes = {'QuantizeLinear': [['i', 2, activation_proto_qtype], ['o', 0, activation_proto_qtype]]}
+        qnode_io_qtypes.update({'QLinearConcat': [['i', 1, activation_proto_qtype], [
+                               'i', 4, activation_proto_qtype], ['i', 7, activation_proto_qtype]]})
+        check_qtype_by_node_type(self, model_q8_path, qnode_io_qtypes)
         data_reader.rewind()
-        check_model_correctness(self, model_fp32_path, model_uint8_path, data_reader.get_next())
+        check_model_correctness(self, model_fp32_path, model_q8_path, data_reader.get_next())
 
         # Verify QDQ mode
         data_reader.rewind()
-        quantize_static(model_fp32_path, model_uint8_qdq_path, data_reader, quant_format=QuantFormat.QDQ)
+        quantize_static(model_fp32_path, model_q8_qdq_path, data_reader, quant_format=QuantFormat.QDQ,
+                        activation_type=activation_type, weight_type=weight_type, extra_options=extra_options)
         qdqnode_counts = {'Conv': 3, 'QuantizeLinear': 5, 'DequantizeLinear': 8, 'Concat': 1}
-        check_op_type_count(self, model_uint8_qdq_path, **qdqnode_counts)
+        check_op_type_count(self, model_q8_qdq_path, **qdqnode_counts)
+        qnode_io_qtypes = {'QuantizeLinear': [['i', 2, activation_proto_qtype], ['o', 0, activation_proto_qtype]]}
+        check_qtype_by_node_type(self, model_q8_qdq_path, qnode_io_qtypes)
         data_reader.rewind()
-        check_model_correctness(self, model_fp32_path, model_uint8_qdq_path, data_reader.get_next())
+        check_model_correctness(self, model_fp32_path, model_q8_qdq_path, data_reader.get_next())
+
+    def test_quantize_concat(self):
+        self.quantize_concat_test(QuantType.QUInt8, QuantType.QUInt8, extra_options={})
+
+    def test_quantize_concat_s8s8(self):
+        self.quantize_concat_test(QuantType.QInt8, QuantType.QInt8, extra_options={'ActivationSymmetric': True})
 
 
 if __name__ == '__main__':

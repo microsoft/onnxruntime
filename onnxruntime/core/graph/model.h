@@ -272,9 +272,9 @@ class Model {
                                           const logging::Logger& logger,
                                           std::unique_ptr<Model>& model);
 
- private:
   Model();
 
+ private:
   // Model data.
 #if !defined(ORT_MINIMAL_BUILD)
   ONNX_NAMESPACE::ModelProto model_proto_;

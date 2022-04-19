@@ -11,10 +11,9 @@ stages:
     - template: templates/win-cpu-ci.yml
       parameters:
         BuildConfig: 'Debug'
-        UseOmp: '--use_openmp'
         EnvSetupScript: setup_env.bat
         buildArch: x64
-        additionalBuildFlags: --use_dnnl --build_java --build_nodejs --build_wheel
+        additionalBuildFlags: --build_java --build_nodejs --build_wheel
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_debug
@@ -27,17 +26,32 @@ stages:
     - template: templates/win-cpu-ci.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
-        UseOmp: ''
         EnvSetupScript: setup_env.bat
         buildArch: x64
-        # Compare to our Nuget packaging pipeline, this job has "--build_wheel --use_dnnl" but doesn't have "--enable_lto --disable_rtti --use_telemetry  --enable_wcos"
-        # Python bindings use typeid so I can't disable RTTI here. So we may need to split it to two pipelines
-        additionalBuildFlags: --build_wheel --use_dnnl --build_java --build_nodejs
+        # Compare to our Nuget packaging pipeline, this job has "--build_wheel" but doesn't have "--enable_lto --disable_rtti --use_telemetry  --enable_wcos"
+        # Python bindings use typeid so I can't disable RTTI here. If it causes a problem, we will need to split this job to two jobs.
+        additionalBuildFlags: --build_wheel --build_java --build_nodejs
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         RunStaticCodeAnalysis: true
+        
+- stage: x64_release_dnnl
+  dependsOn: []
+  jobs:
+    - template: templates/win-cpu-ci.yml
+      parameters:
+        BuildConfig: 'RelWithDebInfo'
+        EnvSetupScript: setup_env.bat
+        buildArch: x64
+        additionalBuildFlags: --build_wheel --use_dnnl --build_java
+        msbuildPlatform: x64
+        isX86: false
+        job_name_suffix: x64_release
+        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+        RunStaticCodeAnalysis: false
+        
 
 - stage: x64_release_winml
   dependsOn: []
@@ -45,7 +59,6 @@ stages:
     - template: templates/win-cpu-ci.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
-        UseOmp: ''
         EnvSetupScript: setup_env.bat
         buildArch: x64
         additionalBuildFlags: --use_winml --enable_wcos --disable_rtti
@@ -63,7 +76,6 @@ stages:
     - template: templates/win-cpu-ci.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
-        UseOmp: ''
         EnvSetupScript: setup_env_x86.bat
         buildArch: x86
         additionalBuildFlags: --build_wheel
@@ -79,7 +91,6 @@ stages:
     - template: templates/win-cpu-ci.yml
       parameters:
         BuildConfig: 'Debug'
-        UseOmp: ''
         EnvSetupScript: setup_env.bat
         buildArch: x64
         additionalBuildFlags: --enable_training --build_wheel
@@ -95,7 +106,6 @@ stages:
     - template: templates/win-cpu-ci.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
-        UseOmp: ''
         EnvSetupScript: setup_env.bat
         buildArch: x64
         additionalBuildFlags: --enable_training --build_wheel
@@ -104,4 +114,4 @@ stages:
         job_name_suffix: training_x64_release
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         # Liqun is fixing them
-        RunStaticCodeAnalysis: false
+        RunStaticCodeAnalysis: true

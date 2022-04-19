@@ -26,8 +26,9 @@ class FakeKernel final : public OpKernel {
   }
 };
 
-OpKernel* CreateFakeKernel(const OpKernelInfo& info) {
-  return new FakeKernel(info);
+Status CreateFakeKernel(FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) {
+  out = std::make_unique<FakeKernel>(info);
+  return Status::OK();
 }
 }  // namespace
 

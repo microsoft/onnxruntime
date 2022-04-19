@@ -53,8 +53,6 @@ public:
                 0
             );
 
-        DmlOperator::Remap64bitDmlDataTypesTo32bitIfNeeded();
-
         // Adjust the axis so it's in DML's terms rather than the original ONNX indexing.
         uint32_t dmlAxis = GetDmlAdjustedAxis(
             m_absoluteAxis,

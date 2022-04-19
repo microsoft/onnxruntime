@@ -111,8 +111,7 @@ public:
 
                     if (hasOutputIndices)
                     {
-                        DmlOperator::Remap64bitDmlDataTypesTo32bit();
-                        m_outputTensorDescs[1].ForceUnsignedDataType(); // MaxPool accepts uint32_t.
+                        m_outputTensorDescs[1].ForceUnsignedDataType(); // MaxPool accepts uint32_t/uint64_t.
                         desc.OutputIndicesTensor = &outputDescs[1];
                     }
 

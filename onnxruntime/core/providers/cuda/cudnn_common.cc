@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "cudnn_common.h"
+#include "core/common/inlined_containers.h"
 #include "gsl/gsl"
 #include "shared_inc/cuda_call.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -31,8 +32,8 @@ Status CudnnTensor::Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dat
 
   int rank = gsl::narrow_cast<int>(input_dims.size());
   TensorPitches pitches(input_dims);
-  std::vector<int> dims(rank);
-  std::vector<int> strides(rank);
+  InlinedVector<int, kTensorShapeSmallBufferElementsSize> dims(rank);
+  InlinedVector<int, kTensorShapeSmallBufferElementsSize> strides(rank);
   for (int i = 0; i < rank; i++) {
     dims[i] = gsl::narrow_cast<int>(input_dims[i]);
     strides[i] = gsl::narrow_cast<int>(pitches[i]);
@@ -94,12 +95,12 @@ CudnnFilterDescriptor::~CudnnFilterDescriptor() {
   }
 }
 
-Status CudnnFilterDescriptor::Set(const std::vector<int64_t>& filter_dims, cudnnDataType_t data_type) {
+Status CudnnFilterDescriptor::Set(gsl::span<const int64_t> filter_dims, cudnnDataType_t data_type) {
   if (!desc_)
     CUDNN_RETURN_IF_ERROR(cudnnCreateFilterDescriptor(&desc_));
 
   int rank = gsl::narrow_cast<int>(filter_dims.size());
-  std::vector<int> w_dims(rank);
+  InlinedVector<int> w_dims(rank);
   for (int i = 0; i < rank; i++) {
     w_dims[i] = gsl::narrow_cast<int>(filter_dims[i]);
   }
@@ -136,6 +137,12 @@ cudnnDataType_t CudnnTensor::GetDataType<half>() {
 }
 
 template <>
+cudnnDataType_t CudnnTensor::GetDataType<BFloat16>() {
+  ORT_THROW("cuDNN doesn't support BFloat16.");
+  return CUDNN_DATA_FLOAT;
+}
+
+template <>
 cudnnDataType_t CudnnTensor::GetDataType<int8_t>() {
   return CUDNN_DATA_INT8;
 }
@@ -161,10 +168,8 @@ const float Consts<half>::Zero = 0;
 
 const float Consts<half>::One = 1;
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-const float Consts<nv_bfloat16>::Zero = 0;
-const float Consts<nv_bfloat16>::One = 1;
-#endif
+const float Consts<BFloat16>::Zero = 0;
+const float Consts<BFloat16>::One = 1;
 
 template <>
 const int8_t Consts<int8_t>::Zero = 0;

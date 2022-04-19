@@ -8,7 +8,12 @@
 #include "core/framework/tensor.h"
 #endif
 #include <sstream>
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
 namespace onnxruntime {
 class BatchNormHelper {
  public:
@@ -124,3 +129,6 @@ class BatchNormHelper {
   }
 };
 }  // namespace onnxruntime
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif

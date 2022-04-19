@@ -167,14 +167,21 @@ test {
 	java {
 		dependsOn spotlessJava
 	}
+	if (System.getProperty("JAVA_FULL_TEST") != null) {
+		// Forces each test class to be run in a separate JVM,
+		// which is necessary for testing the environment thread pool which is ignored if full test is not set.
+		forkEvery 1
+	}
 	useJUnitPlatform()
 	if (cmakeBuildDir != null) {
 		workingDir cmakeBuildDir
 	}
-	systemProperties System.getProperties().subMap(['USE_CUDA', 'USE_ROCM', 'USE_TENSORRT', 'USE_DNNL', 'USE_OPENVINO'])
+	systemProperties System.getProperties().subMap(['USE_CUDA', 'USE_ROCM', 'USE_TENSORRT', 'USE_DNNL', 'USE_OPENVINO', 'JAVA_FULL_TEST'])
 	testLogging {
 		events "passed", "skipped", "failed"
 		showStandardStreams = true
+		showStackTraces = true
+		exceptionFormat = "full"
 	}
 }
 

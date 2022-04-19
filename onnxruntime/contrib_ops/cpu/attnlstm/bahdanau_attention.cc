@@ -8,7 +8,11 @@
 #include <memory.h>
 
 using onnxruntime::rnn::detail::Allocate;
-
+// TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
 namespace onnxruntime {
 namespace contrib {
 

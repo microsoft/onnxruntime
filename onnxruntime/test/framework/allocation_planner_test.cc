@@ -28,6 +28,7 @@ using namespace ONNX_NAMESPACE;
 // GCC 4.x.
 // (This static var is referenced in some tests below)
 const OrtDevice::DeviceType OrtDevice::GPU;
+const OrtDevice::DeviceType OrtDevice::CPU;
 
 namespace onnxruntime {
 namespace test {
@@ -165,6 +166,10 @@ class PlannerTest : public ::testing::Test {
   std::unique_ptr<::onnxruntime::KernelDef> std_kernel_;               // a unary kernel with no-aliasing and no-in-place
   std::unique_ptr<::onnxruntime::KernelDef> in_place_kernel_;          // a unary kernel with in-place
   std::unique_ptr<::onnxruntime::KernelDef> external_outputs_kernel_;  // an unary kernel with external outputs
+#ifdef ENABLE_TRAINING
+  std::unique_ptr<::onnxruntime::KernelDef> may_strided_input_kernel_;  // an uinary kernel with may_strided_input
+  std::unique_ptr<::onnxruntime::KernelDef> may_strided_output_kernel_; // an unary kernel with may_strided_output
+#endif
 
   std::unordered_map<std::string, onnxruntime::NodeArg*> name_to_arg_;
   std::vector<std::unique_ptr<UnaryNode>> nodes_;
@@ -189,6 +194,20 @@ class PlannerTest : public ::testing::Test {
         KernelDefBuilder().SetName("Relu").Provider(kCpuExecutionProvider).SinceVersion(1, 10).MayInplace(0, 0).Build();
     external_outputs_kernel_ =
         KernelDefBuilder().SetName("Tanh").Provider(kCpuExecutionProvider).SinceVersion(1, 10).ExternalOutputs().Build();
+#ifdef ENABLE_TRAINING
+    may_strided_input_kernel_ = KernelDefBuilder()
+                                    .SetName("Abs")
+                                    .Provider(kCpuExecutionProvider)
+                                    .SinceVersion(1, 10)
+                                    .MayStridedInput(0)
+                                    .Build();
+    may_strided_output_kernel_ = KernelDefBuilder()
+                                     .SetName("Neg")
+                                     .Provider(kCpuExecutionProvider)
+                                     .SinceVersion(1, 10)
+                                     .MayStridedOutput(0, 0)
+                                     .Build();
+#endif
     CPUExecutionProviderInfo epi;
     auto execution_provider = std::make_unique<CPUExecutionProvider>(epi);
     ORT_THROW_IF_ERROR(execution_providers_.Add("CPUExecutionProvider", std::move(execution_provider)));
@@ -224,19 +243,29 @@ class PlannerTest : public ::testing::Test {
     return AddNode(*external_outputs_kernel_, input, output);
   }
 
+#ifdef ENABLE_TRAINING
+  onnxruntime::Node* AddMayStridedInputNode(std::string& input, std::string& output) {
+    return AddNode(*may_strided_input_kernel_, input, output);
+  }
+
+  onnxruntime::Node* AddMayStridedOutputNode(std::string& input, std::string& output) {
+    return AddNode(*may_strided_output_kernel_, input, output);
+  }
+#endif
+
   void BindKernel(onnxruntime::Node* p_node, ::onnxruntime::KernelDef& kernel_def, KernelRegistry* reg,
                   std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map) {
     const IExecutionProvider* ep = execution_providers_.Get(*p_node);
     ASSERT_NE(ep, nullptr);
     auto info = std::make_unique<OpKernelInfo>(
         *p_node, kernel_def, *ep, state_->GetInitializedTensors(), state_->GetOrtValueNameIdxMap(),
-        state_->GetFuncMgr(), state_->GetDataTransferMgr());
+        state_->GetDataTransferMgr());
 
     op_kernel_infos_.push_back(std::move(info));
     if (!KernelRegistry::HasImplementationOf(*reg, *p_node, onnxruntime::kCpuExecutionProvider)) {
       auto st = reg->Register(
           KernelCreateInfo(std::make_unique<KernelDef>(kernel_def),
-                           [](const OpKernelInfo& info) -> OpKernel* { return new DummyOpKernel(info); }));
+                           [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<DummyOpKernel>(info); return Status::OK(); }));
       ORT_ENFORCE(st.IsOK(), st.ErrorMessage());
     }
 
@@ -271,7 +300,7 @@ class PlannerTest : public ::testing::Test {
 
     // CreatePlan is called inside FinalizeSessionState and usually the initializers are removed following that.
     // Leave initializers so we can duplicate the call to CreatePlan from here to validate.
-    const bool remove_initializers = false;
+    constexpr bool remove_initializers = false;
     status = state_->FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager, {}, nullptr, remove_initializers);
 
     EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -447,6 +476,92 @@ TEST_F(PlannerTest, ExternalOutputsTest) {
   CheckFreed(2, {X3});
 }
 
+#ifdef ENABLE_TRAINING
+TEST_F(PlannerTest, MayStridedTest1) {
+  // tensor variables:
+  std::string X1("X1"), X2("X2"), X3("X3");
+
+  // graph structure:
+  AddNormalNode(X1, X2);
+  AddMayStridedOutputNode(X2, X3);  // may_strided_output as graph output.
+
+  // simulate shape-inference results:
+  Shape shape1{"M", "N"};
+  auto shape = &shape1.value;
+  SetShape({{X1, shape}, {X2, shape}, {X3, shape}});
+
+  CreatePlan();
+
+  // check allocation kind:
+  CheckAllocKind(X1, AllocKind::kPreExisting);
+  CheckAllocKind(X2, AllocKind::kAllocate);
+  CheckAllocKind(X3, AllocKind::kAllocateOutput);
+
+  // check each ml-value is freed at appropriate step
+  // X2 will not be reused and will not be freed. X3 will be allocated and will be freed.
+  CheckFreed(0, {});
+  CheckFreed(1, {X2});
+}
+
+TEST_F(PlannerTest, MayStridedTest2) {
+  // tensor variables:
+  std::string X1("X1"), X2("X2"), X3("X3"), X4("X4");
+
+  // graph structure:
+  AddMayStridedOutputNode(X1, X2);
+  AddMayStridedInputNode(X2, X3);
+  AddMayStridedInputNode(X2, X4);
+
+  // simulate shape-inference results:
+  Shape shape1{"M", "N"};
+  auto shape = &shape1.value;
+  SetShape({{X1, shape}, {X2, shape}, {X3, shape}, {X4, shape}});
+
+  CreatePlan();
+
+  // check allocation kind:
+  CheckAllocKind(X1, AllocKind::kPreExisting);
+  CheckAllocKind(X2, AllocKind::kReuse);
+  CheckAllocKind(X3, AllocKind::kAllocateOutput);
+  CheckAllocKind(X4, AllocKind::kAllocateOutput);
+
+  // check each ml-value is freed at appropriate step
+  // X2 will not be reused and will not be freed. X3 will be allocated and will be freed.
+  CheckFreed(0, {});
+  CheckFreed(1, {});
+  CheckFreed(2, {});
+}
+
+TEST_F(PlannerTest, MayStridedTest3) {
+  // tensor variables:
+  std::string X1("X1"), X2("X2"), X3("X3"), X4("X4");
+
+  // graph structure:
+  AddMayStridedOutputNode(X1, X2);
+  AddMayStridedInputNode(X2, X3);
+  AddNormalNode(X2, X4);
+
+  // simulate shape-inference results:
+  Shape shape1{"M", "N"};
+  auto shape = &shape1.value;
+  SetShape({{X1, shape}, {X2, shape}, {X3, shape}, {X4, shape}});
+
+  CreatePlan();
+
+  // check allocation kind:
+  CheckAllocKind(X1, AllocKind::kPreExisting);
+  CheckAllocKind(X2, AllocKind::kAllocate);
+  CheckAllocKind(X3, AllocKind::kAllocateOutput);
+  CheckAllocKind(X4, AllocKind::kAllocateOutput);
+
+  // check each ml-value is freed at appropriate step
+  // X2 will not be reused and will not be freed. X3 will be allocated and will be freed.
+  CheckFreed(0, {});
+  CheckFreed(1, {});
+  CheckFreed(2, {X2});
+}
+#endif
+
 // InPlaceSizeMismatchTest: Check that Inplace reuse is not allowed when sizes don't match.
 // Also tests reuse of disjoint lifetime tensors.
 TEST_F(PlannerTest, InPlaceSizeMismatchTest) {
@@ -575,7 +690,7 @@ TEST_F(PlannerTest, LocationPlanningForPassThroughExplicitAndImplicitSubgraphInp
       /*  Inputs: iter_num, cond_in, loop carried state variables.
          iter_num_in    cond_in     [loop_state_var]
            (unused)        |               |
-                       [Identity]         [If]  
+                       [Identity]         [If]
                            |               |
                         cond_out     loop_state_var_out
     */
@@ -635,8 +750,8 @@ TEST_F(PlannerTest, LocationPlanningForPassThroughExplicitAndImplicitSubgraphInp
     // Abs-1
     auto& abs_data_1_in = main_graph.GetOrCreateNodeArg("abs_data_1_in", &float_tensor);
     auto& abs_data_1_out = main_graph.GetOrCreateNodeArg("abs_data_1_out", &float_tensor);
-    std::vector<onnxruntime::NodeArg*> abs_1_inputs = {&abs_data_1_in};
-    std::vector<onnxruntime::NodeArg*> abs_1_outputs = {&abs_data_1_out};
+    const std::array<onnxruntime::NodeArg*, 1> abs_1_inputs = {&abs_data_1_in};
+    const std::array<onnxruntime::NodeArg*, 1> abs_1_outputs = {&abs_data_1_out};
     main_graph.AddNode("abs_1", "Abs", "node abs", abs_1_inputs, abs_1_outputs);
 
     // Loop
@@ -728,6 +843,7 @@ TEST_F(PlannerTest, LocationPlanningForPassThroughExplicitAndImplicitSubgraphInp
     EXPECT_EQ(first_subgraph_plan->allocation_plan[abs_data_1_out_index].location.device.Type(), OrtDevice::GPU);
   }
 }
+
 TEST_F(PlannerTest, LocationPlanningForInitializersOnlyUsedInANestedSubgraph) {
   // This a simple model that has one outer scope initializer and an `If` node
   // and that initializer is ONLY used in nested subgraphs (both the `If` subgraphs).
@@ -827,6 +943,115 @@ TEST_F(PlannerTest, LocationPlanningForInitializersOnlyUsedInANestedSubgraph) {
 
   EXPECT_EQ(main_graph_plan->allocation_plan[init_data_index].location.device.Type(), OrtDevice::GPU);
 }
+
+TEST_F(PlannerTest, LocationPlanningForInitializersUsedInMainGraphAndSubgraph) {
+  // This a simple model that has one outer scope initializer, an `If` node followed
+  // by a `TopK` node. The initializer is used in both nested subgraphs(`Add` consumes it
+  // and requires it on GPU) and main graph(the second input of `TopK` is required on CPU).
+  // The right location for the initializer should be CPU as no Memcpy will be inserted
+  // for a node in main graph that requires the input(initializer) on CPU if that initializer
+  // is placed on GPU by allocation planner.
+  TypeProto int_tensor;
+  int_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+  int_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("dim_param");
+
+  TypeProto bool_scalar;
+  bool_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+  bool_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto create_model = [&int_tensor, &bool_scalar]() -> Model {
+    auto create_if_subgraph = [&int_tensor](bool is_then) -> GraphProto {
+      Model model("if_branch_subgraph", true, DefaultLoggingManager().DefaultLogger());
+      auto& graph = model.MainGraph();
+
+      auto& outer_scope_0 = graph.GetOrCreateNodeArg("abs_data_out", &int_tensor);
+      graph.AddOuterScopeNodeArg("abs_data_out");
+
+      auto& outer_scope_1 = graph.GetOrCreateNodeArg("init_data", &int_tensor);
+      graph.AddOuterScopeNodeArg("init_data");
+
+      auto& if_out = graph.GetOrCreateNodeArg(is_then ? "if_then_out" : "if_else_out", &int_tensor);
+      graph.AddNode("if_out", "Add", "add", {&outer_scope_0, &outer_scope_1}, {&if_out});
+
+      auto status = graph.Resolve();
+      EXPECT_EQ(status, Status::OK());
+
+      return graph.ToGraphProto();
+    };
+
+    onnxruntime::Model model("main_graph", false, ModelMetaData(),
+                             PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                             {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
+    auto& main_graph = model.MainGraph();
+
+    // Abs-0
+    auto& abs_data_in = main_graph.GetOrCreateNodeArg("abs_data_in", &int_tensor);
+    auto& abs_data_out = main_graph.GetOrCreateNodeArg("abs_data_out", &int_tensor);
+    main_graph.AddNode("abs_0", "Abs", "node abs", {&abs_data_in}, {&abs_data_out});
+
+    // If
+    auto& if_in = main_graph.GetOrCreateNodeArg("if_in", &bool_scalar);
+    auto& if_out = main_graph.GetOrCreateNodeArg("if_out", &int_tensor);
+    auto& node = main_graph.AddNode("if_out", "If", "If", {&if_in}, {&if_out});
+    node.AddAttribute("then_branch", create_if_subgraph(true));
+    node.AddAttribute("else_branch", create_if_subgraph(false));
+
+    // TopK
+    auto& topk_data_in_0 = main_graph.GetOrCreateNodeArg("if_out", &int_tensor);
+    auto& topk_data_in_1 = main_graph.GetOrCreateNodeArg("init_data", &int_tensor);
+    auto& topk_data_out_0 = main_graph.GetOrCreateNodeArg("topk_data_out_0", &int_tensor);
+    auto& topk_data_out_1 = main_graph.GetOrCreateNodeArg("topk_data_out_1", &int_tensor);
+    main_graph.AddNode("topk_0", "TopK", "node topk", {&topk_data_in_0, &topk_data_in_1},
+                       {&topk_data_out_0, &topk_data_out_1});
+
+    // Add initializer to the graph
+    ONNX_NAMESPACE::TensorProto tensor;
+    tensor.add_dims(1);
+    tensor.add_int64_data(1);
+    tensor.set_data_type(TensorProto_DataType_INT64);
+    tensor.set_name("init_data");
+    main_graph.AddInitializedTensor(tensor);
+
+    // Main graph's inputs/outputs
+    main_graph.SetInputs({&abs_data_in, &if_in});
+    main_graph.SetOutputs({&topk_data_out_0, &topk_data_out_1});
+
+    auto status = main_graph.Resolve();
+    EXPECT_EQ(status, Status::OK());
+
+    return model;
+  };
+
+  // Create and load session
+  SessionOptions so;
+  InferenceSession sess{so, GetEnvironment()};
+
+  auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
+  ASSERT_TRUE(status.IsOK());
+
+  std::string s1;
+  const bool rc = create_model().ToProto().SerializeToString(&s1);
+  EXPECT_EQ(rc, true);
+  std::stringstream sstr(s1);
+
+  status = sess.Load(sstr);
+  ASSERT_TRUE(status.IsOK());
+
+  status = sess.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  // Check planned locations for the initializer
+  const auto& main_graph_session_state = sess.GetSessionState();
+  const auto& main_graph_ort_value_index_map = main_graph_session_state.GetOrtValueNameIdxMap();
+  const auto* main_graph_plan = main_graph_session_state.GetExecutionPlan();
+
+  OrtValueIndex init_data_index;
+  ASSERT_STATUS_OK(main_graph_ort_value_index_map.GetIdx("init_data", init_data_index));
+
+  EXPECT_EQ(main_graph_plan->allocation_plan[init_data_index].location.device.Type(), OrtDevice::CPU);
+}
+
 #endif
+
 }  // namespace test
 }  // namespace onnxruntime

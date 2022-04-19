@@ -43,10 +43,10 @@ The [onnx_model](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxrun
 After fusing the graph, [check the parity](https://github.com/microsoft/onnxruntime/blob/rel-1.9.0/onnxruntime/python/tools/transformers/onnx_exporter.py#L104) between optimized onnx model and original one by feeding the same inputs to both models and comparing outputs.
 
 ## A Concrete Case
-* The Attention Op and EmbedLayerNorm Op are not fused([EmbedLayerNorm graph](https://github.com/microsoft/onnxruntime/blob/wangye/doc/onnxruntime/python/tools/transformers/notebooks/images/embed_unfused.png) and [Attention graph](https://github.com/microsoft/onnxruntime/blob/wangye/doc/onnxruntime/python/tools/transformers/notebooks/images/attention_unfused.png) with Netron) after running optimization script on a custom transformer-based onnx model. 
+* The Attention Op and EmbedLayerNorm Op are not fused([EmbedLayerNorm graph](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/notebooks/images/embed_unfused.png) and [Attention graph](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/notebooks/images/attention_unfused.png) with Netron) after running optimization script on a custom transformer-based onnx model. 
 * Checked and confirmed that these two candidate graphs have identical logic to the current CPU/CUDA kernel implementation.
 * Applied some code changes to the [Attention fusion](https://github.com/microsoft/onnxruntime/compare/wangye/opt#diff-bd125663ee59865deb608c7ec666ac4760b55ce73fc38cc3d463abd0aaa90817) and [EmbedLayerNorm fusion](https://github.com/microsoft/onnxruntime/compare/wangye/opt#diff-bb2157f08cf00e8434e77fcfeeaa960e5e9c6db2df2b637a5f49e48d77a56185)
-* Re-run the script and these two Ops are fused([EmbedLayerNorm Op](https://github.com/microsoft/onnxruntime/blob/wangye/doc/onnxruntime/python/tools/transformers/notebooks/images/embed_fused.png) and [Attention Op](https://github.com/microsoft/onnxruntime/blob/wangye/doc/onnxruntime/python/tools/transformers/notebooks/images/attention_fused.png) with Netron).
+* Re-run the script and these two Ops are fused([EmbedLayerNorm Op](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/notebooks/images/embed_fused.png) and [Attention Op](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/transformers/notebooks/images/attention_fused.png) with Netron).
 * The parity is OK
 
 ## Contribution

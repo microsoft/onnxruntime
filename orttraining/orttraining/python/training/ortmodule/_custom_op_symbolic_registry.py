@@ -64,8 +64,8 @@ def nll_loss(g, self, target, weight, reduction, ignore_index):
 
 @register_symbolic('embedding')
 def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
-    output = g.op("com.microsoft::ATenOp", weight, indices, padding_idx, scale_grad_by_freq, sparse,
-                  name_s='aten::embedding')
+    output = g.op("org.pytorch.aten::ATen", weight, indices, padding_idx, scale_grad_by_freq, sparse,
+                  operator_s='aten::embedding')
     indices_shape = _get_tensor_sizes(indices)
     if indices_shape is not None and hasattr(weight.type(), 'with_sizes'):
         output_type = weight.type().with_sizes(
@@ -73,19 +73,23 @@ def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
         output.setType(output_type)
     return output
 
+@register_symbolic('bitwise_or')
+def bitwise_or(g, self, other):
+    return g.op("org.pytorch.aten::ATen", self, other,
+                operator_s='aten::bitwise_or', overload_name_s='Tensor')
 
 @register_symbolic('diagonal')
 def diagonal(g, self, offset, dim1, dim2):
-    return g.op("com.microsoft::ATenOp", self, offset, dim1, dim2,
-                name_s='aten::diagonal')
+    return g.op("org.pytorch.aten::ATen", self, offset, dim1, dim2,
+                operator_s='aten::diagonal')
 
 
 @register_symbolic('multinomial')
 def multinomial(g, self, num_samples, replacement=False, generator=None):
     if generator is not None and not sym_help._is_none(generator):
         raise RuntimeError("Unsupported: ONNX does not support generator for multinomial")
-    return g.op("com.microsoft::ATenOp", self, num_samples, replacement, generator,
-                name_s='aten::multinomial')
+    return g.op("org.pytorch.aten::ATen", self, num_samples, replacement, generator,
+                operator_s='aten::multinomial')
 
 
 @register_symbolic('max_pool2d')
@@ -93,18 +97,18 @@ def max_pool2d(g, self, kernel_size, stride, padding, dilation, ceil_mode):
     stride_val = sym_help._maybe_get_const(stride, 'is')
     if not stride_val:
         stride = kernel_size
-    return g.op("com.microsoft::ATenOp", self, kernel_size, stride, padding, dilation, ceil_mode,
-                name_s='aten::max_pool2d_with_indices', outputs=2)[0]
+    return g.op("org.pytorch.aten::ATen", self, kernel_size, stride, padding, dilation, ceil_mode,
+                operator_s='aten::max_pool2d_with_indices', outputs=2)[0]
 
 
 @register_symbolic('unfold')
 def unfold(g, input, dimension, size, step):
-    return g.op("com.microsoft::ATenOp", input, dimension, size, step, name_s='aten::unfold')
+    return g.op("org.pytorch.aten::ATen", input, dimension, size, step, operator_s='aten::unfold')
 
 
 @register_symbolic('argmax')
 def argmax(g, input, dim, keepdim):
-    return g.op("com.microsoft::ATenOp", input, dim, keepdim, name_s='aten::argmax')
+    return g.op("org.pytorch.aten::ATen", input, dim, keepdim, operator_s='aten::argmax')
 
 
 @register_symbolic('avg_pool2d')
@@ -112,13 +116,13 @@ def avg_pool2d(g, self, kernel_size, stride, padding, ceil_mode, count_include_p
     stride_val = sym_help._maybe_get_const(stride, 'is')
     if not stride_val:
         stride = kernel_size
-    return g.op("com.microsoft::ATenOp", self, kernel_size, stride, padding, ceil_mode,
-                count_include_pad, divisor_override, name_s='aten::avg_pool2d')
+    return g.op("org.pytorch.aten::ATen", self, kernel_size, stride, padding, ceil_mode,
+                count_include_pad, divisor_override, operator_s='aten::avg_pool2d')
 
 
 @register_symbolic('adaptive_avg_pool2d')
 def adaptive_avg_pool2d(g, self, output_size):
-    return g.op("com.microsoft::ATenOp", self, output_size, name_s='aten::_adaptive_avg_pool2d')
+    return g.op("org.pytorch.aten::ATen", self, output_size, operator_s='aten::_adaptive_avg_pool2d')
 
 
 @register_symbolic('binary_cross_entropy_with_logits')
@@ -127,10 +131,34 @@ def binary_cross_entropy_with_logits(g, self, target, weight, pos_weight, reduct
     # But current custom_gradient_registry doesn't support such None checking,
     # So doesn't support non-None weight for now.
     if weight is None or sym_help._is_none(weight):
-        return g.op("com.microsoft::ATenOp", self, target, weight, pos_weight, reduction,
-                    name_s='aten::binary_cross_entropy_with_logits')
+        return g.op("org.pytorch.aten::ATen", self, target, weight, pos_weight, reduction,
+                    operator_s='aten::binary_cross_entropy_with_logits')
     from torch.onnx.symbolic_opset12 import binary_cross_entropy_with_logits as bce
     return bce(g, self, target, weight, pos_weight, reduction)
+
+@register_symbolic('numpy_T')
+def numpy_T(g, self):
+    # Numpy-style `a.T`: returns the tensor
+    # with dims reversed
+    rank = sym_help._get_tensor_rank(self)
+    if rank is not None:
+        axes = list(reversed(range(rank)))
+        return g.op("Transpose", self, perm_i=axes)
+    else:
+        # if we don't have dim information we cannot
+        # output a permute so use ATen instead
+        return g.op("com.microsoft::ATenOp", self, name_s='aten::numpy_T')
+
+
+@register_symbolic('squeeze')
+def squeeze(g, self, dim=None):
+    # Current _infer_If does not correctly infer shapes from its then- and else- branches, and will
+    # cause error in shape inference of following nodes, here we choose to export it as `Squeeze.`
+    from torch.onnx.symbolic_opset11 import squeeze as squeeze_with_if
+    if dim is None:
+        return squeeze_with_if(g, self, dim)
+    squeeze_dim = sym_help._get_const(dim, 'i', 'dim')
+    return sym_help._squeeze_helper(g, self, axes_i=[squeeze_dim])
 
 
 # For torch.einsum.
@@ -241,22 +269,28 @@ def permute_and_reshape_tensor(g, tensor, is_lhs, rank, perm, matmul_output_axes
             remaining_axes = [axis for axis in range(rank) if axis not in axes_to_remove]
             # Calculate the new shape, use 0 or -1 if possible.
             shape_tensors = []
-            all_zeros = True
+            before_contiguous_axes = True
+            last_zero_dim = -1
+            has_neg_one_dim = False
             for axis in remaining_axes:
                 if axis == first_matmul_output_axis:
                     shape_tensors.append(matmul_output_numel_tensor)
-                    all_zeros = False
+                    before_contiguous_axes = False
                 elif axis == first_contraction_axis:
                     shape_tensors.append(contraction_numel_tensor)
-                    all_zeros = False
-                elif all_zeros:
+                    before_contiguous_axes = False
+                elif before_contiguous_axes:
                     shape_tensors.append(g.op("Constant", value_t=torch.tensor([0], dtype=torch.int64)))
+                    last_zero_dim = len(shape_tensors) - 1
                 elif axis == remaining_axes[-1]:
                     shape_tensors.append(g.op("Constant", value_t=torch.tensor([-1], dtype=torch.int64)))
+                    has_neg_one_dim = True
                 else:
                     single_axis_shape_tensor, _, shape_tensor = get_shape_tensor_by_axes(
                         g, tensor, shape_tensor, [axis], False)
                     shape_tensors.append(single_axis_shape_tensor)
+            if not has_neg_one_dim and last_zero_dim >= 0:
+                shape_tensors[last_zero_dim] = g.op("Constant", value_t=torch.tensor([-1], dtype=torch.int64))
             # Adjust the perm.
             perm = [axis for axis in perm if axis not in axes_to_remove]
             new_axis = 0
@@ -442,16 +476,22 @@ def einsum(g, equation, tensor_list):
     # Need to Reshape the result for the example, the new shape is [size(s), size(m)].
     if len(lhs_matmul_output_axes) != 1 or len(rhs_matmul_output_axes) != 1:
         shape_tensors = [g.op("Constant", value_t=torch.tensor([0], dtype=torch.int64))] * len(batched_axes)
+        last_zero_dim = len(shape_tensors) - 1
+        has_neg_one_dim = False
         if lhs_matmul_output_axes:
             if len(lhs_matmul_output_axes) == 1:
                 shape_tensors.append(g.op("Constant", value_t=torch.tensor([0], dtype=torch.int64)))
+                last_zero_dim = len(shape_tensors) - 1
             else:
                 shape_tensors.append(lhs_matmul_output_shape_tensor)
         if rhs_matmul_output_axes:
             if len(rhs_matmul_output_axes) == 1:
                 shape_tensors.append(g.op("Constant", value_t=torch.tensor([-1], dtype=torch.int64)))
+                has_neg_one_dim = True
             else:
                 shape_tensors.append(rhs_matmul_output_shape_tensor)
+        if not has_neg_one_dim and last_zero_dim >= 0:
+            shape_tensors[last_zero_dim] = g.op("Constant", value_t=torch.tensor([-1], dtype=torch.int64))
         result = reshape_tensor(g, result, shape_tensors)
 
     # Now output axes is ordered by [batched_axes, lhs_matmul_output_axes, rhs_matmut_output_axes],

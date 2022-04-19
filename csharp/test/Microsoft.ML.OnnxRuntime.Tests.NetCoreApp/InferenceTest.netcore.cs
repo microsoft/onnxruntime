@@ -46,6 +46,71 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+#if USE_CUDA
+
+        [Fact(DisplayName = "TestCUDAProviderOptions")]
+        private void TestCUDAProviderOptions()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
+
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                var cudaProviderOptions = new OrtCUDAProviderOptions();
+                cleanUp.Add(cudaProviderOptions);
+
+                var providerOptionsDict = new Dictionary<string, string>();
+                providerOptionsDict["device_id"] = "0";
+                providerOptionsDict["gpu_mem_limit"] = "20971520";
+                providerOptionsDict["arena_extend_strategy"] = "kSameAsRequested";
+                providerOptionsDict["cudnn_conv_algo_search"] = "DEFAULT";
+                providerOptionsDict["do_copy_in_default_stream"] = "1";
+                providerOptionsDict["cudnn_conv_use_max_workspace"] = "1";
+                providerOptionsDict["cudnn_conv1d_pad_to_nc1d"] = "1";
+                cudaProviderOptions.UpdateOptions(providerOptionsDict);
+
+                var resultProviderOptionsDict = new Dictionary<string, string>();
+                ProviderOptionsValueHelper.StringToDict(cudaProviderOptions.GetOptions(), resultProviderOptionsDict);
+
+                // test provider options configuration
+                string value;
+                value = resultProviderOptionsDict["device_id"];
+                Assert.Equal("0", value);
+                value = resultProviderOptionsDict["gpu_mem_limit"];
+                Assert.Equal("20971520", value);
+                value = resultProviderOptionsDict["arena_extend_strategy"];
+                Assert.Equal("kSameAsRequested", value);
+                value = resultProviderOptionsDict["cudnn_conv_algo_search"];
+                Assert.Equal("DEFAULT", value);
+                value = resultProviderOptionsDict["do_copy_in_default_stream"];
+                Assert.Equal("1", value);
+                value = resultProviderOptionsDict["cudnn_conv_use_max_workspace"];
+                Assert.Equal("1", value);
+                value = resultProviderOptionsDict["cudnn_conv1d_pad_to_nc1d"];
+                Assert.Equal("1", value);
+
+                // test correctness of provider options
+                SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);
+                cleanUp.Add(options);
+
+                var session = new InferenceSession(modelPath, options);
+                cleanUp.Add(session);
+
+                var inputMeta = session.InputMetadata;
+                var container = new List<NamedOnnxValue>();
+                float[] inputData = TestDataLoader.LoadTensorFromFile(@"bench.in"); // this is the data for only one input tensor for this model
+                foreach (var name in inputMeta.Keys)
+                {
+                    Assert.Equal(typeof(float), inputMeta[name].ElementType);
+                    Assert.True(inputMeta[name].IsTensor);
+                    var tensor = new DenseTensor<float>(inputData, inputMeta[name].Dimensions);
+                    container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
+                }
+
+                session.Run(container);
+            }
+        }
+#endif
+
 #if USE_TENSORRT
         [Fact(DisplayName = "CanRunInferenceOnAModelWithTensorRT")]
         private void CanRunInferenceOnAModelWithTensorRT()
@@ -275,6 +340,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_optional_get_element_sequence", "not implemented yet"},
                 { "test_optional_has_element", "not implemented yet"},
                 { "test_optional_has_element_empty", "not implemented yet"},
+                { "test_identity_opt", "opset16 version not implemented yet"},
+                { "test_if_opt", "opset16 version not implemented yet"},
+                { "test_loop16_seq_none", "opset16 version not implemented yet"},
             };
 
             // The following models fails on nocontribops win CI
@@ -564,6 +632,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 string libFullPath = Path.Combine(Directory.GetCurrentDirectory(), libName);
                 Assert.True(File.Exists(libFullPath), $"Expected lib {libFullPath} does not exist.");
+
+                var ortEnvInstance = OrtEnv.Instance();
+                string[] providers = ortEnvInstance.GetAvailableProviders();
+                if (Array.Exists(providers, provider => provider == "CUDAExecutionProvider")) {
+                    option.AppendExecutionProvider_CUDA(0);
+                }
 
                 IntPtr libraryHandle = IntPtr.Zero;
                 try

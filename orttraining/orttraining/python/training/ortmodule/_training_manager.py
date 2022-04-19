@@ -47,8 +47,14 @@ class TrainingManager(GraphExecutionManager):
         forward_inputs = C.OrtValueVector()
         forward_inputs.reserve(len(inputs))
         for input in inputs:
-            dlp = _utils._torch_tensor_to_dlpack(input)
-            forward_inputs.push_back(dlp, input.dtype == torch.bool)
+            # TODO: Non-contiguous tensor input in execution_session_run_forward, need tensor copy.
+            if not input.is_contiguous():
+                input = input.contiguous()
+            if input.device.type == 'ort':
+                forward_inputs.push_back(C.aten_ort_tensor_to_ort_value(input))
+            else:
+                valid_ort_tensor = _utils._torch_tensor_to_dlpack(input)
+                forward_inputs.push_back(valid_ort_tensor, input.dtype == torch.bool)
 
         forward_outputs = C.OrtValueVector()
         # Run and return module outputs.
@@ -145,7 +151,10 @@ class TrainingManager(GraphExecutionManager):
                             grad_output = torch.tensor(0., device=device, dtype=dtype)
                     elif not grad_output.is_contiguous():
                         grad_output = grad_output.contiguous()
-                    backward_inputs.push_back(_utils._torch_tensor_to_dlpack(grad_output),
+                    if grad_output.device.type == 'ort':
+                        backward_inputs.push_back(C.aten_ort_tensor_to_ort_value(grad_output))
+                    else:
+                        backward_inputs.push_back(_utils._torch_tensor_to_dlpack(grad_output),
                                               grad_output.dtype is torch.bool)
                 backward_inputs.shrink_to_fit()
 
@@ -155,36 +164,11 @@ class TrainingManager(GraphExecutionManager):
                 # Destroy the state immediately (as opposed to be at the mercy of garbage collector) so it does not
                 # affect peak memory usage in a subsequent graph run.
                 del ctx.run_info.state
-                # Return input and initializer gradients
-                num_user_input_grads = len(self._input_info.require_grad_names)
-                results = []
-                require_grad_names_set = set(self._input_info.require_grad_names)
-                require_grad_names_index = 0
-                for input_name in self._graph_info.user_input_names:
-                    # Append to the results the backward output for each input that required grad
-                    if input_name in require_grad_names_set:
-                        results.append(_utils._torch_tensor_from_dl_pack(
-                            backward_outputs.dlpack_at(require_grad_names_index),
-                            backward_outputs[require_grad_names_index], self._device))
-                        require_grad_names_index += 1
-                    else:
-                        # input_name is not found in the self._input_info.require_grad_names list
-                        # Append None to results for each input that did not require grad
-                        results.append(None)
 
-                # Append gradients of initializer to results
-                # Go over each initializer, check if it required grad and append to results accordingly
-                initializer_index = num_user_input_grads
-                for initializer_name in self._graph_info.initializer_names:
-                    if initializer_name in self._graph_initializer_names_to_train:
-                        results.append(_utils._torch_tensor_from_dl_pack(
-                            backward_outputs.dlpack_at(initializer_index),
-                            backward_outputs[initializer_index], self._device))
-                        initializer_index += 1
-                    else:
-                        results.append(None)
-
-                return tuple(results)
+                # Fast version: all backward_outputs are converted first.
+                # This version only works if backward_outputs is an OrtValueVector.
+                transfered_backward_outputs = _utils._ortvalues_to_torch_tensor(backward_outputs, self._device)
+                return tuple(transfered_backward_outputs[idx] if idx != -1 else None for idx in self._gradient_map)
 
         return _ORTModuleFunction
 
@@ -304,19 +288,28 @@ class TrainingManager(GraphExecutionManager):
 
         session_options, providers, provider_options = self._get_session_config()
         fw_feed_names = [input.name for input in self._onnx_models.optimized_model.graph.input]
-        fw_outputs_device_info = [
-            C.OrtDevice(get_ort_device_type(self._device),
-                        C.OrtDevice.default_memory(),
-                        _utils.get_device_index(self._device)
-                        )] * (len(self._graph_info.user_output_names) +
-                              len(self._graph_info.frontier_node_arg_map))
+        device_type = self._device if type(self._device) is str else self._device.type.lower()
+        if device_type == 'ort':
+            fw_outputs_device_info = [C.get_ort_device(self._device.index)] * (len(self._graph_info.user_output_names) +
+                                len(self._graph_info.frontier_node_arg_map))
+        else:
+            fw_outputs_device_info = [
+                C.OrtDevice(get_ort_device_type(self._device),
+                            C.OrtDevice.default_memory(),
+                            _utils.get_device_index(self._device)
+                            )] * (len(self._graph_info.user_output_names) +
+                                len(self._graph_info.frontier_node_arg_map))
 
         bw_fetches_names = [output.name for output in self._onnx_models.optimized_model.graph.output]
-        bw_outputs_device_info = [
-            C.OrtDevice(get_ort_device_type(self._device),
-                        C.OrtDevice.default_memory(),
-                        _utils.get_device_index(self._device)
-                        )] * len(bw_fetches_names)
+        if device_type == 'ort':
+            bw_outputs_device_info = [
+                    C.get_ort_device(self._device.index)] * len(bw_fetches_names)
+        else:
+            bw_outputs_device_info = [
+                C.OrtDevice(get_ort_device_type(self._device),
+                            C.OrtDevice.default_memory(),
+                            _utils.get_device_index(self._device)
+                            )] * len(bw_fetches_names)
 
         self._execution_agent = TrainingAgent(self._onnx_models.optimized_model.SerializeToString(),
                                               fw_feed_names,

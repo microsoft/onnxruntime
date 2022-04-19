@@ -23,6 +23,12 @@ if (['prod', 'dev', 'perf', 'node'].indexOf(MODE) === -1) {
 // --no-wasm
 const WASM = typeof args.wasm === 'undefined' ? true : !!args.wasm;
 
+// -a; --analyzer
+const ANALYZER = !!args.a || !!args.analyzer;
+
+// -f; --filter=<regex>
+const FILTER = args.f || args.filter;
+
 // Path variables
 const WASM_BINDING_FOLDER = path.join(__dirname, '..', 'lib', 'wasm', 'binding');
 const WASM_BINDING_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm.js');
@@ -93,7 +99,7 @@ if (WASM) {
     }
 
     fs.writeFileSync(WASM_BINDING_THREADED_MIN_JS_PATH, terser.stdout);
-    fs.writeFileSync(WASM_THREADED_JS_PATH, COPYRIGHT_BANNER + terser.stdout);
+    fs.writeFileSync(WASM_THREADED_JS_PATH, `${COPYRIGHT_BANNER}${terser.stdout}`);
 
     validateFile(WASM_BINDING_THREADED_MIN_JS_PATH);
     validateFile(WASM_THREADED_JS_PATH);
@@ -118,7 +124,7 @@ if (WASM) {
     }
 
     fs.writeFileSync(WASM_BINDING_THREADED_MIN_WORKER_JS_PATH, terser.stdout);
-    fs.writeFileSync(WASM_THREADED_WORKER_JS_PATH, COPYRIGHT_BANNER + terser.stdout);
+    fs.writeFileSync(WASM_THREADED_WORKER_JS_PATH, `${COPYRIGHT_BANNER}${terser.stdout}`);
 
     validateFile(WASM_BINDING_THREADED_MIN_WORKER_JS_PATH);
     validateFile(WASM_THREADED_WORKER_JS_PATH);
@@ -134,6 +140,12 @@ npmlog.info('Build', 'Building bundle...');
   npmlog.info('Build.Bundle', 'Running webpack to generate bundles...');
   const webpackCommand = path.join(npmBin, 'webpack');
   const webpackArgs = ['--env', `--bundle-mode=${MODE}`];
+  if (ANALYZER) {
+    webpackArgs.push('--env', '-a');
+  }
+  if (FILTER) {
+    webpackArgs.push('--env', `-f=${FILTER}`);
+  }
   npmlog.info('Build.Bundle', `CMD: ${webpackCommand} ${webpackArgs.join(' ')}`);
   const webpack = spawnSync(webpackCommand, webpackArgs, {shell: true, stdio: 'inherit'});
   if (webpack.status !== 0) {

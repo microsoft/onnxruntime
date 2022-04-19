@@ -3,126 +3,127 @@
 
 #pragma once
 
+#include "core/framework/random_generator.h"
 #include "core/providers/cuda/cuda_kernel.h"
-
-#include "core/providers/cuda/generator/random_impl.h"
+#include <optional>
 
 namespace onnxruntime {
 namespace cuda {
 
-#define RANDOM_COMPUTE_IMPL(name)                                                                        \
-  template <typename T>                                                                                  \
-  struct name##ComputeImpl {                                                                             \
-    void operator()(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const float alpha, \
-                    const float beta, PhiloxGenerator& generator, Tensor& Y) const {                     \
-      typedef typename ToCudaType<T>::MappedType CudaT;                                                  \
-      CudaT* Y_data = reinterpret_cast<CudaT*>(Y.template MutableData<T>());                             \
-      name##KernelImpl<CudaT>(prop, stream, N, alpha, beta, generator, Y_data);                          \
-    }                                                                                                    \
-  };
-
-RANDOM_COMPUTE_IMPL(RandomNormal)
-RANDOM_COMPUTE_IMPL(RandomUniform)
-
-#undef RANDOM_COMPUTE_IMPL
-
-class RandomBase : public CudaKernel {
+class RandomBase {
  protected:
-  RandomBase(const OpKernelInfo& info) : CudaKernel(info) {
+  explicit RandomBase(const OpKernelInfo& info) {
     float seed = 0.f;
     if (info.GetAttr<float>("seed", &seed).IsOK()) {
-      generator_ = std::make_unique<PhiloxGenerator>(static_cast<uint64_t>(seed));
+      generator_.emplace(static_cast<uint64_t>(seed));
     }
 
     int64_t dtype;
     if (info.GetAttr<int64_t>("dtype", &dtype).IsOK()) {
+      ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(gsl::narrow<int>(dtype)) &&
+                      dtype != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED,
+                  "Invalid dtype of ", dtype);
       dtype_ = static_cast<ONNX_NAMESPACE::TensorProto::DataType>(dtype);
-      ORT_ENFORCE(ONNX_NAMESPACE::TensorProto::DataType_IsValid(dtype_) &&
-                      dtype_ != ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED,
-                  "Invalid dtype of ", dtype_);
     }
   }
 
  protected:
-  std::unique_ptr<PhiloxGenerator> generator_;
+
+  void SetDTypeIfUndefined(ONNX_NAMESPACE::TensorProto::DataType dtype) noexcept {
+    if (dtype_ == ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
+      dtype_ = dtype;
+    }
+  }
+
+  ONNX_NAMESPACE::TensorProto::DataType GetDType() const noexcept { return dtype_; }
+
+  PhiloxGenerator& GetPhiloxGenerator() const {
+    return (generator_.has_value()) ? *generator_ : PhiloxGenerator::Default();
+  }
+
+ private:
+
   ONNX_NAMESPACE::TensorProto::DataType dtype_ =
       ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;  // optional and may be inferred
+
+  // This member is thread-safe, ensuring proper synchronization
+  mutable std::optional<PhiloxGenerator> generator_;
 };
 
 class RandomNormalBase : public RandomBase {
  protected:
   RandomNormalBase(const OpKernelInfo& info) : RandomBase(info) {
-    ORT_ENFORCE(info.GetAttr<float>("scale", &scale_).IsOK());
-    ORT_ENFORCE(info.GetAttr<float>("mean", &mean_).IsOK());
+    ORT_THROW_IF_ERROR(info.GetAttr<float>("scale", &scale_));
+    ORT_THROW_IF_ERROR(info.GetAttr<float>("mean", &mean_));
   }
 
-  Status Compute(OpKernelContext* p_ctx, const TensorShape& shape, int dtype) const;
+  Status ComputeNormal(const CudaKernel& cuda_kernel, OpKernelContext& ctx, const TensorShape& shape, int dtype) const;
 
- protected:
+ private:
   float scale_;
   float mean_;
 };
 
-class RandomNormal final : public RandomNormalBase {
+class RandomNormal final : public CudaKernel, protected RandomNormalBase {
  public:
-  explicit RandomNormal(const OpKernelInfo& info) : RandomNormalBase(info) {
-    if (dtype_ == ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
-      dtype_ = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-    }
+  explicit RandomNormal(const OpKernelInfo& info) : CudaKernel(info), RandomNormalBase(info) {
+    SetDTypeIfUndefined(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     std::vector<int64_t> shape;
-    ORT_ENFORCE(info.GetAttrs<int64_t>("shape", shape).IsOK());
+    ORT_THROW_IF_ERROR(info.GetAttrs<int64_t>("shape", shape));
     shape_ = TensorShape(shape);
   }
 
-  Status ComputeInternal(OpKernelContext* p_ctx) const override;
+  Status ComputeInternal(OpKernelContext* p_ctx) const override {
+    return ComputeNormal(*this, *p_ctx, shape_, GetDType());
+  }
 
  private:
   TensorShape shape_;
 };
 
-class RandomNormalLike final : public RandomNormalBase {
+class RandomNormalLike final : public CudaKernel, protected RandomNormalBase {
  public:
-  explicit RandomNormalLike(const OpKernelInfo& info) : RandomNormalBase(info) {}
+  explicit RandomNormalLike(const OpKernelInfo& info) : CudaKernel(info), RandomNormalBase(info) {}
   Status ComputeInternal(OpKernelContext* p_ctx) const override;
 };
 
 class RandomUniformBase : public RandomBase {
  protected:
-  RandomUniformBase(const OpKernelInfo& info) : RandomBase(info) {
+  explicit RandomUniformBase(const OpKernelInfo& info) : RandomBase(info) {
     float low, high;
-    ORT_ENFORCE(info.GetAttr<float>("low", &low).IsOK());
-    ORT_ENFORCE(info.GetAttr<float>("high", &high).IsOK());
+    ORT_THROW_IF_ERROR(info.GetAttr<float>("low", &low));
+    ORT_THROW_IF_ERROR(info.GetAttr<float>("high", &high));
     from_ = low;
     range_ = high - low;
   }
 
-  Status Compute(OpKernelContext* p_ctx, const TensorShape& shape, int dtype) const;
+  Status ComputeUniform(const CudaKernel& cuda_kernel, OpKernelContext& ctx, const TensorShape& shape, int dtype) const;
 
- protected:
+ private:
   float range_;
   float from_;
 };
 
-class RandomUniform final : public RandomUniformBase {
+class RandomUniform final : public CudaKernel, protected RandomUniformBase {
  public:
-  explicit RandomUniform(const OpKernelInfo& info) : RandomUniformBase(info) {
-    if (dtype_ == ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED) {
-      dtype_ = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-    }
+  explicit RandomUniform(const OpKernelInfo& info) : CudaKernel(info), RandomUniformBase(info) {
+    SetDTypeIfUndefined(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     std::vector<int64_t> shape;
-    ORT_ENFORCE(info.GetAttrs<int64_t>("shape", shape).IsOK());
+    ORT_THROW_IF_ERROR(info.GetAttrs<int64_t>("shape", shape));
     shape_ = TensorShape(shape);
   }
 
-  Status ComputeInternal(OpKernelContext* p_ctx) const override;
+  Status ComputeInternal(OpKernelContext* p_ctx) const override {
+    return ComputeUniform(*this, *p_ctx, shape_, GetDType());
+  }
 
  private:
   TensorShape shape_;
 };
 
-class RandomUniformLike final : public RandomUniformBase {
+class RandomUniformLike final : public CudaKernel, protected RandomUniformBase {
  public:
-  explicit RandomUniformLike(const OpKernelInfo& info) : RandomUniformBase(info) {}
+  explicit RandomUniformLike(const OpKernelInfo& info) : CudaKernel(info), RandomUniformBase(info) {}
   Status ComputeInternal(OpKernelContext* p_ctx) const override;
 };
 

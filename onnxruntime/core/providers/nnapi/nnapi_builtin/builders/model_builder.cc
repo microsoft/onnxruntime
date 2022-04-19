@@ -1,23 +1,26 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <core/common/logging/logging.h>
-#include <core/common/safeint.h>
-#include <core/framework/tensorprotoutils.h>
+#include "model_builder.h"
 
+#include "core/common/logging/logging.h"
+#include "core/common/safeint.h"
+#include "core/common/status.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_viewer.h"
 #include "core/providers/common.h"
+#include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
+
 #include "helper.h"
-#include "model_builder.h"
 #include "op_builder.h"
 #include "op_support_checker.h"
 
+using namespace android::nn::wrapper;
+
 namespace onnxruntime {
 namespace nnapi {
-
-using namespace android::nn::wrapper;
-using std::vector;
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer)
     : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer) {}
@@ -29,7 +32,7 @@ int32_t ModelBuilder::GetNNAPIFeatureLevel() const {
 // Scalar operand is copied into the model, no need to persist
 #define DEFINE_ADD_OPERAND_FROM_SCALAR(scalar_type, op_type)                      \
   Status ModelBuilder::AddOperandFromScalar(scalar_type value, uint32_t& index) { \
-    OperandType operandType(Type::op_type, vector<uint32_t>{});                   \
+    OperandType operandType(Type::op_type, std::vector<uint32_t>{});              \
     ORT_RETURN_IF_ERROR(AddNewNNAPIOperand(operandType, index));                  \
     RETURN_STATUS_ON_ERROR_WITH_NOTE(                                             \
         nnapi_->ANeuralNetworksModel_setOperandValue(                             \
@@ -48,13 +51,12 @@ void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
   skipped_initializers_.insert(tensor_name);
 }
 
-static std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInputs(const GraphViewer& graph_viewer);
-
 Status ModelBuilder::Prepare() {
   nnapi_model_ = std::unique_ptr<Model>(new Model());
   RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksModel_create(&nnapi_model_->model_));
   ORT_RETURN_IF_ERROR(GetTargetDevices());
-  all_quantized_op_inputs_ = GetAllQuantizedOpInputs(graph_viewer_);
+  PreprocessNodeUnits();
+  GetAllQuantizedOpInputs();
   PreprocessInitializers();
   PreprocessActivations();
   ORT_RETURN_IF_ERROR(RegisterInitializers());
@@ -116,73 +118,74 @@ Status ModelBuilder::GetTargetDevices() {
 }
 
 void ModelBuilder::PreprocessInitializers() {
-  const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
-  for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_viewer_.GetNode(node_indices[i]));
-    if (const auto* op_builder = GetOpBuilder(*node)) {
-      op_builder->AddInitializersToSkip(*this, *node);
+  for (const auto& node_unit : node_unit_holder_) {
+    if (const auto* op_builder = GetOpBuilder(*node_unit)) {
+      op_builder->AddInitializersToSkip(*this, *node_unit);
     }
   }
 }
 
 void ModelBuilder::PreprocessActivations() {
-  const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
-  for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_viewer_.GetNode(node_indices[i]));
-    const auto& op_type(node->OpType());
-
+  for (const auto& node_unit : node_unit_holder_) {
+    const auto& node = node_unit->GetNode();
+    const auto& op_type(node.OpType());
     if (op_type == "Relu") {
-      activation_nodes_.emplace(node->Index(), ANEURALNETWORKS_FUSED_RELU);
+      activation_node_units_.emplace(node_unit.get(), ANEURALNETWORKS_FUSED_RELU);
     } else if (op_type == "Clip") {  // Relu1 or Relu6
       float min, max;
-      if (!GetClipMinMax(GetInitializerTensors(), *node, min, max, logging::LoggingManager::DefaultLogger()))
+      if (!GetClipMinMax(GetInitializerTensors(), node, min, max, logging::LoggingManager::DefaultLogger()))
         continue;
 
       if (min == -1.0f && max == 1.0f) {
-        activation_nodes_.emplace(node->Index(), ANEURALNETWORKS_FUSED_RELU1);
+        activation_node_units_.emplace(node_unit.get(), ANEURALNETWORKS_FUSED_RELU1);
       } else if (min == 0.0f && max == 6.0f) {
-        activation_nodes_.emplace(node->Index(), ANEURALNETWORKS_FUSED_RELU6);
+        activation_node_units_.emplace(node_unit.get(), ANEURALNETWORKS_FUSED_RELU6);
       }
     }
   }
 }
 
-// Help to get all quantized operators' input and the node(s) using the input
-static std::unordered_map<std::string, vector<const Node*>> GetAllQuantizedOpInputs(const GraphViewer& graph_viewer) {
-  std::unordered_map<std::string, vector<const Node*>> all_quantized_op_inputs;
-  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
-  for (const auto& node_idx : node_indices) {
-    const auto* node(graph_viewer.GetNode(node_idx));
-    auto qlinear_op_type = GetQLinearOpType(*node);
+const NodeUnit& ModelBuilder::GetNodeUnit(const Node* node) const {
+  // In theory, if node_unit_map_ is generated correctly, see PreprocessNodeUnits(), a NodeUnit can be
+  // found for any single node in the graph_viewer_, unless the given node is not from graph_viewer_
+  return *node_unit_map_.at(node);
+}
 
-    // Not a qlinear op
-    if (qlinear_op_type == QLinearOpType::Unknown)
+void ModelBuilder::PreprocessNodeUnits() {
+  std::tie(node_unit_holder_, node_unit_map_) = GetAllNodeUnits(graph_viewer_);
+}
+
+// Help to get all quantized operators' input and the NodeUnit(s) using the input
+void ModelBuilder::GetAllQuantizedOpInputs() {
+  for (const auto& node_unit : node_unit_holder_) {
+    auto quant_op_type = GetQuantizedOpType(*node_unit);
+
+    // Not a qlinear op or qdq node group
+    if (quant_op_type == QuantizedOpType::Unknown)
       continue;
 
-    // All qlinear ops EXCEPT QuantizeLinear has quantized input
-    if (qlinear_op_type != QLinearOpType::QuantizeLinear) {
-      const auto& input_name = node->InputDefs()[0]->Name();
-      if (Contains(all_quantized_op_inputs, input_name))
-        all_quantized_op_inputs.at(input_name).push_back(node);
-      else
-        all_quantized_op_inputs.emplace(input_name, vector<const Node*>{node});
+    const auto add_quantized_input =
+        [&all_quantized_op_inputs = all_quantized_op_inputs_](const NodeUnit& node_unit, size_t input_idx) {
+          const auto& input_name = node_unit.Inputs()[input_idx].node_arg.Name();
+          all_quantized_op_inputs[input_name].push_back(&node_unit);
+        };
+
+    // All quantized ops EXCEPT QuantizeLinear has quantized input
+    if (quant_op_type != QuantizedOpType::QuantizeLinear) {
+      add_quantized_input(*node_unit, 0);
     }
 
-    if (IsQLinearBinaryOp(qlinear_op_type)) {
-      const auto& input_name = node->InputDefs()[3]->Name();
-      if (Contains(all_quantized_op_inputs, input_name))
-        all_quantized_op_inputs.at(input_name).push_back(node);
-      else
-        all_quantized_op_inputs.emplace(input_name, vector<const Node*>{node});
+    if (IsQuantizedBinaryOp(quant_op_type)) {
+      add_quantized_input(*node_unit, 1);
     }
+
+    // TODO, add handling for varidiac nodes such as QLinearConcat
   }
-
-  return all_quantized_op_inputs;
 }
 
 static Status GetInputDataType(
     const InitializedTensorSet& initializers,
-    const std::unordered_map<std::string, std::vector<const Node*>>& all_quantized_op_inputs,
+    const std::unordered_map<std::string, std::vector<const NodeUnit*>>& all_quantized_op_inputs,
     const std::string& name, int32_t data_type, const Shape& shape,
     OperandType& operand_type) {
   Type type = Type::TENSOR_FLOAT32;
@@ -192,7 +195,7 @@ static Status GetInputDataType(
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       type = Type::TENSOR_FLOAT32;
       break;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
       // For ONNX the quantized input/initializer does not carry scale and zero point info
       // So we will need to search the operator using this input
       // And dig out the scale and zero point as the input initializers to the operator
@@ -205,9 +208,11 @@ static Status GetInputDataType(
       }
 
       // TODO, verify the scale and zero point match if there are multiple op using same input
-      ORT_RETURN_IF_ERROR(GetQuantizedInputScaleAndZeroPoint(
-          initializers, *all_quantized_op_inputs.at(name)[0], name, scale, zero_point));
+      const auto* node_unit = all_quantized_op_inputs.at(name)[0];
+      ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
+          initializers, *node_unit, name, scale, zero_point, IOKind::Input));
       break;
+    }
       // case ONNX_NAMESPACE::TensorProto_DataType_INT8:
       // We also do not consider ONNX_NAMESPACE::TensorProto_DataType_INT8 case here, since that can only
       // be input 2 of Qlinear[Conv/MatMul], which has to be an initializer tensor and will be added
@@ -257,7 +262,7 @@ Status ModelBuilder::RegisterInitializers() {
     shaper_.AddShape(name, operand_type.dimensions);
 
     uint32_t index = 0;
-    ORT_RETURN_IF_ERROR(AddNewOperand(name, operand_type, false /* is_nhwc */, index));
+    ORT_RETURN_IF_ERROR(AddNewOperand(name, operand_type, index));
     const size_t size = operand_type.GetOperandBlobByteSize();
     const size_t padded_size = GetPaddedByteSize(size);
     sizeAll += padded_size;
@@ -347,7 +352,7 @@ Status ModelBuilder::RegisterModelInputs() {
     shaper_.AddShape(input_name, operand_type.dimensions);
 
     uint32_t index = 0;
-    ORT_RETURN_IF_ERROR(AddNewOperand(input_name, operand_type, false /* is_nhwc */, index));
+    ORT_RETURN_IF_ERROR(AddNewOperand(input_name, operand_type, index));
     input_index_vec_.push_back(index);
     nnapi_model_->AddInput(input_name, operand_type);
   }
@@ -381,11 +386,6 @@ Status ModelBuilder::RegisterModelOutputs() {
     }
 
     std::string nnapi_output_name = output_name;
-    if (IsOperandNHWC(output_name)) {
-      // We need to transpose the output still in nhwc back to nchw
-      nnapi_output_name = GetUniqueName(output_name + "_nhwc_to_nchw");
-      ORT_RETURN_IF_ERROR(TransposeNHWCToNCHW(*this, output_name, nnapi_output_name));
-    }
 
     output_index_vec_.push_back(operand_indices_[nnapi_output_name]);
     nnapi_model_->AddOutput(output_name, nnapi_output_name, operand_types_.at(nnapi_output_name));
@@ -400,10 +400,10 @@ void ModelBuilder::RegisterModelShaper() {
 
 Status ModelBuilder::AddNewOperand(const std::string& name,
                                    const OperandType& operand_type,
-                                   bool is_nhwc, uint32_t& index) {
+                                   uint32_t& index) {
   LOGS_DEFAULT(VERBOSE) << "operand name: " << name;
   ORT_RETURN_IF_ERROR(AddNewNNAPIOperand(operand_type, index));
-  RegisterOperand(name, index, operand_type, is_nhwc);
+  RegisterOperand(name, index, operand_type);
   return Status::OK();
 }
 
@@ -427,13 +427,10 @@ Status ModelBuilder::AddNewNNAPIOperand(const OperandType& operand_type, uint32_
 }
 
 void ModelBuilder::RegisterOperand(const std::string& name, uint32_t index,
-                                   const OperandType& operand_type, bool is_nhwc) {
+                                   const OperandType& operand_type) {
   operand_indices_[name] = index;
   operand_types_.emplace(name, operand_type);
   operands_.insert(name);
-
-  if (is_nhwc)
-    RegisterNHWCOperand(name);
 }
 
 Status ModelBuilder::SetOperandValue(uint32_t index,
@@ -461,7 +458,7 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
     const android::nn::wrapper::OperandType& operand_type) {
   shaper_.AddShape(name, operand_type.dimensions);
   uint32_t index = 0;
-  ORT_RETURN_IF_ERROR(AddNewOperand(name, operand_type, false /* is_nhwc */, index));
+  ORT_RETURN_IF_ERROR(AddNewOperand(name, operand_type, index));
   const size_t size = operand_type.GetOperandBlobByteSize();
 
   // for small size operand, the value will be copied
@@ -485,13 +482,36 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
 
 Status ModelBuilder::AddOperations() {
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
-  for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_viewer_.GetNode(node_indices[i]));
-    if (const auto* op_builder = GetOpBuilder(*node)) {
-      ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, *node));
+  for (const auto node_idx : node_indices) {
+    LOGS_DEFAULT(VERBOSE) << "Adding node [" << node_idx << "]";
+    const auto* node(graph_viewer_.GetNode(node_idx));
+    const NodeUnit& node_unit = GetNodeUnit(node);
+
+    // Since we may have NodeUnit with multiple nodes, insert NodeUnit with the first occurrence of
+    // its node(s) in topological order may cause the incorrect topological order while inserting
+    // NodeUNits, for example,
+    //  Q1
+    //  |
+    //  DQ1  DQ2
+    //    \   |
+    //     CONV
+    //      |
+    //      Q2
+    // In the above graph, we will have 2 NodeUnits, NU1 [Q1] and NU2 [DQ1, DQ2, CONV, Q2]
+    // The Q1 and DQ2 have the same topological order, if we insert DQ2 (as part of NU2) when we visit DQ2
+    // first in the topological order, the input from Q1 required by NU2 is not yet inserted, this will
+    // cause failure finding the inputs for NU2
+    //
+    // So we only insert the NodeUnit once when we hit the target node, to ensure the topological order
+    // of the NodeUnits
+    if (node != &node_unit.GetNode())
+      continue;
+
+    if (const auto* op_builder = GetOpBuilder(node_unit)) {
+      ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, node_unit));
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Node [", node->Name(), "], type [", node->OpType(), "] is not supported");
+                             "Node [", node_unit.Name(), "], type [", node_unit.OpType(), "] is not supported");
     }
   }
 
@@ -500,12 +520,11 @@ Status ModelBuilder::AddOperations() {
 
 Status ModelBuilder::AddOperation(int op, const std::vector<uint32_t>& input_indices,
                                   const std::vector<std::string>& output_names,
-                                  const std::vector<OperandType>& types,
-                                  const std::vector<bool>& is_nhwc_vec) {
+                                  const std::vector<OperandType>& types) {
   std::vector<uint32_t> output_indices;
   for (size_t i = 0; i < types.size(); i++) {
     uint32_t index = 0;
-    ORT_RETURN_IF_ERROR(AddNewOperand(output_names[i], types[i], is_nhwc_vec[i], index));
+    ORT_RETURN_IF_ERROR(AddNewOperand(output_names[i], types[i], index));
     output_indices.push_back(index);
   }
 
@@ -516,6 +535,8 @@ Status ModelBuilder::AddOperation(int op, const std::vector<uint32_t>& input_ind
       "op = " + std::to_string(op));
 
   num_nnapi_ops_++;
+
+  LOGS_DEFAULT(VERBOSE) << "Added NNAPI Operation Type [" << op << "]";
   return Status::OK();
 }
 
@@ -598,20 +619,41 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   return Status::OK();
 }
 
-int32_t ModelBuilder::FindActivation(const Node& node, const NodeArg& output) {
+int32_t ModelBuilder::FindActivation(const NodeUnit& node_unit) {
   int32_t fuse_code = ANEURALNETWORKS_FUSED_NONE;
+  const auto& output_nodes = node_unit.GetOutputNodes();
+  if (node_unit.GetOutputNodes().size() != 1) {
+    LOGS_DEFAULT(VERBOSE) << "FindActivation does not support, NodeUnit [" << node_unit.Name()
+                          << "] type [" << node_unit.OpType()
+                          << "], with " << output_nodes.size() << " output nodes";
+    return fuse_code;
+  }
 
+  const auto& outputs = node_unit.Outputs();
+  if (outputs.size() != 1) {
+    LOGS_DEFAULT(VERBOSE) << "FindActivation does not support, NodeUnit [" << node_unit.Name()
+                          << "] type [" << node_unit.OpType()
+                          << "], with " << outputs.size() << " outputs";
+    return fuse_code;
+  }
+
+  const NodeArg& output = outputs[0].node_arg;
+  const auto& output_node = *output_nodes[0];
+
+  // TODO, add support of activation fusion for quantized node group (qdq or qlinear)
   // We do not support activation fusion for quantized operators for now
-  auto qlinear_op_type = GetQLinearOpType(node);
-  if (qlinear_op_type != QLinearOpType::Unknown)
+  // (usually the activations are fused already in the quantization)
+  auto quant_op_type = GetQuantizedOpType(node_unit);
+  if (quant_op_type != QuantizedOpType::Unknown)
     return fuse_code;
 
-  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+  for (auto it = output_node.OutputEdgesBegin(), end = output_node.OutputEdgesEnd(); it != end; ++it) {
     const auto& dst_node = it->GetNode();
     const auto* dst_input = dst_node.InputDefs()[it->GetDstArgIndex()];
-    if (Contains(activation_nodes_, dst_node.Index())) {
+    const auto& dst_node_unit = GetNodeUnit(&dst_node);
+    if (Contains(activation_node_units_, &dst_node_unit)) {
       if (&output == dst_input) {
-        fuse_code = activation_nodes_.at(dst_node.Index());
+        fuse_code = activation_node_units_.at(&dst_node_unit);
       }
     } else {
       // if there is any other non-relu node using the output
@@ -621,14 +663,14 @@ int32_t ModelBuilder::FindActivation(const Node& node, const NodeArg& output) {
     }
   }
 
-  // if output is a graph output, will add relu separately
+  // if output is a graph output, will add activation separately
   if (fuse_code != ANEURALNETWORKS_FUSED_NONE) {
-    for (const auto* graph_output : graph_viewer_.GetOutputs()) {
-      if (&output == graph_output)
-        return ANEURALNETWORKS_FUSED_NONE;
+    const auto& graph_outputs = graph_viewer_.GetOutputs();
+    if (std::find(graph_outputs.cbegin(), graph_outputs.cend(), &output) != graph_outputs.cend()) {
+      return ANEURALNETWORKS_FUSED_NONE;
     }
 
-    LOGS_DEFAULT(VERBOSE) << "Node [" << node.Name() << "] type [" << node.OpType()
+    LOGS_DEFAULT(VERBOSE) << "Node [" << node_unit.Name() << "] type [" << node_unit.OpType()
                           << "], fused the output [" << output.Name() << "]";
 
     fused_activations_.insert(output.Name());
@@ -637,12 +679,12 @@ int32_t ModelBuilder::FindActivation(const Node& node, const NodeArg& output) {
   return fuse_code;
 }
 
-/* static */ const IOpBuilder* ModelBuilder::GetOpBuilder(const Node& node) {
+/* static */ const IOpBuilder* ModelBuilder::GetOpBuilder(const NodeUnit& node_unit) {
   const auto& op_builders = GetOpBuilders();
-  if (!Contains(op_builders, node.OpType()))
+  const auto& op_type = node_unit.GetNode().OpType();
+  if (!Contains(op_builders, op_type))
     return nullptr;
-
-  return op_builders.at(node.OpType());
+  return op_builders.at(op_type);
 }
 
 std::string ModelBuilder::GetUniqueName(const std::string& base_name) {
@@ -656,42 +698,12 @@ std::string ModelBuilder::GetUniqueName(const std::string& base_name) {
   return unique_name;
 }
 
-void ModelBuilder::RegisterNHWCOperand(const std::string& name) {
-  nhwc_operands_.insert(name);
+DataLayout ModelBuilder::GetPreferredLayout() const {
+  return use_nchw_ ? DataLayout::NCHW : DataLayout::NHWC;
 }
 
-bool ModelBuilder::IsOperandNHWC(const std::string& name) const {
-  return Contains(nhwc_operands_, name);
-}
-
-bool ModelBuilder::GetNCHWOperand(const std::string& nhwc_name, std::string& nchw_name) {
-  if (Contains(nhwc_to_nchw_map_, nhwc_name)) {
-    nchw_name = nhwc_to_nchw_map_[nhwc_name];
-    return true;
-  }
-  return false;
-}
-
-bool ModelBuilder::GetNHWCOperand(const std::string& nchw_name, std::string& nhwc_name) {
-  if (Contains(nchw_to_nhwc_map_, nchw_name)) {
-    nhwc_name = nchw_to_nhwc_map_[nchw_name];
-    return true;
-  }
-  return false;
-}
-
-Status ModelBuilder::SetNHWCToNCHWOperandMap(const std::string& nhwc_name,
-                                             const std::string& nchw_name) {
-  ORT_RETURN_IF_NOT(!Contains(nhwc_to_nchw_map_, nhwc_name), "A previous nchw to nhwc map exists");
-  nhwc_to_nchw_map_[nhwc_name] = nchw_name;
-  return Status::OK();
-}
-
-Status ModelBuilder::SetNCHWToNHWCOperandMap(const std::string& nchw_name,
-                                             const std::string& nhwc_name) {
-  ORT_RETURN_IF_NOT(!Contains(nchw_to_nhwc_map_, nchw_name), "A previous nchw to nhwc map exists");
-  nchw_to_nhwc_map_[nchw_name] = nhwc_name;
-  return Status::OK();
+const InitializedTensorSet& ModelBuilder::GetInitializerTensors() const {
+  return graph_viewer_.GetAllInitializedTensors();
 }
 
 }  // namespace nnapi

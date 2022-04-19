@@ -70,7 +70,7 @@ FORCE_INLINE uint64_t getblock(const uint64_t* p, int i) {
 //-----------------------------------------------------------------------------
 // Finalization mix - force all bits of a hash block to avalanche
 
-FORCE_INLINE uint32_t fmix(uint32_t h) {
+FORCE_INLINE constexpr uint32_t fmix(uint32_t h) {
   h ^= h >> 16;
   h *= 0x85ebca6b;
   h ^= h >> 13;
@@ -82,7 +82,7 @@ FORCE_INLINE uint32_t fmix(uint32_t h) {
 
 //----------
 
-FORCE_INLINE uint64_t fmix(uint64_t k) {
+FORCE_INLINE constexpr uint64_t fmix(uint64_t k) {
   k ^= k >> 33;
   k *= BIG_CONSTANT(0xff51afd7ed558ccd);
   k ^= k >> 33;
@@ -116,8 +116,8 @@ void MurmurHash3::MurmurHash3_x86_32(const void* key, int len, uint32_t seed, vo
   const uint8_t* data = reinterpret_cast<const uint8_t*>(key);
   const int nblocks = len / 4;
   uint32_t h1 = seed;
-  const uint32_t c1 = 0xcc9e2d51;
-  const uint32_t c2 = 0x1b873593;
+  constexpr uint32_t c1 = 0xcc9e2d51;
+  constexpr uint32_t c2 = 0x1b873593;
 
   //----------
   // body
@@ -143,9 +143,11 @@ void MurmurHash3::MurmurHash3_x86_32(const void* key, int len, uint32_t seed, vo
 
   switch (len & 3) {
     case 3:
-      k1 ^= tail[2] << 16;  // Fallthrough.
+      k1 ^= tail[2] << 16;
+      [[fallthrough]];
     case 2:
-      k1 ^= tail[1] << 8;  // Fallthrough.
+      k1 ^= tail[1] << 8;
+      [[fallthrough]];
     case 1:
       k1 ^= tail[0];
       k1 *= c1;

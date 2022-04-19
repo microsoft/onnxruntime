@@ -13,6 +13,7 @@
 #include "core/graph/model.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/optimizer/transpose_optimizer/optimizer_utils.h"
 
 #include <queue>
 
@@ -22,12 +23,14 @@ constexpr const char* INTERNAL_TESTING_EP = "InternalTestingEP";
 
 InternalTestingExecutionProvider::InternalTestingExecutionProvider(const std::unordered_set<std::string>& ops,
                                                                    const std::unordered_set<std::string>& stop_ops,
-                                                                   bool debug_output)
+                                                                   bool debug_output,
+                                                                   DataLayout preferred_layout)
     : IExecutionProvider{utils::kInternalTestingExecutionProvider, true},
       ep_name_{INTERNAL_TESTING_EP},
       ops_{ops},
       stop_ops_{stop_ops},
-      debug_output_{debug_output} {
+      debug_output_{debug_output},
+      preferred_layout_{preferred_layout} {
   //
   // TODO: Allocation planner calls GetAllocator for the individual EP. It would be better if it goes through
   // the session state to get the allocator so it's per-device (or for the allocation planner to try the EP first
@@ -43,6 +46,10 @@ InternalTestingExecutionProvider::InternalTestingExecutionProvider(const std::un
 }
 
 InternalTestingExecutionProvider::~InternalTestingExecutionProvider() {}
+
+DataLayout InternalTestingExecutionProvider::GetPreferredLayout() const {
+  return preferred_layout_;
+}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
@@ -82,14 +89,14 @@ InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& 
 
   // create functor to generate a guaranteed unique metadef id
   auto generate_metadef_name = [this, &graph_viewer]() {
-    uint64_t model_hash;
+    HashValue model_hash;
     int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
     auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
     return ep_name_ + "_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
   };
 
   return utils::CreateSupportedPartitions(graph_viewer, supported_nodes, stop_ops_,
-                                          generate_metadef_name, ep_name_, debug_output_);
+                                          generate_metadef_name, ep_name_, onnxruntime::utils::kInternalTestingExecutionProvider, debug_output_);
 }
 
 common::Status InternalTestingExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
@@ -99,14 +106,19 @@ common::Status InternalTestingExecutionProvider::Compile(const std::vector<Fused
     NodeComputeInfo compute_info;
     const Node& node = node_and_viewer.fused_node;
 
-    //{
-    //  const GraphViewer& graph_viewer = node_and_viewer.filtered_graph;
-    //  std::cout << "Fusing nodes: ";
-    //  for (const auto& unfused_node : graph_viewer.Nodes()) {
-    //    std::cout << " '" << unfused_node.Name() << "':" << unfused_node.Index();
-    //  }
-    //  std::cout << std::endl;
-    //}
+    if (preferred_layout_ == DataLayout::NHWC) {
+      const GraphViewer& graph_viewer = node_and_viewer.filtered_graph;
+      auto layout_sensitive_ops = layout_transformer::GetORTLayoutSensitiveOps();
+      for (const auto& unfused_node : graph_viewer.Nodes()) {
+        std::cout << unfused_node.OpType() << std::endl;
+        if (layout_sensitive_ops.count(unfused_node.OpType()) && unfused_node.Domain() != kMSInternalNHWCDomain) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Found a layout sensitive op which is still in NCHW format. Node: ",
+                                 unfused_node.OpType(), " ", unfused_node.Name(),
+                                 " The preferrd layout for this EP is NHWC. This is a possible bug in layout transformer.");
+        }
+      }
+    }
 
     compute_info.create_state_func = [](ComputeContext* /*context*/, FunctionState* /*state*/) {
       return 0;

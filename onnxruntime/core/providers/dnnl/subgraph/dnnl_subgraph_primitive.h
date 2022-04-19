@@ -48,7 +48,9 @@ class DnnlSubgraphPrimitive {
   //obtain a dnnl::memory with specified name, memory descriptor and engine, will perform extra reorder/reshape if necessary before returning
   dnnl::memory GetMemoryAndReshape(const DnnlTensor& tensor, dnnl::memory::desc mem_desc, dnnl::engine eng, bool transpose = false);
   //add dnnl primitive and memory map to subgraph primitive
-  void AddPrimitive(dnnl::primitive prim, std::unordered_map<int, dnnl::memory> mem_map);
+  //when you add primitive, you can optionally specify a vector of indexes to be printed in runtime for debug purpose
+  //eg, sp.AddPrimitve(prim,mem_map,{DNNL_ARG_SRC})
+  void AddPrimitive(dnnl::primitive prim, std::unordered_map<int, dnnl::memory> mem_map, std::vector<int> items_to_print = {});
   //add a reshape (e.g. squeeze, unsqueeze) to subgraph primitive
   void AddReshape(dnnl::memory src, dnnl::memory dst);
   bool HasMemory(std::string memory_name, dnnl::memory::desc mem_desc, dnnl::engine eng);
@@ -106,7 +108,29 @@ class DnnlSubgraphPrimitive {
   dnnl::engine gpu_engine_;
 
   OrtMutex mutex_;
+
+  //for memory debug purpose
+  std::vector<std::pair<int,int>> items_to_print_;
+  void PrintMemory(const dnnl::memory& mem);
+  
 };
 
 }  // namespace ort_dnnl
+
+inline std::ostream& operator<<(std::ostream& os, const dnnl::memory::dims& dims) {
+  std::copy(dims.cbegin(), dims.cend(), std::ostream_iterator<dnnl::memory::dim>(os, " "));
+  return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const gsl::span<const int64_t>& span) {
+  std::copy(span.cbegin(), span.cend(), std::ostream_iterator<int64_t>(os, " "));
+  return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const gsl::span<int64_t>& span) {
+  std::copy(span.cbegin(), span.cend(), std::ostream_iterator<int64_t>(os, " "));
+  return os;
+}
+
 }  // namespace onnxruntime
+

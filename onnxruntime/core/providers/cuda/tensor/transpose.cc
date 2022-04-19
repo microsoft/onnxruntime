@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/inlined_containers.h"
 #include "core/providers/cuda/tensor/transpose.h"
 #include "core/providers/cuda/tensor/transpose_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -28,7 +29,7 @@ ONNX_OPERATOR_KERNEL_EX(
     Transpose);
 
 // special case acceleration using cublas matrix transpose
-static std::tuple<int, int> TryTransposeWithCublas(const std::vector<size_t>& perm, const TensorShape& input_shape) {
+static std::tuple<int, int> TryTransposeWithCublas(const gsl::span<const size_t>& perm, const TensorShape& input_shape) {
   int M = 0;
   int N = 0;
 
@@ -77,14 +78,14 @@ Status TransposeWithCublas(cudaStream_t stream, cublasHandle_t cublas_handle, co
 }
 
 Status Transpose::DoTranspose(const Transpose& transpose_kernel,
-                              const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
+                              const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output) {
   return Transpose::DoTranspose(transpose_kernel.GetDeviceProp(), transpose_kernel.Stream(), transpose_kernel.CublasHandle(), permutations, input, output);
 }
 
 Status Transpose::DoTranspose(const cudaDeviceProp& prop,
                               cudaStream_t stream,
                               const cublasHandle_t cublas_handle,
-                              const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+                              const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
                               const TensorShape* input_shape_override) {
   // special case when there is a dim value of 0 in the shape.
   if (output.Shape().Size() == 0)
@@ -97,11 +98,46 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   // flatten the adjacent dimensions which are contiguous
   // for example: permutations[0, 2, 3, 1] -> [0, 2, 1], permutations[0, 3, 1, 2] -> [0, 2, 1]
   auto new_rank = rank;
-  std::vector<size_t> new_permutations(permutations);
-  std::vector<int64_t> new_input_dims(input_dims.begin(), input_dims.end());
-  std::vector<int64_t> new_output_dims(output_dims.begin(), output_dims.end());
+  InlinedVector<size_t> new_permutations(permutations.cbegin(), permutations.cend());
+  TensorShapeVector new_input_dims = ToShapeVector(input_dims);
+  TensorShapeVector new_output_dims = ToShapeVector(output_dims);
 
-  for (auto i = rank - 1; i > 0; i--) {
+  // Remove all dims with value 1.
+  std::vector<bool> dims_to_remove(new_rank, false);
+  int input_pos = 0;
+  int output_pos = 0;
+  int perm_pos = 0;
+  for (int i = 0; i < new_rank; ++i) {
+    if (new_input_dims[i] != 1) {
+      new_input_dims[input_pos++] = new_input_dims[i];
+    } else {
+      dims_to_remove[i] = true;
+    }
+    if (new_output_dims[i] != 1) {
+      new_output_dims[output_pos++] = new_output_dims[i];
+    }
+  }
+  for (int i = 0; i < new_rank; ++i) {
+    if (!dims_to_remove[new_permutations[i]]) {
+      new_permutations[perm_pos++] = new_permutations[i];
+    }
+  }
+  for (int i = new_rank - 1; i >= 0; --i) {
+    if (dims_to_remove[i]) {
+      for (int j = 0; j < perm_pos; ++j) {
+        if (new_permutations[j] > static_cast<size_t>(i)) {
+          new_permutations[j] -= 1;
+        }
+      }
+    }
+  }
+  ORT_ENFORCE(input_pos == output_pos && input_pos == perm_pos);
+  new_rank = input_pos;
+  new_input_dims.resize(new_rank);
+  new_output_dims.resize(new_rank);
+  new_permutations.resize(new_rank);
+
+  for (auto i = new_rank - 1; i > 0; i--) {
     auto curr = new_permutations[i];
     auto prev = new_permutations[i - 1];
     if (prev + 1 == curr) {
@@ -138,6 +174,13 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   new_input_dims.resize(new_rank);
   new_output_dims.resize(new_rank);
 
+  if (new_rank <= 1) {
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output.MutableDataRaw(), input.DataRaw(),
+                                         input.Shape().Size() * input.DataType()->Size(), cudaMemcpyDeviceToDevice,
+                                         stream));
+    return Status::OK();
+  }
+
   auto element_type = input.GetElementType();
   size_t element_size = input.DataType()->Size();
   if (element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
@@ -159,9 +202,9 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
 
   // Transpose021 has a specialized Transpose3DImpl kernel
   dim3 grid_size, block_size;
-  if (CanDoTranspose3D(prop, new_rank, new_input_dims, new_permutations, grid_size, block_size)) {
+  if (CanDoTranspose3D(prop, static_cast<size_t>(new_rank), new_input_dims, new_permutations, grid_size, block_size)) {
     TensorPitches new_input_strides(new_input_dims);
-    return Transpose3DImpl(stream, element_size, new_input_dims, new_input_strides,
+    return Transpose3DImpl(stream, element_size, ToConstSpan(new_input_dims), ToConstSpan(new_input_strides),
                            input.DataRaw(), output.MutableDataRaw(), output.Shape().Size(), grid_size, block_size);
   }
 
@@ -192,19 +235,10 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
         stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
         tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()),
         grid_size, block_size);
-  } else if (CanDoTranspose4DParallelizeOneElementPerThread(
-                 prop, element_size, new_rank, new_input_dims, new_permutations, grid_size, block_size)) {
-    // Trying to see if we can still do (best effort) more optimized transposing
-    // for the 4-D case before falling back to the generic case
-    TArray<int64_t> tmp_output_strides(new_rank);
-    for (auto i = 0; i < new_rank; i++) {
-      tmp_output_strides[static_cast<int32_t>(new_permutations[i])] = new_output_strides[i];
-    }
-    return Transpose4DParallelizeOneElementPerThread(
-        stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
-        tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()),
-        grid_size, block_size);
   }
+  // We used to check if Transpose4DParallelizeOneElementPerThread can be used before falling back to generic case,
+  // But tests on lots of cases showing that Transpose4DParallelizeOneElementPerThread is not faster than generic case,
+  // and even much slower than generic case for some cases.
 
   // General cases
   TArray<int64_t> input_strides(new_rank);
@@ -230,9 +264,9 @@ Status Transpose::ComputeInternal(OpKernelContext* ctx) const {
   const TensorShape& input_shape = X.Shape();
   int32_t rank = gsl::narrow_cast<int32_t>(input_shape.NumDimensions());
 
-  std::vector<int64_t> output_dims(rank);
-  std::vector<size_t> default_perm(rank);
-  const std::vector<size_t>* p_perm = nullptr;
+  TensorShapeVector output_dims(rank);
+  InlinedVector<size_t> default_perm(rank);
+  const InlinedVector<size_t>* p_perm = nullptr;
   const auto& status = ComputeOutputShape(X, output_dims, default_perm, p_perm);
   if (!status.IsOK())
     return status;

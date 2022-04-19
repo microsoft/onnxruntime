@@ -257,13 +257,6 @@ void TensorDesc::Remap64bitDmlDataTypeTo32bit()
         ) + endPaddingInBytes;
 }
 
-bool TensorDesc::WasRemapped64bitTo32bit() const
-{
-    bool was64BitIntType = (m_mlOperatorTensorDataType == MLOperatorTensorDataType::UInt64 || m_mlOperatorTensorDataType == MLOperatorTensorDataType::Int64);
-    bool is32BitIntType = (m_bufferTensorDesc.DataType == DML_TENSOR_DATA_TYPE_UINT32 || m_bufferTensorDesc.DataType == DML_TENSOR_DATA_TYPE_INT32);
-    return was64BitIntType && is32BitIntType;
-}
-
 gsl::span<const uint32_t> TensorDesc::GetStrides() const
 {
     if (m_bufferTensorDesc.Strides == nullptr)

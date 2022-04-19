@@ -51,6 +51,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
                     backingArray[index++] = (T)item;
                 }
             }
+
             memory = backingArray;
         }
 
@@ -66,26 +67,42 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         /// <summary>
         /// Initializes a rank-n Tensor using the dimensions specified in <paramref name="dimensions"/>.
         /// </summary>
-        /// <param name="dimensions">An span of integers that represent the size of each dimension of the DenseTensor to create.</param>
-        /// <param name="reverseStride">False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): akin to column-major in a rank-2 tensor.</param>
+        /// <param name="dimensions">
+        /// An span of integers that represent the size of each dimension of the DenseTensor to create.
+        /// </param>
+        /// <param name="reverseStride">
+        /// False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension 
+        /// is most minor (closest together): akin to row-major in a rank-2 tensor.  
+        /// True to indicate that the last dimension is most major (farthest apart) and the first dimension is most 
+        /// minor (closest together): akin to column-major in a rank-2 tensor.
+        /// </param>
         public DenseTensor(ReadOnlySpan<int> dimensions, bool reverseStride = false) : base(dimensions, reverseStride)
         {
             memory = new T[Length];
         }
 
         /// <summary>
-        /// Constructs a new DenseTensor of the specifed dimensions, wrapping existing backing memory for the contents.
+        /// Constructs a new DenseTensor of the specified dimensions, wrapping existing backing memory for the contents.
         /// </summary>
         /// <param name="memory"></param>
-        /// <param name="dimensions">An span of integers that represent the size of each dimension of the DenseTensor to create.</param>
-        /// <param name="reverseStride">False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension is most minor (closest together): akin to row-major in a rank-2 tensor.  True to indicate that the last dimension is most major (farthest apart) and the first dimension is most minor (closest together): akin to column-major in a rank-2 tensor.</param>
-        public DenseTensor(Memory<T> memory, ReadOnlySpan<int> dimensions, bool reverseStride = false) : base(dimensions, reverseStride)
+        /// <param name="dimensions">
+        /// An span of integers that represent the size of each dimension of the DenseTensor to create.</param>
+        /// <param name="reverseStride">
+        /// False (default) to indicate that the first dimension is most major (farthest apart) and the last dimension 
+        /// is most minor (closest together): akin to row-major in a rank-2 tensor.  
+        /// True to indicate that the last dimension is most major (farthest apart) and the first dimension is most 
+        /// minor (closest together): akin to column-major in a rank-2 tensor.
+        /// </param>
+        public DenseTensor(Memory<T> memory, ReadOnlySpan<int> dimensions, bool reverseStride = false) 
+            : base(dimensions, reverseStride)
         {
             this.memory = memory;
 
             if (Length != memory.Length)
             {
-                throw new ArgumentException($"Length of {nameof(memory)} ({memory.Length}) must match product of {nameof(dimensions)} ({Length}).");
+                throw new ArgumentException(
+                    $"Length of {nameof(memory)} ({memory.Length}) must match product of " +
+                    $"{nameof(dimensions)} ({Length}).");
             }
         }
 
@@ -95,8 +112,8 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         public Memory<T> Buffer => memory;
 
         /// <summary>
-        /// Gets the value at the specied index, where index is a linearized version of n-dimension indices using strides.
-        /// For a scalar, use index = 0
+        /// Gets the value at the specified index, where index is a linearized version of n-dimension indices 
+        /// using strides. For a scalar, use index = 0
         /// </summary>
         /// <param name="index">An integer index computed as a dot-product of indices.</param>
         /// <returns>The value at the specified position in this Tensor.</returns>
@@ -106,8 +123,8 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         }
 
         /// <summary>
-        /// Sets the value at the specied index, where index is a linearized version of n-dimension indices using strides.
-        /// For a scalar, use index = 0
+        /// Sets the value at the specified index, where index is a linearized version of n-dimension indices 
+        /// using strides. For a scalar, use index = 0
         /// </summary>
         /// <param name="index">An integer index computed as a dot-product of indices.</param>
         /// <param name="value">The new value to set at the specified position in this Tensor.</param>
@@ -130,7 +147,9 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
             }
             if (array.Length < arrayIndex + Length)
             {
-                throw new ArgumentException("The number of elements in the Tensor is greater than the available space from index to the end of the destination array.", nameof(array));
+                throw new ArgumentException(
+                    "The number of elements in the Tensor is greater than the available space from index to " + 
+                    "the end of the destination array.", nameof(array));
             }
 
             Buffer.Span.CopyTo(array.AsSpan(arrayIndex));
@@ -165,14 +184,17 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         /// <returns>A shallow copy of this tensor.</returns>
         public override Tensor<T> Clone()
         {
-            return new DenseTensor<T>(Buffer.ToArray(), dimensions, IsReversedStride);
+            // create copy
+            return new DenseTensor<T>(new Memory<T>(memory.ToArray()), dimensions, IsReversedStride);
         }
 
         /// <summary>
-        /// Creates a new Tensor of a different type with the specified dimensions and the same layout as this tensor with elements initialized to their default value.
+        /// Creates a new Tensor of a different type with the specified dimensions and the same layout as this tensor 
+        /// with elements initialized to their default value.
         /// </summary>
         /// <typeparam name="TResult">Type contained in the returned Tensor.</typeparam>
-        /// <param name="dimensions">An span of integers that represent the size of each dimension of the DenseTensor to create.</param>
+        /// <param name="dimensions">
+        /// An span of integers that represent the size of each dimension of the DenseTensor to create.</param>
         /// <returns>A new tensor with the same layout as this tensor but different type and dimensions.</returns>
         public override Tensor<TResult> CloneEmpty<TResult>(ReadOnlySpan<int> dimensions)
         {
@@ -182,7 +204,8 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         /// <summary>
         /// Reshapes the current tensor to new dimensions, using the same backing storage.
         /// </summary>
-        /// <param name="dimensions">An span of integers that represent the size of each dimension of the DenseTensor to create.</param>
+        /// <param name="dimensions">
+        /// An span of integers that represent the size of each dimension of the DenseTensor to create.</param>
         /// <returns>A new tensor that reinterprets backing Buffer of this tensor with different dimensions.</returns>
         public override Tensor<T> Reshape(ReadOnlySpan<int> dimensions)
         {
@@ -191,7 +214,8 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
 
             if (newSize != Length)
             {
-                throw new ArgumentException($"Cannot reshape array due to mismatch in lengths, currently {Length} would become {newSize}.", nameof(dimensions));
+                throw new ArgumentException($"Cannot reshape array due to mismatch in lengths, " +
+                    "currently {Length} would become {newSize}.", nameof(dimensions));
             }
 
             return new DenseTensor<T>(Buffer, dimensions, IsReversedStride);

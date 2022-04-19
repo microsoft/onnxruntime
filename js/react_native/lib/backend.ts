@@ -58,7 +58,7 @@ class OnnxruntimeSessionHandler implements SessionHandler {
       this.inputNames = results.inputNames;
       this.outputNames = results.outputNames;
     } catch (e) {
-      throw new Error(`Can't load a model: ${e.message}`);
+      throw new Error(`Can't load a model: ${(e as Error).message}`);
     }
   }
 

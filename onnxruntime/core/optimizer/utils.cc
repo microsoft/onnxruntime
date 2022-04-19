@@ -1,5 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
+#if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph_utils.h"
@@ -13,27 +15,26 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#endif  // #if !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#include "core/graph/graph.h"
+#include "core/graph/graph_utils.h"
+#include "core/graph/node_arg.h"
+#include "core/optimizer/initializer.h"
+#endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 using namespace onnxruntime;
 
 namespace onnxruntime {
 namespace optimizer_utils {
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 bool IsFloatingPointDataType(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
   return tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
          tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
          tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE;
-}
-
-bool IsScalar(const NodeArg& input_arg) {
-  auto shape = input_arg.Shape();
-  if (shape == nullptr) {
-    // shape inferencing wasn't able to populate shape information for this NodeArg
-    return false;
-  }
-
-  auto dim_size = shape->dim_size();
-  return dim_size == 0 || (dim_size == 1 && shape->dim(0).has_dim_value() && shape->dim(0).dim_value() == 1);
 }
 
 // Check whether input is a constant scalar with expected float value.
@@ -42,8 +43,8 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
     return false;
   }
 
-  const float atol = 1e-8f;
-  const float rtol = 1e-5f;
+  constexpr float atol = 1e-8f;
+  constexpr float rtol = 1e-5f;
   const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
   if (is_constant) {
     tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());
@@ -76,7 +77,7 @@ bool IsInitializerWithExpectedValue(const Graph& graph, const NodeArg& input_arg
 
     const double expected_val = static_cast<double>(expected_value);
     double diff = std::abs(val[0] - expected_val);
-    if (diff > (atol + rtol * std::abs(expected_value))) {
+    if (diff > (atol + static_cast<double>(rtol) * std::abs(expected_value))) {
       return false;
     }
   } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
@@ -160,7 +161,7 @@ bool IsAttributeWithExpectedValues(const Node& node, const std::string& attr_nam
   return true;
 }
 
-bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, std::vector<int64_t>& data, bool require_constant) {
+bool AppendTensorFromInitializer(const Graph& graph, const NodeArg& input_arg, InlinedVector<int64_t>& data, bool require_constant) {
   if (require_constant && !graph_utils::IsConstantInitializer(graph, input_arg.Name(), true)) {
     return false;
   }
@@ -266,6 +267,83 @@ int32_t IndexOfNodeOutput(const Node& node, const NodeArg& node_arg) {
   return -1;
 }
 
+// Allow certain domains/ops. We don't know anything about unknown domains/ops (e.g. custom ops),
+// so we have to assume that they are not deterministic, to be on the safe side.
+// We could also allow other known domains (kMSDomain, kMSNchwcDomain, kMSFeaturizersDomain),
+// as long as we verify which of their operations are non-deterministic and add them in the map below.
+constexpr std::array kOnnxDomainNonDeterministicOps{"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"};
+bool IsOperationDeterministic(const std::string& domain, const std::string& op) {
+  if (domain.compare(kOnnxDomain) == 0) {
+    auto iter = std::find(kOnnxDomainNonDeterministicOps.begin(), kOnnxDomainNonDeterministicOps.end(), op);
+    return iter == kOnnxDomainNonDeterministicOps.end();
+  }
+  // Unknown domain. Assume the op is not deterministic.
+  return false;
+}
+
+#endif  // #if !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, float& max) {
+  min = std::numeric_limits<float>::lowest();
+  max = std::numeric_limits<float>::max();
+
+  // Clip opset 1 and 6 has min and max as attributes. they're inputs from opset 11 on.
+  bool min_max_are_attributes = node.SinceVersion() == 1 || node.SinceVersion() == 6;
+  bool min_max_are_constant_values = true;
+
+  if (min_max_are_attributes) {
+    min = graph_utils::GetNodeAttribute(node, "min")->f();
+    max = graph_utils::GetNodeAttribute(node, "max")->f();
+  } else {
+    // update min/max if provided via a constant initializer
+    // return true if value is default or coming from a constant initializer and update 'value'
+    // return false if value is mutable
+    auto update_if_constant_value =
+        [&graph](const Node& node, size_t input_idx, float& value) {
+          const auto& input_defs = node.InputDefs();
+          const NodeArg* input = (input_defs.size() > input_idx) ? input_defs[input_idx] : nullptr;
+
+          if (input == nullptr || !input->Exists()) {
+            // optional input not specified so using default value
+            return true;
+          }
+
+          bool is_constant = true;
+          const ONNX_NAMESPACE::TensorProto* initializer = graph.GetConstantInitializer(input->Name(), true);
+          if (initializer) {
+            Initializer i(*initializer, graph.ModelPath());
+            switch (initializer->data_type()) {
+              case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+                value = *i.data<float>();
+                break;
+              // double isn't currently supported
+              // case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+              //  value = static_cast<float>(*i.data<double>());
+              //  break;
+              case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+                value = math::halfToFloat(i.data<MLFloat16>()->val);
+                break;
+              default:
+                ORT_THROW("Unexpected data type for Clip input of ", initializer->data_type());
+            }
+          } else {
+            is_constant = false;
+          }
+
+          return is_constant;
+        };
+
+    // 'min' is input 1, 'max' is input 2. both are optional.
+    // if the input is constant, 'min' or 'max' is updated by the call to get_if_constant_value
+    min_max_are_constant_values = update_if_constant_value(node, 1, min) &&
+                                  update_if_constant_value(node, 2, max);
+  }
+
+  return min_max_are_constant_values;
+}
+
 bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_output_edges) {
   if (graph.NodeProducesGraphOutput(node)) {
     return false;
@@ -274,24 +352,18 @@ bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_outp
   return node.GetOutputEdgesCount() == expected_output_edges;
 }
 
-// Allow certain domains/ops. We don't know anything about unknown domains/ops (e.g. custom ops),
-// so we have to assume that they are not deterministic, to be on the safe side.
-// We could also allow other known domains (kMSDomain, kMSNchwcDomain, kMSFeaturizersDomain),
-// as long as we verify which of their operations are non-deterministic and add them in the map below.
-static const std::unordered_map<std::string, std::unordered_set<std::string>> kNonDeterministicOps =
-    {
-        {kOnnxDomain, {"RandomUniform", "RandomNormal", "RandomUniformLike", "RandomNormalLike", "Multinomial"}},
-};
-
-bool IsOperationDeterministic(const std::string& domain, const std::string& op) {
-  auto itDomain = kNonDeterministicOps.find(domain);
-  if (itDomain == kNonDeterministicOps.end()) {
-    // Unknown domain. Assume the op is not deterministic.
+bool IsScalar(const NodeArg& input_arg) {
+  auto shape = input_arg.Shape();
+  if (shape == nullptr) {
+    // shape inferencing wasn't able to populate shape information for this NodeArg
     return false;
   }
 
-  return itDomain->second.count(op) == 0;
+  auto dim_size = shape->dim_size();
+  return dim_size == 0 || (dim_size == 1 && shape->dim(0).has_dim_value() && shape->dim(0).dim_value() == 1);
 }
+
+#endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 }  // namespace optimizer_utils
 }  // namespace onnxruntime

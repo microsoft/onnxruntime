@@ -16,16 +16,16 @@ class SliceBase {
   // static methods that can be used from other ops if needed
  public:
   // compute output_dims without steps (Slice V1-9 & DynamicSlice)
-  static Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
-                                  const std::vector<int64_t>& raw_ends,
-                                  const std::vector<int64_t>& raw_axes,
+  static Status PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
+                                  const gsl::span<const int64_t>& raw_ends,
+                                  const gsl::span<const int64_t>& raw_axes,
                                   SliceOp::PrepareForComputeMetadata& compute_metadata);
 
   // compute output_dims with steps (Slice V10)
-  static Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
-                                  const std::vector<int64_t>& raw_ends,
-                                  const std::vector<int64_t>& raw_axes,
-                                  const std::vector<int64_t>& raw_steps,
+  static Status PrepareForCompute(const gsl::span<const int64_t>& raw_starts,
+                                  const gsl::span<const int64_t>& raw_ends,
+                                  const gsl::span<const int64_t>& raw_axes,
+                                  const gsl::span<const int64_t>& raw_steps,
                                   SliceOp::PrepareForComputeMetadata& compute_metadata);
 
   // Slice V10 & DynamicSlice
@@ -33,10 +33,10 @@ class SliceBase {
                                      const Tensor& ends_tensor,
                                      const Tensor* axes_tensor,
                                      const Tensor* steps_tensor,
-                                     std::vector<int64_t>& input_starts,
-                                     std::vector<int64_t>& input_ends,
-                                     std::vector<int64_t>& input_axes,
-                                     std::vector<int64_t>& input_steps);
+                                     TensorShapeVector& input_starts,
+                                     TensorShapeVector& input_ends,
+                                     TensorShapeVector& input_axes,
+                                     TensorShapeVector& input_steps);
 
  protected:
   SliceBase(const OpKernelInfo& info, bool dynamic = false)
@@ -55,9 +55,9 @@ class SliceBase {
   Status Compute(OpKernelContext* context) const;
 
  protected:
-  const std::vector<int64_t>& StartsAttribute() const { return attr_starts_; }
-  const std::vector<int64_t>& EndsAttribute() const { return attr_ends_; }
-  const std::vector<int64_t>& AxesAttribute() const { return attr_axes_; }
+  gsl::span<const int64_t> StartsAttribute() const { return attr_starts_; }
+  gsl::span<const int64_t> EndsAttribute() const { return attr_ends_; }
+  gsl::span<const int64_t> AxesAttribute() const { return attr_axes_; }
 
  private:
   bool dynamic_;

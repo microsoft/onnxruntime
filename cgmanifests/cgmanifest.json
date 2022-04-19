@@ -1,6 +1,15 @@
 {
    "Registrations": [
       {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "215105818dfde3174fe799600bb0f3cae233d0bf",
+               "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
+            }
+         }
+      },   
+      {
         "component": {
           "Type": "maven",
           "maven": { "GroupId": "org.junit.platform", "ArtifactId": "junit-platform-console-standalone", "Version": "1.6.2" },
@@ -29,7 +38,78 @@
             "git": {
                "commitHash": "638d7d2407de27f98f542f61a37a33c90a2e75a9",
                "repositoryUrl": "https://github.com/microsoft/onnxruntime-tvm.git"
-            }
+            },
+            "comments": "needed for Nuphar EP"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "ffd5f70370642c909222f9a4cae8400023dacbdc",
+               "repositoryUrl": "https://github.com/apache/tvm.git"
+            },
+            "comments": "needed for TVM EP"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "cabe04d6d6b05356fa8f9741704924788f0dd762",
+               "repositoryUrl": "https://github.com/agauniyal/rang.git"
+            },
+            "comments": "dependency from tvm"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "a3bcc6981d5dad3afb212689e2c7853d1b1ee45d",
+               "repositoryUrl": "https://github.com/NVIDIA/cutlass.git"
+            },
+            "comments": "dependency from tvm"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "08f7c7e69f8ea61a0c4151359bc8023be8e9217b",
+               "repositoryUrl": "https://github.com/tlc-pack/libbacktrace.git"
+            },
+            "comments": "dependency from tvm"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "36a91576edf633479c78649e050f18dd2ddc8103",
+               "repositoryUrl": "https://github.com/apache/incubator-tvm-vta.git"
+            },
+            "comments": "dependency from tvm"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "111c9be5188f7350c2eac9ddaedd8cca3d7bf394",
+               "repositoryUrl": "https://github.com/kazuho/picojson.git"
+            },
+            "comments": "dependency from tvm"
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "b5e4186d7ab63458e79084842dced166be2ca5b5",
+               "repositoryUrl": "https://github.com/lammertb/libcrc.git"
+            },
+            "comments": "dependency from tvm"
          }
       },
       {
@@ -492,6 +572,16 @@
                "Version": "3.22.0",
                "DownloadUrl": "http://security.ubuntu.com/ubuntu/pool/main/s/sqlite3/libsqlite3-dev_3.22.0-1ubuntu0.4_amd64.deb"
             }
+         }
+      },
+      {
+         "component": {
+            "type": "git",
+            "git": {
+               "commitHash": "512d44b9aa22690fd7d7e665fcab9bdcb590f118",
+               "repositoryUrl": "https://github.com/google/XNNPACK.git"
+            },
+            "comments": "xnnpack"
          }
       }
    ],

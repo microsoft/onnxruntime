@@ -7,7 +7,7 @@ import {onnxruntime} from './ort-schema/ort-generated';
 import ortFbs = onnxruntime.experimental.fbs;
 
 import {Tensor} from './tensor';
-import {LongUtil} from './util';
+import {decodeUtf8String, LongUtil} from './util';
 
 export declare namespace Attribute {
   export interface DataTypeMap {
@@ -171,7 +171,7 @@ export class Attribute {
       // string attributes are returned as string, so no conversion is needed.
       if (attr instanceof onnx.AttributeProto) {
         const utf8String = value as Uint8Array;
-        return Buffer.from(utf8String.buffer, utf8String.byteOffset, utf8String.byteLength).toString();
+        return decodeUtf8String(utf8String);
       }
     }
 
@@ -181,8 +181,7 @@ export class Attribute {
       // format strings attributes are returned as string[], so no conversion is needed.
       if (attr instanceof onnx.AttributeProto) {
         const utf8Strings = value as Uint8Array[];
-        return utf8Strings.map(
-            utf8String => Buffer.from(utf8String.buffer, utf8String.byteOffset, utf8String.byteLength).toString());
+        return utf8Strings.map(decodeUtf8String);
       }
     }
 

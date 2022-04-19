@@ -71,7 +71,7 @@ Status LambOptimizerBuilder::Build(
   const auto step_state_it = shared_optim_state.find(LAMB_STEP_TENSOR_NAME);
   if (step_state_it != shared_optim_state.end()) {
     const auto& init_tensor = step_state_it->second.Get<Tensor>();
-    ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, {1}));
+    ORT_THROW_IF_ERROR(IsMatchingTypeAndShape(init_tensor, ONNX_NAMESPACE::TensorProto_DataType_INT64, TensorShapeVector{1}));
     step_tensor_proto = utils::TensorToTensorProto(init_tensor, LAMB_STEP_TENSOR_NAME);
   } else {
     step_tensor_proto = CreateTensorProto<int64_t>(LAMB_STEP_TENSOR_NAME, 1);

@@ -51,7 +51,7 @@ class ConvInteger(QuantOperatorBase):
         assert (node.op_type == "Conv")
 
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
-            self.quantizer.quantize_inputs(node, [0, 1])
+            self.quantizer.quantize_inputs(node, [0, 1], reduce_range=self.quantizer.reduce_range)
 
         conv_integer_output = node.output[0] + "_output_quantized"
         conv_integer_name = node.name + "_quant" if node.name != "" else ""
@@ -111,7 +111,7 @@ class QLinearConv(QuantOperatorBase):
 
         if self.quantizer.is_input_a_weight(node.input[1]) and self.quantizer.is_per_channel():
             (quantized_input_names, zero_point_names, scale_names, nodes) = \
-                self.quantizer.quantize_inputs(node, [0])
+                self.quantizer.quantize_inputs(node, [0], reduce_range=self.quantizer.reduce_range)
             quant_weight_tuple = self.quantizer.quantize_weight_per_channel(node.input[1], onnx_proto.TensorProto.INT8,
                                                                             0)
             quantized_input_names.append(quant_weight_tuple[0])
@@ -119,7 +119,7 @@ class QLinearConv(QuantOperatorBase):
             scale_names.append(quant_weight_tuple[2])
         else:
             (quantized_input_names, zero_point_names, scale_names, nodes) = \
-                self.quantizer.quantize_inputs(node, [0, 1])
+                self.quantizer.quantize_inputs(node, [0, 1], reduce_range=self.quantizer.reduce_range)
 
         if not data_found or quantized_input_names is None:
             return super().quantize()

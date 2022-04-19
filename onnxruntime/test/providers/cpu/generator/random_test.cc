@@ -15,9 +15,9 @@ TEST(Random, RandomNormal2DDouble) {
 
   std::vector<int64_t> dims{20, 50};
 
-  float scale = 10.f;
-  float mean = 0.f;
-  float seed = 123.f;
+  constexpr float scale = 10.f;
+  constexpr float mean = 0.f;
+  constexpr float seed = 123.f;
 
   test.AddAttribute("scale", scale);
   test.AddAttribute("mean", mean);
@@ -44,9 +44,9 @@ void RunRandomNormalLike3DFloat(bool infer_dtype = false) {
 
   std::vector<int64_t> dims{2, 2, 3};
 
-  float scale = 10.f;
-  float mean = 0.f;
-  float seed = 123.f;
+  constexpr float scale = 10.f;
+  constexpr float mean = 0.f;
+  constexpr float seed = 123.f;
 
   test.AddAttribute("scale", scale);
   test.AddAttribute("mean", mean);
@@ -79,7 +79,7 @@ TEST(Random, RandomNormalLike3DDouble) {
 }
 
 TEST(Random, RandomNormalLikeInferDType) {
-  const bool infer_dtype = true;
+  constexpr bool infer_dtype = true;
   RunRandomNormalLike3DFloat(infer_dtype);
 }
 
@@ -88,9 +88,9 @@ TEST(Random, RandomUniform1DFloat) {
 
   std::vector<int64_t> dims{10};
 
-  float low = 0.f;
-  float high = 100.f;
-  float seed = 123.f;
+  constexpr float low = 0.f;
+  constexpr float high = 100.f;
+  constexpr float seed = 123.f;
 
   test.AddAttribute("low", low);
   test.AddAttribute("high", high);
@@ -116,9 +116,9 @@ void RunRandomUniformLikeTest(bool infer_dtype = false) {
 
   std::vector<int64_t> dims{2, 6};
 
-  float low = 0.f;
-  float high = 100.f;
-  float seed = 123.f;
+  constexpr float low = 0.f;
+  constexpr float high = 100.f;
+  constexpr float seed = 123.f;
 
   test.AddAttribute("low", low);
   test.AddAttribute("high", high);
@@ -149,12 +149,12 @@ TEST(Random, RandomUniformLike2DDouble) {
 }
 
 TEST(Random, RandomUniformLikeInferDType) {
-  const bool infer_dtype = true;
+  constexpr bool infer_dtype = true;
   RunRandomUniformLikeTest(infer_dtype);
 }
 
 TEST(Random, InvalidDType) {
-  float seed = 123.f;
+  constexpr float seed = 123.f;
 
   std::vector<int64_t> dims{1, 4};
   std::vector<int32_t> input{0, 0, 0, 0};
@@ -179,8 +179,8 @@ TEST(Random, InvalidDType) {
   {
     OpTester test("RandomUniform");
 
-    float low = 0.f;
-    float high = 100.f;
+    constexpr float low = 0.f;
+    constexpr float high = 100.f;
 
     test.AddAttribute("low", low);
     test.AddAttribute("high", high);
@@ -195,8 +195,8 @@ TEST(Random, InvalidDType) {
   {
     OpTester test("RandomNormalLike");
 
-    float scale = 10.f;
-    float mean = 0.f;
+    constexpr float scale = 10.f;
+    constexpr float mean = 0.f;
 
     test.AddAttribute("scale", scale);
     test.AddAttribute("mean", mean);
@@ -211,8 +211,8 @@ TEST(Random, InvalidDType) {
   {
     OpTester test("RandomUniformLike");
 
-    float low = 0.f;
-    float high = 100.f;
+    constexpr float low = 0.f;
+    constexpr float high = 100.f;
 
     test.AddAttribute("low", low);
     test.AddAttribute("high", high);
@@ -234,10 +234,10 @@ for verification.
 TEST(Random, MultinomialGoodCase) {
   OpTester test("Multinomial");
 
-  const int64_t num_samples = 10;
-  const float seed = 1618.f;
-  const int batch_size = 2;
-  const int num_classes = 3;
+  constexpr int64_t num_samples = 10;
+  constexpr float seed = 1618.f;
+  constexpr int batch_size = 2;
+  constexpr int num_classes = 3;
 
   const std::vector<int64_t> input_dims{batch_size, num_classes};
   std::vector<float> input(TensorShape(input_dims).Size());
@@ -264,9 +264,9 @@ TEST(Random, MultinomialGoodCase) {
 TEST(Random, MultinomialDefaultDType) {
   auto run_test = [](int num_run_calls, const std::vector<int32_t>& expected_output) {
     OpTester test("Multinomial");
-    const int64_t num_samples = 10;
-    const int batch_size = 2;
-    const float seed = 1618.f;
+    constexpr int64_t num_samples = 10;
+    constexpr int batch_size = 2;
+    constexpr float seed = 1618.f;
 
     const std::vector<int64_t> input_dims{2, 3};
     std::vector<float> input(TensorShape(input_dims).Size());
@@ -307,10 +307,10 @@ TEST(Random, MultinomialDefaultDType) {
 TEST(Random, MultinomialInvalidDtype) {
   OpTester test("Multinomial");
 
-  const int64_t num_samples = 10;
-  const int batch_size = 2;
-  const int num_classes = 3;
-  const float seed = 1618.f;
+  constexpr int64_t num_samples = 10;
+  constexpr int batch_size = 2;
+  constexpr int num_classes = 3;
+  constexpr float seed = 1618.f;
 
   const std::vector<int64_t> input_dims{batch_size, num_classes};
   std::vector<float> input(TensorShape(input_dims).Size());

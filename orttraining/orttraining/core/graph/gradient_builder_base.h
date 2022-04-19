@@ -5,8 +5,9 @@
 
 #include <vector>
 #include <string>
-#include "core/util/math.h"
+#include "core/framework/float16.h"
 #include "core/graph/graph.h"
+#include "core/util/math.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 #include "orttraining/core/graph/gradient_config.h"
 #include "orttraining/core/graph/recompute_graph_utils.h"
