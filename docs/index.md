@@ -10,7 +10,7 @@ ONNX Runtime is a cross-platform machine-learning model accelerator, with a flex
 
 <iframe height="315" class="table-wrapper py px" src="https://www.youtube.com/embed/lRBsmnBE9ZA" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
 
-## How to use ONNX Runtime (ORT)
+## How to use ONNX Runtime
 
 |:----------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------|
 |  <span class="fs-5"> [Get started with ORT](./get-started){: .btn  .mr-4 target="_blank"} </span> |  <span class="fs-5"> [API Docs](./api){: .btn target="_blank"} </span>      |
