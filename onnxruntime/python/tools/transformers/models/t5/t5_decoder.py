@@ -18,6 +18,7 @@ from past_helper import PastKeyValuesHelper
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from torch_onnx_export_helper import torch_onnx_export
+from io_binding_helper import TypeHelper
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class T5DecoderInit(torch.nn.Module):
     """ A T5 decoder with LM head to create initial past key values.
         This model is only called once during starting decoding.
     """
+
     def __init__(self,
                  decoder: torch.nn.Module,
                  lm_head: torch.nn.Module,
@@ -62,6 +64,7 @@ class T5DecoderInit(torch.nn.Module):
 
 class T5Decoder(torch.nn.Module):
     """ A T5 decoder with LM head and past key values"""
+
     def __init__(self, decoder, lm_head, config):
         super().__init__()
         self.decoder = decoder
@@ -92,6 +95,7 @@ class T5Decoder(torch.nn.Module):
 
 
 class T5DecoderInputs:
+
     def __init__(self, decoder_input_ids, encoder_attention_mask, encoder_hidden_states, past_key_values=None):
         self.decoder_input_ids: torch.LongTensor = decoder_input_ids
         self.encoder_attention_mask: torch.LongTensor = encoder_attention_mask
@@ -99,8 +103,12 @@ class T5DecoderInputs:
         self.past_key_values: Union[List[torch.FloatTensor], List[torch.HalfTensor], None] = past_key_values
 
     @staticmethod
-    def create_dummy(config: T5Config, batch_size: int, encode_sequence_length: int, past_decode_sequence_length: int,
-                     device: torch.device):  # -> T5DecoderInputs:
+    def create_dummy(config: T5Config,
+                     batch_size: int,
+                     encode_sequence_length: int,
+                     past_decode_sequence_length: int,
+                     device: torch.device,
+                     float16: bool = False):  # -> T5DecoderInputs:
         """ Create dummy inputs for T5Decoder.
 
         Args:
@@ -109,6 +117,7 @@ class T5DecoderInputs:
             encode_sequence_length (int): sequence length of input_ids for encoder
             past_decode_sequence_length (int): past sequence length of input_ids for decoder
             device (torch.device): device of output tensors
+            float16 (bool): whether the model uses float32 or float16 in input
 
         Returns:
             T5DecoderInputs: dummy inputs for decoder
@@ -127,10 +136,11 @@ class T5DecoderInputs:
 
         encoder_inputs = T5EncoderInputs.create_dummy(batch_size, encode_sequence_length, vocab_size, device)
 
+        float_type = torch.float16 if float16 else torch.float32
         encoder_hidden_state = torch.rand(batch_size,
                                           encode_sequence_length,
                                           hidden_size,
-                                          dtype=torch.float32,
+                                          dtype=float_type,
                                           device=device)
 
         if past_decode_sequence_length > 0:
@@ -145,10 +155,10 @@ class T5DecoderInputs:
 
             past = []
             for _ in range(2 * num_layers):
-                past.append(torch.rand(self_attention_past_shape, dtype=torch.float32, device=device))
+                past.append(torch.rand(self_attention_past_shape, dtype=float_type, device=device))
 
             for _ in range(2 * num_layers):
-                past.append(torch.rand(cross_attention_past_shape, dtype=torch.float32, device=device))
+                past.append(torch.rand(cross_attention_past_shape, dtype=float_type, device=device))
         else:
             past = None
 
@@ -160,8 +170,15 @@ class T5DecoderInputs:
             input_list.extend(self.past_key_values)
         return input_list
 
+    def to_fp32(self):
+        encoder_hidden_state = self.encoder_hidden_states.to(dtype=torch.float32)
+        past = [p.to(dtype=torch.float32) for p in self.past_key_values]
+        return T5DecoderInputs(self.decoder_input_ids.clone(), self.encoder_attention_mask.clone(),
+                               encoder_hidden_state, past)
+
 
 class T5DecoderHelper:
+
     @staticmethod
     def export_onnx(decoder: Union[T5Decoder, T5DecoderInit],
                     device: torch.device,
@@ -292,6 +309,8 @@ class T5DecoderHelper:
                     max_cases=4):
         """ Compare the result from PyTorch and OnnxRuntime to verify the ONNX model is good.
         """
+        float16: bool = (TypeHelper.get_input_type(ort_session, "encoder_hidden_states") == "tensor(float16)")
+
         test_cases = [(4, 11, 3), (1, 2, 5), (3, 1, 1), (8, 5, 2)]
         test_cases_max_diff = []
         for (batch_size, encode_sequence_length, past_decode_sequence_length) in test_cases[:max_cases]:
@@ -302,8 +321,11 @@ class T5DecoderHelper:
                                                   batch_size,
                                                   encode_sequence_length,
                                                   past_decode_sequence_length,
-                                                  device=device)
-            input_list = inputs.to_list()
+                                                  device=device,
+                                                  float16=float16)
+
+            # We use fp32 PyTroch model as baseline even when ONNX model is fp16
+            input_list = inputs.to_fp32().to_list()
 
             # Run inference of PyTorch model
             with torch.no_grad():
