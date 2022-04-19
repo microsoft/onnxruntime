@@ -30,6 +30,7 @@ from onnx import onnx_pb as onnx_proto
 
 import sys
 import os
+
 sys.path.append(os.path.join(os.path.dirname(__file__), 'models', 'gpt2'))
 from gpt2_helper import PRETRAINED_GPT2_MODELS
 from convert_to_onnx import main as convert_gpt2_to_onnx

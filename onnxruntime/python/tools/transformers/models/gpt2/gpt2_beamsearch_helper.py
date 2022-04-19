@@ -314,10 +314,8 @@ MODEL_CLASSES = {
     'GPT2LMHeadModel': (MyGPT2LMHeadModel, 'logits', True),
     'GPT2LMHeadModel_NoPadding': (MyGPT2LMHeadModel_NoPadding, 'logits', False),
     'GPT2Model': (MyGPT2Model, 'last_state', True),
-    "GPT2LMHeadModel_BeamSearchStep":
-    (GPT2LMHeadModel_BeamSearchStep, "last_state", True),  # defined in gpt2_beamsearch_helper.py
-    "GPT2LMHeadModel_ConfigurableOneStepSearch":
-    (GPT2LMHeadModel_ConfigurableOneStepSearch, "last_state", False),  # defined in gpt2_beamsearch_helper.py
+    "GPT2LMHeadModel_BeamSearchStep": (GPT2LMHeadModel_BeamSearchStep, "last_state", True),
+    "GPT2LMHeadModel_ConfigurableOneStepSearch": (GPT2LMHeadModel_ConfigurableOneStepSearch, "last_state", False),
 }
 
 
@@ -391,8 +389,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
                          input_ids_dtype: torch.dtype = torch.int64,
                          position_ids_dtype: torch.dtype = torch.int64,
                          attention_mask_dtype: torch.dtype = torch.int64) -> Gpt2BeamSearchInputs:
-        """Create random inputs for GPT2 model.
-        Returns torch tensors of input_ids, position_ids, attention_mask and a list of past state tensors.
+        """Create random inputs for GPT2 beam search.
         """
         gpt2_dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size,
                                                         past_sequence_length,
@@ -494,18 +491,15 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         for i in range(num_layer):
             output_shapes["present_" + str(i)] = present_state_shape
 
-        output_shapes["output_selected_indices"] = [1, batch_size * beam_size
-                                                    ]  # TODO: reshape it as [batch_size, beam_size]
+        # TODO: reshape output_selected_indices as [batch_size, beam_size]
+        output_shapes["output_selected_indices"] = [1, batch_size * beam_size]
         output_shapes["output_log_probs"] = [batch_size, beam_size]
         output_shapes["output_unfinished_sents"] = [batch_size, beam_size]
         if model_class == "GPT2LMHeadModel_BeamSearchStep":
             output_shapes["current_step_results"] = [
                 batch_size * beam_size, past_sequence_length - context_len + sequence_length + 1
             ]
-        output_shapes["current_step_scores"] = [
-            batch_size * beam_size,
-            past_sequence_length - context_len + 2  # past_sequence_length + sequence_length - context_len + 2
-        ]
+        output_shapes["current_step_scores"] = [batch_size * beam_size, past_sequence_length - context_len + 2]
         print("output_shapes", output_shapes)
         return output_shapes
 
@@ -588,7 +582,6 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         input_list = dummy_inputs.to_list()
 
         with torch.no_grad():
-            # outputs = model(input_ids, position_id, attention_mask, beam_select_idx, past)
             outputs = model(*input_list)
 
         past_names = [f"past_{i}" for i in range(num_layer)]
@@ -612,14 +605,6 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
                 "current_step_scores",
             ]
 
-        # Shape of input tensors:
-        #    input_ids: (batch_size, seq_len)
-        #    past_{i}:  (2, batch_size, num_heads, past_seq_len, hidden_size/num_heads)
-        #    attention_mask: (batch_size, past_seq_len + seq_len)
-        # Shape of output tensors:
-        #    last_state: (batch_size, seq_len, hidden_size)
-        #      or logits: (batch_size, seq_len, vocab_size)
-        #    present_{i}:  (2, batch_size, num_heads, past_seq_len + seq_len, hidden_size/num_heads)
         dynamic_axes = {
             "input_ids": {
                 0: "batch_size",
@@ -666,14 +651,14 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         for i in range(num_layer):
             dynamic_axes["present_" + str(i)] = present_axes
 
-        dynamic_axes["output_selected_indices"] = {1: "batch_size * beam_size"}  #{0: "batch_size", 1: "beam_size"}
+        dynamic_axes["output_selected_indices"] = {1: "batch_size * beam_size"}
         dynamic_axes["output_log_probs"] = {0: "batch_size", 1: "beam_size"}
         dynamic_axes["output_unfinished_sents"] = {0: "batch_size", 1: "beam_size"}
 
         if "current_step_results" in output_names:
             dynamic_axes["current_step_results"] = {0: "batch_size * beam_size", 1: "total_seq_len"}
 
-        dynamic_axes["current_step_scores"] = {0: "batch_size * beam_size"}  #, 1: "total_seq_len"}
+        dynamic_axes["current_step_scores"] = {0: "batch_size * beam_size"}
 
         logger.info(
             f"Shapes: input_ids={dummy_inputs.input_ids.shape} past={dummy_inputs.past[0].shape} output={outputs[0].shape} present={outputs[1][0].shape}"
