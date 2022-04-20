@@ -255,42 +255,4 @@ inline SparseTensor* OpKernelContext::Output<SparseTensor>(int index) {
 }
 #endif
 
-// For invoking kernels without a graph
-class InstantKernelContext : public OpKernelContext {
- public:
-  InstantKernelContext(const OrtValue* const* input_values,
-                       int input_count,
-                       OrtValue* const* output_values,
-                       int output_count,
-                       AllocatorPtr allocator,
-                       onnxruntime::concurrency::ThreadPool* threadpool,
-                       const logging::Logger& logger);
-
-  int NumVariadicInputs(size_t arg_num) const override;
-  MLDataType InputType(int index) const override;
-  MLDataType OutputType(int index) const override;
-  bool TryGetInferredInputShape(int index, TensorShape& shape) const override;
-  bool TryGetInferredOutputShape(int index, TensorShape& shape) const override;
-  int InputCount() const override;
-  int ImplicitInputCount() const override;
-  int OutputCount() const override;
-  Status GetTempSpaceAllocator(AllocatorPtr* output) const override ORT_MUST_USE_RESULT;
-  Fence_t InputFence(int index) const override;
-  Fence_t ImplicitInputFence(int index) const override;
-  Fence_t OutputFence(int index) const override;
-  int GetDeviceId() const override;
-  void* GetComputeStream() const override;
-
- protected:
-  const OrtValue* GetInputMLValue(int index) const override;
-  OrtValue* OutputMLValue(int index, const TensorShape& shape) override;
-  OrtValue* GetOrCreateOutputMLValue(int index) override;
-
-  const OrtValue* const* input_values_;
-  const int input_count_;
-  OrtValue* const* output_values_;
-  const int output_count_;
-  AllocatorPtr allocator_;
-};
-
 }  // namespace onnxruntime
