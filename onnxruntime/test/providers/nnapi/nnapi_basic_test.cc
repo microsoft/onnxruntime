@@ -492,6 +492,22 @@ TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
 #endif
 }
 
+// test that NNAPI EP can process an activation node that is outside of its partition
+TEST(NnapiExecutionProviderTest, ActivationOutsideOfPartition) {
+  // model starts with Conv -> Relu
+  constexpr auto* model_file_name = ORT_TSTR("testdata/mnist.level1_opt.ort");
+  // stop NNAPI partitioning at Relu so NNAPI EP only takes first Conv
+  const auto nnapi_partitioning_stop_ops = "Relu";
+  SessionOptions so;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(
+      std::make_unique<NnapiExecutionProvider>(0, nnapi_partitioning_stop_ops)));
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  // expect one NNAPI partition
+  ASSERT_EQ(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 1);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
