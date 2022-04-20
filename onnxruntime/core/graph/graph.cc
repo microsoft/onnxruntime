@@ -1439,23 +1439,29 @@ common::Status Graph::SetOuterScopeNodeArgs(const std::unordered_set<std::string
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 void Graph::AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_slot, int dst_arg_slot) {
-  if (nodes_.size() <= src_node_index || src_arg_slot < 0 || nodes_.size() <= dst_node_index || dst_arg_slot < 0 ||
-      nullptr == nodes_[src_node_index] || nullptr == nodes_[dst_node_index]) {
+  if (src_arg_slot < 0 || dst_arg_slot < 0) {
     // Invalid node indexes specified.
-    ORT_THROW("Invalid node indexes specified when adding edge.");
+    ORT_THROW("Invalid slot specified when adding edge.");
   }
-
+  Node* src_node = NodeAtIndexImpl(src_node_index);
+  Node* dst_node = NodeAtIndexImpl(dst_node_index);
+  if (src_node == nullptr) {
+    ORT_THROW("Invalid src_node_index specified when adding edge.");
+  }
+  if (dst_node == nullptr) {
+    ORT_THROW("Invalid dst_node_index specified when adding edge.");
+  }
   NodeArg* src_arg = nullptr;
   NodeArg* dst_arg = nullptr;
-  if (nodes_[src_node_index]->MutableDefinitions().output_defs.size() > static_cast<size_t>(src_arg_slot)) {
-    src_arg = nodes_[src_node_index]->MutableDefinitions().output_defs[src_arg_slot];
+  if (src_node->MutableDefinitions().output_defs.size() > static_cast<size_t>(src_arg_slot)) {
+    src_arg = src_node->MutableDefinitions().output_defs[src_arg_slot];
   }
 
   if (nullptr == src_arg) {
     ORT_THROW("Invalid source node arg slot specified when adding edge.");
   }
 
-  auto& dst_node_defs = nodes_[dst_node_index]->MutableDefinitions();
+  auto& dst_node_defs = dst_node->MutableDefinitions();
   NodeArg** dst_arg_pointer = nullptr;
   if (dst_node_defs.input_defs.size() > static_cast<size_t>(dst_arg_slot)) {
     dst_arg_pointer = &dst_node_defs.input_defs[dst_arg_slot];
@@ -1473,17 +1479,21 @@ void Graph::AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_
 
   if (src_arg != dst_arg) {
 #if !defined(ORT_MINIMAL_BUILD)
+    // If the type at the src node is unknown, then the type at the dest must be unknown too.
     if (!src_arg->Type() && dst_arg->Type()) {
-      Status st = UpdateShapeInference(*nodes_[src_node_index]);
+      Status st = UpdateShapeInference(*src_node);
       if (!st.IsOK() || (!src_arg->Type() && dst_arg->Type())) {
         // We have tried to run shape inference again but the src type info is still missing.
         ORT_THROW("Argument type mismatch when adding edge. src node misses type info");
       }
     }
+#endif
+    // If the src node arg has type info, the dest node arg must have the information too.
+    // The next if statement will check this condition too. The next 3 lines are added to provide better error message.
     if (!dst_arg->Type() && src_arg->Type()) {
       ORT_THROW("Argument type mismatch when adding edge. dst node misses type info");
     }
-#endif
+
     if (src_arg->Type() != dst_arg->Type()) {
       // The output type of source node arg does not match the input type of destination node arg.
       std::ostringstream oss;
@@ -1495,8 +1505,8 @@ void Graph::AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_
     *dst_arg_pointer = src_arg;
   }
 
-  nodes_[src_node_index]->MutableRelationships().output_edges.insert(Node::EdgeEnd(*nodes_[dst_node_index], src_arg_slot, dst_arg_slot));
-  nodes_[dst_node_index]->MutableRelationships().input_edges.insert(Node::EdgeEnd(*nodes_[src_node_index], src_arg_slot, dst_arg_slot));
+  src_node->MutableRelationships().output_edges.insert(Node::EdgeEnd(*dst_node, src_arg_slot, dst_arg_slot));
+  dst_node->MutableRelationships().input_edges.insert(Node::EdgeEnd(*src_node, src_arg_slot, dst_arg_slot));
 }
 
 void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_slot, int dst_arg_slot) {
@@ -2995,7 +3005,7 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
   }
   return Status::OK();
 }
-#endif // DISABLE_EXTERNAL_INITIALIZERS
+#endif  // DISABLE_EXTERNAL_INITIALIZERS
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

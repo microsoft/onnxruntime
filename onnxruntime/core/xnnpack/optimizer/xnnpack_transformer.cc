@@ -448,6 +448,14 @@ Status XNNPackTransformer::ApplyImpl(Graph& main_graph, bool& modified, int grap
 
   std::vector<NodeIndex> conv_nodes;
   std::vector<NodeIndex> maxpool_nodes;
+  // Iterate all the nodes first to figure out what can be run by XNNPack. Then we will update the selected nodes one by
+  // one. However, there could be chance that in the first pass we thought a node is supported by XNNPack, then we did
+  // some updates on the graph which break the assumption. For example, if there is a Maxpool followd by a Conv. At
+  // first, the input channel of Conv is known, then we replaced ONNX Maxpool with XNNPack Maxpool and run shape
+  // inference again. Assume the XNNPack maxpool shape inference didn't do a great job and lost of information of the
+  // output channel dim of the Maxpool, then this transformer would failed to update ONNX Conv to XNNPack Conv because
+  // the later one expects the input channel should be known. So the shape inference functions of XNNPack schemas play a
+  // key role here.
   for (auto& nodeRef : gv.Nodes()) {
     auto inputs = nodeRef.InputDefs();
     auto iter_end = nodeRef.InputEdgesEnd();
@@ -458,23 +466,9 @@ Status XNNPackTransformer::ApplyImpl(Graph& main_graph, bool& modified, int grap
     if (st.IsOK()) {
       conv_nodes.push_back(nodeRef.Index());
     } else if (IsMaxPoolSupportedByXNNPack(nodeRef, true)) {
-#if 0
-      for (auto iter = nodeRef.InputEdgesBegin(); iter != iter_end; ++iter) {
-        std::cout << iter->GetNode().OpType() << std::endl;          
-      }
-      auto graphproto = main_graph.ToGraphProto();
-      ModelProto model_proto;
-      *model_proto.mutable_graph() = graphproto;
-      int fd = -1;
-      ORT_RETURN_IF_ERROR(Env::Default().FileOpenWr(L"D:\\test.model", fd));
-      if (!model_proto.SerializeToFileDescriptor(fd)) {
-        return Status(ONNXRUNTIME, FAIL);
-      }
-#endif
       maxpool_nodes.push_back(nodeRef.Index());
     }
   }
-  // Any error below is fatal, because if XNNPack couldn't run the node, we shouldn't convert it Nhwc.
   for (NodeIndex ni : maxpool_nodes) {
     Node* node_p = main_graph.GetNode(ni);
     if (node_p == nullptr) continue;
