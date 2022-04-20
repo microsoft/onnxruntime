@@ -24,28 +24,31 @@ struct MLAS_GEMM_U8S8_KERNEL_SSE41
 {
     typedef uint8_t PackedAType;
     typedef uint8_t PackedBType;
+    typedef uint8_t OffsetAType;
     typedef int8_t OffsetBType;
 
     static constexpr size_t PackedK = 4;
-    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{ 24, 128, 128 };
-    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{ 24, 128, 128 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES Strides{ 24, 128, 128 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{ 24, 128, 128 };
 };
 
 constexpr size_t MLAS_GEMM_U8S8_KERNEL_SSE41::PackedK;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8S8_KERNEL_SSE41::Strides;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8S8_KERNEL_SSE41::PackedStrides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8S8_KERNEL_SSE41::Strides;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_U8S8_KERNEL_SSE41::PackedStrides;
 
 template<>
 void
-MlasGemmU8X8CopyPackA<MLAS_GEMM_U8S8_KERNEL_SSE41>(
+MlasGemmQuantCopyPackA<MLAS_GEMM_U8S8_KERNEL_SSE41>(
     MLAS_GEMM_U8S8_KERNEL_SSE41::PackedAType* D,
     const uint8_t* A,
     size_t lda,
     size_t CountM,
     size_t CountK,
-    int32_t* RowSumBuffer
+    int32_t* RowSumBuffer,
+    bool AIsSigned
     )
 {
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
     const __m128i ZeroVector = _mm_setzero_si128();
     const __m128i OnesWordBroadcast = _mm_set1_epi16(1);
 
@@ -143,7 +146,7 @@ MlasGemmU8X8CopyPackBProcessSse41(
 
 template<>
 void
-MlasGemmU8X8CopyPackB<MLAS_GEMM_U8S8_KERNEL_SSE41>(
+MlasGemmQuantCopyPackB<MLAS_GEMM_U8S8_KERNEL_SSE41>(
     MLAS_GEMM_U8S8_KERNEL_SSE41::PackedBType* D,
     const uint8_t* B,
     size_t ldb,
@@ -288,7 +291,7 @@ MlasGemmU8X8MultiplyAccumulateRowSse41(
 
 template<>
 size_t
-MlasGemmU8X8Kernel<MLAS_GEMM_U8S8_KERNEL_SSE41>(
+MlasGemmQuantKernel<MLAS_GEMM_U8S8_KERNEL_SSE41>(
     const MLAS_GEMM_U8S8_KERNEL_SSE41::PackedAType* A,
     const MLAS_GEMM_U8S8_KERNEL_SSE41::PackedBType* B,
     int32_t* C,
@@ -436,10 +439,10 @@ MlasGemmU8X8Kernel<MLAS_GEMM_U8S8_KERNEL_SSE41>(
     return 1;
 }
 
-const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchSse41 = {
-    MlasGemmU8X8Operation<MLAS_GEMM_U8S8_KERNEL_SSE41>,
-    MlasGemmU8X8PackedOperation<MLAS_GEMM_U8S8_KERNEL_SSE41>,
-    MlasGemmU8X8CopyPackB<MLAS_GEMM_U8S8_KERNEL_SSE41>,
+const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchSse41 = {
+    MlasGemmQuantOperation<MLAS_GEMM_U8S8_KERNEL_SSE41>,
+    MlasGemmQuantPackedOperation<MLAS_GEMM_U8S8_KERNEL_SSE41>,
+    MlasGemmQuantCopyPackB<MLAS_GEMM_U8S8_KERNEL_SSE41>,
     MLAS_GEMM_U8S8_KERNEL_SSE41::PackedK,
     MLAS_GEMM_U8S8_KERNEL_SSE41::PackedStrides.K,
 };

@@ -13,7 +13,7 @@ Merge nodes that always evaluate to the same result.
 */
 class CommonSubexpressionElimination : public GraphTransformer {
  public:
-  CommonSubexpressionElimination(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  CommonSubexpressionElimination(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("CommonSubexpressionElimination", compatible_execution_providers) {
   }
 
@@ -26,7 +26,7 @@ Same as CommonSubexpressionElimination, but with ShouldOnlyApplyOnce.
 */
 class CommonSubexpressionEliminationApplyOnce : public CommonSubexpressionElimination {
  public:
-  CommonSubexpressionEliminationApplyOnce(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  CommonSubexpressionEliminationApplyOnce(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : CommonSubexpressionElimination(compatible_execution_providers) {
   }
 

@@ -258,7 +258,6 @@ def export_onnx(model, onnx_model_path, float16, hidden_size, num_attention_head
                       input_names=['input_hidden_states', 'attention_mask', 'past'],
                       output_names=get_output_names(debug),
                       dynamic_axes=dynamic_axes,
-                      example_outputs=outputs,
                       opset_version=11,
                       do_constant_folding=True)
     print("exported:", onnx_model_path)

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/rocm/reduction/reduction_all.h"
+#include "orttraining/training_ops/rocm/reduction/reduction_all_impl.h"
 
 #include "core/providers/rocm/reduction/reduction_functions.h"
 #include "core/providers/rocm/shared_inc/accumulation_type.h"
@@ -45,16 +46,17 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
   HipTOut* p_output = reinterpret_cast<HipTOut*>(output->template MutableData<TOut>());
   HIP_RETURN_IF_ERROR(hipMemsetAsync(p_output, 0, sizeof(HipTOut), Stream()));
 
-  // bool deterministic = ctx->GetUseDeterministicCompute();
+  // const bool deterministic = ctx->GetUseDeterministicCompute();
   bool deterministic = true;
+
   if (!deterministic) {
     typedef MultiTensorReduceL2<HipTIn, HipTOut> TFunctor;
     TFunctor functor;
 
     // Check if all values are finite and write true to deviceOutput.
     // Otherwise, false will be written.
-    launch_multi_tensor_functor<1, TFunctor>(
-        Stream(), 2048 * 32, tensor_sizes, grouped_tensor_pointers, functor, p_output);
+    launch_multi_tensor_functor<1, TFunctor>(Stream(),
+                                             2048 * 32, tensor_sizes, grouped_tensor_pointers, functor, p_output);
 
     // *p_output is the squared sum of all elements.
     // Let's take a sqrt to get the actual L2-norm.
@@ -103,6 +105,9 @@ REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, float, float)
 REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, MLFloat16, float)
 REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, float, MLFloat16)
 REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, MLFloat16, MLFloat16)
+REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, BFloat16, float)
+REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, float, BFloat16)
+REGISTER_REDUCE_ALL_KERNEL_TYPED(ReduceAllL2, BFloat16, BFloat16)
 
 }  // namespace rocm
 }  // namespace onnxruntime

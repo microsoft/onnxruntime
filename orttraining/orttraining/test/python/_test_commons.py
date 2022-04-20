@@ -141,7 +141,16 @@ def generate_dummy_optim_state(model, optimizer):
 
 def _load_pytorch_transformer_model(device, dynamic_axes=False, legacy_api=False, data_dir=None):
     # Loads external Pytorch TransformerModel into utils
-    pytorch_transformer_path = os.path.join('samples', 'python', 'training', 'orttrainer', 'pytorch_transformer')
+    root = 'samples'
+    if not os.path.exists(root):
+        root = os.path.normpath(
+            os.path.join(
+                os.path.dirname(
+                    os.path.abspath(__file__)), "..", "..", "..", "..", "samples"))
+    if not os.path.exists(root):
+        raise FileNotFoundError(
+            "Unable to find folder 'samples', tried %r." % root)
+    pytorch_transformer_path = os.path.join(root, 'python', 'training', 'orttrainer', 'pytorch_transformer')
     pt_model_path = os.path.join(pytorch_transformer_path, 'pt_model.py')
     pt_model = _utils.import_module_from_file(pt_model_path)
     ort_utils_path = os.path.join(pytorch_transformer_path, 'ort_utils.py')

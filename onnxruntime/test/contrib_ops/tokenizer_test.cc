@@ -13,7 +13,7 @@ const std::string end_mark{0x3};
 const std::string padval(u8"0xdeadbeaf");
 
 constexpr const char* domain = onnxruntime::kMSDomain;
-const int opset_ver = 1;
+constexpr int opset_ver = 1;
 
 }  // namespace tokenizer_test
 

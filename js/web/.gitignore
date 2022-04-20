@@ -6,6 +6,8 @@ dist/
 
 tsconfig.tsbuildinfo
 
+!lib/build-def.d.ts
+
 lib/**/*.js
 lib/**/*.js.map
 test/**/*.js

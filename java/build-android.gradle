@@ -7,6 +7,8 @@ def headersDir = System.properties['headersDir']
 def publishDir = System.properties['publishDir']
 def minSdkVer = System.properties['minSdkVer']
 def targetSdkVer = System.properties['targetSdkVer']
+def buildVariant = System.properties['buildVariant'] ?: "Full"
+boolean isMobileBuild = (buildVariant == "Mobile")
 
 // Since Android requires a higher numbers indicating more recent versions
 // This function assume ORT version number will be in formart of A.B.C such as 1.7.0
@@ -24,7 +26,17 @@ project.buildDir = buildDir
 project.version = rootProject.file('../VERSION_NUMBER').text.trim()
 project.group = "com.microsoft.onnxruntime"
 
-def mavenArtifactId = project.name + '-mobile'
+def mavenArtifactId = isMobileBuild ? project.name + '-mobile' : project.name + '-android'
+def mobileDescription = 'The ONNX Runtime Mobile package is a size optimized inference library for executing ONNX ' +
+	'(Open Neural Network Exchange) models on Android. This package is built from the open source inference engine ' +
+	'but with reduced disk footprint targeting mobile platforms. To minimize binary size this library supports a ' +
+	'reduced set of operators and types aligned to typical mobile applications. The ONNX model must be converted to ' +
+	'ORT format in order to use it with this package. ' +
+	'See https://onnxruntime.ai/docs/reference/ort-model-format.html for more details.'
+def defaultDescription = 'ONNX Runtime is a performance-focused inference engine for ONNX (Open Neural Network ' +
+	'Exchange) models. This package contains the Android (aar) build of ONNX Runtime. It includes support for all ' +
+	'types and operators, for ONNX format models. All standard ONNX models can be executed with this package. ' +
+	'As such the binary size and memory usage will be larger than the onnxruntime-mobile package.'
 
 buildscript {
 	repositories {
@@ -126,9 +138,7 @@ publishing {
 
 			pom {
 				name = 'onnx-runtime'
-				description = 'ONNX Runtime Mobile package is a size optimized inference library for executing ' +
-					'ONNX (Open Neural Network Exchange) models. This package is built from the open source ' +
-					'inference engine targeting reduced disk footprint for mobile platforms.'
+				description = isMobileBuild ? mobileDescription : defaultDescription
 				url = 'https://microsoft.github.io/onnxruntime/'
 				licenses {
 					license {

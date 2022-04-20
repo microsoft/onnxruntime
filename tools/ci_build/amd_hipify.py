@@ -2,7 +2,9 @@
 # Licensed under the MIT License.
 
 import concurrent.futures
+import functools
 import os
+import shutil
 import subprocess
 from logger import get_logger
 
@@ -14,17 +16,16 @@ training_ops_path = 'orttraining/orttraining/training_ops'
 
 contrib_ops_excluded_files = [
                     'bert/attention.cc',
-                    'bert/attention.h',
                     'bert/attention_impl.cu',
-                    'bert/attention_impl.h',
-                    'bert/attention_transpose.cu',
-                    'bert/attention_past.cu',
+                    'bert/attention_softmax.h',
+                    'bert/decoder_attention.h',
+                    'bert/decoder_attention.cc',
                     'bert/embed_layer_norm.cc',
                     'bert/embed_layer_norm.h',
                     'bert/embed_layer_norm_impl.cu',
                     'bert/embed_layer_norm_impl.h',
                     'bert/fast_gelu_impl.cu',
-                    'bert/layer_norm.cuh',
+                    # 'bert/layer_norm.cuh',
                     'bert/longformer_attention.cc',
                     'bert/longformer_attention.h',
                     'bert/longformer_attention_softmax.cu',
@@ -33,6 +34,7 @@ contrib_ops_excluded_files = [
                     'bert/longformer_attention_impl.h',
                     'bert/longformer_global_impl.cu',
                     'bert/longformer_global_impl.h',
+                    'bert/transformer_cuda_common.h',
                     'math/bias_softmax.cc',
                     'math/bias_softmax.h',
                     'math/bias_softmax_impl.cu',
@@ -59,6 +61,14 @@ contrib_ops_excluded_files = [
                     'tensor/image_scaler.h',
                     'tensor/image_scaler_impl.cu',
                     'tensor/image_scaler_impl.h',
+                    'transformers/beam_search.cc',
+                    'transformers/beam_search.h',
+                    'transformers/beam_search_device_helper.cc',
+                    'transformers/beam_search_device_helper.h',
+                    'transformers/beam_search_impl.cu',
+                    'transformers/beam_search_impl.h',
+                    'transformers/dump_cuda_tensor.cc',
+                    'transformers/dump_cuda_tensor.h',
                     'conv_transpose_with_dynamic_pads.cc',
                     'conv_transpose_with_dynamic_pads.h',
                     'cuda_contrib_kernels.cc',
@@ -89,6 +99,7 @@ provider_excluded_files = [
                 'math/matmul_integer.cuh',
                 'math/matmul_integer.h',
                 'math/softmax_impl.cu',
+                'math/softmax_warpwise_impl.cuh',
                 'math/softmax.cc',
                 'nn/batch_norm.cc',
                 'nn/batch_norm.h',
@@ -121,14 +132,6 @@ provider_excluded_files = [
                 'shared_inc/cuda_call.h',
                 'shared_inc/fpgeneric.h',
                 'shared_inc/integer_gemm.h',
-                'tensor/resize.cc',
-                'tensor/resize.h',
-                'tensor/resize_impl.cu',
-                'tensor/resize_impl.h',
-                'tensor/upsample.cc',
-                'tensor/upsample.h',
-                'tensor/upsample_impl.cu',
-                'tensor/upsample_impl.h',
                 'cuda_allocator.cc',
                 'cuda_allocator.h',
                 'cuda_call.cc',
@@ -159,33 +162,43 @@ provider_excluded_files = [
 ]
 
 training_ops_excluded_files = [
-                    'activation/gelu_grad_impl_common.cuh',
+                    'activation/gelu_grad_impl_common.cuh',  # uses custom tanh
                     'collective/adasum_kernels.cc',
                     'collective/adasum_kernels.h',
-                    'collective/nccl_common.cc',
-                    'collective/ready_event.cc',
-                    'collective/ready_event.h',
-                    'controlflow/record.cc',
-                    'controlflow/record.h',
-                    'controlflow/wait.cc',
-                    'controlflow/wait.h',
-                    'math/div_grad.cc',
-                    'math/softmax_grad_impl.cu',
-                    'math/softmax_grad.cc',
-                    'nn/batch_norm_grad.cc',
-                    'nn/batch_norm_grad.h',
-                    'nn/batch_norm_internal.cc',
-                    'nn/batch_norm_internal.h',
+                    'math/div_grad.cc',  # miopen API differs from cudnn, no double type support
+                    'math/softmax_grad_impl.cu',  # warp size differences
+                    'math/softmax_grad.cc',  # miopen API differs from cudnn, no double type support
+                    'nn/batch_norm_grad.cc',  # no double type support
+                    'nn/batch_norm_grad.h',  # miopen API differs from cudnn
+                    'nn/batch_norm_internal.cc',  # miopen API differs from cudnn, no double type support
+                    'nn/batch_norm_internal.h',  # miopen API differs from cudnn, no double type support
                     'nn/conv_grad.cc',
                     'nn/conv_grad.h',
-                    'reduction/reduction_all.cc',
-                    'reduction/reduction_ops.cc',
-                    'tensor/gather_nd_grad_impl.cu',
+                    'reduction/reduction_all.cc',  # deterministic = true, ignore ctx setting
+                    'reduction/reduction_ops.cc',  # no double type support
                     'cuda_training_kernels.cc',
                     'cuda_training_kernels.h',
 ]
 
-HIPIFY_PERL = '/opt/rocm/bin/hipify-perl'
+
+@functools.lru_cache(maxsize=1)
+def get_hipify_path():
+    # prefer the hipify-perl in PATH
+    HIPIFY_PERL = shutil.which('hipify-perl')
+    # if not found, attempt hard-coded location 1
+    if HIPIFY_PERL is None:
+        print('hipify-perl not found, trying default location 1')
+        hipify_path = '/opt/rocm/hip/bin/hipify-perl'
+        HIPIFY_PERL = hipify_path if os.access(hipify_path, os.X_OK) else None
+    # if not found, attempt hard-coded location 2
+    if HIPIFY_PERL is None:
+        print('hipify-perl not found, trying default location 2')
+        hipify_path = '/opt/rocm/bin/hipify-perl'
+        HIPIFY_PERL = hipify_path if os.access(hipify_path, os.X_OK) else None
+    # fail
+    if HIPIFY_PERL is None:
+        raise RuntimeError('Could not locate hipify-perl script')
+    return HIPIFY_PERL
 
 
 def hipify(src_file_path, dst_file_path):
@@ -194,7 +207,7 @@ def hipify(src_file_path, dst_file_path):
     if not os.path.exists(dir_name):
         os.makedirs(dir_name, exist_ok=True)
     # Run hipify-perl first, capture output
-    s = subprocess.run([HIPIFY_PERL, src_file_path], stdout=subprocess.PIPE, universal_newlines=True).stdout
+    s = subprocess.run([get_hipify_path(), src_file_path], stdout=subprocess.PIPE, universal_newlines=True).stdout
 
     # Additional exact-match replacements.
     # Order matters for all of the following replacements, reglardless of appearing in logical sections.
@@ -306,6 +319,8 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace('RegisterHipTrainingKernels', 'RegisterRocmTrainingKernels')
     s = s.replace('ROCM_VERSION', 'CUDA_VERSION')  # semantically different meanings, cannot hipify
     s = s.replace('__ROCM_ARCH__', '__CUDA_ARCH__')  # semantically different meanings, cannot hipify
+    # "std::log" above incorrectly changed "std::logic_error" to "logfic_error"
+    s = s.replace('logfic_error', 'std::logic_error')
 
     # Deletions
     s = s.replace('#include "device_atomic_functions.h"', '')  # HIP atomics in main hip header already
@@ -333,6 +348,8 @@ def list_files(prefix, path):
 
 
 def amd_hipify(config_build_dir):
+    # determine hipify script path now to avoid doing so concurrently in the thread pool
+    print('Using %s' % get_hipify_path())
     with concurrent.futures.ThreadPoolExecutor() as executor:
         cuda_path = os.path.join(contrib_ops_path, 'cuda')
         rocm_path = os.path.join(config_build_dir, 'amdgpu', contrib_ops_path, 'rocm')
@@ -361,3 +378,8 @@ def amd_hipify(config_build_dir):
             log.debug(result.result())
         for result in training_results:
             log.debug(result.result())
+
+
+if __name__ == '__main__':
+    import sys
+    amd_hipify(sys.argv[1])

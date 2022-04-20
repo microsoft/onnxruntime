@@ -24,6 +24,7 @@ ORT_API_STATUS(CreateModelFromData, _In_ void* data, _In_ size_t size, _Outptr_ 
 ORT_API_STATUS(CloneModel, _In_ const OrtModel* in, _Outptr_ OrtModel** out);
 ORT_API_STATUS(ModelGetAuthor, _In_ const OrtModel* model, _Out_ const char** const author, _Out_ size_t* len);
 ORT_API_STATUS(ModelGetName, _In_ const OrtModel* model, _Out_ const char** const name, _Out_ size_t* len);
+ORT_API_STATUS(ModelSetName, _In_ const OrtModel* model, _In_ const char* name);
 ORT_API_STATUS(ModelGetDomain, _In_ const OrtModel* model, _Out_ const char** const domain, _Out_ size_t* len);
 ORT_API_STATUS(ModelGetDescription, _In_ const OrtModel* model, _Out_ const char** const description, _Out_ size_t* len);
 ORT_API_STATUS(ModelGetVersion, _In_ const OrtModel* model, _Out_ int64_t* version);
@@ -63,16 +64,12 @@ ORT_API_STATUS(SessionGetNamedDimensionsOverrides, _In_ OrtSession* session, _Ou
 ORT_API_STATUS(DmlExecutionProviderSetDefaultRoundingMode, _In_ OrtExecutionProvider* dml_provider, _In_ bool is_enabled);
 ORT_API_STATUS(DmlExecutionProviderFlushContext, _In_ OrtExecutionProvider* dml_provider);
 ORT_API_STATUS(DmlExecutionProviderReleaseCompletedReferences, _In_ OrtExecutionProvider* dml_provider);
-ORT_API_STATUS(DmlCreateGPUAllocationFromD3DResource, _In_ ID3D12Resource* pResource, _Out_ void** dml_resource);
-ORT_API_STATUS(DmlGetD3D12ResourceFromAllocation, _In_ OrtExecutionProvider* provider, _In_ void* allocation, _Out_ ID3D12Resource** resource);
-ORT_API_STATUS(DmlFreeGPUAllocation, _In_ void* ptr);
 
 // note: this returns a weak ref
 
 ORT_API_STATUS(GetProviderMemoryInfo, _In_ OrtExecutionProvider* provider, OrtMemoryInfo** memory_info);
 ORT_API_STATUS(GetProviderAllocator, _In_ OrtExecutionProvider* provider, OrtAllocator** allocator);
 ORT_API_STATUS(FreeProviderAllocator, _In_ OrtAllocator* allocator);
-ORT_API_STATUS(GetValueMemoryInfo, const OrtValue* value, OrtMemoryInfo** memory_info);
 
 // ExecutionProvider Methods
 ORT_API_STATUS(ExecutionProviderSync, _In_ OrtExecutionProvider* provider);
@@ -128,6 +125,14 @@ ORT_API_STATUS(OperatorGetOutputName,
                _In_ size_t index,
                _Out_ const char** const name);
 
+ORT_API_STATUS(JoinModels,
+               _In_ OrtModel* first_model,
+               _In_ OrtModel* second_model,
+               _In_ const char* const* output_names,
+               _In_ const char* const* input_names,
+               size_t num_linkages,
+               bool promote_unlinked_outputs,
+               _In_ const char* const join_node_prefix);
 // maps and sequences???
 //ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange().Map().at(ONNX_NAMESPACE::ONNX_DOMAIN).second
 

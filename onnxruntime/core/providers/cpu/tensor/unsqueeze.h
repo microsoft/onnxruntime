@@ -28,7 +28,7 @@ class UnsqueezeBase {
   }
 
  private:
-  std::vector<int64_t> axes_;
+  TensorShapeVector axes_;
 };
 
 class Unsqueeze final : public OpKernel, public UnsqueezeBase {

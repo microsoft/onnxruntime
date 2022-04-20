@@ -5,8 +5,9 @@
 
 #include <vector>
 #include <string>
-#include "core/util/math.h"
+#include "core/framework/float16.h"
 #include "core/graph/graph.h"
+#include "core/util/math.h"
 #include "orttraining/core/graph/graph_augmenter.h"
 #include "orttraining/core/graph/gradient_config.h"
 #include "orttraining/core/graph/recompute_graph_utils.h"
@@ -137,6 +138,12 @@ class GradientBuilderBase {
   ArgDef GI(const size_t i) const {
     ORT_ENFORCE(i < node_->InputDefs().size());
     return ArgDef(GradientName(node_->InputDefs()[i]->Name()), node_->InputDefs()[i]->TypeAsProto());
+  }
+
+  // gradient of i-th input of forward op - useful when gradient type does not match input type
+  ArgDef GI(const size_t i, const TypeProto *type) const {
+    ORT_ENFORCE(i < node_->InputDefs().size());
+    return ArgDef(GradientName(node_->InputDefs()[i]->Name()), type);
   }
 
   // gradient of i-th output of forward op

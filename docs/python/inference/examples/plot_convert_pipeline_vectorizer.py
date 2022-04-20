@@ -72,7 +72,7 @@ with open("pipeline_vectorize.onnx", "wb") as f:
 import onnxruntime as rt
 from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
 
-sess = rt.InferenceSession("pipeline_vectorize.onnx")
+sess = rt.InferenceSession("pipeline_vectorize.onnx", providers=rt.get_available_providers())
 
 import numpy
 inp, out = sess.get_inputs()[0], sess.get_outputs()[0]

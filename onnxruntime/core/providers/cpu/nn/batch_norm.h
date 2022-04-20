@@ -58,7 +58,10 @@ class BatchNorm : public OpKernel {
 #endif
     }
   }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 26451)
+#endif
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
     const auto* X = p_op_kernel_context->Input<Tensor>(0);
     const auto* scale = p_op_kernel_context->Input<Tensor>(1);
@@ -206,4 +209,7 @@ class BatchNorm : public OpKernel {
   const bool is_spatial_;
   int64_t is_train_;
 };
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 }  // namespace onnxruntime

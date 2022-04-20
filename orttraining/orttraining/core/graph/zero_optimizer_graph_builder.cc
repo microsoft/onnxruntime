@@ -146,7 +146,7 @@ static std::vector<ArgDef> AddPartitionsForParameter(
         view_outputs.push_back(partition_argdef);
       } else {
         auto dtype = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
-        auto partition_argdef = ArgDef(partition_name, graph_defs.CreateTypeProto({shapes[i].Size()}, dtype));
+        auto partition_argdef = ArgDef(partition_name, graph_defs.CreateTypeProto(std::array<const int64_t, 1>{shapes[i].Size()}, dtype));
         view_outputs.push_back(partition_argdef);
       }
       view_num++;
@@ -168,7 +168,7 @@ static std::vector<ArgDef> AddViewForParameter(
 
       ArgDef shape_argdef(argdef.name + "_view_shape_" + std::to_string(view_num),
                           graph_defs.CreateTypeProto({dims}, ONNX_NAMESPACE::TensorProto_DataType_INT64));
-      graph_defs.AddInitializers({CreateTensorProto<int64_t>(shape_argdef.name, shape.GetDims(), {dims})});
+      graph_defs.AddInitializers({CreateTensorProto<int64_t>(shape_argdef.name, shape.AsShapeVector(), {dims})});
 
       auto dtype = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(argdef.type_proto->tensor_type().elem_type());
       ArgDef view_argdef(GetViewName(argdef.name, view_num),
@@ -329,7 +329,7 @@ static Status ModifyParametersForOptimizerPartitioning(
   // Note: the alignment here needs to be kept in-sync with the alignment in nccl_kernels.cc
   const int data_parallel_group_rank = opt_graph_config.data_parallel_group_rank;
   const int data_parallel_group_size = opt_graph_config.data_parallel_group_size;
-  const int64_t alignment = data_parallel_group_size * 32;
+  const int64_t alignment = static_cast<int64_t>(data_parallel_group_size) * 32;
   const int64_t padded_count = total_count + alignment - (total_count % alignment);
   const int64_t rank_count = padded_count / data_parallel_group_size;
   const int64_t rank_start = data_parallel_group_rank * rank_count;
@@ -360,7 +360,7 @@ static Status ModifyParametersForOptimizerPartitioning(
         new_weight_argdefs.push_back(weight_argdef);
         new_gradient_argdefs.push_back(gradient_argdef);
       } else {
-        weight_partition_info[weight_argdef.name].original_dim = tensor_shape.GetDims();
+        weight_partition_info[weight_argdef.name].original_dim = tensor_shape.AsShapeVector();
         if (offset < rank_start && offset + tensor_count <= rank_end) {
           int64_t size_for_previous_rank = rank_start - offset;
           int64_t size_for_current_rank = offset + tensor_count - rank_start;

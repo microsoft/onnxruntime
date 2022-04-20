@@ -25,8 +25,8 @@ ONNX_OPERATOR_KERNEL_EX(
     13,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", ALL_IEEE_FLOAT_TENSOR_TYPES)
-        .TypeConstraint("T1", ALL_IEEE_FLOAT_TENSOR_TYPES)
+        .TypeConstraint("T", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
+        .TypeConstraint("T1", BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
         .InputMemoryType(OrtMemTypeCPUInput, 1)
         .InputMemoryType(OrtMemTypeCPUInput, 2),
@@ -50,7 +50,7 @@ Status Dropout::ComputeInternal(OpKernelContext* context) const {
   float ratio_data = default_ratio_;
   auto ratio = context->Input<Tensor>(1);
   if (ratio) {
-    utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(ratio->GetElementType());
+    utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(ratio->GetElementType());
     t_disp.Invoke<GetRatioDataImpl>(ratio, ratio_data);
   }
 
@@ -80,7 +80,7 @@ Status Dropout::ComputeInternal(OpKernelContext* context) const {
 
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
 
-  utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> t_disp(X->GetElementType());
+  utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(X->GetElementType());
   t_disp.Invoke<DropoutComputeImpl>(GetDeviceProp(), Stream(), N, ratio_data, generator, *X, *Y, mask_data);
 
   return Status::OK();

@@ -10,10 +10,29 @@
 
 namespace onnxruntime {
 // kernel builder functions
+#define WHERE_VERSIONED_TYPED_KERNEL_WITH_TYPE_NAME(type, type_name)               \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                        \
+      Where,                                                                       \
+      9,                                                                           \
+      15,                                                                          \
+      type_name,                                                                   \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
+      Where<type>)
+
+#define WHERE_VERSIONED_TYPED_KERNEL(type) \
+  WHERE_VERSIONED_TYPED_KERNEL_WITH_TYPE_NAME(type, type)
+
+WHERE_VERSIONED_TYPED_KERNEL(uint8_t)
+WHERE_VERSIONED_TYPED_KERNEL(int32_t)
+WHERE_VERSIONED_TYPED_KERNEL(int64_t)
+WHERE_VERSIONED_TYPED_KERNEL(float)
+WHERE_VERSIONED_TYPED_KERNEL(double)
+WHERE_VERSIONED_TYPED_KERNEL_WITH_TYPE_NAME(std::string, string)
+
 #define WHERE_TYPED_KERNEL_WITH_TYPE_NAME(type, type_name)                         \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
       Where,                                                                       \
-      9,                                                                           \
+      16,                                                                          \
       type_name,                                                                   \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
       Where<type>)
@@ -52,7 +71,7 @@ template <typename T>
 ProcessBroadcastSpanFuncs CreateScalarBroadcastFuncs() {
   return ProcessBroadcastSpanFuncs{
       [](BroadcastHelper& per_iter_bh) {
-        bool target = per_iter_bh.GetUserData();
+        bool target = (per_iter_bh.GetUserData() != nullptr);
         bool condition = per_iter_bh.ScalarInput0<bool>();
         auto value = per_iter_bh.EigenInput1<T>();
         auto output = per_iter_bh.OutputEigen<T>();
@@ -63,7 +82,7 @@ ProcessBroadcastSpanFuncs CreateScalarBroadcastFuncs() {
         }
       },
       [](BroadcastHelper& per_iter_bh) {
-        bool target = per_iter_bh.GetUserData();
+        bool target = (per_iter_bh.GetUserData() != nullptr);
         auto condition = per_iter_bh.EigenInput0<bool>();
         const T& value = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputEigen<T>();
@@ -71,7 +90,7 @@ ProcessBroadcastSpanFuncs CreateScalarBroadcastFuncs() {
                      .select(value, EigenVectorMap<T>::PlainObject::Constant(condition.size(), T{}));
       },
       [](BroadcastHelper& per_iter_bh) {
-        bool target = per_iter_bh.GetUserData();
+        bool target = (per_iter_bh.GetUserData() != nullptr);
         auto condition = per_iter_bh.EigenInput0<bool>();
         auto value = per_iter_bh.EigenInput1<T>();
         auto output = per_iter_bh.OutputEigen<T>();
@@ -84,7 +103,7 @@ template <typename T>
 ProcessBroadcastSpanFuncs CreateNonScalarBroadcastFuncs() {
   return ProcessBroadcastSpanFuncs{
       [](BroadcastHelper& per_iter_bh) {
-        bool target = per_iter_bh.GetUserData();
+        bool target = (per_iter_bh.GetUserData() != nullptr);
         bool condition = per_iter_bh.ScalarInput0<bool>();
         auto value = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
@@ -95,7 +114,7 @@ ProcessBroadcastSpanFuncs CreateNonScalarBroadcastFuncs() {
         }
       },
       [](BroadcastHelper& per_iter_bh) {
-        bool target = per_iter_bh.GetUserData();
+        bool target = (per_iter_bh.GetUserData() != nullptr);
         auto condition = per_iter_bh.SpanInput0<bool>();
         const T& value = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
@@ -105,7 +124,7 @@ ProcessBroadcastSpanFuncs CreateNonScalarBroadcastFuncs() {
                        });
       },
       [](BroadcastHelper& per_iter_bh) {
-        bool target = per_iter_bh.GetUserData();
+        bool target = (per_iter_bh.GetUserData() != nullptr);
         auto condition = per_iter_bh.SpanInput0<bool>();
         auto value = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();

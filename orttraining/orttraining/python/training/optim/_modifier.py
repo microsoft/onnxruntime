@@ -10,7 +10,7 @@
 
 import torch
 from numpy import inf
-from .multi_tensor_apply import MultiTensorApply
+from ._multi_tensor_apply import MultiTensorApply
 multi_tensor_applier = MultiTensorApply(2048 * 32)
 
 class FP16OptimizerModifier(object):
@@ -26,6 +26,7 @@ class FP16OptimizerModifier(object):
         try:
             if require_apex is True:
                 import amp_C
+                from apex import amp
             if require_torch_non_finite_check is True:
                 _ = torch._amp_foreach_non_finite_check_and_unscale_
         except Exception as _:
@@ -89,6 +90,7 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type,
     norm_type = float(norm_type)
     total_norm = 0.0
 
+    dummy_overflow_buf = torch.cuda.IntTensor([0])
     # Calculate norm.
     if norm_type == inf:
         total_norm = max(grad.abs().max() for grad in grads_for_norm)
@@ -103,7 +105,6 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type,
 
     else:
         if norm_type == 2.0:
-            dummy_overflow_buf = torch.cuda.IntTensor([0])
             # Use apex's multi-tensor applier for efficiency reasons.
             # Multi-tensor applier takes a function and a list of list
             # and performs the operation on that list all in one kernel.
@@ -132,6 +133,15 @@ def clip_grad_norm_fp32(parameters, max_norm, norm_type,
                                         op=torch.distributed.ReduceOp.SUM,
                                         group=get_horizontal_model_parallel_group())
         total_norm = total_norm.item() ** (1.0 / norm_type)
+        clip_coef = max_norm / (total_norm + 1e-6)
+        # Filter parameters with gradients.
+        grads = [p.grad for p in parameters if p.grad is not None]
+        if clip_coef < 1.0:
+            multi_tensor_applier(
+                amp_C.multi_tensor_scale,
+                dummy_overflow_buf,
+                [grads, grads],
+                clip_coef)
 
     return total_norm
 

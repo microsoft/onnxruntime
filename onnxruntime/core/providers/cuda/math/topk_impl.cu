@@ -26,7 +26,7 @@ struct KV {
 
 template <typename T>
 struct NumericLimits {
-  static T Lowest() {
+  static T Min() {
     return std::numeric_limits<T>::lowest();
   }
   static T Max() {
@@ -36,12 +36,32 @@ struct NumericLimits {
 
 template <>
 struct NumericLimits<MLFloat16> {
-   static half Lowest() {
+   static half Min() {
      return -65504.0;
    }
    static half Max() {
      return 65504.0;
    }
+};
+
+template <>
+struct NumericLimits<float> {
+  static float Min() {
+    return -INFINITY;
+  }
+  static float Max() {
+    return INFINITY;
+  }
+};
+
+template <>
+struct NumericLimits<double> {
+  static double Min() {
+    return -HUGE_VAL;
+  }
+  static double Max() {
+    return HUGE_VAL;
+  }
 };
 
 #define BT GridDim::maxThreadsPerBlock
@@ -177,13 +197,11 @@ __device__ __inline__ bool Equal(const T& t0, const T& t1) {
 }
 
 __device__ __inline__ bool Equal(const float& t0, const float& t1) {
-  auto t2 = t0 > t1 ? t0 - t1 : t1 - t0;
-  return t2 < std::numeric_limits<float>::epsilon();
+  return !(t0 > t1 || t1 > t0);
 }
 
 __device__ __inline__ bool Equal(const double& t0, const double& t1) {
-  auto t2 = t0 > t1 ? t0 - t1 : t1 - t0;
-  return t2 < std::numeric_limits<double>::epsilon();
+  return !(t0 > t1 || t1 > t0);
 }
 
 template<typename T>
@@ -285,7 +303,7 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const TArray<int64_t> el
       } 
     } else {
       if (KK > negative) {
-        KK = dimension - KK + 1;     
+        KK = dimension - KK + 1;
       } else {
         sign = (T)-1;
       } 
@@ -417,26 +435,25 @@ __global__ void ExcludeOutput(int64_t* output_i, int64_t K, int64_t dimension) {
 }
 
 template <typename T>
-Status TopKImpl(const CudaKernel* kernel, const T* input_x, T* output_v, int64_t* output_i, const TArray<int64_t>& elem_nums, size_t size, int32_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension) {
+Status TopKImpl(const CudaKernel* kernel, cudaStream_t stream, const T* input_x, T* output_v, int64_t* output_i, const TArray<int64_t>& elem_nums, size_t size, int32_t axis, int64_t K, int64_t largest, int64_t sorted, int64_t N, int64_t dimension) {
   typedef typename ToCudaType<T>::MappedType CudaT;
-  cudaStream_t stream = kernel->Stream();
   const CudaT* input_x_ptr = reinterpret_cast<const CudaT*>(input_x);
   CudaT* output_v_ptr = reinterpret_cast<CudaT*>(output_v);
 
   auto aligned_K = ALIGN(K);
   auto aligned_dimension = ALIGN(dimension);
   if (aligned_dimension <= GridDim::maxThreadsPerBlock) {
-    BitonicTopK<CudaT><<<N, GridDim::maxThreadsPerBlock, aligned_dimension * sizeof(KV<CudaT>), stream>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, aligned_K, largest, sorted, dimension, aligned_dimension, NumericLimits<T>::Lowest(), NumericLimits<T>::Max());
+    BitonicTopK<CudaT><<<N, GridDim::maxThreadsPerBlock, aligned_dimension * sizeof(KV<CudaT>), stream>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, aligned_K, largest, sorted, dimension, aligned_dimension, NumericLimits<T>::Min(), NumericLimits<T>::Max());
   } else if (K <= BT*16 || 0 == sorted) {
     auto XPT = static_cast<int64_t>(ceil(static_cast<double>(dimension) / GridDim::maxThreadsPerBlock));
     if (BT*2 >= K || 0 == sorted) {
-      RadixTopK<CudaT, BT, 2><<<N, BT, 256 * sizeof(uint32_t), stream>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, NumericLimits<T>::Lowest(), NumericLimits<T>::Max());
+      RadixTopK<CudaT, BT, 2><<<N, BT, 256 * sizeof(uint32_t), stream>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, NumericLimits<T>::Min(), NumericLimits<T>::Max());
     } else if (BT*4>=K) {
-      RadixTopK<CudaT, BT, 4><<<N, BT, 256 * sizeof(uint32_t), stream>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, NumericLimits<T>::Lowest(), NumericLimits<T>::Max());
+      RadixTopK<CudaT, BT, 4><<<N, BT, 256 * sizeof(uint32_t), stream>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, NumericLimits<T>::Min(), NumericLimits<T>::Max());
     } else if (BT*8>=K) {
-      RadixTopK<CudaT, BT, 8><<<N, BT, 256 * sizeof(uint32_t), stream>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, NumericLimits<T>::Lowest(), NumericLimits<T>::Max());
+      RadixTopK<CudaT, BT, 8><<<N, BT, 256 * sizeof(uint32_t), stream>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, NumericLimits<T>::Min(), NumericLimits<T>::Max());
     } else {
-      RadixTopK<CudaT, BT, 16><<<N, BT, 256 * sizeof(uint32_t), stream>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, NumericLimits<T>::Lowest(), NumericLimits<T>::Max());
+      RadixTopK<CudaT, BT, 16><<<N, BT, 256 * sizeof(uint32_t), stream>>>(input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT, NumericLimits<T>::Min(), NumericLimits<T>::Max());
     }
   } else {
     auto input_key_buffer = kernel->GetScratchBuffer<CudaT>(dimension);
@@ -470,6 +487,7 @@ Status TopKImpl(const CudaKernel* kernel, const T* input_x, T* output_v, int64_t
 }
 
 #define TOPKIMPLE(T) template Status TopKImpl<T>(const CudaKernel* kernel, \
+                                                 cudaStream_t stream,      \
                                                  const T* input_x,         \
                                                  T* output_v,              \
                                                  int64_t* output_i,        \

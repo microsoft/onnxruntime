@@ -10,6 +10,7 @@
 #include "winml_adapter_c_api.h"
 #include "core/framework/execution_provider.h"
 #include "core/providers/winml/winml_provider_factory.h"
+#include "core/providers/dml/dml_provider_factory.h"
 #include "OnnxruntimeEngine.h"
 #include "OnnxruntimeErrors.h"
 #include "OnnxruntimeModel.h"
@@ -17,15 +18,17 @@
 
 namespace {
 const WinmlAdapterApi* winml_adapter_api;
+const OrtDmlApi* ort_dml_api;
 const OrtApi* ort_api;
 OrtEnv* ort_env;
 
 void AdapterDmlEpTestSetup() {
   GPUTEST;
   winrt::init_apartment();
-  ort_api = OrtGetApiBase()->GetApi(2);
-  winml_adapter_api = OrtGetWinMLAdapter(ort_api);
-  ort_api->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env);
+  ort_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  THROW_IF_NOT_OK_MSG(ort_api->GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)), ort_api);
+  winml_adapter_api = OrtGetWinMLAdapter(ORT_API_VERSION);
+  THROW_IF_NOT_OK_MSG(ort_api->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env), ort_api);
 #ifdef BUILD_INBOX
   winrt_activation_handler = WINRT_RoGetActivationFactory;
 #endif
@@ -145,8 +148,8 @@ void DmlCreateAndFreeGPUAllocationFromD3DResource() {
 
   auto d3d12_resource = CreateD3D12Resource(*device);
   void* dml_allocator_resource;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlCreateGPUAllocationFromD3DResource(d3d12_resource.get(), &dml_allocator_resource), ort_api);
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlFreeGPUAllocation(dml_allocator_resource), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_dml_api->CreateGPUAllocationFromD3DResource(d3d12_resource.get(), &dml_allocator_resource), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_dml_api->FreeGPUAllocation(dml_allocator_resource), ort_api);
 }
 
 void DmlGetD3D12ResourceFromAllocation() {
@@ -156,68 +159,42 @@ void DmlGetD3D12ResourceFromAllocation() {
 
   auto d3d12_resource = CreateD3D12Resource(*device);
   void* gpu_allocation;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlCreateGPUAllocationFromD3DResource(d3d12_resource.get(), &gpu_allocation), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_dml_api->CreateGPUAllocationFromD3DResource(d3d12_resource.get(), &gpu_allocation), ort_api);
 
   auto session = CreateDmlSession();
-  OrtExecutionProvider* ort_provider;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
+
+  OrtMemoryInfo* ort_memory_info;
+  THROW_IF_NOT_OK_MSG(ort_api->CreateMemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info), ort_api);
+
+  OrtAllocator* ort_allocator;
+  THROW_IF_NOT_OK_MSG(ort_api->CreateAllocator(session.get(), ort_memory_info, &ort_allocator), ort_api);
+  auto allocator = UniqueOrtAllocator(ort_allocator, ort_api->ReleaseAllocator);
+
   winrt::com_ptr<ID3D12Resource> d3d12_resource_from_allocation;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlGetD3D12ResourceFromAllocation(ort_provider, gpu_allocation, d3d12_resource_from_allocation.put()), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_dml_api->GetD3D12ResourceFromAllocation(allocator.get(), gpu_allocation, d3d12_resource_from_allocation.put()), ort_api);
   // Ensure resource is the same
   WINML_EXPECT_EQUAL(d3d12_resource, d3d12_resource_from_allocation);
 
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlFreeGPUAllocation(gpu_allocation), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_dml_api->FreeGPUAllocation(gpu_allocation), ort_api);
 }
 
-UniqueOrtValue CreateTensorFromMemoryInfo(OrtMemoryInfo* memory_info) {
+UniqueOrtValue CreateTensorFromMemoryInfo(const OrtMemoryInfo* memory_info) {
   OrtValue* tensor;
   THROW_IF_NOT_OK_MSG(ort_api->CreateTensorWithDataAsOrtValue(memory_info, tensor_values.data(), tensor_size * sizeof(float), dimensions.data(), dimensions.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &tensor), ort_api);
   return UniqueOrtValue(tensor, ort_api->ReleaseValue);
 }
 
-void GetProviderMemoryInfo() {
+void GetTensorMemoryInfo() {
   GPUTEST;
   auto session = CreateDmlSession();
-  OrtExecutionProvider* ort_provider;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
-  OrtMemoryInfo *memory_info;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->GetProviderMemoryInfo(ort_provider, &memory_info), ort_api);
-  auto unique_memory_info = UniqueOrtMemoryInfo(memory_info, ort_api->ReleaseMemoryInfo);
-  // Ensure tensor can be created with the provided OrtMemoryInfo
-  CreateTensorFromMemoryInfo(unique_memory_info.get());
-}
 
-void GetAndFreeProviderAllocator() {
-  GPUTEST;
-  auto session = CreateDmlSession();
-  OrtExecutionProvider* ort_provider;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
-  OrtAllocator *allocator;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->GetProviderAllocator(ort_provider, &allocator), ort_api);
-  auto unique_allocator = UniqueOrtAllocator(allocator, winml_adapter_api->FreeProviderAllocator);
+  OrtMemoryInfo* ort_memory_info;
+  THROW_IF_NOT_OK_MSG(ort_api->CreateMemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info), ort_api);
+  auto tensor = CreateTensorFromMemoryInfo(ort_memory_info);
 
-  // Ensure allocation works
-  void *data = nullptr;
-  THROW_IF_NOT_OK_MSG(ort_api->AllocatorAlloc(unique_allocator.get(), 1024, &data), ort_api);
-  WINML_EXPECT_NOT_EQUAL(nullptr, data);
-  THROW_IF_NOT_OK_MSG(ort_api->AllocatorFree(unique_allocator.get(), data), ort_api);
-}
-
-void GetValueMemoryInfo() {
-  GPUTEST;
-  auto session = CreateDmlSession();
-  OrtExecutionProvider* ort_provider;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
-
-  OrtMemoryInfo *memory_info;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->GetProviderMemoryInfo(ort_provider, &memory_info), ort_api);
-  auto unique_memory_info = UniqueOrtMemoryInfo(memory_info, ort_api->ReleaseMemoryInfo);
-  auto tensor = CreateTensorFromMemoryInfo(unique_memory_info.get());
-
-  OrtMemoryInfo *value_memory_info;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->GetValueMemoryInfo(tensor.get(), &value_memory_info), ort_api);
-  auto unique_value_memory_info = UniqueOrtMemoryInfo(value_memory_info, ort_api->ReleaseMemoryInfo);
-  CreateTensorFromMemoryInfo(unique_value_memory_info.get());
+  const OrtMemoryInfo* value_memory_info;
+  THROW_IF_NOT_OK_MSG(ort_api->GetTensorMemoryInfo(tensor.get(), &value_memory_info), ort_api);
+  CreateTensorFromMemoryInfo(value_memory_info);
 }
 
 void ExecutionProviderSync() {
@@ -255,18 +232,17 @@ void DmlCopyTensor() {
   WINML_EXPECT_NOT_EQUAL(nullptr, winml_adapter_api->DmlCopyTensor(dml_provider, cpu_tensor.get(), dst_cpu_tensor.get()));
 
   // GPU to CPU
-  OrtMemoryInfo* dml_memory;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->GetProviderMemoryInfo(dml_provider, &dml_memory), ort_api);
-  auto unique_dml_memory = UniqueOrtMemoryInfo(dml_memory, ort_api->ReleaseMemoryInfo);
+  OrtMemoryInfo* ort_memory_info;
+  THROW_IF_NOT_OK_MSG(ort_api->CreateMemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info), ort_api);
 
   auto resource = CreateD3D12Resource(*device);
   void* dml_allocator_resource;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlCreateGPUAllocationFromD3DResource(resource.get(), &dml_allocator_resource), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_dml_api->CreateGPUAllocationFromD3DResource(resource.get(), &dml_allocator_resource), ort_api);
 
   std::array<int64_t, 3> shape = {720, 720, 3};
   OrtValue* gpu_value;
   THROW_IF_NOT_OK_MSG(ort_api->CreateTensorWithDataAsOrtValue(
-      dml_memory,
+      ort_memory_info,
       dml_allocator_resource,
       static_cast<size_t>(resource->GetDesc().Width),
       shape.data(),
@@ -277,7 +253,7 @@ void DmlCopyTensor() {
   dst_cpu_tensor = CreateTensorFromMemoryInfo(cpu_memory_info);
   THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlCopyTensor(dml_provider, gpu_value, dst_cpu_tensor.get()), ort_api);
 
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->DmlFreeGPUAllocation(dml_allocator_resource), ort_api);
+  THROW_IF_NOT_OK_MSG(ort_dml_api->FreeGPUAllocation(dml_allocator_resource), ort_api);
 }
 
 void CreateCustomRegistry() {
@@ -290,18 +266,17 @@ void CreateCustomRegistry() {
 void ValueGetDeviceId() {
   GPUTEST;
   auto session = CreateDmlSession();
-  OrtExecutionProvider* ort_provider;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->SessionGetExecutionProvider(session.get(), 0, &ort_provider), ort_api);
-  OrtMemoryInfo *memory_info;
-  THROW_IF_NOT_OK_MSG(winml_adapter_api->GetProviderMemoryInfo(ort_provider, &memory_info), ort_api);
-  auto gpu_tensor = CreateTensorFromMemoryInfo(memory_info);
+
+  OrtMemoryInfo* ort_memory_info;
+  THROW_IF_NOT_OK_MSG(ort_api->CreateMemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info), ort_api);
+  auto gpu_tensor = CreateTensorFromMemoryInfo(ort_memory_info);
 
   int16_t device_id;
   THROW_IF_NOT_OK_MSG(winml_adapter_api->ValueGetDeviceId(gpu_tensor.get(), &device_id), ort_api);
 
   OrtMemoryInfo* cpu_memory_info;
   THROW_IF_NOT_OK_MSG(ort_api->CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info), ort_api);
-  auto unique_cpu_memory_info = UniqueOrtMemoryInfo(memory_info, ort_api->ReleaseMemoryInfo);
+  auto unique_cpu_memory_info = UniqueOrtMemoryInfo(cpu_memory_info, ort_api->ReleaseMemoryInfo);
   auto cpu_tensor = CreateTensorFromMemoryInfo(unique_cpu_memory_info.get());
   THROW_IF_NOT_OK_MSG(winml_adapter_api->ValueGetDeviceId(cpu_tensor.get(), &device_id), ort_api);
   WINML_EXPECT_EQUAL(0, device_id);
@@ -329,9 +304,7 @@ const AdapterDmlEpTestApi& getapi() {
     DmlExecutionProviderReleaseCompletedReferences,
     DmlCreateAndFreeGPUAllocationFromD3DResource,
     DmlGetD3D12ResourceFromAllocation,
-    GetProviderMemoryInfo,
-    GetAndFreeProviderAllocator,
-    GetValueMemoryInfo,
+    GetTensorMemoryInfo,
     ExecutionProviderSync,
     DmlCopyTensor,
     CreateCustomRegistry,

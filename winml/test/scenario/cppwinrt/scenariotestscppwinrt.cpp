@@ -260,6 +260,14 @@ static void Scenario6BindWithProperties() {
     // insert it in the property set
     propertySet.Insert(L"BitmapPixelFormat", bitmapPixelFormatProperty);
 
+    // make a LearningModelPixelRange
+    LearningModelPixelRange pixelRange = LearningModelPixelRange::ZeroTo255;
+    // translate it to an int so it can be used as a PropertyValue;
+    int intFromLearningModelPixelRange = static_cast<int>(pixelRange);
+    auto pixelRangeProperty = wf::PropertyValue::CreateInt32(intFromLearningModelPixelRange);
+    // insert it in the property set
+    propertySet.Insert(L"PixelRange", pixelRangeProperty);
+
     // bind with properties
     WINML_EXPECT_NO_THROW(binding.Bind(input.Name(), imageValue, propertySet));
   }

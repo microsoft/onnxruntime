@@ -44,6 +44,7 @@ class ISequentialPlannerContext {
   virtual ExecutionOrder GetExecutionOrder() const { return ExecutionOrder::DEFAULT; }
 
   virtual bool GetEnableMemoryReuse() const { return true; }
+  virtual ~ISequentialPlannerContext() = default;
 };
 
 class SequentialPlannerContext : public ISequentialPlannerContext {

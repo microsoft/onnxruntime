@@ -1,7 +1,7 @@
 
 import os
 import torch
-from onnxruntime.training.ortmodule import ORTModule
+from onnxruntime.training import ortmodule
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.training.ortmodule.experimental.json_config import load_from_json
 
@@ -22,7 +22,7 @@ class Net(torch.nn.Module):
 
 def test_load_config_from_json_1():
     device = 'cuda'
-    model = ORTModule(Net().to(device))
+    model = ortmodule.ORTModule(Net().to(device))
 
     # load from json once.
     path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_experimental_json_config_2.json')
@@ -72,9 +72,12 @@ def test_load_config_from_json_1():
         # test fallback policy
         assert ort_model_attributes._fallback_manager.policy.value == 1
 
+        # assert onnx opset version
+        assert ortmodule.ONNX_OPSET_VERSION == 13
+
 def test_load_config_from_json_2():
     device = 'cuda'
-    model = ORTModule(Net().to(device))
+    model = ortmodule.ORTModule(Net().to(device))
 
     # load from json once.
     path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_experimental_json_config_1.json')
@@ -123,3 +126,6 @@ def test_load_config_from_json_2():
 
         # test fallback policy
         assert ort_model_attributes._fallback_manager.policy.value == 250
+
+        # assert onnx opset version
+        assert ortmodule.ONNX_OPSET_VERSION == 12

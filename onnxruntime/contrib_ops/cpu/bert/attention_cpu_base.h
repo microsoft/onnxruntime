@@ -9,7 +9,12 @@
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
 namespace onnxruntime {
 namespace contrib {
 
@@ -61,7 +66,7 @@ class AttentionCPUBase : public AttentionBase {
     BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
 
     const int32_t* mask_index_data = mask_index != nullptr ? mask_index->template Data<int32_t>() : nullptr;
-    const std::vector<int64_t>* mask_index_dims = mask_index != nullptr ? &(mask_index->Shape().GetDims()) : nullptr;
+    gsl::span<const int64_t> mask_index_dims = mask_index != nullptr ? mask_index->Shape().GetDims() : gsl::span<const int64_t>{};
     const T* past_data = past != nullptr ? past->template Data<T>() : nullptr;
     T* present_data = present != nullptr ? present->template MutableData<T>() : nullptr;
 
@@ -97,7 +102,7 @@ class AttentionCPUBase : public AttentionBase {
                              const T* Q,                                   // Q data. Its size is BxNxSxH
                              const T* K,                                   // k data. Its size is BxNxSxH
                              const int32_t* mask_index,                    // mask index. nullptr if no mask or its size is B
-                             const std::vector<int64_t>* mask_index_dims,  // mask index shape
+                             gsl::span<const int64_t> mask_index_dims,     // mask index shape
                              T* mask_data,                                 // buffer for mask data. It is nullptr if mask_index is nullptr and not unidirectional, otherwise its shape is BxSxS*
                              bool has_unidirectional,                      // has unidirectional mask
                              int batch_size,                               // batch size of self-attention
@@ -156,7 +161,7 @@ class AttentionCPUBase : public AttentionBase {
                                     output, nullptr);
 
           // Fix unidirectional mask to be parity with huggingface implementation.
-          if (has_unidirectional) {
+          if (has_unidirectional && mask_data != nullptr) {
             for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
               for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
                 int j = s_i * all_sequence_length + m_i;
@@ -242,3 +247,6 @@ class AttentionCPUBase : public AttentionBase {
 
 }  // namespace contrib
 }  // namespace onnxruntime
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif

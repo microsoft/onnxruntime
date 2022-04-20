@@ -68,9 +68,11 @@ struct ATenOperator {
 
     bool is_list = is_list_arguments[index];
     c10::IValue i_value;
+    // Create the torch tensor from this DLPack no matter we need it or not below,
+    // so that the dlpack's deleter will be triggered when torch tensor is out of scope.
+    at::Tensor tensor = at::fromDLPack(dlpack);
     switch (elem_kinds[index]) {
       case c10::TypeKind::TensorType: {
-        at::Tensor tensor = at::fromDLPack(dlpack);
         i_value = is_optional ? c10::IValue(c10::optional<at::Tensor>(tensor)) : c10::IValue(tensor);
       } break;
       case c10::TypeKind::IntType: {

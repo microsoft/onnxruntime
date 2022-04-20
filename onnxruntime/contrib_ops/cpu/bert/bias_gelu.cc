@@ -45,7 +45,7 @@ Status BiasGelu<T, use_approximation>::Compute(OpKernelContext* context) const {
     // N = 4096 is selected based on performance test results on input shape 1x128x768.
     ORT_ENFORCE(use_approximation);
     if (use_approximation) {
-      static const int64_t length_per_task = 4096;
+      static constexpr int64_t length_per_task = 4096;
       int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
       concurrency::ThreadPool::TryBatchParallelFor(
           context->GetOperatorThreadPool(), static_cast<int32_t>(task_count),

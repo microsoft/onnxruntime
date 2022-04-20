@@ -140,6 +140,8 @@ def main():
                         help='how many batches to wait before logging training status (default: 300)')
     parser.add_argument('--view-graphs', action='store_true', default=False,
                         help='views forward and backward graphs')
+    parser.add_argument('--export-onnx-graphs', action='store_true', default=False,
+                        help='export ONNX graphs to current directory')
     parser.add_argument('--epochs', type=int, default=10, metavar='N',
                         help='number of epochs to train (default: 10)')
     parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], default='WARNING',
@@ -199,7 +201,7 @@ def main():
         log_level = log_level_mapping.get(args.log_level.upper(), None)
         if not isinstance(log_level, LogLevel):
             raise ValueError('Invalid log level: %s' % args.log_level)
-        debug_options = DebugOptions(log_level=log_level, save_onnx=False, onnx_prefix='MNIST')
+        debug_options = DebugOptions(log_level=log_level, save_onnx=args.export_onnx_graphs, onnx_prefix='MNIST')
 
         model = ORTModule(model, debug_options)
 

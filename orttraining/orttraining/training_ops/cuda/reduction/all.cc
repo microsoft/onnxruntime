@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cuda/reduction/all.h"
+#include "orttraining/training_ops/cuda/reduction/all_impl.h"
 
 namespace onnxruntime {
 namespace cuda {

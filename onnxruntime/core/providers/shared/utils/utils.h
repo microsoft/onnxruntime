@@ -17,6 +17,7 @@ class Logger;
 
 class Node;
 class NodeArg;
+class NodeUnit;
 
 // Get the min/max of a Clip operator.
 // If min/max are not known initializer tensors, will return false
@@ -34,7 +35,10 @@ bool GetType(const NodeArg& node_arg, int32_t& type, const logging::Logger& logg
  */
 class NodeAttrHelper {
  public:
-  NodeAttrHelper(const onnxruntime::Node& node);
+  explicit NodeAttrHelper(const Node& node);
+
+  // Get the attributes from the target node of the node_unit
+  explicit NodeAttrHelper(const NodeUnit& node_unit);
 
   float Get(const std::string& key, float def_val) const;
 
@@ -52,7 +56,7 @@ class NodeAttrHelper {
   bool HasAttr(const std::string& key) const;
 
  private:
-  const onnxruntime::NodeAttributes& node_attributes_;
+  const NodeAttributes& node_attributes_;
 };
 
 }  // namespace onnxruntime

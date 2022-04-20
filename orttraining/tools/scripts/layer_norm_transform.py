@@ -163,11 +163,11 @@ def main():
     input_mask = np.ones((batch, sq_length), dtype=np.int64)
 
     # Do forward using the original model.
-    sess = ort.InferenceSession(model_file_path)
+    sess = ort.InferenceSession(model_file_path, providers=ort.get_available_providers())
     result = sess.run(None, {'input1': input_ids, 'input2': segment_ids, 'input3': input_mask})
 
     # Do forward using the new model.
-    new_sess = ort.InferenceSession(new_model_file_path)
+    new_sess = ort.InferenceSession(new_model_file_path, providers=ort.get_available_providers())
     new_result = new_sess.run(None, {'input1': input_ids, 'input2': segment_ids, 'input3': input_mask})
 
     # Compare the outcomes from the two models.

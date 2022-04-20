@@ -121,7 +121,7 @@ def perf_test(rnn_type, num_threads, input_dim, hidden_dim, bidirectional, layer
         convert_to_scan_model(model_name, scan_model_name)
         # note that symbolic shape inference is needed because model has symbolic batch dim, thus init_state is ConstantOfShape
         onnx.save(SymbolicShapeInference.infer_shapes(onnx.load(scan_model_name)), scan_model_name)
-        sess = onnxruntime.InferenceSession(scan_model_name)
+        sess = onnxruntime.InferenceSession(scan_model_name, providers=onnxruntime.get_available_providers())
         count, duration, per_iter_cost = perf_run(sess, feeds, min_counts=top_n, min_duration_seconds=min_duration_seconds)
         avg_scan = top_n_avg(per_iter_cost, top_n)
         print('perf_scan (with {} threads) {}: run for {} iterations, top {} avg {:.3f} ms'.format(num_threads, scan_model_name, count, top_n, avg_scan))
@@ -131,7 +131,7 @@ def perf_test(rnn_type, num_threads, input_dim, hidden_dim, bidirectional, layer
         int8_model_name = os.path.splitext(model_name)[0] + '_int8.onnx'
         convert_matmul_model(scan_model_name, int8_model_name)
         onnx.save(SymbolicShapeInference.infer_shapes(onnx.load(int8_model_name)), int8_model_name)
-        sess = onnxruntime.InferenceSession(int8_model_name)
+        sess = onnxruntime.InferenceSession(int8_model_name, providers=onnxruntime.get_available_providers())
         count, duration, per_iter_cost = perf_run(sess, feeds, min_counts=top_n, min_duration_seconds=min_duration_seconds)
         avg_int8 = top_n_avg(per_iter_cost, top_n)
         print('perf_int8 (with {} threads) {}: run for {} iterations, top {} avg {:.3f} ms'.format(num_threads, int8_model_name, count, top_n, avg_int8))

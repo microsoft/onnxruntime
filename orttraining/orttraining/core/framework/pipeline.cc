@@ -11,7 +11,10 @@
 #include <stdexcept>
 #include <thread>
 #include <iomanip>
-
+//TODO: fix the warnings
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(disable : 26451)
+#endif
 namespace onnxruntime {
 namespace training {
 namespace pipeline {
@@ -98,7 +101,7 @@ PipelineScheduler::PipelineScheduler(
 
   CreateComputeSchedule();
 
-  const size_t num_events_per_slot_compute_side = 2;
+  constexpr size_t num_events_per_slot_compute_side = 2;
   std::vector<int> compute_default_events(num_events_per_slot_compute_side, -1);
   InsertEvents(compute_table_, num_events_per_slot_compute_side, compute_default_events);
 
@@ -107,7 +110,7 @@ PipelineScheduler::PipelineScheduler(
   // Change the pipeline stage ID to actual MPI rank in Send and Recv.
   MapStageIdToMpiRank();
 
-  const size_t num_events_per_slot_side = 1;
+  constexpr size_t num_events_per_slot_side = 1;
   std::vector<int> default_events(num_events_per_slot_side, -1);
   InsertEvents(compute_commute_table_, num_events_per_slot_side, default_events);
 }
@@ -138,16 +141,16 @@ std::ostream& operator<<(std::ostream& stream, const PipelineSlot& slot) {
   return stream;
 }
 
-void PipelineSlot::SetWaitedEvent(const std::vector<int> events) {
-  waited_events_ = std::move(events);
+void PipelineSlot::SetWaitedEvent(const std::vector<int>& events) {
+  waited_events_ = events;
 }
 
 std::vector<int> PipelineSlot::GetWaitedEvent() const {
   return waited_events_;
 }
 
-void PipelineSlot::SetRecordedEvent(const std::vector<int> events) {
-  recorded_events_ = std::move(events);
+void PipelineSlot::SetRecordedEvent(const std::vector<int>& events) {
+  recorded_events_ = events;
 }
 
 std::vector<int> PipelineSlot::GetRecordedEvent() const {
@@ -298,7 +301,7 @@ void PipelineScheduler::CreateFullSchedule() {
       }
 
       // Get the only action in this slot.
-      const auto action = slot.GetFrontAction();
+      const auto& action = slot.GetFrontAction();
 
       const int batch = action.batch;
       // Stage of upstream compute in compute-only table.
@@ -319,7 +322,7 @@ void PipelineScheduler::CreateFullSchedule() {
       const auto upstream_slot = compute_table_.at(upstream_t).at(upstream_s);
 
       // Get the only action in upstream slot.
-      const auto upstream_action = upstream_slot.GetFrontAction();
+      const auto& upstream_action = upstream_slot.GetFrontAction();
 
       // Time of upstream compute in full table.
       const auto upstream_compute_time = upstream_action.full_table_time;
@@ -479,7 +482,7 @@ std::vector<int> PipelineScheduler::TryGetEvent(
   for (int t = 0; static_cast<size_t>(t) < compute_commute_table_.size(); ++t) {
     const auto slot = compute_commute_table_.at(t).at(stage_id);
     for (int a = 0; static_cast<size_t>(a) < slot.NumActions(); ++a) {
-      auto task = slot[a];
+      auto& task = slot[a];
       if (task.batch != batch_id) {
         continue;
       }

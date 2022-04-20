@@ -1,0 +1,114 @@
+parameters:
+- name: NpmPackagingMode
+  displayName: 'NPM packages publish configuration'
+  type: string
+  default: 'dev'
+- name: IsReleasePipeline
+  displayName: 'Npm packaging pipeline'
+  type: boolean
+  default: false
+- name: PoolName
+  displayName: 'Agent pool name'
+  type: string
+  default: 'Win-CPU-2019'
+- name: PackageName
+  displayName: 'Package name'
+  type: string
+  default: 'NPM_packages'
+- name: BuildStaticLib
+  displayName: 'Build static library'
+  type: boolean
+  default: false
+
+stages:
+- stage: Extract_commit
+  jobs:
+  - job: Extract_commit
+    pool: ${{ parameters.PoolName }}
+    variables:
+      runCodesignValidationInjection: false
+    timeoutInMinutes: 30
+    workspace:
+      clean: all
+    steps:
+    - checkout: none
+      fetchDepth: 1
+      submodules: false
+    - script: |
+        echo.$(Build.SourceVersion)
+        echo.$(Build.SourceVersion)>$(Build.ArtifactStagingDirectory)\__commit.txt
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        artifactName: '__commit'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+
+- stage: Build_wasm_Debug
+  dependsOn: Extract_commit
+  jobs:
+  - template: win-wasm-ci.yml
+    parameters:
+      CommitOverride: true
+      BuildConfig: 'Debug'
+      ExtraBuildArgs: '$(ExtraBuildArgs)'
+      PoolName: ${{ parameters.PoolName }}
+
+- stage: Build_web_Debug
+  dependsOn: Build_wasm_Debug
+  jobs:
+  - template: win-web-ci.yml
+    parameters:
+      CommitOverride: true
+      BuildConfig: 'Debug'
+      NpmPackagingMode: ${{ parameters.NpmPackagingMode }}
+      PoolName: ${{ parameters.PoolName }}
+      PackageName: ${{ parameters.PackageName }}
+
+- stage: Build_wasm_Release
+  dependsOn: Extract_commit
+  jobs:
+  - template: win-wasm-ci.yml
+    parameters:
+      CommitOverride: true
+      BuildConfig: 'Release'
+      ExtraBuildArgs: '--skip_tests --disable_wasm_exception_catching --disable_rtti $(ExtraBuildArgs)'
+      PoolName: ${{ parameters.PoolName }}
+
+- ${{ if eq(parameters.BuildStaticLib, 'true') }}:
+  - stage: Build_wasm_Release_static_library
+    dependsOn: Extract_commit
+    jobs:
+    - template: win-wasm-ci.yml
+      parameters:
+        CommitOverride: true
+        BuildConfig: 'Release'
+        ExtraBuildArgs: '$(ExtraBuildArgs)'
+        PoolName: ${{ parameters.PoolName }}
+        SkipPublish: true
+
+- stage: Build_web_Release
+  dependsOn: Build_wasm_Release
+  jobs:
+  - template: win-web-ci.yml
+    parameters:
+      CommitOverride: true
+      BuildConfig: 'Release'
+      NpmPackagingMode: ${{ parameters.NpmPackagingMode }}
+      PoolName: ${{ parameters.PoolName }}
+      PackageName: ${{ parameters.PackageName }}
+
+- ${{ if ne(parameters.IsReleasePipeline, true) }}:
+  - stage: Test_web_BrowserStack
+    dependsOn: Build_wasm_Release
+    jobs:
+    - template: web-browserstack-ci.yml
+      parameters:
+        CommitOverride: true
+
+- ${{ if ne(parameters.IsReleasePipeline, true) }}:
+  - stage: Test_web_MultiBrowsers
+    dependsOn: Build_wasm_Release
+    jobs:
+    - template: win-web-multi-browsers.yml
+      parameters:
+        CommitOverride: true

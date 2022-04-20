@@ -328,6 +328,8 @@ def main():
                         help='input batch size for testing (default: 64)')
     parser.add_argument('--view-graphs', action='store_true', default=False,
                         help='views forward and backward graphs')
+    parser.add_argument('--export-onnx-graphs', action='store_true', default=False,
+                        help='export ONNX graphs to current directory')
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
     parser.add_argument('--epochs', type=int, default=4, metavar='N',
@@ -390,7 +392,7 @@ def main():
 
     if not args.pytorch_only:
         # Just for future debugging
-        debug_options = DebugOptions(save_onnx=False, onnx_prefix='BertForSequenceClassificationAutoCast')
+        debug_options = DebugOptions(save_onnx=args.export_onnx_graphs, onnx_prefix='BertForSequenceClassificationAutoCast')
 
         model = ORTModule(model, debug_options)
         model._torch_module._execution_manager(is_training=True)._enable_grad_acc_optimization = True

@@ -3,17 +3,14 @@
 
 #pragma once
 
-#include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/selectors_actions/selector_action_transformer.h"
 
 namespace onnxruntime {
 
-class ConvActivationFusion : public GraphTransformer {
+class ConvActivationFusion : public SelectorActionTransformer {
  public:
-  ConvActivationFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("ConvActivationFusion", compatible_execution_providers) {}
-
- private:
-  Status ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+  ConvActivationFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
+                       const SatApplyContextVariant& apply_context = {});
 };
 
 }  // namespace onnxruntime

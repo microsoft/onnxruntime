@@ -31,10 +31,10 @@ else()
 
   if(HAS_UNUSED_BUT_SET_VARIABLE)
     target_compile_options(onnx_proto PRIVATE "-Wno-unused-but-set-variable")
-  endif()   
+  endif()
 endif()
 
-# For reference, this would be the full ONNX source include. We only need data_type_utils.* in this build.
+# For reference, this would be the full ONNX source include. We only need data_type_utils in this build.
 # file(GLOB_RECURSE onnx_src CONFIGURE_DEPENDS
 #     "${ONNX_SOURCE_ROOT}/onnx/*.h"
 #     "${ONNX_SOURCE_ROOT}/onnx/*.cc"
@@ -46,10 +46,11 @@ endif()
 #     "${ONNX_SOURCE_ROOT}/onnx/test/*"
 #     "${ONNX_SOURCE_ROOT}/onnx/cpp2py_export.cc"
 # )
-# list(REMOVE_ITEM onnx_src ${onnx_exclude_src})  
-file(GLOB onnx_src CONFIGURE_DEPENDS
-"${ONNX_SOURCE_ROOT}/onnx/common/common.h"
-"${ONNX_SOURCE_ROOT}/onnx/defs/data_type_utils.*"
+# list(REMOVE_ITEM onnx_src ${onnx_exclude_src})
+set(onnx_src
+  "${ONNX_SOURCE_ROOT}/onnx/common/common.h"
+  "${ONNX_SOURCE_ROOT}/onnx/defs/data_type_utils.h"
+  "${ONNX_SOURCE_ROOT}/onnx/defs/data_type_utils.cc"
 )
 
 add_library(onnx ${onnx_src})
@@ -75,7 +76,7 @@ if (WIN32)
           /EHsc   # exception handling - C++ may throw, extern "C" will not
       )
     endif()
-    
+
     target_compile_options(onnx_proto PRIVATE
         /wd4244 # 'argument' conversion from 'google::protobuf::int64' to 'int', possible loss of data
     )

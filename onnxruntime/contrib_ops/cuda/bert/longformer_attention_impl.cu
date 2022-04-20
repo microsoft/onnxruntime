@@ -843,7 +843,7 @@ bool LongformerQkvToContext(
   const int max_threads_per_block(device_prop.maxThreadsPerBlock);
 
   // Input should be BxSx3xNxH => qkv: 3xBxNxSxH
-  if (!LaunchTransQkv(stream, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, input, qkv)) {
+  if (!LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, false, input, qkv)) {
     return false;
   }
 
@@ -852,7 +852,7 @@ bool LongformerQkvToContext(
 
   // When there is no global token, no need to process global Q, K and V
   if (max_num_global > 0 && nullptr != global_input) {
-    if (!LaunchTransQkv(stream, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, global_input, global_qkv)) {
+    if (!LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, false, global_input, global_qkv)) {
       return false;
     }
   }
@@ -928,7 +928,7 @@ bool LongformerQkvToContext(
 
 
   // The temp_output is BxNxSxH, transpose it to final output BxSxNxH
-  return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, temp_output, output);
+  return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, false, temp_output, output);
 }
 
 bool LaunchLongformerAttentionKernel(

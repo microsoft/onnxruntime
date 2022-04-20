@@ -30,7 +30,7 @@ strip_ /manylinux-rootfs
 
 # Install
 cp -rlf /manylinux-rootfs/* /
-ldconfig
+ldconfig /
 
 # Clean-up for runtime
 rm -rf /manylinux-rootfs/usr/local/share

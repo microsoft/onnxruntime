@@ -39,6 +39,7 @@ struct IndexedSubGraph {
 
     std::vector<std::string> inputs;   ///< Inputs of customized SubGraph/FunctionProto.
     std::vector<std::string> outputs;  ///< Outputs of customized SubGraph/FunctionProto.
+    std::vector<std::string> constant_initializers;  ///< Constant initializers of customized SubGraph/FunctionProto.
     NodeAttributes attributes;         ///< Attributes of customized SubGraph/FunctionProto.
 
     std::string doc_string;  ///< Doc string of customized SubGraph/FunctionProto.

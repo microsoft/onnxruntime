@@ -5,9 +5,9 @@
 
 #include "core/framework/element_type_lists.h"
 #include "core/framework/utils.h"
+#include "core/framework/op_kernel_type_control_utils.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 #include "utils.h"
 
 namespace onnxruntime {
@@ -71,14 +71,14 @@ struct MultiIndex {
 * be transposed, if source_dims is the shape, stride[i] = source_dims[i+1] * source_dims[i+2] * ... * 1.
 * element_size is the size of the tensor element (sizeof(float), sizeof(double)).
 */
-static void IncrementIndexAndComputeOffsetSetup(MultiIndex& mindex, size_t num_axes, const std::vector<int64_t>& target_dims,
-                                                const std::vector<size_t>& stride, size_t element_size) {
+static void IncrementIndexAndComputeOffsetSetup(MultiIndex& mindex, size_t num_axes, gsl::span<const int64_t> target_dims,
+                                                const gsl::span<const size_t>& stride, size_t element_size) {
   mindex.Init(num_axes);
   size_t naxes = 0;
   for (size_t i = 0; i < num_axes; ++i) {
     if (target_dims[i] == 1)
       continue;
-    mindex.InitAxis(naxes, 0, static_cast<size_t>(target_dims[i]), stride[i] * element_size);
+    mindex.InitAxis(naxes, 0, static_cast<size_t>(target_dims[i]), stride[i] * static_cast<int64_t>(element_size));
     ++naxes;
   }
   ORT_ENFORCE(naxes > 0, "Method IncrementIndexAndComputeOffset assumes this value is strictly positive.");
@@ -132,8 +132,8 @@ static inline void DoTransposeSingleBlock(size_t num_elts_in_block, const std::s
 
 // DoTranspose: copies source tensor to target, transposing elements.
 // The stride vector indicates the transposition.
-static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target_dims,
-                            size_t num_blocks, size_t num_elts_in_block, const std::vector<size_t>& stride,
+static void DoTransposeImpl(int64_t num_axes, gsl::span<const int64_t> target_dims,
+                            size_t num_blocks, size_t num_elts_in_block, const gsl::span<const size_t>& stride,
                             const uint8_t* source, uint8_t* target, size_t element_size) {
   size_t blocksize = num_elts_in_block * element_size;
   MultiIndex mindex;
@@ -148,8 +148,8 @@ static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target
   }
 }
 
-static void DoTransposeImpl(int64_t num_axes, const std::vector<int64_t>& target_dims,
-                            size_t num_blocks, size_t num_elts_in_block, const std::vector<size_t>& stride,
+static void DoTransposeImpl(int64_t num_axes, gsl::span<const int64_t> target_dims,
+                            size_t num_blocks, size_t num_elts_in_block, const gsl::span<const size_t>& stride,
                             const std::string* source, std::string* target) {
   ORT_ENFORCE(num_axes > 0, "Transpose not implemented for empty tensors.");
   MultiIndex mindex;
@@ -171,8 +171,8 @@ inline void CopyPrim(uint8_t* target, const uint8_t* source) {
 
 // The function does not check num_axes > 0 but this is expected.
 template <class T>
-static bool TypedDoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
-                                    const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target) {
+static bool TypedDoTransposeEltWise(int64_t num_axes, gsl::span<const int64_t> target_dims, size_t num_blocks,
+                                    const gsl::span<const size_t>& stride, const uint8_t* source, uint8_t* target) {
   constexpr bool enabled = utils::HasTypeWithSameSize<EnabledDataTypes, T>();
 
   if (enabled) {
@@ -194,8 +194,8 @@ static bool TypedDoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>
 // DoTransposeEltWise: specialization of DoTranspose for the num_elts_in_block=1 case.
 // copies source tensor to target, transposing elements.
 // The stride vector indicates the transposition.
-Status DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
-                          const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target,
+Status DoTransposeEltWise(int64_t num_axes, gsl::span<const int64_t> target_dims, size_t num_blocks,
+                          const gsl::span<const size_t>& stride, const uint8_t* source, uint8_t* target,
                           size_t element_size) {
   bool enabled = false;
   switch (element_size) {
@@ -221,8 +221,8 @@ Status DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_d
                                    element_size);
 }
 
-static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
-                               const std::vector<size_t>& stride, const std::string* source, std::string* target) {
+static void DoTransposeEltWise(int64_t num_axes, gsl::span<const int64_t> target_dims, size_t num_blocks,
+                               const gsl::span<const size_t>& stride, const std::string* source, std::string* target) {
   ORT_ENFORCE(num_axes > 0, "Transpose not implemented for empty tensors.");
   MultiIndex mindex;
   IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, 1);
@@ -238,7 +238,7 @@ static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& tar
 }
 
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
-static Status DoUntypedTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+static Status DoUntypedTranspose(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
                                  const TensorShape* input_shape_override = nullptr) {
   const auto& input_shape = input_shape_override ? *input_shape_override : input.Shape();
   const auto& input_dims = input_shape.GetDims();
@@ -247,7 +247,7 @@ static Status DoUntypedTranspose(const std::vector<size_t>& permutations, const 
   const auto element_size = input.DataType()->Size();
   const bool is_string_type = input.IsDataTypeString();
 
-  std::vector<size_t> stride(rank);
+  InlinedVector<size_t> stride(rank);
   for (size_t i = 0; i < rank; i++) {
     size_t inpdim = permutations[i];
     if (inpdim + 1 < rank)
@@ -393,7 +393,7 @@ SimpleTransposeSingleAxisOutwards(const T* input_data, T* output_data,
 }
 
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
-void TransposeSingleAxisOutwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+void TransposeSingleAxisOutwards(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
                                  int64_t from, int64_t to, const TensorShape* input_shape_override = nullptr) {
   ORT_UNUSED_PARAMETER(permutations);
 
@@ -503,7 +503,7 @@ SimpleTransposeSingleAxisInwards(const T* input_data, T* output_data,
 
 // moving a single axis inwards where the read/write size is a power of 2 and between 8 and 64 bits.
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
-void TransposeSingleAxisInwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+void TransposeSingleAxisInwards(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
                                 int64_t from, int64_t to, const TensorShape* input_shape_override = nullptr) {
   ORT_UNUSED_PARAMETER(permutations);
 
@@ -572,7 +572,7 @@ void TransposeSingleAxisInwards(const std::vector<size_t>& permutations, const T
 }
 
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
-void SingleAxisTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+void SingleAxisTranspose(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
                          size_t from, size_t to, const TensorShape* input_shape_override = nullptr) {
   if (from > to) {
     TransposeSingleAxisOutwards(permutations, input, output, from, to, input_shape_override);
@@ -581,7 +581,7 @@ void SingleAxisTranspose(const std::vector<size_t>& permutations, const Tensor& 
   }
 }
 
-bool IsMovingSingleAxis(const std::vector<size_t>& permutations, size_t& from, size_t& to) {
+bool IsMovingSingleAxis(const gsl::span<const size_t>& permutations, size_t& from, size_t& to) {
   // if a single axis moved to an outer dimension, the values should be one lower than the index until the slot the
   // axis was moved from, and equal to the index after that.
   // e.g. axis 3 moves out to 1 would be: 0, 3, 1, 2, 4
@@ -652,7 +652,7 @@ bool IsMovingSingleAxis(const std::vector<size_t>& permutations, size_t& from, s
 
 }  // namespace
 
-bool IsTransposeReshape(const std::vector<size_t>& perm, const std::vector<int64_t>& input_dims) {
+bool IsTransposeReshape(const gsl::span<const size_t>& perm, gsl::span<const int64_t> input_dims) {
   // As long as the dims with values > 1 stay in the same order, it's a reshape.
   // Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
   size_t last_permuted_axis = 0;
@@ -667,7 +667,7 @@ bool IsTransposeReshape(const std::vector<size_t>& perm, const std::vector<int64
 }
 
 //`input_shape_override` overrides the shape of `input` for compute purposes.
-Status TransposeBase::DoTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+Status TransposeBase::DoTranspose(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
                                   const TensorShape* input_shape_override) {
   Status status = Status::OK();
 
@@ -705,12 +705,12 @@ Status Transpose::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(input_tensor_ptr != nullptr);
   const Tensor& X = *input_tensor_ptr;
   const TensorShape& input_shape = X.Shape();
-  const std::vector<int64_t>& input_dims = input_shape.GetDims();
+  auto input_dims = input_shape.GetDims();
   size_t rank = input_dims.size();
 
-  std::vector<int64_t> output_dims(rank);
-  const std::vector<size_t>* p_perm;
-  std::vector<size_t> default_perm(rank);
+  TensorShapeVector output_dims(rank);
+  const InlinedVector<size_t>* p_perm;
+  InlinedVector<size_t> default_perm(rank);
   Status status = ComputeOutputShape(X, output_dims, default_perm, p_perm);
   if (!status.IsOK())
     return status;

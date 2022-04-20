@@ -157,7 +157,8 @@ class ThreadPool {
              const ThreadOptions& thread_options,
              const NAME_CHAR_TYPE* name,
              int degree_of_parallelism,
-             bool low_latency_hint);
+             bool low_latency_hint,
+             bool force_hybrid = false);
 
   // Waits until all scheduled work has finished and then destroy the
   // set of threads.
@@ -210,9 +211,7 @@ class ThreadPool {
     // point to avoid a dependence on the Eigen headers.
     std::unique_ptr<ThreadPoolParallelSection, void(*)(ThreadPoolParallelSection*)>
       ps_{nullptr, [](ThreadPoolParallelSection*){}};
-#ifndef _OPENMP
     ThreadPool *tp_;
-#endif
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ParallelSection);
 
     // Non-owning reference to the current thread's paralel section
@@ -260,13 +259,6 @@ class ThreadPool {
 
   inline static void TrySimpleParallelFor(ThreadPool* tp, std::ptrdiff_t total,
                                           const std::function<void(std::ptrdiff_t)>& fn) {
-#ifdef _OPENMP
-    ORT_UNUSED_PARAMETER(tp);
-#pragma omp parallel for
-    for (std::ptrdiff_t i = 0; i < total; ++i) {
-      fn(i);
-    }
-#else
     if (tp != nullptr) {
       tp->SimpleParallelFor(total, fn);
     } else {
@@ -275,7 +267,6 @@ class ThreadPool {
         fn(i);
       }
     }
-#endif
   }
 
   /**
@@ -290,14 +281,6 @@ class ThreadPool {
    **/
   template <typename F>
   inline static void TryBatchParallelFor(ThreadPool* tp, std::ptrdiff_t total, F&& fn, std::ptrdiff_t num_batches) {
-#ifdef _OPENMP
-    ORT_UNUSED_PARAMETER(tp);
-    ORT_UNUSED_PARAMETER(num_batches);
-#pragma omp parallel for
-    for (std::ptrdiff_t i = 0; i < total; ++i) {
-      fn(i);
-    }
-#else
     if (tp == nullptr) {
       for (std::ptrdiff_t i = 0; i < total; ++i) {
         // In many cases, fn can be inlined here.
@@ -330,18 +313,17 @@ class ThreadPool {
         fn(i);
       }
     });
-#endif
   }
 
   struct WorkInfo {
-    std::ptrdiff_t start;
-    std::ptrdiff_t end;
+    std::ptrdiff_t start{0};
+    std::ptrdiff_t end{0};
   };
 
   /** Calculate the start and end offsets for a batch.
       @remarks Based on MlasPartitionWork
   */
-  static WorkInfo PartitionWork(std::ptrdiff_t batch_idx, std::ptrdiff_t num_batches, std::ptrdiff_t total_work) {
+  constexpr static WorkInfo PartitionWork(std::ptrdiff_t batch_idx, std::ptrdiff_t num_batches, std::ptrdiff_t total_work) {
     const std::ptrdiff_t work_per_batch = total_work / num_batches;
     const std::ptrdiff_t work_per_batch_extra = total_work % num_batches;
 
@@ -443,6 +425,9 @@ class ThreadPool {
 
   // If used, underlying_threadpool_ is instantiated and owned by the ThreadPool.
   std::unique_ptr<ThreadPoolTempl<Env> > extended_eigen_threadpool_;
+
+  // Force the thread pool to run in hybrid mode on a normal cpu.
+  bool force_hybrid_ = false;
 };
 
 }  // namespace concurrency

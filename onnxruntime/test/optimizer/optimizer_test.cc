@@ -30,8 +30,8 @@ TEST(OptimizerTest, Basic) {
   Model model("OptimizerBasic", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
 
-  const int tensor_dim = 10;
-  const int input_num = 2;
+  constexpr int tensor_dim = 10;
+  constexpr int input_num = 2;
   TensorProto initializer_tensor[input_num];
   std::vector<std::unique_ptr<NodeArg>> inputs(input_num);
   std::vector<std::unique_ptr<NodeArg>> outputs(1);

@@ -17,7 +17,7 @@ from distutils.version import LooseVersion
 from numpy import inf
 
 from ._modifier import FP16OptimizerModifier, check_overflow, check_overflow_for_grads
-from .multi_tensor_apply import MultiTensorApply
+from ._multi_tensor_apply import MultiTensorApply
 multi_tensor_applier = MultiTensorApply(2048 * 32)
 
 class DeepSpeedZeROModifier(FP16OptimizerModifier):

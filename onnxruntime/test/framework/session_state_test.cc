@@ -20,6 +20,7 @@
 #include "gtest/gtest.h"
 #include "test/test_environment.h"
 #include "test/util/include/default_providers.h"
+#include "core/optimizer/transpose_optimizer/optimizer_utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace std;
@@ -76,7 +77,7 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   auto kernel_def = KernelDefBuilder().SetName("Variable").Provider(kCpuExecutionProvider).SinceVersion(1, 10).Build();
 
   OpKernelInfo p_info(node, *kernel_def, *cpu_execution_provider, s.GetConstantInitializedTensors(),
-                      s.GetOrtValueNameIdxMap(), s.GetFuncMgr(), s.GetDataTransferMgr());
+                      s.GetOrtValueNameIdxMap(), s.GetDataTransferMgr());
   unique_ptr<TestOpKernel> p_kernel;
   p_kernel.reset(new TestOpKernel(p_info));
   size_t orig_num_outputs = p_kernel->Node().OutputDefs().size();
@@ -88,7 +89,7 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
   node.SetExecutionProviderType(kCpuExecutionProvider);
   std::shared_ptr<KernelRegistry> kernel_registry = std::make_shared<KernelRegistry>();
   ASSERT_STATUS_OK(kernel_registry->Register(KernelCreateInfo(
-      std::move(kernel_def), [](const OpKernelInfo& info) -> OpKernel* { return new TestOpKernel(info); })));
+      std::move(kernel_def), [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<TestOpKernel>(info); return Status::OK(); })));
   kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
   ASSERT_STATUS_OK(s.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
 
@@ -142,7 +143,8 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
                              DefaultLoggingManager().DefaultLogger(), profiler);
 
   GraphPartitioner partitioner(krm, execution_providers);
-  status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr());
+  status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr(),
+                                 layout_transformer::TransformLayoutForCompilingEP);
   ASSERT_TRUE(status.IsOK()) << status;
 
   ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
@@ -178,7 +180,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
 // if the relevant session option config flag is set
 // For this test we need to enable the arena-based allocator which is not supported on x86 builds, so
 // enable this test only on x64 builds
-#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
+#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) && !defined(USE_MIMALLOC)
 TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
   // Part 1: Feature turned ON (i.e.) allocate from non-arena memory
   {
@@ -207,7 +209,8 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
 
     // Partition the graph
     GraphPartitioner partitioner(krm, execution_providers);
-    status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr());
+    status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr(),
+                                   layout_transformer::TransformLayoutForCompilingEP);
     ASSERT_TRUE(status.IsOK()) << status;
 
     // Finalize the session state
@@ -256,7 +259,8 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
 
     // Partition the graph
     GraphPartitioner partitioner(krm, execution_providers);
-    status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr());
+    status = partitioner.Partition(graph, session_state.ExportDll(), session_state.GetMutableFuncMgr(),
+                                   layout_transformer::TransformLayoutForCompilingEP);
     ASSERT_TRUE(status.IsOK()) << status;
 
     // Finalize the session state
@@ -511,7 +515,7 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
   auto kernel_def = KernelDefBuilder().SetName("PrePackingTest").Provider(kCpuExecutionProvider).SinceVersion(1).Build();
   ASSERT_STATUS_OK(kernel_registry->Register(
       KernelCreateInfo(std::move(kernel_def),
-                       [](const OpKernelInfo& info) -> OpKernel* { return new PrePackingTestOpKernel(info); })));
+                       [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<PrePackingTestOpKernel>(info); return Status::OK(); })));
   kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
 
   PlaceAllNodesToCPUEP(model.MainGraph());
@@ -553,7 +557,7 @@ TEST(SessionStateTest, SharedInitalizersWithPrePackingTest) {
   auto kernel_def = KernelDefBuilder().SetName("PrePackingTest").Provider(kCpuExecutionProvider).SinceVersion(1).Build();
   ASSERT_STATUS_OK(kernel_registry->Register(
       KernelCreateInfo(std::move(kernel_def),
-                       [](const OpKernelInfo& info) -> OpKernel* { return new PrePackingTestOpKernel(info); })));
+                       [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out =  std::make_unique<PrePackingTestOpKernel>(info); return Status::OK(); })));
   kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
 
   // Part 1: Pre-packing enabled + no shared initializers = no pre-packed weights caching

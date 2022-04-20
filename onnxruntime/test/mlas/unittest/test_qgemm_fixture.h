@@ -9,11 +9,11 @@
 //
 // Short Execute() test helper to register each test seperately by all parameters.
 //
-template <typename xint8_t, typename OutputType, bool Packed, bool Threaded>
+template <typename AType, typename BType, typename OutputType, bool Packed, bool Threaded>
 class QgemmShortExecuteTest;
 
-template <typename xint8_t, bool Packed, bool Threaded>
-class QgemmShortExecuteTest<xint8_t, int32_t, Packed, Threaded> : public MlasTestFixture<MlasQgemmU8X8Test<xint8_t, int32_t, Packed, Threaded>> {
+template <typename AType, typename BType, bool Packed, bool Threaded>
+class QgemmShortExecuteTest<AType, BType, int32_t, Packed, Threaded> : public MlasTestFixture<MlasQgemmTest<AType, BType, int32_t, Packed, Threaded>> {
  public:
   explicit QgemmShortExecuteTest(bool use_offb, size_t M, size_t N, size_t K, size_t Batch, uint8_t offa, uint8_t offb)
       : use_offb_(use_offb), M_(M), N_(N), K_(K), Batch_(Batch), offa_(offa), offb_(offb) {
@@ -21,9 +21,9 @@ class QgemmShortExecuteTest<xint8_t, int32_t, Packed, Threaded> : public MlasTes
 
   void TestBody() override {
     if (use_offb_) {
-      MlasTestFixture<MlasQgemmU8X8Test<xint8_t, int32_t, Packed, Threaded>>::mlas_tester->Test(M_, N_, K_, Batch_, offa_, offb_);
+      MlasTestFixture<MlasQgemmTest<AType, BType, int32_t, Packed, Threaded>>::mlas_tester->Test(M_, N_, K_, Batch_, offa_, offb_);
     } else {
-      MlasTestFixture<MlasQgemmU8X8Test<xint8_t, int32_t, Packed, Threaded>>::mlas_tester->Test(M_, N_, K_, Batch_, offa_);
+      MlasTestFixture<MlasQgemmTest<AType, BType, int32_t, Packed, Threaded>>::mlas_tester->Test(M_, N_, K_, Batch_, offa_);
     }
   }
 
@@ -40,15 +40,15 @@ class QgemmShortExecuteTest<xint8_t, int32_t, Packed, Threaded> : public MlasTes
     auto test_name = ss.str();
 
     testing::RegisterTest(
-        MlasQgemmU8X8Test<xint8_t, int32_t, Packed, Threaded>::GetTestSuiteName(),
+        MlasQgemmTest<AType, BType, int32_t, Packed, Threaded>::GetTestSuiteName(),
         test_name.c_str(),
         nullptr,
         test_name.c_str(),
         __FILE__,
         __LINE__,
         // Important to use the fixture type as the return type here.
-        [=]() -> MlasTestFixture<MlasQgemmU8X8Test<xint8_t, int32_t, Packed, Threaded>>* {
-          return new QgemmShortExecuteTest<xint8_t, int32_t, Packed, Threaded>(
+        [=]() -> MlasTestFixture<MlasQgemmTest<AType, BType, int32_t, Packed, Threaded>>* {
+          return new QgemmShortExecuteTest<AType, BType, int32_t, Packed, Threaded>(
               use_offb, M, N, K, Batch, offa, offb);
         });
 
@@ -111,8 +111,8 @@ class QgemmShortExecuteTest<xint8_t, int32_t, Packed, Threaded> : public MlasTes
   uint8_t offa_, offb_;
 };
 
-template <typename xint8_t, bool Packed, bool Threaded>
-class QgemmShortExecuteTest<xint8_t, float, Packed, Threaded> : public MlasTestFixture<MlasQgemmU8X8Test<xint8_t, float, Packed, Threaded>> {
+template <typename AType, typename BType, bool Packed, bool Threaded>
+class QgemmShortExecuteTest<AType, BType, float, Packed, Threaded> : public MlasTestFixture<MlasQgemmTest<AType, BType, float, Packed, Threaded>> {
  public:
   explicit QgemmShortExecuteTest(size_t M, size_t N, size_t K, uint8_t offa, uint8_t offb)
       : M_(M), N_(N), K_(K), offa_(offa), offb_(offb) {
@@ -120,7 +120,7 @@ class QgemmShortExecuteTest<xint8_t, float, Packed, Threaded> : public MlasTestF
 
   void TestBody() override {
     // Batching code is agnostic to result type. Only cover batches above, not here.
-    MlasTestFixture<MlasQgemmU8X8Test<xint8_t, float, Packed, Threaded>>::mlas_tester->Test(M_, N_, K_, 1, offa_, offb_);
+    MlasTestFixture<MlasQgemmTest<AType, BType, float, Packed, Threaded>>::mlas_tester->Test(M_, N_, K_, 1, offa_, offb_);
   }
 
   static size_t RegisterSingleTest(size_t M, size_t N, size_t K, uint8_t offa, uint8_t offb) {
@@ -131,15 +131,15 @@ class QgemmShortExecuteTest<xint8_t, float, Packed, Threaded> : public MlasTestF
     auto test_name = ss.str();
 
     testing::RegisterTest(
-        MlasQgemmU8X8Test<xint8_t, float, Packed, Threaded>::GetTestSuiteName(),
+        MlasQgemmTest<AType, BType, float, Packed, Threaded>::GetTestSuiteName(),
         test_name.c_str(),
         nullptr,
         test_name.c_str(),
         __FILE__,
         __LINE__,
         // Important to use the fixture type as the return type here.
-        [=]() -> MlasTestFixture<MlasQgemmU8X8Test<xint8_t, float, Packed, Threaded>>* {
-          return new QgemmShortExecuteTest<xint8_t, float, Packed, Threaded>(M, N, K, offa, offb);
+        [=]() -> MlasTestFixture<MlasQgemmTest<AType, BType, float, Packed, Threaded>>* {
+          return new QgemmShortExecuteTest<AType, BType, float, Packed, Threaded>(M, N, K, offa, offb);
         });
     return 1;
   }

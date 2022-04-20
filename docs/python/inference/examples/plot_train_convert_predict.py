@@ -64,7 +64,7 @@ with open("logreg_iris.onnx", "wb") as f:
 # its input and output.
 
 import onnxruntime as rt
-sess = rt.InferenceSession("logreg_iris.onnx")
+sess = rt.InferenceSession("logreg_iris.onnx", providers=rt.get_available_providers())
 
 print("input name='{}' and shape={}".format(
     sess.get_inputs()[0].name, sess.get_inputs()[0].shape))
@@ -180,7 +180,7 @@ with open("rf_iris.onnx", "wb") as f:
 ###################################
 # We compare.
 
-sess = rt.InferenceSession("rf_iris.onnx")
+sess = rt.InferenceSession("rf_iris.onnx", providers=rt.get_available_providers())
 
 def sess_predict_proba_rf(x):
     return sess.run([prob_name], {input_name: x.astype(numpy.float32)})[0]
@@ -204,7 +204,7 @@ for n_trees in range(5, 51, 5):
     onx = convert_sklearn(rf, initial_types=initial_type)
     with open("rf_iris_%d.onnx" % n_trees, "wb") as f:
         f.write(onx.SerializeToString())
-    sess = rt.InferenceSession("rf_iris_%d.onnx" % n_trees)
+    sess = rt.InferenceSession("rf_iris_%d.onnx" % n_trees, providers=rt.get_available_providers())
     def sess_predict_proba_loop(x):
         return sess.run([prob_name], {input_name: x.astype(numpy.float32)})[0]
     tsk = speed("loop(X_test, rf.predict_proba, 100)", number=5, repeat=5)

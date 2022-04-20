@@ -93,10 +93,25 @@ def call_python_forward_function(
                 ctx = arg.grad_fn
                 first_tensor_output = arg
                 break
-            if training_mode_flag:
-                # Must extract one valid context from result tensors.
-                assert ctx is not None
 
+            # Context can be None because not all autograd.Function's are differentiable. The function
+            # https://github.com/pytorch/pytorch/blob/d701357d921ef167d42c125e65b6f7da6be3ad0f/torch/csrc/autograd/custom_function.cpp#L209?
+            # means if all output of forward function are not differentiable, then grad_fn will be None (not be set).
+            # For example,
+            #  class Bar(torch.autograd.Function):
+            #      # A non-differentiable autograd Function whose forard output
+            #      # doesn't have grad_fn attribute.
+            #      @staticmethod
+            #      def forward(ctx, x):
+            #          y = torch.ones_like(x)
+            #          return y
+
+            #      @staticmethod
+            #      def backward(ctx, dy):
+            #          dx = torch.zeros_like(dy)
+            #          return dx
+
+            if training_mode_flag and ctx:
                 #         FORWARD                                                    BACKWARD FUNCTION CONNECTIONS
                 # input_1 (leaf, constructed by from_dlpack)   <----reference----  AccumulateGrad gradient function
                 #             ↓                                                                 ↑
@@ -115,9 +130,6 @@ def call_python_forward_function(
                 saved_tensors = [t for t in ctx.saved_tensors if t is not None]
                 torch_interop_utils.clear_grad_fns_for_next_edges(first_tensor_output, saved_tensors)
                 torch_interop_utils.register_grad_fn(id(ctx), first_tensor_output)
-            else:
-                # Context must not present under non-training mode.
-                assert ctx is None
             return ctx
 
         if isinstance(result, torch.Tensor):

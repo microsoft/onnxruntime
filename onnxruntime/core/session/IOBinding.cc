@@ -11,38 +11,38 @@ namespace onnxruntime {
 IOBinding::IOBinding(const SessionState& session_state) : session_state_(session_state) {
 }
 
-static std::pair<bool, size_t> Contains(const std::vector<std::string>& names, const std::string& name) {
-  auto it = std::find(std::begin(names), std::end(names), name);
-  if (it == std::end(names)) {
-    return {false, 0};
-  }
-  return {true, it - std::begin(names)};
-}
-
 common::Status IOBinding::BindInput(const std::string& name, const OrtValue& ml_value) {
-  auto rc = Contains(feed_names_, name);
+  auto it = mapped_feed_names_.emplace(name, feed_names_.size());
 
-  auto add_or_replace = [this, &name](const bool exists, size_t index, const OrtValue& value) {
-    if (exists) {
-      feeds_[index] = value;
-    } else {
+  auto add_or_replace = [&](const OrtValue& value) {
+    if (it.second) {
       feed_names_.push_back(name);
       feeds_.push_back(value);
+    } else {
+      feeds_[it.first->second] = value;
     }
   };
 
   if (ml_value.IsTensor() || ml_value.IsSparseTensor()) {
     OrtValue new_mlvalue;
+    // Do not replace new_mlvalue by feeds_[index] in the following line.
+    // It may copy the data instead of copying the pointer.
+    // When OrtValue is empty, the pointer is copied. When it is not
+    // (if feeds_[index] is not for example),
+    // CopyOneInputAcrossDevices has a different behaviour.
     ORT_RETURN_IF_ERROR(utils::CopyOneInputAcrossDevices(session_state_, name, ml_value, new_mlvalue));
-    add_or_replace(rc.first, rc.second, new_mlvalue);
+    add_or_replace(new_mlvalue);
   } else {
-    add_or_replace(rc.first, rc.second, ml_value);
+    add_or_replace(ml_value);
   }
+
+  ORT_ENFORCE(mapped_feed_names_.size() == feed_names_.size(), "Size mismatch:", mapped_feed_names_.size(), "!=", feed_names_.size(), " index=", it.first->second, " it.second=", it.second);
 
   return Status::OK();
 }
 
 void IOBinding::ClearInputs() {
+  mapped_feed_names_.clear();
   feed_names_.clear();
   feeds_.clear();
 }
@@ -52,7 +52,7 @@ static common::Status SyncProviders(const SessionState::NameNodeInfoMapType& nod
   std::set<std::string> providers;
   for (auto& pair : node_info_map) {
     for (auto& node_info : pair.second) {
-      if (node_info.p_node->GetExecutionProviderType() != onnxruntime::kCpuExecutionProvider) {
+      if (node_info.p_node && node_info.p_node->GetExecutionProviderType() != onnxruntime::kCpuExecutionProvider) {
         providers.insert(node_info.p_node->GetExecutionProviderType());
       }
     }
@@ -88,20 +88,23 @@ common::Status IOBinding::BindOutput(const std::string& name, OrtDevice device) 
 }
 
 common::Status IOBinding::BindOutputImpl(const std::string& name, const OrtValue& ml_value, OrtDevice device) {
-  auto rc = Contains(output_names_, name);
-  if (rc.first) {
-    outputs_[rc.second] = ml_value;
-    outputs_device_info_[rc.second] = device;
-  } else {
+  auto it = mapped_output_names_.emplace(name, output_names_.size());
+  size_t index = it.first->second;
+  if (it.second) {
     output_names_.push_back(name);
     outputs_.push_back(ml_value);
     outputs_device_info_.push_back(device);
+  } else {
+    outputs_[index] = ml_value;
+    outputs_device_info_[index] = device;
   }
+  ORT_ENFORCE(mapped_output_names_.size() == output_names_.size(), "Size mismatch", mapped_output_names_.size(), "!=", output_names_.size());
 
   return Status::OK();
 }
 
 void IOBinding::ClearOutputs() {
+  mapped_output_names_.clear();
   output_names_.clear();
   outputs_.clear();
   outputs_device_info_.clear();

@@ -1,0 +1,49 @@
+Pod::Spec.new do |s|
+  s.name             = "@NAME@"
+  s.version          = "@VERSION@"
+  s.summary          = "@SUMMARY@"
+  s.description      = "@DESCRIPTION@"
+  s.homepage         = "https://github.com/microsoft/onnxruntime"
+  s.license          = { :type => "MIT", :file => "@LICENSE_FILE@" }
+  s.author           = { "ONNX Runtime" => "onnxruntime@microsoft.com" }
+  s.source           = { :http => "file:///http_source_placeholder" }
+  s.ios.deployment_target = "@IOS_DEPLOYMENT_TARGET@"
+  s.preserve_paths = [ "@LICENSE_FILE@" ]
+  s.default_subspec = "Core"
+  s.static_framework = true
+
+  s.subspec "Core" do |core|
+    core.dependency "@C_POD_NAME@", "#{s.version}"
+    core.requires_arc = true
+    core.compiler_flags = "-std=c++17", "-fobjc-arc-exceptions", "-Wall", "-Wextra", "-Werror"
+
+    include_dirs = [
+      @INCLUDE_DIR_LIST@
+    ].map { |relative_include_dir|
+      '"${PODS_TARGET_SRCROOT}/' + relative_include_dir + '"'
+    }
+
+    core.pod_target_xcconfig = {
+      "HEADER_SEARCH_PATHS" => include_dirs.join(" "),
+      "OTHER_CPLUSPLUSFLAGS" => "-fvisibility=hidden -fvisibility-inlines-hidden",
+    }
+
+    core.public_header_files = [
+      @PUBLIC_HEADER_FILE_LIST@
+    ]
+
+    core.source_files = [
+      @SOURCE_FILE_LIST@
+    ]
+
+    core.test_spec "Tests" do |test|
+      test.source_files = [
+        @TEST_SOURCE_FILE_LIST@
+      ]
+
+      test.resources = [
+        @TEST_RESOURCE_FILE_LIST@
+      ]
+    end
+  end
+end

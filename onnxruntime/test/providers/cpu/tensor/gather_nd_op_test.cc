@@ -18,14 +18,22 @@ static void RunTest(const std::vector<int64_t>& input_dims, const std::initializ
   test1.AddInput<T>("data", input_dims, input);
   test1.AddInput<int64_t>("indices", indices_dims, indices);
   test1.AddOutput<T>("output", output_dims, output);
-  test1.Run();
+  if (std::is_same<T, int8_t>::value) {
+    test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  } else {
+    test1.Run();
+  }
 
   // ONNX domain opset-12
   OpTester test2("GatherND", 12);
   test2.AddInput<T>("data", input_dims, input);
   test2.AddInput<int64_t>("indices", indices_dims, indices);
   test2.AddOutput<T>("output", output_dims, output);
-  test2.Run();
+  if (std::is_same<T, int8_t>::value) {
+    test2.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  } else {
+    test2.Run();
+  }
 
 #ifndef DISABLE_CONTRIB_OPS
 
@@ -34,7 +42,11 @@ static void RunTest(const std::vector<int64_t>& input_dims, const std::initializ
   test3.AddInput<T>("data", input_dims, input);
   test3.AddInput<int64_t>("indices", indices_dims, indices);
   test3.AddOutput<T>("output", output_dims, output);
-  test3.Run();
+  if (std::is_same<T, int8_t>::value) {
+    test3.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  } else {
+    test3.Run();
+  }
 
 #endif
 }

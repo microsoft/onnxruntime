@@ -20,13 +20,17 @@ OPENSSL_MIN_VERSION=1.1.1
 
 INSTALLED=$(openssl version | head -1 | awk '{ print $2 }')
 SMALLEST=$(echo -e "${INSTALLED}\n${OPENSSL_MIN_VERSION}" | sort -t. -k 1,1n -k 2,2n -k 3,3n -k 4,4n | head -1)
-if [ "${SMALLEST}" == "${OPENSSL_MIN_VERSION}" ]; then
+
+# Ignore letters in version numbers
+if [ "${SMALLEST}" = "${OPENSSL_MIN_VERSION}" ]; then
 	echo "skipping installation of openssl ${OPENSSL_VERSION}, system provides openssl ${INSTALLED} which is newer than openssl ${OPENSSL_MIN_VERSION}"
 	exit 0
 fi
 
 if which yum; then
 	yum erase -y openssl-devel
+elif which apk; then
+	apk del openssl-dev
 else
 	apt-get remove -y libssl-dev
 fi

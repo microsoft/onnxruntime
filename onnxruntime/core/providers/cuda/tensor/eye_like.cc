@@ -42,7 +42,7 @@ Status EyeLike::ComputeInternal(OpKernelContext* context) const {
   const auto* T1 = context->Input<Tensor>(0);
   ORT_ENFORCE(T1 != nullptr);
 
-  const std::vector<int64_t>& input_dims = T1->Shape().GetDims();
+  auto input_dims = T1->Shape().GetDims();
   if (input_dims.size() != 2) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "EyeLike : Input tensor dimension is not 2");
   }

@@ -160,7 +160,7 @@ module.exports = {
       '@typescript-eslint/naming-convention': 'off'
     }
   }, {
-    files: ['react_native/example/src/**/*.ts', 'react_native/example/src/**/*.tsx'], rules: {
+    files: ['react_native/e2e/src/**/*.ts', 'react_native/e2e/src/**/*.tsx'], rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-unnecessary-type-assertion': 'off',
       'unicorn/filename-case': 'off',

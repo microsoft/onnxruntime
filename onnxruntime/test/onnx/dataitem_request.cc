@@ -39,7 +39,7 @@ void DataTaskRequestContext::Request(const Callback& cb, concurrency::ThreadPool
                                      const ITestCase& c, Ort::Session& session,
                                      OrtAllocator* allocator, size_t task_id) {
   assert(cb);
-  std::unique_ptr<DataTaskRequestContext> self(new DataTaskRequestContext(cb, c, session, allocator, task_id));
+  std::unique_ptr<DataTaskRequestContext> self = std::make_unique<DataTaskRequestContext>(cb, c, session, allocator, task_id);
   CallableFactory<DataTaskRequestContext, void> f(self.get());
   auto runnable = f.GetCallable<&DataTaskRequestContext::RunAsync>();
   onnxruntime::concurrency::ThreadPool::Schedule(tp, [runnable]() { runnable.Invoke(); });
@@ -146,9 +146,29 @@ std::pair<EXECUTE_RESULT, TIME_SPEC> DataTaskRequestContext::RunImpl() {
       break;
     }
     OrtValue* actual_output_value = iter->second;
-    std::pair<COMPARE_RESULT, std::string> ret =
-        CompareOrtValue(*actual_output_value, *expected_output_value, per_sample_tolerance,
-                        relative_per_sample_tolerance, post_procesing);
+
+    std::pair<COMPARE_RESULT, std::string> ret{COMPARE_RESULT::SUCCESS, ""};
+
+    // Expected output is not None
+    if (expected_output_value != nullptr) {
+      // Actual output is None
+      if (!actual_output_value->IsAllocated()) {
+        ret = std::pair<COMPARE_RESULT, std::string>{
+            COMPARE_RESULT::RESULT_DIFFERS,
+            "Expected non-None output but received an OrtValue that is None"};
+      } else {  // Both expect and actual OrtValues are not None, proceed with data checking
+        ret =
+            CompareOrtValue(*actual_output_value, *expected_output_value, per_sample_tolerance,
+                            relative_per_sample_tolerance, post_procesing);
+      }
+    } else {  // Expected output is None, ensure that the received output OrtValue is None as well
+      if (actual_output_value->IsAllocated()) {
+        ret = std::pair<COMPARE_RESULT, std::string>{
+            COMPARE_RESULT::RESULT_DIFFERS,
+            "Expected None output but received an OrtValue that is not None"};
+      }
+    }
+
     COMPARE_RESULT compare_result = ret.first;
     if (compare_result == COMPARE_RESULT::SUCCESS) {
       const ONNX_NAMESPACE::ValueInfoProto* v = name_output_value_info_proto[output_name];
