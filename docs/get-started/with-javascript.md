@@ -71,9 +71,10 @@ ONNX Runtime Web can also be imported via a script tag in a HTML file, from a CD
 
 ### Examples
 
-- [Inference in Javascript with ONNX Runtime Web](https://youtu.be/vYzWrT3A7wQ)
 - [Quick Start (using bundler)](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/quick-start_onnxruntime-web-bundler)
 - [Quick Start (using script tag)](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/quick-start_onnxruntime-web-script-tag)
+- [ONNX Runtime Web for In Browser Inference](https://youtu.be/0dskvE4IvGM)
+- [Inference in Javascript with ONNX Runtime Web](https://youtu.be/vYzWrT3A7wQ)
 
 ### Supported Versions
 
