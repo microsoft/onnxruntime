@@ -1612,8 +1612,8 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
       AddInputToSkip(model_builder, inputs[1]);                                                    // b, b_scale, b_zp
       AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
     } else if (node_unit.OpType() == "Gemm") {                                                     // QDQGemm
-      AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[0].quant_param);               // x_scale, x_zp
-      AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[1].quant_param);               // w_scale, w_zp
+      AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[0].quant_param);               // a_scale, a_zp
+      AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[1].quant_param);               // b_scale, b_zp
 
       NodeAttrHelper helper(node_unit);
       const auto transB = helper.Get("transB", 0);
@@ -1649,8 +1649,8 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   NodeAttrHelper helper(node_unit);
 
   const auto quant_type = GetQuantizedOpType(node_unit);
-  bool is_quant_matmul = (quant_type == QuantizedOpType::QDQMatMul || quant_type == QuantizedOpType::QLinearMatMul);
-  bool is_quant_gemm = quant_type == QuantizedOpType::QDQGemm;
+  const bool is_quant_matmul = (quant_type == QuantizedOpType::QDQMatMul || quant_type == QuantizedOpType::QLinearMatMul);
+  const bool is_quant_gemm = quant_type == QuantizedOpType::QDQGemm;
 
   const auto& input1 = inputs[0].node_arg.Name();
   const auto& input2 = inputs[1].node_arg.Name();
@@ -1719,7 +1719,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         bias_idx = operand_indices.at(bias);
       }
     } else {  // is_quant_gemm
-      if (is_quant_gemm) {
+      
         const auto& bias_tensor = *model_builder.GetInitializerTensors().at(bias);
         // TODO: Need to confirm, put int32 type here for now
         ORT_RETURN_IF_NOT(bias_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32,
@@ -1733,7 +1733,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, a_scale * b_scale);
         ORT_RETURN_IF_ERROR(
             model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.data(), bias_operand_type));
-      }
+      
       bias_idx = operand_indices.at(bias);
     }
 

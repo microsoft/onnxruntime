@@ -1350,9 +1350,9 @@ bool GemmOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initial
                                              const OpSupportCheckParams& params) const {
   const auto& op_type = node_unit.OpType();
   const auto& inputs = node_unit.Inputs();
-  bool is_qlinear_matmul = op_type == "QLinearMatMul";
+  const bool is_qlinear_matmul = op_type == "QLinearMatMul";
   const auto quant_type = GetQuantizedOpType(node_unit);
-  bool is_quant_gemm = quant_type == QuantizedOpType::QDQGemm;
+  const bool is_quant_gemm = quant_type == QuantizedOpType::QDQGemm;
 
   Shape a_shape;
   {

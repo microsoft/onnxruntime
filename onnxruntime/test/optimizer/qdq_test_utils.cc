@@ -134,8 +134,8 @@ GetQDQTestCaseFn BuildQDQMatMulTestCase(const std::vector<int64_t>& input1_shape
     auto* input_arg = builder.MakeInput<float>(input1_shape, -1.f, 1.f);
     auto* output_arg = builder.MakeOutput();
 
-    typedef std::numeric_limits<uint8_t> InputLimits;
-    typedef std::numeric_limits<uint8_t> OutputTypeLimits;
+    using InputLimits = std::numeric_limits<uint8_t>;
+    using OutputTypeLimits = std::numeric_limits<uint8_t>;
 
     // add QDQ input
     auto* q1_output = builder.MakeIntermediate();
