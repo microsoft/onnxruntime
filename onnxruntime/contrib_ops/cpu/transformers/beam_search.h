@@ -78,6 +78,7 @@ class BeamSearch : public IControlFlowKernel {
   BeamSearchDeviceHelper::InitBeamStateFunc<float> init_beam_state_func_;
   BeamSearchDeviceHelper::DeviceCopyFunc<float> device_copy_func_;
   BeamSearchDeviceHelper::UpdateFeedsFunc<float> update_feeds_func_;
+  BeamSearchDeviceHelper::UpdateFeedsFunc1<float> update_feeds_func1_;
   BeamSearchDeviceHelper::UpdateFeedsFunc2<float> update_feeds_func2_;
 
   BeamSearchDeviceHelper::ProcessLogitsFunc<MLFloat16> process_logits_fp16_func_;

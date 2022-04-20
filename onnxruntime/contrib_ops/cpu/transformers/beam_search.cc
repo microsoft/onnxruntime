@@ -157,6 +157,7 @@ class BeamSearchImpl {
                  const BeamSearchDeviceHelper::InitBeamStateFunc<T>& init_beam_state_func,
                  const BeamSearchDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
                  const BeamSearchDeviceHelper::UpdateFeedsFunc<T>& update_feeds_func,
+                 const BeamSearchDeviceHelper::UpdateFeedsFunc1<T>& update_feeds_func1,
                  const BeamSearchDeviceHelper::UpdateFeedsFunc2<T>& update_feeds_func2)
       : context_(context),
         encoder_session_state_(encoder_session_state),
@@ -177,6 +178,7 @@ class BeamSearchImpl {
         init_beam_state_func_(init_beam_state_func),
         device_copy_func_(device_copy_func),
         update_feeds_func_(update_feeds_func),
+        update_feeds_func1_(update_feeds_func1),
         update_feeds_func2_(update_feeds_func2) {
     parameters_->ParseFromInputs(&context);
 
@@ -212,11 +214,17 @@ class BeamSearchImpl {
       gsl::span<const int32_t> beam_next_tokens,
       gsl::span<const int32_t> beam_indices);
 
+  Status UpdateFeeds1(
+      const std::vector<OrtValue>& last_outputs,
+      std::vector<OrtValue>& next_inputs,
+      gsl::span<const int32_t> beam_next_tokens,
+      gsl::span<const int32_t> beam_indices);
+
   Status UpdateFeeds2(
       const std::vector<OrtValue>& last_outputs,
       std::vector<OrtValue>& next_inputs,
-      int current_length,
-      Sequences& sequence);
+      gsl::span<const int32_t> beam_next_tokens,
+      gsl::span<const int32_t> beam_indices);
 
   // Process logits and append next tokens to sequences.
   Status GenerateNextToken(const OrtValue& logits,
@@ -269,6 +277,7 @@ class BeamSearchImpl {
   BeamSearchDeviceHelper::InitBeamStateFunc<T> init_beam_state_func_;
   BeamSearchDeviceHelper::DeviceCopyFunc<float> device_copy_func_;
   BeamSearchDeviceHelper::UpdateFeedsFunc<T> update_feeds_func_;
+  BeamSearchDeviceHelper::UpdateFeedsFunc1<T> update_feeds_func1_;
   BeamSearchDeviceHelper::UpdateFeedsFunc2<T> update_feeds_func2_;
 };
 
@@ -342,7 +351,8 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
                                init_beam_state_func_ ? init_beam_state_func_ : BeamSearchCpuDeviceHelper::InitBeamState<float>,
                                device_copy_func_ ? device_copy_func_ : BeamSearchCpuDeviceHelper::DeviceCopy<float>,
                                update_feeds_func_ ? update_feeds_func_ : BeamSearchCpuDeviceHelper::UpdateFeeds<float>,
-                               update_feeds_func2_ ? update_feeds_func2_ : BeamSearchCpuDeviceHelper::UpdateFeeds2<float>};
+                               update_feeds_func1_ ? update_feeds_func1_ : (BeamSearchCpuDeviceHelper::UpdateFeeds1<float>),
+                               update_feeds_func2_ ? update_feeds_func2_ : (BeamSearchCpuDeviceHelper::UpdateFeeds2<float>)};
     ORT_RETURN_IF_ERROR(impl.Initialize());
 
     return impl.Execute(*encoder_feeds_fetches_manager_, *decoder_feeds_fetches_manager_);
@@ -356,6 +366,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
                                    init_beam_state_fp16_func_,
                                    device_copy_func_,
                                    update_feeds_fp16_func_,
+                                   nullptr,
                                    nullptr};
     ORT_RETURN_IF_ERROR(impl.Initialize());
 
@@ -530,13 +541,23 @@ Status BeamSearchImpl<T>::UpdateFeeds(
 }
 
 template <typename T>
+Status BeamSearchImpl<T>::UpdateFeeds1(
+    const std::vector<OrtValue>& last_outputs,
+    std::vector<OrtValue>& next_inputs,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices) {
+  return update_feeds_func1_(temp_space_allocator_, cuda_stream_, last_outputs, next_inputs,
+                             beam_next_tokens, beam_indices, GetConsoleDumper());
+}
+
+template <typename T>
 Status BeamSearchImpl<T>::UpdateFeeds2(
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
-    int current_length,
-    Sequences& sequences) {
-  return update_feeds_func2_(temp_space_allocator_, cuda_stream_, last_outputs, next_inputs, current_length,
-                             sequences, GetConsoleDumper());
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices) {
+  return update_feeds_func2_(temp_space_allocator_, cuda_stream_, last_outputs, next_inputs,
+                            beam_next_tokens, beam_indices, parameters_->num_beams, GetConsoleDumper());
 }
 
 template <typename T>
@@ -683,7 +704,12 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
 
     // Prepare inputs for next round of subgraph call.
     if (current_length < parameters_->max_length) {
-      ORT_RETURN_IF_ERROR(UpdateFeeds2(decoder_fetches, decoder_feeds, current_length, cpu_state.sequences));
+      if (iteration_counter == 1) {
+        ORT_RETURN_IF_ERROR(UpdateFeeds1(edinit_fetches, decoder_feeds, beam_next_tokens.as_span<const int32_t>(), beam_indices.as_span<const int32_t>()));
+      } else {
+        ORT_RETURN_IF_ERROR(UpdateFeeds2(decoder_fetches, decoder_feeds, beam_next_tokens.as_span<const int32_t>(), beam_indices.as_span<const int32_t>()));
+      }
+
     }
 
     decoder_fetches.clear();

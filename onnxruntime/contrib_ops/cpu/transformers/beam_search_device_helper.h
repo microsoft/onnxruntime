@@ -104,13 +104,24 @@ using UpdateFeedsFunc = std::function<Status(
     const transformers::IConsoleDumper* dumper)>;
 
 template <typename T>
+using UpdateFeedsFunc1 = std::function<Status(
+    AllocatorPtr allocator,
+    void* stream,
+    const std::vector<OrtValue>& last_outputs,
+    std::vector<OrtValue>& next_inputs,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
+    const transformers::IConsoleDumper* dumper)>;
+
+template <typename T>
 using UpdateFeedsFunc2 = std::function<Status(
     AllocatorPtr allocator,
     void* stream,
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
-    int current_length,
-    transformers::Sequences& sequences,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
+    int num_beams,
     const transformers::IConsoleDumper* dumper)>;
 
 }  // namespace BeamSearchDeviceHelper
@@ -188,13 +199,24 @@ Status UpdateFeeds(
     const transformers::IConsoleDumper* dumper);
 
 template <typename T>
+Status UpdateFeeds1(
+    AllocatorPtr allocator,
+    void* stream,
+    const std::vector<OrtValue>& last_outputs,
+    std::vector<OrtValue>& next_inputs,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
+    const transformers::IConsoleDumper* dumper);
+
+template <typename T>
 Status UpdateFeeds2(
     AllocatorPtr allocator,
     void* stream,
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
-    int current_length,
-    transformers::Sequences& sequence,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
+    int num_beams,
     const transformers::IConsoleDumper* dumper);
 
 }  // namespace BeamSearchCpuDeviceHelper

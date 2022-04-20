@@ -338,8 +338,11 @@ void PickPastState(const std::vector<OrtValue>& last_outputs,
                    AllocatorPtr allocator,
                    void* /*stream*/) {
 
+  // past_key_self_i, past_value_self_i, past_key_cross_i, past_value_cross_i
+  // present_key_self_i, present_value_self_i, present_key_cross_i, present_value_cross_i
+
   for (size_t i = 1; i < last_outputs.size(); ++i) {
-    const OrtValue& present = last_outputs[i];  // shape is like (2, batch_beam_size, 12, past_seq_len, 64)
+    const OrtValue& present = last_outputs[i];  // shape is like (batch_beam_size, 12, past_seq_len, 64)
     const TensorShape& past_shape = present.Get<Tensor>().Shape();
 
     // Create a tensor with same shape.
@@ -349,19 +352,15 @@ void PickPastState(const std::vector<OrtValue>& last_outputs,
     Tensor::InitOrtValue(past_type, past_shape, allocator, past);
 
     auto block_size_per_beam = past_shape[2] * past_shape[3] * past_shape[4];
-    auto past_key_size = past_shape[1] * past_shape[2] * past_shape[3] * past_shape[4];
 
     gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), past_shape.Size());
     gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), past_shape.Size());
     for (gsl::index j = 0; j < beam_indices.length(); j++) {
       int32_t beam_index = beam_indices[j];
-      gsl::span<const T> present_key = present_span.subspan(beam_index * block_size_per_beam, block_size_per_beam);
-      gsl::span<const T> present_value = present_span.subspan(past_key_size + beam_index * block_size_per_beam, block_size_per_beam);
+      gsl::span<const T> present_span_i = present_span.subspan(beam_index * block_size_per_beam, block_size_per_beam);
 
-      gsl::span<T> past_key = past_span.subspan(j * block_size_per_beam, block_size_per_beam);
-      gsl::span<T> past_value = past_span.subspan(past_key_size + j * block_size_per_beam, block_size_per_beam);
-      gsl::copy(present_key, past_key);
-      gsl::copy(present_value, past_value);
+      gsl::span<T> past_span_i = past_span.subspan(j * block_size_per_beam, block_size_per_beam);
+      gsl::copy(present_span_i, past_span_i);
     }
 
     next_inputs[i + 2] = past;
@@ -443,44 +442,100 @@ Status UpdateFeeds(
 }
 
 template <typename T>
-Status UpdateFeeds2(
+Status UpdateFeeds1(
     AllocatorPtr allocator,
     void*,
-    const std::vector<OrtValue>&,
+    const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
-    int current_length,
-    transformers::Sequences& sequences,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t>,
     const transformers::IConsoleDumper* dumper) {
-  // last_outputs: logits
-  // next_inputs: input_ids, attention_mask, encoder_output
+  // last_outputs: logits, encoder_attn_mask, encoder_hidden_size, present_0(self + cross), present_1(self + cross), ...
+  // next_inputs: input_ids, attention_mask, encoder_hidden_size, past_0(self + cross), past_1(self + cross)
 
   // The following updates inputs for subgraph
 
   // Update input_ids with next tokens.
-  int batch_beam_size = static_cast<int>(sequences.GetBatchBeamSize());
-  int64_t dims[] = {batch_beam_size, current_length};
+  int batch_beam_size = static_cast<int>(beam_next_tokens.length());
+  int64_t dims[] = {batch_beam_size, 1};
   TensorShape input_ids_shape(&dims[0], 2);
   auto int32_type = DataTypeImpl::GetType<int32_t>();
   OrtValue input_ids;
+  // TODO: Reuse buffer for input_ids to reduce memory allocation.
   Tensor::InitOrtValue(int32_type, input_ids_shape, allocator, input_ids);
   int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
-
   for (int i = 0; i < batch_beam_size; i++) {
-    gsl::span<const int32_t> sequence = sequences.GetSequence(i);
-    const int32_t* sequence_data = sequence.data();
-    for (int j = 0; j < current_length; j++) {
-      input_ids_data[i * current_length + j] = sequence_data[j];
-    }
+    input_ids_data[i] = beam_next_tokens[i];
   }
-  next_inputs[1] = input_ids;
+  next_inputs[0] = input_ids;
 
+  //mask
+  next_inputs[1] = last_outputs[1];
+  //encoder_hidden_state
+  next_inputs[2] = last_outputs[2];
 
 #ifdef DEBUG_BEAM_SEARCH
-  dumper->Print("input_ids_new_round", input_ids);
-  //dumper->Print("attention_mask", attention_mask);
+  dumper->Print("input_ids", input_ids);
+  dumper->Print("position_ids", position_ids);
+  dumper->Print("attention_mask", attention_mask);
 #else
   ORT_UNUSED_PARAMETER(dumper);
 #endif
+
+  // Update past state, no need to pick past here, all past are the same
+  for (size_t i = 3; i < last_outputs.size(); ++i) {
+    next_inputs[i] = last_outputs[i];
+  }
+
+  return Status::OK();
+}
+
+template <typename T>
+Status UpdateFeeds2(
+    AllocatorPtr allocator,
+    void* stream,
+    const std::vector<OrtValue>& last_outputs,
+    std::vector<OrtValue>& next_inputs,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
+    int num_beams,
+    const transformers::IConsoleDumper* dumper) {
+  // last_outputs: logits, encoder_attn_mask, encoder_hidden_size, present_0(self + cross), present_1(self + cross), ...
+  // next_inputs: input_ids, attention_mask, encoder_hidden_size, past_0(self + cross), past_1(self + cross)
+
+  // The following updates inputs for subgraph
+
+  // Update input_ids with next tokens.
+  int batch_beam_size = static_cast<int>(beam_next_tokens.length());
+  int64_t dims[] = {batch_beam_size, 1};
+  TensorShape input_ids_shape(&dims[0], 2);
+  auto int32_type = DataTypeImpl::GetType<int32_t>();
+  OrtValue input_ids;
+  // TODO: Reuse buffer for input_ids to reduce memory allocation.
+  Tensor::InitOrtValue(int32_type, input_ids_shape, allocator, input_ids);
+  int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
+  for (int i = 0; i < batch_beam_size; i++) {
+    input_ids_data[i] = beam_next_tokens[i];
+  }
+  next_inputs[0] = input_ids;
+
+#ifdef DEBUG_BEAM_SEARCH
+  dumper->Print("input_ids", input_ids);
+  dumper->Print("position_ids", position_ids);
+  dumper->Print("attention_mask", attention_mask);
+#else
+  ORT_UNUSED_PARAMETER(dumper);
+#endif
+
+  // Update past state
+  if (num_beams == 1) {
+    // feed present_* output to past_* inputs one by one
+    for (size_t i = 1; i < last_outputs.size(); ++i) {
+      next_inputs[i + 2] = last_outputs[i];
+    }
+  } else {
+    PickPastState<T>(last_outputs, next_inputs, beam_indices, allocator, stream);
+  }
 
   return Status::OK();
 }
@@ -529,13 +584,23 @@ template Status UpdateFeeds<float>(
     int num_beams,
     const transformers::IConsoleDumper* dumper);
 
+template Status UpdateFeeds1<float>(
+    AllocatorPtr allocator,
+    void* stream,
+    const std::vector<OrtValue>& last_outputs,
+    std::vector<OrtValue>& next_inputs,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
+    const transformers::IConsoleDumper* dumper);
+
 template Status UpdateFeeds2<float>(
     AllocatorPtr allocator,
     void* stream,
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
-    int current_length,
-    transformers::Sequences& sequence,
+    gsl::span<const int32_t> beam_next_tokens,
+    gsl::span<const int32_t> beam_indices,
+    int num_beams,
     const transformers::IConsoleDumper* dumper);
 
 }  // namespace BeamSearchCpuDeviceHelper
