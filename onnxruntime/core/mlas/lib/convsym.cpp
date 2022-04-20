@@ -524,6 +524,9 @@ MlasConvSym(
 
             PostProcessParams.Bias = Params.Bias + co;
             PostProcessParams.Scale = Params.Scale + (Params.PerChannelScale ? co : 0);
+            PostProcessParams.Multiplier = Params.Multiplier + (Params.PerChannelScale ? co : 0);
+            PostProcessParams.PreShift = Params.PreShift + (Params.PerChannelScale ? co : 0);
+            PostProcessParams.PostShift = Params.PostShift + (Params.PerChannelScale ? co : 0);
 
             for (size_t oc = 0; oc < oc_outside_block_size;) {
 
@@ -578,6 +581,9 @@ MlasConvSymDepthwise(
     if ((Params.OutputChannels & 15) == 0) {
         PostProcessParams.Bias = Params.Bias;
         PostProcessParams.Scale = Params.Scale;
+        PostProcessParams.Multiplier = Params.Multiplier ;
+        PostProcessParams.PreShift = Params.PreShift;
+        PostProcessParams.PostShift = Params.PostShift;
         if (ConvSymDispatch->Depthwise3x3Proc && Params.KernelSize == 9) {
             ConvSymDispatch->Depthwise3x3Proc(Params.InputIndirection, (int8_t const*)Params.Filter,
                                               Params.OutputChannels, Params.Output,
@@ -611,6 +617,9 @@ MlasConvSymDepthwise(
 
             PostProcessParams.Bias = Params.Bias + ChannelOffset;
             PostProcessParams.Scale = Params.Scale + (Params.PerChannelScale ? ChannelOffset : 0);
+            PostProcessParams.Multiplier = Params.Multiplier + (Params.Multiplier ? ChannelOffset : 0);
+            PostProcessParams.PreShift = Params.PreShift + (Params.PreShift ? ChannelOffset : 0);
+            PostProcessParams.PostShift = Params.PostShift + (Params.PostShift ? ChannelOffset : 0);
 
             ConvSymDispatch->DepthwiseKernel(
                 InputIndirection,

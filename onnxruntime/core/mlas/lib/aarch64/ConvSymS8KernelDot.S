@@ -24,7 +24,7 @@ Abstract:
 // Stack frame layout for the symmetric convolution kernel.
 // d8-d15, x19-x30 need to be preserved if used
 //
-        .equ    .LConvSymFrame_SavedRegisters,       (6 * 8)
+        .equ    .LConvSymFrame_SavedRegisters,       (8 * 8)
         .equ    .LConvSymFrame_PostProcessParams,    0 + .LConvSymFrame_SavedRegisters
         .equ    .LConvSymFrame_KernelFlags,          8 + .LConvSymFrame_SavedRegisters
 
@@ -33,6 +33,9 @@ Abstract:
         .equ    .LConvSymPostProcessParams_Min,       16
         .equ    .LConvSymPostProcessParams_Max,       20
         .equ    .LConvSymPostProcessParams_ZeroPoint, 24
+        .equ    .LConvSymPostProcessParams_Multiplier,28
+        .equ    .LConvSymPostProcessParams_PreShift,  36
+        .equ    .LConvSymPostProcessParams_PostShift, 44
 
         .text
 
@@ -81,22 +84,27 @@ Return Value:
         stp     d8,d9,[sp,#-.LConvSymFrame_SavedRegisters]!
         ldr     x8,[sp,#.LConvSymFrame_PostProcessParams]
         str     d10,[sp,#16]
+        stp     x19,x20,[sp,#32]
+        stp     x21,x22,[sp,#48]
+
         cmp     x7,2                    // OutputCount < 2 ?
         str     d11,[sp,#24]
         add     x16,x2,x5               // x16 -> C1
-        str     x19,[sp,#32]
         lsl     x3,x3,#3                // KernelSize * sizeof(int8_t*)
         csel    x16,x2,x16,lo           // if OutputCount < 2  x16/C1 -> C0
         add     x4,x4,3                 // InputChannels align to 4
         add     x17,x16,x5              // x17 -> C2
         ldr     x11,[x8,#.LConvSymPostProcessParams_Bias]
         csel    x17,x16,x17,ls          // if OutputCount <= 2  x17/C2 -> C1
+        ldr     x19,[x8,#.LConvSymPostProcessParams_Multiplier]
         bic     x4,x4,3
         cmp     x7,4                    // OutputCount < 4 ?
         ldr     w10,[sp,#.LConvSymFrame_KernelFlags]
         add     x5,x17,x5               // x5 -> C3
-        ldr     x19,[x8,#.LConvSymPostProcessParams_Scale]
+        ldr     x21,[x8,#.LConvSymPostProcessParams_PreShift]
         csel    x5,x17,x5,lo            // if OutputCount < 4  x5/C3 -> C2
+        ldr     x22,[x8,#.LConvSymPostProcessParams_PostShift]
+
 
         // TODO!! tiptoe around loading biases if we need to support
         // output channels none divisible by 16
@@ -350,8 +358,12 @@ Requantize:
         tst     w10,#.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
         ldr     w13,[x8,#.LConvSymPostProcessParams_ZeroPoint]
         beq     BroadcastScaleValue
-        ldp     q0,q1,[x19],32          // load scale vector
+        ldp     q0,q1,[x19],32          // load multiplier vector
         ldp     q2,q3,[x19],32
+        ldp     q4,q5,[x20],32          // load multiplier vector
+        ldp     q6,q7,[x20],32
+        ldp     q8,q9,[x21],32          // load multiplier vector
+        ldp     q10,q11,[x21],32
         b       AccumulatorsToFloat
 
 BroadcastScaleValue:
@@ -360,55 +372,65 @@ BroadcastScaleValue:
         mov     v2.16b, v0.16b
         mov     v3.16b, v0.16b
 
+        ld1r    {v4.4s},[x20]           // load scale Value
+        mov     v5.16b, v4.16b
+        mov     v6.16b, v4.16b
+        mov     v7.16b, v4.16b
+
+        ld1r    {v8.4s},[x21]           // load scale Value
+        mov     v9.16b, v8.16b
+        mov     v10.16b, v8.16b
+        mov     v11.16b, v8.16b
+
 AccumulatorsToFloat:
-        scvtf   v16.4s,v16.4s           // convert to float
-        scvtf   v17.4s,v17.4s
-        scvtf   v18.4s,v18.4s
-        scvtf   v19.4s,v19.4s
-        scvtf   v20.4s,v20.4s
-        scvtf   v21.4s,v21.4s
-        scvtf   v22.4s,v22.4s
-        scvtf   v23.4s,v23.4s
-        scvtf   v24.4s,v24.4s
-        scvtf   v25.4s,v25.4s
-        scvtf   v26.4s,v26.4s
-        scvtf   v27.4s,v27.4s
-        scvtf   v28.4s,v28.4s
-        scvtf   v29.4s,v29.4s
-        scvtf   v30.4s,v30.4s
-        scvtf   v31.4s,v31.4s
-        fmul    v16.4s,v16.4s,v0.4s     // multiply by scale
-        fmul    v17.4s,v17.4s,v0.4s
-        fmul    v18.4s,v18.4s,v0.4s
-        fmul    v19.4s,v19.4s,v0.4s
-        fmul    v20.4s,v20.4s,v1.4s
-        fmul    v21.4s,v21.4s,v1.4s
-        fmul    v22.4s,v22.4s,v1.4s
-        fmul    v23.4s,v23.4s,v1.4s
-        fmul    v24.4s,v24.4s,v2.4s
-        fmul    v25.4s,v25.4s,v2.4s
-        fmul    v26.4s,v26.4s,v2.4s
-        fmul    v27.4s,v27.4s,v2.4s
-        fmul    v28.4s,v28.4s,v3.4s
-        fmul    v29.4s,v29.4s,v3.4s
-        fmul    v30.4s,v30.4s,v3.4s
-        fmul    v31.4s,v31.4s,v3.4s
-        fcvtns  v16.4s,v16.4s           // convert to int
-        fcvtns  v17.4s,v17.4s
-        fcvtns  v18.4s,v18.4s
-        fcvtns  v19.4s,v19.4s
-        fcvtns  v20.4s,v20.4s
-        fcvtns  v21.4s,v21.4s
-        fcvtns  v22.4s,v22.4s
-        fcvtns  v23.4s,v23.4s
-        fcvtns  v24.4s,v24.4s
-        fcvtns  v25.4s,v25.4s
-        fcvtns  v26.4s,v26.4s
-        fcvtns  v27.4s,v27.4s
-        fcvtns  v28.4s,v28.4s
-        fcvtns  v29.4s,v29.4s
-        fcvtns  v30.4s,v30.4s
-        fcvtns  v31.4s,v31.4s
+        sqshl   v16.4s, v16.4s, v0.4s          // preshift
+        sqshl   v17.4s, v17.4s, v0.4s
+        sqshl   v18.4s, v18.4s, v0.4s
+        sqshl   v19.4s, v19.4s, v0.4s
+        sqshl   v20.4s, v20.4s, v1.4s
+        sqshl   v21.4s, v21.4s, v1.4s
+        sqshl   v22.4s, v22.4s, v1.4s
+        sqshl   v23.4s, v23.4s, v1.4s
+        sqshl   v24.4s, v24.4s, v2.4s
+        sqshl   v25.4s, v25.4s, v2.4s
+        sqshl   v26.4s, v26.4s, v2.4s
+        sqshl   v27.4s, v27.4s, v2.4s
+        sqshl   v28.4s, v28.4s, v3.4s
+        sqshl   v29.4s, v29.4s, v3.4s
+        sqshl   v30.4s, v30.4s, v3.4s
+        sqshl   v31.4s, v31.4s, v3.4s
+        sqdmulh v16.4s, v16.4s, v4.4s     // multiply by scale
+        sqdmulh v17.4s, v17.4s, v4.4s
+        sqdmulh v18.4s, v18.4s, v4.4s
+        sqdmulh v19.4s, v19.4s, v4.4s
+        sqdmulh v20.4s, v20.4s, v5.4s
+        sqdmulh v21.4s, v21.4s, v5.4s
+        sqdmulh v22.4s, v22.4s, v5.4s
+        sqdmulh v23.4s, v23.4s, v5.4s
+        sqdmulh v24.4s, v24.4s, v6.4s
+        sqdmulh v25.4s, v25.4s, v6.4s
+        sqdmulh v26.4s, v26.4s, v6.4s
+        sqdmulh v27.4s, v27.4s, v6.4s
+        sqdmulh v28.4s, v28.4s, v7.4s
+        sqdmulh v29.4s, v29.4s, v7.4s
+        sqdmulh v30.4s, v30.4s, v7.4s
+        sqdmulh v31.4s, v31.4s, v7.4s
+        srshl   v16.4s,v16.4s, v8.4s     // post shift
+        srshl   v17.4s,v17.4s, v8.4s
+        srshl   v18.4s,v18.4s, v8.4s
+        srshl   v19.4s,v19.4s, v8.4s
+        srshl   v20.4s,v20.4s, v9.4s
+        srshl   v21.4s,v21.4s, v9.4s
+        srshl   v22.4s,v22.4s, v9.4s
+        srshl   v23.4s,v23.4s, v9.4s
+        srshl   v24.4s,v24.4s, v10.4s
+        srshl   v25.4s,v25.4s, v10.4s
+        srshl   v26.4s,v26.4s, v10.4s
+        srshl   v27.4s,v27.4s, v10.4s
+        srshl   v28.4s,v28.4s, v11.4s
+        srshl   v29.4s,v29.4s, v11.4s
+        srshl   v30.4s,v30.4s, v11.4s
+        srshl   v31.4s,v31.4s, v11.4s
 
         sqxtn   v16.4h,v16.4s
         sqxtn   v17.4h,v17.4s
@@ -454,7 +476,8 @@ AccumulatorsToFloat:
         b.hi    OutputChannelLoop
 
 ExitKernel:
-        ldr     x19,[sp,#32]
+        ldp     x21,x22,[sp,#48]
+        ldp     x19,x20,[sp,#32]
         ldp     d10,d11,[sp,#16]
         ldp     d8,d9,[sp],#.LConvSymFrame_SavedRegisters
         ret

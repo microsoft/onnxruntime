@@ -23,7 +23,7 @@ Abstract:
 // Stack frame layout for the symmetric convolution kernel.
 // d8-d15, x19-x30 need to be preserved if used
 //
-        .equ    .LConvSymFrame_SavedNeonRegisters, (8 * 8)
+        .equ    .LConvSymFrame_SavedNeonRegisters, (10 * 8)
         .equ    .LConvSymFrame_SavedRegisters, .LConvSymFrame_SavedNeonRegisters
         .equ    .LConvSymFrame_PostProcessParams, 0 + .LConvSymFrame_SavedRegisters
         .equ    .LConvSymFrame_KernelFlags, 8 + .LConvSymFrame_SavedRegisters
@@ -33,6 +33,9 @@ Abstract:
         .equ    .LConvSymPostProcessParams_Min,       16
         .equ    .LConvSymPostProcessParams_Max,       20
         .equ    .LConvSymPostProcessParams_ZeroPoint, 24
+        .equ    .LConvSymPostProcessParams_Multiplier,28
+        .equ    .LConvSymPostProcessParams_PreShift,  36
+        .equ    .LConvSymPostProcessParams_PostShift, 44
 
         .text
 
@@ -88,12 +91,16 @@ Return Value:
         stp     d10,d11,[sp,#16]
         stp     d12,d13,[sp,#32]
         stp     d14,d15,[sp,#48]
+        stp     x19,x20,[sp,#64]
+
         mov     x9,x3                   // save kernel size
         ldr     x11,[x8,#.LConvSymPostProcessParams_Bias]
         mov     x16,x4                  // save input channels
-        ldr     x12,[x8,#.LConvSymPostProcessParams_Scale]
+        ldr     x12,[x8,#.LConvSymPostProcessParams_Multiplier]
         cmp     x7,2                    // if OutputCount < 2
+        ldr     x19,[x8,#.LConvSymPostProcessParams_PreShift]
         add     x5,x2,x5                // c1 = c0 + ldc
+        ldr     x20,[x8,#.LConvSymPostProcessParams_PostShift]
         add     x4,x4,7                 // kc = (kc + 7) & ~7
         csel    x5,x2,x5,lo             // if OutputCount < 2  c1 = c0
         bic     x4,x4,7
@@ -299,12 +306,18 @@ Return Value:
         ldr     w11, [x8, #.LConvSymPostProcessParams_ZeroPoint]
         tst     w10,#.LMLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
         beq     .LConvSym.BroadcastScaleValue
-        ld1     {v4.4s,v5.4s},[x12]     // load scale vector
+        ld1     {v4.4s,v5.4s},[x12]     // load multiplier
+        ld1     {v6.4s,v7.4s},[x19]     // load preshift
+        ld1     {v8.4s,v9.4s},[x20]     // load postshift
         b       .LConvSym.AccumulatorsToFloat
 
 .LConvSym.BroadcastScaleValue:
-        ld1r    {v4.4s},[x12]           // load scale Value
+        ld1r    {v4.4s},[x12]           // load multiplier Value
         mov     v5.16b, v4.16b
+        ld1r    {v6.4s},[x19]           // load preshift Value
+        mov     v7.16b, v6.16b
+        ld1r    {v8.4s},[x20]           // load postshift Value
+        mov     v9.16b, v8.16b
 
 .LConvSym.AccumulatorsToFloat:
         addp    v16.4s,v16.4s,v18.4s
@@ -319,19 +332,20 @@ Return Value:
         addp    v1.4s,v24.4s,v28.4s
         addp    v2.4s,v17.4s,v21.4s
         addp    v3.4s,v25.4s,v29.4s
-        scvtf   v0.4s,v0.4s             // convert to float
-        scvtf   v1.4s,v1.4s
-        scvtf   v2.4s,v2.4s
-        scvtf   v3.4s,v3.4s
-        fmul    v0.4s,v0.4s,v4.4s       // multiply by scale
-        fmul    v1.4s,v1.4s,v5.4s
-        fmul    v2.4s,v2.4s,v4.4s
-        fmul    v3.4s,v3.4s,v5.4s
-        fcvtns  v0.4s,v0.4s             // convert to int
-        fcvtns  v1.4s,v1.4s
+
+        sqshl   v0.4s, v0.4s, v4.4s       // preshift
+        sqshl   v1.4s, v1.4s, v5.4s
+        sqshl   v2.4s, v2.4s, v4.4s
+        sqshl   v3.4s, v3.4s, v5.4s
+        sqdmulh v0.4s, v0.4s, v6.4s       // multiplier
+        sqdmulh v1.4s, v1.4s, v7.4s
+        sqdmulh v2.4s, v2.4s, v6.4s
+        sqdmulh v3.4s, v3.4s, v7.4s
+        srshl   v0.4s,v0.4s, v8.4s        // postshift
+        srshl   v1.4s,v1.4s, v9.4s
         dup     v9.8h,w11
-        fcvtns  v2.4s,v2.4s
-        fcvtns  v3.4s,v3.4s
+        srshl   v2.4s,v2.4s, v8.4s
+        srshl   v3.4s,v3.4s, v9.4s
         sqxtn   v0.4h,v0.4s
         sqxtn2  v0.8h,v1.4s
         sqxtn   v2.4h,v2.4s
@@ -347,10 +361,11 @@ Return Value:
         st1     {v0.8b},[x2]
 
 .LConvSym.ExitKernel:
+        ldp     x19,x20,[sp,#64]
         ldp     d14,d15,[sp,#48]
         ldp     d12,d13,[sp,#32]
         ldp     d10,d11,[sp,#16]
-        ldp     d8,d9,[sp],#64
+        ldp     d8,d9,[sp], #80
         ret
 
 .LConvSym.8InputChannels:

@@ -395,16 +395,27 @@ MlasRequantizeOutput(
     size_t InputLeadingDimension,
     OutputType* Output,
     size_t OutputLeadingDimension,
-    const int32_t* Bias,
-    const float* Scale,
-    bool PerColumnScale,
-    OutputType ZeroPoint,
+    const MLAS_REQUANT_PARAM* RequantParam,
     size_t StartM,
     size_t StartN,
     size_t CountM,
     size_t CountN
     )
 {
+
+MlasRequantRoundKind RequantRoundKind = RequantParam->RequantRoundKind;
+    if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestUp) {
+#ifdef MLAS_NO_EXCEPTION
+        abort();
+#else
+        throw std::invalid_argument("Requantization rounding to nearest and tie to up is only supported on ARM64.");
+#endif
+    }
+
+    const float* Scale = RequantParam->RoundNearestEven.Scale;
+    bool PerColumnScale = RequantParam->RoundNearestEven.Size > 1;
+    OutputType ZeroPoint = static_cast<OutputType>(RequantParam->RoundNearestEven.ZeroPoint);
+
     const __m128 PerMatrixScaleVector = PerColumnScale ? _mm_setzero_ps() : _mm_load1_ps(Scale);
     const __m128 MinimumValueVector = _mm_set1_ps(float(std::numeric_limits<OutputType>::lowest() - ZeroPoint));
     const __m128 MaximumValueVector = _mm_set1_ps(float(std::numeric_limits<OutputType>::max() - ZeroPoint));
@@ -631,21 +642,294 @@ MlasRequantizeOutput(
 template<typename OutputType>
 void
 MLASCALL
-MlasRequantizeOutput(
+MlasRequantizeOutputRoundNearestUp(
     const int32_t* Input,
     size_t InputLeadingDimension,
     OutputType* Output,
     size_t OutputLeadingDimension,
-    const int32_t* Bias,
-    const float* Scale,
-    bool PerColumnScale,
-    OutputType ZeroPoint,
+    const MLAS_REQUANT_RNDNU_PARAM* RequantParam,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN,
+    )
+{
+    const float* Scale = RequantParam->RoundNearestEven.Scale;
+    bool PerColumnScale = RequantParam->RoundNearestEven.Size > 1;
+    OutputType ZeroPoint = static_cast<OutputType>(RequantParam->RoundNearestEven.ZeroPoint);
+
+    bool PerColumnScale = RequantParam->RoundNearestUp.Size > 1;
+    const int32_t* Multiplier = RequantParam->RoundNearestUp.Multiplier;
+    const int32_t* PreShift = RequantParam->RoundNearestUp.PreShift;
+    const int32_t* PostShift = RequantParam->RoundNearestUp.PostShift;
+    OutputType ZeroPoint = static_cast<OutputType>(RequantParam->RoundNearestUp.ZeroPoint);
+
+    const int32x4_t PerTensorMultiplierVector = PerColumnScale ? vdupq_n_s32(0) : vld1q_dup_s32(Multiplier);
+    const int32x4_t PerTensorPreShiftVector = PerColumnScale ? vdupq_n_s32(0) : vld1q_dup_s32(PreShift);
+    const int32x4_t PerTensorPostShiftVector = PerColumnScale ? vdupq_n_s32(0) : vld1q_dup_s32(PostShift);
+
+    const int16x8_t ZeroPointVector = vdupq_n_s16(ZeroPoint);
+
+    if (nullptr != Bias) {
+        Bias += StartN;
+    }
+    if (PerColumnScale) {
+        Scale += StartN;
+    }
+
+    Input += StartM * InputLeadingDimension + StartN;
+    Output += StartM * OutputLeadingDimension + StartN;
+
+    //
+    // Step through each row of the output matrix.
+    //
+
+    while (CountM-- > 0) {
+
+        const int32_t* bias = Bias;
+        const float* scale = PerColumnScale ? Scale : nullptr;
+        size_t n = CountN;
+
+        auto* RowInput = Input;
+        auto* RowOutput = Output;
+
+        //
+        // Process 16 columns of the matrices at a time.
+        //
+
+        while (n >= 16) {
+
+            //
+            // Load the input data and optionally add the per-column bias.
+            //
+
+            int32x4x4_t IntegerVector;
+
+            IntegerVector.val[0] = vld1q_s32(&RowInput[0]);
+            IntegerVector.val[1] = vld1q_s32(&RowInput[4]);
+            IntegerVector.val[2] = vld1q_s32(&RowInput[8]);
+            IntegerVector.val[3] = vld1q_s32(&RowInput[12]);
+            RowInput += 16;
+
+            if (bias != nullptr) {
+                IntegerVector.val[0] = vaddq_s32(IntegerVector.val[0], vld1q_s32(&bias[0]));
+                IntegerVector.val[1] = vaddq_s32(IntegerVector.val[1], vld1q_s32(&bias[4]));
+                IntegerVector.val[2] = vaddq_s32(IntegerVector.val[2], vld1q_s32(&bias[8]));
+                IntegerVector.val[3] = vaddq_s32(IntegerVector.val[3], vld1q_s32(&bias[12]));
+                bias += 16;
+            }
+
+            if (scale != nullptr) {
+                int32x4x4_t PerColumnPreShiftVector;
+                PerColumnPreShiftVector.val[0] = vld1q_s32(&PreShift[0]);
+                PerColumnPreShiftVector.val[1] = vld1q_s32(&PreShift[4]);
+                PerColumnPreShiftVector.val[2] = vld1q_s32(&PreShift[8]);
+                PerColumnPreShiftVector.val[3] = vld1q_s32(&PreShift[12]);
+                PreShift += 16;
+
+                IntegerVector.val[0] = vshlq_s32(IntegerVector.val[0], PerColumnPreShiftVector.val[0]);
+                IntegerVector.val[1] = vshlq_s32(IntegerVector.val[0], PerColumnPreShiftVector.val[0]);
+                IntegerVector.val[2] = vshlq_s32(IntegerVector.val[0], PerColumnPreShiftVector.val[0]);
+                IntegerVector.val[3] = vshlq_s32(IntegerVector.val[0], PerColumnPreShiftVector.val[0]);
+
+                int32x4x4_t PerColumnMultiplierVector;
+                PerColumnMultiplierVector.val[0] = vld1q_s32(&Multiplier[0]);
+                PerColumnMultiplierVector.val[1] = vld1q_s32(&Multiplier[4]);
+                PerColumnMultiplierVector.val[2] = vld1q_s32(&Multiplier[8]);
+                PerColumnMultiplierVector.val[3] = vld1q_s32(&Multiplier[12]);
+                Multiplier += 16;
+
+                IntegerVector.val[0] = vqdmulhq_s32(IntegerVector.val[0], PerColumnMultiplierVector.val[0]);
+                IntegerVector.val[1] = vqdmulhq_s32(IntegerVector.val[0], PerColumnMultiplierVector.val[0]);
+                IntegerVector.val[2] = vqdmulhq_s32(IntegerVector.val[0], PerColumnMultiplierVector.val[0]);
+                IntegerVector.val[3] = vqdmulhq_s32(IntegerVector.val[0], PerColumnMultiplierVector.val[0]);
+
+
+                int32x4x4_t PerColumnPostShiftVector;
+                PerColumnPostShiftVector.val[0] = vld1q_s32(&PostShift[0]);
+                PerColumnPostShiftVector.val[1] = vld1q_s32(&PostShift[4]);
+                PerColumnPostShiftVector.val[2] = vld1q_s32(&PostShift[8]);
+                PerColumnPostShiftVector.val[3] = vld1q_s32(&PostShift[12]);
+                PostShift += 16;
+
+                IntegerVector.val[0] = vrshlq_s32(IntegerVector.val[0], PerColumnPostShiftVector.val[0]);
+                IntegerVector.val[1] = vrshlq_s32(IntegerVector.val[0], PerColumnPostShiftVector.val[0]);
+                IntegerVector.val[2] = vrshlq_s32(IntegerVector.val[0], PerColumnPostShiftVector.val[0]);
+                IntegerVector.val[3] = vrshlq_s32(IntegerVector.val[0], PerColumnPostShiftVector.val[0]);
+            } else {
+                IntegerVector.val[0] = vshlq_s32(IntegerVector.val[0], PerTensorPreShiftVector);
+                IntegerVector.val[1] = vshlq_s32(IntegerVector.val[0], PerTensorPreShiftVector);
+                IntegerVector.val[2] = vshlq_s32(IntegerVector.val[0], PerTensorPreShiftVector);
+                IntegerVector.val[3] = vshlq_s32(IntegerVector.val[0], PerTensorPreShiftVector);
+
+                IntegerVector.val[0] = vqdmulhq_s32(IntegerVector.val[0], PerTensorMultiplierVector);
+                IntegerVector.val[1] = vqdmulhq_s32(IntegerVector.val[0], PerTensorMultiplierVector);
+                IntegerVector.val[2] = vqdmulhq_s32(IntegerVector.val[0], PerTensorMultiplierVector);
+                IntegerVector.val[3] = vqdmulhq_s32(IntegerVector.val[0], PerTensorMultiplierVector);
+
+                IntegerVector.val[0] = vrshlq_s32(IntegerVector.val[0], PerTensorPostShiftVector);
+                IntegerVector.val[1] = vrshlq_s32(IntegerVector.val[0], PerTensorPostShiftVector);
+                IntegerVector.val[2] = vrshlq_s32(IntegerVector.val[0], PerTensorPostShiftVector);
+                IntegerVector.val[3] = vrshlq_s32(IntegerVector.val[0], PerTensorPostShiftVector);
+            }
+
+            //
+            // Pack the integers with saturation to 16-bit values and shift by
+            // the zero point, then pack the integers again to bytes.
+            //
+
+            int16x8x2_t WordVector;
+
+            WordVector.val[0] = vqmovn_high_s32(vqmovn_s32(IntegerVector.val[0]), IntegerVector.val[1]);
+            WordVector.val[1] = vqmovn_high_s32(vqmovn_s32(IntegerVector.val[2]), IntegerVector.val[3]);
+
+            WordVector.val[0] = vqaddq_s16(WordVector.val[0], ZeroPointVector);
+            WordVector.val[1] = vqaddq_s16(WordVector.val[1], ZeroPointVector);
+
+            if (std::is_signed<OutputType>::value) {
+                vst1q_s8(reinterpret_cast<int8_t*>(RowOutput),
+                         vqmovn_high_s16(vqmovn_s16(WordVector.val[0]), WordVector.val[1]));
+            } else {
+                vst1q_u8(reinterpret_cast<uint8_t*>(RowOutput),
+                         vqmovun_high_s16(vqmovun_s16(WordVector.val[0]), WordVector.val[1]));
+            }
+            RowOutput += 16;
+
+            n -= 16;
+        }
+
+        //
+        // Process the remaining columns of the matrices.
+        //
+
+        while (n > 0) {
+
+            //
+            // Load the input data and optionally add the per-column bias.
+            //
+
+            int32x4_t IntegerVector;
+
+            if (n >= 4) {
+
+                IntegerVector = vld1q_s32(&RowInput[0]);
+                RowInput += 4;
+
+                if (bias != nullptr) {
+                    IntegerVector = vaddq_s32(IntegerVector, vld1q_s32(&bias[0]));
+                    bias += 4;
+                }
+
+            } else {
+
+                IntegerVector = vld1q_dup_s32(RowInput);
+                RowInput += 1;
+
+                if (bias != nullptr) {
+                    IntegerVector = vaddq_s32(IntegerVector, vld1q_dup_s32(bias));
+                    bias += 1;
+                }
+            }
+
+            //
+            // Convert to integer values to float and apply the per-tensor or
+            // per-column scaling.
+            //
+
+            int32x4_t MultiplierVector;
+            int32x4_t PreShiftVector;
+            int32x4_t PostShiftVector;
+
+            if (scale != nullptr) {
+
+                if (n >= 4) {
+                    MultiplierVector = vld1q_s32(Multiplier);
+                    PreShiftVector = vld1q_s32(PreShift);
+                    PostShiftVector = vld1q_s32(PostShift);
+                    Multiplier += 4;
+                    PreShift += 4;
+                    PostShift += 4;
+                } else {
+                    MultiplierVector = vld1q_dup_s32(Multiplier);
+                    PreShiftVector = vld1q_dup_s32(PreShift);
+                    PostShiftVector = vld1q_dup_s32(PostShift);
+                    Multiplier += 1;
+                    PreShift += 1;
+                    PostShift += 1;
+                }
+
+            } else {
+                MultiplierVector = PerTensorMultiplierVector;
+                PreShiftVector = PerTensorPreShiftVector;
+                PostShiftVector = PerTensorPostShiftVector;
+            }
+
+            //
+            // Convert the float values to integer using "round to nearest even".
+            // Results are saturated to the range of int32_t.
+            //
+
+            IntegerVector = vshlq_s32(IntegerVector, PreShiftVector);
+            IntegerVector = vqdmulhq_s32(IntegerVector, MultiplierVector);
+            IntegerVector = vrshlq_s32(IntegerVector, PostShiftVector);
+
+            //
+            // Pack the integers with saturation to 16-bit values and shift by
+            // the zero point, then pack the integers again to unsigned bytes.
+            //
+
+            int16x8_t WordVector = vcombine_s16(vqmovn_s32(IntegerVector), vdup_n_s16(0));
+            WordVector = vqaddq_s16(WordVector, ZeroPointVector);
+
+            uint8x16_t ByteVector;
+
+            if (std::is_signed<OutputType>::value) {
+                ByteVector = vcombine_u8(vreinterpret_u8_s8(vqmovn_s16(WordVector)), vdup_n_u8(0));
+            } else {
+                ByteVector = vcombine_u8(vqmovun_s16(WordVector), vdup_n_u8(0));
+            }
+
+            if (n >= 4) {
+
+                vst1q_lane_u32(reinterpret_cast<uint32_t*>(RowOutput),
+                               vreinterpretq_u32_u8(ByteVector), 0);
+                RowOutput += 4;
+
+                n -= 4;
+
+            } else {
+
+                vst1q_lane_u8(reinterpret_cast<uint8_t*>(RowOutput), ByteVector, 0);
+                RowOutput += 1;
+
+                n -= 1;
+            }
+        }
+
+        // Next Row
+        Input += InputLeadingDimension;
+        Output += OutputLeadingDimension;
+    }
+}
+
+template<typename OutputType>
+void
+MLASCALL
+MlasRequantizeOutputRoundNearestEven(
+    const int32_t* Input,
+    size_t InputLeadingDimension,
+    OutputType* Output,
+    size_t OutputLeadingDimension,
+    MLAS_REQUANT_PARAM* RequantParam,
     size_t StartM,
     size_t StartN,
     size_t CountM,
     size_t CountN
     )
 {
+    const float* Scale = RequantParam->RoundNearestEven.Scale;
+    bool PerColumnScale = RequantParam->RoundNearestEven.Size > 1;
+    OutputType ZeroPoint = static_cast<OutputType>(RequantParam->RoundNearestEven.ZeroPoint);
     const float32x4_t PerMatrixScaleVector = PerColumnScale ? vdupq_n_f32(0) : vld1q_dup_f32(Scale);
     const int16x8_t ZeroPointVector = vdupq_n_s16(ZeroPoint);
 
@@ -871,6 +1155,31 @@ MlasRequantizeOutput(
     }
 }
 
+template<typename OutputType>
+void
+MLASCALL
+MlasRequantizeOutput(
+    const int32_t* Input,
+    size_t InputLeadingDimension,
+    OutputType* Output,
+    size_t OutputLeadingDimension,
+    const MLAS_REQUANT_RNDNU_PARAM* RequantParam,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN,
+    )
+{
+    if(RequantParam.RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestEven)
+    {
+        return MlasRequantizeOutputRoundNearestEven(Input, InputLeadingDimension, Output, OutputLeadingDimension,
+                                                    RequantParam, StartM, StartN, CountM, CountN);
+    } else {
+        return MlasRequantizeOutputRoundNearestUp(Input, InputLeadingDimension, Output, OutputLeadingDimension,
+                                                    RequantParam, StartM, StartN, CountM, CountN);
+    }
+}
+
 #else
 
 template <typename OutputType>
@@ -882,15 +1191,26 @@ MlasRequantizeOutput(
     OutputType* Output,
     size_t OutputLeadingDimension,
     const int32_t* Bias,
-    const float* Scale,
-    bool PerColumnScale,
-    OutputType ZeroPoint,
+    const MLAS_REQUANT_PARAM* RequantParam,
     size_t StartM,
     size_t StartN,
     size_t CountM,
     size_t CountN
     )
 {
+    MlasRequantRoundKind RequantRoundKind = RequantParam->RequantRoundKind;
+    if(RequantRoundKind == MLAS_REQUANT_ROUND_KIND::MlasRequantRoundNearestUp) {
+#ifdef MLAS_NO_EXCEPTION
+        abort();
+#else
+        throw std::invalid_argument("Requantization rounding to nearest and tie to up is only supported on ARM64.");
+#endif
+    }
+
+    const float* Scale = RequantParam->RoundNearestEven.Scale;
+    bool PerColumnScale = RequantParam->RoundNearestEven.Size > 1;
+    OutputType ZeroPoint = static_cast<OutputType>(RequantParam->RoundNearestEven.ZeroPoint);
+
     const float PerMatrixScaleValue = PerColumnScale ? 0.0f : *Scale;
     const float MinimumValue = float(std::numeric_limits<OutputType>::lowest() - ZeroPoint);
     const float MaximumValue = float(std::numeric_limits<OutputType>::max() - ZeroPoint);
@@ -966,9 +1286,7 @@ MlasRequantizeOutput<int8_t>(
     int8_t* Output,
     size_t OutputLeadingDimension,
     const int32_t* Bias,
-    const float* Scale,
-    bool PerColumnScale,
-    int8_t ZeroPoint,
+    MLAS_REQUANT_PARAM* RequantParam,
     size_t StartM,
     size_t StartN,
     size_t CountM,
@@ -984,9 +1302,7 @@ MlasRequantizeOutput<uint8_t>(
     uint8_t* Output,
     size_t OutputLeadingDimension,
     const int32_t* Bias,
-    const float* Scale,
-    bool PerColumnScale,
-    uint8_t ZeroPoint,
+    MLAS_REQUANT_PARAM* RequantParam,
     size_t StartM,
     size_t StartN,
     size_t CountM,
