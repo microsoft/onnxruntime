@@ -117,6 +117,7 @@ inline ORT_HOST_DEVICE bool operator==(const BFloat16& left, const BFloat16& rig
 inline ORT_HOST_DEVICE bool operator!=(const BFloat16& left, const BFloat16& right) { return left.val != right.val; }
 inline ORT_HOST_DEVICE bool operator<(const BFloat16& left, const BFloat16& right) { return left.val < right.val; }
 
+
 // User defined suffixes to make it easier to declare
 // initializers with MLFloat16 and BFloat16 from unsigned short
 // E.g 10_f16 or 10_b16
