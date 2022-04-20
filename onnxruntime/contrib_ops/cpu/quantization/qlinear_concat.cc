@@ -32,8 +32,8 @@ static inline bool has_same_zero_point(bool is_signed, const Tensor* tensor_x_ze
 
 QLinearConcat::QLinearConcat(const OpKernelInfo& info) : OpKernel(info), ConcatBase(info) {
   size_t input_def_count = info.node().InputDefs().size();
-  ORT_ENFORCE(input_def_count >= 8 && (input_def_count - 2) % 3 == 0,
-              "At least two inputs are needed, and each input must be (tensor, scale, zero_point) tuple!");
+  ORT_ENFORCE(input_def_count >= 5 && (input_def_count - 2) % 3 == 0,
+              "Each input must be (tensor, scale, zero_point) tuple!");
 
   size_t input_count = (input_def_count - 2) / 3;
   fixed_lookup_tables_.resize(input_count);
@@ -90,8 +90,8 @@ Status QLinearConcat::Compute(OpKernelContext* ctx) const {
 
   // Number of input tensors to concatenate (tupled)
   auto input_count_x3 = Node().InputArgCount()[2];
-  ORT_ENFORCE(input_count_x3 >= 6 && input_count_x3 % 3 == 0,
-              "At least two inputs are needed, and each input must be (tensor, scale, zero_point) tuple!");
+  ORT_ENFORCE(input_count_x3 >= 3 && input_count_x3 % 3 == 0,
+              "Each input must be (tensor, scale, zero_point) tuple!");
 
   // Hold pointers to the input tensors to be used in the PrepareForCompute() step
   auto input_count = input_count_x3 / 3;
