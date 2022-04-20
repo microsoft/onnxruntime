@@ -1094,7 +1094,8 @@ Graph::Graph(const Model& owning_model,
              IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
              const std::vector<const ONNX_NAMESPACE::FunctionProto*>& model_functions,
              const logging::Logger& logger)
-    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, model_functions, logger) {}
+    : Graph(owning_model, graph_proto, domain_to_version, ir_version, schema_registry, nullptr, nullptr, model_functions, logger) {
+}
 
 Graph::Graph(const Model& owning_model,
              GraphProto* graph_proto, const std::unordered_map<std::string, int>& domain_to_version, Version ir_version,
@@ -2027,7 +2028,9 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     }
   }
 
-  std::vector<TypeProto> InferredOutputTypes() const { return node_output_types_; }
+  std::vector<TypeProto> InferredOutputTypes() const {
+    return node_output_types_;
+  }
 
   const AttributeProto* getAttribute(const std::string& name) const override {
     auto& attribute_value_map = node_.GetAttributes();
@@ -2196,13 +2199,11 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
 
 Status Graph::UpdateShapeInference(Node& node) {
   // We only use this during constant folding, and we don't constant fold control flow nodes.
-  if (!node.GetAttributeNameToMutableSubgraphMap().empty())
-    return Status(ONNXRUNTIME, FAIL,
-                  "UpdateTypeShapeInference is not intended to be used with control flow nodes containing subgraphs");
+  ORT_RETURN_IF_NOT(node.GetAttributeNameToMutableSubgraphMap().empty(),
+                    "UpdateTypeShapeInference is not intended to be used with control flow nodes containing subgraphs");
   if (!node.Op()) {
-    if (!SetOpSchemaFromRegistryForNode(node) || !node.Op()) {
-      return Status(ONNXRUNTIME, FAIL, "Can not run shape inference when schema is missing");
-    }
+    ORT_RETURN_IF(!SetOpSchemaFromRegistryForNode(node) || !node.Op(),
+                  "Can not run shape inference when schema is missing");
   }
   // Whilst the type inferencing will run again we don't allow type overrides due to using the default
   // ResolveOptions settings, so essentially this can only change the shape information.
