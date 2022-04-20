@@ -5,7 +5,6 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/platform/path_lib.h"
 #include "core/platform/env.h"
 #include "orttraining/core/framework/checkpointing.h"
@@ -14,6 +13,7 @@
 #include "core/util/protobuf_parsing_utils.h"
 #include "orttraining/core/framework/protobuf_message_sequence.h"
 #include "onnx/defs/tensor_proto_util.h"
+#include "core/framework/tensorprotoutils.h"
 
 namespace onnxruntime {
 namespace training {
@@ -57,6 +57,34 @@ Status CreateOrtValuesFromTensorProtos(
   }
 
   return Status::OK();
+}
+
+const std::vector<std::string> ParseStringData(
+    const ONNX_NAMESPACE::TensorProto* tensor_proto) {
+  ORT_ENFORCE(!tensor_proto->has_data_type() ||
+                  tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED,
+              "Invalid string data type.");
+  ORT_ENFORCE(tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_STRING,
+              "ParseStringData type mismatch for tensor ");
+
+  ORT_ENFORCE(!(tensor_proto->has_data_location() &&
+                tensor_proto->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL),
+              "Cannot parse string data from external tensors.");
+
+  ORT_ENFORCE(!tensor_proto->has_raw_data(),
+              "stringcontent is required to be stored in repeated"
+              "bytes string_data field. raw_data type cannot be string.");
+
+  std::vector<std::string> res;
+  const auto& data = tensor_proto->string_data();
+  int expected_size = 1;
+  for (int i = 0; i < tensor_proto->dims_size(); ++i) {
+    expected_size *= tensor_proto->dims(i);
+  }
+
+  ORT_ENFORCE(tensor_proto->dims_size() != 0 && data.size() != expected_size, "Data size mismatch.");
+  res.insert(res.end(), data.begin(), data.end());
+  return res;
 }
 
 Status CheckpointUtils::Ort_Save_Internal(
@@ -308,24 +336,33 @@ Status CheckpointUtils::Ort_Load_Internal(const PathString& checkpoint_path, Che
       const std::string& tensor_name = property_proto.name();
       auto data_type = property_proto.data_type();
       switch (data_type) {
-        case ONNX_NAMESPACE::TensorProto::FLOAT:
+        case ONNX_NAMESPACE::TensorProto::FLOAT: {
+          const std::vector<float>& flt_parsed = ONNX_NAMESPACE::ParseData<float>(&property_proto);
+          ORT_ENFORCE(flt_parsed.size() == static_cast<size_t>(1), "only support scalar float properties.");
           named_properties.insert({tensor_name,
                                    std::make_shared<TypedCheckpointProperty<float>>(
                                        tensor_name,
-                                       ONNX_NAMESPACE::ParseData<float>(&property_proto).at(0))});
+                                       flt_parsed.at(0))});
           break;
-        case ONNX_NAMESPACE::TensorProto::STRING:
+        }
+        case ONNX_NAMESPACE::TensorProto::STRING: {
+          const std::vector<std::string>& str_parsed = ParseStringData(&property_proto);
+          ORT_ENFORCE(str_parsed.size() == static_cast<size_t>(1), "only support scalar string properties.");
           named_properties.insert({tensor_name,
                                    std::make_shared<TypedCheckpointProperty<std::string>>(
                                        tensor_name,
-                                       ONNX_NAMESPACE::ParseData<std::string>(&property_proto).at(0))});
+                                       str_parsed.at(0))});
           break;
-        case ONNX_NAMESPACE::TensorProto::INT64:
+        }
+        case ONNX_NAMESPACE::TensorProto::INT64: {
+          const std::vector<int64_t>& int_parsed = ONNX_NAMESPACE::ParseData<int64_t>(&property_proto);
+          ORT_ENFORCE(int_parsed.size() == static_cast<size_t>(1), "only support scalar int64_t properties.");
           named_properties.insert({tensor_name,
                                    std::make_shared<TypedCheckpointProperty<int64_t>>(
                                        tensor_name,
-                                       ONNX_NAMESPACE::ParseData<int64_t>(&property_proto).at(0))});
+                                       int_parsed.at(0))});
           break;
+        }
         default:
           ORT_THROW("Unsupported input data type of ", data_type);
       }

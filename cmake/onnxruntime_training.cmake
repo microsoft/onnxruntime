@@ -255,8 +255,22 @@ if (onnxruntime_BUILD_UNIT_TESTS)
       endif()
     endif()
 
-    onnxruntime_add_include_to_target(onnxruntime_training_api_test_runner onnxruntime_training onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
-    target_include_directories(onnxruntime_training_api_test_runner PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_CXX_INCLUDE_DIRS} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx)
+    onnxruntime_add_include_to_target(onnxruntime_training_api_test_runner onnxruntime_training 
+      onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+   
+    target_include_directories(onnxruntime_training_api_test_runner PUBLIC 
+      ${CMAKE_CURRENT_BINARY_DIR} 
+      ${ONNXRUNTIME_ROOT} 
+      ${ORTTRAINING_ROOT} 
+      ${MPI_CXX_INCLUDE_DIRS} 
+      ${eigen_INCLUDE_DIRS} 
+      ${CXXOPTS} 
+      ${extra_includes} 
+      ${onnxruntime_graph_header} 
+      ${onnxruntime_exec_src_dir} 
+      ${CMAKE_CURRENT_BINARY_DIR} 
+      ${CMAKE_CURRENT_BINARY_DIR}/onnx
+    )
 
     target_link_libraries(onnxruntime_training_api_test_runner PRIVATE 
       onnxruntime_training
