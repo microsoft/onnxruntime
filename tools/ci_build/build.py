@@ -600,7 +600,7 @@ def parse_arguments():
         cupti library must be added to PATH beforehand.")
 
     parser.add_argument("--use_xnnpack", action='store_true', help="Enable xnnpack EP.")
-    
+
     args = parser.parse_args()
     if args.android_sdk_path:
         args.android_sdk_path = os.path.normpath(args.android_sdk_path)
@@ -608,6 +608,7 @@ def parse_arguments():
         args.android_ndk_path = os.path.normpath(args.android_ndk_path)
 
     return args
+
 
 def is_reduced_ops_build(args):
     return args.include_ops_by_config is not None
