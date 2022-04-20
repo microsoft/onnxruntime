@@ -1214,7 +1214,6 @@ if (onnxruntime_USE_XNNPACK)
 
   add_subdirectory(external/FP16)  
   add_subdirectory(external/pthreadpool)
-  #add_subdirectory(external/xnnpack)
   add_subdirectory(xnnpack)
   set_target_properties(XNNPACK PROPERTIES FOLDER "External")
   set_target_properties(pthreadpool PROPERTIES FOLDER "External")

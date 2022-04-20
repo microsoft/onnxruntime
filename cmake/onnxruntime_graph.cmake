@@ -17,6 +17,7 @@ if (onnxruntime_USE_XNNPACK)
   add_dependencies(onnxruntime_xnnpack_schemas ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_xnnpack_schemas PROPERTIES FOLDER "ONNXRuntime")
 endif()
+
 if (onnxruntime_MINIMAL_BUILD)
   # remove schema registration support
   list(APPEND onnxruntime_graph_src_exclude_patterns
