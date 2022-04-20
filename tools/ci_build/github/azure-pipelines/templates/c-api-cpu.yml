@@ -47,7 +47,7 @@ jobs:
 - job: Linux_C_API_Packaging_CPU_x64
   workspace:
     clean: all
-  timeoutInMinutes:  180
+  timeoutInMinutes:  210
   strategy:
     matrix:
       ARCH_x86_64:

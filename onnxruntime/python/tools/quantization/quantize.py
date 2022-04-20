@@ -3,21 +3,14 @@
 # Licensed under the MIT License. See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
-import os
-import onnx
-import onnx.numpy_helper
-import struct
 import logging
-import numpy as np
-
 from pathlib import Path
-
 from onnx import onnx_pb as onnx_proto
-from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
 from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue
 from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg
 from .quant_utils import QuantType, QuantFormat
+from .quant_utils import load_model
 
 from .registry import QLinearOpsRegistry, IntegerOpsRegistry
 
@@ -25,33 +18,6 @@ from .onnx_model import ONNXModel
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
 from .calibrate import CalibrationDataReader, create_calibrator, CalibrationMethod 
-
-
-def optimize_model(model_path : Path):
-    '''
-        Generate model that applies graph optimization (constant folding, etc.)
-        parameter model_path: path to the original onnx model
-    :return: optimized onnx model
-    '''
-    opt_model_path = generate_identified_filename(model_path, "-opt")
-    sess_option = SessionOptions()
-    sess_option.optimized_model_filepath = opt_model_path.as_posix()
-    sess_option.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_BASIC
-    _ = InferenceSession(model_path.as_posix(), sess_option, providers=['CPUExecutionProvider'])
-    optimized_model = onnx.load(opt_model_path.as_posix())
-    return optimized_model
-
-
-def load_model(model_path : Path, optimize=True, handle_gemm_with_matmul=True):
-
-    model = optimize_model(Path(model_path)) if optimize else onnx.load(Path(model_path))
-
-    if handle_gemm_with_matmul:
-        onnx_model = ONNXModel(model)
-        onnx_model.replace_gemm_with_matmul()
-        return onnx_model.model
-
-    return model
 
 
 def check_static_quant_arguments(quant_format : QuantFormat,
@@ -66,85 +32,6 @@ def check_static_quant_arguments(quant_format : QuantFormat,
        quant_format != QuantFormat.QDQ: \
         logging.warning("Please use QuantFormat.QDQ for activation type QInt8 and weight type QInt8. "
                         "Or it will lead to bad performance on x64.")
-
-
-def quantize(model,
-             per_channel=False,
-             nbits=8,
-             quantization_mode=QuantizationMode.IntegerOps,
-             static=False,
-             symmetric_activation=False,
-             symmetric_weight=False,
-             quantization_params=None,
-             nodes_to_quantize=None,
-             nodes_to_exclude=None,
-             op_types_to_quantize=[]):
-    '''
-        Given an onnx model, create a quantized onnx model and save it into a file
-    :param model: ModelProto to quantize
-    :param per_channel: quantize weights per channel
-    :param nbits: number of bits to represent quantized data. Currently only supporting 8-bit types
-    :param quantization_mode: Can be one of the QuantizationMode types.
-        IntegerOps:
-            the function will use integer ops. Only ConvInteger and MatMulInteger ops are supported now.
-        QLinearOps:
-            the function will use QLinear ops. Only QLinearConv and QLinearMatMul ops are supported now.
-    :param static:
-        True: The inputs/activations are quantized using static scale and zero point values
-              specified through quantization_params.
-        False: The inputs/activations are quantized using dynamic scale and zero point values
-               computed while running the model.
-    :param symmetric_activation:
-        True: activations are quantized into signed integers.
-        False: activations are quantized into unsigned integers.
-    :param symmetric_weight:
-        True: weights are quantized into signed integers.
-        False: weights are quantized into unsigned integers.
-    :param quantization_params:
-        Dictionary to specify the zero point and scale values for inputs to conv and matmul nodes.
-        Should be specified when static is set to True.
-        The quantization_params should be specified in the following format:
-            {
-                "input_name": [zero_point, scale]
-            }.
-        zero_point should be of type np.uint8 and scale should be of type np.float32.
-        example:
-            {
-                'resnet_model/Relu_1:0': [np.uint8(0), np.float32(0.019539741799235344)],
-                'resnet_model/Relu_2:0': [np.uint8(0), np.float32(0.011359662748873234)]
-            }
-    :param nodes_to_quantize:
-        List of nodes names to quantize. When this list is not None only the nodes in this list
-        are quantized.
-        example:
-        [
-            'Conv__224',
-            'Conv__252'
-        ]
-    :param nodes_to_exclude:
-        List of nodes names to exclude. The nodes in this list will be excluded from quantization
-        when it is not None.
-    :param op_types_to_quantize: specify the types of operators to quantize, like ['Conv'] to quantize Conv only. It quantizes all supported operators by default.
-    :return: ModelProto with quantization
-    '''
-    logging.warning("onnxruntime.quantization.quantize is deprecated.\n\
-         Please use quantize_static for static quantization, quantize_dynamic for dynamic quantization.")
-    if nbits == 8 or nbits == 7:
-        mode = quantization_mode
-        copy_model = onnx_proto.ModelProto()
-        copy_model.CopyFrom(model)
-
-        if not op_types_to_quantize or len(op_types_to_quantize) == 0:
-            op_types_to_quantize = list(QLinearOpsRegistry.keys()) if static else list(IntegerOpsRegistry.keys())
-
-        quantizer = ONNXQuantizer(copy_model, per_channel, nbits == 7, mode, static, symmetric_weight,
-                                  symmetric_activation, quantization_params, nodes_to_quantize, nodes_to_exclude,
-                                  op_types_to_quantize)
-
-        quantizer.quantize_model()
-        return quantizer.model.model
-    else:
-        raise ValueError('Only 8 and 7 bit quantization is currently supported')
 
 
 def quantize_static(model_input,
@@ -205,8 +92,6 @@ def quantize_static(model_input,
             WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
             EnableSubgraph = True/False : Default is False. If enabled, subgraph will be quantized.
                                           Dyanmic mode currently is supported. Will support more in future.
-            DisableShapeInference = True/False : in dynamic quantize mode, shape inference is not must have
-                                                 and if it cause some issue, you could disable it.
             ForceQuantizeNoInputCheck = True/False : By default, some latent operators like maxpool, transpose, do not quantize
                                                      if their input is not quantized already. Setting to True to force such operator
                                                      always quantize input and so generate quantized output. Also the True behavior
@@ -236,7 +121,7 @@ def quantize_static(model_input,
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(QLinearOpsRegistry.keys())
 
-    model = load_model(Path(model_input), optimize_model, False)
+    model = load_model(Path(model_input), optimize_model)
 
     calib_extra_options_keys = [
         ('CalibTensorRangeSymmetric', 'symmetric'),
@@ -328,8 +213,6 @@ def quantize_dynamic(model_input: Path,
             WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
             EnableSubgraph = True/False : Default is False. If enabled, subgraph will be quantized.
                                           Dyanmic mode currently is supported. Will support more in future.
-            DisableShapeInference = True/False : in dynamic quantize mode, shape inference is not must have
-                                                 and if it cause some issue, you could disable it.
             ForceQuantizeNoInputCheck = True/False : By default, some latent operators like maxpool, transpose, do not quantize
                                                      if their input is not quantized already. Setting to True to force such operator
                                                      always quantize input and so generate quantized output. Also the True behavior

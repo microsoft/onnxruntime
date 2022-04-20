@@ -358,6 +358,7 @@ jobs:
         --skip_submodule_sync \
         --parallel \
         --use_nnapi \
+        --build_shared_lib \
         --cmake_generator=Ninja \
         --path_to_protoc_exe $(Build.SourcesDirectory)/protobuf_install/bin/protoc \
         --build_java \

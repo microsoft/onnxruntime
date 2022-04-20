@@ -489,10 +489,7 @@ bool DnnlSumNodeCapability::IsDimensionSupported(const Node* node) const {
 bool DnnlBinaryNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
   ORT_UNUSED_PARAMETER(graph_viewer);
   if (!IsTypeSupported(node)) return false;
-  //gpu broadcast for source 0 not supported
-  if (dnnl_engine_get_count(dnnl_engine_kind_t::dnnl_gpu)) {
-    return false;
-  }
+
   return true;
 }
 
@@ -981,6 +978,66 @@ bool DnnlDequantizeLinearNodeCapability::Supported(const Node* node, const Graph
   ORT_UNUSED_PARAMETER(graph_viewer);
   if (!IsTypeSupported(node)) return false;
   return true;
+}
+
+bool DnnlLayerNormalizationNodeCapability::Supported(const Node* node, const GraphViewer& graph_viewer) const {
+  ORT_UNUSED_PARAMETER(graph_viewer);
+  if (!IsTypeSupported(node)) return false;
+  if (!IsTrainingSupported(node)) return false;
+  if (!IsDimensionSupported(node)) return false;
+  return true;
+}
+
+bool DnnlLayerNormalizationNodeCapability::IsAxisSupported(const Node* node) const {
+  // At the moment of implementation OneDNN does not support broadcasting 
+  // on LayerNorm so we can only accept the op when the normalization 
+  // is done on the last dim
+  const NodeAttributes& attr = node->GetAttributes();
+  auto axis = attr.find("axis");
+
+  if (axis != attr.end()) {
+    // Get the norm dim
+    auto norm_dim = axis->second().i();
+    // Get the input dims
+    auto input_dims = node->InputDefs()[0]->Shape()->dim_size();
+
+    // If the axis is not the last dim, it's not supported
+    if ((norm_dim != -1) && (norm_dim != (input_dims - 1))) {
+      return false;
+    }
+  }
+  // If no axis is provided or the conditions above were not met, 
+  // we normalize on the last dim
+  return true;
+}
+
+bool DnnlLayerNormalizationNodeCapability::IsTrainingSupported(const Node* node) const {
+  // Get the output defs
+  auto num_outputs = node->OutputDefs().size();
+  // Training support is in progress, for the moment we don't support multiple outputs
+  if (num_outputs > 1) {
+    return false;
+  } else {
+    return true;
+  }
+}
+bool DnnlLayerNormalizationNodeCapability::IsDimensionSupported(const Node* node) const {
+  // Get the input shape
+  auto input_shape = node->InputDefs()[0]->Shape();
+
+  if (input_shape != nullptr) {
+    auto input_dims = input_shape->dim_size();
+    // OneDNN is supports from 2D to 5D tensors
+    if ((input_dims <= 5) && (input_dims >= 2)) {
+      return true;
+
+    // If the tensor is 1D or >6D then we dont support it
+    } else {
+      return false;
+    }   
+  }
+  // If we dont have shape info, accept the data and catch the error on the implementation
+  return true;  
 }
 
 }  // namespace onnxruntime

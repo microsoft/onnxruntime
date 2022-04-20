@@ -312,14 +312,18 @@ packages = [
     'onnxruntime.capi.training',
     'onnxruntime.datasets',
     'onnxruntime.tools',
+    'onnxruntime.tools.mobile_helpers',
     'onnxruntime.tools.ort_format_model',
     'onnxruntime.tools.ort_format_model.ort_flatbuffers_py',
     'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs',
+    'onnxruntime.tools.qdq_helpers',
     'onnxruntime.quantization',
     'onnxruntime.quantization.operators',
     'onnxruntime.quantization.CalTableFlatBuffers',
     'onnxruntime.transformers',
-    'onnxruntime.transformers.longformer',
+    'onnxruntime.transformers.models.gpt2',
+    'onnxruntime.transformers.models.longformer',
+    'onnxruntime.transformers.models.t5',
 ]
 
 requirements_file = "requirements.txt"
