@@ -103,11 +103,27 @@ def max_pool2d(g, self, kernel_size, stride, padding, dilation, ceil_mode):
 
 @register_symbolic('max')
 def max(g, self, dim_or_y=None, keepdim=None):
+    # torch.max(input)
     if dim_or_y is None and keepdim is None:
         return g.op("org.pytorch.aten::ATen", self, operator_s='aten::max')
+    # torch.max(input, other)
     if keepdim is None:
         return g.op("Max", self, dim_or_y)
+    # torch.max(input, dim, keepdim)
     return g.op("org.pytorch.aten::ATen", self, dim_or_y, keepdim, operator_s='aten::max',
+                overload_name_s='dim', outputs=2)
+
+
+@register_symbolic('min')
+def min(g, self, dim_or_y=None, keepdim=None):
+    # torch.min(input)
+    if dim_or_y is None and keepdim is None:
+        return g.op("org.pytorch.aten::ATen", self, operator_s='aten::min')
+    # torch.min(input, other)
+    if keepdim is None:
+        return g.op("Min", self, dim_or_y)
+    # torch.min(input, dim, keepdim)
+    return g.op("org.pytorch.aten::ATen", self, dim_or_y, keepdim, operator_s='aten::min',
                 overload_name_s='dim', outputs=2)
 
 
