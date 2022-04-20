@@ -113,63 +113,11 @@ The `MinSizeRel` configuration will produce the smallest binary size.
 
 The `Release` configuration can also be used if you wish to prioritize performance over binary size.
 
-## Custom build package format
-
-### Web
-
-_[This section is coming soon]_
-
-### iOS
-
-To produce pods for an iOS build, use the [build_and_assemble_ios_pods.py](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/apple/build_and_assemble_ios_pods.py) script.
-
-Example usage:
-
-```bash
-python3 tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
-  --staging-dir /path/to/staging/dir \
-  --include-ops-by-config /path/to/custom.config \
-  --build-settings-file tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json
-```
-
-This will do a custom build and create the pod package files for it in /path/to/staging/dir.
-
-Next, update the Podfile to use the local pods:
-
-```diff
--  pod 'onnxruntime-mobile-objc'
-+  pod 'onnxruntime-mobile-objc', :path => "/path/to/staging/dir/onnxruntime-mobile-objc"
-+  pod 'onnxruntime-mobile-c', :path => "/path/to/staging/dir/onnxruntime-mobile-c"
-```
-
-Note: The onnxruntime-mobile-objc pod depends on the onnxruntime-mobile-c pod. If the released onnxruntime-mobile-objc pod is used, this dependency is automatically handled. However, if a local onnxruntime-mobile-objc pod is used, the local onnxruntime-mobile-c pod that it depends on also needs to be specified in the Podfile.
-
-### Android
-
-_[This section is coming soon]_
-
-### Python
-
-If you wish to use the ONNX Runtime python bindings with a minimal build, exceptions must be enabled due to Python requiring them.
-
-Remove `--disable_exceptions` and add `--build_wheel` to the build command in order to build a Python Wheel with the ONNX Runtime bindings.
-
-A .whl file will be produced in the build output directory under the `<config>/dist` folder.
-
-* The Python Wheel for a Windows MinSizeRel build using build.bat would be in `<ONNX Runtime repository root>\build\Windows\MinSizeRel\MinSizeRel\dist\`
-* The Python Wheel for a Linux MinSizeRel build using build.sh would be in `<ONNX Runtime repository root>/build/Linux/MinSizeRel/dist/`
-
-The wheel can be installed using `pip`. Adjust the following command for your platform and the whl filename.
-
-```bash
-pip install -U .\build\Windows\MinSizeRel\MinSizeRel\dist\onnxruntime-1.7.0-cp37-cp37m-win_amd64.whl
-```
-
 ## Version of ONNX Runtime to build from
 
 Unless there is a specific feature you need, do not use the unreleased `master` branch.
 
-Once you have cloned the ONNX Runtime repo, checkout one of the release tags to build from.
+Once you have cloned the ONNX Runtime repo, check out one of the release tags to build from.
 
 ```bash
 git clone --recursive https://github.com/microsoft/onnxruntime
@@ -184,9 +132,120 @@ Find them [here](https://github.com/microsoft/onnxruntime/tags).
 
 ### Build on windows, with reduced operator support, and support for ORT format models only
 
-`<ONNX Runtime repository root>.\build.bat --config=MinSizeRel --cmake_generator="Visual Studio 16 2019" --build_shared_lib --minimal_build --disable_ml_ops --disable_exceptions --include_ops_by_config <config file from model conversion> --skip_tests`
+```
+<ONNX Runtime repository root>\build.bat ^
+  --config=Release ^
+  --cmake_generator="Visual Studio 16 2019" ^
+  --build_shared_lib ^
+  --minimal_build ^
+  --disable_ml_ops --disable_exceptions --disable_rtti ^
+  --include_ops_by_config <config file from model conversion> --enable_reduced_operator_type_support ^
+  --skip_tests
+```
 
 ### Linux
 
-`<ONNX Runtime repository root>./build.sh --config=MinSizeRel --build_shared_lib --minimal_build --disable_ml_ops --disable_exceptions --include_ops_by_config <config file from model conversion> --skip_tests`
+```
+<ONNX Runtime repository root>/build.sh \
+  --config=Release \
+  --build_shared_lib \
+  --minimal_build \
+  --disable_ml_ops --disable_exceptions --disable_rtti \
+  --include_ops_by_config <config file from model conversion> --enable_reduced_operator_type_support \
+  --skip_tests
+```
 
+## Custom build packages
+
+In this section, `ops.config` is a [configuration file](../reference/reduced-operator-config-file.md) that specifies the opsets, op kernels, and types to include. See the configuration file used by the pre-built mobile packages at [tools/ci_build/github/android/mobile_package.required_operators.config](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/android/mobile_package.required_operators.config).
+
+### Web
+
+_[This section is coming soon]_
+
+### iOS
+
+To produce pods for an iOS build, use the [build_and_assemble_ios_pods.py](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/apple/build_and_assemble_ios_pods.py) script from the ONNX Runtime repo.
+
+1. Check out the version of ONNX Runtime you want to use.
+
+2. Run the build script.
+
+    For example:
+
+    ```bash
+    python3 tools/ci_build/github/apple/build_and_assemble_ios_pods.py \
+      --staging-dir /path/to/staging/dir \
+      --include-ops-by-config /path/to/ops.config \
+      --build-settings-file /path/to/build_settings.json
+    ```
+
+    This will do a custom build and create the pod package files for it in /path/to/staging/dir.
+
+    The build options are specified with the file provided to the `--build-settings-file` option. See the options used by the pre-built mobile package at [tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json). You can use this file directly.
+
+3. Use the local pods.
+
+    For example, update the Podfile to use the local onnxruntime-mobile-objc pod instead of the released one:
+
+    ```diff
+    -  pod 'onnxruntime-mobile-objc'
+    +  pod 'onnxruntime-mobile-objc', :path => "/path/to/staging/dir/onnxruntime-mobile-objc"
+    +  pod 'onnxruntime-mobile-c', :path => "/path/to/staging/dir/onnxruntime-mobile-c"
+    ```
+
+    Note: The onnxruntime-mobile-objc pod depends on the onnxruntime-mobile-c pod. If the released onnxruntime-mobile-objc pod is used, this dependency is automatically handled. However, if a local onnxruntime-mobile-objc pod is used, the local onnxruntime-mobile-c pod that it depends on also needs to be specified in the Podfile.
+
+### Android
+
+To produce an Android AAR package, use the [build_custom_android_package.py](https://github.com/microsoft/onnxruntime/blob/master/tools/android_custom_build/build_custom_android_package.py) script from the ONNX Runtime repo.
+
+The script can be used from within the repo or outside of it. Copy its [containing directory](https://github.com/microsoft/onnxruntime/blob/master/tools/android_custom_build) for usage outside of the repo.
+
+1. Run the build script.
+
+    For example:
+
+    ```bash
+    python3 tools/android_custom_build/build_custom_android_package.py \
+      --onnxruntime_branch_or_tag v1.11.0 \
+      --include_ops_by_config /path/to/ops.config \
+      --build_settings /path/to/build_settings.json \
+      /path/to/working/dir
+    ```
+
+    This will do a custom build and create the Android AAR package for it in /path/to/working/dir.
+
+    Specify the ONNX Runtime version you want to use with the `--onnxruntime_branch_or_tag` option. The script uses a separate copy of the ONNX Runtime repo in a Docker container so this is independent from the containing ONNX Runtime repo's version.
+
+    The build options are specified with the file provided to the `--build_settings` option. See the options used by the pre-built mobile package at [tools/ci_build/github/android/default_mobile_aar_build_settings.json](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/android/default_mobile_aar_build_settings.json). You can use this file directly.
+
+2. Use the local custom Android AAR package.
+
+    For example, in an Android Studio project:
+
+    a. Copy the AAR file from `/path/to/working/dir/output/aar_out/<build config, e.g., Release>/com/microsoft/onnxruntime/onnxruntime-mobile/1.11.0/onnxruntime-mobile-1.11.0.aar` to the project's `<module name, e.g., app>/libs` directory.
+
+    b. Update the project's `<module name>/build.gradle` file dependencies section:
+
+    ```diff
+    -    implementation 'com.microsoft.onnxruntime:onnxruntime-mobile:latest.release'
+    +    implementation files('libs/onnxruntime-mobile-1.11.0.aar')
+    ```
+
+### Python
+
+If you wish to use the ONNX Runtime python bindings with a minimal build, exceptions must be enabled due to Python requiring them.
+
+Remove `--disable_exceptions` and add `--build_wheel` to the build command in order to build a Python Wheel with the ONNX Runtime bindings.
+
+A .whl file will be produced in the build output directory under the `<config>/dist` folder.
+
+* The Python Wheel for a Windows Release build using build.bat would be in `<ONNX Runtime repository root>\build\Windows\Release\Release\dist\`
+* The Python Wheel for a Linux Release build using build.sh would be in `<ONNX Runtime repository root>/build/Linux/Release/dist/`
+
+The wheel can be installed using `pip`. Adjust the following command for your platform and the whl filename.
+
+```
+pip install -U .\build\Windows\Release\Release\dist\onnxruntime-1.7.0-cp37-cp37m-win_amd64.whl
+```
