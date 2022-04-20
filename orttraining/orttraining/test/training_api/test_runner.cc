@@ -11,15 +11,17 @@
 #include "core/session/inference_session.h"
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
-#include "orttraining/training_api/interfaces.h"
+
+// ORT training C++ API includes
+// TODO: should we have single header for user.
 #include "orttraining/training_api/checkpoint.h"
+#include "orttraining/training_api/utilities.h"
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
 using namespace onnxruntime::training;
 using namespace onnxruntime::training::tensorboard;
 using namespace onnxruntime::training::api_test;
-using namespace onnxruntime::training::api;
 using namespace std;
 
 #ifdef USE_CUDA
@@ -207,11 +209,11 @@ Status RunTraining(const TestRunnerParameters& params) {
   ORT_ENFORCE(CheckpointUtils::Ort_Load(params.checkpoint_to_load_path, state_dicts).IsOK());
 
   Module module(params.model_training_graph_path,
-                state_dicts.named_parameters,
+                state_dicts.module_checkpoint_states.named_parameters,
                 params.model_evaluation_graph_path);
 
   Optimizer optimizer(params.optimizer_training_graph_path,
-                      state_dicts.named_parameters);
+                      state_dicts.module_checkpoint_states.named_parameters);
 
 #ifdef USE_CUDA
   api_test::utils::SetExecutionProvider(module, optimizer, params.provider.get());
@@ -254,8 +256,8 @@ Status RunTraining(const TestRunnerParameters& params) {
       if (batch_idx % SAVE_STEPS == 0) {
         // save trained weights
         CheckpointStates state_dicts_to_save;
-        ORT_ENFORCE(module.GetStateDict(state_dicts_to_save.named_parameters).IsOK());
-        ORT_ENFORCE(optimizer.GetStateDict(state_dicts_to_save.grouped_optimizer_states).IsOK());
+        ORT_ENFORCE(module.GetStateDict(state_dicts_to_save.module_checkpoint_states).IsOK());
+        ORT_ENFORCE(optimizer.GetStateDict(state_dicts_to_save.optimizer_checkpoint_states).IsOK());
         std::string ckpt_file = params.output_dir + "/ckpt_" + params.model_name + std::to_string(batch_idx);
         ORT_ENFORCE(CheckpointUtils::Ort_Save(state_dicts_to_save, ckpt_file).IsOK());
       }

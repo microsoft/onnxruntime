@@ -6,7 +6,9 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-
+#include "core/common/path.h"
+#include "core/platform/env.h"
+#include "core/platform/path_lib.h"
 #include "core/common/path_string.h"
 #include "core/common/status.h"
 #include "core/framework/data_transfer_manager.h"
@@ -15,6 +17,16 @@
 
 namespace onnxruntime {
 namespace training {
+
+constexpr const PathChar* k_tensors_file_name = ORT_TSTR("tensors.pbseq");
+constexpr const PathChar* k_tensors_data_file_name = ORT_TSTR("tensors.bin");
+constexpr const PathChar* k_properties_file_name = ORT_TSTR("properties.pbseq");
+
+PathString GetCheckpointTensorsFilePath(const PathString& checkpoint_directory);
+
+PathString GetCheckpointTensorsDataFilePath(const PathString& checkpoint_directory);
+
+PathString GetCheckpointPropertiesFilePath(const PathString& checkpoint_directory);
 
 /**
  * A checkpoint is a directory of files:
@@ -38,6 +50,34 @@ common::Status SaveModelCheckpoint(
     const DataTransferManager& data_transfer_manager,
     const NameMLValMap& runtime_tensors,
     const std::unordered_map<std::string, std::string>& properties);
+
+// opens file descriptor and calls use_fn
+//   use_fn should have this signature: Status use_fn(int file_descriptor)
+template <typename TUseFileFn>
+common::Status WithOpenFile(const PathString& path, bool readonly, TUseFileFn use_fn) {
+  int fd;
+  if (readonly) {
+    ORT_RETURN_IF_ERROR(Env::Default().FileOpenRd(path, fd));
+  } else {
+    ORT_RETURN_IF_ERROR(Env::Default().FileOpenWr(path, fd));
+  }
+
+  Status use_fn_status{};
+  try {
+    use_fn_status = use_fn(fd);
+  } catch (std::exception& e) {
+    use_fn_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, e.what());
+  }
+
+  Status close_status = Env::Default().FileClose(fd);
+  return !use_fn_status.IsOK() ? use_fn_status : close_status;
+}
+
+common::Status SaveRuntimeTensors(
+    const PathString& tensors_path,
+    const PathString& tensors_data_path,
+    const DataTransferManager& data_transfer_manager,
+    const NameMLValMap& ort_values);
 
 /**
  * @brief Saves list of tensor proto in the specified location.

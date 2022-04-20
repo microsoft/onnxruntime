@@ -4,6 +4,7 @@
 #if defined(ENABLE_TRAINING) && defined(ENABLE_TRAINING_ON_DEVICE)
 
 #pragma once
+#include "core/session/inference_session.h"
 
 namespace onnxruntime {
 namespace training {
@@ -46,6 +47,12 @@ class Parameter {
   bool requires_grad_{true};
 };
 
+struct ModuleCheckpointStates {
+ public:
+  std::unordered_map<std::string, std::shared_ptr<Parameter>> named_parameters;
+  DataTransferManager* train_session_data_transfer_mgr_;
+};
+
 class Module {
  public:
   // Initialize a module from an ORT inference session with loaded
@@ -79,8 +86,12 @@ class Module {
   }
 
   // Return the states of the module as a map.
-  Status GetStateDict(std::unordered_map<std::string, std::shared_ptr<Parameter>>& module_states) {
-    module_states = named_parameters();
+  Status GetStateDict(ModuleCheckpointStates& module_checkpoint_states) {
+    module_checkpoint_states.named_parameters = named_parameters();
+
+    // Pass the training session data transfer manager for data copying when saving.
+    // An alternative is, we can do copy at this stage.
+    module_checkpoint_states.train_session_data_transfer_mgr_ = nullptr;
     return Status::OK();
   }
 
@@ -99,11 +110,17 @@ struct ParameterOptimizerState {
   std::unordered_map<std::string, std::shared_ptr<OrtValue>> states_;
 };
 
-struct OptimizerState {
+struct GroupOptimizerState {
   // overall state related to optimizer
   int64_t step_;
   float learning_rate_;
-  std::unordered_map<std::string, ParameterOptimizerState> param_optimizer_states_;
+  std::unordered_map<std::string, ParameterOptimizerState> param_named_optimizer_states_;
+};
+
+struct OptimizerCheckpointStates {
+ public:
+  std::unordered_map<std::string, std::shared_ptr<GroupOptimizerState>> group_named_optimizer_states;
+  DataTransferManager* optimizer_session_data_transfer_mgr_;
 };
 
 class Optimizer {
@@ -128,10 +145,14 @@ class Optimizer {
     return Status::OK();
   }
 
-  // Return the states of the optimizer as a map.
-  Status GetStateDict(std::unordered_map<std::string, std::shared_ptr<OptimizerState>>& grouped_optimizer_states) {
+  Status GetStateDict(OptimizerCheckpointStates& optimizer_checkpoint_states) {
+    auto& grouped_optimizer_states = optimizer_checkpoint_states.group_named_optimizer_states;
     const std::string group_zero_name = "group_0";
-    grouped_optimizer_states.insert({group_zero_name, std::make_shared<OptimizerState>(optimizer_state_)});
+    grouped_optimizer_states.insert({group_zero_name, std::make_shared<GroupOptimizerState>(optimizer_state_)});
+
+    // Pass the optimizer session data transfer manager for data copying when saving.
+    // An alternative is, we can do copy at this stage.
+    optimizer_checkpoint_states.optimizer_session_data_transfer_mgr_ = nullptr;
     return Status::OK();
   }
 
@@ -148,7 +169,7 @@ class Optimizer {
  private:
   std::unique_ptr<onnxruntime::InferenceSession> optim_sess_;
   std::vector<std::shared_ptr<Parameter>> parameters_;
-  OptimizerState optimizer_state_;
+  GroupOptimizerState optimizer_state_;
 };
 
 class LearningRateScheduler {
@@ -187,17 +208,6 @@ class LinearScheduler : public LearningRateScheduler {
   float end_factor_;
   int64_t total_iters_;
 };
-
-namespace utils {
-/*
-  module.train_sess.RegisterExecutionProvider(provider);
-  module.eval_sess.RegisterExecutionProvider(provider);
-  optimizer.optim_sess.RegisterExecutionProvider(provider);
-*/
-void SetExecutionProvider(const Module& /*module*/, const Optimizer& /*optimizer*/, IExecutionProvider* /*provider*/) {
-  ORT_NOT_IMPLEMENTED("Not implemented.");
-}
-}  // namespace utils
 
 }  // namespace api_test
 }  // namespace training

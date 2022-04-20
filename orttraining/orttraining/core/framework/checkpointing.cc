@@ -24,12 +24,6 @@
 namespace onnxruntime {
 namespace training {
 
-namespace {
-
-constexpr const PathChar* k_tensors_file_name = ORT_TSTR("tensors.pbseq");
-constexpr const PathChar* k_tensors_data_file_name = ORT_TSTR("tensors.bin");
-constexpr const PathChar* k_properties_file_name = ORT_TSTR("properties.pbseq");
-
 PathString GetCheckpointTensorsFilePath(const PathString& checkpoint_directory) {
   return ConcatPathComponent<PathChar>(checkpoint_directory, k_tensors_file_name);
 }
@@ -41,6 +35,8 @@ PathString GetCheckpointTensorsDataFilePath(const PathString& checkpoint_directo
 PathString GetCheckpointPropertiesFilePath(const PathString& checkpoint_directory) {
   return ConcatPathComponent<PathChar>(checkpoint_directory, k_properties_file_name);
 }
+
+namespace {
 
 Status SaveRuntimeTensor(
     const std::string& tensor_name,
@@ -93,28 +89,6 @@ Status SaveRuntimeTensor(
   return Status::OK();
 }
 
-// opens file descriptor and calls use_fn
-//   use_fn should have this signature: Status use_fn(int file_descriptor)
-template <typename TUseFileFn>
-Status WithOpenFile(const PathString& path, bool readonly, TUseFileFn use_fn) {
-  int fd;
-  if (readonly) {
-    ORT_RETURN_IF_ERROR(Env::Default().FileOpenRd(path, fd));
-  } else {
-    ORT_RETURN_IF_ERROR(Env::Default().FileOpenWr(path, fd));
-  }
-
-  Status use_fn_status{};
-  try {
-    use_fn_status = use_fn(fd);
-  } catch (std::exception& e) {
-    use_fn_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, e.what());
-  }
-
-  Status close_status = Env::Default().FileClose(fd);
-  return !use_fn_status.IsOK() ? use_fn_status : close_status;
-}
-
 std::vector<std::string> GetOrderedOrtValueNames(const NameMLValMap& name_to_value) {
   std::vector<std::string> ordered_names{};
   ordered_names.reserve(name_to_value.size());
@@ -124,6 +98,7 @@ std::vector<std::string> GetOrderedOrtValueNames(const NameMLValMap& name_to_val
   std::sort(ordered_names.begin(), ordered_names.end());
   return ordered_names;
 }
+}  // namespace
 
 Status SaveRuntimeTensors(
     const PathString& tensors_path,
@@ -161,6 +136,7 @@ Status SaveRuntimeTensors(
   return Status::OK();
 }
 
+namespace {
 Status SaveProperties(
     const PathString& properties_path,
     const std::unordered_map<std::string, std::string>& properties) {
