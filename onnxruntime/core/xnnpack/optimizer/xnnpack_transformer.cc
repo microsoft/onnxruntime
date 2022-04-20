@@ -7,6 +7,7 @@
 #include "core/framework/op_node_proto_helper.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/node_attr_utils.h"
+#include "core/graph/schema_registry.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/selectors_actions/helpers.h"
@@ -407,6 +408,14 @@ static Status ReplaceConv(Graph& main_graph, Node& nodeRef, bool& modified) {
 }
 Status XNNPackTransformer::ApplyImpl(Graph& main_graph, bool& modified, int graph_level,
                                      const logging::Logger& logger) const {
+  IOnnxRuntimeOpSchemaCollectionPtr ptr = main_graph.GetSchemaRegistry();
+  if (ptr == nullptr) {
+    return Status::OK();
+  }
+  const ONNX_NAMESPACE::OpSchema* xnnPackMaxPooling2dSchema = ptr->GetSchema("XnnPackMaxPooling2d", 1, "com.microsoft");
+  if (xnnPackMaxPooling2dSchema == nullptr) {
+    return Status::OK();
+  }
   GraphViewer gv(main_graph);
   // Run constant propagation for XNNPack EP. XNNPack expects that weights are constant.
   // Here we expect a constant folding optimizer will be invoked at least once after this NhwcTransformer and
