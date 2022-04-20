@@ -1615,6 +1615,11 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
       AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[0].quant_param);               // x_scale, x_zp
       AddQuantizationScaleAndZeroPointToSkip(model_builder, *inputs[1].quant_param);               // w_scale, w_zp
 
+      NodeAttrHelper helper(node_unit);
+      const auto transB = helper.Get("transB", 0);
+      if (transB == 0)
+        model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());
+
       if (inputs.size() > 2) {
         AddInputToSkip(model_builder, inputs[2]);  // B, B_scale, B_zp
       }
