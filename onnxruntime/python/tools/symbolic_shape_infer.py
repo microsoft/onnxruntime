@@ -195,7 +195,8 @@ class SymbolicShapeInference:
             'aten::bitwise_or': self._infer_aten_bitwise_or,
             'aten::diagonal': self._infer_aten_diagonal,
             'aten::max_pool2d_with_indices': self._infer_aten_pool2d,
-            'aten::max': self._infer_aten_max,
+            'aten::max': self._infer_aten_minmax,
+            'aten::min': self._infer_aten_minmax,
             'aten::multinomial': self._infer_aten_multinomial,
             'aten::unfold': self._infer_aten_unfold,
             'aten::argmax': self._infer_aten_argmax,
@@ -1152,7 +1153,7 @@ class SymbolicShapeInference:
             elem_type = onnx.TensorProto.INT64 if i == 1 else self.known_vi_[node.input[0]].type.tensor_type.elem_type
             vi.CopyFrom(helper.make_tensor_value_info(o, elem_type, get_shape_from_sympy_shape(sympy_shape)))
 
-    def _infer_aten_max(self, node):
+    def _infer_aten_minmax(self, node):
         dim_or_y = self._try_get_value(node, 1)
         keepdim = self._try_get_value(node, 2)
 
