@@ -309,7 +309,7 @@ jobs:
   timeoutInMinutes: 120
   workspace:
     clean: all
-  condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+  # condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
   steps:
     - task: UsePythonVersion@0
       displayName: Use Python $(pythonVersion)
