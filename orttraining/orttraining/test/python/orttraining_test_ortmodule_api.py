@@ -1003,14 +1003,17 @@ def test_export_correctness_pool2d(pool_type, stride):
 
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
 
+@pytest.mark.parametrize("operator", ['min', 'max'])
 @pytest.mark.parametrize("dim", [None, 0, -1])
 @pytest.mark.parametrize("keepdim", [True, False])
-def test_gradient_correctness_max(dim, keepdim):
+def test_gradient_correctness_max(operator, dim, keepdim):
+    func = torch.min if operator == 'min' else torch.max
+
     class NeuralNetMax(torch.nn.Module):
         def forward(self, input):
             if dim is None:
-                return input.max()
-            return input.max(dim=dim, keepdim=keepdim)
+                return func(input)
+            return func(input, dim=dim, keepdim=keepdim)
 
     N, C, D = 16, 256, 128
     device = 'cuda'
