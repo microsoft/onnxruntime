@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "contrib_ops/cuda/bert/layer_norm.cuh"
 #include "contrib_ops/cuda/bert/skip_layer_norm_impl.h"
+#include "contrib_ops/cuda/layer_norm_welford.cuh"
 #include <cuda_fp16.h>
 
 namespace onnxruntime {
@@ -73,12 +74,11 @@ __global__ void SkipLayerNormKernel(
 }
 
 template <typename T>
-bool ComputeSkipLayerNorm(
-    cudaStream_t stream, const int ld, const int n, const T* input, const T* skip,
-    const T* beta, const T* gamma, const T* bias, const T epsilon, T* output) {
+bool ComputeSkipLayerNormNaive(
+    cudaStream_t stream, const int ld, const int num_instances, const T* input, const T* skip,
+    const T* gamma, const T* beta, const T* bias, const T epsilon, T* output) {
   // this must be true because n is the total size of the tensor
-  assert(n % ld == 0);
-  const int grid_size = n / ld;
+  const int grid_size = num_instances;
 
   if (ld <= 32) {
     constexpr int block_size = 32;
@@ -99,6 +99,55 @@ bool ComputeSkipLayerNorm(
   return CUDA_CALL(cudaPeekAtLastError());
 }
 
+template<typename T, bool do_scale, bool do_center>
+void LaunchSkipLayerNorm(cudaStream_t stream, const int64_t num_instances, const int64_t norm_size,
+                         const double epsilon, const T* input, const T* skip, const T* gamma,
+                         const T* beta, const T* bias, T* output) {
+  using ComputeType = typename contrib::cuda::DefaultComputeType<T>::type;
+  DirectLoadSkip<T, ComputeType> load(input, skip, bias, norm_size);
+  AffineStore<ComputeType, T, do_scale, do_center> store(output, norm_size, gamma, beta);
+  ComputeType *mean = nullptr;
+  ComputeType *inv_variance = nullptr;
+  DispatchLayerNorm<decltype(load), decltype(store), ComputeType>(
+      stream, load, store, num_instances, norm_size, epsilon, mean, inv_variance);
+}
+
+template <typename T>
+bool ComputeSkipLayerNormWelford(
+    cudaStream_t stream, const int norm_size, const int num_instances, const T* input, const T* skip,
+    const T* gamma, const T* beta, const T* bias, const T epsilon, T* output) {
+  if (gamma != nullptr && beta != nullptr) {
+    LaunchSkipLayerNorm<T, true, true>(stream, num_instances, norm_size, (double)epsilon, input, skip, gamma,
+                                       beta, bias, output);
+  } else if (gamma != nullptr && beta == nullptr) {
+    LaunchSkipLayerNorm<T, true, false>(stream, num_instances, norm_size, (double)epsilon, input, skip, gamma,
+                                        beta, bias, output);
+  } else if (gamma == nullptr && beta != nullptr) {
+    LaunchSkipLayerNorm<T, false, true>(stream, num_instances, norm_size, (double)epsilon, input, skip, gamma,
+                                        beta, bias, output);
+  } else {
+    LaunchSkipLayerNorm<T, false, false>(stream, num_instances, norm_size, (double)epsilon, input, skip, gamma,
+                                         beta, bias, output);
+  }
+  return CUDA_CALL(cudaPeekAtLastError());
+}
+
+template <typename T>
+bool ComputeSkipLayerNorm(
+    cudaStream_t stream, const int norm_size, const int num_elements, const T* input, const T* skip,
+    const T* gamma, const T* beta, const T* bias, const T epsilon, T* output) {
+  assert(num_elements % norm_size == 0);
+  const int num_instances = num_elements / norm_size;
+  int gap_number = 8092;
+  if (num_instances < gap_number) {
+    return ComputeSkipLayerNormNaive(stream, norm_size, num_instances, input, skip, gamma,
+                                        beta, bias, epsilon, output);
+  } 
+  return ComputeSkipLayerNormWelford(stream, norm_size, num_instances, input, skip, gamma,
+                                        beta, bias, epsilon, output);
+}
+
+
 bool LaunchSkipLayerNormKernel(
     cudaStream_t stream,
     void* output,
@@ -118,8 +167,8 @@ bool LaunchSkipLayerNormKernel(
         element_count,
         reinterpret_cast<const half*>(input),
         reinterpret_cast<const half*>(skip),
-        reinterpret_cast<const half*>(beta),
         reinterpret_cast<const half*>(gamma),
+        reinterpret_cast<const half*>(beta),
         reinterpret_cast<const half*>(bias),
         __float2half_rn(epsilon),
         reinterpret_cast<half*>(output));
@@ -130,8 +179,8 @@ bool LaunchSkipLayerNormKernel(
         element_count,
         reinterpret_cast<const float*>(input),
         reinterpret_cast<const float*>(skip),
-        reinterpret_cast<const float*>(beta),
         reinterpret_cast<const float*>(gamma),
+        reinterpret_cast<const float*>(beta),
         reinterpret_cast<const float*>(bias),
         epsilon,
         reinterpret_cast<float*>(output));

@@ -36,7 +36,9 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-__device__ inline T Rsqrt(const T& x);
+__device__ inline T Rsqrt(const T& x) {
+  return T(1) / sqrt(x);
+}
 
 template <>
 __device__ inline float Rsqrt(const float& x) {
@@ -50,6 +52,11 @@ __device__ inline half Rsqrt(const half& x) {
 #else
   return half(rsqrtf(float(x)));
 #endif
+}
+
+template <>
+__device__ inline double Rsqrt(const double& x) {
+  return rsqrt(x);
 }
 
 __device__ inline half2 AddHalf2(const half2 a, const half2 b) {
