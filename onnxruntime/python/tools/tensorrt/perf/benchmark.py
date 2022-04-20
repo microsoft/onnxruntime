@@ -905,8 +905,18 @@ def run_symbolic_shape_inference(model_path, new_model_path):
         logger.error(e)
         return False, "Symbolic shape inference error"
 
-def get_provider_options(providers, trt_ep_options):
-    return [trt_ep_options if ep == trt_ep else {} for ep in providers]
+def get_provider_options(providers, trt_ep_options, cuda_ep_options):
+    provider_options = []
+
+    for ep in providers:
+        if ep == trt_ep:
+            provider_options.append(trt_ep_options)
+        elif ep == cuda_ep:
+            provider_options.append(cuda_ep_options)
+        else:
+            provider_options.append({})
+
+    return provider_options
 
 def time_and_create_session(model_path, providers, provider_options, session_options):
     start = datetime.now()
@@ -1059,7 +1069,7 @@ def run_onnxruntime(args, models):
                 else:         
                     # resolve providers to create session
                     providers = ep_to_provider_list[ep] 
-                    provider_options = get_provider_options(providers, trt_ep_options)
+                    provider_options = get_provider_options(providers, trt_ep_options, args.cuda_ep_options)
                     options = onnxruntime.SessionOptions()
                     
                     enablement = args.graph_enablement
@@ -1153,7 +1163,7 @@ def run_onnxruntime(args, models):
                 time.sleep(1) # avoid to generate same profile file name
 
                 providers = ep_to_provider_list[ep]
-                provider_options = get_provider_options(providers, trt_ep_options)
+                provider_options = get_provider_options(providers, trt_ep_options, args.cuda_ep_options)
 
                 # create onnxruntime inference session
                 try:
@@ -1698,6 +1708,9 @@ class ParseDictArgAction(argparse.Action):
         setattr(namespace, self.dest, dict_arg)
 
 def parse_arguments():
+    # Used by argparse to display usage information for custom inputs.
+    dict_arg_metavar = "Opt1=Val1,Opt2=Val2..."
+
     parser = argparse.ArgumentParser()
     
     parser.add_argument("-c", "--comparison", required=False, default="cuda_trt", choices=["cuda_trt", "acl"], help="EPs to compare: CPU vs. CUDA vs. TRT or CPU vs. ACL")
@@ -1715,8 +1728,11 @@ def parse_arguments():
     parser.add_argument("-e", "--ep_list", nargs="+", required=False, default=None, help="Specify ORT Execution Providers list.")
 
     parser.add_argument("--trt_ep_options", required=False, default={"trt_engine_cache_enable": "True", "trt_max_workspace_size": "4294967296"},
-                        action=ParseDictArgAction, metavar="Opt1=Val1,Opt2=Val2...", help="Specify options for the ORT TensorRT Execution Provider")
+                        action=ParseDictArgAction, metavar=dict_arg_metavar, help="Specify options for the ORT TensorRT Execution Provider")
     
+    parser.add_argument("--cuda_ep_options", required=False, default={}, action=ParseDictArgAction, metavar=dict_arg_metavar,
+                        help="Specify options for the ORT CUDA Execution Provider")
+
     parser.add_argument("-z", "--track_memory", required=False, default=True, help="Track CUDA and TRT Memory Usage")
 
     parser.add_argument("-b", "--io_binding", required=False, default=False, help="Bind Inputs")
