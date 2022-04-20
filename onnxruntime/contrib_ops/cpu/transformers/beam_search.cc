@@ -560,6 +560,40 @@ Status BeamSearchImpl<T>::UpdateFeeds2(
                             beam_next_tokens, beam_indices, parameters_->num_beams, GetConsoleDumper());
 }
 
+//bugbug
+template <typename T>
+static OrtValue ExpandOutput(const OrtValue& output, int num_beams, AllocatorPtr allocator) {
+  // Input shape (batch_size, sequence_length)
+  // Output shape (batch_size * num_beams, sequence_length)
+  if (num_beams == 1)
+    return output;
+
+  const TensorShape& input_shape = input.Get<Tensor>().Shape();
+  const int64_t& batch_size = input_shape[0];
+  const int64_t& sequence_length = input_shape[1];
+
+  int64_t dims[] = {batch_size * num_beams, sequence_length};
+  TensorShape expanded_shape(&dims[0], 2);
+
+  OrtValue expanded;
+  MLDataType element_type = input.Get<Tensor>().DataType();
+  //ORT_ENFORCE(element_type == DataTypeImpl::GetType<int32_t>(), "input_ids, position_ids and attention_mask is required to be int32 data type");
+
+  Tensor::InitOrtValue(element_type, expanded_shape, allocator, expanded);
+
+  const int32_t* input_data = input.Get<Tensor>().Data<int32_t>();
+  int32_t* expanded_data = expanded.GetMutable<Tensor>()->MutableData<int32_t>();
+  int32_t* target = expanded_data;
+  for (int i = 0; i < batch_size; i++) {
+    for (int j = 0; j < num_beams; j++) {
+      memcpy(target, input_data + i * sequence_length, sizeof(int32_t) * sequence_length);
+      target += sequence_length;
+    }
+  }
+
+  return expanded;
+}
+
 template <typename T>
 Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches_manager,
                                   const FeedsFetchesManager& decoder_feeds_fetches_manager) {
@@ -618,12 +652,12 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
   // );
 
   // encoder decoderinit
-  std::vector<OrtValue> edinit_feeds;
-  std::vector<OrtValue> edinit_fetches;
+  std::vector<OrtValue> feeds;
+  std::vector<OrtValue> fetches;
 
   const OrtValue* encoder_input_ids_value = context_.GetInputOrtValue(0);
   const Tensor& encoder_input_ids = encoder_input_ids_value->Get<Tensor>();
-  ORT_RETURN_IF_ERROR(encoder_subgraph_.CreateInitialFeeds(encoder_input_ids, implicit_inputs_, parameters_->pad_token_id, parameters_->decoder_start_token_id, edinit_feeds));
+  ORT_RETURN_IF_ERROR(encoder_subgraph_.CreateInitialFeeds(encoder_input_ids, implicit_inputs_, parameters_->pad_token_id, parameters_->decoder_start_token_id, feeds));
 
   BeamSearchState<T> beam_state;
   beam_state.Init(temp_space_allocator_,
@@ -639,14 +673,12 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
                            parameters_->sequence_length,
                            parameters_->max_length);
 
-  OrtValue expanded_decoder_input_ids_in_cpu = decoder_feeds[1];
-  gsl::span<const int32_t> decoder_input_ids = expanded_decoder_input_ids_in_cpu.Get<Tensor>().DataAsSpan<int32_t>();
   init_beam_state_func_(&beam_state,
                         &cpu_state,
                         cpu_state.sequence_lengths,// bugbug: no sequence_lengths here
                         parameters_->batch_size,
                         parameters_->num_beams,
-                        decoder_input_ids,
+                        parameters_->decoder_start_token_id,
                         parameters_->sequence_length,
                         parameters_->max_length,
                         cuda_stream_);
@@ -657,12 +689,6 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
   //dumper->Print("decoder_input_ids", decoder_feeds[1]);
   //dumper->Print("attention_mask", decoder_feeds[2]);
 #endif
-
-  // position ids for all iterations except the first. It uses memory buffer owned by next_positions.
-  // OrtValue position_ids;
-  // int64_t dims[] = {parameters_->BatchBeamSize(), 1};
-  // TensorShape shape(&dims[0], 2);
-  // Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), shape, beam_state.next_positions.data(), temp_space_allocator_->Info(), position_ids);
 
   int current_length = parameters_->sequence_length;
   int iteration_counter = 0;
@@ -675,10 +701,12 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
 #endif
 
     if (iteration_counter == 1) {
-        status = utils::ExecuteSubgraph(encoder_session_state_, encoder_feeds_fetches_manager, edinit_feeds, edinit_fetches, {},
+        status = utils::ExecuteSubgraph(encoder_session_state_, encoder_feeds_fetches_manager, feeds, fetches, {},
                                   ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger());
+        //expend all fetches: logits, encoder_attn_mask, encoder_outputs, presents ...
+
     } else {
-        status = utils::ExecuteSubgraph(decoder_session_state_, decoder_feeds_fetches_manager, decoder_feeds, decoder_fetches, {},
+        status = utils::ExecuteSubgraph(decoder_session_state_, decoder_feeds_fetches_manager, feeds, fetches, {},
                                     ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(), context_.Logger());
     }
 
@@ -686,10 +714,10 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
 
     #ifdef DEBUG_BEAM_SEARCH
       //const IConsoleDumper* dumper = GetConsoleDumper();
-      dumper->Print("logits", decoder_fetches[0]);
+      dumper->Print("logits", fetches[0]);
     #endif
 
-    const OrtValue& logits = decoder_fetches[0];
+    const OrtValue& logits = fetches[0];
     gsl::span<int32_t> beam_next_tokens;
     gsl::span<int32_t> beam_indices;
     ORT_RETURN_IF_ERROR(GenerateNextToken(logits, beam_next_tokens, beam_indices, beam_state, cpu_state, iteration_counter));
@@ -705,9 +733,9 @@ Status BeamSearchImpl<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetch
     // Prepare inputs for next round of subgraph call.
     if (current_length < parameters_->max_length) {
       if (iteration_counter == 1) {
-        ORT_RETURN_IF_ERROR(UpdateFeeds1(edinit_fetches, decoder_feeds, beam_next_tokens.as_span<const int32_t>(), beam_indices.as_span<const int32_t>()));
+        ORT_RETURN_IF_ERROR(UpdateFeeds1(fetches, feeds, beam_next_tokens.as_span<const int32_t>(), beam_indices.as_span<const int32_t>()));
       } else {
-        ORT_RETURN_IF_ERROR(UpdateFeeds2(decoder_fetches, decoder_feeds, beam_next_tokens.as_span<const int32_t>(), beam_indices.as_span<const int32_t>()));
+        ORT_RETURN_IF_ERROR(UpdateFeeds2(fetches, feeds, beam_next_tokens.as_span<const int32_t>(), beam_indices.as_span<const int32_t>()));
       }
 
     }

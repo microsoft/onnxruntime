@@ -142,7 +142,7 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
                    gsl::span<int32_t>& sequence_lengths,
                    int batch_size,
                    int num_beams,
-                   gsl::span<const int32_t> input_ids_in_cpu,
+                   int decoder_start_token_id,
                    int sequence_length,
                    int max_length,
                    void* /*stream*/) {
@@ -171,7 +171,7 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
   int batch_beam_size = batch_size * num_beams;
   for (int i = 0; i < batch_beam_size; i++) {
     for (int j = 0; j < sequence_length; j++) {
-      sequences_0[SafeInt<gsl::index>(i) * max_length + j] = static_cast<int32_t>(input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length + j]);
+      sequences_0[SafeInt<gsl::index>(i) * max_length + j] = static_cast<int32_t>(decoder_start_token_id);
     }
   }
 }
@@ -547,7 +547,7 @@ template void InitBeamState<float>(
     gsl::span<int32_t>& sequence_lengths,
     int batch_size,
     int num_beams,
-    gsl::span<const int32_t> input_ids_in_cpu,
+    int decoder_start_token_id,
     int sequence_length,
     int max_length,
     void* stream);
