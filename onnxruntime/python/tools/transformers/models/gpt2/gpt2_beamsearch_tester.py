@@ -4,24 +4,25 @@
 # license information.
 # --------------------------------------------------------------------------
 # This script helps evaluation of GPT-2 model.
-import os
 import logging
 import torch
-import random
 import numpy
-import time
 import timeit
-import math
-import statistics
-from pathlib import Path
 from gpt2_tester import Gpt2Tester, Gpt2Metric
 from gpt2_beamsearch_helper import Gpt2BeamSearchHelper, Gpt2BeamSearchInputs
+
+import sys
+import os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+
 from benchmark_helper import Precision
 
 logger = logging.getLogger(__name__)
 
 
 class Gpt2TesterFactory:
+
     @staticmethod
     def create_tester(tester_type="default"):
         testers = {
@@ -34,6 +35,7 @@ class Gpt2TesterFactory:
 
 
 class Gpt2BeamSearchTester(Gpt2Tester):
+
     def __init__(
         self,
         input_ids,

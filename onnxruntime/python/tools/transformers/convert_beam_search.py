@@ -2,7 +2,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 #-------------------------------------------------------------------------
-
 """
 This converts GPT2 or T5 model to onnx with beam search operator.
 
@@ -26,11 +25,15 @@ from typing import List, Union
 import torch
 from packaging import version
 from transformers import GPT2Config, T5Config
-from gpt2_helper import PRETRAINED_GPT2_MODELS
-from convert_to_onnx import main as convert_gpt2_to_onnx
 from benchmark_helper import Precision
 from onnx import onnx_pb as onnx_proto
 
+import sys
+import os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), 'models', 'gpt2'))
+from gpt2_helper import PRETRAINED_GPT2_MODELS
+from convert_to_onnx import main as convert_gpt2_to_onnx
 
 config: Union[GPT2Config, T5Config] = None
 
@@ -295,11 +298,11 @@ def convert_model(args):
 
     # TODO: fix shape inference for T5. Currently symbolic shape inference on T5 is broken.
     enable_shape_inference = args.model_type == "gpt2"
-    
+
     if enable_shape_inference:
         print(f"Run symbolic shape inference on {args.decoder_onnx}. The file will be overwritten.")
         shape_inference(args.decoder_onnx)
-        
+
     global config
     if args.model_type == "gpt2":
         config = GPT2Config.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)

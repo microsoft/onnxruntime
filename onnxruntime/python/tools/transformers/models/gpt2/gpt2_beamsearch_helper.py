@@ -4,19 +4,21 @@
 # license information.
 # --------------------------------------------------------------------------
 # This script helps onnx conversion and validation for GPT2 model with past state.
-import os
 import logging
 import torch
-import onnx
 import random
 import numpy
 import time
-import re
 from pathlib import Path
-from typing import List, Dict, Tuple, Union
+from typing import List, Dict, Union
 from transformers import GPT2LMHeadModel, GPT2Config
-from benchmark_helper import Precision
-from gpt2_helper import Gpt2Helper, Gpt2Inputs, GPT2ModelNoPastState, MyGPT2Model, MyGPT2LMHeadModel, MyGPT2LMHeadModel_NoPadding
+from gpt2_helper import Gpt2Helper, Gpt2Inputs, MyGPT2Model, MyGPT2LMHeadModel, MyGPT2LMHeadModel_NoPadding
+
+import sys
+import os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+from io_binding_helper import TypeHelper
 from torch_onnx_export_helper import torch_onnx_export
 
 logger = logging.getLogger(__name__)
@@ -25,6 +27,7 @@ BIG_NEG = -1e4
 
 
 class Gpt2HelperFactory:
+
     @staticmethod
     def create_helper(helper_type="default"):
         helpers = {
@@ -39,6 +42,7 @@ class Gpt2HelperFactory:
 class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
     """Here we wrap a class for Onnx model conversion for GPT2LMHeadModel with past state and one
     step beam search."""
+
     def __init__(self, config, batch_size, beam_size):
         super().__init__(config)
         self.config.batch_size = batch_size
@@ -89,7 +93,9 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
                                                                       sorted=True)  # output shape=(batch, beam_size)
 
         # select the correspondent sentences/next tokens
-        selected_input_seq = selected_index_flat // self.config.beam_size
+        selected_input_seq = torch.div(selected_index_flat, self.config.beam_size,
+                                       rounding_mode='trunc')  # selected_index_flat // self.config.beam_size
+
         next_token_ids = next_token_ids.view(self.config.batch_size, -1).gather(-1, selected_index_flat)
 
         prev_step_results = prev_step_results.view(self.config.batch_size, -1, prev_step_results.size(-1))
@@ -98,7 +104,9 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
             selected_input_seq.unsqueeze(-1).repeat(1, 1, prev_step_results.size(-1)))
 
         output_unfinished_sents = input_unfinished_sents.gather(1, selected_input_seq)
-        output_unfinished_sents = (output_unfinished_sents & next_token_ids.ne(self.config.eos_token_id))
+        # Add ones_like to walkaround error like Shape mismatch attempting to re-use buffer. {1,1} != {1,4}
+        output_unfinished_sents = (output_unfinished_sents & next_token_ids.ne(
+            torch.ones_like(next_token_ids, dtype=torch.int) * self.config.eos_token_id))
 
         # get the next full input_ids
         current_step_results = torch.cat([prev_step_results, next_token_ids.unsqueeze(-1)], dim=-1).contiguous()
@@ -123,6 +131,7 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
 class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
     """Here we wrap a class for Onnx model conversion for GPT2LMHeadModel with past state and one
     step beam search with configuration support."""
+
     def __init__(self,
                  config,
                  batch_size,
@@ -190,6 +199,7 @@ class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
 
         if past:
             last_seq_len = past[0].size(-2)
+            # input_ids and position_ids contains past sequence
             input_ids_unfinished_flat = input_ids_unfinished_flat[:, last_seq_len:]
             position_ids = position_ids[:, last_seq_len:]
 
@@ -264,7 +274,9 @@ class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
                                                                       sorted=True)  # output shape=(batch, beam_size)
 
         # select the correspondent sentences/next tokens
-        selected_input_seq = selected_index_flat // self.config.beam_size
+        selected_input_seq = torch.div(selected_index_flat, self.config.beam_size,
+                                       rounding_mode='trunc')  # selected_index_flat // self.config.beam_size
+
         next_token_ids = next_token_ids.view(self.config.batch_size, -1).gather(-1, selected_index_flat)
 
         prev_step_results = input_ids.view(self.config.batch_size, -1, input_ids.size(-1)).contiguous()
@@ -302,14 +314,13 @@ MODEL_CLASSES = {
     'GPT2LMHeadModel': (MyGPT2LMHeadModel, 'logits', True),
     'GPT2LMHeadModel_NoPadding': (MyGPT2LMHeadModel_NoPadding, 'logits', False),
     'GPT2Model': (MyGPT2Model, 'last_state', True),
-    "GPT2LMHeadModel_BeamSearchStep":
-    (GPT2LMHeadModel_BeamSearchStep, "last_state", True),  # defined in gpt2_beamsearch_helper.py
-    "GPT2LMHeadModel_ConfigurableOneStepSearch":
-    (GPT2LMHeadModel_ConfigurableOneStepSearch, "last_state", False),  # defined in gpt2_beamsearch_helper.py
+    "GPT2LMHeadModel_BeamSearchStep": (GPT2LMHeadModel_BeamSearchStep, "last_state", True),
+    "GPT2LMHeadModel_ConfigurableOneStepSearch": (GPT2LMHeadModel_ConfigurableOneStepSearch, "last_state", False),
 }
 
 
 class Gpt2BeamSearchInputs(Gpt2Inputs):
+
     def __init__(
         self,
         input_ids,
@@ -362,6 +373,7 @@ class Gpt2BeamSearchInputs(Gpt2Inputs):
 
 class Gpt2BeamSearchHelper(Gpt2Helper):
     """A helper class for Gpt2 model conversion, inference and verification."""
+
     @staticmethod
     def get_dummy_inputs(batch_size: int,
                          past_sequence_length: int,
@@ -373,13 +385,26 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
                          device: torch.device,
                          float16: bool = False,
                          has_position_ids: bool = True,
-                         has_attention_mask: bool = True) -> Gpt2BeamSearchInputs:
-        """Create random inputs for GPT2 model.
-        Returns torch tensors of input_ids, position_ids, attention_mask and a list of past state tensors.
+                         has_attention_mask: bool = True,
+                         input_ids_dtype: torch.dtype = torch.int64,
+                         position_ids_dtype: torch.dtype = torch.int64,
+                         attention_mask_dtype: torch.dtype = torch.int64) -> Gpt2BeamSearchInputs:
+        """Create random inputs for GPT2 beam search.
         """
-        gpt2_dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size, past_sequence_length, sequence_length,
-                                                        num_attention_heads, hidden_size, num_layer, vocab_size, device,
-                                                        float16, has_position_ids, has_attention_mask)
+        gpt2_dummy_inputs = Gpt2Helper.get_dummy_inputs(batch_size,
+                                                        past_sequence_length,
+                                                        sequence_length,
+                                                        num_attention_heads,
+                                                        hidden_size,
+                                                        num_layer,
+                                                        vocab_size,
+                                                        device,
+                                                        float16,
+                                                        has_position_ids,
+                                                        has_attention_mask,
+                                                        input_ids_dtype=input_ids_dtype,
+                                                        position_ids_dtype=position_ids_dtype,
+                                                        attention_mask_dtype=attention_mask_dtype)
         float_type = torch.float16 if float16 else torch.float32
 
         beam_select_idx = torch.zeros([1, batch_size], device=device).long()
@@ -418,7 +443,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
                           beam_size: int,
                           step: int,
                           config: GPT2Config,
-                          model_class: str = "GPT2LMHeadModel",
+                          model_class: str = "GPT2LMHeadModel_BeamSearchStep",
                           num_seq: int = 0) -> Dict[str, List[int]]:
         """Returns a dictionary with output name as key, and shape as value."""
         num_attention_heads = config.num_attention_heads
@@ -431,25 +456,34 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         if model_class == "GPT2LMHeadModel_BeamSearchStep":
             last_state_shape = [batch_size, beam_size]
         else:
-            last_state_shape = [batch_size * beam_size, past_sequence_length + sequence_length + 1]
+            last_state_shape = [batch_size * beam_size, past_sequence_length - context_len + sequence_length + 1]
 
-        if step == 0:
+        if model_class == "GPT2LMHeadModel_BeamSearchStep":
+            if step == 0:
+                present_state_shape = [
+                    2,
+                    batch_size,
+                    num_attention_heads,
+                    past_sequence_length + sequence_length,
+                    int(hidden_size / num_attention_heads),
+                ]
+            else:
+                if num_seq == 0:
+                    num_seq = beam_size
+
+                present_state_shape = [
+                    2,
+                    batch_size * num_seq,
+                    num_attention_heads,
+                    past_sequence_length + sequence_length,
+                    int(hidden_size / num_attention_heads),
+                ]
+        else:
             present_state_shape = [
                 2,
                 batch_size,
                 num_attention_heads,
-                past_sequence_length + sequence_length,
-                int(hidden_size / num_attention_heads),
-            ]
-        else:
-            if num_seq == 0:
-                num_seq = beam_size
-
-            present_state_shape = [
-                2,
-                batch_size * num_seq,
-                num_attention_heads,
-                past_sequence_length + sequence_length,
+                past_sequence_length - context_len + sequence_length,
                 int(hidden_size / num_attention_heads),
             ]
 
@@ -457,14 +491,16 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         for i in range(num_layer):
             output_shapes["present_" + str(i)] = present_state_shape
 
+        # TODO: reshape output_selected_indices as [batch_size, beam_size]
         output_shapes["output_selected_indices"] = [1, batch_size * beam_size]
         output_shapes["output_log_probs"] = [batch_size, beam_size]
         output_shapes["output_unfinished_sents"] = [batch_size, beam_size]
         if model_class == "GPT2LMHeadModel_BeamSearchStep":
-            output_shapes["current_step_results"] = [batch_size * beam_size, past_sequence_length + sequence_length + 1]
-        output_shapes["current_step_scores"] = [
-            batch_size * beam_size, past_sequence_length + sequence_length - context_len + 2
-        ]
+            output_shapes["current_step_results"] = [
+                batch_size * beam_size, past_sequence_length - context_len + sequence_length + 1
+            ]
+        output_shapes["current_step_scores"] = [batch_size * beam_size, past_sequence_length - context_len + 2]
+        print("output_shapes", output_shapes)
         return output_shapes
 
     @staticmethod
@@ -528,6 +564,8 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
                     has_position_ids: bool = True,
                     has_attention_mask: bool = True):
         """Export GPT-2 model with past state to ONNX model."""
+        assert isinstance(model, (GPT2LMHeadModel_BeamSearchStep, GPT2LMHeadModel_ConfigurableOneStepSearch))
+
         config: GPT2Config = model.config
         num_layer = config.n_layer
         dummy_inputs = Gpt2BeamSearchHelper.get_dummy_inputs(batch_size=1,
@@ -544,7 +582,6 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         input_list = dummy_inputs.to_list()
 
         with torch.no_grad():
-            # outputs = model(input_ids, position_id, attention_mask, beam_select_idx, past)
             outputs = model(*input_list)
 
         past_names = [f"past_{i}" for i in range(num_layer)]
@@ -568,14 +605,6 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
                 "current_step_scores",
             ]
 
-        # Shape of input tensors:
-        #    input_ids: (batch_size, seq_len)
-        #    past_{i}:  (2, batch_size, num_heads, past_seq_len, hidden_size/num_heads)
-        #    attention_mask: (batch_size, past_seq_len + seq_len)
-        # Shape of output tensors:
-        #    last_state: (batch_size, seq_len, hidden_size)
-        #      or logits: (batch_size, seq_len, vocab_size)
-        #    present_{i}:  (2, batch_size, num_heads, past_seq_len + seq_len, hidden_size/num_heads)
         dynamic_axes = {
             "input_ids": {
                 0: "batch_size",
@@ -613,15 +642,23 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
 
         # add dynamic output axes
         present_axes = {1: 'batch_size', 3: 'cur_seq_len'}
-        dynamic_axes["last_state"] = {0: 'batch_size', 1: 'beam_size'}
+
+        if isinstance(model, GPT2LMHeadModel_BeamSearchStep):
+            dynamic_axes["last_state"] = {0: "batch_size", 1: "beam_size"}
+        else:
+            dynamic_axes["last_state"] = {0: "batch_size * beam_size", 1: "total_seq_len"}
+
         for i in range(num_layer):
             dynamic_axes["present_" + str(i)] = present_axes
 
-        dynamic_axes["output_selected_indices"] = {0: "batch_size", 1: "'beam_size_or_1'"}
-        dynamic_axes["output_log_probs"] = {0: "batch_size", 1: "'beam_size'"}
-        dynamic_axes["output_unfinished_sents"] = {0: "batch_size", 1: "'beam_size'"}
-        dynamic_axes["current_step_results"] = {0: "beam_size_or_1", 1: "total_seq_len"}
-        dynamic_axes["current_step_scores"] = {0: "beam_size_or_1", 1: "total_seq_len"}
+        dynamic_axes["output_selected_indices"] = {1: "batch_size * beam_size"}
+        dynamic_axes["output_log_probs"] = {0: "batch_size", 1: "beam_size"}
+        dynamic_axes["output_unfinished_sents"] = {0: "batch_size", 1: "beam_size"}
+
+        if "current_step_results" in output_names:
+            dynamic_axes["current_step_results"] = {0: "batch_size * beam_size", 1: "total_seq_len"}
+
+        dynamic_axes["current_step_scores"] = {0: "batch_size * beam_size"}
 
         logger.info(
             f"Shapes: input_ids={dummy_inputs.input_ids.shape} past={dummy_inputs.past[0].shape} output={outputs[0].shape} present={outputs[1][0].shape}"
@@ -636,7 +673,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
             input_names=input_names,
             output_names=output_names,
             dynamic_axes=dynamic_axes,
-            opset_version=12,
+            opset_version=14,
             do_constant_folding=True,
             use_external_data_format=use_external_data_format,
             verbose=verbose,
@@ -697,7 +734,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
                            prev_step_scores=None):
         """Returnas IO binding object for a session."""
 
-        # Bind inputs and outputs to onnxruntime session
+        # Bind (input_ids, position_ids, attention_mask and past_*) and all outputs
         io_binding = Gpt2Helper.prepare_io_binding(ort_session,
                                                    input_ids,
                                                    position_ids,
@@ -706,114 +743,25 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
                                                    output_buffers=output_buffers,
                                                    output_shapes=output_shapes)
 
-        # Bind inputs
-        data_type = output_buffers[ort_session.get_outputs()[1].name].dtype
-        float_type = numpy.float16 if data_type == torch.float16 else numpy.float32
-
-        if past is not None:
-            for i, past_i in enumerate(past):
-                assert past_i.is_contiguous()
-
-                data_ptr = past_i.data_ptr()
-                if data_ptr == 0:
-                    # When past_sequence_length is 0, its data_ptr will be zero. IO Binding asserts that data_ptr shall not be zero.
-                    # Here we workaround and pass data pointer of input_ids. Actual data is not used for past so it does not matter.
-                    data_ptr = input_ids.data_ptr()
-
-                io_binding.bind_input(f'past_{i}', past_i.device.type, 0, float_type, list(past_i.size()), data_ptr)
-
-        if attention_mask is not None:
-            assert attention_mask.is_contiguous()
-            io_binding.bind_input('attention_mask', attention_mask.device.type, 0, float_type,
-                                  list(attention_mask.size()), attention_mask.data_ptr())
-
-        if beam_select_idx is not None:
-            assert beam_select_idx.is_contiguous()
-            io_binding.bind_input(
-                "beam_select_idx",
-                beam_select_idx.device.type,
-                0,
-                numpy.longlong,
-                list(beam_select_idx.size()),
-                beam_select_idx.data_ptr(),
-            )
-
-        if input_log_probs is not None:
-            assert input_log_probs.is_contiguous()
-            io_binding.bind_input(
-                "input_log_probs",
-                input_log_probs.device.type,
-                0,
-                float_type,
-                list(input_log_probs.size()),
-                input_log_probs.data_ptr(),
-            )
-
-        if input_unfinished_sents is not None:
-            assert input_unfinished_sents.is_contiguous()
-            io_binding.bind_input(
-                "input_unfinished_sents",
-                input_unfinished_sents.device.type,
-                0,
-                numpy.bool,
-                list(input_unfinished_sents.size()),
-                input_unfinished_sents.data_ptr(),
-            )
-
-        if prev_step_results is not None:
-            assert prev_step_results.is_contiguous()
-            io_binding.bind_input(
-                "prev_step_results",
-                prev_step_results.device.type,
-                0,
-                numpy.longlong,
-                list(prev_step_results.size()),
-                prev_step_results.data_ptr(),
-            )
-
-        if prev_step_scores is not None:
-            assert prev_step_scores.is_contiguous()
-            io_binding.bind_input(
-                "prev_step_scores",
-                prev_step_scores.device.type,
-                0,
-                float_type,
-                list(prev_step_scores.size()),
-                prev_step_scores.data_ptr(),
-            )
-
-        # Bind outputs
-        for output in ort_session.get_outputs():
-            output_name = output.name
-            output_buffer = output_buffers[output_name]
-            logger.debug(f"{output_name} device type={output_buffer.device.type} shape={list(output_buffer.size())}")
-            if (output_name == "output_selected_indices" or output_name == "last_state"
-                    or output_name == "current_step_results"):
-                io_binding.bind_output(
-                    output_name,
-                    output_buffer.device.type,
+        # Bind the remaining inputs
+        other_inputs = {
+            "beam_select_idx": beam_select_idx,
+            "input_log_probs": input_log_probs,
+            "input_unfinished_sents": input_unfinished_sents,
+            "prev_step_results": prev_step_results,
+            "prev_step_scores": prev_step_scores,
+        }
+        name_to_np_type = TypeHelper.get_io_numpy_type_map(ort_session)
+        for name, tensor in other_inputs.items():
+            if tensor is not None:
+                assert tensor.is_contiguous()
+                io_binding.bind_input(
+                    name,
+                    tensor.device.type,
                     0,
-                    numpy.longlong,
-                    output_shapes[output_name],
-                    output_buffer.data_ptr(),
-                )
-            elif output_name == "output_unfinished_sents":
-                io_binding.bind_output(
-                    output_name,
-                    output_buffer.device.type,
-                    0,
-                    numpy.bool,
-                    output_shapes[output_name],
-                    output_buffer.data_ptr(),
-                )
-            else:
-                io_binding.bind_output(
-                    output_name,
-                    output_buffer.device.type,
-                    0,
-                    float_type,
-                    output_shapes[output_name],
-                    output_buffer.data_ptr(),
+                    name_to_np_type[name],
+                    list(tensor.size()),
+                    tensor.data_ptr(),
                 )
 
         return io_binding

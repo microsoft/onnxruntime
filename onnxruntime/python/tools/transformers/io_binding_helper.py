@@ -28,9 +28,10 @@ class TypeHelper:
     def ort_type_to_numpy_type(ort_type: str):
         ort_type_to_numpy_type_map = {
             "tensor(int64)": numpy.longlong,
-            "tensor(int32)": numpy.int32,  #numpy.intc?
+            "tensor(int32)": numpy.intc,
             "tensor(float)": numpy.float32,
             "tensor(float16)": numpy.float16,
+            "tensor(bool)": numpy.bool,
         }
         if ort_type not in ort_type_to_numpy_type_map:
             raise ValueError(f"{ort_type} not found in map")
@@ -44,6 +45,7 @@ class TypeHelper:
             "tensor(int32)": torch.int32,
             "tensor(float)": torch.float32,
             "tensor(float16)": torch.float16,
+            "tensor(bool)": torch.bool,
         }
         if ort_type not in ort_type_to_torch_type_map:
             raise ValueError(f"{ort_type} not found in map")
@@ -54,9 +56,11 @@ class TypeHelper:
     def numpy_type_to_torch_type(numpy_type: numpy.dtype):
         numpy_type_to_torch_type_map = {
             numpy.longlong: torch.int64,
+            numpy.intc: torch.int32,
             numpy.int32: torch.int32,
             numpy.float32: torch.float32,
             numpy.float16: torch.float16,
+            numpy.bool: torch.bool,
         }
         if numpy_type not in numpy_type_to_torch_type_map:
             raise ValueError(f"{numpy_type} not found in map")
@@ -67,9 +71,10 @@ class TypeHelper:
     def torch_type_to_numpy_type(torch_type: torch.dtype):
         torch_type_to_numpy_type_map = {
             torch.int64: numpy.longlong,
-            torch.int32: numpy.int32,
+            torch.int32: numpy.intc,
             torch.float32: numpy.float32,
             torch.float16: numpy.float16,
+            torch.bool: numpy.bool,
         }
         if torch_type not in torch_type_to_numpy_type_map:
             raise ValueError(f"{torch_type} not found in map")
