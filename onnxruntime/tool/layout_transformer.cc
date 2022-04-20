@@ -32,7 +32,7 @@ using namespace onnxruntime;
 #ifdef _WIN32
 int wmain(int argc, wchar_t* argv[]) {
 #else
-int wmain(int argc, char* argv[]) {
+int main(int argc, char* argv[]) {
 #endif
   if (argc < 3) return -1;
   setlocale(LC_ALL, "");
@@ -48,7 +48,6 @@ int wmain(int argc, char* argv[]) {
   for (auto& schema : xnnpack::GetSchemas()) {
     ::ONNX_NAMESPACE::RegisterSchema(schema);
   }
-  //::ONNX_NAMESPACE::RegisterOnnxMLOperatorSetSchema();
   std::string default_logger_id = "XNNPack";
   auto lmgr = std::make_unique<logging::LoggingManager>(logging::MakePlatformDefaultLogSink(),
                                                         logging::Severity::kINFO,
