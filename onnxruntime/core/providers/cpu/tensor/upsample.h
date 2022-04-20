@@ -490,25 +490,34 @@ void NhwcUpsampleBilinear(const int64_t batch_size,
           for (std::ptrdiff_t i = first; i < last; ++i) {
             const int64_t x = i % output_width;
             const int64_t y = i / output_width;
-            for (int64_t c = 0; c < num_channels; ++c) {
+            for (int64_t c = 0; c < num_channels - 1; c += 2) {
               // when use_extrapolation is set and original index of x or y is out of the dim range
               // then use extrapolation_value as the output value.
               if (use_extrapolation &&
                   ((p.y_original[y] < 0 || p.y_original[y] > static_cast<float>(input_height - 1)) ||
                    (p.x_original[x] < 0 || p.x_original[x] > static_cast<float>(input_width - 1)))) {
                 Ydata[(output_width * y + x) * num_channels + c] = static_cast<T>(extrapolation_value);
+                Ydata[(output_width * y + x) * num_channels + (c + 1)] = static_cast<T>(extrapolation_value);
                 continue;
               }
 
-              T X11 = Xdata[(p.input_width_mul_y1[y] + p.in_x1[x]) * num_channels + c];
-              T X21 = Xdata[(p.input_width_mul_y1[y] + p.in_x2[x]) * num_channels + c];
-              T X12 = Xdata[(p.input_width_mul_y2[y] + p.in_x1[x]) * num_channels + c];
-              T X22 = Xdata[(p.input_width_mul_y2[y] + p.in_x2[x]) * num_channels + c];
+              T X0_11 = Xdata[(p.input_width_mul_y1[y] + p.in_x1[x]) * num_channels + c];
+              T X0_21 = Xdata[(p.input_width_mul_y1[y] + p.in_x2[x]) * num_channels + c];
+              T X0_12 = Xdata[(p.input_width_mul_y2[y] + p.in_x1[x]) * num_channels + c];
+              T X0_22 = Xdata[(p.input_width_mul_y2[y] + p.in_x2[x]) * num_channels + c];
+              T X1_11 = Xdata[(p.input_width_mul_y1[y] + p.in_x1[x]) * num_channels + (c + 1)];
+              T X1_21 = Xdata[(p.input_width_mul_y1[y] + p.in_x2[x]) * num_channels + (c + 1)];
+              T X1_12 = Xdata[(p.input_width_mul_y2[y] + p.in_x1[x]) * num_channels + (c + 1)];
+              T X1_22 = Xdata[(p.input_width_mul_y2[y] + p.in_x2[x]) * num_channels + (c + 1)];
 
-              Ydata[(output_width * y + x) * num_channels + c] = static_cast<T>(p.dx2[x] * p.dy2[y] * X11 +
-                                                                                p.dx1[x] * p.dy2[y] * X21 +
-                                                                                p.dx2[x] * p.dy1[y] * X12 +
-                                                                                p.dx1[x] * p.dy1[y] * X22);
+              Ydata[(output_width * y + x) * num_channels + c] = static_cast<T>(p.dx2[x] * p.dy2[y] * X0_11 +
+                                                                                p.dx1[x] * p.dy2[y] * X0_21 +
+                                                                                p.dx2[x] * p.dy1[y] * X0_12 +
+                                                                                p.dx1[x] * p.dy1[y] * X0_22);
+              Ydata[(output_width * y + x) * num_channels + (c + 1)] = static_cast<T>(p.dx2[x] * p.dy2[y] * X1_11 +
+                                                                                      p.dx1[x] * p.dy2[y] * X1_21 +
+                                                                                      p.dx2[x] * p.dy1[y] * X1_12 +
+                                                                                      p.dx1[x] * p.dy1[y] * X1_22);
             }
           }
         });
