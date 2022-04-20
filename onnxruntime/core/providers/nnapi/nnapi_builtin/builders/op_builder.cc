@@ -1621,7 +1621,7 @@ void GemmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
         model_builder.AddInitializerToSkip(inputs[1].node_arg.Name());
 
       if (inputs.size() > 2) {
-        AddInputToSkip(model_builder, inputs[2]);  // B, B_scale, B_zp
+        AddInputToSkip(model_builder, inputs[2]);  // c, c_scale, c_zp (bias)
       }
       AddQuantizationScaleAndZeroPointToSkip(model_builder, *node_unit.Outputs()[0].quant_param);  // y_scale, y_zp
     }
@@ -1719,21 +1719,19 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         bias_idx = operand_indices.at(bias);
       }
     } else {  // is_quant_gemm
-      
-        const auto& bias_tensor = *model_builder.GetInitializerTensors().at(bias);
-        // TODO: Need to confirm, put int32 type here for now
-        ORT_RETURN_IF_NOT(bias_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32,
-                          "bias of QDQGemm should be int32, actual type: ", bias_tensor.data_type());
+      const auto& bias_tensor = *model_builder.GetInitializerTensors().at(bias);
+      // TODO: Need to confirm, put int32 type here for now
+      ORT_RETURN_IF_NOT(bias_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT32,
+                        "bias of QDQGemm should be int32, actual type: ", bias_tensor.data_type());
+      Shape bias_dimen;
+      for (auto dim : bias_tensor.dims())
+        bias_dimen.push_back(SafeInt<uint32_t>(dim));
+      std::vector<uint8_t> unpacked_tensor;
+      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(bias_tensor, unpacked_tensor));
+      OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, a_scale * b_scale);
+      ORT_RETURN_IF_ERROR(
+          model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.data(), bias_operand_type));
 
-        Shape bias_dimen;
-        for (auto dim : bias_tensor.dims())
-          bias_dimen.push_back(SafeInt<uint32_t>(dim));
-        std::vector<uint8_t> unpacked_tensor;
-        ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(bias_tensor, unpacked_tensor));
-        OperandType bias_operand_type(Type::TENSOR_INT32, bias_dimen, a_scale * b_scale);
-        ORT_RETURN_IF_ERROR(
-            model_builder.AddOperandFromPersistMemoryBuffer(bias, unpacked_tensor.data(), bias_operand_type));
-      
       bias_idx = operand_indices.at(bias);
     }
 
