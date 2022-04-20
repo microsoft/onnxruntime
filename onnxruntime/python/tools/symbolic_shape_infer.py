@@ -12,7 +12,7 @@ import sympy
 from packaging import version
 assert version.parse(onnx.__version__) >= version.parse("1.8.0")
 
-logger = logging.getLogger(__name__) 
+logger = logging.getLogger(__name__)
 
 
 def get_attribute(node, attr_name, default_value=None):
@@ -195,6 +195,7 @@ class SymbolicShapeInference:
             'aten::bitwise_or': self._infer_aten_bitwise_or,
             'aten::diagonal': self._infer_aten_diagonal,
             'aten::max_pool2d_with_indices': self._infer_aten_pool2d,
+            'aten::max': self._infer_aten_max,
             'aten::multinomial': self._infer_aten_multinomial,
             'aten::unfold': self._infer_aten_unfold,
             'aten::argmax': self._infer_aten_argmax,
@@ -1151,6 +1152,28 @@ class SymbolicShapeInference:
             elem_type = onnx.TensorProto.INT64 if i == 1 else self.known_vi_[node.input[0]].type.tensor_type.elem_type
             vi.CopyFrom(helper.make_tensor_value_info(o, elem_type, get_shape_from_sympy_shape(sympy_shape)))
 
+    def _infer_aten_max(self, node):
+        dim_or_y = self._try_get_value(node, 1)
+        keepdim = self._try_get_value(node, 2)
+
+        if dim_or_y is None and keepdim is None:
+            vi = self.known_vi_[node.output[0]]
+            elem_type = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], elem_type, []))
+        else:
+            sympy_shape = self._get_sympy_shape(node, 0)
+            rank = len(sympy_shape)
+            dim = handle_negative_axis(dim_or_y, rank)
+            output_shape = sympy_shape[:dim]
+            if keepdim: output_shape += [1]
+            output_shape += sympy_shape[dim+1:]
+            for i, o in enumerate(node.output):
+                if not o:
+                    continue
+                vi = self.known_vi_[o]
+                elem_type = onnx.TensorProto.INT64 if i == 1 else self.known_vi_[node.input[0]].type.tensor_type.elem_type
+                vi.CopyFrom(helper.make_tensor_value_info(o, elem_type, get_shape_from_sympy_shape(output_shape)))
+
     def _infer_aten_unfold(self, node):
         sympy_shape = self._get_sympy_shape(node, 0)
         dimension = self._try_get_value(node, 1)
@@ -1811,13 +1834,13 @@ class SymbolicShapeInference:
         if dim_value in self.symbolic_dims_.keys():
             return False
         return True
-    
+
     def _is_shape_contains_none_dim(self, out_shape):
         for out in out_shape:
             if self._is_none_dim(out):
                 return out
         return None
-    
+
     def _infer_impl(self, start_sympy_data=None):
         self.sympy_data_ = start_sympy_data or {}
         self.out_mp_.graph.ClearField('value_info')

@@ -1003,6 +1003,36 @@ def test_export_correctness_pool2d(pool_type, stride):
 
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
 
+@pytest.mark.parametrize("dim", [None, 0, -1])
+@pytest.mark.parametrize("keepdim", [True, False])
+def test_gradient_correctness_max(dim, keepdim):
+    class NeuralNetMax(torch.nn.Module):
+        def forward(self, input):
+            if dim is None:
+                return input.max()
+            return input.max(dim=dim, keepdim=keepdim)
+
+    N, C, D = 16, 256, 128
+    device = 'cuda'
+    pt_model = NeuralNetMax().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        if dim is not None: prediction = prediction[0]
+        loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    for _ in range(10):
+        pt_input = torch.rand((N, C, D), device=device, requires_grad=True)
+        ort_input = copy.deepcopy(pt_input)
+        pt_prediction = run_step(pt_model, pt_input)
+        ort_prediction = run_step(ort_model, ort_input)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
 def test_gradient_correctness_argmax_unfold():
     class NeuralNetUnfold(torch.nn.Module):
         def __init__(self, input_size, hidden_size, unfold_dim, unfold_size, unfold_step):

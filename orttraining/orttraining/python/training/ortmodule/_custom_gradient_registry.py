@@ -109,6 +109,25 @@ def max_pool2d_gradient():
     ]
 
 
+@register_gradient('org.pytorch.aten', 'ATen', 'aten::max', '')
+def max_gradient():
+    # value_selecting_reduction_backward(Tensor grad, int dim, Tensor indices, int[] sizes, bool keepdim) -> Tensor
+    return [
+        (('ATen', 'org.pytorch.aten'), ['GO(0)', 'I(0)', 'O(0)'],
+        ['GI(0)'], {'operator': {'value': 'aten::evenly_distribute_backward', 'dtype': 'string'}})
+    ]
+
+
+@register_gradient('org.pytorch.aten', 'ATen', 'aten::max', 'dim')
+def max_gradient():
+    # value_selecting_reduction_backward(Tensor grad, int dim, Tensor indices, int[] sizes, bool keepdim) -> Tensor
+    return [
+        ('Shape', ['I(0)'], ['Shape_X']),
+        (('ATen', 'org.pytorch.aten'), ['GO(0)', 'I(1)', 'O(1)', 'Shape_X', 'I(2)'],
+        ['GI(0)'], {'operator': {'value': 'aten::value_selecting_reduction_backward', 'dtype': 'string'}})
+    ]
+
+
 @register_gradient('org.pytorch.aten', 'ATen', 'aten::unfold', '')
 def unfold_gradient():
     return [
