@@ -45,7 +45,7 @@ parameters:
   type: object
   default:
     - trt_max_workspace_size=4294967296
-    - trt_engine_cache_enable=$(enableCache)
+    - trt_engine_cache_enable=True
 
 jobs:
 - job: 'Onnxruntime_Linux_GPU_TensorRT_Perf'
