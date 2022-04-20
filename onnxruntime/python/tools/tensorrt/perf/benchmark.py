@@ -1104,7 +1104,7 @@ def run_onnxruntime(args, models):
                         "fp16": fp16,
                         "io_binding": args.io_binding,
                         "graph_optimizations": args.graph_enablement,
-                        "enable_cache": eval_bool_str(args.trt_ep_options.get(enable_cache_key)),
+                        "enable_cache": args.trt_ep_options.get("trt_engine_cache_enable", "False"),
                         "model_name": name,
                         "inputs": len(sess.get_inputs()),
                         "batch_size": batch_size,
@@ -1714,8 +1714,8 @@ def parse_arguments():
     
     parser.add_argument("-e", "--ep_list", nargs="+", required=False, default=None, help="Specify ORT Execution Providers list.")
 
-    parser.add_argument("--trt_ep_options", required=False, default=default_trt_ep_options, action=ParseDictArgAction, metavar="Opt1=Val1,Opt2=Val2...",
-                        help="Specify options for the ORT TensorRT Execution Provider")
+    parser.add_argument("--trt_ep_options", required=False, default={"trt_engine_cache_enable": "True", "trt_max_workspace_size": "4294967296"},
+                        action=ParseDictArgAction, metavar="Opt1=Val1,Opt2=Val2...", help="Specify options for the ORT TensorRT Execution Provider")
     
     parser.add_argument("-z", "--track_memory", required=False, default=True, help="Track CUDA and TRT Memory Usage")
 
