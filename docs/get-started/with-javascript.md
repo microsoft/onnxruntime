@@ -17,7 +17,7 @@ ONNX Runtime JavaScript API is the unified interface used by [ONNX Runtime Node.
 {:toc}
 
 ## ONNX Runtime Node.js binding
-
+ONNX Runtime Node.js binding can be achieved by installing or importing.
 ### Install
 
 ```bash
@@ -38,14 +38,14 @@ const ort = require('onnxruntime-node');
 
 ### Examples
 
-- [Quick Start](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/quick-start_onnxruntime-node)
+- Follow the [Quick Start](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/quick-start_onnxruntime-node) instructions for ONNX Runtime Node.js binding.
 
 ### Supported Versions
 
-Node.js v12.x+ or Electron v5.x+
+ONNX Runtime Node.js binding supports Node.js v12.x+ or Electron v5.x+
 
 ## ONNX Runtime Web
-
+You can install or import ONNX Runtime Web.
 ### Install
 
 ```bash
@@ -67,19 +67,22 @@ import * as ort from 'onnxruntime-web';
 // or use CommonJS style import syntax
 const ort = require('onnxruntime-web');
 ```
-ONNX Runtime Web can also be imported via a script tag in a HTML file, from a CDN server. See examples below for detail.
 
 ### Examples
 
+ONNX Runtime Web can also be imported via a script tag in a HTML file, from a CDN server. Here are some examples:
 - [Quick Start (using bundler)](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/quick-start_onnxruntime-web-bundler)
 - [Quick Start (using script tag)](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js/quick-start_onnxruntime-web-script-tag)
 - [ONNX Runtime Web for In Browser Inference](https://youtu.be/0dskvE4IvGM)
 - [Inference in Javascript with ONNX Runtime Web](https://youtu.be/vYzWrT3A7wQ)
 
+
 ### Supported Versions
 
 
-Mainstream modern browsers on Windows, macOS, Android, and iOS.
+ONNX Runtime supports mainstream modern browsers/OS on Windows, Ubuntu, macOS, Android, and iOS. You can check the [compatibility](https://github.com/Microsoft/onnxjs#Compatibility) of ONNX Runtime with modern browsers and operating systems for your desktop and mobile platforms.
+
+
 
 ## ONNX Runtime for React Native
 
