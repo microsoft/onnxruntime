@@ -2662,6 +2662,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Div", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Mul", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Pow", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("PRelu", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearAdd", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearMul", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Sub", BinaryOpBuilder);
