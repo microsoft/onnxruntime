@@ -94,7 +94,7 @@ jobs:
      $Env:ONNX_ML=1
      $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ parameters.buildArch }}-windows-static"
      python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq
-     python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\docker\scripts\manylinux\requirements.txt
+     python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\requirements.txt
     displayName: 'Install ONNX'
 
   - task: NuGetToolInstaller@0
