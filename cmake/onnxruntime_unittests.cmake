@@ -264,6 +264,10 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
     list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/framework/cuda/*)
   endif()
 
+  if(onnxruntime_USE_XNNPACK)
+    list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/xnnpack/*.cc)
+  endif()
+
   set(onnxruntime_test_providers_src_patterns
     "${TEST_SRC_DIR}/providers/*.h"
     "${TEST_SRC_DIR}/providers/*.cc"
@@ -492,21 +496,27 @@ set(ONNXRUNTIME_TEST_LIBS
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
     # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
-    ${PROVIDERS_NUPHAR}
-    ${PROVIDERS_NNAPI}
-    ${PROVIDERS_RKNPU}
-    ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_COREML}
+    ${PROVIDERS_DML}
+    ${PROVIDERS_INTERNAL_TESTING}
+    ${PROVIDERS_NNAPI}
+    ${PROVIDERS_NUPHAR}
+    ${PROVIDERS_RKNPU}
+    #${PROVIDERS_TVM}
+    ${PROVIDERS_VITISAI}
+    ${onnxruntime_winml}
     # ${PROVIDERS_TVM}
+    ${ONNXRUNTIME_XNNPACK_OPTIMIZER_LIBRARY}
     onnxruntime_optimizer
+    ${ONNXRUNTIME_XNNPACK_PROVIDER_LIBRARY}
     onnxruntime_providers
-    onnxruntime_util
-    ${onnxruntime_tvm_libs}
+    ${onnxruntime_tvm_libs}    
     onnxruntime_framework
+    onnxruntime_graph  
     onnxruntime_util
-    onnxruntime_graph
+    ${ONNXRUNTIME_XNNPACK_SCHEMAS_LIBRARY}
     ${ONNXRUNTIME_MLAS_LIBS}
     onnxruntime_common
     onnxruntime_flatbuffers
@@ -943,7 +953,9 @@ if(onnxruntime_ENABLE_EAGER_MODE)
   set(onnxruntime_eager_mode_libs
           onnxruntime_eager
           onnxruntime_session
+          ${ONNXRUNTIME_XNNPACK_OPTIMIZER_LIBRARY}
           onnxruntime_optimizer
+          ${ONNXRUNTIME_XNNPACK_PROVIDER_LIBRARY}
           onnxruntime_providers
           onnxruntime_util
           onnxruntime_framework
@@ -1288,5 +1300,13 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
     message(FATAL_ERROR "test_execution_provider unknown platform, need to specify shared library exports for it")
   endif()
 endif()
-
+# A command line tool purely for testing XNNPack graph transformer
+if (NOT onnxruntime_MINIMAL_BUILD AND onnxruntime_USE_XNNPACK)
+  onnxruntime_add_executable(xnnpack_converter ${REPO_ROOT}/onnxruntime/tool/layout_transformer.cc ${REPO_ROOT}/onnxruntime/core/providers/cpu/tensor/transpose.cc)
+  set_target_properties(xnnpack_converter PROPERTIES FOLDER "ONNXRuntimeTest")
+  target_link_libraries(xnnpack_converter PRIVATE
+          ${ONNXRUNTIME_XNNPACK_OPTIMIZER_LIBRARY}
+          onnxruntime_optimizer
+          onnxruntime_util onnxruntime_framework onnxruntime_graph ${ONNXRUNTIME_XNNPACK_SCHEMAS_LIBRARY} onnxruntime_mlas onnxruntime_common onnxruntime_flatbuffers ${onnxruntime_EXTERNAL_LIBRARIES})
+endif()
 include(onnxruntime_fuzz_test.cmake)

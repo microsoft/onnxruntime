@@ -65,10 +65,20 @@ Status MoveInputOutputImpl(Graph& graph, const ValueMoveInfo& move_info, Node& s
                         : dest.MutableOutputDefs();
 
   auto process = [&](int src_idx) {
-    const bool valid_index = static_cast<size_t>(src_idx) < src_defs.size() &&
-                             (move_info.append || static_cast<size_t>(move_info.dest_slot.idx) < dest_defs.size());
-    if (!valid_index) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Index out of range");
+    if (static_cast<size_t>(src_idx) >= src_defs.size()) {
+      std::ostringstream oss;
+      oss << "MoveInputOutput failed. Input index " << src_idx << " is not in range [0," << src_defs.size() - 1 << "].";
+      if (!src.Name().empty())
+        oss << " Node name " << src.Name();
+      return Status(ONNXRUNTIME, FAIL, oss.str());
+    }
+
+    if (!move_info.append && static_cast<size_t>(move_info.dest_slot.idx) >= dest_defs.size()) {
+      std::ostringstream oss;
+      oss << "MoveInputOutput failed. Output index " << move_info.dest_slot.idx << " is not in range [0," << dest_defs.size() - 1 << "]";
+      if (!dest.Name().empty())
+        oss << " Node name " << dest.Name();
+      return Status(ONNXRUNTIME, FAIL, oss.str());
     }
 
     if (move_info.append) {

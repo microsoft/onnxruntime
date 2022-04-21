@@ -72,3 +72,12 @@
 [submodule "cmake/external/onnx-tensorrt"]
 	path = cmake/external/onnx-tensorrt
 	url = https://github.com/onnx/onnx-tensorrt.git
+[submodule "cmake/external/pthreadpool"]
+	path = cmake/external/pthreadpool
+	url = https://github.com/Maratyszcza/pthreadpool.git
+[submodule "cmake/external/FP16"]
+	path = cmake/external/FP16
+	url = https://github.com/Maratyszcza/FP16.git
+[submodule "cmake/external/XNNPACK"]
+	path = cmake/external/XNNPACK
+	url = https://github.com/google/XNNPACK.git

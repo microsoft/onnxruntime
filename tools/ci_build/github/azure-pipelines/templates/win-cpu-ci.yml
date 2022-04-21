@@ -25,6 +25,11 @@ parameters:
   type: boolean
   default: true
 
+- name: RunCSharpTests
+  displayName: Run CSharp Tests?
+  type: boolean
+  default: true
+
 - name: RunOnnxRuntimeTests
   displayName: Run Tests?
   type: boolean
@@ -84,21 +89,20 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'API Documentation Check and generate'
 
-  - script: |
-     python -m pip install -q setuptools wheel numpy
-    workingDirectory: '$(Build.BinariesDirectory)'
-    displayName: 'Install python modules'
+  - powershell: |
+     $Env:USE_MSVC_STATIC_RUNTIME=1
+     $Env:ONNX_ML=1
+     $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ parameters.buildArch }}-windows-static"
+     python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq
+     python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.buildArch }}\requirements.txt
+    displayName: 'Install ONNX'
 
-  - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
-      - powershell: |
-         $Env:USE_MSVC_STATIC_RUNTIME=1
-         $Env:ONNX_ML=1
-         $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ parameters.buildArch }}-windows-static"
-         python setup.py bdist_wheel
-         python -m pip uninstall -y onnx -qq
-         Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-        workingDirectory: '$(Build.SourcesDirectory)\cmake\external\onnx'
-        displayName: 'Install ONNX'
+  - ${{ if eq(parameters.buildArch, 'x64') }}:
+    - task: PythonScript@0
+      displayName: 'Generate Test Data'
+      inputs:
+        scriptPath: '$(Build.SourcesDirectory)\onnxruntime\test\python\generate_test_data.py'
+        arguments: generate-data -o $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}
 
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 5.7.0
@@ -161,7 +165,7 @@ jobs:
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
 
-  - ${{ if and(eq(parameters.BuildConfig, 'RelWithDebInfo'), eq(parameters.RunOnnxRuntimeTests, true)) }}:
+  - ${{ if and(eq(parameters.BuildConfig, 'RelWithDebInfo'), eq(parameters.RunOnnxRuntimeTests, true), eq(parameters.RunCSharpTests, true)) }}:
       - task: DotNetCoreCLI@2
         displayName: 'Test C#'
         inputs:
@@ -173,7 +177,6 @@ jobs:
 
   - ${{ if eq(parameters.EnablePython, true) }}:
       - powershell: |
-         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
          Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
        
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'

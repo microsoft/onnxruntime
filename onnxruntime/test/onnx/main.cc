@@ -86,7 +86,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 #endif
   // if this var is not empty, only run the tests with name in this list
   std::vector<std::basic_string<PATH_CHAR_TYPE>> whitelisted_test_cases;
+#ifdef USE_XNNPACK
+  int concurrent_session_runs = 1;
+#else
   int concurrent_session_runs = GetNumCpuCores();
+#endif
   bool enable_cpu_mem_arena = true;
   ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL;
   int repeat_count = 1;

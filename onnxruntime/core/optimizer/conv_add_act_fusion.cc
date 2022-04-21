@@ -99,7 +99,8 @@ class ConvAddActivation : public NodeSelector {
 
       if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Clip", {6, 11, 12, 13})) {
         float min, max;
-        if (!optimizer_utils::GetClipConstantMinMax(graph_viewer.GetGraph(), activation_node, min, max)) {
+        Status st = optimizer_utils::GetClipConstantMinMax(graph_viewer.GetGraph(), activation_node, min, max);
+        if (!st.IsOK()) {
           return false;
         }
         return true;
@@ -211,7 +212,7 @@ class FuseConvAddActivation : public ReplaceWithNew {
       activation_params.push_back(graph_utils::GetNodeAttribute(*activation, "alpha")->f());
     } else if (activation_op_type == "Clip") {
       float min, max;
-      ORT_ENFORCE(optimizer_utils::GetClipConstantMinMax(state.graph, *activation, min, max),
+      ORT_ENFORCE(optimizer_utils::GetClipConstantMinMax(state.graph, *activation, min, max).IsOK(),
                   "Failed to get Clip min/max constants.");
       activation_params.push_back(min);
       activation_params.push_back(max);
