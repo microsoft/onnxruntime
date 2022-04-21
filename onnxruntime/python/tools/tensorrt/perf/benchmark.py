@@ -748,15 +748,16 @@ def get_cudnn_version(workspace):
     cudnn_version = major + '.' + minor + '.' + patch 
     return cudnn_version
 
-def get_system_info(workspace):
+def get_system_info(args):
     info = {}
     info["cuda"] = get_cuda_version()
-    info["trt"] = get_trt_version(workspace)
-    info["cudnn"] = get_cudnn_version(workspace)
+    info["trt"] = get_trt_version(args.workspace)
+    info["cudnn"] = get_cudnn_version(args.workspace)
     info["linux_distro"] = get_linux_distro()
     info["cpu_info"] = get_cpu_info()
     info["gpu_info"] = get_gpu_info()
     info["memory"] = get_memory_info()
+    info["ep_option_overrides"] = {trt_ep: args.trt_ep_options, cuda_ep: args.cuda_ep_options}
 
     return info
 
@@ -1389,11 +1390,13 @@ def output_specs(info, csv_filename):
     tensorrt_version = info['trt'] + ' , *All ORT-TRT and TRT are run in Mixed Precision mode (Fp16 and Fp32).'
     cuda_version = info['cuda']
     cudnn_version = info['cudnn']
+    ep_option_overrides = json.dumps(info['ep_option_overrides'])
 
-    table = pd.DataFrame({'.': [1, 2, 3, 4, 5],
-                        'Spec': ['CPU', 'GPU', 'TensorRT', 'CUDA', 'CuDNN'], 
-                        'Version': [cpu_version, gpu_version, tensorrt_version, cuda_version, cudnn_version]})
-    table.to_csv(csv_filename, index=False)   
+    table = pd.DataFrame({'.': [1, 2, 3, 4, 5, 6],
+                        'Spec': ['CPU', 'GPU', 'TensorRT', 'CUDA', 'CuDNN', 'EPOptionOverrides'],
+                        'Version': [cpu_version, gpu_version, tensorrt_version, cuda_version, cudnn_version,
+                                    ep_option_overrides]})
+    table.to_csv(csv_filename, index=False)
 
 def output_session_creation(results, csv_filename):
     need_write_header = True 
