@@ -17,6 +17,9 @@ except ModuleNotFoundError:
 import torch.onnx.symbolic_helper as sym_help
 import torch.onnx.symbolic_registry as sym_registry
 
+if typing.TYPE_CHECKING:
+    import torch._C
+
 _OPSET_VERSION = 1
 _registered_ops: typing.AbstractSet[str] = set()
 
@@ -65,8 +68,10 @@ def register():
         return g.op("com.microsoft::Inverse", self).setType(self.type())
     _reg(inverse)
 
-    def gelu(g, self):
-        return g.op("com.microsoft::Gelu", self).setType(self.type())
+    def gelu(g, self: torch._C.Value, approximate: str = "none"):
+        if approximate == "none":
+            return g.op("com.microsoft::Gelu", self).setType(self.type())
+        return torch.onnx.symbolic_opset9.gelu(g, self, approximate=approximate)
     _reg(gelu)
 
     def triu(g, self, diagonal):
