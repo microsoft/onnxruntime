@@ -85,7 +85,7 @@ ONNX Runtime supports mainstream modern browsers/OS on Windows, Ubuntu, macOS, A
 
 
 ## ONNX Runtime for React Native
-
+You can install or import ONNX Runtime Web for React Native.
 ### Install
 
 
@@ -109,7 +109,7 @@ const ort = require('onnxruntime-react-native');
 
 ## Builds
 
-Builds are published to **npm** and can be installed using `npm install`
+[Builds](https://onnxruntime.ai/docs/build/web.html) are published to **npm** and can be installed using `npm install`
 
 | Package | Artifact  | Description | Supported Platforms |
 |---------|-----------|-------------|---------------------|
@@ -117,7 +117,9 @@ Builds are published to **npm** and can be installed using `npm install`
 |Web|[onnxruntime-web](https://www.npmjs.com/package/onnxruntime-web)|CPU and GPU|Browsers (wasm, webgl), Node.js (wasm)|
 |React Native|[onnxruntime-react-native](https://www.npmjs.com/package/onnxruntime-react-native)|CPU|Android, iOS|
 
-For Node.js binding, to use on platforms without pre-built binaries, you can [build Node.js binding from source](../build/inferencing.md#apis-and-language-bindings) and consume using `npm install <onnxruntime_repo_root>/js/node/`.
+- For Node.js binding, to use on platforms without pre-built binaries, you can [build Node.js binding from source](../build/inferencing.md#apis-and-language-bindings) and consume using `npm install <onnxruntime_repo_root>/js/node/`.
+- Consider the [options and considerations](https://onnxruntime.ai/docs/reference/build-web-app.html) for building a Web app with ONNX Runtime Web using JavaScript. 
+- Explore a simple web application to [classify images with ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/classify-images-nextjs-github-template.html). 
 
 ## API Reference
 
@@ -125,6 +127,6 @@ See [ONNX Runtime JavaScript API](../api/js/index.html){:target="_blank"} for AP
 
 See also:
 
-- [ONNX Runtime JavaScript examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js).
+- [ONNX Runtime JavaScript examples and API Usage](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js).
 
 - Typescript declarations for [Inference Session](https://github.com/microsoft/onnxruntime/blob/master/js/common/lib/inference-session.ts), [Tensor](https://github.com/microsoft/onnxruntime/blob/master/js/common/lib/tensor.ts), and [Environment Flags](https://github.com/microsoft/onnxruntime/blob/master/js/common/lib/env.ts) for reference.
