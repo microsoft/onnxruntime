@@ -40,8 +40,10 @@ jobs:
     - template: run-docker-build-steps.yml
       parameters:
         RunDockerBuildArgs: '${{ parameters.RunDockerBuildArgs }}'
-    - script: cp -R $(Build.SourcesDirectory)/build $(Build.ArtifactStagingDirectory)
+    - script: cp -R $(Build.BinariesDirectory) $(Build.ArtifactStagingDirectory)
       displayName: 'Copy build folder'
+    - script: cp -R $(Build.SourcesDirectory) $(Build.ArtifactStagingDirectory)
+      displayName: 'Copy source folder'
     - task: PublishPipelineArtifact@0
       displayName: 'Publish build Artifact'
       inputs:
