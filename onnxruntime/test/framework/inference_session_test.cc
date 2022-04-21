@@ -172,7 +172,7 @@ static void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vecto
                           const std::vector<float>& expected_values);
 static constexpr const ORTCHAR_T* MODEL_URI = ORT_TSTR("testdata/mul_1.onnx");
 static constexpr const ORTCHAR_T* MODEL_URI_NO_OPSET = ORT_TSTR("testdata/mul_1.noopset.onnx");
-//static const std::string MODEL_URI = "./testdata/squeezenet/model.onnx"; // TODO enable this after we've weights?
+// static const std::string MODEL_URI = "./testdata/squeezenet/model.onnx"; // TODO enable this after we've weights?
 
 static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, ProviderType provider_type) {
   std::unordered_map<std::string, int> domain_to_version;
@@ -181,7 +181,8 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
   p_model = std::make_unique<Model>("test", true, ModelMetaData(), PathString(),
                                     IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
-                                    model_specific_functions, DefaultLoggingManager().DefaultLogger());
+                                    model_specific_functions, DefaultLoggingManager().DefaultLogger(),
+                                    ModelOptions(true, true));
   onnxruntime::Graph& graph = p_model->MainGraph();
 
   TypeProto tensor_float;
@@ -1923,23 +1924,13 @@ TEST(InferenceSessionTests, TestL1AndL2Transformers) {
   }
 }
 
-// fallback to lenient merging of shape info if model opset is not the latest
-TEST(InferenceSessionTests, TestLenientShapeInferencing) {
-  // latest opset should fail
+TEST(InferenceSessionTests, TestStrictShapeInference) {
   std::vector<int64_t> input_shape{2, 2};
   std::vector<float> input_data{0.f, 1.f, 2.f, 3.f};
   std::vector<int64_t> invalid_output_shape{1, 2};  // valid shape is {2} as output data is input_shape
   std::vector<int64_t> output_data{2, 2};
 
-  OpTester latest_opset("Shape", -1);  // use latest opset for shape inference errors
-  latest_opset.AddInput("data", input_shape, input_data);
-  latest_opset.AddOutput<int64_t>("output", invalid_output_shape, output_data);
-  latest_opset.Run(OpTester::ExpectResult::kExpectFailure,
-                   "Mismatch between number of source and target dimensions. Source=1 Target=2");
-
-  // older opset should allow the mismatch with a warning.
   // we also need for the output to be valid so OpTester doesn't throw so add an Unsqueeze after the Shape.
-  // This should result in a warning log message but successful run.
   class OpTesterWithReshape : public OpTester {
    public:
     OpTesterWithReshape() : OpTester("Shape", 7) {
@@ -1966,13 +1957,23 @@ TEST(InferenceSessionTests, TestLenientShapeInferencing) {
     }
   };
 
-  OpTesterWithReshape old_opset;
+  OpTesterWithReshape tester;
 
-  old_opset.AddInput("data", input_shape, input_data);
-  old_opset.AddOutput<int64_t>("output", invalid_output_shape, output_data);
-  // TensorRT doesn't handle Unsqueeze
-  // OpenVINO: Disabled temporarily
-  old_opset.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  tester.AddInput("data", input_shape, input_data);
+  tester.AddOutput<int64_t>("output", invalid_output_shape, output_data);
+  const std::unordered_set<string> excluded_provider_types = {
+      kTensorrtExecutionProvider,   // Doesn't handle Unsqueeze.
+      kOpenVINOExecutionProvider};  // Disabled temporarily.
+
+  // This should result in a warning log message but successful run.
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", excluded_provider_types);
+
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "1"));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectFailure,
+             "Mismatch between number of source and target dimensions. Source=1 Target=2",
+             excluded_provider_types);
 }
 
 #ifdef USE_CUDA
