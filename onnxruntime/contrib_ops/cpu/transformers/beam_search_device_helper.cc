@@ -454,6 +454,7 @@ Status UpdateFeeds1(
   // next_inputs: input_ids, attention_mask, encoder_hidden_size, past_0(self + cross), past_1(self + cross)
 
   // The following updates inputs for subgraph
+  next_inputs.clear();
 
   // Update input_ids with next tokens.
   int batch_beam_size = static_cast<int>(beam_next_tokens.length());
@@ -467,13 +468,17 @@ Status UpdateFeeds1(
   for (int i = 0; i < batch_beam_size; i++) {
     input_ids_data[i] = beam_next_tokens[i];
   }
-  next_inputs[0] = input_ids;
+  next_inputs.push_back(input_ids);
+  //next_inputs[0] = input_ids;
 
   //mask
-  next_inputs[1] = last_outputs[1];
+  //next_inputs[1] = last_outputs[1];
+  next_inputs.push_back(last_outputs[1]);
   //encoder_hidden_state
-  next_inputs[2] = last_outputs[2];
+  //next_inputs[2] = last_outputs[2];
+  next_inputs.push_back(last_outputs[2]);
 
+  ORT_UNUSED_PARAMETER(dumper);
 #ifdef DEBUG_BEAM_SEARCH
   dumper->Print("input_ids", input_ids);
   dumper->Print("position_ids", position_ids);
@@ -484,7 +489,7 @@ Status UpdateFeeds1(
 
   // Update past state, no need to pick past here, all past are the same
   for (size_t i = 3; i < last_outputs.size(); ++i) {
-    next_inputs[i] = last_outputs[i];
+    next_inputs.push_back(last_outputs[i]);
   }
 
   return Status::OK();

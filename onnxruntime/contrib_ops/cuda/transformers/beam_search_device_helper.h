@@ -38,7 +38,7 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
                    gsl::span<int32_t>& sequence_lengths,
                    int batch_size,
                    int num_beams,
-                   gsl::span<const int32_t> input_ids_in_cpu,
+                   int decoder_start_token_id,
                    int sequence_length,
                    int max_length,
                    void* stream);
