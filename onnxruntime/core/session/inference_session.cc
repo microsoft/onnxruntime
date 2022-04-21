@@ -234,6 +234,7 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
 
 void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
                                          const Environment& session_env) {
+
   auto status = FinalizeSessionOptions(session_options, model_proto_, is_model_proto_parsed_, session_options_);
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);

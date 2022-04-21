@@ -647,7 +647,7 @@ class InferenceSession {
   // so it can adjust it spinning policies.
   // Cant be placed into session_state as it is instantiated and finalized after the TP
   // which has implicit reference to it.
-  std::atomic_int32_t invocation_refcounter_;
+  std::atomic_int32_t invocation_refcounter_{0};
 
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
@@ -694,7 +694,7 @@ class InferenceSession {
   DataTransferManager data_transfer_mgr_;
 
   // Number of concurrently running executors
-  std::atomic<int> current_num_runs_;
+  std::atomic<int> current_num_runs_{0};
 
   mutable onnxruntime::OrtMutex session_mutex_;  // to ensure only one thread can invoke Load/Initialize
   bool is_model_loaded_ = false;                 // GUARDED_BY(session_mutex_)
